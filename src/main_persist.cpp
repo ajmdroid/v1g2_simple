@@ -52,6 +52,9 @@ struct SaveDiagStats {
     uint32_t minBlockOnFail = UINT32_MAX;
     uint32_t minFreeOnDeferLow = UINT32_MAX;
     uint32_t minBlockOnDeferLow = UINT32_MAX;
+    uint32_t deferRecoveries = 0;
+    uint32_t lastDeferToSaveMs = 0;
+    uint32_t maxDeferToSaveMs = 0;
     uint32_t lastReportMs = 0;
     uint32_t lastReportedAttempts = 0;
 };
@@ -146,7 +149,7 @@ void maybeLogSaveDiag(const char* tag, SaveDiagStats& stats, uint32_t nowMs) {
     }
     stats.lastReportMs = nowMs;
     stats.lastReportedAttempts = stats.attempts;
-    Serial.printf("[%s] SaveDiag attempts=%lu ok=%lu fail=%lu deferLow=%lu deferBusy=%lu agedTry=%lu minOk=%lu/%lu minFail=%lu/%lu minDeferLow=%lu/%lu\n",
+    Serial.printf("[%s] SaveDiag attempts=%lu ok=%lu fail=%lu deferLow=%lu deferBusy=%lu agedTry=%lu minOk=%lu/%lu minFail=%lu/%lu minDeferLow=%lu/%lu recoveries=%lu lastDeferMs=%lu maxDeferMs=%lu\n",
                   tag,
                   static_cast<unsigned long>(stats.attempts),
                   static_cast<unsigned long>(stats.success),
@@ -159,7 +162,10 @@ void maybeLogSaveDiag(const char* tag, SaveDiagStats& stats, uint32_t nowMs) {
                   sampleOrZero(stats.minFreeOnFail),
                   sampleOrZero(stats.minBlockOnFail),
                   sampleOrZero(stats.minFreeOnDeferLow),
-                  sampleOrZero(stats.minBlockOnDeferLow));
+                  sampleOrZero(stats.minBlockOnDeferLow),
+                  static_cast<unsigned long>(stats.deferRecoveries),
+                  static_cast<unsigned long>(stats.lastDeferToSaveMs),
+                  static_cast<unsigned long>(stats.maxDeferToSaveMs));
 }
 }  // namespace
 
@@ -170,6 +176,7 @@ void processLockoutStoreSave(uint32_t nowMs) {
     static uint32_t lastLockoutSaveMs = 0;
     static uint32_t lastLockoutSaveAttemptMs = 0;
     static uint32_t lockoutDirtySinceMs = 0;
+    static uint32_t lockoutDeferredSinceMs = 0;
     static SaveDiagStats diag;
     static constexpr uint32_t LOCKOUT_SAVE_INTERVAL_MS = 60000;  // 60s
     static constexpr uint32_t LOCKOUT_SAVE_RETRY_MS = 15000;     // Retry backoff on contention/failure
@@ -179,6 +186,7 @@ void processLockoutStoreSave(uint32_t nowMs) {
         }
     } else {
         lockoutDirtySinceMs = 0;
+        lockoutDeferredSinceMs = 0;
     }
     if (lockoutStore.isDirty() && storageManager.isReady() &&
         (nowMs - lastLockoutSaveMs) >= LOCKOUT_SAVE_INTERVAL_MS &&
@@ -262,6 +270,19 @@ void processLockoutStoreSave(uint32_t nowMs) {
             }
         }
         if (saveOk) {
+            if (lockoutDeferredSinceMs != 0) {
+                const uint32_t deferLatencyMs = nowMs - lockoutDeferredSinceMs;
+                const uint32_t dirtyAgeMs = (lockoutDirtySinceMs == 0) ? 0 : (nowMs - lockoutDirtySinceMs);
+                diag.deferRecoveries++;
+                diag.lastDeferToSaveMs = deferLatencyMs;
+                if (deferLatencyMs > diag.maxDeferToSaveMs) {
+                    diag.maxDeferToSaveMs = deferLatencyMs;
+                }
+                Serial.printf("[Lockout] Save recovered after defer latency=%lus dirty=%lus\n",
+                              static_cast<unsigned long>(deferLatencyMs / 1000),
+                              static_cast<unsigned long>(dirtyAgeMs / 1000));
+                lockoutDeferredSinceMs = 0;
+            }
             lastLockoutSaveMs = nowMs;
             lockoutStore.clearDirty();
             lockoutDirtySinceMs = 0;
@@ -280,6 +301,8 @@ void processLockoutStoreSave(uint32_t nowMs) {
                 noteMin(diag.minBlockOnFail, sampledLargestDma);
             }
             Serial.println("[Lockout] Save failed");
+        } else if (lockoutDeferredSinceMs == 0) {
+            lockoutDeferredSinceMs = nowMs;
         }
         maybeLogSaveDiag("Lockout", diag, nowMs);
     }
@@ -293,6 +316,7 @@ void processLearnerPendingSave(uint32_t nowMs) {
     static uint32_t lastLearnerSaveMs = 0;
     static uint32_t lastLearnerSaveAttemptMs = 0;
     static uint32_t learnerDirtySinceMs = 0;
+    static uint32_t learnerDeferredSinceMs = 0;
     static SaveDiagStats diag;
     static constexpr uint32_t LEARNER_SAVE_INTERVAL_MS = 15000;  // 15s
     static constexpr uint32_t LEARNER_SAVE_RETRY_MS = 15000;     // Retry backoff
@@ -302,6 +326,7 @@ void processLearnerPendingSave(uint32_t nowMs) {
         }
     } else {
         learnerDirtySinceMs = 0;
+        learnerDeferredSinceMs = 0;
     }
     if (lockoutLearner.isDirty() && storageManager.isReady() &&
         (nowMs - lastLearnerSaveMs) >= LEARNER_SAVE_INTERVAL_MS &&
@@ -380,6 +405,19 @@ void processLearnerPendingSave(uint32_t nowMs) {
             }
         }
         if (saveOk) {
+            if (learnerDeferredSinceMs != 0) {
+                const uint32_t deferLatencyMs = nowMs - learnerDeferredSinceMs;
+                const uint32_t dirtyAgeMs = (learnerDirtySinceMs == 0) ? 0 : (nowMs - learnerDirtySinceMs);
+                diag.deferRecoveries++;
+                diag.lastDeferToSaveMs = deferLatencyMs;
+                if (deferLatencyMs > diag.maxDeferToSaveMs) {
+                    diag.maxDeferToSaveMs = deferLatencyMs;
+                }
+                Serial.printf("[Learner] Save recovered after defer latency=%lus dirty=%lus\n",
+                              static_cast<unsigned long>(deferLatencyMs / 1000),
+                              static_cast<unsigned long>(dirtyAgeMs / 1000));
+                learnerDeferredSinceMs = 0;
+            }
             lastLearnerSaveMs = nowMs;
             lockoutLearner.clearDirty();
             learnerDirtySinceMs = 0;
@@ -398,6 +436,8 @@ void processLearnerPendingSave(uint32_t nowMs) {
                 noteMin(diag.minBlockOnFail, sampledLargestDma);
             }
             Serial.println("[Learner] Pending save failed");
+        } else if (learnerDeferredSinceMs == 0) {
+            learnerDeferredSinceMs = nowMs;
         }
         maybeLogSaveDiag("Learner", diag, nowMs);
     }
