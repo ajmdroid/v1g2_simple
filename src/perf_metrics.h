@@ -132,6 +132,10 @@ struct PerfCounters {
     std::atomic<uint32_t> alertTablePublishes3Bogey{0};    // Complete tables published with count=3
     std::atomic<uint32_t> alertTableRowReplacements{0};    // Duplicate row index replacements
     std::atomic<uint32_t> alertTableAssemblyTimeouts{0};   // Partial table assemblies dropped on timeout
+    std::atomic<uint32_t> parserRowsBandNone{0};           // Alert rows decoded with BAND_NONE
+    std::atomic<uint32_t> parserRowsKuRaw{0};              // Alert rows with Ku raw band bit (0x10)
+    std::atomic<uint32_t> displayLiveInvalidPrioritySkips{0}; // Live display update early-returned invalid priority
+    std::atomic<uint32_t> displayLiveFallbackToUsable{0};  // Live display used fallback usable alert
     std::atomic<uint32_t> voiceAnnouncePriority{0}; // Voice priority announcements emitted
     std::atomic<uint32_t> voiceAnnounceDirection{0}; // Voice direction/bogey announcements emitted
     std::atomic<uint32_t> voiceAnnounceSecondary{0}; // Voice secondary announcements emitted
@@ -214,6 +218,10 @@ struct PerfCounters {
         alertTablePublishes3Bogey.store(0, std::memory_order_relaxed);
         alertTableRowReplacements.store(0, std::memory_order_relaxed);
         alertTableAssemblyTimeouts.store(0, std::memory_order_relaxed);
+        parserRowsBandNone.store(0, std::memory_order_relaxed);
+        parserRowsKuRaw.store(0, std::memory_order_relaxed);
+        displayLiveInvalidPrioritySkips.store(0, std::memory_order_relaxed);
+        displayLiveFallbackToUsable.store(0, std::memory_order_relaxed);
         voiceAnnouncePriority.store(0, std::memory_order_relaxed);
         voiceAnnounceDirection.store(0, std::memory_order_relaxed);
         voiceAnnounceSecondary.store(0, std::memory_order_relaxed);

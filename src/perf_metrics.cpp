@@ -166,6 +166,12 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
         perfCounters.alertTableRowReplacements.load(std::memory_order_relaxed);
     snapshot.alertTableAssemblyTimeouts =
         perfCounters.alertTableAssemblyTimeouts.load(std::memory_order_relaxed);
+    snapshot.parserRowsBandNone = perfCounters.parserRowsBandNone.load(std::memory_order_relaxed);
+    snapshot.parserRowsKuRaw = perfCounters.parserRowsKuRaw.load(std::memory_order_relaxed);
+    snapshot.displayLiveInvalidPrioritySkips =
+        perfCounters.displayLiveInvalidPrioritySkips.load(std::memory_order_relaxed);
+    snapshot.displayLiveFallbackToUsable =
+        perfCounters.displayLiveFallbackToUsable.load(std::memory_order_relaxed);
     snapshot.voiceAnnouncePriority = perfCounters.voiceAnnouncePriority.load(std::memory_order_relaxed);
     snapshot.voiceAnnounceDirection = perfCounters.voiceAnnounceDirection.load(std::memory_order_relaxed);
     snapshot.voiceAnnounceSecondary = perfCounters.voiceAnnounceSecondary.load(std::memory_order_relaxed);
@@ -758,6 +764,10 @@ String perfMetricsToJson() {
     doc["alertTablePublishes3Bogey"] = perfCounters.alertTablePublishes3Bogey.load();
     doc["alertTableRowReplacements"] = perfCounters.alertTableRowReplacements.load();
     doc["alertTableAssemblyTimeouts"] = perfCounters.alertTableAssemblyTimeouts.load();
+    doc["parserRowsBandNone"] = perfCounters.parserRowsBandNone.load();
+    doc["parserRowsKuRaw"] = perfCounters.parserRowsKuRaw.load();
+    doc["displayLiveInvalidPrioritySkips"] = perfCounters.displayLiveInvalidPrioritySkips.load();
+    doc["displayLiveFallbackToUsable"] = perfCounters.displayLiveFallbackToUsable.load();
     doc["voiceAnnouncePriority"] = perfCounters.voiceAnnouncePriority.load();
     doc["voiceAnnounceDirection"] = perfCounters.voiceAnnounceDirection.load();
     doc["voiceAnnounceSecondary"] = perfCounters.voiceAnnounceSecondary.load();

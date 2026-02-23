@@ -178,6 +178,10 @@ struct PerfSdSnapshot {
     uint32_t alertTablePublishes3Bogey;    // Complete tables published with count=3
     uint32_t alertTableRowReplacements;    // Duplicate row-index replacements
     uint32_t alertTableAssemblyTimeouts;   // Partial table assemblies dropped on timeout
+    uint32_t parserRowsBandNone;           // Alert rows decoded with BAND_NONE
+    uint32_t parserRowsKuRaw;              // Alert rows containing Ku raw bit (0x10)
+    uint32_t displayLiveInvalidPrioritySkips; // Live display invalid-priority early returns
+    uint32_t displayLiveFallbackToUsable;  // Live display fallback-to-usable selections
 };
 
 class PerfSdLogger {

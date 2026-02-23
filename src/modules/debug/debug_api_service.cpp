@@ -1096,6 +1096,10 @@ static void sendMetrics(WebServer& server) {
     doc["alertTablePublishes3Bogey"] = perfCounters.alertTablePublishes3Bogey.load();
     doc["alertTableRowReplacements"] = perfCounters.alertTableRowReplacements.load();
     doc["alertTableAssemblyTimeouts"] = perfCounters.alertTableAssemblyTimeouts.load();
+    doc["parserRowsBandNone"] = perfCounters.parserRowsBandNone.load();
+    doc["parserRowsKuRaw"] = perfCounters.parserRowsKuRaw.load();
+    doc["displayLiveInvalidPrioritySkips"] = perfCounters.displayLiveInvalidPrioritySkips.load();
+    doc["displayLiveFallbackToUsable"] = perfCounters.displayLiveFallbackToUsable.load();
     doc["voiceAnnouncePriority"] = perfCounters.voiceAnnouncePriority.load();
     doc["voiceAnnounceDirection"] = perfCounters.voiceAnnounceDirection.load();
     doc["voiceAnnounceSecondary"] = perfCounters.voiceAnnounceSecondary.load();

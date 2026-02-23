@@ -593,6 +593,12 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         uint8_t aux0 = a[6];       // aux0: bit7=priority, bit6=junk, low nibble=photo type
 
         Band band = decodeBand(bandArrow);
+        if ((bandArrow & 0x10) != 0) {
+            PARSER_PERF_INC(parserRowsKuRaw);
+        }
+        if (band == BAND_NONE) {
+            PARSER_PERF_INC(parserRowsBandNone);
+        }
         Direction dir = decodeDirection(bandArrow);
         bool isPriority = (aux0 & 0x80) != 0;  // JB: (aux0 & 128) != 0
         // Match official Android/iOS library behavior:

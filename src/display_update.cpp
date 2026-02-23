@@ -521,6 +521,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
 
     // If no valid priority alert, return (caller should use updatePersisted or update(state) instead)
     if (!priority.isValid || priority.band == BAND_NONE) {
+        PERF_INC(displayLiveInvalidPrioritySkips);
         return;
     }
 

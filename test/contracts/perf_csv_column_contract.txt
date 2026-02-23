@@ -161,3 +161,7 @@ alertTablePublishes
 alertTablePublishes3Bogey
 alertTableRowReplacements
 alertTableAssemblyTimeouts
+parserRowsBandNone
+parserRowsKuRaw
+displayLiveInvalidPrioritySkips
+displayLiveFallbackToUsable
