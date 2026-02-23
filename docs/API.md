@@ -159,6 +159,7 @@ Get all device settings.
 | `gpsLockoutMaxPerfDrops` | int | 0-65535 | Perf-drop threshold for core guard |
 | `gpsLockoutMaxEventBusDrops` | int | 0-65535 | Event-bus-drop threshold for core guard |
 | `gpsLockoutKaLearningEnabled` | boolean | - | Allow Ka learning in lockout learner |
+| `gpsLockoutPreQuiet` | boolean | - | Pre-drop to muted volume in lockout zones |
 | `displayStyle` | int | 0 or 3 | Display theme (0=Classic, 3=Serpentine). Values 1/2 are normalized to 0 at runtime. |
 | `autoPowerOffMinutes` | int | 0-60 | Auto power off after V1 disconnect (0=disabled) |
 | `apTimeoutMinutes` | int | 0,5-60 | AP auto-off after inactivity (0=always on) |
