@@ -560,15 +560,16 @@ All display colors are customizable via the web UI (`/colors`). Colors are store
 | Style | Bogey Counter | Frequency | Description |
 |-------|---------------|-----------|-------------|
 | Classic (0) | 7-segment | 7-segment | Full retro LED-style with ghost segments |
-| Modern (1) | 7-segment | Montserrat Bold | Hybrid: LED bogey counter, antialiased frequency |
-| Hemi (2) | 7-segment | Hemi Head | Retro speedometer style |
 | Serpentine (3) | 7-segment | Serpentine | JB's favorite |
 
-**Note:** Both styles use 7-segment for the bogey counter to ensure proper display of the laser '=' flag and all numeric symbols. The Modern style applies Montserrat Bold only to the frequency display.
+> **Note:** The enum also defines Modern (1) and Hemi (2), but `normalizeDisplayStyle()` in
+> `src/settings.h` maps both to Classic. Only Classic and Serpentine are active at runtime.
+
+Both active styles use 7-segment for the bogey counter to ensure proper display of the laser '=' flag and all numeric symbols.
 
 Toggle via web UI: **Colors → Display Style**
 
-**Source:** [src/display.cpp](src/display.cpp#L963-L969) (drawTopCounter router), [src/display.cpp](src/display.cpp#L1993-L2050) (drawFrequencyModern)
+**Source:** [src/settings.h](src/settings.h#L57-L60) (normalizeDisplayStyle), [src/display_update.cpp](src/display_update.cpp) (draw pipeline)
 
 ### 7-Segment Digit Rendering
 
@@ -1048,7 +1049,7 @@ Controls:
 ### Colors Page (`/colors`)
 
 Controls:
-- **Display Style:** Classic (full 7-segment) or Modern (7-seg bogey + Montserrat frequency)
+- **Display Style:** Classic (full 7-segment) or Serpentine (JB's favorite)
 - **Custom Colors:** Per-element RGB565 colors (via custom RGB slider picker for Android compatibility)
   - Bogey counter, Frequency display
   - Individual arrow colors (Front, Side, Rear separately)
