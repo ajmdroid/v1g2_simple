@@ -51,7 +51,7 @@ Example fields for alert row payload (`0x43`):
 - byte0: high nibble `index`, low nibble `count`
 - byte1..2: frequency
 - byte3..4: front/rear strength raw
-- byte5: band+arrow+mute bitmap
+- byte5: band+direction bitmap (`0x1F` band field, `0xE0` direction field)
 - byte6: aux0 (priority/junk/photo)
 
 ## Scenario Matrix
@@ -153,4 +153,3 @@ SLO basis: `docs/PERF_SLOS.md`
 2. Add fixture loader and scheduler to feed `BleQueueModule::onNotify(...)`.
 3. Add soak runner mode `--drive-v1-scenarios <file>` and include scenario metadata in summary.
 4. Implement first fixture set: `MBP-01`, `MBP-02`, `MBP-03`, `ASM-01..04`, `TRN-01..03`.
-
