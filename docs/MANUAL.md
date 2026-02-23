@@ -169,22 +169,25 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 
 ### Source Files
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `main.cpp` | ~1315 | Application entry, loop, touch handling, voice alert logic, volume control |
-| `ble_client.cpp` | ~2878 | NimBLE client/server, V1 connection |
-| `display.cpp` | ~4931 | Arduino_GFX drawing, 7/14-segment digits, multi-alert cards |
-| `wifi_manager.cpp` | ~5334 | WebServer, API endpoints (ArduinoJson), LittleFS |
-| `audio_beep.cpp` | ~1352 | ES8311 DAC, I2S audio, voice alerts, SD clip playback |
-| `settings.cpp` | ~2318 | Preferences (NVS) storage |
+> **Note:** Many original monolithic files have been split for maintainability.
+> Totals reflect all split files combined.
+
+| File(s) | Lines | Purpose |
+|---------|-------|---------|
+| `main.cpp` + `main_boot.cpp` + `main_persist.cpp` | ~1755 | Application entry, loop, boot sequence, persistence helpers |
+| `ble_client.cpp` + `ble_commands.cpp` + `ble_connection.cpp` + `ble_proxy.cpp` | ~2898 | NimBLE client/server, V1 connection, proxy |
+| `display.cpp` + 12 display_*.cpp files | ~5192 | Arduino_GFX drawing, segments, cards, status bar, frequency, etc. |
+| `wifi_manager.cpp` + `wifi_routes.cpp` + `wifi_runtimes.cpp` + `wifi_client.cpp` | ~2417 | WebServer, API route registration, runtime routes, client mode |
+| `audio_beep.cpp` + `audio_voice.cpp` | ~1304 | ES8311 DAC, I2S audio, voice alerts, SD clip playback |
+| `settings.cpp` + `settings_backup.cpp` + `settings_nvs.cpp` + `settings_setters.cpp` | ~2537 | Preferences (NVS) storage, backup/restore, setters |
 | `v1_profiles.cpp` | ~776 | Profile JSON on SD/LittleFS |
-| `battery_manager.cpp` | ~705 | ADC, TCA9554 I/O expander |
-| `packet_parser.cpp` | ~577 | ESP packet framing and decoding |
+| `battery_manager.cpp` | ~652 | ADC, TCA9554 I/O expander |
+| `packet_parser.cpp` | ~844 | ESP packet framing and decoding |
 | `storage_manager.cpp` | ~118 | SD/LittleFS mount abstraction |
-| `touch_handler.cpp` | ~171 | AXS15231B I2C touch polling |
-| `obd_handler.cpp` | ~2234 | OBD-II via ELM327 BLE adapter (vehicle speed) |
-| `src/modules/` | evolving | Runtime modules for GPS, lockout, camera, display pipeline, voice, power, etc. |
-| `perf_metrics.cpp` | ~753 | Latency tracking (ArduinoJson) |
+| `touch_handler.cpp` | ~178 | AXS15231B I2C touch polling |
+| `obd_handler.cpp` + `obd_connection.cpp` + `obd_protocol.cpp` + `obd_persistence.cpp` | ~2444 | OBD-II via ELM327 BLE adapter (vehicle speed) |
+| `src/modules/` (51 .cpp files, 18 dirs) | ~19k | Runtime modules for GPS, lockout, camera, display pipeline, voice, power, WiFi API services, etc. |
+| `perf_metrics.cpp` | ~813 | Latency tracking (ArduinoJson) |
 
 ### Data Flow
 
