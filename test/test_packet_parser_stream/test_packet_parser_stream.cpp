@@ -365,6 +365,26 @@ void test_alert_stream_ku_raw_flag_is_preserved_without_forcing_mute() {
     TEST_ASSERT_FALSE(state.muted);
 }
 
+void test_alert_stream_ku_tag_requires_exact_raw_band_value() {
+    PacketParser parser;
+
+    // bandArrow=0x34 => K bit (0x04) + bit4 set + front arrow.
+    // Ku tag should only be true for exact raw band bits == 0x10.
+    const auto row = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 1, 24150, 0x90, 0x00, 0x34, 0x80));
+    TEST_ASSERT_TRUE(parser.parse(row.data(), row.size()));
+
+    TEST_ASSERT_TRUE(parser.hasAlerts());
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(parser.getAlertCount()));
+    const auto& alerts = parser.getAllAlerts();
+    TEST_ASSERT_TRUE(alerts[0].isValid);
+    TEST_ASSERT_EQUAL_UINT8(0x14, alerts[0].rawBandBits);
+    TEST_ASSERT_FALSE(alerts[0].isKu);
+    TEST_ASSERT_EQUAL(BAND_K, alerts[0].band);
+
+    const DisplayState& state = parser.getDisplayState();
+    TEST_ASSERT_FALSE(state.muted);
+}
+
 void test_alert_stream_without_row_priority_picks_first_usable_alert() {
     PacketParser parser;
 
@@ -672,6 +692,7 @@ int main() {
     RUN_TEST(test_alert_stream_aux0_photo_gated_before_41037);
     RUN_TEST(test_alert_stream_aux0_junk_gated_before_41032);
     RUN_TEST(test_alert_stream_ku_raw_flag_is_preserved_without_forcing_mute);
+    RUN_TEST(test_alert_stream_ku_tag_requires_exact_raw_band_value);
     RUN_TEST(test_alert_stream_without_row_priority_picks_first_usable_alert);
     RUN_TEST(test_alert_stream_row_priority_ignores_display_aux0_bits);
     RUN_TEST(test_alert_stream_unusable_row_priority_falls_back_to_first_usable);

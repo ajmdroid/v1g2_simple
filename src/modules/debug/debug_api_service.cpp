@@ -176,7 +176,8 @@ constexpr uint8_t kBandKRear = 0x84;
 constexpr uint8_t kBandKaFront = 0x22;
 constexpr uint8_t kBandKaSide = 0x42;
 constexpr uint8_t kBandKaRear = 0x82;
-constexpr uint8_t kBandXRearMuted = 0x98;  // X + rear + mute
+constexpr uint8_t kBandXRear = 0x88;        // X + rear
+constexpr uint8_t kDisplayXRearMuted = 0x98;  // Display image bit: X + rear + mute
 constexpr uint8_t kBandLaserFront = 0x21;
 
 constexpr uint8_t kBogeyOne = 6;
@@ -566,10 +567,10 @@ bool buildScenarioPackets(const String& scenarioId,
                       {2, kFreqKa, 0x9A, 0x7F, kBandKaFront, 0x80}});
         addScenarioClearEnd(outEvents, 980);
     } else if (normalizedId == "RAD-03") {
-        addScenarioPacket(outEvents, 120, makeDisplayPacket(kBogeyOne, 0x03, kBandXRearMuted, kBandXRearMuted), kScenarioCharShort);
-        addAlertRows(outEvents, 128, 1, {{1, kFreqX, 0x8A, 0x96, kBandXRearMuted, 0x80}});
-        addScenarioPacket(outEvents, 500, makeDisplayPacket(kBogeyOne, 0x07, kBandXRearMuted, kBandXRearMuted), kScenarioCharShort);
-        addAlertRows(outEvents, 508, 1, {{1, kFreqX, 0x84, 0x9C, kBandXRearMuted, 0x80}});
+        addScenarioPacket(outEvents, 120, makeDisplayPacket(kBogeyOne, 0x03, kDisplayXRearMuted, kDisplayXRearMuted), kScenarioCharShort);
+        addAlertRows(outEvents, 128, 1, {{1, kFreqX, 0x8A, 0x96, kBandXRear, 0x80}});
+        addScenarioPacket(outEvents, 500, makeDisplayPacket(kBogeyOne, 0x07, kDisplayXRearMuted, kDisplayXRearMuted), kScenarioCharShort);
+        addAlertRows(outEvents, 508, 1, {{1, kFreqX, 0x84, 0x9C, kBandXRear, 0x80}});
         addScenarioClearEnd(outEvents, 860);
     } else if (normalizedId == "PHO-01") {
         addScenarioPacket(outEvents, 110, makeDisplayPacket(kBogeyPhoto, 0x07, kBandKaFront, kBandKaFront), kScenarioCharShort);
