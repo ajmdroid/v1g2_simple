@@ -127,6 +127,24 @@ public:
     bool hasAlerts() const { return hasAlertsFlag; }
     int getAlertCount() const { return static_cast<int>(alerts.size()); }
     AlertData getPriorityAlert() const { return priorityAlert; }
+    bool getRenderablePriorityAlert(AlertData& out) const {
+        auto isRenderable = [](const AlertData& a) -> bool {
+            if (!a.isValid || a.band == BAND_NONE) return false;
+            return (a.band == BAND_LASER) || (a.frequency != 0);
+        };
+        if (isRenderable(priorityAlert)) {
+            out = priorityAlert;
+            return true;
+        }
+        for (const auto& alert : alerts) {
+            if (isRenderable(alert)) {
+                out = alert;
+                return true;
+            }
+        }
+        out = AlertData();
+        return false;
+    }
     const std::vector<AlertData>& getAllAlerts() const { return alerts; }
     DisplayState getDisplayState() const { return state; }
 

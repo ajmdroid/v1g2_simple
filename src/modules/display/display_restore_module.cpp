@@ -26,9 +26,13 @@ bool DisplayRestoreModule::process() {
         // Immediately refresh with current V1 state (don't wait for next packet)
         DisplayState state = parser->getDisplayState();
         if (parser->hasAlerts()) {
-            AlertData priority = parser->getPriorityAlert();
-            const auto& alerts = parser->getAllAlerts();
-            display->update(priority, alerts.data(), parser->getAlertCount(), state);
+            AlertData priority;
+            if (parser->getRenderablePriorityAlert(priority)) {
+                const auto& alerts = parser->getAllAlerts();
+                display->update(priority, alerts.data(), parser->getAlertCount(), state);
+            } else {
+                display->update(state);
+            }
         } else {
             display->update(state);
         }

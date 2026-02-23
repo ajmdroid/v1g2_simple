@@ -122,9 +122,10 @@ DisplayOrchestrationRefreshResult DisplayOrchestrationModule::processLightweight
     }
 
     const bool loopHasAlerts = parser->hasAlerts();
-    const AlertData loopPriority = loopHasAlerts ? parser->getPriorityAlert() : AlertData();
-    result.signalPriorityActive =
-        loopHasAlerts && loopPriority.isValid && loopPriority.band != BAND_NONE;
+    AlertData loopPriority;
+    const bool loopHasRenderablePriority =
+        loopHasAlerts && parser->getRenderablePriorityAlert(loopPriority);
+    result.signalPriorityActive = loopHasRenderablePriority;
 
     const bool previewRunning = preview->isRunning();
     const unsigned long freqUiMaxMs = previewRunning ? FREQ_UI_PREVIEW_MAX_MS : FREQ_UI_MAX_MS;

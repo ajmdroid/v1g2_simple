@@ -36,7 +36,19 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
 
     DisplayState state = parser->getDisplayState();
     bool hasAlerts = parser->hasAlerts();
-    const AlertData priority = hasAlerts ? parser->getPriorityAlert() : AlertData();
+    AlertData priority;
+    const bool hasRenderablePriority =
+        hasAlerts && parser->getRenderablePriorityAlert(priority);
+    if (hasRenderablePriority) {
+        const AlertData rawPriority = parser->getPriorityAlert();
+        const bool rawRenderable = rawPriority.isValid &&
+                                   rawPriority.band != BAND_NONE &&
+                                   ((rawPriority.band == BAND_LASER) ||
+                                    (rawPriority.frequency != 0));
+        if (!rawRenderable) {
+            PERF_INC(displayLiveFallbackToUsable);
+        }
+    }
     const V1Settings& settingsRef = settings->get();
 
     if (!hasAlerts && state.activeBands != BAND_NONE) {
@@ -69,7 +81,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
             fadeCtx.alertSuppressed = prioritySuppressed;
             fadeCtx.currentVolume = state.mainVolume;
             fadeCtx.currentMuteVolume = state.muteVolume;
-            fadeCtx.currentFrequency = (uint16_t)priority.frequency;
+            fadeCtx.currentFrequency = hasRenderablePriority ? static_cast<uint16_t>(priority.frequency) : 0;
         } else {
             fadeCtx.hasAlert = false;
             fadeCtx.currentVolume = state.mainVolume;
@@ -115,7 +127,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         VoiceContext voiceCtx;
         voiceCtx.alerts = currentAlerts.data();
         voiceCtx.alertCount = alertCount;
-        voiceCtx.priority = priority.isValid ? &priority : nullptr;
+        voiceCtx.priority = hasRenderablePriority ? &priority : nullptr;
         voiceCtx.isMuted = state.muted;
         voiceCtx.isProxyConnected = ble->isProxyClientConnected();
         voiceCtx.mainVolume = state.mainVolume;
@@ -128,7 +140,11 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         // User sees the alert card immediately, then hears the announcement
         if (debug) debug->notifyRenderState(true);  // Defer SD flush during render
         unsigned long startUs = micros();
-        display->update(priority, currentAlerts.data(), alertCount, state);
+        if (hasRenderablePriority) {
+            display->update(priority, currentAlerts.data(), alertCount, state);
+        } else {
+            display->update(state);
+        }
         unsigned long endUs = micros();
         if (debug) debug->notifyRenderState(false);
         recordDisplayTiming("display.update(alerts)", startUs, endUs);
@@ -160,7 +176,9 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
             }
         }
 
-        alertPersistence->setPersistedAlert(priority);
+        if (hasRenderablePriority) {
+            alertPersistence->setPersistedAlert(priority);
+        }
 
     } else {
         *displayMode = DisplayMode::IDLE;

@@ -187,7 +187,7 @@ void test_lightweight_refresh_updates_frequency_and_cards() {
     TEST_ASSERT_EQUAL(1, display.lastSecondaryAlertCount);
 }
 
-void test_lightweight_refresh_does_not_fallback_from_invalid_priority() {
+void test_lightweight_refresh_falls_back_from_invalid_priority() {
     ble.setConnected(true);
     preview.setRunning(false);
 
@@ -209,10 +209,10 @@ void test_lightweight_refresh_does_not_fallback_from_invalid_priority() {
 
     const auto result = module.processLightweightRefresh(ctx);
 
-    TEST_ASSERT_FALSE(result.signalPriorityActive);
+    TEST_ASSERT_TRUE(result.signalPriorityActive);
     TEST_ASSERT_EQUAL(1, display.refreshFrequencyOnlyCalls);
-    TEST_ASSERT_EQUAL(0u, display.lastFrequencyMHz);
-    TEST_ASSERT_EQUAL(BAND_NONE, display.lastFrequencyBand);
+    TEST_ASSERT_EQUAL(24150u, display.lastFrequencyMHz);
+    TEST_ASSERT_EQUAL(BAND_K, display.lastFrequencyBand);
 }
 
 void test_pipeline_draw_resets_frequency_timer_for_same_tick() {
@@ -239,7 +239,7 @@ int main() {
     RUN_TEST(test_parsed_frame_skips_pipeline_when_preview_running);
     RUN_TEST(test_stale_lockout_badge_is_cleared_when_disconnected);
     RUN_TEST(test_lightweight_refresh_updates_frequency_and_cards);
-    RUN_TEST(test_lightweight_refresh_does_not_fallback_from_invalid_priority);
+    RUN_TEST(test_lightweight_refresh_falls_back_from_invalid_priority);
     RUN_TEST(test_pipeline_draw_resets_frequency_timer_for_same_tick);
     return UNITY_END();
 }
