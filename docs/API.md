@@ -963,7 +963,7 @@ Error response body:
 - No explicit rate limiting implemented
 - BLE operations are serialized (one at a time)
 - GPS updates: 1Hz maximum
-- OBD polling: 2Hz maximum
+- OBD polling: 1Hz (POLL_INTERVAL_MS = 1000 in obd_handler.h)
 
 ---
 
