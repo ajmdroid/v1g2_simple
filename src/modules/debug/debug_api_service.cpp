@@ -212,6 +212,8 @@ struct ScenarioPlaybackState {
     uint32_t finishedAtMs = 0;
     uint32_t emittedPackets = 0;
     uint32_t completedRuns = 0;
+    uint16_t streamRepeatMs = 700;
+    uint16_t durationScalePct = 100;
 };
 
 struct AlertRowSpec {
@@ -247,6 +249,13 @@ constexpr ScenarioCatalogEntry kScenarioCatalog[] = {
 
 ScenarioPlaybackState gScenarioPlayback;
 
+constexpr uint16_t kScenarioStreamRepeatMsDefault = 700;
+constexpr uint16_t kScenarioStreamRepeatMsMax = 5000;
+constexpr uint16_t kScenarioDurationScalePctDefault = 100;
+constexpr uint16_t kScenarioDurationScalePctMin = 25;
+constexpr uint16_t kScenarioDurationScalePctMax = 1000;
+constexpr size_t kScenarioExpandedEventCap = 4096;
+
 String normalizedScenarioId(const String& raw) {
     String id = raw;
     id.trim();
@@ -261,6 +270,136 @@ const ScenarioCatalogEntry* findScenarioCatalogEntry(const String& id) {
         }
     }
     return nullptr;
+}
+
+uint16_t clampScenarioStreamRepeatMs(int value) {
+    if (value <= 0) {
+        return 0;
+    }
+    if (value > kScenarioStreamRepeatMsMax) {
+        return kScenarioStreamRepeatMsMax;
+    }
+    return static_cast<uint16_t>(value);
+}
+
+uint16_t clampScenarioDurationScalePct(int value) {
+    if (value < static_cast<int>(kScenarioDurationScalePctMin)) {
+        return kScenarioDurationScalePctMin;
+    }
+    if (value > static_cast<int>(kScenarioDurationScalePctMax)) {
+        return kScenarioDurationScalePctMax;
+    }
+    return static_cast<uint16_t>(value);
+}
+
+bool scenarioPacketHasId(const ScenarioPacket& packet, uint8_t packetId) {
+    return packet.bytes.size() >= 6 && packet.bytes[3] == packetId;
+}
+
+bool isScenarioAlertClearPacket(const ScenarioPacket& packet) {
+    if (!scenarioPacketHasId(packet, PACKET_ID_ALERT_DATA)) {
+        return false;
+    }
+    // payload[0] at bytes[5]: 0 means clear.
+    return packet.bytes.size() >= 7 && packet.bytes[5] == 0x00;
+}
+
+bool isScenarioDisplayClearPacket(const ScenarioPacket& packet) {
+    if (!scenarioPacketHasId(packet, PACKET_ID_DISPLAY_DATA)) {
+        return false;
+    }
+    // payload: [bogey][bogey2][led][img1][img2]...
+    return packet.bytes.size() >= 10 && packet.bytes[5] == 0x00 &&
+           packet.bytes[7] == 0x00 && packet.bytes[8] == 0x00 &&
+           packet.bytes[9] == 0x00;
+}
+
+void applyScenarioDurationScale(std::vector<ScenarioPacket>& events,
+                                uint16_t durationScalePct) {
+    if (events.empty() || durationScalePct == 100) {
+        return;
+    }
+    for (ScenarioPacket& event : events) {
+        event.atMs = static_cast<uint32_t>(
+            (static_cast<uint64_t>(event.atMs) * durationScalePct) / 100ULL);
+    }
+    std::stable_sort(events.begin(),
+                     events.end(),
+                     [](const ScenarioPacket& a, const ScenarioPacket& b) {
+                         return a.atMs < b.atMs;
+                     });
+}
+
+void injectScenarioHoldRepeats(std::vector<ScenarioPacket>& events,
+                               uint16_t streamRepeatMs) {
+    if (events.size() < 2 || streamRepeatMs == 0) {
+        return;
+    }
+
+    std::vector<ScenarioPacket> expanded;
+    expanded.reserve(std::min(kScenarioExpandedEventCap, events.size() * 4));
+
+    ScenarioPacket lastDisplay;
+    ScenarioPacket lastAlert;
+    bool haveDisplay = false;
+    bool haveAlert = false;
+
+    for (size_t i = 0; i < events.size(); ++i) {
+        const ScenarioPacket& current = events[i];
+        expanded.push_back(current);
+
+        if (scenarioPacketHasId(current, PACKET_ID_DISPLAY_DATA)) {
+            if (isScenarioDisplayClearPacket(current)) {
+                haveDisplay = false;
+            } else {
+                lastDisplay = current;
+                haveDisplay = true;
+            }
+        } else if (scenarioPacketHasId(current, PACKET_ID_ALERT_DATA)) {
+            if (isScenarioAlertClearPacket(current)) {
+                haveAlert = false;
+            } else {
+                lastAlert = current;
+                haveAlert = true;
+            }
+        }
+
+        if (i + 1 >= events.size()) {
+            continue;
+        }
+        const uint32_t nextAtMs = events[i + 1].atMs;
+        if (nextAtMs <= current.atMs + streamRepeatMs) {
+            continue;
+        }
+
+        uint32_t repeatAtMs = current.atMs + streamRepeatMs;
+        while (repeatAtMs < nextAtMs && expanded.size() < kScenarioExpandedEventCap) {
+            if (haveDisplay) {
+                ScenarioPacket displayRepeat = lastDisplay;
+                displayRepeat.atMs = repeatAtMs;
+                expanded.push_back(std::move(displayRepeat));
+            }
+            if (haveAlert && expanded.size() < kScenarioExpandedEventCap) {
+                ScenarioPacket alertRepeat = lastAlert;
+                alertRepeat.atMs = repeatAtMs + 2;
+                if (alertRepeat.atMs < nextAtMs) {
+                    expanded.push_back(std::move(alertRepeat));
+                }
+            }
+            repeatAtMs += streamRepeatMs;
+        }
+
+        if (expanded.size() >= kScenarioExpandedEventCap) {
+            break;
+        }
+    }
+
+    std::stable_sort(expanded.begin(),
+                     expanded.end(),
+                     [](const ScenarioPacket& a, const ScenarioPacket& b) {
+                         return a.atMs < b.atMs;
+                     });
+    events.swap(expanded);
 }
 
 std::vector<uint8_t> makeFramedPacket(uint8_t packetId,
@@ -704,7 +843,96 @@ bool requestBoolArg(WebServer& server,
     return fallback;
 }
 
-void loadScenarioState(const String& requestedId, bool loop) {
+uint16_t requestScenarioStreamRepeatMs(WebServer& server,
+                                       const JsonDocument* body,
+                                       uint16_t fallback) {
+    auto parseRaw = [&](const JsonVariantConst& value, uint16_t base) -> uint16_t {
+        if (value.isNull()) {
+            return base;
+        }
+        if (value.is<int>()) {
+            return clampScenarioStreamRepeatMs(value.as<int>());
+        }
+        if (value.is<const char*>()) {
+            return clampScenarioStreamRepeatMs(String(value.as<const char*>()).toInt());
+        }
+        return base;
+    };
+
+    if (server.hasArg("streamRepeatMs")) {
+        return clampScenarioStreamRepeatMs(server.arg("streamRepeatMs").toInt());
+    }
+    if (server.hasArg("repeatMs")) {
+        return clampScenarioStreamRepeatMs(server.arg("repeatMs").toInt());
+    }
+    if (body) {
+        const JsonVariantConst repeatMs = (*body)["streamRepeatMs"];
+        if (!repeatMs.isNull()) {
+            return parseRaw(repeatMs, fallback);
+        }
+        return parseRaw((*body)["repeatMs"], fallback);
+    }
+    return fallback;
+}
+
+uint16_t requestScenarioDurationScalePct(WebServer& server,
+                                         const JsonDocument* body,
+                                         uint16_t fallback) {
+    auto parsePct = [&](const JsonVariantConst& value, uint16_t base) -> uint16_t {
+        if (value.isNull()) {
+            return base;
+        }
+        if (value.is<int>()) {
+            return clampScenarioDurationScalePct(value.as<int>());
+        }
+        if (value.is<const char*>()) {
+            return clampScenarioDurationScalePct(String(value.as<const char*>()).toInt());
+        }
+        return base;
+    };
+
+    auto parseScale = [&](const JsonVariantConst& value, uint16_t base) -> uint16_t {
+        if (value.isNull()) {
+            return base;
+        }
+        float scale = -1.0f;
+        if (value.is<float>()) {
+            scale = value.as<float>();
+        } else if (value.is<double>()) {
+            scale = static_cast<float>(value.as<double>());
+        } else if (value.is<const char*>()) {
+            scale = String(value.as<const char*>()).toFloat();
+        }
+        if (!(scale > 0.0f)) {
+            return base;
+        }
+        const int pct = static_cast<int>(scale * 100.0f + 0.5f);
+        return clampScenarioDurationScalePct(pct);
+    };
+
+    if (server.hasArg("durationScalePct")) {
+        return clampScenarioDurationScalePct(server.arg("durationScalePct").toInt());
+    }
+    if (server.hasArg("durationScale")) {
+        const float scale = server.arg("durationScale").toFloat();
+        if (scale > 0.0f) {
+            return clampScenarioDurationScalePct(static_cast<int>(scale * 100.0f + 0.5f));
+        }
+    }
+    if (body) {
+        const JsonVariantConst pct = (*body)["durationScalePct"];
+        if (!pct.isNull()) {
+            return parsePct(pct, fallback);
+        }
+        return parseScale((*body)["durationScale"], fallback);
+    }
+    return fallback;
+}
+
+void loadScenarioState(const String& requestedId,
+                       bool loop,
+                       uint16_t streamRepeatMs,
+                       uint16_t durationScalePct) {
     gScenarioPlayback.events.clear();
     String category;
     String description;
@@ -719,8 +947,14 @@ void loadScenarioState(const String& requestedId, bool loop) {
         gScenarioPlayback.description = "";
         gScenarioPlayback.nextEventIndex = 0;
         gScenarioPlayback.durationMs = 0;
+        gScenarioPlayback.streamRepeatMs = streamRepeatMs;
+        gScenarioPlayback.durationScalePct = durationScalePct;
         return;
     }
+
+    applyScenarioDurationScale(events, durationScalePct);
+    injectScenarioHoldRepeats(events, streamRepeatMs);
+    durationMs = events.empty() ? 0 : events.back().atMs;
 
     gScenarioPlayback.loaded = true;
     gScenarioPlayback.running = false;
@@ -737,6 +971,8 @@ void loadScenarioState(const String& requestedId, bool loop) {
     gScenarioPlayback.finishedAtMs = 0;
     gScenarioPlayback.emittedPackets = 0;
     gScenarioPlayback.completedRuns = 0;
+    gScenarioPlayback.streamRepeatMs = streamRepeatMs;
+    gScenarioPlayback.durationScalePct = durationScalePct;
 }
 
 bool startScenarioPlayback() {
@@ -1265,6 +1501,9 @@ void appendScenarioStatus(JsonDocument& doc, uint32_t nowMs) {
     doc["eventsEmitted"] = gScenarioPlayback.emittedPackets;
     doc["nextEventIndex"] = static_cast<uint32_t>(gScenarioPlayback.nextEventIndex);
     doc["durationMs"] = gScenarioPlayback.durationMs;
+    doc["streamRepeatMs"] = gScenarioPlayback.streamRepeatMs;
+    doc["durationScalePct"] = gScenarioPlayback.durationScalePct;
+    doc["durationScale"] = static_cast<float>(gScenarioPlayback.durationScalePct) / 100.0f;
     doc["completedRuns"] = gScenarioPlayback.completedRuns;
     doc["loadedAtMs"] = gScenarioPlayback.loadedAtMs;
     doc["startedAtMs"] = gScenarioPlayback.startedAtMs;
@@ -1281,6 +1520,12 @@ void sendV1ScenarioList(WebServer& server) {
     JsonDocument doc;
     doc["success"] = true;
     doc["count"] = static_cast<uint32_t>(sizeof(kScenarioCatalog) / sizeof(kScenarioCatalog[0]));
+    JsonObject tuning = doc["timingTuning"].to<JsonObject>();
+    tuning["streamRepeatMsDefault"] = kScenarioStreamRepeatMsDefault;
+    tuning["streamRepeatMsMax"] = kScenarioStreamRepeatMsMax;
+    tuning["durationScalePctDefault"] = kScenarioDurationScalePctDefault;
+    tuning["durationScalePctMin"] = kScenarioDurationScalePctMin;
+    tuning["durationScalePctMax"] = kScenarioDurationScalePctMax;
     JsonArray scenarios = doc["scenarios"].to<JsonArray>();
     for (const auto& row : kScenarioCatalog) {
         JsonObject item = scenarios.add<JsonObject>();
@@ -1321,8 +1566,12 @@ void handleV1ScenarioLoad(WebServer& server) {
     const bool loop = requestBoolArg(server, bodyPtr, "loop", false);
     const bool autoStart = requestBoolArg(server, bodyPtr, "start", false) ||
                            requestBoolArg(server, bodyPtr, "autostart", false);
+    const uint16_t streamRepeatMs =
+        requestScenarioStreamRepeatMs(server, bodyPtr, kScenarioStreamRepeatMsDefault);
+    const uint16_t durationScalePct =
+        requestScenarioDurationScalePct(server, bodyPtr, kScenarioDurationScalePctDefault);
 
-    loadScenarioState(normalizedId, loop);
+    loadScenarioState(normalizedId, loop, streamRepeatMs, durationScalePct);
     if (!gScenarioPlayback.loaded) {
         server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to load scenario\"}");
         return;
@@ -1350,6 +1599,10 @@ void handleV1ScenarioStart(WebServer& server) {
 
     const String requestedId = requestScenarioId(server, bodyPtr);
     const bool loopRequested = requestBoolArg(server, bodyPtr, "loop", gScenarioPlayback.loop);
+    const uint16_t streamRepeatMs =
+        requestScenarioStreamRepeatMs(server, bodyPtr, gScenarioPlayback.streamRepeatMs);
+    const uint16_t durationScalePct =
+        requestScenarioDurationScalePct(server, bodyPtr, gScenarioPlayback.durationScalePct);
 
     if (requestedId.length() > 0) {
         const String normalizedId = normalizedScenarioId(requestedId);
@@ -1357,12 +1610,21 @@ void handleV1ScenarioStart(WebServer& server) {
             server.send(404, "application/json", "{\"success\":false,\"error\":\"Unknown scenario id\"}");
             return;
         }
-        loadScenarioState(normalizedId, loopRequested);
+        loadScenarioState(normalizedId, loopRequested, streamRepeatMs, durationScalePct);
     } else if (!gScenarioPlayback.loaded) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"No scenario loaded\"}");
         return;
     } else {
         gScenarioPlayback.loop = loopRequested;
+        const bool timingChanged =
+            (gScenarioPlayback.streamRepeatMs != streamRepeatMs) ||
+            (gScenarioPlayback.durationScalePct != durationScalePct);
+        if (timingChanged) {
+            loadScenarioState(gScenarioPlayback.scenarioId,
+                              loopRequested,
+                              streamRepeatMs,
+                              durationScalePct);
+        }
     }
 
     if (!startScenarioPlayback()) {
