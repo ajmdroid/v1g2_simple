@@ -986,6 +986,10 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 | `/profiles` | `profiles/+page.svelte` | V1 profile management |
 | `/gps` | `gps/+page.svelte` | GPS, OBD, and auto-lockout settings |
 | `/devices` | `devices/+page.svelte` | Known V1 device management |
+| `/cameras` | `cameras/+page.svelte` | Camera alert database status and configuration |
+| `/lockouts` | `lockouts/+page.svelte` | GPS lockout zone management and observation log |
+| `/integrations` | `integrations/+page.svelte` | OBD and external integration settings |
+| `/dev` | `dev/+page.svelte` | Debug tools: metrics, perf files, V1 scenarios, panic log |
 
 ### Settings Page (`/settings`)
 
