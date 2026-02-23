@@ -211,7 +211,7 @@ void test_alert_stream_duplicate_index_replaces_prior_row() {
     assertContainsFrequencies(parser, 24152, 34700);
 }
 
-void test_alert_stream_zero_based_index_is_dropped() {
+void test_alert_stream_zero_based_index_is_supported() {
     PacketParser parser;
 
     const auto row0 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(0, 2, 24150, 0x90, 0x80, 0x84, 0x00));
@@ -222,11 +222,33 @@ void test_alert_stream_zero_based_index_is_dropped() {
     TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
 
     TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
-    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(parser.getAlertCount()));
+    assertContainsFrequencies(parser, 24150, 34700);
 
     TEST_ASSERT_TRUE(parser.parse(row2.data(), row2.size()));
     TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(parser.getAlertCount()));
-    assertContainsFrequencies(parser, 33800, 34700);
+    assertContainsFrequencies(parser, 24150, 34700);
+}
+
+void test_alert_stream_ambiguous_first_row_does_not_lock_wrong_mode() {
+    PacketParser parser;
+
+    // idx=1/count=2 is ambiguous (valid in both schemes). Follow with idx=0 to
+    // complete zero-based table and verify we do not wait for one-based idx=2.
+    const auto row1 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 2, 34700, 0xB0, 0x00, 0x22, 0x80));
+    const auto row0 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(0, 2, 24150, 0x90, 0x80, 0x84, 0x00));
+    const auto row2 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(2, 2, 33800, 0xA0, 0x00, 0x22, 0x00));
+
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
+
+    TEST_ASSERT_TRUE(parser.parse(row0.data(), row0.size()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(parser.getAlertCount()));
+    assertContainsFrequencies(parser, 24150, 34700);
+
+    TEST_ASSERT_TRUE(parser.parse(row2.data(), row2.size()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(parser.getAlertCount()));
+    assertContainsFrequencies(parser, 24150, 34700);
 }
 
 void test_alert_stream_aux0_decodes_junk_photo_and_priority() {
@@ -604,7 +626,8 @@ int main() {
     RUN_TEST(test_display_stream_decodes_junk_counter_char);
     RUN_TEST(test_alert_stream_out_of_order_rows_completes_table);
     RUN_TEST(test_alert_stream_duplicate_index_replaces_prior_row);
-    RUN_TEST(test_alert_stream_zero_based_index_is_dropped);
+    RUN_TEST(test_alert_stream_zero_based_index_is_supported);
+    RUN_TEST(test_alert_stream_ambiguous_first_row_does_not_lock_wrong_mode);
     RUN_TEST(test_alert_stream_aux0_decodes_junk_photo_and_priority);
     RUN_TEST(test_alert_stream_aux0_photo_gated_before_41037);
     RUN_TEST(test_alert_stream_aux0_junk_gated_before_41032);

@@ -130,13 +130,15 @@ public:
     static void resetAlertCountTracker();
 
 private:
+    static constexpr size_t RAW_ALERT_INDEX_SLOTS = MAX_ALERTS + 1;  // raw indexes 0..15
+
     DisplayState displayState;
     std::array<AlertData, MAX_ALERTS> alerts;
     size_t alertCount;
-    std::array<std::array<uint8_t, 8>, MAX_ALERTS> alertChunks;  // full 8-byte alert rows
-    std::array<bool, MAX_ALERTS> alertChunkPresent;
-    std::array<uint8_t, MAX_ALERTS> alertChunkCountTag;
-    std::array<uint32_t, MAX_ALERTS> alertChunkRxMs;
+    std::array<std::array<uint8_t, 8>, RAW_ALERT_INDEX_SLOTS> alertChunks;  // raw alert rows by payload index
+    std::array<bool, RAW_ALERT_INDEX_SLOTS> alertChunkPresent;
+    std::array<uint8_t, RAW_ALERT_INDEX_SLOTS> alertChunkCountTag;
+    std::array<uint32_t, RAW_ALERT_INDEX_SLOTS> alertChunkRxMs;
     std::array<uint32_t, MAX_ALERTS + 1> alertTableFirstSeenMs;
 
     // Packet parsing helpers

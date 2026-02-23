@@ -132,7 +132,7 @@ void PacketParser::clearAlertCacheForCount(uint8_t count) {
     if (count == 0 || count > MAX_ALERTS) {
         return;
     }
-    for (size_t i = 0; i < MAX_ALERTS; ++i) {
+    for (size_t i = 0; i < RAW_ALERT_INDEX_SLOTS; ++i) {
         if (alertChunkPresent[i] && alertChunkCountTag[i] == count) {
             alertChunkPresent[i] = false;
             alertChunkCountTag[i] = 0;
@@ -414,8 +414,9 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     }
 
     // Byte0: high nibble = alert index, low nibble = alert count.
-    // Official AndroidESPLibrary2/iOS assembly contract is one-based index 1..count.
-    // Follow VR contract strictly so partial tables are deterministic.
+    // VR-style streams can be seen as one-based (1..count) or zero-based
+    // (0..count-1). Keep rows by raw index and publish when either complete set
+    // is present to avoid mode-locking on partial tables.
     uint8_t alertIndex = (payload[0] >> 4) & 0x0F;
     uint8_t receivedAlertCount = payload[0] & 0x0F;
     if (receivedAlertCount == 0) {
@@ -449,7 +450,7 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
 
     // Drop stale cached rows so a missing row from a prior cycle cannot be
     // reused to fake a "complete" table later.
-    for (size_t i = 0; i < MAX_ALERTS; ++i) {
+    for (size_t i = 0; i < RAW_ALERT_INDEX_SLOTS; ++i) {
         if (!alertChunkPresent[i]) {
             continue;
         }
@@ -460,7 +461,7 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             alertChunkRxMs[i] = 0;
             if (staleCount > 0 && staleCount <= MAX_ALERTS) {
                 bool anyRowsForCount = false;
-                for (size_t j = 0; j < MAX_ALERTS; ++j) {
+                for (size_t j = 0; j < RAW_ALERT_INDEX_SLOTS; ++j) {
                     if (alertChunkPresent[j] && alertChunkCountTag[j] == staleCount) {
                         anyRowsForCount = true;
                         break;
@@ -473,23 +474,20 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         }
     }
 
-    size_t slot = MAX_ALERTS;
-    if (alertIndex >= 1 && alertIndex <= receivedAlertCount) {
-        slot = static_cast<size_t>(alertIndex - 1);
-    }
-
-    // If row index is invalid for strict one-based table assembly, drop it.
-    if (slot >= MAX_ALERTS) {
+    const bool indexValidOneBased = (alertIndex >= 1 && alertIndex <= receivedAlertCount);
+    const bool indexValidZeroBased = (alertIndex < receivedAlertCount);
+    if (!indexValidOneBased && !indexValidZeroBased) {
         if (PARSER_TRACE_ENABLED()) {
-            Serial.printf("[AlertAsm] drop idx=%u cnt=%u (invalid one-based slot)\n",
+            Serial.printf("[AlertAsm] drop idx=%u cnt=%u (invalid raw index)\n",
                           static_cast<unsigned>(alertIndex),
                           static_cast<unsigned>(receivedAlertCount));
         }
         return true;
     }
+    const size_t rawSlot = static_cast<size_t>(alertIndex);
 
     bool hadRowsForCount = false;
-    for (size_t i = 0; i < MAX_ALERTS; ++i) {
+    for (size_t i = 0; i < RAW_ALERT_INDEX_SLOTS; ++i) {
         if (alertChunkPresent[i] && alertChunkCountTag[i] == receivedAlertCount) {
             hadRowsForCount = true;
             break;
@@ -497,40 +495,55 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     }
 
     const bool replacingRow =
-        alertChunkPresent[slot] && (alertChunkCountTag[slot] == receivedAlertCount);
+        alertChunkPresent[rawSlot] && (alertChunkCountTag[rawSlot] == receivedAlertCount);
     if (replacingRow) {
         PARSER_PERF_INC(alertTableRowReplacements);
     }
-    alertChunkPresent[slot] = true;
-    alertChunkCountTag[slot] = receivedAlertCount;
-    alertChunkRxMs[slot] = nowMs;
+    alertChunkPresent[rawSlot] = true;
+    alertChunkCountTag[rawSlot] = receivedAlertCount;
+    alertChunkRxMs[rawSlot] = nowMs;
     if (!hadRowsForCount || alertTableFirstSeenMs[receivedAlertCount] == 0) {
         alertTableFirstSeenMs[receivedAlertCount] = nowMs;
     }
-    std::array<uint8_t, 8>& chunk = alertChunks[slot];
+    std::array<uint8_t, 8>& chunk = alertChunks[rawSlot];
     chunk.fill(0);
     size_t copyLen = std::min<size_t>(8, length);
     for (size_t i = 0; i < copyLen; ++i) {
         chunk[i] = payload[i];
     }
 
-    size_t rowsForCount = 0;
-    for (size_t i = 0; i < receivedAlertCount; ++i) {
-        if (alertChunkPresent[i] &&
-            alertChunkCountTag[i] == receivedAlertCount &&
-            (nowMs - alertChunkRxMs[i]) <= kAlertRowFreshnessMs) {
-            ++rowsForCount;
+    auto countRowsForMode = [&](bool zeroBased) -> size_t {
+        size_t rows = 0;
+        for (uint8_t logicalIdx = 0; logicalIdx < receivedAlertCount; ++logicalIdx) {
+            const size_t expectedRawIndex = zeroBased
+                ? static_cast<size_t>(logicalIdx)
+                : static_cast<size_t>(logicalIdx + 1);
+            if (expectedRawIndex >= RAW_ALERT_INDEX_SLOTS) {
+                continue;
+            }
+            if (alertChunkPresent[expectedRawIndex] &&
+                alertChunkCountTag[expectedRawIndex] == receivedAlertCount &&
+                (nowMs - alertChunkRxMs[expectedRawIndex]) <= kAlertRowFreshnessMs) {
+                ++rows;
+            }
         }
-    }
+        return rows;
+    };
+
+    const size_t rowsZeroBased = countRowsForMode(true);
+    const size_t rowsOneBased = countRowsForMode(false);
+    const bool completeZeroBased = (rowsZeroBased == receivedAlertCount);
+    const bool completeOneBased = (rowsOneBased == receivedAlertCount);
+    const size_t rowsForCount = std::max(rowsZeroBased, rowsOneBased);
 
     if (PARSER_TRACE_ENABLED()) {
         Serial.printf(
-            "[AlertRow] idx=%u cnt=%u slot=%u rows=%u/%u repl=%u raw0=0x%02X f=%u bandArrow=0x%02X aux0=0x%02X\n",
+            "[AlertRow] idx=%u cnt=%u rawSlot=%u rows0=%u rows1=%u repl=%u raw0=0x%02X f=%u bandArrow=0x%02X aux0=0x%02X\n",
                       static_cast<unsigned>(alertIndex),
                       static_cast<unsigned>(receivedAlertCount),
-                      static_cast<unsigned>(slot),
-                      static_cast<unsigned>(rowsForCount),
-                      static_cast<unsigned>(receivedAlertCount),
+                      static_cast<unsigned>(rawSlot),
+                      static_cast<unsigned>(rowsZeroBased),
+                      static_cast<unsigned>(rowsOneBased),
                       replacingRow ? 1u : 0u,
                       static_cast<unsigned>(payload[0]),
                       static_cast<unsigned>(combineMSBLSB(payload[1], payload[2])),
@@ -538,9 +551,8 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
                       static_cast<unsigned>(payload[6]));
     }
 
-    // Rolling per-index cache: only publish when every row 0..count-1 is present
-    // for the same table count.
-    if (rowsForCount < receivedAlertCount) {
+    // Rolling raw-index cache: only publish when at least one full scheme is ready.
+    if (!completeZeroBased && !completeOneBased) {
         if ((alertTableFirstSeenMs[receivedAlertCount] != 0) &&
             ((nowMs - alertTableFirstSeenMs[receivedAlertCount]) > kAlertAssemblyTimeoutMs)) {
             PARSER_PERF_INC(alertTableAssemblyTimeouts);
@@ -556,11 +568,28 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             return true;
         }
         if (PARSER_TRACE_ENABLED()) {
-            Serial.printf("[AlertAsm] partial rows=%u/%u\n",
+            Serial.printf("[AlertAsm] partial rows=%u/%u (rows0=%u rows1=%u)\n",
                           static_cast<unsigned>(rowsForCount),
-                          static_cast<unsigned>(receivedAlertCount));
+                          static_cast<unsigned>(receivedAlertCount),
+                          static_cast<unsigned>(rowsZeroBased),
+                          static_cast<unsigned>(rowsOneBased));
         }
         return true;
+    }
+
+    enum class AlertIndexMode : uint8_t {
+        ZeroBased = 0,
+        OneBased = 1,
+    };
+    AlertIndexMode decodeMode = completeZeroBased ? AlertIndexMode::ZeroBased : AlertIndexMode::OneBased;
+
+    if (PARSER_TRACE_ENABLED()) {
+        const char* mode = (decodeMode == AlertIndexMode::ZeroBased) ? "zero" : "one";
+        Serial.printf("[AlertAsm] publish mode=%s cnt=%u rows0=%u rows1=%u\n",
+                      mode,
+                      static_cast<unsigned>(receivedAlertCount),
+                      static_cast<unsigned>(rowsZeroBased),
+                      static_cast<unsigned>(rowsOneBased));
     }
 
     std::array<AlertData, MAX_ALERTS> nextAlerts{};
@@ -572,23 +601,28 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     // We have enough rows; validate all required row slots for this count and
     // decode into a new table buffer before publishing.
     for (size_t i = 0; i < receivedAlertCount && i < MAX_ALERTS; ++i) {
+        const size_t expectedRawIndex = (decodeMode == AlertIndexMode::ZeroBased) ? i : (i + 1);
         const bool rowFresh =
-            alertChunkPresent[i] &&
-            alertChunkCountTag[i] == receivedAlertCount &&
-            ((nowMs - alertChunkRxMs[i]) <= kAlertRowFreshnessMs);
+            (expectedRawIndex < RAW_ALERT_INDEX_SLOTS) &&
+            alertChunkPresent[expectedRawIndex] &&
+            alertChunkCountTag[expectedRawIndex] == receivedAlertCount &&
+            ((nowMs - alertChunkRxMs[expectedRawIndex]) <= kAlertRowFreshnessMs);
         if (!rowFresh) {
             if (PARSER_TRACE_ENABLED()) {
-                Serial.printf("[AlertAsm] missing row slot=%u cnt=%u rows=%u ageMs=%lu\n",
-                              static_cast<unsigned>(i),
+                Serial.printf("[AlertAsm] missing row rawIdx=%u cnt=%u rows=%u ageMs=%lu\n",
+                              static_cast<unsigned>(expectedRawIndex),
                               static_cast<unsigned>(receivedAlertCount),
                               static_cast<unsigned>(rowsForCount),
                               static_cast<unsigned long>(
-                                  alertChunkPresent[i] ? (nowMs - alertChunkRxMs[i]) : 0));
+                                  (expectedRawIndex < RAW_ALERT_INDEX_SLOTS &&
+                                   alertChunkPresent[expectedRawIndex])
+                                      ? (nowMs - alertChunkRxMs[expectedRawIndex])
+                                      : 0));
             }
             return true;
         }
 
-        const auto& a = alertChunks[i];
+        const auto& a = alertChunks[expectedRawIndex];
         uint8_t bandArrow = a[5];  // band + arrow + mute (matches captures: 0x24 for K/front)
         uint8_t aux0 = a[6];       // aux0: bit7=priority, bit6=junk, low nibble=photo type
         const uint8_t rawBandBits = static_cast<uint8_t>(bandArrow & 0x1F);
