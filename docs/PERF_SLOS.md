@@ -83,3 +83,4 @@ Exit codes:
 - If queue depth, WiFi runtime model, or camera cadence policy changes, update this file and `tools/score_perf_csv.py` in the same change.
 - `cameraMaxWindowHz` is computed over a minimum 15-second sliding window to prevent poll-interval aliasing from producing false positives. The firmware enforces 200 ms minimum tick interval (5 Hz) but consecutive narrow poll windows can alias above 5 Hz.
 - `wifiMax_us` soak gating excludes the first 2 API samples (TCP cold-start overhead on ESP32 SoftAP).
+- `scripts/run_real_fw_soak.sh` now defaults latency classification for `wifiMaxUs` and `dispPipeMaxUs` to `hybrid` mode: strict peak gates are still reported, while pass/fail uses a robust N-of-M check (default: max 5% over-limit samples, min 8 samples). Use `--latency-gate-mode strict` for peak-only gating.
