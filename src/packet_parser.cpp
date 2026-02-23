@@ -597,7 +597,6 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
 
     std::array<AlertData, MAX_ALERTS> nextAlerts{};
     size_t nextAlertCount = 0;
-    bool anyMuted = false;
     bool anyJunk = false;
     bool anyPhoto = false;
 
@@ -626,13 +625,13 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         }
 
         const auto& a = alertChunks[expectedRawIndex];
-        uint8_t bandArrow = a[5];  // band + arrow + mute (matches captures: 0x24 for K/front)
+        uint8_t bandArrow = a[5];  // band + arrow bits (low-5 contains raw band encoding)
         uint8_t aux0 = a[6];       // aux0: bit7=priority, bit6=junk, low nibble=photo type
         const uint8_t rawBandBits = static_cast<uint8_t>(bandArrow & 0x1F);
         const bool isKu = (rawBandBits == 0x10);
 
         Band band = decodeBand(bandArrow);
-        if ((rawBandBits & 0x10) != 0) {
+        if (isKu) {
             PARSER_PERF_INC(parserRowsKuRaw);
         }
         if (band == BAND_NONE) {
@@ -667,9 +666,6 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             alert.frequency = (band == BAND_LASER) ? 0 : combineMSBLSB(a[1], a[2]); // MHz
             alert.isValid = true;
 
-            // Preserve mute for known display bands while avoiding Ku-only rows
-            // being misclassified as muted alerts.
-            anyMuted |= (!isKu && ((bandArrow & 0x10) != 0));
             anyJunk |= isJunk;
             anyPhoto |= (photoType != 0);
         }
@@ -756,8 +752,7 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         displayState.priorityArrow = alerts[priorityIdx].direction;
     }
 
-    // Combine alert mute bits with display packet's mute flag.
-    displayState.muted = displayState.muted || anyMuted;
+    // Keep mute authoritative from display packets (InfDisplayData/Aux0 soft mute).
     displayState.hasJunkAlert = anyJunk;
     displayState.hasPhotoAlert = anyPhoto;
 
