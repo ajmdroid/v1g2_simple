@@ -167,12 +167,12 @@ struct PerfSdSnapshot {
     uint32_t learnerSaveMaxUs;   // Window max learner pending JSON+SD write
     uint32_t timeSaveMaxUs;      // Window max timeService.periodicSave NVS write
     uint32_t perfReportMaxUs;    // Window max perfMetricsCheckReport snapshot+enqueue
-    uint32_t prioritySelectDisplayIndex; // Priority chosen from display aux0 index
+    uint32_t prioritySelectDisplayIndex; // Legacy display-aux0 priority path (compat-only)
     uint32_t prioritySelectRowFlag;      // Priority chosen from alert-row isPriority bit
     uint32_t prioritySelectFirstUsable;  // Priority chosen from first usable alert fallback
     uint32_t prioritySelectFirstEntry;   // Priority fell back to entry 0 (last resort)
-    uint32_t prioritySelectAmbiguousIndex; // Display raw index valid both 0/1-based
-    uint32_t prioritySelectUnusableIndex;  // Display index present but unusable for current table
+    uint32_t prioritySelectAmbiguousIndex; // Alert table complete under both 0-based and 1-based mapping
+    uint32_t prioritySelectUnusableIndex;  // Row-priority candidate present but unusable
     uint32_t prioritySelectInvalidChosen;  // Final chosen alert invalid/zero-freq non-laser
     uint32_t alertTablePublishes;          // Complete alert tables published
     uint32_t alertTablePublishes3Bogey;    // Complete tables published with count=3
