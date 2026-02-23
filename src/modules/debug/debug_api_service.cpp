@@ -163,9 +163,12 @@ constexpr uint8_t kScenarioSrc = ESP_PACKET_ORIGIN_V1;
 constexpr uint16_t kFreqKBase = 24150;
 constexpr uint16_t kFreqKa = 34700;
 constexpr uint16_t kFreqX = 10525;
+constexpr uint16_t kFreqKJunkLow = 24089;
+constexpr uint16_t kFreqKJunkHigh = 24205;
 
 // Stretch scenario timing so alerts persist long enough to resemble live traffic.
-constexpr uint32_t kScenarioTimeScale = 4;
+// Keeps generated scenarios in roughly 2-30s windows.
+constexpr uint32_t kScenarioTimeScale = 10;
 
 constexpr uint8_t kBandKFront = 0x24;
 constexpr uint8_t kBandKSide = 0x44;
@@ -227,7 +230,7 @@ constexpr ScenarioCatalogEntry kScenarioCatalog[] = {
     {"PHO-01", "photo", "Single priority photo alert"},
     {"PHO-02", "photo", "Photo + standard mixed alert table"},
     {"JNK-01", "junk", "Single junked radar alert"},
-    {"JNK-02", "junk", "Junk + real Ka priority arbitration"},
+    {"JNK-02", "junk", "Junk K plus clean K arbitration"},
     {"LAS-01", "laser", "Immediate single laser hit"},
     {"LAS-02", "laser", "Laser preemption over active K"},
     {"MBP-01", "multi-bogey", "4 weak K then faint growing Ka priority"},
@@ -304,7 +307,8 @@ std::vector<uint8_t> makeAlertPacket(uint8_t rowIndex,
 }
 
 std::vector<uint8_t> makeAlertClearPacket() {
-    return makeFramedPacket(PACKET_ID_ALERT_DATA, {0x00});
+    // Keep payload >=2 bytes so PacketParser::validatePacket(length>=8) accepts it.
+    return makeFramedPacket(PACKET_ID_ALERT_DATA, {0x00, 0x00});
 }
 
 void addScenarioPacket(std::vector<ScenarioPacket>& events,
@@ -402,11 +406,13 @@ bool buildScenarioPackets(const String& scenarioId,
 
     if (normalizedId == "RAD-01") {
         addScenarioPacket(outEvents, 100, makeDisplayPacket(kBogeyOne, 0x03, kBandKFront, kBandKFront), kScenarioCharShort);
-        addAlertRows(outEvents, 108, 1, {{1, kFreqKBase, 0x88, 0x7F, kBandKFront, 0x80}});
-        addScenarioPacket(outEvents, 420, makeDisplayPacket(kBogeyOne, 0x0F, kBandKFront, kBandKFront), kScenarioCharShort);
-        addAlertRows(outEvents, 428, 1, {{1, kFreqKBase, 0x9B, 0x7F, kBandKFront, 0x80}});
-        addScenarioPacket(outEvents, 730, makeDisplayPacket(kBogeyOne, 0x1F, kBandKFront, kBandKFront), kScenarioCharShort);
-        addAlertRows(outEvents, 738, 1, {{1, kFreqKBase, 0xA5, 0x7F, kBandKFront, 0x80}});
+        addAlertRows(outEvents, 108, 1, {{1, kFreqKBase, 0x86, 0x7F, kBandKFront, 0x80}});
+        addScenarioPacket(outEvents, 360, makeDisplayPacket(kBogeyOne, 0x07, kBandKSide, kBandKSide), kScenarioCharShort);
+        addAlertRows(outEvents, 368, 1, {{1, kFreqKBase, 0x8E, 0x86, kBandKSide, 0x80}});
+        addScenarioPacket(outEvents, 620, makeDisplayPacket(kBogeyOne, 0x0F, kBandKFront, kBandKFront), kScenarioCharShort);
+        addAlertRows(outEvents, 628, 1, {{1, kFreqKBase, 0x9A, 0x82, kBandKFront, 0x80}});
+        addScenarioPacket(outEvents, 860, makeDisplayPacket(kBogeyOne, 0x1F, kBandKRear, kBandKRear), kScenarioCharShort);
+        addAlertRows(outEvents, 868, 1, {{1, kFreqKBase, 0x8A, 0x98, kBandKRear, 0x80}});
         addScenarioClearEnd(outEvents, 1080);
     } else if (normalizedId == "RAD-02") {
         addScenarioPacket(outEvents, 100, makeDisplayPacket(kBogeyOne, 0x07, kBandKFront, kBandKFront), kScenarioCharShort);
@@ -421,10 +427,16 @@ bool buildScenarioPackets(const String& scenarioId,
     } else if (normalizedId == "RAD-03") {
         addScenarioPacket(outEvents, 120, makeDisplayPacket(kBogeyOne, 0x03, kBandXRearMuted, kBandXRearMuted), kScenarioCharShort);
         addAlertRows(outEvents, 128, 1, {{1, kFreqX, 0x8A, 0x96, kBandXRearMuted, 0x80}});
+        addScenarioPacket(outEvents, 500, makeDisplayPacket(kBogeyOne, 0x07, kBandXRearMuted, kBandXRearMuted), kScenarioCharShort);
+        addAlertRows(outEvents, 508, 1, {{1, kFreqX, 0x84, 0x9C, kBandXRearMuted, 0x80}});
         addScenarioClearEnd(outEvents, 860);
     } else if (normalizedId == "PHO-01") {
         addScenarioPacket(outEvents, 110, makeDisplayPacket(kBogeyPhoto, 0x07, kBandKaFront, kBandKaFront), kScenarioCharShort);
-        addAlertRows(outEvents, 118, 1, {{1, kFreqKa, 0x98, 0x7F, kBandKaFront, 0x81}});
+        addAlertRows(outEvents, 118, 1, {{1, kFreqKa, 0x90, 0x7F, kBandKaFront, 0x81}});
+        addScenarioPacket(outEvents, 360, makeDisplayPacket(kBogeyPhoto, 0x0F, kBandKaSide, kBandKaSide), kScenarioCharShort);
+        addAlertRows(outEvents, 368, 1, {{1, kFreqKa, 0x96, 0x82, kBandKaSide, 0x81}});
+        addScenarioPacket(outEvents, 620, makeDisplayPacket(kBogeyPhoto, 0x1F, kBandKaRear, kBandKaRear), kScenarioCharShort);
+        addAlertRows(outEvents, 628, 1, {{1, kFreqKa, 0x8A, 0x9A, kBandKaRear, 0x81}});
         addScenarioClearEnd(outEvents, 930);
     } else if (normalizedId == "PHO-02") {
         addScenarioPacket(outEvents, 100, makeDisplayPacket(kBogeyPhoto, 0x0F, static_cast<uint8_t>(kBandKaFront | 0x04), static_cast<uint8_t>(kBandKaFront | 0x04)), kScenarioCharShort);
@@ -436,19 +448,33 @@ bool buildScenarioPackets(const String& scenarioId,
         addScenarioClearEnd(outEvents, 980);
     } else if (normalizedId == "JNK-01") {
         addScenarioPacket(outEvents, 100, makeDisplayPacket(kBogeyJunk, 0x03, kBandKFront, kBandKFront), kScenarioCharShort);
-        addAlertRows(outEvents, 108, 1, {{1, kFreqKBase, 0x90, 0x7F, kBandKFront, 0xC0}});
+        addAlertRows(outEvents, 108, 1, {{1, kFreqKJunkLow, 0x88, 0x7F, kBandKFront, 0xC0}});
+        addScenarioPacket(outEvents, 360, makeDisplayPacket(kBogeyJunk, 0x07, kBandKSide, kBandKSide), kScenarioCharShort);
+        addAlertRows(outEvents, 368, 1, {{1, kFreqKJunkHigh, 0x8C, 0x86, kBandKSide, 0xC0}});
+        addScenarioPacket(outEvents, 620, makeDisplayPacket(kBogeyJunk, 0x0F, kBandKRear, kBandKRear), kScenarioCharShort);
+        addAlertRows(outEvents, 628, 1, {{1, kFreqKJunkLow, 0x84, 0x92, kBandKRear, 0xC0}});
         addScenarioClearEnd(outEvents, 820);
     } else if (normalizedId == "JNK-02") {
-        addScenarioPacket(outEvents, 110, makeDisplayPacket(kBogeyJunk, 0x0F, static_cast<uint8_t>(kBandKaFront | 0x04), static_cast<uint8_t>(kBandKaFront | 0x04)), kScenarioCharShort);
+        addScenarioPacket(outEvents,
+                          110,
+                          makeDisplayPacket(kBogeyJunk,
+                                            0x0F,
+                                            static_cast<uint8_t>(kBandKFront | 0x40),
+                                            static_cast<uint8_t>(kBandKFront | 0x40)),
+                          kScenarioCharShort);
         addAlertRows(outEvents,
                      118,
                      2,
-                     {{1, kFreqKBase, 0x8C, 0x7F, kBandKFront, 0x40},
-                      {2, kFreqKa, 0x98, 0x7F, kBandKaFront, 0x80}});
+                     {{1, kFreqKJunkLow, 0x8C, 0x7F, kBandKFront, 0x40},
+                      {2, kFreqKJunkHigh, 0x98, 0x7F, kBandKSide, 0x80}});
         addScenarioClearEnd(outEvents, 980);
     } else if (normalizedId == "LAS-01") {
         addScenarioPacket(outEvents, 80, makeDisplayPacket(kBogeyLaser, 0x3F, kBandLaserFront, kBandLaserFront), kScenarioCharShort);
         addAlertRows(outEvents, 88, 1, {{1, 0, 0xFF, 0x00, kBandLaserFront, 0x80}});
+        addScenarioPacket(outEvents, 250, makeDisplayPacket(kBogeyLaser, 0x3F, kBandLaserFront, kBandLaserFront), kScenarioCharShort);
+        addAlertRows(outEvents, 258, 1, {{1, 0, 0xFE, 0x00, kBandLaserFront, 0x80}});
+        addScenarioPacket(outEvents, 430, makeDisplayPacket(kBogeyLaser, 0x3F, kBandLaserFront, kBandLaserFront), kScenarioCharShort);
+        addAlertRows(outEvents, 438, 1, {{1, 0, 0xFD, 0x00, kBandLaserFront, 0x80}});
         addScenarioClearEnd(outEvents, 620);
     } else if (normalizedId == "LAS-02") {
         addScenarioPacket(outEvents, 100, makeDisplayPacket(kBogeyOne, 0x07, kBandKFront, kBandKFront), kScenarioCharShort);
@@ -797,6 +823,9 @@ static void sendMetrics(WebServer& server) {
     doc["bleMutexTimeout"] = perfCounters.bleMutexTimeout.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();
+    doc["audioPlayCount"] = perfCounters.audioPlayCount.load();
+    doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
+    doc["audioTaskFail"] = perfCounters.audioTaskFail.load();
     doc["reconnects"] = perfCounters.reconnects.load();
     doc["disconnects"] = perfCounters.disconnects.load();
     doc["uuid128FallbackHits"] = perfCounters.uuid128FallbackHits.load();
@@ -1081,6 +1110,9 @@ static void sendMetricsSoak(WebServer& server) {
     doc["bleMutexTimeout"] = perfCounters.bleMutexTimeout.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();
+    doc["audioPlayCount"] = perfCounters.audioPlayCount.load();
+    doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
+    doc["audioTaskFail"] = perfCounters.audioTaskFail.load();
     doc["reconnects"] = perfCounters.reconnects.load();
     doc["disconnects"] = perfCounters.disconnects.load();
     doc["wifiConnectDeferred"] = perfCounters.wifiConnectDeferred.load();
