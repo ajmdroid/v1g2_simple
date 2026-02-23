@@ -198,7 +198,7 @@ V1 Gen2 (BLE)
 │                      (BLE task)                         │
 └───────────┬─────────────────────────────┬───────────────┘
             │                             │
-            │ IMMEDIATE                   │ Queue (48 slots)
+            │ IMMEDIATE                   │ Queue (64 slots)
             │ (zero latency)              │ (SPI-safe path)
             ▼                             ▼
      ┌─────────────┐               ┌─────────────┐
@@ -227,7 +227,7 @@ V1 Gen2 (BLE)
 |---------|-------------|---------------------|
 | **Main loop** | Arduino `loop()` at ~200Hz | Display SPI, touch I2C, WiFi |
 | **BLE task** | NimBLE internal task | Notifications, connection events, **proxy forwarding** |
-| **FreeRTOS queue** | `bleDataQueue` (48 × ~268 bytes) | Decouples BLE callbacks from SPI (display only) |
+| **FreeRTOS queue** | `bleDataQueue` (64 × ~268 bytes) | Decouples BLE callbacks from SPI (display only) |
 
 **Key constraints:**
 - SPI operations (display) must NOT occur in BLE callbacks → uses queue
@@ -254,7 +254,7 @@ V1 Gen2 (BLE)
 
 ```
 1. delay(100)                          // USB stabilize
-2. Create bleDataQueue (48 slots)      // FreeRTOS queue (via BleQueueModule)
+2. Create bleDataQueue (64 slots)      // FreeRTOS queue (via BleQueueModule)
 3. Serial.begin(115200)
 4. batteryManager.begin()              // CRITICAL: Latch power early
 5. display.begin()                     // QSPI init, canvas allocation
@@ -414,7 +414,7 @@ V1 Gen2 sends raw RSSI values. Mapped to 0-6 bars using threshold tables:
 
 ### Queue / Buffering
 
-- **Queue:** 48-slot FreeRTOS queue, each slot ~268 bytes (display path only)
+- **Queue:** 64-slot FreeRTOS queue, each slot ~268 bytes (display path only)
 - **Proxy path:** Bypasses queue entirely - `forwardToProxyImmediate()` sends directly from BLE callback
 - **Overflow handling:** Drop oldest packet if full (only affects display, not proxy)
 - **Buffer accumulation:** `rxBuffer` accumulates chunks until 0xAA...0xAB frame complete
@@ -1725,7 +1725,7 @@ Based on code analysis:
 **Fragile areas requiring care:**
 
 1. **BLE Queue Overflow:** If BLE data arrives faster than display processing, oldest packets dropped.
-   - Location: [src/modules/ble/ble_queue_module.h](src/modules/ble/ble_queue_module.h) - `bleDataQueue` 48 slots
+   - Location: [src/modules/ble/ble_queue_module.h](src/modules/ble/ble_queue_module.h) - `bleDataQueue` 64 slots
    - Impact: Only affects local display; proxy forwarding is unaffected (immediate path)
    - Mitigation: Throttle display updates, process queue quickly
 
