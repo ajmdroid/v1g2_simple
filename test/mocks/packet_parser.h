@@ -34,6 +34,8 @@ struct AlertData {
     bool isValid = false;
     bool isPriority = false;
     uint8_t photoType = 0;
+    uint8_t rawBandBits = 0;
+    bool isKu = false;
     
     static AlertData create(Band b, Direction d, uint8_t front, uint8_t rear, 
                            uint32_t freq, bool valid = true, bool priority = false) {

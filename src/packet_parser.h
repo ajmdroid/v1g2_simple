@@ -38,11 +38,13 @@ struct AlertData {
     bool isPriority;        // aux0 bit 7 - V1's priority flag
     bool isJunk;            // aux0 bit 6 - junked alert
     uint8_t photoType;      // aux0 bits 0..3 - photo type (V4.1037+)
+    uint8_t rawBandBits;    // bandArrow low 5 bits (VR-style raw band field)
+    bool isKu;              // True when rawBandBits resolves to Ku (0x10)
     
     AlertData() : band(BAND_NONE), direction(DIR_NONE), 
                   frontStrength(0), rearStrength(0), 
                   frequency(0), isValid(false), isPriority(false),
-                  isJunk(false), photoType(0) {}
+                  isJunk(false), photoType(0), rawBandBits(0), isKu(false) {}
 };
 
 // Display state

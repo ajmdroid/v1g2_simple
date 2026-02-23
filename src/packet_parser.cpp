@@ -591,9 +591,11 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         const auto& a = alertChunks[i];
         uint8_t bandArrow = a[5];  // band + arrow + mute (matches captures: 0x24 for K/front)
         uint8_t aux0 = a[6];       // aux0: bit7=priority, bit6=junk, low nibble=photo type
+        const uint8_t rawBandBits = static_cast<uint8_t>(bandArrow & 0x1F);
+        const bool isKu = (rawBandBits == 0x10);
 
         Band band = decodeBand(bandArrow);
-        if ((bandArrow & 0x10) != 0) {
+        if ((rawBandBits & 0x10) != 0) {
             PARSER_PERF_INC(parserRowsKuRaw);
         }
         if (band == BAND_NONE) {
@@ -617,6 +619,8 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             alert.isPriority = isPriority;
             alert.isJunk = isJunk;
             alert.photoType = photoType;
+            alert.rawBandBits = rawBandBits;
+            alert.isKu = isKu;
             
             // Bytes 3 and 4 are raw RSSI values for front/rear antennas
             // Use our RSSI-to-bars mapping with band-specific thresholds
@@ -626,7 +630,9 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             alert.frequency = (band == BAND_LASER) ? 0 : combineMSBLSB(a[1], a[2]); // MHz
             alert.isValid = true;
 
-            anyMuted |= ((bandArrow & 0x10) != 0);
+            // Preserve mute for known display bands while avoiding Ku-only rows
+            // being misclassified as muted alerts.
+            anyMuted |= (!isKu && ((bandArrow & 0x10) != 0));
             anyJunk |= isJunk;
             anyPhoto |= (photoType != 0);
         }
