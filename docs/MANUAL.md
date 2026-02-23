@@ -499,7 +499,7 @@ Layout zones (left to right):
 └─ 470-640px: Direction arrows (front ▲, side ◀▶, rear ▼)
 ```
 
-**Source:** [src/display.cpp](src/display.cpp#L700-L760) (drawProfileIndicator), [src/display.cpp](src/display.cpp#L1330-L1400) (drawFrequency), [src/display.cpp](src/display.cpp#L1270-L1310) (drawBandIndicators), [src/display.cpp](src/display.cpp#L1506-L1560) (drawVerticalSignalBars), [src/display.cpp](src/display.cpp#L1390-L1500) (drawDirectionArrow)
+**Source:** [src/display_status_bar.cpp](src/display_status_bar.cpp#L135) (drawProfileIndicator), [src/display_frequency.cpp](src/display_frequency.cpp#L532) (drawFrequency), [src/display_bands.cpp](src/display_bands.cpp#L44) (drawBandIndicators), [src/display_bands.cpp](src/display_bands.cpp#L165) (drawVerticalSignalBars), [src/display_arrow.cpp](src/display_arrow.cpp#L18) (drawDirectionArrow)
 
 
 ### Display States
@@ -538,7 +538,7 @@ When multiple alerts are active simultaneously, secondary alerts appear as compa
 - **Fixed layout:** Secondary row has fixed height; cards don't cause layout shifts
 - **Automatic:** Mode activates when 2+ alerts are present
 
-**Source:** [src/display.cpp](src/display.cpp#L1690-L1880) (drawSecondaryAlerts)
+**Source:** [src/display_cards.cpp](src/display_cards.cpp) (drawSecondaryAlertCards)
 
 ### Color Customization
 
@@ -590,7 +590,7 @@ constexpr bool DIGIT_SEGMENTS[10][7] = {
 - "Ghost" segments drawn in dim color for realism
 - Decimal point handling
 
-**Source:** [src/display.cpp](src/display.cpp#L160-L200)
+**Source:** [src/display_frequency.cpp](src/display_frequency.cpp) (7-segment digit rendering)
 
 ### 14-Segment Letters
 
@@ -601,7 +601,7 @@ For band labels (Ka, K, X, LASER):
 // Supports: A, C, D, E, F, G, H, I, J, K, L, M, N, O, P, R, S, T, U, V, X, Y
 ```
 
-**Source:** [src/display.cpp](src/display.cpp#L180-L210)
+**Source:** [src/display_top_counter.cpp](src/display_top_counter.cpp#L175) (draw14SegmentDigit)
 
 ### Refresh Model
 
@@ -792,7 +792,7 @@ The settings screen shows two sliders:
 
 On volume slider release, plays "Ka ahead" test clip after 1 second delay.
 
-**Source:** [src/display.cpp](src/display.cpp#L493-L590) (showSettingsSliders)
+**Source:** [src/display_sliders.cpp](src/display_sliders.cpp#L14) (showSettingsSliders)
 
 ### Web Configuration
 
