@@ -266,10 +266,13 @@ settingsManager.setProxyName(proxyName);
 
 **Checklist for new settings**:
 1. [ ] Add to `V1Settings` struct in `settings.h`
-2. [ ] Add to `load()` in `settings.cpp` with bounds validation
-3. [ ] Add to `save()` in `settings.cpp`
-4. [ ] Add handler in `wifi_manager.cpp`
-5. [ ] Add UI in Svelte component
+2. [ ] Add to `load()` in `settings_nvs.cpp` with bounds validation
+3. [ ] Add to `save()` in `settings_nvs.cpp`
+4. [ ] Add GET handler in `src/modules/wifi/wifi_settings_api_service.cpp`
+5. [ ] Add POST handler in `src/modules/wifi/wifi_settings_api_service.cpp`
+6. [ ] Add backup/restore in `src/modules/wifi/backup_api_service.cpp`
+7. [ ] Add UI in Svelte component
+8. [ ] Document in `docs/API.md` settings table
 
 ---
 
@@ -351,6 +354,7 @@ Keep new display features aligned with this map and add ownership tests when int
 - **Runtime entrypoint**: `camera_runtime_module.{h,cpp}` exposes `begin(...)`, `setEnabled(...)`, `process(...)`, and `snapshot()` for main-loop integration.
 - **Index/data path**: `camera_index.{h,cpp}` holds immutable camera records + spans; `camera_data_loader.{h,cpp}` performs FreeRTOS-task loading/build/swap.
 - **Event log**: `camera_event_log.{h,cpp}` provides bounded diagnostics snapshots used by `/api/cameras/events`.
+- **API service**: `camera_api_service.{h,cpp}` handles `/api/cameras/*` REST endpoints.
 - **Display/audio integration**: Camera modules do not draw directly; display/audio consume `cameraRuntimeModule.snapshot()` in `display_pipeline_module.cpp`.
 - **Dependencies**: Matching is gated by GPS runtime snapshot validity, loop overload guards, and signal-priority preemption.
 
