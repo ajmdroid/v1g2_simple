@@ -142,7 +142,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 5. **Web Configuration:** AP mode at 192.168.35.5 for settings
 6. **Full Color Customization:** Per-element RGB565 colors via web UI
 
-**Source:** [src/main.cpp](src/main.cpp#L1-L25), [src/ble_client.cpp](src/ble_client.cpp#L1-L20)
+**Source:** [src/main.cpp](src/main.cpp), [src/ble_client.cpp](src/ble_client.cpp)
 
 ---
 
@@ -236,7 +236,7 @@ V1 Gen2 (BLE)
 - SPI operations (display) must NOT occur in BLE callbacks → uses queue
 - Proxy forwarding DOES run in BLE callback → zero added latency to JBV1
 
-**Source:** [src/main.cpp](src/main.cpp#L195-L210) (callback queues data), [src/ble_client.cpp](src/ble_client.cpp#L886) (immediate proxy)
+**Source:** [src/main.cpp](src/main.cpp#L197) (onV1Data callback queues data), [src/ble_client.cpp](src/ble_client.cpp) (immediate proxy)
 
 ### Timing Constraints
 
@@ -274,7 +274,7 @@ V1 Gen2 (BLE)
 16. loop()                             // Main application loop
 ```
 
-**Source:** [src/main.cpp](src/main.cpp#L745-L920) (setup function)
+**Source:** [src/main.cpp](src/main.cpp#L347) (setup function)
 
 ### Boot Splash Logic
 
@@ -284,7 +284,7 @@ V1 Gen2 (BLE)
 
 The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen and in the web UI header.
 
-**Source:** [src/main.cpp](src/main.cpp#L810-L820), [src/display.cpp](src/display.cpp) showBootSplash()
+**Source:** [src/main.cpp](src/main.cpp#L471) (showBootSplash call), [src/display_screens.cpp](src/display_screens.cpp) showBootSplash()
 
 ### Fallback Behavior
 
@@ -299,7 +299,7 @@ The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen
 ### WiFi AP Control & Timeout
 
 - **Default behavior:** AP is OFF by default; start it with a ~4s BOOT long-press. It stays on until you toggle it off.
-- **Button toggle:** Long-press BOOT (GPIO0) for ~4s to toggle the AP on/off. Short-press enters settings mode (brightness + voice volume sliders). See [src/main.cpp](src/main.cpp#L1038-L1098).
+- **Button toggle:** Long-press BOOT (GPIO0) for ~4s to toggle the AP on/off. Short-press enters settings mode (brightness + voice volume sliders). See [src/modules/touch/touch_ui_module.cpp](src/modules/touch/touch_ui_module.cpp).
 - **Auto-timeout (optional):** Disabled by default (`WIFI_AP_AUTO_TIMEOUT_MS = 0`). Set a nonzero value in [src/wifi_manager.cpp](src/wifi_manager.cpp#L30-L75) to allow the AP to stop after the timeout **and** at least 60s of no UI activity and zero connected stations. Timeout is checked in the main loop via [WiFiManager::process()](src/wifi_manager.cpp#L130-L175).
 
 ---
@@ -423,7 +423,7 @@ V1 Gen2 sends raw RSSI values. Mapped to 0-6 bars using threshold tables:
 - **Buffer accumulation:** `rxBuffer` accumulates chunks until 0xAA...0xAB frame complete
 - **Max buffer size:** 512 bytes, trimmed if exceeded
 
-**Source:** [src/main.cpp](src/main.cpp#L48-L55), [src/ble_client.cpp](src/ble_client.cpp#L1687) (forwardToProxyImmediate)
+**Source:** [src/modules/ble/ble_queue_module.cpp](src/modules/ble/ble_queue_module.cpp) (queue management), [src/ble_client.cpp](src/ble_client.cpp) (forwardToProxyImmediate)
 
 ### Proxy Mode (JBV1 Compatibility)
 
@@ -613,7 +613,7 @@ For band labels (Ka, K, X, LASER):
 - BLE notify → queue → parse → update() → flush()
 - Target: <100ms end-to-end latency
 
-**Source:** [src/main.cpp](src/main.cpp#L635-L640) (throttle check), [src/display.cpp](src/display.cpp) flush()
+**Source:** [src/modules/display/display_pipeline_module.cpp](src/modules/display/display_pipeline_module.cpp) (throttle check), [src/display.cpp](src/display.cpp) flush()
 
 ### Adding a Widget
 
@@ -690,7 +690,7 @@ Announcement format examples (with `VOICE_MODE_BAND_FREQ`):
 - Direction change: `"behind"` (direction only, same alert moved)
 - Laser alert: `"Laser ahead"` (no frequency, always includes direction when enabled)
 
-**Source:** [src/main.cpp](src/main.cpp#L880-L980) (voice alert logic)
+**Source:** [src/modules/voice/voice_module.cpp](src/modules/voice/voice_module.cpp) (voice alert logic)
 
 ### Secondary Alert Announcements
 
@@ -723,7 +723,7 @@ When a secondary alert ramps up from weak to strong, a full announcement provide
 - The "was weak" flag is permanent - even if you're stopped for 60+ seconds at 1 bar, then drive toward the source, escalation will trigger when it ramps to 4+ bars
 - Direction breakdown always included for situational awareness
 
-**Source:** [src/main.cpp](src/main.cpp#L1000-L1100) (secondary alert logic)
+**Source:** [src/modules/voice/voice_module.cpp](src/modules/voice/voice_module.cpp) (secondary alert logic)
 
 ### Audio Files
 
@@ -1188,16 +1188,16 @@ When auto-push is enabled and V1 connects, the system executes a 5-step sequence
 
 **Timing:** Each step waits 100ms before sending the next command to avoid overwhelming the V1.
 
-**Source:** [src/main.cpp](src/main.cpp#L175-L340) (autoPushState enum, processAutoPush())
+**Source:** [src/modules/auto_push/auto_push_module.cpp](src/modules/auto_push/auto_push_module.cpp) (auto-push state machine)
 
 ### Debug Logging
 
 Auto-push Serial spam is gated by a compile-time switch. To see every state transition and command:
 
-1. Open [src/main.cpp](src/main.cpp#L30-L60) and set `AUTOPUSH_DEBUG_LOGS` to `true`.
-2. Rebuild and flash firmware.
+1. Auto-push debug logs are controlled by `AUTO_PUSH_LOGF` / `AUTO_PUSH_LOGLN` macros in [src/modules/perf/debug_macros.h](src/modules/perf/debug_macros.h).
+2. Toggle `n_LOGS` in that file to enable/disable.
 
-Default is `false` to keep boot logs quiet.
+Default is `true`.
 
 ### Profile Cycling (Touch Gesture)
 
@@ -1208,7 +1208,7 @@ When a new slot is selected:
 2. If auto-push enabled, immediately pushes the new profile's settings to V1
 3. Active slot persisted to NVS
 
-**Source:** [src/main.cpp](src/main.cpp#L730-L780) (handleTouchEvents triple-tap handler)
+**Source:** [src/modules/touch/tap_gesture_module.cpp](src/modules/touch/tap_gesture_module.cpp) (triple-tap profile cycle)
 
 ### Configuration (Web UI)
 
@@ -1308,7 +1308,7 @@ For UI development without V1 hardware:
 2. Rebuild and flash
 3. Device cycles through sample alert packets
 
-**Source:** [src/main.cpp](src/main.cpp#L355-L450) (replay packet definitions)
+**Source:** [src/main.cpp](src/main.cpp#L805) (replay mode packet definitions)
 
 ---
 
