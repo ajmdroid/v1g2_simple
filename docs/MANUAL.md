@@ -604,7 +604,7 @@ For band labels (Ka, K, X, LASER):
 
 1. **Throttled:** Minimum 25ms between draws (`DISPLAY_DRAW_MIN_MS`)
 2. **Canvas-buffered:** Draw to `Arduino_Canvas`, then `flush()` to panel
-3. **Partial update:** Only full-screen redraws (no dirty rectangle tracking)
+3. **Partial updates:** `flushRegion(x, y, w, h)` sends only changed rectangles to reduce SPI traffic
 
 **Performance path:**
 - BLE notify → queue → parse → update() → flush()
