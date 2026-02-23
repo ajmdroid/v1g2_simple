@@ -222,7 +222,7 @@ V1 Gen2 (BLE)
 
 **Key optimization:** Proxy forwarding uses `forwardToProxyImmediate()` directly in the BLE callback for zero-latency pass-through to JBV1. Display updates are queued because SPI operations cannot run in BLE callback context.
 
-**Source:** [src/ble_client.cpp](src/ble_client.cpp#L886) (immediate proxy forward), [src/modules/ble/ble_queue_module.cpp](src/modules/ble/ble_queue_module.cpp) (BLE data queue), [src/modules/display/display_pipeline_module.cpp](src/modules/display/display_pipeline_module.cpp) (display updates)
+**Source:** [src/ble_proxy.cpp](src/ble_proxy.cpp#L325) (immediate proxy forward), [src/modules/ble/ble_queue_module.cpp](src/modules/ble/ble_queue_module.cpp) (BLE data queue), [src/modules/display/display_pipeline_module.cpp](src/modules/display/display_pipeline_module.cpp) (display updates)
 
 ### Threading Model
 
@@ -360,7 +360,7 @@ The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen
 └─────────────┘
 ```
 
-**Source:** [src/ble_client.h](src/ble_client.h#L30-L50) (BLEState enum), [src/ble_client.cpp](src/ble_client.cpp#L350-L450) (scan callbacks), [src/ble_client.cpp](src/ble_client.cpp#L550-L650) (connectToServer)
+**Source:** [src/ble_client.h](src/ble_client.h#L30-L50) (BLEState enum), [src/ble_connection.cpp](src/ble_connection.cpp#L18) (scan callbacks), [src/ble_connection.cpp](src/ble_connection.cpp#L205) (connectToServer)
 
 ### Packet Format (ESP Protocol)
 
@@ -435,7 +435,7 @@ When `proxyBLE=true`:
 
 **Performance:** Proxy forwarding happens directly in the BLE notification callback, before queuing for display. This ensures JBV1 sees data with minimal latency (only the inherent V1→ESP32 BLE hop, no queuing delay).
 
-**Source:** [src/ble_client.cpp](src/ble_client.cpp#L886) (immediate forward in callback), [src/ble_client.cpp](src/ble_client.cpp#L1687) (forwardToProxyImmediate)
+**Source:** [src/ble_connection.cpp](src/ble_connection.cpp#L782) (notify callback), [src/ble_proxy.cpp](src/ble_proxy.cpp#L325) (forwardToProxyImmediate)
 
 ### Connection Parameters
 
@@ -451,7 +451,7 @@ NimBLEDevice::setMTU(517);  // 512 payload + 5 header
 
 **Note:** The same tight connection parameters (15-30ms) are also applied to the phone/JBV1 side of the proxy connection for optimal latency.
 
-**Source:** [src/ble_client.cpp](src/ble_client.cpp#L571) (V1 connection), [src/ble_client.cpp](src/ble_client.cpp#L1481) (phone connection)
+**Source:** [src/ble_connection.cpp](src/ble_connection.cpp#L295) (V1 connection params), [src/ble_proxy.cpp](src/ble_proxy.cpp) (phone connection)
 
 ### Backoff on Failure
 
@@ -460,7 +460,7 @@ NimBLEDevice::setMTU(517);  // 512 payload + 5 header
 - Formula: `BACKOFF_BASE_MS * (1 << min(failures-1, 4))`
 - Hard reset after 5 consecutive failures
 
-**Source:** [src/ble_client.cpp](src/ble_client.cpp#L610-L630)
+**Source:** [src/ble_connection.cpp](src/ble_connection.cpp#L342) (backoff computation)
 
 ---
 
@@ -1236,7 +1236,7 @@ Auto-push sends these V1 ESP commands:
 | MODE | reqChangeMode | 1=All, 2=Logic, 3=AdvLogic |
 | VOLUME | reqSetVolume | main (0-9), mute (0-9) |
 
-**Source:** [src/ble_client.cpp](src/ble_client.cpp#L600-L700) (sendUserBytes, sendVolume, etc.)
+**Source:** [src/ble_commands.cpp](src/ble_commands.cpp) (sendCommand, setVolume, writeUserBytes, etc.)
 
 ---
 
@@ -1383,8 +1383,8 @@ Enable verbose logging by checking serial output for:
 ```
 
 **Tuning knobs (advanced):**
-- Connection attempts: 2 (quiet by default). Flip `CONNECT_ATTEMPT_VERBOSE` in [src/ble_client.cpp](src/ble_client.cpp#L80-L85) to see per-attempt logs.
-- Backoff/settle: adjust `BACKOFF_BASE_MS` / `BACKOFF_MAX_MS` and `SCAN_STOP_SETTLE_MS` / `SCAN_STOP_SETTLE_FRESH_MS` in [src/ble_client.h](src/ble_client.h#L276-L305) if you need slower retries or longer radio settle time.
+- Connection attempts: 5 (see MAX_CONNECT_ATTEMPTS in [src/ble_client.h](src/ble_client.h#L377)).
+- Backoff/settle: adjust `BACKOFF_BASE_MS` / `BACKOFF_MAX_MS` and `SCAN_STOP_SETTLE_MS` / `SCAN_STOP_SETTLE_FRESH_MS` in [src/ble_client.h](src/ble_client.h#L440) if you need slower retries or longer radio settle time.
 
 ### Web API Endpoints
 
@@ -1589,7 +1589,7 @@ python tools/smoke_metrics_runtime.py --base-url http://192.168.35.5 --profile p
 3. `BleQueueModule::process()` - Main loop, target <10ms
 4. `display.update()` + `flush()` - Target <15ms total
 
-**Source:** [src/ble_client.cpp](src/ble_client.cpp#L886) (onV1Data immediate forward), [src/perf_metrics.h](src/perf_metrics.h#L95-L100) (thresholds)
+**Source:** [src/ble_connection.cpp](src/ble_connection.cpp#L782) (notifyCallback immediate forward), [src/perf_metrics.h](src/perf_metrics.h) (thresholds)
 
 ---
 
