@@ -582,6 +582,9 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         OneBased = 1,
     };
     AlertIndexMode decodeMode = completeZeroBased ? AlertIndexMode::ZeroBased : AlertIndexMode::OneBased;
+    if (completeZeroBased && completeOneBased) {
+        PARSER_PERF_INC(prioritySelectAmbiguousIndex);
+    }
 
     if (PARSER_TRACE_ENABLED()) {
         const char* mode = (decodeMode == AlertIndexMode::ZeroBased) ? "zero" : "one";
@@ -694,6 +697,9 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
                 priorityFromRowFlag = static_cast<int>(i);
                 break;
             }
+        }
+        if (priorityFromRowFlag >= 0 && !isUsableAlert(priorityFromRowFlag)) {
+            PARSER_PERF_INC(prioritySelectUnusableIndex);
         }
 
         enum class PrioritySource : uint8_t { RowFlag = 2, FirstUsable = 3, FirstEntry = 4 };
