@@ -9,6 +9,7 @@
 #include "main_internals.h"
 #include "perf_metrics.h"
 #include "storage_manager.h"
+#include "wifi_manager.h"
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/lockout_learner.h"
 #include <ArduinoJson.h>
@@ -19,13 +20,6 @@
 #endif
 
 namespace {
-// Keep background SD writes out of the danger zone during AP+STA operation.
-// These thresholds match the WiFi low-memory guard that has proven stable.
-static constexpr uint32_t LOCKOUT_SAVE_MIN_DMA_FREE = 20480;
-static constexpr uint32_t LOCKOUT_SAVE_MIN_DMA_BLOCK = 8192;
-// DMA free heap can oscillate within a few bytes of the floor in AP+STA mode.
-// Allow tiny deficits to avoid defer/retry churn at the threshold edge.
-static constexpr uint32_t LOCKOUT_SAVE_DMA_FREE_JITTER_TOLERANCE = 256;
 // If dirty data remains unsaved for too long, allow a cautious retry using a
 // lower free-heap floor tuned to observed AP+STA steady-state with a stricter
 // largest-block guard.
@@ -33,6 +27,17 @@ static constexpr uint32_t LOCKOUT_SAVE_AGED_DMA_FREE = 16896;
 static constexpr uint32_t LOCKOUT_SAVE_AGED_DMA_BLOCK = 10240;
 static constexpr uint32_t LOCKOUT_SAVE_MAX_DIRTY_AGE_MS = 90000;  // 90 seconds
 static constexpr uint32_t SAVE_DIAG_REPORT_INTERVAL_MS = 60000;    // 60 seconds
+
+struct SaveDmaThresholds {
+    uint32_t minFree = 0;
+    uint32_t minBlock = 0;
+    uint32_t freeJitterTolerance = 0;
+    uint32_t blockJitterTolerance = 0;
+    uint32_t agedFree = 0;
+    uint32_t agedBlock = 0;
+    bool allowAgedRetry = false;
+    const char* modeLabel = "unknown";
+};
 
 struct SaveDiagStats {
     uint32_t attempts = 0;
@@ -55,19 +60,70 @@ inline bool withinDeficitTolerance(uint32_t sample, uint32_t required, uint32_t 
     return sample < required && (required - sample) <= tolerance;
 }
 
-inline bool hasDmaHeadroomForBackgroundSave(uint32_t& freeDma, uint32_t& largestDma) {
+SaveDmaThresholds getSaveDmaThresholds() {
+    SaveDmaThresholds thresholds{};
+    const wifi_mode_t mode = WiFi.getMode();
+    const bool staRadioOn = (mode == WIFI_AP_STA || mode == WIFI_STA);
+    const bool apStaMode = wifiManager.isSetupModeActive() && staRadioOn;
+    const bool staOnlyMode = staRadioOn && !apStaMode;
+
+    if (apStaMode) {
+        thresholds.minFree = WiFiManager::WIFI_RUNTIME_MIN_FREE_AP_STA;
+        thresholds.minBlock = WiFiManager::WIFI_RUNTIME_MIN_BLOCK_AP_STA;
+        thresholds.freeJitterTolerance = WiFiManager::WIFI_RUNTIME_AP_STA_FREE_JITTER_TOLERANCE;
+        thresholds.blockJitterTolerance = 0;
+        thresholds.agedFree = LOCKOUT_SAVE_AGED_DMA_FREE;
+        thresholds.agedBlock = LOCKOUT_SAVE_AGED_DMA_BLOCK;
+        thresholds.allowAgedRetry = true;
+        thresholds.modeLabel = "AP+STA";
+        return thresholds;
+    }
+
+    if (staOnlyMode) {
+        thresholds.minFree = WiFiManager::WIFI_RUNTIME_MIN_FREE_STA_ONLY;
+        thresholds.minBlock = WiFiManager::WIFI_RUNTIME_MIN_BLOCK_STA_ONLY;
+        thresholds.freeJitterTolerance = 0;
+        thresholds.blockJitterTolerance = WiFiManager::WIFI_RUNTIME_STA_BLOCK_JITTER_TOLERANCE;
+        thresholds.agedFree = thresholds.minFree;
+        thresholds.agedBlock = thresholds.minBlock;
+        thresholds.allowAgedRetry = false;
+        thresholds.modeLabel = "STA";
+        return thresholds;
+    }
+
+    thresholds.minFree = WiFiManager::WIFI_RUNTIME_MIN_FREE_AP_ONLY;
+    thresholds.minBlock = WiFiManager::WIFI_RUNTIME_MIN_BLOCK_AP_ONLY;
+    thresholds.freeJitterTolerance = 0;
+    thresholds.blockJitterTolerance = 0;
+    thresholds.agedFree = thresholds.minFree;
+    thresholds.agedBlock = thresholds.minBlock;
+    thresholds.allowAgedRetry = false;
+    thresholds.modeLabel = "AP";
+    return thresholds;
+}
+
+inline bool hasDmaHeadroomForBackgroundSave(uint32_t& freeDma,
+                                            uint32_t& largestDma,
+                                            const SaveDmaThresholds& thresholds) {
     freeDma = heap_caps_get_free_size(MALLOC_CAP_DMA);
     largestDma = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
     const bool freeOk =
-        (freeDma >= LOCKOUT_SAVE_MIN_DMA_FREE) ||
+        (freeDma >= thresholds.minFree) ||
         withinDeficitTolerance(freeDma,
-                               LOCKOUT_SAVE_MIN_DMA_FREE,
-                               LOCKOUT_SAVE_DMA_FREE_JITTER_TOLERANCE);
-    return freeOk && (largestDma >= LOCKOUT_SAVE_MIN_DMA_BLOCK);
+                               thresholds.minFree,
+                               thresholds.freeJitterTolerance);
+    const bool blockOk =
+        (largestDma >= thresholds.minBlock) ||
+        withinDeficitTolerance(largestDma,
+                               thresholds.minBlock,
+                               thresholds.blockJitterTolerance);
+    return freeOk && blockOk;
 }
 
-inline bool hasAgedDmaHeadroomForBackgroundSave(uint32_t freeDma, uint32_t largestDma) {
-    return (freeDma >= LOCKOUT_SAVE_AGED_DMA_FREE) && (largestDma >= LOCKOUT_SAVE_AGED_DMA_BLOCK);
+inline bool hasAgedDmaHeadroomForBackgroundSave(uint32_t freeDma,
+                                                uint32_t largestDma,
+                                                const SaveDmaThresholds& thresholds) {
+    return (freeDma >= thresholds.agedFree) && (largestDma >= thresholds.agedBlock);
 }
 
 inline void noteMin(uint32_t& target, uint32_t sample) {
@@ -139,14 +195,16 @@ void processLockoutStoreSave(uint32_t nowMs) {
         if (fs) {
             if (storageManager.isSDCard()) {
                 // Core 1 path must never block waiting for SD ownership.
+                const SaveDmaThresholds thresholds = getSaveDmaThresholds();
                 uint32_t freeDma = 0;
                 uint32_t largestDma = 0;
-                const bool normalHeadroom = hasDmaHeadroomForBackgroundSave(freeDma, largestDma);
+                const bool normalHeadroom = hasDmaHeadroomForBackgroundSave(freeDma, largestDma, thresholds);
                 const uint32_t dirtyAgeMs = (lockoutDirtySinceMs == 0) ? 0 : (nowMs - lockoutDirtySinceMs);
                 const bool allowAgedRetry =
+                    thresholds.allowAgedRetry &&
                     !normalHeadroom &&
                     (dirtyAgeMs >= LOCKOUT_SAVE_MAX_DIRTY_AGE_MS) &&
-                    hasAgedDmaHeadroomForBackgroundSave(freeDma, largestDma);
+                    hasAgedDmaHeadroomForBackgroundSave(freeDma, largestDma, thresholds);
                 hadDmaSample = true;
                 sampledFreeDma = freeDma;
                 sampledLargestDma = largestDma;
@@ -161,8 +219,8 @@ void processLockoutStoreSave(uint32_t nowMs) {
                                           static_cast<unsigned long>(dirtyAgeMs / 1000),
                                           static_cast<unsigned long>(freeDma),
                                           static_cast<unsigned long>(largestDma),
-                                          static_cast<unsigned long>(LOCKOUT_SAVE_AGED_DMA_FREE),
-                                          static_cast<unsigned long>(LOCKOUT_SAVE_AGED_DMA_BLOCK));
+                                          static_cast<unsigned long>(thresholds.agedFree),
+                                          static_cast<unsigned long>(thresholds.agedBlock));
                         }
                     }
                     StorageManager::SDTryLock sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
@@ -187,11 +245,12 @@ void processLockoutStoreSave(uint32_t nowMs) {
                     static uint32_t lastLowDmaLogMs = 0;
                     if ((nowMs - lastLowDmaLogMs) >= 10000) {
                         lastLowDmaLogMs = nowMs;
-                        Serial.printf("[Lockout] Save deferred (low DMA heap free=%lu block=%lu need>=%lu/%lu dirty=%lus)\n",
+                        Serial.printf("[Lockout] Save deferred (low DMA heap mode=%s free=%lu block=%lu need>=%lu/%lu dirty=%lus)\n",
+                                      thresholds.modeLabel,
                                       static_cast<unsigned long>(freeDma),
                                       static_cast<unsigned long>(largestDma),
-                                      static_cast<unsigned long>(LOCKOUT_SAVE_MIN_DMA_FREE),
-                                      static_cast<unsigned long>(LOCKOUT_SAVE_MIN_DMA_BLOCK),
+                                      static_cast<unsigned long>(thresholds.minFree),
+                                      static_cast<unsigned long>(thresholds.minBlock),
                                       static_cast<unsigned long>(dirtyAgeMs / 1000));
                     }
                 }
@@ -259,14 +318,16 @@ void processLearnerPendingSave(uint32_t nowMs) {
         if (fs) {
             if (storageManager.isSDCard()) {
                 // Core 1 path must never block waiting for SD ownership.
+                const SaveDmaThresholds thresholds = getSaveDmaThresholds();
                 uint32_t freeDma = 0;
                 uint32_t largestDma = 0;
-                const bool normalHeadroom = hasDmaHeadroomForBackgroundSave(freeDma, largestDma);
+                const bool normalHeadroom = hasDmaHeadroomForBackgroundSave(freeDma, largestDma, thresholds);
                 const uint32_t dirtyAgeMs = (learnerDirtySinceMs == 0) ? 0 : (nowMs - learnerDirtySinceMs);
                 const bool allowAgedRetry =
+                    thresholds.allowAgedRetry &&
                     !normalHeadroom &&
                     (dirtyAgeMs >= LOCKOUT_SAVE_MAX_DIRTY_AGE_MS) &&
-                    hasAgedDmaHeadroomForBackgroundSave(freeDma, largestDma);
+                    hasAgedDmaHeadroomForBackgroundSave(freeDma, largestDma, thresholds);
                 hadDmaSample = true;
                 sampledFreeDma = freeDma;
                 sampledLargestDma = largestDma;
@@ -281,8 +342,8 @@ void processLearnerPendingSave(uint32_t nowMs) {
                                           static_cast<unsigned long>(dirtyAgeMs / 1000),
                                           static_cast<unsigned long>(freeDma),
                                           static_cast<unsigned long>(largestDma),
-                                          static_cast<unsigned long>(LOCKOUT_SAVE_AGED_DMA_FREE),
-                                          static_cast<unsigned long>(LOCKOUT_SAVE_AGED_DMA_BLOCK));
+                                          static_cast<unsigned long>(thresholds.agedFree),
+                                          static_cast<unsigned long>(thresholds.agedBlock));
                         }
                     }
                     StorageManager::SDTryLock sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
@@ -302,11 +363,12 @@ void processLearnerPendingSave(uint32_t nowMs) {
                     static uint32_t lastLowDmaLogMs = 0;
                     if ((nowMs - lastLowDmaLogMs) >= 10000) {
                         lastLowDmaLogMs = nowMs;
-                        Serial.printf("[Learner] Save deferred (low DMA heap free=%lu block=%lu need>=%lu/%lu dirty=%lus)\n",
+                        Serial.printf("[Learner] Save deferred (low DMA heap mode=%s free=%lu block=%lu need>=%lu/%lu dirty=%lus)\n",
+                                      thresholds.modeLabel,
                                       static_cast<unsigned long>(freeDma),
                                       static_cast<unsigned long>(largestDma),
-                                      static_cast<unsigned long>(LOCKOUT_SAVE_MIN_DMA_FREE),
-                                      static_cast<unsigned long>(LOCKOUT_SAVE_MIN_DMA_BLOCK),
+                                      static_cast<unsigned long>(thresholds.minFree),
+                                      static_cast<unsigned long>(thresholds.minBlock),
                                       static_cast<unsigned long>(dirtyAgeMs / 1000));
                     }
                 }
