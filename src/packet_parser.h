@@ -124,12 +124,6 @@ public:
     static void resetAlertCountTracker();
 
 private:
-    enum class AlertIndexMode : uint8_t {
-        Unknown = 0,
-        OneBased,
-        ZeroBased
-    };
-
     DisplayState displayState;
     std::array<AlertData, MAX_ALERTS> alerts;
     size_t alertCount;
@@ -137,7 +131,6 @@ private:
     std::array<bool, MAX_ALERTS> alertChunkPresent;
     std::array<uint8_t, MAX_ALERTS> alertChunkCountTag;
     std::array<uint32_t, MAX_ALERTS> alertChunkRxMs;
-    std::array<AlertIndexMode, MAX_ALERTS + 1> alertIndexModeByCount;
     std::array<uint32_t, MAX_ALERTS + 1> alertTableFirstSeenMs;
 
     // Packet parsing helpers

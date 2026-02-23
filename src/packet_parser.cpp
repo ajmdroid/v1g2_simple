@@ -113,7 +113,6 @@ PacketParser::PacketParser()
     alertChunkPresent.fill(false);
     alertChunkCountTag.fill(0);
     alertChunkRxMs.fill(0);
-    alertIndexModeByCount.fill(AlertIndexMode::Unknown);
     alertTableFirstSeenMs.fill(0);
 }
 
@@ -126,7 +125,6 @@ void PacketParser::clearAlertCache() {
     alertChunkPresent.fill(false);
     alertChunkCountTag.fill(0);
     alertChunkRxMs.fill(0);
-    alertIndexModeByCount.fill(AlertIndexMode::Unknown);
     alertTableFirstSeenMs.fill(0);
 }
 
@@ -141,7 +139,6 @@ void PacketParser::clearAlertCacheForCount(uint8_t count) {
             alertChunkRxMs[i] = 0;
         }
     }
-    alertIndexModeByCount[count] = AlertIndexMode::Unknown;
     alertTableFirstSeenMs[count] = 0;
 }
 
@@ -417,8 +414,8 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     }
 
     // Byte0: high nibble = alert index, low nibble = alert count.
-    // Official Android/iOS libraries assemble alert tables by index 1..count.
-    // Keep a zero-based fallback path for compatibility with legacy captures.
+    // Official AndroidESPLibrary2/iOS assembly contract is one-based index 1..count.
+    // Follow VR contract strictly so partial tables are deterministic.
     uint8_t alertIndex = (payload[0] >> 4) & 0x0F;
     uint8_t receivedAlertCount = payload[0] & 0x0F;
     if (receivedAlertCount == 0) {
@@ -471,52 +468,22 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
                 }
                 if (!anyRowsForCount) {
                     alertTableFirstSeenMs[staleCount] = 0;
-                    alertIndexModeByCount[staleCount] = AlertIndexMode::Unknown;
                 }
             }
         }
     }
 
-    // Keep a per-count index-mode hint so we can follow whichever index base the
-    // V1 stream uses without discarding partial rows when count changes.
-    AlertIndexMode mode = alertIndexModeByCount[receivedAlertCount];
-    if (mode == AlertIndexMode::Unknown) {
-        const bool oneBasedCandidate = (alertIndex >= 1 && alertIndex <= receivedAlertCount);
-        const bool zeroBasedCandidate = (alertIndex < receivedAlertCount);
-        if (alertIndex == 0 && zeroBasedCandidate) {
-            mode = AlertIndexMode::ZeroBased;
-        } else if (alertIndex == receivedAlertCount && oneBasedCandidate) {
-            mode = AlertIndexMode::OneBased;
-        } else if (oneBasedCandidate && !zeroBasedCandidate) {
-            mode = AlertIndexMode::OneBased;
-        } else if (!oneBasedCandidate && zeroBasedCandidate) {
-            mode = AlertIndexMode::ZeroBased;
-        } else if (oneBasedCandidate) {
-            // Ambiguous interior rows (e.g., idx=1 when count=2) default to
-            // one-based, matching VR library table assembly.
-            mode = AlertIndexMode::OneBased;
-        }
-        alertIndexModeByCount[receivedAlertCount] = mode;
-    }
-
     size_t slot = MAX_ALERTS;
-    if (mode == AlertIndexMode::OneBased) {
-        if (alertIndex >= 1 && alertIndex <= receivedAlertCount) {
-            slot = static_cast<size_t>(alertIndex - 1);
-        }
-    } else if (mode == AlertIndexMode::ZeroBased) {
-        if (alertIndex < receivedAlertCount) {
-            slot = static_cast<size_t>(alertIndex);
-        }
+    if (alertIndex >= 1 && alertIndex <= receivedAlertCount) {
+        slot = static_cast<size_t>(alertIndex - 1);
     }
 
-    // If row index is invalid for this table mode, drop it and keep existing cache.
+    // If row index is invalid for strict one-based table assembly, drop it.
     if (slot >= MAX_ALERTS) {
         if (PARSER_TRACE_ENABLED()) {
-            Serial.printf("[AlertAsm] drop idx=%u cnt=%u mode=%u (invalid slot)\n",
+            Serial.printf("[AlertAsm] drop idx=%u cnt=%u (invalid one-based slot)\n",
                           static_cast<unsigned>(alertIndex),
-                          static_cast<unsigned>(receivedAlertCount),
-                          static_cast<unsigned>(mode));
+                          static_cast<unsigned>(receivedAlertCount));
         }
         return true;
     }
@@ -558,13 +525,12 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
 
     if (PARSER_TRACE_ENABLED()) {
         Serial.printf(
-            "[AlertRow] idx=%u cnt=%u slot=%u rows=%u/%u mode=%u repl=%u raw0=0x%02X f=%u bandArrow=0x%02X aux0=0x%02X\n",
+            "[AlertRow] idx=%u cnt=%u slot=%u rows=%u/%u repl=%u raw0=0x%02X f=%u bandArrow=0x%02X aux0=0x%02X\n",
                       static_cast<unsigned>(alertIndex),
                       static_cast<unsigned>(receivedAlertCount),
                       static_cast<unsigned>(slot),
                       static_cast<unsigned>(rowsForCount),
                       static_cast<unsigned>(receivedAlertCount),
-                      static_cast<unsigned>(mode),
                       replacingRow ? 1u : 0u,
                       static_cast<unsigned>(payload[0]),
                       static_cast<unsigned>(combineMSBLSB(payload[1], payload[2])),
@@ -590,10 +556,9 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             return true;
         }
         if (PARSER_TRACE_ENABLED()) {
-            Serial.printf("[AlertAsm] partial rows=%u/%u mode=%u\n",
+            Serial.printf("[AlertAsm] partial rows=%u/%u\n",
                           static_cast<unsigned>(rowsForCount),
-                          static_cast<unsigned>(receivedAlertCount),
-                          static_cast<unsigned>(mode));
+                          static_cast<unsigned>(receivedAlertCount));
         }
         return true;
     }
