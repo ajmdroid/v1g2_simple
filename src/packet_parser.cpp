@@ -813,3 +813,32 @@ AlertData PacketParser::getPriorityAlert() const {
     }
     return alerts[0];  // Fallback
 }
+
+bool PacketParser::getRenderablePriorityAlert(AlertData& out) const {
+    out = AlertData();
+    if (alertCount == 0) {
+        return false;
+    }
+
+    auto isRenderable = [](const AlertData& a) -> bool {
+        if (!a.isValid || a.band == BAND_NONE) {
+            return false;
+        }
+        return (a.band == BAND_LASER) || (a.frequency != 0);
+    };
+
+    const AlertData priority = getPriorityAlert();
+    if (isRenderable(priority)) {
+        out = priority;
+        return true;
+    }
+
+    for (size_t i = 0; i < alertCount; ++i) {
+        if (isRenderable(alerts[i])) {
+            out = alerts[i];
+            return true;
+        }
+    }
+
+    return false;
+}

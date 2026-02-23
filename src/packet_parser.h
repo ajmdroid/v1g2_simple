@@ -98,6 +98,10 @@ public:
     
     // Get resolved priority alert (follows V1 priority signal)
     AlertData getPriorityAlert() const;
+
+    // Get a renderable priority alert (valid band + usable frequency semantics).
+    // Returns true and writes to out when a renderable alert exists.
+    bool getRenderablePriorityAlert(AlertData& out) const;
     
     // Get all alerts
     const std::array<AlertData, MAX_ALERTS>& getAllAlerts() const { return alerts; }

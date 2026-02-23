@@ -476,6 +476,35 @@ void test_alert_stream_three_bogey_publishes_only_when_complete() {
     assertContainsThreeFrequencies(parser, 24150, 33810, 34700);
 }
 
+void test_renderable_priority_alert_prefers_usable_priority() {
+    PacketParser parser;
+
+    const auto row1 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 2, 34700, 0xB0, 0x00, 0x22, 0x80));
+    const auto row2 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(2, 2, 24150, 0x90, 0x80, 0x84, 0x00));
+
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_TRUE(parser.parse(row2.data(), row2.size()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(parser.getAlertCount()));
+
+    AlertData renderable;
+    TEST_ASSERT_TRUE(parser.getRenderablePriorityAlert(renderable));
+    TEST_ASSERT_TRUE(renderable.isValid);
+    TEST_ASSERT_TRUE(renderable.band != BAND_NONE);
+    TEST_ASSERT_EQUAL_UINT32(34700, renderable.frequency);
+}
+
+void test_renderable_priority_alert_returns_false_when_all_rows_unusable() {
+    PacketParser parser;
+
+    // bandArrow=0x20 carries direction-only bits and decodes to BAND_NONE.
+    const auto row = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 1, 24150, 0x90, 0x80, 0x20, 0x80));
+    TEST_ASSERT_TRUE(parser.parse(row.data(), row.size()));
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(parser.getAlertCount()));
+
+    AlertData renderable;
+    TEST_ASSERT_FALSE(parser.getRenderablePriorityAlert(renderable));
+}
+
 void test_strict_alert_stream_duplicate_index_replaces_prior_row() {
     requireStrictAuditEnabled();
     PacketParser parser;
@@ -568,6 +597,8 @@ int main() {
     RUN_TEST(test_alert_stream_stale_row_not_reused_for_completion);
     RUN_TEST(test_alert_stream_partial_timeout_restarts_assembly);
     RUN_TEST(test_alert_stream_three_bogey_publishes_only_when_complete);
+    RUN_TEST(test_renderable_priority_alert_prefers_usable_priority);
+    RUN_TEST(test_renderable_priority_alert_returns_false_when_all_rows_unusable);
 
     RUN_TEST(test_strict_alert_stream_duplicate_index_replaces_prior_row);
     RUN_TEST(test_strict_contract_parser_aux0_fields_exist);
