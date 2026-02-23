@@ -62,6 +62,10 @@ MAX_CAMERA_BUDGET_EXCEEDED_DELTA=0
 MAX_CAMERA_LOAD_FAILURES_DELTA=0
 MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA=0
 SOAK_PROFILE=""
+LATENCY_GATE_MODE="${REAL_FW_LATENCY_GATE_MODE:-hybrid}"
+LATENCY_ROBUST_MIN_SAMPLES="${REAL_FW_LATENCY_ROBUST_MIN_SAMPLES:-8}"
+LATENCY_ROBUST_MAX_EXCEED_PCT="${REAL_FW_LATENCY_ROBUST_MAX_EXCEED_PCT:-5}"
+WIFI_ROBUST_SKIP_FIRST_SAMPLES="${REAL_FW_WIFI_ROBUST_SKIP_FIRST_SAMPLES:-2}"
 CLI_OVERRIDE_MAX_FLUSH_MAX_US=0
 CLI_OVERRIDE_MAX_LOOP_MAX_US=0
 CLI_OVERRIDE_MAX_WIFI_MAX_US=0
@@ -431,6 +435,38 @@ while [[ $# -gt 0 ]]; do
       SOAK_PROFILE="$2"
       shift
       ;;
+    --latency-gate-mode)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --latency-gate-mode" >&2
+        exit 2
+      fi
+      LATENCY_GATE_MODE="$2"
+      shift
+      ;;
+    --latency-robust-min-samples)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --latency-robust-min-samples" >&2
+        exit 2
+      fi
+      LATENCY_ROBUST_MIN_SAMPLES="$2"
+      shift
+      ;;
+    --latency-robust-max-exceed-pct)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --latency-robust-max-exceed-pct" >&2
+        exit 2
+      fi
+      LATENCY_ROBUST_MAX_EXCEED_PCT="$2"
+      shift
+      ;;
+    --wifi-robust-skip-first-samples)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --wifi-robust-skip-first-samples" >&2
+        exit 2
+      fi
+      WIFI_ROBUST_SKIP_FIRST_SAMPLES="$2"
+      shift
+      ;;
     --baseline-perf-csv)
       if [[ $# -lt 2 ]]; then
         echo "Missing value for --baseline-perf-csv" >&2
@@ -649,6 +685,17 @@ Options:
                         Maximum cameraIndexSwapFailures delta (default: 0)
   --profile PROFILE     Apply PERF_SLOS.md gates: drive_wifi_ap (default when
                         metrics enabled) or drive_wifi_off
+  --latency-gate-mode MODE
+                        Latency classification mode for wifi/disp gates:
+                        strict (peak-only), robust (N-of-M), hybrid (default)
+  --latency-robust-min-samples N
+                        Minimum samples required to evaluate robust mode
+                        (default: 8)
+  --latency-robust-max-exceed-pct N
+                        Allowed percent of samples above gate in robust mode
+                        (default: 5)
+  --wifi-robust-skip-first-samples N
+                        Robust wifi warmup exclusion (default: 2)
   --dry-run             Print resolved config/gates and exit
   --allow-inconclusive   Exit 0 even when no telemetry signals were captured
   --out-dir PATH         Write artifacts to PATH
@@ -775,6 +822,29 @@ fi
 
 if ! [[ "$MIN_METRICS_OK_SAMPLES" =~ ^[0-9]+$ ]]; then
   echo "Invalid --min-metrics-ok-samples value '$MIN_METRICS_OK_SAMPLES' (expected non-negative integer)." >&2
+  exit 2
+fi
+
+case "$LATENCY_GATE_MODE" in
+  strict|robust|hybrid) ;;
+  *)
+    echo "Invalid --latency-gate-mode value '$LATENCY_GATE_MODE' (expected strict, robust, or hybrid)." >&2
+    exit 2
+    ;;
+esac
+
+if ! [[ "$LATENCY_ROBUST_MIN_SAMPLES" =~ ^[0-9]+$ ]]; then
+  echo "Invalid --latency-robust-min-samples value '$LATENCY_ROBUST_MIN_SAMPLES' (expected non-negative integer)." >&2
+  exit 2
+fi
+
+if ! [[ "$LATENCY_ROBUST_MAX_EXCEED_PCT" =~ ^[0-9]+$ ]] || [[ "$LATENCY_ROBUST_MAX_EXCEED_PCT" -gt 100 ]]; then
+  echo "Invalid --latency-robust-max-exceed-pct value '$LATENCY_ROBUST_MAX_EXCEED_PCT' (expected integer in 0..100)." >&2
+  exit 2
+fi
+
+if ! [[ "$WIFI_ROBUST_SKIP_FIRST_SAMPLES" =~ ^[0-9]+$ ]]; then
+  echo "Invalid --wifi-robust-skip-first-samples value '$WIFI_ROBUST_SKIP_FIRST_SAMPLES' (expected non-negative integer)." >&2
   exit 2
 fi
 
@@ -1187,6 +1257,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    min metrics successes: ${MIN_METRICS_OK_SAMPLES}"
   echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA} maxOversizeDropDelta=${MAX_OVERSIZE_DROPS_DELTA}"
   echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} maxSd=${MAX_SD_MAX_US} maxFs=${MAX_FS_MAX_US} (0 disables)"
+  echo "    latency gate mode: ${LATENCY_GATE_MODE} (robust minSamples=${LATENCY_ROBUST_MIN_SAMPLES} maxExceedPct=${LATENCY_ROBUST_MAX_EXCEED_PCT} wifiSkipFirst=${WIFI_ROBUST_SKIP_FIRST_SAMPLES})"
   echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} maxCameraMaxTick=${MAX_CAMERA_MAX_TICK_US} maxCameraMaxWindowHz=${CAMERA_MAX_WINDOW_HZ_GATE_LABEL} (0 disables)"
   echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA} maxCameraBudgetExceededDelta=${MAX_CAMERA_BUDGET_EXCEEDED_DELTA} maxCameraLoadFailuresDelta=${MAX_CAMERA_LOAD_FAILURES_DELTA} maxCameraIndexSwapFailuresDelta=${MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA}"
   echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)"
@@ -1255,6 +1326,7 @@ if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
 fi
 echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA} maxOversizeDropDelta=${MAX_OVERSIZE_DROPS_DELTA}" | tee -a "$RUN_LOG"
 echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} maxSd=${MAX_SD_MAX_US} maxFs=${MAX_FS_MAX_US} (0 disables)" | tee -a "$RUN_LOG"
+echo "    latency gate mode: ${LATENCY_GATE_MODE} (robust minSamples=${LATENCY_ROBUST_MIN_SAMPLES} maxExceedPct=${LATENCY_ROBUST_MAX_EXCEED_PCT} wifiSkipFirst=${WIFI_ROBUST_SKIP_FIRST_SAMPLES})" | tee -a "$RUN_LOG"
 echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} maxCameraMaxTick=${MAX_CAMERA_MAX_TICK_US} maxCameraMaxWindowHz=${CAMERA_MAX_WINDOW_HZ_GATE_LABEL} (0 disables)" | tee -a "$RUN_LOG"
 echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA} maxCameraBudgetExceededDelta=${MAX_CAMERA_BUDGET_EXCEEDED_DELTA} maxCameraLoadFailuresDelta=${MAX_CAMERA_LOAD_FAILURES_DELTA} maxCameraIndexSwapFailuresDelta=${MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA}" | tee -a "$RUN_LOG"
 echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)" | tee -a "$RUN_LOG"
@@ -1538,7 +1610,18 @@ if [[ -z "$PARSER_PYTHON" ]]; then
   echo "No Python interpreter is available for soak JSON parsing." >&2
   exit 1
 fi
-if ! "$PARSER_PYTHON" "$ROOT_DIR/tools/soak_parse_metrics.py" "$METRICS_JSONL" > "$metrics_kv"; then
+metrics_parser_args=(
+  "$ROOT_DIR/tools/soak_parse_metrics.py"
+  "$METRICS_JSONL"
+  "--skip-first-wifi-samples" "$WIFI_ROBUST_SKIP_FIRST_SAMPLES"
+)
+if [[ "$MAX_WIFI_MAX_US" -gt 0 ]]; then
+  metrics_parser_args+=(--wifi-threshold "$MAX_WIFI_MAX_US")
+fi
+if [[ "$MAX_DISP_PIPE_MAX_US" -gt 0 ]]; then
+  metrics_parser_args+=(--disp-threshold "$MAX_DISP_PIPE_MAX_US")
+fi
+if ! "$PARSER_PYTHON" "${metrics_parser_args[@]}" > "$metrics_kv"; then
   echo "Failed to parse soak metrics JSONL ($METRICS_JSONL)." >&2
   exit 1
 fi
@@ -1603,6 +1686,15 @@ dma_largest_min_parsed=""
 inherited_counter_suspect=""
 ble_process_max_peak=""
 disp_pipe_max_peak=""
+wifi_sample_count=""
+wifi_sample_count_excluding_first=""
+wifi_p95_raw=""
+wifi_p95_excluding_first=""
+wifi_over_limit_count_raw=""
+wifi_over_limit_count_excluding_first=""
+disp_pipe_sample_count=""
+disp_pipe_p95=""
+disp_pipe_over_limit_count=""
 ble_mutex_timeout_delta=""
 camera_budget_exceeded_delta=""
 camera_load_failures_delta=""
@@ -1670,6 +1762,15 @@ while IFS='=' read -r key value; do
     inherited_counter_suspect) inherited_counter_suspect="$value" ;;
     ble_process_max_peak) ble_process_max_peak="$value" ;;
     disp_pipe_max_peak) disp_pipe_max_peak="$value" ;;
+    wifi_sample_count) wifi_sample_count="$value" ;;
+    wifi_sample_count_excluding_first) wifi_sample_count_excluding_first="$value" ;;
+    wifi_p95_raw) wifi_p95_raw="$value" ;;
+    wifi_p95_excluding_first) wifi_p95_excluding_first="$value" ;;
+    wifi_over_limit_count_raw) wifi_over_limit_count_raw="$value" ;;
+    wifi_over_limit_count_excluding_first) wifi_over_limit_count_excluding_first="$value" ;;
+    disp_pipe_sample_count) disp_pipe_sample_count="$value" ;;
+    disp_pipe_p95) disp_pipe_p95="$value" ;;
+    disp_pipe_over_limit_count) disp_pipe_over_limit_count="$value" ;;
     ble_mutex_timeout_delta) ble_mutex_timeout_delta="$value" ;;
     camera_budget_exceeded_delta) camera_budget_exceeded_delta="$value" ;;
     camera_load_failures_delta) camera_load_failures_delta="$value" ;;
@@ -1726,6 +1827,29 @@ is_int() {
   [[ "$value" =~ ^-?[0-9]+$ ]]
 }
 
+calc_allowed_exceeds() {
+  local sample_count="${1:-}"
+  local exceed_pct="${2:-}"
+  if ! is_uint "$sample_count" || ! is_uint "$exceed_pct"; then
+    echo ""
+    return 1
+  fi
+  if [[ "$sample_count" -le 0 ]]; then
+    echo "0"
+    return 0
+  fi
+  if [[ "$exceed_pct" -eq 0 ]]; then
+    echo "0"
+    return 0
+  fi
+  # Integer ceil(sample_count * pct / 100)
+  local allowed=$(( (sample_count * exceed_pct + 99) / 100 ))
+  if [[ "$allowed" -lt 1 ]]; then
+    allowed=1
+  fi
+  echo "$allowed"
+}
+
 result="PASS"
 serial_log_bytes="$(wc -c < "$SERIAL_LOG" | tr -d '[:space:]')"
 if [[ -z "$serial_log_bytes" ]]; then
@@ -1757,6 +1881,25 @@ then
   wifi_peak_gate_value="$wifi_max_peak_excluding_first"
   wifi_peak_gate_basis="excluding_first_sample"
 fi
+
+wifi_robust_sample_count="$wifi_sample_count"
+wifi_robust_over_limit_count="$wifi_over_limit_count_raw"
+wifi_robust_p95="$wifi_p95_raw"
+wifi_robust_basis="raw_samples"
+if [[ "$metrics_reset_success" -eq 1 ]] &&
+   is_uint "$metrics_ok_samples_parsed" &&
+   [[ "$metrics_ok_samples_parsed" -gt "$WIFI_ROBUST_SKIP_FIRST_SAMPLES" ]] &&
+   is_uint "$wifi_sample_count_excluding_first" &&
+   [[ "$wifi_sample_count_excluding_first" -gt 0 ]]
+then
+  wifi_robust_sample_count="$wifi_sample_count_excluding_first"
+  wifi_robust_over_limit_count="$wifi_over_limit_count_excluding_first"
+  wifi_robust_p95="$wifi_p95_excluding_first"
+  wifi_robust_basis="excluding_first_${WIFI_ROBUST_SKIP_FIRST_SAMPLES}_samples"
+fi
+
+wifi_robust_allowed_over_limit=""
+disp_pipe_robust_allowed_over_limit=""
 
 gate_rx_fail=0
 gate_parse_success_fail=0
@@ -1863,11 +2006,59 @@ if [[ -n "$METRICS_URL" ]]; then
       fi
     fi
     if [[ "$MAX_WIFI_MAX_US" -gt 0 ]]; then
+      wifi_strict_fail=0
+      wifi_strict_reason=""
       if ! is_uint "$wifi_peak_gate_value"; then
-        mark_gate_fail gate_wifi_fail "wifiMaxUs peak (${wifi_peak_gate_basis}) ${wifi_peak_gate_value:-n/a} above max ${MAX_WIFI_MAX_US}."
+        wifi_strict_fail=1
+        wifi_strict_reason="wifiMaxUs peak (${wifi_peak_gate_basis}) ${wifi_peak_gate_value:-n/a} above max ${MAX_WIFI_MAX_US}."
       elif [[ "$wifi_peak_gate_value" -gt "$MAX_WIFI_MAX_US" ]]; then
-        mark_gate_fail gate_wifi_fail "wifiMaxUs peak (${wifi_peak_gate_basis}) ${wifi_peak_gate_value} above max ${MAX_WIFI_MAX_US}."
+        wifi_strict_fail=1
+        wifi_strict_reason="wifiMaxUs peak (${wifi_peak_gate_basis}) ${wifi_peak_gate_value} above max ${MAX_WIFI_MAX_US}."
       fi
+
+      wifi_robust_available=1
+      wifi_robust_fail=0
+      wifi_robust_reason=""
+      wifi_robust_allowed_over_limit="$(calc_allowed_exceeds "$wifi_robust_sample_count" "$LATENCY_ROBUST_MAX_EXCEED_PCT" || true)"
+      if ! is_uint "$wifi_robust_sample_count" || ! is_uint "$wifi_robust_over_limit_count"; then
+        wifi_robust_available=0
+        wifi_robust_reason="wifiMaxUs robust gate unavailable (samples=${wifi_robust_sample_count:-n/a} overLimit=${wifi_robust_over_limit_count:-n/a} basis=${wifi_robust_basis})."
+      elif [[ "$wifi_robust_sample_count" -lt "$LATENCY_ROBUST_MIN_SAMPLES" ]]; then
+        wifi_robust_available=0
+        wifi_robust_reason="wifiMaxUs robust gate unavailable (samples=${wifi_robust_sample_count} below min ${LATENCY_ROBUST_MIN_SAMPLES}, basis=${wifi_robust_basis})."
+      elif ! is_uint "$wifi_robust_allowed_over_limit"; then
+        wifi_robust_available=0
+        wifi_robust_reason="wifiMaxUs robust gate unavailable (could not compute allowed over-limit count)."
+      elif [[ "$wifi_robust_over_limit_count" -gt "$wifi_robust_allowed_over_limit" ]]; then
+        wifi_robust_fail=1
+        wifi_robust_reason="wifiMaxUs robust over-limit ${wifi_robust_over_limit_count}/${wifi_robust_sample_count} (allowed ${wifi_robust_allowed_over_limit}, p95=${wifi_robust_p95:-n/a}, basis=${wifi_robust_basis}) above max ${MAX_WIFI_MAX_US}."
+      fi
+
+      case "$LATENCY_GATE_MODE" in
+        strict)
+          if [[ "$wifi_strict_fail" -eq 1 ]]; then
+            mark_gate_fail gate_wifi_fail "$wifi_strict_reason"
+          fi
+          ;;
+        robust)
+          if [[ "$wifi_robust_available" -eq 0 ]]; then
+            mark_gate_fail gate_wifi_fail "$wifi_robust_reason"
+          elif [[ "$wifi_robust_fail" -eq 1 ]]; then
+            mark_gate_fail gate_wifi_fail "$wifi_robust_reason"
+          fi
+          ;;
+        hybrid)
+          if [[ "$wifi_robust_available" -eq 1 ]]; then
+            if [[ "$wifi_robust_fail" -eq 1 ]]; then
+              mark_gate_fail gate_wifi_fail "$wifi_robust_reason"
+            elif [[ "$wifi_strict_fail" -eq 1 ]]; then
+              advisory_warnings+=("wifiMaxUs strict peak exceeded (${wifi_peak_gate_value}) but hybrid robust gate passed (over=${wifi_robust_over_limit_count}/${wifi_robust_sample_count}, allowed=${wifi_robust_allowed_over_limit}, p95=${wifi_robust_p95:-n/a}, basis=${wifi_robust_basis}).")
+            fi
+          elif [[ "$wifi_strict_fail" -eq 1 ]]; then
+            mark_gate_fail gate_wifi_fail "${wifi_strict_reason} (robust unavailable: ${wifi_robust_reason})"
+          fi
+          ;;
+      esac
     fi
     if [[ "$MAX_BLE_DRAIN_MAX_US" -gt 0 ]]; then
       if ! is_uint "$ble_drain_max_peak"; then
@@ -1945,11 +2136,59 @@ if [[ -n "$METRICS_URL" ]]; then
 
     # dispPipeMaxUs (0 disables)
     if [[ "$MAX_DISP_PIPE_MAX_US" -gt 0 ]]; then
+      disp_pipe_strict_fail=0
+      disp_pipe_strict_reason=""
       if ! is_uint "$disp_pipe_max_peak"; then
-        mark_gate_fail gate_disp_pipe_max_fail "dispPipeMaxUs peak ${disp_pipe_max_peak:-n/a} above max ${MAX_DISP_PIPE_MAX_US}."
+        disp_pipe_strict_fail=1
+        disp_pipe_strict_reason="dispPipeMaxUs peak ${disp_pipe_max_peak:-n/a} above max ${MAX_DISP_PIPE_MAX_US}."
       elif [[ "$disp_pipe_max_peak" -gt "$MAX_DISP_PIPE_MAX_US" ]]; then
-        mark_gate_fail gate_disp_pipe_max_fail "dispPipeMaxUs peak ${disp_pipe_max_peak} above max ${MAX_DISP_PIPE_MAX_US}."
+        disp_pipe_strict_fail=1
+        disp_pipe_strict_reason="dispPipeMaxUs peak ${disp_pipe_max_peak} above max ${MAX_DISP_PIPE_MAX_US}."
       fi
+
+      disp_pipe_robust_available=1
+      disp_pipe_robust_fail=0
+      disp_pipe_robust_reason=""
+      disp_pipe_robust_allowed_over_limit="$(calc_allowed_exceeds "$disp_pipe_sample_count" "$LATENCY_ROBUST_MAX_EXCEED_PCT" || true)"
+      if ! is_uint "$disp_pipe_sample_count" || ! is_uint "$disp_pipe_over_limit_count"; then
+        disp_pipe_robust_available=0
+        disp_pipe_robust_reason="dispPipeMaxUs robust gate unavailable (samples=${disp_pipe_sample_count:-n/a} overLimit=${disp_pipe_over_limit_count:-n/a})."
+      elif [[ "$disp_pipe_sample_count" -lt "$LATENCY_ROBUST_MIN_SAMPLES" ]]; then
+        disp_pipe_robust_available=0
+        disp_pipe_robust_reason="dispPipeMaxUs robust gate unavailable (samples=${disp_pipe_sample_count} below min ${LATENCY_ROBUST_MIN_SAMPLES})."
+      elif ! is_uint "$disp_pipe_robust_allowed_over_limit"; then
+        disp_pipe_robust_available=0
+        disp_pipe_robust_reason="dispPipeMaxUs robust gate unavailable (could not compute allowed over-limit count)."
+      elif [[ "$disp_pipe_over_limit_count" -gt "$disp_pipe_robust_allowed_over_limit" ]]; then
+        disp_pipe_robust_fail=1
+        disp_pipe_robust_reason="dispPipeMaxUs robust over-limit ${disp_pipe_over_limit_count}/${disp_pipe_sample_count} (allowed ${disp_pipe_robust_allowed_over_limit}, p95=${disp_pipe_p95:-n/a}) above max ${MAX_DISP_PIPE_MAX_US}."
+      fi
+
+      case "$LATENCY_GATE_MODE" in
+        strict)
+          if [[ "$disp_pipe_strict_fail" -eq 1 ]]; then
+            mark_gate_fail gate_disp_pipe_max_fail "$disp_pipe_strict_reason"
+          fi
+          ;;
+        robust)
+          if [[ "$disp_pipe_robust_available" -eq 0 ]]; then
+            mark_gate_fail gate_disp_pipe_max_fail "$disp_pipe_robust_reason"
+          elif [[ "$disp_pipe_robust_fail" -eq 1 ]]; then
+            mark_gate_fail gate_disp_pipe_max_fail "$disp_pipe_robust_reason"
+          fi
+          ;;
+        hybrid)
+          if [[ "$disp_pipe_robust_available" -eq 1 ]]; then
+            if [[ "$disp_pipe_robust_fail" -eq 1 ]]; then
+              mark_gate_fail gate_disp_pipe_max_fail "$disp_pipe_robust_reason"
+            elif [[ "$disp_pipe_strict_fail" -eq 1 ]]; then
+              advisory_warnings+=("dispPipeMaxUs strict peak exceeded (${disp_pipe_max_peak}) but hybrid robust gate passed (over=${disp_pipe_over_limit_count}/${disp_pipe_sample_count}, allowed=${disp_pipe_robust_allowed_over_limit}, p95=${disp_pipe_p95:-n/a}).")
+            fi
+          elif [[ "$disp_pipe_strict_fail" -eq 1 ]]; then
+            mark_gate_fail gate_disp_pipe_max_fail "${disp_pipe_strict_reason} (robust unavailable: ${disp_pipe_robust_reason})"
+          fi
+          ;;
+      esac
     fi
 
     # cameraMaxTickUs (0 disables)
@@ -2170,14 +2409,19 @@ fi
   echo "- Display skips first/last/delta: ${display_skips_first:-n/a} / ${display_skips_last:-n/a} / ${display_skips_delta:-n/a}"
   echo "- Peak flushMaxUs: ${flush_max_peak:-n/a} (max gate ${MAX_FLUSH_MAX_US})"
   echo "- Peak loopMaxUs: ${loop_max_peak:-n/a} (max gate ${MAX_LOOP_MAX_US})"
+  echo "- Latency gate mode: ${LATENCY_GATE_MODE} (robust minSamples=${LATENCY_ROBUST_MIN_SAMPLES} maxExceedPct=${LATENCY_ROBUST_MAX_EXCEED_PCT} wifiSkipFirst=${WIFI_ROBUST_SKIP_FIRST_SAMPLES})"
   echo "- Peak wifiMaxUs (raw): ${wifi_max_peak:-n/a} (max gate ${MAX_WIFI_MAX_US})"
   echo "- Peak wifiMaxUs (excluding first sample): ${wifi_max_peak_excluding_first:-n/a} (ts ${wifi_peak_excluding_first_ts:-n/a})"
   echo "- Peak wifiMaxUs used for gate: ${wifi_peak_gate_value:-n/a} (${wifi_peak_gate_basis})"
+  echo "- Robust wifi samples raw/excluding-first: ${wifi_sample_count:-n/a} / ${wifi_sample_count_excluding_first:-n/a}"
+  echo "- Robust wifi p95 raw/excluding-first: ${wifi_p95_raw:-n/a} / ${wifi_p95_excluding_first:-n/a}"
+  echo "- Robust wifi over-limit raw/excluding-first: ${wifi_over_limit_count_raw:-n/a} / ${wifi_over_limit_count_excluding_first:-n/a} (allowed ${wifi_robust_allowed_over_limit:-n/a}, basis ${wifi_robust_basis:-n/a})"
   echo "- Peak bleDrainMaxUs: ${ble_drain_max_peak:-n/a} (max gate ${MAX_BLE_DRAIN_MAX_US})"
   echo "- Peak sdMaxUs: ${sd_max_peak:-n/a} (max gate ${MAX_SD_MAX_US})"
   echo "- Peak fsMaxUs: ${fs_max_peak:-n/a} (max gate ${MAX_FS_MAX_US})"
   echo "- Peak bleProcessMaxUs: ${ble_process_max_peak:-n/a} (max gate ${MAX_BLE_PROCESS_MAX_US})"
   echo "- Peak dispPipeMaxUs: ${disp_pipe_max_peak:-n/a} (max gate ${MAX_DISP_PIPE_MAX_US})"
+  echo "- Robust dispPipe samples/p95/over-limit: ${disp_pipe_sample_count:-n/a} / ${disp_pipe_p95:-n/a} / ${disp_pipe_over_limit_count:-n/a} (allowed ${disp_pipe_robust_allowed_over_limit:-n/a})"
   echo "- Peak cameraMaxTickUs: ${camera_max_tick_peak:-n/a} (max gate ${MAX_CAMERA_MAX_TICK_US})"
   echo "- Peak cameraMaxWindowHz (computed, 15s window): ${camera_max_window_hz_peak:-n/a} (ts ${camera_max_window_hz_peak_ts:-n/a}, max gate ${CAMERA_MAX_WINDOW_HZ_GATE_LABEL})"
   echo "- oversizeDrops delta: ${oversize_drops_delta:-n/a} (max ${MAX_OVERSIZE_DROPS_DELTA})"
