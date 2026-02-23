@@ -39,7 +39,7 @@ We're taking a more incremental approach than originally planned - extracting st
 **Structure (February 2026):**
 ```
 src/
-├── main.cpp                         (~1380 lines - orchestration + integration control flow)
+├── main.cpp                         (~1164 lines - orchestration + integration control flow)
 ├── modules/
 │   ├── alert_persistence/           Alert on-screen persistence + state resets
 │   │   ├── alert_persistence_module.h
@@ -47,23 +47,32 @@ src/
 │   ├── auto_push/                   V1 profile auto-push on connect
 │   │   ├── auto_push_module.h
 │   │   └── auto_push_module.cpp
-│   ├── ble/                         BLE data queue + connection state
+│   ├── ble/                         BLE data queue + connection state + runtime
 │   │   ├── ble_queue_module.h/cpp
+│   │   ├── connection_runtime_module.h/cpp
 │   │   └── connection_state_module.h/cpp
-│   ├── camera/                      Camera runtime + index + background DB loading
+│   ├── camera/                      Camera runtime + index + background DB loading + API
+│   │   ├── camera_api_service.h/cpp
 │   │   ├── camera_runtime_module.h/cpp
 │   │   ├── camera_index.h/cpp
 │   │   ├── camera_data_loader.h/cpp
 │   │   └── camera_event_log.h/cpp
-│   ├── display/                     Display pipeline + preview + restore
+│   ├── debug/                       Debug/metrics API
+│   │   └── debug_api_service.h/cpp
+│   ├── display/                     Display pipeline + preview + restore + orchestration
+│   │   ├── display_orchestration_module.h/cpp
 │   │   ├── display_pipeline_module.h/cpp
 │   │   ├── display_preview_module.h/cpp
 │   │   └── display_restore_module.h/cpp
-│   ├── gps/                         GPS runtime + observations + lockout safety
+│   ├── gps/                         GPS runtime + observations + lockout safety + API
+│   │   ├── gps_api_service.h/cpp
 │   │   ├── gps_runtime_module.h/cpp
 │   │   ├── gps_observation_log.h/cpp
 │   │   └── gps_lockout_safety.h/cpp
 │   ├── lockout/                     Lockout index/store/enforcer/learner runtime stack
+│   │   ├── lockout_api_service.h/cpp
+│   │   ├── lockout_orchestration_module.h/cpp
+│   │   ├── lockout_pre_quiet_controller.h/cpp
 │   │   ├── lockout_index.h/cpp
 │   │   ├── lockout_store.h/cpp
 │   │   ├── lockout_enforcer.h/cpp
@@ -83,7 +92,7 @@ src/
 │   │   ├── power_module.h
 │   │   └── power_module.cpp
 │   ├── speed/                       OBD-only speed source selection policy
-│   │   ├── speed_source_selector.h/cpp
+│   │   └── speed_source_selector.h/cpp
 │   ├── speed_volume/                Highway speed volume boost
 │   │   ├── speed_volume_module.h
 │   │   └── speed_volume_module.cpp
@@ -98,10 +107,20 @@ src/
 │   ├── volume_fade/                 Alert volume fade/restore
 │   │   ├── volume_fade_module.h
 │   │   └── volume_fade_module.cpp
-│   └── wifi/                        WiFi orchestration + boot policy
+│   └── wifi/                        WiFi orchestration + boot policy + API services
 │       ├── wifi_boot_policy.h
-│       ├── wifi_orchestrator_module.h
-│       └── wifi_orchestrator_module.cpp
+│       ├── wifi_orchestrator_module.h/cpp
+│       ├── backup_api_service.h/cpp
+│       ├── wifi_autopush_api_service.h/cpp
+│       ├── wifi_client_api_service.h/cpp
+│       ├── wifi_control_api_service.h/cpp
+│       ├── wifi_display_colors_api_service.h/cpp
+│       ├── wifi_portal_api_service.h/cpp
+│       ├── wifi_settings_api_service.h/cpp
+│       ├── wifi_status_api_service.h/cpp
+│       ├── wifi_time_api_service.h/cpp
+│       ├── wifi_v1_devices_api_service.h/cpp
+│       └── wifi_v1_profile_api_service.h/cpp
 └── [core services: ble_client, display, settings, etc.]
 ```
 
@@ -121,12 +140,17 @@ src/
 | **PowerModule** | Battery monitoring, power button, sleep |
 | **AutoPushModule** | Pushes V1 profiles on connect |
 | **CameraRuntimeModule + CameraDataLoader** | Camera matching lifecycle + background database loading/swap |
+| **CameraApiService** | Camera alert REST API endpoints |
 | **Lockout stack** | Capture/observe/store/enforce/learn lockout state with best-effort persistence |
+| **LockoutApiService + LockoutOrchestrationModule** | Lockout REST API + zone CRUD + pre-quiet controller |
 | **GpsRuntimeModule** | GPS ingest and fix/course/speed runtime state |
+| **GpsApiService** | GPS lockout REST API endpoints |
 | **SpeedSourceSelector** | Runtime speed source arbitration (OBD-only policy) |
 | **ObdApiService + ObdStatePolicy** | OBD API contract and reconnect/backoff policy logic |
+| **DebugApiService** | Debug/metrics REST API endpoints |
 | **SystemEventBus** | Bounded loop-local event channel for cross-module coordination |
 | **WifiOrchestrator** | WiFi/web server lifecycle |
+| **WiFi API services** | Settings, status, colors, profiles, devices, backup, time, autopush, control, portal, client REST endpoints |
 
 ### Migration Process
 
@@ -147,8 +171,8 @@ Migration history is tracked via module commits and [CHANGELOG.md](../CHANGELOG.
 - Change risk: HIGH (adjacent code interactions)
 
 ### After (February 2026):
-- main.cpp: ~1380 lines (orchestration + integration control flow)
-- 17 module directories in src/modules/
+- main.cpp: ~1164 lines (orchestration + integration control flow)
+- 18 module directories in src/modules/
 - State consolidated in owning modules
 - Change risk: LOW (isolated modules)
 
