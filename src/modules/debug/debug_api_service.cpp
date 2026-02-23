@@ -1599,12 +1599,17 @@ void handleV1ScenarioStart(WebServer& server) {
 
     const String requestedId = requestScenarioId(server, bodyPtr);
     const bool loopRequested = requestBoolArg(server, bodyPtr, "loop", gScenarioPlayback.loop);
+    const bool hasRequestedId = requestedId.length() > 0;
+    const uint16_t repeatFallback =
+        hasRequestedId ? kScenarioStreamRepeatMsDefault : gScenarioPlayback.streamRepeatMs;
+    const uint16_t scaleFallback =
+        hasRequestedId ? kScenarioDurationScalePctDefault : gScenarioPlayback.durationScalePct;
     const uint16_t streamRepeatMs =
-        requestScenarioStreamRepeatMs(server, bodyPtr, gScenarioPlayback.streamRepeatMs);
+        requestScenarioStreamRepeatMs(server, bodyPtr, repeatFallback);
     const uint16_t durationScalePct =
-        requestScenarioDurationScalePct(server, bodyPtr, gScenarioPlayback.durationScalePct);
+        requestScenarioDurationScalePct(server, bodyPtr, scaleFallback);
 
-    if (requestedId.length() > 0) {
+    if (hasRequestedId) {
         const String normalizedId = normalizedScenarioId(requestedId);
         if (!findScenarioCatalogEntry(normalizedId)) {
             server.send(404, "application/json", "{\"success\":false,\"error\":\"Unknown scenario id\"}");
