@@ -236,7 +236,7 @@ V1 Gen2 (BLE)
 - SPI operations (display) must NOT occur in BLE callbacks → uses queue
 - Proxy forwarding DOES run in BLE callback → zero added latency to JBV1
 
-**Source:** [src/main.cpp](src/main.cpp#L197) (onV1Data callback queues data), [src/ble_client.cpp](src/ble_client.cpp) (immediate proxy)
+**Source:** [src/main.cpp](src/main.cpp#L197) (onV1Data callback queues data), [src/ble_proxy.cpp](src/ble_proxy.cpp) (immediate proxy)
 
 ### Timing Constraints
 
@@ -300,7 +300,7 @@ The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen
 
 - **Default behavior:** AP is OFF by default; start it with a ~4s BOOT long-press. It stays on until you toggle it off.
 - **Button toggle:** Long-press BOOT (GPIO0) for ~4s to toggle the AP on/off. Short-press enters settings mode (brightness + voice volume sliders). See [src/modules/touch/touch_ui_module.cpp](src/modules/touch/touch_ui_module.cpp).
-- **Auto-timeout (optional):** Disabled by default (`WIFI_AP_AUTO_TIMEOUT_MS = 0`). Set a nonzero value in [src/wifi_manager.cpp](src/wifi_manager.cpp#L30-L75) to allow the AP to stop after the timeout **and** at least 60s of no UI activity and zero connected stations. Timeout is checked in the main loop via [WiFiManager::process()](src/wifi_manager.cpp#L130-L175).
+- **Auto-timeout (optional):** Disabled by default (`WIFI_AP_AUTO_TIMEOUT_MS = 0`). Set a nonzero value in [src/wifi_manager.cpp](src/wifi_manager.cpp#L16) to allow the AP to stop after the timeout **and** at least 60s of no UI activity and zero connected stations. Timeout logic is in [WiFiManager::checkAutoTimeout()](src/wifi_manager.cpp#L493-L525), called from [WiFiManager::process()](src/wifi_manager.cpp#L528).
 
 ---
 
@@ -928,7 +928,7 @@ ESP32 Preferences API with namespace `v1settings`:
 
 *Note: Slot 1 and 2 have analogous keys (slot1dark, slot2persist, etc.)*
 
-**Source:** [src/settings.cpp](src/settings.cpp#L50-L180)
+**Source:** [src/settings.cpp](src/settings.cpp#L119-L340) (load), [src/settings_nvs.cpp](src/settings_nvs.cpp#L338-L470) (save)
 
 ### Password Obfuscation
 
@@ -944,7 +944,7 @@ static String xorObfuscate(const String& input) {
 
 **Security note:** This prevents casual viewing but is NOT secure against determined attackers.
 
-**Source:** [src/settings.cpp](src/settings.cpp#L1-L40)
+**Source:** [src/settings_nvs.cpp](src/settings_nvs.cpp#L44-L55) (xorObfuscate), XOR key at [src/settings.cpp](src/settings.cpp#L75)
 
 ### Profile File Format
 
@@ -966,7 +966,7 @@ static String xorObfuscate(const String& input) {
 On settings save, automatically backs up to `/v1settings_backup.json` on SD card.
 On boot, if NVS appears empty (fresh flash), restores from SD backup.
 
-**Source:** [src/settings.cpp](src/settings.cpp#L250-L280) (backupToSD, restoreFromSD)
+**Source:** [src/settings_backup.cpp](src/settings_backup.cpp#L463) (backupToSD), [src/settings_backup.cpp](src/settings_backup.cpp#L672) (restoreFromSD)
 
 ---
 
@@ -1122,7 +1122,7 @@ Controls:
 ### Adding a New Page
 
 1. Create `interface/src/routes/newpage/+page.svelte`
-2. Add route handler in `wifi_manager.cpp`:
+2. Add route handler in [src/wifi_routes.cpp](src/wifi_routes.cpp) inside `WiFiManager::setupWebServer()`:
    ```cpp
    server.on("/newpage", HTTP_GET, [this]() { 
        serveLittleFSFile("/newpage.html", "text/html"); 
@@ -1154,7 +1154,7 @@ Each slot stores:
 - Alert persistence duration (0-5 seconds ghost display after alert clears)
 - Priority arrow only (show only strongest alert's direction arrow)
 
-**Source:** [src/settings.cpp](src/settings.cpp#L100-L150) (slot0prof, slot0mode, etc.)
+**Source:** [src/settings.cpp](src/settings.cpp#L299-L340) (load), [src/settings_nvs.cpp](src/settings_nvs.cpp#L432-L462) (save)
 
 ### Auto-Push State Machine
 
@@ -1325,10 +1325,10 @@ Connect at 115200 baud. Key prefixes:
 | Prefix | Source |
 |--------|--------|
 | `[Battery]` | battery_manager.cpp |
-| `[BLE_SM]` | ble_client.cpp state machine |
-| `[SetupMode]` | wifi_manager.cpp |
-| `[Settings]` | settings.cpp |
-| `[AutoPush]` | main.cpp auto-push state machine |
+| `[BLE_SM]` | ble_connection.cpp state machine |
+| `[SetupMode]` | wifi_manager.cpp + wifi_routes.cpp |
+| `[Settings]` | settings.cpp + settings_nvs.cpp + settings_backup.cpp |
+| `[AutoPush]` | modules/auto_push/auto_push_module.cpp |
 | `[Touch]` | touch_handler.cpp |
 
 ### Common Issues
@@ -1460,7 +1460,7 @@ Enable verbose logging by checking serial output for:
 - `/fwlink` - Windows captive portal
 - `/ncsi.txt` - Windows NCSI check
 
-**Source:** [src/wifi_manager.cpp](src/wifi_manager.cpp#L270-L434)
+**Source:** [src/wifi_routes.cpp](src/wifi_routes.cpp#L42-L710) (setupWebServer)
 
 ---
 
@@ -1738,11 +1738,11 @@ Based on code analysis:
    - Mitigation: Throttle display updates, process queue quickly
 
 2. **Display SPI Timing:** Cannot call display functions from BLE callbacks.
-   - Location: All BLE callbacks in `ble_client.cpp`
+   - Location: All BLE callbacks in `ble_connection.cpp`
    - Mitigation: Always queue data for main loop processing
 
 3. **Password Obfuscation Not Encryption:** XOR obfuscation is NOT cryptographically secure.
-   - Location: [src/settings.cpp](src/settings.cpp#L28-L40)
+   - Location: [src/settings.cpp](src/settings.cpp#L75) (XOR key), [src/settings_nvs.cpp](src/settings_nvs.cpp#L44-L55) (xorObfuscate)
    - Risk: Anyone with flash dump can recover passwords
 
 4. **NVS Wear:** Frequent saves could wear flash (100k write cycles).
