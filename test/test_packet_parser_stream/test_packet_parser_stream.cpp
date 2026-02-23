@@ -155,6 +155,18 @@ void assertContainsThreeFrequencies(const PacketParser& parser, uint16_t a, uint
     TEST_ASSERT_TRUE(foundC);
 }
 
+size_t countFrequency(const PacketParser& parser, uint16_t frequency) {
+    const auto& alerts = parser.getAllAlerts();
+    const size_t count = parser.getAlertCount();
+    size_t matches = 0;
+    for (size_t i = 0; i < count; ++i) {
+        if (alerts[i].isValid && alerts[i].frequency == frequency) {
+            ++matches;
+        }
+    }
+    return matches;
+}
+
 }  // namespace
 
 void setUp() {
@@ -517,6 +529,34 @@ void test_alert_stream_three_bogey_publishes_only_when_complete() {
     assertContainsThreeFrequencies(parser, 24150, 33810, 34700);
 }
 
+void test_alert_stream_two_bogey_same_frequency_keeps_both_rows() {
+    PacketParser parser;
+
+    const auto row1 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 2, 33800, 0x90, 0x00, 0x24, 0x80));
+    const auto row2 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(2, 2, 33800, 0xA0, 0x00, 0x84, 0x00));
+
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_TRUE(parser.parse(row2.data(), row2.size()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(parser.getAlertCount()));
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(countFrequency(parser, 33800)));
+}
+
+void test_alert_stream_three_bogey_same_frequency_keeps_all_rows() {
+    PacketParser parser;
+
+    const auto row1 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 3, 33800, 0x90, 0x00, 0x24, 0x80));
+    const auto row2 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(2, 3, 33800, 0xA0, 0x00, 0x44, 0x00));
+    const auto row3 = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(3, 3, 33800, 0xB0, 0x00, 0x84, 0x00));
+
+    TEST_ASSERT_TRUE(parser.parse(row1.data(), row1.size()));
+    TEST_ASSERT_TRUE(parser.parse(row2.data(), row2.size()));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(parser.getAlertCount()));
+
+    TEST_ASSERT_TRUE(parser.parse(row3.data(), row3.size()));
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(parser.getAlertCount()));
+    TEST_ASSERT_EQUAL_UINT32(3, static_cast<uint32_t>(countFrequency(parser, 33800)));
+}
+
 void test_renderable_priority_alert_prefers_usable_priority() {
     PacketParser parser;
 
@@ -640,6 +680,8 @@ int main() {
     RUN_TEST(test_alert_stream_stale_row_not_reused_for_completion);
     RUN_TEST(test_alert_stream_partial_timeout_restarts_assembly);
     RUN_TEST(test_alert_stream_three_bogey_publishes_only_when_complete);
+    RUN_TEST(test_alert_stream_two_bogey_same_frequency_keeps_both_rows);
+    RUN_TEST(test_alert_stream_three_bogey_same_frequency_keeps_all_rows);
     RUN_TEST(test_renderable_priority_alert_prefers_usable_priority);
     RUN_TEST(test_renderable_priority_alert_returns_false_when_all_rows_unusable);
 
