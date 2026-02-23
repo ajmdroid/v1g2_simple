@@ -7,6 +7,7 @@
 #include "settings.h"
 #include "time_service.h"
 #include "storage_manager.h"
+#include "wifi_manager.h"
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/lockout_learner.h"
 #include <Wire.h>
@@ -23,6 +24,7 @@
 // External references for graceful shutdown
 extern V1Display display;
 extern SettingsManager settingsManager;
+extern WiFiManager wifiManager;
 
 BatteryManager batteryManager;
 
@@ -489,6 +491,13 @@ bool BatteryManager::powerOff() {
     // Even if USB is present, attempt a graceful shutdown and drop the latch.
     // This covers cases where onBattery was mis-detected (e.g., button held during boot).
     Serial.println("[Battery] Initiating graceful shutdown...");
+
+    // Stop WiFi first to free internal SRAM before SD/NVS flush operations.
+    if (wifiManager.isWifiServiceActive()) {
+        Serial.println("[Battery] Stopping WiFi before shutdown flush...");
+        wifiManager.stopSetupMode(true, "poweroff");
+        delay(100);
+    }
     
     // Step 1: Save settings to ensure state is preserved
     Serial.println("[Battery] Saving settings...");
@@ -501,27 +510,41 @@ bool BatteryManager::powerOff() {
     if (storageManager.isReady()) {
         fs::FS* fs = storageManager.getFilesystem();
         if (fs) {
-            if (lockoutStore.isDirty()) {
-                JsonDocument doc;
-                lockoutStore.toJson(doc);
-                if (StorageManager::writeJsonFileAtomic(*fs, "/v1simple_lockout_zones.json", doc)) {
-                    lockoutStore.clearDirty();
-                    Serial.printf("[Battery] Flushed %lu lockout zones\n",
-                                  static_cast<unsigned long>(lockoutStore.stats().entriesSaved));
-                } else {
-                    Serial.println("[Battery] Lockout zone flush failed");
+            auto flushDirtyLockoutData = [&]() {
+                if (lockoutStore.isDirty()) {
+                    JsonDocument doc;
+                    lockoutStore.toJson(doc);
+                    if (StorageManager::writeJsonFileAtomic(*fs, "/v1simple_lockout_zones.json", doc)) {
+                        lockoutStore.clearDirty();
+                        Serial.printf("[Battery] Flushed %lu lockout zones\n",
+                                      static_cast<unsigned long>(lockoutStore.stats().entriesSaved));
+                    } else {
+                        Serial.println("[Battery] Lockout zone flush failed");
+                    }
                 }
-            }
-            if (lockoutLearner.isDirty()) {
-                JsonDocument doc;
-                lockoutLearner.toJson(doc);
-                if (StorageManager::writeJsonFileAtomic(*fs, "/v1simple_lockout_pending.json", doc)) {
-                    lockoutLearner.clearDirty();
-                    Serial.printf("[Battery] Flushed %u pending candidates\n",
-                                  static_cast<unsigned>(lockoutLearner.activeCandidateCount()));
-                } else {
-                    Serial.println("[Battery] Learner candidate flush failed");
+
+                if (lockoutLearner.isDirty()) {
+                    JsonDocument doc;
+                    lockoutLearner.toJson(doc);
+                    if (StorageManager::writeJsonFileAtomic(*fs, "/v1simple_lockout_pending.json", doc)) {
+                        lockoutLearner.clearDirty();
+                        Serial.printf("[Battery] Flushed %u pending candidates\n",
+                                      static_cast<unsigned>(lockoutLearner.activeCandidateCount()));
+                    } else {
+                        Serial.println("[Battery] Learner candidate flush failed");
+                    }
                 }
+            };
+
+            if (storageManager.isSDCard()) {
+                StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
+                if (!sdLock) {
+                    Serial.println("[Battery] WARNING: Could not acquire SD mutex for shutdown flush");
+                } else {
+                    flushDirtyLockoutData();
+                }
+            } else {
+                flushDirtyLockoutData();
             }
         }
     }
