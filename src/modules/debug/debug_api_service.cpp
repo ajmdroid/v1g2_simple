@@ -242,6 +242,8 @@ constexpr ScenarioCatalogEntry kScenarioCatalog[] = {
     {"ASM-02", "assembly-fault", "Duplicate row replacement path"},
     {"ASM-03", "assembly-fault", "Out-of-order row assembly"},
     {"ASM-04", "assembly-fault", "Zero-based row index compatibility"},
+    {"MET-01", "metrics", "Ambiguous zero/one-based table completion"},
+    {"MET-02", "metrics", "Unusable row-priority fallback path"},
     {"TRN-01", "transport", "Burst of simultaneous packets"},
     {"TRN-02", "transport", "Split-frame reassembly"},
     {"TRN-03", "transport", "Burst + split mixed pressure"},
@@ -717,6 +719,24 @@ bool buildScenarioPackets(const String& scenarioId,
                      {{0, kFreqKBase, 0x90, 0x7F, kBandKFront, 0x00},
                       {1, kFreqKa, 0x98, 0x7F, kBandKaFront, 0x80}});
         addScenarioClearEnd(outEvents, 860);
+    } else if (normalizedId == "MET-01") {
+        // Count=2 with raw rows 0,2,1 causes both index schemes to be complete
+        // on the final row and should increment prioritySelectAmbiguousIndex.
+        addScenarioPacket(outEvents, 100, makeDisplayPacket(0x3F, 0x07, static_cast<uint8_t>(kBandKFront | 0x02), static_cast<uint8_t>(kBandKFront | 0x02)), kScenarioCharShort);
+        addAlertRows(outEvents, 110, 2, {{0, kFreqKBase, 0x90, 0x7F, kBandKFront, 0x00}});
+        addAlertRows(outEvents, 145, 2, {{2, kFreqKa, 0x98, 0x7F, kBandKaFront, 0x00}});
+        addAlertRows(outEvents, 180, 2, {{1, static_cast<uint16_t>(kFreqKBase + 2), 0x94, 0x7F, kBandKSide, 0x80}});
+        addScenarioClearEnd(outEvents, 900);
+    } else if (normalizedId == "MET-02") {
+        // Row1 carries row-priority bit but BAND_NONE, forcing first-usable fallback
+        // and incrementing prioritySelectUnusableIndex.
+        addScenarioPacket(outEvents, 100, makeDisplayPacket(0x3F, 0x07, static_cast<uint8_t>(kBandKFront | 0x02), static_cast<uint8_t>(kBandKFront | 0x02)), kScenarioCharShort);
+        addAlertRows(outEvents,
+                     112,
+                     2,
+                     {{1, kFreqKBase, 0x90, 0x7F, 0x20, 0x80},
+                      {2, kFreqKa, 0x98, 0x7F, kBandKaFront, 0x00}});
+        addScenarioClearEnd(outEvents, 900);
     } else if (normalizedId == "TRN-01") {
         addScenarioPacket(outEvents, 100, makeDisplayPacket(kBogeyOne, 0x0F, kBandKFront, kBandKFront), kScenarioCharShort);
         for (uint8_t i = 0; i < 18; ++i) {
