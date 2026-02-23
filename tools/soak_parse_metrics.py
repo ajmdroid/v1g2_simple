@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Parse soak metrics JSONL into key=value summary fields."""
 
+import argparse
 import json
+import math
 import sys
 from datetime import datetime
 
@@ -48,12 +50,48 @@ def parse_ts_epoch(ts):
         return None
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: soak_parse_metrics.py <metrics_jsonl>", file=sys.stderr)
-        return 2
+def percentile(values, pct):
+    if not values:
+        return None
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return float(ordered[0])
+    rank = (pct / 100.0) * (len(ordered) - 1)
+    lo = int(math.floor(rank))
+    hi = int(math.ceil(rank))
+    if lo == hi:
+        return float(ordered[lo])
+    frac = rank - lo
+    return float(ordered[lo] + (ordered[hi] - ordered[lo]) * frac)
 
-    path = sys.argv[1]
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description="Parse soak metrics JSONL into key=value fields")
+    parser.add_argument("metrics_jsonl", help="Path to metrics.jsonl")
+    parser.add_argument(
+        "--wifi-threshold",
+        type=float,
+        default=None,
+        help="Optional wifiMaxUs threshold used to emit over-limit sample counts",
+    )
+    parser.add_argument(
+        "--disp-threshold",
+        type=float,
+        default=None,
+        help="Optional dispPipeMaxUs threshold used to emit over-limit sample counts",
+    )
+    parser.add_argument(
+        "--skip-first-wifi-samples",
+        type=int,
+        default=2,
+        help="Number of initial wifi samples to exclude for warmup-adjusted robust metrics",
+    )
+    return parser.parse_args(argv)
+
+
+def main() -> int:
+    args = parse_args(sys.argv[1:])
+    path = args.metrics_jsonl
     samples = 0
     ok_samples = 0
 
@@ -140,6 +178,8 @@ def main() -> int:
     CAMERA_HZ_MIN_WINDOW_S = 15.0
     gps_obs_drops_first = None
     gps_obs_drops_last = None
+    wifi_samples = []
+    disp_pipe_samples = []
 
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -168,6 +208,7 @@ def main() -> int:
                 loop_val = num(data.get("loopMaxUs"))
                 wifi_val = num(data.get("wifiMaxUs"))
                 ble_drain_val = num(data.get("bleDrainMaxUs"))
+                disp_pipe_val = num(data.get("dispPipeMaxUs"))
                 sample_ts = rec.get("ts") if isinstance(rec.get("ts"), str) else ""
                 # Prefer firmware uptime for per-device rate calculations; host wall-clock
                 # sampling jitter can inflate short-window Hz estimates under load.
@@ -195,6 +236,8 @@ def main() -> int:
                     wifi_peak_ble_drain = ble_drain_val
                     wifi_peak_display_updates = num(data.get("displayUpdates"))
                     wifi_peak_rx_packets = num(data.get("rxPackets"))
+                if wifi_val is not None:
+                    wifi_samples.append(wifi_val)
 
                 if ok_samples > 2 and wifi_val is not None and (
                     wifi_max_peak_excluding_first is None or wifi_val > wifi_max_peak_excluding_first
@@ -307,7 +350,9 @@ def main() -> int:
                 dma_largest_min_val = update_min(dma_largest_min_val, num(data.get("heapDmaLargestMin")))
 
                 ble_process_max_peak = update_max(ble_process_max_peak, num(data.get("bleProcessMaxUs")))
-                disp_pipe_max_peak = update_max(disp_pipe_max_peak, num(data.get("dispPipeMaxUs")))
+                disp_pipe_max_peak = update_max(disp_pipe_max_peak, disp_pipe_val)
+                if disp_pipe_val is not None:
+                    disp_pipe_samples.append(disp_pipe_val)
 
                 ble_mutex_timeout = num(data.get("bleMutexTimeout"))
                 if ble_mutex_timeout_first is None and ble_mutex_timeout is not None:
@@ -362,6 +407,25 @@ def main() -> int:
                     gps_obs_drops_last = gps_obs_drops
     except FileNotFoundError:
         pass
+
+    wifi_skip = max(args.skip_first_wifi_samples, 0)
+    wifi_samples_excluding_first = wifi_samples[wifi_skip:] if wifi_skip > 0 else list(wifi_samples)
+
+    wifi_p95_raw = percentile(wifi_samples, 95.0)
+    wifi_p95_excluding_first = percentile(wifi_samples_excluding_first, 95.0)
+    disp_pipe_p95 = percentile(disp_pipe_samples, 95.0)
+
+    wifi_over_limit_count_raw = None
+    wifi_over_limit_count_excluding_first = None
+    if args.wifi_threshold is not None:
+        wifi_over_limit_count_raw = sum(1 for val in wifi_samples if val > args.wifi_threshold)
+        wifi_over_limit_count_excluding_first = sum(
+            1 for val in wifi_samples_excluding_first if val > args.wifi_threshold
+        )
+
+    disp_pipe_over_limit_count = None
+    if args.disp_threshold is not None:
+        disp_pipe_over_limit_count = sum(1 for val in disp_pipe_samples if val > args.disp_threshold)
 
     emit("samples", samples)
     emit("ok_samples", ok_samples)
@@ -429,6 +493,18 @@ def main() -> int:
     emit("dma_largest_min", dma_largest_min_val)
     emit("ble_process_max_peak", ble_process_max_peak)
     emit("disp_pipe_max_peak", disp_pipe_max_peak)
+    emit("wifi_sample_count", len(wifi_samples))
+    emit("wifi_sample_count_excluding_first", len(wifi_samples_excluding_first))
+    emit("wifi_p95_raw", round(wifi_p95_raw, 3) if wifi_p95_raw is not None else None)
+    emit(
+        "wifi_p95_excluding_first",
+        round(wifi_p95_excluding_first, 3) if wifi_p95_excluding_first is not None else None,
+    )
+    emit("wifi_over_limit_count_raw", wifi_over_limit_count_raw)
+    emit("wifi_over_limit_count_excluding_first", wifi_over_limit_count_excluding_first)
+    emit("disp_pipe_sample_count", len(disp_pipe_samples))
+    emit("disp_pipe_p95", round(disp_pipe_p95, 3) if disp_pipe_p95 is not None else None)
+    emit("disp_pipe_over_limit_count", disp_pipe_over_limit_count)
     emit("camera_max_tick_peak", camera_max_tick_peak)
     emit("camera_max_window_hz_peak", round(camera_max_window_hz_peak, 3) if camera_max_window_hz_peak is not None else None)
     emit("camera_max_window_hz_peak_ts", camera_max_window_hz_peak_ts)
