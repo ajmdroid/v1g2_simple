@@ -1146,10 +1146,9 @@ void loop() {
     lockoutLearner.process(now, timeService.nowEpochMsOr0());
 
     // Lockout store: periodic save when dirty (Tier 7 — best-effort, never block)
-    const bool deferPersistenceForDisplayPreview = displayPreviewModule.isRunning();
-    processLockoutStoreSave(now, deferPersistenceForDisplayPreview);
+    processLockoutStoreSave(now);
     // Learner pending candidates: periodic best-effort save (Tier 7).
-    processLearnerPendingSave(now, deferPersistenceForDisplayPreview);
+    processLearnerPendingSave(now);
 
     // If BLE ingest was backpressured this loop, do one late opportunistic drain
     // so queued notifications don't sit through the sleep + next-loop startup.

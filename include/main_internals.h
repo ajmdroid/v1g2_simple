@@ -36,9 +36,9 @@ void fatalBootError(const char* message, bool displayAvailable);
 // ---- Persistence helper declarations (main_persist.cpp) ----
 
 /// Periodic best-effort save of lockout zones to SD/LittleFS (Tier 7).
-void processLockoutStoreSave(uint32_t nowMs, bool deferForDisplayActivity);
+void processLockoutStoreSave(uint32_t nowMs);
 
 /// Periodic best-effort save of learner pending candidates (Tier 7).
-void processLearnerPendingSave(uint32_t nowMs, bool deferForDisplayActivity);
+void processLearnerPendingSave(uint32_t nowMs);
 
 #endif // MAIN_INTERNALS_H

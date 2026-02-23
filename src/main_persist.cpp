@@ -32,7 +32,6 @@ static constexpr uint32_t LOCKOUT_SAVE_DMA_FREE_JITTER_TOLERANCE = 256;
 static constexpr uint32_t LOCKOUT_SAVE_AGED_DMA_FREE = 16896;
 static constexpr uint32_t LOCKOUT_SAVE_AGED_DMA_BLOCK = 10240;
 static constexpr uint32_t LOCKOUT_SAVE_MAX_DIRTY_AGE_MS = 90000;  // 90 seconds
-static constexpr uint32_t SAVE_PREVIEW_DEFER_MAX_DIRTY_AGE_MS = 30000;  // 30 seconds
 static constexpr uint32_t SAVE_DIAG_REPORT_INTERVAL_MS = 60000;    // 60 seconds
 
 struct SaveDiagStats {
@@ -110,7 +109,7 @@ void maybeLogSaveDiag(const char* tag, SaveDiagStats& stats, uint32_t nowMs) {
 
 // ---- processLockoutStoreSave ----
 
-void processLockoutStoreSave(uint32_t nowMs, bool deferForDisplayActivity) {
+void processLockoutStoreSave(uint32_t nowMs) {
     uint32_t lockoutSaveStartUs = PERF_TIMESTAMP_US();
     static uint32_t lastLockoutSaveMs = 0;
     static uint32_t lastLockoutSaveAttemptMs = 0;
@@ -124,19 +123,6 @@ void processLockoutStoreSave(uint32_t nowMs, bool deferForDisplayActivity) {
         }
     } else {
         lockoutDirtySinceMs = 0;
-    }
-    const uint32_t dirtyAgeMs = (lockoutDirtySinceMs == 0) ? 0 : (nowMs - lockoutDirtySinceMs);
-    if (lockoutStore.isDirty() &&
-        deferForDisplayActivity &&
-        dirtyAgeMs < SAVE_PREVIEW_DEFER_MAX_DIRTY_AGE_MS) {
-        static uint32_t lastDisplayDeferLogMs = 0;
-        if ((nowMs - lastDisplayDeferLogMs) >= 10000) {
-            lastDisplayDeferLogMs = nowMs;
-            Serial.printf("[Lockout] Save deferred (display preview active, dirty=%lus)\n",
-                          static_cast<unsigned long>(dirtyAgeMs / 1000));
-        }
-        perfRecordLockoutSaveUs(PERF_TIMESTAMP_US() - lockoutSaveStartUs);
-        return;
     }
     if (lockoutStore.isDirty() && storageManager.isReady() &&
         (nowMs - lastLockoutSaveMs) >= LOCKOUT_SAVE_INTERVAL_MS &&
@@ -156,6 +142,7 @@ void processLockoutStoreSave(uint32_t nowMs, bool deferForDisplayActivity) {
                 uint32_t freeDma = 0;
                 uint32_t largestDma = 0;
                 const bool normalHeadroom = hasDmaHeadroomForBackgroundSave(freeDma, largestDma);
+                const uint32_t dirtyAgeMs = (lockoutDirtySinceMs == 0) ? 0 : (nowMs - lockoutDirtySinceMs);
                 const bool allowAgedRetry =
                     !normalHeadroom &&
                     (dirtyAgeMs >= LOCKOUT_SAVE_MAX_DIRTY_AGE_MS) &&
@@ -242,7 +229,7 @@ void processLockoutStoreSave(uint32_t nowMs, bool deferForDisplayActivity) {
 
 // ---- processLearnerPendingSave ----
 
-void processLearnerPendingSave(uint32_t nowMs, bool deferForDisplayActivity) {
+void processLearnerPendingSave(uint32_t nowMs) {
     uint32_t learnerSaveStartUs = PERF_TIMESTAMP_US();
     static uint32_t lastLearnerSaveMs = 0;
     static uint32_t lastLearnerSaveAttemptMs = 0;
@@ -256,19 +243,6 @@ void processLearnerPendingSave(uint32_t nowMs, bool deferForDisplayActivity) {
         }
     } else {
         learnerDirtySinceMs = 0;
-    }
-    const uint32_t dirtyAgeMs = (learnerDirtySinceMs == 0) ? 0 : (nowMs - learnerDirtySinceMs);
-    if (lockoutLearner.isDirty() &&
-        deferForDisplayActivity &&
-        dirtyAgeMs < SAVE_PREVIEW_DEFER_MAX_DIRTY_AGE_MS) {
-        static uint32_t lastDisplayDeferLogMs = 0;
-        if ((nowMs - lastDisplayDeferLogMs) >= 10000) {
-            lastDisplayDeferLogMs = nowMs;
-            Serial.printf("[Learner] Save deferred (display preview active, dirty=%lus)\n",
-                          static_cast<unsigned long>(dirtyAgeMs / 1000));
-        }
-        perfRecordLearnerSaveUs(PERF_TIMESTAMP_US() - learnerSaveStartUs);
-        return;
     }
     if (lockoutLearner.isDirty() && storageManager.isReady() &&
         (nowMs - lastLearnerSaveMs) >= LEARNER_SAVE_INTERVAL_MS &&
@@ -288,6 +262,7 @@ void processLearnerPendingSave(uint32_t nowMs, bool deferForDisplayActivity) {
                 uint32_t freeDma = 0;
                 uint32_t largestDma = 0;
                 const bool normalHeadroom = hasDmaHeadroomForBackgroundSave(freeDma, largestDma);
+                const uint32_t dirtyAgeMs = (learnerDirtySinceMs == 0) ? 0 : (nowMs - learnerDirtySinceMs);
                 const bool allowAgedRetry =
                     !normalHeadroom &&
                     (dirtyAgeMs >= LOCKOUT_SAVE_MAX_DIRTY_AGE_MS) &&
