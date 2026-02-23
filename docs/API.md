@@ -190,6 +190,10 @@ Restore settings from backup JSON file.
 
 **Response:** `Settings restored successfully` (text/plain)
 
+### POST /api/settings/backup-now
+
+Trigger an immediate settings backup to SD/LittleFS.
+
 ---
 
 ## V1 Profiles
@@ -266,6 +270,32 @@ Push a profile to the connected V1 device.
 ### GET /api/v1/current
 
 Get current V1 device settings (from last pull).
+
+---
+
+## V1 Devices
+
+### GET /api/v1/devices
+
+Get list of remembered V1 devices.
+
+### POST /api/v1/devices/name
+
+Set a friendly name for a remembered V1 device.
+
+**Request (JSON or form):** `address=<BLE address>&name=<friendly name>`
+
+### POST /api/v1/devices/profile
+
+Assign a default profile to a remembered V1 device.
+
+**Request (JSON or form):** `address=<BLE address>&profile=<profile name>`
+
+### POST /api/v1/devices/delete
+
+Delete a remembered V1 device.
+
+**Request (JSON or form):** `address=<BLE address>`
 
 ---
 
@@ -412,6 +442,28 @@ Delete a learned zone by slot index.
 **Notes:**
 - Only learned zones are deletable.
 - Singular compatibility shims also exist: `/api/lockout/zones`, `/api/lockout/zones/delete`.
+
+### POST /api/lockouts/zones/create
+
+Create a new lockout zone manually.
+
+**Request (JSON body):** Zone definition with lat, lon, radius, band fields.
+
+### POST /api/lockouts/zones/update
+
+Update an existing lockout zone by slot index.
+
+**Request (JSON body):** Slot index and updated zone fields.
+
+### GET /api/lockouts/zones/export
+
+Export all lockout zones as a JSON download.
+
+### POST /api/lockouts/zones/import
+
+Import lockout zones from JSON.
+
+**Request (JSON body):** Array of zone definitions.
 
 ---
 
@@ -887,6 +939,32 @@ Download one perf CSV file.
 Delete one perf CSV file.
 
 **Request (form data):** `name=perf_boot_8.csv`
+
+### POST /api/debug/metrics/reset
+
+Reset all runtime performance counters to zero.
+
+### GET /api/debug/v1-scenario/list
+
+List available V1 test scenarios (pre-recorded BLE packet sequences).
+
+### GET /api/debug/v1-scenario/status
+
+Get status of currently running scenario (active, name, progress).
+
+### POST /api/debug/v1-scenario/load
+
+Load a V1 test scenario by name.
+
+**Request (form data):** `name=<scenario_name>`
+
+### POST /api/debug/v1-scenario/start
+
+Start playback of the loaded V1 test scenario.
+
+### POST /api/debug/v1-scenario/stop
+
+Stop the currently running V1 test scenario.
 
 ---
 
