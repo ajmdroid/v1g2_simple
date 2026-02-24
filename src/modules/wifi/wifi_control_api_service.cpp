@@ -1,28 +1,9 @@
 #include "wifi_control_api_service.h"
+#include "wifi_api_response.h"
 
 #include <ArduinoJson.h>
 
-#ifdef UNIT_TEST
-#include <string>
-#endif
-
 namespace WifiControlApiService {
-
-namespace {
-
-void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc) {
-#ifdef UNIT_TEST
-    std::string response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response.c_str());
-#else
-    String response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response);
-#endif
-}
-
-}  // namespace
 
 static void handleProfilePushImpl(WebServer& server,
                                   bool v1Connected,
@@ -32,8 +13,9 @@ static void handleProfilePushImpl(WebServer& server,
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!v1Connected) {
-        server.send(503, "application/json",
-                    "{\"error\":\"V1 not connected\"}");
+        JsonDocument doc;
+        WifiApiResponse::setErrorAndMessage(doc, "V1 not connected");
+        WifiApiResponse::sendJsonDocument(server, 503, doc);
         return;
     }
 
@@ -47,9 +29,9 @@ static void handleProfilePushImpl(WebServer& server,
     if (queued) {
         doc["message"] = "Profile push queued - check display for progress";
     } else {
-        doc["error"] = "Push handler unavailable";
+        WifiApiResponse::setErrorAndMessage(doc, "Push handler unavailable");
     }
-    sendJsonDocument(server, queued ? 200 : 500, doc);
+    WifiApiResponse::sendJsonDocument(server, queued ? 200 : 500, doc);
 }
 
 void handleApiProfilePush(WebServer& server,
@@ -67,7 +49,9 @@ void handleApiDarkMode(WebServer& server,
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!server.hasArg("state")) {
-        server.send(400, "application/json", "{\"error\":\"Missing state parameter\"}");
+        JsonDocument doc;
+        WifiApiResponse::setErrorAndMessage(doc, "Missing state parameter");
+        WifiApiResponse::sendJsonDocument(server, 400, doc);
         return;
     }
 
@@ -84,7 +68,7 @@ void handleApiDarkMode(WebServer& server,
     JsonDocument doc;
     doc["success"] = success;
     doc["darkMode"] = darkMode;
-    sendJsonDocument(server, 200, doc);
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
 void handleApiMute(WebServer& server,
@@ -93,7 +77,9 @@ void handleApiMute(WebServer& server,
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!server.hasArg("state")) {
-        server.send(400, "application/json", "{\"error\":\"Missing state parameter\"}");
+        JsonDocument doc;
+        WifiApiResponse::setErrorAndMessage(doc, "Missing state parameter");
+        WifiApiResponse::sendJsonDocument(server, 400, doc);
         return;
     }
 
@@ -109,7 +95,7 @@ void handleApiMute(WebServer& server,
     JsonDocument doc;
     doc["success"] = success;
     doc["muted"] = muted;
-    sendJsonDocument(server, 200, doc);
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
 }  // namespace WifiControlApiService
