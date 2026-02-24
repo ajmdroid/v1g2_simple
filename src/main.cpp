@@ -87,6 +87,7 @@
 #include "modules/wifi/wifi_priority_policy_module.h"
 #include "modules/wifi/wifi_visual_sync_module.h"
 #include "modules/wifi/wifi_process_cadence_module.h"
+#include "modules/wifi/wifi_runtime_module.h"
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
 #include <driver/gpio.h>
@@ -209,6 +210,7 @@ WifiAutoStartModule wifiAutoStartModule;
 WifiPriorityPolicyModule wifiPriorityPolicyModule;
 WifiVisualSyncModule wifiVisualSyncModule;
 WifiProcessCadenceModule wifiProcessCadenceModule;
+WifiRuntimeModule wifiRuntimeModule;
 ObdRuntimeModule obdRuntimeModule;
 
 // Callback for BLE data reception - just queues data, doesn't process
@@ -838,6 +840,73 @@ void setup() {
         };
     speedVolumeRuntimeProviders.speakerQuietContext = &speakerQuietSyncModule;
     speedVolumeRuntimeModule.begin(speedVolumeRuntimeProviders);
+    WifiRuntimeModule::Providers wifiRuntimeProviders;
+    wifiRuntimeProviders.runWifiAutoStartProcess =
+        [](void* ctx,
+           uint32_t nowMs,
+           uint32_t v1ConnectedAtMs,
+           bool enableWifiAtBoot,
+           bool bleConnected,
+           bool canStartDma,
+           bool& wifiAutoStartDone) {
+            static_cast<WifiAutoStartModule*>(ctx)->process(
+                nowMs,
+                v1ConnectedAtMs,
+                enableWifiAtBoot,
+                bleConnected,
+                canStartDma,
+                wifiAutoStartDone,
+                [] { getWifiOrchestrator().startWifi(); },
+                [] { wifiManager.markAutoStarted(); });
+        };
+    wifiRuntimeProviders.wifiAutoStartContext = &wifiAutoStartModule;
+    wifiRuntimeProviders.shouldRunWifiProcessingPolicy =
+        [](void* ctx, bool enableWifiAtBoot, bool wifiAutoStartDone) {
+            return isWifiProcessingEnabledPolicy(
+                *static_cast<WiFiManager*>(ctx), enableWifiAtBoot, wifiAutoStartDone);
+        };
+    wifiRuntimeProviders.wifiPolicyContext = &wifiManager;
+    wifiRuntimeProviders.perfTimestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    wifiRuntimeProviders.runWifiCadence = [](void* ctx, const WifiProcessCadenceContext& cadenceCtx) {
+        return static_cast<WifiProcessCadenceModule*>(ctx)->process(cadenceCtx);
+    };
+    wifiRuntimeProviders.wifiCadenceContext = &wifiProcessCadenceModule;
+    wifiRuntimeProviders.recordWifiProcessUs = [](void*, uint32_t elapsedUs) {
+        perfRecordWifiProcessUs(elapsedUs);
+    };
+    wifiRuntimeProviders.readWifiServiceActive = [](void* ctx) -> bool {
+        return static_cast<WiFiManager*>(ctx)->isWifiServiceActive();
+    };
+    wifiRuntimeProviders.wifiServiceContext = &wifiManager;
+    wifiRuntimeProviders.readWifiConnected = [](void* ctx) -> bool {
+        return static_cast<WiFiManager*>(ctx)->isConnected();
+    };
+    wifiRuntimeProviders.wifiConnectedContext = &wifiManager;
+    wifiRuntimeProviders.readVisualNowMs = [](void*) -> uint32_t {
+        return millis();
+    };
+    wifiRuntimeProviders.runWifiVisualSync =
+        [](void* ctx,
+           uint32_t nowMs,
+           bool wifiVisualActiveNow,
+           bool displayPreviewRunning,
+           bool bootSplashHoldActive) {
+            static_cast<WifiVisualSyncModule*>(ctx)->process(
+                nowMs,
+                wifiVisualActiveNow,
+                displayPreviewRunning,
+                bootSplashHoldActive,
+                [] {
+                    display.drawWiFiIndicator();
+                    const int leftColWidth = 64;
+                    const int leftColHeight = 96;
+                    display.flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
+                });
+        };
+    wifiRuntimeProviders.wifiVisualSyncContext = &wifiVisualSyncModule;
+    wifiRuntimeModule.begin(wifiRuntimeProviders);
     // Restore pending learner candidates (Tier 7 best-effort, non-fatal).
     if (storageManager.isReady()) {
         static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
@@ -1054,49 +1123,20 @@ void loop() {
     }
     perfRecordCameraUs(PERF_TIMESTAMP_US() - cameraStartUs);
 
-    wifiAutoStartModule.process(
-        now,
-        v1ConnectedAtMs,
-        loopSettings.enableWifiAtBoot,
-        bleClient.isConnected(),
-        wifiManager.canStartSetupMode(nullptr, nullptr),
-        wifiAutoStartDone,
-        [] { getWifiOrchestrator().startWifi(); },
-        [] { wifiManager.markAutoStarted(); });
-
-    // Process WiFi/web server only when WiFi is actually enabled.
-    // Explicit gate keeps this path a near-no-op in wifi-off profiles.
-    if (!skipLateNonCoreThisLoop &&
-        isWifiProcessingEnabledPolicy(wifiManager, loopSettings.enableWifiAtBoot, wifiAutoStartDone)) {
-        // Poll WiFi/web stack at a bounded cadence to reduce loop overhead while
-        // preserving sub-frame UI responsiveness and connect-state progression.
-        constexpr uint32_t WIFI_PROCESS_MIN_INTERVAL_US = 2000;  // 500 Hz max
-        WifiProcessCadenceContext wifiCadenceCtx;
-        wifiCadenceCtx.nowProcessUs = PERF_TIMESTAMP_US();
-        wifiCadenceCtx.minIntervalUs = WIFI_PROCESS_MIN_INTERVAL_US;
-        const WifiProcessCadenceDecision wifiCadenceDecision =
-            wifiProcessCadenceModule.process(wifiCadenceCtx);
-        if (wifiCadenceDecision.shouldRunProcess) {
-            uint32_t wifiStartUs = PERF_TIMESTAMP_US();
-            wifiManager.process();
-            perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
-        }
-    }
-
-    const bool wifiVisualActiveNow =
-        wifiManager.isWifiServiceActive() || wifiManager.isConnected();
-    const unsigned long wifiVisualNowMs = millis();
-    wifiVisualSyncModule.process(
-        wifiVisualNowMs,
-        wifiVisualActiveNow,
-        displayPreviewModule.isRunning(),
-        bootSplashHoldActive,
-        [] {
-            display.drawWiFiIndicator();
-            const int leftColWidth = 64;
-            const int leftColHeight = 96;
-            display.flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
-        });
+    auto runWifiManagerProcess = []() { wifiManager.process(); };
+    WifiRuntimeContext wifiRuntimeCtx;
+    wifiRuntimeCtx.nowMs = now;
+    wifiRuntimeCtx.v1ConnectedAtMs = v1ConnectedAtMs;
+    wifiRuntimeCtx.enableWifiAtBoot = loopSettings.enableWifiAtBoot;
+    wifiRuntimeCtx.bleConnected = bleClient.isConnected();
+    wifiRuntimeCtx.canStartDma = wifiManager.canStartSetupMode(nullptr, nullptr);
+    wifiRuntimeCtx.wifiAutoStartDone = wifiAutoStartDone;
+    wifiRuntimeCtx.skipLateNonCoreThisLoop = skipLateNonCoreThisLoop;
+    wifiRuntimeCtx.displayPreviewRunning = displayPreviewModule.isRunning();
+    wifiRuntimeCtx.bootSplashHoldActive = bootSplashHoldActive;
+    wifiRuntimeCtx.runWifiManagerProcess = runWifiManagerProcess;
+    const WifiRuntimeResult wifiRuntimeResult = wifiRuntimeModule.process(wifiRuntimeCtx);
+    wifiAutoStartDone = wifiRuntimeResult.wifiAutoStartDone;
     
     loopTelemetryModule.process(loopStartUs);
     
