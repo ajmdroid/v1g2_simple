@@ -61,6 +61,7 @@
 #include "modules/system/loop_telemetry_module.h"
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
+#include "modules/voice/voice_speed_sync_module.h"
 #include "modules/speed_volume/speed_volume_module.h"
 #include "modules/speed_volume/speaker_quiet_sync_module.h"
 #include "modules/speed_volume/speed_volume_runtime_module.h"
@@ -104,6 +105,7 @@ AlertPersistenceModule alertPersistenceModule;
 
 // Voice Module - handles voice announcement decisions
 VoiceModule voiceModule;
+VoiceSpeedSyncModule voiceSpeedSyncModule;
 
 static bool bootReady = false;
 static unsigned long bootReadyDeadlineMs = 0;
@@ -778,6 +780,19 @@ void setup() {
     obdHandler.begin();
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
+    VoiceSpeedSyncModule::Providers voiceSpeedSyncProviders;
+    voiceSpeedSyncProviders.selectSpeedSample = [](void* ctx, uint32_t nowMs, SpeedSelection& selection) {
+        return static_cast<SpeedSourceSelector*>(ctx)->select(nowMs, selection);
+    };
+    voiceSpeedSyncProviders.speedSelectorContext = &speedSourceSelector;
+    voiceSpeedSyncProviders.updateVoiceSpeedSample = [](void* ctx, float speedMph, uint32_t timestampMs) {
+        static_cast<VoiceModule*>(ctx)->updateSpeedSample(speedMph, timestampMs);
+    };
+    voiceSpeedSyncProviders.clearVoiceSpeedSample = [](void* ctx) {
+        static_cast<VoiceModule*>(ctx)->clearSpeedSample();
+    };
+    voiceSpeedSyncProviders.voiceContext = &voiceModule;
+    voiceSpeedSyncModule.begin(voiceSpeedSyncProviders);
     cameraRuntimeModule.begin(settingsManager.get().cameraEnabled);
     cameraRuntimeModule.setAlertTuning(settingsManager.get().cameraAlertDistanceFt,
                                        settingsManager.get().cameraAlertPersistSec);
@@ -982,12 +997,9 @@ void loop() {
     gpsRuntimeModule.update(now);
     perfRecordGpsUs(PERF_TIMESTAMP_US() - gpsStartUs);
 
-    SpeedSelection speedSelection;
-    if (speedSourceSelector.select(now, speedSelection)) {
-        voiceModule.updateSpeedSample(speedSelection.speedMph, speedSelection.timestampMs);
-    } else {
-        voiceModule.clearSpeedSample();
-    }
+    VoiceSpeedSyncContext voiceSpeedSyncCtx;
+    voiceSpeedSyncCtx.nowMs = now;
+    voiceSpeedSyncModule.process(voiceSpeedSyncCtx);
     
     const ParsedFrameSignal parsedSignal = ParsedFrameEventModule::collect(
         bleQueueModule.consumeParsedFlag(),
