@@ -933,6 +933,40 @@ static void configureRuntimeAndLockoutModules() {
     }
 }
 
+static void restorePendingLearnerCandidates() {
+    // Restore pending learner candidates (Tier 7 best-effort, non-fatal).
+    if (!storageManager.isReady()) {
+        return;
+    }
+
+    static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
+    fs::FS* fs = storageManager.getFilesystem();
+    if (fs && fs->exists(LOCKOUT_PENDING_PATH)) {
+        File f = fs->open(LOCKOUT_PENDING_PATH, "r");
+        if (f && f.size() > 0 && f.size() < 32768) {
+            JsonDocument doc;
+            const DeserializationError err = deserializeJson(doc, f);
+            f.close();
+            if (!err) {
+                if (lockoutLearner.fromJson(doc, timeService.nowEpochMsOr0())) {
+                    SerialLog.printf("[Learner] Restored %u pending candidates from %s\n",
+                                     static_cast<unsigned>(lockoutLearner.activeCandidateCount()),
+                                     LOCKOUT_PENDING_PATH);
+                } else {
+                    SerialLog.printf("[Learner] Ignoring invalid pending file format: %s\n",
+                                     LOCKOUT_PENDING_PATH);
+                }
+            } else {
+                SerialLog.printf("[Learner] Pending JSON parse error: %s\n", err.c_str());
+            }
+        } else if (f) {
+            f.close();
+        }
+    } else {
+        SerialLog.println("[Learner] No saved pending candidate file found");
+    }
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1251,35 +1285,7 @@ void setup() {
 
     configureSpeedVolumeRuntimeModule();
     configureWifiRuntimeModule();
-    // Restore pending learner candidates (Tier 7 best-effort, non-fatal).
-    if (storageManager.isReady()) {
-        static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
-        fs::FS* fs = storageManager.getFilesystem();
-        if (fs && fs->exists(LOCKOUT_PENDING_PATH)) {
-            File f = fs->open(LOCKOUT_PENDING_PATH, "r");
-            if (f && f.size() > 0 && f.size() < 32768) {
-                JsonDocument doc;
-                const DeserializationError err = deserializeJson(doc, f);
-                f.close();
-                if (!err) {
-                    if (lockoutLearner.fromJson(doc, timeService.nowEpochMsOr0())) {
-                        SerialLog.printf("[Learner] Restored %u pending candidates from %s\n",
-                                         static_cast<unsigned>(lockoutLearner.activeCandidateCount()),
-                                         LOCKOUT_PENDING_PATH);
-                    } else {
-                        SerialLog.printf("[Learner] Ignoring invalid pending file format: %s\n",
-                                         LOCKOUT_PENDING_PATH);
-                    }
-                } else {
-                    SerialLog.printf("[Learner] Pending JSON parse error: %s\n", err.c_str());
-                }
-            } else if (f) {
-                f.close();
-            }
-        } else {
-            SerialLog.println("[Learner] No saved pending candidate file found");
-        }
-    }
+    restorePendingLearnerCandidates();
     bootReady = true;
     bleClient.setBootReady(true);
     SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
