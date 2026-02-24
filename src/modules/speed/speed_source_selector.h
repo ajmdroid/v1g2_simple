@@ -43,7 +43,6 @@ public:
     void begin(bool gpsEnabled);
     void setGpsEnabled(bool enabled);
     void setObdConnected(bool connected);
-    bool isGpsEnabled() const { return false; }
 
     void updateObdSample(float speedMph, uint32_t timestampMs, bool valid);
     // OBD-only policy: GPS speed samples are intentionally ignored.
