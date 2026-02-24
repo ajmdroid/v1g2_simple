@@ -53,6 +53,7 @@
 #include "modules/display/display_pipeline_module.h"
 #include "modules/display/display_orchestration_module.h"
 #include "modules/system/system_event_bus.h"
+#include "modules/system/parsed_frame_event_module.h"
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
 #include "modules/speed_volume/speed_volume_module.h"
@@ -868,18 +869,12 @@ void loop() {
         voiceModule.clearSpeedSample();
     }
     
-    // Drain only parsed-frame events; keep non-frame events available for
-    // dedicated consumers (OBD/GPS/connection modules) as they are added.
-    // Fallback parsed flag preserves behavior if the bus drops under load.
-    bool parsedReady = bleQueueModule.consumeParsedFlag();
-    uint32_t parsedTsMs = bleQueueModule.getLastParsedTimestamp();
-    SystemEvent event;
-    while (systemEventBus.consumeByType(SystemEventType::BLE_FRAME_PARSED, event)) {
-        parsedReady = true;
-        if (event.tsMs != 0) {
-            parsedTsMs = event.tsMs;
-        }
-    }
+    const ParsedFrameSignal parsedSignal = ParsedFrameEventModule::collect(
+        bleQueueModule.consumeParsedFlag(),
+        bleQueueModule.getLastParsedTimestamp(),
+        systemEventBus);
+    const bool parsedReady = parsedSignal.parsedReady;
+    const uint32_t parsedTsMs = parsedSignal.parsedTsMs;
 
     // Drive display orchestration separately from BLE drain for better timing attribution.
     const uint32_t displayNowMs = millis();
