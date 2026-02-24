@@ -1327,6 +1327,39 @@ static void initializeEarlyBootDiagnostics() {
     nvsHealthCheck();
 }
 
+template <typename CheckpointLogger, typename StageLogger>
+static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
+                                         const unsigned long setupStartMs,
+                                         const CheckpointLogger& logBootCheckpoint,
+                                         const StageLogger& logBootStage) {
+    // ── Storage / SD mount ────────────────────────────────────────────
+    // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu).
+    initializeStorageAndProfiles();
+
+    const uint32_t bootId = initializeBootPerformanceLoggers();
+
+    applyLockoutPolicyAndLoadZonesFromStorage();
+    logBootStage("storage");
+
+    initializeBlePreInitAndScan(logBootCheckpoint, logBootStage);
+
+    configureUiInteractionModules();
+    logBootStage("ui_modules");
+
+    logBootSummaryAndWifiStartup(bootId, resetReason);
+
+    initializeTouchAndDisplayControls();
+    logBootStage("touch");
+
+    configureAlertAudioDisplayPipeline();
+    configureSystemLoopModules();
+    configureRuntimeAndLockoutModules();
+
+    configureSpeedVolumeRuntimeModule();
+    configureWifiRuntimeModule();
+    finalizeBootReadyAndBleScan(setupStartMs, logBootStage);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1353,33 +1386,7 @@ void setup() {
 
     initializePreflightDisplayAndBootUi(resetReason, logBootCheckpoint, logBootStage);
 
-    // ── Storage / SD mount ────────────────────────────────────────────
-    // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu)
-
-    initializeStorageAndProfiles();
-
-    const uint32_t bootId = initializeBootPerformanceLoggers();
-
-    applyLockoutPolicyAndLoadZonesFromStorage();
-    logBootStage("storage");
-
-    initializeBlePreInitAndScan(logBootCheckpoint, logBootStage);
-
-    configureUiInteractionModules();
-    logBootStage("ui_modules");
-
-    logBootSummaryAndWifiStartup(bootId, resetReason);
-    
-    initializeTouchAndDisplayControls();
-    logBootStage("touch");
-
-    configureAlertAudioDisplayPipeline();
-    configureSystemLoopModules();
-    configureRuntimeAndLockoutModules();
-
-    configureSpeedVolumeRuntimeModule();
-    configureWifiRuntimeModule();
-    finalizeBootReadyAndBleScan(setupStartMs, logBootStage);
+    initializeStorageToReadyFlow(resetReason, setupStartMs, logBootCheckpoint, logBootStage);
 }
 
 void loop() {
