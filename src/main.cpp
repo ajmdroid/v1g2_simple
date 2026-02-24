@@ -933,6 +933,35 @@ static void configureRuntimeAndLockoutModules() {
     }
 }
 
+static void initializeStorageAndProfiles() {
+    // Mount storage (SD if available, else LittleFS) for profiles and settings.
+    SerialLog.println("[Setup] Mounting storage...");
+    if (storageManager.begin()) {
+        SerialLog.printf("[Setup] Storage ready: %s\n", storageManager.statusText().c_str());
+        v1ProfileManager.begin(storageManager.getFilesystem(), storageManager.getLittleFS());
+        v1DeviceStore.begin(storageManager.getFilesystem(), storageManager.getLittleFS());
+        audio_init_sd();  // Initialize SD-based frequency voice audio.
+
+        // Retry settings restore now that SD is mounted
+        // (settings.begin() runs before storage, so restore may have failed)
+        if (settingsManager.checkAndRestoreFromSD()) {
+            // Settings were restored from SD - update display with restored brightness.
+            display.setBrightness(settingsManager.get().brightness);
+        }
+
+        const String restoredLastKnownV1 = normalizeV1DeviceAddress(settingsManager.get().lastV1Address);
+        if (restoredLastKnownV1.length() > 0 && v1DeviceStore.isReady()) {
+            v1DeviceStore.upsertDevice(restoredLastKnownV1);
+        }
+
+        // Validate profile references in auto-push slots.
+        // Clear references to profiles that don't exist.
+        settingsManager.validateProfileReferences(v1ProfileManager);
+    } else {
+        SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
+    }
+}
+
 static void applyLockoutPolicyAndLoadZonesFromStorage() {
     // Apply persisted Ka lockout policy before loading/sanitizing lockout zones.
     lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
@@ -1253,32 +1282,7 @@ void setup() {
     // ── Storage / SD mount ────────────────────────────────────────────
     // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu)
 
-    // Mount storage (SD if available, else LittleFS) for profiles and settings
-    SerialLog.println("[Setup] Mounting storage...");
-    if (storageManager.begin()) {
-        SerialLog.printf("[Setup] Storage ready: %s\n", storageManager.statusText().c_str());
-        v1ProfileManager.begin(storageManager.getFilesystem(), storageManager.getLittleFS());
-        v1DeviceStore.begin(storageManager.getFilesystem(), storageManager.getLittleFS());
-        audio_init_sd();  // Initialize SD-based frequency voice audio
-
-        // Retry settings restore now that SD is mounted
-        // (settings.begin() runs before storage, so restore may have failed)
-        if (settingsManager.checkAndRestoreFromSD()) {
-            // Settings were restored from SD - update display with restored brightness
-            display.setBrightness(settingsManager.get().brightness);
-        }
-
-        const String restoredLastKnownV1 = normalizeV1DeviceAddress(settingsManager.get().lastV1Address);
-        if (restoredLastKnownV1.length() > 0 && v1DeviceStore.isReady()) {
-            v1DeviceStore.upsertDevice(restoredLastKnownV1);
-        }
-
-        // Validate profile references in auto-push slots
-        // Clear references to profiles that don't exist
-        settingsManager.validateProfileReferences(v1ProfileManager);
-    } else {
-        SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
-    }
+    initializeStorageAndProfiles();
 
     uint32_t bootId = nextBootId();
     perfSdLogger.setBootId(bootId);
