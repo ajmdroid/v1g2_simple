@@ -1,32 +1,17 @@
 #include "wifi_time_api_service.h"
+#include "wifi_api_response.h"
 
 #include <ArduinoJson.h>
-
-#ifdef UNIT_TEST
-#include <string>
-#endif
 
 namespace WifiTimeApiService {
 
 namespace {
 
-void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc) {
-#ifdef UNIT_TEST
-    std::string response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response.c_str());
-#else
-    String response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response);
-#endif
-}
-
 void sendTimeSetDisabled(WebServer& server, const TimeRuntime& runtime) {
     JsonDocument response;
     response["ok"] = false;
     response["success"] = false;
-    response["error"] = "Time set disabled; GPS is authoritative";
+    WifiApiResponse::setErrorAndMessage(response, "Time set disabled; GPS is authoritative");
     response["timeValid"] = runtime.timeValid();
     response["timeSource"] = runtime.timeSource();
     response["timeConfidence"] = runtime.timeConfidence();
@@ -35,7 +20,7 @@ void sendTimeSetDisabled(WebServer& server, const TimeRuntime& runtime) {
     response["monoMs"] = runtime.nowMonoMs();
     response["epochAgeMs"] = runtime.epochAgeMsOr0();
     response["tzOffsetMinutes"] = runtime.tzOffsetMinutes();
-    sendJsonDocument(server, 409, response);
+    WifiApiResponse::sendJsonDocument(server, 409, response);
 }
 
 }  // namespace
