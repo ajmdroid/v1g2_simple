@@ -63,6 +63,7 @@
 #include "modules/voice/voice_module.h"
 #include "modules/speed_volume/speed_volume_module.h"
 #include "modules/speed_volume/speaker_quiet_sync_module.h"
+#include "modules/speed_volume/speed_volume_runtime_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
@@ -184,6 +185,7 @@ VolumeFadeModule volumeFadeModule;
 // Speed volume module - boost volume at highway speeds
 SpeedVolumeModule speedVolumeModule;
 SpeakerQuietSyncModule speakerQuietSyncModule;
+SpeedVolumeRuntimeModule speedVolumeRuntimeModule;
 
 // Auto-push profile state machine
 AutoPushModule autoPushModule;
@@ -797,6 +799,30 @@ void setup() {
                                  settings.gpsLockoutLearnerFreqToleranceMHz,
                                  settings.gpsLockoutLearnerLearnIntervalHours);
     }
+
+    SpeedVolumeRuntimeModule::Providers speedVolumeRuntimeProviders;
+    speedVolumeRuntimeProviders.runSpeedVolumeProcess = [](void* ctx, uint32_t nowMs) {
+        static_cast<SpeedVolumeModule*>(ctx)->process(nowMs);
+    };
+    speedVolumeRuntimeProviders.speedVolumeContext = &speedVolumeModule;
+    speedVolumeRuntimeProviders.readSpeedQuietActive = [](void* ctx) -> bool {
+        return static_cast<SpeedVolumeModule*>(ctx)->isQuietActive();
+    };
+    speedVolumeRuntimeProviders.speedQuietActiveContext = &speedVolumeModule;
+    speedVolumeRuntimeProviders.readSpeedQuietVolume = [](void* ctx) -> uint8_t {
+        return static_cast<SpeedVolumeModule*>(ctx)->getQuietVolume();
+    };
+    speedVolumeRuntimeProviders.speedQuietVolumeContext = &speedVolumeModule;
+    speedVolumeRuntimeProviders.runSpeakerQuietSync =
+        [](void* ctx, bool quietNow, uint8_t quietVolume, uint8_t configuredVoiceVolume) {
+            static_cast<SpeakerQuietSyncModule*>(ctx)->process(
+                quietNow,
+                quietVolume,
+                configuredVoiceVolume,
+                [](uint8_t volume) { audio_set_volume(volume); });
+        };
+    speedVolumeRuntimeProviders.speakerQuietContext = &speakerQuietSyncModule;
+    speedVolumeRuntimeModule.begin(speedVolumeRuntimeProviders);
     // Restore pending learner candidates (Tier 7 best-effort, non-fatal).
     if (storageManager.isReady()) {
         static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
@@ -1062,14 +1088,10 @@ void loop() {
     
     loopTelemetryModule.process(loopStartUs);
     
-    // Speed-based volume: delegate to module (rate-limited internally)
-    speedVolumeModule.process(now);
-    
-    speakerQuietSyncModule.process(
-        speedVolumeModule.isQuietActive(),
-        speedVolumeModule.getQuietVolume(),
-        settingsManager.get().voiceVolume,
-        [](uint8_t volume) { audio_set_volume(volume); });
+    SpeedVolumeRuntimeContext speedVolumeRuntimeCtx;
+    speedVolumeRuntimeCtx.nowMs = now;
+    speedVolumeRuntimeCtx.configuredVoiceVolume = settingsManager.get().voiceVolume;
+    speedVolumeRuntimeModule.process(speedVolumeRuntimeCtx);
     
     // Display cadence and scan-dwell gate for connection state transitions.
     now = millis();
