@@ -515,6 +515,115 @@ static void configureWifiRuntimeModule() {
     wifiRuntimeModule.begin(wifiRuntimeProviders);
 }
 
+static void configureLoopConnectionEarlyModule() {
+    LoopConnectionEarlyModule::Providers loopConnectionEarlyProviders;
+    loopConnectionEarlyProviders.runConnectionRuntime =
+        [](void* ctx,
+           uint32_t nowMs,
+           uint32_t nowUs,
+           uint32_t lastLoopUs,
+           bool bootSplashHoldActive,
+           uint32_t bootSplashHoldUntilMs,
+           bool initialScanningScreenShown) {
+            return static_cast<ConnectionRuntimeModule*>(ctx)->process(
+                nowMs,
+                nowUs,
+                lastLoopUs,
+                bootSplashHoldActive,
+                bootSplashHoldUntilMs,
+                initialScanningScreenShown);
+        };
+    loopConnectionEarlyProviders.connectionRuntimeContext = &connectionRuntimeModule;
+    loopConnectionEarlyProviders.showInitialScanning = [](void*) {
+        showInitialScanningScreen();
+    };
+    loopConnectionEarlyProviders.readProxyConnected = [](void* ctx) -> bool {
+        return static_cast<V1BLEClient*>(ctx)->isProxyClientConnected();
+    };
+    loopConnectionEarlyProviders.proxyConnectedContext = &bleClient;
+    loopConnectionEarlyProviders.readConnectionRssi = [](void* ctx) -> int {
+        return static_cast<V1BLEClient*>(ctx)->getConnectionRssi();
+    };
+    loopConnectionEarlyProviders.connectionRssiContext = &bleClient;
+    loopConnectionEarlyProviders.readProxyRssi = [](void* ctx) -> int {
+        return static_cast<V1BLEClient*>(ctx)->getProxyClientRssi();
+    };
+    loopConnectionEarlyProviders.proxyRssiContext = &bleClient;
+    loopConnectionEarlyProviders.runDisplayEarly =
+        [](void* ctx, const DisplayOrchestrationEarlyContext& displayEarlyCtx) {
+            static_cast<DisplayOrchestrationModule*>(ctx)->processEarly(displayEarlyCtx);
+        };
+    loopConnectionEarlyProviders.displayEarlyContext = &displayOrchestrationModule;
+    loopConnectionEarlyModule.begin(loopConnectionEarlyProviders);
+}
+
+static void configureLoopPowerTouchModule() {
+    LoopPowerTouchModule::Providers loopPowerTouchProviders;
+    loopPowerTouchProviders.timestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    loopPowerTouchProviders.microsNow = [](void*) -> uint32_t {
+        return micros();
+    };
+    loopPowerTouchProviders.runPowerProcess = [](void* ctx, uint32_t nowMs) {
+        static_cast<PowerModule*>(ctx)->process(nowMs);
+    };
+    loopPowerTouchProviders.powerContext = &powerModule;
+    loopPowerTouchProviders.runTouchUiProcess =
+        [](void* ctx, uint32_t nowMs, bool bootButtonPressed) -> bool {
+            return static_cast<TouchUiModule*>(ctx)->process(nowMs, bootButtonPressed);
+        };
+    loopPowerTouchProviders.touchUiContext = &touchUiModule;
+    loopPowerTouchProviders.recordTouchUs = [](void*, uint32_t elapsedUs) {
+        perfRecordTouchUs(elapsedUs);
+    };
+    loopPowerTouchProviders.recordLoopJitterUs = [](void*, uint32_t jitterUs) {
+        perfRecordLoopJitterUs(jitterUs);
+    };
+    loopPowerTouchProviders.refreshDmaCache = [](void*) {
+        StorageManager::updateDmaHeapCache();
+    };
+    loopPowerTouchProviders.readFreeHeap = [](void*) -> uint32_t {
+        return ESP.getFreeHeap();
+    };
+    loopPowerTouchProviders.readLargestHeapBlock = [](void*) -> uint32_t {
+        return static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+    };
+    loopPowerTouchProviders.readCachedFreeDma = [](void*) -> uint32_t {
+        return StorageManager::getCachedFreeDma();
+    };
+    loopPowerTouchProviders.readCachedLargestDma = [](void*) -> uint32_t {
+        return StorageManager::getCachedLargestDma();
+    };
+    loopPowerTouchProviders.recordHeapStats =
+        [](void*, uint32_t freeHeap, uint32_t largestHeapBlock, uint32_t cachedFreeDma, uint32_t cachedLargestDma) {
+            perfRecordHeapStats(freeHeap, largestHeapBlock, cachedFreeDma, cachedLargestDma);
+        };
+    loopPowerTouchModule.begin(loopPowerTouchProviders);
+}
+
+static void configureLoopPreIngestModule() {
+    LoopPreIngestModule::Providers loopPreIngestProviders;
+    loopPreIngestProviders.openBootReadyGate = [](void*, uint32_t nowMs) {
+        bleClient.setBootReady(true);
+        SerialLog.printf("[Boot] Ready gate opened at %lu ms (timeout)\n", static_cast<unsigned long>(nowMs));
+    };
+    loopPreIngestProviders.runWifiPriorityApply =
+        [](void* ctx, uint32_t nowMs, bool obdServiceEnabled) {
+            static_cast<WifiPriorityPolicyModule*>(ctx)->apply(
+                nowMs,
+                obdServiceEnabled,
+                bleClient,
+                wifiManager,
+                obdHandler);
+        };
+    loopPreIngestProviders.wifiPriorityContext = &wifiPriorityPolicyModule;
+    loopPreIngestProviders.runDebugApiProcess = [](void*, uint32_t nowMs) {
+        DebugApiService::process(nowMs);
+    };
+    loopPreIngestModule.begin(loopPreIngestProviders);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1062,106 +1171,9 @@ void setup() {
         perfRecordNotifyToDisplayMs(elapsedMs);
     };
     loopDisplayModule.begin(loopDisplayProviders);
-    LoopConnectionEarlyModule::Providers loopConnectionEarlyProviders;
-    loopConnectionEarlyProviders.runConnectionRuntime =
-        [](void* ctx,
-           uint32_t nowMs,
-           uint32_t nowUs,
-           uint32_t lastLoopUs,
-           bool bootSplashHoldActive,
-           uint32_t bootSplashHoldUntilMs,
-           bool initialScanningScreenShown) {
-            return static_cast<ConnectionRuntimeModule*>(ctx)->process(
-                nowMs,
-                nowUs,
-                lastLoopUs,
-                bootSplashHoldActive,
-                bootSplashHoldUntilMs,
-                initialScanningScreenShown);
-        };
-    loopConnectionEarlyProviders.connectionRuntimeContext = &connectionRuntimeModule;
-    loopConnectionEarlyProviders.showInitialScanning = [](void*) {
-        showInitialScanningScreen();
-    };
-    loopConnectionEarlyProviders.readProxyConnected = [](void* ctx) -> bool {
-        return static_cast<V1BLEClient*>(ctx)->isProxyClientConnected();
-    };
-    loopConnectionEarlyProviders.proxyConnectedContext = &bleClient;
-    loopConnectionEarlyProviders.readConnectionRssi = [](void* ctx) -> int {
-        return static_cast<V1BLEClient*>(ctx)->getConnectionRssi();
-    };
-    loopConnectionEarlyProviders.connectionRssiContext = &bleClient;
-    loopConnectionEarlyProviders.readProxyRssi = [](void* ctx) -> int {
-        return static_cast<V1BLEClient*>(ctx)->getProxyClientRssi();
-    };
-    loopConnectionEarlyProviders.proxyRssiContext = &bleClient;
-    loopConnectionEarlyProviders.runDisplayEarly =
-        [](void* ctx, const DisplayOrchestrationEarlyContext& displayEarlyCtx) {
-            static_cast<DisplayOrchestrationModule*>(ctx)->processEarly(displayEarlyCtx);
-        };
-    loopConnectionEarlyProviders.displayEarlyContext = &displayOrchestrationModule;
-    loopConnectionEarlyModule.begin(loopConnectionEarlyProviders);
-    LoopPowerTouchModule::Providers loopPowerTouchProviders;
-    loopPowerTouchProviders.timestampUs = [](void*) -> uint32_t {
-        return PERF_TIMESTAMP_US();
-    };
-    loopPowerTouchProviders.microsNow = [](void*) -> uint32_t {
-        return micros();
-    };
-    loopPowerTouchProviders.runPowerProcess = [](void* ctx, uint32_t nowMs) {
-        static_cast<PowerModule*>(ctx)->process(nowMs);
-    };
-    loopPowerTouchProviders.powerContext = &powerModule;
-    loopPowerTouchProviders.runTouchUiProcess =
-        [](void* ctx, uint32_t nowMs, bool bootButtonPressed) -> bool {
-            return static_cast<TouchUiModule*>(ctx)->process(nowMs, bootButtonPressed);
-        };
-    loopPowerTouchProviders.touchUiContext = &touchUiModule;
-    loopPowerTouchProviders.recordTouchUs = [](void*, uint32_t elapsedUs) {
-        perfRecordTouchUs(elapsedUs);
-    };
-    loopPowerTouchProviders.recordLoopJitterUs = [](void*, uint32_t jitterUs) {
-        perfRecordLoopJitterUs(jitterUs);
-    };
-    loopPowerTouchProviders.refreshDmaCache = [](void*) {
-        StorageManager::updateDmaHeapCache();
-    };
-    loopPowerTouchProviders.readFreeHeap = [](void*) -> uint32_t {
-        return ESP.getFreeHeap();
-    };
-    loopPowerTouchProviders.readLargestHeapBlock = [](void*) -> uint32_t {
-        return static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-    };
-    loopPowerTouchProviders.readCachedFreeDma = [](void*) -> uint32_t {
-        return StorageManager::getCachedFreeDma();
-    };
-    loopPowerTouchProviders.readCachedLargestDma = [](void*) -> uint32_t {
-        return StorageManager::getCachedLargestDma();
-    };
-    loopPowerTouchProviders.recordHeapStats =
-        [](void*, uint32_t freeHeap, uint32_t largestHeapBlock, uint32_t cachedFreeDma, uint32_t cachedLargestDma) {
-            perfRecordHeapStats(freeHeap, largestHeapBlock, cachedFreeDma, cachedLargestDma);
-        };
-    loopPowerTouchModule.begin(loopPowerTouchProviders);
-    LoopPreIngestModule::Providers loopPreIngestProviders;
-    loopPreIngestProviders.openBootReadyGate = [](void*, uint32_t nowMs) {
-        bleClient.setBootReady(true);
-        SerialLog.printf("[Boot] Ready gate opened at %lu ms (timeout)\n", static_cast<unsigned long>(nowMs));
-    };
-    loopPreIngestProviders.runWifiPriorityApply =
-        [](void* ctx, uint32_t nowMs, bool obdServiceEnabled) {
-            static_cast<WifiPriorityPolicyModule*>(ctx)->apply(
-                nowMs,
-                obdServiceEnabled,
-                bleClient,
-                wifiManager,
-                obdHandler);
-        };
-    loopPreIngestProviders.wifiPriorityContext = &wifiPriorityPolicyModule;
-    loopPreIngestProviders.runDebugApiProcess = [](void*, uint32_t nowMs) {
-        DebugApiService::process(nowMs);
-    };
-    loopPreIngestModule.begin(loopPreIngestProviders);
+    configureLoopConnectionEarlyModule();
+    configureLoopPowerTouchModule();
+    configureLoopPreIngestModule();
     configureLoopSettingsPrepModule();
     configureLoopRuntimeSnapshotModule();
     configureLoopPostDisplayModule();
