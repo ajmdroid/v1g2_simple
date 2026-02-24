@@ -1307,12 +1307,8 @@ static void initializePreflightDisplayAndBootUi(esp_reset_reason_t resetReason,
     displayPreviewModule.begin(&display);
 }
 
-
-void setup() {
-    const unsigned long setupStartMs = millis();
-    unsigned long setupStageStartMs = setupStartMs;
-
-    // Wait for USB to stabilize after upload
+static void initializeEarlyBootDiagnostics() {
+    // Wait for USB to stabilize after upload.
     delay(50);
 
     // Release GPIO hold from deep sleep (backlight was held off during sleep).
@@ -1320,16 +1316,23 @@ void setup() {
     gpio_deep_sleep_hold_dis();
     gpio_hold_dis(static_cast<gpio_num_t>(LCD_BL));
 
-// Backlight is handled in display.begin() (inverted PWM for Waveshare)
-
+    // Backlight is handled in display.begin() (inverted PWM for Waveshare).
     Serial.begin(115200);
-    delay(30);   // Conservative USB CDC settle
-    
-    // PANIC BREADCRUMBS: Log crash info FIRST (before any other init)
+    delay(30);  // Conservative USB CDC settle.
+
+    // PANIC BREADCRUMBS: Log crash info FIRST (before any other init).
     logPanicBreadcrumbs();
-    
-    // Check NVS health early - before other subsystems start using it
+
+    // Check NVS health early - before other subsystems start using it.
     nvsHealthCheck();
+}
+
+
+void setup() {
+    const unsigned long setupStartMs = millis();
+    unsigned long setupStageStartMs = setupStartMs;
+
+    initializeEarlyBootDiagnostics();
 
     auto logBootStage = [&](const char* stageName) {
         const unsigned long now = millis();
