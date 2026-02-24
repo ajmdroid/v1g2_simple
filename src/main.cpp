@@ -58,6 +58,7 @@
 #include "modules/system/parsed_frame_event_module.h"
 #include "modules/system/periodic_maintenance_module.h"
 #include "modules/system/loop_tail_module.h"
+#include "modules/system/loop_telemetry_module.h"
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
 #include "modules/speed_volume/speed_volume_module.h"
@@ -199,6 +200,7 @@ DisplayRestoreModule displayRestoreModule;
 SystemEventBus systemEventBus;
 PeriodicMaintenanceModule periodicMaintenanceModule;
 LoopTailModule loopTailModule;
+LoopTelemetryModule loopTelemetryModule;
 WifiAutoStartModule wifiAutoStartModule;
 WifiPriorityPolicyModule wifiPriorityPolicyModule;
 WifiVisualSyncModule wifiVisualSyncModule;
@@ -731,6 +733,32 @@ void setup() {
         vTaskDelay(pdMS_TO_TICKS(1));
     };
     loopTailModule.begin(loopTailProviders);
+    LoopTelemetryModule::Providers loopTelemetryProviders;
+    loopTelemetryProviders.microsNow = [](void*) -> uint32_t {
+        return micros();
+    };
+    loopTelemetryProviders.recordLoopJitterUs = [](void*, uint32_t jitterUs) {
+        perfRecordLoopJitterUs(jitterUs);
+    };
+    loopTelemetryProviders.refreshDmaCache = [](void*) {
+        StorageManager::updateDmaHeapCache();
+    };
+    loopTelemetryProviders.readFreeHeap = [](void*) -> uint32_t {
+        return ESP.getFreeHeap();
+    };
+    loopTelemetryProviders.readLargestHeapBlock = [](void*) -> uint32_t {
+        return static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+    };
+    loopTelemetryProviders.readCachedFreeDma = [](void*) -> uint32_t {
+        return StorageManager::getCachedFreeDma();
+    };
+    loopTelemetryProviders.readCachedLargestDma = [](void*) -> uint32_t {
+        return StorageManager::getCachedLargestDma();
+    };
+    loopTelemetryProviders.recordHeapStats = [](void*, uint32_t freeHeap, uint32_t largestHeapBlock, uint32_t cachedFreeDma, uint32_t cachedLargestDma) {
+        perfRecordHeapStats(freeHeap, largestHeapBlock, cachedFreeDma, cachedLargestDma);
+    };
+    loopTelemetryModule.begin(loopTelemetryProviders);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
     displayOrchestrationModule.begin(&display,
                                      &bleClient,
@@ -1032,10 +1060,7 @@ void loop() {
             display.flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
         });
     
-    perfRecordLoopJitterUs(micros() - loopStartUs);
-    StorageManager::updateDmaHeapCache();  // Keep DMA cache fresh for SD gating
-    perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),
-                        StorageManager::getCachedFreeDma(), StorageManager::getCachedLargestDma());
+    loopTelemetryModule.process(loopStartUs);
     
     // Speed-based volume: delegate to module (rate-limited internally)
     speedVolumeModule.process(now);
