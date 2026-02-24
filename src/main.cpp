@@ -323,6 +323,86 @@ void onV1Connected() {
 
 // fatalBootError() — moved to main_boot.cpp
 
+static void configureLoopSettingsPrepModule() {
+    LoopSettingsPrepModule::Providers loopSettingsPrepProviders;
+    loopSettingsPrepProviders.runTapGesture = [](void* ctx, uint32_t nowMs) {
+        static_cast<TapGestureModule*>(ctx)->process(nowMs);
+    };
+    loopSettingsPrepProviders.tapGestureContext = &tapGestureModule;
+    loopSettingsPrepProviders.readSettingsValues = [](void* ctx) -> LoopSettingsPrepValues {
+        const V1Settings& settings = static_cast<SettingsManager*>(ctx)->get();
+        LoopSettingsPrepValues values;
+        values.obdServiceEnabled = settings.obdEnabled;
+        values.enableWifiAtBoot = settings.enableWifiAtBoot;
+        values.enableSignalTraceLogging = settings.enableSignalTraceLogging;
+        values.configuredVoiceVolume = settings.voiceVolume;
+        return values;
+    };
+    loopSettingsPrepProviders.settingsContext = &settingsManager;
+    loopSettingsPrepModule.begin(loopSettingsPrepProviders);
+}
+
+static void configureLoopRuntimeSnapshotModule() {
+    LoopRuntimeSnapshotModule::Providers loopRuntimeSnapshotProviders;
+    loopRuntimeSnapshotProviders.readBleConnected = [](void* ctx) -> bool {
+        return static_cast<V1BLEClient*>(ctx)->isConnected();
+    };
+    loopRuntimeSnapshotProviders.bleConnectedContext = &bleClient;
+    loopRuntimeSnapshotProviders.readCanStartDma = [](void* ctx) -> bool {
+        return static_cast<WiFiManager*>(ctx)->canStartSetupMode(nullptr, nullptr);
+    };
+    loopRuntimeSnapshotProviders.canStartDmaContext = &wifiManager;
+    loopRuntimeSnapshotProviders.readDisplayPreviewRunning = [](void* ctx) -> bool {
+        return static_cast<DisplayPreviewModule*>(ctx)->isRunning();
+    };
+    loopRuntimeSnapshotProviders.displayPreviewContext = &displayPreviewModule;
+    loopRuntimeSnapshotModule.begin(loopRuntimeSnapshotProviders);
+}
+
+static void configureLoopPostDisplayModule() {
+    LoopPostDisplayModule::Providers loopPostDisplayProviders;
+    loopPostDisplayProviders.runAutoPush = [](void* ctx) {
+        static_cast<AutoPushModule*>(ctx)->process();
+    };
+    loopPostDisplayProviders.autoPushContext = &autoPushModule;
+    loopPostDisplayProviders.timestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    loopPostDisplayProviders.runCameraRuntime =
+        [](void*,
+           uint32_t nowMs,
+           bool skipLateNonCoreThisLoop,
+           bool overloadLateThisLoop,
+           bool loopSignalPriorityActive) {
+            cameraRuntimeModule.process(
+                nowMs,
+                skipLateNonCoreThisLoop,
+                overloadLateThisLoop,
+                loopSignalPriorityActive);
+        };
+    loopPostDisplayProviders.recordCameraUs = [](void*, uint32_t elapsedUs) {
+        perfRecordCameraUs(elapsedUs);
+    };
+    loopPostDisplayProviders.runSpeedVolumeRuntime =
+        [](void* ctx, const SpeedVolumeRuntimeContext& speedVolumeCtx) {
+            static_cast<SpeedVolumeRuntimeModule*>(ctx)->process(speedVolumeCtx);
+        };
+    loopPostDisplayProviders.speedVolumeRuntimeContext = &speedVolumeRuntimeModule;
+    loopPostDisplayProviders.readDispatchNowMs = [](void*) -> uint32_t {
+        return millis();
+    };
+    loopPostDisplayProviders.readBleConnectedNow = [](void* ctx) -> bool {
+        return static_cast<V1BLEClient*>(ctx)->isConnected();
+    };
+    loopPostDisplayProviders.bleConnectedContext = &bleClient;
+    loopPostDisplayProviders.runConnectionStateDispatch =
+        [](void* ctx, const ConnectionStateDispatchContext& dispatchCtx) {
+            static_cast<ConnectionStateDispatchModule*>(ctx)->process(dispatchCtx);
+        };
+    loopPostDisplayProviders.connectionDispatchContext = &connectionStateDispatchModule;
+    loopPostDisplayModule.begin(loopPostDisplayProviders);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -970,77 +1050,9 @@ void setup() {
         DebugApiService::process(nowMs);
     };
     loopPreIngestModule.begin(loopPreIngestProviders);
-    LoopSettingsPrepModule::Providers loopSettingsPrepProviders;
-    loopSettingsPrepProviders.runTapGesture = [](void* ctx, uint32_t nowMs) {
-        static_cast<TapGestureModule*>(ctx)->process(nowMs);
-    };
-    loopSettingsPrepProviders.tapGestureContext = &tapGestureModule;
-    loopSettingsPrepProviders.readSettingsValues = [](void* ctx) -> LoopSettingsPrepValues {
-        const V1Settings& settings = static_cast<SettingsManager*>(ctx)->get();
-        LoopSettingsPrepValues values;
-        values.obdServiceEnabled = settings.obdEnabled;
-        values.enableWifiAtBoot = settings.enableWifiAtBoot;
-        values.enableSignalTraceLogging = settings.enableSignalTraceLogging;
-        values.configuredVoiceVolume = settings.voiceVolume;
-        return values;
-    };
-    loopSettingsPrepProviders.settingsContext = &settingsManager;
-    loopSettingsPrepModule.begin(loopSettingsPrepProviders);
-    LoopRuntimeSnapshotModule::Providers loopRuntimeSnapshotProviders;
-    loopRuntimeSnapshotProviders.readBleConnected = [](void* ctx) -> bool {
-        return static_cast<V1BLEClient*>(ctx)->isConnected();
-    };
-    loopRuntimeSnapshotProviders.bleConnectedContext = &bleClient;
-    loopRuntimeSnapshotProviders.readCanStartDma = [](void* ctx) -> bool {
-        return static_cast<WiFiManager*>(ctx)->canStartSetupMode(nullptr, nullptr);
-    };
-    loopRuntimeSnapshotProviders.canStartDmaContext = &wifiManager;
-    loopRuntimeSnapshotProviders.readDisplayPreviewRunning = [](void* ctx) -> bool {
-        return static_cast<DisplayPreviewModule*>(ctx)->isRunning();
-    };
-    loopRuntimeSnapshotProviders.displayPreviewContext = &displayPreviewModule;
-    loopRuntimeSnapshotModule.begin(loopRuntimeSnapshotProviders);
-    LoopPostDisplayModule::Providers loopPostDisplayProviders;
-    loopPostDisplayProviders.runAutoPush = [](void* ctx) {
-        static_cast<AutoPushModule*>(ctx)->process();
-    };
-    loopPostDisplayProviders.autoPushContext = &autoPushModule;
-    loopPostDisplayProviders.timestampUs = [](void*) -> uint32_t {
-        return PERF_TIMESTAMP_US();
-    };
-    loopPostDisplayProviders.runCameraRuntime =
-        [](void*,
-           uint32_t nowMs,
-           bool skipLateNonCoreThisLoop,
-           bool overloadLateThisLoop,
-           bool loopSignalPriorityActive) {
-            cameraRuntimeModule.process(
-                nowMs,
-                skipLateNonCoreThisLoop,
-                overloadLateThisLoop,
-                loopSignalPriorityActive);
-        };
-    loopPostDisplayProviders.recordCameraUs = [](void*, uint32_t elapsedUs) {
-        perfRecordCameraUs(elapsedUs);
-    };
-    loopPostDisplayProviders.runSpeedVolumeRuntime =
-        [](void* ctx, const SpeedVolumeRuntimeContext& speedVolumeCtx) {
-            static_cast<SpeedVolumeRuntimeModule*>(ctx)->process(speedVolumeCtx);
-        };
-    loopPostDisplayProviders.speedVolumeRuntimeContext = &speedVolumeRuntimeModule;
-    loopPostDisplayProviders.readDispatchNowMs = [](void*) -> uint32_t {
-        return millis();
-    };
-    loopPostDisplayProviders.readBleConnectedNow = [](void* ctx) -> bool {
-        return static_cast<V1BLEClient*>(ctx)->isConnected();
-    };
-    loopPostDisplayProviders.bleConnectedContext = &bleClient;
-    loopPostDisplayProviders.runConnectionStateDispatch =
-        [](void* ctx, const ConnectionStateDispatchContext& dispatchCtx) {
-            static_cast<ConnectionStateDispatchModule*>(ctx)->process(dispatchCtx);
-        };
-    loopPostDisplayProviders.connectionDispatchContext = &connectionStateDispatchModule;
-    loopPostDisplayModule.begin(loopPostDisplayProviders);
+    configureLoopSettingsPrepModule();
+    configureLoopRuntimeSnapshotModule();
+    configureLoopPostDisplayModule();
     obdHandler.setLinkReadyCallback([]() { return bleClient.isConnected(); });
     obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
