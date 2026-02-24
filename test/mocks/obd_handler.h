@@ -44,6 +44,11 @@ public:
     OBDData getData() const { return data; }
     std::vector<OBDDeviceInfo> getFoundDevices() const { return foundDevices; }
     std::vector<OBDRememberedDevice> getRememberedDevices() const { return rememberedDevices; }
+    bool update() {
+        updateCalls++;
+        return updateReturn;
+    }
+    void tryAutoConnect() { tryAutoConnectCalls++; }
     bool isDataStale(uint32_t staleMs) const {
         if (!validData) {
             return true;
@@ -134,11 +139,14 @@ public:
     bool connectReturn = true;
     bool setRememberedAutoConnectReturn = true;
     bool forgetRememberedReturn = true;
+    bool updateReturn = false;
     int startScanCalls = 0;
     int stopScanCalls = 0;
     int clearFoundDevicesCalls = 0;
     int connectCalls = 0;
     int disconnectCalls = 0;
+    int updateCalls = 0;
+    int tryAutoConnectCalls = 0;
     int setRememberedAutoConnectCalls = 0;
     int forgetRememberedCalls = 0;
     int setVwDataEnabledCalls = 0;

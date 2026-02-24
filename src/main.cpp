@@ -61,6 +61,7 @@
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/camera/camera_runtime_module.h"
+#include "modules/obd/obd_runtime_module.h"
 #include "modules/lockout/signal_capture_module.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/lockout/lockout_enforcer.h"
@@ -189,6 +190,7 @@ DisplayOrchestrationModule displayOrchestrationModule;
 DisplayRestoreModule displayRestoreModule;
 SystemEventBus systemEventBus;
 WifiPriorityPolicyModule wifiPriorityPolicyModule;
+ObdRuntimeModule obdRuntimeModule;
 
 // Callback for BLE data reception - just queues data, doesn't process
 // This runs in BLE task context, so we avoid SPI operations here
@@ -838,29 +840,16 @@ void loop() {
     const bool skipLateNonCoreThisLoop = skipNonCoreThisLoop || bleBackpressure;
     const bool overloadLateThisLoop = overloadThisLoop || bleBackpressure;
 
-    static bool obdRuntimeDisabledLatched = false;
-    if (!obdServiceEnabled) {
-        obdAutoConnectPending = false;
-        if (!obdRuntimeDisabledLatched) {
-            obdHandler.stopScan();
-            obdHandler.disconnect();
-            obdRuntimeDisabledLatched = true;
-        }
-    } else {
-        obdRuntimeDisabledLatched = false;
-        if (obdAutoConnectPending && now >= obdAutoConnectAtMs) {
-            obdAutoConnectPending = false;
-            obdHandler.tryAutoConnect();
-        }
-
-        uint32_t obdStartUs = PERF_TIMESTAMP_US();
-        if (obdHandler.update()) {
-            OBDData obdData = obdHandler.getData();
-            speedSourceSelector.updateObdSample(obdData.speed_mph, obdData.timestamp_ms, obdData.valid);
-        }
+    uint32_t obdStartUs = PERF_TIMESTAMP_US();
+    obdRuntimeModule.process(now,
+                             obdServiceEnabled,
+                             obdAutoConnectPending,
+                             obdAutoConnectAtMs,
+                             obdHandler,
+                             speedSourceSelector);
+    if (obdServiceEnabled) {
         perfRecordObdUs(PERF_TIMESTAMP_US() - obdStartUs);
     }
-    speedSourceSelector.setObdConnected(obdServiceEnabled && obdHandler.isConnected());
 
     uint32_t gpsStartUs = PERF_TIMESTAMP_US();
     gpsRuntimeModule.update(now);
