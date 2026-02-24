@@ -29,12 +29,6 @@ public:
     // Main update - call from loop()
     void update();
 
-    // Cleanup
-    void end();
-
-    // Combined clear - resets persistence state when alerts clear
-    void clearAllAlertState();
-
     // Alert persistence - shows last alert briefly after V1 clears it
     void setPersistedAlert(const AlertData& alert);
     void startPersistence(unsigned long now);
@@ -57,4 +51,3 @@ private:
     unsigned long alertClearedTime = 0;
     bool alertPersistenceActive = false;
 };
-

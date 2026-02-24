@@ -27,14 +27,6 @@ void AlertPersistenceModule::update() {
     // Future: could handle periodic tasks here
 }
 
-void AlertPersistenceModule::end() {
-    initialized = false;
-}
-
-void AlertPersistenceModule::clearAllAlertState() {
-    clearPersistence();
-}
-
 // ============================================================================
 // Alert Persistence - shows last alert briefly after V1 clears it
 // ============================================================================
