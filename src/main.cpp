@@ -80,6 +80,7 @@
 #include "modules/wifi/wifi_auto_start_module.h"
 #include "modules/wifi/wifi_priority_policy_module.h"
 #include "modules/wifi/wifi_visual_sync_module.h"
+#include "modules/wifi/wifi_process_cadence_module.h"
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
 #include <driver/gpio.h>
@@ -194,6 +195,7 @@ SystemEventBus systemEventBus;
 WifiAutoStartModule wifiAutoStartModule;
 WifiPriorityPolicyModule wifiPriorityPolicyModule;
 WifiVisualSyncModule wifiVisualSyncModule;
+WifiProcessCadenceModule wifiProcessCadenceModule;
 ObdRuntimeModule obdRuntimeModule;
 
 // Callback for BLE data reception - just queues data, doesn't process
@@ -359,6 +361,7 @@ void setup() {
         (resetReason == ESP_RST_DEEPSLEEP) ? MIN_SCAN_SCREEN_DWELL_WAKE_MS : MIN_SCAN_SCREEN_DWELL_MS;
     SerialLog.printf("[BootTiming] scan_dwell_target_ms=%lu\n", activeScanScreenDwellMs);
     connectionStateCadenceModule.reset();
+    wifiProcessCadenceModule.reset();
 
     // Runtime PSRAM visibility: board metadata can differ from actual hardware.
     bool psramOk = psramFound();
@@ -936,15 +939,16 @@ void loop() {
         isWifiProcessingEnabledPolicy(wifiManager, loopSettings.enableWifiAtBoot, wifiAutoStartDone)) {
         // Poll WiFi/web stack at a bounded cadence to reduce loop overhead while
         // preserving sub-frame UI responsiveness and connect-state progression.
-        static uint32_t lastWifiProcessUs = 0;
         constexpr uint32_t WIFI_PROCESS_MIN_INTERVAL_US = 2000;  // 500 Hz max
-        const uint32_t nowProcessUs = PERF_TIMESTAMP_US();
-        if (lastWifiProcessUs == 0 ||
-            static_cast<uint32_t>(nowProcessUs - lastWifiProcessUs) >= WIFI_PROCESS_MIN_INTERVAL_US) {
+        WifiProcessCadenceContext wifiCadenceCtx;
+        wifiCadenceCtx.nowProcessUs = PERF_TIMESTAMP_US();
+        wifiCadenceCtx.minIntervalUs = WIFI_PROCESS_MIN_INTERVAL_US;
+        const WifiProcessCadenceDecision wifiCadenceDecision =
+            wifiProcessCadenceModule.process(wifiCadenceCtx);
+        if (wifiCadenceDecision.shouldRunProcess) {
             uint32_t wifiStartUs = PERF_TIMESTAMP_US();
             wifiManager.process();
             perfRecordWifiProcessUs(PERF_TIMESTAMP_US() - wifiStartUs);
-            lastWifiProcessUs = nowProcessUs;
         }
     }
 
