@@ -1003,6 +1003,30 @@ static void configureUiInteractionModules() {
                            &displayMode);
 }
 
+static void logBootSummaryAndWifiStartup(uint32_t bootId, esp_reset_reason_t resetReason) {
+    const V1Settings& bootSettings = settingsManager.get();
+    const char* scenario = "default";
+#ifdef GIT_SHA
+    const char* gitSha = GIT_SHA;
+#else
+    const char* gitSha = "unknown";
+#endif
+    const char* resetStr = resetReasonToString(resetReason);
+    SerialLog.printf("BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s\n",
+                     static_cast<unsigned long>(bootId),
+                     resetStr,
+                     gitSha,
+                     scenario,
+                     bootSettings.enableWifi ? "on" : "off");
+
+    // WiFi startup behavior - either auto-start or wait for BOOT button
+    if (settingsManager.get().enableWifiAtBoot) {
+        SerialLog.println("[WiFi] Auto-start enabled (dev setting)");
+    } else {
+        SerialLog.println("[WiFi] Off by default - start with BOOT long-press");
+    }
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1262,27 +1286,7 @@ void setup() {
     configureUiInteractionModules();
     logBootStage("ui_modules");
 
-    const V1Settings& bootSettings = settingsManager.get();
-    const char* scenario = "default";
-#ifdef GIT_SHA
-    const char* gitSha = GIT_SHA;
-#else
-    const char* gitSha = "unknown";
-#endif
-    const char* resetStr = resetReasonToString(resetReason);
-    SerialLog.printf("BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s\n",
-                    (unsigned long)bootId,
-                    resetStr,
-                    gitSha,
-                    scenario,
-                    bootSettings.enableWifi ? "on" : "off");
-
-    // WiFi startup behavior - either auto-start or wait for BOOT button
-    if (settingsManager.get().enableWifiAtBoot) {
-        SerialLog.println("[WiFi] Auto-start enabled (dev setting)");
-    } else {
-        SerialLog.println("[WiFi] Off by default - start with BOOT long-press");
-    }
+    logBootSummaryAndWifiStartup(bootId, resetReason);
     
     initializeTouchAndDisplayControls();
     logBootStage("touch");
