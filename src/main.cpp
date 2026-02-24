@@ -933,6 +933,53 @@ static void configureRuntimeAndLockoutModules() {
     }
 }
 
+static void applyLockoutPolicyAndLoadZonesFromStorage() {
+    // Apply persisted Ka lockout policy before loading/sanitizing lockout zones.
+    lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
+
+    // Load lockout zones from SD/LittleFS (Tier 7 — best-effort).
+    if (!storageManager.isReady()) {
+        return;
+    }
+
+    static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!(fs && fs->exists(LOCKOUT_ZONES_PATH))) {
+        SerialLog.println("[Lockout] No saved zones file found");
+        return;
+    }
+
+    File f = fs->open(LOCKOUT_ZONES_PATH, "r");
+    if (!(f && f.size() > 0 && f.size() < 65536)) {
+        if (f) {
+            f.close();
+        }
+        return;
+    }
+
+    JsonDocument doc;
+    const DeserializationError err = deserializeJson(doc, f);
+    f.close();
+    if (err) {
+        SerialLog.printf("[Lockout] JSON parse error: %s\n", err.c_str());
+        return;
+    }
+
+    const uint32_t legacyRadiusMigrations = normalizeLegacyLockoutRadiusScale(doc);
+    lockoutStore.begin(&lockoutIndex);
+    if (lockoutStore.fromJson(doc)) {
+        SerialLog.printf("[Lockout] Loaded %lu zones from %s\n",
+                         static_cast<unsigned long>(lockoutStore.stats().entriesLoaded),
+                         LOCKOUT_ZONES_PATH);
+        if (legacyRadiusMigrations > 0) {
+            SerialLog.printf("[Lockout] Normalized %lu legacy zone radius values (x10->x1 scale)\n",
+                             static_cast<unsigned long>(legacyRadiusMigrations));
+            // Persist normalized values on the next best-effort save cycle.
+            lockoutStore.markDirty();
+        }
+    }
+}
+
 static void restorePendingLearnerCandidates() {
     // Restore pending learner candidates (Tier 7 best-effort, non-fatal).
     if (!storageManager.isReady()) {
@@ -1251,43 +1298,7 @@ void setup() {
         SerialLog.println("[LockoutSD] Candidate logger disabled (no SD)");
     }
 
-    // Apply persisted Ka lockout policy before loading/sanitizing lockout zones.
-    lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
-
-    // Load lockout zones from SD/LittleFS (Tier 7 — best-effort).
-    if (storageManager.isReady()) {
-        static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
-        fs::FS* fs = storageManager.getFilesystem();
-        if (fs && fs->exists(LOCKOUT_ZONES_PATH)) {
-            File f = fs->open(LOCKOUT_ZONES_PATH, "r");
-            if (f && f.size() > 0 && f.size() < 65536) {
-                JsonDocument doc;
-                DeserializationError err = deserializeJson(doc, f);
-                f.close();
-                if (!err) {
-                    const uint32_t legacyRadiusMigrations = normalizeLegacyLockoutRadiusScale(doc);
-                    lockoutStore.begin(&lockoutIndex);
-                    if (lockoutStore.fromJson(doc)) {
-                        SerialLog.printf("[Lockout] Loaded %lu zones from %s\n",
-                                         static_cast<unsigned long>(lockoutStore.stats().entriesLoaded),
-                                         LOCKOUT_ZONES_PATH);
-                        if (legacyRadiusMigrations > 0) {
-                            SerialLog.printf("[Lockout] Normalized %lu legacy zone radius values (x10->x1 scale)\n",
-                                             static_cast<unsigned long>(legacyRadiusMigrations));
-                            // Persist normalized values on the next best-effort save cycle.
-                            lockoutStore.markDirty();
-                        }
-                    }
-                } else {
-                    SerialLog.printf("[Lockout] JSON parse error: %s\n", err.c_str());
-                }
-            } else if (f) {
-                f.close();
-            }
-        } else {
-            SerialLog.println("[Lockout] No saved zones file found");
-        }
-    }
+    applyLockoutPolicyAndLoadZonesFromStorage();
     logBootStage("storage");
 
     initializeBlePreInitAndScan(logBootCheckpoint, logBootStage);
