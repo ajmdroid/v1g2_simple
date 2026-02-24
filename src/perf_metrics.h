@@ -420,32 +420,17 @@ void perfRecordDisplayScreenTransition(PerfDisplayScreen from, PerfDisplayScreen
 void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolume, uint8_t originalVolume, uint32_t nowMs);
 void perfRecordBleTimelineEvent(PerfBleTimelineEvent event, uint32_t nowMs);
 
-uint32_t perfGetNotifyToDisplayP95Ms();
-uint32_t perfGetNotifyToDisplayMaxMs();
-uint32_t perfGetNotifyToProxyP95Ms();
-uint32_t perfGetNotifyToProxyMaxMs();
 uint32_t perfGetLoopMaxUs();
 uint32_t perfGetMinFreeHeap();
-uint32_t perfGetMinLargestBlock();
 uint32_t perfGetMinFreeDma();
 uint32_t perfGetMinLargestDma();
 uint32_t perfGetWifiMaxUs();
 uint32_t perfGetFsMaxUs();
 uint32_t perfGetSdMaxUs();
 uint32_t perfGetFlushMaxUs();
-uint32_t perfGetDisplayRenderMaxUs();
 uint32_t perfGetBleDrainMaxUs();
-uint32_t perfGetBleConnectMaxUs();
-uint32_t perfGetBleDiscoveryMaxUs();
-uint32_t perfGetBleSubscribeMaxUs();
 uint32_t perfGetBleProcessMaxUs();
 uint32_t perfGetDispPipeMaxUs();
-uint32_t perfGetTouchMaxUs();
-uint32_t perfGetObdMaxUs();
-uint32_t perfGetGpsMaxUs();
-uint32_t perfGetCameraMaxUs();
-uint32_t perfGetLockoutMaxUs();
-void perfExtendedResetWindow();
 
 // ============================================================================
 // Sampled latency tracking (only when PERF_METRICS=1)
@@ -569,9 +554,6 @@ bool perfMetricsCheckReport();
 
 // Best-effort immediate SD snapshot enqueue (non-blocking); returns false on skip/drop.
 bool perfMetricsEnqueueSnapshotNow();
-
-// Force immediate report
-void perfMetricsPrint();
 
 // Get JSON summary for web API
 String perfMetricsToJson();

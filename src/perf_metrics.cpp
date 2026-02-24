@@ -574,35 +574,17 @@ void perfRecordBleTimelineEvent(PerfBleTimelineEvent event, uint32_t nowMs) {
     portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 
-uint32_t perfGetNotifyToDisplayP95Ms() { return calcP95(perfExtended.notifyToDisplayMs); }
-uint32_t perfGetNotifyToDisplayMaxMs() { return perfExtended.notifyToDisplayMs.maxMs; }
-uint32_t perfGetNotifyToProxyP95Ms() { return calcP95(perfExtended.notifyToProxyMs); }
-uint32_t perfGetNotifyToProxyMaxMs() { return perfExtended.notifyToProxyMs.maxMs; }
 uint32_t perfGetLoopMaxUs() { return perfExtended.loopMaxUs; }
 uint32_t perfGetMinFreeHeap() { return perfExtended.minFreeHeap == UINT32_MAX ? 0 : perfExtended.minFreeHeap; }
-uint32_t perfGetMinLargestBlock() { return perfExtended.minLargestBlock == UINT32_MAX ? 0 : perfExtended.minLargestBlock; }
 uint32_t perfGetMinFreeDma() { return perfExtended.minFreeDma == UINT32_MAX ? 0 : perfExtended.minFreeDma; }
 uint32_t perfGetMinLargestDma() { return perfExtended.minLargestDma == UINT32_MAX ? 0 : perfExtended.minLargestDma; }
 uint32_t perfGetWifiMaxUs() { return perfExtended.wifiMaxUs; }
 uint32_t perfGetFsMaxUs() { return perfExtended.fsMaxUs; }
 uint32_t perfGetSdMaxUs() { return perfExtended.sdMaxUs; }
 uint32_t perfGetFlushMaxUs() { return perfExtended.flushMaxUs; }
-uint32_t perfGetDisplayRenderMaxUs() { return perfExtended.displayRenderMaxUs; }
 uint32_t perfGetBleDrainMaxUs() { return perfExtended.bleDrainMaxUs; }
-uint32_t perfGetBleConnectMaxUs() { return perfExtended.bleConnectMaxUs; }
-uint32_t perfGetBleDiscoveryMaxUs() { return perfExtended.bleDiscoveryMaxUs; }
-uint32_t perfGetBleSubscribeMaxUs() { return perfExtended.bleSubscribeMaxUs; }
 uint32_t perfGetBleProcessMaxUs() { return perfExtended.bleProcessMaxUs; }
 uint32_t perfGetDispPipeMaxUs() { return perfExtended.dispPipeMaxUs; }
-uint32_t perfGetTouchMaxUs() { return perfExtended.touchMaxUs; }
-uint32_t perfGetObdMaxUs() { return perfExtended.obdMaxUs; }
-uint32_t perfGetGpsMaxUs() { return perfExtended.gpsMaxUs; }
-uint32_t perfGetCameraMaxUs() { return perfExtended.cameraMaxUs; }
-uint32_t perfGetLockoutMaxUs() { return perfExtended.lockoutMaxUs; }
-
-void perfExtendedResetWindow() {
-    perfExtended.reset();
-}
 
 #if PERF_METRICS && PERF_MONITORING
 bool perfMetricsCheckReport() {
@@ -640,73 +622,6 @@ bool perfMetricsEnqueueSnapshotNow() {
     PerfSdSnapshot snapshot{};
     captureSdSnapshot(snapshot);
     return perfSdLogger.enqueue(snapshot);
-}
-
-void perfMetricsPrint() {
-#if PERF_METRICS && PERF_MONITORING
-    uint32_t avgUs = perfLatency.avgUs();
-    uint32_t minUsVal = perfLatency.minUs.load();
-    uint32_t minUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
-    
-    // Guard: skip report if serial TX buffer has backpressure (prevents 10-30ms stall)
-    if (Serial.availableForWrite() < 128) return;
-
-    // Single snprintf + print to minimize CDC transactions and avoid interleaved jitter
-    char buf[512];
-    int n = snprintf(buf, sizeof(buf),
-        "[PERF] rx=%lu rxB=%lu pOk=%lu pFail=%lu "
-        "qDrop=%lu perfDrop=%lu qOver=%lu qHW=%lu proxyHW=%lu phoneHW=%lu "
-        "dUpd=%lu dSkip=%lu "
-        "reconn=%lu disc=%lu "
-        "mSkip=%lu mTout=%lu pace=%lu bleBusy=%lu "
-        "uuid128=%lu discTaskFail=%lu wifiConnDef=%lu pushRetry=%lu pushFail=%lu "
-        "sdFail=%lu/%lu/%lu/%lu/%lu/%lu "
-        "logRate=%lu logBuf=%lu logQ=%lu "
-        "latMin=%luus avg=%luus max=%luus n=%lu\n",
-        (unsigned long)perfCounters.rxPackets.load(),
-        (unsigned long)perfCounters.rxBytes.load(),
-        (unsigned long)perfCounters.parseSuccesses.load(),
-        (unsigned long)perfCounters.parseFailures.load(),
-        (unsigned long)perfCounters.queueDrops.load(),
-        (unsigned long)perfCounters.perfDrop.load(),
-        (unsigned long)perfCounters.oversizeDrops.load(),
-        (unsigned long)perfCounters.queueHighWater.load(),
-        (unsigned long)perfCounters.proxyQueueHighWater.load(),
-        (unsigned long)perfCounters.phoneCmdQueueHighWater.load(),
-        (unsigned long)perfCounters.displayUpdates.load(),
-        (unsigned long)perfCounters.displaySkips.load(),
-        (unsigned long)perfCounters.reconnects.load(),
-        (unsigned long)perfCounters.disconnects.load(),
-        (unsigned long)perfCounters.bleMutexSkip.load(),
-        (unsigned long)perfCounters.bleMutexTimeout.load(),
-        (unsigned long)perfCounters.cmdPaceNotYet.load(),
-        (unsigned long)perfCounters.cmdBleBusy.load(),
-        (unsigned long)perfCounters.uuid128FallbackHits.load(),
-        (unsigned long)perfCounters.bleDiscTaskCreateFail.load(),
-        (unsigned long)perfCounters.wifiConnectDeferred.load(),
-        (unsigned long)perfCounters.pushNowRetries.load(),
-        (unsigned long)perfCounters.pushNowFailures.load(),
-        (unsigned long)perfCounters.perfSdLockFail.load(),
-        (unsigned long)perfCounters.perfSdDirFail.load(),
-        (unsigned long)perfCounters.perfSdOpenFail.load(),
-        (unsigned long)perfCounters.perfSdHeaderFail.load(),
-        (unsigned long)perfCounters.perfSdMarkerFail.load(),
-        (unsigned long)perfCounters.perfSdWriteFail.load(),
-        (unsigned long)debugLogger.getRateLimitDrops(),
-        (unsigned long)debugLogger.getBufferFullDrops(),
-        (unsigned long)debugLogger.getDropCount(),
-        (unsigned long)minUs,
-        (unsigned long)avgUs,
-        (unsigned long)perfLatency.maxUs.load(),
-        (unsigned long)perfLatency.sampleCount.load());
-    if (n > 0 && n < (int)sizeof(buf)) {
-        Serial.print(buf);
-    }
-#elif PERF_METRICS
-    Serial.println("Performance monitoring disabled (PERF_MONITORING=0)");
-#else
-    Serial.println("Performance metrics disabled (PERF_METRICS=0)");
-#endif
 }
 
 String perfMetricsToJson() {
