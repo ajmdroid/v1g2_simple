@@ -309,12 +309,6 @@ void CameraRuntimeModule::setAlertTuning(uint16_t distanceFt, uint8_t persistSec
     maxAlertDurationMs_ = static_cast<uint32_t>(alertPersistSec_) * 1000UL;
 }
 
-bool CameraRuntimeModule::tryLoadDefault(uint32_t nowMs) {
-    (void)nowMs;
-    dataLoader_.requestReload();
-    return index_.isLoaded();
-}
-
 void CameraRuntimeModule::requestReload() {
     dataLoader_.requestReload();
 }

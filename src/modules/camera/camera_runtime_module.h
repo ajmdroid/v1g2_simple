@@ -99,8 +99,6 @@ public:
                  bool overloadThisLoop,
                  bool signalPriorityActive = false);
 
-    // Compatibility helper for existing scaffolding/tests.
-    bool tryLoadDefault(uint32_t nowMs);
     void requestReload();
     void notifySignalPreempted(uint32_t nowMs);
 
