@@ -62,6 +62,7 @@
 #include "modules/system/loop_ingest_module.h"
 #include "modules/system/loop_display_module.h"
 #include "modules/system/loop_power_touch_module.h"
+#include "modules/system/loop_pre_ingest_module.h"
 #include "modules/system/loop_connection_early_module.h"
 #include "modules/system/loop_post_display_module.h"
 #include "esp_heap_caps.h"
@@ -214,6 +215,7 @@ LoopTelemetryModule loopTelemetryModule;
 LoopIngestModule loopIngestModule;
 LoopDisplayModule loopDisplayModule;
 LoopPowerTouchModule loopPowerTouchModule;
+LoopPreIngestModule loopPreIngestModule;
 LoopConnectionEarlyModule loopConnectionEarlyModule;
 LoopPostDisplayModule loopPostDisplayModule;
 WifiAutoStartModule wifiAutoStartModule;
@@ -945,6 +947,25 @@ void setup() {
             perfRecordHeapStats(freeHeap, largestHeapBlock, cachedFreeDma, cachedLargestDma);
         };
     loopPowerTouchModule.begin(loopPowerTouchProviders);
+    LoopPreIngestModule::Providers loopPreIngestProviders;
+    loopPreIngestProviders.openBootReadyGate = [](void*, uint32_t nowMs) {
+        bleClient.setBootReady(true);
+        SerialLog.printf("[Boot] Ready gate opened at %lu ms (timeout)\n", static_cast<unsigned long>(nowMs));
+    };
+    loopPreIngestProviders.runWifiPriorityApply =
+        [](void* ctx, uint32_t nowMs, bool obdServiceEnabled) {
+            static_cast<WifiPriorityPolicyModule*>(ctx)->apply(
+                nowMs,
+                obdServiceEnabled,
+                bleClient,
+                wifiManager,
+                obdHandler);
+        };
+    loopPreIngestProviders.wifiPriorityContext = &wifiPriorityPolicyModule;
+    loopPreIngestProviders.runDebugApiProcess = [](void*, uint32_t nowMs) {
+        DebugApiService::process(nowMs);
+    };
+    loopPreIngestModule.begin(loopPreIngestProviders);
     LoopPostDisplayModule::Providers loopPostDisplayProviders;
     loopPostDisplayProviders.runAutoPush = [](void* ctx) {
         static_cast<AutoPushModule*>(ctx)->process();
@@ -1244,20 +1265,30 @@ void loop() {
     
     const V1Settings& loopSettings = settingsManager.get();
     const bool obdServiceEnabled = loopSettings.obdEnabled;
-    bool runBleProcessThisLoop = false;
-
-#ifndef REPLAY_MODE
-    if (!bootReady && millis() >= bootReadyDeadlineMs) {
-        bootReady = true;
+    auto openBootReadyGate = [](uint32_t nowMs) {
         bleClient.setBootReady(true);
-        SerialLog.printf("[Boot] Ready gate opened at %lu ms (timeout)\n", millis());
-    }
-
-    wifiPriorityPolicyModule.apply(now, obdServiceEnabled, bleClient, wifiManager, obdHandler);
-    runBleProcessThisLoop = true;
+        SerialLog.printf("[Boot] Ready gate opened at %lu ms (timeout)\n", static_cast<unsigned long>(nowMs));
+    };
+    auto runWifiPriorityApply = [](uint32_t nowMs, bool obdServiceEnabled) {
+        wifiPriorityPolicyModule.apply(nowMs, obdServiceEnabled, bleClient, wifiManager, obdHandler);
+    };
+    auto runDebugApiProcess = [](uint32_t nowMs) {
+        DebugApiService::process(nowMs);
+    };
+    LoopPreIngestContext loopPreIngestCtx;
+    loopPreIngestCtx.nowMs = now;
+    loopPreIngestCtx.bootReady = bootReady;
+    loopPreIngestCtx.bootReadyDeadlineMs = bootReadyDeadlineMs;
+    loopPreIngestCtx.obdServiceEnabled = obdServiceEnabled;
+#ifdef REPLAY_MODE
+    loopPreIngestCtx.replayMode = true;
 #endif
-    
-    DebugApiService::process(now);
+    loopPreIngestCtx.openBootReadyGate = openBootReadyGate;
+    loopPreIngestCtx.runWifiPriorityApply = runWifiPriorityApply;
+    loopPreIngestCtx.runDebugApiProcess = runDebugApiProcess;
+    const LoopPreIngestResult loopPreIngestResult = loopPreIngestModule.process(loopPreIngestCtx);
+    bootReady = loopPreIngestResult.bootReady;
+    const bool runBleProcessThisLoop = loopPreIngestResult.runBleProcessThisLoop;
     auto runBleProcess = []() { bleClient.process(); };
     auto runBleDrain = []() { bleQueueModule.process(); };
     LoopIngestContext loopIngestCtx;
