@@ -854,6 +854,24 @@ static void configureTouchUiModule() {
     touchUiModule.begin(&display, &touchHandler, &settingsManager, touchCbs);
 }
 
+static void configureAlertAudioDisplayPipeline() {
+    // Initialize alert/audio/display pipeline dependencies before BLE starts
+    alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager);
+    voiceModule.begin(&settingsManager, &bleClient);
+    speedVolumeModule.begin(&settingsManager, &bleClient, &parser, &voiceModule, &volumeFadeModule);
+    volumeFadeModule.begin(&settingsManager);
+    displayPipelineModule.begin(&displayMode,
+                                &display,
+                                &parser,
+                                &settingsManager,
+                                &bleClient,
+                                &alertPersistenceModule,
+                                &volumeFadeModule,
+                                &voiceModule,
+                                &speedVolumeModule,
+                                &debugLogger);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1166,21 +1184,7 @@ void setup() {
                     displaySettings.brightness, displaySettings.voiceVolume);
 #endif
 
-    // Initialize alert/audio/display pipeline dependencies before BLE starts
-    alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager);
-    voiceModule.begin(&settingsManager, &bleClient);
-    speedVolumeModule.begin(&settingsManager, &bleClient, &parser, &voiceModule, &volumeFadeModule);
-    volumeFadeModule.begin(&settingsManager);
-    displayPipelineModule.begin(&displayMode,
-                                &display,
-                                &parser,
-                                &settingsManager,
-                                &bleClient,
-                                &alertPersistenceModule,
-                                &volumeFadeModule,
-                                &voiceModule,
-                                &speedVolumeModule,
-                                &debugLogger);
+    configureAlertAudioDisplayPipeline();
     systemEventBus.reset();
     bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule, &systemEventBus);
     configureConnectionRuntimeModule();
