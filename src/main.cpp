@@ -1027,6 +1027,47 @@ static void logBootSummaryAndWifiStartup(uint32_t bootId, esp_reset_reason_t res
     }
 }
 
+template <typename CheckpointLogger, typename StageLogger>
+static void initializeBlePreInitAndScan(const CheckpointLogger& logBootCheckpoint,
+                                        const StageLogger& logBootStage) {
+#ifndef REPLAY_MODE
+    // ── BLE init + scan start ────────────────────────────────────────
+    // Run AFTER SD restore/validation so BLE proxy settings reflect the
+    // restored configuration during the first scan/connection attempt.
+    {
+        const V1Settings& blePreInitSettings = settingsManager.get();
+        logBootCheckpoint("ble_preinit_begin");
+        const unsigned long blePreInitStartMs = millis();
+        if (!bleClient.initBLE(blePreInitSettings.proxyBLE, blePreInitSettings.proxyName.c_str())) {
+            SerialLog.println("BLE pre-initialization failed!");
+            fatalBootError("BLE pre-init failed", true);
+        }
+        SerialLog.printf("[BootTiming] ble_preinit_ms=%lu\n", millis() - blePreInitStartMs);
+        logBootStage("ble_preinit");
+
+        // Scan starts in setup; connection state-machine work still waits for
+        // the boot-ready gate later in setup().
+        bleClient.onDataReceived(onV1Data);
+        bleClient.onV1Connected(onV1Connected);
+        logBootCheckpoint("ble_callbacks_registered");
+        const V1Settings& bleScanSettings = settingsManager.get();
+        SerialLog.printf("Starting BLE scan for V1 (proxy: %s, name: %s)\n",
+                         bleScanSettings.proxyBLE ? "enabled" : "disabled",
+                         bleScanSettings.proxyName.c_str());
+        logBootCheckpoint("ble_scan_begin");
+        const unsigned long bleScanStartMs = millis();
+        if (!bleClient.begin(bleScanSettings.proxyBLE, bleScanSettings.proxyName.c_str())) {
+            SerialLog.println("BLE scan failed to start!");
+            fatalBootError("BLE scan failed", true);
+        }
+        SerialLog.printf("[BootTiming] ble_scan_start_ms=%lu\n", millis() - bleScanStartMs);
+    }
+#else
+    (void)logBootCheckpoint;
+    (void)logBootStage;
+#endif
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1249,39 +1290,7 @@ void setup() {
     }
     logBootStage("storage");
 
-#ifndef REPLAY_MODE
-    // ── BLE init + scan start ────────────────────────────────────────
-    // Run AFTER SD restore/validation so BLE proxy settings reflect the
-    // restored configuration during the first scan/connection attempt.
-    {
-        const V1Settings& blePreInitSettings = settingsManager.get();
-        logBootCheckpoint("ble_preinit_begin");
-        const unsigned long blePreInitStartMs = millis();
-        if (!bleClient.initBLE(blePreInitSettings.proxyBLE, blePreInitSettings.proxyName.c_str())) {
-            SerialLog.println("BLE pre-initialization failed!");
-            fatalBootError("BLE pre-init failed", true);
-        }
-        SerialLog.printf("[BootTiming] ble_preinit_ms=%lu\n", millis() - blePreInitStartMs);
-        logBootStage("ble_preinit");
-
-        // Scan starts in setup; connection state-machine work still waits for
-        // the boot-ready gate later in setup().
-        bleClient.onDataReceived(onV1Data);
-        bleClient.onV1Connected(onV1Connected);
-        logBootCheckpoint("ble_callbacks_registered");
-        const V1Settings& bleScanSettings = settingsManager.get();
-        SerialLog.printf("Starting BLE scan for V1 (proxy: %s, name: %s)\n",
-                         bleScanSettings.proxyBLE ? "enabled" : "disabled",
-                         bleScanSettings.proxyName.c_str());
-        logBootCheckpoint("ble_scan_begin");
-        const unsigned long bleScanStartMs = millis();
-        if (!bleClient.begin(bleScanSettings.proxyBLE, bleScanSettings.proxyName.c_str())) {
-            SerialLog.println("BLE scan failed to start!");
-            fatalBootError("BLE scan failed", true);
-        }
-        SerialLog.printf("[BootTiming] ble_scan_start_ms=%lu\n", millis() - bleScanStartMs);
-    }
-#endif
+    initializeBlePreInitAndScan(logBootCheckpoint, logBootStage);
 
     configureUiInteractionModules();
     logBootStage("ui_modules");
