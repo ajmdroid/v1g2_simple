@@ -783,6 +783,44 @@ static void configureLoopIngestModule() {
     loopIngestModule.begin(loopIngestProviders);
 }
 
+static void configureLoopDisplayModule() {
+    LoopDisplayModule::Providers loopDisplayProviders;
+    loopDisplayProviders.readDisplayNowMs = [](void*) -> uint32_t {
+        return millis();
+    };
+    loopDisplayProviders.collectParsedSignal = [](void* ctx) -> ParsedFrameSignal {
+        BleQueueModule* queue = static_cast<BleQueueModule*>(ctx);
+        return ParsedFrameEventModule::collect(
+            queue->consumeParsedFlag(),
+            queue->getLastParsedTimestamp(),
+            systemEventBus);
+    };
+    loopDisplayProviders.parsedSignalContext = &bleQueueModule;
+    loopDisplayProviders.runParsedFrame =
+        [](void* ctx, const DisplayOrchestrationParsedContext& parsedCtx) {
+            return static_cast<DisplayOrchestrationModule*>(ctx)->processParsedFrame(parsedCtx);
+        };
+    loopDisplayProviders.parsedFrameContext = &displayOrchestrationModule;
+    loopDisplayProviders.runLightweightRefresh =
+        [](void* ctx, const DisplayOrchestrationRefreshContext& refreshCtx) {
+            return static_cast<DisplayOrchestrationModule*>(ctx)->processLightweightRefresh(refreshCtx);
+        };
+    loopDisplayProviders.lightweightRefreshContext = &displayOrchestrationModule;
+    loopDisplayProviders.timestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    loopDisplayProviders.recordLockoutUs = [](void*, uint32_t elapsedUs) {
+        perfRecordLockoutUs(elapsedUs);
+    };
+    loopDisplayProviders.recordDispPipeUs = [](void*, uint32_t elapsedUs) {
+        perfRecordDispPipeUs(elapsedUs);
+    };
+    loopDisplayProviders.recordNotifyToDisplayMs = [](void*, uint32_t elapsedMs) {
+        perfRecordNotifyToDisplayMs(elapsedMs);
+    };
+    loopDisplayModule.begin(loopDisplayProviders);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1161,41 +1199,7 @@ void setup() {
                                      &gpsRuntimeModule,
                                      &obdHandler,
                                      &lockoutOrchestrationModule);
-    LoopDisplayModule::Providers loopDisplayProviders;
-    loopDisplayProviders.readDisplayNowMs = [](void*) -> uint32_t {
-        return millis();
-    };
-    loopDisplayProviders.collectParsedSignal = [](void* ctx) -> ParsedFrameSignal {
-        BleQueueModule* queue = static_cast<BleQueueModule*>(ctx);
-        return ParsedFrameEventModule::collect(
-            queue->consumeParsedFlag(),
-            queue->getLastParsedTimestamp(),
-            systemEventBus);
-    };
-    loopDisplayProviders.parsedSignalContext = &bleQueueModule;
-    loopDisplayProviders.runParsedFrame =
-        [](void* ctx, const DisplayOrchestrationParsedContext& parsedCtx) {
-            return static_cast<DisplayOrchestrationModule*>(ctx)->processParsedFrame(parsedCtx);
-        };
-    loopDisplayProviders.parsedFrameContext = &displayOrchestrationModule;
-    loopDisplayProviders.runLightweightRefresh =
-        [](void* ctx, const DisplayOrchestrationRefreshContext& refreshCtx) {
-            return static_cast<DisplayOrchestrationModule*>(ctx)->processLightweightRefresh(refreshCtx);
-        };
-    loopDisplayProviders.lightweightRefreshContext = &displayOrchestrationModule;
-    loopDisplayProviders.timestampUs = [](void*) -> uint32_t {
-        return PERF_TIMESTAMP_US();
-    };
-    loopDisplayProviders.recordLockoutUs = [](void*, uint32_t elapsedUs) {
-        perfRecordLockoutUs(elapsedUs);
-    };
-    loopDisplayProviders.recordDispPipeUs = [](void*, uint32_t elapsedUs) {
-        perfRecordDispPipeUs(elapsedUs);
-    };
-    loopDisplayProviders.recordNotifyToDisplayMs = [](void*, uint32_t elapsedMs) {
-        perfRecordNotifyToDisplayMs(elapsedMs);
-    };
-    loopDisplayModule.begin(loopDisplayProviders);
+    configureLoopDisplayModule();
     configureLoopConnectionEarlyModule();
     configureLoopPowerTouchModule();
     configureLoopPreIngestModule();
