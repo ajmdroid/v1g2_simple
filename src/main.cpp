@@ -431,9 +431,6 @@ void setup() {
     // This must happen before any long-running init to prevent shutdown
 #if defined(DISPLAY_WAVESHARE_349)
     batteryManager.begin();
-    
-    // DEBUG: Simulate battery for testing UI (uncomment to test)
-    // batteryManager.simulateBattery(3800);  // 60% battery
 #endif
     logBootStage("battery");
     

@@ -75,12 +75,6 @@ public:
     // Process power button (call in loop) - returns true if should power off
     bool processPowerButton();
     
-    // Get status string for display
-    String getStatusString();
-    
-    // Debug: simulate battery for testing UI (set voltage in mV, 0 to disable)
-    void simulateBattery(uint16_t voltageMV);
-
 private:
     bool initialized;
     bool onBattery;

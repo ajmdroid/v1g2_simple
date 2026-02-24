@@ -377,19 +377,6 @@ bool BatteryManager::hasBattery() const {
     return true;
 }
 
-void BatteryManager::simulateBattery(uint16_t voltageMV) {
-    simulatedVoltage = voltageMV;
-    if (voltageMV > 0) {
-        // Update cached values to match simulation
-        cachedVoltage = voltageMV;
-        cachedPercent = (uint8_t)((voltageMV - BATTERY_EMPTY_MV) * 100 / (BATTERY_FULL_MV - BATTERY_EMPTY_MV));
-        if (cachedPercent > 100) cachedPercent = 100;
-        Serial.printf("[Battery] SIMULATION: %dmV (%d%%)\n", voltageMV, cachedPercent);
-    } else {
-        Serial.println("[Battery] Simulation disabled");
-    }
-}
-
 void BatteryManager::update() {
     if (!initialized) {
         return;
@@ -635,19 +622,6 @@ bool BatteryManager::processPowerButton() {
     return false;
 }
 
-String BatteryManager::getStatusString() {
-    if (!onBattery) {
-        return "USB";
-    }
-    
-    uint8_t pct = getPercentage();
-    uint16_t mv = lastVoltage;
-    
-    char buf[32];
-    snprintf(buf, sizeof(buf), "BAT %d%% (%d.%02dV)", pct, mv / 1000, (mv % 1000) / 10);
-    return String(buf);
-}
-
 #else
 // Stub implementation for non-Waveshare boards
 BatteryManager batteryManager;
@@ -666,7 +640,6 @@ bool BatteryManager::latchPowerOn() { return false; }
 bool BatteryManager::powerOff() { return false; }
 bool BatteryManager::isPowerButtonPressed() { return false; }
 bool BatteryManager::processPowerButton() { return false; }
-String BatteryManager::getStatusString() { return "N/A"; }
 bool BatteryManager::initADC() { return false; }
 bool BatteryManager::initTCA9554() { return false; }
 bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) { return false; }
