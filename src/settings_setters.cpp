@@ -437,12 +437,6 @@ void SettingsManager::setSlotPriorityArrowOnly(int slotNum, bool prioArrow) {
     save();
 }
 
-void SettingsManager::resetToDefaults() {
-    settings = V1Settings();  // Reset to defaults
-    save();
-    Serial.println("Settings reset to defaults");
-}
-
 void SettingsManager::setLastV1Address(const String& addr) {
     String safeAddr = sanitizeLastV1AddressValue(addr);
     if (safeAddr != settings.lastV1Address) {

@@ -566,9 +566,6 @@ public:
     // Load settings from flash (public for testing)
     void load();
     
-    // Reset to defaults
-    void resetToDefaults();
-    
     // WiFi client (STA) settings - connect to external network
     bool isWifiClientEnabled() const { return settings.wifiClientEnabled; }
     const String& getWifiClientSSID() const { return settings.wifiClientSSID; }
