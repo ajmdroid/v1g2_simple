@@ -1009,6 +1009,29 @@ static void applyLockoutPolicyAndLoadZonesFromStorage() {
     }
 }
 
+static uint32_t initializeBootPerformanceLoggers() {
+    const uint32_t bootId = nextBootId();
+    perfSdLogger.setBootId(bootId);
+    signalObservationSdLogger.setBootId(bootId);
+
+    // Standalone perf CSV loggers (SD only).
+    const bool sdEnabled = storageManager.isReady() && storageManager.isSDCard();
+    perfSdLogger.begin(sdEnabled);
+    if (perfSdLogger.isEnabled()) {
+        SerialLog.printf("[PERF] SD logger enabled (%s)\n", perfSdLogger.csvPath());
+    } else {
+        SerialLog.println("[PERF] SD logger disabled (no SD)");
+    }
+    signalObservationSdLogger.begin(sdEnabled);
+    if (signalObservationSdLogger.isEnabled()) {
+        SerialLog.printf("[LockoutSD] Candidate logger enabled (%s)\n", signalObservationSdLogger.csvPath());
+    } else {
+        SerialLog.println("[LockoutSD] Candidate logger disabled (no SD)");
+    }
+
+    return bootId;
+}
+
 static void restorePendingLearnerCandidates() {
     // Restore pending learner candidates (Tier 7 best-effort, non-fatal).
     if (!storageManager.isReady()) {
@@ -1284,23 +1307,7 @@ void setup() {
 
     initializeStorageAndProfiles();
 
-    uint32_t bootId = nextBootId();
-    perfSdLogger.setBootId(bootId);
-    signalObservationSdLogger.setBootId(bootId);
-
-    // Standalone perf CSV logger (SD only).
-    perfSdLogger.begin(storageManager.isReady() && storageManager.isSDCard());
-    if (perfSdLogger.isEnabled()) {
-        SerialLog.printf("[PERF] SD logger enabled (%s)\n", perfSdLogger.csvPath());
-    } else {
-        SerialLog.println("[PERF] SD logger disabled (no SD)");
-    }
-    signalObservationSdLogger.begin(storageManager.isReady() && storageManager.isSDCard());
-    if (signalObservationSdLogger.isEnabled()) {
-        SerialLog.printf("[LockoutSD] Candidate logger enabled (%s)\n", signalObservationSdLogger.csvPath());
-    } else {
-        SerialLog.println("[LockoutSD] Candidate logger disabled (no SD)");
-    }
+    const uint32_t bootId = initializeBootPerformanceLoggers();
 
     applyLockoutPolicyAndLoadZonesFromStorage();
     logBootStage("storage");
