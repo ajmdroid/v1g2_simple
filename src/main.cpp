@@ -902,6 +902,37 @@ static void configureSystemLoopModules() {
     configureLoopPostDisplayModule();
 }
 
+static void configureRuntimeAndLockoutModules() {
+    obdHandler.setLinkReadyCallback([]() { return bleClient.isConnected(); });
+    obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
+    obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
+    obdHandler.begin();
+    gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
+    speedSourceSelector.begin(settingsManager.get().gpsEnabled);
+    configureVoiceSpeedSyncModule();
+    cameraRuntimeModule.begin(settingsManager.get().cameraEnabled);
+    cameraRuntimeModule.setAlertTuning(settingsManager.get().cameraAlertDistanceFt,
+                                       settingsManager.get().cameraAlertPersistSec);
+    // Wire lockout store only if not already done during zone-load above.
+    // Calling begin() again would reset the dirty flag set by legacy migration.
+    if (!lockoutStore.isInitialized()) {
+        lockoutStore.begin(&lockoutIndex);
+    }
+    lockoutEnforcer.begin(&settingsManager, &lockoutIndex, &lockoutStore);
+    lockoutOrchestrationModule.begin(&bleClient, &parser, &settingsManager,
+                                     &display, &lockoutEnforcer, &lockoutIndex,
+                                     &signalCaptureModule, &volumeFadeModule,
+                                     &systemEventBus, &perfCounters, &timeService);
+    lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
+    {
+        const V1Settings& settings = settingsManager.get();
+        lockoutLearner.setTuning(settings.gpsLockoutLearnerPromotionHits,
+                                 settings.gpsLockoutLearnerRadiusE5,
+                                 settings.gpsLockoutLearnerFreqToleranceMHz,
+                                 settings.gpsLockoutLearnerLearnIntervalHours);
+    }
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1216,34 +1247,7 @@ void setup() {
 
     configureAlertAudioDisplayPipeline();
     configureSystemLoopModules();
-    obdHandler.setLinkReadyCallback([]() { return bleClient.isConnected(); });
-    obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
-    obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
-    obdHandler.begin();
-    gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
-    speedSourceSelector.begin(settingsManager.get().gpsEnabled);
-    configureVoiceSpeedSyncModule();
-    cameraRuntimeModule.begin(settingsManager.get().cameraEnabled);
-    cameraRuntimeModule.setAlertTuning(settingsManager.get().cameraAlertDistanceFt,
-                                       settingsManager.get().cameraAlertPersistSec);
-    // Wire lockout store only if not already done during zone-load above.
-    // Calling begin() again would reset the dirty flag set by legacy migration.
-    if (!lockoutStore.isInitialized()) {
-        lockoutStore.begin(&lockoutIndex);
-    }
-    lockoutEnforcer.begin(&settingsManager, &lockoutIndex, &lockoutStore);
-    lockoutOrchestrationModule.begin(&bleClient, &parser, &settingsManager,
-                                      &display, &lockoutEnforcer, &lockoutIndex,
-                                      &signalCaptureModule, &volumeFadeModule,
-                                      &systemEventBus, &perfCounters, &timeService);
-    lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
-    {
-        const V1Settings& settings = settingsManager.get();
-        lockoutLearner.setTuning(settings.gpsLockoutLearnerPromotionHits,
-                                 settings.gpsLockoutLearnerRadiusE5,
-                                 settings.gpsLockoutLearnerFreqToleranceMHz,
-                                 settings.gpsLockoutLearnerLearnIntervalHours);
-    }
+    configureRuntimeAndLockoutModules();
 
     configureSpeedVolumeRuntimeModule();
     configureWifiRuntimeModule();
