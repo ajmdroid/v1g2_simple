@@ -6,6 +6,10 @@
 
 #include <NimBLEDevice.h>
 
+namespace {
+constexpr uint32_t kObdClientConnectTimeoutMs = 10000;  // Preserve existing OBD connect timeout.
+}
+
 // ---------------------------------------------------------------------------
 // BLE connection
 // ---------------------------------------------------------------------------
@@ -40,7 +44,7 @@ bool OBDHandler::connectToDevice(bool skipPreScan) {
         // Latency 0, supervision timeout 400 (4 s) matches V1 client config.
         pOBDClient->setConnectionParams(24, 48, 0, 400);
         // NimBLE timeout is configured on the client, not via connect() args.
-        pOBDClient->setConnectTimeout(10000);
+        pOBDClient->setConnectTimeout(kObdClientConnectTimeoutMs);
     }
 
     if (!targetIsObdLink) {

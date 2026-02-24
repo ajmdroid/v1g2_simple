@@ -293,8 +293,8 @@ bool V1BLEClient::startAsyncConnect() {
     
     // Connection parameters: 12-24 (15-30ms interval), balanced for stability
     pClient->setConnectionParams(12, 24, 0, 400);
-    // Give it plenty of time to connect (20s)
-    pClient->setConnectTimeout(20);
+    // Preserve current active-connect timeout behavior.
+    pClient->setConnectTimeout(NIMBLE_CONNECT_TIMEOUT_ACTIVE_MS);
 
     // Ensure client is disconnected before attempting
     if (pClient->isConnected()) {

@@ -426,7 +426,7 @@ void V1BLEClient::hardResetBLEClient() {
         pClient->setClientCallbacks(pClientCallbacks);
         // Connection parameters: 12-24 (15-30ms interval), balanced for stability
         pClient->setConnectionParams(12, 24, 0, 400);
-        pClient->setConnectTimeout(15);
+        pClient->setConnectTimeout(NIMBLE_CONNECT_TIMEOUT_INIT_MS);
     } else {
         Serial.println("[BLE] ERROR: Failed to create client!");
     }
@@ -543,7 +543,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         
         // Connection parameters: 12-24 (15-30ms interval), balanced for stability
         pClient->setConnectionParams(12, 24, 0, 400);
-        pClient->setConnectTimeout(15);
+        pClient->setConnectTimeout(NIMBLE_CONNECT_TIMEOUT_INIT_MS);
     }
     
     initialized = true;
