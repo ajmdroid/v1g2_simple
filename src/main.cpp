@@ -60,6 +60,7 @@
 #include "modules/system/loop_tail_module.h"
 #include "modules/system/loop_telemetry_module.h"
 #include "modules/system/loop_ingest_module.h"
+#include "modules/system/loop_display_module.h"
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
 #include "modules/voice/voice_speed_sync_module.h"
@@ -208,6 +209,7 @@ PeriodicMaintenanceModule periodicMaintenanceModule;
 LoopTailModule loopTailModule;
 LoopTelemetryModule loopTelemetryModule;
 LoopIngestModule loopIngestModule;
+LoopDisplayModule loopDisplayModule;
 WifiAutoStartModule wifiAutoStartModule;
 WifiPriorityPolicyModule wifiPriorityPolicyModule;
 WifiVisualSyncModule wifiVisualSyncModule;
@@ -821,6 +823,41 @@ void setup() {
                                      &gpsRuntimeModule,
                                      &obdHandler,
                                      &lockoutOrchestrationModule);
+    LoopDisplayModule::Providers loopDisplayProviders;
+    loopDisplayProviders.readDisplayNowMs = [](void*) -> uint32_t {
+        return millis();
+    };
+    loopDisplayProviders.collectParsedSignal = [](void* ctx) -> ParsedFrameSignal {
+        BleQueueModule* queue = static_cast<BleQueueModule*>(ctx);
+        return ParsedFrameEventModule::collect(
+            queue->consumeParsedFlag(),
+            queue->getLastParsedTimestamp(),
+            systemEventBus);
+    };
+    loopDisplayProviders.parsedSignalContext = &bleQueueModule;
+    loopDisplayProviders.runParsedFrame =
+        [](void* ctx, const DisplayOrchestrationParsedContext& parsedCtx) {
+            return static_cast<DisplayOrchestrationModule*>(ctx)->processParsedFrame(parsedCtx);
+        };
+    loopDisplayProviders.parsedFrameContext = &displayOrchestrationModule;
+    loopDisplayProviders.runLightweightRefresh =
+        [](void* ctx, const DisplayOrchestrationRefreshContext& refreshCtx) {
+            return static_cast<DisplayOrchestrationModule*>(ctx)->processLightweightRefresh(refreshCtx);
+        };
+    loopDisplayProviders.lightweightRefreshContext = &displayOrchestrationModule;
+    loopDisplayProviders.timestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    loopDisplayProviders.recordLockoutUs = [](void*, uint32_t elapsedUs) {
+        perfRecordLockoutUs(elapsedUs);
+    };
+    loopDisplayProviders.recordDispPipeUs = [](void*, uint32_t elapsedUs) {
+        perfRecordDispPipeUs(elapsedUs);
+    };
+    loopDisplayProviders.recordNotifyToDisplayMs = [](void*, uint32_t elapsedMs) {
+        perfRecordNotifyToDisplayMs(elapsedMs);
+    };
+    loopDisplayModule.begin(loopDisplayProviders);
     obdHandler.setLinkReadyCallback([]() { return bleClient.isConnected(); });
     obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
@@ -1103,47 +1140,20 @@ void loop() {
     VoiceSpeedSyncContext voiceSpeedSyncCtx;
     voiceSpeedSyncCtx.nowMs = now;
     voiceSpeedSyncModule.process(voiceSpeedSyncCtx);
-    
-    const ParsedFrameSignal parsedSignal = ParsedFrameEventModule::collect(
-        bleQueueModule.consumeParsedFlag(),
-        bleQueueModule.getLastParsedTimestamp(),
-        systemEventBus);
-    const bool parsedReady = parsedSignal.parsedReady;
-    const uint32_t parsedTsMs = parsedSignal.parsedTsMs;
 
-    // Drive display orchestration separately from BLE drain for better timing attribution.
-    const uint32_t displayNowMs = millis();
-    DisplayOrchestrationParsedContext parsedDisplayCtx;
-    parsedDisplayCtx.nowMs = displayNowMs;
-    parsedDisplayCtx.parsedReady = parsedReady;
-    parsedDisplayCtx.bootSplashHoldActive = bootSplashHoldActive;
-    parsedDisplayCtx.enableSignalTraceLogging = loopSettings.enableSignalTraceLogging;
-    const uint32_t lockoutStartUs = PERF_TIMESTAMP_US();
-    const auto parsedDisplayResult = displayOrchestrationModule.processParsedFrame(parsedDisplayCtx);
-    if (parsedDisplayResult.lockoutEvaluated) {
-        perfRecordLockoutUs(PERF_TIMESTAMP_US() - lockoutStartUs);
-    }
-
-    bool pipelineRanThisLoop = false;
-    if (parsedDisplayResult.runDisplayPipeline) {
-        if (parsedTsMs != 0 && displayNowMs >= parsedTsMs) {
-            perfRecordNotifyToDisplayMs(displayNowMs - parsedTsMs);
-        }
-        // No overload guard: handleParsed's internal 25ms throttle gates expensive draws;
-        // fade/debounce/gap-recovery remain microsecond-cheap and must run every frame.
-        uint32_t dispPipeStartUs = PERF_TIMESTAMP_US();
-        displayPipelineModule.handleParsed(displayNowMs, parsedDisplayResult.lockoutPrioritySuppressed);
-        perfRecordDispPipeUs(PERF_TIMESTAMP_US() - dispPipeStartUs);
-        pipelineRanThisLoop = true;
-    }
-
-    DisplayOrchestrationRefreshContext refreshCtx;
-    refreshCtx.nowMs = displayNowMs;
-    refreshCtx.bootSplashHoldActive = bootSplashHoldActive;
-    refreshCtx.overloadLateThisLoop = overloadLateThisLoop;
-    refreshCtx.pipelineRanThisLoop = pipelineRanThisLoop;
-    const auto refreshResult = displayOrchestrationModule.processLightweightRefresh(refreshCtx);
-    const bool loopSignalPriorityActive = refreshResult.signalPriorityActive;
+    // No overload guard: handleParsed's internal 25ms throttle gates expensive draws;
+    // fade/debounce/gap-recovery remain microsecond-cheap and must run every frame.
+    auto runDisplayPipeline = [](uint32_t nowMs, bool lockoutPrioritySuppressed) {
+        displayPipelineModule.handleParsed(nowMs, lockoutPrioritySuppressed);
+    };
+    LoopDisplayContext loopDisplayCtx;
+    loopDisplayCtx.nowMs = now;
+    loopDisplayCtx.bootSplashHoldActive = bootSplashHoldActive;
+    loopDisplayCtx.overloadLateThisLoop = overloadLateThisLoop;
+    loopDisplayCtx.enableSignalTraceLogging = loopSettings.enableSignalTraceLogging;
+    loopDisplayCtx.runDisplayPipeline = runDisplayPipeline;
+    const LoopDisplayResult loopDisplayResult = loopDisplayModule.process(loopDisplayCtx);
+    const bool loopSignalPriorityActive = loopDisplayResult.signalPriorityActive;
 
     // Drive auto-push state machine (non-blocking)
     autoPushModule.process();
