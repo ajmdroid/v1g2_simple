@@ -987,6 +987,22 @@ static void initializeTouchAndDisplayControls() {
 #endif
 }
 
+static void configureUiInteractionModules() {
+    // Initialize auto-push module after settings/profiles are ready
+    autoPushModule.begin(&settingsManager, &v1ProfileManager, &bleClient, &display);
+
+    configureTouchUiModule();
+
+    tapGestureModule.begin(&touchHandler,
+                           &settingsManager,
+                           &display,
+                           &bleClient,
+                           &parser,
+                           &autoPushModule,
+                           &alertPersistenceModule,
+                           &displayMode);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1243,19 +1259,7 @@ void setup() {
     }
 #endif
 
-    // Initialize auto-push module after settings/profiles are ready
-    autoPushModule.begin(&settingsManager, &v1ProfileManager, &bleClient, &display);
-
-    configureTouchUiModule();
-
-    tapGestureModule.begin(&touchHandler,
-                           &settingsManager,
-                           &display,
-                           &bleClient,
-                           &parser,
-                           &autoPushModule,
-                           &alertPersistenceModule,
-                           &displayMode);
+    configureUiInteractionModules();
     logBootStage("ui_modules");
 
     const V1Settings& bootSettings = settingsManager.get();
