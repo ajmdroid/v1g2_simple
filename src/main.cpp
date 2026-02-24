@@ -74,6 +74,7 @@
 #include "modules/debug/debug_api_service.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/wifi/wifi_boot_policy.h"
+#include "modules/wifi/wifi_auto_start_module.h"
 #include "modules/wifi/wifi_priority_policy_module.h"
 #include "modules/wifi/wifi_visual_sync_module.h"
 #include "modules/perf/debug_macros.h"
@@ -190,6 +191,7 @@ DisplayPipelineModule displayPipelineModule;
 DisplayOrchestrationModule displayOrchestrationModule;
 DisplayRestoreModule displayRestoreModule;
 SystemEventBus systemEventBus;
+WifiAutoStartModule wifiAutoStartModule;
 WifiPriorityPolicyModule wifiPriorityPolicyModule;
 WifiVisualSyncModule wifiVisualSyncModule;
 ObdRuntimeModule obdRuntimeModule;
@@ -923,30 +925,15 @@ void loop() {
     }
     perfRecordCameraUs(PERF_TIMESTAMP_US() - cameraStartUs);
 
-    // ── WiFi deferred auto-start gate ────────────────────────────────
-    // Replaces the old setup()-time startWifi() call.  WiFi waits for
-    // BLE to connect + settle, or a 30 s boot timeout, whichever first.
-    if (!wifiAutoStartDone && loopSettings.enableWifiAtBoot) {
-        constexpr uint32_t WIFI_SETTLE_MS  = 3000;
-        constexpr uint32_t WIFI_BOOT_TIMEOUT_MS = 30000;
-        // `now` is captured near loop start; V1 connect callback can stamp a slightly
-        // newer `v1ConnectedAtMs` later in the same loop. Saturate to avoid underflow.
-        const uint32_t msSinceV1 =
-            (v1ConnectedAtMs > 0 && now >= v1ConnectedAtMs)
-                ? static_cast<uint32_t>(now - v1ConnectedAtMs)
-                : 0;
-        const bool canDma = wifiManager.canStartSetupMode(nullptr, nullptr);
-        if (WifiBootPolicy::shouldAutoStartWifi(
-                true, false, bleClient.isConnected(),
-                msSinceV1, WIFI_SETTLE_MS,
-                now, WIFI_BOOT_TIMEOUT_MS, canDma)) {
-            SerialLog.printf("[WiFi] Deferred auto-start at %lu ms (v1Connect=%lu ms ago)\n",
-                             now, msSinceV1);
-            getWifiOrchestrator().startWifi();
-            wifiManager.markAutoStarted();
-            wifiAutoStartDone = true;
-        }
-    }
+    wifiAutoStartModule.process(
+        now,
+        v1ConnectedAtMs,
+        loopSettings.enableWifiAtBoot,
+        bleClient.isConnected(),
+        wifiManager.canStartSetupMode(nullptr, nullptr),
+        wifiAutoStartDone,
+        [] { getWifiOrchestrator().startWifi(); },
+        [] { wifiManager.markAutoStarted(); });
 
     // Process WiFi/web server only when WiFi is actually enabled.
     // Explicit gate keeps this path a near-no-op in wifi-off profiles.
