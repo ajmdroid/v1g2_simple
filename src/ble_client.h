@@ -375,9 +375,10 @@ private:
     std::atomic<bool> asyncConnectSuccess{false};   // Result from onConnect callback
     uint8_t connectAttemptNumber = 0;               // Current attempt (1-based)
     static constexpr uint8_t MAX_CONNECT_ATTEMPTS = 5;          // 5 attempts - more retries
-    static constexpr unsigned long NIMBLE_CONNECT_TIMEOUT_INIT_MS = 15;    // Existing init/reset client timeout
-    static constexpr unsigned long NIMBLE_CONNECT_TIMEOUT_ACTIVE_MS = 20;  // Existing active connect timeout
     static constexpr unsigned long CONNECT_TIMEOUT_MS = 3000;   // 3s timeout - if it works, it's fast
+    // NimBLE timeout API is milliseconds. Align client-level timeout with the state-machine budget.
+    static constexpr unsigned long NIMBLE_CONNECT_TIMEOUT_INIT_MS = CONNECT_TIMEOUT_MS;
+    static constexpr unsigned long NIMBLE_CONNECT_TIMEOUT_ACTIVE_MS = CONNECT_TIMEOUT_MS;
     static constexpr unsigned long DISCOVERY_TIMEOUT_MS = 5000; // 5s for discovery
     static constexpr unsigned long SUBSCRIBE_TIMEOUT_MS = 3000;  // 3s for subscriptions
     uint32_t connectPhaseStartUs = 0;  // For timing individual phases
