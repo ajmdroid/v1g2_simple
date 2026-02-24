@@ -624,6 +624,35 @@ static void configureLoopPreIngestModule() {
     loopPreIngestModule.begin(loopPreIngestProviders);
 }
 
+static void configureConnectionRuntimeModule() {
+    ConnectionRuntimeModule::Providers connectionRuntimeProviders;
+    connectionRuntimeProviders.isBleConnected = [](void* ctx) -> bool {
+        return static_cast<V1BLEClient*>(ctx)->isConnected();
+    };
+    connectionRuntimeProviders.isBackpressured = [](void* ctx) -> bool {
+        return static_cast<BleQueueModule*>(ctx)->isBackpressured();
+    };
+    connectionRuntimeProviders.getLastRxMillis = [](void* ctx) -> unsigned long {
+        return static_cast<BleQueueModule*>(ctx)->getLastRxMillis();
+    };
+    connectionRuntimeProviders.bleContext = &bleClient;
+    connectionRuntimeProviders.queueContext = &bleQueueModule;
+    connectionRuntimeModule.begin(connectionRuntimeProviders);
+}
+
+static void configureConnectionStateDispatchModule() {
+    ConnectionStateDispatchModule::Providers connectionStateDispatchProviders;
+    connectionStateDispatchProviders.runCadence = [](void* ctx, const ConnectionStateCadenceContext& cadenceCtx) {
+        return static_cast<ConnectionStateCadenceModule*>(ctx)->process(cadenceCtx);
+    };
+    connectionStateDispatchProviders.cadenceContext = &connectionStateCadenceModule;
+    connectionStateDispatchProviders.runConnectionStateProcess = [](void* ctx, uint32_t nowMs) {
+        static_cast<ConnectionStateModule*>(ctx)->process(nowMs);
+    };
+    connectionStateDispatchProviders.connectionStateContext = &connectionStateModule;
+    connectionStateDispatchModule.begin(connectionStateDispatchProviders);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -984,30 +1013,9 @@ void setup() {
                                 &debugLogger);
     systemEventBus.reset();
     bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule, &systemEventBus);
-    ConnectionRuntimeModule::Providers connectionRuntimeProviders;
-    connectionRuntimeProviders.isBleConnected = [](void* ctx) -> bool {
-        return static_cast<V1BLEClient*>(ctx)->isConnected();
-    };
-    connectionRuntimeProviders.isBackpressured = [](void* ctx) -> bool {
-        return static_cast<BleQueueModule*>(ctx)->isBackpressured();
-    };
-    connectionRuntimeProviders.getLastRxMillis = [](void* ctx) -> unsigned long {
-        return static_cast<BleQueueModule*>(ctx)->getLastRxMillis();
-    };
-    connectionRuntimeProviders.bleContext = &bleClient;
-    connectionRuntimeProviders.queueContext = &bleQueueModule;
-    connectionRuntimeModule.begin(connectionRuntimeProviders);
+    configureConnectionRuntimeModule();
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule, &systemEventBus);
-    ConnectionStateDispatchModule::Providers connectionStateDispatchProviders;
-    connectionStateDispatchProviders.runCadence = [](void* ctx, const ConnectionStateCadenceContext& cadenceCtx) {
-        return static_cast<ConnectionStateCadenceModule*>(ctx)->process(cadenceCtx);
-    };
-    connectionStateDispatchProviders.cadenceContext = &connectionStateCadenceModule;
-    connectionStateDispatchProviders.runConnectionStateProcess = [](void* ctx, uint32_t nowMs) {
-        static_cast<ConnectionStateModule*>(ctx)->process(nowMs);
-    };
-    connectionStateDispatchProviders.connectionStateContext = &connectionStateModule;
-    connectionStateDispatchModule.begin(connectionStateDispatchProviders);
+    configureConnectionStateDispatchModule();
     PeriodicMaintenanceModule::Providers periodicMaintenanceProviders;
     periodicMaintenanceProviders.timestampUs = [](void*) -> uint32_t {
         return PERF_TIMESTAMP_US();
