@@ -1056,13 +1056,9 @@ void loop() {
 
         if (refreshWifiIcon && !displayPreviewModule.isRunning() && !bootSplashHoldActive) {
             display.drawWiFiIndicator();
-#if defined(DISPLAY_USE_ARDUINO_GFX)
             const int leftColWidth = 64;
             const int leftColHeight = 96;
             display.flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
-#else
-            display.flush();
-#endif
             lastWifiIconRefreshMs = nowMs;
         }
     }
