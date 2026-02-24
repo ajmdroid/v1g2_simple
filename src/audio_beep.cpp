@@ -641,12 +641,6 @@ void play_alert_voice(AlertBand band, AlertDirection direction) {
     }
 }
 
-// Test beep on startup (for debugging audio hardware)
-void play_test_beep() {
-    AUDIO_LOGLN("[AUDIO] === TEST SPEECH ON STARTUP ===");
-    play_vol0_beep();
-}
-
 // Play test voice for volume adjustment (short "Ka ahead" clip)
 void play_test_voice() {
     AUDIO_LOGLN("[AUDIO] play_test_voice() called");
@@ -660,4 +654,3 @@ void play_test_voice() {
     // Use "Ka ahead" as test phrase - short and recognizable (~822ms)
     play_pcm_audio(alert_ka_ahead, ALERT_KA_AHEAD_SAMPLES, ALERT_KA_AHEAD_DURATION_MS);
 }
-
