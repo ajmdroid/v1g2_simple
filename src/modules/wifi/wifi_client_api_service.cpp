@@ -1,26 +1,11 @@
 #include "wifi_client_api_service.h"
+#include "wifi_api_response.h"
 
 #include <ArduinoJson.h>
-
-#ifdef UNIT_TEST
-#include <string>
-#endif
 
 namespace WifiClientApiService {
 
 namespace {
-
-void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc) {
-#ifdef UNIT_TEST
-    std::string response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response.c_str());
-#else
-    String response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response);
-#endif
-}
 
 static void sendStatus(WebServer& server, const StatusPayload& payload) {
     JsonDocument doc;
@@ -35,7 +20,7 @@ static void sendStatus(WebServer& server, const StatusPayload& payload) {
     }
 
     doc["scanRunning"] = payload.scanRunning;
-    sendJsonDocument(server, 200, doc);
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
 static void sendScanInProgress(WebServer& server) {
@@ -55,7 +40,7 @@ static void sendScanResults(WebServer& server,
         obj["secure"] = net.secure;
     }
 
-    sendJsonDocument(server, 200, doc);
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
 static void sendScanStartFailed(WebServer& server) {
@@ -95,8 +80,8 @@ static bool parseConnectRequest(WebServer& server,
 static void sendConnectParseError(WebServer& server, const char* message) {
     JsonDocument doc;
     doc["success"] = false;
-    doc["message"] = message ? message : "Invalid request";
-    sendJsonDocument(server, 400, doc);
+    WifiApiResponse::setErrorAndMessage(doc, message ? message : "Invalid request");
+    WifiApiResponse::sendJsonDocument(server, 400, doc);
 }
 
 static void sendConnectStarted(WebServer& server) {
@@ -119,7 +104,10 @@ static bool parseEnableRequest(WebServer& server, bool& enabledOut) {
 }
 
 static void sendEnableParseError(WebServer& server) {
-    server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing enabled field\"}");
+    JsonDocument doc;
+    doc["success"] = false;
+    WifiApiResponse::setErrorAndMessage(doc, "Missing enabled field");
+    WifiApiResponse::sendJsonDocument(server, 400, doc);
 }
 
 static void sendEnableResult(WebServer& server, bool enabled) {
