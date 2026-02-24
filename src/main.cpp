@@ -967,6 +967,26 @@ static void restorePendingLearnerCandidates() {
     }
 }
 
+static void initializeTouchAndDisplayControls() {
+    // Initialize touch handler early - before BLE to avoid interleaved logs
+    SerialLog.println("Initializing touch handler...");
+    if (touchHandler.begin(17, 18, AXS_TOUCH_ADDR, -1)) {
+        SerialLog.println("Touch handler initialized successfully");
+    } else {
+        SerialLog.println("WARNING: Touch handler failed to initialize - continuing anyway");
+    }
+
+    // Initialize BOOT button (GPIO 0) for brightness adjustment
+#if defined(DISPLAY_WAVESHARE_349)
+    pinMode(BOOT_BUTTON_GPIO, INPUT_PULLUP);
+    const V1Settings& displaySettings = settingsManager.get();
+    display.setBrightness(displaySettings.brightness);  // Apply saved brightness
+    audio_set_volume(displaySettings.voiceVolume);      // Apply saved voice volume
+    SerialLog.printf("[Settings] Applied saved brightness: %d, voice volume: %d\n",
+                     displaySettings.brightness, displaySettings.voiceVolume);
+#endif
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1260,24 +1280,8 @@ void setup() {
         SerialLog.println("[WiFi] Off by default - start with BOOT long-press");
     }
     
-    // Initialize touch handler early - before BLE to avoid interleaved logs
-    SerialLog.println("Initializing touch handler...");
-    if (touchHandler.begin(17, 18, AXS_TOUCH_ADDR, -1)) {
-        SerialLog.println("Touch handler initialized successfully");
-    } else {
-        SerialLog.println("WARNING: Touch handler failed to initialize - continuing anyway");
-    }
+    initializeTouchAndDisplayControls();
     logBootStage("touch");
-    
-    // Initialize BOOT button (GPIO 0) for brightness adjustment
-#if defined(DISPLAY_WAVESHARE_349)
-    pinMode(BOOT_BUTTON_GPIO, INPUT_PULLUP);
-    const V1Settings& displaySettings = settingsManager.get();
-    display.setBrightness(displaySettings.brightness);  // Apply saved brightness
-    audio_set_volume(displaySettings.voiceVolume);      // Apply saved voice volume
-    SerialLog.printf("[Settings] Applied saved brightness: %d, voice volume: %d\n", 
-                    displaySettings.brightness, displaySettings.voiceVolume);
-#endif
 
     configureAlertAudioDisplayPipeline();
     configureSystemLoopModules();
