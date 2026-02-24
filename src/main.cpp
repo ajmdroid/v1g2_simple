@@ -75,6 +75,7 @@
 #include "modules/speed/speed_source_selector.h"
 #include "modules/wifi/wifi_boot_policy.h"
 #include "modules/wifi/wifi_priority_policy_module.h"
+#include "modules/wifi/wifi_visual_sync_module.h"
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
 #include <driver/gpio.h>
@@ -190,6 +191,7 @@ DisplayOrchestrationModule displayOrchestrationModule;
 DisplayRestoreModule displayRestoreModule;
 SystemEventBus systemEventBus;
 WifiPriorityPolicyModule wifiPriorityPolicyModule;
+WifiVisualSyncModule wifiVisualSyncModule;
 ObdRuntimeModule obdRuntimeModule;
 
 // Callback for BLE data reception - just queues data, doesn't process
@@ -964,32 +966,20 @@ void loop() {
         }
     }
 
-    // Keep WiFi icon state in sync with WiFi lifecycle even when no alert redraws
-    // happen (STA can remain active after AP retirement).
-    {
-        static bool lastWifiVisualActive = false;
-        static unsigned long lastWifiIconRefreshMs = 0;
-        const bool wifiVisualActiveNow =
-            wifiManager.isWifiServiceActive() || wifiManager.isConnected();
-        const unsigned long nowMs = millis();
-
-        bool refreshWifiIcon = false;
-        if (wifiVisualActiveNow != lastWifiVisualActive) {
-            refreshWifiIcon = true;
-            lastWifiVisualActive = wifiVisualActiveNow;
-        } else if (wifiVisualActiveNow && (nowMs - lastWifiIconRefreshMs) >= 2000UL) {
-            // Periodic refresh keeps WiFi/AP client-connect color current.
-            refreshWifiIcon = true;
-        }
-
-        if (refreshWifiIcon && !displayPreviewModule.isRunning() && !bootSplashHoldActive) {
+    const bool wifiVisualActiveNow =
+        wifiManager.isWifiServiceActive() || wifiManager.isConnected();
+    const unsigned long wifiVisualNowMs = millis();
+    wifiVisualSyncModule.process(
+        wifiVisualNowMs,
+        wifiVisualActiveNow,
+        displayPreviewModule.isRunning(),
+        bootSplashHoldActive,
+        [] {
             display.drawWiFiIndicator();
             const int leftColWidth = 64;
             const int leftColHeight = 96;
             display.flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
-            lastWifiIconRefreshMs = nowMs;
-        }
-    }
+        });
     
     perfRecordLoopJitterUs(micros() - loopStartUs);
     StorageManager::updateDmaHeapCache();  // Keep DMA cache fresh for SD gating
