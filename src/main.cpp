@@ -653,6 +653,60 @@ static void configureConnectionStateDispatchModule() {
     connectionStateDispatchModule.begin(connectionStateDispatchProviders);
 }
 
+static void configurePeriodicMaintenanceModule() {
+    PeriodicMaintenanceModule::Providers periodicMaintenanceProviders;
+    periodicMaintenanceProviders.timestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    periodicMaintenanceProviders.runPerfReport = [](void*) { perfMetricsCheckReport(); };
+    periodicMaintenanceProviders.recordPerfReportUs = [](void*, uint32_t elapsedUs) {
+        perfRecordPerfReportUs(elapsedUs);
+    };
+    periodicMaintenanceProviders.runTimeSave = [](void* ctx, uint32_t nowMs) {
+        static_cast<TimeService*>(ctx)->periodicSave(nowMs);
+    };
+    periodicMaintenanceProviders.timeSaveContext = &timeService;
+    periodicMaintenanceProviders.recordTimeSaveUs = [](void*, uint32_t elapsedUs) {
+        perfRecordTimeSaveUs(elapsedUs);
+    };
+    periodicMaintenanceProviders.nowEpochMsOr0 = [](void* ctx) -> int64_t {
+        return static_cast<TimeService*>(ctx)->nowEpochMsOr0();
+    };
+    periodicMaintenanceProviders.epochContext = &timeService;
+    periodicMaintenanceProviders.runLockoutLearner = [](void* ctx, uint32_t nowMs, int64_t epochMs) {
+        static_cast<LockoutLearner*>(ctx)->process(nowMs, epochMs);
+    };
+    periodicMaintenanceProviders.lockoutLearnerContext = &lockoutLearner;
+    periodicMaintenanceProviders.runLockoutStoreSave = [](void*, uint32_t nowMs) {
+        processLockoutStoreSave(nowMs);
+    };
+    periodicMaintenanceProviders.runLearnerPendingSave = [](void*, uint32_t nowMs) {
+        processLearnerPendingSave(nowMs);
+    };
+    periodicMaintenanceModule.begin(periodicMaintenanceProviders);
+}
+
+static void configureLoopTailModule() {
+    LoopTailModule::Providers loopTailProviders;
+    loopTailProviders.perfTimestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    loopTailProviders.loopMicrosUs = [](void*) -> uint32_t {
+        return micros();
+    };
+    loopTailProviders.runBleDrain = [](void* ctx) {
+        static_cast<BleQueueModule*>(ctx)->process();
+    };
+    loopTailProviders.bleDrainContext = &bleQueueModule;
+    loopTailProviders.recordBleDrainUs = [](void*, uint32_t elapsedUs) {
+        perfRecordBleDrainUs(elapsedUs);
+    };
+    loopTailProviders.yieldOneTick = [](void*) {
+        vTaskDelay(pdMS_TO_TICKS(1));
+    };
+    loopTailModule.begin(loopTailProviders);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1016,54 +1070,8 @@ void setup() {
     configureConnectionRuntimeModule();
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule, &systemEventBus);
     configureConnectionStateDispatchModule();
-    PeriodicMaintenanceModule::Providers periodicMaintenanceProviders;
-    periodicMaintenanceProviders.timestampUs = [](void*) -> uint32_t {
-        return PERF_TIMESTAMP_US();
-    };
-    periodicMaintenanceProviders.runPerfReport = [](void*) { perfMetricsCheckReport(); };
-    periodicMaintenanceProviders.recordPerfReportUs = [](void*, uint32_t elapsedUs) {
-        perfRecordPerfReportUs(elapsedUs);
-    };
-    periodicMaintenanceProviders.runTimeSave = [](void* ctx, uint32_t nowMs) {
-        static_cast<TimeService*>(ctx)->periodicSave(nowMs);
-    };
-    periodicMaintenanceProviders.timeSaveContext = &timeService;
-    periodicMaintenanceProviders.recordTimeSaveUs = [](void*, uint32_t elapsedUs) {
-        perfRecordTimeSaveUs(elapsedUs);
-    };
-    periodicMaintenanceProviders.nowEpochMsOr0 = [](void* ctx) -> int64_t {
-        return static_cast<TimeService*>(ctx)->nowEpochMsOr0();
-    };
-    periodicMaintenanceProviders.epochContext = &timeService;
-    periodicMaintenanceProviders.runLockoutLearner = [](void* ctx, uint32_t nowMs, int64_t epochMs) {
-        static_cast<LockoutLearner*>(ctx)->process(nowMs, epochMs);
-    };
-    periodicMaintenanceProviders.lockoutLearnerContext = &lockoutLearner;
-    periodicMaintenanceProviders.runLockoutStoreSave = [](void*, uint32_t nowMs) {
-        processLockoutStoreSave(nowMs);
-    };
-    periodicMaintenanceProviders.runLearnerPendingSave = [](void*, uint32_t nowMs) {
-        processLearnerPendingSave(nowMs);
-    };
-    periodicMaintenanceModule.begin(periodicMaintenanceProviders);
-    LoopTailModule::Providers loopTailProviders;
-    loopTailProviders.perfTimestampUs = [](void*) -> uint32_t {
-        return PERF_TIMESTAMP_US();
-    };
-    loopTailProviders.loopMicrosUs = [](void*) -> uint32_t {
-        return micros();
-    };
-    loopTailProviders.runBleDrain = [](void* ctx) {
-        static_cast<BleQueueModule*>(ctx)->process();
-    };
-    loopTailProviders.bleDrainContext = &bleQueueModule;
-    loopTailProviders.recordBleDrainUs = [](void*, uint32_t elapsedUs) {
-        perfRecordBleDrainUs(elapsedUs);
-    };
-    loopTailProviders.yieldOneTick = [](void*) {
-        vTaskDelay(pdMS_TO_TICKS(1));
-    };
-    loopTailModule.begin(loopTailProviders);
+    configurePeriodicMaintenanceModule();
+    configureLoopTailModule();
     LoopTelemetryModule::Providers loopTelemetryProviders;
     loopTelemetryProviders.microsNow = [](void*) -> uint32_t {
         return micros();
