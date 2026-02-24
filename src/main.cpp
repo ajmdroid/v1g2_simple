@@ -50,6 +50,7 @@
 #include "modules/ble/ble_queue_module.h"
 #include "modules/ble/connection_state_module.h"
 #include "modules/ble/connection_runtime_module.h"
+#include "modules/ble/connection_state_cadence_module.h"
 #include "modules/display/display_pipeline_module.h"
 #include "modules/display/display_orchestration_module.h"
 #include "modules/system/system_event_bus.h"
@@ -98,7 +99,6 @@ AlertPersistenceModule alertPersistenceModule;
 // Voice Module - handles voice announcement decisions
 VoiceModule voiceModule;
 
-unsigned long lastDisplayUpdate = 0;
 static bool bootReady = false;
 static unsigned long bootReadyDeadlineMs = 0;
 static bool bootSplashHoldActive = false;
@@ -108,9 +108,6 @@ static constexpr unsigned long BOOT_SPLASH_HOLD_MS = 400;
 static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_MS = 400;
 static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_WAKE_MS = 120;
 static unsigned long activeScanScreenDwellMs = MIN_SCAN_SCREEN_DWELL_MS;
-static unsigned long scanScreenEnteredMs = 0;
-static bool scanScreenDwellActive = false;
-static bool lastBleConnectedForScanDwell = false;
 static bool obdAutoConnectPending = false;
 static unsigned long obdAutoConnectAtMs = 0;
 static unsigned long v1ConnectedAtMs = 0;
@@ -118,6 +115,7 @@ static bool wifiAutoStartDone = false;
 
 // Display preview driver (color + camera demos)
 DisplayPreviewModule displayPreviewModule;
+static ConnectionStateCadenceModule connectionStateCadenceModule;
 
 // Lockout orchestration (enforcement + mute + pre-quiet pipeline)
 LockoutOrchestrationModule lockoutOrchestrationModule;
@@ -161,8 +159,7 @@ static void showInitialScanningScreen() {
     display.showScanning();
     display.drawProfileIndicator(settingsManager.get().activeSlot);
     initialScanningScreenShown = true;
-    scanScreenEnteredMs = millis();
-    scanScreenDwellActive = true;
+    connectionStateCadenceModule.onScanningScreenShown(millis());
 }
 
 // logPanicBreadcrumbs() — moved to main_boot.cpp
@@ -361,6 +358,7 @@ void setup() {
     activeScanScreenDwellMs =
         (resetReason == ESP_RST_DEEPSLEEP) ? MIN_SCAN_SCREEN_DWELL_WAKE_MS : MIN_SCAN_SCREEN_DWELL_MS;
     SerialLog.printf("[BootTiming] scan_dwell_target_ms=%lu\n", activeScanScreenDwellMs);
+    connectionStateCadenceModule.reset();
 
     // Runtime PSRAM visibility: board metadata can differ from actual hardware.
     bool psramOk = psramFound();
@@ -979,34 +977,22 @@ void loop() {
         settingsManager.get().voiceVolume,
         [](uint8_t volume) { audio_set_volume(volume); });
     
-    // Update display periodically
+    // Display cadence and scan-dwell gate for connection state transitions.
     now = millis();
     bleConnectedNow = bleClient.isConnected();
-    if (lastBleConnectedForScanDwell && !bleConnectedNow && !bootSplashHoldActive) {
-        scanScreenEnteredMs = now;
-        scanScreenDwellActive = true;
-    }
-    lastBleConnectedForScanDwell = bleConnectedNow;
-    
-    if (now - lastDisplayUpdate >= DISPLAY_UPDATE_MS) {
-        lastDisplayUpdate = now;
-        if (!displayPreviewModule.isRunning()) {
-            // Handle connection state transitions (connect/disconnect, stale data re-request)
-            if (!bootSplashHoldActive) {
-                bool holdScanDwell = false;
-                if (scanScreenDwellActive && bleConnectedNow) {
-                    unsigned long scanDwellMs = now - scanScreenEnteredMs;
-                    holdScanDwell = scanDwellMs < activeScanScreenDwellMs;
-                }
+    ConnectionStateCadenceContext cadenceCtx;
+    cadenceCtx.nowMs = now;
+    cadenceCtx.displayUpdateIntervalMs = DISPLAY_UPDATE_MS;
+    cadenceCtx.scanScreenDwellMs = activeScanScreenDwellMs;
+    cadenceCtx.bleConnectedNow = bleConnectedNow;
+    cadenceCtx.bootSplashHoldActive = bootSplashHoldActive;
+    cadenceCtx.displayPreviewRunning = displayPreviewModule.isRunning();
+    const ConnectionStateCadenceDecision cadenceDecision =
+        connectionStateCadenceModule.process(cadenceCtx);
 
-                if (!holdScanDwell) {
-                    connectionStateModule.process(now);
-                    if (bleConnectedNow) {
-                        scanScreenDwellActive = false;
-                    }
-                }
-            }
-        }
+    if (cadenceDecision.shouldRunConnectionStateProcess) {
+        // Handle connection state transitions (connect/disconnect, stale data re-request).
+        connectionStateModule.process(now);
     }
     
     // Periodic perf metrics report (stability diagnostics)
