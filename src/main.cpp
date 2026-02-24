@@ -76,12 +76,9 @@
 #include "modules/perf/debug_macros.h"
 #include "time_service.h"
 #include <driver/gpio.h>
-#include <esp_sleep.h>
 #include "../include/display_driver.h"
 #include <FS.h>
-#include <driver/gpio.h>
 #include <algorithm>
-#include <cmath>
 
 // Global objects
 V1BLEClient bleClient;
