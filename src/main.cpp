@@ -821,6 +821,39 @@ static void configureLoopDisplayModule() {
     loopDisplayModule.begin(loopDisplayProviders);
 }
 
+static void configureTouchUiModule() {
+    TouchUiModule::Callbacks touchCbs{
+        .isWifiSetupActive = [] { return wifiManager.isWifiServiceActive(); },
+        .stopWifiSetup = [] { wifiManager.stopSetupMode(true); },
+        .startWifi = [] { getWifiOrchestrator().startWifi(); },
+        .drawWifiIndicator = [] { display.drawWiFiIndicator(); },
+        .restoreDisplay = [] {
+            if (bootSplashHoldActive) {
+                return;
+            }
+            if (bleClient.isConnected()) {
+                display.forceNextRedraw();
+                DisplayState state = parser.getDisplayState();
+                if (parser.hasAlerts()) {
+                    AlertData priority;
+                    if (parser.getRenderablePriorityAlert(priority)) {
+                        const auto& alerts = parser.getAllAlerts();
+                        display.update(priority, alerts.data(), parser.getAlertCount(), state);
+                    } else {
+                        display.update(state);
+                    }
+                } else {
+                    display.update(state);
+                }
+            } else {
+                display.forceNextRedraw();
+                display.showScanning();
+            }
+        }
+    };
+    touchUiModule.begin(&display, &touchHandler, &settingsManager, touchCbs);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1080,38 +1113,7 @@ void setup() {
     // Initialize auto-push module after settings/profiles are ready
     autoPushModule.begin(&settingsManager, &v1ProfileManager, &bleClient, &display);
 
-    // Touch/UI module callbacks
-    TouchUiModule::Callbacks touchCbs{
-        .isWifiSetupActive = [] { return wifiManager.isWifiServiceActive(); },
-        .stopWifiSetup = [] { wifiManager.stopSetupMode(true); },
-        .startWifi = [] { getWifiOrchestrator().startWifi(); },
-        .drawWifiIndicator = [] { display.drawWiFiIndicator(); },
-        .restoreDisplay = [] {
-            if (bootSplashHoldActive) {
-                return;
-            }
-            if (bleClient.isConnected()) {
-                display.forceNextRedraw();
-                DisplayState state = parser.getDisplayState();
-                if (parser.hasAlerts()) {
-                    AlertData priority;
-                    if (parser.getRenderablePriorityAlert(priority)) {
-                        const auto& alerts = parser.getAllAlerts();
-                        display.update(priority, alerts.data(), parser.getAlertCount(), state);
-                    } else {
-                        display.update(state);
-                    }
-                } else {
-                    display.update(state);
-                }
-            } else {
-                display.forceNextRedraw();
-                display.showScanning();
-            }
-        }
-    };
-
-    touchUiModule.begin(&display, &touchHandler, &settingsManager, touchCbs);
+    configureTouchUiModule();
 
     tapGestureModule.begin(&touchHandler,
                            &settingsManager,
