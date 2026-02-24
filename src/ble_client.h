@@ -430,9 +430,6 @@ private:
     // Defer settings writes from BLE scan callback
     void deferLastV1Address(const char* addr);
     
-    // Internal connection attempt (called only from state machine)
-    bool attemptConnection();
-    
     // Exponential backoff for connection failures (error 13 = BLE_HS_EBUSY)
     uint8_t consecutiveConnectFailures = 0;
     unsigned long nextConnectAllowedMs = 0;  // Backoff until this time
