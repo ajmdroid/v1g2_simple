@@ -72,7 +72,6 @@ public:
     // --- Persistence (best-effort Tier 7) ---
     void toJson(JsonDocument& doc) const;
     bool fromJson(JsonDocument& doc, int64_t epochMs);
-    void markDirty() { dirty_ = true; }
     bool isDirty() const { return dirty_; }
     void clearDirty() { dirty_ = false; }
 
