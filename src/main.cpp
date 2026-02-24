@@ -51,6 +51,7 @@
 #include "modules/ble/connection_state_module.h"
 #include "modules/ble/connection_runtime_module.h"
 #include "modules/ble/connection_state_cadence_module.h"
+#include "modules/ble/connection_state_dispatch_module.h"
 #include "modules/display/display_pipeline_module.h"
 #include "modules/display/display_orchestration_module.h"
 #include "modules/system/system_event_bus.h"
@@ -110,6 +111,7 @@ static bool initialScanningScreenShown = false;
 static constexpr unsigned long BOOT_SPLASH_HOLD_MS = 400;
 static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_MS = 400;
 static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_WAKE_MS = 120;
+static constexpr unsigned long CONNECTION_STATE_PROCESS_MAX_GAP_MS = 1000;
 static unsigned long activeScanScreenDwellMs = MIN_SCAN_SCREEN_DWELL_MS;
 static bool obdAutoConnectPending = false;
 static unsigned long obdAutoConnectAtMs = 0;
@@ -190,6 +192,7 @@ PowerModule powerModule;
 BleQueueModule bleQueueModule;
 ConnectionStateModule connectionStateModule;
 ConnectionRuntimeModule connectionRuntimeModule;
+ConnectionStateDispatchModule connectionStateDispatchModule;
 DisplayPipelineModule displayPipelineModule;
 DisplayOrchestrationModule displayOrchestrationModule;
 DisplayRestoreModule displayRestoreModule;
@@ -670,6 +673,16 @@ void setup() {
     connectionRuntimeProviders.queueContext = &bleQueueModule;
     connectionRuntimeModule.begin(connectionRuntimeProviders);
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule, &systemEventBus);
+    ConnectionStateDispatchModule::Providers connectionStateDispatchProviders;
+    connectionStateDispatchProviders.runCadence = [](void* ctx, const ConnectionStateCadenceContext& cadenceCtx) {
+        return static_cast<ConnectionStateCadenceModule*>(ctx)->process(cadenceCtx);
+    };
+    connectionStateDispatchProviders.cadenceContext = &connectionStateCadenceModule;
+    connectionStateDispatchProviders.runConnectionStateProcess = [](void* ctx, uint32_t nowMs) {
+        static_cast<ConnectionStateModule*>(ctx)->process(nowMs);
+    };
+    connectionStateDispatchProviders.connectionStateContext = &connectionStateModule;
+    connectionStateDispatchModule.begin(connectionStateDispatchProviders);
     PeriodicMaintenanceModule::Providers periodicMaintenanceProviders;
     periodicMaintenanceProviders.timestampUs = [](void*) -> uint32_t {
         return PERF_TIMESTAMP_US();
@@ -1036,20 +1049,15 @@ void loop() {
     // Display cadence and scan-dwell gate for connection state transitions.
     now = millis();
     bleConnectedNow = bleClient.isConnected();
-    ConnectionStateCadenceContext cadenceCtx;
-    cadenceCtx.nowMs = now;
-    cadenceCtx.displayUpdateIntervalMs = DISPLAY_UPDATE_MS;
-    cadenceCtx.scanScreenDwellMs = activeScanScreenDwellMs;
-    cadenceCtx.bleConnectedNow = bleConnectedNow;
-    cadenceCtx.bootSplashHoldActive = bootSplashHoldActive;
-    cadenceCtx.displayPreviewRunning = displayPreviewModule.isRunning();
-    const ConnectionStateCadenceDecision cadenceDecision =
-        connectionStateCadenceModule.process(cadenceCtx);
-
-    if (cadenceDecision.shouldRunConnectionStateProcess) {
-        // Handle connection state transitions (connect/disconnect, stale data re-request).
-        connectionStateModule.process(now);
-    }
+    ConnectionStateDispatchContext dispatchCtx;
+    dispatchCtx.nowMs = now;
+    dispatchCtx.displayUpdateIntervalMs = DISPLAY_UPDATE_MS;
+    dispatchCtx.scanScreenDwellMs = activeScanScreenDwellMs;
+    dispatchCtx.bleConnectedNow = bleConnectedNow;
+    dispatchCtx.bootSplashHoldActive = bootSplashHoldActive;
+    dispatchCtx.displayPreviewRunning = displayPreviewModule.isRunning();
+    dispatchCtx.maxProcessGapMs = CONNECTION_STATE_PROCESS_MAX_GAP_MS;
+    connectionStateDispatchModule.process(dispatchCtx);
     
     // Periodic perf/time/lockout maintenance bundle.
     periodicMaintenanceModule.process(now);
