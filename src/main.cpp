@@ -1162,6 +1162,43 @@ static void logBootSummaryAndWifiStartup(uint32_t bootId, esp_reset_reason_t res
     }
 }
 
+template <typename CheckpointLogger>
+static esp_reset_reason_t initializeResetReasonAndCadenceState(
+    const CheckpointLogger& logBootCheckpoint) {
+    SerialLog.println("\n===================================");
+    SerialLog.println("V1 Gen2 Simple Display");
+    SerialLog.println("Firmware: " FIRMWARE_VERSION);
+    SerialLog.println("[Build] core-only");
+    SerialLog.print("Board: ");
+    SerialLog.println(DISPLAY_NAME);
+
+    // Check reset reason - if firmware flash, clear BLE bonds
+    esp_reset_reason_t resetReason = esp_reset_reason();
+    SerialLog.printf("Reset reason: %d ", resetReason);
+    if (resetReason == ESP_RST_SW || resetReason == ESP_RST_UNKNOWN) {
+        SerialLog.println("(SW/Upload - will clear BLE bonds for clean reconnect)");
+    } else if (resetReason == ESP_RST_POWERON) {
+        SerialLog.println("(Power-on)");
+    } else if (resetReason == ESP_RST_DEEPSLEEP) {
+        SerialLog.println("(Wake from deep sleep - RTC clock preserved)");
+    } else {
+        SerialLog.printf("(Other: %d)\n", resetReason);
+    }
+    SerialLog.println("===================================\n");
+    SerialLog.printf("[BootTiming] reset=%s (%d)\n",
+                     resetReasonToString(resetReason),
+                     static_cast<int>(resetReason));
+    if (resetReason == ESP_RST_DEEPSLEEP) {
+        logBootCheckpoint("wake_deepsleep");
+    }
+    activeScanScreenDwellMs =
+        (resetReason == ESP_RST_DEEPSLEEP) ? MIN_SCAN_SCREEN_DWELL_WAKE_MS : MIN_SCAN_SCREEN_DWELL_MS;
+    SerialLog.printf("[BootTiming] scan_dwell_target_ms=%lu\n", activeScanScreenDwellMs);
+    connectionStateCadenceModule.reset();
+    wifiProcessCadenceModule.reset();
+    return resetReason;
+}
+
 template <typename CheckpointLogger, typename StageLogger>
 static void initializeBlePreInitAndScan(const CheckpointLogger& logBootCheckpoint,
                                         const StageLogger& logBootStage) {
@@ -1242,37 +1279,7 @@ void setup() {
                          now - setupStartMs);
     };
     
-    SerialLog.println("\n===================================");
-    SerialLog.println("V1 Gen2 Simple Display");
-    SerialLog.println("Firmware: " FIRMWARE_VERSION);
-    SerialLog.println("[Build] core-only");
-    SerialLog.print("Board: ");
-    SerialLog.println(DISPLAY_NAME);
-    
-    // Check reset reason - if firmware flash, clear BLE bonds
-    esp_reset_reason_t resetReason = esp_reset_reason();
-    SerialLog.printf("Reset reason: %d ", resetReason);
-    if (resetReason == ESP_RST_SW || resetReason == ESP_RST_UNKNOWN) {
-        SerialLog.println("(SW/Upload - will clear BLE bonds for clean reconnect)");
-    } else if (resetReason == ESP_RST_POWERON) {
-        SerialLog.println("(Power-on)");
-    } else if (resetReason == ESP_RST_DEEPSLEEP) {
-        SerialLog.println("(Wake from deep sleep - RTC clock preserved)");
-    } else {
-        SerialLog.printf("(Other: %d)\n", resetReason);
-    }
-    SerialLog.println("===================================\n");
-    SerialLog.printf("[BootTiming] reset=%s (%d)\n",
-                     resetReasonToString(resetReason),
-                     static_cast<int>(resetReason));
-    if (resetReason == ESP_RST_DEEPSLEEP) {
-        logBootCheckpoint("wake_deepsleep");
-    }
-    activeScanScreenDwellMs =
-        (resetReason == ESP_RST_DEEPSLEEP) ? MIN_SCAN_SCREEN_DWELL_WAKE_MS : MIN_SCAN_SCREEN_DWELL_MS;
-    SerialLog.printf("[BootTiming] scan_dwell_target_ms=%lu\n", activeScanScreenDwellMs);
-    connectionStateCadenceModule.reset();
-    wifiProcessCadenceModule.reset();
+    esp_reset_reason_t resetReason = initializeResetReasonAndCadenceState(logBootCheckpoint);
 
     // Runtime PSRAM visibility: board metadata can differ from actual hardware.
     bool psramOk = psramFound();
