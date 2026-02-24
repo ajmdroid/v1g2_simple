@@ -1240,6 +1240,73 @@ static void initializeBlePreInitAndScan(const CheckpointLogger& logBootCheckpoin
 #endif
 }
 
+template <typename CheckpointLogger, typename StageLogger>
+static void initializePreflightDisplayAndBootUi(esp_reset_reason_t resetReason,
+                                                 const CheckpointLogger& logBootCheckpoint,
+                                                 const StageLogger& logBootStage) {
+    // Runtime PSRAM visibility: board metadata can differ from actual hardware.
+    bool psramOk = psramFound();
+    uint32_t psramTotal = static_cast<uint32_t>(ESP.getPsramSize());
+    uint32_t psramFree = static_cast<uint32_t>(ESP.getFreePsram());
+    uint32_t psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+    SerialLog.printf("[Memory] PSRAM: found=%s total=%lu free=%lu largest=%lu\n",
+                     psramOk ? "yes" : "no",
+                     static_cast<unsigned long>(psramTotal),
+                     static_cast<unsigned long>(psramFree),
+                     static_cast<unsigned long>(psramLargest));
+    logBootStage("preflight");
+
+    // Initialize battery manager EARLY - needs to latch power on if running on battery.
+    // This must happen before any long-running init to prevent shutdown.
+#if defined(DISPLAY_WAVESHARE_349)
+    batteryManager.begin();
+#endif
+    logBootStage("battery");
+
+    // Initialize display.
+    if (!display.begin()) {
+        SerialLog.println("Display initialization failed!");
+        fatalBootError("Display init failed", false);
+    }
+    bootReadyDeadlineMs = millis() + 5000;
+
+    // Brief post-display settle before settings init.
+    const unsigned long postDisplaySettleMs = (resetReason == ESP_RST_DEEPSLEEP) ? 2UL : 10UL;
+    delay(postDisplaySettleMs);
+    SerialLog.printf("[BootTiming] post_display_settle_ms=%lu\n", postDisplaySettleMs);
+    logBootStage("display");
+
+    // Initialize settings BEFORE showing any styled screens (need displayStyle setting).
+    settingsManager.begin();
+    timeService.begin();
+
+#if defined(DISPLAY_WAVESHARE_349)
+    powerModule.begin(&batteryManager, &display, &settingsManager);
+    powerModule.logStartupStatus();
+#endif
+    logBootStage("settings");
+
+    // Show boot splash only on true power-on (not crash reboots or firmware uploads).
+    if (resetReason == ESP_RST_POWERON) {
+        // True cold boot: brief non-blocking splash for immediate visual confirmation.
+        logBootCheckpoint("splash_begin");
+        const unsigned long splashCallStartMs = millis();
+        display.showBootSplash();
+        SerialLog.printf("[BootTiming] splash_call_ms=%lu\n", millis() - splashCallStartMs);
+        bootSplashHoldActive = true;
+        bootSplashHoldUntilMs = millis() + BOOT_SPLASH_HOLD_MS;
+    } else {
+        logBootCheckpoint("wake_ui_scan_begin");
+        const unsigned long wakeUiStartMs = millis();
+        showInitialScanningScreen();
+        SerialLog.printf("[BootTiming] wake_ui_scan_ms=%lu\n", millis() - wakeUiStartMs);
+    }
+    logBootStage("boot_ui");
+
+    // Initialize display preview driver.
+    displayPreviewModule.begin(&display);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1281,69 +1348,7 @@ void setup() {
     
     esp_reset_reason_t resetReason = initializeResetReasonAndCadenceState(logBootCheckpoint);
 
-    // Runtime PSRAM visibility: board metadata can differ from actual hardware.
-    bool psramOk = psramFound();
-    uint32_t psramTotal = static_cast<uint32_t>(ESP.getPsramSize());
-    uint32_t psramFree = static_cast<uint32_t>(ESP.getFreePsram());
-    uint32_t psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
-    SerialLog.printf("[Memory] PSRAM: found=%s total=%lu free=%lu largest=%lu\n",
-                     psramOk ? "yes" : "no",
-                     static_cast<unsigned long>(psramTotal),
-                     static_cast<unsigned long>(psramFree),
-                     static_cast<unsigned long>(psramLargest));
-    logBootStage("preflight");
-    
-    // Initialize battery manager EARLY - needs to latch power on if running on battery
-    // This must happen before any long-running init to prevent shutdown
-#if defined(DISPLAY_WAVESHARE_349)
-    batteryManager.begin();
-#endif
-    logBootStage("battery");
-    
-    // Initialize display
-    if (!display.begin()) {
-        SerialLog.println("Display initialization failed!");
-        fatalBootError("Display init failed", false);
-    }
-    bootReadyDeadlineMs = millis() + 5000;
-    
-    // Brief post-display settle before settings init
-    const unsigned long postDisplaySettleMs = (resetReason == ESP_RST_DEEPSLEEP) ? 2UL : 10UL;
-    delay(postDisplaySettleMs);
-    SerialLog.printf("[BootTiming] post_display_settle_ms=%lu\n", postDisplaySettleMs);
-    logBootStage("display");
-
-    // Initialize settings BEFORE showing any styled screens (need displayStyle setting)
-    settingsManager.begin();
-    timeService.begin();
-
-#if defined(DISPLAY_WAVESHARE_349)
-    powerModule.begin(&batteryManager, &display, &settingsManager);
-    powerModule.logStartupStatus();
-#endif
-    logBootStage("settings");
-
-    // Show boot splash only on true power-on (not crash reboots or firmware uploads)
-    if (resetReason == ESP_RST_POWERON) {
-        // True cold boot: brief non-blocking splash for immediate visual confirmation
-        logBootCheckpoint("splash_begin");
-        const unsigned long splashCallStartMs = millis();
-        display.showBootSplash();
-        SerialLog.printf("[BootTiming] splash_call_ms=%lu\n",
-                         millis() - splashCallStartMs);
-        bootSplashHoldActive = true;
-        bootSplashHoldUntilMs = millis() + BOOT_SPLASH_HOLD_MS;
-    } else {
-        logBootCheckpoint("wake_ui_scan_begin");
-        const unsigned long wakeUiStartMs = millis();
-        showInitialScanningScreen();
-        SerialLog.printf("[BootTiming] wake_ui_scan_ms=%lu\n",
-                         millis() - wakeUiStartMs);
-    }
-    logBootStage("boot_ui");
-
-    // Initialize display preview driver
-    displayPreviewModule.begin(&display);
+    initializePreflightDisplayAndBootUi(resetReason, logBootCheckpoint, logBootStage);
 
     // ── Storage / SD mount ────────────────────────────────────────────
     // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu)
