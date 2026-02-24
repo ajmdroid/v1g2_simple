@@ -61,6 +61,7 @@
 #include "modules/system/loop_telemetry_module.h"
 #include "modules/system/loop_ingest_module.h"
 #include "modules/system/loop_display_module.h"
+#include "modules/system/loop_connection_early_module.h"
 #include "modules/system/loop_post_display_module.h"
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
@@ -211,6 +212,7 @@ LoopTailModule loopTailModule;
 LoopTelemetryModule loopTelemetryModule;
 LoopIngestModule loopIngestModule;
 LoopDisplayModule loopDisplayModule;
+LoopConnectionEarlyModule loopConnectionEarlyModule;
 LoopPostDisplayModule loopPostDisplayModule;
 WifiAutoStartModule wifiAutoStartModule;
 WifiPriorityPolicyModule wifiPriorityPolicyModule;
@@ -860,6 +862,45 @@ void setup() {
         perfRecordNotifyToDisplayMs(elapsedMs);
     };
     loopDisplayModule.begin(loopDisplayProviders);
+    LoopConnectionEarlyModule::Providers loopConnectionEarlyProviders;
+    loopConnectionEarlyProviders.runConnectionRuntime =
+        [](void* ctx,
+           uint32_t nowMs,
+           uint32_t nowUs,
+           uint32_t lastLoopUs,
+           bool bootSplashHoldActive,
+           uint32_t bootSplashHoldUntilMs,
+           bool initialScanningScreenShown) {
+            return static_cast<ConnectionRuntimeModule*>(ctx)->process(
+                nowMs,
+                nowUs,
+                lastLoopUs,
+                bootSplashHoldActive,
+                bootSplashHoldUntilMs,
+                initialScanningScreenShown);
+        };
+    loopConnectionEarlyProviders.connectionRuntimeContext = &connectionRuntimeModule;
+    loopConnectionEarlyProviders.showInitialScanning = [](void*) {
+        showInitialScanningScreen();
+    };
+    loopConnectionEarlyProviders.readProxyConnected = [](void* ctx) -> bool {
+        return static_cast<V1BLEClient*>(ctx)->isProxyClientConnected();
+    };
+    loopConnectionEarlyProviders.proxyConnectedContext = &bleClient;
+    loopConnectionEarlyProviders.readConnectionRssi = [](void* ctx) -> int {
+        return static_cast<V1BLEClient*>(ctx)->getConnectionRssi();
+    };
+    loopConnectionEarlyProviders.connectionRssiContext = &bleClient;
+    loopConnectionEarlyProviders.readProxyRssi = [](void* ctx) -> int {
+        return static_cast<V1BLEClient*>(ctx)->getProxyClientRssi();
+    };
+    loopConnectionEarlyProviders.proxyRssiContext = &bleClient;
+    loopConnectionEarlyProviders.runDisplayEarly =
+        [](void* ctx, const DisplayOrchestrationEarlyContext& displayEarlyCtx) {
+            static_cast<DisplayOrchestrationModule*>(ctx)->processEarly(displayEarlyCtx);
+        };
+    loopConnectionEarlyProviders.displayEarlyContext = &displayOrchestrationModule;
+    loopConnectionEarlyModule.begin(loopConnectionEarlyProviders);
     LoopPostDisplayModule::Providers loopPostDisplayProviders;
     loopPostDisplayProviders.runAutoPush = [](void* ctx) {
         static_cast<AutoPushModule*>(ctx)->process();
@@ -1098,37 +1139,44 @@ void loop() {
     static unsigned long lastLoopUs = 0;
     unsigned long now = millis();
 
-    const auto connectionSnapshot = connectionRuntimeModule.process(
-        now,
-        micros(),
-        lastLoopUs,
-        bootSplashHoldActive,
-        bootSplashHoldUntilMs,
-        initialScanningScreenShown);
-
-    bootSplashHoldActive = connectionSnapshot.bootSplashHoldActive;
-    initialScanningScreenShown = connectionSnapshot.initialScanningScreenShown;
-    if (connectionSnapshot.requestShowInitialScanning) {
-        showInitialScanningScreen();
-    }
-
-    bool bleConnectedNow = connectionSnapshot.connected;
-    bool bleBackpressure = connectionSnapshot.backpressured;
-    bool skipNonCoreThisLoop = connectionSnapshot.skipNonCore;
-    bool overloadThisLoop = connectionSnapshot.overloaded;
-
-    DisplayOrchestrationEarlyContext displayEarlyCtx;
-    displayEarlyCtx.nowMs = now;
-    displayEarlyCtx.bootSplashHoldActive = bootSplashHoldActive;
-    displayEarlyCtx.overloadThisLoop = overloadThisLoop;
-    displayEarlyCtx.bleContext = {
-        bleConnectedNow,
-        bleClient.isProxyClientConnected(),
-        bleClient.getConnectionRssi(),
-        bleClient.getProxyClientRssi()
+    auto runConnectionRuntime = [](uint32_t nowMs,
+                                   uint32_t nowUs,
+                                   uint32_t lastLoopUs,
+                                   bool bootSplashHoldActive,
+                                   uint32_t bootSplashHoldUntilMs,
+                                   bool initialScanningScreenShown) {
+        return connectionRuntimeModule.process(
+            nowMs,
+            nowUs,
+            lastLoopUs,
+            bootSplashHoldActive,
+            bootSplashHoldUntilMs,
+            initialScanningScreenShown);
     };
-    displayEarlyCtx.bleReceiving = connectionSnapshot.receiving;
-    displayOrchestrationModule.processEarly(displayEarlyCtx);
+    auto runShowInitialScanning = []() { showInitialScanningScreen(); };
+    auto runDisplayEarly = [](const DisplayOrchestrationEarlyContext& displayEarlyCtx) {
+        displayOrchestrationModule.processEarly(displayEarlyCtx);
+    };
+    LoopConnectionEarlyContext loopConnectionEarlyCtx;
+    loopConnectionEarlyCtx.nowMs = now;
+    loopConnectionEarlyCtx.nowUs = micros();
+    loopConnectionEarlyCtx.lastLoopUs = lastLoopUs;
+    loopConnectionEarlyCtx.bootSplashHoldActive = bootSplashHoldActive;
+    loopConnectionEarlyCtx.bootSplashHoldUntilMs = bootSplashHoldUntilMs;
+    loopConnectionEarlyCtx.initialScanningScreenShown = initialScanningScreenShown;
+    loopConnectionEarlyCtx.runConnectionRuntime = runConnectionRuntime;
+    loopConnectionEarlyCtx.showInitialScanning = runShowInitialScanning;
+    loopConnectionEarlyCtx.runDisplayEarly = runDisplayEarly;
+    const LoopConnectionEarlyResult loopConnectionEarlyResult =
+        loopConnectionEarlyModule.process(loopConnectionEarlyCtx);
+
+    bootSplashHoldActive = loopConnectionEarlyResult.bootSplashHoldActive;
+    initialScanningScreenShown = loopConnectionEarlyResult.initialScanningScreenShown;
+
+    bool bleConnectedNow = loopConnectionEarlyResult.bleConnectedNow;
+    bool bleBackpressure = loopConnectionEarlyResult.bleBackpressure;
+    bool skipNonCoreThisLoop = loopConnectionEarlyResult.skipNonCoreThisLoop;
+    bool overloadThisLoop = loopConnectionEarlyResult.overloadThisLoop;
 
     // Process battery/power and touch UI
 #if defined(DISPLAY_WAVESHARE_349)
