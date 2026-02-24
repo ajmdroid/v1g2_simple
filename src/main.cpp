@@ -403,6 +403,118 @@ static void configureLoopPostDisplayModule() {
     loopPostDisplayModule.begin(loopPostDisplayProviders);
 }
 
+static void configureVoiceSpeedSyncModule() {
+    VoiceSpeedSyncModule::Providers voiceSpeedSyncProviders;
+    voiceSpeedSyncProviders.selectSpeedSample = [](void* ctx, uint32_t nowMs, SpeedSelection& selection) {
+        return static_cast<SpeedSourceSelector*>(ctx)->select(nowMs, selection);
+    };
+    voiceSpeedSyncProviders.speedSelectorContext = &speedSourceSelector;
+    voiceSpeedSyncProviders.updateVoiceSpeedSample = [](void* ctx, float speedMph, uint32_t timestampMs) {
+        static_cast<VoiceModule*>(ctx)->updateSpeedSample(speedMph, timestampMs);
+    };
+    voiceSpeedSyncProviders.clearVoiceSpeedSample = [](void* ctx) {
+        static_cast<VoiceModule*>(ctx)->clearSpeedSample();
+    };
+    voiceSpeedSyncProviders.voiceContext = &voiceModule;
+    voiceSpeedSyncModule.begin(voiceSpeedSyncProviders);
+}
+
+static void configureSpeedVolumeRuntimeModule() {
+    SpeedVolumeRuntimeModule::Providers speedVolumeRuntimeProviders;
+    speedVolumeRuntimeProviders.runSpeedVolumeProcess = [](void* ctx, uint32_t nowMs) {
+        static_cast<SpeedVolumeModule*>(ctx)->process(nowMs);
+    };
+    speedVolumeRuntimeProviders.speedVolumeContext = &speedVolumeModule;
+    speedVolumeRuntimeProviders.readSpeedQuietActive = [](void* ctx) -> bool {
+        return static_cast<SpeedVolumeModule*>(ctx)->isQuietActive();
+    };
+    speedVolumeRuntimeProviders.speedQuietActiveContext = &speedVolumeModule;
+    speedVolumeRuntimeProviders.readSpeedQuietVolume = [](void* ctx) -> uint8_t {
+        return static_cast<SpeedVolumeModule*>(ctx)->getQuietVolume();
+    };
+    speedVolumeRuntimeProviders.speedQuietVolumeContext = &speedVolumeModule;
+    speedVolumeRuntimeProviders.runSpeakerQuietSync =
+        [](void* ctx, bool quietNow, uint8_t quietVolume, uint8_t configuredVoiceVolume) {
+            static_cast<SpeakerQuietSyncModule*>(ctx)->process(
+                quietNow,
+                quietVolume,
+                configuredVoiceVolume,
+                [](uint8_t volume) { audio_set_volume(volume); });
+        };
+    speedVolumeRuntimeProviders.speakerQuietContext = &speakerQuietSyncModule;
+    speedVolumeRuntimeModule.begin(speedVolumeRuntimeProviders);
+}
+
+static void configureWifiRuntimeModule() {
+    WifiRuntimeModule::Providers wifiRuntimeProviders;
+    wifiRuntimeProviders.runWifiAutoStartProcess =
+        [](void* ctx,
+           uint32_t nowMs,
+           uint32_t v1ConnectedAtMs,
+           bool enableWifiAtBoot,
+           bool bleConnected,
+           bool canStartDma,
+           bool& wifiAutoStartDone) {
+            static_cast<WifiAutoStartModule*>(ctx)->process(
+                nowMs,
+                v1ConnectedAtMs,
+                enableWifiAtBoot,
+                bleConnected,
+                canStartDma,
+                wifiAutoStartDone,
+                [] { getWifiOrchestrator().startWifi(); },
+                [] { wifiManager.markAutoStarted(); });
+        };
+    wifiRuntimeProviders.wifiAutoStartContext = &wifiAutoStartModule;
+    wifiRuntimeProviders.shouldRunWifiProcessingPolicy =
+        [](void* ctx, bool enableWifiAtBoot, bool wifiAutoStartDone) {
+            return isWifiProcessingEnabledPolicy(
+                *static_cast<WiFiManager*>(ctx), enableWifiAtBoot, wifiAutoStartDone);
+        };
+    wifiRuntimeProviders.wifiPolicyContext = &wifiManager;
+    wifiRuntimeProviders.perfTimestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    wifiRuntimeProviders.runWifiCadence = [](void* ctx, const WifiProcessCadenceContext& cadenceCtx) {
+        return static_cast<WifiProcessCadenceModule*>(ctx)->process(cadenceCtx);
+    };
+    wifiRuntimeProviders.wifiCadenceContext = &wifiProcessCadenceModule;
+    wifiRuntimeProviders.recordWifiProcessUs = [](void*, uint32_t elapsedUs) {
+        perfRecordWifiProcessUs(elapsedUs);
+    };
+    wifiRuntimeProviders.readWifiServiceActive = [](void* ctx) -> bool {
+        return static_cast<WiFiManager*>(ctx)->isWifiServiceActive();
+    };
+    wifiRuntimeProviders.wifiServiceContext = &wifiManager;
+    wifiRuntimeProviders.readWifiConnected = [](void* ctx) -> bool {
+        return static_cast<WiFiManager*>(ctx)->isConnected();
+    };
+    wifiRuntimeProviders.wifiConnectedContext = &wifiManager;
+    wifiRuntimeProviders.readVisualNowMs = [](void*) -> uint32_t {
+        return millis();
+    };
+    wifiRuntimeProviders.runWifiVisualSync =
+        [](void* ctx,
+           uint32_t nowMs,
+           bool wifiVisualActiveNow,
+           bool displayPreviewRunning,
+           bool bootSplashHoldActive) {
+            static_cast<WifiVisualSyncModule*>(ctx)->process(
+                nowMs,
+                wifiVisualActiveNow,
+                displayPreviewRunning,
+                bootSplashHoldActive,
+                [] {
+                    display.drawWiFiIndicator();
+                    const int leftColWidth = 64;
+                    const int leftColHeight = 96;
+                    display.flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
+                });
+        };
+    wifiRuntimeProviders.wifiVisualSyncContext = &wifiVisualSyncModule;
+    wifiRuntimeModule.begin(wifiRuntimeProviders);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1059,19 +1171,7 @@ void setup() {
     obdHandler.begin();
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
-    VoiceSpeedSyncModule::Providers voiceSpeedSyncProviders;
-    voiceSpeedSyncProviders.selectSpeedSample = [](void* ctx, uint32_t nowMs, SpeedSelection& selection) {
-        return static_cast<SpeedSourceSelector*>(ctx)->select(nowMs, selection);
-    };
-    voiceSpeedSyncProviders.speedSelectorContext = &speedSourceSelector;
-    voiceSpeedSyncProviders.updateVoiceSpeedSample = [](void* ctx, float speedMph, uint32_t timestampMs) {
-        static_cast<VoiceModule*>(ctx)->updateSpeedSample(speedMph, timestampMs);
-    };
-    voiceSpeedSyncProviders.clearVoiceSpeedSample = [](void* ctx) {
-        static_cast<VoiceModule*>(ctx)->clearSpeedSample();
-    };
-    voiceSpeedSyncProviders.voiceContext = &voiceModule;
-    voiceSpeedSyncModule.begin(voiceSpeedSyncProviders);
+    configureVoiceSpeedSyncModule();
     cameraRuntimeModule.begin(settingsManager.get().cameraEnabled);
     cameraRuntimeModule.setAlertTuning(settingsManager.get().cameraAlertDistanceFt,
                                        settingsManager.get().cameraAlertPersistSec);
@@ -1094,96 +1194,8 @@ void setup() {
                                  settings.gpsLockoutLearnerLearnIntervalHours);
     }
 
-    SpeedVolumeRuntimeModule::Providers speedVolumeRuntimeProviders;
-    speedVolumeRuntimeProviders.runSpeedVolumeProcess = [](void* ctx, uint32_t nowMs) {
-        static_cast<SpeedVolumeModule*>(ctx)->process(nowMs);
-    };
-    speedVolumeRuntimeProviders.speedVolumeContext = &speedVolumeModule;
-    speedVolumeRuntimeProviders.readSpeedQuietActive = [](void* ctx) -> bool {
-        return static_cast<SpeedVolumeModule*>(ctx)->isQuietActive();
-    };
-    speedVolumeRuntimeProviders.speedQuietActiveContext = &speedVolumeModule;
-    speedVolumeRuntimeProviders.readSpeedQuietVolume = [](void* ctx) -> uint8_t {
-        return static_cast<SpeedVolumeModule*>(ctx)->getQuietVolume();
-    };
-    speedVolumeRuntimeProviders.speedQuietVolumeContext = &speedVolumeModule;
-    speedVolumeRuntimeProviders.runSpeakerQuietSync =
-        [](void* ctx, bool quietNow, uint8_t quietVolume, uint8_t configuredVoiceVolume) {
-            static_cast<SpeakerQuietSyncModule*>(ctx)->process(
-                quietNow,
-                quietVolume,
-                configuredVoiceVolume,
-                [](uint8_t volume) { audio_set_volume(volume); });
-        };
-    speedVolumeRuntimeProviders.speakerQuietContext = &speakerQuietSyncModule;
-    speedVolumeRuntimeModule.begin(speedVolumeRuntimeProviders);
-    WifiRuntimeModule::Providers wifiRuntimeProviders;
-    wifiRuntimeProviders.runWifiAutoStartProcess =
-        [](void* ctx,
-           uint32_t nowMs,
-           uint32_t v1ConnectedAtMs,
-           bool enableWifiAtBoot,
-           bool bleConnected,
-           bool canStartDma,
-           bool& wifiAutoStartDone) {
-            static_cast<WifiAutoStartModule*>(ctx)->process(
-                nowMs,
-                v1ConnectedAtMs,
-                enableWifiAtBoot,
-                bleConnected,
-                canStartDma,
-                wifiAutoStartDone,
-                [] { getWifiOrchestrator().startWifi(); },
-                [] { wifiManager.markAutoStarted(); });
-        };
-    wifiRuntimeProviders.wifiAutoStartContext = &wifiAutoStartModule;
-    wifiRuntimeProviders.shouldRunWifiProcessingPolicy =
-        [](void* ctx, bool enableWifiAtBoot, bool wifiAutoStartDone) {
-            return isWifiProcessingEnabledPolicy(
-                *static_cast<WiFiManager*>(ctx), enableWifiAtBoot, wifiAutoStartDone);
-        };
-    wifiRuntimeProviders.wifiPolicyContext = &wifiManager;
-    wifiRuntimeProviders.perfTimestampUs = [](void*) -> uint32_t {
-        return PERF_TIMESTAMP_US();
-    };
-    wifiRuntimeProviders.runWifiCadence = [](void* ctx, const WifiProcessCadenceContext& cadenceCtx) {
-        return static_cast<WifiProcessCadenceModule*>(ctx)->process(cadenceCtx);
-    };
-    wifiRuntimeProviders.wifiCadenceContext = &wifiProcessCadenceModule;
-    wifiRuntimeProviders.recordWifiProcessUs = [](void*, uint32_t elapsedUs) {
-        perfRecordWifiProcessUs(elapsedUs);
-    };
-    wifiRuntimeProviders.readWifiServiceActive = [](void* ctx) -> bool {
-        return static_cast<WiFiManager*>(ctx)->isWifiServiceActive();
-    };
-    wifiRuntimeProviders.wifiServiceContext = &wifiManager;
-    wifiRuntimeProviders.readWifiConnected = [](void* ctx) -> bool {
-        return static_cast<WiFiManager*>(ctx)->isConnected();
-    };
-    wifiRuntimeProviders.wifiConnectedContext = &wifiManager;
-    wifiRuntimeProviders.readVisualNowMs = [](void*) -> uint32_t {
-        return millis();
-    };
-    wifiRuntimeProviders.runWifiVisualSync =
-        [](void* ctx,
-           uint32_t nowMs,
-           bool wifiVisualActiveNow,
-           bool displayPreviewRunning,
-           bool bootSplashHoldActive) {
-            static_cast<WifiVisualSyncModule*>(ctx)->process(
-                nowMs,
-                wifiVisualActiveNow,
-                displayPreviewRunning,
-                bootSplashHoldActive,
-                [] {
-                    display.drawWiFiIndicator();
-                    const int leftColWidth = 64;
-                    const int leftColHeight = 96;
-                    display.flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
-                });
-        };
-    wifiRuntimeProviders.wifiVisualSyncContext = &wifiVisualSyncModule;
-    wifiRuntimeModule.begin(wifiRuntimeProviders);
+    configureSpeedVolumeRuntimeModule();
+    configureWifiRuntimeModule();
     // Restore pending learner candidates (Tier 7 best-effort, non-fatal).
     if (storageManager.isReady()) {
         static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
