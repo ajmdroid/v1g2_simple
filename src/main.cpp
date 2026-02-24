@@ -707,6 +707,36 @@ static void configureLoopTailModule() {
     loopTailModule.begin(loopTailProviders);
 }
 
+static void configureLoopTelemetryModule() {
+    LoopTelemetryModule::Providers loopTelemetryProviders;
+    loopTelemetryProviders.microsNow = [](void*) -> uint32_t {
+        return micros();
+    };
+    loopTelemetryProviders.recordLoopJitterUs = [](void*, uint32_t jitterUs) {
+        perfRecordLoopJitterUs(jitterUs);
+    };
+    loopTelemetryProviders.refreshDmaCache = [](void*) {
+        StorageManager::updateDmaHeapCache();
+    };
+    loopTelemetryProviders.readFreeHeap = [](void*) -> uint32_t {
+        return ESP.getFreeHeap();
+    };
+    loopTelemetryProviders.readLargestHeapBlock = [](void*) -> uint32_t {
+        return static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+    };
+    loopTelemetryProviders.readCachedFreeDma = [](void*) -> uint32_t {
+        return StorageManager::getCachedFreeDma();
+    };
+    loopTelemetryProviders.readCachedLargestDma = [](void*) -> uint32_t {
+        return StorageManager::getCachedLargestDma();
+    };
+    loopTelemetryProviders.recordHeapStats =
+        [](void*, uint32_t freeHeap, uint32_t largestHeapBlock, uint32_t cachedFreeDma, uint32_t cachedLargestDma) {
+            perfRecordHeapStats(freeHeap, largestHeapBlock, cachedFreeDma, cachedLargestDma);
+        };
+    loopTelemetryModule.begin(loopTelemetryProviders);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1072,32 +1102,7 @@ void setup() {
     configureConnectionStateDispatchModule();
     configurePeriodicMaintenanceModule();
     configureLoopTailModule();
-    LoopTelemetryModule::Providers loopTelemetryProviders;
-    loopTelemetryProviders.microsNow = [](void*) -> uint32_t {
-        return micros();
-    };
-    loopTelemetryProviders.recordLoopJitterUs = [](void*, uint32_t jitterUs) {
-        perfRecordLoopJitterUs(jitterUs);
-    };
-    loopTelemetryProviders.refreshDmaCache = [](void*) {
-        StorageManager::updateDmaHeapCache();
-    };
-    loopTelemetryProviders.readFreeHeap = [](void*) -> uint32_t {
-        return ESP.getFreeHeap();
-    };
-    loopTelemetryProviders.readLargestHeapBlock = [](void*) -> uint32_t {
-        return static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-    };
-    loopTelemetryProviders.readCachedFreeDma = [](void*) -> uint32_t {
-        return StorageManager::getCachedFreeDma();
-    };
-    loopTelemetryProviders.readCachedLargestDma = [](void*) -> uint32_t {
-        return StorageManager::getCachedLargestDma();
-    };
-    loopTelemetryProviders.recordHeapStats = [](void*, uint32_t freeHeap, uint32_t largestHeapBlock, uint32_t cachedFreeDma, uint32_t cachedLargestDma) {
-        perfRecordHeapStats(freeHeap, largestHeapBlock, cachedFreeDma, cachedLargestDma);
-    };
-    loopTelemetryModule.begin(loopTelemetryProviders);
+    configureLoopTelemetryModule();
     LoopIngestModule::Providers loopIngestProviders;
     loopIngestProviders.timestampUs = [](void*) -> uint32_t {
         return PERF_TIMESTAMP_US();
