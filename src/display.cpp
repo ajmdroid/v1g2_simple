@@ -132,12 +132,6 @@ bool V1Display::begin() {
         stageStartMs = now;
     };
     
-#if PIN_POWER_ON >= 0
-    // Power was held low in setup(); bring it up now
-    digitalWrite(PIN_POWER_ON, HIGH);
-    delay(200);
-#endif
-    
 #if defined(DISPLAY_USE_ARDUINO_GFX)
     // Arduino_GFX initialization for Waveshare 3.49"
     // Waveshare 3.49" has INVERTED backlight PWM: 0 = full brightness, 255 = off

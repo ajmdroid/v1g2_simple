@@ -355,12 +355,6 @@ void setup() {
 
 // Backlight is handled in display.begin() (inverted PWM for Waveshare)
 
-#if defined(PIN_POWER_ON) && PIN_POWER_ON >= 0
-    // Cut panel power until we intentionally bring it up
-    pinMode(PIN_POWER_ON, OUTPUT);
-    digitalWrite(PIN_POWER_ON, LOW);
-#endif
-
     Serial.begin(115200);
     delay(30);   // Conservative USB CDC settle
     
