@@ -622,27 +622,4 @@ bool BatteryManager::processPowerButton() {
     return false;
 }
 
-#else
-// Stub implementation for non-Waveshare boards
-BatteryManager batteryManager;
-TwoWire tca9554Wire(1);
-SemaphoreHandle_t tca9554WireMutex = nullptr;
-
-BatteryManager::BatteryManager() : initialized(false), onBattery(false), lastVoltage(0), cachedVoltage(0), cachedPercent(0), lastUpdateMs(0) {}
-bool BatteryManager::begin() { return false; }
-bool BatteryManager::isOnBattery() const { return false; }
-bool BatteryManager::hasBattery() const { return false; }
-void BatteryManager::update() {}
-uint16_t BatteryManager::getVoltageMillivolts() const { return 0; }
-uint8_t BatteryManager::getPercentage() const { return 0; }
-bool BatteryManager::isLow() const { return false; }
-bool BatteryManager::latchPowerOn() { return false; }
-bool BatteryManager::powerOff() { return false; }
-bool BatteryManager::isPowerButtonPressed() { return false; }
-bool BatteryManager::processPowerButton() { return false; }
-bool BatteryManager::initADC() { return false; }
-bool BatteryManager::initTCA9554() { return false; }
-bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) { return false; }
-uint16_t BatteryManager::readADCMillivolts() { return 0; }
-
 #endif // DISPLAY_WAVESHARE_349
