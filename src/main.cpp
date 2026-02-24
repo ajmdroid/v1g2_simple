@@ -1032,6 +1032,42 @@ static uint32_t initializeBootPerformanceLoggers() {
     return bootId;
 }
 
+static void restorePendingLearnerCandidates();
+
+template <typename StageLogger>
+static void finalizeBootReadyAndBleScan(const unsigned long setupStartMs,
+                                        const StageLogger& logBootStage) {
+    restorePendingLearnerCandidates();
+    bootReady = true;
+    bleClient.setBootReady(true);
+    SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
+
+#ifndef REPLAY_MODE
+    // Absorb BLE scan-stop settle cost in setup rather than first loop iteration.
+    // Keep this call after bootReady/setBootReady to avoid starving BLE state
+    // transitions that gate connectionStateModule.process() and scanning UI flow.
+    {
+        const unsigned long absorbStartMs = millis();
+        bleClient.process();
+        SerialLog.printf("[BootTiming] ble_absorb_ms=%lu\n", millis() - absorbStartMs);
+    }
+    SerialLog.println("BLE scan active from setup path");
+#else
+    SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
+#endif
+    logBootStage("core_pipeline");
+
+    // WiFi auto-start is deferred to loop() with a V1 settle gate.
+    // See WifiBootPolicy::shouldAutoStartWifi() for the gating logic.
+    if (settingsManager.get().enableWifiAtBoot) {
+        SerialLog.println("[WiFi] Auto-start enabled — will defer until V1 settles or 30 s timeout");
+    } else {
+        SerialLog.println("Setup complete - BLE scanning, WiFi off until BOOT long-press");
+    }
+    logBootStage("wifi");
+    SerialLog.printf("[Boot] setup total: %lu ms\n", millis() - setupStartMs);
+}
+
 static void restorePendingLearnerCandidates() {
     // Restore pending learner candidates (Tier 7 best-effort, non-fatal).
     if (!storageManager.isReady()) {
@@ -1328,35 +1364,7 @@ void setup() {
 
     configureSpeedVolumeRuntimeModule();
     configureWifiRuntimeModule();
-    restorePendingLearnerCandidates();
-    bootReady = true;
-    bleClient.setBootReady(true);
-    SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
-
-#ifndef REPLAY_MODE
-    // Absorb BLE scan-stop settle cost in setup rather than first loop iteration.
-    // If V1 was found during setup scanning, this processes the SCAN_STOPPING settle
-    // (~200 ms on cold boot). If V1 wasn't found yet, this is a ~microsecond no-op.
-    {
-        const unsigned long absorbStartMs = millis();
-        bleClient.process();
-        SerialLog.printf("[BootTiming] ble_absorb_ms=%lu\n", millis() - absorbStartMs);
-    }
-    SerialLog.println("BLE scan active from setup path");
-#else
-    SerialLog.println("[REPLAY_MODE] BLE disabled - using packet replay for UI testing");
-#endif
-    logBootStage("core_pipeline");
-    
-    // WiFi auto-start is deferred to loop() with a V1 settle gate.
-    // See WifiBootPolicy::shouldAutoStartWifi() for the gating logic.
-    if (settingsManager.get().enableWifiAtBoot) {
-        SerialLog.println("[WiFi] Auto-start enabled — will defer until V1 settles or 30 s timeout");
-    } else {
-        SerialLog.println("Setup complete - BLE scanning, WiFi off until BOOT long-press");
-    }
-    logBootStage("wifi");
-    SerialLog.printf("[Boot] setup total: %lu ms\n", millis() - setupStartMs);
+    finalizeBootReadyAndBleScan(setupStartMs, logBootStage);
 }
 
 void loop() {
