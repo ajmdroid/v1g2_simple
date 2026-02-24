@@ -872,6 +872,36 @@ static void configureAlertAudioDisplayPipeline() {
                                 &debugLogger);
 }
 
+static void configureSystemLoopModules() {
+    systemEventBus.reset();
+    bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule, &systemEventBus);
+    configureConnectionRuntimeModule();
+    connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule, &systemEventBus);
+    configureConnectionStateDispatchModule();
+    configurePeriodicMaintenanceModule();
+    configureLoopTailModule();
+    configureLoopTelemetryModule();
+    configureLoopIngestModule();
+    displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
+    displayOrchestrationModule.begin(&display,
+                                     &bleClient,
+                                     &bleQueueModule,
+                                     &displayPreviewModule,
+                                     &displayRestoreModule,
+                                     &parser,
+                                     &settingsManager,
+                                     &gpsRuntimeModule,
+                                     &obdHandler,
+                                     &lockoutOrchestrationModule);
+    configureLoopDisplayModule();
+    configureLoopConnectionEarlyModule();
+    configureLoopPowerTouchModule();
+    configureLoopPreIngestModule();
+    configureLoopSettingsPrepModule();
+    configureLoopRuntimeSnapshotModule();
+    configureLoopPostDisplayModule();
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1185,33 +1215,7 @@ void setup() {
 #endif
 
     configureAlertAudioDisplayPipeline();
-    systemEventBus.reset();
-    bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule, &systemEventBus);
-    configureConnectionRuntimeModule();
-    connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule, &systemEventBus);
-    configureConnectionStateDispatchModule();
-    configurePeriodicMaintenanceModule();
-    configureLoopTailModule();
-    configureLoopTelemetryModule();
-    configureLoopIngestModule();
-    displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
-    displayOrchestrationModule.begin(&display,
-                                     &bleClient,
-                                     &bleQueueModule,
-                                     &displayPreviewModule,
-                                     &displayRestoreModule,
-                                     &parser,
-                                     &settingsManager,
-                                     &gpsRuntimeModule,
-                                     &obdHandler,
-                                     &lockoutOrchestrationModule);
-    configureLoopDisplayModule();
-    configureLoopConnectionEarlyModule();
-    configureLoopPowerTouchModule();
-    configureLoopPreIngestModule();
-    configureLoopSettingsPrepModule();
-    configureLoopRuntimeSnapshotModule();
-    configureLoopPostDisplayModule();
+    configureSystemLoopModules();
     obdHandler.setLinkReadyCallback([]() { return bleClient.isConnected(); });
     obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
