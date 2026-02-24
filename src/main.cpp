@@ -61,6 +61,7 @@
 #include "modules/system/loop_telemetry_module.h"
 #include "modules/system/loop_ingest_module.h"
 #include "modules/system/loop_display_module.h"
+#include "modules/system/loop_post_display_module.h"
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
 #include "modules/voice/voice_speed_sync_module.h"
@@ -210,6 +211,7 @@ LoopTailModule loopTailModule;
 LoopTelemetryModule loopTelemetryModule;
 LoopIngestModule loopIngestModule;
 LoopDisplayModule loopDisplayModule;
+LoopPostDisplayModule loopPostDisplayModule;
 WifiAutoStartModule wifiAutoStartModule;
 WifiPriorityPolicyModule wifiPriorityPolicyModule;
 WifiVisualSyncModule wifiVisualSyncModule;
@@ -858,6 +860,47 @@ void setup() {
         perfRecordNotifyToDisplayMs(elapsedMs);
     };
     loopDisplayModule.begin(loopDisplayProviders);
+    LoopPostDisplayModule::Providers loopPostDisplayProviders;
+    loopPostDisplayProviders.runAutoPush = [](void* ctx) {
+        static_cast<AutoPushModule*>(ctx)->process();
+    };
+    loopPostDisplayProviders.autoPushContext = &autoPushModule;
+    loopPostDisplayProviders.timestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    loopPostDisplayProviders.runCameraRuntime =
+        [](void*,
+           uint32_t nowMs,
+           bool skipLateNonCoreThisLoop,
+           bool overloadLateThisLoop,
+           bool loopSignalPriorityActive) {
+            cameraRuntimeModule.process(
+                nowMs,
+                skipLateNonCoreThisLoop,
+                overloadLateThisLoop,
+                loopSignalPriorityActive);
+        };
+    loopPostDisplayProviders.recordCameraUs = [](void*, uint32_t elapsedUs) {
+        perfRecordCameraUs(elapsedUs);
+    };
+    loopPostDisplayProviders.runSpeedVolumeRuntime =
+        [](void* ctx, const SpeedVolumeRuntimeContext& speedVolumeCtx) {
+            static_cast<SpeedVolumeRuntimeModule*>(ctx)->process(speedVolumeCtx);
+        };
+    loopPostDisplayProviders.speedVolumeRuntimeContext = &speedVolumeRuntimeModule;
+    loopPostDisplayProviders.readDispatchNowMs = [](void*) -> uint32_t {
+        return millis();
+    };
+    loopPostDisplayProviders.readBleConnectedNow = [](void* ctx) -> bool {
+        return static_cast<V1BLEClient*>(ctx)->isConnected();
+    };
+    loopPostDisplayProviders.bleConnectedContext = &bleClient;
+    loopPostDisplayProviders.runConnectionStateDispatch =
+        [](void* ctx, const ConnectionStateDispatchContext& dispatchCtx) {
+            static_cast<ConnectionStateDispatchModule*>(ctx)->process(dispatchCtx);
+        };
+    loopPostDisplayProviders.connectionDispatchContext = &connectionStateDispatchModule;
+    loopPostDisplayModule.begin(loopPostDisplayProviders);
     obdHandler.setLinkReadyCallback([]() { return bleClient.isConnected(); });
     obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
@@ -1155,17 +1198,30 @@ void loop() {
     const LoopDisplayResult loopDisplayResult = loopDisplayModule.process(loopDisplayCtx);
     const bool loopSignalPriorityActive = loopDisplayResult.signalPriorityActive;
 
-    // Drive auto-push state machine (non-blocking)
-    autoPushModule.process();
-
     // Camera runtime is strictly low-priority and self-gated on overload/non-core.
     // Only a real priority V1 signal preempts camera lifecycle — weak/background
     // alerts (BSM, door openers, etc.) must not suppress camera matching.
-    uint32_t cameraStartUs = PERF_TIMESTAMP_US();
-    {
-        cameraRuntimeModule.process(now, skipLateNonCoreThisLoop, overloadLateThisLoop, loopSignalPriorityActive);
-    }
-    perfRecordCameraUs(PERF_TIMESTAMP_US() - cameraStartUs);
+    auto runCameraRuntime = [](uint32_t nowMs,
+                               bool skipLateNonCoreThisLoop,
+                               bool overloadLateThisLoop,
+                               bool loopSignalPriorityActive) {
+        cameraRuntimeModule.process(
+            nowMs,
+            skipLateNonCoreThisLoop,
+            overloadLateThisLoop,
+            loopSignalPriorityActive);
+    };
+    auto runAutoPush = []() { autoPushModule.process(); };
+    LoopPostDisplayContext loopPostDisplayPreWifiCtx;
+    loopPostDisplayPreWifiCtx.runAutoPushAndCamera = true;
+    loopPostDisplayPreWifiCtx.runSpeedAndDispatch = false;
+    loopPostDisplayPreWifiCtx.nowMs = now;
+    loopPostDisplayPreWifiCtx.skipLateNonCoreThisLoop = skipLateNonCoreThisLoop;
+    loopPostDisplayPreWifiCtx.overloadLateThisLoop = overloadLateThisLoop;
+    loopPostDisplayPreWifiCtx.loopSignalPriorityActive = loopSignalPriorityActive;
+    loopPostDisplayPreWifiCtx.runAutoPush = runAutoPush;
+    loopPostDisplayPreWifiCtx.runCameraRuntime = runCameraRuntime;
+    loopPostDisplayModule.process(loopPostDisplayPreWifiCtx);
 
     auto runWifiManagerProcess = []() { wifiManager.process(); };
     WifiRuntimeContext wifiRuntimeCtx;
@@ -1183,24 +1239,28 @@ void loop() {
     wifiAutoStartDone = wifiRuntimeResult.wifiAutoStartDone;
     
     loopTelemetryModule.process(loopStartUs);
-    
-    SpeedVolumeRuntimeContext speedVolumeRuntimeCtx;
-    speedVolumeRuntimeCtx.nowMs = now;
-    speedVolumeRuntimeCtx.configuredVoiceVolume = settingsManager.get().voiceVolume;
-    speedVolumeRuntimeModule.process(speedVolumeRuntimeCtx);
-    
-    // Display cadence and scan-dwell gate for connection state transitions.
-    now = millis();
-    bleConnectedNow = bleClient.isConnected();
-    ConnectionStateDispatchContext dispatchCtx;
-    dispatchCtx.nowMs = now;
-    dispatchCtx.displayUpdateIntervalMs = DISPLAY_UPDATE_MS;
-    dispatchCtx.scanScreenDwellMs = activeScanScreenDwellMs;
-    dispatchCtx.bleConnectedNow = bleConnectedNow;
-    dispatchCtx.bootSplashHoldActive = bootSplashHoldActive;
-    dispatchCtx.displayPreviewRunning = displayPreviewModule.isRunning();
-    dispatchCtx.maxProcessGapMs = CONNECTION_STATE_PROCESS_MAX_GAP_MS;
-    connectionStateDispatchModule.process(dispatchCtx);
+
+    auto runSpeedVolumeRuntime = [](const SpeedVolumeRuntimeContext& speedVolumeCtx) {
+        speedVolumeRuntimeModule.process(speedVolumeCtx);
+    };
+    auto runConnectionStateDispatch = [](const ConnectionStateDispatchContext& dispatchCtx) {
+        connectionStateDispatchModule.process(dispatchCtx);
+    };
+    LoopPostDisplayContext loopPostDisplayPostWifiCtx;
+    loopPostDisplayPostWifiCtx.runAutoPushAndCamera = false;
+    loopPostDisplayPostWifiCtx.runSpeedAndDispatch = true;
+    loopPostDisplayPostWifiCtx.nowMs = now;
+    loopPostDisplayPostWifiCtx.configuredVoiceVolume = settingsManager.get().voiceVolume;
+    loopPostDisplayPostWifiCtx.displayUpdateIntervalMs = DISPLAY_UPDATE_MS;
+    loopPostDisplayPostWifiCtx.scanScreenDwellMs = activeScanScreenDwellMs;
+    loopPostDisplayPostWifiCtx.bootSplashHoldActive = bootSplashHoldActive;
+    loopPostDisplayPostWifiCtx.displayPreviewRunning = displayPreviewModule.isRunning();
+    loopPostDisplayPostWifiCtx.maxProcessGapMs = CONNECTION_STATE_PROCESS_MAX_GAP_MS;
+    loopPostDisplayPostWifiCtx.runSpeedVolumeRuntime = runSpeedVolumeRuntime;
+    loopPostDisplayPostWifiCtx.runConnectionStateDispatch = runConnectionStateDispatch;
+    const LoopPostDisplayResult loopPostDisplayResult = loopPostDisplayModule.process(loopPostDisplayPostWifiCtx);
+    now = loopPostDisplayResult.dispatchNowMs;
+    bleConnectedNow = loopPostDisplayResult.bleConnectedNow;
     
     // Periodic perf/time/lockout maintenance bundle.
     periodicMaintenanceModule.process(now);
