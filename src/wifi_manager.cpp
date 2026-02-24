@@ -432,6 +432,7 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     lastTimeoutCheckMs = 0;
     lastReconnectAttemptMs = 0;
     wifiReconnectDeferredLogged = false;
+    wasAutoStarted = false;
 
     // ========== 4. OBSERVABILITY ==========
     // Single-line status for post-mortem debugging (confirms radio truly OFF)
@@ -670,12 +671,17 @@ void WiFiManager::process() {
 
     if (staConnectedNow || apClientCount > 0) {
         lastAnyClientSeenMs = now;
-    } else if (lastAnyClientSeenMs != 0 &&
-               (now - lastAnyClientSeenMs) >= WIFI_NO_CLIENT_SHUTDOWN_MS) {
-        Serial.printf("[WiFi] No AP/STA clients for %lu ms - stopping WiFi\n",
-                      static_cast<unsigned long>(WIFI_NO_CLIENT_SHUTDOWN_MS));
-        stopSetupMode(false, "no_clients");
-        return;
+    } else if (lastAnyClientSeenMs != 0) {
+        const unsigned long noClientLimit = wasAutoStarted
+            ? WIFI_NO_CLIENT_SHUTDOWN_AUTO_MS
+            : WIFI_NO_CLIENT_SHUTDOWN_MS;
+        if ((now - lastAnyClientSeenMs) >= noClientLimit) {
+            Serial.printf("[WiFi] No AP/STA clients for %lu ms (%s) - stopping WiFi\n",
+                          static_cast<unsigned long>(noClientLimit),
+                          wasAutoStarted ? "auto-start" : "manual");
+            stopSetupMode(false, wasAutoStarted ? "no_clients_auto" : "no_clients");
+            return;
+        }
     }
 
     // Continue serving HTTP while STA remains online even after AP is retired.

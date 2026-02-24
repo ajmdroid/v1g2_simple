@@ -1,5 +1,6 @@
 # SD lock discipline contract (lock class usage by file)
 
+file=src/battery_manager.cpp class=SDLockBlocking count=1
 file=src/ble_client.cpp class=SDLockBlocking count=2
 file=src/main_persist.cpp class=SDTryLock count=2
 file=src/modules/camera/camera_api_service.cpp class=SDLockBlocking count=1

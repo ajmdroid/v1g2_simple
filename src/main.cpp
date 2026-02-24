@@ -1014,6 +1014,7 @@ void loop() {
             SerialLog.printf("[WiFi] Deferred auto-start at %lu ms (v1Connect=%lu ms ago)\n",
                              now, msSinceV1);
             getWifiOrchestrator().startWifi();
+            wifiManager.markAutoStarted();
             wifiAutoStartDone = true;
         }
     }

@@ -153,6 +153,9 @@ public:
     
     // Callback for V1 connection state (used to defer WiFi client operations)
     void setV1ConnectedCallback(std::function<bool()> callback) { isV1Connected = callback; }
+
+    // Mark this WiFi session as auto-started (shorter no-client grace period)
+    void markAutoStarted() { wasAutoStarted = true; }
     
     // Web activity tracking (for WiFi priority mode)
     void markUiActivity();  // Call on every HTTP request
@@ -212,10 +215,14 @@ private:
     // If neither STA nor AP has any connected client for long enough, shut WiFi
     // down until manual restart to preserve core runtime headroom.
     static constexpr unsigned long WIFI_NO_CLIENT_SHUTDOWN_MS = 60000;
+    // Shorter grace for auto-started WiFi: if nobody connects within one STA
+    // timeout cycle, shut down promptly to reclaim DMA headroom.
+    static constexpr unsigned long WIFI_NO_CLIENT_SHUTDOWN_AUTO_MS = 20000;
     // When STA is connected, keep AP alive briefly for setup-page races, then
     // retire AP once no AP clients have been seen for this long.
     static constexpr unsigned long WIFI_AP_IDLE_DROP_AFTER_STA_MS = 60000;
     unsigned long lastAnyClientSeenMs = 0;
+    bool wasAutoStarted = false;  // True when WiFi was started by boot auto-start (not manual)
 
     // Rate limiting
     static constexpr int RATE_LIMIT_WINDOW_MS = 60000;  // 60 second window (1 minute)

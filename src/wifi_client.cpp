@@ -406,6 +406,12 @@ void WiFiManager::checkWifiClientStatus() {
             // Auto-reconnect if we have saved credentials (with failure limit)
             const V1Settings& settings = settingsManager.get();
             if (settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
+                // When WiFi was auto-started and no AP client has connected,
+                // skip STA reconnect — the initial WiFi.begin() in startSetupMode()
+                // already tried, and the no-client shutdown will reclaim resources.
+                if (wasAutoStarted && cachedApStaCount == 0 && lastUiActivityMs == 0) {
+                    break;
+                }
                 // Check if we've exceeded max failures - prevents memory exhaustion
                 if (wifiReconnectFailures >= WIFI_MAX_RECONNECT_FAILURES) {
                     // Already gave up - don't log spam, just stay in failed state
