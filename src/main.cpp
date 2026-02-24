@@ -61,6 +61,7 @@
 #include "modules/system/loop_telemetry_module.h"
 #include "modules/system/loop_ingest_module.h"
 #include "modules/system/loop_display_module.h"
+#include "modules/system/loop_power_touch_module.h"
 #include "modules/system/loop_connection_early_module.h"
 #include "modules/system/loop_post_display_module.h"
 #include "esp_heap_caps.h"
@@ -212,6 +213,7 @@ LoopTailModule loopTailModule;
 LoopTelemetryModule loopTelemetryModule;
 LoopIngestModule loopIngestModule;
 LoopDisplayModule loopDisplayModule;
+LoopPowerTouchModule loopPowerTouchModule;
 LoopConnectionEarlyModule loopConnectionEarlyModule;
 LoopPostDisplayModule loopPostDisplayModule;
 WifiAutoStartModule wifiAutoStartModule;
@@ -901,6 +903,48 @@ void setup() {
         };
     loopConnectionEarlyProviders.displayEarlyContext = &displayOrchestrationModule;
     loopConnectionEarlyModule.begin(loopConnectionEarlyProviders);
+    LoopPowerTouchModule::Providers loopPowerTouchProviders;
+    loopPowerTouchProviders.timestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    loopPowerTouchProviders.microsNow = [](void*) -> uint32_t {
+        return micros();
+    };
+    loopPowerTouchProviders.runPowerProcess = [](void* ctx, uint32_t nowMs) {
+        static_cast<PowerModule*>(ctx)->process(nowMs);
+    };
+    loopPowerTouchProviders.powerContext = &powerModule;
+    loopPowerTouchProviders.runTouchUiProcess =
+        [](void* ctx, uint32_t nowMs, bool bootButtonPressed) -> bool {
+            return static_cast<TouchUiModule*>(ctx)->process(nowMs, bootButtonPressed);
+        };
+    loopPowerTouchProviders.touchUiContext = &touchUiModule;
+    loopPowerTouchProviders.recordTouchUs = [](void*, uint32_t elapsedUs) {
+        perfRecordTouchUs(elapsedUs);
+    };
+    loopPowerTouchProviders.recordLoopJitterUs = [](void*, uint32_t jitterUs) {
+        perfRecordLoopJitterUs(jitterUs);
+    };
+    loopPowerTouchProviders.refreshDmaCache = [](void*) {
+        StorageManager::updateDmaHeapCache();
+    };
+    loopPowerTouchProviders.readFreeHeap = [](void*) -> uint32_t {
+        return ESP.getFreeHeap();
+    };
+    loopPowerTouchProviders.readLargestHeapBlock = [](void*) -> uint32_t {
+        return static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+    };
+    loopPowerTouchProviders.readCachedFreeDma = [](void*) -> uint32_t {
+        return StorageManager::getCachedFreeDma();
+    };
+    loopPowerTouchProviders.readCachedLargestDma = [](void*) -> uint32_t {
+        return StorageManager::getCachedLargestDma();
+    };
+    loopPowerTouchProviders.recordHeapStats =
+        [](void*, uint32_t freeHeap, uint32_t largestHeapBlock, uint32_t cachedFreeDma, uint32_t cachedLargestDma) {
+            perfRecordHeapStats(freeHeap, largestHeapBlock, cachedFreeDma, cachedLargestDma);
+        };
+    loopPowerTouchModule.begin(loopPowerTouchProviders);
     LoopPostDisplayModule::Providers loopPostDisplayProviders;
     loopPostDisplayProviders.runAutoPush = [](void* ctx) {
         static_cast<AutoPushModule*>(ctx)->process();
@@ -1180,18 +1224,19 @@ void loop() {
 
     // Process battery/power and touch UI
 #if defined(DISPLAY_WAVESHARE_349)
-    powerModule.process(now);
-    {
-        uint32_t touchStartUs = PERF_TIMESTAMP_US();
-        bool inSettings = touchUiModule.process(now, (digitalRead(BOOT_BUTTON_GPIO) == LOW));
-        perfRecordTouchUs(PERF_TIMESTAMP_US() - touchStartUs);
-        if (inSettings) {
-            perfRecordLoopJitterUs(micros() - loopStartUs);
-            StorageManager::updateDmaHeapCache();  // Keep DMA cache fresh
-            perfRecordHeapStats(ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT),
-                                StorageManager::getCachedFreeDma(), StorageManager::getCachedLargestDma());
-            return;  // Skip normal loop processing while in settings mode
-        }
+    auto runPowerProcess = [](uint32_t nowMs) { powerModule.process(nowMs); };
+    auto runTouchUiProcess = [](uint32_t nowMs, bool bootButtonPressed) -> bool {
+        return touchUiModule.process(nowMs, bootButtonPressed);
+    };
+    LoopPowerTouchContext loopPowerTouchCtx;
+    loopPowerTouchCtx.nowMs = now;
+    loopPowerTouchCtx.loopStartUs = loopStartUs;
+    loopPowerTouchCtx.bootButtonPressed = (digitalRead(BOOT_BUTTON_GPIO) == LOW);
+    loopPowerTouchCtx.runPowerProcess = runPowerProcess;
+    loopPowerTouchCtx.runTouchUiProcess = runTouchUiProcess;
+    const LoopPowerTouchResult loopPowerTouchResult = loopPowerTouchModule.process(loopPowerTouchCtx);
+    if (loopPowerTouchResult.shouldReturnEarly) {
+        return;  // Skip normal loop processing while in settings mode
     }
 #endif
 
