@@ -125,8 +125,6 @@ void V1Display::showResting(bool forceRedraw) {
         const int leftColWidth = 64;
         const int leftColHeight = 96;
         flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
-    #else
-        flush();
 #endif
     }
 
