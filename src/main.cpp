@@ -59,6 +59,7 @@
 #include "modules/system/periodic_maintenance_module.h"
 #include "modules/system/loop_tail_module.h"
 #include "modules/system/loop_telemetry_module.h"
+#include "modules/system/loop_ingest_module.h"
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
 #include "modules/voice/voice_speed_sync_module.h"
@@ -206,6 +207,7 @@ SystemEventBus systemEventBus;
 PeriodicMaintenanceModule periodicMaintenanceModule;
 LoopTailModule loopTailModule;
 LoopTelemetryModule loopTelemetryModule;
+LoopIngestModule loopIngestModule;
 WifiAutoStartModule wifiAutoStartModule;
 WifiPriorityPolicyModule wifiPriorityPolicyModule;
 WifiVisualSyncModule wifiVisualSyncModule;
@@ -765,6 +767,49 @@ void setup() {
         perfRecordHeapStats(freeHeap, largestHeapBlock, cachedFreeDma, cachedLargestDma);
     };
     loopTelemetryModule.begin(loopTelemetryProviders);
+    LoopIngestModule::Providers loopIngestProviders;
+    loopIngestProviders.timestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    loopIngestProviders.runBleProcess = [](void* ctx) {
+        static_cast<V1BLEClient*>(ctx)->process();
+    };
+    loopIngestProviders.bleProcessContext = &bleClient;
+    loopIngestProviders.recordBleProcessUs = [](void*, uint32_t elapsedUs) {
+        perfRecordBleProcessUs(elapsedUs);
+    };
+    loopIngestProviders.runBleDrain = [](void* ctx) {
+        static_cast<BleQueueModule*>(ctx)->process();
+    };
+    loopIngestProviders.bleDrainContext = &bleQueueModule;
+    loopIngestProviders.recordBleDrainUs = [](void*, uint32_t elapsedUs) {
+        perfRecordBleDrainUs(elapsedUs);
+    };
+    loopIngestProviders.readBleBackpressure = [](void* ctx) -> bool {
+        return static_cast<BleQueueModule*>(ctx)->isBackpressured();
+    };
+    loopIngestProviders.bleBackpressureContext = &bleQueueModule;
+    loopIngestProviders.runObdRuntime = [](void*,
+                                           uint32_t nowMs,
+                                           bool obdServiceEnabled) {
+        obdRuntimeModule.process(nowMs,
+                                 obdServiceEnabled,
+                                 obdAutoConnectPending,
+                                 obdAutoConnectAtMs,
+                                 obdHandler,
+                                 speedSourceSelector);
+    };
+    loopIngestProviders.recordObdUs = [](void*, uint32_t elapsedUs) {
+        perfRecordObdUs(elapsedUs);
+    };
+    loopIngestProviders.runGpsRuntimeUpdate = [](void* ctx, uint32_t nowMs) {
+        static_cast<GpsRuntimeModule*>(ctx)->update(nowMs);
+    };
+    loopIngestProviders.gpsRuntimeContext = &gpsRuntimeModule;
+    loopIngestProviders.recordGpsUs = [](void*, uint32_t elapsedUs) {
+        perfRecordGpsUs(elapsedUs);
+    };
+    loopIngestModule.begin(loopIngestProviders);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
     displayOrchestrationModule.begin(&display,
                                      &bleClient,
@@ -1024,6 +1069,10 @@ void loop() {
 
     tapGestureModule.process(now);
     
+    const V1Settings& loopSettings = settingsManager.get();
+    const bool obdServiceEnabled = loopSettings.obdEnabled;
+    bool runBleProcessThisLoop = false;
+
 #ifndef REPLAY_MODE
     if (!bootReady && millis() >= bootReadyDeadlineMs) {
         bootReady = true;
@@ -1031,40 +1080,25 @@ void loop() {
         SerialLog.printf("[Boot] Ready gate opened at %lu ms (timeout)\n", millis());
     }
 
-    const V1Settings& loopSettings = settingsManager.get();
-    const bool obdServiceEnabled = loopSettings.obdEnabled;
     wifiPriorityPolicyModule.apply(now, obdServiceEnabled, bleClient, wifiManager, obdHandler);
-    
-    // Process BLE events (includes blocking connect/discovery during reconnect)
-    uint32_t bleProcessStartUs = PERF_TIMESTAMP_US();
-    bleClient.process();
-    perfRecordBleProcessUs(PERF_TIMESTAMP_US() - bleProcessStartUs);
+    runBleProcessThisLoop = true;
 #endif
     
     DebugApiService::process(now);
-
-    // Process queued BLE data (safe for SPI - runs in main loop context)
-    uint32_t bleDrainStartUs = PERF_TIMESTAMP_US();
-    bleQueueModule.process();
-    perfRecordBleDrainUs(PERF_TIMESTAMP_US() - bleDrainStartUs);
-    bleBackpressure = bleQueueModule.isBackpressured();
-    const bool skipLateNonCoreThisLoop = skipNonCoreThisLoop || bleBackpressure;
-    const bool overloadLateThisLoop = overloadThisLoop || bleBackpressure;
-
-    uint32_t obdStartUs = PERF_TIMESTAMP_US();
-    obdRuntimeModule.process(now,
-                             obdServiceEnabled,
-                             obdAutoConnectPending,
-                             obdAutoConnectAtMs,
-                             obdHandler,
-                             speedSourceSelector);
-    if (obdServiceEnabled) {
-        perfRecordObdUs(PERF_TIMESTAMP_US() - obdStartUs);
-    }
-
-    uint32_t gpsStartUs = PERF_TIMESTAMP_US();
-    gpsRuntimeModule.update(now);
-    perfRecordGpsUs(PERF_TIMESTAMP_US() - gpsStartUs);
+    auto runBleProcess = []() { bleClient.process(); };
+    auto runBleDrain = []() { bleQueueModule.process(); };
+    LoopIngestContext loopIngestCtx;
+    loopIngestCtx.nowMs = now;
+    loopIngestCtx.bleProcessEnabled = runBleProcessThisLoop;
+    loopIngestCtx.runBleProcess = runBleProcess;
+    loopIngestCtx.runBleDrain = runBleDrain;
+    loopIngestCtx.skipNonCoreThisLoop = skipNonCoreThisLoop;
+    loopIngestCtx.overloadThisLoop = overloadThisLoop;
+    loopIngestCtx.obdServiceEnabled = obdServiceEnabled;
+    const LoopIngestResult loopIngestResult = loopIngestModule.process(loopIngestCtx);
+    bleBackpressure = loopIngestResult.bleBackpressure;
+    const bool skipLateNonCoreThisLoop = loopIngestResult.skipLateNonCoreThisLoop;
+    const bool overloadLateThisLoop = loopIngestResult.overloadLateThisLoop;
 
     VoiceSpeedSyncContext voiceSpeedSyncCtx;
     voiceSpeedSyncCtx.nowMs = now;
