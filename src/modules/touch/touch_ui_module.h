@@ -29,8 +29,6 @@ public:
     // Returns true if UI consumed the loop (brightness/volume adjustment active)
     bool process(unsigned long nowMs, bool bootPressed);
 
-    bool isAdjustMode() const { return brightnessAdjustMode; }
-
 private:
     void enterAdjustMode();
     void exitAdjustModeAndSave();
