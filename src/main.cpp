@@ -56,6 +56,7 @@
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
 #include "modules/speed_volume/speed_volume_module.h"
+#include "modules/speed_volume/speaker_quiet_sync_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
@@ -178,6 +179,7 @@ VolumeFadeModule volumeFadeModule;
 
 // Speed volume module - boost volume at highway speeds
 SpeedVolumeModule speedVolumeModule;
+SpeakerQuietSyncModule speakerQuietSyncModule;
 
 // Auto-push profile state machine
 AutoPushModule autoPushModule;
@@ -976,26 +978,11 @@ void loop() {
     // Speed-based volume: delegate to module (rate-limited internally)
     speedVolumeModule.process(now);
     
-    // Low-speed speaker volume scaling: when quiet is active, reduce speaker
-    // proportionally; restore when quiet ends.
-    {
-        static bool speakerQuietActive = false;
-        static uint8_t speakerOriginalVolume = 0;
-        bool quietNow = speedVolumeModule.isQuietActive();
-        if (quietNow && !speakerQuietActive) {
-            // Entering low-speed quiet — scale speaker volume
-            speakerOriginalVolume = settingsManager.get().voiceVolume;
-            uint8_t qv = speedVolumeModule.getQuietVolume();
-            uint8_t scaled = (qv == 0) ? 0
-                : static_cast<uint8_t>((uint16_t)speakerOriginalVolume * qv / 9);
-            audio_set_volume(scaled);
-            speakerQuietActive = true;
-        } else if (!quietNow && speakerQuietActive) {
-            // Exiting low-speed quiet — restore speaker volume
-            audio_set_volume(settingsManager.get().voiceVolume);
-            speakerQuietActive = false;
-        }
-    }
+    speakerQuietSyncModule.process(
+        speedVolumeModule.isQuietActive(),
+        speedVolumeModule.getQuietVolume(),
+        settingsManager.get().voiceVolume,
+        [](uint8_t volume) { audio_set_volume(volume); });
     
     // Update display periodically
     now = millis();
