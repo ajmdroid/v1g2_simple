@@ -7,6 +7,10 @@
 #include <NimBLEDevice.h>
 
 namespace {
+constexpr uint16_t kObdConnIntervalMin = 24;
+constexpr uint16_t kObdConnIntervalMax = 48;
+constexpr uint16_t kObdConnLatency = 0;
+constexpr uint16_t kObdConnSupervisionTimeout = 400;
 constexpr uint32_t kObdClientConnectTimeoutMs = 10000;  // Preserve existing OBD connect timeout.
 }
 
@@ -42,7 +46,10 @@ bool OBDHandler::connectToDevice(bool skipPreScan) {
         // room to negotiate.  The CX is a power-saving peripheral and rejects or
         // immediately disconnects when forced to a fixed 15 ms interval.
         // Latency 0, supervision timeout 400 (4 s) matches V1 client config.
-        pOBDClient->setConnectionParams(24, 48, 0, 400);
+        pOBDClient->setConnectionParams(kObdConnIntervalMin,
+                                        kObdConnIntervalMax,
+                                        kObdConnLatency,
+                                        kObdConnSupervisionTimeout);
         // NimBLE timeout is configured on the client, not via connect() args.
         pOBDClient->setConnectTimeout(kObdClientConnectTimeoutMs);
     }
