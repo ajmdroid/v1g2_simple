@@ -56,6 +56,7 @@
 #include "modules/system/system_event_bus.h"
 #include "modules/system/parsed_frame_event_module.h"
 #include "modules/system/periodic_maintenance_module.h"
+#include "modules/system/loop_tail_module.h"
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
 #include "modules/speed_volume/speed_volume_module.h"
@@ -194,6 +195,7 @@ DisplayOrchestrationModule displayOrchestrationModule;
 DisplayRestoreModule displayRestoreModule;
 SystemEventBus systemEventBus;
 PeriodicMaintenanceModule periodicMaintenanceModule;
+LoopTailModule loopTailModule;
 WifiAutoStartModule wifiAutoStartModule;
 WifiPriorityPolicyModule wifiPriorityPolicyModule;
 WifiVisualSyncModule wifiVisualSyncModule;
@@ -698,6 +700,24 @@ void setup() {
         processLearnerPendingSave(nowMs);
     };
     periodicMaintenanceModule.begin(periodicMaintenanceProviders);
+    LoopTailModule::Providers loopTailProviders;
+    loopTailProviders.perfTimestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    loopTailProviders.loopMicrosUs = [](void*) -> uint32_t {
+        return micros();
+    };
+    loopTailProviders.runBleDrain = [](void* ctx) {
+        static_cast<BleQueueModule*>(ctx)->process();
+    };
+    loopTailProviders.bleDrainContext = &bleQueueModule;
+    loopTailProviders.recordBleDrainUs = [](void*, uint32_t elapsedUs) {
+        perfRecordBleDrainUs(elapsedUs);
+    };
+    loopTailProviders.yieldOneTick = [](void*) {
+        vTaskDelay(pdMS_TO_TICKS(1));
+    };
+    loopTailModule.begin(loopTailProviders);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
     displayOrchestrationModule.begin(&display,
                                      &bleClient,
@@ -1034,15 +1054,6 @@ void loop() {
     // Periodic perf/time/lockout maintenance bundle.
     periodicMaintenanceModule.process(now);
 
-    // If BLE ingest was backpressured this loop, do one late opportunistic drain
-    // so queued notifications don't sit through the sleep + next-loop startup.
-    if (bleBackpressure) {
-        uint32_t bleDrainLateStartUs = PERF_TIMESTAMP_US();
-        bleQueueModule.process();
-        perfRecordBleDrainUs(PERF_TIMESTAMP_US() - bleDrainLateStartUs);
-    }
-
-    // Short FreeRTOS delay to yield CPU without capping loop at ~200 Hz
-    vTaskDelay(pdMS_TO_TICKS(1));
-    lastLoopUs = micros() - loopStartUs;
+    // End-of-loop tail: opportunistic BLE drain + yield + loop duration capture.
+    lastLoopUs = loopTailModule.process(bleBackpressure, loopStartUs);
 }
