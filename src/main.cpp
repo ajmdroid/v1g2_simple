@@ -1221,24 +1221,6 @@ void loop() {
     static unsigned long lastLoopUs = 0;
     unsigned long now = millis();
 
-    auto runConnectionRuntime = [](uint32_t nowMs,
-                                   uint32_t nowUs,
-                                   uint32_t lastLoopUs,
-                                   bool bootSplashHoldActive,
-                                   uint32_t bootSplashHoldUntilMs,
-                                   bool initialScanningScreenShown) {
-        return connectionRuntimeModule.process(
-            nowMs,
-            nowUs,
-            lastLoopUs,
-            bootSplashHoldActive,
-            bootSplashHoldUntilMs,
-            initialScanningScreenShown);
-    };
-    auto runShowInitialScanning = []() { showInitialScanningScreen(); };
-    auto runDisplayEarly = [](const DisplayOrchestrationEarlyContext& displayEarlyCtx) {
-        displayOrchestrationModule.processEarly(displayEarlyCtx);
-    };
     LoopConnectionEarlyContext loopConnectionEarlyCtx;
     loopConnectionEarlyCtx.nowMs = now;
     loopConnectionEarlyCtx.nowUs = micros();
@@ -1246,9 +1228,6 @@ void loop() {
     loopConnectionEarlyCtx.bootSplashHoldActive = bootSplashHoldActive;
     loopConnectionEarlyCtx.bootSplashHoldUntilMs = bootSplashHoldUntilMs;
     loopConnectionEarlyCtx.initialScanningScreenShown = initialScanningScreenShown;
-    loopConnectionEarlyCtx.runConnectionRuntime = runConnectionRuntime;
-    loopConnectionEarlyCtx.showInitialScanning = runShowInitialScanning;
-    loopConnectionEarlyCtx.runDisplayEarly = runDisplayEarly;
     const LoopConnectionEarlyResult loopConnectionEarlyResult =
         loopConnectionEarlyModule.process(loopConnectionEarlyCtx);
 
@@ -1262,49 +1241,20 @@ void loop() {
 
     // Process battery/power and touch UI
 #if defined(DISPLAY_WAVESHARE_349)
-    auto runPowerProcess = [](uint32_t nowMs) { powerModule.process(nowMs); };
-    auto runTouchUiProcess = [](uint32_t nowMs, bool bootButtonPressed) -> bool {
-        return touchUiModule.process(nowMs, bootButtonPressed);
-    };
     LoopPowerTouchContext loopPowerTouchCtx;
     loopPowerTouchCtx.nowMs = now;
     loopPowerTouchCtx.loopStartUs = loopStartUs;
     loopPowerTouchCtx.bootButtonPressed = (digitalRead(BOOT_BUTTON_GPIO) == LOW);
-    loopPowerTouchCtx.runPowerProcess = runPowerProcess;
-    loopPowerTouchCtx.runTouchUiProcess = runTouchUiProcess;
     const LoopPowerTouchResult loopPowerTouchResult = loopPowerTouchModule.process(loopPowerTouchCtx);
     if (loopPowerTouchResult.shouldReturnEarly) {
         return;  // Skip normal loop processing while in settings mode
     }
 #endif
 
-    auto runTapGesture = [](uint32_t nowMs) {
-        tapGestureModule.process(nowMs);
-    };
-    auto readSettingsValues = []() -> LoopSettingsPrepValues {
-        const V1Settings& settings = settingsManager.get();
-        LoopSettingsPrepValues values;
-        values.obdServiceEnabled = settings.obdEnabled;
-        values.enableWifiAtBoot = settings.enableWifiAtBoot;
-        values.enableSignalTraceLogging = settings.enableSignalTraceLogging;
-        return values;
-    };
     LoopSettingsPrepContext loopSettingsPrepCtx;
     loopSettingsPrepCtx.nowMs = now;
-    loopSettingsPrepCtx.runTapGesture = runTapGesture;
-    loopSettingsPrepCtx.readSettingsValues = readSettingsValues;
     const LoopSettingsPrepValues loopSettingsPrepValues = loopSettingsPrepModule.process(loopSettingsPrepCtx);
     const bool obdServiceEnabled = loopSettingsPrepValues.obdServiceEnabled;
-    auto openBootReadyGate = [](uint32_t nowMs) {
-        bleClient.setBootReady(true);
-        SerialLog.printf("[Boot] Ready gate opened at %lu ms (timeout)\n", static_cast<unsigned long>(nowMs));
-    };
-    auto runWifiPriorityApply = [](uint32_t nowMs, bool obdServiceEnabled) {
-        wifiPriorityPolicyModule.apply(nowMs, obdServiceEnabled, bleClient, wifiManager, obdHandler);
-    };
-    auto runDebugApiProcess = [](uint32_t nowMs) {
-        DebugApiService::process(nowMs);
-    };
     LoopPreIngestContext loopPreIngestCtx;
     loopPreIngestCtx.nowMs = now;
     loopPreIngestCtx.bootReady = bootReady;
@@ -1313,9 +1263,6 @@ void loop() {
 #ifdef REPLAY_MODE
     loopPreIngestCtx.replayMode = true;
 #endif
-    loopPreIngestCtx.openBootReadyGate = openBootReadyGate;
-    loopPreIngestCtx.runWifiPriorityApply = runWifiPriorityApply;
-    loopPreIngestCtx.runDebugApiProcess = runDebugApiProcess;
     const LoopPreIngestResult loopPreIngestResult = loopPreIngestModule.process(loopPreIngestCtx);
     bootReady = loopPreIngestResult.bootReady;
     const bool runBleProcessThisLoop = loopPreIngestResult.runBleProcessThisLoop;
@@ -1365,7 +1312,6 @@ void loop() {
             overloadLateThisLoop,
             loopSignalPriorityActive);
     };
-    auto runAutoPush = []() { autoPushModule.process(); };
     LoopPostDisplayContext loopPostDisplayPreWifiCtx;
     loopPostDisplayPreWifiCtx.runAutoPushAndCamera = true;
     loopPostDisplayPreWifiCtx.runSpeedAndDispatch = false;
@@ -1373,7 +1319,6 @@ void loop() {
     loopPostDisplayPreWifiCtx.skipLateNonCoreThisLoop = skipLateNonCoreThisLoop;
     loopPostDisplayPreWifiCtx.overloadLateThisLoop = overloadLateThisLoop;
     loopPostDisplayPreWifiCtx.loopSignalPriorityActive = loopSignalPriorityActive;
-    loopPostDisplayPreWifiCtx.runAutoPush = runAutoPush;
     loopPostDisplayPreWifiCtx.runCameraRuntime = runCameraRuntime;
     loopPostDisplayModule.process(loopPostDisplayPreWifiCtx);
 
@@ -1394,12 +1339,6 @@ void loop() {
     
     loopTelemetryModule.process(loopStartUs);
 
-    auto runSpeedVolumeRuntime = [](const SpeedVolumeRuntimeContext& speedVolumeCtx) {
-        speedVolumeRuntimeModule.process(speedVolumeCtx);
-    };
-    auto runConnectionStateDispatch = [](const ConnectionStateDispatchContext& dispatchCtx) {
-        connectionStateDispatchModule.process(dispatchCtx);
-    };
     LoopPostDisplayContext loopPostDisplayPostWifiCtx;
     loopPostDisplayPostWifiCtx.runAutoPushAndCamera = false;
     loopPostDisplayPostWifiCtx.runSpeedAndDispatch = true;
@@ -1410,8 +1349,6 @@ void loop() {
     loopPostDisplayPostWifiCtx.bootSplashHoldActive = bootSplashHoldActive;
     loopPostDisplayPostWifiCtx.displayPreviewRunning = displayPreviewModule.isRunning();
     loopPostDisplayPostWifiCtx.maxProcessGapMs = CONNECTION_STATE_PROCESS_MAX_GAP_MS;
-    loopPostDisplayPostWifiCtx.runSpeedVolumeRuntime = runSpeedVolumeRuntime;
-    loopPostDisplayPostWifiCtx.runConnectionStateDispatch = runConnectionStateDispatch;
     const LoopPostDisplayResult loopPostDisplayResult = loopPostDisplayModule.process(loopPostDisplayPostWifiCtx);
     now = loopPostDisplayResult.dispatchNowMs;
     bleConnectedNow = loopPostDisplayResult.bleConnectedNow;
