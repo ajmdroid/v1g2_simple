@@ -63,6 +63,7 @@
 #include "modules/system/loop_display_module.h"
 #include "modules/system/loop_power_touch_module.h"
 #include "modules/system/loop_pre_ingest_module.h"
+#include "modules/system/loop_settings_prep_module.h"
 #include "modules/system/loop_connection_early_module.h"
 #include "modules/system/loop_post_display_module.h"
 #include "esp_heap_caps.h"
@@ -216,6 +217,7 @@ LoopIngestModule loopIngestModule;
 LoopDisplayModule loopDisplayModule;
 LoopPowerTouchModule loopPowerTouchModule;
 LoopPreIngestModule loopPreIngestModule;
+LoopSettingsPrepModule loopSettingsPrepModule;
 LoopConnectionEarlyModule loopConnectionEarlyModule;
 LoopPostDisplayModule loopPostDisplayModule;
 WifiAutoStartModule wifiAutoStartModule;
@@ -966,6 +968,21 @@ void setup() {
         DebugApiService::process(nowMs);
     };
     loopPreIngestModule.begin(loopPreIngestProviders);
+    LoopSettingsPrepModule::Providers loopSettingsPrepProviders;
+    loopSettingsPrepProviders.runTapGesture = [](void* ctx, uint32_t nowMs) {
+        static_cast<TapGestureModule*>(ctx)->process(nowMs);
+    };
+    loopSettingsPrepProviders.tapGestureContext = &tapGestureModule;
+    loopSettingsPrepProviders.readSettingsValues = [](void* ctx) -> LoopSettingsPrepValues {
+        const V1Settings& settings = static_cast<SettingsManager*>(ctx)->get();
+        LoopSettingsPrepValues values;
+        values.obdServiceEnabled = settings.obdEnabled;
+        values.enableWifiAtBoot = settings.enableWifiAtBoot;
+        values.enableSignalTraceLogging = settings.enableSignalTraceLogging;
+        return values;
+    };
+    loopSettingsPrepProviders.settingsContext = &settingsManager;
+    loopSettingsPrepModule.begin(loopSettingsPrepProviders);
     LoopPostDisplayModule::Providers loopPostDisplayProviders;
     loopPostDisplayProviders.runAutoPush = [](void* ctx) {
         static_cast<AutoPushModule*>(ctx)->process();
@@ -1261,10 +1278,23 @@ void loop() {
     }
 #endif
 
-    tapGestureModule.process(now);
-    
-    const V1Settings& loopSettings = settingsManager.get();
-    const bool obdServiceEnabled = loopSettings.obdEnabled;
+    auto runTapGesture = [](uint32_t nowMs) {
+        tapGestureModule.process(nowMs);
+    };
+    auto readSettingsValues = []() -> LoopSettingsPrepValues {
+        const V1Settings& settings = settingsManager.get();
+        LoopSettingsPrepValues values;
+        values.obdServiceEnabled = settings.obdEnabled;
+        values.enableWifiAtBoot = settings.enableWifiAtBoot;
+        values.enableSignalTraceLogging = settings.enableSignalTraceLogging;
+        return values;
+    };
+    LoopSettingsPrepContext loopSettingsPrepCtx;
+    loopSettingsPrepCtx.nowMs = now;
+    loopSettingsPrepCtx.runTapGesture = runTapGesture;
+    loopSettingsPrepCtx.readSettingsValues = readSettingsValues;
+    const LoopSettingsPrepValues loopSettingsPrepValues = loopSettingsPrepModule.process(loopSettingsPrepCtx);
+    const bool obdServiceEnabled = loopSettingsPrepValues.obdServiceEnabled;
     auto openBootReadyGate = [](uint32_t nowMs) {
         bleClient.setBootReady(true);
         SerialLog.printf("[Boot] Ready gate opened at %lu ms (timeout)\n", static_cast<unsigned long>(nowMs));
@@ -1317,7 +1347,7 @@ void loop() {
     loopDisplayCtx.nowMs = now;
     loopDisplayCtx.bootSplashHoldActive = bootSplashHoldActive;
     loopDisplayCtx.overloadLateThisLoop = overloadLateThisLoop;
-    loopDisplayCtx.enableSignalTraceLogging = loopSettings.enableSignalTraceLogging;
+    loopDisplayCtx.enableSignalTraceLogging = loopSettingsPrepValues.enableSignalTraceLogging;
     loopDisplayCtx.runDisplayPipeline = runDisplayPipeline;
     const LoopDisplayResult loopDisplayResult = loopDisplayModule.process(loopDisplayCtx);
     const bool loopSignalPriorityActive = loopDisplayResult.signalPriorityActive;
@@ -1351,7 +1381,7 @@ void loop() {
     WifiRuntimeContext wifiRuntimeCtx;
     wifiRuntimeCtx.nowMs = now;
     wifiRuntimeCtx.v1ConnectedAtMs = v1ConnectedAtMs;
-    wifiRuntimeCtx.enableWifiAtBoot = loopSettings.enableWifiAtBoot;
+    wifiRuntimeCtx.enableWifiAtBoot = loopSettingsPrepValues.enableWifiAtBoot;
     wifiRuntimeCtx.bleConnected = bleClient.isConnected();
     wifiRuntimeCtx.canStartDma = wifiManager.canStartSetupMode(nullptr, nullptr);
     wifiRuntimeCtx.wifiAutoStartDone = wifiAutoStartDone;
