@@ -63,6 +63,7 @@
 #include "modules/system/loop_display_module.h"
 #include "modules/system/loop_power_touch_module.h"
 #include "modules/system/loop_pre_ingest_module.h"
+#include "modules/system/loop_runtime_snapshot_module.h"
 #include "modules/system/loop_settings_prep_module.h"
 #include "modules/system/loop_connection_early_module.h"
 #include "modules/system/loop_post_display_module.h"
@@ -217,6 +218,7 @@ LoopIngestModule loopIngestModule;
 LoopDisplayModule loopDisplayModule;
 LoopPowerTouchModule loopPowerTouchModule;
 LoopPreIngestModule loopPreIngestModule;
+LoopRuntimeSnapshotModule loopRuntimeSnapshotModule;
 LoopSettingsPrepModule loopSettingsPrepModule;
 LoopConnectionEarlyModule loopConnectionEarlyModule;
 LoopPostDisplayModule loopPostDisplayModule;
@@ -984,6 +986,20 @@ void setup() {
     };
     loopSettingsPrepProviders.settingsContext = &settingsManager;
     loopSettingsPrepModule.begin(loopSettingsPrepProviders);
+    LoopRuntimeSnapshotModule::Providers loopRuntimeSnapshotProviders;
+    loopRuntimeSnapshotProviders.readBleConnected = [](void* ctx) -> bool {
+        return static_cast<V1BLEClient*>(ctx)->isConnected();
+    };
+    loopRuntimeSnapshotProviders.bleConnectedContext = &bleClient;
+    loopRuntimeSnapshotProviders.readCanStartDma = [](void* ctx) -> bool {
+        return static_cast<WiFiManager*>(ctx)->canStartSetupMode(nullptr, nullptr);
+    };
+    loopRuntimeSnapshotProviders.canStartDmaContext = &wifiManager;
+    loopRuntimeSnapshotProviders.readDisplayPreviewRunning = [](void* ctx) -> bool {
+        return static_cast<DisplayPreviewModule*>(ctx)->isRunning();
+    };
+    loopRuntimeSnapshotProviders.displayPreviewContext = &displayPreviewModule;
+    loopRuntimeSnapshotModule.begin(loopRuntimeSnapshotProviders);
     LoopPostDisplayModule::Providers loopPostDisplayProviders;
     loopPostDisplayProviders.runAutoPush = [](void* ctx) {
         static_cast<AutoPushModule*>(ctx)->process();
@@ -1323,16 +1339,19 @@ void loop() {
     loopPostDisplayPreWifiCtx.runCameraRuntime = runCameraRuntime;
     loopPostDisplayModule.process(loopPostDisplayPreWifiCtx);
 
+    LoopRuntimeSnapshotContext loopRuntimeSnapshotCtx;
+    const LoopRuntimeSnapshotValues loopRuntimeSnapshotValues =
+        loopRuntimeSnapshotModule.process(loopRuntimeSnapshotCtx);
     auto runWifiManagerProcess = []() { wifiManager.process(); };
     WifiRuntimeContext wifiRuntimeCtx;
     wifiRuntimeCtx.nowMs = now;
     wifiRuntimeCtx.v1ConnectedAtMs = v1ConnectedAtMs;
     wifiRuntimeCtx.enableWifiAtBoot = loopSettingsPrepValues.enableWifiAtBoot;
-    wifiRuntimeCtx.bleConnected = bleClient.isConnected();
-    wifiRuntimeCtx.canStartDma = wifiManager.canStartSetupMode(nullptr, nullptr);
+    wifiRuntimeCtx.bleConnected = loopRuntimeSnapshotValues.bleConnected;
+    wifiRuntimeCtx.canStartDma = loopRuntimeSnapshotValues.canStartDma;
     wifiRuntimeCtx.wifiAutoStartDone = wifiAutoStartDone;
     wifiRuntimeCtx.skipLateNonCoreThisLoop = skipLateNonCoreThisLoop;
-    wifiRuntimeCtx.displayPreviewRunning = displayPreviewModule.isRunning();
+    wifiRuntimeCtx.displayPreviewRunning = loopRuntimeSnapshotValues.displayPreviewRunning;
     wifiRuntimeCtx.bootSplashHoldActive = bootSplashHoldActive;
     wifiRuntimeCtx.runWifiManagerProcess = runWifiManagerProcess;
     const WifiRuntimeResult wifiRuntimeResult = wifiRuntimeModule.process(wifiRuntimeCtx);
@@ -1348,7 +1367,7 @@ void loop() {
     loopPostDisplayPostWifiCtx.displayUpdateIntervalMs = DISPLAY_UPDATE_MS;
     loopPostDisplayPostWifiCtx.scanScreenDwellMs = activeScanScreenDwellMs;
     loopPostDisplayPostWifiCtx.bootSplashHoldActive = bootSplashHoldActive;
-    loopPostDisplayPostWifiCtx.displayPreviewRunning = displayPreviewModule.isRunning();
+    loopPostDisplayPostWifiCtx.displayPreviewRunning = loopRuntimeSnapshotValues.displayPreviewRunning;
     loopPostDisplayPostWifiCtx.maxProcessGapMs = CONNECTION_STATE_PROCESS_MAX_GAP_MS;
     const LoopPostDisplayResult loopPostDisplayResult = loopPostDisplayModule.process(loopPostDisplayPostWifiCtx);
     now = loopPostDisplayResult.dispatchNowMs;
