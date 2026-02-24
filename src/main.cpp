@@ -737,6 +737,52 @@ static void configureLoopTelemetryModule() {
     loopTelemetryModule.begin(loopTelemetryProviders);
 }
 
+static void configureLoopIngestModule() {
+    LoopIngestModule::Providers loopIngestProviders;
+    loopIngestProviders.timestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    loopIngestProviders.runBleProcess = [](void* ctx) {
+        static_cast<V1BLEClient*>(ctx)->process();
+    };
+    loopIngestProviders.bleProcessContext = &bleClient;
+    loopIngestProviders.recordBleProcessUs = [](void*, uint32_t elapsedUs) {
+        perfRecordBleProcessUs(elapsedUs);
+    };
+    loopIngestProviders.runBleDrain = [](void* ctx) {
+        static_cast<BleQueueModule*>(ctx)->process();
+    };
+    loopIngestProviders.bleDrainContext = &bleQueueModule;
+    loopIngestProviders.recordBleDrainUs = [](void*, uint32_t elapsedUs) {
+        perfRecordBleDrainUs(elapsedUs);
+    };
+    loopIngestProviders.readBleBackpressure = [](void* ctx) -> bool {
+        return static_cast<BleQueueModule*>(ctx)->isBackpressured();
+    };
+    loopIngestProviders.bleBackpressureContext = &bleQueueModule;
+    loopIngestProviders.runObdRuntime = [](void*,
+                                           uint32_t nowMs,
+                                           bool obdServiceEnabled) {
+        obdRuntimeModule.process(nowMs,
+                                 obdServiceEnabled,
+                                 obdAutoConnectPending,
+                                 obdAutoConnectAtMs,
+                                 obdHandler,
+                                 speedSourceSelector);
+    };
+    loopIngestProviders.recordObdUs = [](void*, uint32_t elapsedUs) {
+        perfRecordObdUs(elapsedUs);
+    };
+    loopIngestProviders.runGpsRuntimeUpdate = [](void* ctx, uint32_t nowMs) {
+        static_cast<GpsRuntimeModule*>(ctx)->update(nowMs);
+    };
+    loopIngestProviders.gpsRuntimeContext = &gpsRuntimeModule;
+    loopIngestProviders.recordGpsUs = [](void*, uint32_t elapsedUs) {
+        perfRecordGpsUs(elapsedUs);
+    };
+    loopIngestModule.begin(loopIngestProviders);
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1103,49 +1149,7 @@ void setup() {
     configurePeriodicMaintenanceModule();
     configureLoopTailModule();
     configureLoopTelemetryModule();
-    LoopIngestModule::Providers loopIngestProviders;
-    loopIngestProviders.timestampUs = [](void*) -> uint32_t {
-        return PERF_TIMESTAMP_US();
-    };
-    loopIngestProviders.runBleProcess = [](void* ctx) {
-        static_cast<V1BLEClient*>(ctx)->process();
-    };
-    loopIngestProviders.bleProcessContext = &bleClient;
-    loopIngestProviders.recordBleProcessUs = [](void*, uint32_t elapsedUs) {
-        perfRecordBleProcessUs(elapsedUs);
-    };
-    loopIngestProviders.runBleDrain = [](void* ctx) {
-        static_cast<BleQueueModule*>(ctx)->process();
-    };
-    loopIngestProviders.bleDrainContext = &bleQueueModule;
-    loopIngestProviders.recordBleDrainUs = [](void*, uint32_t elapsedUs) {
-        perfRecordBleDrainUs(elapsedUs);
-    };
-    loopIngestProviders.readBleBackpressure = [](void* ctx) -> bool {
-        return static_cast<BleQueueModule*>(ctx)->isBackpressured();
-    };
-    loopIngestProviders.bleBackpressureContext = &bleQueueModule;
-    loopIngestProviders.runObdRuntime = [](void*,
-                                           uint32_t nowMs,
-                                           bool obdServiceEnabled) {
-        obdRuntimeModule.process(nowMs,
-                                 obdServiceEnabled,
-                                 obdAutoConnectPending,
-                                 obdAutoConnectAtMs,
-                                 obdHandler,
-                                 speedSourceSelector);
-    };
-    loopIngestProviders.recordObdUs = [](void*, uint32_t elapsedUs) {
-        perfRecordObdUs(elapsedUs);
-    };
-    loopIngestProviders.runGpsRuntimeUpdate = [](void* ctx, uint32_t nowMs) {
-        static_cast<GpsRuntimeModule*>(ctx)->update(nowMs);
-    };
-    loopIngestProviders.gpsRuntimeContext = &gpsRuntimeModule;
-    loopIngestProviders.recordGpsUs = [](void*, uint32_t elapsedUs) {
-        perfRecordGpsUs(elapsedUs);
-    };
-    loopIngestModule.begin(loopIngestProviders);
+    configureLoopIngestModule();
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
     displayOrchestrationModule.begin(&display,
                                      &bleClient,
