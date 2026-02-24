@@ -979,6 +979,7 @@ void setup() {
         values.obdServiceEnabled = settings.obdEnabled;
         values.enableWifiAtBoot = settings.enableWifiAtBoot;
         values.enableSignalTraceLogging = settings.enableSignalTraceLogging;
+        values.configuredVoiceVolume = settings.voiceVolume;
         return values;
     };
     loopSettingsPrepProviders.settingsContext = &settingsManager;
@@ -1343,7 +1344,7 @@ void loop() {
     loopPostDisplayPostWifiCtx.runAutoPushAndCamera = false;
     loopPostDisplayPostWifiCtx.runSpeedAndDispatch = true;
     loopPostDisplayPostWifiCtx.nowMs = now;
-    loopPostDisplayPostWifiCtx.configuredVoiceVolume = settingsManager.get().voiceVolume;
+    loopPostDisplayPostWifiCtx.configuredVoiceVolume = loopSettingsPrepValues.configuredVoiceVolume;
     loopPostDisplayPostWifiCtx.displayUpdateIntervalMs = DISPLAY_UPDATE_MS;
     loopPostDisplayPostWifiCtx.scanScreenDwellMs = activeScanScreenDwellMs;
     loopPostDisplayPostWifiCtx.bootSplashHoldActive = bootSplashHoldActive;
