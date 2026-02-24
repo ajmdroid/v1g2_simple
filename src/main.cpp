@@ -55,6 +55,7 @@
 #include "modules/display/display_orchestration_module.h"
 #include "modules/system/system_event_bus.h"
 #include "modules/system/parsed_frame_event_module.h"
+#include "modules/system/periodic_maintenance_module.h"
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
 #include "modules/speed_volume/speed_volume_module.h"
@@ -192,6 +193,7 @@ DisplayPipelineModule displayPipelineModule;
 DisplayOrchestrationModule displayOrchestrationModule;
 DisplayRestoreModule displayRestoreModule;
 SystemEventBus systemEventBus;
+PeriodicMaintenanceModule periodicMaintenanceModule;
 WifiAutoStartModule wifiAutoStartModule;
 WifiPriorityPolicyModule wifiPriorityPolicyModule;
 WifiVisualSyncModule wifiVisualSyncModule;
@@ -666,6 +668,36 @@ void setup() {
     connectionRuntimeProviders.queueContext = &bleQueueModule;
     connectionRuntimeModule.begin(connectionRuntimeProviders);
     connectionStateModule.begin(&bleClient, &parser, &display, &powerModule, &bleQueueModule, &systemEventBus);
+    PeriodicMaintenanceModule::Providers periodicMaintenanceProviders;
+    periodicMaintenanceProviders.timestampUs = [](void*) -> uint32_t {
+        return PERF_TIMESTAMP_US();
+    };
+    periodicMaintenanceProviders.runPerfReport = [](void*) { perfMetricsCheckReport(); };
+    periodicMaintenanceProviders.recordPerfReportUs = [](void*, uint32_t elapsedUs) {
+        perfRecordPerfReportUs(elapsedUs);
+    };
+    periodicMaintenanceProviders.runTimeSave = [](void* ctx, uint32_t nowMs) {
+        static_cast<TimeService*>(ctx)->periodicSave(nowMs);
+    };
+    periodicMaintenanceProviders.timeSaveContext = &timeService;
+    periodicMaintenanceProviders.recordTimeSaveUs = [](void*, uint32_t elapsedUs) {
+        perfRecordTimeSaveUs(elapsedUs);
+    };
+    periodicMaintenanceProviders.nowEpochMsOr0 = [](void* ctx) -> int64_t {
+        return static_cast<TimeService*>(ctx)->nowEpochMsOr0();
+    };
+    periodicMaintenanceProviders.epochContext = &timeService;
+    periodicMaintenanceProviders.runLockoutLearner = [](void* ctx, uint32_t nowMs, int64_t epochMs) {
+        static_cast<LockoutLearner*>(ctx)->process(nowMs, epochMs);
+    };
+    periodicMaintenanceProviders.lockoutLearnerContext = &lockoutLearner;
+    periodicMaintenanceProviders.runLockoutStoreSave = [](void*, uint32_t nowMs) {
+        processLockoutStoreSave(nowMs);
+    };
+    periodicMaintenanceProviders.runLearnerPendingSave = [](void*, uint32_t nowMs) {
+        processLearnerPendingSave(nowMs);
+    };
+    periodicMaintenanceModule.begin(periodicMaintenanceProviders);
     displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
     displayOrchestrationModule.begin(&display,
                                      &bleClient,
@@ -999,28 +1031,8 @@ void loop() {
         connectionStateModule.process(now);
     }
     
-    // Periodic perf metrics report (stability diagnostics)
-    {
-        uint32_t perfReportStartUs = PERF_TIMESTAMP_US();
-        perfMetricsCheckReport();
-        perfRecordPerfReportUs(PERF_TIMESTAMP_US() - perfReportStartUs);
-    }
-
-    // Periodic time persistence (every 5 min) — ensures NVS has a recent epoch
-    // for restoration after deep sleep battery death or hard power loss.
-    {
-        uint32_t timeSaveStartUs = PERF_TIMESTAMP_US();
-        timeService.periodicSave(now);
-        perfRecordTimeSaveUs(PERF_TIMESTAMP_US() - timeSaveStartUs);
-    }
-
-    // Lockout learner: ingest observations, manage candidates, promote (Tier 7)
-    lockoutLearner.process(now, timeService.nowEpochMsOr0());
-
-    // Lockout store: periodic save when dirty (Tier 7 — best-effort, never block)
-    processLockoutStoreSave(now);
-    // Learner pending candidates: periodic best-effort save (Tier 7).
-    processLearnerPendingSave(now);
+    // Periodic perf/time/lockout maintenance bundle.
+    periodicMaintenanceModule.process(now);
 
     // If BLE ingest was backpressured this loop, do one late opportunistic drain
     // so queued notifications don't sit through the sleep + next-loop startup.
