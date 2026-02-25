@@ -136,6 +136,8 @@ void SettingsManager::load() {
     settings.apSSID = sanitizeApSsidValue(preferences.getString("apSSID", "V1-Simple"));
     
     // WiFi client (STA) settings
+    const bool wifiClientEnabledKeyPresent = preferences.isKey("wifiClientEn");
+    const bool wifiClientSsidKeyPresent = preferences.isKey("wifiClSSID");
     settings.wifiClientEnabled = preferences.getBool("wifiClientEn", false);
     settings.wifiClientSSID = sanitizeWifiClientSsidValue(preferences.getString("wifiClSSID", ""));
 
@@ -152,6 +154,9 @@ void SettingsManager::load() {
     settings.wifiMode = settings.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
     
     // Debug: Log WiFi client settings on load
+    Serial.printf("[Settings] WiFi client keys: enabledKey=%s ssidKey=%s\n",
+                  wifiClientEnabledKeyPresent ? "yes" : "no",
+                  wifiClientSsidKeyPresent ? "yes" : "no");
     Serial.printf("[Settings] WiFi client: enabled=%s, SSID='%s'\n",
                   settings.wifiClientEnabled ? "true" : "false",
                   settings.wifiClientSSID.c_str());

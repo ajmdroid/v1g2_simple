@@ -252,6 +252,47 @@ WifiClientKeyPresence readWifiClientKeyPresence(const char* settingsNamespace) {
     return presence;
 }
 
+struct WifiClientSecretPresence {
+    bool valid = false;
+    String ssid;
+};
+
+WifiClientSecretPresence readWifiClientSecretPresence(fs::FS* fs) {
+    WifiClientSecretPresence presence;
+    if (!fs || !fs->exists(WIFI_CLIENT_SD_SECRET_PATH)) {
+        return presence;
+    }
+
+    File file = fs->open(WIFI_CLIENT_SD_SECRET_PATH, FILE_READ);
+    if (!file) {
+        return presence;
+    }
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, file);
+    file.close();
+    if (err) {
+        Serial.printf("[Settings] WARN: Failed to parse WiFi secret '%s': %s\n",
+                      WIFI_CLIENT_SD_SECRET_PATH,
+                      err.c_str());
+        return presence;
+    }
+
+    const char* type = doc["_type"] | "";
+    if (strcmp(type, WIFI_CLIENT_SD_SECRET_TYPE) != 0) {
+        return presence;
+    }
+
+    const char* secretSsid = doc["ssid"] | "";
+    if (!secretSsid || secretSsid[0] == '\0') {
+        return presence;
+    }
+
+    presence.valid = true;
+    presence.ssid = sanitizeWifiClientSsidValue(String(secretSsid));
+    return presence;
+}
+
 bool writeBackupAtomically(fs::FS* fs, const JsonDocument& doc) {
     if (!fs) {
         return false;
@@ -356,43 +397,71 @@ bool SettingsManager::checkAndRestoreFromSD() {
         // Keep user/NVS state authoritative unless corruption is detected.
         // Slot/profile healing is handled separately by validateProfileReferences().
         Serial.println("[Settings] NVS healthy; skipping automatic SD settings restore");
+    }
 
+    if (!needsRestore && storageManager.isReady() && storageManager.isSDCard()) {
         const WifiClientKeyPresence wifiKeyPresence =
             readWifiClientKeyPresence(getActiveNamespace().c_str());
         const bool wifiKeysMissing =
             !wifiKeyPresence.enabledKeyPresent || !wifiKeyPresence.ssidKeyPresent;
-
-        bool backupWifiClientEnabled = false;
-        const bool backupEnabledKnown =
-            parseBoolVariant(bestBackupDoc["wifiClientEnabled"], backupWifiClientEnabled);
-        const char* backupSsid = bestBackupDoc["wifiClientSSID"] | "";
-        const bool backupHasSsid = (backupSsid && backupSsid[0] != '\0');
         const bool missingCurrentSsid = settings.wifiClientSSID.length() == 0;
 
-        // Targeted WiFi credential recovery:
-        // - classic case: wifiClientEnabled=true but SSID missing
-        // - partial-key case: WiFi client keys missing from NVS while backup has a valid SSID
-        const bool shouldRecoverWifiClient =
-            missingCurrentSsid &&
-            backupHasSsid &&
-            (settings.wifiClientEnabled ||
-             wifiKeysMissing ||
-             (backupEnabledKnown && backupWifiClientEnabled));
-
-        if (shouldRecoverWifiClient) {
+        if (wifiKeysMissing && !missingCurrentSsid) {
+            // SSID is already present in memory; rewrite namespace to restore missing keys.
             settings.wifiClientEnabled = true;
-            settings.wifiClientSSID = sanitizeWifiClientSsidValue(String(backupSsid));
             settings.wifiMode = V1_WIFI_APSTA;
-            Serial.printf("[Settings] HEAL: recovered WiFi client config from SD backup (ssid='%s', keysMissing=%s)\n",
-                          settings.wifiClientSSID.c_str(),
-                          wifiKeysMissing ? "yes" : "no");
+            Serial.println("[Settings] HEAL: repairing missing WiFi client keys from in-memory SSID");
             save();
-        } else if (settings.wifiClientEnabled && missingCurrentSsid) {
-            // SSID missing in both NVS and backup — disable to avoid inconsistent state.
-            settings.wifiClientEnabled = false;
-            settings.wifiMode = V1_WIFI_AP;
-            Serial.println("[Settings] HEAL: wifiClientEnabled=true but no SSID anywhere — disabling");
-            save();
+        } else if (missingCurrentSsid) {
+            bool backupWifiClientEnabled = false;
+            const bool backupEnabledKnown =
+                hasSdBackup &&
+                parseBoolVariant(bestBackupDoc["wifiClientEnabled"], backupWifiClientEnabled);
+            const char* backupSsid = hasSdBackup ? (bestBackupDoc["wifiClientSSID"] | "") : "";
+            const bool backupHasSsid = (backupSsid && backupSsid[0] != '\0');
+
+            const WifiClientSecretPresence secretPresence = readWifiClientSecretPresence(fs);
+            const bool secretHasSsid = secretPresence.valid && secretPresence.ssid.length() > 0;
+
+            String recoveredSsid = "";
+            const char* recoveredFrom = "none";
+            if (backupHasSsid) {
+                recoveredSsid = sanitizeWifiClientSsidValue(String(backupSsid));
+                recoveredFrom = "settings_backup";
+            } else if (secretHasSsid) {
+                recoveredSsid = secretPresence.ssid;
+                recoveredFrom = "wifi_secret";
+            }
+
+            // Targeted WiFi credential recovery:
+            // - classic case: wifiClientEnabled=true but SSID missing
+            // - partial-key case: WiFi client keys missing from NVS
+            // - backup-missing case: recover SSID from SD WiFi secret metadata
+            const bool shouldRecoverWifiClient =
+                recoveredSsid.length() > 0 &&
+                (settings.wifiClientEnabled ||
+                 wifiKeysMissing ||
+                 (backupEnabledKnown && backupWifiClientEnabled) ||
+                 secretHasSsid);
+
+            if (shouldRecoverWifiClient) {
+                settings.wifiClientEnabled = true;
+                settings.wifiClientSSID = recoveredSsid;
+                settings.wifiMode = V1_WIFI_APSTA;
+                Serial.printf("[Settings] HEAL: recovered WiFi client config from %s (ssid='%s', keysMissing=%s)\n",
+                              recoveredFrom,
+                              settings.wifiClientSSID.c_str(),
+                              wifiKeysMissing ? "yes" : "no");
+                save();
+            } else if (settings.wifiClientEnabled) {
+                // SSID missing in all recovery sources — disable to avoid inconsistent state.
+                settings.wifiClientEnabled = false;
+                settings.wifiMode = V1_WIFI_AP;
+                Serial.println("[Settings] HEAL: wifiClientEnabled=true but no SSID anywhere — disabling");
+                save();
+            } else if (wifiKeysMissing) {
+                Serial.println("[Settings] WARN: WiFi client keys missing and no SSID recovery source found");
+            }
         }
     }
 
