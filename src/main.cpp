@@ -1175,10 +1175,12 @@ static void initializeTouchAndDisplayControls() {
 #endif
 }
 
-static void configureUiInteractionModules() {
+static void configureUiAutoPushModule() {
     // Initialize auto-push module after settings/profiles are ready
     autoPushModule.begin(&settingsManager, &v1ProfileManager, &bleClient, &display);
+}
 
+static void configureUiTouchInteractionModules() {
     configureTouchUiModule();
 
     tapGestureModule.begin(&touchHandler,
@@ -1189,6 +1191,11 @@ static void configureUiInteractionModules() {
                            &autoPushModule,
                            &alertPersistenceModule,
                            &displayMode);
+}
+
+static void configureUiInteractionModules() {
+    configureUiAutoPushModule();
+    configureUiTouchInteractionModules();
 }
 
 static void logBootSummaryAndWifiStartup(uint32_t bootId, esp_reset_reason_t resetReason) {
