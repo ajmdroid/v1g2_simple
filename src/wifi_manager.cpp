@@ -9,6 +9,7 @@
 #include "settings.h"
 #include "perf_sd_logger.h"
 #include "time_service.h"
+#include "modules/wifi/wifi_auto_timeout_module.h"
 #include "modules/wifi/wifi_heap_guard_module.h"
 #include "modules/wifi/wifi_stop_reason_module.h"
 #include <LittleFS.h>
@@ -92,6 +93,7 @@ static void getWifiRuntimeThresholds(bool apStaMode, bool staOnlyMode, uint32_t&
 
 static WifiStopReasonModule sWifiStopReasonModule(&perfCounters);
 static WifiHeapGuardModule sWifiHeapGuardModule;
+static WifiAutoTimeoutModule sWifiAutoTimeoutModule;
 
 // Helper to serve files from LittleFS (with gzip support)
 bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* contentType) {
@@ -605,7 +607,6 @@ void WiFiManager::checkAutoTimeout() {
     if (timeoutMins == 0) return;  // Disabled (always on)
     if (!isSetupModeActive()) return;
 
-    unsigned long timeoutMs = (unsigned long)timeoutMins * 60UL * 1000UL;
     unsigned long now = millis();
     int staCount = cachedApStaCount;
     if (lastApStaCountPollMs == 0 ||
@@ -620,16 +621,18 @@ void WiFiManager::checkAutoTimeout() {
         lastClientSeenMs = now;
     }
 
-    unsigned long lastActivity = lastUiActivityMs;
-    if (lastClientSeenMs > lastActivity) {
-        lastActivity = lastClientSeenMs;
-    }
+    WifiAutoTimeoutInput timeoutInput;
+    timeoutInput.timeoutMins = timeoutMins;
+    timeoutInput.setupModeActive = isSetupModeActive();
+    timeoutInput.nowMs = now;
+    timeoutInput.setupModeStartMs = setupModeStartTime;
+    timeoutInput.lastClientSeenMs = lastClientSeenMs;
+    timeoutInput.lastUiActivityMs = lastUiActivityMs;
+    timeoutInput.staCount = staCount;
+    timeoutInput.inactivityGraceMs = WIFI_AP_INACTIVITY_GRACE_MS;
+    const WifiAutoTimeoutResult timeoutResult = sWifiAutoTimeoutModule.evaluate(timeoutInput);
 
-    bool timeoutElapsed = (now - setupModeStartTime) >= timeoutMs;
-    bool inactiveEnough = (lastActivity == 0) ? ((now - setupModeStartTime) >= WIFI_AP_INACTIVITY_GRACE_MS)
-                                              : ((now - lastActivity) >= WIFI_AP_INACTIVITY_GRACE_MS);
-
-    if (timeoutElapsed && inactiveEnough && staCount == 0) {
+    if (timeoutResult.shouldStop) {
         Serial.println("[SetupMode] Auto-timeout reached - stopping AP");
         stopSetupMode(false, "timeout");
     }
