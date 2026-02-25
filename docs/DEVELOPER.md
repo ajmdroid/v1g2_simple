@@ -98,7 +98,7 @@ Main-loop execution follows this priority order:
 Implementation notes:
 
 - Core BLE + display paths are kept non-blocking in steady state.
-- Tier-7 persistence in `loop()` is intentionally bounded by dirty flags and coarse rate limits.
+- Tier-7 persistence is bounded by dirty flags and coarse rate limits; lockout/learner save state machines live in `main_persist.cpp`.
 - SD writes use `SDTryLock` on Core 1 (skip/defer on contention); LittleFS fallback writes are synchronous but bounded and infrequent.
 - BLE recovery paths include short settle delays in failure handling (`hardResetBLEClient`) due to NimBLE state-transition constraints.
 
@@ -290,45 +290,47 @@ Draw Functions → RAM Canvas → flush() → QSPI → AMOLED Panel
 
 ### Caching System
 
-Each draw function maintains static cache variables:
+Each draw function maintains `static` cache variables and checks both its local
+cache and the shared `DisplayDirtyFlags dirty` struct:
 
 ```cpp
-void drawBandIndicators(...) {
-    static uint8_t lastEffectiveMask = 0xFF;
+void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits) {
+    static uint8_t lastMask = 0xFF;
     static bool lastMuted = false;
     static bool cacheValid = false;
     
-    // Skip redraw if nothing changed
-    if (cacheValid && 
-        mask == lastEffectiveMask && 
-        muted == lastMuted &&
-        !s_forceBandRedraw) {
+    // Skip redraw if nothing changed and no forced invalidation
+    if (cacheValid && !dirty.bands &&
+        bandMask == lastMask && muted == lastMuted) {
         return;
     }
+    dirty.bands = false;
     
     // ... actual drawing ...
     
-    lastEffectiveMask = mask;
+    lastMask = bandMask;
     lastMuted = muted;
     cacheValid = true;
-    s_forceBandRedraw = false;
 }
 ```
 
-### Force Redraw Flags
+### Dirty Flags (`DisplayDirtyFlags`)
 
-Global flags set by `drawBaseFrame()` on full screen clear:
+Defined in `include/display_dirty_flags.h`. A single shared `dirty` instance is
+declared `extern` so all display sub-modules can read/write it.
 
-- `s_forceFrequencyRedraw`
-- `s_forceBatteryRedraw`
-- `s_forceBandRedraw`
-- `s_forceSignalBarsRedraw`
-- `s_forceArrowRedraw`
-- `s_forceStatusBarRedraw`
-- `s_forceMuteIconRedraw`
-- `s_forceTopCounterRedraw`
+**Flags** (all `bool`, default `false`):
+`frequency`, `battery`, `bands`, `signalBars`, `arrow`, `muteIcon`,
+`topCounter`, `lockout`, `gpsIndicator`, `obdIndicator`, `cards`,
+`multiAlert`, `resetTracking`
 
-**Rule**: Only `drawBaseFrame()` should set these to `true`.
+`drawBaseFrame()` calls `dirty.setAll()` after a full screen clear to force
+every element to redraw once. `forceNextRedraw()` resets `lastState`, sets
+`currentScreen` to `Unknown`, and sets `dirty.resetTracking = true` to clear
+all per-function change-tracking statics.
+
+**Rule**: Only `drawBaseFrame()` (via `dirty.setAll()`) should bulk-invalidate
+flags. Individual modules clear their own flag after consuming it.
 
 ---
 
@@ -507,4 +509,4 @@ full status-code table and error response format.
 
 ---
 
-*Last updated: February 2026*
+*Last updated: February 25, 2026*
