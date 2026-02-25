@@ -243,6 +243,11 @@ bool WiFiManager::startSetupMode() {
     WIFI_LOG("[SetupMode] Starting AP (always-on mode)...\n");
     const V1Settings& settings = settingsManager.get();
     const bool apStaMode = shouldUseApSta(settings);
+    if (!apStaMode) {
+        Serial.printf("[SetupMode] STA unavailable for this session (wifiClientEnabled=%s ssidLen=%u)\n",
+                      settings.wifiClientEnabled ? "true" : "false",
+                      static_cast<unsigned>(settings.wifiClientSSID.length()));
+    }
 
     // Check internal SRAM before WiFi init. AP+STA requires more headroom than AP-only.
     const uint32_t freeInternal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
