@@ -883,7 +883,7 @@ static void configureAlertAudioDisplayPipeline() {
                                 &debugLogger);
 }
 
-static void configureSystemLoopModules() {
+static void configureSystemLoopCoreModules() {
     systemEventBus.reset();
     bleQueueModule.begin(&bleClient, &parser, &v1ProfileManager, &displayPreviewModule, &powerModule, &systemEventBus);
     configureConnectionRuntimeModule();
@@ -904,6 +904,9 @@ static void configureSystemLoopModules() {
                                      &gpsRuntimeModule,
                                      &obdHandler,
                                      &lockoutOrchestrationModule);
+}
+
+static void configureSystemLoopPhaseModules() {
     configureLoopDisplayModule();
     configureLoopConnectionEarlyModule();
     configureLoopPowerTouchModule();
@@ -911,6 +914,11 @@ static void configureSystemLoopModules() {
     configureLoopSettingsPrepModule();
     configureLoopRuntimeSnapshotModule();
     configureLoopPostDisplayModule();
+}
+
+static void configureSystemLoopModules() {
+    configureSystemLoopCoreModules();
+    configureSystemLoopPhaseModules();
 }
 
 static void configureRuntimeCoreModules() {
