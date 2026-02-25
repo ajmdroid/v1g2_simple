@@ -9,6 +9,7 @@
 #include "settings.h"
 #include "perf_sd_logger.h"
 #include "time_service.h"
+#include "modules/wifi/wifi_heap_guard_module.h"
 #include "modules/wifi/wifi_stop_reason_module.h"
 #include <LittleFS.h>
 #include "esp_wifi.h"
@@ -90,6 +91,7 @@ static void getWifiRuntimeThresholds(bool apStaMode, bool staOnlyMode, uint32_t&
 }
 
 static WifiStopReasonModule sWifiStopReasonModule(&perfCounters);
+static WifiHeapGuardModule sWifiHeapGuardModule;
 
 // Helper to serve files from LittleFS (with gzip support)
 bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* contentType) {
@@ -651,35 +653,31 @@ void WiFiManager::process() {
     const bool staRadioOn = (mode == WIFI_AP_STA || mode == WIFI_STA);
     const bool dualRadioMode = isSetupModeActive() && staRadioOn;
     const bool staOnlyMode = staRadioOn && !dualRadioMode;
-    const char* runtimeModeLabel = dualRadioMode ? "AP+STA" : (staRadioOn ? "STA" : "AP");
     uint32_t criticalFree = 0;
     uint32_t criticalBlock = 0;
     getWifiRuntimeThresholds(dualRadioMode, staOnlyMode, criticalFree, criticalBlock);
 
     const uint32_t freeInternal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     const uint32_t largestInternal = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-    bool freeLow = (freeInternal < criticalFree);
-    if (freeLow && dualRadioMode) {
-        const uint32_t freeDeficit = criticalFree - freeInternal;
-        if (freeDeficit <= WIFI_RUNTIME_AP_STA_FREE_JITTER_TOLERANCE) {
-            freeLow = false;
-        }
-    }
-    bool blockLow = (largestInternal < criticalBlock);
-    if (blockLow && staOnlyMode) {
-        const uint32_t blockDeficit = criticalBlock - largestInternal;
-        if (blockDeficit <= WIFI_RUNTIME_STA_BLOCK_JITTER_TOLERANCE) {
-            blockLow = false;
-        }
-    }
-    const bool lowHeap = freeLow || blockLow;
+    WifiHeapGuardInput heapGuardInput;
+    heapGuardInput.dualRadioMode = dualRadioMode;
+    heapGuardInput.staRadioOn = staRadioOn;
+    heapGuardInput.staOnlyMode = staOnlyMode;
+    heapGuardInput.freeInternal = freeInternal;
+    heapGuardInput.largestInternal = largestInternal;
+    heapGuardInput.criticalFree = criticalFree;
+    heapGuardInput.criticalBlock = criticalBlock;
+    heapGuardInput.apStaFreeJitterTolerance = WIFI_RUNTIME_AP_STA_FREE_JITTER_TOLERANCE;
+    heapGuardInput.staOnlyBlockJitterTolerance = WIFI_RUNTIME_STA_BLOCK_JITTER_TOLERANCE;
+    const WifiHeapGuardResult heapGuard = sWifiHeapGuardModule.evaluate(heapGuardInput);
+    const bool lowHeap = heapGuard.lowHeap;
 
     if (lowHeap) {
         const unsigned long now = millis();
         if (lowDmaSinceMs == 0) {
             lowDmaSinceMs = now;
             Serial.printf("[WiFi] WARN: Internal SRAM low (mode=%s free=%lu block=%lu need>=%lu/%lu) - grace %lu ms\n",
-                          runtimeModeLabel,
+                          heapGuard.modeLabel,
                           (unsigned long)freeInternal,
                           (unsigned long)largestInternal,
                           (unsigned long)criticalFree,
