@@ -1377,6 +1377,10 @@ struct LoopIngestPhaseValues {
     bool overloadLateThisLoop = false;
 };
 
+struct LoopDisplayPreWifiPhaseValues {
+    bool loopSignalPriorityActive = false;
+};
+
 static LoopConnectionEarlyPhaseValues processLoopConnectionEarlyPhase(
     const unsigned long nowMs,
     const unsigned long nowUs,
@@ -1444,6 +1448,45 @@ static LoopIngestPhaseValues processLoopIngestPhase(
     values.bleBackpressure = loopIngestResult.bleBackpressure;
     values.skipLateNonCoreThisLoop = loopIngestResult.skipLateNonCoreThisLoop;
     values.overloadLateThisLoop = loopIngestResult.overloadLateThisLoop;
+    return values;
+}
+
+static LoopDisplayPreWifiPhaseValues processLoopDisplayPreWifiPhase(
+    const unsigned long nowMs,
+    const bool bootSplashHoldActive,
+    const bool overloadLateThisLoop,
+    const bool enableSignalTraceLogging,
+    const bool skipLateNonCoreThisLoop,
+    void (*runDisplayPipeline)(uint32_t nowMs, bool lockoutPrioritySuppressed),
+    void (*runCameraRuntime)(uint32_t nowMs,
+                             bool skipLateNonCoreThisLoop,
+                             bool overloadLateThisLoop,
+                             bool loopSignalPriorityActive)) {
+    VoiceSpeedSyncContext voiceSpeedSyncCtx;
+    voiceSpeedSyncCtx.nowMs = nowMs;
+    voiceSpeedSyncModule.process(voiceSpeedSyncCtx);
+
+    LoopDisplayContext loopDisplayCtx;
+    loopDisplayCtx.nowMs = nowMs;
+    loopDisplayCtx.bootSplashHoldActive = bootSplashHoldActive;
+    loopDisplayCtx.overloadLateThisLoop = overloadLateThisLoop;
+    loopDisplayCtx.enableSignalTraceLogging = enableSignalTraceLogging;
+    loopDisplayCtx.runDisplayPipeline = runDisplayPipeline;
+    const LoopDisplayResult loopDisplayResult = loopDisplayModule.process(loopDisplayCtx);
+    const bool loopSignalPriorityActive = loopDisplayResult.signalPriorityActive;
+
+    LoopPostDisplayContext loopPostDisplayPreWifiCtx;
+    loopPostDisplayPreWifiCtx.runAutoPushAndCamera = true;
+    loopPostDisplayPreWifiCtx.runSpeedAndDispatch = false;
+    loopPostDisplayPreWifiCtx.nowMs = nowMs;
+    loopPostDisplayPreWifiCtx.skipLateNonCoreThisLoop = skipLateNonCoreThisLoop;
+    loopPostDisplayPreWifiCtx.overloadLateThisLoop = overloadLateThisLoop;
+    loopPostDisplayPreWifiCtx.loopSignalPriorityActive = loopSignalPriorityActive;
+    loopPostDisplayPreWifiCtx.runCameraRuntime = runCameraRuntime;
+    loopPostDisplayModule.process(loopPostDisplayPreWifiCtx);
+
+    LoopDisplayPreWifiPhaseValues values;
+    values.loopSignalPriorityActive = loopSignalPriorityActive;
     return values;
 }
 
@@ -1535,23 +1578,11 @@ void loop() {
     const bool skipLateNonCoreThisLoop = loopIngestValues.skipLateNonCoreThisLoop;
     const bool overloadLateThisLoop = loopIngestValues.overloadLateThisLoop;
 
-    VoiceSpeedSyncContext voiceSpeedSyncCtx;
-    voiceSpeedSyncCtx.nowMs = now;
-    voiceSpeedSyncModule.process(voiceSpeedSyncCtx);
-
     // No overload guard: handleParsed's internal 25ms throttle gates expensive draws;
     // fade/debounce/gap-recovery remain microsecond-cheap and must run every frame.
     auto runDisplayPipeline = [](uint32_t nowMs, bool lockoutPrioritySuppressed) {
         displayPipelineModule.handleParsed(nowMs, lockoutPrioritySuppressed);
     };
-    LoopDisplayContext loopDisplayCtx;
-    loopDisplayCtx.nowMs = now;
-    loopDisplayCtx.bootSplashHoldActive = bootSplashHoldActive;
-    loopDisplayCtx.overloadLateThisLoop = overloadLateThisLoop;
-    loopDisplayCtx.enableSignalTraceLogging = loopSettingsPrepValues.enableSignalTraceLogging;
-    loopDisplayCtx.runDisplayPipeline = runDisplayPipeline;
-    const LoopDisplayResult loopDisplayResult = loopDisplayModule.process(loopDisplayCtx);
-    const bool loopSignalPriorityActive = loopDisplayResult.signalPriorityActive;
 
     // Camera runtime is strictly low-priority and self-gated on overload/non-core.
     // Only a real priority V1 signal preempts camera lifecycle — weak/background
@@ -1566,15 +1597,15 @@ void loop() {
             overloadLateThisLoop,
             loopSignalPriorityActive);
     };
-    LoopPostDisplayContext loopPostDisplayPreWifiCtx;
-    loopPostDisplayPreWifiCtx.runAutoPushAndCamera = true;
-    loopPostDisplayPreWifiCtx.runSpeedAndDispatch = false;
-    loopPostDisplayPreWifiCtx.nowMs = now;
-    loopPostDisplayPreWifiCtx.skipLateNonCoreThisLoop = skipLateNonCoreThisLoop;
-    loopPostDisplayPreWifiCtx.overloadLateThisLoop = overloadLateThisLoop;
-    loopPostDisplayPreWifiCtx.loopSignalPriorityActive = loopSignalPriorityActive;
-    loopPostDisplayPreWifiCtx.runCameraRuntime = runCameraRuntime;
-    loopPostDisplayModule.process(loopPostDisplayPreWifiCtx);
+    const LoopDisplayPreWifiPhaseValues loopDisplayPreWifiValues = processLoopDisplayPreWifiPhase(
+        now,
+        bootSplashHoldActive,
+        overloadLateThisLoop,
+        loopSettingsPrepValues.enableSignalTraceLogging,
+        skipLateNonCoreThisLoop,
+        runDisplayPipeline,
+        runCameraRuntime);
+    const bool loopSignalPriorityActive = loopDisplayPreWifiValues.loopSignalPriorityActive;
 
     LoopRuntimeSnapshotContext loopRuntimeSnapshotCtx;
     const LoopRuntimeSnapshotValues loopRuntimeSnapshotValues =
