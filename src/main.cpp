@@ -913,7 +913,7 @@ static void configureSystemLoopModules() {
     configureLoopPostDisplayModule();
 }
 
-static void configureRuntimeAndLockoutModules() {
+static void configureRuntimeCoreModules() {
     obdHandler.setLinkReadyCallback([]() { return bleClient.isConnected(); });
     obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
@@ -924,6 +924,9 @@ static void configureRuntimeAndLockoutModules() {
     cameraRuntimeModule.begin(settingsManager.get().cameraEnabled);
     cameraRuntimeModule.setAlertTuning(settingsManager.get().cameraAlertDistanceFt,
                                        settingsManager.get().cameraAlertPersistSec);
+}
+
+static void configureLockoutPipelineModules() {
     // Wire lockout store only if not already done during zone-load above.
     // Calling begin() again would reset the dirty flag set by legacy migration.
     if (!lockoutStore.isInitialized()) {
@@ -942,6 +945,11 @@ static void configureRuntimeAndLockoutModules() {
                                  settings.gpsLockoutLearnerFreqToleranceMHz,
                                  settings.gpsLockoutLearnerLearnIntervalHours);
     }
+}
+
+static void configureRuntimeAndLockoutModules() {
+    configureRuntimeCoreModules();
+    configureLockoutPipelineModules();
 }
 
 static void initializeStorageAndProfiles() {
