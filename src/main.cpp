@@ -1360,6 +1360,42 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
     finalizeBootReadyAndBleScan(setupStartMs, logBootStage);
 }
 
+struct LoopConnectionEarlyPhaseValues {
+    bool bootSplashHoldActive = false;
+    bool initialScanningScreenShown = false;
+    bool bleConnectedNow = false;
+    bool bleBackpressure = false;
+    bool skipNonCoreThisLoop = false;
+    bool overloadThisLoop = false;
+};
+
+static LoopConnectionEarlyPhaseValues processLoopConnectionEarlyPhase(
+    const unsigned long nowMs,
+    const unsigned long nowUs,
+    const unsigned long lastLoopUs,
+    const bool currentBootSplashHoldActive,
+    const unsigned long currentBootSplashHoldUntilMs,
+    const bool currentInitialScanningScreenShown) {
+    LoopConnectionEarlyContext loopConnectionEarlyCtx;
+    loopConnectionEarlyCtx.nowMs = nowMs;
+    loopConnectionEarlyCtx.nowUs = nowUs;
+    loopConnectionEarlyCtx.lastLoopUs = lastLoopUs;
+    loopConnectionEarlyCtx.bootSplashHoldActive = currentBootSplashHoldActive;
+    loopConnectionEarlyCtx.bootSplashHoldUntilMs = currentBootSplashHoldUntilMs;
+    loopConnectionEarlyCtx.initialScanningScreenShown = currentInitialScanningScreenShown;
+    const LoopConnectionEarlyResult loopConnectionEarlyResult =
+        loopConnectionEarlyModule.process(loopConnectionEarlyCtx);
+
+    LoopConnectionEarlyPhaseValues values;
+    values.bootSplashHoldActive = loopConnectionEarlyResult.bootSplashHoldActive;
+    values.initialScanningScreenShown = loopConnectionEarlyResult.initialScanningScreenShown;
+    values.bleConnectedNow = loopConnectionEarlyResult.bleConnectedNow;
+    values.bleBackpressure = loopConnectionEarlyResult.bleBackpressure;
+    values.skipNonCoreThisLoop = loopConnectionEarlyResult.skipNonCoreThisLoop;
+    values.overloadThisLoop = loopConnectionEarlyResult.overloadThisLoop;
+    return values;
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1395,24 +1431,21 @@ void loop() {
     audio_process_amp_timeout();
     static unsigned long lastLoopUs = 0;
     unsigned long now = millis();
+    const LoopConnectionEarlyPhaseValues loopConnectionEarlyValues = processLoopConnectionEarlyPhase(
+        now,
+        micros(),
+        lastLoopUs,
+        bootSplashHoldActive,
+        bootSplashHoldUntilMs,
+        initialScanningScreenShown);
 
-    LoopConnectionEarlyContext loopConnectionEarlyCtx;
-    loopConnectionEarlyCtx.nowMs = now;
-    loopConnectionEarlyCtx.nowUs = micros();
-    loopConnectionEarlyCtx.lastLoopUs = lastLoopUs;
-    loopConnectionEarlyCtx.bootSplashHoldActive = bootSplashHoldActive;
-    loopConnectionEarlyCtx.bootSplashHoldUntilMs = bootSplashHoldUntilMs;
-    loopConnectionEarlyCtx.initialScanningScreenShown = initialScanningScreenShown;
-    const LoopConnectionEarlyResult loopConnectionEarlyResult =
-        loopConnectionEarlyModule.process(loopConnectionEarlyCtx);
+    bootSplashHoldActive = loopConnectionEarlyValues.bootSplashHoldActive;
+    initialScanningScreenShown = loopConnectionEarlyValues.initialScanningScreenShown;
 
-    bootSplashHoldActive = loopConnectionEarlyResult.bootSplashHoldActive;
-    initialScanningScreenShown = loopConnectionEarlyResult.initialScanningScreenShown;
-
-    bool bleConnectedNow = loopConnectionEarlyResult.bleConnectedNow;
-    bool bleBackpressure = loopConnectionEarlyResult.bleBackpressure;
-    bool skipNonCoreThisLoop = loopConnectionEarlyResult.skipNonCoreThisLoop;
-    bool overloadThisLoop = loopConnectionEarlyResult.overloadThisLoop;
+    bool bleConnectedNow = loopConnectionEarlyValues.bleConnectedNow;
+    bool bleBackpressure = loopConnectionEarlyValues.bleBackpressure;
+    bool skipNonCoreThisLoop = loopConnectionEarlyValues.skipNonCoreThisLoop;
+    bool overloadThisLoop = loopConnectionEarlyValues.overloadThisLoop;
 
     // Process battery/power and touch UI
 #if defined(DISPLAY_WAVESHARE_349)
