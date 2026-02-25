@@ -132,6 +132,7 @@ public:
 
 private:
     enum class ScreenMode { Unknown, Resting, Scanning, Disconnected, Live, Persisted, Camera };
+    void teardownDriverObjects();
 
     // Display driver (Arduino_GFX)
     Arduino_DataBus* bus = nullptr;

@@ -108,15 +108,22 @@ V1Display::V1Display() {
     lastRestingProfileSlot = -1;
 }
 
-V1Display::~V1Display() {
+void V1Display::teardownDriverObjects() {
 #if defined(DISPLAY_USE_ARDUINO_GFX)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdelete-non-virtual-dtor"
-    if (tft) delete tft;
-    if (gfxPanel) delete gfxPanel;
-    if (bus) delete bus;
+    delete tft;
+    tft = nullptr;
+    delete gfxPanel;
+    gfxPanel = nullptr;
+    delete bus;
+    bus = nullptr;
 #pragma GCC diagnostic pop
 #endif
+}
+
+V1Display::~V1Display() {
+    teardownDriverObjects();
 }
 
 bool V1Display::begin() {
@@ -133,6 +140,9 @@ bool V1Display::begin() {
     };
     
 #if defined(DISPLAY_USE_ARDUINO_GFX)
+    // Ensure restart/re-init paths never leak partially constructed objects.
+    teardownDriverObjects();
+
     // Arduino_GFX initialization for Waveshare 3.49"
     // Waveshare 3.49" has INVERTED backlight PWM: 0 = full brightness, 255 = off
     pinMode(LCD_BL, OUTPUT);
@@ -159,6 +169,7 @@ bool V1Display::begin() {
     );
     if (!bus) {
         Serial.println("[Display] ERROR: Failed to create bus!");
+        teardownDriverObjects();
         return false;
     }
     
@@ -180,6 +191,7 @@ bool V1Display::begin() {
     );
     if (!gfxPanel) {
         Serial.println("[Display] ERROR: Failed to create panel!");
+        teardownDriverObjects();
         return false;
     }
     
@@ -188,11 +200,13 @@ bool V1Display::begin() {
     
     if (!tft) {
         Serial.println("[Display] ERROR: Failed to create canvas!");
+        teardownDriverObjects();
         return false;
     }
     
     if (!tft->begin()) {
         Serial.println("[Display] ERROR: tft->begin() failed!");
+        teardownDriverObjects();
         return false;
     }
     

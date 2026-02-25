@@ -334,19 +334,28 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
         return false;
     }
     
-    // Read file content for CRC validation
-    // NOTE: Memory safety verified January 20, 2026 - all return paths after this allocation
-    // have corresponding delete[]. Do not add early returns without cleanup.
-    size_t fileSize = file.size();
-    uint8_t* fileContent = new uint8_t[fileSize];
-    file.read(fileContent, fileSize);
+    // Read file content for CRC validation with RAII-managed storage
+    // so all early returns remain leak-safe.
+    const size_t fileSize = file.size();
+    std::vector<uint8_t> fileContent(fileSize);
+    if (fileSize > 0) {
+        const size_t bytesRead = file.read(fileContent.data(), fileSize);
+        if (bytesRead != fileSize) {
+            lastError = "Failed to read complete profile file";
+            Serial.printf("[V1Profiles] %s (%u/%u bytes)\n",
+                          lastError.c_str(),
+                          static_cast<unsigned>(bytesRead),
+                          static_cast<unsigned>(fileSize));
+            file.close();
+            return false;
+        }
+    }
     file.close();
     
     JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, fileContent, fileSize);
+    DeserializationError err = deserializeJson(doc, fileContent.data(), fileSize);
     
     if (err) {
-        delete[] fileContent;
         lastError = String("JSON parse error: ") + err.c_str();
         Serial.printf("[V1Profiles] %s\n", lastError.c_str());
         return false;
@@ -365,7 +374,6 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
             }
             uint32_t computedCrc = calculateCRC32(settingsBytes, 6);
             if (storedCrc != computedCrc) {
-                delete[] fileContent;
                 lastError = "CRC mismatch - profile file corrupted";
                 Serial.printf("[V1Profiles] %s (stored: %08lX, computed: %08lX)\n",
                     lastError.c_str(),
@@ -376,9 +384,7 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
             Serial.println("[V1Profiles] CRC32 validated OK");
         }
     }
-    
-    delete[] fileContent;
-    
+
     profile.name = name;
     profile.description = doc["description"] | "";
     profile.displayOn = doc["displayOn"] | true;  // Default to on

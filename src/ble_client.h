@@ -11,6 +11,7 @@
 #include <NimBLEDevice.h>
 #include <vector>
 #include <atomic>
+#include <memory>
 
 // Forward declarations
 class V1BLEClient;
@@ -473,11 +474,11 @@ private:
     uint8_t proxyCmdLen = 0;
     uint8_t proxyCmdBuf[8] = {0};
 
-    // Pointers to our callback handler instances
-    ScanCallbacks* pScanCallbacks;
-    ClientCallbacks* pClientCallbacks;
-    ProxyServerCallbacks* pProxyServerCallbacks;
-    ProxyWriteCallbacks* pProxyWriteCallbacks;
+    // Callback handlers are RAII-owned to prevent manual delete mistakes.
+    std::unique_ptr<ScanCallbacks> pScanCallbacks;
+    std::unique_ptr<ClientCallbacks> pClientCallbacks;
+    std::unique_ptr<ProxyServerCallbacks> pProxyServerCallbacks;
+    std::unique_ptr<ProxyWriteCallbacks> pProxyWriteCallbacks;
     
     // WiFi priority mode flag
     bool wifiPriorityMode = false;

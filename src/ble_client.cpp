@@ -307,27 +307,7 @@ V1BLEClient::V1BLEClient()
     instancePtr = this;
 }
 
-V1BLEClient::~V1BLEClient() {
-    // Delete allocated callback handlers to prevent memory leaks
-    // NOTE: Ownership verified January 20, 2026 - NimBLE does NOT take ownership of callbacks,
-    // caller is responsible for deletion. No double-free risk.
-    if (pScanCallbacks) {
-        delete pScanCallbacks;
-        pScanCallbacks = nullptr;
-    }
-    if (pClientCallbacks) {
-        delete pClientCallbacks;
-        pClientCallbacks = nullptr;
-    }
-    if (pProxyServerCallbacks) {
-        delete pProxyServerCallbacks;
-        pProxyServerCallbacks = nullptr;
-    }
-    if (pProxyWriteCallbacks) {
-        delete pProxyWriteCallbacks;
-        pProxyWriteCallbacks = nullptr;
-    }
-}
+V1BLEClient::~V1BLEClient() = default;
 
 // ==================== BLE State Machine ====================
 
@@ -421,9 +401,9 @@ void V1BLEClient::hardResetBLEClient() {
     }
     if (pClient) {
         if (!pClientCallbacks) {
-            pClientCallbacks = new ClientCallbacks();
+            pClientCallbacks.reset(new ClientCallbacks());
         }
-        pClient->setClientCallbacks(pClientCallbacks);
+        pClient->setClientCallbacks(pClientCallbacks.get());
         // Connection parameters: 12-24 (15-30ms interval), balanced for stability
         pClient->setConnectionParams(NIMBLE_CONN_INTERVAL_MIN,
                                      NIMBLE_CONN_INTERVAL_MAX,
@@ -540,9 +520,9 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         
         // Create callbacks once and keep them for the lifetime of the client
         if (!pClientCallbacks) {
-            pClientCallbacks = new ClientCallbacks();
+            pClientCallbacks.reset(new ClientCallbacks());
         }
-        pClient->setClientCallbacks(pClientCallbacks);
+        pClient->setClientCallbacks(pClientCallbacks.get());
         
         // Connection parameters: 12-24 (15-30ms interval), balanced for stability
         pClient->setConnectionParams(NIMBLE_CONN_INTERVAL_MIN,
@@ -566,12 +546,9 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     // Start scanning for V1 - optimized for reliable discovery
     NimBLEScan* pScan = NimBLEDevice::getScan();
     
-    // Delete existing callback handlers to prevent memory leaks on restart
-    if (pScanCallbacks) {
-        delete pScanCallbacks;
-    }
-    pScanCallbacks = new ScanCallbacks(this);
-    pScan->setScanCallbacks(pScanCallbacks);
+    // Replace scan callbacks atomically; previous handler is released automatically.
+    pScanCallbacks.reset(new ScanCallbacks(this));
+    pScan->setScanCallbacks(pScanCallbacks.get());
     pScan->setActiveScan(true);  // Request scan response to get device names
     // ESP32-S3 WiFi coexistence: use 75% duty cycle for reliable V1 discovery
     // Higher duty = more BLE radio time = faster discovery, but less WiFi throughput

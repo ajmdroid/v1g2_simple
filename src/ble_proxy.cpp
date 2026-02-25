@@ -180,17 +180,17 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     );
     
     // 4. Set characteristic callbacks - all write chars forward to V1
-    pProxyWriteCallbacks = new ProxyWriteCallbacks(this);
-    pProxyWriteChar->setCallbacks(pProxyWriteCallbacks);
-    pWriteLong->setCallbacks(pProxyWriteCallbacks);
-    pWriteAlt->setCallbacks(pProxyWriteCallbacks);
+    pProxyWriteCallbacks.reset(new ProxyWriteCallbacks(this));
+    pProxyWriteChar->setCallbacks(pProxyWriteCallbacks.get());
+    pWriteLong->setCallbacks(pProxyWriteCallbacks.get());
+    pWriteAlt->setCallbacks(pProxyWriteCallbacks.get());
     
     // 5. Start service
     pProxyService->start();
     
     // 6. Set server callbacks AFTER service start (Kenny's order - critical!)
-    pProxyServerCallbacks = new ProxyServerCallbacks(this);
-    pServer->setCallbacks(pProxyServerCallbacks);
+    pProxyServerCallbacks.reset(new ProxyServerCallbacks(this));
+    pServer->setCallbacks(pProxyServerCallbacks.get());
     
     // Configure advertising data with improved Android compatibility
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();

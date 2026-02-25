@@ -286,9 +286,9 @@ bool V1BLEClient::startAsyncConnect() {
         }
         // Create client callbacks if not already created
         if (!pClientCallbacks) {
-            pClientCallbacks = new ClientCallbacks();
+            pClientCallbacks.reset(new ClientCallbacks());
         }
-        pClient->setClientCallbacks(pClientCallbacks);
+        pClient->setClientCallbacks(pClientCallbacks.get());
     }
     
     // Connection parameters: 12-24 (15-30ms interval), balanced for stability
