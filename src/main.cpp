@@ -921,17 +921,25 @@ static void configureSystemLoopModules() {
     configureSystemLoopPhaseModules();
 }
 
-static void configureRuntimeCoreModules() {
+static void configureRuntimeSensorModules() {
     obdHandler.setLinkReadyCallback([]() { return bleClient.isConnected(); });
     obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
     obdHandler.begin();
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
+}
+
+static void configureRuntimeAssistModules() {
     configureVoiceSpeedSyncModule();
     cameraRuntimeModule.begin(settingsManager.get().cameraEnabled);
     cameraRuntimeModule.setAlertTuning(settingsManager.get().cameraAlertDistanceFt,
                                        settingsManager.get().cameraAlertPersistSec);
+}
+
+static void configureRuntimeCoreModules() {
+    configureRuntimeSensorModules();
+    configureRuntimeAssistModules();
 }
 
 static void configureLockoutPipelineModules() {
