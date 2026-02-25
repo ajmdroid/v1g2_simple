@@ -1,17 +1,16 @@
 # Display flush discipline contract (flush call-site snapshot)
 
-kind=BARE_FLUSH file=src/display.cpp line=325 function=setBLEProxyStatus
-kind=BARE_FLUSH file=src/display_screens.cpp line=129 function=showResting
-kind=BARE_FLUSH file=src/display_screens.cpp line=309 function=showDemo
-kind=DISPLAY_FLUSH file=src/display.cpp line=206 function=begin
-kind=DISPLAY_FLUSH file=src/display.cpp line=287 function=clear
-kind=DISPLAY_FLUSH file=src/display.cpp line=346 function=flush
-kind=DISPLAY_FLUSH file=src/display.cpp line=365 function=flushRegion
+kind=BARE_FLUSH file=src/display.cpp line=319 function=setBLEProxyStatus
+kind=BARE_FLUSH file=src/display_screens.cpp line=307 function=showDemo
+kind=DISPLAY_FLUSH file=src/display.cpp line=200 function=begin
+kind=DISPLAY_FLUSH file=src/display.cpp line=281 function=clear
+kind=DISPLAY_FLUSH file=src/display.cpp line=340 function=flush
+kind=DISPLAY_FLUSH file=src/display.cpp line=359 function=flushRegion
 kind=DISPLAY_FLUSH file=src/display_screens.cpp line=113 function=showResting
-kind=DISPLAY_FLUSH file=src/display_screens.cpp line=263 function=showScanning
-kind=DISPLAY_FLUSH file=src/display_screens.cpp line=352 function=showBootSplash
-kind=DISPLAY_FLUSH file=src/display_screens.cpp line=393 function=showShutdown
-kind=DISPLAY_FLUSH file=src/display_screens.cpp line=430 function=showLowBattery
+kind=DISPLAY_FLUSH file=src/display_screens.cpp line=261 function=showScanning
+kind=DISPLAY_FLUSH file=src/display_screens.cpp line=350 function=showBootSplash
+kind=DISPLAY_FLUSH file=src/display_screens.cpp line=391 function=showShutdown
+kind=DISPLAY_FLUSH file=src/display_screens.cpp line=428 function=showLowBattery
 kind=DISPLAY_FLUSH file=src/display_sliders.cpp line=94 function=showSettingsSliders
 kind=DISPLAY_FLUSH file=src/display_update.cpp line=258 function=update
 kind=DISPLAY_FLUSH file=src/display_update.cpp line=316 function=update

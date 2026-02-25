@@ -11,6 +11,7 @@ Use --update to rewrite expected call-site snapshot.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import re
 import sys
 from dataclasses import dataclass
@@ -36,6 +37,7 @@ FUNC_RE = re.compile(
 DISPLAY_FLUSH_CALL_RE = re.compile(r"\bDISPLAY_FLUSH\s*\(")
 POINTER_FLUSH_CALL_RE = re.compile(r"->\s*flush\s*\(")
 BARE_FLUSH_CALL_RE = re.compile(r"(?<![:.>\w])flush\s*\(")
+LINE_TOKEN_RE = re.compile(r"\bline=\d+\b")
 
 ALLOCATION_PATTERNS: Sequence[Tuple[str, re.Pattern[str]]] = (
     ("forbidden_new", re.compile(r"\bnew\b")),
@@ -219,11 +221,23 @@ def write_lines(path: Path, header: str, lines: List[str]) -> None:
     path.write_text("\n".join(payload), encoding="utf-8")
 
 
+def normalize_callsite_line(row: str) -> str:
+    normalized = LINE_TOKEN_RE.sub("line=*", row)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def multiset_rows(counter: Counter[str]) -> List[str]:
+    rows: List[str] = []
+    for row in sorted(counter):
+        rows.extend([row] * counter[row])
+    return rows
+
+
 def print_diff(expected: List[str], actual: List[str]) -> None:
-    expected_set = set(expected)
-    actual_set = set(actual)
-    missing = sorted(expected_set - actual_set)
-    extra = sorted(actual_set - expected_set)
+    expected_counter = Counter(expected)
+    actual_counter = Counter(actual)
+    missing = multiset_rows(expected_counter - actual_counter)
+    extra = multiset_rows(actual_counter - expected_counter)
 
     print("[contract] display-flush-discipline snapshot mismatch")
     if missing:
@@ -257,11 +271,18 @@ def main() -> int:
         print(f"Updated {CONTRACT_FILE}")
 
     expected_callsites = read_expected_lines(CONTRACT_FILE)
+    expected_normalized = [normalize_callsite_line(row) for row in expected_callsites]
+    actual_normalized = [normalize_callsite_line(row) for row in callsites]
     ok = True
 
-    if expected_callsites != callsites:
-        print_diff(expected_callsites, callsites)
+    if Counter(expected_normalized) != Counter(actual_normalized):
+        print_diff(expected_normalized, actual_normalized)
         ok = False
+    elif expected_callsites != callsites:
+        print(
+            "[contract] display-flush-discipline line-offset drift detected "
+            "(structural call-sites unchanged)"
+        )
 
     if allocation_violations:
         print("[contract] display allocation violations detected")
