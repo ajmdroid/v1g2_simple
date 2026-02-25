@@ -1369,6 +1369,14 @@ struct LoopConnectionEarlyPhaseValues {
     bool overloadThisLoop = false;
 };
 
+struct LoopIngestPhaseValues {
+    LoopSettingsPrepValues loopSettingsPrepValues;
+    bool bootReady = false;
+    bool bleBackpressure = false;
+    bool skipLateNonCoreThisLoop = false;
+    bool overloadLateThisLoop = false;
+};
+
 static LoopConnectionEarlyPhaseValues processLoopConnectionEarlyPhase(
     const unsigned long nowMs,
     const unsigned long nowUs,
@@ -1393,6 +1401,49 @@ static LoopConnectionEarlyPhaseValues processLoopConnectionEarlyPhase(
     values.bleBackpressure = loopConnectionEarlyResult.bleBackpressure;
     values.skipNonCoreThisLoop = loopConnectionEarlyResult.skipNonCoreThisLoop;
     values.overloadThisLoop = loopConnectionEarlyResult.overloadThisLoop;
+    return values;
+}
+
+static LoopIngestPhaseValues processLoopIngestPhase(
+    const unsigned long nowMs,
+    const bool currentBootReady,
+    const unsigned long bootReadyDeadlineMs,
+    const bool skipNonCoreThisLoop,
+    const bool overloadThisLoop,
+    void (*runBleProcess)(),
+    void (*runBleDrain)()) {
+    LoopSettingsPrepContext loopSettingsPrepCtx;
+    loopSettingsPrepCtx.nowMs = nowMs;
+    const LoopSettingsPrepValues loopSettingsPrepValues = loopSettingsPrepModule.process(loopSettingsPrepCtx);
+    const bool obdServiceEnabled = loopSettingsPrepValues.obdServiceEnabled;
+
+    LoopPreIngestContext loopPreIngestCtx;
+    loopPreIngestCtx.nowMs = nowMs;
+    loopPreIngestCtx.bootReady = currentBootReady;
+    loopPreIngestCtx.bootReadyDeadlineMs = bootReadyDeadlineMs;
+    loopPreIngestCtx.obdServiceEnabled = obdServiceEnabled;
+#ifdef REPLAY_MODE
+    loopPreIngestCtx.replayMode = true;
+#endif
+    const LoopPreIngestResult loopPreIngestResult = loopPreIngestModule.process(loopPreIngestCtx);
+    const bool runBleProcessThisLoop = loopPreIngestResult.runBleProcessThisLoop;
+
+    LoopIngestContext loopIngestCtx;
+    loopIngestCtx.nowMs = nowMs;
+    loopIngestCtx.bleProcessEnabled = runBleProcessThisLoop;
+    loopIngestCtx.runBleProcess = runBleProcess;
+    loopIngestCtx.runBleDrain = runBleDrain;
+    loopIngestCtx.skipNonCoreThisLoop = skipNonCoreThisLoop;
+    loopIngestCtx.overloadThisLoop = overloadThisLoop;
+    loopIngestCtx.obdServiceEnabled = obdServiceEnabled;
+    const LoopIngestResult loopIngestResult = loopIngestModule.process(loopIngestCtx);
+
+    LoopIngestPhaseValues values;
+    values.loopSettingsPrepValues = loopSettingsPrepValues;
+    values.bootReady = loopPreIngestResult.bootReady;
+    values.bleBackpressure = loopIngestResult.bleBackpressure;
+    values.skipLateNonCoreThisLoop = loopIngestResult.skipLateNonCoreThisLoop;
+    values.overloadLateThisLoop = loopIngestResult.overloadLateThisLoop;
     return values;
 }
 
@@ -1468,35 +1519,21 @@ void loop() {
         return;  // Skip normal loop processing while in settings mode.
     }
 
-    LoopSettingsPrepContext loopSettingsPrepCtx;
-    loopSettingsPrepCtx.nowMs = now;
-    const LoopSettingsPrepValues loopSettingsPrepValues = loopSettingsPrepModule.process(loopSettingsPrepCtx);
-    const bool obdServiceEnabled = loopSettingsPrepValues.obdServiceEnabled;
-    LoopPreIngestContext loopPreIngestCtx;
-    loopPreIngestCtx.nowMs = now;
-    loopPreIngestCtx.bootReady = bootReady;
-    loopPreIngestCtx.bootReadyDeadlineMs = bootReadyDeadlineMs;
-    loopPreIngestCtx.obdServiceEnabled = obdServiceEnabled;
-#ifdef REPLAY_MODE
-    loopPreIngestCtx.replayMode = true;
-#endif
-    const LoopPreIngestResult loopPreIngestResult = loopPreIngestModule.process(loopPreIngestCtx);
-    bootReady = loopPreIngestResult.bootReady;
-    const bool runBleProcessThisLoop = loopPreIngestResult.runBleProcessThisLoop;
     auto runBleProcess = []() { bleClient.process(); };
     auto runBleDrain = []() { bleQueueModule.process(); };
-    LoopIngestContext loopIngestCtx;
-    loopIngestCtx.nowMs = now;
-    loopIngestCtx.bleProcessEnabled = runBleProcessThisLoop;
-    loopIngestCtx.runBleProcess = runBleProcess;
-    loopIngestCtx.runBleDrain = runBleDrain;
-    loopIngestCtx.skipNonCoreThisLoop = skipNonCoreThisLoop;
-    loopIngestCtx.overloadThisLoop = overloadThisLoop;
-    loopIngestCtx.obdServiceEnabled = obdServiceEnabled;
-    const LoopIngestResult loopIngestResult = loopIngestModule.process(loopIngestCtx);
-    bleBackpressure = loopIngestResult.bleBackpressure;
-    const bool skipLateNonCoreThisLoop = loopIngestResult.skipLateNonCoreThisLoop;
-    const bool overloadLateThisLoop = loopIngestResult.overloadLateThisLoop;
+    const LoopIngestPhaseValues loopIngestValues = processLoopIngestPhase(
+        now,
+        bootReady,
+        bootReadyDeadlineMs,
+        skipNonCoreThisLoop,
+        overloadThisLoop,
+        runBleProcess,
+        runBleDrain);
+    const LoopSettingsPrepValues& loopSettingsPrepValues = loopIngestValues.loopSettingsPrepValues;
+    bootReady = loopIngestValues.bootReady;
+    bleBackpressure = loopIngestValues.bleBackpressure;
+    const bool skipLateNonCoreThisLoop = loopIngestValues.skipLateNonCoreThisLoop;
+    const bool overloadLateThisLoop = loopIngestValues.overloadLateThisLoop;
 
     VoiceSpeedSyncContext voiceSpeedSyncCtx;
     voiceSpeedSyncCtx.nowMs = now;
