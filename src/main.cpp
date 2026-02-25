@@ -248,6 +248,37 @@ static WifiOrchestrator& getWifiOrchestrator() {
     return orchestrator;
 }
 
+struct V1ConnectedAutoPushSelection {
+    int activeSlotIndex = 0;
+    String connectedAddress;
+    uint8_t deviceDefaultProfile = 0;
+    int selectedSlotIndex = 0;
+};
+
+static V1ConnectedAutoPushSelection resolveV1ConnectedAutoPushSelection(const V1Settings& settings) {
+    V1ConnectedAutoPushSelection selection;
+    selection.activeSlotIndex = std::max(0, std::min(2, settings.activeSlot));
+    selection.selectedSlotIndex = selection.activeSlotIndex;
+
+    NimBLEAddress connected = bleClient.getConnectedAddress();
+    if (!connected.isNull()) {
+        selection.connectedAddress = normalizeV1DeviceAddress(String(connected.toString().c_str()));
+    }
+    if (selection.connectedAddress.length() == 0) {
+        selection.connectedAddress = normalizeV1DeviceAddress(settings.lastV1Address);
+    }
+
+    if (selection.connectedAddress.length() > 0 && v1DeviceStore.isReady()) {
+        v1DeviceStore.upsertDevice(selection.connectedAddress);
+        selection.deviceDefaultProfile = v1DeviceStore.getDeviceDefaultProfile(selection.connectedAddress);
+        if (selection.deviceDefaultProfile >= 1 && selection.deviceDefaultProfile <= 3) {
+            selection.selectedSlotIndex = static_cast<int>(selection.deviceDefaultProfile) - 1;
+        }
+    }
+
+    return selection;
+}
+
 // Callback when V1 connection is fully established
 // Handles auto-push of default profile and mode
 void onV1Connected() {
@@ -258,42 +289,20 @@ void onV1Connected() {
     perfSdLogger.startNewSession();
 
     const V1Settings& s = settingsManager.get();
-    int activeSlotIndex = std::max(0, std::min(2, s.activeSlot));
+    const V1ConnectedAutoPushSelection selection = resolveV1ConnectedAutoPushSelection(s);
 
-    String connectedAddress;
-    NimBLEAddress connected = bleClient.getConnectedAddress();
-    if (!connected.isNull()) {
-        connectedAddress = normalizeV1DeviceAddress(String(connected.toString().c_str()));
-    }
-    if (connectedAddress.length() == 0) {
-        connectedAddress = normalizeV1DeviceAddress(s.lastV1Address);
-    }
-
-    if (connectedAddress.length() > 0 && v1DeviceStore.isReady()) {
-        v1DeviceStore.upsertDevice(connectedAddress);
-    }
-
-    uint8_t deviceDefaultProfile = 0;
-    int selectedSlotIndex = activeSlotIndex;
-    if (connectedAddress.length() > 0 && v1DeviceStore.isReady()) {
-        deviceDefaultProfile = v1DeviceStore.getDeviceDefaultProfile(connectedAddress);
-        if (deviceDefaultProfile >= 1 && deviceDefaultProfile <= 3) {
-            selectedSlotIndex = static_cast<int>(deviceDefaultProfile) - 1;
-        }
-    }
-
-    const AutoPushSlot& slot = settingsManager.getSlot(selectedSlotIndex);
+    const AutoPushSlot& slot = settingsManager.getSlot(selection.selectedSlotIndex);
     SerialLog.printf("[AutoPush] onV1Connected autoPush=%s activeSlot=%d selectedSlot=%d defaultProfile=%u addr='%s' profile='%s' mode=%d\n",
                      s.autoPushEnabled ? "on" : "off",
-                     activeSlotIndex,
-                     selectedSlotIndex,
-                     static_cast<unsigned>(deviceDefaultProfile),
-                     connectedAddress.c_str(),
+                     selection.activeSlotIndex,
+                     selection.selectedSlotIndex,
+                     static_cast<unsigned>(selection.deviceDefaultProfile),
+                     selection.connectedAddress.c_str(),
                      slot.profileName.c_str(),
                      static_cast<int>(slot.mode));
-    if (activeSlotIndex != s.activeSlot) {
+    if (selection.activeSlotIndex != s.activeSlot) {
         AUTO_PUSH_LOGF("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
-                        s.activeSlot, activeSlotIndex);
+                        s.activeSlot, selection.activeSlotIndex);
     }
 
     // Attempt OBD auto-connect shortly after V1 stabilizes.
@@ -310,15 +319,15 @@ void onV1Connected() {
         return;
     }
 
-    if (deviceDefaultProfile >= 1 && deviceDefaultProfile <= 3) {
+    if (selection.deviceDefaultProfile >= 1 && selection.deviceDefaultProfile <= 3) {
         AUTO_PUSH_LOGF("[AutoPush] Using per-device default profile %u -> slot %d\n",
-                       static_cast<unsigned>(deviceDefaultProfile),
-                       selectedSlotIndex);
+                       static_cast<unsigned>(selection.deviceDefaultProfile),
+                       selection.selectedSlotIndex);
     } else {
-        AUTO_PUSH_LOGF("[AutoPush] Using global activeSlot: %d\n", selectedSlotIndex);
+        AUTO_PUSH_LOGF("[AutoPush] Using global activeSlot: %d\n", selection.selectedSlotIndex);
     }
 
-    autoPushModule.start(selectedSlotIndex);
+    autoPushModule.start(selection.selectedSlotIndex);
 }
 
 // fatalBootError() — moved to main_boot.cpp
