@@ -1386,6 +1386,12 @@ struct LoopWifiPhaseValues {
     bool wifiAutoStartDone = false;
 };
 
+struct LoopFinalizePhaseValues {
+    unsigned long dispatchNowMs = 0;
+    bool bleConnectedNow = false;
+    unsigned long lastLoopUs = 0;
+};
+
 static LoopConnectionEarlyPhaseValues processLoopConnectionEarlyPhase(
     const unsigned long nowMs,
     const unsigned long nowUs,
@@ -1526,6 +1532,34 @@ static LoopWifiPhaseValues processLoopWifiPhase(
     return values;
 }
 
+static LoopFinalizePhaseValues processLoopFinalizePhase(
+    const unsigned long nowMs,
+    const LoopSettingsPrepValues& loopSettingsPrepValues,
+    const bool bootSplashHoldActive,
+    const bool displayPreviewRunning,
+    const bool bleBackpressure,
+    const unsigned long loopStartUs) {
+    LoopPostDisplayContext loopPostDisplayPostWifiCtx;
+    loopPostDisplayPostWifiCtx.runAutoPushAndCamera = false;
+    loopPostDisplayPostWifiCtx.runSpeedAndDispatch = true;
+    loopPostDisplayPostWifiCtx.nowMs = nowMs;
+    loopPostDisplayPostWifiCtx.configuredVoiceVolume = loopSettingsPrepValues.configuredVoiceVolume;
+    loopPostDisplayPostWifiCtx.displayUpdateIntervalMs = DISPLAY_UPDATE_MS;
+    loopPostDisplayPostWifiCtx.scanScreenDwellMs = activeScanScreenDwellMs;
+    loopPostDisplayPostWifiCtx.bootSplashHoldActive = bootSplashHoldActive;
+    loopPostDisplayPostWifiCtx.displayPreviewRunning = displayPreviewRunning;
+    loopPostDisplayPostWifiCtx.maxProcessGapMs = CONNECTION_STATE_PROCESS_MAX_GAP_MS;
+    const LoopPostDisplayResult loopPostDisplayResult = loopPostDisplayModule.process(loopPostDisplayPostWifiCtx);
+
+    periodicMaintenanceModule.process(loopPostDisplayResult.dispatchNowMs);
+
+    LoopFinalizePhaseValues values;
+    values.dispatchNowMs = loopPostDisplayResult.dispatchNowMs;
+    values.bleConnectedNow = loopPostDisplayResult.bleConnectedNow;
+    values.lastLoopUs = loopTailModule.process(bleBackpressure, loopStartUs);
+    return values;
+}
+
 static bool shouldReturnEarlyFromLoopPowerTouchPhase(const unsigned long nowMs,
                                                      const unsigned long loopStartUs) {
 #if defined(DISPLAY_WAVESHARE_349)
@@ -1657,23 +1691,14 @@ void loop() {
     
     loopTelemetryModule.process(loopStartUs);
 
-    LoopPostDisplayContext loopPostDisplayPostWifiCtx;
-    loopPostDisplayPostWifiCtx.runAutoPushAndCamera = false;
-    loopPostDisplayPostWifiCtx.runSpeedAndDispatch = true;
-    loopPostDisplayPostWifiCtx.nowMs = now;
-    loopPostDisplayPostWifiCtx.configuredVoiceVolume = loopSettingsPrepValues.configuredVoiceVolume;
-    loopPostDisplayPostWifiCtx.displayUpdateIntervalMs = DISPLAY_UPDATE_MS;
-    loopPostDisplayPostWifiCtx.scanScreenDwellMs = activeScanScreenDwellMs;
-    loopPostDisplayPostWifiCtx.bootSplashHoldActive = bootSplashHoldActive;
-    loopPostDisplayPostWifiCtx.displayPreviewRunning = loopRuntimeSnapshotValues.displayPreviewRunning;
-    loopPostDisplayPostWifiCtx.maxProcessGapMs = CONNECTION_STATE_PROCESS_MAX_GAP_MS;
-    const LoopPostDisplayResult loopPostDisplayResult = loopPostDisplayModule.process(loopPostDisplayPostWifiCtx);
-    now = loopPostDisplayResult.dispatchNowMs;
-    bleConnectedNow = loopPostDisplayResult.bleConnectedNow;
-    
-    // Periodic perf/time/lockout maintenance bundle.
-    periodicMaintenanceModule.process(now);
-
-    // End-of-loop tail: opportunistic BLE drain + yield + loop duration capture.
-    lastLoopUs = loopTailModule.process(bleBackpressure, loopStartUs);
+    const LoopFinalizePhaseValues loopFinalizeValues = processLoopFinalizePhase(
+        now,
+        loopSettingsPrepValues,
+        bootSplashHoldActive,
+        loopRuntimeSnapshotValues.displayPreviewRunning,
+        bleBackpressure,
+        loopStartUs);
+    now = loopFinalizeValues.dispatchNowMs;
+    bleConnectedNow = loopFinalizeValues.bleConnectedNow;
+    lastLoopUs = loopFinalizeValues.lastLoopUs;
 }
