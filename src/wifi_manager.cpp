@@ -9,6 +9,7 @@
 #include "settings.h"
 #include "perf_sd_logger.h"
 #include "time_service.h"
+#include "modules/wifi/wifi_stop_reason_module.h"
 #include <LittleFS.h>
 #include "esp_wifi.h"
 
@@ -88,35 +89,7 @@ static void getWifiRuntimeThresholds(bool apStaMode, bool staOnlyMode, uint32_t&
     minBlock = WiFiManager::WIFI_RUNTIME_MIN_BLOCK_AP_ONLY;
 }
 
-static void recordWifiStopReasonMetrics(const char* stopReason, bool manual, bool immediate) {
-    if (immediate) {
-        PERF_INC(wifiStopImmediate);
-    } else {
-        PERF_INC(wifiStopGraceful);
-    }
-    if (manual) {
-        PERF_INC(wifiStopManual);
-    }
-
-    if (!stopReason || stopReason[0] == '\0') {
-        PERF_INC(wifiStopOther);
-        return;
-    }
-
-    if (strcmp(stopReason, "timeout") == 0) {
-        PERF_INC(wifiStopTimeout);
-    } else if (strcmp(stopReason, "no_clients") == 0) {
-        PERF_INC(wifiStopNoClients);
-    } else if (strcmp(stopReason, "no_clients_auto") == 0) {
-        PERF_INC(wifiStopNoClientsAuto);
-    } else if (strcmp(stopReason, "low_dma") == 0) {
-        PERF_INC(wifiStopLowDma);
-    } else if (strcmp(stopReason, "poweroff") == 0) {
-        PERF_INC(wifiStopPoweroff);
-    } else {
-        PERF_INC(wifiStopOther);
-    }
-}
+static WifiStopReasonModule sWifiStopReasonModule(&perfCounters);
 
 // Helper to serve files from LittleFS (with gzip support)
 bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* contentType) {
@@ -553,7 +526,7 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
 
     if (wifiStopPhase != WifiStopPhase::IDLE) {
         if (forceImmediate) {
-            recordWifiStopReasonMetrics(stopReason, manual, true);
+            sWifiStopReasonModule.recordStopRequest(stopReason, manual, true);
             wifiStopReason = stopReason;
             wifiStopManual = manual;
             wifiStopStartMs = stopStartMs;
@@ -563,7 +536,7 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
         return true;
     }
 
-    recordWifiStopReasonMetrics(stopReason, manual, forceImmediate);
+    sWifiStopReasonModule.recordStopRequest(stopReason, manual, forceImmediate);
     lowDmaSinceMs = 0;
     wifiStopReason = stopReason;
     wifiStopManual = manual;
@@ -724,7 +697,7 @@ void WiFiManager::process() {
 
             // In AP+STA mode, drop AP first to preserve STA utility under pressure.
             if (dualRadioMode) {
-                PERF_INC(wifiApDropLowDma);
+                sWifiStopReasonModule.recordApDropLowDma();
                 Serial.println("[WiFi] ACTION: dropping AP due to sustained low SRAM (keeping STA online)");
                 if (!WiFi.enableAP(false)) {
                     Serial.println("[WiFi] WARN: enableAP(false) failed during low-SRAM AP drop; falling back to softAPdisconnect");
@@ -788,7 +761,7 @@ void WiFiManager::process() {
         apClientCount == 0 &&
         lastClientSeenMs != 0 &&
         (now - lastClientSeenMs) >= WIFI_AP_IDLE_DROP_AFTER_STA_MS) {
-        PERF_INC(wifiApDropIdleSta);
+        sWifiStopReasonModule.recordApDropIdleSta();
         Serial.printf("[WiFi] STA connected and AP idle for %lu ms - dropping AP\n",
                       static_cast<unsigned long>(WIFI_AP_IDLE_DROP_AFTER_STA_MS));
         const bool staWasConnected = (WiFi.status() == WL_CONNECTED);
