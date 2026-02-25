@@ -1500,7 +1500,15 @@ display_drive_start_misses=0
 next_display_drive_epoch="$soak_start_epoch"
 camera_drive_calls=0
 camera_drive_errors=0
-next_camera_drive_epoch="$soak_start_epoch"
+camera_drive_phase_offset=0
+if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
+  # Avoid synchronized display+camera drive bursts on soak start.
+  camera_drive_phase_offset=$((CAMERA_DRIVE_INTERVAL_SECONDS / 2))
+  if [[ "$camera_drive_phase_offset" -lt 1 ]]; then
+    camera_drive_phase_offset=1
+  fi
+fi
+next_camera_drive_epoch=$((soak_start_epoch + camera_drive_phase_offset))
 
 echo "==> Soaking for ${DURATION_SECONDS}s..." | tee -a "$RUN_LOG"
 
