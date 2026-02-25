@@ -184,6 +184,7 @@ private:
     unsigned long wifiConnectStartMs = 0;
     static constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000;  // 15s connection timeout
     static constexpr unsigned long WIFI_MODE_SWITCH_SETTLE_MS = 100;  // Preserve existing settle windows, non-blocking
+    static constexpr unsigned long WIFI_STOP_PHASE_SETTLE_MS = 8;      // Spread teardown work over loop ticks
     String pendingConnectSSID;
     String pendingConnectPassword;
     bool pendingConnectPersistCredentials = true;
@@ -197,6 +198,22 @@ private:
     };
     WifiConnectPhase wifiConnectPhase = WifiConnectPhase::IDLE;
     unsigned long wifiConnectPhaseStartMs = 0;
+
+    enum class WifiStopPhase : uint8_t {
+        IDLE = 0,
+        STOP_HTTP_SERVER,
+        DISCONNECT_STA,
+        DISABLE_AP,
+        MODE_OFF,
+        FINALIZE,
+    };
+    WifiStopPhase wifiStopPhase = WifiStopPhase::IDLE;
+    unsigned long wifiStopPhaseStartMs = 0;
+    unsigned long wifiStopStartMs = 0;
+    String wifiStopReason;
+    bool wifiStopManual = false;
+    bool wifiStopHadSta = false;
+    bool wifiStopHadAp = false;
     
     // WiFi reconnect failure tracking (prevents memory leak from repeated failed attempts)
     int wifiReconnectFailures = 0;
@@ -274,6 +291,9 @@ private:
     void checkAutoTimeout();
     void processWifiClientConnectPhase();
     void processPendingPushNow();
+    void processStopSetupModePhase();
+    void finalizeStopSetupMode();
+    bool stopSetupModeImmediate(bool emergencyLowDma);
     WifiAutoPushApiService::Runtime makeAutoPushRuntime();
     WifiDisplayColorsApiService::Runtime makeDisplayColorsRuntime();
     WifiTimeApiService::TimeRuntime makeTimeRuntime();

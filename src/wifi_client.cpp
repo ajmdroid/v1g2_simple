@@ -159,7 +159,7 @@ void WiFiManager::processWifiClientConnectPhase() {
             } else {
                 if (WiFi.getMode() != WIFI_OFF) {
                     Serial.println("[WiFiClient] Cleaning up WiFi before reconnect...");
-                    WiFi.disconnect(true, true);  // Disconnect and erase credentials from RAM
+                    WiFi.disconnect(false, false);  // Graceful release without credential erase
                     WiFi.mode(WIFI_OFF);          // Fully shut down WiFi driver
                 }
                 wifiConnectPhaseStartMs = now;
