@@ -1443,8 +1443,24 @@ baud = int(sys.argv[2])
 log_path = sys.argv[3]
 duration = float(sys.argv[4])
 
+# USB CDC can briefly disappear right after flash/reset; allow short open retries.
+open_deadline = time.time() + 20.0
+last_error = None
+ser = None
+while time.time() < open_deadline:
+    try:
+        ser = serial.Serial(port=port, baudrate=baud, timeout=0.25)
+        break
+    except (serial.SerialException, OSError) as exc:
+        last_error = exc
+        time.sleep(0.25)
+
+if ser is None:
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"could not open serial port {port}")
+
 end_time = time.time() + duration
-ser = serial.Serial(port=port, baudrate=baud, timeout=0.25)
 with open(log_path, "a", encoding="utf-8", errors="replace") as f:
     while time.time() < end_time:
         chunk = ser.readline()
