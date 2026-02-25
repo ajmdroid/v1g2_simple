@@ -217,7 +217,7 @@ Migration history is tracked via module commits and [CHANGELOG.md](../CHANGELOG.
 - 18 module directories, 156 module files in src/modules/
 - 5 additional extracted core-service files (ble_runtime, obd_runtime, packet_parser_alerts, settings_restore, main_loop_phases)
 - 85 native test suites, 934 test cases
-- 7 CI contract scripts with 10 golden-file snapshots
+- 8 CI contract scripts with 10 golden-file snapshots
 - State consolidated in owning modules
 - Change risk: LOW (isolated modules)
 

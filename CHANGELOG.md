@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Speed-volume runtime, speaker-quiet sync, and voice-speed sync modules added.
 - `SystemEventBus` and `PeriodicMaintenanceModule` for cross-cutting concerns.
 - `DebugPerfFilesService` extracted from debug API for perf-file management.
-- 7 CI contract scripts with 10 golden-file snapshots enforcing architectural invariants.
+- 8 CI contract scripts with 10 golden-file snapshots enforcing architectural invariants.
 
 **Quality + Runtime Hardening**
 - Expanded to 85 native test suites, 934 test cases (`pio test -e native`).
