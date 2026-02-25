@@ -971,20 +971,18 @@ static void initializeStorageAndProfiles() {
     }
 }
 
-static void applyLockoutPolicyAndLoadZonesFromStorage() {
-    // Apply persisted Ka lockout policy before loading/sanitizing lockout zones.
-    lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
+static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
+static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
 
-    // Load lockout zones from SD/LittleFS (Tier 7 — best-effort).
+static bool loadLockoutZonesJsonDocument(JsonDocument& outDoc) {
     if (!storageManager.isReady()) {
-        return;
+        return false;
     }
 
-    static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
     fs::FS* fs = storageManager.getFilesystem();
     if (!(fs && fs->exists(LOCKOUT_ZONES_PATH))) {
         SerialLog.println("[Lockout] No saved zones file found");
-        return;
+        return false;
     }
 
     File f = fs->open(LOCKOUT_ZONES_PATH, "r");
@@ -992,14 +990,52 @@ static void applyLockoutPolicyAndLoadZonesFromStorage() {
         if (f) {
             f.close();
         }
-        return;
+        return false;
     }
 
-    JsonDocument doc;
-    const DeserializationError err = deserializeJson(doc, f);
+    const DeserializationError err = deserializeJson(outDoc, f);
     f.close();
     if (err) {
         SerialLog.printf("[Lockout] JSON parse error: %s\n", err.c_str());
+        return false;
+    }
+    return true;
+}
+
+static bool loadPendingLearnerJsonDocument(JsonDocument& outDoc) {
+    if (!storageManager.isReady()) {
+        return false;
+    }
+
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!(fs && fs->exists(LOCKOUT_PENDING_PATH))) {
+        SerialLog.println("[Learner] No saved pending candidate file found");
+        return false;
+    }
+
+    File f = fs->open(LOCKOUT_PENDING_PATH, "r");
+    if (!(f && f.size() > 0 && f.size() < 32768)) {
+        if (f) {
+            f.close();
+        }
+        return false;
+    }
+
+    const DeserializationError err = deserializeJson(outDoc, f);
+    f.close();
+    if (err) {
+        SerialLog.printf("[Learner] Pending JSON parse error: %s\n", err.c_str());
+        return false;
+    }
+    return true;
+}
+
+static void applyLockoutPolicyAndLoadZonesFromStorage() {
+    // Apply persisted Ka lockout policy before loading/sanitizing lockout zones.
+    lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
+
+    JsonDocument doc;
+    if (!loadLockoutZonesJsonDocument(doc)) {
         return;
     }
 
@@ -1078,36 +1114,18 @@ static void finalizeBootReadyAndBleScan(const unsigned long setupStartMs,
 }
 
 static void restorePendingLearnerCandidates() {
-    // Restore pending learner candidates (Tier 7 best-effort, non-fatal).
-    if (!storageManager.isReady()) {
+    JsonDocument doc;
+    if (!loadPendingLearnerJsonDocument(doc)) {
         return;
     }
 
-    static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
-    fs::FS* fs = storageManager.getFilesystem();
-    if (fs && fs->exists(LOCKOUT_PENDING_PATH)) {
-        File f = fs->open(LOCKOUT_PENDING_PATH, "r");
-        if (f && f.size() > 0 && f.size() < 32768) {
-            JsonDocument doc;
-            const DeserializationError err = deserializeJson(doc, f);
-            f.close();
-            if (!err) {
-                if (lockoutLearner.fromJson(doc, timeService.nowEpochMsOr0())) {
-                    SerialLog.printf("[Learner] Restored %u pending candidates from %s\n",
-                                     static_cast<unsigned>(lockoutLearner.activeCandidateCount()),
-                                     LOCKOUT_PENDING_PATH);
-                } else {
-                    SerialLog.printf("[Learner] Ignoring invalid pending file format: %s\n",
-                                     LOCKOUT_PENDING_PATH);
-                }
-            } else {
-                SerialLog.printf("[Learner] Pending JSON parse error: %s\n", err.c_str());
-            }
-        } else if (f) {
-            f.close();
-        }
+    if (lockoutLearner.fromJson(doc, timeService.nowEpochMsOr0())) {
+        SerialLog.printf("[Learner] Restored %u pending candidates from %s\n",
+                         static_cast<unsigned>(lockoutLearner.activeCandidateCount()),
+                         LOCKOUT_PENDING_PATH);
     } else {
-        SerialLog.println("[Learner] No saved pending candidate file found");
+        SerialLog.printf("[Learner] Ignoring invalid pending file format: %s\n",
+                         LOCKOUT_PENDING_PATH);
     }
 }
 
