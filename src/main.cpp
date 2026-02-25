@@ -1396,6 +1396,22 @@ static LoopConnectionEarlyPhaseValues processLoopConnectionEarlyPhase(
     return values;
 }
 
+static bool shouldReturnEarlyFromLoopPowerTouchPhase(const unsigned long nowMs,
+                                                     const unsigned long loopStartUs) {
+#if defined(DISPLAY_WAVESHARE_349)
+    LoopPowerTouchContext loopPowerTouchCtx;
+    loopPowerTouchCtx.nowMs = nowMs;
+    loopPowerTouchCtx.loopStartUs = loopStartUs;
+    loopPowerTouchCtx.bootButtonPressed = (digitalRead(BOOT_BUTTON_GPIO) == LOW);
+    const LoopPowerTouchResult loopPowerTouchResult = loopPowerTouchModule.process(loopPowerTouchCtx);
+    return loopPowerTouchResult.shouldReturnEarly;
+#else
+    (void)nowMs;
+    (void)loopStartUs;
+    return false;
+#endif
+}
+
 
 void setup() {
     const unsigned long setupStartMs = millis();
@@ -1447,17 +1463,10 @@ void loop() {
     bool skipNonCoreThisLoop = loopConnectionEarlyValues.skipNonCoreThisLoop;
     bool overloadThisLoop = loopConnectionEarlyValues.overloadThisLoop;
 
-    // Process battery/power and touch UI
-#if defined(DISPLAY_WAVESHARE_349)
-    LoopPowerTouchContext loopPowerTouchCtx;
-    loopPowerTouchCtx.nowMs = now;
-    loopPowerTouchCtx.loopStartUs = loopStartUs;
-    loopPowerTouchCtx.bootButtonPressed = (digitalRead(BOOT_BUTTON_GPIO) == LOW);
-    const LoopPowerTouchResult loopPowerTouchResult = loopPowerTouchModule.process(loopPowerTouchCtx);
-    if (loopPowerTouchResult.shouldReturnEarly) {
-        return;  // Skip normal loop processing while in settings mode
+    // Process battery/power and touch UI.
+    if (shouldReturnEarlyFromLoopPowerTouchPhase(now, loopStartUs)) {
+        return;  // Skip normal loop processing while in settings mode.
     }
-#endif
 
     LoopSettingsPrepContext loopSettingsPrepCtx;
     loopSettingsPrepCtx.nowMs = now;
