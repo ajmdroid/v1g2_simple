@@ -26,6 +26,7 @@ void perfRecordBleTimelineEvent(PerfBleTimelineEvent /*event*/, uint32_t /*nowMs
 // Use real parser implementation for BLE->parser integration coverage.
 #include "../../src/packet_parser.h"
 #include "../../src/packet_parser.cpp"
+#include "../../src/packet_parser_alerts.cpp"
 #include "../../src/modules/system/system_event_bus.h"
 #include "../../src/modules/ble/ble_queue_module.cpp"
 

@@ -28,6 +28,7 @@ unsigned long mockMicros = 0;
 
 #include "../../src/packet_parser.h"
 #include "../../src/packet_parser.cpp"
+#include "../../src/packet_parser_alerts.cpp"
 
 #include <algorithm>
 #include <array>
