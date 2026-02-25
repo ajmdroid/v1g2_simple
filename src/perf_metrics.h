@@ -90,6 +90,17 @@ struct PerfCounters {
     // Connection
     std::atomic<uint32_t> reconnects{0};       // BLE reconnection count
     std::atomic<uint32_t> disconnects{0};      // BLE disconnection count
+    std::atomic<uint32_t> connectionDispatchRuns{0}; // connection-state dispatch passes
+    std::atomic<uint32_t> connectionCadenceDisplayDue{0}; // cadence allowed display/update tick
+    std::atomic<uint32_t> connectionCadenceHoldScanDwell{0}; // scan dwell hold suppressed process
+    std::atomic<uint32_t> connectionStateProcessRuns{0}; // connectionStateModule.process() calls
+    std::atomic<uint32_t> connectionStateWatchdogForces{0}; // watchdog-forced process calls
+    std::atomic<uint32_t> connectionStateProcessGapMaxMs{0}; // max observed gap between process runs
+    std::atomic<uint32_t> bleScanStateEntries{0}; // transitions into SCANNING
+    std::atomic<uint32_t> bleScanStateExits{0}; // transitions out of SCANNING
+    std::atomic<uint32_t> bleScanTargetFound{0}; // SCANNING->SCAN_STOPPING due to target found
+    std::atomic<uint32_t> bleScanNoTargetExits{0}; // SCANNING->DISCONNECTED without target
+    std::atomic<uint32_t> bleScanDwellMaxMs{0}; // max SCANNING state dwell duration
     
     // Display
     std::atomic<uint32_t> displayUpdates{0};   // Frames drawn
@@ -103,6 +114,17 @@ struct PerfCounters {
     std::atomic<uint32_t> uuid128FallbackHits{0}; // 128-bit custom UUID fast extraction path hits
     std::atomic<uint32_t> bleDiscTaskCreateFail{0}; // Discovery task spawn failures
     std::atomic<uint32_t> wifiConnectDeferred{0}; // WiFi connects staged via non-blocking phase machine
+    std::atomic<uint32_t> wifiStopGraceful{0}; // graceful staged WiFi stop requests
+    std::atomic<uint32_t> wifiStopImmediate{0}; // immediate WiFi stop requests
+    std::atomic<uint32_t> wifiStopManual{0}; // stop requests flagged manual
+    std::atomic<uint32_t> wifiStopTimeout{0}; // stop reason timeout
+    std::atomic<uint32_t> wifiStopNoClients{0}; // stop reason no_clients
+    std::atomic<uint32_t> wifiStopNoClientsAuto{0}; // stop reason no_clients_auto
+    std::atomic<uint32_t> wifiStopLowDma{0}; // stop reason low_dma
+    std::atomic<uint32_t> wifiStopPoweroff{0}; // stop reason poweroff
+    std::atomic<uint32_t> wifiStopOther{0}; // stop reasons not covered above
+    std::atomic<uint32_t> wifiApDropLowDma{0}; // AP retired due to sustained low SRAM in AP+STA
+    std::atomic<uint32_t> wifiApDropIdleSta{0}; // AP retired while STA remained connected
     std::atomic<uint32_t> pushNowRetries{0};      // Non-blocking Push Now retry attempts
     std::atomic<uint32_t> pushNowFailures{0};     // Non-blocking Push Now exhausted retries
     std::atomic<uint32_t> alertPersistStarts{0};  // Persisted-alert sessions started
@@ -180,6 +202,17 @@ struct PerfCounters {
         perfSdWriteFail.store(0, std::memory_order_relaxed);
         reconnects.store(0, std::memory_order_relaxed);
         disconnects.store(0, std::memory_order_relaxed);
+        connectionDispatchRuns.store(0, std::memory_order_relaxed);
+        connectionCadenceDisplayDue.store(0, std::memory_order_relaxed);
+        connectionCadenceHoldScanDwell.store(0, std::memory_order_relaxed);
+        connectionStateProcessRuns.store(0, std::memory_order_relaxed);
+        connectionStateWatchdogForces.store(0, std::memory_order_relaxed);
+        connectionStateProcessGapMaxMs.store(0, std::memory_order_relaxed);
+        bleScanStateEntries.store(0, std::memory_order_relaxed);
+        bleScanStateExits.store(0, std::memory_order_relaxed);
+        bleScanTargetFound.store(0, std::memory_order_relaxed);
+        bleScanNoTargetExits.store(0, std::memory_order_relaxed);
+        bleScanDwellMaxMs.store(0, std::memory_order_relaxed);
         displayUpdates.store(0, std::memory_order_relaxed);
         displaySkips.store(0, std::memory_order_relaxed);
         bleMutexSkip.store(0, std::memory_order_relaxed);
@@ -189,6 +222,17 @@ struct PerfCounters {
         uuid128FallbackHits.store(0, std::memory_order_relaxed);
         bleDiscTaskCreateFail.store(0, std::memory_order_relaxed);
         wifiConnectDeferred.store(0, std::memory_order_relaxed);
+        wifiStopGraceful.store(0, std::memory_order_relaxed);
+        wifiStopImmediate.store(0, std::memory_order_relaxed);
+        wifiStopManual.store(0, std::memory_order_relaxed);
+        wifiStopTimeout.store(0, std::memory_order_relaxed);
+        wifiStopNoClients.store(0, std::memory_order_relaxed);
+        wifiStopNoClientsAuto.store(0, std::memory_order_relaxed);
+        wifiStopLowDma.store(0, std::memory_order_relaxed);
+        wifiStopPoweroff.store(0, std::memory_order_relaxed);
+        wifiStopOther.store(0, std::memory_order_relaxed);
+        wifiApDropLowDma.store(0, std::memory_order_relaxed);
+        wifiApDropIdleSta.store(0, std::memory_order_relaxed);
         pushNowRetries.store(0, std::memory_order_relaxed);
         pushNowFailures.store(0, std::memory_order_relaxed);
         alertPersistStarts.store(0, std::memory_order_relaxed);

@@ -322,13 +322,28 @@ void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
     stateEnteredMs = now;
 
     if (newState == BLEState::SCANNING) {
+        PERF_INC(bleScanStateEntries);
+    }
+    if (oldState == BLEState::SCANNING && newState != BLEState::SCANNING) {
+        PERF_INC(bleScanStateExits);
+        PERF_MAX(bleScanDwellMaxMs, stateTime);
+    }
+
+    if (newState == BLEState::SCANNING) {
         perfRecordBleTimelineEvent(PerfBleTimelineEvent::ScanStart, now);
     } else if (newState == BLEState::SCAN_STOPPING && reason && strstr(reason, "V1 found")) {
+        PERF_INC(bleScanTargetFound);
         perfRecordBleTimelineEvent(PerfBleTimelineEvent::TargetFound, now);
     } else if (newState == BLEState::CONNECTING) {
         perfRecordBleTimelineEvent(PerfBleTimelineEvent::ConnectStart, now);
     } else if (newState == BLEState::CONNECTED) {
         perfRecordBleTimelineEvent(PerfBleTimelineEvent::Connected, now);
+    }
+    if (oldState == BLEState::SCANNING &&
+        newState == BLEState::DISCONNECTED &&
+        reason &&
+        strstr(reason, "scan ended without finding V1")) {
+        PERF_INC(bleScanNoTargetExits);
     }
     
     BLE_SM_LOGF("[BLE_SM][%lu] %s (%lums) -> %s | Reason: %s\n",

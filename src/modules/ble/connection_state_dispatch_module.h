@@ -16,6 +16,7 @@ struct ConnectionStateDispatchContext {
 
 struct ConnectionStateDispatchDecision {
     ConnectionStateCadenceDecision cadence{};
+    uint32_t elapsedSinceLastProcessMs = 0;
     bool watchdogForced = false;
     bool ranConnectionStateProcess = false;
 };
@@ -30,6 +31,9 @@ public:
 
         void (*runConnectionStateProcess)(void* ctx, uint32_t nowMs) = nullptr;
         void* connectionStateContext = nullptr;
+
+        void (*recordDecision)(void* ctx, const ConnectionStateDispatchDecision& decision) = nullptr;
+        void* decisionContext = nullptr;
     };
 
     void begin(const Providers& hooks);

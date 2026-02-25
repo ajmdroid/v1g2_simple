@@ -675,6 +675,24 @@ static void configureConnectionStateDispatchModule() {
         static_cast<ConnectionStateModule*>(ctx)->process(nowMs);
     };
     connectionStateDispatchProviders.connectionStateContext = &connectionStateModule;
+    connectionStateDispatchProviders.recordDecision = [](void*, const ConnectionStateDispatchDecision& decision) {
+        PERF_INC(connectionDispatchRuns);
+        if (decision.cadence.displayUpdateDue) {
+            PERF_INC(connectionCadenceDisplayDue);
+        }
+        if (decision.cadence.holdScanDwell) {
+            PERF_INC(connectionCadenceHoldScanDwell);
+        }
+        if (decision.elapsedSinceLastProcessMs > 0) {
+            PERF_MAX(connectionStateProcessGapMaxMs, decision.elapsedSinceLastProcessMs);
+        }
+        if (decision.watchdogForced) {
+            PERF_INC(connectionStateWatchdogForces);
+        }
+        if (decision.ranConnectionStateProcess) {
+            PERF_INC(connectionStateProcessRuns);
+        }
+    };
     connectionStateDispatchModule.begin(connectionStateDispatchProviders);
 }
 

@@ -27,12 +27,15 @@ ConnectionStateDispatchDecision ConnectionStateDispatchModule::process(
 
     bool shouldRunConnectionStateProcess = decision.cadence.shouldRunConnectionStateProcess;
     const bool watchdogEligible = !ctx.bootSplashHoldActive && !ctx.displayPreviewRunning;
+    if (hasRunProcess) {
+        decision.elapsedSinceLastProcessMs =
+            static_cast<uint32_t>(ctx.nowMs - lastProcessRunMs);
+    }
     if (!shouldRunConnectionStateProcess &&
         watchdogEligible &&
         hasRunProcess &&
         ctx.maxProcessGapMs > 0) {
-        const uint32_t elapsedSinceProcessMs =
-            static_cast<uint32_t>(ctx.nowMs - lastProcessRunMs);
+        const uint32_t elapsedSinceProcessMs = decision.elapsedSinceLastProcessMs;
         if (elapsedSinceProcessMs >= ctx.maxProcessGapMs) {
             shouldRunConnectionStateProcess = true;
             decision.watchdogForced = true;
@@ -44,6 +47,10 @@ ConnectionStateDispatchDecision ConnectionStateDispatchModule::process(
         decision.ranConnectionStateProcess = true;
         lastProcessRunMs = ctx.nowMs;
         hasRunProcess = true;
+    }
+
+    if (providers.recordDecision) {
+        providers.recordDecision(providers.decisionContext, decision);
     }
 
     return decision;
