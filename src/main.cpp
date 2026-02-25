@@ -1381,6 +1381,11 @@ struct LoopDisplayPreWifiPhaseValues {
     bool loopSignalPriorityActive = false;
 };
 
+struct LoopWifiPhaseValues {
+    LoopRuntimeSnapshotValues loopRuntimeSnapshotValues;
+    bool wifiAutoStartDone = false;
+};
+
 static LoopConnectionEarlyPhaseValues processLoopConnectionEarlyPhase(
     const unsigned long nowMs,
     const unsigned long nowUs,
@@ -1487,6 +1492,37 @@ static LoopDisplayPreWifiPhaseValues processLoopDisplayPreWifiPhase(
 
     LoopDisplayPreWifiPhaseValues values;
     values.loopSignalPriorityActive = loopSignalPriorityActive;
+    return values;
+}
+
+static LoopWifiPhaseValues processLoopWifiPhase(
+    const unsigned long nowMs,
+    const unsigned long v1ConnectedAtMs,
+    const bool enableWifiAtBoot,
+    const bool currentWifiAutoStartDone,
+    const bool skipLateNonCoreThisLoop,
+    const bool bootSplashHoldActive,
+    void (*runWifiManagerProcess)()) {
+    LoopRuntimeSnapshotContext loopRuntimeSnapshotCtx;
+    const LoopRuntimeSnapshotValues loopRuntimeSnapshotValues =
+        loopRuntimeSnapshotModule.process(loopRuntimeSnapshotCtx);
+
+    WifiRuntimeContext wifiRuntimeCtx;
+    wifiRuntimeCtx.nowMs = nowMs;
+    wifiRuntimeCtx.v1ConnectedAtMs = v1ConnectedAtMs;
+    wifiRuntimeCtx.enableWifiAtBoot = enableWifiAtBoot;
+    wifiRuntimeCtx.bleConnected = loopRuntimeSnapshotValues.bleConnected;
+    wifiRuntimeCtx.canStartDma = loopRuntimeSnapshotValues.canStartDma;
+    wifiRuntimeCtx.wifiAutoStartDone = currentWifiAutoStartDone;
+    wifiRuntimeCtx.skipLateNonCoreThisLoop = skipLateNonCoreThisLoop;
+    wifiRuntimeCtx.displayPreviewRunning = loopRuntimeSnapshotValues.displayPreviewRunning;
+    wifiRuntimeCtx.bootSplashHoldActive = bootSplashHoldActive;
+    wifiRuntimeCtx.runWifiManagerProcess = runWifiManagerProcess;
+    const WifiRuntimeResult wifiRuntimeResult = wifiRuntimeModule.process(wifiRuntimeCtx);
+
+    LoopWifiPhaseValues values;
+    values.loopRuntimeSnapshotValues = loopRuntimeSnapshotValues;
+    values.wifiAutoStartDone = wifiRuntimeResult.wifiAutoStartDone;
     return values;
 }
 
@@ -1607,23 +1643,17 @@ void loop() {
         runCameraRuntime);
     const bool loopSignalPriorityActive = loopDisplayPreWifiValues.loopSignalPriorityActive;
 
-    LoopRuntimeSnapshotContext loopRuntimeSnapshotCtx;
-    const LoopRuntimeSnapshotValues loopRuntimeSnapshotValues =
-        loopRuntimeSnapshotModule.process(loopRuntimeSnapshotCtx);
     auto runWifiManagerProcess = []() { wifiManager.process(); };
-    WifiRuntimeContext wifiRuntimeCtx;
-    wifiRuntimeCtx.nowMs = now;
-    wifiRuntimeCtx.v1ConnectedAtMs = v1ConnectedAtMs;
-    wifiRuntimeCtx.enableWifiAtBoot = loopSettingsPrepValues.enableWifiAtBoot;
-    wifiRuntimeCtx.bleConnected = loopRuntimeSnapshotValues.bleConnected;
-    wifiRuntimeCtx.canStartDma = loopRuntimeSnapshotValues.canStartDma;
-    wifiRuntimeCtx.wifiAutoStartDone = wifiAutoStartDone;
-    wifiRuntimeCtx.skipLateNonCoreThisLoop = skipLateNonCoreThisLoop;
-    wifiRuntimeCtx.displayPreviewRunning = loopRuntimeSnapshotValues.displayPreviewRunning;
-    wifiRuntimeCtx.bootSplashHoldActive = bootSplashHoldActive;
-    wifiRuntimeCtx.runWifiManagerProcess = runWifiManagerProcess;
-    const WifiRuntimeResult wifiRuntimeResult = wifiRuntimeModule.process(wifiRuntimeCtx);
-    wifiAutoStartDone = wifiRuntimeResult.wifiAutoStartDone;
+    const LoopWifiPhaseValues loopWifiValues = processLoopWifiPhase(
+        now,
+        v1ConnectedAtMs,
+        loopSettingsPrepValues.enableWifiAtBoot,
+        wifiAutoStartDone,
+        skipLateNonCoreThisLoop,
+        bootSplashHoldActive,
+        runWifiManagerProcess);
+    const LoopRuntimeSnapshotValues& loopRuntimeSnapshotValues = loopWifiValues.loopRuntimeSnapshotValues;
+    wifiAutoStartDone = loopWifiValues.wifiAutoStartDone;
     
     loopTelemetryModule.process(loopStartUs);
 
