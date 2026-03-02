@@ -9,7 +9,6 @@
 #include "../include/ble_internals.h"
 #include "../include/config.h"
 #include "perf_metrics.h"
-#include "obd_handler.h"
 #include <cstring>
 
 // Bond backup helper defined in ble_client.cpp (non-static)
@@ -28,11 +27,6 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
         if (advertisedDevice->getAddress() == selfAddr) {
             return;
         }
-    }
-    
-    // During OBD manual scan, collect all named devices for UI selection.
-    if (!name.empty() && obdHandler.isScanActive()) {
-        bleClient->enqueueObdScanResult(name.c_str(), addrStr.c_str(), rssi);
     }
     
     // V1 discovery should tolerate missing scan-response names: some stacks expose
@@ -60,12 +54,6 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     // Check if we're already connecting or connected
     if (bleClient->bleState == BLEState::CONNECTING || 
         bleClient->bleState == BLEState::CONNECTED) {
-        return;
-    }
-
-    // If V1 is already connected and this scan was user-triggered for OBD discovery,
-    // do not disrupt the existing V1 session.
-    if (obdHandler.isScanActive() && bleClient->connected) {
         return;
     }
     
@@ -116,11 +104,6 @@ void V1BLEClient::ScanCallbacks::onScanEnd(const NimBLEScanResults& scanResults,
         } else {
             instancePtr->pendingScanEndUpdate = true;
         }
-    }
-
-    // Notify OBD handler that a manual scan has completed.
-    if (obdHandler.isScanActive() && instancePtr) {
-        instancePtr->pendingObdScanComplete = true;
     }
 }
 

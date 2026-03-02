@@ -342,8 +342,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putString("wifiClSSID", settings.wifiClientSSID);
     written += prefs.putBool("proxyBLE", settings.proxyBLE);
     written += prefs.putString("proxyName", settings.proxyName);
-    written += prefs.putBool("obdEn", settings.obdEnabled);
-    written += prefs.putBool("obdVwData", settings.obdVwDataEnabled);
     written += prefs.putBool("gpsEn", settings.gpsEnabled);
     written += prefs.putUChar("gpsLkMode", static_cast<uint8_t>(settings.gpsLockoutMode));
     written += prefs.putBool("gpsLkGuard", settings.gpsLockoutCoreGuardEnabled);
@@ -390,7 +388,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("colorRssiPrx", settings.colorRssiProxy);
     written += prefs.putUShort("colorLockL", settings.colorLockout);
     written += prefs.putUShort("colorGps", settings.colorGps);
-    written += prefs.putUShort("colorObd", settings.colorObd);
     written += prefs.putBool("freqBandCol", settings.freqUseBandColor);
     written += prefs.putBool("hideWifi", settings.hideWifiIcon);
     written += prefs.putBool("hideProfile", settings.hideProfileIndicator);
@@ -399,7 +396,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("hideBle", settings.hideBleIcon);
     written += prefs.putBool("hideVol", settings.hideVolumeIndicator);
     written += prefs.putBool("hideRssi", settings.hideRssiIndicator);
-    written += prefs.putBool("restTelem", settings.showRestTelemetryCards);
     written += prefs.putBool("wifiAtBoot", settings.enableWifiAtBoot);
     written += prefs.putBool("sigTraceLog", settings.enableSignalTraceLogging);
     written += prefs.putUChar("voiceMode", (uint8_t)settings.voiceAlertMode);

@@ -182,9 +182,6 @@ public:
     // Restart scanning for V1
     void startScanning();
 
-    // Start BLE scan for nearby OBD adapters/devices without changing V1 connection state
-    void startOBDScan();
-    
     // Check if currently scanning
     bool isScanning();
     
@@ -300,18 +297,6 @@ private:
     };
     ProxyPacket proxyQueue[PROXY_QUEUE_SIZE];
 
-    // OBD scan results queue (defer BLE callback work to main loop)
-    static constexpr size_t OBD_SCAN_QUEUE_SIZE = 8;
-    struct ObdScanItem {
-        char name[64];
-        char addr[18];
-        int rssi;
-    };
-    ObdScanItem obdScanQueue[OBD_SCAN_QUEUE_SIZE];
-    volatile size_t obdScanHead = 0;
-    volatile size_t obdScanTail = 0;
-    volatile size_t obdScanCount = 0;
-    
     // Phone→V1 command queue for safe writes (decoupled from callback context)
     static constexpr size_t PHONE_CMD_QUEUE_SIZE = 4;  // Small queue for phone commands
     static constexpr size_t MAX_PHONE_CMDS_PER_LOOP = 4;
@@ -340,7 +325,6 @@ private:
     char pendingLastV1Address[18] = {0};                  // "AA:BB:CC:DD:EE:FF" + null
     std::atomic<bool> pendingScanEndUpdate{false};         // Deferred scan-end state update from BLE callback
     std::atomic<bool> pendingScanTargetUpdate{false};      // Deferred target update from BLE scan callback
-    std::atomic<bool> pendingObdScanComplete{false};       // Deferred OBD scan complete from BLE callback
     std::atomic<bool> phoneCmdPendingClear{false};         // Clear stale phone cmd state on reconnect
 
     // Async discovery task (avoids ~2s block on main loop)
@@ -427,8 +411,6 @@ private:
     // Queue phone->V1 commands from BLE callback context
     bool enqueuePhoneCommand(const uint8_t* data, size_t length, uint16_t sourceCharUUID);
     int processPhoneCommandQueue();
-    void enqueueObdScanResult(const char* name, const char* addr, int rssi);
-
     // Diagnostic helper to log negotiated connection parameters
     void logConnParams(const char* tag);
     

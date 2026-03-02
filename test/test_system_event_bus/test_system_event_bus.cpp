@@ -117,7 +117,7 @@ void test_publish_overflow_without_frames_drops_oldest_control() {
 
 void test_reset_clears_queue_and_counters() {
     SystemEvent event;
-    event.type = SystemEventType::OBD_UPDATED;
+    event.type = SystemEventType::GPS_UPDATED;
     event.seq = 42;
 
     TEST_ASSERT_TRUE(bus.publish(event));
@@ -182,7 +182,7 @@ void test_fifo_wraparound_preserves_order() {
 
     for (uint32_t seq = 1001; seq <= 1008; ++seq) {
         SystemEvent event;
-        event.type = SystemEventType::OBD_UPDATED;
+        event.type = SystemEventType::GPS_UPDATED;
         event.seq = seq;
         TEST_ASSERT_TRUE(bus.publish(event));
     }
@@ -203,7 +203,7 @@ void test_mixed_event_types_drain_to_empty() {
     constexpr uint8_t pattern[6] = {
         static_cast<uint8_t>(SystemEventType::BLE_CONNECTED),
         static_cast<uint8_t>(SystemEventType::BLE_FRAME_PARSED),
-        static_cast<uint8_t>(SystemEventType::OBD_UPDATED),
+        static_cast<uint8_t>(SystemEventType::GPS_UPDATED),
         static_cast<uint8_t>(SystemEventType::GPS_UPDATED),
         static_cast<uint8_t>(SystemEventType::BLE_DISCONNECTED),
         static_cast<uint8_t>(SystemEventType::BLE_FRAME_PARSED)
@@ -238,7 +238,7 @@ void test_consume_by_type_preserves_other_events() {
     TEST_ASSERT_TRUE(bus.publish(e2));
 
     SystemEvent e3;
-    e3.type = SystemEventType::OBD_UPDATED;
+    e3.type = SystemEventType::GPS_UPDATED;
     e3.seq = 3;
     TEST_ASSERT_TRUE(bus.publish(e3));
 
@@ -258,7 +258,7 @@ void test_consume_by_type_preserves_other_events() {
     TEST_ASSERT_EQUAL_UINT32(1, out.seq);
 
     TEST_ASSERT_TRUE(bus.consume(out));
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SystemEventType::OBD_UPDATED), static_cast<uint8_t>(out.type));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SystemEventType::GPS_UPDATED), static_cast<uint8_t>(out.type));
     TEST_ASSERT_EQUAL_UINT32(3, out.seq);
     TEST_ASSERT_FALSE(bus.consume(out));
 }
@@ -270,7 +270,7 @@ void test_consume_by_type_not_found_keeps_queue_intact() {
     TEST_ASSERT_TRUE(bus.publish(e1));
 
     SystemEvent e2;
-    e2.type = SystemEventType::OBD_UPDATED;
+    e2.type = SystemEventType::GPS_UPDATED;
     e2.seq = 12;
     TEST_ASSERT_TRUE(bus.publish(e2));
 

@@ -33,7 +33,6 @@
 #include "touch_handler.h"
 #include "v1_profiles.h"
 #include "v1_devices.h"
-#include "obd_handler.h"
 #include "battery_manager.h"
 #include "storage_manager.h"
 #include "debug_logger.h"
@@ -75,7 +74,6 @@
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
-#include "modules/obd/obd_runtime_module.h"
 #include "modules/lockout/signal_capture_module.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/lockout/lockout_enforcer.h"
@@ -123,8 +121,6 @@ static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_MS = 400;
 static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_WAKE_MS = 120;
 static constexpr unsigned long CONNECTION_STATE_PROCESS_MAX_GAP_MS = 1000;
 static unsigned long activeScanScreenDwellMs = MIN_SCAN_SCREEN_DWELL_MS;
-static bool obdAutoConnectPending = false;
-static unsigned long obdAutoConnectAtMs = 0;
 static unsigned long v1ConnectedAtMs = 0;
 static bool wifiAutoStartDone = false;
 
@@ -211,7 +207,6 @@ WifiPriorityPolicyModule wifiPriorityPolicyModule;
 WifiVisualSyncModule wifiVisualSyncModule;
 WifiProcessCadenceModule wifiProcessCadenceModule;
 WifiRuntimeModule wifiRuntimeModule;
-ObdRuntimeModule obdRuntimeModule;
 
 // Callback for BLE data reception - just queues data, doesn't process
 // This runs in BLE task context, so we avoid SPI operations here
@@ -289,15 +284,6 @@ void onV1Connected() {
                         s.activeSlot, selection.activeSlotIndex);
     }
 
-    // Attempt OBD auto-connect shortly after V1 stabilizes.
-    // This runs regardless of autoPush when OBD service is enabled.
-    if (s.obdEnabled) {
-        obdAutoConnectPending = true;
-        obdAutoConnectAtMs = millis() + 1500;
-    } else {
-        obdAutoConnectPending = false;
-    }
-    
     if (!s.autoPushEnabled) {
         AUTO_PUSH_LOGLN("[AutoPush] Disabled, skipping");
         return;
@@ -325,7 +311,6 @@ static void configureLoopSettingsPrepModule() {
     loopSettingsPrepProviders.readSettingsValues = [](void* ctx) -> LoopSettingsPrepValues {
         const V1Settings& settings = static_cast<SettingsManager*>(ctx)->get();
         LoopSettingsPrepValues values;
-        values.obdServiceEnabled = settings.obdEnabled;
         values.enableWifiAtBoot = settings.enableWifiAtBoot;
         values.enableSignalTraceLogging = settings.enableSignalTraceLogging;
         return values;
@@ -570,13 +555,11 @@ static void configureLoopPreIngestModule() {
         SerialLog.printf("[Boot] Ready gate opened at %lu ms (timeout)\n", static_cast<unsigned long>(nowMs));
     };
     loopPreIngestProviders.runWifiPriorityApply =
-        [](void* ctx, uint32_t nowMs, bool obdServiceEnabled) {
+        [](void* ctx, uint32_t nowMs) {
             static_cast<WifiPriorityPolicyModule*>(ctx)->apply(
                 nowMs,
-                obdServiceEnabled,
                 bleClient,
-                wifiManager,
-                obdHandler);
+                wifiManager);
         };
     loopPreIngestProviders.wifiPriorityContext = &wifiPriorityPolicyModule;
     loopPreIngestProviders.runDebugApiProcess = [](void*, uint32_t nowMs) {
@@ -726,19 +709,6 @@ static void configureLoopIngestModule() {
         return static_cast<BleQueueModule*>(ctx)->isBackpressured();
     };
     loopIngestProviders.bleBackpressureContext = &bleQueueModule;
-    loopIngestProviders.runObdRuntime = [](void*,
-                                           uint32_t nowMs,
-                                           bool obdServiceEnabled) {
-        obdRuntimeModule.process(nowMs,
-                                 obdServiceEnabled,
-                                 obdAutoConnectPending,
-                                 obdAutoConnectAtMs,
-                                 obdHandler,
-                                 speedSourceSelector);
-    };
-    loopIngestProviders.recordObdUs = [](void*, uint32_t elapsedUs) {
-        perfRecordObdUs(elapsedUs);
-    };
     loopIngestProviders.runGpsRuntimeUpdate = [](void* ctx, uint32_t nowMs) {
         static_cast<GpsRuntimeModule*>(ctx)->update(nowMs);
     };
@@ -855,7 +825,6 @@ static void configureSystemLoopCoreModules() {
                                      &parser,
                                      &settingsManager,
                                      &gpsRuntimeModule,
-                                     &obdHandler,
                                      &lockoutOrchestrationModule);
 }
 
@@ -875,10 +844,6 @@ static void configureSystemLoopModules() {
 }
 
 static void configureRuntimeSensorModules() {
-    obdHandler.setLinkReadyCallback([]() { return bleClient.isConnected(); });
-    obdHandler.setStartScanCallback([]() { bleClient.startOBDScan(); });
-    obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
-    obdHandler.begin();
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
 }

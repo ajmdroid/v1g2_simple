@@ -21,7 +21,6 @@ dmaFreeMin
 dmaLargestMin
 bleProcessMax_us
 touchMax_us
-obdMax_us
 gpsMax_us
 lockoutMax_us
 wifiMax_us
@@ -45,15 +44,6 @@ bleTargetFoundMs
 bleConnectStartMs
 bleConnectedMs
 bleFirstRxMs
-obdState
-obdConnected
-obdScanActive
-obdHasValidData
-obdSampleAgeMs
-obdSpeedMph_x10
-obdConnFailures
-obdPollFailStreak
-obdNotifyDrops
 alertPersistStarts
 alertPersistExpires
 alertPersistClears

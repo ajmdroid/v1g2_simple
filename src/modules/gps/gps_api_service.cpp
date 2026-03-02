@@ -120,8 +120,6 @@ void sendStatus(WebServer& server,
     JsonObject speedObj = doc["speedSource"].to<JsonObject>();
     speedObj["selected"] = SpeedSourceSelector::sourceName(speedStatus.selectedSource);
     speedObj["gpsEnabled"] = speedStatus.gpsEnabled;
-    speedObj["obdConnected"] = speedStatus.obdConnected;
-    speedObj["obdFresh"] = speedStatus.obdFresh;
     speedObj["gpsFresh"] = speedStatus.gpsFresh;
     speedObj["sourceSwitches"] = speedStatus.sourceSwitches;
     if (speedStatus.selectedSource == SpeedSource::NONE) {
@@ -130,11 +128,6 @@ void sendStatus(WebServer& server,
     } else {
         speedObj["selectedMph"] = speedStatus.selectedSpeedMph;
         speedObj["selectedAgeMs"] = speedStatus.selectedAgeMs;
-    }
-    if (speedStatus.obdAgeMs == UINT32_MAX) {
-        speedObj["obdAgeMs"] = nullptr;
-    } else {
-        speedObj["obdAgeMs"] = speedStatus.obdAgeMs;
     }
     if (speedStatus.gpsAgeMs == UINT32_MAX) {
         speedObj["gpsAgeMs"] = nullptr;

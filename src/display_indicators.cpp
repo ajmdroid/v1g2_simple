@@ -2,7 +2,7 @@
  * Indicator badges & frame — extracted from display.cpp (Phase 2P)
  *
  * Contains drawBaseFrame, drawLockoutIndicator, drawGpsIndicator,
- * drawObdIndicator, drawStatusText, and associated setters.
+ * drawStatusText, and associated setters.
  */
 
 #include "display.h"
@@ -117,50 +117,6 @@ void V1Display::drawGpsIndicator() {
         TFT_CALL(setTextSize)(2);
         TFT_CALL(setTextColor)(textColor, PALETTE_BG);
         GFX_drawString(tft, buf, x + w / 2, y + h / 2);
-    } else {
-        FILL_RECT(x, y, w, h, PALETTE_BG);
-    }
-#endif
-}
-
-// ============================================================================
-// OBD connected indicator ("OBD" badge, right of lockout "L")
-// ============================================================================
-
-void V1Display::setObdConnected(bool enabled, bool connected, bool hasData) {
-    obdEnabled_   = enabled;
-    obdConnected_ = connected;
-    obdHasData_   = hasData;
-}
-
-void V1Display::drawObdIndicator() {
-#if defined(DISPLAY_WAVESHARE_349)
-    const bool wantShow = obdEnabled_ && obdConnected_ && obdHasData_;
-
-    static bool lastShown = false;
-
-    if (!dirty.obdIndicator && wantShow == lastShown) {
-        return;
-    }
-    dirty.obdIndicator = false;
-    lastShown = wantShow;
-
-    // Position: right of lockout "L" (ends at X=366), before signal bars (X=440).
-    const int x = 375;
-    const int y = 5;
-    const int h = 26;
-    const int w = 52;  // Wide enough for "OBD" at textSize(2)
-
-    if (wantShow) {
-        const V1Settings& s = settingsManager.get();
-        const uint16_t textColor = s.colorObd;
-
-        FILL_RECT(x, y, w, h, PALETTE_BG);
-
-        GFX_setTextDatum(MC_DATUM);
-        TFT_CALL(setTextSize)(2);
-        TFT_CALL(setTextColor)(textColor, PALETTE_BG);
-        GFX_drawString(tft, "OBD", x + w / 2, y + h / 2);
     } else {
         FILL_RECT(x, y, w, h, PALETTE_BG);
     }

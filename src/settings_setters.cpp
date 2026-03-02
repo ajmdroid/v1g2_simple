@@ -28,22 +28,6 @@ void SettingsManager::setProxyName(const String& name) {
     save();
 }
 
-void SettingsManager::setObdEnabled(bool enabled) {
-    if (settings.obdEnabled == enabled) {
-        return;
-    }
-    settings.obdEnabled = enabled;
-    save();
-}
-
-void SettingsManager::setObdVwDataEnabled(bool enabled) {
-    if (settings.obdVwDataEnabled == enabled) {
-        return;
-    }
-    settings.obdVwDataEnabled = enabled;
-    save();
-}
-
 void SettingsManager::setGpsEnabled(bool enabled) {
     if (settings.gpsEnabled == enabled) {
         return;
@@ -241,11 +225,6 @@ void SettingsManager::setHideVolumeIndicator(bool hide) {
 
 void SettingsManager::setHideRssiIndicator(bool hide) {
     settings.hideRssiIndicator = hide;
-    save();
-}
-
-void SettingsManager::setShowRestTelemetryCards(bool show) {
-    settings.showRestTelemetryCards = show;
     save();
 }
 

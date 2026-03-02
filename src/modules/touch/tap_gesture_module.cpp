@@ -64,17 +64,6 @@ void TapGestureModule::process(unsigned long nowMs) {
         }
     };
 
-    auto performRestTelemetryToggle = [&]() {
-        const bool nextEnabled = !settings->get().showRestTelemetryCards;
-        settings->setShowRestTelemetryCards(nextEnabled);
-        *displayMode = DisplayMode::IDLE;
-        display->forceNextRedraw();
-        display->showResting(true);
-        Serial.printf("REST TELEMETRY: %s via %d taps\n",
-                      nextEnabled ? "enabled" : "disabled",
-                      REST_TELEMETRY_TAP_COUNT);
-    };
-
     if (touch->getTouchPoint(touchX, touchY)) {
         if (nowMs - lastTapTime >= TAP_DEBOUNCE_MS) {
             if (nowMs - lastTapTime <= TAP_WINDOW_MS) {
@@ -92,13 +81,6 @@ void TapGestureModule::process(unsigned long nowMs) {
                 return;
             }
 
-            if (!hasActiveAlert && tapCount >= REST_TELEMETRY_TAP_COUNT) {
-                tapCount = 0;
-                performRestTelemetryToggle();
-            }
-        }
-    } else {
-        if (tapCount > 0 && (nowMs - lastTapTime > TAP_WINDOW_MS)) {
             if (!hasActiveAlert && tapCount >= PROFILE_CHANGE_TAP_COUNT) {
                 performProfileCycle();
             } else if (hasActiveAlert) {

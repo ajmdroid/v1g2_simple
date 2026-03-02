@@ -38,12 +38,6 @@ struct FakeRuntime {
     DisplayStyle lastDisplayStyle = DISPLAY_STYLE_CLASSIC;
     int forceDisplayRedrawCalls = 0;
 
-    int setObdVwDataEnabledCalls = 0;
-    bool lastObdVwDataEnabled = false;
-
-    int stopObdScanCalls = 0;
-    int disconnectObdCalls = 0;
-
     int setGpsRuntimeEnabledCalls = 0;
     bool lastGpsRuntimeEnabled = false;
 
@@ -85,16 +79,6 @@ static WifiSettingsApiService::Runtime makeRuntime(FakeRuntime& rt) {
             rt.forceDisplayRedrawCalls++;
         },
         [&rt](bool enabled) {
-            rt.setObdVwDataEnabledCalls++;
-            rt.lastObdVwDataEnabled = enabled;
-        },
-        [&rt]() {
-            rt.stopObdScanCalls++;
-        },
-        [&rt]() {
-            rt.disconnectObdCalls++;
-        },
-        [&rt](bool enabled) {
             rt.setGpsRuntimeEnabledCalls++;
             rt.lastGpsRuntimeEnabled = enabled;
         },
@@ -126,7 +110,6 @@ void test_settings_get_serializes_expected_payload() {
     rt.settings.apPassword = "custom-pass";
     rt.settings.proxyBLE = false;
     rt.settings.proxyName = "Proxy-Test";
-    rt.settings.obdEnabled = false;
     rt.settings.gpsEnabled = true;
     rt.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ADVISORY;
     rt.settings.autoPowerOffMinutes = 12;
@@ -262,8 +245,6 @@ void test_settings_save_uses_existing_password_placeholder() {
 void test_settings_save_updates_runtime_dependencies() {
     WebServer server(80);
     FakeRuntime rt;
-    server.setArg("obdVwDataEnabled", "1");
-    server.setArg("obdEnabled", "false");
     server.setArg("gpsEnabled", "true");
     server.setArg("gpsLockoutMode", "enforce");
     server.setArg("gpsLockoutMaxQueueDrops", "70000");
@@ -275,10 +256,6 @@ void test_settings_save_updates_runtime_dependencies() {
         []() { return true; });
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_EQUAL_INT(1, rt.setObdVwDataEnabledCalls);
-    TEST_ASSERT_TRUE(rt.lastObdVwDataEnabled);
-    TEST_ASSERT_EQUAL_INT(1, rt.stopObdScanCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.disconnectObdCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.setGpsRuntimeEnabledCalls);
     TEST_ASSERT_TRUE(rt.lastGpsRuntimeEnabled);
     TEST_ASSERT_EQUAL_INT(1, rt.setSpeedSourceGpsEnabledCalls);

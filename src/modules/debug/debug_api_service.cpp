@@ -13,7 +13,6 @@
 #include "../../../include/config.h"
 #include "../../perf_metrics.h"
 #include "../../settings.h"
-#include "../../obd_handler.h"
 #include "../../ble_client.h"
 #include "../../storage_manager.h"
 #include "../../perf_sd_logger.h"
@@ -1079,27 +1078,6 @@ static void sendMetrics(WebServer& server) {
     doc["bleProcessMaxUs"] = perfGetBleProcessMaxUs();
     doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
 
-    // OBD health snapshot (non-blocking lock attempt in OBD handler).
-    const OBDPerfSnapshot obdPerf = obdHandler.getPerfSnapshot();
-    JsonObject obdObj = doc["obd"].to<JsonObject>();
-    obdObj["state"] = obdPerf.state;
-    obdObj["connected"] = (obdPerf.connected != 0);
-    obdObj["scanActive"] = (obdPerf.scanActive != 0);
-    obdObj["hasValidData"] = (obdPerf.hasValidData != 0);
-    if (obdPerf.sampleAgeMs == UINT32_MAX) {
-        obdObj["sampleAgeMs"] = nullptr;
-    } else {
-        obdObj["sampleAgeMs"] = obdPerf.sampleAgeMs;
-    }
-    if (obdPerf.speedMphX10 < 0) {
-        obdObj["speedMphX10"] = nullptr;
-    } else {
-        obdObj["speedMphX10"] = obdPerf.speedMphX10;
-    }
-    obdObj["connFailures"] = obdPerf.connectionFailures;
-    obdObj["pollFailStreak"] = obdPerf.consecutivePollFailures;
-    obdObj["notifyDrops"] = obdPerf.notifyDrops;
-
     const uint32_t nowMs = millis();
     const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
     JsonObject gpsObj = doc["gps"].to<JsonObject>();
@@ -1175,7 +1153,6 @@ static void sendMetrics(WebServer& server) {
     const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
     JsonObject speedObj = doc["speedSource"].to<JsonObject>();
     speedObj["gpsEnabled"] = speedStatus.gpsEnabled;
-    speedObj["obdConnected"] = speedStatus.obdConnected;
     speedObj["selected"] = SpeedSourceSelector::sourceName(speedStatus.selectedSource);
     if (speedStatus.selectedSource == SpeedSource::NONE) {
         speedObj["selectedMph"] = nullptr;
@@ -1183,13 +1160,6 @@ static void sendMetrics(WebServer& server) {
     } else {
         speedObj["selectedMph"] = speedStatus.selectedSpeedMph;
         speedObj["selectedAgeMs"] = speedStatus.selectedAgeMs;
-    }
-    speedObj["obdFresh"] = speedStatus.obdFresh;
-    speedObj["obdMph"] = speedStatus.obdSpeedMph;
-    if (speedStatus.obdAgeMs == UINT32_MAX) {
-        speedObj["obdAgeMs"] = nullptr;
-    } else {
-        speedObj["obdAgeMs"] = speedStatus.obdAgeMs;
     }
     speedObj["gpsFresh"] = speedStatus.gpsFresh;
     speedObj["gpsMph"] = speedStatus.gpsSpeedMph;
@@ -1199,7 +1169,6 @@ static void sendMetrics(WebServer& server) {
         speedObj["gpsAgeMs"] = speedStatus.gpsAgeMs;
     }
     speedObj["sourceSwitches"] = speedStatus.sourceSwitches;
-    speedObj["obdSelections"] = speedStatus.obdSelections;
     speedObj["gpsSelections"] = speedStatus.gpsSelections;
     speedObj["noSourceSelections"] = speedStatus.noSourceSelections;
     
@@ -1287,7 +1256,7 @@ static void sendMetrics(WebServer& server) {
 }
 
 static void sendMetricsSoak(WebServer& server) {
-    // Soak mode trims heavyweight diagnostic blocks (GPS/OBD/speed snapshots)
+    // Soak mode trims heavyweight diagnostic blocks (GPS/speed snapshots)
     // while preserving all fields consumed by soak_parse_metrics.py.
     JsonDocument doc;
 

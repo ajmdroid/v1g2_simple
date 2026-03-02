@@ -163,8 +163,6 @@ void SettingsManager::load() {
     
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
     settings.proxyName = sanitizeProxyNameValue(preferences.getString("proxyName", "V1-Proxy"));
-    settings.obdEnabled = preferences.getBool("obdEn", false);
-    settings.obdVwDataEnabled = preferences.getBool("obdVwData", true);
     settings.gpsEnabled = preferences.getBool("gpsEn", false);
     settings.gpsLockoutMode = clampLockoutRuntimeModeValue(
         preferences.getUChar("gpsLkMode", static_cast<uint8_t>(LOCKOUT_RUNTIME_OFF)));
@@ -228,7 +226,6 @@ void SettingsManager::load() {
     settings.colorRssiProxy = preferences.getUShort("colorRssiPrx", 0x001F);   // Blue for Proxy RSSI label
     settings.colorLockout = preferences.getUShort("colorLockL", 0x07E0);        // Green lockout badge color
     settings.colorGps = preferences.getUShort("colorGps", 0x07FF);              // Cyan GPS badge color
-    settings.colorObd = preferences.getUShort("colorObd", 0xFD20);              // Orange OBD badge color
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);
@@ -237,7 +234,6 @@ void SettingsManager::load() {
     settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
     settings.hideRssiIndicator = preferences.getBool("hideRssi", false);
-    settings.showRestTelemetryCards = preferences.getBool("restTelem", false);
     
     // Development settings
     settings.enableWifiAtBoot = preferences.getBool("wifiAtBoot", false);

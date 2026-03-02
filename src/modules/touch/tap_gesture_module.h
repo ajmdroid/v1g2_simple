@@ -37,7 +37,6 @@ private:
     unsigned long lastTapTime = 0;
     int tapCount = 0;
     static constexpr int PROFILE_CHANGE_TAP_COUNT = 3;
-    static constexpr int REST_TELEMETRY_TAP_COUNT = 5;
     static constexpr unsigned long TAP_WINDOW_MS = 600;
     static constexpr unsigned long TAP_DEBOUNCE_MS = 150;
 };

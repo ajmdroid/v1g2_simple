@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Module Extraction (625 commits since 2026-02-15)**
 - Extracted 18 module directories under `src/modules/` (156 files, ~21,400 lines).
 - Loop phase orchestration extracted to `main_loop_phases.cpp` (210 lines) with 10 phase-router modules (`LoopIngestModule`, `LoopConnectionEarlyModule`, `LoopDisplayModule`, etc.).
-- Core service splits: `ble_runtime.cpp` (511 lines), `obd_runtime.cpp` (332 lines), `packet_parser_alerts.cpp` (582 lines), `settings_restore.cpp` (782 lines).
+- Core service splits: `ble_runtime.cpp` (511 lines), `packet_parser_alerts.cpp` (582 lines), `settings_restore.cpp` (782 lines).
 - Boot-time helpers extracted to `main_boot.cpp` (248 lines).
 - Lockout/learner save state machines extracted to `main_persist.cpp` (445 lines).
 - WiFi subsystem modularized into dedicated runtime, policy, cadence, and visual-sync modules.
@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Maintains AP mode for device access while connected
 
 **Performance**
-- Perf CSV schema expanded with subsystem timing (OBD, GPS, lockout).
+- Perf CSV schema expanded with subsystem timing (GPS, lockout).
 - Audio play/busy/fail counters, signal-observation queue drop counters wired.
 - Perf CSV SLO scorecard tooling added.
 
@@ -49,7 +49,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **DI Patterns**: Three new dependency-injection patterns documented (Providers, Callbacks hybrid, Pass-by-ref).
 - **Display**: Per-element `s_force*Redraw` statics replaced by shared `DisplayDirtyFlags` struct with `dirty.setAll()` invalidation.
 - **Boot**: BLE initialization reordered before storage; WiFi deferred; settle time absorbed.
-- **OBD**: Scan-gate before auto-connect to reduce radio churn; adapter-off suppression wired.
 - **CI/CD**: Build runs unit tests before firmware compilation; firmware size budget, static analysis, and interface lint gates added.
 - **Input Validation**: Added proxy_name length limit (32 chars).
 - **API**: Added `isDefaultPassword` flag to `/api/settings` response.
@@ -57,8 +56,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - WiFi STA config recovery when NVS keys are missing (SD secret fallback).
-- OBD BLE activity gated on V1 connected; WiFi priority suppression scoped to AP-on.
-- OBDLink CX immediate-disconnect resolved.
 - Display flush contract stabilized against line-offset drift.
 - Dirty lockout zones and learner candidates flushed on shutdown.
 
@@ -72,7 +69,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 - Full V1 BLE connectivity with packet parsing
 - Auto-lockout with GPS geofencing
-- OBD speedometer integration
 - V1 profile management with auto-push
 - Custom display themes and colors
 - SD card backup functionality
@@ -80,7 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical
 - ESP32-S3 on Waveshare 3.49" display
-- BLE dual-connection (V1 + OBD)
+- BLE connection (V1)
 - FreeRTOS multi-tasking
 - LittleFS + SD card storage
 - Responsive SvelteKit web interface
@@ -93,7 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |---------|------|------------|
 | 4.0.0-dev | 2026-02-25 | Modular architecture, 156 module files, 934 tests, CI contracts |
 | 3.0.7 | 2026 | Quality baseline before 4.x refactors |
-| 3.0.x | 2024 | OBD integration |
+| 3.0.x | 2024 | Auto-lockout improvements |
 | 2.x.x | 2024 | Auto-lockout, profiles |
 | 1.x.x | 2023 | Initial release, basic V1 display |
 

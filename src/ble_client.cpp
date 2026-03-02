@@ -21,7 +21,6 @@
 #include "settings.h"
 #include "debug_logger.h"
 #include "perf_metrics.h"
-#include "obd_handler.h"
 #include "storage_manager.h"
 #include "../include/config.h"
 #include <Arduino.h>
@@ -272,8 +271,6 @@ static int restoreBondsFromSD() {
 portMUX_TYPE pendingAddrMux = portMUX_INITIALIZER_UNLOCKED;
 // Spinlock for proxy command telemetry (avoid Serial in BLE callback)
 portMUX_TYPE proxyCmdMux = portMUX_INITIALIZER_UNLOCKED;
-// Spinlock for deferring OBD scan results from BLE scan callbacks
-portMUX_TYPE obdScanMux = portMUX_INITIALIZER_UNLOCKED;
 
 // Instance pointer for callbacks (extern in ble_internals.h)
 V1BLEClient* instancePtr = nullptr;

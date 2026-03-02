@@ -27,8 +27,6 @@ static bool responseContains(const WebServer& server, const char* needle) {
 struct FakeRuntime {
     V1Settings settings;
 
-    int stopObdScanCalls = 0;
-    int disconnectObdCalls = 0;
     int setGpsRuntimeEnabledCalls = 0;
     bool lastGpsRuntimeEnabled = false;
     int setSpeedSourceGpsEnabledCalls = 0;
@@ -52,12 +50,6 @@ static WifiDisplayColorsApiService::Runtime makeRuntime(FakeRuntime& rt) {
         },
         [&rt]() -> V1Settings& {
             return rt.settings;
-        },
-        [&rt]() {
-            rt.stopObdScanCalls++;
-        },
-        [&rt]() {
-            rt.disconnectObdCalls++;
         },
         [&rt](bool enabled) {
             rt.setGpsRuntimeEnabledCalls++;
@@ -151,7 +143,6 @@ void test_save_rate_limited_short_circuits() {
 void test_save_updates_settings_and_calls_side_effects() {
     WebServer server(80);
     FakeRuntime rt;
-    rt.settings.obdEnabled = true;
     rt.settings.gpsEnabled = false;
 
     server.setArg("bogey", "321");
@@ -159,7 +150,6 @@ void test_save_updates_settings_and_calls_side_effects() {
     server.setArg("hideWifiIcon", "true");
     server.setArg("brightness", "111");
     server.setArg("voiceVolume", "71");
-    server.setArg("obdEnabled", "false");
     server.setArg("gpsEnabled", "true");
     server.setArg("enableSignalTraceLogging", "false");
     server.setArg("gpsLockoutMode", "enforce");
@@ -178,11 +168,8 @@ void test_save_updates_settings_and_calls_side_effects() {
     TEST_ASSERT_EQUAL_UINT8(71, rt.settings.voiceVolume);
     TEST_ASSERT_EQUAL_INT(static_cast<int>(LOCKOUT_RUNTIME_ENFORCE),
                           static_cast<int>(rt.settings.gpsLockoutMode));
-    TEST_ASSERT_FALSE(rt.settings.obdEnabled);
     TEST_ASSERT_TRUE(rt.settings.gpsEnabled);
     TEST_ASSERT_FALSE(rt.settings.enableSignalTraceLogging);
-    TEST_ASSERT_EQUAL_INT(1, rt.stopObdScanCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.disconnectObdCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.setGpsRuntimeEnabledCalls);
     TEST_ASSERT_TRUE(rt.lastGpsRuntimeEnabled);
     TEST_ASSERT_EQUAL_INT(1, rt.setSpeedSourceGpsEnabledCalls);
@@ -266,7 +253,6 @@ void test_reset_restores_defaults_and_triggers_preview() {
     TEST_ASSERT_EQUAL_UINT16(0x001F, rt.settings.colorBandL);
     TEST_ASSERT_EQUAL_UINT16(0x07E0, rt.settings.colorLockout);
     TEST_ASSERT_EQUAL_UINT16(0x07FF, rt.settings.colorGps);
-    TEST_ASSERT_EQUAL_UINT16(0xFD20, rt.settings.colorObd);
     TEST_ASSERT_FALSE(rt.settings.freqUseBandColor);
     TEST_ASSERT_EQUAL_INT(1, rt.saveSettingsCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.showDisplayDemoCalls);

@@ -16,7 +16,6 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 - [Auto-Push](#auto-push)
 - [Display Colors](#display-colors)
 - [Lockouts](#lockouts)
-- [OBD/Speedometer](#obdspeedometer)
 - [GPS](#gps)
 - [WiFi Client](#wifi-client)
 - [Debug](#debug)
@@ -118,8 +117,6 @@ Get all device settings.
   "isDefaultPassword": true,
   "proxy_ble": false,
   "proxy_name": "",
-  "obdEnabled": false,
-  "obdVwDataEnabled": false,
   "gpsEnabled": false,
   "gpsLockoutMode": 3,
   "gpsLockoutModeName": "enforce",
@@ -143,8 +140,6 @@ Get all device settings.
 | `isDefaultPassword` | boolean | - | `true` if using factory default password |
 | `proxy_ble` | boolean | - | Enable BLE proxy mode |
 | `proxy_name` | string | 0-32 chars | Custom device name for proxy |
-| `obdEnabled` | boolean | - | Enable OBD integration |
-| `obdVwDataEnabled` | boolean | - | Enable VW-specific OBD decoding |
 | `gpsEnabled` | boolean | - | Enable GPS runtime |
 | `gpsLockoutMode` | int | 0-3 | Lockout runtime mode (`off`,`shadow`,`advisory`,`enforce`) |
 | `gpsLockoutCoreGuardEnabled` | boolean | - | Enable lockout core safety guard |
@@ -461,81 +456,6 @@ Import lockout zones from JSON.
 
 ---
 
-## OBD/Speedometer
-
-### GET /api/obd/status
-
-Get OBD connection status and current data.
-
-**Response:**
-```json
-{
-  "connected": true,
-  "deviceName": "VEEPEAK",
-  "rssi": -55,
-  "speed": 65,
-  "rpm": 2500,
-  "voltage": 14.2
-}
-```
-
-### POST /api/obd/scan
-
-Start scanning for OBD devices.
-
-### POST /api/obd/scan/stop
-
-Stop OBD scan.
-
-### GET /api/obd/devices
-
-Get list of discovered OBD devices.
-
-**Response:**
-```json
-{
-  "devices": [
-    {
-      "name": "VEEPEAK",
-      "address": "AA:BB:CC:DD:EE:FF",
-      "rssi": -55
-    }
-  ]
-}
-```
-
-### POST /api/obd/connect
-
-Connect to an OBD device.
-
-**Request (form data):** `address=AA:BB:CC:DD:EE:FF`
-
-### POST /api/obd/forget
-
-Forget saved OBD device.
-
-### POST /api/obd/devices/clear
-
-Clear discovered devices list.
-
-### POST /api/obd/disconnect
-
-Disconnect current OBD session.
-
-### POST /api/obd/config
-
-Update OBD behavior/settings.
-
-### GET /api/obd/remembered
-
-Get remembered OBD device info.
-
-### POST /api/obd/remembered/autoconnect
-
-Enable/disable auto-connect for remembered OBD device.
-
----
-
 ## GPS
 
 ### GET /api/gps/status
@@ -685,17 +605,6 @@ Get runtime performance counters and subsystem health snapshots.
   "heapMinFree": 150000,
   "heapDma": 92000,
   "heapDmaMin": 86000,
-  "obd": {
-    "state": 5,
-    "connected": true,
-    "scanActive": false,
-    "hasValidData": true,
-    "sampleAgeMs": 220,
-    "speedMphX10": 653,
-    "connFailures": 0,
-    "pollFailStreak": 0,
-    "notifyDrops": 0
-  },
   "proxy": {
     "sendCount": 3500,
     "dropCount": 0,
@@ -721,33 +630,6 @@ Get runtime performance counters and subsystem health snapshots.
 | `powerAutoPowerTimerExpire` | Auto power-off timer reaches timeout |
 | `powerCriticalWarn` | Critical battery warning is issued |
 | `powerCriticalShutdown` | Critical battery shutdown path is triggered |
-
-**OBD snapshot (`obd`) fields:**
-
-| Field | Type | Notes |
-|------|------|-------|
-| `state` | int | OBD state enum value (see map below) |
-| `connected` | bool | `true` when OBD state is READY/POLLING |
-| `scanActive` | bool | `true` while manual OBD scan is active |
-| `hasValidData` | bool | `true` when OBD data is fresh/valid |
-| `sampleAgeMs` | int or `null` | Age of last OBD sample in ms, null if unavailable |
-| `speedMphX10` | int or `null` | Vehicle speed in mph * 10, null if unavailable |
-| `connFailures` | int | Current connect/init failure count |
-| `pollFailStreak` | int | Current consecutive poll failure streak |
-| `notifyDrops` | int | Stream buffer notification drops |
-
-**OBD state map (`obd.state`):**
-
-| Value | State |
-|------|-------|
-| `0` | `IDLE` |
-| `1` | `SCANNING` |
-| `2` | `CONNECTING` |
-| `3` | `INITIALIZING` |
-| `4` | `READY` |
-| `5` | `POLLING` |
-| `6` | `DISCONNECTED` |
-| `7` | `FAILED` |
 
 **Notes:**
 - Counters are boot-session counters (monotonic until reboot/reset).
@@ -909,7 +791,6 @@ Error response body:
 - No explicit rate limiting implemented
 - BLE operations are serialized (one at a time)
 - GPS updates: 1Hz maximum
-- OBD polling: 1Hz (POLL_INTERVAL_MS = 1000 in obd_handler.h)
 
 ---
 

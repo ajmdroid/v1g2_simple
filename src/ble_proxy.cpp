@@ -3,7 +3,7 @@
  * Handles BLE server mode for proxying V1 data to JBV1/other apps
  *
  * Extracted from ble_client.cpp — proxy server callbacks, forwarding,
- * phone command queue, OBD scan result deferral.
+ * phone command queue.
  */
 
 #include "ble_client.h"
@@ -57,27 +57,6 @@ void V1BLEClient::deferLastV1Address(const char* addr) {
     snprintf(pendingLastV1Address, sizeof(pendingLastV1Address), "%s", addr);
     pendingLastV1AddressValid = true;
     portEXIT_CRITICAL(&pendingAddrMux);
-}
-
-void V1BLEClient::enqueueObdScanResult(const char* name, const char* addr, int rssi) {
-    if (!name || !addr || name[0] == '\0' || addr[0] == '\0') {
-        return;
-    }
-
-    portENTER_CRITICAL(&obdScanMux);
-    if (obdScanCount >= OBD_SCAN_QUEUE_SIZE) {
-        // Drop oldest entry on overflow.
-        obdScanTail = (obdScanTail + 1) % OBD_SCAN_QUEUE_SIZE;
-        obdScanCount--;
-    }
-
-    ObdScanItem& item = obdScanQueue[obdScanHead];
-    snprintf(item.name, sizeof(item.name), "%s", name);
-    snprintf(item.addr, sizeof(item.addr), "%s", addr);
-    item.rssi = rssi;
-    obdScanHead = (obdScanHead + 1) % OBD_SCAN_QUEUE_SIZE;
-    obdScanCount++;
-    portEXIT_CRITICAL(&obdScanMux);
 }
 
 void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) {

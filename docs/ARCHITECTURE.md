@@ -81,10 +81,6 @@ src/
 │   │   ├── signal_capture_module.h/cpp
 │   │   ├── signal_observation_log.h/cpp
 │   │   └── signal_observation_sd_logger.h/cpp
-│   ├── obd/                         OBD API + state policy + runtime state machine
-│   │   ├── obd_api_service.h/cpp
-│   │   ├── obd_runtime_module.h/cpp
-│   │   └── obd_state_policy.h
 │   ├── perf/                        Debug macros
 │   │   └── debug_macros.h
 │   ├── power/                       Battery/power management
@@ -157,10 +153,8 @@ src/
 | **GpsApiService** | GPS lockout REST API endpoints |
 | **Lockout stack** | Capture/observe/store/enforce/learn lockout state with best-effort persistence |
 | **LockoutApiService + LockoutOrchestrationModule** | Lockout REST API + zone CRUD + pre-quiet controller |
-| **ObdApiService + ObdStatePolicy** | OBD API contract and reconnect/backoff policy logic |
-| **ObdRuntimeModule** | OBD auto-connect deferral and runtime process cadence |
 | **PowerModule** | Battery monitoring, power button, sleep |
-| **SpeedSourceSelector** | Runtime speed source arbitration (OBD-only policy) |
+| **SpeedSourceSelector** | Runtime speed source arbitration (GPS-only policy) |
 | **SpeakerQuietSyncModule** | Applies quiet-volume changes to hardware speaker amp |
 | **SystemEventBus** | Bounded loop-local event channel for cross-module coordination |
 | **ParsedFrameEventModule** | Collects parsed-frame signal from BLE queue for display orchestration |
@@ -201,7 +195,7 @@ Migration history is tracked via module commits and [CHANGELOG.md](../CHANGELOG.
 - main.cpp: ~1550 lines (orchestration + module wiring)
 - main_boot.cpp: ~250 lines, main_loop_phases.cpp: ~210 lines, main_persist.cpp: ~445 lines
 - 18 module directories, 156 module files in src/modules/
-- 5 additional extracted core-service files (ble_runtime, obd_runtime, packet_parser_alerts, settings_restore, main_loop_phases)
+- 5 additional extracted core-service files (ble_runtime, packet_parser_alerts, settings_restore, main_loop_phases)
 - 85 native test suites, 934 test cases
 - 8 CI contract scripts with 10 golden-file snapshots
 - State consolidated in owning modules
@@ -300,29 +294,6 @@ call-time data flow (`...Context` for inputs, `...Result` for outputs).
 
 **Examples:** All `Loop*Module` types (`LoopIngestModule`, `LoopConnectionEarlyModule`, …), `WifiRuntimeModule`, `ConnectionRuntimeModule`, `ConnectionStateDispatchModule`, `PeriodicMaintenanceModule`, `VoiceSpeedSyncModule`
 
-### Pattern 4: Inline Pass-by-Reference (Stateless orchestrators)
-
-No `begin()` at all. All dependencies are passed to `process()` on every call.
-Used for thin orchestrator modules that hold minimal state:
-
-```cpp
-class ObdRuntimeModule {
-public:
-    void process(unsigned long nowMs,
-                 bool obdServiceEnabled,
-                 bool& obdAutoConnectPending,
-                 unsigned long obdAutoConnectAtMs,
-                 OBDHandler& obdHandler,
-                 SpeedSourceSelector& speedSourceSelector);
-};
-```
-
-**Use when:**
-- Module is a thin state-gate with no persistent dependency graph
-- All inputs are naturally available at the call site each loop iteration
-
-**Example:** `ObdRuntimeModule`
-
 ### Choosing a Pattern
 
 | Scenario | Pattern | Reason |
@@ -331,7 +302,6 @@ public:
 | Send BLE commands | Direct pointers | Calling methods |
 | Toggle WiFi from touch | Callbacks | Crosses boundaries |
 | Loop-phase orchestration | Providers | Narrow fn interface, no heap |
-| Thin gating with no setup | Pass-by-ref | Stateless, all deps at call site |
 
 ### Testing Implications
 
@@ -360,12 +330,6 @@ LoopConnectionEarlyModule::Providers hooks{
     },
     .connectionRuntimeContext = &fixture,
 };
-```
-
-**Pass-by-ref:** Call `process()` directly with test-local objects:
-```cpp
-ObdRuntimeModule mod;
-mod.process(1000, true, pending, 0, mockObd, mockSelector);
 ```
 
 ## What This Enables

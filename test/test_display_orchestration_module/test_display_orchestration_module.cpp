@@ -9,7 +9,6 @@
 #include "../mocks/packet_parser.h"
 #include "../mocks/settings.h"
 #include "../mocks/modules/gps/gps_runtime_module.h"
-#include "../mocks/obd_handler.h"
 #include "../mocks/modules/lockout/lockout_orchestration_module.h"
 
 #ifndef ARDUINO
@@ -28,7 +27,6 @@ static DisplayPreviewModule preview;
 static DisplayRestoreModule restore;
 static PacketParser parser;
 static GpsRuntimeModule gpsRuntime;
-static OBDHandler obdHandler;
 static LockoutOrchestrationModule lockout;
 static DisplayOrchestrationModule module;
 
@@ -41,7 +39,6 @@ static void beginModule() {
                  &parser,
                  &settingsManager,
                  &gpsRuntime,
-                 &obdHandler,
                  &lockout);
 }
 
@@ -53,7 +50,6 @@ void setUp() {
     restore = DisplayRestoreModule{};
     parser.reset();
     gpsRuntime = GpsRuntimeModule{};
-    obdHandler = OBDHandler{};
     lockout = LockoutOrchestrationModule{};
     settingsManager = SettingsManager{};
     beginModule();
@@ -101,14 +97,11 @@ void test_process_early_updates_preview_or_restore_path() {
 void test_parsed_frame_sets_status_indicators_and_requests_pipeline() {
     ble.setConnected(true);
     ble.setProxyConnected(false);
-    settingsManager.settings.obdEnabled = true;
     gpsRuntime.nextSnapshot.enabled = true;
     gpsRuntime.nextSnapshot.hasFix = true;
     gpsRuntime.nextSnapshot.stableHasFix = true;
     gpsRuntime.nextSnapshot.satellites = 9;
     gpsRuntime.nextSnapshot.stableSatellites = 9;
-    obdHandler.setConnected(true);
-    obdHandler.setValidData(true);
     lockout.nextResult.prioritySuppressed = true;
 
     DisplayOrchestrationParsedContext ctx;
@@ -124,13 +117,9 @@ void test_parsed_frame_sets_status_indicators_and_requests_pipeline() {
     TEST_ASSERT_TRUE(result.runDisplayPipeline);
     TEST_ASSERT_EQUAL(1, lockout.processCalls);
     TEST_ASSERT_EQUAL(1, display.setGpsSatellitesCalls);
-    TEST_ASSERT_EQUAL(1, display.setObdConnectedCalls);
     TEST_ASSERT_TRUE(display.lastGpsEnabled);
     TEST_ASSERT_TRUE(display.lastGpsHasFix);
     TEST_ASSERT_EQUAL(9, display.lastGpsSatellites);
-    TEST_ASSERT_TRUE(display.lastObdEnabled);
-    TEST_ASSERT_TRUE(display.lastObdConnected);
-    TEST_ASSERT_TRUE(display.lastObdHasData);
 }
 
 void test_parsed_frame_skips_pipeline_when_preview_running() {

@@ -6,11 +6,10 @@ struct LoopPreIngestContext {
     uint32_t nowMs = 0;
     bool bootReady = false;
     uint32_t bootReadyDeadlineMs = 0;
-    bool obdServiceEnabled = false;
     bool replayMode = false;
 
     void (*openBootReadyGate)(uint32_t nowMs) = nullptr;
-    void (*runWifiPriorityApply)(uint32_t nowMs, bool obdServiceEnabled) = nullptr;
+    void (*runWifiPriorityApply)(uint32_t nowMs) = nullptr;
     void (*runDebugApiProcess)(uint32_t nowMs) = nullptr;
 };
 
@@ -27,7 +26,7 @@ public:
         void (*openBootReadyGate)(void* ctx, uint32_t nowMs) = nullptr;
         void* bootReadyContext = nullptr;
 
-        void (*runWifiPriorityApply)(void* ctx, uint32_t nowMs, bool obdServiceEnabled) = nullptr;
+        void (*runWifiPriorityApply)(void* ctx, uint32_t nowMs) = nullptr;
         void* wifiPriorityContext = nullptr;
 
         void (*runDebugApiProcess)(void* ctx, uint32_t nowMs) = nullptr;

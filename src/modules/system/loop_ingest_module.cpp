@@ -62,18 +62,6 @@ LoopIngestResult LoopIngestModule::process(const LoopIngestContext& ctx) {
     result.skipLateNonCoreThisLoop = ctx.skipNonCoreThisLoop || result.bleBackpressure;
     result.overloadLateThisLoop = ctx.overloadThisLoop || result.bleBackpressure;
 
-    if (providers.runObdRuntime) {
-        if (providers.timestampUs && providers.recordObdUs && ctx.obdServiceEnabled) {
-            const uint32_t startUs = providers.timestampUs(providers.timestampContext);
-            providers.runObdRuntime(providers.obdRuntimeContext, ctx.nowMs, ctx.obdServiceEnabled);
-            providers.recordObdUs(
-                providers.obdPerfContext,
-                providers.timestampUs(providers.timestampContext) - startUs);
-        } else {
-            providers.runObdRuntime(providers.obdRuntimeContext, ctx.nowMs, ctx.obdServiceEnabled);
-        }
-    }
-
     if (providers.runGpsRuntimeUpdate) {
         if (providers.timestampUs && providers.recordGpsUs) {
             const uint32_t startUs = providers.timestampUs(providers.timestampContext);

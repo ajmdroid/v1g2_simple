@@ -215,8 +215,6 @@ void SettingsManager::backupToSD() {
     doc["wifiClientSSID"] = settings.wifiClientSSID;
     doc["proxyBLE"] = settings.proxyBLE;
     doc["proxyName"] = settings.proxyName;
-    doc["obdEnabled"] = settings.obdEnabled;
-    doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["gpsEnabled"] = settings.gpsEnabled;
     doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
     doc["gpsLockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
@@ -271,7 +269,6 @@ void SettingsManager::backupToSD() {
     doc["colorRssiProxy"] = settings.colorRssiProxy;
     doc["colorLockout"] = settings.colorLockout;
     doc["colorGps"] = settings.colorGps;
-    doc["colorObd"] = settings.colorObd;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
     
     // === UI Toggle Settings ===
@@ -282,7 +279,6 @@ void SettingsManager::backupToSD() {
     doc["hideBleIcon"] = settings.hideBleIcon;
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
     doc["hideRssiIndicator"] = settings.hideRssiIndicator;
-    doc["showRestTelemetryCards"] = settings.showRestTelemetryCards;
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
     doc["enableSignalTraceLogging"] = settings.enableSignalTraceLogging;
     

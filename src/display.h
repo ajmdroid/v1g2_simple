@@ -103,9 +103,6 @@ public:
     // State is refreshed by display lightweight update paths.
     void setGpsSatellites(bool enabled, bool hasFix, uint8_t satellites);
 
-    // OBD connected indicator — shows "OBD" badge when enabled, connected, and polling.
-    void setObdConnected(bool enabled, bool connected, bool hasData);
-
     // Pre-quiet active flag — suppresses VOL 0 warning when volume was
     // intentionally dropped by the lockout pre-quiet feature.
     void setPreQuietActive(bool active);
@@ -177,7 +174,6 @@ private:
     void drawMuteIcon(bool muted);
     void drawLockoutIndicator();
     void drawGpsIndicator();
-    void drawObdIndicator();
     int measureSevenSegmentText(const char* text, float scale) const;
     int drawSevenSegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);
     void drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
@@ -187,7 +183,7 @@ private:
     
     // Multi-alert card row
     void drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);
-    // Resting telemetry cards (OBD oil temp, IAT, voltage)
+    // Resting telemetry cards
     bool drawRestTelemetryCards(bool forceRedraw = false);
     // Use centralized constant from display_layout.h
     static constexpr int SECONDARY_ROW_HEIGHT = DisplayLayout::SECONDARY_ROW_HEIGHT;
@@ -222,9 +218,6 @@ private:
     bool gpsSatEnabled_ = false;           // GPS module enabled
     bool gpsSatHasFix_ = false;            // GPS has satellite fix
     uint8_t gpsSatCount_ = 0;              // Satellite count for display
-    bool obdEnabled_ = false;              // OBD service enabled
-    bool obdConnected_ = false;            // OBD adapter connected
-    bool obdHasData_ = false;              // OBD polling with valid data
     DisplayBleContext bleCtx_;              // BLE state snapshot for display DI
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout

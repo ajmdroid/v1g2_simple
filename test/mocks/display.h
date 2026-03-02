@@ -63,10 +63,6 @@ public:
     bool lastGpsEnabled = false;
     bool lastGpsHasFix = false;
     uint8_t lastGpsSatellites = 0;
-    int setObdConnectedCalls = 0;
-    bool lastObdEnabled = false;
-    bool lastObdConnected = false;
-    bool lastObdHasData = false;
     int refreshFrequencyOnlyCalls = 0;
     uint32_t lastFrequencyMHz = 0;
     int lastFrequencyBand = 0;
@@ -106,10 +102,6 @@ public:
         lastGpsEnabled = false;
         lastGpsHasFix = false;
         lastGpsSatellites = 0;
-        setObdConnectedCalls = 0;
-        lastObdEnabled = false;
-        lastObdConnected = false;
-        lastObdHasData = false;
         refreshFrequencyOnlyCalls = 0;
         lastFrequencyMHz = 0;
         lastFrequencyBand = 0;
@@ -176,13 +168,6 @@ public:
         lastGpsEnabled = enabled;
         lastGpsHasFix = hasFix;
         lastGpsSatellites = satellites;
-    }
-
-    void setObdConnected(bool enabled, bool connected, bool hasData) {
-        setObdConnectedCalls++;
-        lastObdEnabled = enabled;
-        lastObdConnected = connected;
-        lastObdHasData = hasData;
     }
 
     void refreshFrequencyOnly(uint32_t freqMHz, int band, bool muted, bool isPhotoRadar = false) {

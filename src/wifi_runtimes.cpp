@@ -12,7 +12,6 @@
 #include "v1_devices.h"
 #include "audio_beep.h"
 #include "battery_manager.h"
-#include "obd_handler.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/lockout/lockout_band_policy.h"
@@ -204,12 +203,6 @@ WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
         [this]() -> V1Settings& {
             return settingsManager.mutableSettings();
         },
-        [this]() {
-            obdHandler.stopScan();
-        },
-        [this]() {
-            obdHandler.disconnect();
-        },
         [this](bool enabled) {
             gpsRuntimeModule.setEnabled(enabled);
         },
@@ -306,15 +299,6 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
         },
         [this]() {
             display.forceNextRedraw();
-        },
-        [this](bool enabled) {
-            obdHandler.setVwDataEnabled(enabled);
-        },
-        [this]() {
-            obdHandler.stopScan();
-        },
-        [this]() {
-            obdHandler.disconnect();
         },
         [this](bool enabled) {
             gpsRuntimeModule.setEnabled(enabled);

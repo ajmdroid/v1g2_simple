@@ -16,7 +16,6 @@ enum class SystemEventType : uint8_t {
     BLE_CONNECTED = 2,
     BLE_DISCONNECTED = 3,
     GPS_UPDATED = 16,
-    OBD_UPDATED = 17,
 };
 
 struct SystemEvent {

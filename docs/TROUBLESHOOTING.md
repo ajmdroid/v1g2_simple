@@ -10,10 +10,8 @@ Quick solutions for common issues with the V1-Simple device.
 2. [Display Problems](#display-problems)
 3. [GPS Issues](#gps-issues)
 4. [Auto-Lockout Issues](#auto-lockout-issues)
-5. [OBD/Speed Issues](#obdspeed-issues)
-6. [Audio Problems](#audio-problems)
-7. [Performance Issues](#performance-issues)
-8. [Factory Reset](#factory-reset)
+5. [Audio Problems](#audio-problems)
+7. [Factory Reset](#factory-reset)
 
 ---
 
@@ -124,8 +122,7 @@ Quick solutions for common issues with the V1-Simple device.
 
 **Solutions**:
 1. **This is normal**: Vehicle speedometers typically read 2-5% high
-2. **Use OBD**: OBD speed is more accurate than GPS in some conditions
-3. **Check units**: Ensure both are showing same units (mph/kph)
+2. **Check units**: Ensure both are showing same units (mph/kph)
 
 ---
 
@@ -162,40 +159,6 @@ Quick solutions for common issues with the V1-Simple device.
 2. **Check unlearn count**: May need multiple brake taps
 3. **Use web UI**: Delete via GPS page in web interface
 4. **Clear all**: Last resort - clear all lockouts
-
----
-
-## OBD/Speed Issues
-
-### Can't find OBD device
-
-**Symptoms**: Scan shows no devices
-
-**Solutions**:
-1. **Check OBD adapter**: Ensure it's plugged in and has power LED
-2. **Compatible adapter**: Must be ELM327 Bluetooth (not WiFi)
-3. **Engine on**: Some adapters need engine running
-4. **Scan longer**: Some adapters are slow to advertise
-
-### OBD speed shows 0 or wrong value
-
-**Symptoms**: Speed doesn't update or is incorrect
-
-**Solutions**:
-1. **Check vehicle compatibility**: Not all vehicles support speed PID
-2. **Engine running**: Speed only works with engine on
-3. **Wait for warmup**: Some ECUs need 30 seconds to report
-4. **Try different adapter**: Some cheap adapters have issues
-
-### OBD disconnects frequently
-
-**Symptoms**: Connects but drops after a few minutes
-
-**Solutions**:
-1. **Check adapter position**: Ensure firm connection to OBD port
-2. **Reduce distance**: Keep V1-Simple closer to OBD port
-3. **Check interference**: V1 BLE can interfere; try different positions
-4. **Check adapter quality**: Cheap clones may have weak Bluetooth
 
 ---
 
@@ -253,7 +216,7 @@ Quick solutions for common issues with the V1-Simple device.
 **Solutions**:
 1. **Restart device**: Clears fragmented memory
 2. **Reduce lockouts**: Large lockout databases use RAM
-3. **Disable unused features**: GPS, OBD, proxy mode
+3. **Disable unused features**: GPS, proxy mode
 4. **Update firmware**: Memory optimizations in newer versions
 
 ---

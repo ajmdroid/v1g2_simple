@@ -9,7 +9,6 @@
 #include <string>
 #include <WiFi.h>
 #include "settings.h"
-#include "obd_handler.h"
 #include "../include/config.h"
 #include "../include/ble_internals.h"
 
@@ -130,27 +129,6 @@ void V1BLEClient::process() {
         if (shouldWrite) {
             settingsManager.setLastV1Address(addrCopy);
         }
-    }
-    if (pendingObdScanComplete) {
-        pendingObdScanComplete = false;
-        obdHandler.onScanComplete();
-    }
-    // Drain deferred OBD scan results in main loop context.
-    while (obdScanCount > 0) {
-        ObdScanItem item;
-        bool haveItem = false;
-        portENTER_CRITICAL(&obdScanMux);
-        if (obdScanCount > 0) {
-            item = obdScanQueue[obdScanTail];
-            obdScanTail = (obdScanTail + 1) % OBD_SCAN_QUEUE_SIZE;
-            obdScanCount--;
-            haveItem = true;
-        }
-        portEXIT_CRITICAL(&obdScanMux);
-        if (!haveItem) {
-            break;
-        }
-        obdHandler.onDeviceFoundDeferred(item.name, item.addr, item.rssi);
     }
     // Process phone->V1 commands (up to queue size per loop to drain any backlog)
     // Each call processes one command to minimize mutex hold time during BLE writes
@@ -413,22 +391,6 @@ void V1BLEClient::startScanning() {
             }
         }
     }
-}
-
-void V1BLEClient::startOBDScan() {
-    NimBLEScan* pScan = NimBLEDevice::getScan();
-    if (!pScan) {
-        return;
-    }
-
-    if (!pScan->isScanning()) {
-        Serial.println("[BLE] Starting OBD device scan (30 seconds)...");
-        pScan->clearResults();
-        pScan->start(30000, false, false);
-        return;
-    }
-
-    Serial.println("[BLE] Scan already in progress - OBD devices will be collected");
 }
 
 bool V1BLEClient::isScanning() {

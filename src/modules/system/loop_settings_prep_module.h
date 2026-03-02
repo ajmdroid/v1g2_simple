@@ -3,7 +3,6 @@
 #include <stdint.h>
 
 struct LoopSettingsPrepValues {
-    bool obdServiceEnabled = false;
     bool enableWifiAtBoot = false;
     bool enableSignalTraceLogging = false;
 };

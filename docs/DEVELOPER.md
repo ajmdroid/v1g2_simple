@@ -77,7 +77,6 @@ void setup() {
 The ESP32 has a single shared radio for WiFi and BLE. Rules:
 
 - BLE scan duty cycle is currently tuned to 75% (`interval=160`, `window=120`) for reliable V1 discovery on ESP32-S3
-- OBD auto-connect is deferred by 1.5s after V1 connect to avoid competing with initial V1 stabilization
 - WiFi scans are non-blocking but still contend with BLE airtime
 
 ---
@@ -125,7 +124,6 @@ Use for:
 
 ```cpp
 Serial.println("[BLE] Connected!");
-Serial.printf("[OBD] Speed: %d km/h\n", speed);
 ```
 
 ### Perf CSV Logger (`/perf/perf_boot_<id>.csv`)
@@ -320,7 +318,7 @@ declared `extern` so all display sub-modules can read/write it.
 
 **Flags** (all `bool`, default `false`):
 `frequency`, `battery`, `bands`, `signalBars`, `arrow`, `muteIcon`,
-`topCounter`, `lockout`, `gpsIndicator`, `obdIndicator`, `cards`,
+`topCounter`, `lockout`, `gpsIndicator`, `cards`,
 `multiAlert`, `resetTracking`
 
 `drawBaseFrame()` calls `dirty.setAll()` after a full screen clear to force
@@ -464,7 +462,6 @@ void V1Display::updateSomething(bool active) {
 
 - [ ] Connect/disconnect V1 10 times
 - [ ] Let run for 30+ minutes without disconnect
-- [ ] Test OBD connection with V1 connected
 - [ ] Test reconnection after power cycle
 
 ### Before Committing Settings Changes

@@ -117,8 +117,6 @@ bool backupAppearsInSyncWithNvs(const JsonDocument& doc, const V1Settings& curre
         backupFieldMatchesString(doc, "wifiClientSSID", current.wifiClientSSID) &&
         backupFieldMatchesBool(doc, "proxyBLE", current.proxyBLE) &&
         backupFieldMatchesString(doc, "proxyName", current.proxyName) &&
-        backupFieldMatchesBool(doc, "obdEnabled", current.obdEnabled) &&
-        backupFieldMatchesBool(doc, "obdVwDataEnabled", current.obdVwDataEnabled) &&
         backupFieldMatchesBool(doc, "gpsEnabled", current.gpsEnabled) &&
         backupFieldMatchesInt(doc, "brightness", current.brightness) &&
         backupFieldMatchesInt(doc, "displayStyle", static_cast<int>(current.displayStyle)) &&
@@ -338,7 +336,6 @@ bool SettingsManager::checkNeedsRestore() {
     // These keys exist in all modern schemas and should never disappear in a healthy namespace.
     static constexpr const char* kCriticalKeys[] = {
         "gpsEn",
-        "camEn",
         "proxyBLE",
         "proxyName",
         "brightness",
@@ -452,8 +449,6 @@ bool SettingsManager::restoreFromSD() {
     settings.wifiMode = settings.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
     restoreBool("proxyBLE", settings.proxyBLE);
     if (doc["proxyName"].is<const char*>()) settings.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
-    restoreBool("obdEnabled", settings.obdEnabled);
-    restoreBool("obdVwDataEnabled", settings.obdVwDataEnabled);
     restoreBool("gpsEnabled", settings.gpsEnabled);
     if (doc["gpsLockoutMode"].is<int>()) {
         settings.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
@@ -556,7 +551,6 @@ bool SettingsManager::restoreFromSD() {
     if (doc["colorRssiProxy"].is<int>()) settings.colorRssiProxy = doc["colorRssiProxy"];
     if (doc["colorLockout"].is<int>()) settings.colorLockout = doc["colorLockout"];
     if (doc["colorGps"].is<int>()) settings.colorGps = doc["colorGps"];
-    if (doc["colorObd"].is<int>()) settings.colorObd = doc["colorObd"];
     restoreBool("freqUseBandColor", settings.freqUseBandColor);
     
     // === UI Toggles ===
@@ -567,7 +561,6 @@ bool SettingsManager::restoreFromSD() {
     restoreBool("hideBleIcon", settings.hideBleIcon);
     restoreBool("hideVolumeIndicator", settings.hideVolumeIndicator);
     restoreBool("hideRssiIndicator", settings.hideRssiIndicator);
-    restoreBool("showRestTelemetryCards", settings.showRestTelemetryCards);
     restoreBool("enableWifiAtBoot", settings.enableWifiAtBoot);
     restoreBool("enableSignalTraceLogging", settings.enableSignalTraceLogging);
     

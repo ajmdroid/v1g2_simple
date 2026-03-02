@@ -14,7 +14,6 @@
 #include "settings.h"
 #include "battery_manager.h"
 #include "wifi_manager.h"
-#include "obd_handler.h"
 #include "storage_manager.h"
 #include "audio_beep.h"
 #include "perf_metrics.h"
@@ -335,8 +334,8 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool 
 }
 
 // drawBaseFrame(), setLockoutIndicator(), setPreQuietActive(),
-// drawLockoutIndicator(), setGpsSatellites(), drawGpsIndicator(),
-// setObdConnected(), drawObdIndicator() moved to display_indicators.cpp (Phase 2P)
+// drawLockoutIndicator(), setGpsSatellites(), drawGpsIndicator()
+// moved to display_indicators.cpp (Phase 2P)
 
 // drawSevenSegmentDigit(), measureSevenSegmentText(), drawSevenSegmentText(),
 // draw14SegmentDigit(), draw14SegmentText(), drawTopCounterClassic(),

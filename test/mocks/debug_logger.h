@@ -6,7 +6,6 @@ enum class DebugLogCategory {
     Wifi,
     Ble,
     Gps,
-    Obd,
     Alerts,
     Display,
     PerfMetrics

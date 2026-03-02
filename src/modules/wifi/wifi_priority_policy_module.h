@@ -2,7 +2,6 @@
 
 #include <Arduino.h>
 
-class OBDHandler;
 class V1BLEClient;
 class WiFiManager;
 
@@ -17,12 +16,9 @@ public:
     void reset();
 
     void apply(unsigned long nowMs,
-               bool obdServiceEnabled,
                V1BLEClient& bleClient,
-               WiFiManager& wifiManager,
-               OBDHandler& obdHandler);
+               WiFiManager& wifiManager);
 
 private:
     unsigned long wifiPriorityLastTransitionMs = 0;
-    unsigned long obdBleCriticalHoldUntilMs = 0;
 };

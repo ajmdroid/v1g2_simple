@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 BLE Scanner - Scan for BLE devices and dump their services/characteristics.
-Useful for identifying OBD adapter service UUIDs.
+Useful for identifying BLE device service UUIDs.
 
 Usage:
     python tools/ble_scan.py                    # Scan for 10 seconds, list devices
-    python tools/ble_scan.py --connect "OBDII"  # Connect to device containing "OBDII" and dump services
+    python tools/ble_scan.py --connect "V1"      # Connect to device containing "V1" and dump services
     python tools/ble_scan.py --address XX:XX:XX:XX:XX:XX  # Connect by address
 """
 
@@ -16,15 +16,9 @@ from bleak import BleakScanner, BleakClient
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
-# Known OBD adapter name patterns
-OBD_PATTERNS = ["OBDLINK", "OBD", "ELM", "VEEPEAK", "VLINK", "IOS-VLINK", "ANDROID-VLINK", 
-                "KONNWEI", "VGATE", "ICAR", "VIECAR", "ZURICH", "ZR-BT", "INNOVA", 
-                "HT500", "BLCKTEC", "BLUEDRIVER"]
-
 # Known service UUIDs
 KNOWN_SERVICES = {
     "6e400001-b5a3-f393-e0a9-e50e24dcca9e": "Nordic UART Service (NUS)",
-    "0000fff0-0000-1000-8000-00805f9b34fb": "FFF0 (OBDLink CX UART)",
     "0000ffe0-0000-1000-8000-00805f9b34fb": "FFE0 (Common BLE UART)",
     "00001800-0000-1000-8000-00805f9b34fb": "Generic Access",
     "00001801-0000-1000-8000-00805f9b34fb": "Generic Attribute",
@@ -50,14 +44,6 @@ def format_uuid(uuid_str: str) -> str:
     return uuid_str
 
 
-def is_obd_device(name: str) -> bool:
-    """Check if device name matches known OBD patterns."""
-    if not name:
-        return False
-    upper = name.upper()
-    return any(pattern in upper for pattern in OBD_PATTERNS)
-
-
 def format_properties(char) -> str:
     """Format characteristic properties."""
     props = []
@@ -77,8 +63,7 @@ async def scan_devices(duration: float = 10.0) -> list[BLEDevice]:
         if device.address not in devices_found:
             devices_found[device.address] = (device, adv)
             name = device.name or "(no name)"
-            obd_marker = " [OBD?]" if is_obd_device(device.name) else ""
-            print(f"  Found: {name:<25} [{device.address}] RSSI:{adv.rssi:>4}dBm{obd_marker}")
+            print(f"  Found: {name:<25} [{device.address}] RSSI:{adv.rssi:>4}dBm")
             
             # Show advertised service UUIDs if any
             if adv.service_uuids:
@@ -92,13 +77,6 @@ async def scan_devices(duration: float = 10.0) -> list[BLEDevice]:
     
     print("-" * 60)
     print(f"Found {len(devices_found)} devices total")
-    
-    # Highlight likely OBD devices
-    obd_devices = [(d, a) for d, a in devices_found.values() if is_obd_device(d.name)]
-    if obd_devices:
-        print("\n🔧 Likely OBD adapters:")
-        for device, adv in obd_devices:
-            print(f"   {device.name} [{device.address}] RSSI:{adv.rssi}dBm")
     
     return list(devices_found.values())
 
@@ -152,7 +130,7 @@ async def connect_and_dump(device: BLEDevice | str):
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="BLE Scanner for OBD adapters")
+    parser = argparse.ArgumentParser(description="BLE Scanner for nearby devices")
     parser.add_argument("--connect", "-c", type=str, help="Connect to device containing this name")
     parser.add_argument("--address", "-a", type=str, help="Connect to device by address")
     parser.add_argument("--duration", "-d", type=float, default=10.0, help="Scan duration (seconds)")

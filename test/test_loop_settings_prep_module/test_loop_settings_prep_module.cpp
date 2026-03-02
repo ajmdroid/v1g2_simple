@@ -80,7 +80,6 @@ void test_runtime_callbacks_path_runs_tap_then_reads_settings() {
     LoopSettingsPrepModule::Providers providers;
     module.begin(providers);
 
-    runtimeValues.obdServiceEnabled = true;
     runtimeValues.enableWifiAtBoot = true;
     runtimeValues.enableSignalTraceLogging = false;
 
@@ -97,7 +96,6 @@ void test_runtime_callbacks_path_runs_tap_then_reads_settings() {
     TEST_ASSERT_EQUAL(0, providerSettingsCalls);
     TEST_ASSERT_EQUAL(123u, tapNowMs);
 
-    TEST_ASSERT_TRUE(result.obdServiceEnabled);
     TEST_ASSERT_TRUE(result.enableWifiAtBoot);
     TEST_ASSERT_FALSE(result.enableSignalTraceLogging);
 
@@ -112,7 +110,6 @@ void test_provider_fallback_path_runs_tap_then_reads_settings() {
     providers.readSettingsValues = readProviderSettings;
     module.begin(providers);
 
-    providerValues.obdServiceEnabled = false;
     providerValues.enableWifiAtBoot = true;
     providerValues.enableSignalTraceLogging = true;
 
@@ -127,7 +124,6 @@ void test_provider_fallback_path_runs_tap_then_reads_settings() {
     TEST_ASSERT_EQUAL(1, providerSettingsCalls);
     TEST_ASSERT_EQUAL(456u, tapNowMs);
 
-    TEST_ASSERT_FALSE(result.obdServiceEnabled);
     TEST_ASSERT_TRUE(result.enableWifiAtBoot);
     TEST_ASSERT_TRUE(result.enableSignalTraceLogging);
 
@@ -141,7 +137,6 @@ void test_runtime_read_overrides_provider_read() {
     providers.readSettingsValues = readProviderSettings;
     module.begin(providers);
 
-    runtimeValues.obdServiceEnabled = true;
     runtimeValues.enableWifiAtBoot = false;
     runtimeValues.enableSignalTraceLogging = true;
 
@@ -152,7 +147,6 @@ void test_runtime_read_overrides_provider_read() {
 
     TEST_ASSERT_EQUAL(1, runtimeSettingsCalls);
     TEST_ASSERT_EQUAL(0, providerSettingsCalls);
-    TEST_ASSERT_TRUE(result.obdServiceEnabled);
     TEST_ASSERT_FALSE(result.enableWifiAtBoot);
     TEST_ASSERT_TRUE(result.enableSignalTraceLogging);
 }
@@ -164,7 +158,6 @@ void test_empty_providers_and_context_returns_defaults() {
     LoopSettingsPrepContext ctx;
     const LoopSettingsPrepValues result = module.process(ctx);
 
-    TEST_ASSERT_FALSE(result.obdServiceEnabled);
     TEST_ASSERT_FALSE(result.enableWifiAtBoot);
     TEST_ASSERT_FALSE(result.enableSignalTraceLogging);
     TEST_ASSERT_EQUAL(0, runtimeTapCalls);

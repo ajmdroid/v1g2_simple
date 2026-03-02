@@ -1023,7 +1023,7 @@
 		subtitle="Dedicated lockout controls and observability with safety-gated runtime and learner tuning."
 	>
 		<div class="flex gap-2">
-			<a href="/integrations" class="btn btn-outline btn-sm">OBD & GPS</a>
+			<a href="/integrations" class="btn btn-outline btn-sm">GPS</a>
 			<button class="btn btn-outline btn-sm" onclick={refreshAll}>Refresh All</button>
 		</div>
 	</PageHeader>

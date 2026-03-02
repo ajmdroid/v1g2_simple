@@ -161,9 +161,6 @@ constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default O
 extern portMUX_TYPE pendingAddrMux;
 // Spinlock for proxy command telemetry (avoid Serial in BLE callback)
 extern portMUX_TYPE proxyCmdMux;
-// Spinlock for deferring OBD scan results from BLE scan callbacks
-extern portMUX_TYPE obdScanMux;
-
 // Instance pointer for callbacks
 extern V1BLEClient* instancePtr;
 

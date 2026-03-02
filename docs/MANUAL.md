@@ -184,7 +184,6 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 | `packet_parser.cpp` | ~844 | ESP packet framing and decoding |
 | `storage_manager.cpp` | ~118 | SD/LittleFS mount abstraction |
 | `touch_handler.cpp` | ~178 | AXS15231B I2C touch polling |
-| `obd_handler.cpp` + `obd_connection.cpp` + `obd_protocol.cpp` + `obd_persistence.cpp` | ~2444 | OBD-II via ELM327 BLE adapter (vehicle speed) |
 | `src/modules/` (75 .cpp files, 18 dirs) | ~21k | Runtime modules for GPS, lockout, display pipeline, voice, power, WiFi API services, etc. |
 | `perf_metrics.cpp` | ~813 | Latency tracking (ArduinoJson) |
 
@@ -962,10 +961,10 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 | `/colors` | `colors/+page.svelte` | Color customization |
 | `/autopush` | `autopush/+page.svelte` | Auto-push slot configuration |
 | `/profiles` | `profiles/+page.svelte` | V1 profile management |
-| `/gps` | `gps/+page.svelte` | GPS, OBD, and auto-lockout settings |
+| `/gps` | `gps/+page.svelte` | GPS and auto-lockout settings |
 | `/devices` | `devices/+page.svelte` | Known V1 device management |
 | `/lockouts` | `lockouts/+page.svelte` | GPS lockout zone management and observation log |
-| `/integrations` | `integrations/+page.svelte` | OBD and external integration settings |
+| `/integrations` | `integrations/+page.svelte` | GPS and external integration settings |
 | `/dev` | `dev/+page.svelte` | Debug tools: metrics, perf files, V1 scenarios, panic log |
 
 ### Settings Page (`/settings`)
@@ -1004,11 +1003,10 @@ Voice alerts announce through the built-in speaker when no phone app is connecte
 
 **Source:** [interface/src/routes/audio/+page.svelte](interface/src/routes/audio/+page.svelte)
 
-### GPS & OBD Page (`/gps`)
+### GPS Page (`/gps`)
 
 Controls:
 - **GPS Module:** Enable/disable GPS for location-based features (auto-detects within 60s)
-- **OBD-II Module:** Enable/disable ELM327 BLE adapter for vehicle speed (auto-detects within 60s)
 
 **Auto-Lockout Settings (JBV1-style):**
 - **Enable Auto-Lockout:** Master toggle for automatic false alert learning

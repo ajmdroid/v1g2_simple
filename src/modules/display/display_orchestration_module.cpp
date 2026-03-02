@@ -9,7 +9,6 @@
 #include "packet_parser.h"
 #include "settings.h"
 #include "modules/gps/gps_runtime_module.h"
-#include "obd_handler.h"
 #include "modules/lockout/lockout_orchestration_module.h"
 #endif
 
@@ -21,7 +20,6 @@ void DisplayOrchestrationModule::begin(V1Display* displayPtr,
                                        PacketParser* parserPtr,
                                        SettingsManager* settingsManager,
                                        GpsRuntimeModule* gpsModule,
-                                       OBDHandler* obdModule,
                                        LockoutOrchestrationModule* lockoutModule) {
     display = displayPtr;
     ble = bleClient;
@@ -31,7 +29,6 @@ void DisplayOrchestrationModule::begin(V1Display* displayPtr,
     parser = parserPtr;
     settings = settingsManager;
     gpsRuntime = gpsModule;
-    obd = obdModule;
     lockout = lockoutModule;
     reset();
 }
@@ -67,7 +64,7 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         const DisplayOrchestrationParsedContext& ctx) {
     DisplayOrchestrationParsedResult result;
     if (!display || !ble || !bleQueue || !preview || !parser || !settings ||
-        !gpsRuntime || !obd || !lockout) {
+        !gpsRuntime || !lockout) {
         return result;
     }
 
@@ -90,9 +87,6 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
                                       gpsStatus.stableSatellites);
             lastGpsSatUpdateMs = ctx.nowMs;
         }
-
-        const bool obdEnabled = settings->get().obdEnabled;
-        display->setObdConnected(obdEnabled, obd->isConnected(), obd->hasValidData());
 
         result.runDisplayPipeline = !preview->isRunning();
         return result;

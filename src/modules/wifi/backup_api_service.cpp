@@ -7,7 +7,6 @@
 #include "../../settings_sanitize.h"
 #include "../../storage_manager.h"
 #include "../../v1_profiles.h"
-#include "../../obd_handler.h"
 #include "../gps/gps_runtime_module.h"
 #include "../gps/gps_lockout_safety.h"
 #include "../lockout/lockout_band_policy.h"
@@ -56,8 +55,6 @@ static void sendBackup(WebServer& server) {
     // BLE settings
     doc["proxyBLE"] = s.proxyBLE;
     doc["proxyName"] = s.proxyName;
-    doc["obdEnabled"] = s.obdEnabled;
-    doc["obdVwDataEnabled"] = s.obdVwDataEnabled;
     doc["gpsEnabled"] = s.gpsEnabled;
     doc["gpsLockoutMode"] = static_cast<int>(s.gpsLockoutMode);
     doc["gpsLockoutCoreGuardEnabled"] = s.gpsLockoutCoreGuardEnabled;
@@ -109,7 +106,6 @@ static void sendBackup(WebServer& server) {
     doc["colorRssiProxy"] = s.colorRssiProxy;
     doc["colorLockout"] = s.colorLockout;
     doc["colorGps"] = s.colorGps;
-    doc["colorObd"] = s.colorObd;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     
     // Display visibility
@@ -120,7 +116,6 @@ static void sendBackup(WebServer& server) {
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
-    doc["showRestTelemetryCards"] = s.showRestTelemetryCards;
     
     // Development
     doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
@@ -288,8 +283,6 @@ static void handleRestore(WebServer& server) {
     if (doc["enableWifi"].is<bool>()) s.enableWifi = doc["enableWifi"];
     if (doc["proxyBLE"].is<bool>()) s.proxyBLE = doc["proxyBLE"];
     if (doc["proxyName"].is<const char*>()) s.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
-    if (doc["obdEnabled"].is<bool>()) s.obdEnabled = doc["obdEnabled"];
-    if (doc["obdVwDataEnabled"].is<bool>()) s.obdVwDataEnabled = doc["obdVwDataEnabled"];
     if (doc["gpsEnabled"].is<bool>()) s.gpsEnabled = doc["gpsEnabled"];
     if (doc["gpsLockoutMode"].is<int>()) {
         s.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
@@ -387,7 +380,6 @@ static void handleRestore(WebServer& server) {
     if (doc["colorRssiProxy"].is<int>()) s.colorRssiProxy = doc["colorRssiProxy"];
     if (doc["colorLockout"].is<int>()) s.colorLockout = doc["colorLockout"];
     if (doc["colorGps"].is<int>()) s.colorGps = doc["colorGps"];
-    if (doc["colorObd"].is<int>()) s.colorObd = doc["colorObd"];
     if (doc["freqUseBandColor"].is<bool>()) s.freqUseBandColor = doc["freqUseBandColor"];
     
     // Display visibility
@@ -398,7 +390,6 @@ static void handleRestore(WebServer& server) {
     if (doc["hideBleIcon"].is<bool>()) s.hideBleIcon = doc["hideBleIcon"];
     if (doc["hideVolumeIndicator"].is<bool>()) s.hideVolumeIndicator = doc["hideVolumeIndicator"];
     if (doc["hideRssiIndicator"].is<bool>()) s.hideRssiIndicator = doc["hideRssiIndicator"];
-    if (doc["showRestTelemetryCards"].is<bool>()) s.showRestTelemetryCards = doc["showRestTelemetryCards"];
     
     // Development
     if (doc["enableWifiAtBoot"].is<bool>()) s.enableWifiAtBoot = doc["enableWifiAtBoot"];
@@ -530,11 +521,6 @@ static void handleRestore(WebServer& server) {
     // Save to flash
     settingsManager.save();
 
-    if (!settingsManager.get().obdEnabled) {
-        obdHandler.stopScan();
-        obdHandler.disconnect();
-    }
-    obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
     gpsRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
     speedSourceSelector.setGpsEnabled(settingsManager.get().gpsEnabled);
     lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);

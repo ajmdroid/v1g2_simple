@@ -7,8 +7,6 @@
 #include "perf_metrics.h"
 #include "settings.h"
 #include "storage_manager.h"
-#include "obd_handler.h"
-#include "modules/obd/obd_api_service.h"
 #include "modules/gps/gps_api_service.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
@@ -435,104 +433,6 @@ void WiFiManager::setupWebServer() {
             makeWifiClientRuntime(),
             rateLimitCallback,
             [this]() { markUiActivity(); });
-    });
-
-    // OBD integration API routes
-    server.on("/api/obd/status", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiStatus(
-            server,
-            obdHandler,
-            bleClient,
-            settingsManager.get(),
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/obd/scan", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiScan(
-            server,
-            obdHandler,
-            bleClient,
-            rateLimitCallback,
-            markUiActivityCallback,
-            [this]() {
-                if (!settingsManager.get().obdEnabled) {
-                    server.send(409, "application/json", "{\"success\":false,\"message\":\"OBD service disabled\"}");
-                    return false;
-                }
-                return true;
-            });
-    });
-    server.on("/api/obd/scan/stop", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiScanStop(
-            server,
-            obdHandler,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/obd/devices", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiDevices(
-            server,
-            obdHandler,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/obd/devices/clear", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiDevicesClear(
-            server,
-            obdHandler,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/obd/connect", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiConnect(
-            server,
-            obdHandler,
-            bleClient,
-            rateLimitCallback,
-            markUiActivityCallback,
-            [this]() {
-                if (!settingsManager.get().obdEnabled) {
-                    server.send(409, "application/json", "{\"success\":false,\"message\":\"OBD service disabled\"}");
-                    return false;
-                }
-                return true;
-            });
-    });
-    server.on("/api/obd/disconnect", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiDisconnect(
-            server,
-            obdHandler,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/obd/config", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiConfig(
-            server,
-            obdHandler,
-            settingsManager,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/obd/remembered", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiRemembered(
-            server,
-            obdHandler,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/obd/remembered/autoconnect", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiRememberedAutoConnect(
-            server,
-            obdHandler,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/obd/forget", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiForget(
-            server,
-            obdHandler,
-            rateLimitCallback,
-            markUiActivityCallback);
     });
 
     // GPS scaffold API routes

@@ -11,7 +11,6 @@ class DisplayRestoreModule;
 class PacketParser;
 class SettingsManager;
 class GpsRuntimeModule;
-class OBDHandler;
 class LockoutOrchestrationModule;
 
 struct DisplayOrchestrationEarlyContext {
@@ -56,7 +55,6 @@ public:
                PacketParser* parserPtr,
                SettingsManager* settingsManager,
                GpsRuntimeModule* gpsModule,
-               OBDHandler* obdModule,
                LockoutOrchestrationModule* lockoutModule);
 
     void reset();
@@ -74,7 +72,6 @@ private:
     PacketParser* parser = nullptr;
     SettingsManager* settings = nullptr;
     GpsRuntimeModule* gpsRuntime = nullptr;
-    OBDHandler* obd = nullptr;
     LockoutOrchestrationModule* lockout = nullptr;
 
     uint32_t lastGpsSatUpdateMs = 0;

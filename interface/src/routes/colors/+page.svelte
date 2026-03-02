@@ -37,7 +37,6 @@
 		rssiProxy: 0x001F, // Blue (Proxy RSSI label)
 		lockout: 0x07E0, // Green (lockout badge "L")
 		gps: 0x07FF, // Cyan (GPS badge "G")
-		obd: 0xFD20, // Orange (OBD badge)
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
@@ -45,7 +44,6 @@
 		hideBleIcon: false,
 		hideVolumeIndicator: false,
 		hideRssiIndicator: false,
-		showRestTelemetryCards: false,
 		brightness: 200  // Display brightness (0-255)
 	});
 	
@@ -107,7 +105,7 @@
 				const data = await res.json();
 				// Ensure all color values are parsed as integers (API might return strings)
 				for (const key of Object.keys(data)) {
-					if (typeof data[key] === 'string' && !['freqUseBandColor', 'hideWifiIcon', 'hideProfileIndicator', 'hideBatteryIcon', 'hideBleIcon', 'hideVolumeIndicator', 'hideRssiIndicator', 'showRestTelemetryCards'].includes(key)) {
+					if (typeof data[key] === 'string' && !['freqUseBandColor', 'hideWifiIcon', 'hideProfileIndicator', 'hideBatteryIcon', 'hideBleIcon', 'hideVolumeIndicator', 'hideRssiIndicator'].includes(key)) {
 						data[key] = parseInt(data[key], 10);
 					}
 				}
@@ -259,7 +257,6 @@
 			params.append('rssiProxy', colors.rssiProxy);
 			params.append('lockout', colors.lockout);
 			params.append('gps', colors.gps);
-			params.append('obd', colors.obd);
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
@@ -267,7 +264,6 @@
 			params.append('hideBleIcon', colors.hideBleIcon);
 			params.append('hideVolumeIndicator', colors.hideVolumeIndicator);
 			params.append('hideRssiIndicator', colors.hideRssiIndicator);
-			params.append('showRestTelemetryCards', colors.showRestTelemetryCards);
 			params.append('brightness', colors.brightness);
 			
 			const res = await fetchWithTimeout('/api/displaycolors', {
@@ -338,15 +334,13 @@
 					rssiProxy: 0x001F,
 					lockout: 0x07E0,
 					gps: 0x07FF,
-					obd: 0xFD20,
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
 					showBatteryPercent: false,
 					hideBleIcon: false,
 					hideVolumeIndicator: false,
-					hideRssiIndicator: false,
-					showRestTelemetryCards: false
+					hideRssiIndicator: false
 				};
 				message = { type: 'success', text: 'Colors reset to defaults!' };
 			}
@@ -863,12 +857,12 @@
 			</div>
 		</div>
 
-		<!-- Lockout, GPS & OBD -->
+		<!-- Lockout & GPS -->
 		<div class="surface-card">
 			<div class="card-body">
 				<CardSectionHead
-					title="Lockout, GPS & OBD"
-					subtitle="Lockout badge, GPS badge, and OBD badge color."
+					title="Lockout & GPS"
+					subtitle="Lockout badge and GPS badge color."
 				/>
 				<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 					<div class="form-control">
@@ -921,32 +915,6 @@
 								class="text-xl font-bold font-mono"
 								style="color: {rgb565ToHex(colors.gps)}"
 							>G</span>
-						</div>
-					</div>
-					<div class="form-control">
-						<label class="label" for="obd-color">
-							<span class="label-text">OBD Badge</span>
-						</label>
-						<div class="flex items-center gap-2">
-							<button
-								id="obd-color"
-								type="button"
-								aria-label="OBD badge color"
-								class="color-swatch-btn md"
-								style="background-color: {rgb565ToHex(colors.obd)}"
-								onclick={() => openPicker('obd', 'OBD Badge')}
-							></button>
-							<input
-								type="text"
-								class="input input-bordered input-xs w-16 font-mono text-xs"
-								value={rgb565ToHexStr(colors.obd)}
-								onchange={(e) => handleHexInput('obd', e.target.value)}
-								title="RGB565 hex (or RGB888)"
-							/>
-							<span
-								class="text-lg font-bold font-mono"
-								style="color: {rgb565ToHex(colors.obd)}"
-							>OBD</span>
 						</div>
 					</div>
 				</div>
@@ -1177,20 +1145,7 @@
 						</label>
 					</div>
 
-					<div class="form-control">
-						<label class="label cursor-pointer">
-							<div>
-								<span class="label-text">Show Rest OBD Cards</span>
-								<p class="copy-caption-soft">Show oil temp, IAT, and voltage cards on resting screen</p>
-							</div>
-							<input
-								type="checkbox"
-								class="toggle toggle-primary"
-								checked={colors.showRestTelemetryCards}
-								onchange={(e) => colors.showRestTelemetryCards = e.target.checked}
-							/>
-						</label>
-					</div>
+
 				</div>
 			</div>
 		

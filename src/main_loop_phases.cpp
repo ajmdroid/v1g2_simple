@@ -60,13 +60,11 @@ LoopIngestPhaseValues processLoopIngestPhase(
     loopSettingsPrepCtx.nowMs = nowMs;
     const LoopSettingsPrepValues loopSettingsPrepValues =
         loopSettingsPrepModule.process(loopSettingsPrepCtx);
-    const bool obdServiceEnabled = loopSettingsPrepValues.obdServiceEnabled;
 
     LoopPreIngestContext loopPreIngestCtx;
     loopPreIngestCtx.nowMs = nowMs;
     loopPreIngestCtx.bootReady = currentBootReady;
     loopPreIngestCtx.bootReadyDeadlineMs = bootReadyDeadlineMs;
-    loopPreIngestCtx.obdServiceEnabled = obdServiceEnabled;
 #ifdef REPLAY_MODE
     loopPreIngestCtx.replayMode = true;
 #endif
@@ -80,7 +78,6 @@ LoopIngestPhaseValues processLoopIngestPhase(
     loopIngestCtx.runBleDrain = runBleDrain;
     loopIngestCtx.skipNonCoreThisLoop = skipNonCoreThisLoop;
     loopIngestCtx.overloadThisLoop = overloadThisLoop;
-    loopIngestCtx.obdServiceEnabled = obdServiceEnabled;
     const LoopIngestResult loopIngestResult = loopIngestModule.process(loopIngestCtx);
 
     LoopIngestPhaseValues values;

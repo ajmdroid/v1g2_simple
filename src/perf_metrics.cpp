@@ -7,7 +7,6 @@
 #include "perf_sd_logger.h"
 #include "storage_manager.h"
 #include "time_service.h"
-#include "obd_handler.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_observation_log.h"
 #include <ArduinoJson.h>
@@ -105,7 +104,6 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     uint32_t largestDma = StorageManager::getCachedLargestDma();
     uint32_t freeDmaCap = heap_caps_get_free_size(MALLOC_CAP_DMA);
     uint32_t largestDmaCap = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
-    OBDPerfSnapshot obdPerf = obdHandler.getPerfSnapshot();
     GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
     GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
 
@@ -125,15 +123,6 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.disc = perfCounters.disconnects.load(std::memory_order_relaxed);
     snapshot.reconn = perfCounters.reconnects.load(std::memory_order_relaxed);
 
-    snapshot.obdState = obdPerf.state;
-    snapshot.obdConnected = obdPerf.connected;
-    snapshot.obdScanActive = obdPerf.scanActive;
-    snapshot.obdHasValidData = obdPerf.hasValidData;
-    snapshot.obdSampleAgeMs = obdPerf.sampleAgeMs;
-    snapshot.obdSpeedMphX10 = obdPerf.speedMphX10;
-    snapshot.obdConnFailures = obdPerf.connectionFailures;
-    snapshot.obdPollFailStreak = obdPerf.consecutivePollFailures;
-    snapshot.obdNotifyDrops = obdPerf.notifyDrops;
     snapshot.alertPersistStarts = perfCounters.alertPersistStarts.load(std::memory_order_relaxed);
     snapshot.alertPersistExpires = perfCounters.alertPersistExpires.load(std::memory_order_relaxed);
     snapshot.alertPersistClears = perfCounters.alertPersistClears.load(std::memory_order_relaxed);
@@ -233,7 +222,6 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.dispMaxUs = perfExtended.dispPipeMaxUs;
     snapshot.bleProcessMaxUs = perfExtended.bleProcessMaxUs;
     snapshot.touchMaxUs = perfExtended.touchMaxUs;
-    snapshot.obdMaxUs = perfExtended.obdMaxUs;
     snapshot.gpsMaxUs = perfExtended.gpsMaxUs;
     snapshot.lockoutMaxUs = perfExtended.lockoutMaxUs;
     snapshot.wifiMaxUs = perfExtended.wifiMaxUs;
@@ -279,7 +267,6 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     perfExtended.dispPipeMaxUs = 0;
     perfExtended.bleProcessMaxUs = 0;
     perfExtended.touchMaxUs = 0;
-    perfExtended.obdMaxUs = 0;
     perfExtended.gpsMaxUs = 0;
     perfExtended.lockoutMaxUs = 0;
     perfExtended.wifiMaxUs = 0;
@@ -398,12 +385,6 @@ void perfRecordDispPipeUs(uint32_t us) {
 void perfRecordTouchUs(uint32_t us) {
     if (us > perfExtended.touchMaxUs) {
         perfExtended.touchMaxUs = us;
-    }
-}
-
-void perfRecordObdUs(uint32_t us) {
-    if (us > perfExtended.obdMaxUs) {
-        perfExtended.obdMaxUs = us;
     }
 }
 

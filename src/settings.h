@@ -175,8 +175,6 @@ struct V1Settings {
     // BLE proxy settings
     bool proxyBLE;          // Enable BLE proxy for JBV1
     String proxyName;       // BLE device name when proxying
-    bool obdEnabled;        // Enable OBD integration service runtime
-    bool obdVwDataEnabled;  // Enable VW-specific OBD PIDs (oil temp, etc.)
     bool gpsEnabled;        // Enable GPS runtime module (optional hardware)
     LockoutRuntimeMode gpsLockoutMode;    // Lockout runtime mode (off/shadow/advisory/enforce)
     bool gpsLockoutCoreGuardEnabled;      // Block lockout enforcement if core health degrades
@@ -227,7 +225,6 @@ struct V1Settings {
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
     uint16_t colorLockout;       // Lockout "L" badge color
     uint16_t colorGps;           // GPS "G" satellite badge color
-    uint16_t colorObd;           // OBD connected badge color
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
     // Display visibility settings
@@ -238,8 +235,7 @@ struct V1Settings {
     bool hideBleIcon;            // Hide BLE icon
     bool hideVolumeIndicator;    // Hide volume indicator (V1 firmware 4.1028+ only)
     bool hideRssiIndicator;      // Hide RSSI signal strength indicator
-    bool showRestTelemetryCards; // Show OBD cards (oil temp / IAT / voltage) on resting screen
-    
+
     // Development settings
     bool enableWifiAtBoot;       // Start WiFi automatically on boot (bypasses BOOT button)
     bool enableSignalTraceLogging; // Log all priority bands to lockout SD CSV for diagnostics
@@ -312,8 +308,6 @@ struct V1Settings {
         wifiClientSSID(""),        // No saved network
         proxyBLE(true),
         proxyName("V1-Proxy"),  // Must match NVS load() default
-        obdEnabled(false),      // OBD integration disabled by default (opt-in)
-        obdVwDataEnabled(true), // Keep VW-specific OBD data enabled by default
         gpsEnabled(false),      // GPS disabled by default until module is installed
         gpsLockoutMode(LOCKOUT_RUNTIME_OFF), // Lockout runtime disabled by default
         gpsLockoutCoreGuardEnabled(true),    // Guardrail ON by default (safety-first)
@@ -360,7 +354,6 @@ struct V1Settings {
         colorRssiProxy(0x001F),  // Blue (proxy RSSI label) — matches NVS default
         colorLockout(0x07E0),     // Green lockout badge (matches existing lockout default)
         colorGps(0x07FF),         // Cyan GPS badge (matches existing GPS indicator default)
-        colorObd(0xFD20),         // Orange OBD badge
         freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
@@ -369,7 +362,6 @@ struct V1Settings {
         hideBleIcon(false),      // Show BLE icon by default
         hideVolumeIndicator(false), // Show volume indicator by default
         hideRssiIndicator(false),   // Show RSSI indicator by default — matches NVS default
-        showRestTelemetryCards(false), // Hide resting OBD cards by default (opt-in)
         enableWifiAtBoot(false),    // WiFi off at boot by default — matches NVS default
         enableSignalTraceLogging(true), // Keep diagnostic signal trace logging on by default
         voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
@@ -437,8 +429,6 @@ public:
     void setAPCredentials(const String& ssid, const String& password);
     void setProxyBLE(bool enabled);
     void setProxyName(const String& name);
-    void setObdEnabled(bool enabled);
-    void setObdVwDataEnabled(bool enabled);
     void setGpsEnabled(bool enabled);
     void setAutoPowerOffMinutes(uint8_t minutes);
     void setApTimeoutMinutes(uint8_t minutes);
@@ -471,7 +461,6 @@ public:
     void setHideBleIcon(bool hide);
     void setHideVolumeIndicator(bool hide);
     void setHideRssiIndicator(bool hide);
-    void setShowRestTelemetryCards(bool show);
     void setEnableWifiAtBoot(bool enable, bool deferSave = false);
     void setVoiceAlertMode(VoiceAlertMode mode);
     void setVoiceDirectionEnabled(bool enabled);

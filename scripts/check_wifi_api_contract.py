@@ -4,7 +4,7 @@
 This script enforces six invariants in src/wifi_manager.cpp:
 1) Route contract for extracted API modules stays stable (method + path).
 2) Route-lambda policy contract for ApiService endpoints stays stable
-   (rate-limit, UI activity mark, OBD enabled gate, delegate calls).
+   (rate-limit, UI activity mark, delegate calls).
 3) Legacy /api/lockout/* compatibility routes preserve deprecation headers
    that point callers to /api/lockouts/* and mirror canonical route policy.
 4) WiFiManager handle* methods do not become thin ApiService shims again.
@@ -47,13 +47,11 @@ ROUTE_PREFIXES = (
     "/api/settings/backup",
     "/api/settings/restore",
     "/api/debug/",
-    "/api/obd/",
     "/api/gps/",
     "/api/lockouts/",
     "/api/lockout/",
 )
 POLICY_CALLBACK_PREFIXES = (
-    "/api/obd/",
     "/api/gps/",
     "/api/lockouts/",
     "/api/lockout/",
@@ -117,7 +115,6 @@ class RoutePolicy:
     route: str
     rate_limit: int
     ui_activity: int
-    obd_enabled_gate: int
     delegates: Tuple[str, ...]
 
     def to_line(self) -> str:
@@ -126,7 +123,6 @@ class RoutePolicy:
             f"route={self.route} "
             f"rate_limit={self.rate_limit} "
             f"ui_activity={self.ui_activity} "
-            f"obd_enabled_gate={self.obd_enabled_gate} "
             f"delegates={delegate_blob}"
         )
 
@@ -136,7 +132,6 @@ class LocalHandlerRoutePolicy:
     route: str
     rate_limit: int
     ui_activity: int
-    obd_enabled_gate: int
     handlers: Tuple[str, ...]
     delegates: Tuple[str, ...]
 
@@ -147,7 +142,6 @@ class LocalHandlerRoutePolicy:
             f"route={self.route} "
             f"rate_limit={self.rate_limit} "
             f"ui_activity={self.ui_activity} "
-            f"obd_enabled_gate={self.obd_enabled_gate} "
             f"handlers={handler_blob} "
             f"delegates={delegate_blob}"
         )
@@ -245,16 +239,12 @@ def extract_policy_contract(source: str) -> List[RoutePolicy]:
             "markUiActivity(" in body
             or (allow_callback_policy_detection and "markUiActivityCallback" in body)
         )
-        has_obd_gate = int(
-            "settingsManager.get().obdEnabled" in body and "server.send(409" in body
-        )
 
         out.append(
             RoutePolicy(
                 route=route,
                 rate_limit=has_rate,
                 ui_activity=has_ui,
-                obd_enabled_gate=has_obd_gate,
                 delegates=delegates,
             )
         )
@@ -310,16 +300,12 @@ def extract_local_handler_route_contract(source: str) -> List[str]:
         delegates = tuple(sorted(set(DELEGATE_RE.findall(body))))
         has_rate = int("checkRateLimit(" in body)
         has_ui = int("markUiActivity(" in body)
-        has_obd_gate = int(
-            "settingsManager.get().obdEnabled" in body and "server.send(409" in body
-        )
 
         out.append(
             LocalHandlerRoutePolicy(
                 route=route,
                 rate_limit=has_rate,
                 ui_activity=has_ui,
-                obd_enabled_gate=has_obd_gate,
                 handlers=handlers,
                 delegates=delegates,
             )
@@ -388,11 +374,6 @@ def validate_legacy_lockout_parity(
             errors.append(
                 f"ui_activity mismatch {legacy_route} ({legacy.ui_activity}) != "
                 f"{canonical_route} ({canonical.ui_activity})"
-            )
-        if canonical.obd_enabled_gate != legacy.obd_enabled_gate:
-            errors.append(
-                f"obd_enabled_gate mismatch {legacy_route} ({legacy.obd_enabled_gate}) != "
-                f"{canonical_route} ({canonical.obd_enabled_gate})"
             )
         if canonical.delegates != legacy.delegates:
             errors.append(

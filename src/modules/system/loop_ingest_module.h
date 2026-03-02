@@ -9,7 +9,6 @@ struct LoopIngestContext {
     void (*runBleDrain)() = nullptr;
     bool skipNonCoreThisLoop = false;
     bool overloadThisLoop = false;
-    bool obdServiceEnabled = false;
 };
 
 struct LoopIngestResult {
@@ -18,7 +17,7 @@ struct LoopIngestResult {
     bool overloadLateThisLoop = false;
 };
 
-// Orchestrates BLE ingest, OBD runtime update, GPS update, and backpressure merge.
+// Orchestrates BLE ingest, GPS update, and backpressure merge.
 class LoopIngestModule {
 public:
     struct Providers {
@@ -36,11 +35,6 @@ public:
         void* bleDrainPerfContext = nullptr;
         bool (*readBleBackpressure)(void* ctx) = nullptr;
         void* bleBackpressureContext = nullptr;
-
-        void (*runObdRuntime)(void* ctx, uint32_t nowMs, bool obdServiceEnabled) = nullptr;
-        void* obdRuntimeContext = nullptr;
-        void (*recordObdUs)(void* ctx, uint32_t elapsedUs) = nullptr;
-        void* obdPerfContext = nullptr;
 
         void (*runGpsRuntimeUpdate)(void* ctx, uint32_t nowMs) = nullptr;
         void* gpsRuntimeContext = nullptr;

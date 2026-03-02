@@ -23,7 +23,6 @@ static size_t callLogCount = 0;
 
 static uint32_t openedAtMs = 0;
 static uint32_t wifiNowMs = 0;
-static bool wifiObdEnabled = false;
 static uint32_t debugNowMs = 0;
 
 static int runtimeOpenCalls = 0;
@@ -44,7 +43,6 @@ static void resetState() {
 
     openedAtMs = 0;
     wifiNowMs = 0;
-    wifiObdEnabled = false;
     debugNowMs = 0;
 
     runtimeOpenCalls = 0;
@@ -61,10 +59,9 @@ static void runtimeOpenBootReady(uint32_t nowMs) {
     noteCall(CALL_OPEN_BOOT_READY);
 }
 
-static void runtimeWifiPriority(uint32_t nowMs, bool obdServiceEnabled) {
+static void runtimeWifiPriority(uint32_t nowMs) {
     runtimeWifiCalls++;
     wifiNowMs = nowMs;
-    wifiObdEnabled = obdServiceEnabled;
     noteCall(CALL_WIFI_PRIORITY);
 }
 
@@ -80,10 +77,9 @@ static void providerOpenBootReady(void*, uint32_t nowMs) {
     noteCall(CALL_OPEN_BOOT_READY);
 }
 
-static void providerWifiPriority(void*, uint32_t nowMs, bool obdServiceEnabled) {
+static void providerWifiPriority(void*, uint32_t nowMs) {
     providerWifiCalls++;
     wifiNowMs = nowMs;
-    wifiObdEnabled = obdServiceEnabled;
     noteCall(CALL_WIFI_PRIORITY);
 }
 
@@ -107,7 +103,6 @@ void test_non_replay_timeout_opens_boot_ready_then_runs_wifi_and_debug() {
     ctx.nowMs = 5000;
     ctx.bootReady = false;
     ctx.bootReadyDeadlineMs = 4000;
-    ctx.obdServiceEnabled = true;
     ctx.replayMode = false;
     ctx.openBootReadyGate = runtimeOpenBootReady;
     ctx.runWifiPriorityApply = runtimeWifiPriority;
@@ -124,7 +119,6 @@ void test_non_replay_timeout_opens_boot_ready_then_runs_wifi_and_debug() {
     TEST_ASSERT_EQUAL(1, runtimeDebugCalls);
     TEST_ASSERT_EQUAL(5000u, openedAtMs);
     TEST_ASSERT_EQUAL(5000u, wifiNowMs);
-    TEST_ASSERT_TRUE(wifiObdEnabled);
     TEST_ASSERT_EQUAL(5000u, debugNowMs);
 
     TEST_ASSERT_EQUAL(3, callLogCount);
@@ -141,7 +135,6 @@ void test_non_replay_before_deadline_skips_boot_open_but_runs_wifi_and_debug() {
     ctx.nowMs = 2999;
     ctx.bootReady = false;
     ctx.bootReadyDeadlineMs = 3000;
-    ctx.obdServiceEnabled = false;
     ctx.openBootReadyGate = runtimeOpenBootReady;
     ctx.runWifiPriorityApply = runtimeWifiPriority;
     ctx.runDebugApiProcess = runtimeDebugApi;
@@ -154,7 +147,6 @@ void test_non_replay_before_deadline_skips_boot_open_but_runs_wifi_and_debug() {
     TEST_ASSERT_EQUAL(0, runtimeOpenCalls);
     TEST_ASSERT_EQUAL(1, runtimeWifiCalls);
     TEST_ASSERT_EQUAL(1, runtimeDebugCalls);
-    TEST_ASSERT_FALSE(wifiObdEnabled);
 
     TEST_ASSERT_EQUAL(2, callLogCount);
     TEST_ASSERT_EQUAL(CALL_WIFI_PRIORITY, callLog[0]);
@@ -169,7 +161,6 @@ void test_replay_mode_skips_boot_open_and_wifi_but_keeps_debug() {
     ctx.nowMs = 7000;
     ctx.bootReady = false;
     ctx.bootReadyDeadlineMs = 1000;
-    ctx.obdServiceEnabled = true;
     ctx.replayMode = true;
     ctx.openBootReadyGate = runtimeOpenBootReady;
     ctx.runWifiPriorityApply = runtimeWifiPriority;
@@ -201,7 +192,6 @@ void test_provider_fallback_path_works() {
     ctx.nowMs = 900;
     ctx.bootReady = false;
     ctx.bootReadyDeadlineMs = 100;
-    ctx.obdServiceEnabled = true;
 
     const LoopPreIngestResult result = module.process(ctx);
 

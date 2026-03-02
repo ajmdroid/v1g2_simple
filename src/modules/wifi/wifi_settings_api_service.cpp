@@ -47,8 +47,6 @@ void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
     doc["isDefaultPassword"] = (settings.apPassword == "setupv1g2");  // Security warning flag
     doc["proxy_ble"] = settings.proxyBLE;
     doc["proxy_name"] = settings.proxyName;
-    doc["obdEnabled"] = settings.obdEnabled;
-    doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["gpsEnabled"] = settings.gpsEnabled;
     doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
     doc["gpsLockoutModeName"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
@@ -123,25 +121,6 @@ void handleApiSettingsSave(WebServer& server,
     }
     if (server.hasArg("proxy_name")) {
         mutableSettings.proxyName = sanitizeProxyNameValue(server.arg("proxy_name"));
-    }
-    if (server.hasArg("obdVwDataEnabled")) {
-        mutableSettings.obdVwDataEnabled =
-            (server.arg("obdVwDataEnabled") == "true" || server.arg("obdVwDataEnabled") == "1");
-        if (runtime.setObdVwDataEnabled) {
-            runtime.setObdVwDataEnabled(mutableSettings.obdVwDataEnabled);
-        }
-    }
-    if (server.hasArg("obdEnabled")) {
-        mutableSettings.obdEnabled =
-            (server.arg("obdEnabled") == "true" || server.arg("obdEnabled") == "1");
-        if (!mutableSettings.obdEnabled) {
-            if (runtime.stopObdScan) {
-                runtime.stopObdScan();
-            }
-            if (runtime.disconnectObd) {
-                runtime.disconnectObd();
-            }
-        }
     }
     if (server.hasArg("gpsEnabled")) {
         mutableSettings.gpsEnabled =

@@ -23,12 +23,11 @@ LoopPreIngestResult LoopPreIngestModule::process(const LoopPreIngestContext& ctx
         }
 
         if (ctx.runWifiPriorityApply) {
-            ctx.runWifiPriorityApply(ctx.nowMs, ctx.obdServiceEnabled);
+            ctx.runWifiPriorityApply(ctx.nowMs);
         } else if (providers.runWifiPriorityApply) {
             providers.runWifiPriorityApply(
                 providers.wifiPriorityContext,
-                ctx.nowMs,
-                ctx.obdServiceEnabled);
+                ctx.nowMs);
         }
 
         result.runBleProcessThisLoop = true;

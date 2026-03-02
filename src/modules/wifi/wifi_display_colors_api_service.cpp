@@ -99,7 +99,6 @@ void handleApiSave(WebServer& server,
     if (server.hasArg("rssiProxy")) s.colorRssiProxy = server.arg("rssiProxy").toInt();
     if (server.hasArg("lockout")) s.colorLockout = server.arg("lockout").toInt();
     if (server.hasArg("gps")) s.colorGps = server.arg("gps").toInt();
-    if (server.hasArg("obd")) s.colorObd = server.arg("obd").toInt();
 
     // Display toggles
     if (server.hasArg("freqUseBandColor")) s.freqUseBandColor = argBool("freqUseBandColor", s.freqUseBandColor);
@@ -110,23 +109,11 @@ void handleApiSave(WebServer& server,
     if (server.hasArg("hideBleIcon")) s.hideBleIcon = argBool("hideBleIcon", s.hideBleIcon);
     if (server.hasArg("hideVolumeIndicator")) s.hideVolumeIndicator = argBool("hideVolumeIndicator", s.hideVolumeIndicator);
     if (server.hasArg("hideRssiIndicator")) s.hideRssiIndicator = argBool("hideRssiIndicator", s.hideRssiIndicator);
-    if (server.hasArg("showRestTelemetryCards")) s.showRestTelemetryCards = argBool("showRestTelemetryCards", s.showRestTelemetryCards);
 
     // Development/runtime toggles
     if (server.hasArg("enableWifiAtBoot")) s.enableWifiAtBoot = argBool("enableWifiAtBoot", s.enableWifiAtBoot);
     if (server.hasArg("enableSignalTraceLogging")) {
         s.enableSignalTraceLogging = argBool("enableSignalTraceLogging", s.enableSignalTraceLogging);
-    }
-    if (server.hasArg("obdEnabled")) {
-        s.obdEnabled = argBool("obdEnabled", s.obdEnabled);
-        if (!s.obdEnabled) {
-            if (runtime.stopObdScan) {
-                runtime.stopObdScan();
-            }
-            if (runtime.disconnectObd) {
-                runtime.disconnectObd();
-            }
-        }
     }
     if (server.hasArg("gpsEnabled")) {
         s.gpsEnabled = argBool("gpsEnabled", s.gpsEnabled);
@@ -263,7 +250,6 @@ void handleApiReset(WebServer& server,
     s.colorRssiProxy = 0x001F;
     s.colorLockout = 0x07E0;
     s.colorGps = 0x07FF;
-    s.colorObd = 0xFD20;
     s.freqUseBandColor = false;
 
     if (runtime.saveSettings) {
@@ -365,7 +351,6 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["rssiProxy"] = s.colorRssiProxy;
     doc["lockout"] = s.colorLockout;
     doc["gps"] = s.colorGps;
-    doc["obd"] = s.colorObd;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
@@ -374,7 +359,6 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
-    doc["showRestTelemetryCards"] = s.showRestTelemetryCards;
     doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
     doc["enableSignalTraceLogging"] = s.enableSignalTraceLogging;
     doc["voiceAlertMode"] = static_cast<int>(s.voiceAlertMode);
@@ -391,7 +375,6 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["alertVolumeFadeEnabled"] = s.alertVolumeFadeEnabled;
     doc["alertVolumeFadeDelaySec"] = s.alertVolumeFadeDelaySec;
     doc["alertVolumeFadeVolume"] = s.alertVolumeFadeVolume;
-    doc["obdEnabled"] = s.obdEnabled;
     doc["gpsEnabled"] = s.gpsEnabled;
     doc["gpsLockoutMode"] = static_cast<int>(s.gpsLockoutMode);
     doc["gpsLockoutModeName"] = lockoutRuntimeModeName(s.gpsLockoutMode);

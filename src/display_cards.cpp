@@ -1,8 +1,7 @@
 /**
- * Secondary alert cards & rest telemetry — extracted from display.cpp (Phase 2L)
+ * Secondary alert cards — extracted from display.cpp (Phase 2L)
  *
- * Contains drawSecondaryAlertCards (mini V1 alert cards at screen bottom)
- * and drawRestTelemetryCards (OBD telemetry cards at rest).
+ * Contains drawSecondaryAlertCards (mini V1 alert cards at screen bottom).
  */
 
 #include "display.h"
@@ -13,7 +12,6 @@
 #include "../include/display_text.h"
 #include "display_font_manager.h"
 #include "settings.h"
-#include "obd_handler.h"
 #include <algorithm>
 #include <cstring>
 
@@ -21,128 +19,12 @@ using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 using DisplayLayout::SECONDARY_ROW_HEIGHT;
 
 // ---------------------------------------------------------------------------
-// Rest telemetry cards (OBD data: oil temp, IAT, voltage)
+// Rest telemetry cards — stub
 // ---------------------------------------------------------------------------
 
 bool V1Display::drawRestTelemetryCards(bool forceRedraw) {
-#if defined(DISPLAY_WAVESHARE_349)
-    const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;
-    const int rowX = DisplayLayout::CONTENT_LEFT_MARGIN;
-    const int rowW = DisplayLayout::CONTENT_AVAILABLE_WIDTH;
-    const int cardSpacing = 10;
-    const int cardW = (rowW - (cardSpacing * 2)) / 3;
-    const int cardH = SECONDARY_ROW_HEIGHT;
-    const V1Settings& s = settingsManager.get();
-
-    static bool cacheValid = false;
-    static bool lastAvailable[3] = {false, false, false};
-    static char lastValues[3][12] = {{0}};
-
-    if (!s.showRestTelemetryCards) {
-        if (cacheValid) {
-            FILL_RECT(rowX, cardY, rowW, cardH, PALETTE_BG);
-            cacheValid = false;
-            for (int i = 0; i < 3; i++) {
-                lastAvailable[i] = false;
-                lastValues[i][0] = '\0';
-            }
-            return true;
-        }
-        return false;
-    }
-
-    const OBDData obd = obdHandler.getData();
-    const unsigned long nowMs = millis();
-    const bool hasFreshData = obd.valid && (nowMs - obd.timestamp_ms <= 3000);
-
-    char valueOil[12];
-    char valueIat[12];
-    char valueVolt[12];
-    strcpy(valueOil, "---");
-    strcpy(valueIat, "---");
-    strcpy(valueVolt, "---");
-
-    const bool oilAvailable = hasFreshData && (obd.oil_temp_c != INT16_MIN);
-    const bool iatAvailable = hasFreshData && (obd.intake_air_temp_c != -128);
-    const bool voltAvailable = hasFreshData && (obd.voltage > 0.0f);
-
-    if (oilAvailable) {
-        const int oilF = static_cast<int>(obd.oil_temp_c) * 9 / 5 + 32;
-        snprintf(valueOil, sizeof(valueOil), "%dF", oilF);
-    }
-    if (iatAvailable) {
-        const int iatF = static_cast<int>(obd.intake_air_temp_c) * 9 / 5 + 32;
-        snprintf(valueIat, sizeof(valueIat), "%dF", iatF);
-    }
-    if (voltAvailable) {
-        snprintf(valueVolt, sizeof(valueVolt), "%.1fV", obd.voltage);
-    }
-
-    bool needsRedraw = forceRedraw || !cacheValid;
-
-    const bool availableNow[3] = {oilAvailable, iatAvailable, voltAvailable};
-    const char* valuesNow[3] = {valueOil, valueIat, valueVolt};
-    for (int i = 0; i < 3 && !needsRedraw; i++) {
-        if (lastAvailable[i] != availableNow[i] || strcmp(lastValues[i], valuesNow[i]) != 0) {
-            needsRedraw = true;
-        }
-    }
-    if (!needsRedraw) {
-        return false;
-    }
-
-    cacheValid = true;
-    for (int i = 0; i < 3; i++) {
-        lastAvailable[i] = availableNow[i];
-        strncpy(lastValues[i], valuesNow[i], sizeof(lastValues[i]));
-        lastValues[i][sizeof(lastValues[i]) - 1] = '\0';
-    }
-
-    const uint16_t accentColors[3] = {s.colorBandKa, s.colorBandK, s.colorBandX};
-    const char* labels[3] = {"OIL", "IAT", "VOLT"};
-
-    // Clear only the telemetry row in the content area before redrawing cards.
-    FILL_RECT(rowX, cardY, rowW, cardH, PALETTE_BG);
-
-    for (int i = 0; i < 3; i++) {
-        const int cardX = rowX + i * (cardW + cardSpacing);
-        const bool available = availableNow[i];
-        const uint16_t accent = accentColors[i];
-
-        uint16_t borderCol = PALETTE_MUTED;
-        uint16_t bgCol = 0x2104;
-        uint16_t labelCol = PALETTE_MUTED;
-        uint16_t valueCol = PALETTE_MUTED;
-
-        if (available) {
-            uint8_t r = ((accent >> 11) & 0x1F) * 3 / 10;
-            uint8_t g = ((accent >> 5) & 0x3F) * 3 / 10;
-            uint8_t b = (accent & 0x1F) * 3 / 10;
-            bgCol = (r << 11) | (g << 5) | b;
-            borderCol = accent;
-            labelCol = accent;
-            valueCol = TFT_WHITE;
-        }
-
-        FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
-        DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, borderCol);
-
-        GFX_setTextDatum(TC_DATUM);
-        TFT_CALL(setTextSize)(1);
-        TFT_CALL(setTextColor)(labelCol, bgCol);
-        GFX_drawString(tft, labels[i], cardX + cardW / 2, cardY + 5);
-
-        GFX_setTextDatum(MC_DATUM);
-        TFT_CALL(setTextSize)(2);
-        TFT_CALL(setTextColor)(valueCol, bgCol);
-        GFX_drawString(tft, valuesNow[i], cardX + cardW / 2, cardY + (cardH / 2) + 8);
-    }
-
-    return true;
-#else
     (void)forceRedraw;
     return false;
-#endif
 }
 
 // ---------------------------------------------------------------------------

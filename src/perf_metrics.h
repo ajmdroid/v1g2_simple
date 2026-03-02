@@ -344,7 +344,6 @@ struct PerfExtendedMetrics {
     uint32_t bleProcessMaxUs = 0;     // bleClient.process() total duration
     uint32_t dispPipeMaxUs = 0;       // displayPipelineModule.handleParsed() duration
     uint32_t touchMaxUs = 0;          // touchUiModule.process() duration
-    uint32_t obdMaxUs = 0;             // obdHandler.update() duration
     uint32_t gpsMaxUs = 0;             // gpsRuntimeModule.update() duration
     uint32_t lockoutMaxUs = 0;         // lockoutEnforcer.process() + signalCapture duration
     uint32_t lockoutSaveMaxUs = 0;     // lockout zone JSON serialize + SD write
@@ -393,7 +392,6 @@ struct PerfExtendedMetrics {
         bleProcessMaxUs = 0;
         dispPipeMaxUs = 0;
         touchMaxUs = 0;
-        obdMaxUs = 0;
         gpsMaxUs = 0;
         lockoutMaxUs = 0;
         lockoutSaveMaxUs = 0;
@@ -442,7 +440,6 @@ void perfRecordBleSubscribeUs(uint32_t us);
 void perfRecordBleProcessUs(uint32_t us);
 void perfRecordDispPipeUs(uint32_t us);
 void perfRecordTouchUs(uint32_t us);
-void perfRecordObdUs(uint32_t us);
 void perfRecordGpsUs(uint32_t us);
 void perfRecordLockoutUs(uint32_t us);
 void perfRecordLockoutSaveUs(uint32_t us);

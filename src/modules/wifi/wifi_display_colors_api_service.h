@@ -12,8 +12,6 @@ namespace WifiDisplayColorsApiService {
 struct Runtime {
     std::function<const V1Settings&()> getSettings;
     std::function<V1Settings&()> getMutableSettings;
-    std::function<void()> stopObdScan;
-    std::function<void()> disconnectObd;
     std::function<void(bool)> setGpsRuntimeEnabled;
     std::function<void(bool)> setSpeedSourceGpsEnabled;
     std::function<void(uint8_t)> setDisplayBrightness;

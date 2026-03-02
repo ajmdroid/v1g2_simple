@@ -36,7 +36,6 @@ struct PerfSdSnapshot {
     uint32_t dmaLargestMin;   // Min MALLOC_CAP_DMA largest block since session start
     uint32_t bleProcessMaxUs; // Window max bleClient.process() duration
     uint32_t touchMaxUs;      // Window max touchUiModule.process() duration
-    uint32_t obdMaxUs;         // Window max obdHandler.update() duration
     uint32_t gpsMaxUs;         // Window max gpsRuntimeModule.update() duration
     uint32_t lockoutMaxUs;     // Window max lockoutEnforcer.process() + signalCapture duration
     uint32_t wifiMaxUs;        // Window max wifiManager.process() duration
@@ -60,15 +59,6 @@ struct PerfSdSnapshot {
     uint32_t bleConnectStartMs;   // First connect-start timestamp
     uint32_t bleConnectedMs;      // First connected timestamp
     uint32_t bleFirstRxMs;        // First parsed/received V1 packet timestamp
-    uint8_t obdState;             // OBDState enum value (0xFF when unavailable)
-    uint8_t obdConnected;         // OBD READY/POLLING flag
-    uint8_t obdScanActive;        // OBD manual scan in progress
-    uint8_t obdHasValidData;      // OBD fresh-data flag
-    uint32_t obdSampleAgeMs;      // OBD sample age in ms (UINT32_MAX when unknown)
-    int32_t obdSpeedMphX10;       // OBD speed in mph * 10 (-1 when unavailable)
-    uint8_t obdConnFailures;      // OBD connect/init failure count
-    uint8_t obdPollFailStreak;    // OBD consecutive poll failure streak
-    uint32_t obdNotifyDrops;      // OBD notify stream-buffer drops
     uint32_t alertPersistStarts;  // Persisted-alert sessions started
     uint32_t alertPersistExpires; // Persisted-alert windows expired naturally
     uint32_t alertPersistClears;  // Persisted-alert state cleared explicitly
