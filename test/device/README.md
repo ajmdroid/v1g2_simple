@@ -49,6 +49,7 @@ display-path stress coverage.
 | `test_device_coexistence` | **Dependent / Radio** | WiFi AP start/stop heap impact, DMA gate, BLE+WiFi contention |
 | `test_device_battery` | **Dependent / Hardware** | ADC sampling, TCA9554 I2C, power-latch, button GPIO |
 | `test_device_boot` | **Integration / System** | Post-setup heap baseline, millis advancing, core IDs, stack marks |
+| `test_device_heap_stress` | **Stress** | Fragmentation churn, alloc/free leak checks, near-OOM (manual run) |
 
 ## Writing Device Tests
 
