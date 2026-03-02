@@ -1822,6 +1822,28 @@ while IFS='=' read -r key value; do
   esac
 done < "$panic_kv"
 
+reboot_evidence_detected=0
+reboot_evidence_detail_parts=()
+reboot_evidence_detail="none"
+if [[ "$serial_reset_count" -gt 0 ]]; then
+  reboot_evidence_detected=1
+  reboot_evidence_detail_parts+=("serial_rst=${serial_reset_count}")
+fi
+if [[ "$serial_wdt_or_panic_count" -gt 0 ]]; then
+  reboot_evidence_detected=1
+  reboot_evidence_detail_parts+=("serial_panic_signatures=${serial_wdt_or_panic_count}")
+fi
+if is_uint "$panic_was_crash_true" && [[ "$panic_was_crash_true" -gt 0 ]]; then
+  reboot_evidence_detected=1
+  reboot_evidence_detail_parts+=("panic_endpoint_crash=${panic_was_crash_true}")
+fi
+if [[ ${#reboot_evidence_detail_parts[@]} -gt 0 ]]; then
+  reboot_evidence_detail="${reboot_evidence_detail_parts[0]}"
+  for ((i = 1; i < ${#reboot_evidence_detail_parts[@]}; ++i)); do
+    reboot_evidence_detail+=", ${reboot_evidence_detail_parts[$i]}"
+  done
+fi
+
 declare -a fail_reasons=()
 add_fail_reason() {
   local reason="$1"
@@ -1939,6 +1961,7 @@ gate_metrics_window_fail=0
 gate_metrics_min_samples_fail=0
 gate_serial_monitor_fail=0
 gate_serial_panic_fail=0
+gate_serial_reset_fail=0
 gate_panic_endpoint_fail=0
 gate_display_drive_fail=0
 gate_camera_drive_fail=0
@@ -1967,23 +1990,27 @@ fi
 if [[ "$serial_wdt_or_panic_count" -gt 0 ]]; then
   mark_gate_fail gate_serial_panic_fail "Serial panic/WDT signatures detected (${serial_wdt_or_panic_count})."
 fi
+if [[ "$serial_reset_count" -gt 0 ]]; then
+  mark_gate_fail gate_serial_reset_fail "Serial reset signatures detected (${serial_reset_count} rst:0x lines). Device rebooted during soak."
+fi
 if is_uint "$panic_was_crash_true" && [[ "$panic_was_crash_true" -gt 0 ]]; then
   mark_gate_fail gate_panic_endpoint_fail "Panic endpoint reported crashes (${panic_was_crash_true})."
 fi
-if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
-  if ! is_uint "$metrics_ok_samples_parsed"; then
-    mark_gate_fail gate_metrics_min_samples_fail "Metrics gate could not be evaluated (no parsed samples)."
-  elif [[ "$metrics_ok_samples_parsed" -lt "$MIN_METRICS_OK_SAMPLES" ]]; then
-    mark_gate_fail gate_metrics_min_samples_fail "Metrics parsed successes ${metrics_ok_samples_parsed} below required ${MIN_METRICS_OK_SAMPLES}."
-  fi
-fi
-
-if [[ -n "$METRICS_URL" ]]; then
-  if [[ "$have_metrics_window" -eq 0 ]]; then
-    if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
-      mark_gate_fail gate_metrics_window_fail "No successful metrics samples captured from ${METRICS_URL}."
+if [[ "$reboot_evidence_detected" -eq 0 ]]; then
+  if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
+    if ! is_uint "$metrics_ok_samples_parsed"; then
+      mark_gate_fail gate_metrics_min_samples_fail "Metrics gate could not be evaluated (no parsed samples)."
+    elif [[ "$metrics_ok_samples_parsed" -lt "$MIN_METRICS_OK_SAMPLES" ]]; then
+      mark_gate_fail gate_metrics_min_samples_fail "Metrics parsed successes ${metrics_ok_samples_parsed} below required ${MIN_METRICS_OK_SAMPLES}."
     fi
-  else
+  fi
+
+  if [[ -n "$METRICS_URL" ]]; then
+    if [[ "$have_metrics_window" -eq 0 ]]; then
+      if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
+        mark_gate_fail gate_metrics_window_fail "No successful metrics samples captured from ${METRICS_URL}."
+      fi
+    else
     if ! is_uint "$rx_packets_delta"; then
       mark_gate_fail gate_rx_fail "rxPackets delta ${rx_packets_delta:-n/a} below minimum ${MIN_RX_PACKETS_DELTA}."
     elif [[ "$rx_packets_delta" -lt "$MIN_RX_PACKETS_DELTA" ]]; then
@@ -2289,7 +2316,10 @@ if [[ -n "$METRICS_URL" ]]; then
     if is_uint "$gps_obs_drops_delta" && [[ "$gps_obs_drops_delta" -gt 0 ]]; then
       advisory_warnings+=("gpsObsDrops delta=${gps_obs_drops_delta} indicates dropped GPS observations.")
     fi
+    fi
   fi
+else
+  advisory_warnings+=("Runtime SLO gates skipped due to reboot/crash evidence (${reboot_evidence_detail}). Resolve reboot cause first.")
 fi
 
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
@@ -2326,7 +2356,10 @@ if [[ "$BASELINE_GATES_APPLIED" -eq 1 && ( "$BASELINE_PROFILE" != "$SOAK_PROFILE
 fi
 
 if [[ "$result" == "FAIL" ]]; then
-  if [[ "$gate_metrics_window_fail" -eq 1 && "$serial_log_bytes" -eq 0 ]]; then
+  if [[ "$reboot_evidence_detected" -eq 1 || "$gate_serial_reset_fail" -eq 1 || "$gate_serial_panic_fail" -eq 1 || "$gate_panic_endpoint_fail" -eq 1 ]]; then
+    diagnosis_bucket="Device Reboot/Crash During Soak"
+    diagnosis_next_action="Reboot evidence detected (${reboot_evidence_detail}). Treat latency counters as secondary and inspect serial log + panic endpoint reset reason first."
+  elif [[ "$gate_metrics_window_fail" -eq 1 && "$serial_log_bytes" -eq 0 ]]; then
     diagnosis_bucket="Connectivity/Telemetry Outage"
     diagnosis_next_action="Verify WiFi/API reachability and USB serial capture first, then rerun before evaluating firmware."
   elif [[ "$gate_serial_monitor_fail" -eq 1 && "$serial_log_bytes" -eq 0 ]]; then
@@ -2378,6 +2411,8 @@ fi
   echo "- Reset line count (\`rst:0x\`): $serial_reset_count"
   echo "- WDT/panic signature count: $serial_wdt_or_panic_count"
   echo "- Guru Meditation count: $serial_guru_count"
+  echo "- Reboot evidence detected: $([[ "$reboot_evidence_detected" -eq 1 ]] && echo "yes" || echo "no")"
+  echo "- Reboot evidence detail: ${reboot_evidence_detail}"
   echo ""
   echo "## Actionable Diagnosis"
   echo ""
