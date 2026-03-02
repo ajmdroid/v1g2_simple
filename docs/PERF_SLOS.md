@@ -2,7 +2,7 @@
 
 > Status: Active  
 > Date: February 15, 2026  
-> Source metrics: `/perf/perf_boot_<id>.csv` (schema v6)
+> Source metrics: `/perf/perf_boot_<bootId>.csv` (schema v9)
 
 ## Goal
 
@@ -33,7 +33,7 @@ These are release gates unless a test is explicitly exploratory.
 | `queueHighWater` | final <= | `12` | `12` | Queue occupancy margin (`64` depth default) |
 | `dmaLargestMin` | min >= | `10000` | `10000` | DMA contiguous block floor |
 | `dmaFreeMin` | min >= | `20000` | `20000` | DMA free-memory floor |
-| `wifiConnectDeferred` | final == | `0` | `5` | NVS/WiFi transition pressure |
+| `wifiConnectDeferred` | final == / <= | `0` | `5` | NVS/WiFi transition pressure (`==` wifi_off, `<=` wifi_ap) |
 | `wifiMax_us` | max <= | `1000` | `5000` | WiFi work budget by profile |
 
 ## Advisory SLOs (Track/Trend)
@@ -73,7 +73,7 @@ Exit codes:
 
 ## Notes
 
-- SLOs are intentionally defined against fields already present in schema v6 so scoring is deterministic.
+- SLOs are intentionally defined against fields already present in the perf CSV schema so scoring is deterministic.
 - If queue depth or WiFi runtime model changes, update this file and `tools/score_perf_csv.py` in the same change.
 - `wifiMax_us` soak gating excludes the first 2 API samples (TCP cold-start overhead on ESP32 SoftAP).
-- `scripts/run_real_fw_soak.sh` now defaults latency classification for `wifiMaxUs` and `dispPipeMaxUs` to `hybrid` mode: strict peak gates are still reported, while pass/fail uses a robust N-of-M check (default: max 5% over-limit samples, min 8 samples). Use `--latency-gate-mode strict` for peak-only gating.
+- `scripts/run_real_fw_soak.sh` now defaults latency classification for `wifiMax_us` and `dispPipeMax_us` to `hybrid` mode: strict peak gates are still reported, while pass/fail uses a robust N-of-M check (default: max 5% over-limit samples, min 8 samples). Use `--latency-gate-mode strict` for peak-only gating.
