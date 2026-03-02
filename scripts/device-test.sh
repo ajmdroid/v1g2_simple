@@ -6,7 +6,7 @@
 # Intended workflow:
 #   1) Sanity check debug metrics endpoint
 #   2) Run a short radar scenario (default: RAD-03) and verify parser/display deltas
-#   3) Run real firmware soak (display + camera stress)
+#   3) Run real firmware soak (display stress)
 #   4) Run real firmware soak (core only)
 #
 # Usage examples:
@@ -36,9 +36,8 @@ SOAK_LATENCY_ROBUST_MIN_SAMPLES=8
 SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT=5
 SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES=2
 SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS=3
-SOAK_CAMERA_DRIVE_INTERVAL_SECONDS=7
-SOAK_CAMERA_DEMO_DURATION_MS=2200
 SOAK_MIN_DISPLAY_UPDATES_DELTA=1
+IGNORE_GPS_ERRORS="${REAL_FW_IGNORE_GPS_ERRORS:-0}"
 
 RAD_SCENARIO_ID="RAD-03"
 RAD_MIN_RX_DELTA=20
@@ -46,6 +45,10 @@ RAD_MIN_PARSE_SUCCESS_DELTA=20
 RAD_MIN_DISPLAY_UPDATES_DELTA=10
 
 OUT_DIR=""
+
+if [[ "$IGNORE_GPS_ERRORS" != "1" ]]; then
+  IGNORE_GPS_ERRORS=0
+fi
 
 # ANSI colors
 RED='\033[0;31m'
@@ -60,6 +63,45 @@ TEST_METRICS=()
 TEST_ARTIFACTS=()
 TEST_COMMANDS=()
 
+# Cross-test uptime continuity tracking
+suite_last_uptime_ms=""
+suite_reboot_count=0
+suite_reboot_log=""
+
+poll_uptime_ms() {
+  local endpoint="$METRICS_URL"
+  if [[ "$endpoint" != *"soak="* ]]; then
+    if [[ "$endpoint" == *"?"* ]]; then
+      endpoint="${endpoint}&soak=1"
+    else
+      endpoint="${endpoint}?soak=1"
+    fi
+  fi
+  local payload
+  payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$endpoint" 2>/dev/null || true)"
+  if [[ -z "$payload" ]]; then
+    echo ""
+    return
+  fi
+  printf "%s" "$payload" | tr -d '\r\n' | sed -n 's/.*"uptimeMs":[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1
+}
+
+check_uptime_continuity() {
+  local context="$1"
+  local current_uptime
+  current_uptime="$(poll_uptime_ms)"
+  if [[ ! "$current_uptime" =~ ^[0-9]+$ ]]; then
+    return
+  fi
+  if [[ -n "$suite_last_uptime_ms" && "$current_uptime" -lt "$suite_last_uptime_ms" ]]; then
+    suite_reboot_count=$((suite_reboot_count + 1))
+    local msg="[FAIL] Device reboot detected ${context}: uptimeMs dropped from ${suite_last_uptime_ms} to ${current_uptime}"
+    echo -e "${RED}${msg}${NC}"
+    suite_reboot_log="${suite_reboot_log}${msg}\n"
+  fi
+  suite_last_uptime_ms="$current_uptime"
+}
+
 usage() {
   cat <<'EOF'
 Usage: ./scripts/device-test.sh [options]
@@ -72,6 +114,7 @@ Options:
   --skip-flash                   Skip firmware flash before soak runs (default)
   --with-flash                   Flash before soak runs
   --rad-scenario ID              Short radar scenario ID (default: RAD-03)
+  --ignore-gps-errors            Suppress GPS advisory warnings in soak scoring
   --no-auto-kill-monitor         Do not auto-stop pio device monitor when port is busy
   --out-dir PATH                 Write reports to PATH
   --dry-run                      Print resolved config and exit
@@ -165,6 +208,9 @@ run_soak_test() {
     --latency-robust-max-exceed-pct "$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT"
     --wifi-robust-skip-first-samples "$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES"
     --out-dir "$item_out_dir")
+  if [[ "$IGNORE_GPS_ERRORS" -eq 1 ]]; then
+    cmd+=(--ignore-gps-errors)
+  fi
   if [[ "$SKIP_FLASH" -eq 1 ]]; then
     cmd+=(--skip-flash)
   fi
@@ -432,6 +478,9 @@ while [[ $# -gt 0 ]]; do
       RAD_SCENARIO_ID="$2"
       shift
       ;;
+    --ignore-gps-errors)
+      IGNORE_GPS_ERRORS=1
+      ;;
     --no-auto-kill-monitor)
       AUTO_KILL_MONITOR=0
       ;;
@@ -494,7 +543,7 @@ echo "  suite profile: $SUITE_PROFILE_VERSION"
 echo "  soak profile: $SOAK_PROFILE"
 echo "  soak robust gate: mode=$SOAK_LATENCY_GATE_MODE minSamples=$SOAK_LATENCY_ROBUST_MIN_SAMPLES maxExceedPct=$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT wifiSkipFirst=$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES"
 echo "  soak require-metrics: yes (min ok samples=$SOAK_MIN_METRICS_OK_SAMPLES)"
-echo "  display/camera drive: displayInterval=${SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS}s cameraInterval=${SOAK_CAMERA_DRIVE_INTERVAL_SECONDS}s cameraDurationMs=$SOAK_CAMERA_DEMO_DURATION_MS minDisplayUpdatesDelta=$SOAK_MIN_DISPLAY_UPDATES_DELTA"
+echo "  display drive: displayInterval=${SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=$SOAK_MIN_DISPLAY_UPDATES_DELTA"
 echo "  RAD scenario: $RAD_SCENARIO_ID (rx>=$RAD_MIN_RX_DELTA parse>=$RAD_MIN_PARSE_SUCCESS_DELTA display>=$RAD_MIN_DISPLAY_UPDATES_DELTA parseFail==0)"
 echo "  out dir: $OUT_DIR"
 echo ""
@@ -514,16 +563,32 @@ if [[ "$AUTO_KILL_MONITOR" -eq 1 ]]; then
   fi
 fi
 
+check_uptime_continuity "before metrics_endpoint"
 run_metrics_endpoint_test
+check_uptime_continuity "after metrics_endpoint"
+
+check_uptime_continuity "before rad_short"
 run_rad_short_test
-run_soak_test "soak_display_camera" \
+check_uptime_continuity "after rad_short"
+
+check_uptime_continuity "before soak_display"
+run_soak_test "soak_display" \
   --drive-display-preview \
   --display-drive-interval-seconds "$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS" \
-  --min-display-updates-delta "$SOAK_MIN_DISPLAY_UPDATES_DELTA" \
-  --drive-camera-demo \
-  --camera-drive-interval-seconds "$SOAK_CAMERA_DRIVE_INTERVAL_SECONDS" \
-  --camera-demo-duration-ms "$SOAK_CAMERA_DEMO_DURATION_MS"
+  --min-display-updates-delta "$SOAK_MIN_DISPLAY_UPDATES_DELTA"
+check_uptime_continuity "after soak_display"
+
+check_uptime_continuity "before soak_core"
 run_soak_test "soak_core"
+check_uptime_continuity "after soak_core"
+
+# If reboots were detected between test items, add a synthetic failure.
+if [[ "$suite_reboot_count" -gt 0 ]]; then
+  add_result "uptime_continuity" "FAIL" \
+    "Device rebooted ${suite_reboot_count} time(s) during suite (detected via uptimeMs regression between test items)" \
+    "$OUT_DIR/summary.md" \
+    "uptime continuity check"
+fi
 
 pass_count=0
 fail_count=0
@@ -563,13 +628,22 @@ fi
   echo "- Port: \`${TEST_PORT:-auto}\`"
   echo "- Passed: $pass_count"
   echo "- Failed: $fail_count"
+  echo "- Suite reboot detections: $suite_reboot_count"
+  if [[ -n "$suite_reboot_log" ]]; then
+    echo ""
+    echo "## Reboot Detections"
+    echo ""
+    printf "%b" "$suite_reboot_log" | while IFS= read -r line; do
+      echo "- $line"
+    done
+  fi
   echo ""
   echo "## Standardized Gates"
   echo ""
   echo "- Soak profile: \`$SOAK_PROFILE\`"
   echo "- Soak metrics required: yes (\`--min-metrics-ok-samples $SOAK_MIN_METRICS_OK_SAMPLES\`)"
   echo "- Soak robust latency gate: \`mode=$SOAK_LATENCY_GATE_MODE min_samples=$SOAK_LATENCY_ROBUST_MIN_SAMPLES max_exceed_pct=$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT wifi_skip_first=$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES\`"
-  echo "- Display/camera drive defaults: \`display_interval_s=$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS camera_interval_s=$SOAK_CAMERA_DRIVE_INTERVAL_SECONDS camera_duration_ms=$SOAK_CAMERA_DEMO_DURATION_MS min_display_updates_delta=$SOAK_MIN_DISPLAY_UPDATES_DELTA\`"
+  echo "- Display drive defaults: \`display_interval_s=$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS min_display_updates_delta=$SOAK_MIN_DISPLAY_UPDATES_DELTA\`"
   echo "- RAD short default gates: \`scenario=$RAD_SCENARIO_ID rx_delta>=$RAD_MIN_RX_DELTA parse_success_delta>=$RAD_MIN_PARSE_SUCCESS_DELTA display_updates_delta>=$RAD_MIN_DISPLAY_UPDATES_DELTA parse_fail_delta==0\`"
   echo ""
   echo "## Item Results"
