@@ -80,7 +80,7 @@ Quick solutions for common issues with the V1-Simple device.
 
 **Solutions**:
 1. **Reset colors**: Settings → Display Colors → Reset to Default
-2. **Check display style**: Try different display styles (0-3)
+2. **Check display style**: Try display styles (0=Classic, 3=Serpentine)
 3. **Clear preview**: If testing colors, send clear preview command
 
 ### Touch not responding
@@ -134,10 +134,10 @@ Quick solutions for common issues with the V1-Simple device.
 
 **Solutions**:
 1. **Check settings**: Ensure `gpsLockoutMode` is not set to `off`
-2. **Check learn count**: Default requires 2 passes
-3. **Check interval**: Must pass within `gpsLockoutLearnerLearnIntervalHours` (default 24h)
+2. **Check learn count**: Default requires 3 passes
+3. **Check interval**: Learn interval is disabled by default (0h); if set, must pass within `gpsLockoutLearnerLearnIntervalHours`
 4. **Check distance**: Must be within lockout learner radius
-5. **Check signal**: Must be below max signal threshold
+5. **Check signal**: Must match within frequency tolerance
 6. **Ka protection**: Ka band learning is disabled by default (`gpsLockoutKaLearningEnabled`)
 
 ### Lockouts learning too aggressively
@@ -145,7 +145,7 @@ Quick solutions for common issues with the V1-Simple device.
 **Symptoms**: Real alerts getting locked out
 
 **Solutions**:
-1. **Increase learn count**: Raise `gpsLockoutLearnerPromotionHits` from 2 to 3
+1. **Increase learn count**: Raise `gpsLockoutLearnerPromotionHits` (default is 3)
 2. **Decrease radius**: Reduce `gpsLockoutLearnerRadiusE5` for tighter geo-match
 3. **Decrease frequency tolerance**: Lower `gpsLockoutLearnerFreqToleranceMHz`
 4. **Disable Ka learning**: Set `gpsLockoutKaLearningEnabled` to false
