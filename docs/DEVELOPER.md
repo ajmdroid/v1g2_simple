@@ -263,8 +263,8 @@ settingsManager.setProxyName(proxyName);
 
 **Checklist for new settings**:
 1. [ ] Add to `V1Settings` struct in `settings.h`
-2. [ ] Add to `load()` in `settings_nvs.cpp` with bounds validation
-3. [ ] Add to `save()` in `settings_nvs.cpp`
+2. [ ] Add to `load()` in `settings.cpp` with bounds validation
+3. [ ] Add to `save()` in `settings.cpp`
 4. [ ] Add GET handler in `src/modules/wifi/wifi_settings_api_service.cpp`
 5. [ ] Add POST handler in `src/modules/wifi/wifi_settings_api_service.cpp`
 6. [ ] Add backup/restore in `src/modules/wifi/backup_api_service.cpp`
