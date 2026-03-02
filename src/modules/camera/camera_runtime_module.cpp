@@ -8,6 +8,11 @@
 #include <limits>
 
 namespace {
+#if defined(CAMERA_RUNTIME_HARD_DISABLED) && CAMERA_RUNTIME_HARD_DISABLED
+constexpr bool kCameraRuntimeHardDisabled = true;
+#else
+constexpr bool kCameraRuntimeHardDisabled = false;
+#endif
 constexpr float kEarthRadiusM = 6371000.0f;
 constexpr float kMinimumMatchSpeedMph = 3.0f;
 constexpr uint32_t kMaximumGpsSampleAgeMs = 2000;
@@ -260,7 +265,7 @@ uint16_t toDistanceMeters(float distanceM) {
 CameraRuntimeModule cameraRuntimeModule;
 
 void CameraRuntimeModule::begin(bool enabled) {
-    enabled_ = enabled;
+    enabled_ = (!kCameraRuntimeHardDisabled) && enabled;
     lastTickMs_ = 0;
     lastTickDurationUs_ = 0;
     maxTickDurationUs_ = 0;
@@ -280,13 +285,19 @@ void CameraRuntimeModule::begin(bool enabled) {
     index_.clear();
     eventLog_.reset();
     dataLoader_.reset();
-    dataLoader_.begin();
-    if (enabled_) {
-        dataLoader_.requestReload();
+    if (!kCameraRuntimeHardDisabled) {
+        dataLoader_.begin();
+        if (enabled_) {
+            dataLoader_.requestReload();
+        }
     }
 }
 
 void CameraRuntimeModule::setEnabled(bool enabled) {
+    if (kCameraRuntimeHardDisabled) {
+        enabled_ = false;
+        return;
+    }
     const bool wasEnabled = enabled_;
     enabled_ = enabled;
     if (!enabled_) {
@@ -389,12 +400,12 @@ void CameraRuntimeModule::process(uint32_t nowMs,
                                   bool skipNonCoreThisLoop,
                                   bool overloadThisLoop,
                                   bool signalPriorityActive) {
-    if (dataLoader_.consumeReady(index_)) {
-        counters_.cameraIndexSwapCount++;
+    if (kCameraRuntimeHardDisabled || !enabled_) {
+        return;
     }
 
-    if (!enabled_) {
-        return;
+    if (dataLoader_.consumeReady(index_)) {
+        counters_.cameraIndexSwapCount++;
     }
 
     if (skipNonCoreThisLoop) {
