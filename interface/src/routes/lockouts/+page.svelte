@@ -1098,7 +1098,7 @@
 <div class="page-stack">
 	<PageHeader
 		title="Lockouts"
-		subtitle="Dedicated lockout controls and observability with safety-gated runtime and learner tuning."
+		subtitle="Manage signal lockout zones and learning rules."
 	>
 		<div class="flex gap-2">
 			<a href="/integrations" class="btn btn-outline btn-sm">GPS</a>
@@ -1127,7 +1127,7 @@
 				</label>
 			</CardSectionHead>
 			<div class="copy-caption-soft">
-				Use caution in `Enforce` mode. Bad lockout settings can mute real threats.
+				Changing lockout settings can affect threat detection. Use caution in Enforce mode.
 			</div>
 		</div>
 		</div>
@@ -1174,16 +1174,16 @@
 		<div class="surface-card">
 		<div class="card-body gap-3">
 			<CardSectionHead
-				title="Lockout Runtime Controls"
-				subtitle="Live runtime controls currently available in firmware."
+				title="Lockout Mode"
+				subtitle="How the system handles known false signals."
 			>
 				<div class="flex gap-2">
 					{#if lockoutConfigDirty}
-						<div class="badge badge-warning badge-sm">staged changes</div>
+						<div class="badge badge-warning badge-sm">unsaved</div>
 					{:else if lockoutConfigMatchesBackend()}
-						<div class="badge badge-success badge-sm">backend synced</div>
+						<div class="badge badge-success badge-sm">synced</div>
 					{:else}
-						<div class="badge badge-ghost badge-sm">awaiting runtime sync</div>
+						<div class="badge badge-ghost badge-sm">syncing</div>
 					{/if}
 					<button class="btn btn-outline btn-sm" onclick={() => fetchGpsStatus()}>Reload</button>
 					<button
@@ -1199,131 +1199,130 @@
 				</div>
 			</CardSectionHead>
 
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-				<label class="form-control" class:ring-2={lockoutConfig.modeRaw === 3} class:ring-error={lockoutConfig.modeRaw === 3} class:rounded-lg={lockoutConfig.modeRaw === 3} class:p-2={lockoutConfig.modeRaw === 3}>
-					<span class="label-text-field">Mode</span>
+			<div class="space-y-4">
+				<div class="form-control">
+					<label class="label" for="lockout-mode">
+						<span class="label-text font-medium">Mode</span>
+					</label>
 					<select
-						class="select select-bordered select-sm"
+						id="lockout-mode"
+						class="select select-bordered w-full"
 						bind:value={lockoutConfig.modeRaw}
 						onchange={markLockoutDirty}
 						disabled={!advancedUnlocked}
 					>
-						<option value={0}>Off</option>
-						<option value={1}>Shadow (read-only)</option>
-						<option value={2}>Advisory (read-only)</option>
-						<option value={3}>Enforce (risk: can mute alerts)</option>
+						<option value={0}>Off — lockouts disabled</option>
+						<option value={1}>Shadow — log matches, no muting</option>
+						<option value={2}>Advisory — visual indicators only</option>
+						<option value={3}>Enforce — mute locked-out signals</option>
 					</select>
-					<p class="copy-caption-soft mt-1">Off: disabled. Shadow: logs only. Advisory: visual-only. Enforce: actually mutes locked-out signals.</p>
 					{#if lockoutConfig.modeRaw === 3}
-						<p class="copy-warning mt-1">⚠ Enforce mode will mute alerts matching lockout zones. Bad lockouts = missed threats.</p>
+						<p class="copy-warning mt-1">⚠ Enforce will mute alerts matching lockout zones</p>
 					{/if}
-				</label>
-				<label class="label cursor-pointer justify-start gap-3 py-0" class:ring-2={!lockoutConfig.coreGuardEnabled} class:ring-warning={!lockoutConfig.coreGuardEnabled} class:rounded-lg={!lockoutConfig.coreGuardEnabled} class:p-2={!lockoutConfig.coreGuardEnabled}>
-					<div>
-						<span class="label-text-field">Core guard</span>
-						<p class="copy-caption-soft">Safety circuit breaker. Disables lockout enforcement if system performance degrades (queue/perf/event-bus drops).</p>
-						{#if !lockoutConfig.coreGuardEnabled}
-							<p class="copy-warning mt-1">⚠ Core guard disabled — lockouts continue even during system issues.</p>
-						{/if}
-					</div>
-					<input
-						type="checkbox"
-						class="toggle toggle-primary toggle-sm"
-						checked={!!lockoutConfig.coreGuardEnabled}
-						disabled={!advancedUnlocked}
-						onchange={(e) => {
-							lockoutConfig.coreGuardEnabled = e.currentTarget.checked;
-							markLockoutDirty();
-						}}
-					/>
-				</label>
+				</div>
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-medium">Safety Circuit Breaker</span>
+							<p class="copy-caption-soft">Automatically disable enforcement if system health degrades</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							checked={!!lockoutConfig.coreGuardEnabled}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.coreGuardEnabled = e.currentTarget.checked;
+								markLockoutDirty();
+							}}
+						/>
+					</label>
+					{#if !lockoutConfig.coreGuardEnabled}
+						<p class="copy-warning mt-1">⚠ Enforcement continues even during system issues</p>
+					{/if}
+				</div>
 				{#if lockoutConfig.modeRaw === 3}
-				<label class="label cursor-pointer justify-start gap-3 py-0">
-					<div>
-						<span class="label-text-field">Pre-quiet in lockout zones</span>
-						<p class="copy-caption">Drop V1 volume to mute-volume when entering a lockout zone. Restores instantly on real alerts.</p>
-					</div>
-					<input
-						type="checkbox"
-						class="toggle toggle-primary toggle-sm"
-						checked={!!lockoutConfig.preQuiet}
-						disabled={!advancedUnlocked}
-						onchange={(e) => {
-							lockoutConfig.preQuiet = e.currentTarget.checked;
-							markLockoutDirty();
-						}}
-					/>
-				</label>
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-medium">Lower Volume in Lockout Zones</span>
+							<p class="copy-caption-soft">Reduce V1 volume when entering a zone, restore instantly on real alerts</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							checked={!!lockoutConfig.preQuiet}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.preQuiet = e.currentTarget.checked;
+								markLockoutDirty();
+							}}
+						/>
+					</label>
+				</div>
 				{/if}
-				<label class="form-control">
-					<span class="label-text-field">Max queue drops (0 = strictest)</span>
-					<p class="copy-caption-soft">Trip core guard after this many alert-queue drops. 0 trips on the very first drop.</p>
-					<input
-						type="number"
-						min="0"
-						max="65535"
-						class="input input-bordered input-sm"
-						value={lockoutConfig.maxQueueDrops}
-						disabled={!advancedUnlocked}
-						onchange={(e) => {
-							lockoutConfig.maxQueueDrops = clampU16(e.currentTarget.value);
-							markLockoutDirty();
-						}}
-					/>
-				</label>
-				<label class="form-control">
-					<span class="label-text-field">Max perf drops (0 = strictest)</span>
-					<p class="copy-caption-soft">Trip core guard after this many performance-budget drops.</p>
-					<input
-						type="number"
-						min="0"
-						max="65535"
-						class="input input-bordered input-sm"
-						value={lockoutConfig.maxPerfDrops}
-						disabled={!advancedUnlocked}
-						onchange={(e) => {
-							lockoutConfig.maxPerfDrops = clampU16(e.currentTarget.value);
-							markLockoutDirty();
-						}}
-					/>
-				</label>
-				<label class="form-control">
-					<span class="label-text-field">Max event-bus drops (0 = strictest)</span>
-					<p class="copy-caption-soft">Trip core guard after this many system event-bus drops.</p>
-					<input
-						type="number"
-						min="0"
-						max="65535"
-						class="input input-bordered input-sm"
-						value={lockoutConfig.maxEventBusDrops}
-						disabled={!advancedUnlocked}
-						onchange={(e) => {
-							lockoutConfig.maxEventBusDrops = clampU16(e.currentTarget.value);
-							markLockoutDirty();
-						}}
-					/>
-				</label>
-			</div>
-			<div class="copy-meta">
-				Core guard thresholds: <code>0</code> trips guard on the first drop event.
+				{#if lockoutConfig.coreGuardEnabled}
+				<div class="surface-subsection">
+					<p class="copy-caption-soft mb-2">Circuit breaker trip thresholds (0 = trip on first drop):</p>
+					<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+						<label class="form-control">
+							<span class="label-text">Alert Queue Drops</span>
+							<input
+								type="number"
+								min="0"
+								max="65535"
+								class="input input-bordered input-sm"
+								value={lockoutConfig.maxQueueDrops}
+								disabled={!advancedUnlocked}
+								onchange={(e) => {
+									lockoutConfig.maxQueueDrops = clampU16(e.currentTarget.value);
+									markLockoutDirty();
+								}}
+							/>
+						</label>
+						<label class="form-control">
+							<span class="label-text">Performance Drops</span>
+							<input
+								type="number"
+								min="0"
+								max="65535"
+								class="input input-bordered input-sm"
+								value={lockoutConfig.maxPerfDrops}
+								disabled={!advancedUnlocked}
+								onchange={(e) => {
+									lockoutConfig.maxPerfDrops = clampU16(e.currentTarget.value);
+									markLockoutDirty();
+								}}
+							/>
+						</label>
+						<label class="form-control">
+							<span class="label-text">Event Bus Drops</span>
+							<input
+								type="number"
+								min="0"
+								max="65535"
+								class="input input-bordered input-sm"
+								value={lockoutConfig.maxEventBusDrops}
+								disabled={!advancedUnlocked}
+								onchange={(e) => {
+									lockoutConfig.maxEventBusDrops = clampU16(e.currentTarget.value);
+									markLockoutDirty();
+								}}
+							/>
+						</label>
+					</div>
+				</div>
+				{/if}
 			</div>
 
-			<div class="copy-meta">
-				Current mode: {gpsStatus?.lockout?.mode || 'off'} · enforce allowed:{' '}
-				{gpsStatus?.lockout?.enforceAllowed ? 'yes' : 'no'} · core guard:{' '}
-				{gpsStatus?.lockout?.coreGuardTripped ? 'tripped' : 'clear'}
-				{#if gpsStatus?.lockout?.coreGuardReason}
-					· reason: {gpsStatus.lockout.coreGuardReason}
-				{/if}
-			</div>
 		</div>
 	</div>
 
 		<div class="surface-card">
 			<div class="card-body gap-3">
 				<CardSectionHead
-					title="Learner Settings"
-					subtitle="Writes apply immediately and persist in settings. Use conservative values to reduce false muting."
+					title="Learning Rules"
+					subtitle="How the system learns and forgets lockout zones from repeated signal sightings."
 				/>
 				<div class="flex flex-wrap gap-2">
 					<button
@@ -1331,23 +1330,20 @@
 						onclick={() => stageLearnerPreset(LOCKOUT_PRESET_LEGACY_SAFE)}
 						disabled={!advancedUnlocked}
 					>
-						Stage Legacy Safe
+						Preset: Conservative
 					</button>
 					<button
 						class="btn btn-outline btn-xs"
 						onclick={() => stageLearnerPreset(LOCKOUT_PRESET_BALANCED_BLEND)}
 						disabled={!advancedUnlocked}
 					>
-						Stage Balanced Blend
+						Preset: Balanced
 					</button>
 				</div>
-				<div class="copy-meta">
-					Balanced preset stages: 3 hits · 4h learn interval · ±10 MHz · 492 ft · unlearn 5 misses / 4h · manual delete 25 misses.
-				</div>
-				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 					<label class="form-control">
-						<span class="label-text-field">Hits to promote</span>
-						<p class="copy-caption-soft">Times a signal must be seen at a location before it becomes a lockout zone ({LEARNER_PROMOTION_HITS_MIN}–{LEARNER_PROMOTION_HITS_MAX}).</p>
+						<span class="label-text font-medium">Sightings Before Lockout</span>
 						<input
 							type="number"
 							min={LEARNER_PROMOTION_HITS_MIN}
@@ -1362,8 +1358,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text-field">Learn interval (hours, 0 = disabled)</span>
-						<p class="copy-caption-soft">Minimum time between counting hits. Prevents one long stoplight from instantly promoting.</p>
+						<span class="label-text font-medium">Time Between Sightings</span>
 						<select
 							class="select select-bordered select-sm"
 							value={lockoutConfig.learnerLearnIntervalHours}
@@ -1375,14 +1370,15 @@
 								markLockoutDirty();
 							}}
 						>
-							{#each LOCKOUT_INTERVAL_OPTIONS as option}
-								<option value={option}>{option === 0 ? 'Disabled' : `${option} hours`}</option>
-							{/each}
+							<option value={0}>Count every pass</option>
+							<option value={1}>At least 1 hour apart</option>
+							<option value={4}>At least 4 hours apart</option>
+							<option value={12}>At least 12 hours apart</option>
+							<option value={24}>At least 24 hours apart</option>
 						</select>
 					</label>
 					<label class="form-control">
-						<span class="label-text-field">Drift tolerance (MHz)</span>
-						<p class="copy-caption-soft">How far a signal's frequency can drift and still match a zone ({LEARNER_FREQ_TOLERANCE_MHZ_MIN}–{LEARNER_FREQ_TOLERANCE_MHZ_MAX} MHz).</p>
+						<span class="label-text font-medium">Frequency Match Window (±MHz)</span>
 						<input
 							type="number"
 							min={LEARNER_FREQ_TOLERANCE_MHZ_MIN}
@@ -1399,8 +1395,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text-field">Lockout radius (ft)</span>
-						<p class="copy-caption-soft">Radius around the zone center. Signals inside this circle are considered matches ({radiusE5ToFeet(LEARNER_RADIUS_E5_MIN)}–{radiusE5ToFeet(LEARNER_RADIUS_E5_MAX)} ft).</p>
+						<span class="label-text font-medium">Zone Radius (ft)</span>
 						<input
 							type="number"
 							min={radiusE5ToFeet(LEARNER_RADIUS_E5_MIN)}
@@ -1415,8 +1410,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text-field">Unlearn count (0 = legacy)</span>
-						<p class="copy-caption-soft">Consecutive drives without seeing the signal before a zone is demoted. 0 = never unlearn.</p>
+						<span class="label-text font-medium">Drives to Auto-Remove</span>
 						<input
 							type="number"
 							min={LEARNER_UNLEARN_COUNT_MIN}
@@ -1431,8 +1425,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text-field">Unlearn interval (hours, 0 = disabled)</span>
-						<p class="copy-caption-soft">Minimum time between counting unlearn misses. Prevents a single drive from removing zones.</p>
+						<span class="label-text font-medium">Time Between Removal Checks</span>
 						<select
 							class="select select-bordered select-sm"
 							value={lockoutConfig.learnerUnlearnIntervalHours}
@@ -1444,14 +1437,15 @@
 								markLockoutDirty();
 							}}
 						>
-							{#each LOCKOUT_INTERVAL_OPTIONS as option}
-								<option value={option}>{option === 0 ? 'Disabled' : `${option} hours`}</option>
-							{/each}
+							<option value={0}>Check every pass</option>
+							<option value={1}>At least 1 hour apart</option>
+							<option value={4}>At least 4 hours apart</option>
+							<option value={12}>At least 12 hours apart</option>
+							<option value={24}>At least 24 hours apart</option>
 						</select>
 					</label>
 					<label class="form-control">
-						<span class="label-text-field">Manual delete misses (0 = disabled)</span>
-						<p class="copy-caption-soft">Manual zones removed after this many consecutive misses. 0 = manual zones persist forever.</p>
+						<span class="label-text font-medium">Manual Zone Auto-Expire</span>
 						<select
 							class="select select-bordered select-sm"
 							value={lockoutConfig.manualDemotionMissCount}
@@ -1463,41 +1457,38 @@
 								markLockoutDirty();
 							}}
 						>
-							{#each MANUAL_DEMOTION_OPTIONS as option}
-								<option value={option}>{option === 0 ? 'Disabled' : `${option} misses`}</option>
-							{/each}
+							<option value={0}>Never — manual zones persist forever</option>
+							<option value={10}>After 10 drives without signal</option>
+							<option value={25}>After 25 drives without signal</option>
+							<option value={50}>After 50 drives without signal</option>
 						</select>
 					</label>
 				</div>
-				<label class="label cursor-pointer justify-start gap-3 py-0 ring-2 ring-error rounded-lg p-2" class:ring-2={lockoutConfig.kaLearningEnabled} class:ring-error={lockoutConfig.kaLearningEnabled}>
-					<div>
-						<span class="label-text-field">Ka lockout learning (high risk)</span>
-						<p class="copy-caption-soft">Allow the learner to create lockout zones for Ka-band signals. Ka is where real radar threats live.</p>
-					</div>
-					<input
-						type="checkbox"
-						class="toggle toggle-warning toggle-sm"
-						checked={!!lockoutConfig.kaLearningEnabled}
-						disabled={!advancedUnlocked}
-						onchange={(e) => {
-							requestKaLearningToggle(e.currentTarget.checked);
-						}}
-					/>
-				</label>
-				{#if lockoutConfig.kaLearningEnabled}
-					<div class="copy-warning">⚠ Ka learning active — lockouts can suppress real Ka radar threats if zones are wrong.</div>
-				{:else}
-					<div class="copy-caption-soft">Ka learning disabled (recommended). Ka signals are not auto-locked.</div>
-				{/if}
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-medium">Ka Band Learning</span>
+							<p class="copy-caption-soft">Allow the learner to lock out Ka-band signals — where real radar threats live</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-warning"
+							checked={!!lockoutConfig.kaLearningEnabled}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								requestKaLearningToggle(e.currentTarget.checked);
+							}}
+						/>
+					</label>
+					{#if lockoutConfig.kaLearningEnabled}
+						<p class="copy-warning mt-1">⚠ Ka learning active — lockouts can suppress real radar threats</p>
+					{/if}
+				</div>
 
 				<div class="divider text-xs my-1">GPS Quality Gates</div>
-				<div class="copy-caption-soft mb-1">
-					These gates prevent bad GPS data from creating inaccurate lockout zones. The learner ignores signals when GPS quality is below these thresholds.
-				</div>
 				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
 					<label class="form-control">
-						<span class="label-text-field">Max HDOP (×10)</span>
-						<p class="copy-caption-soft">Maximum horizontal dilution of precision. Lower = stricter. {GPS_MAX_HDOP_X10_MIN / 10}–{GPS_MAX_HDOP_X10_MAX / 10} HDOP (stored as ×10: {GPS_MAX_HDOP_X10_MIN}–{GPS_MAX_HDOP_X10_MAX}).</p>
+						<span class="label-text font-medium">GPS Accuracy Limit</span>
 						<input
 							type="number"
 							min={GPS_MAX_HDOP_X10_MIN}
@@ -1512,8 +1503,7 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text-field">Min learner speed (mph)</span>
-						<p class="copy-caption-soft">Ignore signal observations below this speed. Prevents learning while parked near a false source. 0 = disabled ({GPS_MIN_LEARNER_SPEED_MPH_MIN}–{GPS_MIN_LEARNER_SPEED_MPH_MAX} mph).</p>
+						<span class="label-text font-medium">Minimum Speed for Learning</span>
 						<input
 							type="number"
 							min={GPS_MIN_LEARNER_SPEED_MPH_MIN}
@@ -1528,27 +1518,11 @@
 						/>
 					</label>
 					<div class="form-control">
-						<span class="label-text-field">Min satellites</span>
-						<p class="copy-caption-soft">Minimum satellites for a 3D fix. Hardcoded to {GPS_MIN_SATELLITES} (not configurable).</p>
-						<input
-							type="number"
-							class="input input-bordered input-sm"
-							value={GPS_MIN_SATELLITES}
-							disabled
-						/>
+						<span class="label-text font-medium">Minimum Satellites</span>
+						<div class="input input-bordered input-sm input-disabled flex items-center">{GPS_MIN_SATELLITES}</div>
 					</div>
 				</div>
 
-				<div class="copy-meta">
-					Runtime learner: {runtimeLearnerHits()} hits · interval {formatIntervalLabel(runtimeLearnerLearnIntervalHours())}
-					· ±{runtimeLearnerFreqToleranceMHz()} MHz · {runtimeLearnerRadiusFeetText()}
-					· unlearn {runtimeLearnerUnlearnCount()} misses / {formatIntervalLabel(runtimeLearnerUnlearnIntervalHours())}
-					· manual delete {runtimeManualDemotionMissCount() || 'disabled'}
-					· Ka learning {gpsStatus?.lockout?.kaLearningEnabled ? 'enabled' : 'disabled'}
-					· HDOP gate {lockoutConfig.maxHdopX10 / 10} · speed gate {lockoutConfig.minLearnerSpeedMph > 0 ? `${lockoutConfig.minLearnerSpeedMph} mph` : 'off'}
-					· min sats {GPS_MIN_SATELLITES}
-					· candidate expiry: 7 days
-				</div>
 			</div>
 		</div>
 
@@ -1556,7 +1530,7 @@
 		<div class="card-body gap-3">
 			<CardSectionHead
 				title="Lockout Zones"
-				subtitle="Review active lockouts and pending learner candidates. Manual zones can be created, edited, exported, or imported from JSON."
+				subtitle="Active lockouts and pending candidates. Create, edit, export, or import zones."
 			>
 				<div class="flex flex-wrap gap-2">
 					<button
@@ -1780,8 +1754,8 @@
 	<div class="surface-card">
 		<div class="card-body gap-3">
 			<CardSectionHead
-				title="Lockout Candidates"
-				subtitle="Recent signal observations for post-drive lockout review."
+				title="Signal Observations"
+				subtitle="Recent signals seen during driving. Use observations to create manual lockout zones."
 			>
 				<button class="btn btn-outline btn-sm" onclick={() => fetchLockoutEvents()} disabled={lockoutLoading}>
 					{#if lockoutLoading}
@@ -1826,13 +1800,6 @@
 				</div>
 			</div>
 
-			<div class="copy-meta">
-				SD {lockoutSd.enabled ? 'enabled' : 'disabled'} · writes {lockoutSd.written} · deduped {lockoutSd.deduped}
-				· queue drops {lockoutSd.queueDrops} · write fail {lockoutSd.writeFail} · rotations {lockoutSd.rotations}
-				{#if lockoutSd.path}
-					· <span class="font-mono">{lockoutSd.path}</span>
-				{/if}
-			</div>
 
 			{#if loading || lockoutLoading}
 				<div class="state-loading tight">
