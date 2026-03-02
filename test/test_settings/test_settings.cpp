@@ -36,9 +36,7 @@ T clampValue(T value, T minVal, T maxVal) {
  * Mode is derived from wifiClientEnabled, not stored directly
  */
 enum WiFiMode {
-    V1_WIFI_OFF = 0,
     V1_WIFI_AP = 1,
-    V1_WIFI_STA = 2,
     V1_WIFI_APSTA = 3
 };
 

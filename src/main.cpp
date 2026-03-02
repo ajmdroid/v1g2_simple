@@ -830,14 +830,8 @@ static void configureRuntimeSensorModules() {
     speedSourceSelector.begin(settingsManager.get().gpsEnabled);
 }
 
-static void configureRuntimeAssistModules() {
-    // Speed sync removed — SpeedSourceSelector::select() was a no-op
-    // since OBD removal. Voice speed cache is now unused.
-}
-
 static void configureRuntimeCoreModules() {
     configureRuntimeSensorModules();
-    configureRuntimeAssistModules();
 }
 
 static void configureLockoutPipelineModules() {
