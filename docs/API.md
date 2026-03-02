@@ -407,7 +407,6 @@ Get recent lockout candidate observations (newest first).
 - Candidate events are persisted to SD (when available) at `/lockout/lockout_candidates_boot_<bootId>.csv`.
 - `enableSignalTraceLogging` (default `true`) also captures unsupported lockout bands for diagnostics.
 - SD writes apply a dedupe gate (~15s minimum repeat per same signal bucket) to reduce long-run growth.
-- Legacy singular paths `/api/lockout/summary` and `/api/lockout/events` still work with `X-API-Deprecated`.
 
 ### GET /api/lockouts/zones
 
@@ -430,7 +429,6 @@ Delete a learned zone by slot index.
 
 **Notes:**
 - Only learned zones are deletable.
-- Singular compatibility shims also exist: `/api/lockout/zones`, `/api/lockout/zones/delete`.
 
 ### POST /api/lockouts/zones/create
 

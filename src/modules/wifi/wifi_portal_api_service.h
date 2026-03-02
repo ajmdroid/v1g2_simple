@@ -22,9 +22,6 @@ void handleApiFwlink(WebServer& server);
 
 void handleApiRedirectToRoot(WebServer& server);
 
-void handleApiDeprecatedRedirectToRoot(WebServer& server,
-                                       const char* deprecationHint);
-
 void handleApiNcsiTxt(WebServer& server);
 
 }  // namespace WifiPortalApiService

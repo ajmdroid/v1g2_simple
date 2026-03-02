@@ -50,14 +50,6 @@ void handleApiRedirectToRoot(WebServer& server) {
     server.send(302, "text/plain", "Redirecting to /");
 }
 
-void handleApiDeprecatedRedirectToRoot(WebServer& server,
-                                       const char* deprecationHint) {
-    if (deprecationHint && deprecationHint[0] != '\0') {
-        server.sendHeader("X-API-Deprecated", deprecationHint);
-    }
-    handleApiRedirectToRoot(server);
-}
-
 void handleApiNcsiTxt(WebServer& server) {
     Serial.println("[HTTP] GET /ncsi.txt");
     server.send(200, "text/plain", "Microsoft NCSI");

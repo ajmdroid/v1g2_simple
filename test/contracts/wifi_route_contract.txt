@@ -8,9 +8,6 @@ HTTP_GET /api/debug/v1-scenario/list
 HTTP_GET /api/debug/v1-scenario/status
 HTTP_GET /api/gps/observations
 HTTP_GET /api/gps/status
-HTTP_GET /api/lockout/events
-HTTP_GET /api/lockout/summary
-HTTP_GET /api/lockout/zones
 HTTP_GET /api/lockouts/events
 HTTP_GET /api/lockouts/summary
 HTTP_GET /api/lockouts/zones
@@ -23,7 +20,6 @@ HTTP_POST /api/debug/v1-scenario/load
 HTTP_POST /api/debug/v1-scenario/start
 HTTP_POST /api/debug/v1-scenario/stop
 HTTP_POST /api/gps/config
-HTTP_POST /api/lockout/zones/delete
 HTTP_POST /api/lockouts/zones/create
 HTTP_POST /api/lockouts/zones/delete
 HTTP_POST /api/lockouts/zones/import

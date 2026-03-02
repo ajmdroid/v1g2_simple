@@ -211,22 +211,4 @@ void handleApiSettingsSave(WebServer& server,
     server.send(200, "application/json", "{\"success\":true}");
 }
 
-void handleApiLegacySettingsSave(WebServer& server,
-                                 const Runtime& runtime,
-                                 const std::function<bool()>& checkRateLimit,
-                                 const std::function<void()>& sendDeprecatedHeader,
-                                 const std::function<void()>& logLegacyUsage) {
-    if (checkRateLimit && !checkRateLimit()) return;
-
-    if (logLegacyUsage) {
-        logLegacyUsage();
-    }
-    if (sendDeprecatedHeader) {
-        sendDeprecatedHeader();
-    }
-
-    // Preserve legacy behavior: route-level guard + delegate-level guard.
-    handleApiSettingsSave(server, runtime, checkRateLimit);
-}
-
 }  // namespace WifiSettingsApiService

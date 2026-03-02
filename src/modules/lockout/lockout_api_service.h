@@ -13,38 +13,34 @@ class SettingsManager;
 
 namespace LockoutApiService {
 
-/// GET /api/lockout/summary handler with route-level policy callbacks.
+/// GET /api/lockouts/summary handler with route-level policy callbacks.
 void handleApiSummary(WebServer& server,
                       SignalObservationLog& signalObservationLog,
                       SignalObservationSdLogger& signalObservationSdLogger,
                       const std::function<bool()>& checkRateLimit,
-                      const std::function<void()>& markUiActivity,
-                      const std::function<void()>& sendDeprecatedHeader = {});
+                      const std::function<void()>& markUiActivity);
 
-/// GET /api/lockout/events handler with route-level policy callbacks.
+/// GET /api/lockouts/events handler with route-level policy callbacks.
 void handleApiEvents(WebServer& server,
                      SignalObservationLog& signalObservationLog,
                      SignalObservationSdLogger& signalObservationSdLogger,
                      const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity,
-                     const std::function<void()>& sendDeprecatedHeader = {});
+                     const std::function<void()>& markUiActivity);
 
-/// GET /api/lockout/zones handler with route-level policy callbacks.
+/// GET /api/lockouts/zones handler with route-level policy callbacks.
 void handleApiZones(WebServer& server,
                     LockoutIndex& lockoutIndex,
                     LockoutLearner& lockoutLearner,
                     SettingsManager& settingsManager,
                     const std::function<bool()>& checkRateLimit,
-                    const std::function<void()>& markUiActivity,
-                    const std::function<void()>& sendDeprecatedHeader = {});
+                    const std::function<void()>& markUiActivity);
 
-/// POST /api/lockout/zones/delete handler with route-level policy callbacks.
+/// POST /api/lockouts/zones/delete handler with route-level policy callbacks.
 void handleApiZoneDelete(WebServer& server,
                          LockoutIndex& lockoutIndex,
                          LockoutStore& lockoutStore,
                          const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity,
-                         const std::function<void()>& sendDeprecatedHeader = {});
+                         const std::function<void()>& markUiActivity);
 
 /// POST /api/lockouts/zones/create handler with route-level policy callbacks.
 void handleApiZoneCreate(WebServer& server,

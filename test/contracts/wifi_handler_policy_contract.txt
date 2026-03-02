@@ -8,9 +8,6 @@ route=HTTP_GET /api/debug/v1-scenario/list rate_limit=0 ui_activity=0 delegates=
 route=HTTP_GET /api/debug/v1-scenario/status rate_limit=0 ui_activity=0 delegates=DebugApiService::handleApiV1ScenarioStatus
 route=HTTP_GET /api/gps/observations rate_limit=1 ui_activity=1 delegates=GpsApiService::handleApiObservations
 route=HTTP_GET /api/gps/status rate_limit=0 ui_activity=1 delegates=GpsApiService::handleApiStatus
-route=HTTP_GET /api/lockout/events rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiEvents
-route=HTTP_GET /api/lockout/summary rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiSummary
-route=HTTP_GET /api/lockout/zones rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZones
 route=HTTP_GET /api/lockouts/events rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiEvents
 route=HTTP_GET /api/lockouts/summary rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiSummary
 route=HTTP_GET /api/lockouts/zones rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZones
@@ -23,7 +20,6 @@ route=HTTP_POST /api/debug/v1-scenario/load rate_limit=0 ui_activity=0 delegates
 route=HTTP_POST /api/debug/v1-scenario/start rate_limit=0 ui_activity=0 delegates=DebugApiService::handleApiV1ScenarioStart
 route=HTTP_POST /api/debug/v1-scenario/stop rate_limit=0 ui_activity=0 delegates=DebugApiService::handleApiV1ScenarioStop
 route=HTTP_POST /api/gps/config rate_limit=1 ui_activity=1 delegates=GpsApiService::handleApiConfig
-route=HTTP_POST /api/lockout/zones/delete rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZoneDelete
 route=HTTP_POST /api/lockouts/zones/create rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZoneCreate
 route=HTTP_POST /api/lockouts/zones/delete rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZoneDelete
 route=HTTP_POST /api/lockouts/zones/import rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZoneImport

@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """Check WiFi API route/policy contracts for extracted ApiService endpoints.
 
-This script enforces six invariants in src/wifi_manager.cpp:
+This script enforces five invariants in src/wifi_manager.cpp:
 1) Route contract for extracted API modules stays stable (method + path).
 2) Route-lambda policy contract for ApiService endpoints stays stable
    (rate-limit, UI activity mark, delegate calls).
-3) Legacy /api/lockout/* compatibility routes preserve deprecation headers
-   that point callers to /api/lockouts/* and mirror canonical route policy.
-4) WiFiManager handle* methods do not become thin ApiService shims again.
-5) ApiService delegates remain bound only in setupWebServer() route registration.
-6) Remaining local WiFi route families preserve route-level policy and handler bindings.
+3) WiFiManager handle* methods do not become thin ApiService shims again.
+4) ApiService delegates remain bound only in setupWebServer() route registration.
+5) Remaining local WiFi route families preserve route-level policy and handler bindings.
 
 Use --update to rewrite expected contract snapshots from current source.
 """
@@ -33,9 +31,6 @@ SRC_FILES = [
 ]
 ROUTE_CONTRACT_FILE = ROOT / "test" / "contracts" / "wifi_route_contract.txt"
 POLICY_CONTRACT_FILE = ROOT / "test" / "contracts" / "wifi_handler_policy_contract.txt"
-LEGACY_LOCKOUT_CONTRACT_FILE = (
-    ROOT / "test" / "contracts" / "wifi_legacy_lockout_contract.txt"
-)
 SHIM_ABSENCE_CONTRACT_FILE = (
     ROOT / "test" / "contracts" / "wifi_shim_absence_contract.txt"
 )
@@ -49,12 +44,10 @@ ROUTE_PREFIXES = (
     "/api/debug/",
     "/api/gps/",
     "/api/lockouts/",
-    "/api/lockout/",
 )
 POLICY_CALLBACK_PREFIXES = (
     "/api/gps/",
     "/api/lockouts/",
-    "/api/lockout/",
 )
 LOCAL_HANDLER_ROUTE_KEYS: Tuple[str, ...] = (
     "HTTP_GET /api/status",
@@ -95,19 +88,6 @@ HANDLE_METHOD_START_RE = re.compile(r"void\s+WiFiManager::(handle[A-Za-z0-9_]+)\
 METHOD_START_RE = re.compile(r"void\s+WiFiManager::([A-Za-z0-9_]+)\s*\([^)]*\)\s*\{")
 DELEGATE_RE = re.compile(r"([A-Za-z0-9_]+ApiService::[A-Za-z0-9_]+)\s*\(")
 HANDLE_CALL_RE = re.compile(r"(?<!::)\b(handle[A-Za-z0-9_]+)\s*\(")
-DEPRECATED_HEADER_RE = re.compile(
-    r'server\.sendHeader\(\s*"X-API-Deprecated"\s*,\s*"Use\s+([^"]+)"\s*\)'
-)
-LEGACY_LINE_RE = re.compile(
-    r"^route=(HTTP_[A-Z]+)\s+(\S+)\s+deprecated_header=(\d+)\s+deprecated_target=(\S*)$"
-)
-
-LEGACY_LOCKOUT_PARITY_ROUTES: Tuple[Tuple[str, str], ...] = (
-    ("HTTP_GET /api/lockouts/zones", "HTTP_GET /api/lockout/zones"),
-    ("HTTP_GET /api/lockouts/summary", "HTTP_GET /api/lockout/summary"),
-    ("HTTP_GET /api/lockouts/events", "HTTP_GET /api/lockout/events"),
-    ("HTTP_POST /api/lockouts/zones/delete", "HTTP_POST /api/lockout/zones/delete"),
-)
 
 
 @dataclass(frozen=True)
@@ -253,27 +233,6 @@ def extract_policy_contract(source: str) -> List[RoutePolicy]:
     return out
 
 
-def extract_legacy_lockout_contract(source: str) -> List[str]:
-    routes = extract_route_lambda_bodies(source)
-    out: List[str] = []
-
-    for route, body in routes.items():
-        _method, path = route.split(" ", 1)
-        if not path.startswith("/api/lockout/"):
-            continue
-
-        header = DEPRECATED_HEADER_RE.search(body)
-        has_header = int(header is not None)
-        target = header.group(1) if header else ""
-        out.append(
-            f"route={route} "
-            f"deprecated_header={has_header} "
-            f"deprecated_target={target}"
-        )
-
-    return sorted(out)
-
-
 def extract_shim_absence_contract(source: str) -> List[str]:
     handlers = extract_handle_method_bodies(source)
     out: List[str] = []
@@ -333,67 +292,6 @@ def find_delegate_placement_errors(source: str) -> List[str]:
     return errors
 
 
-def extract_legacy_header_map(legacy_lines: List[str]) -> Dict[str, Tuple[int, str]]:
-    out: Dict[str, Tuple[int, str]] = {}
-    for line in legacy_lines:
-        match = LEGACY_LINE_RE.match(line)
-        if not match:
-            continue
-        method = match.group(1)
-        path = match.group(2)
-        has_header = int(match.group(3))
-        target = match.group(4)
-        out[f"{method} {path}"] = (has_header, target)
-    return out
-
-
-def validate_legacy_lockout_parity(
-    policies: List[RoutePolicy], legacy_lines: List[str]
-) -> List[str]:
-    policy_map = {p.route: p for p in policies}
-    header_map = extract_legacy_header_map(legacy_lines)
-    errors: List[str] = []
-
-    for canonical_route, legacy_route in LEGACY_LOCKOUT_PARITY_ROUTES:
-        canonical = policy_map.get(canonical_route)
-        legacy = policy_map.get(legacy_route)
-
-        if canonical is None:
-            errors.append(f"missing canonical route policy: {canonical_route}")
-            continue
-        if legacy is None:
-            errors.append(f"missing legacy route policy: {legacy_route}")
-            continue
-
-        if canonical.rate_limit != legacy.rate_limit:
-            errors.append(
-                f"rate_limit mismatch {legacy_route} ({legacy.rate_limit}) != "
-                f"{canonical_route} ({canonical.rate_limit})"
-            )
-        if canonical.ui_activity != legacy.ui_activity:
-            errors.append(
-                f"ui_activity mismatch {legacy_route} ({legacy.ui_activity}) != "
-                f"{canonical_route} ({canonical.ui_activity})"
-            )
-        if canonical.delegates != legacy.delegates:
-            errors.append(
-                f"delegate mismatch {legacy_route} ({','.join(legacy.delegates)}) != "
-                f"{canonical_route} ({','.join(canonical.delegates)})"
-            )
-
-        expected_target = canonical_route.split(" ", 1)[1]
-        has_header, target = header_map.get(legacy_route, (0, ""))
-        if has_header != 1:
-            errors.append(f"missing deprecation header on {legacy_route}")
-        if target != expected_target:
-            errors.append(
-                f"bad deprecation target on {legacy_route}: "
-                f"expected {expected_target}, got {target or '<empty>'}"
-            )
-
-    return errors
-
-
 def read_expected_lines(path: Path) -> List[str]:
     if not path.exists():
         return []
@@ -446,7 +344,6 @@ def main() -> int:
     routes = extract_routes(source)
     policies = extract_policy_contract(source)
     policy_lines = [p.to_line() for p in policies]
-    legacy_lockout_lines = extract_legacy_lockout_contract(source)
     shim_absence_lines = extract_shim_absence_contract(source)
     local_handler_route_lines = extract_local_handler_route_contract(source)
 
@@ -462,11 +359,6 @@ def main() -> int:
             policy_lines,
         )
         write_lines(
-            LEGACY_LOCKOUT_CONTRACT_FILE,
-            "# WiFi API legacy lockout compatibility contract",
-            legacy_lockout_lines,
-        )
-        write_lines(
             SHIM_ABSENCE_CONTRACT_FILE,
             "# WiFi API shim absence contract (handle* methods must not delegate to ApiService)",
             shim_absence_lines,
@@ -478,14 +370,12 @@ def main() -> int:
         )
         print(f"Updated {ROUTE_CONTRACT_FILE}")
         print(f"Updated {POLICY_CONTRACT_FILE}")
-        print(f"Updated {LEGACY_LOCKOUT_CONTRACT_FILE}")
         print(f"Updated {SHIM_ABSENCE_CONTRACT_FILE}")
         print(f"Updated {LOCAL_HANDLER_ROUTE_CONTRACT_FILE}")
         return 0
 
     expected_routes = read_expected_lines(ROUTE_CONTRACT_FILE)
     expected_policy = read_expected_lines(POLICY_CONTRACT_FILE)
-    expected_legacy_lockout = read_expected_lines(LEGACY_LOCKOUT_CONTRACT_FILE)
     expected_shim_absence = read_expected_lines(SHIM_ABSENCE_CONTRACT_FILE)
     expected_local_handler_routes = read_expected_lines(LOCAL_HANDLER_ROUTE_CONTRACT_FILE)
 
@@ -497,21 +387,11 @@ def main() -> int:
     if expected_policy != policy_lines:
         print_diff(expected_policy, policy_lines, "policy")
         ok = False
-    if expected_legacy_lockout != legacy_lockout_lines:
-        print_diff(expected_legacy_lockout, legacy_lockout_lines, "legacy-lockout")
-        ok = False
     if expected_shim_absence != shim_absence_lines:
         print_diff(expected_shim_absence, shim_absence_lines, "shim-absence")
         ok = False
     if expected_local_handler_routes != local_handler_route_lines:
         print_diff(expected_local_handler_routes, local_handler_route_lines, "local-handler-route")
-        ok = False
-
-    legacy_parity_errors = validate_legacy_lockout_parity(policies, legacy_lockout_lines)
-    if legacy_parity_errors:
-        print("[contract] legacy-lockout-parity mismatch")
-        for error in legacy_parity_errors:
-            print(f"  - {error}")
         ok = False
 
     delegate_placement_errors = find_delegate_placement_errors(source)
@@ -526,8 +406,8 @@ def main() -> int:
         return 1
 
     print(
-        "[contract] route, policy, legacy lockout, shim-absence, local-handler-route, "
-        "lockout parity, and delegate placement contracts match"
+        "[contract] route, policy, shim-absence, local-handler-route, "
+        "and delegate placement contracts match"
     )
     return 0
 

@@ -138,20 +138,6 @@ void WiFiManager::setupWebServer() {
             rateLimitCallback);
     });  // Consistent API endpoint
     
-    // Legacy HTML page routes - redirect to root (SvelteKit handles routing)
-    server.on("/settings", HTTP_GET, [this]() { 
-        WifiPortalApiService::handleApiDeprecatedRedirectToRoot(
-            server,
-            "Use /api/settings");
-    });
-    server.on("/settings", HTTP_POST, [this, rateLimitCallback]() {
-        WifiSettingsApiService::handleApiLegacySettingsSave(
-            server,
-            makeSettingsRuntime(),
-            rateLimitCallback,
-            [this]() { server.sendHeader("X-API-Deprecated", "Use /api/settings"); },
-            []() { Serial.println("[HTTP] WARN: Legacy POST /settings used; prefer /api/settings"); });
-    });  // Legacy compat
     server.on("/darkmode", HTTP_POST, [this, rateLimitCallback]() {
         WifiControlApiService::handleApiDarkMode(
             server,
@@ -531,43 +517,6 @@ void WiFiManager::setupWebServer() {
             lockoutStore,
             rateLimitCallback,
             markUiActivityCallback);
-    });
-    server.on("/api/lockout/zones", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
-        LockoutApiService::handleApiZones(
-            server,
-            lockoutIndex,
-            lockoutLearner,
-            settingsManager,
-            rateLimitCallback,
-            markUiActivityCallback,
-            [this]() { server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones"); });
-    });
-    server.on("/api/lockout/summary", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
-        LockoutApiService::handleApiSummary(
-            server,
-            signalObservationLog,
-            signalObservationSdLogger,
-            rateLimitCallback,
-            markUiActivityCallback,
-            [this]() { server.sendHeader("X-API-Deprecated", "Use /api/lockouts/summary"); });
-    });
-    server.on("/api/lockout/events", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
-        LockoutApiService::handleApiEvents(
-            server,
-            signalObservationLog,
-            signalObservationSdLogger,
-            rateLimitCallback,
-            markUiActivityCallback,
-            [this]() { server.sendHeader("X-API-Deprecated", "Use /api/lockouts/events"); });
-    });
-    server.on("/api/lockout/zones/delete", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        LockoutApiService::handleApiZoneDelete(
-            server,
-            lockoutIndex,
-            lockoutStore,
-            rateLimitCallback,
-            markUiActivityCallback,
-            [this]() { server.sendHeader("X-API-Deprecated", "Use /api/lockouts/zones/delete"); });
     });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
