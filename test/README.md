@@ -74,6 +74,7 @@ Use `--drive-display-preview` when you specifically need display-path coverage.
 | `test_device_nvs` | Dependent / Persistence | NVS write/read round-trip, namespace A/B, XOR obfuscation |
 | `test_device_battery` | Dependent / Hardware | ADC sampling, TCA9554 I2C, power latch, button GPIO |
 | `test_device_coexistence` | Dependent / Radio | WiFi AP heap cost, DMA gate, BLE+WiFi simultaneous |
+| `test_device_heap_stress` | Stress | Fragmentation churn, alloc/free leak checks, near-OOM (manual run) |
 
 See [device/README.md](device/README.md) for detailed documentation.
 
@@ -124,13 +125,13 @@ test/
 └── README.md
 ```
 
-## Current Baseline (Verified 2026-02-18)
+## Current Baseline
 
 | Metric | Native | Device |
 |--------|--------|--------|
-| Test suites | 48 | 8 (device-only) |
-| Test cases | 771 | ~90 |
-| Result | ✅ 771 passed | Compile-verified |
+| Test suites | 76 | 9 (device-only) |
+| Test cases | 939 | ~90 |
+| Result | ✅ 939 passed | Compile-verified |
 | Command | `pio test -e native` | `./scripts/run_device_tests.sh` |
 
 ## Display Torture Test Categories
