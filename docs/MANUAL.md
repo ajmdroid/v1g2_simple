@@ -14,7 +14,7 @@
 Feature-by-feature release history is maintained in `CHANGELOG.md`.
 
 Current train (`v4.0.0-dev`) highlights:
-- GPS lockout runtime stack (enforcer + learner + store/index) and `/gps` configuration controls.
+- GPS lockout runtime stack (enforcer + learner + store/index) and lockout configuration controls.
 - SD-backed perf CSV snapshots (`/perf/perf_boot_<id>.csv`) and runtime metrics correlation.
 - Settings backup/restore hardening and display/runtime stability fixes.
 
@@ -173,19 +173,19 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 
 | File(s) | Lines | Purpose |
 |---------|-------|---------|
-| `main.cpp` + `main_boot.cpp` + `main_loop_phases.cpp` + `main_persist.cpp` | ~2453 | Application entry, loop, boot sequence, loop phase routing, persistence helpers |
-| `ble_client.cpp` + `ble_commands.cpp` + `ble_connection.cpp` + `ble_proxy.cpp` | ~2898 | NimBLE client/server, V1 connection, proxy |
-| `display.cpp` + 11 display_*.cpp files | ~4835 | Arduino_GFX drawing, segments, cards, status bar, frequency, etc. |
-| `wifi_manager.cpp` + `wifi_routes.cpp` + `wifi_runtimes.cpp` + `wifi_client.cpp` | ~2417 | WebServer, API route registration, runtime routes, client mode |
-| `audio_beep.cpp` + `audio_voice.cpp` | ~1304 | ES8311 DAC, I2S audio, voice alerts, SD clip playback |
-| `settings.cpp` + `settings_backup.cpp` + `settings_nvs.cpp` + `settings_setters.cpp` | ~2537 | Preferences (NVS) storage, backup/restore, setters |
+| `main.cpp` + `main_boot.cpp` + `main_loop_phases.cpp` + `main_persist.cpp` | ~2303 | Application entry, loop, boot sequence, loop phase routing, persistence helpers |
+| `ble_client.cpp` + `ble_commands.cpp` + `ble_connection.cpp` + `ble_proxy.cpp` + `ble_runtime.cpp` | ~2834 | NimBLE client/server, V1 connection, proxy |
+| `display.cpp` + 11 display_*.cpp files | ~4377 | Arduino_GFX drawing, segments, cards, status bar, frequency, etc. |
+| `wifi_manager.cpp` + `wifi_routes.cpp` + `wifi_runtimes.cpp` + `wifi_client.cpp` | ~2333 | WebServer, API route registration, runtime routes, client mode |
+| `audio_beep.cpp` + `audio_voice.cpp` | ~1269 | ES8311 DAC, I2S audio, voice alerts, SD clip playback |
+| `settings.cpp` + `settings_backup.cpp` + `settings_nvs.cpp` + `settings_setters.cpp` + `settings_restore.cpp` | ~2526 | Preferences (NVS) storage, backup/restore, setters |
 | `v1_profiles.cpp` | ~776 | Profile JSON on SD/LittleFS |
-| `battery_manager.cpp` | ~652 | ADC, TCA9554 I/O expander |
-| `packet_parser.cpp` | ~844 | ESP packet framing and decoding |
+| `battery_manager.cpp` | ~623 | ADC, TCA9554 I/O expander |
+| `packet_parser.cpp` + `packet_parser_alerts.cpp` | ~883 | ESP packet framing and decoding |
 | `storage_manager.cpp` | ~118 | SD/LittleFS mount abstraction |
 | `touch_handler.cpp` | ~178 | AXS15231B I2C touch polling |
-| `src/modules/` (75 .cpp files, 18 dirs) | ~21k | Runtime modules for GPS, lockout, display pipeline, voice, power, WiFi API services, etc. |
-| `perf_metrics.cpp` | ~813 | Latency tracking (ArduinoJson) |
+| `src/modules/` (67 .cpp files, 15 dirs) | ~17k | Runtime modules for GPS, lockout, display pipeline, voice, power, WiFi API services, etc. |
+| `perf_metrics.cpp` | ~698 | Latency tracking (ArduinoJson) |
 
 ### Data Flow
 
@@ -242,8 +242,8 @@ V1 Gen2 (BLE)
 |-----------|--------|--------|
 | Display draw minimum interval | 25ms (~40fps max) | `DISPLAY_DRAW_MIN_MS` in display_pipeline_module.h |
 | Display update check | 50ms | `DISPLAY_UPDATE_MS` in config.h |
-| Status serial print | 1000ms | `STATUS_UPDATE_MS` in config.h |
-| Band grace period | 100ms | `BAND_GRACE_MS` in display.cpp |
+| Status serial print | 1000ms | main.cpp |
+| Band grace period | 100ms | `BAND_GRACE_MS` in display_update.cpp |
 | Touch debounce | 200ms | touch_handler.cpp |
 | Tap window (triple-tap) | 600ms | `TAP_WINDOW_MS` in tap_gesture_module.h |
 
@@ -260,7 +260,7 @@ V1 Gen2 (BLE)
 4. batteryManager.begin()              // CRITICAL: Latch power early
 5. display.begin()                     // QSPI init, canvas allocation
 6. Check esp_reset_reason()            // Decide splash vs skip
-7. IF power-on: showBootSplash(1500ms)
+7. IF power-on: showBootSplash(400ms)
 8. showScanning()                      // "SCAN" text
 9. settingsManager.begin()             // Load from NVS
 10. storageManager.begin()             // Mount SD or LittleFS
@@ -276,7 +276,7 @@ V1 Gen2 (BLE)
 
 ### Boot Splash Logic
 
-- **Power-on reset (`ESP_RST_POWERON`):** Show 640×172 logo with firmware version for 1500ms
+- **Power-on reset (`ESP_RST_POWERON`):** Show 640×172 logo with firmware version for 400ms
 - **Software reset / upload:** Skip splash for faster iteration
 - **Crash restart:** Skip splash
 
@@ -329,7 +329,7 @@ The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen
        │ V1 found (name starts "V1G"/"V1-")         │
        ▼                                            │
 ┌─────────────┐                                     │
-│SCAN_STOPPING│ (100ms settle, 750ms cold boot)     │
+│SCAN_STOPPING│ (100ms settle, 200ms cold boot)     │
 └──────┬──────┘                                     │
        │ scan stopped                               │
        ▼                                            │
@@ -403,15 +403,15 @@ The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen
 
 ### Signal Strength Mapping
 
-V1 Gen2 sends raw RSSI values. Mapped to 0-6 bars using threshold tables:
+V1 Gen2 sends raw RSSI values. Mapped to 0-8 bars using threshold tables:
 
 ```cpp
-// Ka thresholds: 0x00, 0x8F, 0x99, 0xA4, 0xAF, 0xB5, 0xFF
-// K thresholds:  0x00, 0x87, 0x95, 0xA3, 0xB1, 0xBF, 0xFF
-// X thresholds:  0x00, 0x95, 0xA5, 0xB3, 0xC0, 0xCC, 0xFF
+// Ka thresholds: 0x7F, 0x88, 0x92, 0x9C, 0xA6, 0xB0, 0xFF
+// K thresholds:  0x7F, 0x86, 0x90, 0x9A, 0xA4, 0xAE, 0xFF
+// X thresholds:  0x7F, 0x8A, 0x98, 0xA6, 0xB4, 0xC2, 0xFF
 ```
 
-**Source:** [src/packet_parser.cpp](src/packet_parser.cpp#L140-L165)
+**Source:** [src/packet_parser_alerts.cpp](src/packet_parser_alerts.cpp#L94-L96)
 
 ### Queue / Buffering
 
@@ -426,7 +426,7 @@ V1 Gen2 sends raw RSSI values. Mapped to 0-6 bars using threshold tables:
 ### Proxy Mode (App Compatibility)
 
 When `proxyBLE=true`:
-1. Device advertises as "V1C-LE-S3" after V1 connects
+1. Device advertises as "V1-Proxy" after V1 connects
 2. Companion app can connect as secondary client
 3. All V1 notifications forwarded via `forwardToProxyImmediate()` - **zero added latency**
 4. Commands from app forwarded to V1
@@ -441,13 +441,13 @@ When `proxyBLE=true`:
 // NimBLE connection params: min/max interval, latency, timeout
 // Optimized for low-latency proxy performance
 pClient->setConnectionParams(12, 24, 0, 400);  // 15-30ms interval, 0 latency, 4s timeout
-pClient->setConnectTimeout(15);  // 15 second connect timeout (20s for first connect after boot)
+pClient->setConnectTimeout(3);  // 3 second connect timeout
 
 // MTU set to maximum for BLE 5.x
 NimBLEDevice::setMTU(517);  // 512 payload + 5 header
 ```
 
-**Note:** The same tight connection parameters (15-30ms) are also applied to the phone/app side of the proxy connection for optimal latency.
+**Note:** The same tight connection parameters (15-30ms) are also applied to the app side of the proxy connection for optimal latency.
 
 **Source:** [src/ble_connection.cpp](src/ble_connection.cpp#L295) (V1 connection params), [src/ble_proxy.cpp](src/ble_proxy.cpp) (phone connection)
 
@@ -527,7 +527,7 @@ Layout zones (left to right):
 
 When multiple alerts are active simultaneously, secondary alerts appear as compact cards below the main alert:
 
-- **Main alert:** Full-size display (frequency, 8-bar signal meter, direction arrows)
+- **Main alert:** Full-size display (frequency, 6-bar signal meter, direction arrows)
 - **Secondary alerts:** Compact cards showing:
   - Band indicator (color-coded: Laser/Ka/K/X)
   - Frequency in MHz (e.g., "34712")
@@ -868,10 +868,8 @@ ESP32 Preferences API with namespace `v1settings`:
 | apSSID | String | "V1-Simple" | AP network name |
 | apPassword | String | "setupv1g2" (obfuscated) | AP password |
 | proxyBLE | bool | true | BLE proxy enabled |
-| proxyName | String | "V1C-LE-S3" | Proxy advertised name |
+| proxyName | String | "V1-Proxy" | Proxy advertised name |
 | brightness | uint8 | 200 | Display brightness 0-255 |
-| camAlertFt | uint16 | 1640 | ALPR trigger distance (500-2000 ft) |
-| camAlertSec | uint8 | 5 | ALPR persistence + fail-safe timeout (3-10 sec) |
 | voiceVol | uint8 | 75 | Voice alert volume 0-100% |
 | voiceMode | uint8 | 3 | Voice mode: 0=off, 1=band, 2=freq, 3=band+freq |
 | voiceDir | bool | true | Include direction in voice announcements |
@@ -882,7 +880,7 @@ ESP32 Preferences API with namespace `v1settings`:
 | secKa | bool | true | Announce secondary Ka alerts |
 | secK | bool | false | Announce secondary K alerts |
 | secX | bool | false | Announce secondary X alerts |
-| autoPush | bool | false | Auto-push on connect |
+| autoPush | bool | true | Auto-push on connect |
 | activeSlot | int | 0 | Active profile slot 0-2 |
 | slot0prof | String | "" | Slot 0 profile name |
 | slot0mode | int | 0 | Slot 0 V1 mode |
@@ -961,7 +959,6 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 | `/colors` | `colors/+page.svelte` | Color customization |
 | `/autopush` | `autopush/+page.svelte` | Auto-push slot configuration |
 | `/profiles` | `profiles/+page.svelte` | V1 profile management |
-| `/gps` | `gps/+page.svelte` | GPS and auto-lockout settings |
 | `/devices` | `devices/+page.svelte` | Known V1 device management |
 | `/lockouts` | `lockouts/+page.svelte` | GPS lockout zone management and observation log |
 | `/integrations` | `integrations/+page.svelte` | GPS and external integration settings |
@@ -1003,7 +1000,7 @@ Voice alerts announce through the built-in speaker when no phone app is connecte
 
 **Source:** [interface/src/routes/audio/+page.svelte](interface/src/routes/audio/+page.svelte)
 
-### GPS Page (`/gps`)
+### GPS / Lockout Settings (`/integrations` and `/lockouts`)
 
 Controls:
 - **GPS Module:** Enable/disable GPS for location-based features (auto-detects within 60s)
@@ -1011,17 +1008,14 @@ Controls:
 **Auto-Lockout Settings:**
 - **Enable Auto-Lockout:** Master toggle for automatic false alert learning
 - **Ka Protection:** Never auto-learn Ka band (real threats, default: on)
-- **Directional Unlearn:** Only unlearn when traveling same direction (default: on)
-- **Frequency Tolerance:** MHz tolerance for lockout matching (default: 8)
-- **Learn Count:** Hits needed to promote to lockout (default: 2; moving alerts still need 4)
-- **Unlearn Count:** Passes without alert to demote auto-lockout (default: 5)
-- **Manual Delete Count:** Passes to demote manual lockouts (default: 25)
-- **Learn Interval:** Hours between counted hits (default: 4)
-- **Unlearn Interval:** Hours between counted misses (default: 4)
-- **Max Signal Strength:** Don't learn strong signals above this level (0=disabled)
-- **Max Distance:** Don't learn alerts farther than this distance (default: 600m)
+- **Frequency Tolerance:** MHz tolerance for lockout matching (default: 10)
+- **Learn Count:** Hits needed to promote to lockout (default: 3; moving alerts still need 4)
+- **Unlearn Count:** Passes without alert to demote auto-lockout (default: 0, legacy decay)
+- **Manual Delete Count:** Passes to demote manual lockouts (default: 0, never auto-delete)
+- **Learn Interval:** Hours between counted hits (default: 0, disabled)
+- **Unlearn Interval:** Hours between counted misses (default: 0, disabled)
 
-**Source:** [interface/src/routes/gps/+page.svelte](interface/src/routes/gps/+page.svelte)
+**Source:** [interface/src/routes/integrations/+page.svelte](interface/src/routes/integrations/+page.svelte), [interface/src/routes/lockouts/+page.svelte](interface/src/routes/lockouts/+page.svelte)
 
 ### Colors Page (`/colors`)
 
@@ -1523,7 +1517,7 @@ npm run deploy                            # Copy build/ to data/
 Automated unit tests run via PlatformIO's Unity framework:
 
 ```bash
-pio test -e native          # Run all native unit tests (85+ suites, 934 tests)
+pio test -e native          # Run all native unit tests (76 suites, 939 tests)
 ```
 
 Manual testing procedure:
@@ -1655,7 +1649,7 @@ struct AlertData {
 struct DisplayState {
     uint8_t activeBands;  // Bitmap of Band enum
     Direction arrows;     // Bitmap of Direction enum
-    uint8_t signalBars;   // 0-6
+    uint8_t signalBars;   // 0-8 (from V1's LED bitmap)
     bool muted;
     bool systemTest;
     char modeChar;        // 'A', 'L', 'c' for mode indicator
