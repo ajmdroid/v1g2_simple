@@ -57,8 +57,6 @@ public:
                            float latitudeDeg = NAN,
                            float longitudeDeg = NAN,
                            float courseDeg = NAN);
-    void clearSample();
-
     bool getFreshSpeed(uint32_t nowMs, float& speedMphOut, uint32_t& tsMsOut) const;
     GpsRuntimeStatus snapshot(uint32_t nowMs) const;
 
@@ -67,6 +65,9 @@ public:
     static bool parseRmcDateTime(const char* timeField, const char* dateField, int64_t& epochMsOut);
 
 #ifdef UNIT_TEST
+    // Test-only: clear all GPS sample state to simulate fix drop.
+    void clearSample();
+
     // Native-test hook for parser coverage without UART hardware.
     bool injectNmeaSentenceForTest(const char* nmeaSentence, uint32_t nowMs);
 #endif

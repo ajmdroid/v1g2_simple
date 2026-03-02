@@ -57,13 +57,13 @@ public:
                GpsRuntimeModule* gpsModule,
                LockoutOrchestrationModule* lockoutModule);
 
-    void reset();
-
     void processEarly(const DisplayOrchestrationEarlyContext& ctx);
     DisplayOrchestrationParsedResult processParsedFrame(const DisplayOrchestrationParsedContext& ctx);
     DisplayOrchestrationRefreshResult processLightweightRefresh(const DisplayOrchestrationRefreshContext& ctx);
 
 private:
+    void reset();
+
     V1Display* display = nullptr;
     V1BLEClient* ble = nullptr;
     BleQueueModule* bleQueue = nullptr;

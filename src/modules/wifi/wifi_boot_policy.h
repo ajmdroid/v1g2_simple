@@ -42,10 +42,12 @@ inline bool shouldAutoStartWifi(bool enableWifiAtBoot,
     return canStartDma;
 }
 
+#ifdef UNIT_TEST
 /// Should wifiManager.process() be called this iteration?
 ///
 /// Returns false when WiFi is entirely off — prevents stray work that
 /// shows up as wifiMax_us / wifiConnectDeferred in wifi-off profiles.
+/// NOTE: Not called in production code; retained for test coverage.
 inline bool shouldProcessWifi(bool setupModeActive,
                               bool wifiClientConnected,
                               bool enableWifiAtBoot,
@@ -60,5 +62,6 @@ inline bool shouldProcessWifi(bool setupModeActive,
 
     return false;
 }
+#endif // UNIT_TEST
 
 }  // namespace WifiBootPolicy

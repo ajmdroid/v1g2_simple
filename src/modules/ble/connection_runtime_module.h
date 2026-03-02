@@ -32,7 +32,6 @@ public:
 
     void begin(const Providers& hooks);
     void begin(const Providers& hooks, const Config& cfg);
-    void reset();
 
     ConnectionRuntimeSnapshot process(unsigned long nowMs,
                                       unsigned long nowUs,
@@ -42,6 +41,7 @@ public:
                                       bool initialScanningScreenShown);
 
 private:
+    void reset();
     Providers providers{};
     Config config;
     unsigned long lastAudioTickUs = 0;

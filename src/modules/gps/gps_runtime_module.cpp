@@ -765,6 +765,7 @@ void GpsRuntimeModule::setScaffoldSample(float speedMph,
     publishObservation(sampleTsMs_);
 }
 
+#ifdef UNIT_TEST
 void GpsRuntimeModule::clearSample() {
     const uint32_t nowMs = millis();
     invalidateSpeedSample();
@@ -783,6 +784,7 @@ void GpsRuntimeModule::clearSample() {
     updateStableFixState(nowMs);
     publishObservation(nowMs);
 }
+#endif // UNIT_TEST
 
 bool GpsRuntimeModule::getFreshSpeed(uint32_t nowMs, float& speedMphOut, uint32_t& tsMsOut) const {
     if (!enabled_ || !sampleValid_ || !hasFix_ || sampleTsMs_ == 0) {
