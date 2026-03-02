@@ -1833,7 +1833,7 @@ if [[ "$serial_wdt_or_panic_count" -gt 0 ]]; then
   reboot_evidence_detected=1
   reboot_evidence_detail_parts+=("serial_panic_signatures=${serial_wdt_or_panic_count}")
 fi
-if is_uint "$panic_was_crash_true" && [[ "$panic_was_crash_true" -gt 0 ]]; then
+if [[ "$panic_was_crash_true" =~ ^[0-9]+$ ]] && [[ "$panic_was_crash_true" -gt 0 ]]; then
   reboot_evidence_detected=1
   reboot_evidence_detail_parts+=("panic_endpoint_crash=${panic_was_crash_true}")
 fi
