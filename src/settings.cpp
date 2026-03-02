@@ -291,16 +291,6 @@ void SettingsManager::load() {
     settings.alertVolumeFadeDelaySec = std::clamp<uint8_t>(preferences.getUChar("volFadeSec", 2), 1, 10);  // 1-10 seconds
     settings.alertVolumeFadeVolume = std::min<uint8_t>(9, preferences.getUChar("volFadeVol", 1));  // 0-9 (V1 volume range)
     
-    // Speed-based volume settings
-    settings.speedVolumeEnabled = preferences.getBool("spdVolEn", false);
-    settings.speedVolumeThresholdMph = clampU8(preferences.getUChar("spdVolThr", 45), 10, 100);
-    settings.speedVolumeBoost = clampU8(preferences.getUChar("spdVolBoost", 2), 1, 5);
-    
-    // Low-speed quiet settings
-    settings.lowSpeedMuteEnabled = preferences.getBool("lowSpdMute", false);
-    settings.lowSpeedMuteThresholdMph = clampU8(preferences.getUChar("lowSpdThr", 5), 1, 30);
-    settings.lowSpeedVolume = clampU8(preferences.getUChar("lowSpdVol", 0), 0, 9);
-    
     settings.autoPushEnabled = preferences.getBool("autoPush", true);  // Default to enabled for profiles to work
     settings.activeSlot = preferences.getInt("activeSlot", 0);
     if (settings.activeSlot < 0 || settings.activeSlot > 2) {

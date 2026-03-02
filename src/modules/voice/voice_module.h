@@ -123,7 +123,7 @@ public:
     // Convert V1 Direction bitmask to AlertDirection for audio
     static AlertDirection toAudioDirection(Direction dir);
     
-    // Speed utility - also used by main.cpp for speed-based volume boost
+    // Speed utility - also used by main.cpp for speed-based features
     float getCurrentSpeedMph(unsigned long now);
     bool getCurrentSpeedSample(unsigned long now, float& speedMphOut) const;
     void updateSpeedSample(float speedMph, unsigned long timestampMs);
@@ -213,12 +213,10 @@ private:
     uint8_t getLastBogeyCount() const { return lastVoiceAlertBogeyCount; }
     uint8_t getDirectionChangeCount() const { return directionChangeCount; }
     
-    // Speed helpers for low-speed muting (getCurrentSpeedMph is public)
+    // Speed helpers (getCurrentSpeedMph is public)
     float cachedSpeedMph = 0.0f;
     unsigned long cachedSpeedTimestamp = 0;
     static constexpr unsigned long SPEED_CACHE_MAX_AGE_MS = 5000;
-    
-    bool isLowSpeedMuted(unsigned long now) const;
     
     // Alert history helpers
     void updateAlertHistory(Band band, uint16_t freq, uint8_t bars, unsigned long now);

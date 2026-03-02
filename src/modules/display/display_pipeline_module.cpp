@@ -11,7 +11,6 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
                                   AlertPersistenceModule* alertPersistenceModule,
                                   VolumeFadeModule* volumeFadeModule,
                                   VoiceModule* voiceModule,
-                                  SpeedVolumeModule* speedVolumeModule,
                                   DebugLogger* debugLogger) {
     displayMode = displayModePtr;
     display = displayPtr;
@@ -21,7 +20,6 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     alertPersistence = alertPersistenceModule;
     volumeFade = volumeFadeModule;
     voice = voiceModule;
-    speedVolume = speedVolumeModule;
     debug = debugLogger;
 }
 
@@ -30,7 +28,7 @@ static unsigned long lastAlertGapRecoverMs = 0;
 
 void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppressed) {
     if (!display || !parser || !settings || !ble || !alertPersistence ||
-        !volumeFade || !voice || !speedVolume || !displayMode) {
+        !volumeFade || !voice || !displayMode) {
         return;
     }
 
@@ -88,8 +86,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
             fadeCtx.currentMuteVolume = state.muteVolume;
             fadeCtx.currentFrequency = 0;
         }
-        fadeCtx.speedBoostActive = speedVolume->isBoostActive();
-        fadeCtx.speedBoostOriginalVolume = speedVolume->getOriginalVolume();
         fadeCtx.now = nowMs;
 
         VolumeFadeAction fadeAction = volumeFade->process(fadeCtx);
@@ -186,9 +182,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         voice->clearAllState();
         // Note: Do NOT clear alertPersistence here - we need the stored alert for persistence display
         // Persistence is cleared on slot change (below) or when window expires
-
-        // Preserve speed-volume state across idle frames; the module owns reset
-        // on its own lifecycle edges (proxy, disconnect, feature/fade gating).
 
         const V1Settings& s = settingsRef;
         uint8_t persistSec = settings->getSlotAlertPersistSec(s.activeSlot);

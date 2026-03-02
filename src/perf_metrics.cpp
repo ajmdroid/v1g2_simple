@@ -148,10 +148,6 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.autoPushModeFail = perfCounters.autoPushModeFail.load(std::memory_order_relaxed);
     snapshot.autoPushVolumeFail = perfCounters.autoPushVolumeFail.load(std::memory_order_relaxed);
     snapshot.autoPushDisconnectAbort = perfCounters.autoPushDisconnectAbort.load(std::memory_order_relaxed);
-    snapshot.speedVolBoosts = perfCounters.speedVolBoosts.load(std::memory_order_relaxed);
-    snapshot.speedVolRestores = perfCounters.speedVolRestores.load(std::memory_order_relaxed);
-    snapshot.speedVolFadeTakeovers = perfCounters.speedVolFadeTakeovers.load(std::memory_order_relaxed);
-    snapshot.speedVolNoHeadroom = perfCounters.speedVolNoHeadroom.load(std::memory_order_relaxed);
     snapshot.prioritySelectDisplayIndex = perfCounters.prioritySelectDisplayIndex.load(std::memory_order_relaxed);
     snapshot.prioritySelectRowFlag = perfCounters.prioritySelectRowFlag.load(std::memory_order_relaxed);
     snapshot.prioritySelectFirstUsable = perfCounters.prioritySelectFirstUsable.load(std::memory_order_relaxed);
@@ -686,10 +682,6 @@ String perfMetricsToJson() {
     doc["autoPushModeFail"] = perfCounters.autoPushModeFail.load();
     doc["autoPushVolumeFail"] = perfCounters.autoPushVolumeFail.load();
     doc["autoPushDisconnectAbort"] = perfCounters.autoPushDisconnectAbort.load();
-    doc["speedVolBoosts"] = perfCounters.speedVolBoosts.load();
-    doc["speedVolRestores"] = perfCounters.speedVolRestores.load();
-    doc["speedVolFadeTakeovers"] = perfCounters.speedVolFadeTakeovers.load();
-    doc["speedVolNoHeadroom"] = perfCounters.speedVolNoHeadroom.load();
     doc["prioritySelectDisplayIndex"] = perfCounters.prioritySelectDisplayIndex.load();
     doc["prioritySelectRowFlag"] = perfCounters.prioritySelectRowFlag.load();
     doc["prioritySelectFirstUsable"] = perfCounters.prioritySelectFirstUsable.load();

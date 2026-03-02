@@ -24,8 +24,7 @@ void setUp() {
 
 // Helper to build a common context
 static VolumeFadeContext makeCtx(bool hasAlert, unsigned long nowMs, uint8_t volume,
-                                 uint16_t freq, bool muted = false, bool inLockout = false,
-                                 bool speedBoostActive = false, uint8_t speedBoostOrig = 0xFF) {
+                                 uint16_t freq, bool muted = false, bool inLockout = false) {
     VolumeFadeContext ctx;
     ctx.hasAlert = hasAlert;
     ctx.alertMuted = muted;
@@ -33,8 +32,6 @@ static VolumeFadeContext makeCtx(bool hasAlert, unsigned long nowMs, uint8_t vol
     ctx.currentVolume = volume;
     ctx.currentMuteVolume = 0;
     ctx.currentFrequency = freq;
-    ctx.speedBoostActive = speedBoostActive;
-    ctx.speedBoostOriginalVolume = speedBoostOrig;
     ctx.now = nowMs;
     return ctx;
 }

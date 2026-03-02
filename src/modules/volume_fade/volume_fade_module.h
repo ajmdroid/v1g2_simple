@@ -28,14 +28,12 @@ struct VolumeFadeContext {
     uint8_t currentVolume;      // Current V1 volume
     uint8_t currentMuteVolume;  // Current V1 mute volume
     uint16_t currentFrequency;  // Current priority frequency (MHz*10) for dedup
-    bool speedBoostActive;      // Speed volume boost currently active
-    uint8_t speedBoostOriginalVolume; // Pre-boost volume (0xFF = unknown)
     unsigned long now;          // Current timestamp
     
     VolumeFadeContext() : 
         hasAlert(false), alertMuted(false), alertSuppressed(false),
         currentVolume(0), currentMuteVolume(0), currentFrequency(0),
-        speedBoostActive(false), speedBoostOriginalVolume(0xFF), now(0) {}
+        now(0) {}
 };
 
 /**

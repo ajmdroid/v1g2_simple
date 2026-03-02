@@ -827,27 +827,6 @@ Automatically reduces V1's alert volume after the initial announcement period. U
 
 **Configure:** Web UI at `/audio` → "Volume Fade" section
 
-### Speed-Based Volume (Highway Mode)
-
-Automatically boosts V1 alert volume when traveling above a configurable speed threshold. Compensates for increased road noise at highway speeds.
-
-**Settings:**
-- `speedVolumeEnabled` - Master toggle (default: false)
-- `speedVolumeThresholdMph` - Speed to trigger boost (20-80 mph, default: 45)
-- `speedVolumeBoost` - Volume levels to add (1-5, default: 2)
-
-**Behavior:**
-1. Speed exceeds threshold → V1 volume boosted by configured amount (capped at 9)
-2. Speed drops below threshold → Volume restored to original
-3. Checks every 2 seconds to avoid rapid toggling
-4. Uses OBD speed (preferred) or GPS speed as fallback
-
-**NVS Keys:** `spdVolEn`, `spdVolThr`, `spdVolBoost`
-
-**Configure:** Web UI at `/audio` → "Speed-Based Volume" section
-
-**Requires:** OBD-II adapter (ELM327 BLE) or GPS module for speed data
-
 ---
 
 ## G. Storage
@@ -980,7 +959,7 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 |-------|------|---------|
 | `/` | `+page.svelte` | Home - connection status, quick links |
 | `/settings` | `settings/+page.svelte` | WiFi AP, BLE proxy settings |
-| `/audio` | `audio/+page.svelte` | Voice alert settings, volume fade, speed volume |
+| `/audio` | `audio/+page.svelte` | Voice alert settings, volume fade |
 | `/colors` | `colors/+page.svelte` | Color customization |
 | `/autopush` | `autopush/+page.svelte` | Auto-push slot configuration |
 | `/profiles` | `profiles/+page.svelte` | V1 profile management |
@@ -1020,11 +999,6 @@ Controls:
 - **Enable Volume Fade:** Reduce V1 alert volume after initial announcement period
 - **Delay:** Seconds to wait at full volume before fading (1-10)
 - **Reduced Volume:** Target volume to fade to (0-9)
-
-**Speed-Based Volume:**
-- **Enable Speed Volume:** Boost V1 volume when traveling above threshold
-- **Speed Threshold:** MPH threshold to trigger boost (20-80)
-- **Volume Boost:** Levels to add when above threshold (1-5)
 
 **Speaker Volume:** Slider to control ES8311 DAC output level (0-100%)
 

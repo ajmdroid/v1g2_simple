@@ -97,10 +97,6 @@ src/
 │   │   └── power_module.h/cpp
 │   ├── speed/                       Speed source selection policy
 │   │   └── speed_source_selector.h/cpp
-│   ├── speed_volume/                Highway speed volume boost + speaker sync
-│   │   ├── speed_volume_module.h/cpp
-│   │   ├── speed_volume_runtime_module.h/cpp
-│   │   └── speaker_quiet_sync_module.h/cpp
 │   ├── system/                      Loop orchestration modules + event bus + maintenance
 │   │   ├── system_event_bus.h
 │   │   ├── parsed_frame_event_module.h/cpp
@@ -173,8 +169,6 @@ src/
 | **ObdRuntimeModule** | OBD auto-connect deferral and runtime process cadence |
 | **PowerModule** | Battery monitoring, power button, sleep |
 | **SpeedSourceSelector** | Runtime speed source arbitration (OBD-only policy) |
-| **SpeedVolumeModule** | Boosts volume at highway speeds; defers to fade when fade owns volume |
-| **SpeedVolumeRuntimeModule** | Orchestrates speed-volume + speaker-quiet sync per loop |
 | **SpeakerQuietSyncModule** | Applies quiet-volume changes to hardware speaker amp |
 | **SystemEventBus** | Bounded loop-local event channel for cross-module coordination |
 | **ParsedFrameEventModule** | Collects parsed-frame signal from BLE queue for display orchestration |
@@ -312,7 +306,7 @@ call-time data flow (`...Context` for inputs, `...Result` for outputs).
 - `std::function<>` heap overhead is undesirable (hot loop path)
 - Dependencies are best expressed as actions, not object pointers
 
-**Examples:** All `Loop*Module` types (`LoopIngestModule`, `LoopConnectionEarlyModule`, …), `WifiRuntimeModule`, `ConnectionRuntimeModule`, `ConnectionStateDispatchModule`, `SpeedVolumeRuntimeModule`, `PeriodicMaintenanceModule`, `VoiceSpeedSyncModule`
+**Examples:** All `Loop*Module` types (`LoopIngestModule`, `LoopConnectionEarlyModule`, …), `WifiRuntimeModule`, `ConnectionRuntimeModule`, `ConnectionStateDispatchModule`, `PeriodicMaintenanceModule`, `VoiceSpeedSyncModule`
 
 ### Pattern 4: Inline Pass-by-Reference (Stateless orchestrators)
 

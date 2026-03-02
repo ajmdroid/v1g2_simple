@@ -61,15 +61,6 @@ LoopPostDisplayResult LoopPostDisplayModule::process(const LoopPostDisplayContex
     }
 
     if (ctx.runSpeedAndDispatch) {
-        SpeedVolumeRuntimeContext speedVolumeCtx;
-        speedVolumeCtx.nowMs = ctx.nowMs;
-        speedVolumeCtx.configuredVoiceVolume = ctx.configuredVoiceVolume;
-        if (ctx.runSpeedVolumeRuntime) {
-            ctx.runSpeedVolumeRuntime(speedVolumeCtx);
-        } else if (providers.runSpeedVolumeRuntime) {
-            providers.runSpeedVolumeRuntime(providers.speedVolumeRuntimeContext, speedVolumeCtx);
-        }
-
         const uint32_t dispatchNowMs = providers.readDispatchNowMs
                                            ? providers.readDispatchNowMs(providers.dispatchNowContext)
                                            : ctx.nowMs;

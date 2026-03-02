@@ -611,20 +611,6 @@ bool SettingsManager::restoreFromSD() {
     if (doc["alertVolumeFadeVolume"].is<int>()) {
         settings.alertVolumeFadeVolume = clampU8(doc["alertVolumeFadeVolume"].as<int>(), 0, 9);
     }
-    restoreBool("speedVolumeEnabled", settings.speedVolumeEnabled);
-    if (doc["speedVolumeThresholdMph"].is<int>()) {
-        settings.speedVolumeThresholdMph = clampU8(doc["speedVolumeThresholdMph"].as<int>(), 10, 100);
-    }
-    if (doc["speedVolumeBoost"].is<int>()) {
-        settings.speedVolumeBoost = clampU8(doc["speedVolumeBoost"].as<int>(), 1, 5);
-    }
-    restoreBool("lowSpeedMuteEnabled", settings.lowSpeedMuteEnabled);
-    if (doc["lowSpeedMuteThresholdMph"].is<int>()) {
-        settings.lowSpeedMuteThresholdMph = clampU8(doc["lowSpeedMuteThresholdMph"].as<int>(), 1, 30);
-    }
-    if (doc["lowSpeedVolume"].is<int>()) {
-        settings.lowSpeedVolume = clampU8(doc["lowSpeedVolume"].as<int>(), 0, 9);
-    }
     
     // === Auto-Push Settings ===
     // Only allow backup to enable auto-push (avoid stale backups disabling it)

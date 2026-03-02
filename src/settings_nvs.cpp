@@ -421,12 +421,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("volFadeEn", settings.alertVolumeFadeEnabled);
     written += prefs.putUChar("volFadeSec", settings.alertVolumeFadeDelaySec);
     written += prefs.putUChar("volFadeVol", settings.alertVolumeFadeVolume);
-    written += prefs.putBool("spdVolEn", settings.speedVolumeEnabled);
-    written += prefs.putUChar("spdVolThr", settings.speedVolumeThresholdMph);
-    written += prefs.putUChar("spdVolBoost", settings.speedVolumeBoost);
-    written += prefs.putBool("lowSpdMute", settings.lowSpeedMuteEnabled);
-    written += prefs.putUChar("lowSpdThr", settings.lowSpeedMuteThresholdMph);
-    written += prefs.putUChar("lowSpdVol", settings.lowSpeedVolume);
     written += prefs.putBool("autoPush", settings.autoPushEnabled);
     written += prefs.putInt("activeSlot", settings.activeSlot);
     written += prefs.putString("slot0name", settings.slot0Name);

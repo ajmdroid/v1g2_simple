@@ -3,7 +3,6 @@
 #include <stdint.h>
 
 #include "modules/ble/connection_state_dispatch_module.h"
-#include "modules/speed_volume/speed_volume_runtime_module.h"
 
 struct LoopPostDisplayContext {
     bool runAutoPushAndCamera = true;
@@ -13,8 +12,6 @@ struct LoopPostDisplayContext {
     bool skipLateNonCoreThisLoop = false;
     bool overloadLateThisLoop = false;
     bool loopSignalPriorityActive = false;
-
-    uint8_t configuredVoiceVolume = 0;
 
     uint32_t displayUpdateIntervalMs = 50;
     uint32_t scanScreenDwellMs = 0;
@@ -29,7 +26,6 @@ struct LoopPostDisplayContext {
         bool skipLateNonCoreThisLoop,
         bool overloadLateThisLoop,
         bool loopSignalPriorityActive) = nullptr;
-    void (*runSpeedVolumeRuntime)(const SpeedVolumeRuntimeContext& speedVolumeCtx) = nullptr;
     void (*runConnectionStateDispatch)(const ConnectionStateDispatchContext& dispatchCtx) = nullptr;
 };
 
@@ -38,7 +34,7 @@ struct LoopPostDisplayResult {
     bool bleConnectedNow = false;
 };
 
-// Orchestrates post-display runtime work: auto-push, camera runtime, speed-volume
+// Orchestrates post-display runtime work: auto-push, camera runtime,
 // runtime, and connection-state dispatch cadence/watchdog.
 class LoopPostDisplayModule {
 public:
@@ -57,9 +53,6 @@ public:
         void* cameraRuntimeContext = nullptr;
         void (*recordCameraUs)(void* ctx, uint32_t elapsedUs) = nullptr;
         void* cameraPerfContext = nullptr;
-
-        void (*runSpeedVolumeRuntime)(void* ctx, const SpeedVolumeRuntimeContext& speedVolumeCtx) = nullptr;
-        void* speedVolumeRuntimeContext = nullptr;
 
         uint32_t (*readDispatchNowMs)(void* ctx) = nullptr;
         void* dispatchNowContext = nullptr;

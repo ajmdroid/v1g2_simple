@@ -306,12 +306,6 @@ void SettingsManager::backupToSD() {
     doc["alertVolumeFadeEnabled"] = settings.alertVolumeFadeEnabled;
     doc["alertVolumeFadeDelaySec"] = settings.alertVolumeFadeDelaySec;
     doc["alertVolumeFadeVolume"] = settings.alertVolumeFadeVolume;
-    doc["speedVolumeEnabled"] = settings.speedVolumeEnabled;
-    doc["speedVolumeThresholdMph"] = settings.speedVolumeThresholdMph;
-    doc["speedVolumeBoost"] = settings.speedVolumeBoost;
-    doc["lowSpeedMuteEnabled"] = settings.lowSpeedMuteEnabled;
-    doc["lowSpeedMuteThresholdMph"] = settings.lowSpeedMuteThresholdMph;
-    doc["lowSpeedVolume"] = settings.lowSpeedVolume;
     
     // === Auto-Push Settings ===
     doc["autoPushEnabled"] = settings.autoPushEnabled;

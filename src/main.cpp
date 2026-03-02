@@ -71,9 +71,6 @@
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
 #include "modules/voice/voice_speed_sync_module.h"
-#include "modules/speed_volume/speed_volume_module.h"
-#include "modules/speed_volume/speaker_quiet_sync_module.h"
-#include "modules/speed_volume/speed_volume_runtime_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
@@ -193,11 +190,6 @@ static DisplayMode displayMode = DisplayMode::IDLE;
 
 // Volume fade module - reduce V1 volume after X seconds of continuous alert
 VolumeFadeModule volumeFadeModule;
-
-// Speed volume module - boost volume at highway speeds
-SpeedVolumeModule speedVolumeModule;
-SpeakerQuietSyncModule speakerQuietSyncModule;
-SpeedVolumeRuntimeModule speedVolumeRuntimeModule;
 
 // Auto-push profile state machine
 AutoPushModule autoPushModule;
@@ -345,7 +337,6 @@ static void configureLoopSettingsPrepModule() {
         values.obdServiceEnabled = settings.obdEnabled;
         values.enableWifiAtBoot = settings.enableWifiAtBoot;
         values.enableSignalTraceLogging = settings.enableSignalTraceLogging;
-        values.configuredVoiceVolume = settings.voiceVolume;
         return values;
     };
     loopSettingsPrepProviders.settingsContext = &settingsManager;
@@ -393,11 +384,6 @@ static void configureLoopPostDisplayModule() {
     loopPostDisplayProviders.recordCameraUs = [](void*, uint32_t elapsedUs) {
         perfRecordCameraUs(elapsedUs);
     };
-    loopPostDisplayProviders.runSpeedVolumeRuntime =
-        [](void* ctx, const SpeedVolumeRuntimeContext& speedVolumeCtx) {
-            static_cast<SpeedVolumeRuntimeModule*>(ctx)->process(speedVolumeCtx);
-        };
-    loopPostDisplayProviders.speedVolumeRuntimeContext = &speedVolumeRuntimeModule;
     loopPostDisplayProviders.readDispatchNowMs = [](void*) -> uint32_t {
         return millis();
     };
@@ -427,32 +413,6 @@ static void configureVoiceSpeedSyncModule() {
     };
     voiceSpeedSyncProviders.voiceContext = &voiceModule;
     voiceSpeedSyncModule.begin(voiceSpeedSyncProviders);
-}
-
-static void configureSpeedVolumeRuntimeModule() {
-    SpeedVolumeRuntimeModule::Providers speedVolumeRuntimeProviders;
-    speedVolumeRuntimeProviders.runSpeedVolumeProcess = [](void* ctx, uint32_t nowMs) {
-        static_cast<SpeedVolumeModule*>(ctx)->process(nowMs);
-    };
-    speedVolumeRuntimeProviders.speedVolumeContext = &speedVolumeModule;
-    speedVolumeRuntimeProviders.readSpeedQuietActive = [](void* ctx) -> bool {
-        return static_cast<SpeedVolumeModule*>(ctx)->isQuietActive();
-    };
-    speedVolumeRuntimeProviders.speedQuietActiveContext = &speedVolumeModule;
-    speedVolumeRuntimeProviders.readSpeedQuietVolume = [](void* ctx) -> uint8_t {
-        return static_cast<SpeedVolumeModule*>(ctx)->getQuietVolume();
-    };
-    speedVolumeRuntimeProviders.speedQuietVolumeContext = &speedVolumeModule;
-    speedVolumeRuntimeProviders.runSpeakerQuietSync =
-        [](void* ctx, bool quietNow, uint8_t quietVolume, uint8_t configuredVoiceVolume) {
-            static_cast<SpeakerQuietSyncModule*>(ctx)->process(
-                quietNow,
-                quietVolume,
-                configuredVoiceVolume,
-                [](uint8_t volume) { audio_set_volume(volume); });
-        };
-    speedVolumeRuntimeProviders.speakerQuietContext = &speakerQuietSyncModule;
-    speedVolumeRuntimeModule.begin(speedVolumeRuntimeProviders);
 }
 
 static void configureWifiRuntimeModule() {
@@ -888,7 +848,6 @@ static void configureAlertAudioDisplayPipeline() {
     // Initialize alert/audio/display pipeline dependencies before BLE starts
     alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager);
     voiceModule.begin(&settingsManager, &bleClient);
-    speedVolumeModule.begin(&settingsManager, &bleClient, &parser, &voiceModule, &volumeFadeModule);
     volumeFadeModule.begin(&settingsManager);
     displayPipelineModule.begin(&displayMode,
                                 &display,
@@ -898,7 +857,6 @@ static void configureAlertAudioDisplayPipeline() {
                                 &alertPersistenceModule,
                                 &volumeFadeModule,
                                 &voiceModule,
-                                &speedVolumeModule,
                                 &debugLogger);
 }
 
@@ -1434,7 +1392,6 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
     configureSystemLoopModules();
     configureRuntimeAndLockoutModules();
 
-    configureSpeedVolumeRuntimeModule();
     configureWifiRuntimeModule();
     finalizeBootReadyAndBleScan(setupStartMs, logBootStage);
 }

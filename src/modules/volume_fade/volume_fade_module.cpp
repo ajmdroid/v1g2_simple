@@ -230,9 +230,7 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             hintBaselineMuteVolume = 0;
             hintSetMs = 0;
         } else {
-            originalVolume = (ctx.speedBoostActive && ctx.speedBoostOriginalVolume != 0xFF)
-                               ? ctx.speedBoostOriginalVolume
-                               : ctx.currentVolume;
+            originalVolume = ctx.currentVolume;
             originalMuteVolume = ctx.currentMuteVolume;
         }
         fadeActive = false;

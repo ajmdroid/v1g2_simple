@@ -199,28 +199,6 @@ void handleApiSave(WebServer& server,
         s.alertVolumeFadeVolume = static_cast<uint8_t>(std::max(0, std::min(val, 9)));
     }
 
-    // Speed volume
-    if (server.hasArg("speedVolumeEnabled")) s.speedVolumeEnabled = argBool("speedVolumeEnabled", s.speedVolumeEnabled);
-    if (server.hasArg("speedVolumeThresholdMph")) {
-        int val = server.arg("speedVolumeThresholdMph").toInt();
-        s.speedVolumeThresholdMph = static_cast<uint8_t>(std::max(10, std::min(val, 100)));
-    }
-    if (server.hasArg("speedVolumeBoost")) {
-        int val = server.arg("speedVolumeBoost").toInt();
-        s.speedVolumeBoost = static_cast<uint8_t>(std::max(1, std::min(val, 5)));
-    }
-
-    // Low-speed quiet
-    if (server.hasArg("lowSpeedMuteEnabled")) s.lowSpeedMuteEnabled = argBool("lowSpeedMuteEnabled", s.lowSpeedMuteEnabled);
-    if (server.hasArg("lowSpeedMuteThresholdMph")) {
-        int val = server.arg("lowSpeedMuteThresholdMph").toInt();
-        s.lowSpeedMuteThresholdMph = static_cast<uint8_t>(std::max(1, std::min(val, 30)));
-    }
-    if (server.hasArg("lowSpeedVolume")) {
-        int val = server.arg("lowSpeedVolume").toInt();
-        s.lowSpeedVolume = static_cast<uint8_t>(std::max(0, std::min(val, 9)));
-    }
-
     // Misc sliders
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
@@ -431,12 +409,6 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["alertVolumeFadeEnabled"] = s.alertVolumeFadeEnabled;
     doc["alertVolumeFadeDelaySec"] = s.alertVolumeFadeDelaySec;
     doc["alertVolumeFadeVolume"] = s.alertVolumeFadeVolume;
-    doc["speedVolumeEnabled"] = s.speedVolumeEnabled;
-    doc["speedVolumeThresholdMph"] = s.speedVolumeThresholdMph;
-    doc["speedVolumeBoost"] = s.speedVolumeBoost;
-    doc["lowSpeedMuteEnabled"] = s.lowSpeedMuteEnabled;
-    doc["lowSpeedMuteThresholdMph"] = s.lowSpeedMuteThresholdMph;
-    doc["lowSpeedVolume"] = s.lowSpeedVolume;
     doc["obdEnabled"] = s.obdEnabled;
     doc["gpsEnabled"] = s.gpsEnabled;
     doc["cameraEnabled"] = s.cameraEnabled;

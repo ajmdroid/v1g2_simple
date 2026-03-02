@@ -11,7 +11,6 @@
 #include "modules/alert_persistence/alert_persistence_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/voice/voice_module.h"
-#include "modules/speed_volume/speed_volume_module.h"
 #include "debug_logger.h"
 
 class DisplayPipelineModule {
@@ -24,7 +23,6 @@ public:
                AlertPersistenceModule* alertPersistenceModule,
                VolumeFadeModule* volumeFadeModule,
                VoiceModule* voiceModule,
-               SpeedVolumeModule* speedVolumeModule,
                DebugLogger* debugLogger);
 
     // Process after a successful parser.parse(); expects parser state already updated.
@@ -40,7 +38,6 @@ private:
     AlertPersistenceModule* alertPersistence = nullptr;
     VolumeFadeModule* volumeFade = nullptr;
     VoiceModule* voice = nullptr;
-    SpeedVolumeModule* speedVolume = nullptr;
     DebugLogger* debug = nullptr;
 
     // Mute debounce

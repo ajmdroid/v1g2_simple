@@ -82,10 +82,6 @@ struct PerfSdSnapshot {
     uint32_t autoPushModeFail;    // Auto-push mode set failures
     uint32_t autoPushVolumeFail;  // Auto-push volume set failures
     uint32_t autoPushDisconnectAbort; // Auto-push aborted due to disconnect
-    uint32_t speedVolBoosts;      // Speed-volume boosts applied
-    uint32_t speedVolRestores;    // Speed-volume restores applied
-    uint32_t speedVolFadeTakeovers; // Fade took over while speed boost active
-    uint32_t speedVolNoHeadroom;  // Boost requested but volume already maxed
     uint32_t voiceAnnouncePriority;   // Voice priority announcements emitted
     uint32_t voiceAnnounceDirection;  // Voice direction/bogey announcements emitted
     uint32_t voiceAnnounceSecondary;  // Voice secondary announcements emitted

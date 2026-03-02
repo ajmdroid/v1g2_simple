@@ -175,7 +175,6 @@ LoopFinalizePhaseValues processLoopFinalizePhase(
     loopPostDisplayPostWifiCtx.runAutoPushAndCamera = false;
     loopPostDisplayPostWifiCtx.runSpeedAndDispatch = true;
     loopPostDisplayPostWifiCtx.nowMs = nowMs;
-    loopPostDisplayPostWifiCtx.configuredVoiceVolume = loopSettingsPrepValues.configuredVoiceVolume;
     loopPostDisplayPostWifiCtx.displayUpdateIntervalMs = DISPLAY_UPDATE_MS;
     loopPostDisplayPostWifiCtx.scanScreenDwellMs = scanScreenDwellMs;
     loopPostDisplayPostWifiCtx.bootSplashHoldActive = bootSplashHoldActive;

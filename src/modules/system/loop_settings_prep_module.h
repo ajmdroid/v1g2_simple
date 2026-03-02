@@ -6,7 +6,6 @@ struct LoopSettingsPrepValues {
     bool obdServiceEnabled = false;
     bool enableWifiAtBoot = false;
     bool enableSignalTraceLogging = false;
-    uint8_t configuredVoiceVolume = 0;
 };
 
 struct LoopSettingsPrepContext {

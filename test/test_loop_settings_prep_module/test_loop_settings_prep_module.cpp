@@ -83,7 +83,6 @@ void test_runtime_callbacks_path_runs_tap_then_reads_settings() {
     runtimeValues.obdServiceEnabled = true;
     runtimeValues.enableWifiAtBoot = true;
     runtimeValues.enableSignalTraceLogging = false;
-    runtimeValues.configuredVoiceVolume = 88;
 
     LoopSettingsPrepContext ctx;
     ctx.nowMs = 123;
@@ -101,7 +100,6 @@ void test_runtime_callbacks_path_runs_tap_then_reads_settings() {
     TEST_ASSERT_TRUE(result.obdServiceEnabled);
     TEST_ASSERT_TRUE(result.enableWifiAtBoot);
     TEST_ASSERT_FALSE(result.enableSignalTraceLogging);
-    TEST_ASSERT_EQUAL_UINT8(88, result.configuredVoiceVolume);
 
     TEST_ASSERT_EQUAL(2, callLogCount);
     TEST_ASSERT_EQUAL(CALL_TAP, callLog[0]);
@@ -117,7 +115,6 @@ void test_provider_fallback_path_runs_tap_then_reads_settings() {
     providerValues.obdServiceEnabled = false;
     providerValues.enableWifiAtBoot = true;
     providerValues.enableSignalTraceLogging = true;
-    providerValues.configuredVoiceVolume = 42;
 
     LoopSettingsPrepContext ctx;
     ctx.nowMs = 456;
@@ -133,7 +130,6 @@ void test_provider_fallback_path_runs_tap_then_reads_settings() {
     TEST_ASSERT_FALSE(result.obdServiceEnabled);
     TEST_ASSERT_TRUE(result.enableWifiAtBoot);
     TEST_ASSERT_TRUE(result.enableSignalTraceLogging);
-    TEST_ASSERT_EQUAL_UINT8(42, result.configuredVoiceVolume);
 
     TEST_ASSERT_EQUAL(2, callLogCount);
     TEST_ASSERT_EQUAL(CALL_TAP, callLog[0]);
@@ -148,7 +144,6 @@ void test_runtime_read_overrides_provider_read() {
     runtimeValues.obdServiceEnabled = true;
     runtimeValues.enableWifiAtBoot = false;
     runtimeValues.enableSignalTraceLogging = true;
-    runtimeValues.configuredVoiceVolume = 71;
 
     LoopSettingsPrepContext ctx;
     ctx.readSettingsValues = readRuntimeSettings;
@@ -160,7 +155,6 @@ void test_runtime_read_overrides_provider_read() {
     TEST_ASSERT_TRUE(result.obdServiceEnabled);
     TEST_ASSERT_FALSE(result.enableWifiAtBoot);
     TEST_ASSERT_TRUE(result.enableSignalTraceLogging);
-    TEST_ASSERT_EQUAL_UINT8(71, result.configuredVoiceVolume);
 }
 
 void test_empty_providers_and_context_returns_defaults() {
@@ -173,7 +167,6 @@ void test_empty_providers_and_context_returns_defaults() {
     TEST_ASSERT_FALSE(result.obdServiceEnabled);
     TEST_ASSERT_FALSE(result.enableWifiAtBoot);
     TEST_ASSERT_FALSE(result.enableSignalTraceLogging);
-    TEST_ASSERT_EQUAL_UINT8(0, result.configuredVoiceVolume);
     TEST_ASSERT_EQUAL(0, runtimeTapCalls);
     TEST_ASSERT_EQUAL(0, providerTapCalls);
     TEST_ASSERT_EQUAL(0, runtimeSettingsCalls);

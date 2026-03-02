@@ -314,20 +314,6 @@ void SettingsManager::setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t
     save();
 }
 
-void SettingsManager::setSpeedVolume(bool enabled, uint8_t thresholdMph, uint8_t boost) {
-    settings.speedVolumeEnabled = enabled;
-    settings.speedVolumeThresholdMph = clampU8(thresholdMph, 10, 100);
-    settings.speedVolumeBoost = clampU8(boost, 1, 5);
-    save();
-}
-
-void SettingsManager::setLowSpeedMute(bool enabled, uint8_t thresholdMph, uint8_t volume) {
-    settings.lowSpeedMuteEnabled = enabled;
-    settings.lowSpeedMuteThresholdMph = clampU8(thresholdMph, 1, 30);
-    settings.lowSpeedVolume = clampU8(volume, 0, 9);
-    save();
-}
-
 
 const AutoPushSlot& SettingsManager::getActiveSlot() const {
     switch (settings.activeSlot) {

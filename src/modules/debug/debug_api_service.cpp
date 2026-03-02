@@ -1044,10 +1044,6 @@ static void sendMetrics(WebServer& server) {
     doc["autoPushModeFail"] = perfCounters.autoPushModeFail.load();
     doc["autoPushVolumeFail"] = perfCounters.autoPushVolumeFail.load();
     doc["autoPushDisconnectAbort"] = perfCounters.autoPushDisconnectAbort.load();
-    doc["speedVolBoosts"] = perfCounters.speedVolBoosts.load();
-    doc["speedVolRestores"] = perfCounters.speedVolRestores.load();
-    doc["speedVolFadeTakeovers"] = perfCounters.speedVolFadeTakeovers.load();
-    doc["speedVolNoHeadroom"] = perfCounters.speedVolNoHeadroom.load();
     doc["prioritySelectDisplayIndex"] = perfCounters.prioritySelectDisplayIndex.load();
     doc["prioritySelectRowFlag"] = perfCounters.prioritySelectRowFlag.load();
     doc["prioritySelectFirstUsable"] = perfCounters.prioritySelectFirstUsable.load();

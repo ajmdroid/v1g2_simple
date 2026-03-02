@@ -86,16 +86,6 @@ struct V1Settings {
     uint8_t alertVolumeFadeDelaySec = 5;
     uint8_t alertVolumeFadeVolume = 3;
     
-    // Speed-based volume
-    bool speedVolumeEnabled = false;
-    uint8_t speedVolumeThresholdMph = 45;
-    uint8_t speedVolumeBoost = 2;
-    
-    // Low-speed quiet
-    bool lowSpeedMuteEnabled = false;
-    uint8_t lowSpeedMuteThresholdMph = 5;
-    uint8_t lowSpeedVolume = 0;
-    
     // Misc flags retained for compatibility
     bool gpsEnabled = true;
     uint16_t cameraAlertDistanceFt = 1640;

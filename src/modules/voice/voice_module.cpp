@@ -103,9 +103,6 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
     // Mute voice if V1 volume is zero (optional setting)
     if (s.muteVoiceIfVolZero && ctx.mainVolume == 0) return action;
     
-    // Low speed mute (parking lot mode)
-    if (isLowSpeedMuted(ctx.now)) return action;
-    
     // V1 is muted - user has acknowledged/dismissed the alert
     if (ctx.isMuted) return action;
     
@@ -606,33 +603,4 @@ void VoiceModule::clearSpeedSample() {
 bool VoiceModule::hasValidSpeedSource(unsigned long now) const {
     float speedMph = 0.0f;
     return getCurrentSpeedSample(now, speedMph);
-}
-
-bool VoiceModule::isLowSpeedMuted(unsigned long now) const {
-    if (!settings) return false;
-    const V1Settings& s = settings->get();
-    
-    if (!s.lowSpeedMuteEnabled) return false;
-    // Only fully mute voice when low-speed volume is 0.
-    // When lowSpeedVolume > 0, voice plays at reduced speaker volume
-    // (handled by SpeedVolumeModule + main loop).
-    if (s.lowSpeedVolume > 0) return false;
-    if (bleClient && bleClient->isProxyClientConnected()) return false;
-    if (!hasValidSpeedSource(now)) return false;
-    
-    float speedMph = const_cast<VoiceModule*>(this)->getCurrentSpeedMph(now);
-    bool muted = speedMph < s.lowSpeedMuteThresholdMph;
-    
-    if (muted) {
-        static unsigned long lastLogTime = 0;
-        if (now - lastLogTime > 5000) {
-            DBG_LOGF(DebugLogCategory::Audio,
-                     "[Voice] Low speed mute: %.1f mph < %d (vol=0)\n",
-                     speedMph,
-                     s.lowSpeedMuteThresholdMph);
-            lastLogTime = now;
-        }
-    }
-    
-    return muted;
 }

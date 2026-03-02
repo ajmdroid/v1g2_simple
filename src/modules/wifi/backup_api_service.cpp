@@ -159,11 +159,6 @@ static void sendBackup(WebServer& server) {
     doc["alertVolumeFadeEnabled"] = s.alertVolumeFadeEnabled;
     doc["alertVolumeFadeDelaySec"] = s.alertVolumeFadeDelaySec;
     doc["alertVolumeFadeVolume"] = s.alertVolumeFadeVolume;
-    doc["speedVolumeEnabled"] = s.speedVolumeEnabled;
-    doc["speedVolumeThresholdMph"] = s.speedVolumeThresholdMph;
-    doc["speedVolumeBoost"] = s.speedVolumeBoost;
-    doc["lowSpeedMuteEnabled"] = s.lowSpeedMuteEnabled;
-    doc["lowSpeedMuteThresholdMph"] = s.lowSpeedMuteThresholdMph;
     
     // Auto-push slot settings
     doc["autoPushEnabled"] = s.autoPushEnabled;
@@ -468,17 +463,6 @@ static void handleRestore(WebServer& server) {
     }
     if (doc["alertVolumeFadeVolume"].is<int>()) {
         s.alertVolumeFadeVolume = clampU8Value(doc["alertVolumeFadeVolume"].as<int>(), 0, 9);
-    }
-    if (doc["speedVolumeEnabled"].is<bool>()) s.speedVolumeEnabled = doc["speedVolumeEnabled"];
-    if (doc["speedVolumeThresholdMph"].is<int>()) {
-        s.speedVolumeThresholdMph = clampU8Value(doc["speedVolumeThresholdMph"].as<int>(), 10, 100);
-    }
-    if (doc["speedVolumeBoost"].is<int>()) {
-        s.speedVolumeBoost = clampU8Value(doc["speedVolumeBoost"].as<int>(), 1, 5);
-    }
-    if (doc["lowSpeedMuteEnabled"].is<bool>()) s.lowSpeedMuteEnabled = doc["lowSpeedMuteEnabled"];
-    if (doc["lowSpeedMuteThresholdMph"].is<int>()) {
-        s.lowSpeedMuteThresholdMph = clampU8Value(doc["lowSpeedMuteThresholdMph"].as<int>(), 1, 30);
     }
     if (doc["announceSecondaryAlerts"].is<bool>()) s.announceSecondaryAlerts = doc["announceSecondaryAlerts"];
     if (doc["secondaryLaser"].is<bool>()) s.secondaryLaser = doc["secondaryLaser"];

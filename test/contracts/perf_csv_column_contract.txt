@@ -67,10 +67,6 @@ autoPushBusyRetries
 autoPushModeFail
 autoPushVolumeFail
 autoPushDisconnectAbort
-speedVolBoosts
-speedVolRestores
-speedVolFadeTakeovers
-speedVolNoHeadroom
 voiceAnnouncePriority
 voiceAnnounceDirection
 voiceAnnounceSecondary
