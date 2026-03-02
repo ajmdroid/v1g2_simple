@@ -162,20 +162,6 @@ def main() -> int:
     disp_pipe_max_peak = None
     ble_mutex_timeout_first = None
     ble_mutex_timeout_last = None
-    camera_budget_exceeded_first = None
-    camera_budget_exceeded_last = None
-    camera_load_failures_first = None
-    camera_load_failures_last = None
-    camera_index_swap_failures_first = None
-    camera_index_swap_failures_last = None
-    camera_max_tick_peak = None
-    camera_max_window_hz_peak = None
-    camera_max_window_hz_peak_ts = ""
-    # Ring buffer of (epoch, cameraTicks) for sliding-window Hz computation.
-    # Min window of 15 s prevents poll-interval aliasing (firmware is 5 Hz but
-    # narrow poll windows can bunch ticks above 5 Hz in consecutive pairs).
-    camera_tick_ring = []  # list of (epoch, ticks)
-    CAMERA_HZ_MIN_WINDOW_S = 15.0
     gps_obs_drops_first = None
     gps_obs_drops_last = None
     wifi_samples = []
@@ -360,46 +346,6 @@ def main() -> int:
                 if ble_mutex_timeout is not None:
                     ble_mutex_timeout_last = ble_mutex_timeout
 
-                camera_budget_exceeded = num(data.get("cameraBudgetExceeded"))
-                if camera_budget_exceeded_first is None and camera_budget_exceeded is not None:
-                    camera_budget_exceeded_first = camera_budget_exceeded
-                if camera_budget_exceeded is not None:
-                    camera_budget_exceeded_last = camera_budget_exceeded
-
-                camera_load_failures = num(data.get("cameraLoadFailures"))
-                if camera_load_failures_first is None and camera_load_failures is not None:
-                    camera_load_failures_first = camera_load_failures
-                if camera_load_failures is not None:
-                    camera_load_failures_last = camera_load_failures
-
-                camera_index_swap_failures = num(data.get("cameraIndexSwapFailures"))
-                if camera_index_swap_failures_first is None and camera_index_swap_failures is not None:
-                    camera_index_swap_failures_first = camera_index_swap_failures
-                if camera_index_swap_failures is not None:
-                    camera_index_swap_failures_last = camera_index_swap_failures
-
-                camera_max_tick_peak = update_max(camera_max_tick_peak, num(data.get("cameraMaxTickUs")))
-
-                camera_ticks = num(data.get("cameraTicks"))
-                if camera_ticks is not None and sample_epoch is not None:
-                    camera_tick_ring.append((sample_epoch, camera_ticks))
-                    # Find the oldest entry that gives us >= CAMERA_HZ_MIN_WINDOW_S
-                    best_start = None
-                    for si in range(len(camera_tick_ring) - 2, -1, -1):
-                        span = sample_epoch - camera_tick_ring[si][0]
-                        if span >= CAMERA_HZ_MIN_WINDOW_S:
-                            best_start = si
-                            break
-                    if best_start is not None:
-                        ref_epoch, ref_ticks = camera_tick_ring[best_start]
-                        dt_seconds = sample_epoch - ref_epoch
-                        tick_inc = camera_ticks - ref_ticks
-                        if dt_seconds > 0 and tick_inc >= 0:
-                            hz = tick_inc / dt_seconds
-                            if camera_max_window_hz_peak is None or hz > camera_max_window_hz_peak:
-                                camera_max_window_hz_peak = hz
-                                camera_max_window_hz_peak_ts = sample_ts
-
                 gps_obs_drops = num(data.get("gpsObsDrops"))
                 if gps_obs_drops_first is None and gps_obs_drops is not None:
                     gps_obs_drops_first = gps_obs_drops
@@ -505,9 +451,6 @@ def main() -> int:
     emit("disp_pipe_sample_count", len(disp_pipe_samples))
     emit("disp_pipe_p95", round(disp_pipe_p95, 3) if disp_pipe_p95 is not None else None)
     emit("disp_pipe_over_limit_count", disp_pipe_over_limit_count)
-    emit("camera_max_tick_peak", camera_max_tick_peak)
-    emit("camera_max_window_hz_peak", round(camera_max_window_hz_peak, 3) if camera_max_window_hz_peak is not None else None)
-    emit("camera_max_window_hz_peak_ts", camera_max_window_hz_peak_ts)
 
     inherited_counter_suspect = 0
     for first_val in (queue_drops_first, perf_drop_first, event_drop_first):
@@ -540,27 +483,6 @@ def main() -> int:
         print("ble_mutex_timeout_delta=")
     else:
         print(f"ble_mutex_timeout_delta={ble_mutex_timeout_last - ble_mutex_timeout_first}")
-
-    if camera_budget_exceeded_first is None or camera_budget_exceeded_last is None:
-        print("camera_budget_exceeded_delta=")
-    else:
-        print(
-            "camera_budget_exceeded_delta="
-            f"{camera_budget_exceeded_last - camera_budget_exceeded_first}"
-        )
-
-    if camera_load_failures_first is None or camera_load_failures_last is None:
-        print("camera_load_failures_delta=")
-    else:
-        print(f"camera_load_failures_delta={camera_load_failures_last - camera_load_failures_first}")
-
-    if camera_index_swap_failures_first is None or camera_index_swap_failures_last is None:
-        print("camera_index_swap_failures_delta=")
-    else:
-        print(
-            "camera_index_swap_failures_delta="
-            f"{camera_index_swap_failures_last - camera_index_swap_failures_first}"
-        )
 
     if gps_obs_drops_first is None or gps_obs_drops_last is None:
         print("gps_obs_drops_delta=")

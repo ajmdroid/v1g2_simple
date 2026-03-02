@@ -22,7 +22,6 @@
 		{ href: '/colors', label: 'Colors' },
 		{ href: '/audio', label: 'Audio' },
 		{ href: '/lockouts', label: 'Lockouts' },
-		{ href: '/cameras', label: 'Cameras' },
 		{ href: '/integrations', label: 'Integrations' },
 		{ href: '/settings', label: 'Settings' }
 	];

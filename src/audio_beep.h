@@ -19,11 +19,6 @@ enum class AlertDirection : uint8_t {
     SIDE = 2
 };
 
-// Camera dataset type values align with camera event `type` field.
-enum class CameraVoiceType : uint8_t {
-    ALPR = 4
-};
-
 // Set audio volume (0-100%)
 void audio_set_volume(uint8_t volumePercent);
 
@@ -65,11 +60,6 @@ void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection dir
 
 // Play band-only announcement (e.g., "Ka", "K", "X", "Laser")
 void play_band_only(AlertBand band);
-
-// Play one-shot camera voice using existing SD clip path:
-// "<camera type>" + "ahead" (dir_ahead.mul)
-// cameraTypeRaw value: 4=alpr (other values are normalized to ALPR).
-void play_camera_ahead_voice(uint8_t cameraTypeRaw);
 
 // Initialize SD audio (call after storage manager is ready)
 void audio_init_sd();

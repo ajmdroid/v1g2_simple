@@ -61,12 +61,6 @@ private:
     unsigned long perfTimingCount = 0;
     unsigned long perfTimingMax = 0;
     unsigned long perfLastReport = 0;
-    bool lastCameraAlertActive = false;
-    uint8_t lastCameraAlertType = 0;
-    uint32_t cameraHoldUntilMs = 0;
-    uint8_t cameraHoldType = 0;
-    uint32_t lastCameraVoiceStartTsMs = 0;
-    uint32_t lastCameraVoiceCameraId = 0;
 
     void recordDisplayTiming(const char* label, unsigned long startUs, unsigned long endUs);
     void recordPerfTiming(const char* label, unsigned long startUs, unsigned long endUs);

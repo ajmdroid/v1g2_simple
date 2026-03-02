@@ -52,14 +52,6 @@ void SettingsManager::setGpsEnabled(bool enabled) {
     save();
 }
 
-void SettingsManager::setCameraEnabled(bool enabled) {
-    if (settings.cameraEnabled == enabled) {
-        return;
-    }
-    settings.cameraEnabled = enabled;
-    save();
-}
-
 void SettingsManager::setAutoPowerOffMinutes(uint8_t minutes) {
     settings.autoPowerOffMinutes = clampU8(minutes, 0, 60);
     save();

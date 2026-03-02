@@ -16,7 +16,6 @@
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/lockout/lockout_band_policy.h"
-#include "modules/camera/camera_runtime_module.h"
 #include "modules/wifi/wifi_autopush_api_service.h"
 #include "modules/wifi/wifi_display_colors_api_service.h"
 #include "modules/wifi/wifi_settings_api_service.h"
@@ -217,9 +216,6 @@ WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
         [this](bool enabled) {
             speedSourceSelector.setGpsEnabled(enabled);
         },
-        [this](bool enabled) {
-            cameraRuntimeModule.setEnabled(enabled);
-        },
         [this](uint8_t brightness) {
             display.setBrightness(brightness);
         },
@@ -325,12 +321,6 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
         },
         [this](bool enabled) {
             speedSourceSelector.setGpsEnabled(enabled);
-        },
-        [this](bool enabled) {
-            cameraRuntimeModule.setEnabled(enabled);
-        },
-        [this](uint16_t distanceFt, uint8_t persistSec) {
-            cameraRuntimeModule.setAlertTuning(distanceFt, persistSec);
         },
         [this](bool enabled) {
             lockoutSetKaLearningEnabled(enabled);

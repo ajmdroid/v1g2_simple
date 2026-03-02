@@ -7,7 +7,6 @@
 #   ./scripts/run_real_fw_soak.sh --duration-seconds 600
 #   ./scripts/run_real_fw_soak.sh --duration-seconds 1800 --metrics-url http://192.168.35.5/api/debug/metrics
 #   ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 --metrics-url http://192.168.35.5/api/debug/metrics --drive-display-preview
-#   ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 --metrics-url http://192.168.35.5/api/debug/metrics --drive-display-preview --drive-camera-demo
 #   ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 300 --no-metrics
 #
 set -euo pipefail
@@ -55,12 +54,7 @@ MIN_DMA_FREE=0
 MIN_DMA_LARGEST=0
 MAX_BLE_PROCESS_MAX_US=0
 MAX_DISP_PIPE_MAX_US=0
-MAX_CAMERA_MAX_TICK_US=0
-MAX_CAMERA_MAX_WINDOW_HZ=""
 MAX_BLE_MUTEX_TIMEOUT_DELTA=0
-MAX_CAMERA_BUDGET_EXCEEDED_DELTA=0
-MAX_CAMERA_LOAD_FAILURES_DELTA=0
-MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA=0
 SOAK_PROFILE=""
 LATENCY_GATE_MODE="${REAL_FW_LATENCY_GATE_MODE:-hybrid}"
 LATENCY_ROBUST_MIN_SAMPLES="${REAL_FW_LATENCY_ROBUST_MIN_SAMPLES:-8}"
@@ -78,12 +72,7 @@ CLI_OVERRIDE_MIN_DMA_FREE=0
 CLI_OVERRIDE_MIN_DMA_LARGEST=0
 CLI_OVERRIDE_MAX_BLE_PROCESS_MAX_US=0
 CLI_OVERRIDE_MAX_DISP_PIPE_MAX_US=0
-CLI_OVERRIDE_MAX_CAMERA_MAX_TICK_US=0
-CLI_OVERRIDE_MAX_CAMERA_MAX_WINDOW_HZ=0
 CLI_OVERRIDE_MAX_BLE_MUTEX_TIMEOUT_DELTA=0
-CLI_OVERRIDE_MAX_CAMERA_BUDGET_EXCEEDED_DELTA=0
-CLI_OVERRIDE_MAX_CAMERA_LOAD_FAILURES_DELTA=0
-CLI_OVERRIDE_MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA=0
 BASELINE_PERF_CSV=""
 BASELINE_PERF_SESSION="last-connected"
 BASELINE_LATENCY_FACTOR="1.0"
@@ -114,11 +103,6 @@ DISPLAY_DRIVE_ENABLED=0
 DISPLAY_DRIVE_INTERVAL_SECONDS=7
 DISPLAY_PREVIEW_URL="${REAL_FW_DISPLAY_PREVIEW_URL:-}"
 DISPLAY_MIN_UPDATES_DELTA=1
-CAMERA_DRIVE_ENABLED=0
-CAMERA_DRIVE_INTERVAL_SECONDS=11
-CAMERA_DEMO_URL="${REAL_FW_CAMERA_DEMO_URL:-}"
-CAMERA_DEMO_DURATION_MS=2200
-CAMERA_DEMO_MUTED=0
 OUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
@@ -373,24 +357,6 @@ while [[ $# -gt 0 ]]; do
       CLI_OVERRIDE_MAX_DISP_PIPE_MAX_US=1
       shift
       ;;
-    --max-camera-max-tick-us)
-      if [[ $# -lt 2 ]]; then
-        echo "Missing value for --max-camera-max-tick-us" >&2
-        exit 2
-      fi
-      MAX_CAMERA_MAX_TICK_US="$2"
-      CLI_OVERRIDE_MAX_CAMERA_MAX_TICK_US=1
-      shift
-      ;;
-    --max-camera-max-window-hz)
-      if [[ $# -lt 2 ]]; then
-        echo "Missing value for --max-camera-max-window-hz" >&2
-        exit 2
-      fi
-      MAX_CAMERA_MAX_WINDOW_HZ="$2"
-      CLI_OVERRIDE_MAX_CAMERA_MAX_WINDOW_HZ=1
-      shift
-      ;;
     --max-ble-mutex-timeout-delta)
       if [[ $# -lt 2 ]]; then
         echo "Missing value for --max-ble-mutex-timeout-delta" >&2
@@ -398,33 +364,6 @@ while [[ $# -gt 0 ]]; do
       fi
       MAX_BLE_MUTEX_TIMEOUT_DELTA="$2"
       CLI_OVERRIDE_MAX_BLE_MUTEX_TIMEOUT_DELTA=1
-      shift
-      ;;
-    --max-camera-budget-exceeded-delta)
-      if [[ $# -lt 2 ]]; then
-        echo "Missing value for --max-camera-budget-exceeded-delta" >&2
-        exit 2
-      fi
-      MAX_CAMERA_BUDGET_EXCEEDED_DELTA="$2"
-      CLI_OVERRIDE_MAX_CAMERA_BUDGET_EXCEEDED_DELTA=1
-      shift
-      ;;
-    --max-camera-load-failures-delta)
-      if [[ $# -lt 2 ]]; then
-        echo "Missing value for --max-camera-load-failures-delta" >&2
-        exit 2
-      fi
-      MAX_CAMERA_LOAD_FAILURES_DELTA="$2"
-      CLI_OVERRIDE_MAX_CAMERA_LOAD_FAILURES_DELTA=1
-      shift
-      ;;
-    --max-camera-index-swap-failures-delta)
-      if [[ $# -lt 2 ]]; then
-        echo "Missing value for --max-camera-index-swap-failures-delta" >&2
-        exit 2
-      fi
-      MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA="$2"
-      CLI_OVERRIDE_MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA=1
       shift
       ;;
     --profile)
@@ -548,36 +487,6 @@ while [[ $# -gt 0 ]]; do
       DISPLAY_MIN_UPDATES_DELTA="$2"
       shift
       ;;
-    --drive-camera-demo)
-      CAMERA_DRIVE_ENABLED=1
-      ;;
-    --camera-drive-interval-seconds)
-      if [[ $# -lt 2 ]]; then
-        echo "Missing value for --camera-drive-interval-seconds" >&2
-        exit 2
-      fi
-      CAMERA_DRIVE_INTERVAL_SECONDS="$2"
-      shift
-      ;;
-    --camera-demo-url)
-      if [[ $# -lt 2 ]]; then
-        echo "Missing value for --camera-demo-url" >&2
-        exit 2
-      fi
-      CAMERA_DEMO_URL="$2"
-      shift
-      ;;
-    --camera-demo-duration-ms)
-      if [[ $# -lt 2 ]]; then
-        echo "Missing value for --camera-demo-duration-ms" >&2
-        exit 2
-      fi
-      CAMERA_DEMO_DURATION_MS="$2"
-      shift
-      ;;
-    --camera-demo-muted)
-      CAMERA_DEMO_MUTED=1
-      ;;
     --out-dir)
       if [[ $# -lt 2 ]]; then
         echo "Missing value for --out-dir" >&2
@@ -632,8 +541,8 @@ Options:
                         Declared baseline capture profile: drive_wifi_off or
                         drive_wifi_ap (required with --baseline-perf-csv)
   --baseline-stress-class CLASS
-                        Declared baseline stress class: core, display, camera,
-                        or display_camera (required with --baseline-perf-csv)
+                        Declared baseline stress class: core or display
+                        (required with --baseline-perf-csv)
   --baseline-latency-factor F
                         Multiply baseline peaks for max gates (default: 1.0)
   --baseline-throughput-factor F
@@ -647,13 +556,6 @@ Options:
                         Display preview endpoint URL (default: derived from metrics URL)
   --min-display-updates-delta N
                         Fail when parsed displayUpdates delta is below N (default: 1)
-  --drive-camera-demo   Repeatedly call camera demo endpoint during soak
-  --camera-drive-interval-seconds N
-                        Interval between camera demo calls (default: 11)
-  --camera-demo-url URL Camera demo endpoint URL (default: derived from metrics URL)
-  --camera-demo-duration-ms N
-                        Camera demo duration per trigger (default: 2200)
-  --camera-demo-muted   Request muted camera demo
   --max-sd-max-us N     Maximum observed sdMaxUs peak (0 disables gate)
   --max-fs-max-us N     Maximum observed fsMaxUs peak (0 disables gate)
   --max-oversize-drops-delta N
@@ -670,19 +572,8 @@ Options:
                         Maximum bleProcessMaxUs peak (0 disables gate)
   --max-disp-pipe-max-us N
                         Maximum dispPipeMaxUs peak (0 disables gate)
-  --max-camera-max-tick-us N
-                        Maximum cameraMaxTickUs peak (0 disables gate)
-  --max-camera-max-window-hz N
-                        Maximum camera Hz (sliding window); 0 or empty disables
-                        gate
   --max-ble-mutex-timeout-delta N
                         Maximum bleMutexTimeout delta (default: 0)
-  --max-camera-budget-exceeded-delta N
-                        Maximum cameraBudgetExceeded delta (default: 0)
-  --max-camera-load-failures-delta N
-                        Maximum cameraLoadFailures delta (default: 0)
-  --max-camera-index-swap-failures-delta N
-                        Maximum cameraIndexSwapFailures delta (default: 0)
   --profile PROFILE     Apply PERF_SLOS.md gates: drive_wifi_ap (default when
                         metrics enabled) or drive_wifi_off
   --latency-gate-mode MODE
@@ -713,20 +604,14 @@ done
 
 derive_stress_class() {
   local display_enabled="$1"
-  local camera_enabled="$2"
-
-  if [[ "$display_enabled" -eq 1 && "$camera_enabled" -eq 1 ]]; then
-    echo "display_camera"
-  elif [[ "$display_enabled" -eq 1 ]]; then
+  if [[ "$display_enabled" -eq 1 ]]; then
     echo "display"
-  elif [[ "$camera_enabled" -eq 1 ]]; then
-    echo "camera"
   else
     echo "core"
   fi
 }
 
-RUN_STRESS_CLASS="$(derive_stress_class "$DISPLAY_DRIVE_ENABLED" "$CAMERA_DRIVE_ENABLED")"
+RUN_STRESS_CLASS="$(derive_stress_class "$DISPLAY_DRIVE_ENABLED")"
 
 # ------------------------------------------------------------------
 # Profile resolution: apply PERF_SLOS.md hard limits as defaults.
@@ -755,12 +640,7 @@ if [[ -n "$SOAK_PROFILE" ]]; then
       [[ "$CLI_OVERRIDE_MAX_WIFI_CONNECT_DEFERRED" -eq 0 && "$MAX_WIFI_CONNECT_DEFERRED" -eq 0 ]] && MAX_WIFI_CONNECT_DEFERRED=0
       [[ "$CLI_OVERRIDE_MAX_BLE_PROCESS_MAX_US" -eq 0 && "$MAX_BLE_PROCESS_MAX_US" -eq 0 ]] && MAX_BLE_PROCESS_MAX_US=120000
       [[ "$CLI_OVERRIDE_MAX_DISP_PIPE_MAX_US" -eq 0 && "$MAX_DISP_PIPE_MAX_US" -eq 0 ]] && MAX_DISP_PIPE_MAX_US=80000
-      [[ "$CLI_OVERRIDE_MAX_CAMERA_MAX_TICK_US" -eq 0 && "$MAX_CAMERA_MAX_TICK_US" -eq 0 ]] && MAX_CAMERA_MAX_TICK_US=800
-      [[ "$CLI_OVERRIDE_MAX_CAMERA_MAX_WINDOW_HZ" -eq 0 && -z "$MAX_CAMERA_MAX_WINDOW_HZ" ]] && MAX_CAMERA_MAX_WINDOW_HZ=5.05
       [[ "$CLI_OVERRIDE_MAX_BLE_MUTEX_TIMEOUT_DELTA" -eq 0 && "$MAX_BLE_MUTEX_TIMEOUT_DELTA" -eq 0 ]] && MAX_BLE_MUTEX_TIMEOUT_DELTA=0
-      [[ "$CLI_OVERRIDE_MAX_CAMERA_BUDGET_EXCEEDED_DELTA" -eq 0 && "$MAX_CAMERA_BUDGET_EXCEEDED_DELTA" -eq 0 ]] && MAX_CAMERA_BUDGET_EXCEEDED_DELTA=0
-      [[ "$CLI_OVERRIDE_MAX_CAMERA_LOAD_FAILURES_DELTA" -eq 0 && "$MAX_CAMERA_LOAD_FAILURES_DELTA" -eq 0 ]] && MAX_CAMERA_LOAD_FAILURES_DELTA=0
-      [[ "$CLI_OVERRIDE_MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA" -eq 0 && "$MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA" -eq 0 ]] && MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA=0
       ;;
     drive_wifi_ap)
       [[ "$CLI_OVERRIDE_MAX_LOOP_MAX_US" -eq 0 && "$MAX_LOOP_MAX_US" -eq 0 ]] && MAX_LOOP_MAX_US=250000
@@ -776,12 +656,7 @@ if [[ -n "$SOAK_PROFILE" ]]; then
       [[ "$CLI_OVERRIDE_MAX_WIFI_CONNECT_DEFERRED" -eq 0 && "$MAX_WIFI_CONNECT_DEFERRED" -eq 0 ]] && MAX_WIFI_CONNECT_DEFERRED=5
       [[ "$CLI_OVERRIDE_MAX_BLE_PROCESS_MAX_US" -eq 0 && "$MAX_BLE_PROCESS_MAX_US" -eq 0 ]] && MAX_BLE_PROCESS_MAX_US=120000
       [[ "$CLI_OVERRIDE_MAX_DISP_PIPE_MAX_US" -eq 0 && "$MAX_DISP_PIPE_MAX_US" -eq 0 ]] && MAX_DISP_PIPE_MAX_US=80000
-      [[ "$CLI_OVERRIDE_MAX_CAMERA_MAX_TICK_US" -eq 0 && "$MAX_CAMERA_MAX_TICK_US" -eq 0 ]] && MAX_CAMERA_MAX_TICK_US=800
-      [[ "$CLI_OVERRIDE_MAX_CAMERA_MAX_WINDOW_HZ" -eq 0 && -z "$MAX_CAMERA_MAX_WINDOW_HZ" ]] && MAX_CAMERA_MAX_WINDOW_HZ=5.05
       [[ "$CLI_OVERRIDE_MAX_BLE_MUTEX_TIMEOUT_DELTA" -eq 0 && "$MAX_BLE_MUTEX_TIMEOUT_DELTA" -eq 0 ]] && MAX_BLE_MUTEX_TIMEOUT_DELTA=0
-      [[ "$CLI_OVERRIDE_MAX_CAMERA_BUDGET_EXCEEDED_DELTA" -eq 0 && "$MAX_CAMERA_BUDGET_EXCEEDED_DELTA" -eq 0 ]] && MAX_CAMERA_BUDGET_EXCEEDED_DELTA=0
-      [[ "$CLI_OVERRIDE_MAX_CAMERA_LOAD_FAILURES_DELTA" -eq 0 && "$MAX_CAMERA_LOAD_FAILURES_DELTA" -eq 0 ]] && MAX_CAMERA_LOAD_FAILURES_DELTA=0
-      [[ "$CLI_OVERRIDE_MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA" -eq 0 && "$MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA" -eq 0 ]] && MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA=0
       ;;
     *)
       echo "Unknown --profile '$SOAK_PROFILE'. Use 'drive_wifi_off' or 'drive_wifi_ap'." >&2
@@ -873,11 +748,7 @@ for gate_var in \
   MIN_DMA_LARGEST \
   MAX_BLE_PROCESS_MAX_US \
   MAX_DISP_PIPE_MAX_US \
-  MAX_CAMERA_MAX_TICK_US \
-  MAX_BLE_MUTEX_TIMEOUT_DELTA \
-  MAX_CAMERA_BUDGET_EXCEEDED_DELTA \
-  MAX_CAMERA_LOAD_FAILURES_DELTA \
-  MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA
+  MAX_BLE_MUTEX_TIMEOUT_DELTA
 do
   gate_val="${!gate_var}"
   if ! [[ "$gate_val" =~ ^[0-9]+$ ]]; then
@@ -885,31 +756,6 @@ do
     exit 2
   fi
 done
-
-# cameraMaxWindowHz is a float gate (empty = disabled)
-if [[ -n "$MAX_CAMERA_MAX_WINDOW_HZ" ]]; then
-  if ! [[ "$MAX_CAMERA_MAX_WINDOW_HZ" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-    echo "Invalid MAX_CAMERA_MAX_WINDOW_HZ value '$MAX_CAMERA_MAX_WINDOW_HZ' (expected non-negative number or empty)." >&2
-    exit 2
-  fi
-fi
-
-CAMERA_MAX_WINDOW_HZ_GATE_ENABLED=0
-CAMERA_MAX_WINDOW_HZ_GATE_LABEL="disabled"
-if [[ -n "$MAX_CAMERA_MAX_WINDOW_HZ" ]] && awk -v v="$MAX_CAMERA_MAX_WINDOW_HZ" 'BEGIN { exit (v > 0) ? 0 : 1 }'; then
-  CAMERA_MAX_WINDOW_HZ_GATE_ENABLED=1
-  CAMERA_MAX_WINDOW_HZ_GATE_LABEL="$MAX_CAMERA_MAX_WINDOW_HZ"
-fi
-
-if ! [[ "$CAMERA_DRIVE_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] || [[ "$CAMERA_DRIVE_INTERVAL_SECONDS" -lt 1 ]]; then
-  echo "Invalid --camera-drive-interval-seconds value '$CAMERA_DRIVE_INTERVAL_SECONDS' (expected positive integer)." >&2
-  exit 2
-fi
-
-if ! [[ "$CAMERA_DEMO_DURATION_MS" =~ ^[0-9]+$ ]] || [[ "$CAMERA_DEMO_DURATION_MS" -lt 500 ]] || [[ "$CAMERA_DEMO_DURATION_MS" -gt 15000 ]]; then
-  echo "Invalid --camera-demo-duration-ms value '$CAMERA_DEMO_DURATION_MS' (expected integer in 500..15000)." >&2
-  exit 2
-fi
 
 if [[ -n "$BASELINE_PERF_CSV" && ! -f "$BASELINE_PERF_CSV" ]]; then
   echo "Baseline perf CSV not found: '$BASELINE_PERF_CSV'" >&2
@@ -944,15 +790,15 @@ if [[ -n "$BASELINE_PERF_CSV" ]]; then
     exit 2
   fi
   case "$BASELINE_STRESS_CLASS" in
-    core|display|camera|display_camera) ;;
+    core|display) ;;
     *)
-      echo "Invalid --baseline-stress-class '$BASELINE_STRESS_CLASS'. Use core|display|camera|display_camera." >&2
+      echo "Invalid --baseline-stress-class '$BASELINE_STRESS_CLASS'. Use core|display." >&2
       exit 2
       ;;
   esac
   if [[ "$BASELINE_STRESS_CLASS" != "$RUN_STRESS_CLASS" ]]; then
     echo "Baseline stress-class mismatch: baseline='$BASELINE_STRESS_CLASS' run='$RUN_STRESS_CLASS'." >&2
-    echo "Use a stress-matched baseline CSV (same display/camera drive class)." >&2
+    echo "Use a stress-matched baseline CSV (same display drive class)." >&2
     exit 2
   fi
 
@@ -999,10 +845,6 @@ if [[ -n "$METRICS_URL" ]]; then
     DISPLAY_PREVIEW_URL="${metrics_url_base%/api/debug/metrics}/api/displaycolors/preview"
   fi
 
-  if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 && -z "$CAMERA_DEMO_URL" ]]; then
-    CAMERA_DEMO_URL="${metrics_url_base%/api/debug/metrics}/api/cameras/demo"
-  fi
-
   if [[ "$METRICS_SOAK_MODE" -eq 1 && "$METRICS_URL" != *"soak="* ]]; then
     if [[ "$METRICS_URL" == *"?"* ]]; then
       METRICS_POLL_URL="${METRICS_URL}&soak=1"
@@ -1022,12 +864,6 @@ fi
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" ]]; then
   echo "Display drive is enabled but no preview URL was provided or derivable." >&2
   echo "Set --display-preview-url or provide --metrics-url ending in /api/debug/metrics." >&2
-  exit 2
-fi
-
-if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 && -z "$CAMERA_DEMO_URL" ]]; then
-  echo "Camera drive is enabled but no demo URL was provided or derivable." >&2
-  echo "Set --camera-demo-url or provide --metrics-url ending in /api/debug/metrics." >&2
   exit 2
 fi
 
@@ -1258,11 +1094,10 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA} maxOversizeDropDelta=${MAX_OVERSIZE_DROPS_DELTA}"
   echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} maxSd=${MAX_SD_MAX_US} maxFs=${MAX_FS_MAX_US} (0 disables)"
   echo "    latency gate mode: ${LATENCY_GATE_MODE} (robust minSamples=${LATENCY_ROBUST_MIN_SAMPLES} maxExceedPct=${LATENCY_ROBUST_MAX_EXCEED_PCT} wifiSkipFirst=${WIFI_ROBUST_SKIP_FIRST_SAMPLES})"
-  echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} maxCameraMaxTick=${MAX_CAMERA_MAX_TICK_US} maxCameraMaxWindowHz=${CAMERA_MAX_WINDOW_HZ_GATE_LABEL} (0 disables)"
-  echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA} maxCameraBudgetExceededDelta=${MAX_CAMERA_BUDGET_EXCEEDED_DELTA} maxCameraLoadFailuresDelta=${MAX_CAMERA_LOAD_FAILURES_DELTA} maxCameraIndexSwapFailuresDelta=${MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA}"
+  echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} (0 disables)"
+  echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA}"
   echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)"
   echo "    display drive: enabled=${DISPLAY_DRIVE_ENABLED} url=${DISPLAY_PREVIEW_URL:-disabled} interval=${DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=${DISPLAY_MIN_UPDATES_DELTA}"
-  echo "    camera drive: enabled=${CAMERA_DRIVE_ENABLED} url=${CAMERA_DEMO_URL:-disabled} interval=${CAMERA_DRIVE_INTERVAL_SECONDS}s durationMs=${CAMERA_DEMO_DURATION_MS} muted=${CAMERA_DEMO_MUTED}"
   echo "    out dir: $OUT_DIR"
   if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
     echo "    baseline csv: ${BASELINE_PERF_CSV} (profile=${BASELINE_PROFILE}, stressClass=${BASELINE_STRESS_CLASS}, runStressClass=${RUN_STRESS_CLASS}, session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})"
@@ -1327,8 +1162,8 @@ fi
 echo "    runtime gates: minRxDelta=${MIN_RX_PACKETS_DELTA} minParseSuccessDelta=${MIN_PARSE_SUCCESSES_DELTA} maxParseFailDelta=${MAX_PARSE_FAILURES_DELTA} maxQueueDropDelta=${MAX_QUEUE_DROPS_DELTA} maxPerfDropDelta=${MAX_PERF_DROPS_DELTA} maxEventDropDelta=${MAX_EVENT_DROPS_DELTA} maxOversizeDropDelta=${MAX_OVERSIZE_DROPS_DELTA}" | tee -a "$RUN_LOG"
 echo "    latency gates: maxFlush=${MAX_FLUSH_MAX_US} maxLoop=${MAX_LOOP_MAX_US} maxWifi=${MAX_WIFI_MAX_US} maxBleDrain=${MAX_BLE_DRAIN_MAX_US} maxSd=${MAX_SD_MAX_US} maxFs=${MAX_FS_MAX_US} (0 disables)" | tee -a "$RUN_LOG"
 echo "    latency gate mode: ${LATENCY_GATE_MODE} (robust minSamples=${LATENCY_ROBUST_MIN_SAMPLES} maxExceedPct=${LATENCY_ROBUST_MAX_EXCEED_PCT} wifiSkipFirst=${WIFI_ROBUST_SKIP_FIRST_SAMPLES})" | tee -a "$RUN_LOG"
-echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} maxCameraMaxTick=${MAX_CAMERA_MAX_TICK_US} maxCameraMaxWindowHz=${CAMERA_MAX_WINDOW_HZ_GATE_LABEL} (0 disables)" | tee -a "$RUN_LOG"
-echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA} maxCameraBudgetExceededDelta=${MAX_CAMERA_BUDGET_EXCEEDED_DELTA} maxCameraLoadFailuresDelta=${MAX_CAMERA_LOAD_FAILURES_DELTA} maxCameraIndexSwapFailuresDelta=${MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA}" | tee -a "$RUN_LOG"
+echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} (0 disables)" | tee -a "$RUN_LOG"
+echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA}" | tee -a "$RUN_LOG"
 echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)" | tee -a "$RUN_LOG"
 if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
   echo "    baseline csv: ${BASELINE_PERF_CSV} (profile=${BASELINE_PROFILE}, stressClass=${BASELINE_STRESS_CLASS}, runStressClass=${RUN_STRESS_CLASS}, session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})" | tee -a "$RUN_LOG"
@@ -1338,11 +1173,6 @@ if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
   echo "    display drive: enabled (${DISPLAY_PREVIEW_URL}) every ${DISPLAY_DRIVE_INTERVAL_SECONDS}s, min displayUpdates delta=${DISPLAY_MIN_UPDATES_DELTA}" | tee -a "$RUN_LOG"
 else
   echo "    display drive: disabled" | tee -a "$RUN_LOG"
-fi
-if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
-  echo "    camera drive: enabled (${CAMERA_DEMO_URL}) every ${CAMERA_DRIVE_INTERVAL_SECONDS}s durationMs=${CAMERA_DEMO_DURATION_MS} muted=${CAMERA_DEMO_MUTED}" | tee -a "$RUN_LOG"
-else
-  echo "    camera drive: disabled" | tee -a "$RUN_LOG"
 fi
 echo "    out dir: $OUT_DIR" | tee -a "$RUN_LOG"
 echo "" | tee -a "$RUN_LOG"
@@ -1422,11 +1252,7 @@ fi
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
   # Account for the preview retry path in the same loop iteration.
   serial_capture_call_budget=$((serial_capture_call_budget + 2))
-fi
-if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
-  serial_capture_call_budget=$((serial_capture_call_budget + 1))
-fi
-SERIAL_CAPTURE_GRACE_SECONDS=$((HTTP_TIMEOUT_SECONDS * serial_capture_call_budget + POLL_SECONDS + 15))
+fi\nSERIAL_CAPTURE_GRACE_SECONDS=$((HTTP_TIMEOUT_SECONDS * serial_capture_call_budget + POLL_SECONDS + 15))
 if [[ "$SERIAL_CAPTURE_GRACE_SECONDS" -lt 20 ]]; then
   SERIAL_CAPTURE_GRACE_SECONDS=20
 fi
@@ -1498,17 +1324,6 @@ display_drive_calls=0
 display_drive_errors=0
 display_drive_start_misses=0
 next_display_drive_epoch="$soak_start_epoch"
-camera_drive_calls=0
-camera_drive_errors=0
-camera_drive_phase_offset=0
-if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
-  # Avoid synchronized display+camera drive bursts on soak start.
-  camera_drive_phase_offset=$((CAMERA_DRIVE_INTERVAL_SECONDS / 2))
-  if [[ "$camera_drive_phase_offset" -lt 1 ]]; then
-    camera_drive_phase_offset=1
-  fi
-fi
-next_camera_drive_epoch=$((soak_start_epoch + camera_drive_phase_offset))
 
 echo "==> Soaking for ${DURATION_SECONDS}s..." | tee -a "$RUN_LOG"
 
@@ -1564,18 +1379,6 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
       fi
     fi
     next_display_drive_epoch=$((now_epoch + DISPLAY_DRIVE_INTERVAL_SECONDS))
-  fi
-
-  if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 && "$now_epoch" -ge "$next_camera_drive_epoch" ]]; then
-    camera_drive_calls=$((camera_drive_calls + 1))
-    camera_resp="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" -X POST \
-      --data "type=0&durationMs=${CAMERA_DEMO_DURATION_MS}&muted=${CAMERA_DEMO_MUTED}" \
-      "$CAMERA_DEMO_URL" 2>/dev/null || true)"
-    if [[ -z "$camera_resp" ]]; then
-      camera_drive_errors=$((camera_drive_errors + 1))
-      echo "[WARN] Camera drive call failed (no response)." | tee -a "$RUN_LOG"
-    fi
-    next_camera_drive_epoch=$((now_epoch + CAMERA_DRIVE_INTERVAL_SECONDS))
   fi
 
   sleep "$POLL_SECONDS"
@@ -1720,12 +1523,6 @@ disp_pipe_sample_count=""
 disp_pipe_p95=""
 disp_pipe_over_limit_count=""
 ble_mutex_timeout_delta=""
-camera_budget_exceeded_delta=""
-camera_load_failures_delta=""
-camera_index_swap_failures_delta=""
-camera_max_tick_peak=""
-camera_max_window_hz_peak=""
-camera_max_window_hz_peak_ts=""
 gps_obs_drops_delta=""
 
 while IFS='=' read -r key value; do
@@ -1796,12 +1593,6 @@ while IFS='=' read -r key value; do
     disp_pipe_p95) disp_pipe_p95="$value" ;;
     disp_pipe_over_limit_count) disp_pipe_over_limit_count="$value" ;;
     ble_mutex_timeout_delta) ble_mutex_timeout_delta="$value" ;;
-    camera_budget_exceeded_delta) camera_budget_exceeded_delta="$value" ;;
-    camera_load_failures_delta) camera_load_failures_delta="$value" ;;
-    camera_index_swap_failures_delta) camera_index_swap_failures_delta="$value" ;;
-    camera_max_tick_peak) camera_max_tick_peak="$value" ;;
-    camera_max_window_hz_peak) camera_max_window_hz_peak="$value" ;;
-    camera_max_window_hz_peak_ts) camera_max_window_hz_peak_ts="$value" ;;
     gps_obs_drops_delta) gps_obs_drops_delta="$value" ;;
   esac
 done < "$metrics_kv"
@@ -1964,7 +1755,6 @@ gate_serial_panic_fail=0
 gate_serial_reset_fail=0
 gate_panic_endpoint_fail=0
 gate_display_drive_fail=0
-gate_camera_drive_fail=0
 gate_oversize_drop_fail=0
 gate_sd_max_fail=0
 gate_fs_max_fail=0
@@ -1974,12 +1764,7 @@ gate_dma_free_fail=0
 gate_dma_largest_fail=0
 gate_ble_process_max_fail=0
 gate_disp_pipe_max_fail=0
-gate_camera_max_tick_fail=0
-gate_camera_max_window_hz_fail=0
 gate_ble_mutex_timeout_fail=0
-gate_camera_budget_exceeded_fail=0
-gate_camera_load_failures_fail=0
-gate_camera_index_swap_failures_fail=0
 
 # Advisory SLO tracking (warn-only, do not cause FAIL)
 advisory_warnings=()
@@ -2242,53 +2027,11 @@ if [[ "$reboot_evidence_detected" -eq 0 ]]; then
       esac
     fi
 
-    # cameraMaxTickUs (0 disables)
-    if [[ "$MAX_CAMERA_MAX_TICK_US" -gt 0 ]]; then
-      if ! is_uint "$camera_max_tick_peak"; then
-        mark_gate_fail gate_camera_max_tick_fail "cameraMaxTickUs peak ${camera_max_tick_peak:-n/a} above max ${MAX_CAMERA_MAX_TICK_US}."
-      elif [[ "$camera_max_tick_peak" -gt "$MAX_CAMERA_MAX_TICK_US" ]]; then
-        mark_gate_fail gate_camera_max_tick_fail "cameraMaxTickUs peak ${camera_max_tick_peak} above max ${MAX_CAMERA_MAX_TICK_US}."
-      fi
-    fi
-
-    # cameraMaxWindowHz (0/empty disables; missing metric is a hard failure)
-    if [[ "$CAMERA_MAX_WINDOW_HZ_GATE_ENABLED" -eq 1 ]]; then
-      if [[ -z "$camera_max_window_hz_peak" ]]; then
-        mark_gate_fail gate_camera_max_window_hz_fail "cameraMaxWindowHz unavailable (required <= ${MAX_CAMERA_MAX_WINDOW_HZ})."
-      elif ! [[ "$camera_max_window_hz_peak" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-        mark_gate_fail gate_camera_max_window_hz_fail "cameraMaxWindowHz invalid value '${camera_max_window_hz_peak}' (required <= ${MAX_CAMERA_MAX_WINDOW_HZ})."
-      elif awk -v obs="$camera_max_window_hz_peak" -v lim="$MAX_CAMERA_MAX_WINDOW_HZ" \
-          'BEGIN { exit (obs > lim) ? 0 : 1 }'; then
-        mark_gate_fail gate_camera_max_window_hz_fail "cameraMaxWindowHz ${camera_max_window_hz_peak} above max ${MAX_CAMERA_MAX_WINDOW_HZ}."
-      fi
-    fi
-
     # bleMutexTimeout (zero-tolerance counter)
     if ! is_uint "$ble_mutex_timeout_delta"; then
       mark_gate_fail gate_ble_mutex_timeout_fail "bleMutexTimeout delta ${ble_mutex_timeout_delta:-n/a} above max ${MAX_BLE_MUTEX_TIMEOUT_DELTA}."
     elif [[ "$ble_mutex_timeout_delta" -gt "$MAX_BLE_MUTEX_TIMEOUT_DELTA" ]]; then
       mark_gate_fail gate_ble_mutex_timeout_fail "bleMutexTimeout delta ${ble_mutex_timeout_delta} above max ${MAX_BLE_MUTEX_TIMEOUT_DELTA}."
-    fi
-
-    # cameraBudgetExceeded (zero-tolerance counter)
-    if ! is_uint "$camera_budget_exceeded_delta"; then
-      mark_gate_fail gate_camera_budget_exceeded_fail "cameraBudgetExceeded delta ${camera_budget_exceeded_delta:-n/a} above max ${MAX_CAMERA_BUDGET_EXCEEDED_DELTA}."
-    elif [[ "$camera_budget_exceeded_delta" -gt "$MAX_CAMERA_BUDGET_EXCEEDED_DELTA" ]]; then
-      mark_gate_fail gate_camera_budget_exceeded_fail "cameraBudgetExceeded delta ${camera_budget_exceeded_delta} above max ${MAX_CAMERA_BUDGET_EXCEEDED_DELTA}."
-    fi
-
-    # cameraLoadFailures (zero-tolerance counter)
-    if ! is_uint "$camera_load_failures_delta"; then
-      mark_gate_fail gate_camera_load_failures_fail "cameraLoadFailures delta ${camera_load_failures_delta:-n/a} above max ${MAX_CAMERA_LOAD_FAILURES_DELTA}."
-    elif [[ "$camera_load_failures_delta" -gt "$MAX_CAMERA_LOAD_FAILURES_DELTA" ]]; then
-      mark_gate_fail gate_camera_load_failures_fail "cameraLoadFailures delta ${camera_load_failures_delta} above max ${MAX_CAMERA_LOAD_FAILURES_DELTA}."
-    fi
-
-    # cameraIndexSwapFailures (zero-tolerance counter)
-    if ! is_uint "$camera_index_swap_failures_delta"; then
-      mark_gate_fail gate_camera_index_swap_failures_fail "cameraIndexSwapFailures delta ${camera_index_swap_failures_delta:-n/a} above max ${MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA}."
-    elif [[ "$camera_index_swap_failures_delta" -gt "$MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA" ]]; then
-      mark_gate_fail gate_camera_index_swap_failures_fail "cameraIndexSwapFailures delta ${camera_index_swap_failures_delta} above max ${MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA}."
     fi
 
     # ----- Advisory SLOs (warn-only, do not cause FAIL) -----
@@ -2332,14 +2075,6 @@ if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
     mark_gate_fail gate_display_drive_fail "Display updates delta ${display_updates_delta} below required ${DISPLAY_MIN_UPDATES_DELTA}."
   fi
 fi
-if [[ "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
-  if [[ "$camera_drive_calls" -eq 0 ]]; then
-    mark_gate_fail gate_camera_drive_fail "Camera drive produced zero calls."
-  fi
-  if [[ "$camera_drive_errors" -gt 0 ]]; then
-    mark_gate_fail gate_camera_drive_fail "Camera drive had ${camera_drive_errors} failed call(s)."
-  fi
-fi
 
 if [[ ${#fail_reasons[@]} -gt 0 ]]; then
   result="FAIL"
@@ -2372,14 +2107,14 @@ if [[ "$result" == "FAIL" ]]; then
     diagnosis_bucket="Resource Pressure Regression"
     diagnosis_next_action="Inspect queueHighWater/wifiConnectDeferred/DMA floor counters around failing samples and tune backpressure or memory usage."
   elif [[ "$gate_loop_fail" -eq 1 || "$gate_wifi_fail" -eq 1 || "$gate_flush_fail" -eq 1 || "$gate_ble_drain_fail" -eq 1 || "$gate_sd_max_fail" -eq 1 || "$gate_fs_max_fail" -eq 1 ]]; then
-    if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 || "$CAMERA_DRIVE_ENABLED" -eq 1 ]]; then
+    if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
       diagnosis_bucket="Stress Latency Regression"
       diagnosis_next_action="Run paired tests: core (no stress drivers) and stress (drivers on). Optimize only the delta introduced by stress paths."
     else
       diagnosis_bucket="Core Latency Regression"
       diagnosis_next_action="Profile loop/wifi/flush peaks at reported timestamps and reduce blocking work on the main loop."
     fi
-  elif [[ "$gate_display_drive_fail" -eq 1 || "$gate_camera_drive_fail" -eq 1 ]]; then
+  elif [[ "$gate_display_drive_fail" -eq 1 ]]; then
     diagnosis_bucket="Stress Endpoint Saturation"
     diagnosis_next_action="Stabilize preview/demo endpoint handling under load (timeouts/retries) before treating as firmware regression."
   else
@@ -2481,16 +2216,11 @@ fi
   echo "- Peak bleProcessMaxUs: ${ble_process_max_peak:-n/a} (max gate ${MAX_BLE_PROCESS_MAX_US})"
   echo "- Peak dispPipeMaxUs: ${disp_pipe_max_peak:-n/a} (max gate ${MAX_DISP_PIPE_MAX_US})"
   echo "- Robust dispPipe samples/p95/over-limit: ${disp_pipe_sample_count:-n/a} / ${disp_pipe_p95:-n/a} / ${disp_pipe_over_limit_count:-n/a} (allowed ${disp_pipe_robust_allowed_over_limit:-n/a})"
-  echo "- Peak cameraMaxTickUs: ${camera_max_tick_peak:-n/a} (max gate ${MAX_CAMERA_MAX_TICK_US})"
-  echo "- Peak cameraMaxWindowHz (computed, 15s window): ${camera_max_window_hz_peak:-n/a} (ts ${camera_max_window_hz_peak_ts:-n/a}, max gate ${CAMERA_MAX_WINDOW_HZ_GATE_LABEL})"
   echo "- oversizeDrops delta: ${oversize_drops_delta:-n/a} (max ${MAX_OVERSIZE_DROPS_DELTA})"
   echo "- queueHighWater first/peak: ${queue_high_water_first:-n/a} / ${queue_high_water_peak:-n/a} (max ${MAX_QUEUE_HIGH_WATER})"
   echo "- Inherited counter suspect: ${inherited_counter_suspect:-n/a}"
   echo "- wifiConnectDeferred delta: ${wifi_connect_deferred_delta:-n/a} (max ${MAX_WIFI_CONNECT_DEFERRED}; drive_wifi_off requires 0)"
   echo "- bleMutexTimeout delta: ${ble_mutex_timeout_delta:-n/a} (max ${MAX_BLE_MUTEX_TIMEOUT_DELTA})"
-  echo "- cameraBudgetExceeded delta: ${camera_budget_exceeded_delta:-n/a} (max ${MAX_CAMERA_BUDGET_EXCEEDED_DELTA})"
-  echo "- cameraLoadFailures delta: ${camera_load_failures_delta:-n/a} (max ${MAX_CAMERA_LOAD_FAILURES_DELTA})"
-  echo "- cameraIndexSwapFailures delta: ${camera_index_swap_failures_delta:-n/a} (max ${MAX_CAMERA_INDEX_SWAP_FAILURES_DELTA})"
   echo "- gpsObsDrops delta: ${gps_obs_drops_delta:-n/a} (advisory report-only)"
   echo "- Min heapDmaMin (SLO): ${dma_free_min_parsed:-n/a} (floor ${MIN_DMA_FREE})"
   echo "- Min heapDmaLargestMin (SLO): ${dma_largest_min_parsed:-n/a} (floor ${MIN_DMA_LARGEST})"
@@ -2543,16 +2273,6 @@ fi
   echo "- Display drive errors: ${display_drive_errors}"
   echo "- Display drive start misses: ${display_drive_start_misses}"
   echo "- Minimum required displayUpdates delta: ${DISPLAY_MIN_UPDATES_DELTA}"
-  echo ""
-  echo "## Camera Drive"
-  echo ""
-  echo "- Camera drive enabled: $([[ "$CAMERA_DRIVE_ENABLED" -eq 1 ]] && echo "yes" || echo "no")"
-  echo "- Camera demo URL: ${CAMERA_DEMO_URL:-disabled}"
-  echo "- Camera drive interval (s): ${CAMERA_DRIVE_INTERVAL_SECONDS}"
-  echo "- Camera demo duration (ms): ${CAMERA_DEMO_DURATION_MS}"
-  echo "- Camera demo muted: ${CAMERA_DEMO_MUTED}"
-  echo "- Camera drive calls: ${camera_drive_calls}"
-  echo "- Camera drive errors: ${camera_drive_errors}"
   echo ""
   echo "## Panic Endpoint"
   echo ""

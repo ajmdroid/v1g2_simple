@@ -166,11 +166,6 @@ void SettingsManager::load() {
     settings.obdEnabled = preferences.getBool("obdEn", false);
     settings.obdVwDataEnabled = preferences.getBool("obdVwData", true);
     settings.gpsEnabled = preferences.getBool("gpsEn", false);
-    settings.cameraEnabled = preferences.getBool("camEn", true);
-    settings.cameraAlertDistanceFt = clampCameraAlertDistanceFtValue(
-        preferences.getUShort("camAlertFt", CAMERA_ALERT_DISTANCE_FT_DEFAULT));
-    settings.cameraAlertPersistSec = clampCameraAlertPersistSecValue(
-        preferences.getUChar("camAlertSec", CAMERA_ALERT_PERSIST_SEC_DEFAULT));
     settings.gpsLockoutMode = clampLockoutRuntimeModeValue(
         preferences.getUChar("gpsLkMode", static_cast<uint8_t>(LOCKOUT_RUNTIME_OFF)));
     settings.gpsLockoutCoreGuardEnabled = preferences.getBool("gpsLkGuard", true);
@@ -231,8 +226,6 @@ void SettingsManager::load() {
     settings.colorVolumeMute = preferences.getUShort("colorVolMute", 0x7BEF);  // Grey for mute volume
     settings.colorRssiV1 = preferences.getUShort("colorRssiV1", 0x07E0);       // Green for V1 RSSI label
     settings.colorRssiProxy = preferences.getUShort("colorRssiPrx", 0x001F);   // Blue for Proxy RSSI label
-    settings.colorCameraToken = preferences.getUShort("colorCamT", 0xF800);     // Red for camera token text
-    settings.colorCameraArrow = preferences.getUShort("colorCamA", 0xF800);     // Red for camera forward arrow
     settings.colorLockout = preferences.getUShort("colorLockL", 0x07E0);        // Green lockout badge color
     settings.colorGps = preferences.getUShort("colorGps", 0x07FF);              // Cyan GPS badge color
     settings.colorObd = preferences.getUShort("colorObd", 0xFD20);              // Orange OBD badge color

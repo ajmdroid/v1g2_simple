@@ -3,5 +3,4 @@
 bleClient.process
 bleQueueModule.process
 displayPipelineModule.handleParsed
-cameraRuntimeModule.process
 wifiManager.process

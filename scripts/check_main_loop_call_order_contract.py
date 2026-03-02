@@ -33,10 +33,6 @@ ORDERED_CALLS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
         "displayPipelineModule.handleParsed",
         re.compile(r"\bdisplayPipelineModule\s*\.\s*handleParsed\s*\("),
     ),
-    (
-        "cameraRuntimeModule.process",
-        re.compile(r"\bcameraRuntimeModule\s*\.\s*process\s*\("),
-    ),
     ("wifiManager.process", re.compile(r"\bwifiManager\s*\.\s*process\s*\(")),
 )
 

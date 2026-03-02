@@ -181,12 +181,11 @@ if [ "$SKIP_WEB" = false ]; then
     echo -e "${GREEN}✅ Web files deployed to data/${NC}"
     
     # Copy audio files (deploy script clears data/, so we restore audio)
-    if [ -d "tools/freq_audio/mulaw" ] || [ -d "tools/camera_audio" ]; then
+    if [ -d "tools/freq_audio/mulaw" ]; then
         echo -e "${YELLOW}🔊 Copying audio files to data/audio/...${NC}"
         mkdir -p data/audio
 
         FREQ_AUDIO_COPIED=0
-        CAMERA_AUDIO_COPIED=0
 
         if compgen -G "tools/freq_audio/mulaw/*.mul" > /dev/null; then
             # ghz_*.mul clips are legacy duplicates; runtime now uses tens_XX for GHz tokens.
@@ -201,13 +200,8 @@ if [ "$SKIP_WEB" = false ]; then
             done
         fi
 
-        if compgen -G "tools/camera_audio/cam_*.mul" > /dev/null; then
-            cp tools/camera_audio/cam_*.mul data/audio/
-            CAMERA_AUDIO_COPIED=$(ls -1 tools/camera_audio/cam_*.mul 2>/dev/null | wc -l | tr -d ' ')
-        fi
-
         AUDIO_COUNT=$(ls -1 data/audio/*.mul 2>/dev/null | wc -l | tr -d ' ')
-        echo -e "${GREEN}✅ Copied $AUDIO_COUNT audio clips (freq=$FREQ_AUDIO_COPIED camera=$CAMERA_AUDIO_COPIED)${NC}"
+        echo -e "${GREEN}✅ Copied $AUDIO_COUNT audio clips (freq=$FREQ_AUDIO_COPIED)${NC}"
     fi
     
     echo ""

@@ -50,7 +50,7 @@ BLE blocks the main loop for **5.2 s cumulative** (connect 3.0 + discovery 1.8 +
 | 15 | Auto-push, Touch UI | Module `begin()` calls | |
 | 16 | Touch handler | `touchHandler.begin()` | I2C init |
 | 17 | Brightness / volume | Apply saved settings | |
-| 18 | Core pipeline | Alert, voice, display, BLE queue, OBD, GPS, camera, lockout | All module `begin()` |
+| 18 | Core pipeline | Alert, voice, display, BLE queue, OBD, GPS, lockout | All module `begin()` |
 | 19 | **Boot ready gate** | `bootReady = true`, `bleClient.setBootReady(true)` | Unblocks BLE state machine |
 | 20 | WiFi (if enabled) | `getWifiOrchestrator().startWifi()` | Only if `enableWifiAtBoot` |
 
@@ -116,7 +116,7 @@ Steps 15–18. These all run after scan has started and take ~50–100 ms total.
 - Brightness, volume apply
 - Alert persistence, voice, display pipeline, BLE queue, connection state
 - OBD handler `begin()` (creates task, loads remembered devices, state = IDLE)
-- GPS, camera, lockout enforcer/learner
+- GPS, lockout enforcer/learner
 
 No changes needed. These are fast and don't touch the radio.
 

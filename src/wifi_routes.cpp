@@ -13,8 +13,6 @@
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/gps/gps_observation_log.h"
-#include "modules/camera/camera_api_service.h"
-#include "modules/camera/camera_runtime_module.h"
 #include "modules/lockout/lockout_api_service.h"
 #include "modules/lockout/lockout_index.h"
 #include "modules/lockout/lockout_learner.h"
@@ -567,39 +565,6 @@ void WiFiManager::setupWebServer() {
             gpsObservationLog,
             perfCounters,
             systemEventBus,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/cameras/status", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
-        CameraApiService::handleApiStatus(
-            server,
-            cameraRuntimeModule,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/cameras/catalog", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
-        CameraApiService::handleApiCatalog(
-            server,
-            storageManager,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/cameras/events", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
-        CameraApiService::handleApiEvents(
-            server,
-            cameraRuntimeModule,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/cameras/demo", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        CameraApiService::handleApiDemo(
-            server,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/cameras/demo/clear", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        CameraApiService::handleApiDemoClear(
-            server,
             rateLimitCallback,
             markUiActivityCallback);
     });

@@ -346,7 +346,6 @@ struct PerfExtendedMetrics {
     uint32_t touchMaxUs = 0;          // touchUiModule.process() duration
     uint32_t obdMaxUs = 0;             // obdHandler.update() duration
     uint32_t gpsMaxUs = 0;             // gpsRuntimeModule.update() duration
-    uint32_t cameraMaxUs = 0;          // cameraRuntimeModule.process() duration
     uint32_t lockoutMaxUs = 0;         // lockoutEnforcer.process() + signalCapture duration
     uint32_t lockoutSaveMaxUs = 0;     // lockout zone JSON serialize + SD write
     uint32_t learnerSaveMaxUs = 0;     // learner pending JSON serialize + SD write
@@ -396,7 +395,6 @@ struct PerfExtendedMetrics {
         touchMaxUs = 0;
         obdMaxUs = 0;
         gpsMaxUs = 0;
-        cameraMaxUs = 0;
         lockoutMaxUs = 0;
         lockoutSaveMaxUs = 0;
         learnerSaveMaxUs = 0;
@@ -446,7 +444,6 @@ void perfRecordDispPipeUs(uint32_t us);
 void perfRecordTouchUs(uint32_t us);
 void perfRecordObdUs(uint32_t us);
 void perfRecordGpsUs(uint32_t us);
-void perfRecordCameraUs(uint32_t us);
 void perfRecordLockoutUs(uint32_t us);
 void perfRecordLockoutSaveUs(uint32_t us);
 void perfRecordLearnerSaveUs(uint32_t us);

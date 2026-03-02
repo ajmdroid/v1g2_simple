@@ -9,9 +9,8 @@ Technical documentation for developers working on the V1-Simple codebase.
 1. [Critical Rules](#critical-rules)
 2. [Common Bugs & Prevention](#common-bugs--prevention)
 3. [Display System](#display-system)
-4. [Camera Module](#camera-module)
-5. [BLE Architecture](#ble-architecture)
-6. [Testing Checklist](#testing-checklist)
+4. [BLE Architecture](#ble-architecture)
+5. [Testing Checklist](#testing-checklist)
 
 ---
 
@@ -185,20 +184,20 @@ Remove the `-D REPLAY_MODE` flag and rebuild for normal operation.
 **The Pattern That Breaks**:
 ```cpp
 // ❌ WRONG - In main loop, called every iteration
-if (!hasCameraAlerts) {
-    display.clearCameraAlerts();  // Triggers redraw EVERY FRAME
+if (!hasAlerts) {
+    display.clearAlerts();  // Triggers redraw EVERY FRAME
 }
 ```
 
 **The Fix**:
 ```cpp
 // ✅ CORRECT - Track state, only call on change
-static bool lastHadCameras = false;
-if (hasCameraAlerts != lastHadCameras) {
-    if (!hasCameraAlerts) {
-        display.clearCameraAlerts();
+static bool lastHadAlerts = false;
+if (hasAlerts != lastHadAlerts) {
+    if (!hasAlerts) {
+        display.clearAlerts();
     }
-    lastHadCameras = hasCameraAlerts;
+    lastHadAlerts = hasAlerts;
 }
 ```
 
@@ -208,17 +207,17 @@ if (hasCameraAlerts != lastHadCameras) {
 2. **Always add change detection** before triggering redraws
 3. **Add early exits** in display functions when state unchanged:
    ```cpp
-   void updateCameraAlerts(...) {
-       bool stateChanged = (active != lastCameraState) || ...;
+   void updateAlerts(...) {
+       bool stateChanged = (active != lastAlertState) || ...;
        if (!stateChanged && !active) {
-           return;  // No cameras now, no cameras before - nothing to do
+           return;  // No alerts now, no alerts before - nothing to do
        }
    }
    ```
 
 **Debugging**:
 1. Check `forceCardRedraw = true` - should never be unconditional
-2. Check camera/alert update loops in main.cpp
+2. Check alert update loops in main.cpp
 3. Look for functions called every loop() that don't have change detection
 
 ### Frequency Jitter Causing Redraws
@@ -338,9 +337,8 @@ flags. Individual modules clear their own flag after consuming it.
 
 Single owner per frame prevents redraw conflicts and flicker. Ownership is decided in `main.cpp` and validated by the display test suite (`test/test_display/`).
 
-- **Main display**: `displayPreviewModule` owns while preview is active; otherwise `displayPipelineModule.handleParsed()` owns rendering. Live/persisted V1 states take priority, and camera banners render only via `display.updateCameraAlert(...)` when camera runtime reports an active alert and no V1 alert path is active.
-- **Camera cards**: No standalone camera card writer is active; camera UX currently uses the existing primary frequency/arrow region only.
-- **Voice**: `voiceModule.process()` drives V1 speech actions. Camera voice is a one-shot call to `play_camera_ahead_voice(...)` from `displayPipelineModule` when a new camera lifecycle start is observed and audio is not muted.
+- **Main display**: `displayPreviewModule` owns while preview is active; otherwise `displayPipelineModule.handleParsed()` owns rendering. Live/persisted V1 states take priority.
+- **Voice**: `voiceModule.process()` drives V1 speech actions.
 - **Flush discipline**: Modules never call `display.flush()` directly; `display.update()` and preview paths flush once per frame. Tests enforce ≤1 flush per frame.
 - **End flags**: Preview end flags (`displayPreviewModule.consumeEnded()`) are consumed once then cleared; callers force a redraw with current state after consumption.
 - **Change detection**: All display writers must early-exit when unchanged and avoid setting any `force*Redraw` flag per frame (except `drawBaseFrame()`).
@@ -348,17 +346,6 @@ Single owner per frame prevents redraw conflicts and flicker. Ownership is decid
 Keep new display features aligned with this map and add ownership tests when introducing new display writers.
 
 ---
-
-## Camera Module
-
-**Location**: `src/modules/camera/`
-
-- **Runtime entrypoint**: `camera_runtime_module.{h,cpp}` exposes `begin(...)`, `setEnabled(...)`, `process(...)`, and `snapshot()` for main-loop integration.
-- **Index/data path**: `camera_index.{h,cpp}` holds immutable camera records + spans; `camera_data_loader.{h,cpp}` performs FreeRTOS-task loading/build/swap.
-- **Event log**: `camera_event_log.{h,cpp}` provides bounded diagnostics snapshots used by `/api/cameras/events`.
-- **API service**: `camera_api_service.{h,cpp}` handles `/api/cameras/*` REST endpoints.
-- **Display/audio integration**: Camera modules do not draw directly; display/audio consume `cameraRuntimeModule.snapshot()` in `display_pipeline_module.cpp`.
-- **Dependencies**: Matching is gated by GPS runtime snapshot validity, loop overload guards, and signal-priority preemption.
 
 ## BLE Architecture
 
@@ -417,7 +404,6 @@ void notifyCallback(NimBLERemoteCharacteristic* pChar,
 - [ ] Test with active V1 alerts (flashing bugs only appear with live data)
 - [ ] Test with NO V1 alerts (idle/resting state)
 - [ ] Test transitions: alerts → no alerts → alerts
-- [ ] Test camera alerts on/off transitions
 - [ ] Test mute/unmute transitions
 - [ ] Test volume changes
 - [ ] Test brightness changes

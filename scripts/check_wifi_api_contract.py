@@ -49,14 +49,12 @@ ROUTE_PREFIXES = (
     "/api/debug/",
     "/api/obd/",
     "/api/gps/",
-    "/api/cameras/",
     "/api/lockouts/",
     "/api/lockout/",
 )
 POLICY_CALLBACK_PREFIXES = (
     "/api/obd/",
     "/api/gps/",
-    "/api/cameras/",
     "/api/lockouts/",
     "/api/lockout/",
 )

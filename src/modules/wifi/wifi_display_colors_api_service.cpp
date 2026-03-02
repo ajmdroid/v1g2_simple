@@ -30,10 +30,6 @@ uint16_t clampU16Value(int value, int minVal, int maxVal) {
     return static_cast<uint16_t>(std::max(minVal, std::min(value, maxVal)));
 }
 
-bool computeCameraRuntimeEnabled(const V1Settings& settings) {
-    return settings.cameraEnabled;
-}
-
 }  // namespace
 
 void handleApiSave(WebServer& server,
@@ -101,8 +97,6 @@ void handleApiSave(WebServer& server,
     if (server.hasArg("volumeMute")) s.colorVolumeMute = server.arg("volumeMute").toInt();
     if (server.hasArg("rssiV1")) s.colorRssiV1 = server.arg("rssiV1").toInt();
     if (server.hasArg("rssiProxy")) s.colorRssiProxy = server.arg("rssiProxy").toInt();
-    if (server.hasArg("cameraToken")) s.colorCameraToken = server.arg("cameraToken").toInt();
-    if (server.hasArg("cameraArrow")) s.colorCameraArrow = server.arg("cameraArrow").toInt();
     if (server.hasArg("lockout")) s.colorLockout = server.arg("lockout").toInt();
     if (server.hasArg("gps")) s.colorGps = server.arg("gps").toInt();
     if (server.hasArg("obd")) s.colorObd = server.arg("obd").toInt();
@@ -141,14 +135,6 @@ void handleApiSave(WebServer& server,
         }
         if (runtime.setSpeedSourceGpsEnabled) {
             runtime.setSpeedSourceGpsEnabled(s.gpsEnabled);
-        }
-    }
-    if (server.hasArg("cameraEnabled")) {
-        s.cameraEnabled = argBool("cameraEnabled", s.cameraEnabled);
-    }
-    if (server.hasArg("gpsEnabled") || server.hasArg("cameraEnabled")) {
-        if (runtime.setCameraRuntimeEnabled) {
-            runtime.setCameraRuntimeEnabled(computeCameraRuntimeEnabled(s));
         }
     }
     if (server.hasArg("gpsLockoutMode")) {
@@ -275,8 +261,6 @@ void handleApiReset(WebServer& server,
     s.colorVolumeMute = 0xFFE0;
     s.colorRssiV1 = 0x07E0;
     s.colorRssiProxy = 0x001F;
-    s.colorCameraToken = 0xF800;
-    s.colorCameraArrow = 0xF800;
     s.colorLockout = 0x07E0;
     s.colorGps = 0x07FF;
     s.colorObd = 0xFD20;
@@ -379,8 +363,6 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["volumeMute"] = s.colorVolumeMute;
     doc["rssiV1"] = s.colorRssiV1;
     doc["rssiProxy"] = s.colorRssiProxy;
-    doc["cameraToken"] = s.colorCameraToken;
-    doc["cameraArrow"] = s.colorCameraArrow;
     doc["lockout"] = s.colorLockout;
     doc["gps"] = s.colorGps;
     doc["obd"] = s.colorObd;
@@ -411,7 +393,6 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["alertVolumeFadeVolume"] = s.alertVolumeFadeVolume;
     doc["obdEnabled"] = s.obdEnabled;
     doc["gpsEnabled"] = s.gpsEnabled;
-    doc["cameraEnabled"] = s.cameraEnabled;
     doc["gpsLockoutMode"] = static_cast<int>(s.gpsLockoutMode);
     doc["gpsLockoutModeName"] = lockoutRuntimeModeName(s.gpsLockoutMode);
     doc["gpsLockoutCoreGuardEnabled"] = s.gpsLockoutCoreGuardEnabled;

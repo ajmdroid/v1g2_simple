@@ -84,7 +84,7 @@ V1Display* g_displayInstance = nullptr;
 
 using namespace DisplaySegments;
 
-// cameraTokenForType() moved to display_update.cpp (Phase 3C/3D)
+
 
 // TOP_COUNTER_* constants now live in display_layout.h
 using DisplayLayout::TOP_COUNTER_FONT_SIZE;
@@ -391,7 +391,7 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
 // showLowBattery() moved to display_screens.cpp (Phase 3A)
 
 // update(DisplayState), refreshFrequencyOnly(), refreshSecondaryAlertCards(),
-// updatePersisted(), updateCameraAlert(), update(AlertData, ...) moved to
+// updatePersisted(), update(AlertData, ...) moved to
 // display_update.cpp (Phase 3C/3D)
 
 // drawRestTelemetryCards(), drawSecondaryAlertCards()
@@ -400,7 +400,7 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
 // drawBandBadge(), drawBandIndicators() moved to display_bands.cpp (Phase 2K)
 
 // drawFrequencyClassic(), drawFrequencySerpentine(), drawVolumeZeroWarning(),
-// drawCameraToken(), drawFrequency(), markFrequencyDirtyRegion()
+// drawFrequency(), markFrequencyDirtyRegion()
 // moved to display_frequency.cpp (Phase 2M)
 
 // drawDirectionArrow() moved to display_arrow.cpp (Phase 2I)

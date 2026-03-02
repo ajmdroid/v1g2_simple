@@ -18,7 +18,6 @@
 #include "../../storage_manager.h"
 #include "../../perf_sd_logger.h"
 #include "../ble/ble_queue_module.h"
-#include "../camera/camera_runtime_module.h"
 #include "../gps/gps_runtime_module.h"
 #include "../gps/gps_observation_log.h"
 #include "../gps/gps_lockout_safety.h"
@@ -1173,13 +1172,6 @@ static void sendMetrics(WebServer& server) {
     gpsLogObj["capacity"] = static_cast<uint32_t>(GpsObservationLog::kCapacity);
     doc["gpsObsDrops"] = gpsLogStats.drops;
 
-    const CameraRuntimeStatus cameraStatus = cameraRuntimeModule.snapshot();
-    doc["cameraBudgetExceeded"] = cameraStatus.counters.cameraBudgetExceeded;
-    doc["cameraLoadFailures"] = cameraStatus.loader.loadFailures;
-    doc["cameraIndexSwapFailures"] = cameraStatus.counters.cameraIndexSwapFailures;
-    doc["cameraMaxTickUs"] = cameraStatus.maxTickDurationUs;
-    doc["cameraTicks"] = cameraStatus.counters.cameraTicks;
-
     const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
     JsonObject speedObj = doc["speedSource"].to<JsonObject>();
     speedObj["gpsEnabled"] = speedStatus.gpsEnabled;
@@ -1347,13 +1339,6 @@ static void sendMetricsSoak(WebServer& server) {
     doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
     doc["bleProcessMaxUs"] = perfGetBleProcessMaxUs();
     doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
-
-    const CameraRuntimeStatus cameraStatus = cameraRuntimeModule.snapshot();
-    doc["cameraBudgetExceeded"] = cameraStatus.counters.cameraBudgetExceeded;
-    doc["cameraLoadFailures"] = cameraStatus.loader.loadFailures;
-    doc["cameraIndexSwapFailures"] = cameraStatus.counters.cameraIndexSwapFailures;
-    doc["cameraMaxTickUs"] = cameraStatus.maxTickDurationUs;
-    doc["cameraTicks"] = cameraStatus.counters.cameraTicks;
 
     const GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
     doc["gpsObsDrops"] = gpsLogStats.drops;

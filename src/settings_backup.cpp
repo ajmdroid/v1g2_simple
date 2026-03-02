@@ -82,7 +82,6 @@ int backupDocumentVersion(const JsonDocument& doc) {
 int backupCriticalFieldScore(const JsonDocument& doc) {
     int score = 0;
     if (!doc["gpsEnabled"].isNull()) score++;
-    if (!doc["cameraEnabled"].isNull()) score++;
     if (!doc["brightness"].isNull()) score++;
     if (!doc["displayStyle"].isNull()) score++;
     if (!doc["proxyBLE"].isNull()) score++;
@@ -219,9 +218,6 @@ void SettingsManager::backupToSD() {
     doc["obdEnabled"] = settings.obdEnabled;
     doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["gpsEnabled"] = settings.gpsEnabled;
-    doc["cameraEnabled"] = settings.cameraEnabled;
-    doc["cameraAlertDistanceFt"] = settings.cameraAlertDistanceFt;
-    doc["cameraAlertPersistSec"] = settings.cameraAlertPersistSec;
     doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
     doc["gpsLockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
     doc["gpsLockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
@@ -273,8 +269,6 @@ void SettingsManager::backupToSD() {
     doc["colorVolumeMute"] = settings.colorVolumeMute;
     doc["colorRssiV1"] = settings.colorRssiV1;
     doc["colorRssiProxy"] = settings.colorRssiProxy;
-    doc["colorCameraToken"] = settings.colorCameraToken;
-    doc["colorCameraArrow"] = settings.colorCameraArrow;
     doc["colorLockout"] = settings.colorLockout;
     doc["colorGps"] = settings.colorGps;
     doc["colorObd"] = settings.colorObd;

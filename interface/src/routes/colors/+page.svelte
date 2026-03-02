@@ -35,8 +35,6 @@
 		volumeMute: 0xFFE0, // Yellow (mute volume)
 		rssiV1: 0x07E0,  // Green (V1 RSSI label)
 		rssiProxy: 0x001F, // Blue (Proxy RSSI label)
-		cameraToken: 0xF800, // Red (camera token text)
-		cameraArrow: 0xF800, // Red (camera forward arrow)
 		lockout: 0x07E0, // Green (lockout badge "L")
 		gps: 0x07FF, // Cyan (GPS badge "G")
 		obd: 0xFD20, // Orange (OBD badge)
@@ -259,8 +257,6 @@
 			params.append('volumeMute', colors.volumeMute);
 			params.append('rssiV1', colors.rssiV1);
 			params.append('rssiProxy', colors.rssiProxy);
-			params.append('cameraToken', colors.cameraToken);
-			params.append('cameraArrow', colors.cameraArrow);
 			params.append('lockout', colors.lockout);
 			params.append('gps', colors.gps);
 			params.append('obd', colors.obd);
@@ -340,8 +336,6 @@
 					volumeMute: 0xFFE0,
 					rssiV1: 0x07E0,
 					rssiProxy: 0x001F,
-					cameraToken: 0xF800,
-					cameraArrow: 0xF800,
 					lockout: 0x07E0,
 					gps: 0x07FF,
 					obd: 0xFD20,
@@ -869,66 +863,14 @@
 			</div>
 		</div>
 
-		<!-- Camera, Lockout, GPS & OBD -->
+		<!-- Lockout, GPS & OBD -->
 		<div class="surface-card">
 			<div class="card-body">
 				<CardSectionHead
-					title="Camera, Lockout, GPS & OBD"
-					subtitle="Camera token, camera arrow, lockout badge, GPS badge, and OBD badge color."
+					title="Lockout, GPS & OBD"
+					subtitle="Lockout badge, GPS badge, and OBD badge color."
 				/>
-				<div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-					<div class="form-control">
-						<label class="label" for="camera-token-color">
-							<span class="label-text">Camera Token</span>
-						</label>
-						<div class="flex items-center gap-2">
-							<button
-								id="camera-token-color"
-								type="button"
-								aria-label="Camera token color"
-								class="color-swatch-btn md"
-								style="background-color: {rgb565ToHex(colors.cameraToken)}"
-								onclick={() => openPicker('cameraToken', 'Camera Token')}
-							></button>
-							<input
-								type="text"
-								class="input input-bordered input-xs w-16 font-mono text-xs"
-								value={rgb565ToHexStr(colors.cameraToken)}
-								onchange={(e) => handleHexInput('cameraToken', e.target.value)}
-								title="RGB565 hex (or RGB888)"
-							/>
-							<span
-								class="text-lg font-bold font-mono"
-								style="color: {rgb565ToHex(colors.cameraToken)}"
-							>ALPR</span>
-						</div>
-					</div>
-					<div class="form-control">
-						<label class="label" for="camera-arrow-color">
-							<span class="label-text">Camera Arrow</span>
-						</label>
-						<div class="flex items-center gap-2">
-							<button
-								id="camera-arrow-color"
-								type="button"
-								aria-label="Camera arrow color"
-								class="color-swatch-btn md"
-								style="background-color: {rgb565ToHex(colors.cameraArrow)}"
-								onclick={() => openPicker('cameraArrow', 'Camera Arrow')}
-							></button>
-							<input
-								type="text"
-								class="input input-bordered input-xs w-16 font-mono text-xs"
-								value={rgb565ToHexStr(colors.cameraArrow)}
-								onchange={(e) => handleHexInput('cameraArrow', e.target.value)}
-								title="RGB565 hex (or RGB888)"
-							/>
-							<span
-								class="text-2xl font-bold font-mono"
-								style="color: {rgb565ToHex(colors.cameraArrow)}"
-							>^</span>
-						</div>
-					</div>
+				<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 					<div class="form-control">
 						<label class="label" for="lockout-color">
 							<span class="label-text">Lockout L Badge</span>

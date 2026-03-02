@@ -26,7 +26,6 @@ DEFAULT_UI_ROUTES = [
     "/",
     "/audio",
     "/autopush",
-    "/cameras",
     "/colors",
     "/dev",
     "/devices",

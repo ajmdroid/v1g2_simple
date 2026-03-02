@@ -43,10 +43,6 @@ HARD_COMMON = [
     ("queueHighWater", "final", "<=", 12.0),
     ("dmaLargestMin", "min", ">=", 10000.0),
     ("dmaFreeMin", "min", ">=", 20000.0),
-    ("cameraLoadFailures", "final", "==", 0.0),
-    ("cameraBudgetExceeded", "final", "==", 0.0),
-    ("cameraIndexSwapFailures", "final", "==", 0.0),
-    ("cameraMaxTick_us", "max", "<=", 800.0),
 ]
 
 HARD_PROFILE = {
@@ -68,11 +64,9 @@ ADVISORY = [
     ("audioPlayBusyPerMin", "computed", "<=", 2.0),
     ("reconn", "final", "<=", 2.0),
     ("disc", "final", "<=", 2.0),
-    ("cameraSkipNonCorePct", "computed", "<=", 98.0),
 ]
 
 HARD_COMPUTED = [
-    ("cameraMaxWindowHz", "computed", "<=", 5.05),
 ]
 
 
@@ -312,44 +306,8 @@ def duration_s(rows: List[Dict[str, int]]) -> float:
     return max(0.001, millis / 1000.0)
 
 
-def camera_max_window_hz(rows: List[Dict[str, int]]) -> float:
-    """Compute peak camera tick Hz over a minimum 15-second sliding window.
-
-    Using consecutive-pair Hz is susceptible to poll-interval aliasing: the
-    firmware enforces 200 ms minimum tick interval (5 Hz) but narrow poll
-    windows can bunch ticks and produce false readings above 5 Hz.  A sliding
-    window of >= 15 s (3+ typical CSV rows at 5 s cadence) eliminates this.
-    """
-    if len(rows) < 2:
-        return 0.0
-    MIN_WINDOW_MS = 15000
-    peak = 0.0
-    for end in range(1, len(rows)):
-        # Walk start backwards until the window spans >= MIN_WINDOW_MS
-        best_start = None
-        for start in range(end - 1, -1, -1):
-            span_ms = rows[end]["millis"] - rows[start]["millis"]
-            if span_ms >= MIN_WINDOW_MS:
-                best_start = start
-                break
-        if best_start is None:
-            # No eligible >=15s window for this sample; do not estimate with
-            # shorter windows (that re-introduces poll-interval aliasing).
-            continue
-        dt = (rows[end]["millis"] - rows[best_start]["millis"]) / 1000.0
-        if dt <= 0:
-            continue
-        tick_inc = rows[end]["cameraTicks"] - rows[best_start]["cameraTicks"]
-        hz = tick_inc / dt
-        if hz > peak:
-            peak = hz
-    return peak
-
-
 def compute_value(rows: List[Dict[str, int]], metric: str) -> float:
     dur = duration_s(rows)
-    if metric == "cameraMaxWindowHz":
-        return camera_max_window_hz(rows)
     if metric == "cmdPaceNotYetPerMin":
         return final_of(rows, "cmdPaceNotYet") * 60.0 / dur
     if metric == "displaySkipPct":
@@ -365,13 +323,6 @@ def compute_value(rows: List[Dict[str, int]], metric: str) -> float:
         return final_of(rows, "gpsObsDrops") * 60.0 / dur
     if metric == "audioPlayBusyPerMin":
         return final_of(rows, "audioPlayBusy") * 60.0 / dur
-    if metric == "cameraSkipNonCorePct":
-        ticks = final_of(rows, "cameraTicks")
-        skips = final_of(rows, "cameraTickSkipsNonCore")
-        total = ticks + skips
-        if total <= 0:
-            return 0.0
-        return (skips * 100.0) / total
     raise KeyError(f"Unknown computed metric: {metric}")
 
 

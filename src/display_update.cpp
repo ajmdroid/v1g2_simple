@@ -2,7 +2,7 @@
  * Update methods — extracted from display.cpp (Phase 3C/3D)
  *
  * Contains update(DisplayState), update(AlertData, ...), refreshFrequencyOnly,
- * refreshSecondaryAlertCards, updatePersisted, updateCameraAlert.
+ * refreshSecondaryAlertCards, updatePersisted.
  */
 
 #include "display.h"
@@ -45,15 +45,6 @@ static unsigned long _dispPerfStart = 0;
     if (_dur > 5000) Serial.printf("[DISP] %s: %luus\n", label, _dur); \
     _dispPerfStart = micros(); \
 } } while(0)
-
-namespace {
-const char* cameraTokenForType(uint8_t cameraType) {
-    if (cameraType == 4) {  // ALPR
-        return "ALPR";
-    }
-    return "CAM";
-}
-} // namespace
 
 void V1Display::drawStatusStrip(const DisplayState& state,
                                 char topChar,
@@ -183,7 +174,6 @@ void V1Display::update(const DisplayState& state) {
     
     // Check if transitioning from a non-resting visual mode.
     bool leavingLiveMode = (currentScreen == ScreenMode::Live);
-    bool leavingCameraMode = (currentScreen == ScreenMode::Camera);
     
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
@@ -191,7 +181,6 @@ void V1Display::update(const DisplayState& state) {
         flashJustExpired ||
         wasPersistedMode ||  // Force full redraw when leaving persisted mode
         leavingLiveMode ||   // Force full redraw when alerts end (clear cards/frequency)
-        leavingCameraMode || // Force full redraw when camera banner clears
         restingDebouncedBands != lastRestingDebouncedBands ||
         effectiveMuted != lastState.muted;
     
@@ -469,45 +458,6 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
 #if defined(DISPLAY_WAVESHARE_349)
     DISPLAY_FLUSH();
 #endif
-}
-
-void V1Display::updateCameraAlert(uint8_t cameraType, bool muted) {
-    persistedMode = false;
-
-    // Camera banner occupies the same primary zone as resting/live content.
-    dirty.multiAlert = true;
-    multiAlertMode = false;
-    wasInMultiAlertMode = false;
-
-    if (currentScreen != ScreenMode::Camera) {
-        perfRecordDisplayScreenTransition(
-            static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
-            PerfDisplayScreen::Resting,
-            millis());
-    }
-    currentScreen = ScreenMode::Camera;
-
-    drawBaseFrame();
-    drawTopCounter('~', muted, false);
-    drawBandIndicators(0, muted);
-    drawVerticalSignalBars(0, 0, BAND_KA, muted);
-    drawCameraToken(cameraTokenForType(cameraType), muted);
-    const V1Settings& s = settingsManager.get();
-    drawDirectionArrow(DIR_FRONT, muted, 0, s.colorCameraArrow);
-    drawMuteIcon(false);
-    drawLockoutIndicator();
-    drawGpsIndicator();
-    drawObdIndicator();
-    drawProfileIndicator(currentProfileSlot);
-
-    AlertData emptyPriority;
-    drawSecondaryAlertCards(nullptr, 0, emptyPriority, muted);
-
-#if defined(DISPLAY_WAVESHARE_349)
-    DISPLAY_FLUSH();
-#endif
-
-    lastState = DisplayState();
 }
 
 // Multi-alert update: draws priority alert with secondary alert cards below

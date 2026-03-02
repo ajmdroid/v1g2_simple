@@ -22,8 +22,6 @@ struct Runtime {
     std::function<void()> disconnectObd;
     std::function<void(bool)> setGpsRuntimeEnabled;
     std::function<void(bool)> setSpeedSourceGpsEnabled;
-    std::function<void(bool)> setCameraRuntimeEnabled;
-    std::function<void(uint16_t, uint8_t)> setCameraRuntimeAlertTuning;
     std::function<void(bool)> setLockoutKaLearningEnabled;
     std::function<void()> save;
 };

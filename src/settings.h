@@ -114,28 +114,6 @@ static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MIN = 0;
 static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MAX = 10;
 static constexpr uint8_t LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT = 0;     // 0 = never auto-delete
 
-// Camera runtime alert tuning (ALPR) exposed in web UI.
-// Distance is user-facing feet; runtime converts to meters.
-static constexpr uint16_t CAMERA_ALERT_DISTANCE_FT_MIN = 500;
-static constexpr uint16_t CAMERA_ALERT_DISTANCE_FT_MAX = 2000;
-// Preserve historical 500 m behavior by default (~1640 ft).
-static constexpr uint16_t CAMERA_ALERT_DISTANCE_FT_DEFAULT = 1640;
-static constexpr uint8_t CAMERA_ALERT_PERSIST_SEC_MIN = 3;
-static constexpr uint8_t CAMERA_ALERT_PERSIST_SEC_MAX = 10;
-static constexpr uint8_t CAMERA_ALERT_PERSIST_SEC_DEFAULT = 5;
-
-inline uint16_t clampCameraAlertDistanceFtValue(int rawDistanceFt) {
-    return static_cast<uint16_t>(
-        std::max(static_cast<int>(CAMERA_ALERT_DISTANCE_FT_MIN),
-                 std::min(rawDistanceFt, static_cast<int>(CAMERA_ALERT_DISTANCE_FT_MAX))));
-}
-
-inline uint8_t clampCameraAlertPersistSecValue(int rawPersistSec) {
-    return static_cast<uint8_t>(
-        std::max(static_cast<int>(CAMERA_ALERT_PERSIST_SEC_MIN),
-                 std::min(rawPersistSec, static_cast<int>(CAMERA_ALERT_PERSIST_SEC_MAX))));
-}
-
 inline uint8_t clampLockoutLearnerHitsValue(int rawHits) {
     return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_HITS_MIN),
                                          std::min(rawHits, static_cast<int>(LOCKOUT_LEARNER_HITS_MAX))));
@@ -200,9 +178,6 @@ struct V1Settings {
     bool obdEnabled;        // Enable OBD integration service runtime
     bool obdVwDataEnabled;  // Enable VW-specific OBD PIDs (oil temp, etc.)
     bool gpsEnabled;        // Enable GPS runtime module (optional hardware)
-    bool cameraEnabled;     // Enable camera runtime module + index loading
-    uint16_t cameraAlertDistanceFt; // ALPR trigger distance gate (feet)
-    uint8_t cameraAlertPersistSec;  // ALPR display persistence / failsafe timeout (seconds)
     LockoutRuntimeMode gpsLockoutMode;    // Lockout runtime mode (off/shadow/advisory/enforce)
     bool gpsLockoutCoreGuardEnabled;      // Block lockout enforcement if core health degrades
     uint16_t gpsLockoutMaxQueueDrops;     // Max allowed queue drops before guard trips
@@ -250,8 +225,6 @@ struct V1Settings {
     uint16_t colorVolumeMute;    // Volume indicator muted volume color
     uint16_t colorRssiV1;        // RSSI indicator V1 label color
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
-    uint16_t colorCameraToken;   // Camera token text color
-    uint16_t colorCameraArrow;   // Camera forward arrow color
     uint16_t colorLockout;       // Lockout "L" badge color
     uint16_t colorGps;           // GPS "G" satellite badge color
     uint16_t colorObd;           // OBD connected badge color
@@ -342,9 +315,6 @@ struct V1Settings {
         obdEnabled(false),      // OBD integration disabled by default (opt-in)
         obdVwDataEnabled(true), // Keep VW-specific OBD data enabled by default
         gpsEnabled(false),      // GPS disabled by default until module is installed
-        cameraEnabled(true),    // Camera defaults on for runtime/index preload
-        cameraAlertDistanceFt(CAMERA_ALERT_DISTANCE_FT_DEFAULT),
-        cameraAlertPersistSec(CAMERA_ALERT_PERSIST_SEC_DEFAULT),
         gpsLockoutMode(LOCKOUT_RUNTIME_OFF), // Lockout runtime disabled by default
         gpsLockoutCoreGuardEnabled(true),    // Guardrail ON by default (safety-first)
         gpsLockoutMaxQueueDrops(0),          // Any core drop trips guard by default
@@ -388,8 +358,6 @@ struct V1Settings {
         colorVolumeMute(0x7BEF), // Grey (muted volume) — matches NVS default
         colorRssiV1(0x07E0),     // Green (V1 RSSI label) — matches NVS default
         colorRssiProxy(0x001F),  // Blue (proxy RSSI label) — matches NVS default
-        colorCameraToken(0xF800), // Red camera token (matches existing camera default)
-        colorCameraArrow(0xF800), // Red camera arrow (matches existing front arrow default)
         colorLockout(0x07E0),     // Green lockout badge (matches existing lockout default)
         colorGps(0x07FF),         // Cyan GPS badge (matches existing GPS indicator default)
         colorObd(0xFD20),         // Orange OBD badge
@@ -472,7 +440,6 @@ public:
     void setObdEnabled(bool enabled);
     void setObdVwDataEnabled(bool enabled);
     void setGpsEnabled(bool enabled);
-    void setCameraEnabled(bool enabled);
     void setAutoPowerOffMinutes(uint8_t minutes);
     void setApTimeoutMinutes(uint8_t minutes);
     uint8_t getApTimeoutMinutes() const { return settings.apTimeoutMinutes; }

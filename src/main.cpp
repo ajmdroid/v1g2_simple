@@ -75,7 +75,6 @@
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
-#include "modules/camera/camera_runtime_module.h"
 #include "modules/obd/obd_runtime_module.h"
 #include "modules/lockout/signal_capture_module.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
@@ -129,7 +128,7 @@ static unsigned long obdAutoConnectAtMs = 0;
 static unsigned long v1ConnectedAtMs = 0;
 static bool wifiAutoStartDone = false;
 
-// Display preview driver (color + camera demos)
+// Display preview driver (color demos)
 DisplayPreviewModule displayPreviewModule;
 static ConnectionStateCadenceModule connectionStateCadenceModule;
 
@@ -138,14 +137,6 @@ LockoutOrchestrationModule lockoutOrchestrationModule;
 
 void requestColorPreviewHold(uint32_t durationMs) {
     displayPreviewModule.requestHold(durationMs);
-}
-
-void requestCameraPreviewCycleHold(uint32_t durationMs) {
-    displayPreviewModule.requestCameraCycle(durationMs);
-}
-
-void requestCameraPreviewSingleHold(uint8_t cameraType, uint32_t durationMs, bool muted) {
-    displayPreviewModule.requestCameraSingle(cameraType, durationMs, muted);
 }
 
 bool isDisplayPreviewRunning() {
@@ -368,21 +359,6 @@ static void configureLoopPostDisplayModule() {
     loopPostDisplayProviders.autoPushContext = &autoPushModule;
     loopPostDisplayProviders.timestampUs = [](void*) -> uint32_t {
         return PERF_TIMESTAMP_US();
-    };
-    loopPostDisplayProviders.runCameraRuntime =
-        [](void*,
-           uint32_t nowMs,
-           bool skipLateNonCoreThisLoop,
-           bool overloadLateThisLoop,
-           bool loopSignalPriorityActive) {
-            cameraRuntimeModule.process(
-                nowMs,
-                skipLateNonCoreThisLoop,
-                overloadLateThisLoop,
-                loopSignalPriorityActive);
-        };
-    loopPostDisplayProviders.recordCameraUs = [](void*, uint32_t elapsedUs) {
-        perfRecordCameraUs(elapsedUs);
     };
     loopPostDisplayProviders.readDispatchNowMs = [](void*) -> uint32_t {
         return millis();
@@ -909,9 +885,6 @@ static void configureRuntimeSensorModules() {
 
 static void configureRuntimeAssistModules() {
     configureVoiceSpeedSyncModule();
-    cameraRuntimeModule.begin(settingsManager.get().cameraEnabled);
-    cameraRuntimeModule.setAlertTuning(settingsManager.get().cameraAlertDistanceFt,
-                                       settingsManager.get().cameraAlertPersistSec);
 }
 
 static void configureRuntimeCoreModules() {
@@ -1473,27 +1446,13 @@ void loop() {
         displayPipelineModule.handleParsed(nowMs, lockoutPrioritySuppressed);
     };
 
-    // Camera runtime is strictly low-priority and self-gated on overload/non-core.
-    // Only a real priority V1 signal preempts camera lifecycle — weak/background
-    // alerts (BSM, door openers, etc.) must not suppress camera matching.
-    auto runCameraRuntime = [](uint32_t nowMs,
-                               bool skipLateNonCoreThisLoop,
-                               bool overloadLateThisLoop,
-                               bool loopSignalPriorityActive) {
-        cameraRuntimeModule.process(
-            nowMs,
-            skipLateNonCoreThisLoop,
-            overloadLateThisLoop,
-            loopSignalPriorityActive);
-    };
     const LoopDisplayPreWifiPhaseValues loopDisplayPreWifiValues = processLoopDisplayPreWifiPhase(
         now,
         bootSplashHoldActive,
         overloadLateThisLoop,
         loopSettingsPrepValues.enableSignalTraceLogging,
         skipLateNonCoreThisLoop,
-        runDisplayPipeline,
-        runCameraRuntime);
+        runDisplayPipeline);
     const bool loopSignalPriorityActive = loopDisplayPreWifiValues.loopSignalPriorityActive;
 
     auto runWifiManagerProcess = []() { wifiManager.process(); };

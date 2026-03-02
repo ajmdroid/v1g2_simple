@@ -42,7 +42,6 @@ public:
     int showDisconnectedCalls = 0;
     int updateCalls = 0;
     int updatePersistedCalls = 0;
-    int updateCameraAlertCalls = 0;
     int flushCalls = 0;
     int forceNextRedrawCalls = 0;
     int drawWiFiIndicatorCalls = 0;
@@ -86,7 +85,6 @@ public:
         showDisconnectedCalls = 0;
         updateCalls = 0;
         updatePersistedCalls = 0;
-        updateCameraAlertCalls = 0;
         flushCalls = 0;
         forceNextRedrawCalls = 0;
         drawWiFiIndicatorCalls = 0;
@@ -133,9 +131,6 @@ public:
                 int /*count*/, const DisplayState& /*state*/) { updateCalls++; }
     void updatePersisted(const AlertData& /*alert*/, const DisplayState& /*state*/) { 
         updatePersistedCalls++; 
-    }
-    void updateCameraAlert(uint8_t /*cameraType*/, bool /*muted*/ = false) {
-        updateCameraAlertCalls++;
     }
     
     void flush() { flushCalls++; }

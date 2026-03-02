@@ -54,12 +54,6 @@ src/
 │   │   ├── connection_state_module.h/cpp
 │   │   ├── connection_state_cadence_module.h/cpp
 │   │   └── connection_state_dispatch_module.h/cpp
-│   ├── camera/                      Camera runtime + index + background DB loading + API
-│   │   ├── camera_api_service.h/cpp
-│   │   ├── camera_runtime_module.h/cpp
-│   │   ├── camera_index.h/cpp
-│   │   ├── camera_data_loader.h/cpp
-│   │   └── camera_event_log.h/cpp
 │   ├── debug/                       Debug/metrics API + perf file endpoints
 │   │   ├── debug_api_service.h/cpp
 │   │   └── debug_perf_files_service.h/cpp
@@ -154,12 +148,10 @@ src/
 | **ConnectionStateCadenceModule** | Throttles connection-state display transitions |
 | **ConnectionStateDispatchModule** | Dispatches connection state processing at correct cadence |
 | **ConnectionRuntimeModule** | BLE runtime state (connected, backpressure, last-rx) |
-| **CameraRuntimeModule + CameraDataLoader** | Camera matching lifecycle + background database loading/swap |
-| **CameraApiService** | Camera alert REST API endpoints |
 | **DebugApiService + DebugPerfFilesService** | Debug/metrics REST API + perf file listing/download |
 | **DisplayPipelineModule** | Owns alert rendering, display state updates, and V1 packet processing |
 | **DisplayOrchestrationModule** | Coordinates parsed-frame rendering, lightweight refresh, and early-loop display |
-| **DisplayPreviewModule** | Color/camera preview overlay lifecycle |
+| **DisplayPreviewModule** | Color preview overlay lifecycle |
 | **DisplayRestoreModule** | Restores display state after preview/settings overlay ends |
 | **GpsRuntimeModule** | GPS ingest and fix/course/speed runtime state |
 | **GpsApiService** | GPS lockout REST API endpoints |

@@ -15,7 +15,6 @@ Feature-by-feature release history is maintained in `CHANGELOG.md`.
 
 Current train (`v4.0.0-dev`) highlights:
 - GPS lockout runtime stack (enforcer + learner + store/index) and `/gps` configuration controls.
-- Camera runtime/index/loader path with bounded cadence and diagnostics endpoints.
 - SD-backed perf CSV snapshots (`/perf/perf_boot_<id>.csv`) and runtime metrics correlation.
 - Settings backup/restore hardening and display/runtime stability fixes.
 
@@ -186,7 +185,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 | `storage_manager.cpp` | ~118 | SD/LittleFS mount abstraction |
 | `touch_handler.cpp` | ~178 | AXS15231B I2C touch polling |
 | `obd_handler.cpp` + `obd_connection.cpp` + `obd_protocol.cpp` + `obd_persistence.cpp` | ~2444 | OBD-II via ELM327 BLE adapter (vehicle speed) |
-| `src/modules/` (75 .cpp files, 18 dirs) | ~21k | Runtime modules for GPS, lockout, camera, display pipeline, voice, power, WiFi API services, etc. |
+| `src/modules/` (75 .cpp files, 18 dirs) | ~21k | Runtime modules for GPS, lockout, display pipeline, voice, power, WiFi API services, etc. |
 | `perf_metrics.cpp` | ~813 | Latency tracking (ArduinoJson) |
 
 ### Data Flow
@@ -965,7 +964,6 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 | `/profiles` | `profiles/+page.svelte` | V1 profile management |
 | `/gps` | `gps/+page.svelte` | GPS, OBD, and auto-lockout settings |
 | `/devices` | `devices/+page.svelte` | Known V1 device management |
-| `/cameras` | `cameras/+page.svelte` | Camera alert database status and configuration |
 | `/lockouts` | `lockouts/+page.svelte` | GPS lockout zone management and observation log |
 | `/integrations` | `integrations/+page.svelte` | OBD and external integration settings |
 | `/dev` | `dev/+page.svelte` | Debug tools: metrics, perf files, V1 scenarios, panic log |

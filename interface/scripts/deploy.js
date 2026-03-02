@@ -83,10 +83,7 @@ const audioSources = [
         // ghz_*.mul clips are legacy duplicates; runtime uses tens_XX for GHz tokens.
         filter: (name) => name.endsWith('.mul') && !name.startsWith('ghz_')
     },
-    {
-        dir: join(__dirname, '..', '..', 'tools', 'camera_audio'),
-        filter: (name) => name.startsWith('cam_') && name.endsWith('.mul')
-    }
+
 ];
 
 let copiedAudioCount = 0;

@@ -33,8 +33,6 @@ struct FakeRuntime {
     bool lastGpsRuntimeEnabled = false;
     int setSpeedSourceGpsEnabledCalls = 0;
     bool lastSpeedSourceGpsEnabled = false;
-    int setCameraRuntimeEnabledCalls = 0;
-    bool lastCameraRuntimeEnabled = false;
     int setDisplayBrightnessCalls = 0;
     uint8_t lastDisplayBrightness = 0;
     int setAudioVolumeCalls = 0;
@@ -68,10 +66,6 @@ static WifiDisplayColorsApiService::Runtime makeRuntime(FakeRuntime& rt) {
         [&rt](bool enabled) {
             rt.setSpeedSourceGpsEnabledCalls++;
             rt.lastSpeedSourceGpsEnabled = enabled;
-        },
-        [&rt](bool enabled) {
-            rt.setCameraRuntimeEnabledCalls++;
-            rt.lastCameraRuntimeEnabled = enabled;
         },
         [&rt](uint8_t brightness) {
             rt.setDisplayBrightnessCalls++;
@@ -126,7 +120,6 @@ void test_get_serializes_color_payload() {
     rt.settings.voiceVolume = 67;
     rt.settings.enableSignalTraceLogging = false;
     rt.settings.gpsEnabled = true;
-    rt.settings.cameraEnabled = false;
     rt.settings.gpsLockoutMode = LOCKOUT_RUNTIME_SHADOW;
 
     WifiDisplayColorsApiService::handleApiGet(server, makeRuntime(rt));
@@ -138,7 +131,6 @@ void test_get_serializes_color_payload() {
     TEST_ASSERT_TRUE(responseContains(server, "\"voiceVolume\":67"));
     TEST_ASSERT_TRUE(responseContains(server, "\"enableSignalTraceLogging\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"gpsEnabled\":true"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"cameraEnabled\":false"));
 }
 
 void test_save_rate_limited_short_circuits() {
@@ -161,7 +153,6 @@ void test_save_updates_settings_and_calls_side_effects() {
     FakeRuntime rt;
     rt.settings.obdEnabled = true;
     rt.settings.gpsEnabled = false;
-    rt.settings.cameraEnabled = false;
 
     server.setArg("bogey", "321");
     server.setArg("wifiConnected", "987");
@@ -170,7 +161,6 @@ void test_save_updates_settings_and_calls_side_effects() {
     server.setArg("voiceVolume", "71");
     server.setArg("obdEnabled", "false");
     server.setArg("gpsEnabled", "true");
-    server.setArg("cameraEnabled", "true");
     server.setArg("enableSignalTraceLogging", "false");
     server.setArg("gpsLockoutMode", "enforce");
 
@@ -190,7 +180,6 @@ void test_save_updates_settings_and_calls_side_effects() {
                           static_cast<int>(rt.settings.gpsLockoutMode));
     TEST_ASSERT_FALSE(rt.settings.obdEnabled);
     TEST_ASSERT_TRUE(rt.settings.gpsEnabled);
-    TEST_ASSERT_TRUE(rt.settings.cameraEnabled);
     TEST_ASSERT_FALSE(rt.settings.enableSignalTraceLogging);
     TEST_ASSERT_EQUAL_INT(1, rt.stopObdScanCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.disconnectObdCalls);
@@ -198,8 +187,6 @@ void test_save_updates_settings_and_calls_side_effects() {
     TEST_ASSERT_TRUE(rt.lastGpsRuntimeEnabled);
     TEST_ASSERT_EQUAL_INT(1, rt.setSpeedSourceGpsEnabledCalls);
     TEST_ASSERT_TRUE(rt.lastSpeedSourceGpsEnabled);
-    TEST_ASSERT_EQUAL_INT(1, rt.setCameraRuntimeEnabledCalls);
-    TEST_ASSERT_TRUE(rt.lastCameraRuntimeEnabled);
     TEST_ASSERT_EQUAL_INT(1, rt.setDisplayBrightnessCalls);
     TEST_ASSERT_EQUAL_UINT8(111, rt.lastDisplayBrightness);
     TEST_ASSERT_EQUAL_INT(1, rt.setAudioVolumeCalls);
@@ -208,29 +195,6 @@ void test_save_updates_settings_and_calls_side_effects() {
     TEST_ASSERT_EQUAL_INT(1, rt.showDisplayDemoCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);
     TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);
-}
-
-void test_save_keeps_camera_runtime_enabled_when_gps_disabled() {
-    WebServer server(80);
-    FakeRuntime rt;
-    rt.settings.gpsEnabled = false;
-    rt.settings.cameraEnabled = false;
-    server.setArg("cameraEnabled", "true");
-    server.setArg("skipPreview", "true");
-
-    WifiDisplayColorsApiService::handleApiSave(
-        server,
-        makeRuntime(rt),
-        []() { return true; });
-
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_FALSE(rt.settings.gpsEnabled);
-    TEST_ASSERT_TRUE(rt.settings.cameraEnabled);
-    TEST_ASSERT_EQUAL_INT(0, rt.setGpsRuntimeEnabledCalls);
-    TEST_ASSERT_EQUAL_INT(0, rt.setSpeedSourceGpsEnabledCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.setCameraRuntimeEnabledCalls);
-    TEST_ASSERT_TRUE(rt.lastCameraRuntimeEnabled);
-    TEST_ASSERT_EQUAL_INT(1, rt.saveSettingsCalls);
 }
 
 void test_save_skip_preview_does_not_trigger_demo() {
@@ -418,7 +382,6 @@ int main() {
     RUN_TEST(test_get_serializes_color_payload);
     RUN_TEST(test_save_rate_limited_short_circuits);
     RUN_TEST(test_save_updates_settings_and_calls_side_effects);
-    RUN_TEST(test_save_keeps_camera_runtime_enabled_when_gps_disabled);
     RUN_TEST(test_save_skip_preview_does_not_trigger_demo);
     RUN_TEST(test_save_clamps_numeric_ranges);
     RUN_TEST(test_reset_rate_limited_short_circuits);

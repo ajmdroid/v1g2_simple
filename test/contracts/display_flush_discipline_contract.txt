@@ -15,7 +15,6 @@ kind=DISPLAY_FLUSH file=src/display_sliders.cpp line=94 function=showSettingsSli
 kind=DISPLAY_FLUSH file=src/display_update.cpp line=258 function=update
 kind=DISPLAY_FLUSH file=src/display_update.cpp line=316 function=update
 kind=DISPLAY_FLUSH file=src/display_update.cpp line=470 function=updatePersisted
-kind=DISPLAY_FLUSH file=src/display_update.cpp line=507 function=updateCameraAlert
 kind=DISPLAY_FLUSH file=src/display_update.cpp line=719 function=update
 kind=DISPLAY_FLUSH file=src/display_update.cpp line=784 function=update
 kind=POINTER_FLUSH file=include/display_flush.h line=12 function=<global>

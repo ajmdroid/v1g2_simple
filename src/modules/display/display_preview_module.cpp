@@ -15,33 +15,6 @@ void DisplayPreviewModule::requestHold(uint32_t durationMs) {
     previewDurationMs = durationMs + PREVIEW_TAIL_MS;
     previewStep = 0;
     previewEnded = false;
-    singleCameraType = CAMERA_TYPE_MIN;
-    singleCameraMuted = false;
-}
-
-void DisplayPreviewModule::requestCameraCycle(uint32_t durationMs) {
-    previewMode = PreviewMode::CAMERA_CYCLE;
-    previewActive = true;
-    previewStartMs = millis();
-    previewDurationMs = durationMs + PREVIEW_TAIL_MS;
-    previewStep = 0;
-    previewEnded = false;
-    singleCameraType = CAMERA_TYPE_MIN;
-    singleCameraMuted = false;
-}
-
-void DisplayPreviewModule::requestCameraSingle(uint8_t cameraType, uint32_t durationMs, bool muted) {
-    if (cameraType < CAMERA_TYPE_MIN || cameraType > CAMERA_TYPE_MAX) {
-        cameraType = CAMERA_TYPE_MIN;
-    }
-    previewMode = PreviewMode::CAMERA_SINGLE;
-    previewActive = true;
-    previewStartMs = millis();
-    previewDurationMs = durationMs + PREVIEW_TAIL_MS;
-    previewStep = 0;
-    previewEnded = false;
-    singleCameraType = cameraType;
-    singleCameraMuted = muted;
 }
 
 void DisplayPreviewModule::cancel() {
@@ -114,19 +87,6 @@ void DisplayPreviewModule::update() {
 
             display->update(previewAlert, allAlerts, alertCount, previewState);
             previewStep++;
-        }
-    } else if (previewMode == PreviewMode::CAMERA_CYCLE) {
-        // Advance through at most one camera frame per update.
-        if (previewStep < CAMERA_STEP_COUNT && elapsed >= CAMERA_STEPS[previewStep].offsetMs) {
-            const auto& step = CAMERA_STEPS[previewStep];
-            display->updateCameraAlert(step.type, step.muted);
-            previewStep++;
-        }
-    } else if (previewMode == PreviewMode::CAMERA_SINGLE) {
-        // Single camera demo only draws once per run.
-        if (previewStep == 0) {
-            display->updateCameraAlert(singleCameraType, singleCameraMuted);
-            previewStep = 1;
         }
     }
 

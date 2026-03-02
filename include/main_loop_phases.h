@@ -72,11 +72,7 @@ LoopDisplayPreWifiPhaseValues processLoopDisplayPreWifiPhase(
     bool overloadLateThisLoop,
     bool enableSignalTraceLogging,
     bool skipLateNonCoreThisLoop,
-    void (*runDisplayPipeline)(uint32_t nowMs, bool lockoutPrioritySuppressed),
-    void (*runCameraRuntime)(uint32_t nowMs,
-                             bool skipLateNonCoreThisLoop,
-                             bool overloadLateThisLoop,
-                             bool loopSignalPriorityActive));
+    void (*runDisplayPipeline)(uint32_t nowMs, bool lockoutPrioritySuppressed));
 
 LoopWifiPhaseValues processLoopWifiPhase(
     unsigned long nowMs,

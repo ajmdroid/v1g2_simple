@@ -12,7 +12,6 @@
 #include "../gps/gps_lockout_safety.h"
 #include "../lockout/lockout_band_policy.h"
 #include "../speed/speed_source_selector.h"
-#include "../camera/camera_runtime_module.h"
 
 namespace {
 
@@ -26,10 +25,6 @@ uint16_t clampU16Value(int value, int minVal, int maxVal) {
     if (value < minVal) return static_cast<uint16_t>(minVal);
     if (value > maxVal) return static_cast<uint16_t>(maxVal);
     return static_cast<uint16_t>(value);
-}
-
-bool computeCameraRuntimeEnabled(const V1Settings& settings) {
-    return settings.cameraEnabled;
 }
 
 String sanitizeLastV1AddressForBackup(const String& raw) {
@@ -64,9 +59,6 @@ static void sendBackup(WebServer& server) {
     doc["obdEnabled"] = s.obdEnabled;
     doc["obdVwDataEnabled"] = s.obdVwDataEnabled;
     doc["gpsEnabled"] = s.gpsEnabled;
-    doc["cameraEnabled"] = s.cameraEnabled;
-    doc["cameraAlertDistanceFt"] = s.cameraAlertDistanceFt;
-    doc["cameraAlertPersistSec"] = s.cameraAlertPersistSec;
     doc["gpsLockoutMode"] = static_cast<int>(s.gpsLockoutMode);
     doc["gpsLockoutCoreGuardEnabled"] = s.gpsLockoutCoreGuardEnabled;
     doc["gpsLockoutMaxQueueDrops"] = s.gpsLockoutMaxQueueDrops;
@@ -115,8 +107,6 @@ static void sendBackup(WebServer& server) {
     doc["colorWiFiConnected"] = s.colorWiFiConnected;
     doc["colorRssiV1"] = s.colorRssiV1;
     doc["colorRssiProxy"] = s.colorRssiProxy;
-    doc["colorCameraToken"] = s.colorCameraToken;
-    doc["colorCameraArrow"] = s.colorCameraArrow;
     doc["colorLockout"] = s.colorLockout;
     doc["colorGps"] = s.colorGps;
     doc["colorObd"] = s.colorObd;
@@ -301,13 +291,6 @@ static void handleRestore(WebServer& server) {
     if (doc["obdEnabled"].is<bool>()) s.obdEnabled = doc["obdEnabled"];
     if (doc["obdVwDataEnabled"].is<bool>()) s.obdVwDataEnabled = doc["obdVwDataEnabled"];
     if (doc["gpsEnabled"].is<bool>()) s.gpsEnabled = doc["gpsEnabled"];
-    if (doc["cameraEnabled"].is<bool>()) s.cameraEnabled = doc["cameraEnabled"];
-    if (doc["cameraAlertDistanceFt"].is<int>()) {
-        s.cameraAlertDistanceFt = clampCameraAlertDistanceFtValue(doc["cameraAlertDistanceFt"].as<int>());
-    }
-    if (doc["cameraAlertPersistSec"].is<int>()) {
-        s.cameraAlertPersistSec = clampCameraAlertPersistSecValue(doc["cameraAlertPersistSec"].as<int>());
-    }
     if (doc["gpsLockoutMode"].is<int>()) {
         s.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
     } else if (doc["gpsLockoutMode"].is<const char*>()) {
@@ -402,8 +385,6 @@ static void handleRestore(WebServer& server) {
     if (doc["colorWiFiConnected"].is<int>()) s.colorWiFiConnected = doc["colorWiFiConnected"];
     if (doc["colorRssiV1"].is<int>()) s.colorRssiV1 = doc["colorRssiV1"];
     if (doc["colorRssiProxy"].is<int>()) s.colorRssiProxy = doc["colorRssiProxy"];
-    if (doc["colorCameraToken"].is<int>()) s.colorCameraToken = doc["colorCameraToken"];
-    if (doc["colorCameraArrow"].is<int>()) s.colorCameraArrow = doc["colorCameraArrow"];
     if (doc["colorLockout"].is<int>()) s.colorLockout = doc["colorLockout"];
     if (doc["colorGps"].is<int>()) s.colorGps = doc["colorGps"];
     if (doc["colorObd"].is<int>()) s.colorObd = doc["colorObd"];
@@ -556,9 +537,6 @@ static void handleRestore(WebServer& server) {
     obdHandler.setVwDataEnabled(settingsManager.get().obdVwDataEnabled);
     gpsRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
     speedSourceSelector.setGpsEnabled(settingsManager.get().gpsEnabled);
-    cameraRuntimeModule.setEnabled(computeCameraRuntimeEnabled(settingsManager.get()));
-    cameraRuntimeModule.setAlertTuning(settingsManager.get().cameraAlertDistanceFt,
-                                       settingsManager.get().cameraAlertPersistSec);
     lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);

@@ -28,7 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expanded to 85 native test suites, 934 test cases (`pio test -e native`).
 - Drive-scenario integration tests (15 scenarios).
 - Lockout runtime stack fully integrated (capture, learner, enforcer, store/index, zone APIs).
-- Camera runtime/index/loader/event-log path active with bounded cadence and status/event APIs.
 - Heap safety hardened with RAII ownership and teardown guards.
 
 - **Security Warning**: Default password warning banner in web UI
@@ -41,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Maintains AP mode for device access while connected
 
 **Performance**
-- Perf CSV schema expanded with subsystem timing (OBD, GPS, camera, lockout).
+- Perf CSV schema expanded with subsystem timing (OBD, GPS, lockout).
 - Audio play/busy/fail counters, signal-observation queue drop counters wired.
 - Perf CSV SLO scorecard tooling added.
 
@@ -58,7 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - WiFi STA config recovery when NVS keys are missing (SD secret fallback).
-- Camera preemption limited to real priority signals (not weak alerts).
 - OBD BLE activity gated on V1 connected; WiFi priority suppression scoped to AP-on.
 - OBDLink CX immediate-disconnect resolved.
 - Display flush contract stabilized against line-offset drift.
@@ -77,7 +75,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OBD speedometer integration
 - V1 profile management with auto-push
 - Custom display themes and colors
-- Camera alert database support
 - SD card backup functionality
 - Runtime diagnostics and perf counters
 
@@ -96,7 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |---------|------|------------|
 | 4.0.0-dev | 2026-02-25 | Modular architecture, 156 module files, 934 tests, CI contracts |
 | 3.0.7 | 2026 | Quality baseline before 4.x refactors |
-| 3.0.x | 2024 | Camera alerts, OBD integration |
+| 3.0.x | 2024 | OBD integration |
 | 2.x.x | 2024 | Auto-lockout, profiles |
 | 1.x.x | 2023 | Initial release, basic V1 display |
 

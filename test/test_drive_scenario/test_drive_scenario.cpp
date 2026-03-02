@@ -9,7 +9,6 @@
 //   PacketParser (mock)  →  SignalCaptureModule (real)
 //   GpsRuntimeModule (real, scaffold injection)
 //   LockoutIndex / LockoutStore / LockoutEnforcer / LockoutLearner (real)
-//   CameraRuntimeModule / CameraIndex (real)
 //
 // Each scenario simulates a multi-step "drive" by advancing mock time,
 // injecting GPS positions, setting V1 alerts, and ticking the modules
@@ -61,38 +60,6 @@ bool SignalObservationSdLogger::enqueue(const SignalObservation&) {
 #include "../../src/modules/lockout/lockout_enforcer.cpp"
 #include "../../src/modules/lockout/lockout_learner.h"
 #include "../../src/modules/lockout/lockout_learner.cpp"
-
-// ── Camera pipeline (real) ──────────────────────────────────────────
-#include "../../src/modules/camera/camera_data_loader.h"
-#include "../../src/modules/camera/camera_event_log.cpp"
-#include "../../src/modules/camera/camera_index.cpp"
-#include "../../src/modules/camera/camera_runtime_module.h"
-#include "../../src/modules/camera/camera_runtime_module.cpp"
-
-// Stub camera loader so we can inject camera records directly.
-namespace {
-CameraIndexOwnedBuffers gReadyBuffers = {};
-bool gReadyBuffersValid = false;
-uint32_t gNextCameraVersion = 1;
-}  // namespace
-
-void CameraDataLoader::begin() {}
-void CameraDataLoader::reset() {
-    if (gReadyBuffersValid) {
-        CameraIndex::freeOwnedBuffers(gReadyBuffers);
-        gReadyBuffers = {};
-        gReadyBuffersValid = false;
-    }
-}
-void CameraDataLoader::requestReload() {}
-bool CameraDataLoader::consumeReady(CameraIndex& activeIndex) {
-    if (!gReadyBuffersValid) return false;
-    CameraIndexOwnedBuffers ready = gReadyBuffers;
-    gReadyBuffers = {};
-    gReadyBuffersValid = false;
-    return activeIndex.adopt(std::move(ready));
-}
-CameraDataLoaderStatus CameraDataLoader::status() const { return {}; }
 
 // =============================================================================
 // Shared test instances
@@ -165,44 +132,6 @@ static void clearAlerts() {
     parser.setAlerts({});
 }
 
-static void queueCamera(float lat, float lon, int16_t bearingTenths,
-                         uint8_t toleranceDeg, uint8_t type) {
-    if (gReadyBuffersValid) {
-        CameraIndex::freeOwnedBuffers(gReadyBuffers);
-        gReadyBuffers = {};
-        gReadyBuffersValid = false;
-    }
-
-    gReadyBuffers.records = static_cast<CameraRecord*>(
-        heap_caps_malloc(sizeof(CameraRecord), MALLOC_CAP_8BIT));
-    gReadyBuffers.spans = static_cast<CameraCellSpan*>(
-        heap_caps_malloc(sizeof(CameraCellSpan), MALLOC_CAP_8BIT));
-    TEST_ASSERT_NOT_NULL(gReadyBuffers.records);
-    TEST_ASSERT_NOT_NULL(gReadyBuffers.spans);
-
-    CameraRecord& rec = gReadyBuffers.records[0];
-    rec.latitudeDeg = lat;
-    rec.longitudeDeg = lon;
-    rec.snapLatitudeDeg = lat;
-    rec.snapLongitudeDeg = lon;
-    rec.bearingTenthsDeg = bearingTenths;
-    rec.widthM = 25;
-    rec.toleranceDeg = toleranceDeg;
-    rec.type = type;
-    rec.speedLimit = 35;
-    rec.flags = 0;
-    rec.reserved = 0;
-    rec.cellKey = CameraIndex::encodeCellKey(lat, lon);
-
-    gReadyBuffers.recordCount = 1;
-    gReadyBuffers.spans[0].cellKey = rec.cellKey;
-    gReadyBuffers.spans[0].beginIndex = 0;
-    gReadyBuffers.spans[0].endIndex = 1;
-    gReadyBuffers.spanCount = 1;
-    gReadyBuffers.version = gNextCameraVersion++;
-    gReadyBuffersValid = true;
-}
-
 /// Tick the full pipeline in main-loop order for one "frame".
 static LockoutEnforcerResult tickPipeline(uint32_t nowMs, int64_t epochMs) {
     setTime(nowMs);
@@ -213,14 +142,6 @@ static LockoutEnforcerResult tickPipeline(uint32_t nowMs, int64_t epochMs) {
 
     // 2. Lockout enforcer (evaluates alerts vs lockout zones).
     LockoutEnforcerResult result = enforcer.process(nowMs, epochMs, parser, gps);
-
-    // 3. Camera runtime (uses GPS, independent of lockout).
-    //    Mirror main.cpp: only a real priority signal preempts cameras.
-    const AlertData camPriority = parser.getPriorityAlert();
-    const bool signalPriorityActive = parser.hasAlerts() &&
-                                      camPriority.isValid &&
-                                      camPriority.band != BAND_NONE;
-    cameraRuntimeModule.process(nowMs, false, false, signalPriorityActive);
 
     return result;
 }
@@ -253,22 +174,10 @@ void setUp() {
 
     gpsRuntimeModule = GpsRuntimeModule();
     gpsRuntimeModule.begin(true);
-    cameraRuntimeModule.begin(true);
-
-    if (gReadyBuffersValid) {
-        CameraIndex::freeOwnedBuffers(gReadyBuffers);
-        gReadyBuffers = {};
-        gReadyBuffersValid = false;
-    }
 }
 
 void tearDown() {
     mock_reset_heap_caps();
-    if (gReadyBuffersValid) {
-        CameraIndex::freeOwnedBuffers(gReadyBuffers);
-        gReadyBuffers = {};
-        gReadyBuffersValid = false;
-    }
 }
 
 // =============================================================================
@@ -501,119 +410,6 @@ void test_clean_pass_decays_lockout_confidence() {
 }
 
 // =============================================================================
-// SCENARIO 10: Camera alert triggers while approaching camera location
-// =============================================================================
-
-void test_camera_activates_on_approach_heading_aligned() {
-    // Camera at HOME + 0.001° longitude east, facing east (90°).
-    float cameraLon = HOME_LON + 0.0010f;
-    queueCamera(HOME_LAT, cameraLon, 900, 35, 4);  // bearing 90.0°, tol ±35°
-
-    // Drive east from HOME toward camera.
-    setGps(HOME_LAT, HOME_LON, 90.0f, 10000);
-    cameraRuntimeModule.process(10000, false, false, false);
-
-    CameraRuntimeStatus status = cameraRuntimeModule.snapshot();
-    TEST_ASSERT_EQUAL_UINT8(
-        static_cast<uint8_t>(CameraLifecycleState::ACTIVE),
-        static_cast<uint8_t>(status.lifecycleState));
-    TEST_ASSERT_TRUE(status.activeAlert.active);
-}
-
-// =============================================================================
-// SCENARIO 11: Camera alert suppressed by V1 signal priority
-// =============================================================================
-
-void test_camera_suppressed_when_signal_priority_active() {
-    float cameraLon = HOME_LON + 0.0010f;
-    queueCamera(HOME_LAT, cameraLon, 900, 35, 2);
-
-    // Drive east, signal priority active (V1 has a real alert).
-    setGps(HOME_LAT, HOME_LON, 90.0f, 10000);
-    cameraRuntimeModule.process(10000, false, false, true);  // signalPriority=true
-
-    CameraRuntimeStatus status = cameraRuntimeModule.snapshot();
-    TEST_ASSERT_EQUAL_UINT8(
-        static_cast<uint8_t>(CameraLifecycleState::IDLE),
-        static_cast<uint8_t>(status.lifecycleState));
-    TEST_ASSERT_FALSE(status.activeAlert.active);
-}
-
-// =============================================================================
-// SCENARIO 12: Combined — V1 alert + camera + lockout in same drive
-//
-// Drive east on a road:
-//   t=0s:  Start driving, no alerts.
-//   t=2s:  V1 detects K-band (not locked out) → alert active, camera suppressed.
-//   t=4s:  V1 alert clears → camera zone entered → camera alert starts.
-//   t=6s:  Pass camera → camera clears.
-// =============================================================================
-
-void test_combined_v1_alert_camera_lockout_sequence() {
-    float cameraLon = HOME_LON + 0.0100f;  // Camera 0.01° east (~850m at this lat).
-    queueCamera(HOME_LAT, cameraLon, 900, 35, 4);
-
-    // --- t=10s: driving east, no alerts, camera far away (~850m).
-    setGps(HOME_LAT, HOME_LON, 90.0f, 10000);
-    clearAlerts();
-    LockoutEnforcerResult r1 = tickPipeline(10000, EPOCH_BASE);
-
-    // Enforcer evaluated (has fix) but no alert → no mute.
-    TEST_ASSERT_TRUE(r1.evaluated);
-    TEST_ASSERT_FALSE(r1.shouldMute);
-
-    CameraRuntimeStatus cam1 = cameraRuntimeModule.snapshot();
-    // Camera far away: should be IDLE.
-    TEST_ASSERT_EQUAL_UINT8(
-        static_cast<uint8_t>(CameraLifecycleState::IDLE),
-        static_cast<uint8_t>(cam1.lifecycleState));
-
-    // --- t=12s: V1 detects K-band, still ~600m from camera.
-    setGps(HOME_LAT, HOME_LON + 0.0030f, 90.0f, 12000);
-    setAlert(BAND_K, K_FREQ);
-    LockoutEnforcerResult r2 = tickPipeline(12000, EPOCH_BASE + 2000);
-
-    TEST_ASSERT_TRUE(r2.evaluated);
-    TEST_ASSERT_FALSE(r2.shouldMute);  // No lockout entry for this one.
-
-    // --- t=14s: V1 alert clears, now ~500m from camera.
-    setGps(HOME_LAT, HOME_LON + 0.0050f, 90.0f, 14000);
-    clearAlerts();
-    LockoutEnforcerResult r3 = tickPipeline(14000, EPOCH_BASE + 4000);
-
-    TEST_ASSERT_TRUE(r3.evaluated);
-    TEST_ASSERT_FALSE(r3.shouldMute);
-
-    // --- t=16s: close to camera → should activate (heading aligned, no signal priority).
-    setGps(HOME_LAT, HOME_LON + 0.0090f, 90.0f, 16000);
-    clearAlerts();
-    tickPipeline(16000, EPOCH_BASE + 6000);
-
-    CameraRuntimeStatus cam3 = cameraRuntimeModule.snapshot();
-    TEST_ASSERT_EQUAL_UINT8(
-        static_cast<uint8_t>(CameraLifecycleState::ACTIVE),
-        static_cast<uint8_t>(cam3.lifecycleState));
-
-    // --- t=18s: pass camera, continue east.
-    setGps(HOME_LAT, HOME_LON + 0.0105f, 90.0f, 18000);
-    tickPipeline(18000, EPOCH_BASE + 8000);
-
-    // --- t=20s–24s: drive well past camera exit zone.
-    setGps(HOME_LAT, HOME_LON + 0.0200f, 90.0f, 20000);
-    tickPipeline(20000, EPOCH_BASE + 10000);
-    setGps(HOME_LAT, HOME_LON + 0.0300f, 90.0f, 22000);
-    tickPipeline(22000, EPOCH_BASE + 12000);
-    setGps(HOME_LAT, HOME_LON + 0.0400f, 90.0f, 24000);
-    tickPipeline(24000, EPOCH_BASE + 14000);
-
-    CameraRuntimeStatus cam4 = cameraRuntimeModule.snapshot();
-    // After driving far past, camera should be IDLE or finishing exit suppression.
-    TEST_ASSERT_TRUE(
-        cam4.lifecycleState == CameraLifecycleState::IDLE ||
-        cam4.lifecycleState == CameraLifecycleState::SUPPRESSED_UNTIL_EXIT);
-}
-
-// =============================================================================
 // SCENARIO 13: Learning + enforcement end-to-end
 //
 // Three "drives" past the same K-band source → lockout learned.
@@ -683,87 +479,6 @@ void test_learned_lockout_does_not_false_trigger_at_distant_location() {
 }
 
 // =============================================================================
-// SCENARIO 15: Weak alert does NOT suppress camera — only priority does
-// =============================================================================
-
-void test_weak_alert_does_not_suppress_camera() {
-    float cameraLon = HOME_LON + 0.0010f;
-    queueCamera(HOME_LAT, cameraLon, 900, 35, 4);  // east-facing camera
-
-    // Drive east toward camera with a weak, non-priority alert active.
-    // AlertData::create with isPriority=false and isValid=false mimics a
-    // background K-band signal (BSM, door opener, etc.).
-    setGps(HOME_LAT, HOME_LON, 90.0f, 10000);
-    AlertData weak = AlertData::create(BAND_K, DIR_FRONT, 1, 0, K_FREQ, false, false);
-    parser.setAlerts({weak});
-    TEST_ASSERT_TRUE(parser.hasAlerts());  // alerts exist
-
-    tickPipeline(10000, EPOCH_BASE);
-
-    CameraRuntimeStatus status = cameraRuntimeModule.snapshot();
-    // Camera should still activate — weak alert must not preempt.
-    TEST_ASSERT_EQUAL_UINT8(
-        static_cast<uint8_t>(CameraLifecycleState::ACTIVE),
-        static_cast<uint8_t>(status.lifecycleState));
-    TEST_ASSERT_TRUE(status.activeAlert.active);
-}
-
-// =============================================================================
-// SCENARIO 16: Lockout path works, camera skips on memory guard, then recovers
-// =============================================================================
-
-void test_lockout_mute_then_camera_memory_guard_then_recovery() {
-    // Pre-load a lockout at HOME.
-    LockoutEntry entry;
-    entry.latE5      = HOME_LAT_E5;
-    entry.lonE5      = HOME_LON_E5;
-    entry.radiusE5   = 1350;
-    entry.bandMask   = BAND_K;
-    entry.freqMHz    = K_FREQ;
-    entry.freqTolMHz = 10;
-    entry.confidence = 100;
-    entry.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
-    entry.firstSeenMs = EPOCH_BASE - 86400000LL;
-    entry.lastSeenMs  = EPOCH_BASE;
-    lockoutIndex.add(entry);
-
-    // Camera ahead on the same heading.
-    float cameraLon = HOME_LON + 0.0010f;
-    queueCamera(HOME_LAT, cameraLon, 900, 35, 4);
-
-    // Phase A: lockout enforcement should still work with an active priority alert.
-    setGps(HOME_LAT, HOME_LON, 90.0f, 10000);
-    setAlert(BAND_K, K_FREQ);
-    LockoutEnforcerResult muted = tickPipeline(10000, EPOCH_BASE + 10000);
-    TEST_ASSERT_TRUE(muted.evaluated);
-    TEST_ASSERT_TRUE(muted.shouldMute);
-
-    // Phase B: no signal priority + low internal heap => camera memory guard skip.
-    clearAlerts();
-    mock_set_heap_caps(20000u, 12000u);
-    setGps(HOME_LAT, HOME_LON, 90.0f, 10300);
-    LockoutEnforcerResult blocked = tickPipeline(10300, EPOCH_BASE + 10300);
-    TEST_ASSERT_TRUE(blocked.evaluated);
-    TEST_ASSERT_FALSE(blocked.shouldMute);
-
-    CameraRuntimeStatus blockedCam = cameraRuntimeModule.snapshot();
-    TEST_ASSERT_TRUE(blockedCam.counters.cameraTickSkipsMemoryGuard > 0);
-    TEST_ASSERT_EQUAL_UINT32(0, blockedCam.counters.cameraCandidatesChecked);
-    TEST_ASSERT_FALSE(blockedCam.activeAlert.active);
-
-    // Phase C: restore heap and verify camera scanning resumes.
-    mock_set_heap_caps(64000u, 32000u);
-    setGps(HOME_LAT, HOME_LON, 90.0f, 10600);
-    tickPipeline(10600, EPOCH_BASE + 10600);
-
-    CameraRuntimeStatus recoveredCam = cameraRuntimeModule.snapshot();
-    TEST_ASSERT_TRUE(
-        recoveredCam.counters.cameraCandidatesChecked >
-        blockedCam.counters.cameraCandidatesChecked);
-    TEST_ASSERT_TRUE(recoveredCam.activeAlert.active);
-}
-
-// =============================================================================
 // SCENARIO 17: Mode OFF — nothing evaluated, no crash
 // =============================================================================
 
@@ -814,15 +529,6 @@ int main() {
     RUN_TEST(test_end_to_end_learn_then_enforce);
     RUN_TEST(test_learned_lockout_does_not_false_trigger_at_distant_location);
     RUN_TEST(test_mode_off_is_completely_inert);
-
-    // Camera integration
-    RUN_TEST(test_camera_activates_on_approach_heading_aligned);
-    RUN_TEST(test_camera_suppressed_when_signal_priority_active);
-    RUN_TEST(test_weak_alert_does_not_suppress_camera);
-    RUN_TEST(test_lockout_mute_then_camera_memory_guard_then_recovery);
-
-    // Combined scenarios
-    RUN_TEST(test_combined_v1_alert_camera_lockout_sequence);
 
     return UNITY_END();
 }

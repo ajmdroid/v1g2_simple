@@ -2,7 +2,7 @@
  * Frequency display rendering — extracted from display.cpp (Phase 2M)
  *
  * Contains the frequency router, Classic (7-segment) and Serpentine (OFR)
- * frequency renderers, camera token overlay, volume-zero warning, and the
+ * frequency renderers, volume-zero warning, and the
  * dirty-region tracking helper.
  */
 
@@ -439,90 +439,6 @@ void V1Display::drawVolumeZeroWarning() {
         tft->setCursor(textX, textY);
         tft->print(warningStr);
     }
-}
-
-// ---------------------------------------------------------------------------
-// Camera token overlay (drawn in frequency area)
-// ---------------------------------------------------------------------------
-
-void V1Display::drawCameraToken(const char* token, bool muted) {
-    if (!token || token[0] == '\0') {
-        token = "CAM";
-    }
-
-    const V1Settings& s = settingsManager.get();
-    const uint16_t textColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorCameraToken;
-
-#if defined(DISPLAY_WAVESHARE_349)
-    const int leftMargin = 135;
-    const int rightMargin = 200;
-#else
-    const int leftMargin = 0;
-    const int rightMargin = 120;
-#endif
-    const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    const int muteIconBottom = 33;
-    const int effectiveHeight = getEffectiveScreenHeight();
-
-    // Match the frequency readout renderer/font path (Segment7 / jbv1_2.ttf).
-    if (fontMgr.segment7Ready) {
-        int fontSize = 75;
-        int textWidth = 0;
-
-        // Camera tokens can be wider than frequency values ("SPEED"), so shrink to fit the same field.
-        while (fontSize >= 42) {
-            const FT_BBox bbox = fontMgr.segment7.calculateBoundingBox(
-                0, 0, fontSize, Align::Left, Layout::Horizontal, token);
-            textWidth = bbox.xMax - bbox.xMin;
-            if (textWidth <= (maxWidth - 10)) {
-                break;
-            }
-            fontSize -= 3;
-        }
-
-        if (textWidth <= 0) {
-            textWidth = maxWidth - 10;
-        }
-
-        int x = leftMargin + (maxWidth - textWidth) / 2;
-        if (x < leftMargin) x = leftMargin;
-
-        int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
-        int clearY = y - 5;
-        int clearH = fontSize + 10;
-        const int maxClearBottom = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;
-        if (clearY + clearH > maxClearBottom) clearH = maxClearBottom - clearY;
-        if (clearH > 0) {
-            FILL_RECT(leftMargin + 10, clearY, maxWidth - 10, clearH, PALETTE_BG);
-        }
-
-        const uint8_t bgR = (PALETTE_BG >> 11) << 3;
-        const uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
-        const uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-        fontMgr.segment7.setBackgroundColor(bgR, bgG, bgB);
-        fontMgr.segment7.setFontSize(fontSize);
-        fontMgr.segment7.setFontColor((textColor >> 11) << 3, ((textColor >> 5) & 0x3F) << 2, (textColor & 0x1F) << 3);
-        fontMgr.segment7.setCursor(x, y);
-        fontMgr.segment7.printf("%s", token);
-        return;
-    }
-
-    // Fallback: software 7-segment renderer for environments where OFR did not initialize.
-#if defined(DISPLAY_WAVESHARE_349)
-    const float scale = 2.3f;
-#else
-    const float scale = 1.7f;
-#endif
-    const SegMetrics m = segMetrics(scale);
-    const int y = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
-    int width = measureSevenSegmentText(token, scale);
-    if (width <= 0) width = maxWidth;
-
-    int x = leftMargin + (maxWidth - width) / 2;
-    if (x < leftMargin) x = leftMargin;
-
-    FILL_RECT(leftMargin, y - 4, maxWidth, m.digitH + 8, PALETTE_BG);
-    drawSevenSegmentText(token, x, y, scale, textColor, PALETTE_BG);
 }
 
 // ---------------------------------------------------------------------------

@@ -88,8 +88,6 @@ struct V1Settings {
     
     // Misc flags retained for compatibility
     bool gpsEnabled = true;
-    uint16_t cameraAlertDistanceFt = 1640;
-    uint8_t cameraAlertPersistSec = 5;
     LockoutRuntimeMode gpsLockoutMode = LOCKOUT_RUNTIME_OFF;
     bool gpsLockoutPreQuiet = false;
     bool gpsLockoutCoreGuardEnabled = true;

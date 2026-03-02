@@ -44,7 +44,6 @@ code_review.txt
 
 # Archived docs (keep local, don't track)
 docs/ARCHIVE.md
-docs/CAMERA_ALERTS_PLAN.md
 docs/CODEBASE_REVIEW.md
 docs/GPS_ALERT_LOGGING.md
 docs/LOGGING_CONVENTION.md
@@ -95,6 +94,4 @@ QUALITY_ROADMAP.md
 ARCHITECTURE_NOTES.md
 VOICE_ALERT_MIGRATION.md
 REFACTOR_LOG.md
-camera_data/
-camera_data_enriched/
 .github/instructions/v1_simple.instructions.md

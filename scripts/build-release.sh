@@ -31,9 +31,6 @@ if ls tools/freq_audio/mulaw/*.mul 1>/dev/null 2>&1; then
     cp "$src" data/audio/
   done
 fi
-if ls tools/camera_audio/cam_*.mul 1>/dev/null 2>&1; then
-  cp tools/camera_audio/cam_*.mul data/audio/
-fi
 AUDIO_COUNT=$(ls -1 data/audio/*.mul 2>/dev/null | wc -l | tr -d ' ')
 echo "✅ Staged $AUDIO_COUNT audio clips"
 
@@ -50,12 +47,6 @@ echo "📁 Copying binaries to $RELEASE_DIR..."
 mkdir -p "$RELEASE_DIR"
 cp .pio/build/waveshare-349/bootloader.bin "$RELEASE_DIR/"
 cp .pio/build/waveshare-349/partitions.bin "$RELEASE_DIR/"
-
-# Copy camera database files if they exist
-if ls camera_data/*.bin 1>/dev/null 2>&1; then
-    echo "📷 Copying camera database files..."
-    cp camera_data/*.bin "$RELEASE_DIR/"
-fi
 
 # Get boot_app0.bin from PlatformIO
 BOOT_APP0=$(find ~/.platformio/packages/framework-arduinoespressif32*/tools/partitions -name "boot_app0.bin" 2>/dev/null | head -1)

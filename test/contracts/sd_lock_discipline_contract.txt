@@ -3,8 +3,6 @@
 file=src/battery_manager.cpp class=SDLockBlocking count=1
 file=src/ble_client.cpp class=SDLockBlocking count=2
 file=src/main_persist.cpp class=SDTryLock count=2
-file=src/modules/camera/camera_api_service.cpp class=SDLockBlocking count=1
-file=src/modules/camera/camera_data_loader.cpp class=SDLockBlocking count=2
 file=src/modules/debug/debug_perf_files_service.cpp class=SDLockBlocking count=3
 file=src/modules/lockout/signal_observation_sd_logger.cpp class=SDLockBlocking count=1
 file=src/obd_persistence.cpp class=SDLockBlocking count=2

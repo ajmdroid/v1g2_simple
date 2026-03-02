@@ -18,7 +18,6 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 - [Lockouts](#lockouts)
 - [OBD/Speedometer](#obdspeedometer)
 - [GPS](#gps)
-- [Camera Alerts](#camera-alerts)
 - [WiFi Client](#wifi-client)
 - [Debug](#debug)
 
@@ -122,9 +121,6 @@ Get all device settings.
   "obdEnabled": false,
   "obdVwDataEnabled": false,
   "gpsEnabled": false,
-  "cameraEnabled": true,
-  "cameraAlertDistanceFt": 1640,
-  "cameraAlertPersistSec": 5,
   "gpsLockoutMode": 3,
   "gpsLockoutModeName": "enforce",
   "gpsLockoutCoreGuardEnabled": true,
@@ -150,9 +146,6 @@ Get all device settings.
 | `obdEnabled` | boolean | - | Enable OBD integration |
 | `obdVwDataEnabled` | boolean | - | Enable VW-specific OBD decoding |
 | `gpsEnabled` | boolean | - | Enable GPS runtime |
-| `cameraEnabled` | boolean | - | Enable camera runtime/index loading (live matching still requires valid GPS fix/course) |
-| `cameraAlertDistanceFt` | int | 500-2000 | ALPR trigger radius in feet |
-| `cameraAlertPersistSec` | int | 3-10 | ALPR banner persistence and fail-safe timeout in seconds |
 | `gpsLockoutMode` | int | 0-3 | Lockout runtime mode (`off`,`shadow`,`advisory`,`enforce`) |
 | `gpsLockoutCoreGuardEnabled` | boolean | - | Enable lockout core safety guard |
 | `gpsLockoutMaxQueueDrops` | int | 0-65535 | Queue-drop threshold for core guard |
@@ -172,7 +165,7 @@ Update device settings. Send only fields you want to change.
 
 **Request (form data):**
 ```
-ap_ssid=MyV1&ap_password=newpassword123&gpsEnabled=true&cameraEnabled=true&cameraAlertDistanceFt=1800&cameraAlertPersistSec=5&gpsLockoutMode=3
+ap_ssid=MyV1&ap_password=newpassword123&gpsEnabled=true&gpsLockoutMode=3
 ```
 
 **Response:** `Settings saved` (text/plain)
@@ -583,132 +576,6 @@ Get recent GPS observation ring samples.
 ### POST /api/gps/config
 
 Update GPS/lockout runtime config and optional scaffold samples.
-
----
-
-## Camera Alerts
-
-### GET /api/cameras/status
-
-Get camera runtime, loader, index, and lifecycle status.
-
-**Response:**
-```json
-{
-  "success": true,
-  "enabled": true,
-  "indexLoaded": true,
-  "tickIntervalMs": 200,
-  "lastTickMs": 123456,
-  "lastTickDurationUs": 120,
-  "maxTickDurationUs": 310,
-  "lastCandidatesChecked": 14,
-  "lastMatches": 1,
-  "lastCapReached": false,
-  "lastHeadingDeltaDeg": 8.2,
-  "lifecycleState": "ACTIVE",
-  "lastClearReason": "NONE",
-  "suppressedCameraId": 0,
-  "alertDistanceFt": 1640,
-  "alertPersistSec": 5,
-  "activeAlert": {
-    "active": true,
-    "cameraId": 12345,
-    "type": 2,
-    "distanceM": 186,
-    "headingDeltaDeg": 8.2,
-    "startTsMs": 123000,
-    "lastUpdateTsMs": 123456
-  },
-  "counters": {
-    "cameraTicks": 512,
-    "cameraTickSkipsOverload": 0,
-    "cameraTickSkipsNonCore": 0,
-    "cameraCandidatesChecked": 3240,
-    "cameraMatches": 91,
-    "cameraAlertsStarted": 17
-  },
-  "loader": {
-    "loadAttempts": 1,
-    "loadFailures": 0,
-    "taskRunning": false,
-    "loadInProgress": false,
-    "reloadPending": false,
-    "readyVersion": 1
-  },
-  "index": {
-    "cameraCount": 1330,
-    "bucketCount": 522,
-    "version": 1
-  },
-  "events": {
-    "published": 17,
-    "drops": 0,
-    "size": 17,
-    "capacity": 64
-  }
-}
-```
-
-### GET /api/cameras/catalog
-
-Get camera dataset availability/count metadata from SD (`alpr.bin`).
-
-**Response:**
-```json
-{
-  "success": true,
-  "storageReady": true,
-  "tsMs": 123456,
-  "runtimeDatasetScope": "alpr_only",
-  "runtimeDatasets": ["alpr"],
-  "alprRuntimeLoaded": true,
-  "datasets": {
-    "alpr": { "present": true, "valid": true, "count": 70327, "bytes": 1687848 }
-  },
-  "totalCount": 70327,
-  "totalBytes": 1687848
-}
-```
-
-`runtimeDatasetScope`, `runtimeDatasets`, and `alprRuntimeLoaded` describe the live runtime matcher load state for the ALPR dataset.
-
-### GET /api/cameras/events
-
-Get recent camera lifecycle events from the bounded in-memory event log.
-
-**Query params:** `limit` (optional, `1..64`, default `16`)
-
-**Response:**
-```json
-{
-  "success": true,
-  "count": 2,
-  "published": 27,
-  "drops": 0,
-  "size": 2,
-  "capacity": 64,
-  "events": [
-    { "tsMs": 122000, "cameraId": 12345, "distanceM": 240, "type": 4, "synthetic": false },
-    { "tsMs": 121800, "cameraId": 12001, "distanceM": 300, "type": 4, "synthetic": false }
-  ]
-}
-```
-
-### POST /api/cameras/demo
-
-Trigger on-device camera display preview mode (for UI/demo validation).
-
-**Request (form data):**
-- `type` (optional): `0=cycle ALPR`, `4=ALPR`
-- `muted` (optional): `1|true|on` for muted palette (single-type mode only)
-- `durationMs` (optional): bounded `500..15000`
-
-### POST /api/cameras/demo/clear
-
-Cancel any active display preview (camera or color demo) and restore normal ownership.
-
-`/api/cameras/reload`, `/api/cameras/upload`, `/api/cameras/test`, and `/api/cameras/sync-osm` are not active in the current firmware.
 
 ---
 

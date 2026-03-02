@@ -17,10 +17,8 @@
 extern V1BLEClient bleClient;
 extern SystemEventBus systemEventBus;
 
-// Preview helpers for display demo flows (color + camera).
+// Preview helpers for display demo flows (color).
 extern void requestColorPreviewHold(uint32_t durationMs);
-extern void requestCameraPreviewCycleHold(uint32_t durationMs);
-extern void requestCameraPreviewSingleHold(uint8_t cameraType, uint32_t durationMs, bool muted);
 extern bool isDisplayPreviewRunning();
 extern bool isColorPreviewRunning();
 extern void cancelDisplayPreview();

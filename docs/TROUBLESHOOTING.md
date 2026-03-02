@@ -10,11 +10,10 @@ Quick solutions for common issues with the V1-Simple device.
 2. [Display Problems](#display-problems)
 3. [GPS Issues](#gps-issues)
 4. [Auto-Lockout Issues](#auto-lockout-issues)
-5. [Camera Alerts](#camera-alerts)
-6. [OBD/Speed Issues](#obdspeed-issues)
-7. [Audio Problems](#audio-problems)
-8. [Performance Issues](#performance-issues)
-9. [Factory Reset](#factory-reset)
+5. [OBD/Speed Issues](#obdspeed-issues)
+6. [Audio Problems](#audio-problems)
+7. [Performance Issues](#performance-issues)
+8. [Factory Reset](#factory-reset)
 
 ---
 
@@ -163,46 +162,6 @@ Quick solutions for common issues with the V1-Simple device.
 2. **Check unlearn count**: May need multiple brake taps
 3. **Use web UI**: Delete via GPS page in web interface
 4. **Clear all**: Last resort - clear all lockouts
-
----
-
-## Camera Alerts
-
-### Camera alerts not working
-
-**Symptoms**: No alert when passing known cameras
-
-**Solutions**:
-1. **Enable runtime**: Ensure `cameraEnabled` is enabled (Web UI → Cameras page toggle, or `/api/settings`)
-2. **Check GPS eligibility**: Camera index can load without GPS, but live matching requires GPS enabled + valid fix/course data
-3. **Load dataset on SD**: Ensure `alpr.bin` exists on SD root
-4. **Verify runtime load**: Check `/api/cameras/status` for `enabled=true`, `indexLoaded=true`, and non-zero `index.cameraCount`
-5. **Verify catalog + scope**: Check `/api/cameras/catalog` for file presence and runtime scope fields (`runtimeDatasets`, `alprRuntimeLoaded`)
-6. **Run display demo**: Web UI → Cameras → Display Demo (or POST `/api/cameras/demo`) to validate screen/audio pipeline without live GPS matches
-7. **Check audio path**: Confirm device is not muted and your current audio profile allows camera announcements
-8. **Tune ALPR distance**: Increase `cameraAlertDistanceFt` (500-2000) if alerts are not triggering early enough
-9. **Tune persistence timeout**: Set `cameraAlertPersistSec` (3-10) to control hold time and timeout-based clears when pass distance is never reached
-
-### Camera dataset missing or empty
-
-**Symptoms**: No cameras loaded, or camera count shows 0
-
-**Solutions**:
-1. **Check SD mount**: Boot logs should show SD/perf logger enabled
-2. **Check filename**: Use exact name `alpr.bin`
-3. **Check file integrity**: Re-copy datasets if counts look wrong or stale
-4. **Confirm with API**: `/api/cameras/catalog` should report file presence and counts
-5. **Check runtime scope**: Runtime should report `runtimeDatasetScope=alpr_only`, `runtimeDatasets=["alpr"]`, and `alprRuntimeLoaded=true` when ALPR is valid
-
-### False camera alerts
-
-**Symptoms**: Alert where no camera exists
-
-**Solutions**:
-1. **Dataset drift**: Replace camera datasets with newer versions
-2. **Map mismatch**: Physical camera may have been removed/relocated
-3. **Inspect event telemetry**: Review `/api/cameras/events` and `/api/cameras/status` (`lastHeadingDeltaDeg`, `activeAlert`) to verify trigger context
-4. **Validate GPS quality**: Large heading jitter or stale GPS samples can increase mismatch risk near intersections
 
 ---
 

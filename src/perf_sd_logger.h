@@ -38,7 +38,6 @@ struct PerfSdSnapshot {
     uint32_t touchMaxUs;      // Window max touchUiModule.process() duration
     uint32_t obdMaxUs;         // Window max obdHandler.update() duration
     uint32_t gpsMaxUs;         // Window max gpsRuntimeModule.update() duration
-    uint32_t cameraMaxUs;      // Window max cameraRuntimeModule.process() duration
     uint32_t lockoutMaxUs;     // Window max lockoutEnforcer.process() + signalCapture duration
     uint32_t wifiMaxUs;        // Window max wifiManager.process() duration
     uint32_t uiToScanCount;   // Screen transitions to scanning
@@ -107,31 +106,6 @@ struct PerfSdSnapshot {
     uint32_t gpsObsDrops;             // GPS observation ring dropped samples
     uint32_t gpsObsSize;              // GPS observation ring current size
     uint32_t gpsObsPublished;         // GPS observation ring lifetime published samples
-    uint8_t cameraEnabled;            // Camera runtime enabled
-    uint8_t cameraIndexLoaded;        // Camera index ready
-    uint8_t cameraLastCapReached;     // Last tick hit raw candidate cap
-    uint8_t cameraLoaderInProgress;   // Camera loader currently running
-    uint32_t cameraTicks;             // Camera ticks executed
-    uint32_t cameraTickSkipsOverload; // Camera ticks skipped due to overload guard
-    uint32_t cameraTickSkipsNonCore;  // Camera ticks skipped due to non-core guard
-    uint32_t cameraTickSkipsMemGuard; // Camera ticks skipped due to memory guard
-    uint32_t cameraCandidatesChecked; // Camera candidates visited
-    uint32_t cameraMatches;           // Camera matches found
-    uint32_t cameraAlertsStarted;     // Camera alerts published
-    uint32_t cameraBudgetExceeded;    // Camera candidate-cap hits
-    uint32_t cameraLoadFailures;      // Camera loader hard failures
-    uint32_t cameraLoadSkipsMemGuard; // Camera loader skips due to memory guard
-    uint32_t cameraIndexSwapCount;    // Camera index swap successes
-    uint32_t cameraIndexSwapFailures; // Camera index swap failures
-    uint32_t cameraLastTickUs;        // Last camera tick duration
-    uint32_t cameraMaxTickUs;         // Max camera tick duration
-    uint32_t cameraLastLoadMs;        // Last camera load duration
-    uint32_t cameraMaxLoadMs;         // Max camera load duration
-    uint32_t cameraLastSortMs;        // Last camera sort duration
-    uint32_t cameraLastSpanMs;        // Last camera span-build duration
-    uint32_t cameraLastInternalFree;  // Last camera tick internal free bytes
-    uint32_t cameraLastInternalBlock; // Last camera tick largest internal block
-    uint32_t cameraLoaderReadyVersion; // Last published loader version
 
     // CSV schema v6 additions (kept at tail for backwards column stability)
     uint32_t rxBytes;

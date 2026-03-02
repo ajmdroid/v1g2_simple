@@ -98,11 +98,7 @@ LoopDisplayPreWifiPhaseValues processLoopDisplayPreWifiPhase(
     const bool overloadLateThisLoop,
     const bool enableSignalTraceLogging,
     const bool skipLateNonCoreThisLoop,
-    void (*runDisplayPipeline)(uint32_t nowMs, bool lockoutPrioritySuppressed),
-    void (*runCameraRuntime)(uint32_t nowMs,
-                             bool skipLateNonCoreThisLoop,
-                             bool overloadLateThisLoop,
-                             bool loopSignalPriorityActive)) {
+    void (*runDisplayPipeline)(uint32_t nowMs, bool lockoutPrioritySuppressed)) {
     VoiceSpeedSyncContext voiceSpeedSyncCtx;
     voiceSpeedSyncCtx.nowMs = nowMs;
     voiceSpeedSyncModule.process(voiceSpeedSyncCtx);
@@ -117,13 +113,12 @@ LoopDisplayPreWifiPhaseValues processLoopDisplayPreWifiPhase(
     const bool loopSignalPriorityActive = loopDisplayResult.signalPriorityActive;
 
     LoopPostDisplayContext loopPostDisplayPreWifiCtx;
-    loopPostDisplayPreWifiCtx.runAutoPushAndCamera = true;
+    loopPostDisplayPreWifiCtx.enableAutoPush = true;
     loopPostDisplayPreWifiCtx.runSpeedAndDispatch = false;
     loopPostDisplayPreWifiCtx.nowMs = nowMs;
     loopPostDisplayPreWifiCtx.skipLateNonCoreThisLoop = skipLateNonCoreThisLoop;
     loopPostDisplayPreWifiCtx.overloadLateThisLoop = overloadLateThisLoop;
     loopPostDisplayPreWifiCtx.loopSignalPriorityActive = loopSignalPriorityActive;
-    loopPostDisplayPreWifiCtx.runCameraRuntime = runCameraRuntime;
     loopPostDisplayModule.process(loopPostDisplayPreWifiCtx);
 
     LoopDisplayPreWifiPhaseValues values;
@@ -172,7 +167,7 @@ LoopFinalizePhaseValues processLoopFinalizePhase(
     const unsigned long connectionStateProcessMaxGapMs,
     const unsigned long loopStartUs) {
     LoopPostDisplayContext loopPostDisplayPostWifiCtx;
-    loopPostDisplayPostWifiCtx.runAutoPushAndCamera = false;
+    loopPostDisplayPostWifiCtx.enableAutoPush = false;
     loopPostDisplayPostWifiCtx.runSpeedAndDispatch = true;
     loopPostDisplayPostWifiCtx.nowMs = nowMs;
     loopPostDisplayPostWifiCtx.displayUpdateIntervalMs = DISPLAY_UPDATE_MS;

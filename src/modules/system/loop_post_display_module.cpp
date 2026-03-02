@@ -12,51 +12,11 @@ LoopPostDisplayResult LoopPostDisplayModule::process(const LoopPostDisplayContex
     result.dispatchNowMs = ctx.nowMs;
     result.bleConnectedNow = ctx.bleConnectedNow;
 
-    if (ctx.runAutoPushAndCamera) {
+    if (ctx.enableAutoPush) {
         if (ctx.runAutoPush) {
             ctx.runAutoPush();
         } else if (providers.runAutoPush) {
             providers.runAutoPush(providers.autoPushContext);
-        }
-
-        if (ctx.runCameraRuntime) {
-            if (providers.timestampUs && providers.recordCameraUs) {
-                const uint32_t startUs = providers.timestampUs(providers.timestampContext);
-                ctx.runCameraRuntime(
-                    ctx.nowMs,
-                    ctx.skipLateNonCoreThisLoop,
-                    ctx.overloadLateThisLoop,
-                    ctx.loopSignalPriorityActive);
-                providers.recordCameraUs(
-                    providers.cameraPerfContext,
-                    providers.timestampUs(providers.timestampContext) - startUs);
-            } else {
-                ctx.runCameraRuntime(
-                    ctx.nowMs,
-                    ctx.skipLateNonCoreThisLoop,
-                    ctx.overloadLateThisLoop,
-                    ctx.loopSignalPriorityActive);
-            }
-        } else if (providers.runCameraRuntime) {
-            if (providers.timestampUs && providers.recordCameraUs) {
-                const uint32_t startUs = providers.timestampUs(providers.timestampContext);
-                providers.runCameraRuntime(
-                    providers.cameraRuntimeContext,
-                    ctx.nowMs,
-                    ctx.skipLateNonCoreThisLoop,
-                    ctx.overloadLateThisLoop,
-                    ctx.loopSignalPriorityActive);
-                providers.recordCameraUs(
-                    providers.cameraPerfContext,
-                    providers.timestampUs(providers.timestampContext) - startUs);
-            } else {
-                providers.runCameraRuntime(
-                    providers.cameraRuntimeContext,
-                    ctx.nowMs,
-                    ctx.skipLateNonCoreThisLoop,
-                    ctx.overloadLateThisLoop,
-                    ctx.loopSignalPriorityActive);
-            }
         }
     }
 

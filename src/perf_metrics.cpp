@@ -10,7 +10,6 @@
 #include "obd_handler.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_observation_log.h"
-#include "modules/camera/camera_runtime_module.h"
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
@@ -109,7 +108,6 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     OBDPerfSnapshot obdPerf = obdHandler.getPerfSnapshot();
     GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
     GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
-    CameraRuntimeStatus cameraStatus = cameraRuntimeModule.snapshot();
 
     snapshot.millisTs = nowMs;
     snapshot.timeValid = timeService.timeValid() ? 1 : 0;
@@ -199,31 +197,6 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.gpsObsDrops = gpsLogStats.drops;
     snapshot.gpsObsSize = static_cast<uint32_t>(gpsLogStats.size);
     snapshot.gpsObsPublished = gpsLogStats.published;
-    snapshot.cameraEnabled = cameraStatus.enabled ? 1u : 0u;
-    snapshot.cameraIndexLoaded = cameraStatus.indexLoaded ? 1u : 0u;
-    snapshot.cameraLastCapReached = cameraStatus.lastCapReached ? 1u : 0u;
-    snapshot.cameraLoaderInProgress = cameraStatus.loader.loadInProgress ? 1u : 0u;
-    snapshot.cameraTicks = cameraStatus.counters.cameraTicks;
-    snapshot.cameraTickSkipsOverload = cameraStatus.counters.cameraTickSkipsOverload;
-    snapshot.cameraTickSkipsNonCore = cameraStatus.counters.cameraTickSkipsNonCore;
-    snapshot.cameraTickSkipsMemGuard = cameraStatus.counters.cameraTickSkipsMemoryGuard;
-    snapshot.cameraCandidatesChecked = cameraStatus.counters.cameraCandidatesChecked;
-    snapshot.cameraMatches = cameraStatus.counters.cameraMatches;
-    snapshot.cameraAlertsStarted = cameraStatus.counters.cameraAlertsStarted;
-    snapshot.cameraBudgetExceeded = cameraStatus.counters.cameraBudgetExceeded;
-    snapshot.cameraLoadFailures = cameraStatus.loader.loadFailures;
-    snapshot.cameraLoadSkipsMemGuard = cameraStatus.loader.loadSkipsMemoryGuard;
-    snapshot.cameraIndexSwapCount = cameraStatus.counters.cameraIndexSwapCount;
-    snapshot.cameraIndexSwapFailures = cameraStatus.counters.cameraIndexSwapFailures;
-    snapshot.cameraLastTickUs = cameraStatus.lastTickDurationUs;
-    snapshot.cameraMaxTickUs = cameraStatus.maxTickDurationUs;
-    snapshot.cameraLastLoadMs = cameraStatus.loader.lastLoadDurationMs;
-    snapshot.cameraMaxLoadMs = cameraStatus.loader.maxLoadDurationMs;
-    snapshot.cameraLastSortMs = cameraStatus.loader.lastSortDurationMs;
-    snapshot.cameraLastSpanMs = cameraStatus.loader.lastSpanBuildDurationMs;
-    snapshot.cameraLastInternalFree = cameraStatus.lastInternalFree;
-    snapshot.cameraLastInternalBlock = cameraStatus.lastInternalLargestBlock;
-    snapshot.cameraLoaderReadyVersion = cameraStatus.loader.readyVersion;
 
     snapshot.rxBytes = perfCounters.rxBytes.load(std::memory_order_relaxed);
     snapshot.oversizeDrops = perfCounters.oversizeDrops.load(std::memory_order_relaxed);
@@ -262,7 +235,6 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.touchMaxUs = perfExtended.touchMaxUs;
     snapshot.obdMaxUs = perfExtended.obdMaxUs;
     snapshot.gpsMaxUs = perfExtended.gpsMaxUs;
-    snapshot.cameraMaxUs = perfExtended.cameraMaxUs;
     snapshot.lockoutMaxUs = perfExtended.lockoutMaxUs;
     snapshot.wifiMaxUs = perfExtended.wifiMaxUs;
     snapshot.fsMaxUs = perfExtended.fsMaxUs;
@@ -309,7 +281,6 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     perfExtended.touchMaxUs = 0;
     perfExtended.obdMaxUs = 0;
     perfExtended.gpsMaxUs = 0;
-    perfExtended.cameraMaxUs = 0;
     perfExtended.lockoutMaxUs = 0;
     perfExtended.wifiMaxUs = 0;
     perfExtended.fsMaxUs = 0;
@@ -439,12 +410,6 @@ void perfRecordObdUs(uint32_t us) {
 void perfRecordGpsUs(uint32_t us) {
     if (us > perfExtended.gpsMaxUs) {
         perfExtended.gpsMaxUs = us;
-    }
-}
-
-void perfRecordCameraUs(uint32_t us) {
-    if (us > perfExtended.cameraMaxUs) {
-        perfExtended.cameraMaxUs = us;
     }
 }
 

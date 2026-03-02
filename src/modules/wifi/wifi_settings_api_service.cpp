@@ -31,10 +31,6 @@ uint16_t clampU16Value(int value, int minVal, int maxVal) {
     return static_cast<uint16_t>(std::max(minVal, std::min(value, maxVal)));
 }
 
-bool computeCameraRuntimeEnabled(const V1Settings& settings) {
-    return settings.cameraEnabled;
-}
-
 }  // namespace
 
 void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
@@ -54,9 +50,6 @@ void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
     doc["obdEnabled"] = settings.obdEnabled;
     doc["obdVwDataEnabled"] = settings.obdVwDataEnabled;
     doc["gpsEnabled"] = settings.gpsEnabled;
-    doc["cameraEnabled"] = settings.cameraEnabled;
-    doc["cameraAlertDistanceFt"] = settings.cameraAlertDistanceFt;
-    doc["cameraAlertPersistSec"] = settings.cameraAlertPersistSec;
     doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
     doc["gpsLockoutModeName"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
     doc["gpsLockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
@@ -159,30 +152,6 @@ void handleApiSettingsSave(WebServer& server,
         if (runtime.setSpeedSourceGpsEnabled) {
             runtime.setSpeedSourceGpsEnabled(mutableSettings.gpsEnabled);
         }
-    }
-    if (server.hasArg("cameraEnabled")) {
-        mutableSettings.cameraEnabled =
-            (server.arg("cameraEnabled") == "true" || server.arg("cameraEnabled") == "1");
-    }
-    bool cameraTuningChanged = false;
-    if (server.hasArg("cameraAlertDistanceFt")) {
-        mutableSettings.cameraAlertDistanceFt = clampCameraAlertDistanceFtValue(
-            server.arg("cameraAlertDistanceFt").toInt());
-        cameraTuningChanged = true;
-    }
-    if (server.hasArg("cameraAlertPersistSec")) {
-        mutableSettings.cameraAlertPersistSec = clampCameraAlertPersistSecValue(
-            server.arg("cameraAlertPersistSec").toInt());
-        cameraTuningChanged = true;
-    }
-    if (server.hasArg("gpsEnabled") || server.hasArg("cameraEnabled")) {
-        if (runtime.setCameraRuntimeEnabled) {
-            runtime.setCameraRuntimeEnabled(computeCameraRuntimeEnabled(mutableSettings));
-        }
-    }
-    if (cameraTuningChanged && runtime.setCameraRuntimeAlertTuning) {
-        runtime.setCameraRuntimeAlertTuning(mutableSettings.cameraAlertDistanceFt,
-                                            mutableSettings.cameraAlertPersistSec);
     }
     if (server.hasArg("gpsLockoutMode")) {
         mutableSettings.gpsLockoutMode = gpsLockoutParseRuntimeModeArg(server.arg("gpsLockoutMode"),

@@ -5,7 +5,7 @@
 #include "modules/ble/connection_state_dispatch_module.h"
 
 struct LoopPostDisplayContext {
-    bool runAutoPushAndCamera = true;
+    bool enableAutoPush = true;
     bool runSpeedAndDispatch = true;
 
     uint32_t nowMs = 0;
@@ -21,11 +21,6 @@ struct LoopPostDisplayContext {
     bool bleConnectedNow = false;
 
     void (*runAutoPush)() = nullptr;
-    void (*runCameraRuntime)(
-        uint32_t nowMs,
-        bool skipLateNonCoreThisLoop,
-        bool overloadLateThisLoop,
-        bool loopSignalPriorityActive) = nullptr;
     void (*runConnectionStateDispatch)(const ConnectionStateDispatchContext& dispatchCtx) = nullptr;
 };
 
@@ -34,7 +29,7 @@ struct LoopPostDisplayResult {
     bool bleConnectedNow = false;
 };
 
-// Orchestrates post-display runtime work: auto-push, camera runtime,
+// Orchestrates post-display runtime work: auto-push,
 // runtime, and connection-state dispatch cadence/watchdog.
 class LoopPostDisplayModule {
 public:
@@ -44,16 +39,6 @@ public:
 
         uint32_t (*timestampUs)(void* ctx) = nullptr;
         void* timestampContext = nullptr;
-        void (*runCameraRuntime)(
-            void* ctx,
-            uint32_t nowMs,
-            bool skipLateNonCoreThisLoop,
-            bool overloadLateThisLoop,
-            bool loopSignalPriorityActive) = nullptr;
-        void* cameraRuntimeContext = nullptr;
-        void (*recordCameraUs)(void* ctx, uint32_t elapsedUs) = nullptr;
-        void* cameraPerfContext = nullptr;
-
         uint32_t (*readDispatchNowMs)(void* ctx) = nullptr;
         void* dispatchNowContext = nullptr;
         bool (*readBleConnectedNow)(void* ctx) = nullptr;

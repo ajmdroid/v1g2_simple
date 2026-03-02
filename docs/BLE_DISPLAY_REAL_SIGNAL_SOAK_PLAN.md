@@ -34,7 +34,7 @@ Source references:
 
 1. Add runtime packet-injection mode in normal firmware (debug-gated, not `REPLAY_MODE`).
 2. Feed injected packets through `BleQueueModule::onNotify(...)` so parser + display run exactly like live BLE.
-3. Add a soak mode that drives packet scenarios while camera + WiFi stress remain active.
+3. Add a soak mode that drives packet scenarios while WiFi stress remains active.
 4. Emit scenario frame index and packet window around first failure into soak artifacts.
 
 ## Scenario Fixture Format (Planned)
@@ -126,15 +126,14 @@ Advisory trend checks:
 
 - `displaySkips` ratio
 - `gpsObsDrops`
-- `cameraMaxWindowHz`
 
 SLO basis: `docs/PERF_SLOS.md`
 
 ## Execution Ladder
 
-1. `L1` Parser integrity: `RAD/PHO/JNK/LAS/ASM` scenarios without camera drive.
+1. `L1` Parser integrity: `RAD/PHO/JNK/LAS/ASM` scenarios without additional drive.
 2. `L2` Display stress: same scenarios with display rendering and preview disabled.
-3. `L3` Coexistence: add camera demo + WiFi metrics polling during injection.
+3. `L3` Coexistence: add WiFi metrics polling during injection.
 4. `L4` Endurance (`T100`): long run rotating `MBP + TRN + LAS` scenarios, stop on first hard failure and capture packet window.
 
 ## Artifacts Required Per Run

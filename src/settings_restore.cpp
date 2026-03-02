@@ -120,9 +120,6 @@ bool backupAppearsInSyncWithNvs(const JsonDocument& doc, const V1Settings& curre
         backupFieldMatchesBool(doc, "obdEnabled", current.obdEnabled) &&
         backupFieldMatchesBool(doc, "obdVwDataEnabled", current.obdVwDataEnabled) &&
         backupFieldMatchesBool(doc, "gpsEnabled", current.gpsEnabled) &&
-        backupFieldMatchesBool(doc, "cameraEnabled", current.cameraEnabled) &&
-        backupFieldMatchesInt(doc, "cameraAlertDistanceFt", current.cameraAlertDistanceFt) &&
-        backupFieldMatchesInt(doc, "cameraAlertPersistSec", current.cameraAlertPersistSec) &&
         backupFieldMatchesInt(doc, "brightness", current.brightness) &&
         backupFieldMatchesInt(doc, "displayStyle", static_cast<int>(current.displayStyle)) &&
         backupFieldMatchesBool(doc, "autoPushEnabled", current.autoPushEnabled) &&
@@ -302,7 +299,6 @@ bool SettingsManager::checkAndRestoreFromSD() {
             const int backupVersion = backupDocumentVersion(bestBackupDoc);
             const bool missingCoreFields =
                 bestBackupDoc["gpsEnabled"].isNull() ||
-                bestBackupDoc["cameraEnabled"].isNull() ||
                 bestBackupDoc["displayStyle"].isNull() ||
                 bestBackupDoc["brightness"].isNull();
             const bool backupOutOfSync = !backupAppearsInSyncWithNvs(bestBackupDoc, settings);
@@ -459,15 +455,6 @@ bool SettingsManager::restoreFromSD() {
     restoreBool("obdEnabled", settings.obdEnabled);
     restoreBool("obdVwDataEnabled", settings.obdVwDataEnabled);
     restoreBool("gpsEnabled", settings.gpsEnabled);
-    restoreBool("cameraEnabled", settings.cameraEnabled);
-    if (doc["cameraAlertDistanceFt"].is<int>()) {
-        settings.cameraAlertDistanceFt =
-            clampCameraAlertDistanceFtValue(doc["cameraAlertDistanceFt"].as<int>());
-    }
-    if (doc["cameraAlertPersistSec"].is<int>()) {
-        settings.cameraAlertPersistSec =
-            clampCameraAlertPersistSecValue(doc["cameraAlertPersistSec"].as<int>());
-    }
     if (doc["gpsLockoutMode"].is<int>()) {
         settings.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
     } else if (doc["gpsLockoutMode"].is<const char*>()) {
@@ -567,8 +554,6 @@ bool SettingsManager::restoreFromSD() {
     if (doc["colorVolumeMute"].is<int>()) settings.colorVolumeMute = doc["colorVolumeMute"];
     if (doc["colorRssiV1"].is<int>()) settings.colorRssiV1 = doc["colorRssiV1"];
     if (doc["colorRssiProxy"].is<int>()) settings.colorRssiProxy = doc["colorRssiProxy"];
-    if (doc["colorCameraToken"].is<int>()) settings.colorCameraToken = doc["colorCameraToken"];
-    if (doc["colorCameraArrow"].is<int>()) settings.colorCameraArrow = doc["colorCameraArrow"];
     if (doc["colorLockout"].is<int>()) settings.colorLockout = doc["colorLockout"];
     if (doc["colorGps"].is<int>()) settings.colorGps = doc["colorGps"];
     if (doc["colorObd"].is<int>()) settings.colorObd = doc["colorObd"];

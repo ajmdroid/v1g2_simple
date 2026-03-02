@@ -237,7 +237,6 @@ int namespaceHealthScore(const char* ns) {
 
     static constexpr const char* kCriticalKeys[] = {
         "gpsEn",
-        "camEn",
         "proxyBLE",
         "proxyName",
         "brightness",
@@ -346,9 +345,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("obdEn", settings.obdEnabled);
     written += prefs.putBool("obdVwData", settings.obdVwDataEnabled);
     written += prefs.putBool("gpsEn", settings.gpsEnabled);
-    written += prefs.putBool("camEn", settings.cameraEnabled);
-    written += prefs.putUShort("camAlertFt", settings.cameraAlertDistanceFt);
-    written += prefs.putUChar("camAlertSec", settings.cameraAlertPersistSec);
     written += prefs.putUChar("gpsLkMode", static_cast<uint8_t>(settings.gpsLockoutMode));
     written += prefs.putBool("gpsLkGuard", settings.gpsLockoutCoreGuardEnabled);
     written += prefs.putUShort("gpsLkQDrop", settings.gpsLockoutMaxQueueDrops);
@@ -392,8 +388,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("colorVolMute", settings.colorVolumeMute);
     written += prefs.putUShort("colorRssiV1", settings.colorRssiV1);
     written += prefs.putUShort("colorRssiPrx", settings.colorRssiProxy);
-    written += prefs.putUShort("colorCamT", settings.colorCameraToken);
-    written += prefs.putUShort("colorCamA", settings.colorCameraArrow);
     written += prefs.putUShort("colorLockL", settings.colorLockout);
     written += prefs.putUShort("colorGps", settings.colorGps);
     written += prefs.putUShort("colorObd", settings.colorObd);

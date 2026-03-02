@@ -48,10 +48,6 @@ public:
     // Persisted alert display (shows last alert in dark grey after V1 clears it)
     void updatePersisted(const AlertData& alert, const DisplayState& state);
 
-    // Camera alert display (forward-only one-shot camera lifecycle).
-    // Uses existing frequency and arrow primitives; no new layout regions.
-    void updateCameraAlert(uint8_t cameraType, bool muted = false);
-    
     // Check if currently in persisted mode (for color selection)
     bool isPersistedMode() const { return persistedMode; }
 
@@ -131,7 +127,7 @@ public:
     void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h);  // Partial flush to reduce SPI traffic
 
 private:
-    enum class ScreenMode { Unknown, Resting, Scanning, Disconnected, Live, Persisted, Camera };
+    enum class ScreenMode { Unknown, Resting, Scanning, Disconnected, Live, Persisted };
     void teardownDriverObjects();
 
     // Display driver (Arduino_GFX)
@@ -150,7 +146,6 @@ private:
 
 
     void drawFrequency(uint32_t freqMHz, Band band = BAND_NONE, bool muted = false, bool isPhotoRadar = false);
-    void drawCameraToken(const char* token, bool muted);
     void drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);   // 7-segment style
     void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);// Serpentine font (JB's favorite)
     void markFrequencyDirtyRegion(int16_t x, int16_t y, int16_t w, int16_t h);
