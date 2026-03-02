@@ -165,7 +165,7 @@ Customize every color on the display:
 General configuration:
 
 - **AP Name/Password:** Change WiFi network name and password
-- **BLE Proxy:** Enable to relay V1 data to companion app (advertises as "V1C-LE-S3")
+- **BLE Proxy:** Enable to relay V1 data to companion app (advertises as \"V1-Proxy\")
 - **Proxy Name:** Change BLE advertised name
 - **Backup & Restore:** Download all settings to JSON file, or restore from a previous backup
 
@@ -178,7 +178,7 @@ Voice alert options:
 - **Volume Fade:** Reduce V1 volume after initial alert, restore for new threats
 - **Speed-Based Volume:** Boost V1 volume at highway speeds (requires GPS)
 
-### GPS (/gps)
+### GPS & Lockouts (/integrations, /lockouts)
 
 Speed and location sources:
 
