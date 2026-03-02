@@ -148,13 +148,8 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         // Use Segment7 TTF font (JBV1 style)
         const int fontSize = 75;
 
-#if defined(DISPLAY_WAVESHARE_349)
         const int leftMargin = 135;   // After band indicators (avoid clipping Ka)
         const int rightMargin = 200;  // Before signal bars (at X=440)
-#else
-        const int leftMargin = 0;
-        const int rightMargin = 120;
-#endif
 
         // Position frequency centered between mute icon and cards
         const int muteIconBottom = 33;
@@ -219,11 +214,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         lastDrawWidth = textWidth;
     } else {
         // Fallback to software 7-segment renderer
-#if defined(DISPLAY_WAVESHARE_349)
         const float scale = 2.3f;
-#else
-        const float scale = 1.7f;
-#endif
         SegMetrics m = segMetrics(scale);
 
         const int muteIconBottom = 33;
@@ -237,13 +228,8 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
             width = measureSevenSegmentText(textBuf, scale);
         }
 
-#if defined(DISPLAY_WAVESHARE_349)
         const int leftMargin = 120;
         const int rightMargin = 200;
-#else
-        const int leftMargin = 0;
-        const int rightMargin = 120;
-#endif
         int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
         int x = leftMargin + (maxWidth - width) / 2;
         if (x < leftMargin) x = leftMargin;
@@ -407,15 +393,9 @@ void V1Display::drawVolumeZeroWarning() {
     }
     
     // Position warning centered in frequency area
-#if defined(DISPLAY_WAVESHARE_349)
     const int leftMargin = 120;
     const int rightMargin = 200;
     const int textScale = 6;  // Large for visibility
-#else
-    const int leftMargin = 0;
-    const int rightMargin = 120;
-    const int textScale = 4;
-#endif
     int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
     int centerX = leftMargin + maxWidth / 2;
     int centerY = getEffectiveScreenHeight() / 2 + 10;

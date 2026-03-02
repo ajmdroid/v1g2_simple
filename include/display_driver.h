@@ -27,7 +27,6 @@
 #define CANVAS_HEIGHT 640
 
 // Include appropriate graphics library
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     #include <Arduino_GFX_Library.h>
     
     // Pin definitions with defaults for Waveshare 3.49"
@@ -79,7 +78,6 @@
     #define TFT_YELLOW    0xFFE0
     #define TFT_ORANGE    0xFD20
     
-#endif
 
 // Common color definitions (RGB565)
 #define COLOR_BLACK   0x0000

@@ -239,12 +239,10 @@ void V1Display::update(const DisplayState& state) {
                                      flushLeftStrip,
                                      flushRightStrip);
         const bool cardsChanged = drawRestTelemetryCards(false);
-#if defined(DISPLAY_WAVESHARE_349)
         (void)flushLeftStrip;
         (void)flushRightStrip;
         (void)cardsChanged;
         DISPLAY_FLUSH();
-#endif
         lastState = state;
         return;
     }
@@ -299,9 +297,7 @@ void V1Display::update(const DisplayState& state) {
     drawSecondaryAlertCards(nullptr, 0, emptyPriority, effectiveMuted);
     drawRestTelemetryCards(true);
 
-#if defined(DISPLAY_WAVESHARE_349)
     DISPLAY_FLUSH();  // Push canvas to display
-#endif
 
     if (currentScreen != ScreenMode::Resting) {
         perfRecordDisplayScreenTransition(
@@ -316,7 +312,6 @@ void V1Display::update(const DisplayState& state) {
 void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     drawFrequency(freqMHz, band, muted, isPhotoRadar);
 
-#if defined(DISPLAY_WAVESHARE_349)
     // Keep top-row badges responsive even when we're in lightweight refresh mode.
     // This path runs independently of full display.update() redraws.
     const uint32_t nowMs = millis();
@@ -351,7 +346,6 @@ void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bo
         lastGpsShown = gpsShow;
         lastGpsSats = gpsSats;
     }
-#endif
 
     if (frequencyRenderDirty) {
         if (frequencyDirtyValid) {
@@ -435,9 +429,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     AlertData emptyPriority;
     drawSecondaryAlertCards(nullptr, 0, emptyPriority, true);
 
-#if defined(DISPLAY_WAVESHARE_349)
     DISPLAY_FLUSH();
-#endif
 }
 
 // Multi-alert update: draws priority alert with secondary alert cards below
@@ -596,14 +588,12 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
-#if defined(DISPLAY_WAVESHARE_349)
         if (secondaryCardsRenderDirty_) {
             flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
                         SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT,
                         DisplayLayout::CONTENT_AVAILABLE_WIDTH,
                         SECONDARY_ROW_HEIGHT);
         }
-#endif
         return;
     }
     
@@ -643,11 +633,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
                                      flushRightStrip);
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
-#if defined(DISPLAY_WAVESHARE_349)
         (void)flushLeftStrip;
         (void)flushRightStrip;
         DISPLAY_FLUSH();
-#endif
         return;
     }
     
@@ -709,10 +697,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     
     // Keep dirty.multiAlert true while in multi-alert - only reset when going to single-alert mode
 
-#if defined(DISPLAY_WAVESHARE_349)
     DISPLAY_FLUSH();
     DISP_PERF_LOG("flush");
-#endif
 
     lastAlert = priority;
     lastState = state;

@@ -19,7 +19,6 @@
 #include <esp_system.h>
 
 // Only compile for Waveshare 3.49 board
-#if defined(DISPLAY_WAVESHARE_349)
 
 // External references for graceful shutdown
 extern V1Display display;
@@ -622,4 +621,3 @@ bool BatteryManager::processPowerButton() {
     return false;
 }
 
-#endif // DISPLAY_WAVESHARE_349

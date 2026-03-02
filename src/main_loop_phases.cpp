@@ -181,16 +181,10 @@ LoopFinalizePhaseValues processLoopFinalizePhase(
 
 bool shouldReturnEarlyFromLoopPowerTouchPhase(const unsigned long nowMs,
                                               const unsigned long loopStartUs) {
-#if defined(DISPLAY_WAVESHARE_349)
     LoopPowerTouchContext loopPowerTouchCtx;
     loopPowerTouchCtx.nowMs = nowMs;
     loopPowerTouchCtx.loopStartUs = loopStartUs;
     loopPowerTouchCtx.bootButtonPressed = (digitalRead(BOOT_BUTTON_GPIO) == LOW);
     const LoopPowerTouchResult loopPowerTouchResult = loopPowerTouchModule.process(loopPowerTouchCtx);
     return loopPowerTouchResult.shouldReturnEarly;
-#else
-    (void)nowMs;
-    (void)loopStartUs;
-    return false;
-#endif
 }

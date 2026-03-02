@@ -60,7 +60,6 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     int cx = SCREEN_WIDTH - 70;           // right anchor
     int cy = SCREEN_HEIGHT / 2;           // vertically centered
 
-#if defined(DISPLAY_WAVESHARE_349)
     // Position arrows to fit ABOVE frequency display at bottom
     // With multi-alert always enabled, use raised layout as default
     if (dirty.multiAlert) {
@@ -70,7 +69,6 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
         cy = 95;
         cx -= 6;
     }
-#endif
     
     // Use slightly smaller arrows to give profile indicator more room
     float scale = 0.98f;

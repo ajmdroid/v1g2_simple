@@ -12,7 +12,6 @@
 
 #include "display_driver.h"  // DISPLAY_USE_ARDUINO_GFX, Arduino_Canvas, etc.
 
-#if defined(DISPLAY_USE_ARDUINO_GFX)
 
 // Shared datum state (file-scope — set by GFX_setTextDatum, read by GFX_drawString)
 inline uint8_t& gfxCurrentTextDatum() {
@@ -62,11 +61,3 @@ inline void GFX_drawString(Arduino_Canvas* canvas, const char* str, int16_t x, i
     canvas->print(str);
 }
 
-#else  // TFT_eSPI — native methods
-
-#define GFX_setTextDatum(d) tft.setTextDatum(d)
-inline void GFX_drawString(TFT_eSPI& canvas, const char* str, int16_t x, int16_t y) {
-    canvas.drawString(str, x, y);
-}
-
-#endif

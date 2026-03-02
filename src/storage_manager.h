@@ -18,7 +18,6 @@
 #include <esp_heap_caps.h>
 
 // Waveshare 3.49 SD card pins (SDMMC interface)
-#if defined(DISPLAY_WAVESHARE_349)
     #ifndef SD_MMC_CLK_PIN
     #define SD_MMC_CLK_PIN 41
     #endif
@@ -28,17 +27,6 @@
     #ifndef SD_MMC_D0_PIN
     #define SD_MMC_D0_PIN 40
     #endif
-#else
-    #ifndef SD_MMC_CLK_PIN
-    #define SD_MMC_CLK_PIN -1
-    #endif
-    #ifndef SD_MMC_CMD_PIN
-    #define SD_MMC_CMD_PIN -1
-    #endif
-    #ifndef SD_MMC_D0_PIN
-    #define SD_MMC_D0_PIN -1
-    #endif
-#endif
 
 class StorageManager {
 public:
@@ -146,14 +134,6 @@ public:
                 dmaStarved_ = true;
                 return;  // Don't even try to acquire mutex
             }
-            // DEBUG: Catch accidental blocking locks on Core 1 (real-time core)
-            #ifdef DEBUG
-            static bool warned = false;
-            if (!warned && xPortGetCoreID() == 1) {
-                warned = true;
-                Serial.println("[WARN] SDLockBlocking on Core 1 - use SDTryLock!");
-            }
-            #endif
             if (mutex_) {
                 acquired_ = (xSemaphoreTake(mutex_, portMAX_DELAY) == pdTRUE);
             }

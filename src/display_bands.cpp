@@ -73,17 +73,10 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
         return;
     }
 
-#if defined(DISPLAY_WAVESHARE_349)
     const int x = 82;
     const int textSize = 1;
     const int spacing = 43;
     const int startY = 55;
-#else
-    const int x = 82;
-    const int textSize = 1;
-    const int spacing = 30;
-    const int startY = 30;
-#endif
 
     const V1Settings& s = settingsManager.get();
     struct BandCell {
@@ -101,7 +94,6 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     TFT_CALL(setTextSize)(textSize);
     GFX_setTextDatum(ML_DATUM);
 
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     static bool s_bandBaselineInit = false;
     static int16_t s_bandBaselineAdjust = 0;
     if (!s_bandBaselineInit) {
@@ -111,7 +103,6 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
         s_bandBaselineAdjust = y1;
         s_bandBaselineInit = true;
     }
-#endif
 
     const int labelClearW = 50;
     const int labelClearH = 38;
@@ -123,9 +114,7 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     uint16_t unionH = 0;
     for (int i = 0; i < 4; ++i) {
         int labelY = startY + i * spacing;
-#if defined(DISPLAY_USE_ARDUINO_GFX)
         labelY += s_bandBaselineAdjust;
-#endif
         int16_t y = static_cast<int16_t>(labelY - labelClearH / 2);
         if (i == 0) {
             unionY = y;
@@ -143,9 +132,7 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
     for (int i = 0; i < 4; ++i) {
         bool isActive = (effectiveBandMask & cells[i].mask) != 0;
         int labelY = startY + i * spacing;
-#if defined(DISPLAY_USE_ARDUINO_GFX)
         labelY += s_bandBaselineAdjust;
-#endif
         uint16_t col = isActive ? (muted ? PALETTE_MUTED_OR_PERSISTED : cells[i].color) : TFT_DARKGREY;
         TFT_CALL(setTextColor)(col, PALETTE_BG);
         GFX_drawString(tft, cells[i].label, x, labelY);
@@ -189,22 +176,12 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
         s.colorBar4, s.colorBar5, s.colorBar6
     };
 
-#if defined(DISPLAY_WAVESHARE_349)
     const int barWidth = 44;
     const int barHeight = 14;
     const int barSpacing = 10;
-#else
-    const int barWidth = 26;
-    const int barHeight = 10;
-    const int barSpacing = 6;
-#endif
     [[maybe_unused]] const int totalH = barCount * (barHeight + barSpacing) - barSpacing;
 
-#if defined(DISPLAY_WAVESHARE_349)
     int startX = SCREEN_WIDTH - 200;
-#else
-    int startX = SCREEN_WIDTH - 90;
-#endif
     int startY = 18;
     if (startY < 8) startY = 8;
 

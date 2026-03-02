@@ -67,10 +67,8 @@ VolumeZeroWarning volZeroWarn;
 #include "../include/display_draw.h"
 
 // Platform-specific state kept in display.cpp
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     // TFT_BL alias for backlight pin
     #define TFT_BL LCD_BL
-#endif
 
 // Global display instance reference — defined here, declared extern in display_palette.h
 V1Display* g_displayInstance = nullptr;
@@ -108,7 +106,6 @@ V1Display::V1Display() {
 }
 
 void V1Display::teardownDriverObjects() {
-#if defined(DISPLAY_USE_ARDUINO_GFX)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdelete-non-virtual-dtor"
     delete tft;
@@ -118,7 +115,6 @@ void V1Display::teardownDriverObjects() {
     delete bus;
     bus = nullptr;
 #pragma GCC diagnostic pop
-#endif
 }
 
 V1Display::~V1Display() {
@@ -138,7 +134,6 @@ bool V1Display::begin() {
         stageStartMs = now;
     };
     
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     // Ensure restart/re-init paths never leak partially constructed objects.
     teardownDriverObjects();
 
@@ -216,26 +211,11 @@ bool V1Display::begin() {
     analogWrite(LCD_BL, 0);  // Full brightness (inverted: 0=on)
     delay(30);
     
-#else
-    // TFT_eSPI initialization
-    TFT_CALL(init)();
-    delay(200);
-    TFT_CALL(setRotation)(DISPLAY_ROTATION);
-    TFT_CALL(fillScreen)(PALETTE_BG); // First clear
-    delay(10);
-    TFT_CALL(fillScreen)(PALETTE_BG); // Second clear to ensure no white flash
-#endif
 
     delay(10); // Give hardware time to settle
     
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     tft->setTextColor(PALETTE_TEXT);
     tft->setTextSize(2);
-#else
-    TFT_CALL(setTextColor)(PALETTE_TEXT, PALETTE_BG);
-    GFX_setTextDatum(MC_DATUM); // Middle center
-    TFT_CALL(setTextSize)(2);
-#endif
 
     DISPLAY_LOG("[DISPLAY] Initialized successfully %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     logDisplayStage("hw_init");
@@ -271,30 +251,19 @@ bool V1Display::begin() {
 }
 
 void V1Display::setBrightness(uint8_t level) {
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     // PWM brightness control for Arduino_GFX
     // Waveshare 3.49" has INVERTED backlight: 0=full on, 255=off
     #ifdef LCD_BL
     analogWrite(LCD_BL, 255 - level);  // Invert the level
     #endif
-#else
-    // Simple on/off control for TFT_eSPI (pin doesn't support PWM on all boards)
-    #ifdef TFT_BL
-    digitalWrite(TFT_BL, level > 0 ? HIGH : LOW);
-    #endif
-#endif
 }
 
 // showSettingsSliders(), updateSettingsSliders(), getActiveSliderFromTouch(),
 // hideBrightnessSlider() moved to display_sliders.cpp (Phase 3B)
 
 void V1Display::clear() {
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     tft->fillScreen(PALETTE_BG);
     DISPLAY_FLUSH();
-#else
-    TFT_CALL(fillScreen)(PALETTE_BG);
-#endif
     bleProxyDrawn = false;
 }
 
@@ -349,13 +318,10 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool 
 // drawWiFiIndicator() moved to display_status_bar.cpp (Phase 2N)
 
 void V1Display::flush() {
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     DISPLAY_FLUSH();
-#endif
 }
 
 void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     // Constrain region to framebuffer bounds
     if (!tft || !gfxPanel) return;
     int16_t maxW = tft->width();
@@ -378,9 +344,6 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
         uint16_t* rowPtr = fb + (y + row) * stride + x;
         gfxPanel->draw16bitRGBBitmap(x, y + row, rowPtr, w, 1);
     }
-#else
-    (void)x; (void)y; (void)w; (void)h;
-#endif
 }
 
 // markFrequencyDirtyRegion() moved to display_frequency.cpp (Phase 2M)

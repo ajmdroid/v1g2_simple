@@ -355,11 +355,7 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
 
     if (!drewWithOfr) {
         // Fallback to software 7-segment renderer
-#if defined(DISPLAY_WAVESHARE_349)
         const float scale = 2.2f;
-#else
-        const float scale = 2.0f;
-#endif
         int textWidth = measureSevenSegmentText(buf, scale);
         const int centerBiasPx = 2;
         int x = TOP_COUNTER_FIELD_X + ((TOP_COUNTER_FIELD_W - textWidth) / 2) + centerBiasPx;
@@ -403,13 +399,8 @@ void V1Display::drawMuteIcon(bool muted) {
     lastMutedState = muted;
     
     // Draw badge at fixed top position (top ~10% of screen)
-#if defined(DISPLAY_WAVESHARE_349)
     const int leftMargin = 120;    // After band indicators
     const int rightMargin = 200;   // Before signal bars (at X=440)
-#else
-    const int leftMargin = 0;
-    const int rightMargin = 120;
-#endif
     int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
     
     int w = 110;

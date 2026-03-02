@@ -12,7 +12,6 @@
 
 // Combined settings screen with brightness and voice volume sliders
 void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel) {
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     // Clear screen to dark background
     tft->fillScreen(0x0000);
     
@@ -92,7 +91,6 @@ void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel
     tft->print("Touch sliders - BOOT to save");
     
     DISPLAY_FLUSH();
-#endif
 }
 
 void V1Display::updateSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel, int activeSlider) {

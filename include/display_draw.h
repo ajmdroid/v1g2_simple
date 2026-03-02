@@ -29,13 +29,8 @@ inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
 // ---------------------------------------------------------------------------
 // TFT access layer — pointer (Arduino_GFX) vs object (TFT_eSPI)
 // ---------------------------------------------------------------------------
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     #define TFT_CALL(method) tft->method
     #define TFT_PTR tft
-#else
-    #define TFT_CALL(method) tft.method
-    #define TFT_PTR &tft
-#endif
 
 // ---------------------------------------------------------------------------
 // Coordinate transforms (identity — hardware handles rotation)

@@ -108,14 +108,11 @@ void V1Display::showResting(bool forceRedraw) {
         }
         currentScreen = ScreenMode::Resting;
 
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     DISPLAY_FLUSH();
-#endif
     } else if (profileChanged) {
         // Only the profile changed while already resting; redraw just the indicator
         drawProfileIndicator(profileSlot);
         lastRestingProfileSlot = profileSlot;
-#if defined(DISPLAY_USE_ARDUINO_GFX)
         // Push only the regions touched by profile/WiFi/BLE/battery indicators
         const int profileFlushY = 8;
         const int profileFlushH = 36;
@@ -124,7 +121,6 @@ void V1Display::showResting(bool forceRedraw) {
         const int leftColWidth = 64;
         const int leftColHeight = 96;
         flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
-#endif
     }
 
     // Reset lastState so next update() detects changes from this "resting" state
@@ -226,11 +222,7 @@ void V1Display::showScanning() {
         fontMgr.segment7.printf("%s", text);
     } else {
         // Fallback: software 14-segment display
-#if defined(DISPLAY_WAVESHARE_349)
         const float scale = 2.3f;  // Match frequency scale
-#else
-        const float scale = 1.7f;
-#endif
         SegMetrics m = segMetrics(scale);
         
         // Position to match frequency display (centered between mute area and bottom)
@@ -255,9 +247,7 @@ void V1Display::showScanning() {
     // Reset lastState
     lastState = DisplayState();
     
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     DISPLAY_FLUSH();
-#endif
 
     if (currentScreen != ScreenMode::Scanning) {
         perfRecordDisplayScreenTransition(
@@ -317,7 +307,6 @@ void V1Display::showBootSplash() {
     // Draw the V1 Simple logo at 1:1 (image is pre-sized to 640x172)
     // Use row-level bulk blit on Arduino_GFX to reduce draw call overhead.
     const unsigned long logoStartMs = millis();
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     uint16_t rowBuffer[V1SIMPLE_LOGO_WIDTH];
     for (int sy = 0; sy < V1SIMPLE_LOGO_HEIGHT; sy++) {
         const int rowOffset = sy * V1SIMPLE_LOGO_WIDTH;
@@ -326,14 +315,6 @@ void V1Display::showBootSplash() {
         }
         TFT_CALL(draw16bitRGBBitmap)(0, sy, rowBuffer, V1SIMPLE_LOGO_WIDTH, 1);
     }
-#else
-    for (int sy = 0; sy < V1SIMPLE_LOGO_HEIGHT; sy++) {
-        for (int sx = 0; sx < V1SIMPLE_LOGO_WIDTH; sx++) {
-            uint16_t pixel = pgm_read_word(&v1simple_logo_rgb565[sy * V1SIMPLE_LOGO_WIDTH + sx]);
-            TFT_CALL(drawPixel)(sx, sy, pixel);
-        }
-    }
-#endif
     const unsigned long logoMs = millis() - logoStartMs;
     
     // Draw version number in bottom-right corner
@@ -342,22 +323,14 @@ void V1Display::showBootSplash() {
     TFT_CALL(setTextColor)(0x7BEF, PALETTE_BG);  // Gray text (mid-gray RGB565)
     GFX_drawString(tft, "v" FIRMWARE_VERSION, SCREEN_WIDTH - 8, SCREEN_HEIGHT - 6);
 
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     // Flush canvas to display before enabling backlight
     const unsigned long flushStartMs = millis();
     DISPLAY_FLUSH();
     const unsigned long flushMs = millis() - flushStartMs;
-#else
-    const unsigned long flushMs = 0;
-#endif
 
     // Turn on backlight now that splash is drawn
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     // Waveshare 3.49" has INVERTED backlight: 0=full on, 255=off
     analogWrite(LCD_BL, 0);  // Full brightness (inverted)
-#else
-    digitalWrite(TFT_BL, HIGH);
-#endif
     Serial.println("Backlight ON (post-splash, inverted)");
     Serial.printf("[BootTiming] splash total=%lu logo=%lu flush=%lu\n",
                   millis() - splashStartMs,
@@ -385,9 +358,7 @@ void V1Display::showShutdown() {
     GFX_drawString(tft, "Powering off...", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20);
     
     // Flush to display
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     DISPLAY_FLUSH();
-#endif
 }
 
 // ============================================================================
@@ -422,7 +393,5 @@ void V1Display::showLowBattery() {
     GFX_drawString(tft, "LOW BATTERY", SCREEN_WIDTH / 2, battY + battH + 30);
     
     // Flush to display
-#if defined(DISPLAY_USE_ARDUINO_GFX)
     DISPLAY_FLUSH();
-#endif
 }

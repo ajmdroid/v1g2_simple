@@ -1063,14 +1063,12 @@ static void initializeTouchAndDisplayControls() {
     }
 
     // Initialize BOOT button (GPIO 0) for brightness adjustment
-#if defined(DISPLAY_WAVESHARE_349)
     pinMode(BOOT_BUTTON_GPIO, INPUT_PULLUP);
     const V1Settings& displaySettings = settingsManager.get();
     display.setBrightness(displaySettings.brightness);  // Apply saved brightness
     audio_set_volume(displaySettings.voiceVolume);      // Apply saved voice volume
     SerialLog.printf("[Settings] Applied saved brightness: %d, voice volume: %d\n",
                      displaySettings.brightness, displaySettings.voiceVolume);
-#endif
 }
 
 static void configureUiAutoPushModule() {
@@ -1216,9 +1214,7 @@ static void initializePreflightDisplayAndBootUi(esp_reset_reason_t resetReason,
 
     // Initialize battery manager EARLY - needs to latch power on if running on battery.
     // This must happen before any long-running init to prevent shutdown.
-#if defined(DISPLAY_WAVESHARE_349)
     batteryManager.begin();
-#endif
     logBootStage("battery");
 
     // Initialize display.
@@ -1238,10 +1234,8 @@ static void initializePreflightDisplayAndBootUi(esp_reset_reason_t resetReason,
     settingsManager.begin();
     timeService.begin();
 
-#if defined(DISPLAY_WAVESHARE_349)
     powerModule.begin(&batteryManager, &display, &settingsManager);
     powerModule.logStartupStatus();
-#endif
     logBootStage("settings");
 
     // Show boot splash only on true power-on (not crash reboots or firmware uploads).
