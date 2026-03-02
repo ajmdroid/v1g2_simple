@@ -111,6 +111,25 @@ static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MIN = 0;
 static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MAX = 10;
 static constexpr uint8_t LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT = 0;     // 0 = never auto-delete
 
+// GPS quality gates for lockout evaluation and learning.
+static constexpr uint8_t  LOCKOUT_GPS_MIN_SATELLITES = 4;                      // Minimum sats for 3D fix
+static constexpr uint16_t LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT = 50;               // 5.0 HDOP (stored as ×10)
+static constexpr uint16_t LOCKOUT_GPS_MAX_HDOP_X10_MIN = 10;                   // 1.0 HDOP
+static constexpr uint16_t LOCKOUT_GPS_MAX_HDOP_X10_MAX = 100;                  // 10.0 HDOP
+static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT = 5;       // Minimum speed for learner
+static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MIN = 0;           // 0 = disabled
+static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MAX = 20;          // 20 mph ceiling
+
+inline uint16_t clampLockoutGpsMaxHdopX10Value(int rawHdopX10) {
+    return static_cast<uint16_t>(std::max(static_cast<int>(LOCKOUT_GPS_MAX_HDOP_X10_MIN),
+                                          std::min(rawHdopX10, static_cast<int>(LOCKOUT_GPS_MAX_HDOP_X10_MAX))));
+}
+
+inline uint8_t clampLockoutGpsMinLearnerSpeedMphValue(int rawSpeed) {
+    return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MIN),
+                                         std::min(rawSpeed, static_cast<int>(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MAX))));
+}
+
 inline uint8_t clampLockoutLearnerHitsValue(int rawHits) {
     return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_HITS_MIN),
                                          std::min(rawHits, static_cast<int>(LOCKOUT_LEARNER_HITS_MAX))));
@@ -187,6 +206,8 @@ struct V1Settings {
     uint8_t gpsLockoutManualDemotionMissCount;     // Misses to auto-remove manual lockouts (0=disabled)
     bool gpsLockoutKaLearningEnabled;              // Allow Ka lockout learning/enforcement (default: false)
     bool gpsLockoutPreQuiet;                          // Pre-drop to muted volume in lockout zones (default: false)
+    uint16_t gpsLockoutMaxHdopX10;                    // Max HDOP ×10 for lockout eval/learn (50 = 5.0, 0 = disabled)
+    uint8_t gpsLockoutMinLearnerSpeedMph;             // Min speed (mph) for learner ingestion (0 = disabled)
     
     // Display settings
     bool turnOffDisplay;
@@ -320,6 +341,8 @@ struct V1Settings {
         gpsLockoutManualDemotionMissCount(LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT),
         gpsLockoutKaLearningEnabled(false),
         gpsLockoutPreQuiet(false),
+        gpsLockoutMaxHdopX10(LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT),
+        gpsLockoutMinLearnerSpeedMph(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT),
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment

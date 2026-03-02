@@ -71,6 +71,23 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
         return lastResult_;
     }
 
+    // --- Gate 2b: GPS quality (satellites + HDOP) ---
+    if (gpsStatus.satellites < LOCKOUT_GPS_MIN_SATELLITES) {
+        ++stats_.skippedLowSats;
+        return lastResult_;
+    }
+    {
+        const uint16_t maxHdopX10 = settings_->get().gpsLockoutMaxHdopX10;
+        if (maxHdopX10 > 0 && std::isfinite(gpsStatus.hdop)) {
+            const uint16_t hdopX10 = static_cast<uint16_t>(
+                lroundf(std::max(0.0f, gpsStatus.hdop) * 10.0f));
+            if (hdopX10 > maxHdopX10) {
+                ++stats_.skippedHighHdop;
+                return lastResult_;
+            }
+        }
+    }
+
     const int32_t latE5 = degreesToE5(gpsStatus.latitudeDeg);
     const int32_t lonE5 = degreesToE5(gpsStatus.longitudeDeg);
 

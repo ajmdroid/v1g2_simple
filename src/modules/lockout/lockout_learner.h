@@ -55,7 +55,9 @@ public:
     void setTuning(uint8_t promotionHits,
                    uint16_t radiusE5,
                    uint16_t freqToleranceMHz,
-                   uint8_t learnIntervalHours = kDefaultLearnIntervalHours);
+                   uint8_t learnIntervalHours = kDefaultLearnIntervalHours,
+                   uint16_t maxHdopX10 = 0,
+                   uint8_t minLearnerSpeedMph = 0);
     uint8_t promotionHits() const { return promotionHits_; }
     uint16_t radiusE5() const { return radiusE5_; }
     uint16_t freqToleranceMHz() const { return freqToleranceMHz_; }
@@ -84,6 +86,9 @@ public:
         uint32_t skippedNoLocation = 0; // Observations without valid GPS
         uint32_t skippedBand       = 0; // Observations outside lockout band policy
         uint32_t skippedInIndex    = 0; // Already covered by existing lockout
+        uint32_t skippedLowSats    = 0; // GPS had too few satellites
+        uint32_t skippedHighHdop   = 0; // GPS HDOP exceeded quality threshold
+        uint32_t skippedLowSpeed   = 0; // Vehicle speed below learning threshold
     };
     const Stats& stats() const { return stats_; }
 
@@ -113,6 +118,8 @@ private:
     uint16_t freqToleranceMHz_ = kDefaultFreqToleranceMHz;
     uint8_t learnIntervalHours_ = kDefaultLearnIntervalHours;
     int64_t learnHitIntervalMs_ = 0;
+    uint16_t maxHdopX10_ = 0;          // 0 = disabled; otherwise max HDOP×10
+    uint8_t minLearnerSpeedMph_ = 0;   // 0 = disabled; minimum speed for learning
     bool dirty_ = false;
 
     static constexpr uint32_t LOG_INTERVAL_MS = 10000;

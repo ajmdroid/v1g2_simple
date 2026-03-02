@@ -25,6 +25,7 @@ struct SignalObservation {
     int32_t longitudeE5 = 0;
     uint8_t satellites = 0;
     uint16_t hdopX10 = HDOP_X10_INVALID;
+    float speedMph = NAN;              // GPS speed (mph); NAN = unavailable
 };
 
 struct SignalObservationLogStats {

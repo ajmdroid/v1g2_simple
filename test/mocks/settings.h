@@ -44,6 +44,9 @@ inline const char* lockoutRuntimeModeName(LockoutRuntimeMode mode) {
     }
 }
 
+// GPS quality gate constants (must match real settings.h)
+static constexpr uint8_t  LOCKOUT_GPS_MIN_SATELLITES = 4;
+
 // Minimal display font enum (for compatibility with older tests)
 enum FontStyle : uint8_t {
     FONT_STYLE_CLASSIC = 0,
@@ -99,6 +102,8 @@ struct V1Settings {
     uint8_t gpsLockoutLearnerUnlearnCount = 0;
     uint8_t gpsLockoutManualDemotionMissCount = 0;
     bool gpsLockoutKaLearningEnabled = false;
+    uint16_t gpsLockoutMaxHdopX10 = 50;          // 5.0 HDOP × 10
+    uint8_t gpsLockoutMinLearnerSpeedMph = 5;
     bool bleProxyEnabled = true;
 };
 

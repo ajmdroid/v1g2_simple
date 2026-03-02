@@ -4,6 +4,7 @@
 #include "lockout_index.h"
 #include "lockout_store.h"
 #include "signal_observation_log.h"
+#include "../../settings.h"
 
 #ifndef UNIT_TEST
 #include <Arduino.h>
@@ -13,6 +14,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
 
 namespace {
 
@@ -53,7 +55,9 @@ void LockoutLearner::begin(LockoutIndex* index, SignalObservationLog* log) {
 void LockoutLearner::setTuning(uint8_t promotionHits,
                                uint16_t radiusE5,
                                uint16_t freqToleranceMHz,
-                               uint8_t learnIntervalHours) {
+                               uint8_t learnIntervalHours,
+                               uint16_t maxHdopX10,
+                               uint8_t minLearnerSpeedMph) {
     if (promotionHits < kMinPromotionHits) {
         promotionHits = kMinPromotionHits;
     } else if (promotionHits > kMaxPromotionHits) {
@@ -75,6 +79,8 @@ void LockoutLearner::setTuning(uint8_t promotionHits,
     freqToleranceMHz_ = freqToleranceMHz;
     learnIntervalHours_ = learnIntervalHours;
     learnHitIntervalMs_ = intervalHoursToMs(learnIntervalHours);
+    maxHdopX10_ = maxHdopX10;
+    minLearnerSpeedMph_ = minLearnerSpeedMph;
 }
 
 void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
@@ -119,6 +125,26 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
             }
             if (!lockoutBandSupported(obs.bandRaw)) {
                 ++stats_.skippedBand;
+                continue;
+            }
+
+            // Gate: minimum satellite count for learning quality
+            if (obs.satellites < LOCKOUT_GPS_MIN_SATELLITES) {
+                ++stats_.skippedLowSats;
+                continue;
+            }
+            // Gate: HDOP quality threshold for learning
+            if (maxHdopX10_ > 0
+                && obs.hdopX10 != SignalObservation::HDOP_X10_INVALID
+                && obs.hdopX10 > maxHdopX10_) {
+                ++stats_.skippedHighHdop;
+                continue;
+            }
+            // Gate: minimum speed for learning (blocks GPS-drift learning)
+            if (minLearnerSpeedMph_ > 0
+                && std::isfinite(obs.speedMph)
+                && obs.speedMph < static_cast<float>(minLearnerSpeedMph_)) {
+                ++stats_.skippedLowSpeed;
                 continue;
             }
 

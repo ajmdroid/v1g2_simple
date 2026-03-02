@@ -64,6 +64,8 @@ public:
         uint32_t skippedOff    = 0;  // Skipped because mode == OFF
         uint32_t skippedNoGps  = 0;  // Skipped because GPS position not valid
         uint32_t skippedNoFix  = 0;  // Skipped because GPS has no fix
+        uint32_t skippedLowSats  = 0;  // Skipped because satellite count < minimum
+        uint32_t skippedHighHdop = 0;  // Skipped because HDOP exceeded threshold
     };
     const Stats& stats() const { return stats_; }
 

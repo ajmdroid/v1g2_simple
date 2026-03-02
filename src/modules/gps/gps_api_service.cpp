@@ -731,7 +731,9 @@ void handleConfig(WebServer& server,
         lockoutLearner.setTuning(mutableSettings.gpsLockoutLearnerPromotionHits,
                                  mutableSettings.gpsLockoutLearnerRadiusE5,
                                  mutableSettings.gpsLockoutLearnerFreqToleranceMHz,
-                                 mutableSettings.gpsLockoutLearnerLearnIntervalHours);
+                                 mutableSettings.gpsLockoutLearnerLearnIntervalHours,
+                                 mutableSettings.gpsLockoutMaxHdopX10,
+                                 mutableSettings.gpsLockoutMinLearnerSpeedMph);
     }
     if (lockoutSettingsChanged) {
         settingsManager.save();

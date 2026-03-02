@@ -31,6 +31,7 @@
 		satellites: 0,
 		stableSatellites: 0,
 		speedMph: null,
+		hdop: null,
 		moduleDetected: false,
 		detectionTimedOut: false
 	});
@@ -228,7 +229,7 @@
 							{gpsSatCountStable()} sats
 						</div>
 					<div class="copy-caption">
-						{typeof gps.speedMph === 'number' ? `${Math.round(gps.speedMph)} mph` : 'Fix acquired'}
+						{typeof gps.hdop === 'number' ? `HDOP ${gps.hdop.toFixed(1)}` : 'Fix acquired'}
 					</div>
 				{:else if gps.moduleDetected}
 					<div class="status-heading-info">Searching</div>

@@ -851,7 +851,9 @@ static void configureLockoutPipelineModules() {
         lockoutLearner.setTuning(settings.gpsLockoutLearnerPromotionHits,
                                  settings.gpsLockoutLearnerRadiusE5,
                                  settings.gpsLockoutLearnerFreqToleranceMHz,
-                                 settings.gpsLockoutLearnerLearnIntervalHours);
+                                 settings.gpsLockoutLearnerLearnIntervalHours,
+                                 settings.gpsLockoutMaxHdopX10,
+                                 settings.gpsLockoutMinLearnerSpeedMph);
     }
 }
 
