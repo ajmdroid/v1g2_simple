@@ -47,6 +47,13 @@
 	const LEARNER_UNLEARN_COUNT_DEFAULT = 0;
 	const LEARNER_UNLEARN_COUNT_MIN = 0;
 	const LEARNER_UNLEARN_COUNT_MAX = 10;
+	const GPS_MAX_HDOP_X10_DEFAULT = 50;
+	const GPS_MAX_HDOP_X10_MIN = 10;
+	const GPS_MAX_HDOP_X10_MAX = 100;
+	const GPS_MIN_LEARNER_SPEED_MPH_DEFAULT = 5;
+	const GPS_MIN_LEARNER_SPEED_MPH_MIN = 0;
+	const GPS_MIN_LEARNER_SPEED_MPH_MAX = 20;
+	const GPS_MIN_SATELLITES = 4;
 	const MANUAL_DEMOTION_OPTIONS = [0, 10, 25, 50];
 	const DIRECTION_MODE_OPTIONS = [
 		{ value: 'all', label: 'All Directions' },
@@ -147,7 +154,9 @@
 		learnerUnlearnCount: LEARNER_UNLEARN_COUNT_DEFAULT,
 		manualDemotionMissCount: 0,
 		kaLearningEnabled: false,
-		preQuiet: false
+		preQuiet: false,
+		maxHdopX10: GPS_MAX_HDOP_X10_DEFAULT,
+		minLearnerSpeedMph: GPS_MIN_LEARNER_SPEED_MPH_DEFAULT
 	});
 	let lockoutZonesStats = $state({
 		activeCount: 0,
@@ -249,6 +258,14 @@
 			LEARNER_PROMOTION_HITS_MAX,
 			LEARNER_PROMOTION_HITS_DEFAULT
 		);
+	}
+
+	function clampHdopX10(value) {
+		return clampInt(value, GPS_MAX_HDOP_X10_MIN, GPS_MAX_HDOP_X10_MAX, GPS_MAX_HDOP_X10_DEFAULT);
+	}
+
+	function clampMinLearnerSpeed(value) {
+		return clampInt(value, GPS_MIN_LEARNER_SPEED_MPH_MIN, GPS_MIN_LEARNER_SPEED_MPH_MAX, GPS_MIN_LEARNER_SPEED_MPH_DEFAULT);
 	}
 
 	function clampLearnerRadiusE5(value) {
@@ -362,6 +379,22 @@
 					: typeof data?.gpsLockoutPreQuiet === 'boolean'
 						? data.gpsLockoutPreQuiet
 						: false;
+		const maxHdopX10 =
+			typeof lockout.maxHdopX10 === 'number'
+				? lockout.maxHdopX10
+				: typeof data?.lockoutMaxHdopX10 === 'number'
+					? data.lockoutMaxHdopX10
+					: typeof data?.gpsLockoutMaxHdopX10 === 'number'
+						? data.gpsLockoutMaxHdopX10
+						: GPS_MAX_HDOP_X10_DEFAULT;
+		const minLearnerSpeedMph =
+			typeof lockout.minLearnerSpeedMph === 'number'
+				? lockout.minLearnerSpeedMph
+				: typeof data?.lockoutMinLearnerSpeedMph === 'number'
+					? data.lockoutMinLearnerSpeedMph
+					: typeof data?.gpsLockoutMinLearnerSpeedMph === 'number'
+						? data.gpsLockoutMinLearnerSpeedMph
+						: GPS_MIN_LEARNER_SPEED_MPH_DEFAULT;
 		lockoutConfig = {
 			modeRaw: typeof lockout.modeRaw === 'number' ? lockout.modeRaw : 0,
 			coreGuardEnabled: !!lockout.coreGuardEnabled,
@@ -376,7 +409,9 @@
 			learnerUnlearnCount: clampUnlearnCount(learnerUnlearnCount),
 			manualDemotionMissCount: clampManualDemotionMissCount(manualDemotionMissCount),
 			kaLearningEnabled: !!kaLearningEnabled,
-			preQuiet: !!preQuiet
+			preQuiet: !!preQuiet,
+			maxHdopX10: clampHdopX10(maxHdopX10),
+			minLearnerSpeedMph: clampMinLearnerSpeed(minLearnerSpeedMph)
 		};
 		lockoutConfigInitialized = true;
 	}
@@ -480,6 +515,41 @@
 			directionMode: normalizeDirectionMode(zone?.directionMode),
 			headingDeg: headingIsSet ? String(Math.round(zone.headingDeg)) : '',
 			headingToleranceDeg: clampInt(zone?.headingToleranceDeg, 0, 90, 45)
+		};
+		zoneEditorOpen = true;
+	}
+
+	function bandNameToMask(bandName) {
+		if (!bandName || typeof bandName !== 'string') return 0x04;
+		const name = bandName.toUpperCase().trim();
+		if (name === 'KA' || name === 'KA BAND') return 0x02;
+		if (name === 'K' || name === 'K BAND') return 0x04;
+		if (name === 'X' || name === 'X BAND') return 0x08;
+		if (name === 'LASER' || name === 'LA') return 0x01;
+		return 0x04;
+	}
+
+	function openZoneFromObservation(event) {
+		if (!advancedUnlocked) {
+			setMsg('error', 'Unlock advanced writes before creating lockout zones.');
+			return;
+		}
+		if (!event?.locationValid) {
+			setMsg('error', 'Cannot create zone: observation has no GPS fix.');
+			return;
+		}
+		zoneEditorSlot = null;
+		zoneEditor = {
+			latitude: typeof event.latitude === 'number' ? event.latitude.toFixed(5) : '',
+			longitude: typeof event.longitude === 'number' ? event.longitude.toFixed(5) : '',
+			radiusFt: radiusE5ToFeet(LEARNER_RADIUS_E5_DEFAULT),
+			bandMask: bandNameToMask(event.band),
+			frequencyMHz: typeof event.frequencyMHz === 'number' && event.frequencyMHz > 0 ? String(Math.round(event.frequencyMHz)) : '',
+			frequencyToleranceMHz: LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT,
+			confidence: 100,
+			directionMode: 'all',
+			headingDeg: '',
+			headingToleranceDeg: 45
 		};
 		zoneEditorOpen = true;
 	}
@@ -630,7 +700,9 @@
 				clampUnlearnCount(runtime.learnerUnlearnCount) &&
 			clampManualDemotionMissCount(lockoutConfig.manualDemotionMissCount) ===
 				clampManualDemotionMissCount(runtime.manualDemotionMissCount) &&
-			!!lockoutConfig.kaLearningEnabled === !!runtime.kaLearningEnabled
+			!!lockoutConfig.kaLearningEnabled === !!runtime.kaLearningEnabled &&
+			clampHdopX10(lockoutConfig.maxHdopX10) === clampHdopX10(runtime.maxHdopX10) &&
+			clampMinLearnerSpeed(lockoutConfig.minLearnerSpeedMph) === clampMinLearnerSpeed(runtime.minLearnerSpeedMph)
 		);
 	}
 
@@ -805,6 +877,8 @@
 				lockoutConfig.manualDemotionMissCount
 			);
 			const kaLearningEnabled = !!lockoutConfig.kaLearningEnabled;
+			const maxHdopX10 = clampHdopX10(lockoutConfig.maxHdopX10);
+			const minLearnerSpeedMph = clampMinLearnerSpeed(lockoutConfig.minLearnerSpeedMph);
 			const payload = {
 				lockoutMode: modeRaw,
 				lockoutCoreGuardEnabled: !!lockoutConfig.coreGuardEnabled,
@@ -819,7 +893,9 @@
 				lockoutLearnerUnlearnCount: learnerUnlearnCount,
 				lockoutManualDemotionMissCount: manualDemotionMissCount,
 				lockoutKaLearningEnabled: kaLearningEnabled,
-				lockoutPreQuiet: !!lockoutConfig.preQuiet
+				lockoutPreQuiet: !!lockoutConfig.preQuiet,
+				lockoutMaxHdopX10: maxHdopX10,
+				lockoutMinLearnerSpeedMph: minLearnerSpeedMph
 			};
 			const res = await fetchWithTimeout('/api/gps/config', {
 				method: 'POST',
@@ -847,6 +923,8 @@
 			lockoutConfig.manualDemotionMissCount = manualDemotionMissCount;
 			lockoutConfig.kaLearningEnabled = kaLearningEnabled;
 			lockoutConfig.preQuiet = !!lockoutConfig.preQuiet;
+			lockoutConfig.maxHdopX10 = maxHdopX10;
+			lockoutConfig.minLearnerSpeedMph = minLearnerSpeedMph;
 			lockoutConfigDirty = false;
 			setMsg('success', 'Lockout runtime settings updated');
 			await Promise.all([fetchGpsStatus(), fetchLockoutZones({ silent: true })]);
@@ -1057,6 +1135,45 @@
 		<div class="surface-card">
 		<div class="card-body gap-3">
 			<CardSectionHead
+				title="GPS Quality"
+				subtitle="Live GPS fix quality determines whether lockout evaluation and learning are active."
+			/>
+			<div class="surface-stats">
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Satellites</div>
+					<div class="stat-value text-base" class:text-error={typeof gpsStatus?.satellites === 'number' && gpsStatus.satellites < GPS_MIN_SATELLITES} class:text-success={typeof gpsStatus?.satellites === 'number' && gpsStatus.satellites >= GPS_MIN_SATELLITES}>
+						{typeof gpsStatus?.satellites === 'number' ? gpsStatus.satellites : '—'}
+					</div>
+					<div class="stat-desc">min {GPS_MIN_SATELLITES} required</div>
+				</div>
+				<div class="stat py-3 px-4">
+					<div class="stat-title">HDOP</div>
+					<div class="stat-value text-base" class:text-error={typeof gpsStatus?.hdop === 'number' && gpsStatus.hdop > lockoutConfig.maxHdopX10 / 10} class:text-success={typeof gpsStatus?.hdop === 'number' && gpsStatus.hdop <= lockoutConfig.maxHdopX10 / 10}>
+						{formatHdop(gpsStatus?.hdop)}
+					</div>
+					<div class="stat-desc">max {(lockoutConfig.maxHdopX10 / 10).toFixed(1)} allowed</div>
+				</div>
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Speed</div>
+					<div class="stat-value text-base" class:text-warning={typeof gpsStatus?.speedMph === 'number' && lockoutConfig.minLearnerSpeedMph > 0 && gpsStatus.speedMph < lockoutConfig.minLearnerSpeedMph}>
+						{typeof gpsStatus?.speedMph === 'number' ? `${Math.round(gpsStatus.speedMph)} mph` : '—'}
+					</div>
+					<div class="stat-desc">{lockoutConfig.minLearnerSpeedMph > 0 ? `min ${lockoutConfig.minLearnerSpeedMph} mph for learning` : 'no speed gate'}</div>
+				</div>
+				<div class="stat py-3 px-4">
+					<div class="stat-title">Fix</div>
+					<div class="stat-value text-base" class:text-success={gpsStatus?.hasFix} class:text-error={!gpsStatus?.hasFix}>
+						{gpsStatus?.hasFix ? 'Yes' : 'No'}
+					</div>
+					<div class="stat-desc">{gpsStatus?.locationValid ? 'location valid' : 'no position'}</div>
+				</div>
+			</div>
+		</div>
+		</div>
+
+		<div class="surface-card">
+		<div class="card-body gap-3">
+			<CardSectionHead
 				title="Lockout Runtime Controls"
 				subtitle="Live runtime controls currently available in firmware."
 			>
@@ -1083,7 +1200,7 @@
 			</CardSectionHead>
 
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-				<label class="form-control">
+				<label class="form-control" class:ring-2={lockoutConfig.modeRaw === 3} class:ring-error={lockoutConfig.modeRaw === 3} class:rounded-lg={lockoutConfig.modeRaw === 3} class:p-2={lockoutConfig.modeRaw === 3}>
 					<span class="label-text-field">Mode</span>
 					<select
 						class="select select-bordered select-sm"
@@ -1096,9 +1213,19 @@
 						<option value={2}>Advisory (read-only)</option>
 						<option value={3}>Enforce (risk: can mute alerts)</option>
 					</select>
+					<p class="copy-caption-soft mt-1">Off: disabled. Shadow: logs only. Advisory: visual-only. Enforce: actually mutes locked-out signals.</p>
+					{#if lockoutConfig.modeRaw === 3}
+						<p class="copy-warning mt-1">⚠ Enforce mode will mute alerts matching lockout zones. Bad lockouts = missed threats.</p>
+					{/if}
 				</label>
-				<label class="label cursor-pointer justify-start gap-3 py-0">
-					<span class="label-text-field">Core guard</span>
+				<label class="label cursor-pointer justify-start gap-3 py-0" class:ring-2={!lockoutConfig.coreGuardEnabled} class:ring-warning={!lockoutConfig.coreGuardEnabled} class:rounded-lg={!lockoutConfig.coreGuardEnabled} class:p-2={!lockoutConfig.coreGuardEnabled}>
+					<div>
+						<span class="label-text-field">Core guard</span>
+						<p class="copy-caption-soft">Safety circuit breaker. Disables lockout enforcement if system performance degrades (queue/perf/event-bus drops).</p>
+						{#if !lockoutConfig.coreGuardEnabled}
+							<p class="copy-warning mt-1">⚠ Core guard disabled — lockouts continue even during system issues.</p>
+						{/if}
+					</div>
 					<input
 						type="checkbox"
 						class="toggle toggle-primary toggle-sm"
@@ -1130,6 +1257,7 @@
 				{/if}
 				<label class="form-control">
 					<span class="label-text-field">Max queue drops (0 = strictest)</span>
+					<p class="copy-caption-soft">Trip core guard after this many alert-queue drops. 0 trips on the very first drop.</p>
 					<input
 						type="number"
 						min="0"
@@ -1145,6 +1273,7 @@
 				</label>
 				<label class="form-control">
 					<span class="label-text-field">Max perf drops (0 = strictest)</span>
+					<p class="copy-caption-soft">Trip core guard after this many performance-budget drops.</p>
 					<input
 						type="number"
 						min="0"
@@ -1160,6 +1289,7 @@
 				</label>
 				<label class="form-control">
 					<span class="label-text-field">Max event-bus drops (0 = strictest)</span>
+					<p class="copy-caption-soft">Trip core guard after this many system event-bus drops.</p>
 					<input
 						type="number"
 						min="0"
@@ -1217,6 +1347,7 @@
 				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
 					<label class="form-control">
 						<span class="label-text-field">Hits to promote</span>
+						<p class="copy-caption-soft">Times a signal must be seen at a location before it becomes a lockout zone ({LEARNER_PROMOTION_HITS_MIN}–{LEARNER_PROMOTION_HITS_MAX}).</p>
 						<input
 							type="number"
 							min={LEARNER_PROMOTION_HITS_MIN}
@@ -1232,6 +1363,7 @@
 					</label>
 					<label class="form-control">
 						<span class="label-text-field">Learn interval (hours, 0 = disabled)</span>
+						<p class="copy-caption-soft">Minimum time between counting hits. Prevents one long stoplight from instantly promoting.</p>
 						<select
 							class="select select-bordered select-sm"
 							value={lockoutConfig.learnerLearnIntervalHours}
@@ -1250,6 +1382,7 @@
 					</label>
 					<label class="form-control">
 						<span class="label-text-field">Drift tolerance (MHz)</span>
+						<p class="copy-caption-soft">How far a signal's frequency can drift and still match a zone ({LEARNER_FREQ_TOLERANCE_MHZ_MIN}–{LEARNER_FREQ_TOLERANCE_MHZ_MAX} MHz).</p>
 						<input
 							type="number"
 							min={LEARNER_FREQ_TOLERANCE_MHZ_MIN}
@@ -1267,6 +1400,7 @@
 					</label>
 					<label class="form-control">
 						<span class="label-text-field">Lockout radius (ft)</span>
+						<p class="copy-caption-soft">Radius around the zone center. Signals inside this circle are considered matches ({radiusE5ToFeet(LEARNER_RADIUS_E5_MIN)}–{radiusE5ToFeet(LEARNER_RADIUS_E5_MAX)} ft).</p>
 						<input
 							type="number"
 							min={radiusE5ToFeet(LEARNER_RADIUS_E5_MIN)}
@@ -1282,6 +1416,7 @@
 					</label>
 					<label class="form-control">
 						<span class="label-text-field">Unlearn count (0 = legacy)</span>
+						<p class="copy-caption-soft">Consecutive drives without seeing the signal before a zone is demoted. 0 = never unlearn.</p>
 						<input
 							type="number"
 							min={LEARNER_UNLEARN_COUNT_MIN}
@@ -1297,6 +1432,7 @@
 					</label>
 					<label class="form-control">
 						<span class="label-text-field">Unlearn interval (hours, 0 = disabled)</span>
+						<p class="copy-caption-soft">Minimum time between counting unlearn misses. Prevents a single drive from removing zones.</p>
 						<select
 							class="select select-bordered select-sm"
 							value={lockoutConfig.learnerUnlearnIntervalHours}
@@ -1315,6 +1451,7 @@
 					</label>
 					<label class="form-control">
 						<span class="label-text-field">Manual delete misses (0 = disabled)</span>
+						<p class="copy-caption-soft">Manual zones removed after this many consecutive misses. 0 = manual zones persist forever.</p>
 						<select
 							class="select select-bordered select-sm"
 							value={lockoutConfig.manualDemotionMissCount}
@@ -1332,8 +1469,11 @@
 						</select>
 					</label>
 				</div>
-				<label class="label cursor-pointer justify-start gap-3 py-0">
-					<span class="label-text-field">Ka lockout learning (high risk)</span>
+				<label class="label cursor-pointer justify-start gap-3 py-0 ring-2 ring-error rounded-lg p-2" class:ring-2={lockoutConfig.kaLearningEnabled} class:ring-error={lockoutConfig.kaLearningEnabled}>
+					<div>
+						<span class="label-text-field">Ka lockout learning (high risk)</span>
+						<p class="copy-caption-soft">Allow the learner to create lockout zones for Ka-band signals. Ka is where real radar threats live.</p>
+					</div>
 					<input
 						type="checkbox"
 						class="toggle toggle-warning toggle-sm"
@@ -1344,15 +1484,69 @@
 						}}
 					/>
 				</label>
-				<div class="copy-warning">
-					Disabled by default. Enabling Ka learning can suppress real Ka threats if lockouts are wrong.
+				{#if lockoutConfig.kaLearningEnabled}
+					<div class="copy-warning">⚠ Ka learning active — lockouts can suppress real Ka radar threats if zones are wrong.</div>
+				{:else}
+					<div class="copy-caption-soft">Ka learning disabled (recommended). Ka signals are not auto-locked.</div>
+				{/if}
+
+				<div class="divider text-xs my-1">GPS Quality Gates</div>
+				<div class="copy-caption-soft mb-1">
+					These gates prevent bad GPS data from creating inaccurate lockout zones. The learner ignores signals when GPS quality is below these thresholds.
 				</div>
+				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+					<label class="form-control">
+						<span class="label-text-field">Max HDOP (×10)</span>
+						<p class="copy-caption-soft">Maximum horizontal dilution of precision. Lower = stricter. {GPS_MAX_HDOP_X10_MIN / 10}–{GPS_MAX_HDOP_X10_MAX / 10} HDOP (stored as ×10: {GPS_MAX_HDOP_X10_MIN}–{GPS_MAX_HDOP_X10_MAX}).</p>
+						<input
+							type="number"
+							min={GPS_MAX_HDOP_X10_MIN}
+							max={GPS_MAX_HDOP_X10_MAX}
+							class="input input-bordered input-sm"
+							value={lockoutConfig.maxHdopX10}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.maxHdopX10 = clampHdopX10(e.currentTarget.value);
+								markLockoutDirty();
+							}}
+						/>
+					</label>
+					<label class="form-control">
+						<span class="label-text-field">Min learner speed (mph)</span>
+						<p class="copy-caption-soft">Ignore signal observations below this speed. Prevents learning while parked near a false source. 0 = disabled ({GPS_MIN_LEARNER_SPEED_MPH_MIN}–{GPS_MIN_LEARNER_SPEED_MPH_MAX} mph).</p>
+						<input
+							type="number"
+							min={GPS_MIN_LEARNER_SPEED_MPH_MIN}
+							max={GPS_MIN_LEARNER_SPEED_MPH_MAX}
+							class="input input-bordered input-sm"
+							value={lockoutConfig.minLearnerSpeedMph}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.minLearnerSpeedMph = clampMinLearnerSpeed(e.currentTarget.value);
+								markLockoutDirty();
+							}}
+						/>
+					</label>
+					<div class="form-control">
+						<span class="label-text-field">Min satellites</span>
+						<p class="copy-caption-soft">Minimum satellites for a 3D fix. Hardcoded to {GPS_MIN_SATELLITES} (not configurable).</p>
+						<input
+							type="number"
+							class="input input-bordered input-sm"
+							value={GPS_MIN_SATELLITES}
+							disabled
+						/>
+					</div>
+				</div>
+
 				<div class="copy-meta">
 					Runtime learner: {runtimeLearnerHits()} hits · interval {formatIntervalLabel(runtimeLearnerLearnIntervalHours())}
 					· ±{runtimeLearnerFreqToleranceMHz()} MHz · {runtimeLearnerRadiusFeetText()}
 					· unlearn {runtimeLearnerUnlearnCount()} misses / {formatIntervalLabel(runtimeLearnerUnlearnIntervalHours())}
 					· manual delete {runtimeManualDemotionMissCount() || 'disabled'}
 					· Ka learning {gpsStatus?.lockout?.kaLearningEnabled ? 'enabled' : 'disabled'}
+					· HDOP gate {lockoutConfig.maxHdopX10 / 10} · speed gate {lockoutConfig.minLearnerSpeedMph > 0 ? `${lockoutConfig.minLearnerSpeedMph} mph` : 'off'}
+					· min sats {GPS_MIN_SATELLITES}
 					· candidate expiry: 7 days
 				</div>
 			</div>
@@ -1661,6 +1855,7 @@
 								<th>Sats</th>
 								<th>HDOP</th>
 								<th>Location</th>
+								<th>Action</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -1671,8 +1866,8 @@
 									<td>{formatRoundedFrequencyMhz(event.frequencyMHz)}</td>
 									<td>{typeof event.strength === 'number' ? event.strength : '—'}</td>
 									<td>{formatFixAgeMs(event.fixAgeMs)}</td>
-									<td>{typeof event.satellites === 'number' ? event.satellites : '—'}</td>
-									<td>{formatHdop(event.hdop)}</td>
+									<td class:text-error={typeof event.satellites === 'number' && event.satellites < GPS_MIN_SATELLITES}>{typeof event.satellites === 'number' ? event.satellites : '—'}</td>
+									<td class:text-error={typeof event.hdop === 'number' && event.hdop > lockoutConfig.maxHdopX10 / 10}>{formatHdop(event.hdop)}</td>
 									<td>
 										{#if event.locationValid}
 											<div class="font-mono text-xs">
@@ -1685,6 +1880,19 @@
 											{/if}
 										{:else}
 											<span class="copy-caption">no fix</span>
+										{/if}
+									</td>
+									<td>
+										{#if event.locationValid}
+											<button
+												class="btn btn-xs btn-primary btn-outline"
+												onclick={() => openZoneFromObservation(event)}
+												disabled={!advancedUnlocked || zoneEditorSaving}
+											>
+												Lock Out
+											</button>
+										{:else}
+											<span class="copy-caption">—</span>
 										{/if}
 									</td>
 								</tr>
