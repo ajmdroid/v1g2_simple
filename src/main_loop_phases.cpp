@@ -4,11 +4,9 @@
 #include "ble_client.h"
 #include "modules/system/loop_tail_module.h"
 #include "modules/system/periodic_maintenance_module.h"
-#include "modules/voice/voice_speed_sync_module.h"
 #include "modules/wifi/wifi_runtime_module.h"
 #include "../include/config.h"
 
-extern VoiceSpeedSyncModule voiceSpeedSyncModule;
 extern LoopConnectionEarlyModule loopConnectionEarlyModule;
 extern LoopSettingsPrepModule loopSettingsPrepModule;
 extern LoopPreIngestModule loopPreIngestModule;
@@ -96,9 +94,6 @@ LoopDisplayPreWifiPhaseValues processLoopDisplayPreWifiPhase(
     const bool enableSignalTraceLogging,
     const bool skipLateNonCoreThisLoop,
     void (*runDisplayPipeline)(uint32_t nowMs, bool lockoutPrioritySuppressed)) {
-    VoiceSpeedSyncContext voiceSpeedSyncCtx;
-    voiceSpeedSyncCtx.nowMs = nowMs;
-    voiceSpeedSyncModule.process(voiceSpeedSyncCtx);
 
     LoopDisplayContext loopDisplayCtx;
     loopDisplayCtx.nowMs = nowMs;

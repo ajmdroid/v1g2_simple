@@ -35,7 +35,6 @@ public:
     void begin(bool gpsEnabled);
     void setGpsEnabled(bool enabled);
 
-    bool select(uint32_t nowMs, SpeedSelection& selection);
     SpeedSelectorStatus snapshot(uint32_t nowMs) const;
 
     static const char* sourceName(SpeedSource source);

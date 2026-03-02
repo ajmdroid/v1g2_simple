@@ -69,7 +69,6 @@
 #include "modules/system/loop_post_display_module.h"
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
-#include "modules/voice/voice_speed_sync_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
@@ -109,7 +108,6 @@ AlertPersistenceModule alertPersistenceModule;
 
 // Voice Module - handles voice announcement decisions
 VoiceModule voiceModule;
-VoiceSpeedSyncModule voiceSpeedSyncModule;
 
 static bool bootReady = false;
 static unsigned long bootReadyDeadlineMs = 0;
@@ -358,22 +356,6 @@ static void configureLoopPostDisplayModule() {
         };
     loopPostDisplayProviders.connectionDispatchContext = &connectionStateDispatchModule;
     loopPostDisplayModule.begin(loopPostDisplayProviders);
-}
-
-static void configureVoiceSpeedSyncModule() {
-    VoiceSpeedSyncModule::Providers voiceSpeedSyncProviders;
-    voiceSpeedSyncProviders.selectSpeedSample = [](void* ctx, uint32_t nowMs, SpeedSelection& selection) {
-        return static_cast<SpeedSourceSelector*>(ctx)->select(nowMs, selection);
-    };
-    voiceSpeedSyncProviders.speedSelectorContext = &speedSourceSelector;
-    voiceSpeedSyncProviders.updateVoiceSpeedSample = [](void* ctx, float speedMph, uint32_t timestampMs) {
-        static_cast<VoiceModule*>(ctx)->updateSpeedSample(speedMph, timestampMs);
-    };
-    voiceSpeedSyncProviders.clearVoiceSpeedSample = [](void* ctx) {
-        static_cast<VoiceModule*>(ctx)->clearSpeedSample();
-    };
-    voiceSpeedSyncProviders.voiceContext = &voiceModule;
-    voiceSpeedSyncModule.begin(voiceSpeedSyncProviders);
 }
 
 static void configureWifiRuntimeModule() {
@@ -849,7 +831,8 @@ static void configureRuntimeSensorModules() {
 }
 
 static void configureRuntimeAssistModules() {
-    configureVoiceSpeedSyncModule();
+    // Speed sync removed — SpeedSourceSelector::select() was a no-op
+    // since OBD removal. Voice speed cache is now unused.
 }
 
 static void configureRuntimeCoreModules() {
