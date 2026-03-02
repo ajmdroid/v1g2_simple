@@ -18,15 +18,9 @@
 // Firmware Version
 #define FIRMWARE_VERSION "4.0.0-dev"
 
-// Board-specific Power Management (Waveshare only)
+// Board-specific Display
 // Waveshare ESP32-S3-Touch-LCD-3.49
-// Note: PIN_POWER_ON is not used on this board - power latch is handled
-// via TCA9554 I/O expander in batteryManager.begin()
-#define PIN_POWER_ON    -1
 #define DISPLAY_ROTATION    1     // Landscape mode (90 degree rotation)
-
-// Default Brightness
-#define DEFAULT_BRIGHTNESS  200   // 0-255
 
 // BLE Configuration
 #define V1_SERVICE_UUID         "92A0AFF4-9E05-11E2-AA59-F23C91AEC05E"
@@ -58,22 +52,8 @@
 #define PACKET_ID_RESP_USER_BYTES  0x12  // respUserBytes
 #define PACKET_ID_WRITE_USER_BYTES 0x13  // reqWriteUserBytes
 
-// Display Layout (pixels in landscape 640x172)
-#define BAND_Y              20
-#define BAND_SPACING        80
-#define ARROW_Y             70
-#define BARS_Y              110   // Vertical bar origin Y
-#define BAR_WIDTH           30
-#define BAR_HEIGHT          40
-#define BAR_SPACING         5
-#define MAX_SIGNAL_BARS     6
-
 // Timing
 #define DISPLAY_UPDATE_MS   50    // Update display every 50ms (snappier response)
-#define STATUS_UPDATE_MS    1000  // Update status indicators every second
-
-// Mute override - force unmute at this signal level (bars out of 6)
-#define STRONG_SIGNAL_UNMUTE_THRESHOLD  5
 
 // Development/Testing Features
 // Uncomment to enable packet replay mode for UI testing without BLE
