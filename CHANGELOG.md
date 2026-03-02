@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 **Module Extraction (625 commits since 2026-02-15)**
-- Extracted 18 module directories under `src/modules/` (156 files, ~21,400 lines).
-- Loop phase orchestration extracted to `main_loop_phases.cpp` (210 lines) with 10 phase-router modules (`LoopIngestModule`, `LoopConnectionEarlyModule`, `LoopDisplayModule`, etc.).
+- Extracted 15 module directories under `src/modules/` (139 files, ~17,500 lines).
+- Loop phase orchestration extracted to `main_loop_phases.cpp` (~190 lines) with 10 phase-router modules (`LoopIngestModule`, `LoopConnectionEarlyModule`, `LoopDisplayModule`, etc.).
 - Core service splits: `ble_runtime.cpp` (511 lines), `packet_parser_alerts.cpp` (582 lines), `settings_restore.cpp` (782 lines).
 - Boot-time helpers extracted to `main_boot.cpp` (248 lines).
 - Lockout/learner save state machines extracted to `main_persist.cpp` (445 lines).
@@ -22,10 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Speed-volume runtime, speaker-quiet sync, and voice-speed sync modules added.
 - `SystemEventBus` and `PeriodicMaintenanceModule` for cross-cutting concerns.
 - `DebugPerfFilesService` extracted from debug API for perf-file management.
-- 8 CI contract scripts with 10 golden-file snapshots enforcing architectural invariants.
+- 8 CI contract scripts enforcing architectural invariants.
 
 **Quality + Runtime Hardening**
-- Expanded to 85 native test suites, 934 test cases (`pio test -e native`).
+- Expanded to 76 native test suites, 939 test cases (`pio test -e native`).
 - Drive-scenario integration tests (15 scenarios).
 - Lockout runtime stack fully integrated (capture, learner, enforcer, store/index, zone APIs).
 - Heap safety hardened with RAII ownership and teardown guards.
@@ -87,7 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| 4.0.0-dev | 2026-02-25 | Modular architecture, 156 module files, 934 tests, CI contracts |
+| 4.0.0-dev | 2026-02-25 | Modular architecture, 139 module files, 939 tests, CI contracts |
 | 3.0.7 | 2026 | Quality baseline before 4.x refactors |
 | 3.0.x | 2024 | Auto-lockout improvements |
 | 2.x.x | 2024 | Auto-lockout, profiles |
