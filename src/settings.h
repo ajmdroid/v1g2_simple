@@ -32,7 +32,6 @@ class V1ProfileManager;
 // WiFi mode options (prefixed to avoid conflicts with ESP SDK)
 enum WiFiModeSetting {
     V1_WIFI_OFF = 0,        // WiFi disabled
-    V1_WIFI_STA = 1,        // Connect to existing network
     V1_WIFI_AP = 2,         // Create access point
     V1_WIFI_APSTA = 3       // Both modes
 };
@@ -48,8 +47,6 @@ enum V1Mode {
 // Display style (font selection)
 enum DisplayStyle {
     DISPLAY_STYLE_CLASSIC = 0,   // 7-segment style (original V1 look)
-    DISPLAY_STYLE_MODERN = 1,    // Montserrat Bold font
-    DISPLAY_STYLE_HEMI = 2,      // Hemi Head font (retro speedometer style)
     DISPLAY_STYLE_SERPENTINE = 3 // Serpentine font (JB's favorite)
 };
 
