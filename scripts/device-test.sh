@@ -40,6 +40,7 @@ SOAK_MIN_DISPLAY_UPDATES_DELTA=1
 IGNORE_GPS_ERRORS="${REAL_FW_IGNORE_GPS_ERRORS:-0}"
 
 RAD_SCENARIO_ID="RAD-03"
+RAD_DURATION_SCALE_PCT="${REAL_FW_RAD_DURATION_SCALE_PCT:-100}"
 RAD_MIN_RX_DELTA=20
 RAD_MIN_PARSE_SUCCESS_DELTA=20
 RAD_MIN_DISPLAY_UPDATES_DELTA=10
@@ -114,6 +115,7 @@ Options:
   --skip-flash                   Skip firmware flash before soak runs (default)
   --with-flash                   Flash before soak runs
   --rad-scenario ID              Short radar scenario ID (default: RAD-03)
+  --rad-duration-scale-pct N     RAD scenario duration scale percent (default: 100)
   --ignore-gps-errors            Suppress GPS advisory warnings in soak scoring
   --no-auto-kill-monitor         Do not auto-stop pio device monitor when port is busy
   --out-dir PATH                 Write reports to PATH
@@ -327,9 +329,9 @@ run_rad_short_test() {
 
   local rad_log="$OUT_DIR/${test_name}.log"
   local cmd_text
-  cmd_text="$(shell_join python3 - "$debug_base" "$RAD_SCENARIO_ID" "$RAD_MIN_RX_DELTA" "$RAD_MIN_PARSE_SUCCESS_DELTA" "$RAD_MIN_DISPLAY_UPDATES_DELTA" "$HTTP_TIMEOUT_SECONDS")"
+  cmd_text="$(shell_join python3 - "$debug_base" "$RAD_SCENARIO_ID" "$RAD_MIN_RX_DELTA" "$RAD_MIN_PARSE_SUCCESS_DELTA" "$RAD_MIN_DISPLAY_UPDATES_DELTA" "$HTTP_TIMEOUT_SECONDS" "$RAD_DURATION_SCALE_PCT")"
   local rc
-  if python3 - "$debug_base" "$RAD_SCENARIO_ID" "$RAD_MIN_RX_DELTA" "$RAD_MIN_PARSE_SUCCESS_DELTA" "$RAD_MIN_DISPLAY_UPDATES_DELTA" "$HTTP_TIMEOUT_SECONDS" >"$rad_log" <<'PY'
+  if python3 - "$debug_base" "$RAD_SCENARIO_ID" "$RAD_MIN_RX_DELTA" "$RAD_MIN_PARSE_SUCCESS_DELTA" "$RAD_MIN_DISPLAY_UPDATES_DELTA" "$HTTP_TIMEOUT_SECONDS" "$RAD_DURATION_SCALE_PCT" >"$rad_log" <<'PY'
 import json
 import sys
 import time
@@ -341,6 +343,7 @@ min_rx = int(sys.argv[3])
 min_parse = int(sys.argv[4])
 min_display = int(sys.argv[5])
 timeout = int(sys.argv[6])
+scale_pct = int(sys.argv[7])
 
 def get_json(path):
     req = urllib.request.Request(base + path, method="GET")
@@ -372,7 +375,7 @@ try:
         "id": scenario_id,
         "loop": False,
         "streamRepeatMs": 700,
-        "durationScalePct": 100,
+        "durationScalePct": scale_pct,
     })
 
     status = {}
@@ -419,6 +422,7 @@ try:
         reasons.append(f"displayUpdates delta {delta['displayUpdates']} < {min_display}")
 
     print(f"scenario={scenario_id}")
+    print(f"durationScalePct={scale_pct}")
     print(f"start_success={int(bool(start_resp.get('success')))} reset_success={int(bool(reset_resp.get('success')))} completedRuns={status.get('completedRuns', 'n/a')} events={status.get('eventsEmitted', 'n/a')}/{status.get('eventsTotal', 'n/a')} durationMs={status.get('durationMs', 'n/a')}")
     print(f"delta_rxPackets={delta['rxPackets']} delta_parseSuccesses={delta['parseSuccesses']} delta_parseFailures={delta['parseFailures']} delta_displayUpdates={delta['displayUpdates']}")
     print(f"peak_dispPipeMaxUs={post['dispPipeMaxUs']} peak_wifiMaxUs={post['wifiMaxUs']}")
@@ -478,6 +482,11 @@ while [[ $# -gt 0 ]]; do
       RAD_SCENARIO_ID="$2"
       shift
       ;;
+    --rad-duration-scale-pct)
+      [[ $# -lt 2 ]] && { echo "Missing value for --rad-duration-scale-pct" >&2; exit 2; }
+      RAD_DURATION_SCALE_PCT="$2"
+      shift
+      ;;
     --ignore-gps-errors)
       IGNORE_GPS_ERRORS=1
       ;;
@@ -505,7 +514,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-for n in "$DURATION_SECONDS" "$HTTP_TIMEOUT_SECONDS" "$RAD_MIN_RX_DELTA" "$RAD_MIN_PARSE_SUCCESS_DELTA" "$RAD_MIN_DISPLAY_UPDATES_DELTA"; do
+for n in "$DURATION_SECONDS" "$HTTP_TIMEOUT_SECONDS" "$RAD_MIN_RX_DELTA" "$RAD_MIN_PARSE_SUCCESS_DELTA" "$RAD_MIN_DISPLAY_UPDATES_DELTA" "$RAD_DURATION_SCALE_PCT"; do
   if ! is_uint "$n"; then
     echo "Invalid numeric option value '$n'." >&2
     exit 2
@@ -517,6 +526,10 @@ if [[ "$DURATION_SECONDS" -lt 1 ]]; then
 fi
 if [[ "$HTTP_TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "--http-timeout-seconds must be >= 1." >&2
+  exit 2
+fi
+if [[ "$RAD_DURATION_SCALE_PCT" -lt 25 || "$RAD_DURATION_SCALE_PCT" -gt 1000 ]]; then
+  echo "--rad-duration-scale-pct must be in 25..1000." >&2
   exit 2
 fi
 
@@ -544,7 +557,7 @@ echo "  soak profile: $SOAK_PROFILE"
 echo "  soak robust gate: mode=$SOAK_LATENCY_GATE_MODE minSamples=$SOAK_LATENCY_ROBUST_MIN_SAMPLES maxExceedPct=$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT wifiSkipFirst=$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES"
 echo "  soak require-metrics: yes (min ok samples=$SOAK_MIN_METRICS_OK_SAMPLES)"
 echo "  display drive: displayInterval=${SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=$SOAK_MIN_DISPLAY_UPDATES_DELTA"
-echo "  RAD scenario: $RAD_SCENARIO_ID (rx>=$RAD_MIN_RX_DELTA parse>=$RAD_MIN_PARSE_SUCCESS_DELTA display>=$RAD_MIN_DISPLAY_UPDATES_DELTA parseFail==0)"
+echo "  RAD scenario: $RAD_SCENARIO_ID scalePct=$RAD_DURATION_SCALE_PCT (rx>=$RAD_MIN_RX_DELTA parse>=$RAD_MIN_PARSE_SUCCESS_DELTA display>=$RAD_MIN_DISPLAY_UPDATES_DELTA parseFail==0)"
 echo "  out dir: $OUT_DIR"
 echo ""
 
@@ -644,7 +657,7 @@ fi
   echo "- Soak metrics required: yes (\`--min-metrics-ok-samples $SOAK_MIN_METRICS_OK_SAMPLES\`)"
   echo "- Soak robust latency gate: \`mode=$SOAK_LATENCY_GATE_MODE min_samples=$SOAK_LATENCY_ROBUST_MIN_SAMPLES max_exceed_pct=$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT wifi_skip_first=$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES\`"
   echo "- Display drive defaults: \`display_interval_s=$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS min_display_updates_delta=$SOAK_MIN_DISPLAY_UPDATES_DELTA\`"
-  echo "- RAD short default gates: \`scenario=$RAD_SCENARIO_ID rx_delta>=$RAD_MIN_RX_DELTA parse_success_delta>=$RAD_MIN_PARSE_SUCCESS_DELTA display_updates_delta>=$RAD_MIN_DISPLAY_UPDATES_DELTA parse_fail_delta==0\`"
+  echo "- RAD short default gates: \`scenario=$RAD_SCENARIO_ID duration_scale_pct=$RAD_DURATION_SCALE_PCT rx_delta>=$RAD_MIN_RX_DELTA parse_success_delta>=$RAD_MIN_PARSE_SUCCESS_DELTA display_updates_delta>=$RAD_MIN_DISPLAY_UPDATES_DELTA parse_fail_delta==0\`"
   echo ""
   echo "## Item Results"
   echo ""
