@@ -47,7 +47,7 @@ public:
     /// Run the full lockout pipeline for one parsed BLE frame.
     /// @param nowMs                Current millis() timestamp
     /// @param gpsStatus            Current GPS snapshot
-    /// @param proxyClientConnected True when a proxy (JBV1) client is connected
+    /// @param proxyClientConnected True when a proxy (app) client is connected
     /// @param enableSignalTrace    Settings flag for signal trace logging
     LockoutOrchestrationResult process(uint32_t nowMs,
                                        const GpsRuntimeStatus& gpsStatus,

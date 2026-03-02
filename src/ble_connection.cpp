@@ -803,7 +803,7 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
         }
     }
 
-    // PERFORMANCE: Forward to proxy IMMEDIATELY - zero latency path to JBV1
+    // PERFORMANCE: Forward to proxy IMMEDIATELY - zero latency path to app
     // NimBLE handles thread safety for server notifications
     instancePtr->forwardToProxyImmediate(pData, length, routeCharId);
     

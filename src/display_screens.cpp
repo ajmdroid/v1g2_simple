@@ -176,7 +176,7 @@ void V1Display::showScanning() {
         fontMgr.ensureSerpentineLoaded(tft);
     }
     if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && fontMgr.serpentineReady) {
-        // Serpentine style: JB's favorite font
+        // Serpentine style font
         const int fontSize = 65;
         fontMgr.serpentine.setFontColor(s.colorBandKa, PALETTE_BG);
         fontMgr.serpentine.setFontSize(fontSize);
@@ -196,7 +196,7 @@ void V1Display::showScanning() {
         fontMgr.serpentine.setCursor(x, y);
         fontMgr.serpentine.printf("%s", text);
     } else if (fontMgr.segment7Ready) {
-        // Classic style: use Segment7 TTF font (JBV1 style)
+        // Classic style: use Segment7 TTF font
         const int fontSize = 65;
         const int leftMargin = 135;  // Match frequency positioning
         const int rightMargin = 200;

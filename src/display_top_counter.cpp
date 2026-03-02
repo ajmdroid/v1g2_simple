@@ -257,7 +257,7 @@ int V1Display::draw14SegmentText(const char* text, int x, int y, float scale, ui
 // ---------------------------------------------------------------------------
 
 // Classic 7-segment bogey counter (original V1 style)
-// Uses Segment7 TTF font (JBV1 style) if available, falls back to software renderer
+// Uses Segment7 TTF font if available, falls back to software renderer
 void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     // Change detection: skip redraw if nothing changed
     static char lastSymbol = '\0';
@@ -304,7 +304,7 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
 
     bool drewWithOfr = false;
     if (fontMgr.topCounterReady) {
-        // Use Segment7 TTF font (JBV1 style) as the primary renderer for bogey symbols.
+        // Use Segment7 TTF font as the primary renderer for bogey symbols.
         //
         // IMPORTANT: compute bounds just-in-time on the same dedicated OFR
         // instance used for top-counter drawing. This avoids cross-talk with

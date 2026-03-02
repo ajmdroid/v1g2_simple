@@ -23,7 +23,7 @@ struct DisplayFontManager {
 
     // ----- Renderers (4 instances) -------------------------------------
     OpenFontRender modern;      // Montserrat Bold — battery percentage text
-    OpenFontRender segment7;    // Classic style (Segment7 - JBV1)
+    OpenFontRender segment7;    // Classic style (Segment7)
     OpenFontRender topCounter;  // Dedicated Segment7 renderer for top counter
     OpenFontRender serpentine;  // Serpentine style (lazy-loaded on first demand)
 

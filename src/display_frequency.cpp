@@ -68,7 +68,7 @@ void V1Display::markFrequencyDirtyRegion(int16_t x, int16_t y, int16_t w, int16_
 
 // ---------------------------------------------------------------------------
 // Classic 7-segment frequency display (original V1 style)
-// Uses Segment7 TTF font (JBV1 style) if available, falls back to software renderer
+// Uses Segment7 TTF font if available, falls back to software renderer
 // ---------------------------------------------------------------------------
 
 void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
@@ -145,7 +145,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
     }
 
     if (usingOfr) {
-        // Use Segment7 TTF font (JBV1 style)
+        // Use Segment7 TTF font
         const int fontSize = 75;
 
         const int leftMargin = 135;   // After band indicators (avoid clipping Ka)
@@ -253,7 +253,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
 }
 
 // ---------------------------------------------------------------------------
-// Serpentine frequency display — JB's favorite font
+// Serpentine frequency display
 // ---------------------------------------------------------------------------
 
 void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {

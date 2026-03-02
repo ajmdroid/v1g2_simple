@@ -47,7 +47,7 @@ enum V1Mode {
 // Display style (font selection)
 enum DisplayStyle {
     DISPLAY_STYLE_CLASSIC = 0,   // 7-segment style (original V1 look)
-    DISPLAY_STYLE_SERPENTINE = 3 // Serpentine font (JB's favorite)
+    DISPLAY_STYLE_SERPENTINE = 3 // Serpentine font
 };
 
 // Project currently supports only Classic and Serpentine in active UI/boot paths.
@@ -170,7 +170,7 @@ struct V1Settings {
     // NOTE: wifiClientPassword stored separately in secure NVS namespace
     
     // BLE proxy settings
-    bool proxyBLE;          // Enable BLE proxy for JBV1
+    bool proxyBLE;          // Enable BLE proxy for companion app
     String proxyName;       // BLE device name when proxying
     bool gpsEnabled;        // Enable GPS runtime module (optional hardware)
     LockoutRuntimeMode gpsLockoutMode;    // Lockout runtime mode (off/shadow/advisory/enforce)

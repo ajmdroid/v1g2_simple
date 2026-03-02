@@ -59,7 +59,7 @@ void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
 
 void V1Display::drawRssiIndicator(int rssi) {
     // Draw BLE RSSI below volume indicator
-    // Shows V1 RSSI and JBV1 RSSI (if connected) stacked vertically
+    // Shows V1 RSSI and app RSSI (if connected) stacked vertically
     const int x = 8;
     // Evenly spaced: volume at y=75, height 16, gap 8 -> y=99
     const int y = 99;
@@ -78,7 +78,7 @@ void V1Display::drawRssiIndicator(int rssi) {
     
     // Get both RSSIs
     int v1Rssi = rssi;  // V1 RSSI passed in
-    int jbv1Rssi = bleCtx_.proxyRssi;  // JBV1/phone RSSI
+    int appRssi = bleCtx_.proxyRssi;  // App RSSI
     
     GFX_setTextDatum(TL_DATUM);
     TFT_CALL(setTextSize)(2);  // Match volume text size
@@ -105,17 +105,17 @@ void V1Display::drawRssiIndicator(int rssi) {
         GFX_drawString(tft, buf, x + 24, y);  // Offset for "V " width
     }
     
-    // Draw JBV1 RSSI below V1 RSSI if connected
-    if (jbv1Rssi != 0) {
+    // Draw app RSSI below V1 RSSI if connected
+    if (appRssi != 0) {
         // Draw "P " label with configurable color
         TFT_CALL(setTextColor)(s.colorRssiProxy, PALETTE_BG);
         GFX_drawString(tft, "P ", x, y + lineHeight);
         
         // Color code RSSI value
         uint16_t rssiColor;
-        if (jbv1Rssi >= -60) {
+        if (appRssi >= -60) {
             rssiColor = COLOR_GREEN;
-        } else if (jbv1Rssi >= -80) {
+        } else if (appRssi >= -80) {
             rssiColor = COLOR_YELLOW;
         } else {
             rssiColor = COLOR_RED;
@@ -123,7 +123,7 @@ void V1Display::drawRssiIndicator(int rssi) {
         
         TFT_CALL(setTextColor)(rssiColor, PALETTE_BG);
         char buf[8];
-        snprintf(buf, sizeof(buf), "%d", jbv1Rssi);
+        snprintf(buf, sizeof(buf), "%d", appRssi);
         GFX_drawString(tft, buf, x + 24, y + lineHeight);  // Offset for "P " width
     }
 }

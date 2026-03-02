@@ -352,7 +352,7 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
             PARSER_PERF_INC(parserRowsBandNone);
         }
         Direction dir = decodeDirection(bandArrow);
-        bool isPriority = (aux0 & 0x80) != 0;  // JB: (aux0 & 128) != 0
+        bool isPriority = (aux0 & 0x80) != 0;  // (aux0 & 128) != 0
         // Match official Android/iOS library behavior:
         // junk flag is valid on V1 4.1032+, photo type on 4.1037+.
         const bool junkSupported =

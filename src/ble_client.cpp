@@ -1,17 +1,17 @@
 /**
  * BLE Client for Valentine1 Gen2
- * With BLE Server proxy support for JBV1 app
+ * With BLE Server proxy support for companion app
  * 
  * Architecture:
  * - NimBLE 2.3.7 tuned for stable dual-role operation
  * - Client connects to V1 (V1G* device names)
- * - Server advertises as V1C-LE-S3 for JBV1
+ * - Server advertises as V1C-LE-S3 for companion app
  * - FreeRTOS task manages advertising timing
  * - Thread-safe with mutexes for BLE operations
  * 
  * Key Features:
  * - Automatic V1 discovery and reconnection
- * - Bidirectional proxy (V1 ↔ JBV1)
+ * - Bidirectional proxy (V1 ↔ app)
  * - Profile settings push
  * - Mode control (All Bogeys/Logic/Advanced Logic)
  * - Mute toggle
@@ -637,7 +637,7 @@ static int s_lastLoggedProxyRssi = 0;
 static bool s_loggedProxyRssi = false;
 
 int V1BLEClient::getProxyClientRssi() {
-    // Return RSSI of connected proxy client (JBV1/phone), or 0 if not connected
+    // Return RSSI of connected proxy client (app), or 0 if not connected
     if (!proxyClientConnected || !pServer || pServer->getConnectedCount() == 0) {
         if (debugLogger.isEnabledFor(DebugLogCategory::Ble) && s_loggedProxyRssi && s_lastLoggedProxyRssi != 0) {
             debugLogger.log(DebugLogCategory::Ble, "Proxy RSSI unavailable (no client)");

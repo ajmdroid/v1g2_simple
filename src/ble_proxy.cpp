@@ -1,6 +1,6 @@
 /**
  * BLE Proxy Server Implementation
- * Handles BLE server mode for proxying V1 data to JBV1/other apps
+ * Handles BLE server mode for proxying V1 data to companion apps
  *
  * Extracted from ble_client.cpp — proxy server callbacks, forwarding,
  * phone command queue.
@@ -18,7 +18,7 @@
 void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) {
     // NOTE: BLE callback - keep fast
     if (BLE_CALLBACK_LOGS) {
-        BLE_LOGF("[BLE] JBV1/Phone connected (handle: %d)\n", connInfo.getConnHandle());
+        BLE_LOGF("[BLE] App connected (handle: %d)\n", connInfo.getConnHandle());
     }
     
     // Request connection parameters - use Android-compatible range
@@ -37,7 +37,7 @@ void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEC
 void V1BLEClient::ProxyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) {
     // NOTE: BLE callback - keep fast
     if (BLE_CALLBACK_LOGS) {
-        BLE_LOGF("[BLE] JBV1/Phone disconnected (reason: %d)\n", reason);
+        BLE_LOGF("[BLE] App disconnected (reason: %d)\n", reason);
     }
     if (bleClient) {
         bleClient->proxyClientConnected = false;
@@ -60,7 +60,7 @@ void V1BLEClient::deferLastV1Address(const char* addr) {
 }
 
 void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) {
-    // Forward commands from JBV1 to V1
+    // Forward commands from app to V1
     // NOTE: This is a BLE callback - avoid blocking operations (Serial, delays, long locks)
     if (!pCharacteristic || !bleClient) {
         return;
@@ -96,7 +96,7 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
         }
         portEXIT_CRITICAL(&proxyCmdMux);
     }
-    // Proxy command logging disabled - we confirmed JBV1 uses standard mute (0x34/0x35)
+    // Proxy command logging disabled - app uses standard mute (0x34/0x35)
     // Uncomment to debug: snprintf(logBuf, ...) with packet ID at cmdBuf[3]
     
     // Enqueue for main-loop processing to avoid BLE callback blocking
@@ -181,7 +181,7 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     // and attempt BR/EDR connections which fail with GATT_ERROR 133
     advData.setFlags(0x06);
     
-    // Include service UUID in advertising data (required for JBV1 discovery)
+    // Include service UUID in advertising data (required for app discovery)
     advData.setCompleteServices(pProxyService->getUUID());
     advData.setAppearance(0x0C80);  // Generic tag appearance
     

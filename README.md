@@ -96,7 +96,7 @@ When enabled, non-priority alerts are announced after the priority stabilizes:
 - **Threat escalation:** When a secondary alert ramps up to 3+ bars, announces direction breakdown (e.g., "2 bogeys, 1 ahead, 1 behind")
 
 ### General
-- **Auto-disable:** Voice alerts mute when a phone app (JBV1) is connected
+- **Auto-disable:** Voice alerts mute when a phone app is connected
 - **5-second cooldown:** Prevents rapid-fire announcements
 
 **Volume:** Adjust via the **blue slider** in settings mode (short press BOOT).
@@ -165,7 +165,7 @@ Customize every color on the display:
 General configuration:
 
 - **AP Name/Password:** Change WiFi network name and password
-- **BLE Proxy:** Enable to relay V1 data to JBV1 app (advertises as "V1C-LE-S3")
+- **BLE Proxy:** Enable to relay V1 data to companion app (advertises as "V1C-LE-S3")
 - **Proxy Name:** Change BLE advertised name
 - **Backup & Restore:** Download all settings to JSON file, or restore from a previous backup
 
@@ -190,7 +190,7 @@ Speed and location sources:
 ## Troubleshooting
 
 **V1 won't connect:**
-- Disconnect JBV1 or other apps from V1 first
+- Disconnect companion app or other apps from V1 first
 - Power cycle both devices
 
 **Can't find WiFi network:**

@@ -1,7 +1,7 @@
 /**
  * BLE Client for Valentine1 Gen2
  * Handles connection and data reception from V1 over BLE
- * Also supports BLE Server mode for proxying to JBV1/other apps
+ * Also supports BLE Server mode for proxying to companion apps
  */
 
 #ifndef BLE_CLIENT_H
@@ -91,7 +91,7 @@ public:
     bool initBLE(bool enableProxy = false, const char* proxyName = "V1C-LE-S3");
     
     // Initialize BLE and start scanning
-    // If enableProxy is true, also starts BLE server for JBV1 connections
+    // If enableProxy is true, also starts BLE server for app connections
     bool begin(bool enableProxy = false, const char* proxyName = "V1C-LE-S3");
     
     // Check connection status
@@ -100,10 +100,10 @@ public:
     // Get RSSI of connected V1 device (returns 0 if not connected)
     int getConnectionRssi();
     
-    // Get RSSI of connected proxy client (JBV1/phone) (returns 0 if not connected)
+    // Get RSSI of connected proxy client (app) (returns 0 if not connected)
     int getProxyClientRssi();
     
-    // Check if proxy client (JBV1) is connected
+    // Check if proxy client (app) is connected
     bool isProxyClientConnected();
     
     // Check if BLE proxy is enabled

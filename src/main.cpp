@@ -4,7 +4,7 @@
  * 
  * Features:
  * - BLE client for V1 Gen2 radar detector
- * - BLE server proxy for JBV1 app compatibility
+ * - BLE server proxy for companion app compatibility
  * - 3.49" AMOLED display with touch support
  * - WiFi web interface for configuration
  * - 3-slot auto-push profile system

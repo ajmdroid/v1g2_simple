@@ -115,7 +115,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 - **Frequency display:** 7-segment style showing detected frequency in GHz
 - **Mute control:** Tap screen to mute/unmute active alerts
 - **Profile management:** 3-slot auto-push system for V1 settings profiles
-- **BLE proxy:** Allows JBV1/V1 Companion apps to connect through this device
+- **BLE proxy:** Allows companion apps to connect through this device
 
 ### Supported Hardware
 
@@ -135,7 +135,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 ### Key Features
 
 1. **BLE Client:** Connects to V1 Gen2 (device names starting with "V1G" or "V1-")
-2. **BLE Server (Proxy):** Advertises as "V1C-LE-S3" for JBV1 compatibility
+2. **BLE Server (Proxy):** Advertises as "V1C-LE-S3" for companion app compatibility
 3. **Tap-to-Mute:** Single/double tap during alert toggles mute
 4. **Triple-Tap Profile Cycle:** Switch between 3 auto-push slots when idle
 5. **Web Configuration:** AP mode at 192.168.35.5 for settings
@@ -204,7 +204,7 @@ V1 Gen2 (BLE)
             ▼                             ▼
      ┌─────────────┐               ┌─────────────┐
      │ Proxy Fwd   │               │processBLE() │
-     │ (JBV1)      │               │(main loop)  │
+     │ (app)       │               │(main loop)  │
      └─────────────┘               └──────┬──────┘
                                           │
                                      ┌────▼────┐
@@ -218,7 +218,7 @@ V1 Gen2 (BLE)
                                      └─────────┘
 ```
 
-**Key optimization:** Proxy forwarding uses `forwardToProxyImmediate()` directly in the BLE callback for zero-latency pass-through to JBV1. Display updates are queued because SPI operations cannot run in BLE callback context.
+**Key optimization:** Proxy forwarding uses `forwardToProxyImmediate()` directly in the BLE callback for zero-latency pass-through to the app. Display updates are queued because SPI operations cannot run in BLE callback context.
 
 **Source:** [src/ble_proxy.cpp](src/ble_proxy.cpp#L325) (immediate proxy forward), [src/modules/ble/ble_queue_module.cpp](src/modules/ble/ble_queue_module.cpp) (BLE data queue), [src/modules/display/display_pipeline_module.cpp](src/modules/display/display_pipeline_module.cpp) (display updates)
 
@@ -232,7 +232,7 @@ V1 Gen2 (BLE)
 
 **Key constraints:**
 - SPI operations (display) must NOT occur in BLE callbacks → uses queue
-- Proxy forwarding DOES run in BLE callback → zero added latency to JBV1
+- Proxy forwarding DOES run in BLE callback → zero added latency to app
 
 **Source:** [src/main.cpp](src/main.cpp#L197) (onV1Data callback queues data), [src/ble_proxy.cpp](src/ble_proxy.cpp) (immediate proxy)
 
@@ -423,15 +423,15 @@ V1 Gen2 sends raw RSSI values. Mapped to 0-6 bars using threshold tables:
 
 **Source:** [src/modules/ble/ble_queue_module.cpp](src/modules/ble/ble_queue_module.cpp) (queue management), [src/ble_client.cpp](src/ble_client.cpp) (forwardToProxyImmediate)
 
-### Proxy Mode (JBV1 Compatibility)
+### Proxy Mode (App Compatibility)
 
 When `proxyBLE=true`:
 1. Device advertises as "V1C-LE-S3" after V1 connects
-2. JBV1/V1 Companion can connect as secondary client
+2. Companion app can connect as secondary client
 3. All V1 notifications forwarded via `forwardToProxyImmediate()` - **zero added latency**
-4. Commands from JBV1 forwarded to V1
+4. Commands from app forwarded to V1
 
-**Performance:** Proxy forwarding happens directly in the BLE notification callback, before queuing for display. This ensures JBV1 sees data with minimal latency (only the inherent V1→ESP32 BLE hop, no queuing delay).
+**Performance:** Proxy forwarding happens directly in the BLE notification callback, before queuing for display. This ensures the app sees data with minimal latency (only the inherent V1→ESP32 BLE hop, no queuing delay).
 
 **Source:** [src/ble_connection.cpp](src/ble_connection.cpp#L782) (notify callback), [src/ble_proxy.cpp](src/ble_proxy.cpp#L325) (forwardToProxyImmediate)
 
@@ -447,7 +447,7 @@ pClient->setConnectTimeout(15);  // 15 second connect timeout (20s for first con
 NimBLEDevice::setMTU(517);  // 512 payload + 5 header
 ```
 
-**Note:** The same tight connection parameters (15-30ms) are also applied to the phone/JBV1 side of the proxy connection for optimal latency.
+**Note:** The same tight connection parameters (15-30ms) are also applied to the phone/app side of the proxy connection for optimal latency.
 
 **Source:** [src/ble_connection.cpp](src/ble_connection.cpp#L295) (V1 connection params), [src/ble_proxy.cpp](src/ble_proxy.cpp) (phone connection)
 
@@ -561,7 +561,7 @@ All display colors are customizable via the web UI (`/colors`). Colors are store
 | Style | Bogey Counter | Frequency | Description |
 |-------|---------------|-----------|-------------|
 | Classic (0) | 7-segment | 7-segment | Full retro LED-style with ghost segments |
-| Serpentine (3) | 7-segment | Serpentine | JB's favorite |
+| Serpentine (3) | 7-segment | Serpentine | Alternate style |
 
 > **Note:** The enum also defines Modern (1) and Hemi (2), but `normalizeDisplayStyle()` in
 > `src/settings.h` maps both to Classic. Only Classic and Serpentine are active at runtime.
@@ -971,7 +971,7 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 
 Controls:
 - **AP Name/Password:** Change WiFi network name and password (AP-only, no station mode)
-- **BLE Proxy:** Enable/disable JBV1 forwarding
+- **BLE Proxy:** Enable/disable app forwarding
 - **Proxy Name:** Advertised BLE name (default: "V1C-LE-S3")
 
 **Backup & Restore:**
@@ -1008,7 +1008,7 @@ Voice alerts announce through the built-in speaker when no phone app is connecte
 Controls:
 - **GPS Module:** Enable/disable GPS for location-based features (auto-detects within 60s)
 
-**Auto-Lockout Settings (JBV1-style):**
+**Auto-Lockout Settings:**
 - **Enable Auto-Lockout:** Master toggle for automatic false alert learning
 - **Ka Protection:** Never auto-learn Ka band (real threats, default: on)
 - **Directional Unlearn:** Only unlearn when traveling same direction (default: on)
@@ -1026,7 +1026,7 @@ Controls:
 ### Colors Page (`/colors`)
 
 Controls:
-- **Display Style:** Classic (full 7-segment) or Serpentine (JB's favorite)
+- **Display Style:** Classic (full 7-segment) or Serpentine (alternate style)
 - **Custom Colors:** Per-element RGB565 colors (via custom RGB slider picker for Android compatibility)
   - Bogey counter, Frequency display
   - Individual arrow colors (Front, Side, Rear separately)
