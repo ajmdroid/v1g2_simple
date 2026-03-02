@@ -39,9 +39,9 @@ We're taking a more incremental approach than originally planned - extracting st
 **Structure (February 25, 2026):**
 ```
 src/
-├── main.cpp                         (~1550 lines - orchestration + module wiring)
+├── main.cpp                         (~1420 lines - orchestration + module wiring)
 ├── main_boot.cpp                    Boot-time helpers (reset reason, NVS health, panic breadcrumbs)
-├── main_loop_phases.cpp             Loop phase router functions extracted from loop()
+├── main_loop_phases.cpp             (~190 lines) Loop phase router functions extracted from loop()
 ├── main_persist.cpp                 Periodic lockout/learner save state machines
 ├── modules/
 │   ├── alert_persistence/           Alert on-screen persistence + state resets
@@ -104,9 +104,8 @@ src/
 │   ├── touch/                       Touch UI + tap gestures
 │   │   ├── touch_ui_module.h/cpp
 │   │   └── tap_gesture_module.h/cpp
-│   ├── voice/                       Voice alert decisions + speed sync
-│   │   ├── voice_module.h/cpp
-│   │   └── voice_speed_sync_module.h/cpp
+│   ├── voice/                       Voice alert decisions
+│   │   └── voice_module.h/cpp
 │   ├── volume_fade/                 Alert volume fade/restore
 │   │   └── volume_fade_module.h/cpp
 │   └── wifi/                        WiFi orchestration + boot policy + runtime + API services
@@ -155,15 +154,13 @@ src/
 | **LockoutApiService + LockoutOrchestrationModule** | Lockout REST API + zone CRUD + pre-quiet controller |
 | **PowerModule** | Battery monitoring, power button, sleep |
 | **SpeedSourceSelector** | Runtime speed source arbitration (GPS-only policy) |
-| **SpeakerQuietSyncModule** | Applies quiet-volume changes to hardware speaker amp |
-| **SystemEventBus** | Bounded loop-local event channel for cross-module coordination |
+| **SystemEventBus** | Thread-safe bounded ring buffer for cross-module event coordination |
 | **ParsedFrameEventModule** | Collects parsed-frame signal from BLE queue for display orchestration |
 | **PeriodicMaintenanceModule** | Rate-limited perf reporting, time saves, lockout learner ticks, persistence |
 | **Loop phase modules** | `loop_connection_early`, `loop_power_touch`, `loop_pre_ingest`, `loop_settings_prep`, `loop_ingest`, `loop_display`, `loop_post_display`, `loop_runtime_snapshot`, `loop_tail`, `loop_telemetry` — each owns one phase of the main loop |
 | **TouchUiModule** | Touch-based settings UI overlay |
 | **TapGestureModule** | Triple-tap mute and other gestures |
 | **VoiceModule** | All voice announcement decisions (priority/secondary/escalation) and cooldowns |
-| **VoiceSpeedSyncModule** | Feeds speed samples from SpeedSourceSelector to VoiceModule |
 | **VolumeFadeModule** | Decides when to fade/restore volume for long-running alerts |
 | **WifiOrchestrator** | WiFi/web server lifecycle |
 | **WifiAutoStartModule** | Deferred WiFi auto-start with V1 settle gate |
@@ -192,12 +189,12 @@ Migration history is tracked via module commits and [CHANGELOG.md](../CHANGELOG.
 - Change risk: HIGH (adjacent code interactions)
 
 ### After (February 25, 2026):
-- main.cpp: ~1550 lines (orchestration + module wiring)
-- main_boot.cpp: ~250 lines, main_loop_phases.cpp: ~210 lines, main_persist.cpp: ~445 lines
-- 18 module directories, 156 module files in src/modules/
+- main.cpp: ~1420 lines (orchestration + module wiring)
+- main_boot.cpp: ~248 lines, main_loop_phases.cpp: ~190 lines, main_persist.cpp: ~445 lines
+- 15 module directories, 139 module files in src/modules/
 - 5 additional extracted core-service files (ble_runtime, packet_parser_alerts, settings_restore, main_loop_phases)
-- 85 native test suites, 934 test cases
-- 8 CI contract scripts with 10 golden-file snapshots
+- 76 native test suites, 939 test cases
+- 8 CI contract scripts
 - State consolidated in owning modules
 - Change risk: LOW (isolated modules)
 
@@ -292,7 +289,7 @@ call-time data flow (`...Context` for inputs, `...Result` for outputs).
 - `std::function<>` heap overhead is undesirable (hot loop path)
 - Dependencies are best expressed as actions, not object pointers
 
-**Examples:** All `Loop*Module` types (`LoopIngestModule`, `LoopConnectionEarlyModule`, …), `WifiRuntimeModule`, `ConnectionRuntimeModule`, `ConnectionStateDispatchModule`, `PeriodicMaintenanceModule`, `VoiceSpeedSyncModule`
+**Examples:** All `Loop*Module` types (`LoopIngestModule`, `LoopConnectionEarlyModule`, …), `WifiRuntimeModule`, `ConnectionRuntimeModule`, `ConnectionStateDispatchModule`, `PeriodicMaintenanceModule`
 
 ### Choosing a Pattern
 
