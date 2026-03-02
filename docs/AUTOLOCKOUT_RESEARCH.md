@@ -17,6 +17,9 @@
 9. [Known Risks & Failure Modes](#9-known-risks--failure-modes)
 10. [Existing v1g2_simple Lockout Architecture](#10-existing-v1g2_simple-lockout-architecture)
 11. [Design Recommendations for Our Implementation](#11-design-recommendations-for-our-implementation)
+12. [Competitor UI Patterns & Analysis](#12-competitor-ui-patterns--analysis)
+13. [Our Current Lockout UI — Audit & Problems](#13-our-current-lockout-ui--audit--problems)
+14. [Phase 2 UI Improvement Plan](#14-phase-2-ui-improvement-plan)
 
 ---
 
@@ -493,12 +496,263 @@ The existing v1g2_simple lockout system is **extremely well-designed** and alrea
 
 ---
 
+## 12. Competitor UI Patterns & Analysis
+
+### V1connection (Valentine Research, free — iOS & Android)
+
+V1connection is Valentine's **official** app for the V1 Gen2. It is primarily a **programming and configuration** tool, not a GPS lockout app. Key characteristics:
+
+**What It Does:**
+- Four information screens: V1 Screen (replicates V1's front panel), Quad Screen (directional arrows per band), Threat Picture (Arrow-in-the-Box concept), Threat List (all signals with direction/frequency)
+- Master Controller: change programming, adjust SAVVY settings, muting, dark mode, save custom profiles
+- eSAVVY: GPS-based low speed muting (wireless alternative to hardware SAVVY module)
+- Firmware updates for V1 Gen2 (downloadable only through this app)
+- Demo mode plays automatically without a connected V1
+
+**What It Does NOT Do:**
+- **No GPS lockouts whatsoever** — Valentine deliberately excludes GPS lockout functionality from V1connection
+- No auto-learning of false alerts
+- No zone management of any kind
+- No lockout database
+- Mike Valentine is ideologically opposed to GPS lockouts (see Section 5) and there are patent issues (Escort owns GPS lockout patents)
+
+**UI Organization:**
+- Settings grouped into clear categories: Bands, Mute Control, Photo Radar, Special, SAVVY Settings, Custom Frequencies, In-the-Box Options
+- Simple toggle-based interface (On/Off for most settings)
+- Profile system: save/restore named configurations for different trips
+- Clean hierarchy — each category opens into its own settings list
+- No progressive disclosure needed because the feature set is intentionally narrow
+
+**Key UI Takeaway:** V1connection proves that clean settings organization matters. Even Vortex Radar recommends using V1connection **only** for initial programming, then switching to JBV1 or V1Driver for daily driving because V1connection's feature set is too limited. However, its settings categorization is clear and approachable.
+
+### V1Driver (Softronix — iOS & Android, $10-12)
+
+V1Driver is the primary **third-party companion app** for the V1. Unlike V1connection, V1Driver adds GPS lockouts and advanced false alert filtering. This is the closest competitor to our lockout page.
+
+**GPS Lockout Settings (under "GPS Settings" category):**
+- **Minimum count** — how many times a signal must be seen before lockout (promotion threshold)
+- **Min Distance Between** — lockout radius / minimum spacing between adjacent lockouts
+- **Accuracy in Distance** — GPS accuracy threshold; if accuracy is low, GPS muting won't be active (shown in red on display)
+- **Accuracy in Time** — if no GPS update in this time, GPS muting disabled (shows hourglass)
+- **Min Time Between** — minimum time between subsequent passes for a new "hit" to count
+- **Frequency Tolerance** — frequency width of the GPS lockout zone (±range)
+- **Standard Deviations** — dynamic adjustment of frequency tolerance based on observed variance
+- **Number of Samples** — how many samples for dynamic frequency tolerance
+- **Direction Tolerance** — (SAVVY learning only, not used for lockouts)
+- **Scanning Resolution** — how frequently app scans for nearby lockouts/POIs
+- **Auto UnLearn** — toggle for automatic unlearning of disappearing false sources
+- **Auto Learn K/Ka/Ku/X/Laser** — per-band toggle for which bands are auto-learned
+
+**Lockout Lifecycle:**
+1. First encounter → creates a new pin
+2. Second encounter → upgrades to "learning pin"
+3. Third encounter → upgrades to "GPS Mute pin" (locked out)
+- Configurable minimum count, so users can require more passes for safety
+
+**UI Organization (Settings pages):**
+- 11 settings categories: GPS Settings, Savvy Settings, Automute & Snooze, Sound, Notify, Voice, Presentation, Cloud & Reset, Bluetooth, Hardware, Debug
+- Each category is a separate scrollable page of labeled controls
+- **Show Help Tips** feature: popup explanations for every setting (green on iOS, blue on Android) — can be toggled on/off
+- Day/Night/Auto theme switching
+- Signal strength graph shows alert intensity over time
+- Voice boxes for custom spoken alerts per frequency range
+- Cloud backup/restore (iCloud or Google Drive)
+
+**Map Integration:**
+- Lockout pins displayed on map with different colors/styles for new, learning, and locked-out
+- Bogey Map mode: 2D graphical display of signals ahead/behind with relative distance
+- Drive-by visualization: pins age and evolve visually as you repeatedly encounter them
+
+**Key UI Takeaway:** V1Driver organizes GPS lockout settings into a dedicated "GPS Settings" page with ~12 tunable parameters. The **Show Help Tips** feature (contextualized popup explanations for every setting) is a standout UX pattern. Settings are grouped logically but all parameters are still exposed on the same page — no progressive disclosure. The app is considered powerful but has a learning curve.
+
+### JBV1 (johnboy00 — Android only, free)
+
+JBV1 is widely considered the **best countermeasure app** available. It is the most feature-rich option, supporting only the Valentine One.
+
+**Lockout Features:**
+- Automatic GPS lockouts with configurable learning parameters
+- Pin lifecycle: new pin → learning pin → GPS Mute pin (same as V1Driver)
+- Per-band auto-learn toggles (K/Ka/Ku/X/Laser)
+- Auto-reprogram V1 based on GPS location (Auto Profile Overrides)
+- Crowd-sourced police spotted alerts and historical heatmaps
+- RLC/speed camera alerts
+- Speed limit display
+- TMG laser jammer integration
+
+**UI Characteristics:**
+- Map-centric interface: lockout zones, crowd-sourced alerts, and historical data are all overlaid on a live map
+- Split-view: map + alert display simultaneously
+- Alert overlays: when backgrounded, pops up small overlay with relevant info on top of other apps (Waze, Google Maps, Spotify)
+- Configurable overlay position, width, and appearance
+- Rich contextual information density — lots of data shown simultaneously
+
+**Community Reception:**
+- Unanimously praised for capability but acknowledged as overwhelming
+- Vortex Radar: "I'm still pretty overwhelmed by all the available options"
+- Multiple users report deleting it due to complexity: "jbv1 is so complicated i deleted it"
+- Other users call it indispensable: "this app is awesome! ...once you get it tuned in"
+- An RDF user created a comprehensive PDF guide because the app itself doesn't explain settings well enough
+
+**Key UI Takeaway:** JBV1 is the cautionary tale of **power without progressive disclosure**. It has every feature you could want, but the learning curve is so steep that it drives away less technical users. Our lockout page risks the same problem — 1893 lines of settings all at the same hierarchy level. JBV1's map-centric approach is excellent; our table-centric approach is not.
+
+### Radar Companion Apps (DS1/R4/R8/V1 Companion — iOS, $10)
+
+The Radar Companion family of apps supports Radenso DS1, Uniden R4, Uniden R8, and Valentine One Gen2.
+
+**Notable Differences from V1Driver:**
+- Better idle display: shows speed, direction, altimeter with big text (less wasted space)
+- Volume sliders directly on main screen
+- **Advanced False Assist**: automatically mutes signals within preprogrammed BSM frequency ranges, but only mutes *weak* signals — if signal gets strong (approaching real radar source), unmutes. Safer than V1Driver's hard frequency block.
+- Can **push lockout to detector's mute memory** (R8 Companion specifically): app lockout also writes to detector's built-in GPS lockout database
+- Direct access to radar detector settings through the app
+
+**Key UI Takeaway:** The "Advanced False Assist" (mute weak signals in known false frequency ranges but unmute if strong) is a smart safety pattern. The R8 Companion's ability to sync app lockouts to the detector's built-in memory is a good pattern for our proxy session integration. Better use of idle screen real estate is something our UI should emulate.
+
+### Escort Live / Drive Smarter (Escort — iOS & Android)
+
+Escort detectors (Redline 360c, Max 360c MKII) have **built-in GPS lockout** without requiring an app.
+
+**Built-In GPS Lockout (Escort Redline 360c):**
+- Three passes at a location to auto-lock K and X band signals
+- User can manually lock/unlock by pressing Mark button during alert
+- AutoLearn with configurable threshold
+- Speed-based low speed muting
+- All managed through detector's menu — no app required for basic lockout
+
+**Drive Smarter App:**
+- Crowd-sourced alerts (speed trap, camera locations)
+- Real-time traffic alerts
+- Can manage lockout database from phone
+- Cloud backup of lockout database
+
+**Key UI Takeaway:** Escort's approach is the "it just works" model — GPS lockout is built into the detector with sensible defaults, no app required. The Mark button for instant lock/unlock during an alert is the ideal UX for manual lockouts. Our manual zone creation (opening a modal, typing lat/lon coordinates) is painful by comparison.
+
+### Uniden R8/R7/R4 (Built-In GPS Lockout)
+
+**Built-In GPS Lockout:**
+- GPS chip built into detector
+- Auto-lockout with configurable pass count (default: 3 passes)
+- Mark button for instant manual lockout during alert
+- M (Mute Memory) stores per-location muting
+- Settings accessible through detector display menus
+- R8 Companion app can also manage lockout database
+
+**Key UI Takeaway:** Like Escort, Uniden's strength is simplicity — the core lockout just works out of the box. The detector itself handles everything. When an app is paired, it just adds visibility and remote management. The R8's ability to sync with its companion app creating a combined on-device + phone lockout database is best-in-class for redundancy.
+
+### Highway Radar (Android, iOS beta, free)
+
+**Distinguishing Features:**
+- "Waze on steroids" — not just RD companion, full navigation + alert overlay
+- Supports V1 Gen2, DS1, R4, R8
+- Crowd-sourced alerts, traffic, weather
+- GPS lockout built-in (when connected to supported detector)
+- Android: full feature set; iOS: in beta, doesn't yet connect to detectors
+
+**Key UI Takeaway:** Highway Radar demonstrates the value of integrating lockout data with map/navigation context. Alerts and lockout zones make more sense when they're part of a map you're already looking at.
+
+### Cross-Competitor UI Pattern Summary
+
+| Pattern | V1connection | V1Driver | JBV1 | R8 Companion | Escort Built-In | Our Current UI |
+|---------|-------------|----------|------|-------------|-----------------|----------------|
+| GPS lockout support | **No** | Yes | Yes | Yes | Yes (detector) | Yes |
+| Map visualization of zones | N/A | Yes (pins on map) | Yes (full map overlay) | Yes | N/A | **No** (table only) |
+| Progressive disclosure | Minimal (simple app) | No (all settings on one page) | **No** (massive app) | Partial | Yes (just works) | **No** (everything exposed) |
+| Contextual help/tips | N/A | **Yes (Show Help Tips)** | PDF guide (external) | Minimal | N/A | **No** |
+| One-tap lockout from alert | N/A | Sort of (pin from map) | Sort of (pin from map) | Yes | **Yes (Mark button)** | **No** (modal form) |
+| Settings categorization | **Excellent** (11 categories) | Good (12 GPS params in one page) | Overwhelming | Good | Simple | **Poor** (flat hierarchy) |
+| Cloud backup/restore | N/A | **Yes** (iCloud/Drive) | N/A | Via app | Cloud via app | **No** (export/import files) |
+| Per-band learning toggles | N/A | **Yes** | **Yes** | Yes | Partial | Partial (Ka toggle only) |
+| Auto-reconnect / background | N/A | **Yes** | **Yes** | Good | N/A | N/A (web UI) |
+
+---
+
+## 13. Our Current Lockout UI — Audit & Problems
+
+### Structure (1893-line monolithic Svelte component)
+
+The entire lockout management interface lives in `interface/src/routes/lockouts/+page.svelte` — 1893 lines, making it the largest page in the web UI.
+
+**Layout (5 cards + 2 modals):**
+1. **Safety Gate** (~40 lines): Single toggle to unlock "advanced write" operations
+2. **Lockout Runtime Controls** (~130 lines): Mode selector (Off/Shadow/Advisory/Enforce), Core Guard toggle, Pre-quiet toggle, 3 drop threshold inputs, status footer
+3. **Learner Settings** (~170 lines): 2 presets ("Legacy Safe", "Balanced Blend"), 8 tunable parameters, Ka Learning toggle with warning modal
+4. **Lockout Zones** (~220 lines): Stats bar, Active Zones table (10 columns, min-w-[1120px]), Pending Candidates table (8 columns), CRUD buttons
+5. **Lockout Candidates** (~110 lines): Signal observation log table, stats bar, SD card status
+
+**Modals:**
+- Zone Editor: 160 lines — create/edit zone with lat/lon, band, freq, freq tolerance, radius, confidence, direction, heading
+- Ka Warning: 33 lines — confirmation dialog for enabling Ka learning
+
+### Problems Identified
+
+1. **Monolithic file size** — 1893 lines is unmaintainable. The next largest page (colors) is 1351 lines. Most pages are 300-700 lines.
+
+2. **No progressive disclosure** — All 15+ tunable parameters sit at the same visual hierarchy. A casual user sees promotion hits, learn intervals, frequency tolerance, unlearn counts, etc. all at once. V1Driver's "Show Help Tips" pattern would help enormously.
+
+3. **No contextual help** — None of the parameters have descriptions. "Promotion Hits" means nothing to someone who hasn't read the research doc. V1Driver's popup help tips are the gold standard here.
+
+4. **Table-centric, not map-centric** — Active zones are displayed as a 10-column table with raw lat/lon coordinates. Every competitor that has a map uses it as the primary lockout visualization. Tables are for export/debug, maps are for understanding.
+
+5. **Manual zone creation is painful** — Creating a zone requires typing lat/lon coordinates into a form. Escort and Uniden have a "Mark" button that locks out the current alert location with one press. We should support "create zone at current GPS location" or "create zone from selected observation."
+
+6. **No GPS quality gate settings UI** — Phase 1 added HDOP threshold (`gpsLockoutMaxHdopX10`), minimum satellites, and minimum learner speed (`gpsLockoutMinLearnerSpeedMph`) to the backend but these settings are **not yet exposed in the web UI**.
+
+7. **Dangerous settings not visually differentiated** — Ka Learning, Core Guard disable, and low drop thresholds could all lead to safety issues but they sit alongside benign settings with no visual hierarchy or warning treatment.
+
+8. **Tables too wide** — Active zones table is `min-w-[1120px]`, requiring horizontal scroll on most screens. Mobile-hostile.
+
+9. **No quick-create from observation** — The Lockout Candidates table shows recent signal observations, but there's no "lock this out" button to promote an observation into a zone with one click.
+
+10. **Flat settings hierarchy** — V1connection organizes into 11 clear categories. V1Driver puts GPS settings on their own page. We dump everything into 2 giant cards (Runtime Controls and Learner Settings) with no sub-grouping.
+
+---
+
+## 14. Phase 2 UI Improvement Plan
+
+*To be discussed with user before implementation.*
+
+### Priority Tiers
+
+**Tier 1 — Critical (Fix the Biggest Pain Points):**
+1. Add GPS quality gate settings to UI (expose Phase 1 backend parameters: HDOP threshold, min satellites, min learner speed)
+2. Add contextual help tooltips to all learner/runtime settings
+3. Visual differentiation of dangerous settings (Ka Learning, Core Guard)
+4. Quick-create zone from observation ("Lock this out" button in candidates table)
+
+**Tier 2 — Important (Improve Usability):**
+5. Progressive disclosure: collapse advanced settings behind expandable sections
+6. Settings categorization: separate "Safety" from "Learning" from "Performance" settings
+7. Simplify zone editor: pre-fill with current GPS location, support "create from observation"
+8. Add per-band auto-learn toggles (K/Ka/X) — currently only Ka has a toggle
+
+**Tier 3 — Polish (Match Competitors):**
+9. Map visualization of lockout zones (Leaflet/OpenStreetMap)
+10. Responsive tables: card layout on mobile, table on desktop
+11. Import/export UI improvements
+12. Component extraction: break monolithic file into Svelte components
+
+### Design Principles for Phase 2
+
+1. **Safety settings get warning treatment** — red borders, confirmation modals, explicit "I understand the risk" flows
+2. **Progressive disclosure** — basic operation visible by default; advanced tuning behind expandable sections
+3. **Context everywhere** — every setting gets a tooltip explaining what it does in plain English
+4. **Current state is visible** — GPS quality indicators (HDOP, satellites, speed) always visible in a status bar
+5. **One-click common actions** — "Lock this out" from observation, "Create zone here" from GPS location
+6. **Mobile-first tables** — card layout that doesn't require horizontal scrolling
+
+---
+
 ## Sources
 
 - **valentine1.com** — Mike Valentine on GPS: https://www.valentine1.com/v1-info/tech-reports/mike-on-gps/
+- **valentine1.com** — V1connection app page: https://www.valentine1.com/v1-detectors/v1-radar-detector-apps/
+- **valentine1.com** — V1connection LE product page: https://store.valentine1.com/store/item.asp?i=20232
+- **Apple App Store** — V1connection, the app: https://apps.apple.com/us/app/v1connection-the-app/id651690266
 - **Vortex Radar** — V1 Gen2 Review: https://www.vortexradar.com/2020/05/valentine-1-gen2-review/
 - **Vortex Radar** — Getting Started with JBV1: https://www.vortexradar.com/2020/03/getting-started-with-jbv1/
-- **V1 Connection app** — valentine1.com/v1-detectors/v1-radar-detector-apps/
+- **Vortex Radar** — How to Configure V1Driver Settings: https://www.vortexradar.com/2018/03/how-to-configure-v1driver-settings/
+- **Vortex Radar** — V1Driver vs Radar Companion Apps: https://www.vortexradar.com/2023/11/v1driver-vs-radar-companion-apps/
+- **Vortex Radar** — How to Program V1 Gen2 using V1connection: https://www.vortexradar.com/2020/03/how-to-program-v1-gen-2-v1connection/
 - **rdforum.org** — Radar Detector Forum (community discussions, JBV1 section)
 - **Wikipedia** — Radar Detector article
-- **v1g2_simple codebase** — src/modules/lockout/, src/modules/gps/, data/lockouts.html
+- **v1g2_simple codebase** — src/modules/lockout/, src/modules/gps/, data/lockouts.html, interface/src/routes/lockouts/
