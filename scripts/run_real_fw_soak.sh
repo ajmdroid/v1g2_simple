@@ -1252,7 +1252,8 @@ fi
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
   # Account for the preview retry path in the same loop iteration.
   serial_capture_call_budget=$((serial_capture_call_budget + 2))
-fi\nSERIAL_CAPTURE_GRACE_SECONDS=$((HTTP_TIMEOUT_SECONDS * serial_capture_call_budget + POLL_SECONDS + 15))
+fi
+SERIAL_CAPTURE_GRACE_SECONDS=$((HTTP_TIMEOUT_SECONDS * serial_capture_call_budget + POLL_SECONDS + 15))
 if [[ "$SERIAL_CAPTURE_GRACE_SECONDS" -lt 20 ]]; then
   SERIAL_CAPTURE_GRACE_SECONDS=20
 fi
