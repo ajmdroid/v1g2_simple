@@ -48,6 +48,15 @@ Get device status including V1 connection, WiFi, GPS, and alerts.
     "hostname": "v1g2",
     "firmware_version": "4.0.0-dev"
   },
+  "time": {
+    "valid": true,
+    "source": 2,
+    "confidence": 3,
+    "tzOffsetMin": -300,
+    "tzOffsetMinutes": -300,
+    "epochMs": 1739650000000,
+    "ageMs": 1234
+  },
   "battery": {
     "voltage_mv": 4150,
     "percentage": 85,
@@ -76,18 +85,16 @@ Health check endpoint.
 
 ### POST /api/time/set
 
-Set trusted device time from client/AP context.
+**Currently disabled** — always returns HTTP 409. GPS provides the authoritative time source.
 
-**Request (JSON preferred):**
+**Response (409):**
 ```json
 {
-  "unixMs": 1739650000000,
-  "tzOffsetMin": -300,
-  "source": "client"
+  "ok": false,
+  "success": false,
+  "error": "Time set disabled; GPS is authoritative"
 }
 ```
-
-**Compatibility keys accepted:** `epochMs`, `clientEpochMs`, `tzOffsetMinutes`.
 
 ### POST /api/profile/push
 
@@ -163,7 +170,10 @@ Update device settings. Send only fields you want to change.
 ap_ssid=MyV1&ap_password=newpassword123&gpsEnabled=true&gpsLockoutMode=3
 ```
 
-**Response:** `Settings saved` (text/plain)
+**Response:**
+```json
+{"success": true}
+```
 
 ### GET /api/settings/backup
 
@@ -177,11 +187,24 @@ Restore settings from backup JSON file.
 
 **Request:** JSON body with settings object
 
-**Response:** `Settings restored successfully` (text/plain)
+**Response:**
+```json
+{"success": true, "message": "Settings restored successfully"}
+```
 
 ### POST /api/settings/backup-now
 
 Trigger an immediate settings backup to SD/LittleFS.
+
+**Response (200):**
+```json
+{"success": true, "message": "Backup written to SD"}
+```
+
+**Response (503):**
+```json
+{"success": false, "error": "SD card unavailable"}
+```
 
 ---
 
@@ -194,8 +217,13 @@ List all saved V1 profiles.
 **Response:**
 ```json
 {
-  "profiles": ["Highway", "City", "Custom"],
-  "current": "Highway"
+  "profiles": [
+    {
+      "name": "Highway",
+      "description": "Default highway settings",
+      "displayOn": true
+    }
+  ]
 }
 ```
 
@@ -236,7 +264,10 @@ Create or update a V1 profile.
 
 Delete a V1 profile.
 
-**Request (form data):** `name=CustomProfile`
+**Request (JSON body):**
+```json
+{"name": "CustomProfile"}
+```
 
 ### POST /api/v1/pull
 
@@ -246,7 +277,7 @@ Pull current settings from connected V1 device.
 ```json
 {
   "success": true,
-  "settings": { ... }
+  "message": "Request sent. Check current settings."
 }
 ```
 
@@ -254,7 +285,22 @@ Pull current settings from connected V1 device.
 
 Push a profile to the connected V1 device.
 
-**Request (form data):** `profile=Highway`
+**Request (JSON body):**
+
+Push by profile name:
+```json
+{"name": "Highway"}
+```
+
+Push raw bytes:
+```json
+{"bytes": [1, 2, 3, 4, 5, 6], "displayOn": true}
+```
+
+Push parsed settings:
+```json
+{"settings": { ... }, "displayOn": true}
+```
 
 ### GET /api/v1/current
 
@@ -297,16 +343,22 @@ Get all auto-push slot configurations.
 **Response:**
 ```json
 {
+  "enabled": true,
+  "activeSlot": 0,
   "slots": [
     {
-      "slot": 1,
+      "name": "Day",
       "profile": "Highway",
-      "minSpeed": 45,
-      "maxSpeed": 999,
-      "enabled": true
+      "mode": 1,
+      "color": 63488,
+      "volume": 5,
+      "muteVolume": 2,
+      "darkMode": false,
+      "muteToZero": false,
+      "alertPersist": 0,
+      "priorityArrowOnly": false
     }
-  ],
-  "activeSlot": 1
+  ]
 }
 ```
 
@@ -316,18 +368,45 @@ Configure an auto-push slot.
 
 **Request (form data):**
 ```
-slot=1&profile=Highway&minSpeed=45&maxSpeed=999&enabled=true
+slot=0&profile=Highway&mode=1
 ```
+
+| Field | Required | Type | Description |
+|-------|----------|------|-------------|
+| `slot` | Yes | int (0-2) | Slot index |
+| `profile` | Yes | string | Profile name |
+| `mode` | Yes | int | Push mode |
+| `name` | No | string | Slot display name |
+| `color` | No | int | RGB565 color |
+| `volume` | No | int | Alert volume |
+| `muteVol` | No | int | Mute volume |
+| `darkMode` | No | bool | Dark mode |
+| `muteToZero` | No | bool | Mute to zero |
+| `alertPersist` | No | int (0-5) | Alert persistence |
+| `priorityArrowOnly` | No | bool | Priority arrow only |
 
 ### POST /api/autopush/activate
 
 Manually activate a slot.
 
-**Request (form data):** `slot=1`
+**Request (form data):** `slot=0&enable=true`
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `slot` | Yes | Slot index (0-2) |
+| `enable` | No | Enable auto-push (default `true`) |
 
 ### POST /api/autopush/push
 
-Force push current active slot profile.
+Force push a specific slot's profile.
+
+**Request (form data):** `slot=0`
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `slot` | Yes | Slot index (0-2) |
+| `profile` | No | Override profile name |
+| `mode` | No | Override mode (only with `profile`) |
 
 ### GET /api/autopush/status
 
@@ -341,30 +420,23 @@ Get auto-push status and last push info.
 
 Get current display color configuration.
 
-**Response:**
-```json
-{
-  "theme": "dark",
-  "xColor": "#FF0000",
-  "kColor": "#FFFF00",
-  "kaColor": "#00FF00",
-  "laserColor": "#0000FF",
-  "bgColor": "#000000",
-  "textColor": "#FFFFFF"
-}
-```
+**Response:** JSON with RGB565 integer color values and display toggle settings.
+
+Key color fields: `bogey`, `freq`, `arrowFront`, `arrowSide`, `arrowRear`, `bandL`, `bandKa`, `bandK`, `bandX`, `bandPhoto`, `wifiIcon`, `wifiConnected`, `bleConnected`, `bleDisconnected`, `bar1`..`bar6`, `muted`, `persisted`, `volumeMain`, `volumeMute`, `rssiV1`, `rssiProxy`, `lockout`, `gps`.
+
+Also includes boolean display toggles and voice/fade/GPS settings.
 
 ### POST /api/displaycolors
 
 Save display color configuration.
 
-**Request (JSON body):**
-```json
-{
-  "xColor": "#FF0000",
-  "kaColor": "#00FF00"
-}
+**Request (form data):** RGB565 integer color values and display settings.
+
 ```
+bogey=63488&freq=65535&arrowFront=2016&arrowSide=65504&arrowRear=63488
+```
+
+Accepts the same color and toggle field names returned by GET.
 
 ### POST /api/displaycolors/reset
 
@@ -372,9 +444,12 @@ Reset colors to default theme.
 
 ### POST /api/displaycolors/preview
 
-Preview colors without saving (temporary display).
+Toggle a 5.5-second color preview demo on the physical display. No request body. If preview is running, it cancels; otherwise it starts.
 
-**Request:** Same as POST /api/displaycolors
+**Response:**
+```json
+{"success": true, "active": true}
+```
 
 ### POST /api/displaycolors/clear
 
@@ -401,7 +476,7 @@ Get read-only lockout candidate telemetry summary from the in-memory ring buffer
 Get recent lockout candidate observations (newest first).
 
 **Query Parameters:**
-- `limit` (optional): Number of entries (1-128, default 32)
+- `limit` (optional): Number of entries (1-96, default 24)
 
 **Notes:**
 - Candidate events are persisted to SD (when available) at `/lockout/lockout_candidates_boot_<bootId>.csv`.
@@ -413,8 +488,11 @@ Get recent lockout candidate observations (newest first).
 Get active zones + pending learner candidates.
 
 **Query Parameters:**
-- `activeLimit` (optional): `1..200` (default `64`)
-- `pendingLimit` (optional): `1..64` (default `64`)
+- `activeLimit` (optional): `1..96` (default `24`)
+- `pendingLimit` (optional): `1..48` (default `24`)
+- `activeOffset` (optional): Pagination offset for active zones (default `0`)
+- `pendingOffset` (optional): Pagination offset for pending zones (default `0`)
+- `details` (optional): `1` or `true` to include timing fields
 
 ### POST /api/lockouts/zones/delete
 
@@ -428,7 +506,7 @@ Delete a learned zone by slot index.
 ```
 
 **Notes:**
-- Only learned zones are deletable.
+- Both manual and learned zones are deletable.
 
 ### POST /api/lockouts/zones/create
 
@@ -460,29 +538,9 @@ Import lockout zones from JSON.
 
 Get GPS module status and current position.
 
-**Response:**
-```json
-{
-  "enabled": true,
-  "runtimeEnabled": true,
-  "mode": "runtime",
-  "sampleValid": true,
-  "hasFix": true,
-  "satellites": 8,
-  "hdop": 1.4,
-  "locationValid": true,
-  "latitude": 10.1234,
-  "longitude": -20.5432,
-  "courseValid": true,
-  "courseDeg": 181.4,
-  "speedMph": 42.7,
-  "lockout": {
-    "mode": "enforce",
-    "coreGuardEnabled": true,
-    "coreGuardTripped": false
-  }
-}
-```
+**Response:** Large JSON object with GPS fix, satellite, and lockout state.
+
+Key fields include: `enabled`, `runtimeEnabled`, `sampleValid`, `hasFix`, `stableHasFix`, `satellites`, `stableSatellites`, `hdop`, `locationValid`, `latitude`, `longitude`, `courseValid`, `courseDeg`, `speedMph`, `moduleDetected`, `parserActive`. Also includes nested `lockout`, `observations`, and `speedSource` objects with detailed counters.
 
 ### GET /api/gps/observations
 
@@ -507,13 +565,16 @@ Get WiFi client (station) status.
 ```json
 {
   "enabled": true,
-  "connected": true,
-  "ssid": "HomeNetwork",
+  "savedSSID": "HomeNetwork",
+  "state": "connected",
+  "connectedSSID": "HomeNetwork",
   "ip": "192.168.1.100",
   "rssi": -45,
-  "savedSsid": "HomeNetwork"
+  "scanRunning": false
 }
 ```
+
+**Notes:** `connectedSSID`, `ip`, and `rssi` are only present when connected.
 
 ### POST /api/wifi/scan
 
@@ -522,12 +583,12 @@ Start scanning for WiFi networks.
 **Response:**
 ```json
 {
+  "scanning": false,
   "networks": [
     {
       "ssid": "HomeNetwork",
       "rssi": -45,
-      "secure": true,
-      "channel": 6
+      "secure": true
     }
   ]
 }
@@ -537,13 +598,17 @@ Start scanning for WiFi networks.
 
 Connect to a WiFi network.
 
-**Request (form data):**
-```
-ssid=HomeNetwork&password=mypassword123
+**Request (JSON body):**
+```json
+{
+  "ssid": "HomeNetwork",
+  "password": "mypassword123"
+}
 ```
 
 **Validation:**
-- Password must be ≥8 characters
+- SSID is required (non-empty)
+- No minimum password length enforced
 
 ### POST /api/wifi/disconnect
 
@@ -584,7 +649,7 @@ Enable or disable WiFi client mode.
 
 Get runtime performance counters and subsystem health snapshots.
 
-**Response (example):**
+**Response:** JSON object with 80+ boot-session counters. Example shows a subset of key fields:
 ```json
 {
   "rxPackets": 15000,
