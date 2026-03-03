@@ -5,6 +5,59 @@
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
+	import LockoutKaWarningModal from '$lib/components/LockoutKaWarningModal.svelte';
+	import LockoutZoneEditorModal from '$lib/components/LockoutZoneEditorModal.svelte';
+	import {
+		STATUS_POLL_INTERVAL_MS,
+		LOCKOUT_EVENTS_LIMIT,
+		LOCKOUT_ZONES_LIMIT,
+		FEET_PER_METER,
+		FEET_PER_RADIUS_E5,
+		LEARNER_PROMOTION_HITS_DEFAULT,
+		LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT,
+		LEARNER_RADIUS_E5_DEFAULT,
+		LEARNER_RADIUS_E5_MIN,
+		LEARNER_RADIUS_E5_MAX,
+		LOCKOUT_INTERVAL_OPTIONS,
+		LEARNER_UNLEARN_COUNT_DEFAULT,
+		GPS_MAX_HDOP_X10_DEFAULT,
+		GPS_MIN_LEARNER_SPEED_MPH_DEFAULT,
+		GPS_MIN_SATELLITES,
+		MANUAL_DEMOTION_OPTIONS,
+		DIRECTION_MODE_OPTIONS,
+		LOCKOUT_BAND_OPTIONS,
+		LOCKOUT_PRESET_LEGACY_SAFE,
+		LOCKOUT_PRESET_BALANCED_BLEND,
+		clampU16,
+		clampInt,
+		clampLearnerPromotionHits,
+		clampHdopX10,
+		clampMinLearnerSpeed,
+		clampLearnerRadiusE5,
+		clampLearnerFreqToleranceMHz,
+		clampIntervalHours,
+		clampUnlearnCount,
+		clampManualDemotionMissCount,
+		radiusE5ToFeet,
+		feetToRadiusE5,
+		normalizeLearnerRadiusFeet,
+		formatCoordinate,
+		formatEpochMs,
+		formatFixAgeMs,
+		formatBootTime,
+		formatHdop,
+		formatBandMask,
+		formatRadiusFeet,
+		formatIntervalLabel,
+		signalMapHref,
+		formatZoneRadiusFeet,
+		normalizeDirectionMode,
+		formatDirectionSummary,
+		mapHrefFromZone,
+		lockoutZoneSourceLabel,
+		bandNameToMask,
+		defaultZoneEditorState
+	} from '$lib/utils/lockout';
 
 	let loading = $state(true);
 	let message = $state(null);
@@ -28,66 +81,6 @@
 	let importingZones = $state(false);
 	let clearingAllZones = $state(false);
 	let importFileInput;
-
-	const STATUS_POLL_INTERVAL_MS = 2500;
-	const LOCKOUT_EVENTS_LIMIT = 24;
-	const LOCKOUT_ZONES_LIMIT = 32;
-	const FEET_PER_METER = 3.28084;
-	const METERS_PER_RADIUS_E5 = 1.11;
-	const FEET_PER_RADIUS_E5 = METERS_PER_RADIUS_E5 * FEET_PER_METER;
-	const LEARNER_PROMOTION_HITS_DEFAULT = 3;
-	const LEARNER_PROMOTION_HITS_MIN = 2;
-	const LEARNER_PROMOTION_HITS_MAX = 6;
-	const LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT = 10;
-	const LEARNER_FREQ_TOLERANCE_MHZ_MIN = 2;
-	const LEARNER_FREQ_TOLERANCE_MHZ_MAX = 20;
-	const LEARNER_RADIUS_E5_DEFAULT = 135;
-	const LEARNER_RADIUS_E5_MIN = 45;
-	const LEARNER_RADIUS_E5_MAX = 360;
-	const LOCKOUT_INTERVAL_OPTIONS = [0, 1, 4, 12, 24];
-	const LEARNER_UNLEARN_COUNT_DEFAULT = 0;
-	const LEARNER_UNLEARN_COUNT_MIN = 0;
-	const LEARNER_UNLEARN_COUNT_MAX = 10;
-	const GPS_MAX_HDOP_X10_DEFAULT = 50;
-	const GPS_MAX_HDOP_X10_MIN = 10;
-	const GPS_MAX_HDOP_X10_MAX = 100;
-	const GPS_MIN_LEARNER_SPEED_MPH_DEFAULT = 5;
-	const GPS_MIN_LEARNER_SPEED_MPH_MIN = 0;
-	const GPS_MIN_LEARNER_SPEED_MPH_MAX = 20;
-	const GPS_MIN_SATELLITES = 4;
-	const MANUAL_DEMOTION_OPTIONS = [0, 10, 25, 50];
-	const DIRECTION_MODE_OPTIONS = [
-		{ value: 'all', label: 'All Directions' },
-		{ value: 'forward', label: 'Forward Only' },
-		{ value: 'reverse', label: 'Reverse Only' }
-	];
-	const LOCKOUT_BAND_OPTIONS = [
-		{ value: 0x04, label: 'K Band' },
-		{ value: 0x02, label: 'Ka Band' },
-		{ value: 0x08, label: 'X Band' },
-		{ value: 0x01, label: 'Laser' },
-		{ value: 0x06, label: 'K + Ka' }
-	];
-	const LOCKOUT_PRESET_LEGACY_SAFE = {
-		name: 'Legacy Safe',
-		learnerPromotionHits: 3,
-		learnerLearnIntervalHours: 0,
-		learnerFreqToleranceMHz: 10,
-		learnerRadiusE5: 135,
-		learnerUnlearnCount: 0,
-		learnerUnlearnIntervalHours: 0,
-		manualDemotionMissCount: 0
-	};
-	const LOCKOUT_PRESET_BALANCED_BLEND = {
-		name: 'Balanced Blend',
-		learnerPromotionHits: 3,
-		learnerLearnIntervalHours: 4,
-		learnerFreqToleranceMHz: 10,
-		learnerRadiusE5: 135,
-		learnerUnlearnCount: 5,
-		learnerUnlearnIntervalHours: 4,
-		manualDemotionMissCount: 25
-	};
 
 	const statusPoll = createPoll(async () => {
 		await fetchGpsStatus();
@@ -197,130 +190,6 @@
 
 	function formatRoundedFrequencyMhz(mhz) {
 		return formatFrequencyMhz(mhz, { roundMhz: true });
-	}
-
-	function formatCoordinate(value) {
-		if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
-		return value.toFixed(5);
-	}
-
-	function formatEpochMs(epochMs) {
-		if (typeof epochMs !== 'number' || !Number.isFinite(epochMs) || epochMs <= 0) return '—';
-		return new Date(epochMs).toLocaleString();
-	}
-
-	function formatFixAgeMs(value) {
-		if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
-		return `${(value / 1000).toFixed(1)}s`;
-	}
-
-	function formatBootTime(tsMs) {
-		if (typeof tsMs !== 'number' || !Number.isFinite(tsMs)) return '—';
-		return `${(tsMs / 1000).toFixed(1)}s`;
-	}
-
-	function formatHdop(value) {
-		if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
-		return value.toFixed(1);
-	}
-
-	function formatBandMask(mask) {
-		if (typeof mask !== 'number' || !Number.isFinite(mask)) return '—';
-		const parts = [];
-		if (mask & 0x01) parts.push('Laser');
-		if (mask & 0x02) parts.push('Ka');
-		if (mask & 0x04) parts.push('K');
-		if (mask & 0x08) parts.push('X');
-		return parts.length > 0 ? parts.join('+') : '—';
-	}
-
-	function formatRadiusFeet(radiusM) {
-		if (typeof radiusM !== 'number' || !Number.isFinite(radiusM) || radiusM <= 0) return '—';
-		return `${Math.round(radiusM * FEET_PER_METER)} ft`;
-	}
-
-	function signalMapHref(event) {
-		if (!event?.locationValid) return '';
-		if (typeof event.latitude !== 'number' || typeof event.longitude !== 'number') return '';
-		return `https://maps.google.com/?q=${event.latitude},${event.longitude}`;
-	}
-
-	function clampU16(value) {
-		const parsed = Number(value);
-		if (!Number.isFinite(parsed)) return 0;
-		return Math.max(0, Math.min(65535, Math.round(parsed)));
-	}
-
-	function clampInt(value, min, max, fallback) {
-		const parsed = Number(value);
-		if (!Number.isFinite(parsed)) return fallback;
-		return Math.max(min, Math.min(max, Math.round(parsed)));
-	}
-
-	function clampLearnerPromotionHits(value) {
-		return clampInt(
-			value,
-			LEARNER_PROMOTION_HITS_MIN,
-			LEARNER_PROMOTION_HITS_MAX,
-			LEARNER_PROMOTION_HITS_DEFAULT
-		);
-	}
-
-	function clampHdopX10(value) {
-		return clampInt(value, GPS_MAX_HDOP_X10_MIN, GPS_MAX_HDOP_X10_MAX, GPS_MAX_HDOP_X10_DEFAULT);
-	}
-
-	function clampMinLearnerSpeed(value) {
-		return clampInt(value, GPS_MIN_LEARNER_SPEED_MPH_MIN, GPS_MIN_LEARNER_SPEED_MPH_MAX, GPS_MIN_LEARNER_SPEED_MPH_DEFAULT);
-	}
-
-	function clampLearnerRadiusE5(value) {
-		return clampInt(value, LEARNER_RADIUS_E5_MIN, LEARNER_RADIUS_E5_MAX, LEARNER_RADIUS_E5_DEFAULT);
-	}
-
-	function clampLearnerFreqToleranceMHz(value) {
-		return clampInt(
-			value,
-			LEARNER_FREQ_TOLERANCE_MHZ_MIN,
-			LEARNER_FREQ_TOLERANCE_MHZ_MAX,
-			LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT
-		);
-	}
-
-	function clampIntervalHours(value) {
-		const parsed = Number(value);
-		if (!Number.isFinite(parsed)) return 0;
-		if (parsed <= 0) return 0;
-		if (parsed <= 1) return 1;
-		if (parsed <= 4) return 4;
-		if (parsed <= 12) return 12;
-		return 24;
-	}
-
-	function clampUnlearnCount(value) {
-		return clampInt(value, LEARNER_UNLEARN_COUNT_MIN, LEARNER_UNLEARN_COUNT_MAX, LEARNER_UNLEARN_COUNT_DEFAULT);
-	}
-
-	function clampManualDemotionMissCount(value) {
-		const parsed = Number(value);
-		if (!Number.isFinite(parsed) || parsed <= 0) return 0;
-		if (parsed <= 10) return 10;
-		if (parsed <= 25) return 25;
-		return 50;
-	}
-
-	function radiusE5ToFeet(radiusE5) {
-		return Math.round(clampLearnerRadiusE5(radiusE5) * FEET_PER_RADIUS_E5);
-	}
-
-	function feetToRadiusE5(radiusFeet) {
-		const parsedFeet = Number(radiusFeet);
-		if (!Number.isFinite(parsedFeet)) return LEARNER_RADIUS_E5_DEFAULT;
-		return clampLearnerRadiusE5(Math.round(parsedFeet / FEET_PER_RADIUS_E5));
-	}
-
-	function normalizeLearnerRadiusFeet(radiusFeet) {
-		return radiusE5ToFeet(feetToRadiusE5(radiusFeet));
 	}
 
 	function applyLockoutStatus(data) {
@@ -441,55 +310,6 @@
 		lockoutConfigDirty = true;
 	}
 
-	function formatZoneRadiusFeet(zone) {
-		if (typeof zone?.radiusE5 === 'number' && Number.isFinite(zone.radiusE5) && zone.radiusE5 > 0) {
-			return `${radiusE5ToFeet(zone.radiusE5)} ft`;
-		}
-		return formatRadiusFeet(zone?.radiusM);
-	}
-
-	function defaultZoneEditorState() {
-		return {
-			latitude: '',
-			longitude: '',
-			radiusFt: radiusE5ToFeet(LEARNER_RADIUS_E5_DEFAULT),
-			bandMask: 0x04,
-			frequencyMHz: '',
-			frequencyToleranceMHz: LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT,
-			confidence: 100,
-			directionMode: 'all',
-			headingDeg: '',
-			headingToleranceDeg: 45
-		};
-	}
-
-	function lockoutZoneSourceLabel(zone) {
-		if (zone?.manual && zone?.learned) return 'manual+learned';
-		if (zone?.manual) return 'manual';
-		if (zone?.learned) return 'learned';
-		return 'active';
-	}
-
-	function normalizeDirectionMode(value) {
-		const token = typeof value === 'string' ? value.trim().toLowerCase() : '';
-		if (token === 'forward' || token === 'reverse') return token;
-		return 'all';
-	}
-
-	function formatDirectionSummary(zone) {
-		const mode = normalizeDirectionMode(zone?.directionMode);
-		if (mode === 'all') return 'All';
-		const heading = typeof zone?.headingDeg === 'number' ? `${Math.round(zone.headingDeg)}°` : '—';
-		const tolerance =
-			typeof zone?.headingToleranceDeg === 'number' ? Math.round(zone.headingToleranceDeg) : 45;
-		return `${mode === 'forward' ? 'Forward' : 'Reverse'} ${heading} ±${tolerance}°`;
-	}
-
-	function mapHrefFromZone(zone) {
-		if (typeof zone?.latitude !== 'number' || typeof zone?.longitude !== 'number') return '';
-		return `https://maps.google.com/?q=${zone.latitude},${zone.longitude}`;
-	}
-
 	function closeZoneEditor() {
 		if (zoneEditorSaving) return;
 		zoneEditorOpen = false;
@@ -538,16 +358,6 @@
 			headingToleranceDeg: clampInt(zone?.headingToleranceDeg, 0, 90, 45)
 		};
 		zoneEditorOpen = true;
-	}
-
-	function bandNameToMask(bandName) {
-		if (!bandName || typeof bandName !== 'string') return 0x04;
-		const name = bandName.toUpperCase().trim();
-		if (name === 'KA' || name === 'KA BAND') return 0x02;
-		if (name === 'K' || name === 'K BAND') return 0x04;
-		if (name === 'X' || name === 'X BAND') return 0x08;
-		if (name === 'LASER' || name === 'LA') return 0x01;
-		return 0x04;
 	}
 
 	function openZoneFromObservation(event) {
@@ -690,11 +500,6 @@
 			return clampManualDemotionMissCount(lockoutZonesStats.manualDemotionMissCount);
 		}
 		return 0;
-	}
-
-	function formatIntervalLabel(hours) {
-		const clamped = clampIntervalHours(hours);
-		return clamped > 0 ? `${clamped}h` : 'disabled';
 	}
 
 	function lockoutConfigMatchesBackend() {
@@ -2070,197 +1875,14 @@
 		</div>
 	</div>
 
-	{#if zoneEditorOpen}
-		<div class="modal modal-open">
-			<div class="modal-box surface-modal max-w-3xl">
-				<h3 class="font-bold text-lg">
-					{zoneEditorSlot === null ? 'Create Manual Lockout Zone' : `Edit Lockout Zone ${zoneEditorSlot}`}
-				</h3>
-				<p class="py-2 copy-subtle">
-					Use conservative values. Invalid coordinates or heading values are rejected by the firmware.
-				</p>
+	<LockoutZoneEditorModal
+		open={zoneEditorOpen}
+		zoneSlot={zoneEditorSlot}
+		bind:editor={zoneEditor}
+		saving={zoneEditorSaving}
+		onclose={closeZoneEditor}
+		onsave={saveZoneEditor}
+	/>
 
-				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-					<label class="form-control">
-						<span class="label-text-field">Latitude</span>
-						<input
-							type="number"
-							step="0.00001"
-							min="-90"
-							max="90"
-							class="input input-bordered input-sm"
-							value={zoneEditor.latitude}
-							onchange={(e) => {
-								zoneEditor.latitude = e.currentTarget.value;
-							}}
-						/>
-					</label>
-					<label class="form-control">
-						<span class="label-text-field">Longitude</span>
-						<input
-							type="number"
-							step="0.00001"
-							min="-180"
-							max="180"
-							class="input input-bordered input-sm"
-							value={zoneEditor.longitude}
-							onchange={(e) => {
-								zoneEditor.longitude = e.currentTarget.value;
-							}}
-						/>
-					</label>
-					<label class="form-control">
-						<span class="label-text-field">Band</span>
-						<select
-							class="select select-bordered select-sm"
-							value={zoneEditor.bandMask}
-							onchange={(e) => {
-								zoneEditor.bandMask = clampInt(e.currentTarget.value, 1, 255, 0x04);
-							}}
-						>
-							{#each LOCKOUT_BAND_OPTIONS as option}
-								<option value={option.value}>{option.label}</option>
-							{/each}
-						</select>
-					</label>
-					<label class="form-control">
-						<span class="label-text-field">Frequency (MHz, optional)</span>
-						<input
-							type="number"
-							min="0"
-							max="65535"
-							class="input input-bordered input-sm"
-							value={zoneEditor.frequencyMHz}
-							onchange={(e) => {
-								zoneEditor.frequencyMHz = e.currentTarget.value;
-							}}
-						/>
-					</label>
-					<label class="form-control">
-						<span class="label-text-field">Frequency tolerance (MHz)</span>
-						<input
-							type="number"
-							min="0"
-							max="65535"
-							class="input input-bordered input-sm"
-							value={zoneEditor.frequencyToleranceMHz}
-							onchange={(e) => {
-								zoneEditor.frequencyToleranceMHz = clampInt(
-									e.currentTarget.value,
-									0,
-									65535,
-									LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT
-								);
-							}}
-						/>
-					</label>
-					<label class="form-control">
-						<span class="label-text-field">Radius (ft)</span>
-						<input
-							type="number"
-							min={radiusE5ToFeet(LEARNER_RADIUS_E5_MIN)}
-							max={radiusE5ToFeet(LEARNER_RADIUS_E5_MAX)}
-							class="input input-bordered input-sm"
-							value={zoneEditor.radiusFt}
-							onchange={(e) => {
-								zoneEditor.radiusFt = normalizeLearnerRadiusFeet(e.currentTarget.value);
-							}}
-						/>
-					</label>
-					<label class="form-control">
-						<span class="label-text-field">Confidence</span>
-						<input
-							type="number"
-							min="0"
-							max="255"
-							class="input input-bordered input-sm"
-							value={zoneEditor.confidence}
-							onchange={(e) => {
-								zoneEditor.confidence = clampInt(e.currentTarget.value, 0, 255, 100);
-							}}
-						/>
-					</label>
-					<label class="form-control">
-						<span class="label-text-field">Direction mode</span>
-						<select
-							class="select select-bordered select-sm"
-							value={zoneEditor.directionMode}
-							onchange={(e) => {
-								zoneEditor.directionMode = normalizeDirectionMode(e.currentTarget.value);
-								if (zoneEditor.directionMode === 'all') {
-									zoneEditor.headingDeg = '';
-								}
-							}}
-						>
-							{#each DIRECTION_MODE_OPTIONS as option}
-								<option value={option.value}>{option.label}</option>
-							{/each}
-						</select>
-					</label>
-					<label class="form-control">
-						<span class="label-text-field">Heading tolerance (degrees)</span>
-						<input
-							type="number"
-							min="0"
-							max="90"
-							class="input input-bordered input-sm"
-							value={zoneEditor.headingToleranceDeg}
-							onchange={(e) => {
-								zoneEditor.headingToleranceDeg = clampInt(e.currentTarget.value, 0, 90, 45);
-							}}
-						/>
-					</label>
-					{#if zoneEditor.directionMode !== 'all'}
-						<label class="form-control md:col-span-2">
-							<span class="label-text-field">Heading (0-359 degrees)</span>
-							<input
-								type="number"
-								min="0"
-								max="359"
-								class="input input-bordered input-sm"
-								value={zoneEditor.headingDeg}
-								onchange={(e) => {
-									zoneEditor.headingDeg = e.currentTarget.value;
-								}}
-							/>
-						</label>
-					{/if}
-				</div>
-
-				<div class="modal-action">
-					<button class="btn btn-outline btn-sm" onclick={closeZoneEditor} disabled={zoneEditorSaving}>
-						Cancel
-					</button>
-					<button class="btn btn-primary btn-sm" onclick={saveZoneEditor} disabled={zoneEditorSaving}>
-						{#if zoneEditorSaving}
-							<span class="loading loading-spinner loading-xs"></span>
-						{/if}
-						Save Zone
-					</button>
-				</div>
-			</div>
-		</div>
-	{/if}
-
-	{#if showKaWarningModal}
-		<div class="modal modal-open">
-			<div class="modal-box surface-modal">
-				<h3 class="font-bold text-lg">Ka Lockout Learning Warning</h3>
-				<p class="py-3 copy-warning">
-					High risk: enabling Ka lockout learning can suppress real Ka threats.
-				</p>
-				<p class="copy-caption-soft">
-					Ka lockouts can hide real threats. Keep this off unless you fully understand the risk.
-				</p>
-				<div class="modal-action">
-					<button class="btn btn-outline btn-sm" onclick={cancelKaLearningEnable}>
-						Cancel (recommended)
-					</button>
-					<button class="btn btn-warning btn-sm" onclick={confirmKaLearningEnable}>
-						Enable anyway (high risk)
-					</button>
-				</div>
-			</div>
-		</div>
-	{/if}
+	<LockoutKaWarningModal show={showKaWarningModal} oncancel={cancelKaLearningEnable} onconfirm={confirmKaLearningEnable} />
 </div>
