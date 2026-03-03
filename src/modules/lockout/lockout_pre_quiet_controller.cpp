@@ -14,6 +14,10 @@ static constexpr uint32_t EXIT_DEBOUNCE_MS = 500;
 /// guarantee quick volume recovery if things go sideways.
 static constexpr uint32_t MAX_HOLD_MS = 60UL * 1000UL;  // 60 seconds
 
+/// GPS-loss restore: if GPS is lost while DROPPED for longer than this,
+/// restore volume.  Prevents sitting at low volume with no position fix.
+static constexpr uint32_t GPS_LOST_RESTORE_MS = 5000;  // 5 seconds
+
 // Helper: build a RESTORE decision from saved state.
 static PreQuietDecision restoreFrom(const PreQuietState& state) {
     PreQuietDecision d;
@@ -35,7 +39,8 @@ PreQuietDecision evaluatePreQuiet(
     uint8_t currentMainVolume,
     uint8_t currentMuteVolume,
     uint32_t nowMs,
-    PreQuietState& state) {
+    PreQuietState& state,
+    bool hasKaOrLaser) {
 
     PreQuietDecision decision;
 
@@ -104,6 +109,15 @@ PreQuietDecision evaluatePreQuiet(
             state = PreQuietState{};
             return decision;
         }
+        // Ka or Laser alert — always restore, even if lockout-matched.
+        // These bands are too safety-critical to stay quiet.
+        if (hasKaOrLaser) {
+            decision = restoreFrom(state);
+            state.phase = PreQuietPhase::DISARMED;
+            state.leftZoneMs = 0;
+            state.gpsLostMs = 0;
+            return decision;
+        }
         // Real alert (non-lockout match) → restore immediately, go DISARMED.
         // This fires regardless of GPS state — safety over position.
         if (hasAlert && lockoutEvaluated && !lockoutShouldMute) {
@@ -117,11 +131,20 @@ PreQuietDecision evaluatePreQuiet(
             state.leftZoneMs = 0;
             return decision;  // NONE — mute controller handles
         }
-        // GPS lost — hold DROPPED, cancel any exit debounce.
+        // GPS lost — start GPS-loss timer.  If GPS stays lost >5s, restore.
         if (!positionKnown) {
             state.leftZoneMs = 0;
-            return decision;  // NONE — can't evaluate zone presence
+            if (state.gpsLostMs == 0) {
+                state.gpsLostMs = nowMs;
+            }
+            if ((nowMs - state.gpsLostMs) >= GPS_LOST_RESTORE_MS) {
+                decision = restoreFrom(state);
+                state = PreQuietState{};
+                return decision;
+            }
+            return decision;  // NONE — still within GPS-loss window
         }
+        state.gpsLostMs = 0;  // GPS valid — reset GPS-loss timer
         // Still in zone, no alert → hold.
         if (inZone) {
             state.leftZoneMs = 0;

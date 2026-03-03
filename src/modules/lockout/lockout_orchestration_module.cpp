@@ -174,7 +174,8 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
                 pqState.mainVolume,
                 pqState.muteVolume,
                 nowMs,
-                preQuietState_);
+                preQuietState_,
+                overrideBandActive);
             if (pqDecision.action == PreQuietDecision::DROP_VOLUME) {
                 ble_->setVolume(pqDecision.volume, pqDecision.muteVolume);
                 Serial.println("[Lockout] PRE-QUIET: volume dropped in lockout zone");

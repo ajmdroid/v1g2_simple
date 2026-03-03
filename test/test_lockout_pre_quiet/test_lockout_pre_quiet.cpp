@@ -442,6 +442,105 @@ void test_dropped_safety_timeout_gps_lost() {
     TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
 }
 
+// ---------------------------------------------------------------------------
+// 23. Ka alert while DROPPED restores volume (even lockout-matched)
+// ---------------------------------------------------------------------------
+void test_ka_alert_while_dropped_restores() {
+    PreQuietState state = droppedState(6, 0, T0);
+
+    // Ka detected + lockout-matched → still restores (safety-critical).
+    auto d = evaluatePreQuiet(true, true, true, true,
+                              /*hasAlert=*/true, /*lockoutEvaluated=*/true,
+                              /*lockoutShouldMute=*/true,
+                              2, 0, 0, T0 + 500, state,
+                              /*hasKaOrLaser=*/true);
+    TEST_ASSERT_EQUAL(PreQuietDecision::RESTORE_VOLUME, d.action);
+    TEST_ASSERT_EQUAL(6, d.volume);
+    TEST_ASSERT_EQUAL(0, d.muteVolume);
+    TEST_ASSERT_EQUAL(PreQuietPhase::DISARMED, state.phase);
+}
+
+// ---------------------------------------------------------------------------
+// 24. Laser alert while DROPPED restores volume
+// ---------------------------------------------------------------------------
+void test_laser_alert_while_dropped_restores() {
+    PreQuietState state = droppedState(6, 0, T0);
+
+    // Laser doesn't have lockout match, but test the band flag.
+    auto d = evaluatePreQuiet(true, true, true, true,
+                              /*hasAlert=*/true, /*lockoutEvaluated=*/true,
+                              /*lockoutShouldMute=*/false,
+                              2, 0, 0, T0 + 200, state,
+                              /*hasKaOrLaser=*/true);
+    TEST_ASSERT_EQUAL(PreQuietDecision::RESTORE_VOLUME, d.action);
+    TEST_ASSERT_EQUAL(6, d.volume);
+    TEST_ASSERT_EQUAL(PreQuietPhase::DISARMED, state.phase);
+}
+
+// ---------------------------------------------------------------------------
+// 25. GPS lost >5s while DROPPED restores volume
+// ---------------------------------------------------------------------------
+void test_gps_lost_5s_while_dropped_restores() {
+    PreQuietState state = droppedState(6, 0, T0);
+
+    // GPS drops — first frame starts the timer.
+    auto d1 = evaluatePreQuiet(true, true, true, /*gpsValid=*/false,
+                               false, false, false,
+                               0, 0, 0, T0 + 1000, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d1.action);
+    TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
+    TEST_ASSERT_NOT_EQUAL(0, state.gpsLostMs);
+
+    // 4 seconds later — still DROPPED.
+    auto d2 = evaluatePreQuiet(true, true, true, /*gpsValid=*/false,
+                               false, false, false,
+                               0, 0, 0, T0 + 5000, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d2.action);
+    TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
+
+    // 5 seconds after GPS loss — restores.
+    auto d3 = evaluatePreQuiet(true, true, true, /*gpsValid=*/false,
+                               false, false, false,
+                               0, 0, 0, T0 + 6000, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::RESTORE_VOLUME, d3.action);
+    TEST_ASSERT_EQUAL(6, d3.volume);
+    TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
+}
+
+// ---------------------------------------------------------------------------
+// 26. GPS flicker <5s resets the loss timer
+// ---------------------------------------------------------------------------
+void test_gps_brief_loss_resets_timer() {
+    PreQuietState state = droppedState(6, 0, T0);
+
+    // GPS drops for 3s.
+    auto d1 = evaluatePreQuiet(true, true, true, /*gpsValid=*/false,
+                               false, false, false,
+                               0, 0, 0, T0 + 1000, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d1.action);
+
+    // GPS returns briefly, still in zone.
+    auto d2 = evaluatePreQuiet(true, true, true, /*gpsValid=*/true,
+                               false, false, false,
+                               3, 0, 0, T0 + 4000, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d2.action);
+    TEST_ASSERT_EQUAL(0, state.gpsLostMs);  // Timer reset
+
+    // GPS drops again — new 5s timer starts.
+    auto d3 = evaluatePreQuiet(true, true, true, /*gpsValid=*/false,
+                               false, false, false,
+                               0, 0, 0, T0 + 4500, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d3.action);
+    TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
+
+    // Only 3s since new loss — still holds.
+    auto d4 = evaluatePreQuiet(true, true, true, /*gpsValid=*/false,
+                               false, false, false,
+                               0, 0, 0, T0 + 7500, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d4.action);
+    TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_feature_disabled_returns_none);
@@ -466,5 +565,9 @@ int main() {
     RUN_TEST(test_full_lifecycle);
     RUN_TEST(test_dropped_safety_timeout_restores);
     RUN_TEST(test_dropped_safety_timeout_gps_lost);
+    RUN_TEST(test_ka_alert_while_dropped_restores);
+    RUN_TEST(test_laser_alert_while_dropped_restores);
+    RUN_TEST(test_gps_lost_5s_while_dropped_restores);
+    RUN_TEST(test_gps_brief_loss_resets_timer);
     return UNITY_END();
 }

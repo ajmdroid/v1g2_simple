@@ -20,6 +20,7 @@ struct PreQuietState {
     uint32_t enteredZoneMs = 0;         // When we first saw a nearby zone (entry debounce)
     uint32_t leftZoneMs = 0;            // When nearby count dropped to 0 (exit debounce)
     uint32_t droppedAtMs = 0;           // When DROPPED phase began (safety timeout)
+    uint32_t gpsLostMs = 0;            // When GPS first lost while DROPPED (GPS-loss debounce)
 };
 
 /// Decision returned by evaluatePreQuiet().  Caller executes via setVolume().
@@ -39,10 +40,11 @@ struct PreQuietDecision {
 /// "Drop once, restore on real threat, stay alert."
 ///
 ///   IDLE → enter lockout zone (200ms debounce) → DROP_VOLUME → DROPPED
+///   DROPPED + Ka/Laser active                 → RESTORE_VOLUME → DISARMED
 ///   DROPPED + lockout-matched alert            → NONE (mute controller handles)
 ///   DROPPED + real alert (even GPS lost)       → RESTORE_VOLUME → DISARMED
 ///   DROPPED + leave all zones (500ms debounce) → RESTORE_VOLUME → IDLE
-///   DROPPED + GPS fix lost                     → hold DROPPED (no exit debounce)
+///   DROPPED + GPS fix lost >5 s                → RESTORE_VOLUME → IDLE
 ///   DROPPED + held >60 s                       → RESTORE_VOLUME → IDLE (safety timeout)
 ///   DISARMED + leave all zones (GPS valid)     → IDLE (no BLE command needed)
 ///   Any phase + GPS fix lost                   → hold state (like BLE disconnect)
@@ -63,4 +65,5 @@ PreQuietDecision evaluatePreQuiet(
     uint8_t currentMainVolume,          // from DisplayState.mainVolume
     uint8_t currentMuteVolume,          // from DisplayState.muteVolume
     uint32_t nowMs,
-    PreQuietState& state);
+    PreQuietState& state,
+    bool hasKaOrLaser = false);         // Ka/Laser band active — always restores volume
