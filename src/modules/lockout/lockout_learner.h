@@ -20,6 +20,9 @@ struct LearnerCandidate {
     int64_t  lastSeenMs  = 0;    // Epoch ms — most recent observation
     int64_t  lastCountedHitMs = 0; // Epoch ms — most recent hitCount increment
     bool     active     = false; // Slot in use
+    int16_t  headingSinSum = 0;  // Accumulated sin(course) × 100 for circular mean
+    int16_t  headingCosSum = 0;  // Accumulated cos(course) × 100 for circular mean
+    uint8_t  headingSampleCount = 0; // Number of valid heading samples
 };
 
 /// Consumes signal observations from the observation log, clusters them

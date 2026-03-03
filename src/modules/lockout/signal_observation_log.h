@@ -26,6 +26,8 @@ struct SignalObservation {
     uint8_t satellites = 0;
     uint16_t hdopX10 = HDOP_X10_INVALID;
     float speedMph = NAN;              // GPS speed (mph); NAN = unavailable
+    bool courseValid = false;          // GPS course over ground available
+    float courseDeg = NAN;             // GPS course over ground (degrees, 0-360)
 };
 
 struct SignalObservationLogStats {

@@ -179,6 +179,13 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
                     if (epochMs > 0) {
                         c.lastCountedHitMs = epochMs;
                     }
+                    // Accumulate GPS heading for direction detection
+                    if (obs.courseValid && std::isfinite(obs.courseDeg)) {
+                        const float rad = obs.courseDeg * 0.017453292f;
+                        c.headingSinSum += static_cast<int16_t>(sinf(rad) * 100.0f);
+                        c.headingCosSum += static_cast<int16_t>(cosf(rad) * 100.0f);
+                        if (c.headingSampleCount < 255) ++c.headingSampleCount;
+                    }
                     dirty_ = true;
                 }
 
@@ -200,6 +207,13 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
                     c.lastSeenMs  = (epochMs > 0) ? epochMs : 0;
                     c.lastCountedHitMs = (epochMs > 0) ? epochMs : 0;
                     c.active     = true;
+                    // Record initial GPS heading
+                    if (obs.courseValid && std::isfinite(obs.courseDeg)) {
+                        const float rad = obs.courseDeg * 0.017453292f;
+                        c.headingSinSum = static_cast<int16_t>(sinf(rad) * 100.0f);
+                        c.headingCosSum = static_cast<int16_t>(cosf(rad) * 100.0f);
+                        c.headingSampleCount = 1;
+                    }
                     ++stats_.candidatesCreated;
                     dirty_ = true;
                 }
@@ -278,14 +292,32 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
     entry.lastSeenMs  = (epochMs > 0) ? epochMs : c.lastSeenMs;
     entry.lastPassMs  = 0;
 
+    // Direction analysis: if ≥2 heading samples with high consistency (R > 0.70),
+    // set DIRECTION_FORWARD so the lockout only mutes when driving the same way.
+    if (c.headingSampleCount >= 2) {
+        const float sinMean = static_cast<float>(c.headingSinSum) / (100.0f * c.headingSampleCount);
+        const float cosMean = static_cast<float>(c.headingCosSum) / (100.0f * c.headingSampleCount);
+        const float R = sqrtf(sinMean * sinMean + cosMean * cosMean);
+        if (R > 0.70f) {
+            float meanDeg = atan2f(static_cast<float>(c.headingSinSum),
+                                   static_cast<float>(c.headingCosSum)) * (180.0f / 3.14159265f);
+            if (meanDeg < 0.0f) meanDeg += 360.0f;
+            entry.headingDeg = static_cast<uint16_t>(meanDeg) % 360;
+            entry.directionMode = LockoutEntry::DIRECTION_FORWARD;
+            entry.headingTolDeg = 45;
+        }
+    }
+
     const int slot = index_->addOrUpdate(entry);
     if (slot >= 0) {
         ++stats_.promotions;
         lockoutStore.markDirty();
-        Serial.printf("[Learner] PROMOTED slot=%d band=%u freq=%u lat=%ld lon=%ld hits=%u\n",
+        Serial.printf("[Learner] PROMOTED slot=%d band=%u freq=%u lat=%ld lon=%ld hits=%u dir=%s hdg=%d\n",
                       slot, c.band, c.freqMHz,
                       static_cast<long>(c.latE5), static_cast<long>(c.lonE5),
-                      c.hitCount);
+                      c.hitCount,
+                      entry.directionMode == LockoutEntry::DIRECTION_FORWARD ? "fwd" : "all",
+                      static_cast<int>(entry.headingDeg));
         candidates_[idx] = LearnerCandidate{};
         dirty_ = true;
     } else {
@@ -340,6 +372,11 @@ void LockoutLearner::toJson(JsonDocument& doc) const {
         out["first"] = candidate.firstSeenMs;
         out["last"] = candidate.lastSeenMs;
         out["lastHit"] = candidate.lastCountedHitMs;
+        if (candidate.headingSampleCount > 0) {
+            out["hsin"] = candidate.headingSinSum;
+            out["hcos"] = candidate.headingCosSum;
+            out["hcnt"] = candidate.headingSampleCount;
+        }
     }
 }
 
@@ -381,6 +418,9 @@ bool LockoutLearner::fromJson(JsonDocument& doc, int64_t epochMs) {
         candidate.firstSeenMs = in["first"] | static_cast<int64_t>(0);
         candidate.lastSeenMs = in["last"] | static_cast<int64_t>(0);
         candidate.lastCountedHitMs = in["lastHit"] | static_cast<int64_t>(0);
+        candidate.headingSinSum = in["hsin"] | static_cast<int16_t>(0);
+        candidate.headingCosSum = in["hcos"] | static_cast<int16_t>(0);
+        candidate.headingSampleCount = in["hcnt"] | static_cast<uint8_t>(0);
 
         if (candidate.hitCount == 0 || !lockoutBandSupported(candidate.band)) {
             continue;

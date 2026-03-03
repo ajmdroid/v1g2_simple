@@ -116,6 +116,8 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
     observation.satellites = gpsStatus.satellites;
     observation.hdopX10 = hdopToX10(gpsStatus.hdop);
     observation.speedMph = gpsStatus.speedMph;
+    observation.courseValid = gpsStatus.courseValid;
+    observation.courseDeg = gpsStatus.courseDeg;
     const bool locationValid = gpsStatus.locationValid &&
                                std::isfinite(gpsStatus.latitudeDeg) &&
                                std::isfinite(gpsStatus.longitudeDeg);
