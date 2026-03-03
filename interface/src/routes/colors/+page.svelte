@@ -1154,7 +1154,7 @@
 			<div class="card-body">
 				<CardSectionHead
 					title="Display Brightness"
-					subtitle="Adjust the AMOLED screen brightness (0-255)."
+					subtitle="Adjust the screen backlight level."
 				/>
 				<div class="form-control">
 					<div class="flex items-center gap-4">
@@ -1168,7 +1168,7 @@
 							class="range range-primary flex-1" 
 						/>
 						<span class="copy-subtle">☀️</span>
-						<span class="text-sm font-mono w-12 text-right">{colors.brightness}</span>
+						<span class="text-sm font-mono w-12 text-right">{Math.round(colors.brightness / 255 * 100)}%</span>
 					</div>
 				</div>
 			</div>
