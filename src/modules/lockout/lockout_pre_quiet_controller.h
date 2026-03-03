@@ -43,7 +43,7 @@ struct PreQuietDecision {
 ///   DROPPED + real alert (even GPS lost)       → RESTORE_VOLUME → DISARMED
 ///   DROPPED + leave all zones (500ms debounce) → RESTORE_VOLUME → IDLE
 ///   DROPPED + GPS fix lost                     → hold DROPPED (no exit debounce)
-///   DROPPED + held >5 min                      → RESTORE_VOLUME → IDLE (safety timeout)
+///   DROPPED + held >60 s                       → RESTORE_VOLUME → IDLE (safety timeout)
 ///   DISARMED + leave all zones (GPS valid)     → IDLE (no BLE command needed)
 ///   Any phase + GPS fix lost                   → hold state (like BLE disconnect)
 ///   Any phase + feature/mode/BLE disabled      → restore if DROPPED, reset

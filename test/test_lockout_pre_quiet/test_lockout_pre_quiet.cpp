@@ -403,21 +403,21 @@ void test_full_lifecycle() {
 }
 
 // ---------------------------------------------------------------------------
-// 21. Safety timeout: DROPPED > 5 min restores unconditionally
+// 21. Safety timeout: DROPPED > 60s restores unconditionally
 // ---------------------------------------------------------------------------
 void test_dropped_safety_timeout_restores() {
     // Set up DROPPED state that started at T0.
     PreQuietState state = droppedState(6, 0, T0);
 
-    // Just under 5 minutes — still DROPPED.
-    uint32_t justBefore = T0 + 5UL * 60UL * 1000UL - 1;
+    // Just under 60 seconds — still DROPPED.
+    uint32_t justBefore = T0 + 60UL * 1000UL - 1;
     auto d1 = evaluatePreQuiet(true, true, true, true, false, false, false,
                                3, 0, 0, justBefore, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d1.action);
     TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
 
-    // Exactly 5 minutes — restores.
-    uint32_t atTimeout = T0 + 5UL * 60UL * 1000UL;
+    // Exactly 60 seconds — restores.
+    uint32_t atTimeout = T0 + 60UL * 1000UL;
     auto d2 = evaluatePreQuiet(true, true, true, true, false, false, false,
                                3, 0, 0, atTimeout, state);
     TEST_ASSERT_EQUAL(PreQuietDecision::RESTORE_VOLUME, d2.action);
@@ -432,8 +432,8 @@ void test_dropped_safety_timeout_restores() {
 void test_dropped_safety_timeout_gps_lost() {
     PreQuietState state = droppedState(6, 0, T0);
 
-    // GPS lost + 5 minutes elapsed → still restores.
-    uint32_t atTimeout = T0 + 5UL * 60UL * 1000UL;
+    // GPS lost + 60 seconds elapsed → still restores.
+    uint32_t atTimeout = T0 + 60UL * 1000UL;
     auto d = evaluatePreQuiet(true, true, true, /*gpsValid=*/false,
                               false, false, false,
                               0, 0, 0, atTimeout, state);

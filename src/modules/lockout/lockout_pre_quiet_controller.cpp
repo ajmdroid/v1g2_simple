@@ -10,9 +10,9 @@ static constexpr uint32_t EXIT_DEBOUNCE_MS = 500;
 
 /// Safety timeout: if volume stays DROPPED longer than this, restore
 /// unconditionally.  Covers GPS-lost-indefinitely and stuck-state scenarios.
-/// 5 minutes — generous enough for long traffic lights, strict enough to
-/// guarantee volume recovery.
-static constexpr uint32_t MAX_HOLD_MS = 5UL * 60UL * 1000UL;  // 5 minutes
+/// 60 seconds — long enough for normal zone traversal, short enough to
+/// guarantee quick volume recovery if things go sideways.
+static constexpr uint32_t MAX_HOLD_MS = 60UL * 1000UL;  // 60 seconds
 
 // Helper: build a RESTORE decision from saved state.
 static PreQuietDecision restoreFrom(const PreQuietState& state) {
@@ -98,7 +98,7 @@ PreQuietDecision evaluatePreQuiet(
     // ── DROPPED: volume lowered, waiting for zone exit or real alert ─
     case PreQuietPhase::DROPPED:
         // Safety timeout: if held too long (GPS lost, stuck state, etc.),
-        // restore unconditionally.  5 min is generous for traffic lights.
+        // restore unconditionally.  60s is plenty for normal zone traversal.
         if (state.droppedAtMs != 0 && (nowMs - state.droppedAtMs) >= MAX_HOLD_MS) {
             decision = restoreFrom(state);
             state = PreQuietState{};
