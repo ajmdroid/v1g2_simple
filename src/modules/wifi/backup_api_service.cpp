@@ -69,6 +69,8 @@ static void sendBackup(WebServer& server) {
     doc["gpsLockoutLearnerUnlearnCount"] = s.gpsLockoutLearnerUnlearnCount;
     doc["gpsLockoutManualDemotionMissCount"] = s.gpsLockoutManualDemotionMissCount;
     doc["gpsLockoutKaLearningEnabled"] = s.gpsLockoutKaLearningEnabled;
+    doc["gpsLockoutKLearningEnabled"] = s.gpsLockoutKLearningEnabled;
+    doc["gpsLockoutXLearningEnabled"] = s.gpsLockoutXLearningEnabled;
     doc["gpsLockoutPreQuiet"] = s.gpsLockoutPreQuiet;
     doc["gpsLockoutPreQuietBufferE5"] = s.gpsLockoutPreQuietBufferE5;
     doc["lastV1Address"] = s.lastV1Address;
@@ -334,6 +336,12 @@ static void handleRestore(WebServer& server) {
     if (doc["gpsLockoutKaLearningEnabled"].is<bool>()) {
         s.gpsLockoutKaLearningEnabled = doc["gpsLockoutKaLearningEnabled"];
     }
+    if (doc["gpsLockoutKLearningEnabled"].is<bool>()) {
+        s.gpsLockoutKLearningEnabled = doc["gpsLockoutKLearningEnabled"];
+    }
+    if (doc["gpsLockoutXLearningEnabled"].is<bool>()) {
+        s.gpsLockoutXLearningEnabled = doc["gpsLockoutXLearningEnabled"];
+    }
     if (doc["gpsLockoutPreQuiet"].is<bool>()) {
         s.gpsLockoutPreQuiet = doc["gpsLockoutPreQuiet"];
     }
@@ -529,6 +537,8 @@ static void handleRestore(WebServer& server) {
     gpsRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
     speedSourceSelector.setGpsEnabled(settingsManager.get().gpsEnabled);
     lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
+    lockoutSetKLearningEnabled(settingsManager.get().gpsLockoutKLearningEnabled);
+    lockoutSetXLearningEnabled(settingsManager.get().gpsLockoutXLearningEnabled);
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);
     

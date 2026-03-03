@@ -20,6 +20,8 @@ struct Runtime {
     std::function<void(bool)> setGpsRuntimeEnabled;
     std::function<void(bool)> setSpeedSourceGpsEnabled;
     std::function<void(bool)> setLockoutKaLearningEnabled;
+    std::function<void(bool)> setLockoutKLearningEnabled;
+    std::function<void(bool)> setLockoutXLearningEnabled;
     std::function<void()> save;
 };
 

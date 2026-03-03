@@ -161,6 +161,8 @@ void sendStatus(WebServer& server,
     lockoutObj["learnerUnlearnCount"] = static_cast<uint32_t>(settings.gpsLockoutLearnerUnlearnCount);
     lockoutObj["manualDemotionMissCount"] = static_cast<uint32_t>(settings.gpsLockoutManualDemotionMissCount);
     lockoutObj["kaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
+    lockoutObj["kLearningEnabled"] = settings.gpsLockoutKLearningEnabled;
+    lockoutObj["xLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
     lockoutObj["preQuiet"] = settings.gpsLockoutPreQuiet;
     lockoutObj["preQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
     lockoutObj["maxHdopX10"] = settings.gpsLockoutMaxHdopX10;
@@ -306,6 +308,10 @@ void handleConfig(WebServer& server,
     uint8_t manualDemotionMissCount = currentSettings.gpsLockoutManualDemotionMissCount;
     bool hasKaLearningEnabled = false;
     bool kaLearningEnabled = currentSettings.gpsLockoutKaLearningEnabled;
+    bool hasKLearningEnabled = false;
+    bool kLearningEnabled = currentSettings.gpsLockoutKLearningEnabled;
+    bool hasXLearningEnabled = false;
+    bool xLearningEnabled = currentSettings.gpsLockoutXLearningEnabled;
     bool hasPreQuiet = false;
     bool preQuiet = currentSettings.gpsLockoutPreQuiet;
     bool hasPreQuietBufferE5 = false;
@@ -437,6 +443,20 @@ void handleConfig(WebServer& server,
         } else if (body["gpsLockoutKaLearningEnabled"].is<bool>()) {
             kaLearningEnabled = body["gpsLockoutKaLearningEnabled"].as<bool>();
             hasKaLearningEnabled = true;
+        }
+        if (body["lockoutKLearningEnabled"].is<bool>()) {
+            kLearningEnabled = body["lockoutKLearningEnabled"].as<bool>();
+            hasKLearningEnabled = true;
+        } else if (body["gpsLockoutKLearningEnabled"].is<bool>()) {
+            kLearningEnabled = body["gpsLockoutKLearningEnabled"].as<bool>();
+            hasKLearningEnabled = true;
+        }
+        if (body["lockoutXLearningEnabled"].is<bool>()) {
+            xLearningEnabled = body["lockoutXLearningEnabled"].as<bool>();
+            hasXLearningEnabled = true;
+        } else if (body["gpsLockoutXLearningEnabled"].is<bool>()) {
+            xLearningEnabled = body["gpsLockoutXLearningEnabled"].as<bool>();
+            hasXLearningEnabled = true;
         }
         if (body["lockoutPreQuiet"].is<bool>()) {
             preQuiet = body["lockoutPreQuiet"].as<bool>();
@@ -626,6 +646,30 @@ void handleConfig(WebServer& server,
         kaLearningEnabled = (value == "1" || value == "true" || value == "on");
         hasKaLearningEnabled = true;
     }
+    if (!hasKLearningEnabled && server.hasArg("lockoutKLearningEnabled")) {
+        String value = server.arg("lockoutKLearningEnabled");
+        value.toLowerCase();
+        kLearningEnabled = (value == "1" || value == "true" || value == "on");
+        hasKLearningEnabled = true;
+    }
+    if (!hasKLearningEnabled && server.hasArg("gpsLockoutKLearningEnabled")) {
+        String value = server.arg("gpsLockoutKLearningEnabled");
+        value.toLowerCase();
+        kLearningEnabled = (value == "1" || value == "true" || value == "on");
+        hasKLearningEnabled = true;
+    }
+    if (!hasXLearningEnabled && server.hasArg("lockoutXLearningEnabled")) {
+        String value = server.arg("lockoutXLearningEnabled");
+        value.toLowerCase();
+        xLearningEnabled = (value == "1" || value == "true" || value == "on");
+        hasXLearningEnabled = true;
+    }
+    if (!hasXLearningEnabled && server.hasArg("gpsLockoutXLearningEnabled")) {
+        String value = server.arg("gpsLockoutXLearningEnabled");
+        value.toLowerCase();
+        xLearningEnabled = (value == "1" || value == "true" || value == "on");
+        hasXLearningEnabled = true;
+    }
     if (!hasPreQuiet && server.hasArg("lockoutPreQuiet")) {
         String value = server.arg("lockoutPreQuiet");
         value.toLowerCase();
@@ -775,6 +819,16 @@ void handleConfig(WebServer& server,
         mutableSettings.gpsLockoutKaLearningEnabled = kaLearningEnabled;
         lockoutSettingsChanged = true;
     }
+    if (hasKLearningEnabled &&
+        mutableSettings.gpsLockoutKLearningEnabled != kLearningEnabled) {
+        mutableSettings.gpsLockoutKLearningEnabled = kLearningEnabled;
+        lockoutSettingsChanged = true;
+    }
+    if (hasXLearningEnabled &&
+        mutableSettings.gpsLockoutXLearningEnabled != xLearningEnabled) {
+        mutableSettings.gpsLockoutXLearningEnabled = xLearningEnabled;
+        lockoutSettingsChanged = true;
+    }
     if (hasPreQuiet &&
         mutableSettings.gpsLockoutPreQuiet != preQuiet) {
         mutableSettings.gpsLockoutPreQuiet = preQuiet;
@@ -799,6 +853,12 @@ void handleConfig(WebServer& server,
     }
     if (hasKaLearningEnabled) {
         lockoutSetKaLearningEnabled(mutableSettings.gpsLockoutKaLearningEnabled);
+    }
+    if (hasKLearningEnabled) {
+        lockoutSetKLearningEnabled(mutableSettings.gpsLockoutKLearningEnabled);
+    }
+    if (hasXLearningEnabled) {
+        lockoutSetXLearningEnabled(mutableSettings.gpsLockoutXLearningEnabled);
     }
     if (learnerTuningChanged) {
         lockoutLearner.setTuning(mutableSettings.gpsLockoutLearnerPromotionHits,

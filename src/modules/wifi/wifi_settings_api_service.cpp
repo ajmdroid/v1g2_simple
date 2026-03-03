@@ -162,6 +162,22 @@ void handleApiSettingsSave(WebServer& server,
             runtime.setLockoutKaLearningEnabled(mutableSettings.gpsLockoutKaLearningEnabled);
         }
     }
+    if (server.hasArg("gpsLockoutKLearningEnabled")) {
+        mutableSettings.gpsLockoutKLearningEnabled =
+            (server.arg("gpsLockoutKLearningEnabled") == "true" ||
+             server.arg("gpsLockoutKLearningEnabled") == "1");
+        if (runtime.setLockoutKLearningEnabled) {
+            runtime.setLockoutKLearningEnabled(mutableSettings.gpsLockoutKLearningEnabled);
+        }
+    }
+    if (server.hasArg("gpsLockoutXLearningEnabled")) {
+        mutableSettings.gpsLockoutXLearningEnabled =
+            (server.arg("gpsLockoutXLearningEnabled") == "true" ||
+             server.arg("gpsLockoutXLearningEnabled") == "1");
+        if (runtime.setLockoutXLearningEnabled) {
+            runtime.setLockoutXLearningEnabled(mutableSettings.gpsLockoutXLearningEnabled);
+        }
+    }
     if (server.hasArg("gpsLockoutPreQuiet")) {
         mutableSettings.gpsLockoutPreQuiet =
             (server.arg("gpsLockoutPreQuiet") == "true" ||

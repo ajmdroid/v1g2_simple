@@ -194,6 +194,8 @@ void SettingsManager::load() {
     settings.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
         preferences.getUChar("gpsLkMDCnt", LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT));
     settings.gpsLockoutKaLearningEnabled = preferences.getBool("gpsLkKa", false);
+    settings.gpsLockoutKLearningEnabled = preferences.getBool("gpsLkK", true);
+    settings.gpsLockoutXLearningEnabled = preferences.getBool("gpsLkX", true);
     settings.gpsLockoutPreQuiet = preferences.getBool("gpsLkPQ", false);
     settings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
         preferences.getUShort("gpsLkPQBuf", LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT));

@@ -356,6 +356,8 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUChar("gpsLkUCnt", settings.gpsLockoutLearnerUnlearnCount);
     written += prefs.putUChar("gpsLkMDCnt", settings.gpsLockoutManualDemotionMissCount);
     written += prefs.putBool("gpsLkKa", settings.gpsLockoutKaLearningEnabled);
+    written += prefs.putBool("gpsLkK", settings.gpsLockoutKLearningEnabled);
+    written += prefs.putBool("gpsLkX", settings.gpsLockoutXLearningEnabled);
     written += prefs.putBool("gpsLkPQ", settings.gpsLockoutPreQuiet);
     written += prefs.putUShort("gpsLkPQBuf", settings.gpsLockoutPreQuietBufferE5);
     written += prefs.putUShort("gpsLkHdop", settings.gpsLockoutMaxHdopX10);

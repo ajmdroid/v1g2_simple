@@ -214,6 +214,8 @@ struct V1Settings {
     uint8_t gpsLockoutLearnerUnlearnCount;         // Misses to auto-remove learned lockouts (0=legacy)
     uint8_t gpsLockoutManualDemotionMissCount;     // Misses to auto-remove manual lockouts (0=disabled)
     bool gpsLockoutKaLearningEnabled;              // Allow Ka lockout learning/enforcement (default: false)
+    bool gpsLockoutKLearningEnabled;               // Allow K lockout learning/enforcement (default: true)
+    bool gpsLockoutXLearningEnabled;               // Allow X lockout learning/enforcement (default: true)
     bool gpsLockoutPreQuiet;                          // Pre-drop to muted volume in lockout zones (default: false)
     uint16_t gpsLockoutPreQuietBufferE5;                // Extra radius for pre-quiet approach zone (0 = same as zone)
     uint16_t gpsLockoutMaxHdopX10;                    // Max HDOP ×10 for lockout eval/learn (50 = 5.0, 0 = disabled)
@@ -350,6 +352,8 @@ struct V1Settings {
         gpsLockoutLearnerUnlearnCount(LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT),
         gpsLockoutManualDemotionMissCount(LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT),
         gpsLockoutKaLearningEnabled(false),
+        gpsLockoutKLearningEnabled(true),
+        gpsLockoutXLearningEnabled(true),
         gpsLockoutPreQuiet(false),
         gpsLockoutPreQuietBufferE5(LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT),
         gpsLockoutMaxHdopX10(LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT),

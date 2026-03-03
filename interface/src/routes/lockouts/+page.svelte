@@ -117,6 +117,8 @@
 			learnerUnlearnCount: LEARNER_UNLEARN_COUNT_DEFAULT,
 			manualDemotionMissCount: 0,
 			kaLearningEnabled: false,
+			kLearningEnabled: true,
+			xLearningEnabled: true,
 			coreGuardTripped: false,
 			coreGuardReason: '',
 			enforceAllowed: false
@@ -154,6 +156,8 @@
 		learnerUnlearnCount: LEARNER_UNLEARN_COUNT_DEFAULT,
 		manualDemotionMissCount: 0,
 		kaLearningEnabled: false,
+		kLearningEnabled: true,
+		xLearningEnabled: true,
 		preQuiet: false,
 		preQuietBufferE5: 0,
 		maxHdopX10: GPS_MAX_HDOP_X10_DEFAULT,
@@ -372,6 +376,14 @@
 					: typeof data?.gpsLockoutKaLearningEnabled === 'boolean'
 						? data.gpsLockoutKaLearningEnabled
 						: false;
+		const kLearningEnabled =
+			typeof lockout.kLearningEnabled === 'boolean'
+				? lockout.kLearningEnabled
+				: true;
+		const xLearningEnabled =
+			typeof lockout.xLearningEnabled === 'boolean'
+				? lockout.xLearningEnabled
+				: true;
 		const preQuiet =
 			typeof lockout.preQuiet === 'boolean'
 				? lockout.preQuiet
@@ -414,6 +426,8 @@
 			learnerUnlearnCount: clampUnlearnCount(learnerUnlearnCount),
 			manualDemotionMissCount: clampManualDemotionMissCount(manualDemotionMissCount),
 			kaLearningEnabled: !!kaLearningEnabled,
+			kLearningEnabled: !!kLearningEnabled,
+			xLearningEnabled: !!xLearningEnabled,
 			preQuiet: !!preQuiet,
 			preQuietBufferE5: typeof lockout.preQuietBufferE5 === 'number' ? lockout.preQuietBufferE5 : 0,
 			maxHdopX10: clampHdopX10(maxHdopX10),
@@ -707,6 +721,8 @@
 			clampManualDemotionMissCount(lockoutConfig.manualDemotionMissCount) ===
 				clampManualDemotionMissCount(runtime.manualDemotionMissCount) &&
 			!!lockoutConfig.kaLearningEnabled === !!runtime.kaLearningEnabled &&
+			!!lockoutConfig.kLearningEnabled === !!runtime.kLearningEnabled &&
+			!!lockoutConfig.xLearningEnabled === !!runtime.xLearningEnabled &&
 			(Number(lockoutConfig.preQuietBufferE5) || 0) === (Number(runtime.preQuietBufferE5) || 0) &&
 			clampHdopX10(lockoutConfig.maxHdopX10) === clampHdopX10(runtime.maxHdopX10) &&
 			clampMinLearnerSpeed(lockoutConfig.minLearnerSpeedMph) === clampMinLearnerSpeed(runtime.minLearnerSpeedMph)
@@ -884,6 +900,8 @@
 				lockoutConfig.manualDemotionMissCount
 			);
 			const kaLearningEnabled = !!lockoutConfig.kaLearningEnabled;
+			const kLearningEnabled = !!lockoutConfig.kLearningEnabled;
+			const xLearningEnabled = !!lockoutConfig.xLearningEnabled;
 			const maxHdopX10 = clampHdopX10(lockoutConfig.maxHdopX10);
 			const minLearnerSpeedMph = clampMinLearnerSpeed(lockoutConfig.minLearnerSpeedMph);
 			const payload = {
@@ -900,6 +918,8 @@
 				lockoutLearnerUnlearnCount: learnerUnlearnCount,
 				lockoutManualDemotionMissCount: manualDemotionMissCount,
 				lockoutKaLearningEnabled: kaLearningEnabled,
+				lockoutKLearningEnabled: kLearningEnabled,
+				lockoutXLearningEnabled: xLearningEnabled,
 				lockoutPreQuiet: !!lockoutConfig.preQuiet,
 				lockoutPreQuietBufferE5: Number(lockoutConfig.preQuietBufferE5) || 0,
 				lockoutMaxHdopX10: maxHdopX10,
@@ -1491,6 +1511,46 @@
 							<option value={25}>After 25 drives without signal</option>
 							<option value={50}>After 50 drives without signal</option>
 						</select>
+					</label>
+				</div>
+				<div class="divider text-xs my-1">Band Learning</div>
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-medium">K Band Learning</span>
+							<p class="copy-caption-soft">Learn and lock out K-band false alerts (door openers, speed signs) — the primary use case for lockouts</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							checked={!!lockoutConfig.kLearningEnabled}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.kLearningEnabled = e.currentTarget.checked;
+								markLockoutDirty();
+							}}
+						/>
+					</label>
+					{#if !lockoutConfig.kLearningEnabled}
+						<p class="copy-warning mt-1">⚠ K learning disabled — most false alerts will not be locked out</p>
+					{/if}
+				</div>
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-medium">X Band Learning</span>
+							<p class="copy-caption-soft">Learn and lock out X-band false alerts — less common but still present in some areas</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							checked={!!lockoutConfig.xLearningEnabled}
+							disabled={!advancedUnlocked}
+							onchange={(e) => {
+								lockoutConfig.xLearningEnabled = e.currentTarget.checked;
+								markLockoutDirty();
+							}}
+						/>
 					</label>
 				</div>
 				<div class="form-control">

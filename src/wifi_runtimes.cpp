@@ -309,6 +309,12 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
         [this](bool enabled) {
             lockoutSetKaLearningEnabled(enabled);
         },
+        [this](bool enabled) {
+            lockoutSetKLearningEnabled(enabled);
+        },
+        [this](bool enabled) {
+            lockoutSetXLearningEnabled(enabled);
+        },
         [this]() {
             settingsManager.save();
         },

@@ -953,6 +953,8 @@ static bool loadPendingLearnerJsonDocument(JsonDocument& outDoc) {
 static void applyLockoutPolicyAndLoadZonesFromStorage() {
     // Apply persisted Ka lockout policy before loading/sanitizing lockout zones.
     lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
+    lockoutSetKLearningEnabled(settingsManager.get().gpsLockoutKLearningEnabled);
+    lockoutSetXLearningEnabled(settingsManager.get().gpsLockoutXLearningEnabled);
 
     JsonDocument doc;
     if (!loadLockoutZonesJsonDocument(doc)) {

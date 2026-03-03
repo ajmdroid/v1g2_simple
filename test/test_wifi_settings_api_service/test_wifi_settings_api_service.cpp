@@ -90,6 +90,8 @@ static WifiSettingsApiService::Runtime makeRuntime(FakeRuntime& rt) {
             rt.setLockoutKaLearningEnabledCalls++;
             rt.lastLockoutKaLearningEnabled = enabled;
         },
+        [](bool) {},  // setLockoutKLearningEnabled
+        [](bool) {},  // setLockoutXLearningEnabled
         [&rt]() {
             rt.saveCalls++;
         },

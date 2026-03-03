@@ -10,7 +10,11 @@ static constexpr uint8_t kLockoutBandMaskKaKx = static_cast<uint8_t>(0x02 | 0x04
 // Runtime policy gate (default: K/X only). Ka is opt-in and safety-gated in UI/API.
 uint8_t lockoutSupportedBandMask();
 bool lockoutKaLearningEnabled();
+bool lockoutKLearningEnabled();
+bool lockoutXLearningEnabled();
 void lockoutSetKaLearningEnabled(bool enabled);
+void lockoutSetKLearningEnabled(bool enabled);
+void lockoutSetXLearningEnabled(bool enabled);
 
 uint8_t lockoutSanitizeBandMask(uint8_t bandMask);
 bool lockoutBandSupported(uint8_t bandMask);
