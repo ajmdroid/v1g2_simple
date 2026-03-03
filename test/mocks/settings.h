@@ -93,6 +93,7 @@ struct V1Settings {
     bool gpsEnabled = true;
     LockoutRuntimeMode gpsLockoutMode = LOCKOUT_RUNTIME_OFF;
     bool gpsLockoutPreQuiet = false;
+    uint16_t gpsLockoutPreQuietBufferE5 = 0;
     bool gpsLockoutCoreGuardEnabled = true;
     uint16_t gpsLockoutMaxQueueDrops = 0;
     uint16_t gpsLockoutMaxPerfDrops = 0;

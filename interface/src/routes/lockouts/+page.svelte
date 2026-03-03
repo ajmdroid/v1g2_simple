@@ -155,6 +155,7 @@
 		manualDemotionMissCount: 0,
 		kaLearningEnabled: false,
 		preQuiet: false,
+		preQuietBufferE5: 0,
 		maxHdopX10: GPS_MAX_HDOP_X10_DEFAULT,
 		minLearnerSpeedMph: GPS_MIN_LEARNER_SPEED_MPH_DEFAULT
 	});
@@ -396,7 +397,11 @@
 						? data.gpsLockoutMinLearnerSpeedMph
 						: GPS_MIN_LEARNER_SPEED_MPH_DEFAULT;
 		lockoutConfig = {
-			modeRaw: typeof lockout.modeRaw === 'number' ? lockout.modeRaw : 0,
+			modeRaw: (() => {
+				const raw = typeof lockout.modeRaw === 'number' ? lockout.modeRaw : 0;
+				// Advisory (2) is now merged with Log Only (1)
+				return raw === 2 ? 1 : raw;
+			})(),
 			coreGuardEnabled: !!lockout.coreGuardEnabled,
 			maxQueueDrops: typeof lockout.maxQueueDrops === 'number' ? lockout.maxQueueDrops : 0,
 			maxPerfDrops: typeof lockout.maxPerfDrops === 'number' ? lockout.maxPerfDrops : 0,
@@ -410,6 +415,7 @@
 			manualDemotionMissCount: clampManualDemotionMissCount(manualDemotionMissCount),
 			kaLearningEnabled: !!kaLearningEnabled,
 			preQuiet: !!preQuiet,
+			preQuietBufferE5: typeof lockout.preQuietBufferE5 === 'number' ? lockout.preQuietBufferE5 : 0,
 			maxHdopX10: clampHdopX10(maxHdopX10),
 			minLearnerSpeedMph: clampMinLearnerSpeed(minLearnerSpeedMph)
 		};
@@ -701,6 +707,7 @@
 			clampManualDemotionMissCount(lockoutConfig.manualDemotionMissCount) ===
 				clampManualDemotionMissCount(runtime.manualDemotionMissCount) &&
 			!!lockoutConfig.kaLearningEnabled === !!runtime.kaLearningEnabled &&
+			(Number(lockoutConfig.preQuietBufferE5) || 0) === (Number(runtime.preQuietBufferE5) || 0) &&
 			clampHdopX10(lockoutConfig.maxHdopX10) === clampHdopX10(runtime.maxHdopX10) &&
 			clampMinLearnerSpeed(lockoutConfig.minLearnerSpeedMph) === clampMinLearnerSpeed(runtime.minLearnerSpeedMph)
 		);
@@ -894,6 +901,7 @@
 				lockoutManualDemotionMissCount: manualDemotionMissCount,
 				lockoutKaLearningEnabled: kaLearningEnabled,
 				lockoutPreQuiet: !!lockoutConfig.preQuiet,
+				lockoutPreQuietBufferE5: Number(lockoutConfig.preQuietBufferE5) || 0,
 				lockoutMaxHdopX10: maxHdopX10,
 				lockoutMinLearnerSpeedMph: minLearnerSpeedMph
 			};
@@ -1212,8 +1220,7 @@
 						disabled={!advancedUnlocked}
 					>
 						<option value={0}>Off — lockouts disabled</option>
-						<option value={1}>Shadow — log matches, no muting</option>
-						<option value={2}>Advisory — visual indicators only</option>
+						<option value={1}>Log Only — evaluate and log matches, no muting</option>
 						<option value={3}>Enforce — mute locked-out signals</option>
 					</select>
 					{#if lockoutConfig.modeRaw === 3}
@@ -1246,7 +1253,7 @@
 					<label class="label cursor-pointer">
 						<div>
 							<span class="label-text font-medium">Lower Volume in Lockout Zones</span>
-							<p class="copy-caption-soft">Reduce V1 volume when entering a zone, restore instantly on real alerts</p>
+							<p class="copy-caption-soft">Reduce V1 volume when approaching a zone, restore instantly on real alerts</p>
 						</div>
 						<input
 							type="checkbox"
@@ -1260,6 +1267,25 @@
 						/>
 					</label>
 				</div>
+				{#if lockoutConfig.preQuiet}
+				<div class="form-control">
+					<label class="label" for="pre-quiet-buffer">
+						<span class="label-text font-medium">Pre-Quiet Approach Distance</span>
+					</label>
+					<select
+						id="pre-quiet-buffer"
+						class="select select-bordered w-full"
+						bind:value={lockoutConfig.preQuietBufferE5}
+						onchange={markLockoutDirty}
+						disabled={!advancedUnlocked}
+					>
+						<option value={0}>Same as zone — drop volume at zone edge</option>
+						<option value={45}>+50m (~150 ft) — drop volume slightly before zone</option>
+						<option value={90}>+100m (~300 ft) — drop volume well before zone</option>
+						<option value={135}>+150m (~500 ft) — drop volume early, no surprise beeps</option>
+					</select>
+				</div>
+				{/if}
 				{/if}
 				{#if lockoutConfig.coreGuardEnabled}
 				<div class="surface-subsection">

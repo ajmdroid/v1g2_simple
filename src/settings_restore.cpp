@@ -508,6 +508,10 @@ bool SettingsManager::restoreFromSD() {
     }
     restoreBool("gpsLockoutKaLearningEnabled", settings.gpsLockoutKaLearningEnabled);
     restoreBool("gpsLockoutPreQuiet", settings.gpsLockoutPreQuiet);
+    if (doc["gpsLockoutPreQuietBufferE5"].is<int>()) {
+        settings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
+            doc["gpsLockoutPreQuietBufferE5"].as<int>());
+    }
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
     if (doc["autoPowerOffMinutes"].is<int>()) {
         settings.autoPowerOffMinutes = clampU8(doc["autoPowerOffMinutes"].as<int>(), 0, 60);

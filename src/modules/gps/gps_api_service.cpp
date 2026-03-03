@@ -162,6 +162,7 @@ void sendStatus(WebServer& server,
     lockoutObj["manualDemotionMissCount"] = static_cast<uint32_t>(settings.gpsLockoutManualDemotionMissCount);
     lockoutObj["kaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     lockoutObj["preQuiet"] = settings.gpsLockoutPreQuiet;
+    lockoutObj["preQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
     lockoutObj["maxHdopX10"] = settings.gpsLockoutMaxHdopX10;
     lockoutObj["minLearnerSpeedMph"] = settings.gpsLockoutMinLearnerSpeedMph;
     lockoutObj["minSatellites"] = LOCKOUT_GPS_MIN_SATELLITES;
@@ -307,6 +308,8 @@ void handleConfig(WebServer& server,
     bool kaLearningEnabled = currentSettings.gpsLockoutKaLearningEnabled;
     bool hasPreQuiet = false;
     bool preQuiet = currentSettings.gpsLockoutPreQuiet;
+    bool hasPreQuietBufferE5 = false;
+    uint16_t preQuietBufferE5 = currentSettings.gpsLockoutPreQuietBufferE5;
     bool hasMaxHdopX10 = false;
     uint16_t maxHdopX10 = currentSettings.gpsLockoutMaxHdopX10;
     bool hasMinLearnerSpeedMph = false;
@@ -441,6 +444,13 @@ void handleConfig(WebServer& server,
         } else if (body["gpsLockoutPreQuiet"].is<bool>()) {
             preQuiet = body["gpsLockoutPreQuiet"].as<bool>();
             hasPreQuiet = true;
+        }
+        if (body["lockoutPreQuietBufferE5"].is<int>()) {
+            preQuietBufferE5 = clampLockoutPreQuietBufferE5Value(body["lockoutPreQuietBufferE5"].as<int>());
+            hasPreQuietBufferE5 = true;
+        } else if (body["gpsLockoutPreQuietBufferE5"].is<int>()) {
+            preQuietBufferE5 = clampLockoutPreQuietBufferE5Value(body["gpsLockoutPreQuietBufferE5"].as<int>());
+            hasPreQuietBufferE5 = true;
         }
         if (body["lockoutMaxHdopX10"].is<int>()) {
             maxHdopX10 = clampLockoutGpsMaxHdopX10Value(body["lockoutMaxHdopX10"].as<int>());
@@ -628,6 +638,14 @@ void handleConfig(WebServer& server,
         preQuiet = (value == "1" || value == "true" || value == "on");
         hasPreQuiet = true;
     }
+    if (!hasPreQuietBufferE5 && server.hasArg("lockoutPreQuietBufferE5")) {
+        preQuietBufferE5 = clampLockoutPreQuietBufferE5Value(server.arg("lockoutPreQuietBufferE5").toInt());
+        hasPreQuietBufferE5 = true;
+    }
+    if (!hasPreQuietBufferE5 && server.hasArg("gpsLockoutPreQuietBufferE5")) {
+        preQuietBufferE5 = clampLockoutPreQuietBufferE5Value(server.arg("gpsLockoutPreQuietBufferE5").toInt());
+        hasPreQuietBufferE5 = true;
+    }
     if (!hasMaxHdopX10 && server.hasArg("lockoutMaxHdopX10")) {
         maxHdopX10 = clampLockoutGpsMaxHdopX10Value(server.arg("lockoutMaxHdopX10").toInt());
         hasMaxHdopX10 = true;
@@ -652,7 +670,8 @@ void handleConfig(WebServer& server,
                                 hasLearnerFreqToleranceMHz || hasLearnerLearnIntervalHours ||
                                 hasLearnerUnlearnIntervalHours || hasLearnerUnlearnCount ||
                                 hasManualDemotionMissCount || hasKaLearningEnabled ||
-                                hasPreQuiet || hasMaxHdopX10 || hasMinLearnerSpeedMph;
+                                hasPreQuiet || hasPreQuietBufferE5 ||
+                                hasMaxHdopX10 || hasMinLearnerSpeedMph;
         if (!hasLockoutUpdate) {
             server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing enabled or lockout settings\"}");
             return;
@@ -759,6 +778,11 @@ void handleConfig(WebServer& server,
     if (hasPreQuiet &&
         mutableSettings.gpsLockoutPreQuiet != preQuiet) {
         mutableSettings.gpsLockoutPreQuiet = preQuiet;
+        lockoutSettingsChanged = true;
+    }
+    if (hasPreQuietBufferE5 &&
+        mutableSettings.gpsLockoutPreQuietBufferE5 != preQuietBufferE5) {
+        mutableSettings.gpsLockoutPreQuietBufferE5 = preQuietBufferE5;
         lockoutSettingsChanged = true;
     }
     if (hasMaxHdopX10 &&

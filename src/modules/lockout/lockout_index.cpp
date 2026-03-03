@@ -282,6 +282,23 @@ size_t LockoutIndex::findNearby(int32_t latE5,
     return found;
 }
 
+size_t LockoutIndex::findNearbyInflated(int32_t latE5,
+                                        int32_t lonE5,
+                                        uint16_t bufferE5,
+                                        int16_t* out,
+                                        size_t outCap) const {
+    if (bufferE5 == 0) return findNearby(latE5, lonE5, out, outCap);
+    size_t found = 0;
+    if (!out || outCap == 0) return 0;
+    for (size_t i = 0; i < kCapacity && found < outCap; ++i) {
+        const LockoutEntry& e = entries_[i];
+        if (!e.isActive()) continue;
+        if (!withinInflatedRadius(latE5, lonE5, e, bufferE5)) continue;
+        out[found++] = static_cast<int16_t>(i);
+    }
+    return found;
+}
+
 // --- Private helpers ---
 
 bool LockoutIndex::withinRadius(int32_t latE5,
@@ -303,6 +320,23 @@ bool LockoutIndex::withinRadius(int32_t latE5,
     // At mid-latitudes 1 E5 unit ≈ 1.11 m latitude, ~0.85 m longitude (varies).
     // We treat E5 units as isotropic for simplicity — the radius is already
     // tuned conservatively (~150 m ≈ 135 E5) so the error is acceptable.
+    const int64_t dLat64 = static_cast<int64_t>(dLat);
+    const int64_t dLon64 = static_cast<int64_t>(dLon);
+    const int64_t r64    = static_cast<int64_t>(radius);
+    return (dLat64 * dLat64 + dLon64 * dLon64) <= (r64 * r64);
+}
+
+bool LockoutIndex::withinInflatedRadius(int32_t latE5,
+                                        int32_t lonE5,
+                                        const LockoutEntry& entry,
+                                        uint16_t bufferE5) {
+    const int32_t dLat = latE5 - entry.latE5;
+    const int32_t dLon = lonE5 - entry.lonE5;
+    const int32_t radius = static_cast<int32_t>(entry.radiusE5) + static_cast<int32_t>(bufferE5);
+
+    if (dLat > radius || dLat < -radius) return false;
+    if (dLon > radius || dLon < -radius) return false;
+
     const int64_t dLat64 = static_cast<int64_t>(dLat);
     const int64_t dLon64 = static_cast<int64_t>(dLon);
     const int64_t r64    = static_cast<int64_t>(radius);

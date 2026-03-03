@@ -100,6 +100,14 @@ public:
                       int16_t* out,
                       size_t outCap) const;
 
+    /// Like findNearby(), but inflates each zone's radius by bufferE5 units.
+    /// Used by pre-quiet to detect approaching a lockout zone before entry.
+    size_t findNearbyInflated(int32_t latE5,
+                              int32_t lonE5,
+                              uint16_t bufferE5,
+                              int16_t* out,
+                              size_t outCap) const;
+
 private:
     /// Fast integer-only proximity check.
     /// Returns true if (latE5, lonE5) is within the entry's bounding box AND
@@ -107,6 +115,12 @@ private:
     static bool withinRadius(int32_t latE5,
                              int32_t lonE5,
                              const LockoutEntry& entry);
+
+    /// Like withinRadius() but with an extra buffer added to the entry's radius.
+    static bool withinInflatedRadius(int32_t latE5,
+                                     int32_t lonE5,
+                                     const LockoutEntry& entry,
+                                     uint16_t bufferE5);
 
     /// Check whether the alert frequency is within entry's tolerance window.
     static bool freqMatches(uint16_t alertFreqMHz, const LockoutEntry& entry);

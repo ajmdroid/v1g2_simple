@@ -70,6 +70,7 @@ static void sendBackup(WebServer& server) {
     doc["gpsLockoutManualDemotionMissCount"] = s.gpsLockoutManualDemotionMissCount;
     doc["gpsLockoutKaLearningEnabled"] = s.gpsLockoutKaLearningEnabled;
     doc["gpsLockoutPreQuiet"] = s.gpsLockoutPreQuiet;
+    doc["gpsLockoutPreQuietBufferE5"] = s.gpsLockoutPreQuietBufferE5;
     doc["lastV1Address"] = s.lastV1Address;
     
     // Display settings
@@ -335,6 +336,10 @@ static void handleRestore(WebServer& server) {
     }
     if (doc["gpsLockoutPreQuiet"].is<bool>()) {
         s.gpsLockoutPreQuiet = doc["gpsLockoutPreQuiet"];
+    }
+    if (doc["gpsLockoutPreQuietBufferE5"].is<int>()) {
+        s.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
+            doc["gpsLockoutPreQuietBufferE5"].as<int>());
     }
     if (doc["lastV1Address"].is<const char*>()) {
         s.lastV1Address = sanitizeLastV1AddressForBackup(doc["lastV1Address"].as<String>());

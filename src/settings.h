@@ -111,6 +111,10 @@ static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MIN = 0;
 static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MAX = 10;
 static constexpr uint8_t LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT = 0;     // 0 = never auto-delete
 
+// Pre-quiet approach buffer: extra radius (E5) added to zone radius for early volume drop.
+static constexpr uint16_t LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT = 0;     // 0 = same as zone
+static constexpr uint16_t LOCKOUT_PRE_QUIET_BUFFER_E5_MAX = 135;       // ~150m / ~500ft
+
 // GPS quality gates for lockout evaluation and learning.
 static constexpr uint8_t  LOCKOUT_GPS_MIN_SATELLITES = 4;                      // Minimum sats for 3D fix
 static constexpr uint16_t LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT = 50;               // 5.0 HDOP (stored as ×10)
@@ -119,6 +123,11 @@ static constexpr uint16_t LOCKOUT_GPS_MAX_HDOP_X10_MAX = 100;                  /
 static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT = 5;       // Minimum speed for learner
 static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MIN = 0;           // 0 = disabled
 static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MAX = 20;          // 20 mph ceiling
+
+inline uint16_t clampLockoutPreQuietBufferE5Value(int rawBuffer) {
+    return static_cast<uint16_t>(std::max(0,
+                                          std::min(rawBuffer, static_cast<int>(LOCKOUT_PRE_QUIET_BUFFER_E5_MAX))));
+}
 
 inline uint16_t clampLockoutGpsMaxHdopX10Value(int rawHdopX10) {
     return static_cast<uint16_t>(std::max(static_cast<int>(LOCKOUT_GPS_MAX_HDOP_X10_MIN),
@@ -206,6 +215,7 @@ struct V1Settings {
     uint8_t gpsLockoutManualDemotionMissCount;     // Misses to auto-remove manual lockouts (0=disabled)
     bool gpsLockoutKaLearningEnabled;              // Allow Ka lockout learning/enforcement (default: false)
     bool gpsLockoutPreQuiet;                          // Pre-drop to muted volume in lockout zones (default: false)
+    uint16_t gpsLockoutPreQuietBufferE5;                // Extra radius for pre-quiet approach zone (0 = same as zone)
     uint16_t gpsLockoutMaxHdopX10;                    // Max HDOP ×10 for lockout eval/learn (50 = 5.0, 0 = disabled)
     uint8_t gpsLockoutMinLearnerSpeedMph;             // Min speed (mph) for learner ingestion (0 = disabled)
     
@@ -341,6 +351,7 @@ struct V1Settings {
         gpsLockoutManualDemotionMissCount(LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT),
         gpsLockoutKaLearningEnabled(false),
         gpsLockoutPreQuiet(false),
+        gpsLockoutPreQuietBufferE5(LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT),
         gpsLockoutMaxHdopX10(LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT),
         gpsLockoutMinLearnerSpeedMph(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT),
         turnOffDisplay(false),

@@ -72,6 +72,15 @@ size_t LockoutIndex::findNearby(int32_t latE5,
     return count;
 }
 
+size_t LockoutIndex::findNearbyInflated(int32_t latE5,
+                                        int32_t lonE5,
+                                        uint16_t bufferE5,
+                                        int16_t* out,
+                                        size_t outCap) const {
+    (void)bufferE5;
+    return findNearby(latE5, lonE5, out, outCap);
+}
+
 void SignalCaptureModule::reset() {
     lastValid_ = false;
     lastSample_ = SignalObservation{};
