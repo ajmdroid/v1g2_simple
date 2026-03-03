@@ -1620,7 +1620,7 @@
 										<th>Conf</th>
 										<th>Radius</th>
 										<th>Direction</th>
-										<th>Demote</th>
+										<th>Auto-Remove</th>
 										<th>Location</th>
 									</tr>
 								</thead>
@@ -1669,12 +1669,12 @@
 											<td class="text-xs whitespace-nowrap">{formatDirectionSummary(zone)}</td>
 											<td class="text-xs">
 												{#if typeof zone.demotionMissThreshold === 'number'}
-													{zone.missCount ?? 0}/{zone.demotionMissThreshold}
+													{zone.missCount ?? 0}/{zone.demotionMissThreshold} misses
 													{#if typeof zone.demotionMissesRemaining === 'number'}
-														({zone.demotionMissesRemaining} left)
+														({zone.demotionMissesRemaining} to remove)
 													{/if}
 												{:else}
-													legacy decay
+													manual only
 												{/if}
 											</td>
 											<td>
