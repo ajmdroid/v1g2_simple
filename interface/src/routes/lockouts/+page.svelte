@@ -1410,19 +1410,22 @@
 						/>
 					</label>
 					<label class="form-control">
-						<span class="label-text font-medium">Drives to Auto-Remove</span>
-						<input
-							type="number"
-							min={LEARNER_UNLEARN_COUNT_MIN}
-							max={LEARNER_UNLEARN_COUNT_MAX}
-							class="input input-bordered input-sm"
+						<span class="label-text font-medium">Auto-Remove Learned Zones</span>
+						<select
+							class="select select-bordered select-sm"
 							value={lockoutConfig.learnerUnlearnCount}
 							disabled={!advancedUnlocked}
 							onchange={(e) => {
 								lockoutConfig.learnerUnlearnCount = clampUnlearnCount(e.currentTarget.value);
 								markLockoutDirty();
 							}}
-						/>
+						>
+							<option value={0}>Never — use confidence decay</option>
+							<option value={3}>After 3 drives without signal</option>
+							<option value={5}>After 5 drives without signal</option>
+							<option value={7}>After 7 drives without signal</option>
+							<option value={10}>After 10 drives without signal</option>
+						</select>
 					</label>
 					<label class="form-control">
 						<span class="label-text font-medium">Time Between Removal Checks</span>
@@ -1445,7 +1448,7 @@
 						</select>
 					</label>
 					<label class="form-control">
-						<span class="label-text font-medium">Manual Zone Auto-Expire</span>
+						<span class="label-text font-medium">Auto-Remove Manual Zones</span>
 						<select
 							class="select select-bordered select-sm"
 							value={lockoutConfig.manualDemotionMissCount}
@@ -1457,7 +1460,7 @@
 								markLockoutDirty();
 							}}
 						>
-							<option value={0}>Never — manual zones persist forever</option>
+							<option value={0}>Never — persist forever</option>
 							<option value={10}>After 10 drives without signal</option>
 							<option value={25}>After 25 drives without signal</option>
 							<option value={50}>After 50 drives without signal</option>
