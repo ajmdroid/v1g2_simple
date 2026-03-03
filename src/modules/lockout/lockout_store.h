@@ -37,7 +37,7 @@ public:
 
     /// Clear the index, then populate it from the given doc.
     /// Validates _type and _version.  Skips entries missing lat/lon.
-    /// Truncates at index capacity (200).
+    /// Truncates at index capacity (500).
     /// Returns true on success (even if some entries were skipped).
     bool fromJson(JsonDocument& doc);
 

@@ -87,16 +87,41 @@ void test_add_fills_first_available_slot() {
 }
 
 void test_add_returns_neg1_when_full() {
+    // Fill with manual (un-evictable) entries so eviction cannot help.
     for (size_t i = 0; i < LockoutIndex::kCapacity; ++i) {
-        int slot = idx.add(makeKBandEntry(
+        LockoutEntry e = makeKBandEntry(
             static_cast<int32_t>(1000000 + i * 10000),
-            static_cast<int32_t>(-1000000 - i * 10000)));
+            static_cast<int32_t>(-1000000 - i * 10000));
+        e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+        int slot = idx.add(e);
         TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
     }
     TEST_ASSERT_EQUAL(LockoutIndex::kCapacity, idx.activeCount());
 
     int overflow = idx.add(makeKBandEntry(9999999, -9999999));
     TEST_ASSERT_EQUAL(-1, overflow);
+}
+
+void test_add_evicts_lowest_confidence_when_full() {
+    // Fill to capacity with learned entries at confidence 100.
+    for (size_t i = 0; i < LockoutIndex::kCapacity; ++i) {
+        LockoutEntry e = makeKBandEntry(
+            static_cast<int32_t>(1000000 + i * 10000),
+            static_cast<int32_t>(-1000000 - i * 10000));
+        e.confidence = 100;
+        idx.add(e);
+    }
+    TEST_ASSERT_EQUAL(LockoutIndex::kCapacity, idx.activeCount());
+
+    // Manually lower confidence of slot 5 — it should be the eviction victim.
+    idx.mutableAt(5)->confidence = 1;
+
+    LockoutEntry fresh = makeKBandEntry(9999999, -9999999);
+    fresh.confidence = 200;
+    int slot = idx.add(fresh);
+    TEST_ASSERT_EQUAL(5, slot);
+    TEST_ASSERT_EQUAL(200, idx.at(slot)->confidence);
+    TEST_ASSERT_EQUAL(LockoutIndex::kCapacity, idx.activeCount());
 }
 
 void test_remove_marks_inactive() {
@@ -663,6 +688,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_add_sanitizes_mixed_band_mask);
     RUN_TEST(test_add_fills_first_available_slot);
     RUN_TEST(test_add_returns_neg1_when_full);
+    RUN_TEST(test_add_evicts_lowest_confidence_when_full);
     RUN_TEST(test_remove_marks_inactive);
     RUN_TEST(test_remove_out_of_range_returns_false);
 

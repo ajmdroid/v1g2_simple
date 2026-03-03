@@ -69,7 +69,14 @@ int LockoutIndex::add(const LockoutEntry& entry) {
             return static_cast<int>(i);
         }
     }
-    return -1;  // Full.
+    // No free slot — try eviction.
+    int victim = findEvictionCandidate();
+    if (victim >= 0) {
+        entries_[victim] = sanitized;
+        entries_[victim].setActive(true);
+        return victim;
+    }
+    return -1;  // All slots are un-evictable (manual).
 }
 
 int LockoutIndex::addOrUpdate(const LockoutEntry& entry) {
@@ -362,6 +369,29 @@ size_t LockoutIndex::findNearbyDirectional(int32_t latE5,
         }
     }
     return found;
+}
+
+// --- Eviction ---
+
+int LockoutIndex::findEvictionCandidate() const {
+    int best = -1;
+    uint8_t bestConf = 255;
+    int64_t bestLastSeen = INT64_MAX;
+
+    for (size_t i = 0; i < kCapacity; ++i) {
+        const LockoutEntry& e = entries_[i];
+        if (!e.isActive()) continue;
+        if (e.isManual()) continue;            // Never evict manual zones.
+        if (!e.isLearned()) continue;          // Only evict auto-learned zones.
+
+        if (e.confidence < bestConf ||
+            (e.confidence == bestConf && e.lastSeenMs < bestLastSeen)) {
+            best = static_cast<int>(i);
+            bestConf = e.confidence;
+            bestLastSeen = e.lastSeenMs;
+        }
+    }
+    return best;
 }
 
 // --- Private helpers ---

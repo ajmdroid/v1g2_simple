@@ -13,16 +13,16 @@ struct LockoutCleanPassResult {
 
 /// Fixed-size lockout zone index.
 ///
-/// Provides O(N) scan per query where N ≤ kCapacity (~200).
+/// Provides O(N) scan per query where N ≤ kCapacity (~500).
 /// All operations are integer-only (no floats, no haversine) to keep
-/// query time bounded (~50 μs) on the Core-1 hot path.
+/// query time bounded on the Core-1 hot path.
 ///
 /// Thread safety: designed for single-threaded access from loop().
 /// If background tasks need to mutate (e.g. persistence restore at boot),
 /// callers must ensure mutual exclusion externally.
 class LockoutIndex {
 public:
-    static constexpr size_t kCapacity = 200;
+    static constexpr size_t kCapacity = 500;
 
     /// Reset all slots to inactive.
     void clear();
@@ -41,7 +41,9 @@ public:
 
     // --- Mutation (boot restore, learner promotion, user creation) ---
 
-    /// Insert or overwrite at first available slot.  Returns slot index, or -1 if full.
+    /// Insert at first available slot.  If full, evicts the lowest-priority
+    /// learned (non-manual) entry.  Returns slot index, or -1 if all slots
+    /// are occupied by manual entries (un-evictable).
     int add(const LockoutEntry& entry);
 
     /// Insert, or update an existing entry if one already covers the same zone.
@@ -146,6 +148,11 @@ private:
 
     /// Direction gate for forward/reverse entries.
     static bool courseMatches(bool courseValid, float courseDeg, const LockoutEntry& entry);
+
+    /// Find the lowest-priority evictable entry (learned, non-manual).
+    /// Among candidates, selects lowest confidence; breaks ties by oldest
+    /// lastSeenMs.  Returns slot index, or -1 if no evictable candidate.
+    int findEvictionCandidate() const;
 
     LockoutEntry entries_[kCapacity] = {};
 };
