@@ -108,6 +108,25 @@ public:
                               int16_t* out,
                               size_t outCap) const;
 
+    /// Direction-aware pre-quiet proximity check.
+    ///
+    /// For DIRECTION_ALL zones: symmetric circle + full buffer (same as
+    /// findNearbyInflated).  For DIRECTION_FORWARD zones with a known heading:
+    ///   - If course matches zone heading AND device is upstream (approaching):
+    ///     use full buffer → triggers volume drop early.
+    ///   - If device is downstream (past the zone center): no buffer →
+    ///     the zone's base radius controls exit, releasing volume sooner.
+    ///   - If course doesn't match: no buffer (wrong direction of travel).
+    ///
+    /// When courseValid is false, falls back to findNearbyInflated() behavior.
+    size_t findNearbyDirectional(int32_t latE5,
+                                 int32_t lonE5,
+                                 bool courseValid,
+                                 float courseDeg,
+                                 uint16_t bufferE5,
+                                 int16_t* out,
+                                 size_t outCap) const;
+
 private:
     /// Fast integer-only proximity check.
     /// Returns true if (latE5, lonE5) is within the entry's bounding box AND

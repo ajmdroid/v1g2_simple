@@ -141,9 +141,12 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
         }
 
         // Pre-quiet: proactively drop volume when GPS is in a lockout zone.
-        // findNearby is position-only, O(N) ~50 μs — same scan the enforcer uses.
-        // When preQuietBufferE5 > 0, use an inflated radius to trigger the
-        // volume drop before physically entering the lockout zone.
+        // findNearbyDirectional is position-only, O(N) — same scan the enforcer
+        // uses.  When preQuietBufferE5 > 0, zones with a heading get an
+        // asymmetric buffer: inflated on the approach side (enter mute early)
+        // and base-radius-only on the departure side (release once past).
+        // Omni-directional zones and missing course data fall back to
+        // symmetric inflation.
         {
             const DisplayState& pqState = parser_->getDisplayState();
             size_t nearbyCount = 0;
@@ -154,7 +157,10 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
                 const int32_t lonE5 = static_cast<int32_t>(lroundf(gpsStatus.longitudeDeg * 100000.0f));
                 int16_t nearbyBuf[16];
                 const uint16_t bufferE5 = lockoutSettings.gpsLockoutPreQuietBufferE5;
-                nearbyCount = index_->findNearbyInflated(latE5, lonE5, bufferE5, nearbyBuf, 16);
+                nearbyCount = index_->findNearbyDirectional(
+                    latE5, lonE5,
+                    gpsStatus.courseValid, gpsStatus.courseDeg,
+                    bufferE5, nearbyBuf, 16);
             }
             const PreQuietDecision pqDecision = evaluatePreQuiet(
                 lockoutSettings.gpsLockoutPreQuiet,

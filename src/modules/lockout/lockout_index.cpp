@@ -299,6 +299,71 @@ size_t LockoutIndex::findNearbyInflated(int32_t latE5,
     return found;
 }
 
+size_t LockoutIndex::findNearbyDirectional(int32_t latE5,
+                                           int32_t lonE5,
+                                           bool courseValid,
+                                           float courseDeg,
+                                           uint16_t bufferE5,
+                                           int16_t* out,
+                                           size_t outCap) const {
+    // Fast path: no buffer → identical to findNearby().
+    if (bufferE5 == 0) return findNearby(latE5, lonE5, out, outCap);
+
+    // No valid course → fall back to symmetric inflation.
+    if (!courseValid || !std::isfinite(courseDeg)) {
+        return findNearbyInflated(latE5, lonE5, bufferE5, out, outCap);
+    }
+
+    size_t found = 0;
+    if (!out || outCap == 0) return 0;
+
+    for (size_t i = 0; i < kCapacity && found < outCap; ++i) {
+        const LockoutEntry& e = entries_[i];
+        if (!e.isActive()) continue;
+
+        bool hit = false;
+
+        if (e.directionMode == LockoutEntry::DIRECTION_ALL ||
+            e.headingDeg == LockoutEntry::HEADING_INVALID ||
+            e.headingDeg >= 360) {
+            // Omni-directional or no heading data → symmetric inflation.
+            hit = withinInflatedRadius(latE5, lonE5, e, bufferE5);
+        } else {
+            // Zone has a heading.  Check if our course matches the zone
+            // direction (within tolerance).  If not, we won't get muted
+            // for this zone, so don't inflate.
+            if (!courseMatches(courseValid, courseDeg, e)) {
+                hit = withinRadius(latE5, lonE5, e);
+            } else {
+                // Course matches.  Determine approach vs departure using
+                // the dot product of (device − zone) onto the zone heading.
+                //   dot < 0 → device is upstream (approaching)  → inflate
+                //   dot ≥ 0 → device is downstream (past zone)  → no inflate
+                const float headRad =
+                    static_cast<float>(e.headingDeg) * (M_PI / 180.0f);
+                const float cosH = cosf(headRad);  // north component
+                const float sinH = sinf(headRad);  // east  component
+                const float dLat = static_cast<float>(latE5 - e.latE5);
+                const float dLon = static_cast<float>(lonE5 - e.lonE5);
+                const float dot  = dLat * cosH + dLon * sinH;
+
+                if (dot < 0.0f) {
+                    // Approaching — inflate to trigger pre-quiet early.
+                    hit = withinInflatedRadius(latE5, lonE5, e, bufferE5);
+                } else {
+                    // Past the zone center — base radius only.
+                    hit = withinRadius(latE5, lonE5, e);
+                }
+            }
+        }
+
+        if (hit) {
+            out[found++] = static_cast<int16_t>(i);
+        }
+    }
+    return found;
+}
+
 // --- Private helpers ---
 
 bool LockoutIndex::withinRadius(int32_t latE5,
