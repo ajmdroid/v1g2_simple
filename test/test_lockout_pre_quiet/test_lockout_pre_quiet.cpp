@@ -21,11 +21,13 @@ static constexpr uint32_t ENTRY_WAIT = 150;  // > 100ms entry debounce
 static constexpr uint32_t EXIT_WAIT  = 550;  // > 500ms exit debounce
 
 // Helper: build a DROPPED state as if entry debounce already elapsed.
-static PreQuietState droppedState(uint8_t savedMain = 6, uint8_t savedMute = 0) {
+static PreQuietState droppedState(uint8_t savedMain = 6, uint8_t savedMute = 0,
+                                  uint32_t droppedAt = T0) {
     PreQuietState s;
     s.phase = PreQuietPhase::DROPPED;
     s.savedMainVolume = savedMain;
     s.savedMuteVolume = savedMute;
+    s.droppedAtMs = droppedAt;
     return s;
 }
 
@@ -400,6 +402,46 @@ void test_full_lifecycle() {
     TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
 }
 
+// ---------------------------------------------------------------------------
+// 21. Safety timeout: DROPPED > 5 min restores unconditionally
+// ---------------------------------------------------------------------------
+void test_dropped_safety_timeout_restores() {
+    // Set up DROPPED state that started at T0.
+    PreQuietState state = droppedState(6, 0, T0);
+
+    // Just under 5 minutes — still DROPPED.
+    uint32_t justBefore = T0 + 5UL * 60UL * 1000UL - 1;
+    auto d1 = evaluatePreQuiet(true, true, true, true, false, false, false,
+                               3, 0, 0, justBefore, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::NONE, d1.action);
+    TEST_ASSERT_EQUAL(PreQuietPhase::DROPPED, state.phase);
+
+    // Exactly 5 minutes — restores.
+    uint32_t atTimeout = T0 + 5UL * 60UL * 1000UL;
+    auto d2 = evaluatePreQuiet(true, true, true, true, false, false, false,
+                               3, 0, 0, atTimeout, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::RESTORE_VOLUME, d2.action);
+    TEST_ASSERT_EQUAL(6, d2.volume);
+    TEST_ASSERT_EQUAL(0, d2.muteVolume);
+    TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
+}
+
+// ---------------------------------------------------------------------------
+// 22. Safety timeout fires even with GPS lost
+// ---------------------------------------------------------------------------
+void test_dropped_safety_timeout_gps_lost() {
+    PreQuietState state = droppedState(6, 0, T0);
+
+    // GPS lost + 5 minutes elapsed → still restores.
+    uint32_t atTimeout = T0 + 5UL * 60UL * 1000UL;
+    auto d = evaluatePreQuiet(true, true, true, /*gpsValid=*/false,
+                              false, false, false,
+                              0, 0, 0, atTimeout, state);
+    TEST_ASSERT_EQUAL(PreQuietDecision::RESTORE_VOLUME, d.action);
+    TEST_ASSERT_EQUAL(6, d.volume);
+    TEST_ASSERT_EQUAL(PreQuietPhase::IDLE, state.phase);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_feature_disabled_returns_none);
@@ -422,5 +464,7 @@ int main() {
     RUN_TEST(test_gps_flicker_no_flipflop);
     RUN_TEST(test_gps_lost_real_alert_still_restores);
     RUN_TEST(test_full_lifecycle);
+    RUN_TEST(test_dropped_safety_timeout_restores);
+    RUN_TEST(test_dropped_safety_timeout_gps_lost);
     return UNITY_END();
 }
