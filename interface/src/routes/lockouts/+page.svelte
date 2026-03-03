@@ -26,6 +26,7 @@
 	let zoneEditorSlot = $state(null);
 	let exportingZones = $state(false);
 	let importingZones = $state(false);
+	let clearingAllZones = $state(false);
 	let importFileInput;
 
 	const STATUS_POLL_INTERVAL_MS = 2500;
@@ -1062,7 +1063,12 @@
 			link.click();
 			link.remove();
 			URL.revokeObjectURL(href);
-			setMsg('success', 'Exported lockout zones.');
+			let zoneCount = '';
+			try {
+				const parsed = JSON.parse(payload);
+				if (Array.isArray(parsed?.zones)) zoneCount = ` (${parsed.zones.length} zones)`;
+			} catch {}
+			setMsg('success', `Exported lockout zones${zoneCount}.`);
 		} catch (e) {
 			setMsg('error', e?.message ? `Failed to export lockout zones (${e.message})` : 'Failed to export lockout zones');
 		} finally {
@@ -1087,38 +1093,132 @@
 			input.value = '';
 			return;
 		}
-		if (!confirm(`Import lockout zones from ${file.name}? This replaces current in-memory zones.`)) {
-			input.value = '';
-			return;
-		}
 		importingZones = true;
 		try {
 			const payload = await file.text();
-			JSON.parse(payload);
-			const res = await fetchWithTimeout('/api/lockouts/zones/import', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: payload
-			});
-			const data = await res.json().catch(() => ({}));
-			if (!res.ok) {
-				setMsg('error', data.message || `Failed to import lockout zones (${res.status})`);
+			let parsed;
+			try {
+				parsed = JSON.parse(payload);
+			} catch {
+				setMsg('error', 'Invalid JSON file.');
+				input.value = '';
 				return;
+			}
+			const fileZoneCount = Array.isArray(parsed?.zones) ? parsed.zones.length : '?';
+			const mergeChoice = confirm(
+				`File contains ${fileZoneCount} zones.\n\n` +
+				`OK = MERGE (add to existing zones)\n` +
+				`Cancel = go back`
+			);
+			if (!mergeChoice) {
+				// Ask if they want to replace instead
+				const replaceChoice = confirm(
+					`Replace ALL current zones with ${fileZoneCount} zones from ${file.name}?\n\n` +
+					`This will delete all existing zones first.`
+				);
+				if (!replaceChoice) {
+					input.value = '';
+					return;
+				}
+				// Replace mode — import file directly
+				const res = await fetchWithTimeout('/api/lockouts/zones/import', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: payload
+				});
+				const data = await res.json().catch(() => ({}));
+				if (!res.ok) {
+					setMsg('error', data.message || `Failed to import lockout zones (${res.status})`);
+					return;
+				}
+				const importedCount = typeof data.entriesImported === 'number' ? data.entriesImported : fileZoneCount;
+				setMsg('success', `Replaced with ${importedCount} lockout zones.`);
+			} else {
+				// Merge mode — fetch current, combine, import
+				const exportRes = await fetchWithTimeout('/api/lockouts/zones/export');
+				if (!exportRes.ok) {
+					setMsg('error', `Failed to fetch current zones for merge (${exportRes.status})`);
+					return;
+				}
+				const currentData = await exportRes.json().catch(() => ({}));
+				const currentZones = Array.isArray(currentData?.zones) ? currentData.zones : [];
+				const fileZones = Array.isArray(parsed?.zones) ? parsed.zones : [];
+				// Deduplicate by lat+lon+band — keep existing zones, add new ones
+				const existingKeys = new Set(
+					currentZones.map((z) => `${z.lat},${z.lon},${z.band}`)
+				);
+				let addedCount = 0;
+				for (const z of fileZones) {
+					const key = `${z.lat},${z.lon},${z.band}`;
+					if (!existingKeys.has(key)) {
+						currentZones.push(z);
+						existingKeys.add(key);
+						addedCount++;
+					}
+				}
+				const merged = {
+					_type: 'v1simple_lockout_zones',
+					_version: 1,
+					zones: currentZones
+				};
+				const mergeRes = await fetchWithTimeout('/api/lockouts/zones/import', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(merged)
+				});
+				const mergeData = await mergeRes.json().catch(() => ({}));
+				if (!mergeRes.ok) {
+					setMsg('error', mergeData.message || `Failed to merge lockout zones (${mergeRes.status})`);
+					return;
+				}
+				const skipped = fileZones.length - addedCount;
+				const skippedMsg = skipped > 0 ? ` (${skipped} duplicates skipped)` : '';
+				setMsg('success', `Merged ${addedCount} new zones into ${currentZones.length - addedCount} existing${skippedMsg}.`);
 			}
 			zoneEditorOpen = false;
 			zoneEditorSlot = null;
 			zoneEditor = defaultZoneEditorState();
-			const importedCount = typeof data.entriesImported === 'number' ? data.entriesImported : null;
-			setMsg(
-				'success',
-				importedCount === null ? 'Imported lockout zones.' : `Imported ${importedCount} lockout zones.`
-			);
 			await fetchLockoutZones({ silent: true });
 		} catch (e) {
 			setMsg('error', e?.message ? `Failed to import lockout zones (${e.message})` : 'Failed to import lockout zones');
 		} finally {
 			importingZones = false;
 			input.value = '';
+		}
+	}
+
+	async function clearAllZones() {
+		if (clearingAllZones) return;
+		if (!advancedUnlocked) {
+			setMsg('error', 'Unlock advanced writes before clearing zones.');
+			return;
+		}
+		const zoneCount = lockoutZonesStats.activeCount || 0;
+		if (!confirm(`Delete ALL ${zoneCount} lockout zones? This cannot be undone.\n\nConsider exporting first.`)) {
+			return;
+		}
+		clearingAllZones = true;
+		try {
+			const empty = JSON.stringify({ _type: 'v1simple_lockout_zones', _version: 1, zones: [] });
+			const res = await fetchWithTimeout('/api/lockouts/zones/import', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: empty
+			});
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				setMsg('error', data.message || `Failed to clear zones (${res.status})`);
+				return;
+			}
+			zoneEditorOpen = false;
+			zoneEditorSlot = null;
+			zoneEditor = defaultZoneEditorState();
+			setMsg('success', `Cleared ${zoneCount} lockout zones.`);
+			await fetchLockoutZones({ silent: true });
+		} catch (e) {
+			setMsg('error', e?.message ? `Failed to clear zones (${e.message})` : 'Failed to clear zones');
+		} finally {
+			clearingAllZones = false;
 		}
 	}
 </script>
@@ -1650,6 +1750,16 @@
 							<span class="loading loading-spinner loading-xs"></span>
 						{/if}
 						Refresh
+					</button>
+					<button
+						class="btn btn-outline btn-error btn-sm"
+						onclick={clearAllZones}
+						disabled={!advancedUnlocked || clearingAllZones || importingZones || (lockoutZonesStats.activeCount === 0)}
+					>
+						{#if clearingAllZones}
+							<span class="loading loading-spinner loading-xs"></span>
+						{/if}
+						Clear All
 					</button>
 					<input
 						type="file"
