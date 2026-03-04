@@ -3,6 +3,7 @@
 #include "lockout_entry.h"
 #include "lockout_index.h"
 #include "lockout_store.h"
+#include "road_map_reader.h"
 #include "signal_observation_log.h"
 #include "../../settings.h"
 
@@ -316,6 +317,28 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
             entry.headingDeg = static_cast<uint16_t>(meanDeg) % 360;
             entry.directionMode = LockoutEntry::DIRECTION_FORWARD;
             entry.headingTolDeg = 45;
+        }
+    }
+
+    // Road snap: if road map is loaded, snap zone centre to nearest road
+    // and derive heading from road bearing (overrides GPS-derived heading).
+    // Pure PSRAM pointer math — zero SD I/O, zero DMA, zero locks.
+    if (roadMapReader.isLoaded()) {
+        const RoadSnapResult snap = roadMapReader.snapToRoad(entry.latE5, entry.lonE5);
+        if (snap.valid) {
+            const int32_t origLat = entry.latE5;
+            const int32_t origLon = entry.lonE5;
+            entry.latE5 = snap.latE5;
+            entry.lonE5 = snap.lonE5;
+            entry.headingDeg = snap.headingDeg;
+            entry.directionMode = LockoutEntry::DIRECTION_FORWARD;
+            entry.headingTolDeg = 45;
+            Serial.printf("[Learner] ROAD_SNAP lat=%ld->%ld lon=%ld->%ld hdg=%u dist=%ucm class=%u\n",
+                          static_cast<long>(origLat), static_cast<long>(snap.latE5),
+                          static_cast<long>(origLon), static_cast<long>(snap.lonE5),
+                          static_cast<unsigned>(snap.headingDeg),
+                          static_cast<unsigned>(snap.distanceCm),
+                          static_cast<unsigned>(snap.roadClass));
         }
     }
 

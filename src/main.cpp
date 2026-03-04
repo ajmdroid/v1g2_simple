@@ -81,6 +81,7 @@
 #include "modules/lockout/lockout_band_policy.h"
 #include "modules/lockout/lockout_runtime_mute_controller.h"
 #include "modules/lockout/lockout_pre_quiet_controller.h"
+#include "modules/lockout/road_map_reader.h"
 #include "modules/lockout/lockout_orchestration_module.h"
 #include "modules/debug/debug_api_service.h"
 #include "modules/speed/speed_source_selector.h"
@@ -1289,6 +1290,7 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
     const uint32_t bootId = initializeBootPerformanceLoggers();
 
     applyLockoutPolicyAndLoadZonesFromStorage();
+    roadMapReader.begin();
     logBootStage("storage");
 
     initializeBlePreInitAndScan(logBootCheckpoint, logBootStage);

@@ -1,0 +1,98 @@
+#pragma once
+
+#include <stdint.h>
+#include <stddef.h>
+
+/// Result of a road snap query.
+struct RoadSnapResult {
+    int32_t  latE5     = 0;      // Snapped latitude (E5)
+    int32_t  lonE5     = 0;      // Snapped longitude (E5)
+    uint16_t headingDeg = 0xFFFF; // Road bearing at snap point (0-359, 0xFFFF=invalid)
+    uint16_t distanceCm = 0xFFFF; // Distance from query to snap point (cm, capped at 0xFFFE)
+    uint8_t  roadClass = 0xFF;   // 0=motorway, 1=trunk, 2=primary, 0xFF=none
+    bool     valid     = false;  // True if a road was found within snap radius
+};
+
+/// On-disk header for road_map.bin (64 bytes, little-endian).
+struct __attribute__((packed)) RoadMapHeader {
+    char     magic[4];           // "RMAP"
+    uint8_t  version;            // 1
+    uint8_t  flags;
+    uint8_t  roadClassCount;
+    uint8_t  reserved;
+    int32_t  minLatE5;
+    int32_t  maxLatE5;
+    int32_t  minLonE5;
+    int32_t  maxLonE5;
+    uint16_t gridRows;
+    uint16_t gridCols;
+    int32_t  cellSizeE5;
+    uint32_t totalSegments;
+    uint32_t totalPoints;
+    uint16_t toleranceCm;
+    uint16_t reserved2;
+    uint32_t gridIndexOffset;
+    uint32_t segDataOffset;
+    uint32_t fileSize;
+    uint8_t  reserved3[8];
+};
+static_assert(sizeof(RoadMapHeader) == 64, "RoadMapHeader must be 64 bytes");
+
+/// Grid index entry (8 bytes each).
+struct __attribute__((packed)) RoadMapGridEntry {
+    uint32_t dataOffset;   // Byte offset from segDataOffset
+    uint16_t segCount;     // Number of segments in this cell
+    uint16_t reserved;
+};
+static_assert(sizeof(RoadMapGridEntry) == 8, "RoadMapGridEntry must be 8 bytes");
+
+/// Reads road_map.bin entirely into PSRAM at boot.
+/// All runtime queries are pure PSRAM pointer math — zero SD, zero DMA.
+///
+/// Thread safety: begin() at boot (single-threaded), snapToRoad() read-only.
+/// Priority: boot-time Tier 7 (one-shot SD read before BLE/WiFi start).
+class RoadMapReader {
+public:
+    /// Load road_map.bin from SD into PSRAM. Graceful no-op if file absent
+    /// or PSRAM alloc fails (feature silently disabled).
+    /// Must be called after storageManager.begin(), before BLE/WiFi init.
+    void begin();
+
+    /// True if road map data is loaded and ready for queries.
+    bool isLoaded() const { return data_ != nullptr; }
+
+    /// Total bytes of PSRAM consumed by the road map.
+    uint32_t psramUsed() const { return fileSize_; }
+
+    /// Number of road segments loaded.
+    uint32_t segmentCount() const;
+
+    /// Snap a lat/lon to the nearest road within snapRadiusE5.
+    /// Pure PSRAM pointer math — no SD I/O, no DMA, no locks.
+    /// Returns result.valid == true if a road was found.
+    RoadSnapResult snapToRoad(int32_t latE5, int32_t lonE5,
+                              uint16_t snapRadiusE5 = 45) const;
+
+private:
+    uint8_t* data_ = nullptr;       // PSRAM buffer (entire file)
+    uint32_t fileSize_ = 0;
+
+    // Convenience pointers into data_ (set during begin)
+    const RoadMapHeader*    header_    = nullptr;
+    const RoadMapGridEntry* gridIndex_ = nullptr;
+    const uint8_t*          segData_   = nullptr;
+
+    // Internal: compute squared E5 distance from point to line segment.
+    // Returns distance in E5 units (not squared) and the nearest point on segment.
+    static float pointToSegmentDistE5(int32_t px, int32_t py,
+                                      int32_t ax, int32_t ay,
+                                      int32_t bx, int32_t by,
+                                      int32_t& nearX, int32_t& nearY);
+
+    // Internal: compute bearing from point A to point B in degrees (0-359).
+    static uint16_t bearingDeg(int32_t aLatE5, int32_t aLonE5,
+                               int32_t bLatE5, int32_t bLonE5);
+};
+
+/// Global instance.
+extern RoadMapReader roadMapReader;

@@ -23,6 +23,10 @@ unsigned long mockMicros = 0;
 #include "../../src/modules/lockout/lockout_store.h"
 #include "../../src/modules/lockout/lockout_store.cpp"
 
+// Road map reader (needed by learner for road snap on promote).
+#include "../../src/modules/lockout/road_map_reader.h"
+#include "../../src/modules/lockout/road_map_reader.cpp"
+
 // Unit under test.
 #include "../../src/modules/lockout/lockout_learner.h"
 #include "../../src/modules/lockout/lockout_learner.cpp"

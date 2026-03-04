@@ -58,6 +58,8 @@ bool SignalObservationSdLogger::enqueue(const SignalObservation&) {
 #include "../../src/modules/lockout/lockout_store.cpp"
 #include "../../src/modules/lockout/lockout_enforcer.h"
 #include "../../src/modules/lockout/lockout_enforcer.cpp"
+#include "../../src/modules/lockout/road_map_reader.h"
+#include "../../src/modules/lockout/road_map_reader.cpp"
 #include "../../src/modules/lockout/lockout_learner.h"
 #include "../../src/modules/lockout/lockout_learner.cpp"
 
