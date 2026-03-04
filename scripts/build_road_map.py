@@ -834,8 +834,9 @@ def main():
                     help=f"Grid cell size in degrees (default: {DEFAULT_CELL_DEG})")
     ap.add_argument("--region", choices=["us48", "test"], default="us48",
                     help="Geographic region (default: us48)")
-    ap.add_argument("--classes", default="motorway,trunk,primary",
-                    help="Comma-separated road classes (default: all three)")
+    ap.add_argument("--classes", default="motorway,trunk",
+                    help="Comma-separated road classes (default: motorway,trunk; "
+                         "adding primary exceeds 8 MB PSRAM limit)")
     ap.add_argument("--pbf-dir", default=".road_map_cache",
                     help="Directory for downloaded PBF files (default: .road_map_cache)")
     ap.add_argument("--verify", action="store_true", default=True,
