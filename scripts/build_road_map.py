@@ -315,9 +315,9 @@ def _download_pbf(url, dest_path):
 def _load_from_pbf(pbf_path, allowed_classes, bbox=None):
     """Load road segments from an OSM PBF file using pyosmium.
 
-    Streams through the PBF — does not load the entire file into memory.
-    Node locations are resolved via pyosmium's internal index (requires
-    ~4-6 GB RAM for the full US PBF).
+    For large PBFs (>1 GB), uses osmium-tool to pre-filter highways
+    into a small intermediate PBF first (fast, low memory). Falls back
+    to a disk-backed node index if osmium-tool is not installed.
 
     Args:
         pbf_path: Path to .osm.pbf file.
@@ -335,6 +335,10 @@ def _load_from_pbf(pbf_path, allowed_classes, bbox=None):
               "  Or:            pip install -r requirements.txt",
               file=sys.stderr)
         sys.exit(1)
+
+    import shutil
+    import subprocess
+    import tempfile
 
     class RoadHandler(osmium.SimpleHandler):
         def __init__(self, allowed, bbox_filter):
@@ -374,10 +378,53 @@ def _load_from_pbf(pbf_path, allowed_classes, bbox=None):
             oneway = w.tags.get("oneway") == "yes"
             self.segments.append(Segment(rc, oneway, pts))
 
+    # For large files, pre-filter with osmium-tool to avoid OOM.
+    # osmium tags-filter extracts just highway ways + their nodes,
+    # reducing a 10 GB US PBF to ~200-400 MB.
+    file_size_mb = os.path.getsize(pbf_path) / (1024 * 1024)
+    actual_pbf = pbf_path
+
+    if file_size_mb > 1000 and shutil.which("osmium"):
+        print(f"  Pre-filtering {file_size_mb:.0f} MB PBF with osmium-tool ...")
+        hw_filter = ("w/highway=motorway,motorway_link,"
+                     "trunk,trunk_link,primary,primary_link")
+        filtered_path = pbf_path + ".highways.osm.pbf"
+        if os.path.exists(filtered_path):
+            sz = os.path.getsize(filtered_path) / (1024 * 1024)
+            print(f"  Pre-filtered PBF already exists: {filtered_path} "
+                  f"({sz:.0f} MB)")
+        else:
+            t0 = time.monotonic()
+            result = subprocess.run(
+                ["osmium", "tags-filter", pbf_path, hw_filter,
+                 "-o", filtered_path, "--overwrite"],
+                capture_output=True, text=True)
+            dt = time.monotonic() - t0
+            if result.returncode == 0:
+                sz = os.path.getsize(filtered_path) / (1024 * 1024)
+                print(f"  Filtered to {sz:.0f} MB in {dt:.1f}s")
+            else:
+                print(f"  osmium-tool failed: {result.stderr.strip()}")
+                print(f"  Falling back to disk-backed index ...")
+                filtered_path = None
+        if filtered_path and os.path.exists(filtered_path):
+            actual_pbf = filtered_path
+
     handler = RoadHandler(allowed_classes, bbox)
-    print(f"  Reading {pbf_path} ...")
+    print(f"  Reading {actual_pbf} ...")
     t0 = time.monotonic()
-    handler.apply_file(pbf_path, locations=True)
+
+    # Use disk-backed index for large files to avoid OOM.
+    if file_size_mb > 1000 and actual_pbf == pbf_path:
+        # No pre-filter available — use sparse_file_array index.
+        print(f"  Using disk-backed node index (file is {file_size_mb:.0f} MB)")
+        print(f"  TIP: install osmium-tool for 10× faster processing:")
+        print(f"       brew install osmium-tool")
+        handler.apply_file(actual_pbf, locations=True,
+                           idx="sparse_file_array")
+    else:
+        handler.apply_file(actual_pbf, locations=True)
+
     dt = time.monotonic() - t0
     print(f"\r  Scanned {handler.way_count:,} ways in {dt:.1f}s — "
           f"found {len(handler.segments):,} road segments")
@@ -423,6 +470,107 @@ def _parse_elements(elements, seen_ids, allowed_classes):
         pts = [(g["lat"], g["lon"]) for g in geom]
         out.append(Segment(rc, tags.get("oneway") == "yes", pts))
     return out
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Way merging — join adjacent OSM ways into longer polylines
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _merge_ways(segments):
+    """Merge adjacent segments that share endpoints and road class/oneway.
+
+    OSM splits highways at every intersection and tag change, creating
+    millions of tiny 2-point segments. Merging connected ways with the
+    same properties into continuous polylines dramatically reduces segment
+    count and binary file size (fewer 12-byte headers).
+
+    At real intersections (3+ ways meeting at a point), segments are NOT
+    merged — those are natural break points.
+
+    Returns (merged_segments, merge_count).
+    """
+    if not segments:
+        return segments, 0
+
+    # Round coords to ~1m precision to handle floating-point mismatches.
+    def snap_key(lat, lon):
+        return (round(lat, 5), round(lon, 5))
+
+    # Build endpoint → segment index mapping.
+    # Key = (rc, oneway, snapped_coord), Value = list of segment indices.
+    from collections import defaultdict
+    endpoint_map = defaultdict(list)
+
+    for i, seg in enumerate(segments):
+        key_props = (seg.rc, seg.oneway)
+        start = snap_key(*seg.pts[0])
+        end = snap_key(*seg.pts[-1])
+        endpoint_map[(*key_props, start)].append(i)
+        endpoint_map[(*key_props, end)].append(i)
+
+    # Find mergeable pairs: endpoints where exactly 2 segments meet
+    # (same road class and oneway flag).
+    merged = [False] * len(segments)
+    merge_count = 0
+
+    # Use Union-Find to chain multi-segment merges efficiently.
+    parent = list(range(len(segments)))
+    chains = {i: list(seg.pts) for i, seg in enumerate(segments)}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for key, indices in endpoint_map.items():
+        if len(indices) != 2:
+            continue  # Intersection (3+) or dead end (1) — don't merge.
+
+        a_idx, b_idx = indices
+        a_root = find(a_idx)
+        b_root = find(b_idx)
+        if a_root == b_root:
+            continue  # Already in the same chain (loop).
+
+        # Determine which ends connect and concatenate.
+        a_pts = chains[a_root]
+        b_pts = chains[b_root]
+        a_start = snap_key(*a_pts[0])
+        a_end = snap_key(*a_pts[-1])
+        b_start = snap_key(*b_pts[0])
+        b_end = snap_key(*b_pts[-1])
+
+        shared_coord = key[2]  # The coordinate from the endpoint key.
+
+        if a_end == shared_coord and b_start == shared_coord:
+            # A-end connects to B-start: A + B[1:]
+            new_pts = a_pts + b_pts[1:]
+        elif a_end == shared_coord and b_end == shared_coord:
+            # A-end connects to B-end: A + reversed(B)[1:]
+            new_pts = a_pts + b_pts[-2::-1]
+        elif a_start == shared_coord and b_start == shared_coord:
+            # A-start connects to B-start: reversed(A) + B[1:]
+            new_pts = a_pts[::-1] + b_pts[1:]
+        elif a_start == shared_coord and b_end == shared_coord:
+            # A-start connects to B-end: B + A[1:]
+            new_pts = b_pts + a_pts[1:]
+        else:
+            continue  # Shouldn't happen, but be safe.
+
+        # Merge: b_root → a_root
+        parent[b_root] = a_root
+        chains[a_root] = new_pts
+        del chains[b_root]
+        merge_count += 1
+
+    # Collect results.
+    result = []
+    for root, pts in chains.items():
+        seg = segments[root]
+        result.append(Segment(seg.rc, seg.oneway, pts))
+
+    return result, merge_count
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -812,18 +960,28 @@ def main():
     print(f"\n{'─' * 60}")
     print(f"  Raw data: {orig_count:,} segments, {orig_pts:,} points")
 
-    # ── Step 2: Simplify ──────────────────────────────────────────────────
+    # ── Step 2: Merge adjacent ways ───────────────────────────────────────
+
+    print(f"  Merging adjacent ways ...")
+    t0 = time.monotonic()
+    segments, merges = _merge_ways(segments)
+    dt = time.monotonic() - t0
+    merge_pts = sum(len(s.pts) for s in segments)
+    print(f"  → {len(segments):,} segments, {merge_pts:,} points "
+          f"({merges:,} merges, {dt:.1f}s)")
+
+    # ── Step 3: Simplify ──────────────────────────────────────────────────
 
     print(f"  Simplifying (tolerance={args.tolerance}m) ...")
     t0 = time.monotonic()
     segments, dropped = _simplify_all(segments, args.tolerance)
     dt = time.monotonic() - t0
     simp_pts = sum(len(s.pts) for s in segments)
-    ratio = orig_pts / max(1, simp_pts)
+    ratio = merge_pts / max(1, simp_pts)
     print(f"  → {len(segments):,} segments, {simp_pts:,} points "
           f"(dropped {dropped}, ratio {ratio:.1f}×, {dt:.1f}s)")
 
-    # ── Step 3: Split long segments ───────────────────────────────────────
+    # ── Step 4: Split long segments ───────────────────────────────────────
 
     max_extent = args.cell_size * 0.9
     segments, splits = _split_long(segments, max_extent)
@@ -832,7 +990,7 @@ def main():
         print(f"  → {splits} segments split (now {len(segments):,} segments, "
               f"{final_pts:,} points)")
 
-    # ── Step 4: Write binary ──────────────────────────────────────────────
+    # ── Step 5: Write binary ──────────────────────────────────────────────
 
     print(f"\n  Writing {args.output} ...")
     stats = write_bin(segments, args.output, args.cell_size, args.tolerance)
@@ -853,7 +1011,7 @@ def main():
     print(f"  Segment data: {stats['seg_data_kb']:>10.1f} KB")
     print("═" * 60)
 
-    # ── Step 5: Verify ────────────────────────────────────────────────────
+    # ── Step 6: Verify ────────────────────────────────────────────────────
 
     if args.verify:
         verify_bin(args.output)
