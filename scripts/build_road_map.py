@@ -67,7 +67,8 @@ TEST_BBOX = (39.72, -105.02, 39.80, -104.92)
 # Overpass API
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 OVERPASS_TIMEOUT = 180  # seconds
-CHUNK_PAUSE_S = 3       # polite pause between queries
+CHUNK_PAUSE_S = 5       # polite pause between queries
+MIN_CHUNK_DEG = 0.5     # stop subdividing below this
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -162,10 +163,13 @@ def _make_chunks(bbox, lat_step=3.0, lon_step=10.0):
     return chunks
 
 
-def _fetch_chunk(bbox, cache_dir, timeout=OVERPASS_TIMEOUT, retries=3):
-    """Fetch road data for one geographic chunk (cached on disk)."""
+def _fetch_chunk_single(bbox, cache_dir, timeout=OVERPASS_TIMEOUT, retries=3):
+    """Fetch road data for one geographic chunk (cached on disk).
+
+    Returns (result_dict, success_bool).
+    """
     s, w, n, e = bbox
-    tag = f"{s:.1f}_{w:.1f}_{n:.1f}_{e:.1f}"
+    tag = f"{s:.2f}_{w:.2f}_{n:.2f}_{e:.2f}"
     cache_path = Path(cache_dir) / f"chunk_{tag}.json"
 
     # Return cached result if available
@@ -173,7 +177,7 @@ def _fetch_chunk(bbox, cache_dir, timeout=OVERPASS_TIMEOUT, retries=3):
         sz = cache_path.stat().st_size
         print(f"    cached  ({sz:>10,} B)  {cache_path.name}")
         with open(cache_path, "r") as f:
-            return json.load(f)
+            return json.load(f), True
 
     query = (
         f'[out:json][timeout:{timeout}];'
@@ -197,14 +201,51 @@ def _fetch_chunk(bbox, cache_dir, timeout=OVERPASS_TIMEOUT, retries=3):
                 json.dump(result, f)
             elems = len(result.get("elements", []))
             print(f"  {elems:,} ways  ({len(raw):,} B)")
-            return result
+            return result, True
         except Exception as ex:
             wait = (attempt + 1) * 30
             print(f"\n    ERROR: {ex}  (retry {attempt+1}/{retries} in {wait}s)")
             time.sleep(wait)
 
-    print(f"    FAILED chunk {tag}", file=sys.stderr)
-    return {"elements": []}
+    return {"elements": []}, False
+
+
+def _fetch_chunk_adaptive(bbox, cache_dir, depth=0, timeout=OVERPASS_TIMEOUT):
+    """Fetch a chunk, auto-splitting into 4 sub-chunks on failure.
+
+    Returns a list of result dicts (one per successful sub-fetch).
+    """
+    result, ok = _fetch_chunk_single(bbox, cache_dir, timeout=timeout)
+    if ok:
+        return [result]
+
+    # Check if further splitting is possible
+    s, w, n, e = bbox
+    lat_span = n - s
+    lon_span = e - w
+    if lat_span <= MIN_CHUNK_DEG and lon_span <= MIN_CHUNK_DEG:
+        print(f"    FAILED chunk (cannot split further)", file=sys.stderr)
+        return []
+
+    # Split into 4 quadrants
+    mid_lat = (s + n) / 2.0
+    mid_lon = (w + e) / 2.0
+    sub = [
+        (s, w, mid_lat, mid_lon),
+        (s, mid_lon, mid_lat, e),
+        (mid_lat, w, n, mid_lon),
+        (mid_lat, mid_lon, n, e),
+    ]
+    prefix = "  " * (depth + 1)
+    print(f"{prefix}⤷ splitting into 4 sub-chunks")
+    results = []
+    for i, sub_bbox in enumerate(sub):
+        time.sleep(CHUNK_PAUSE_S)
+        print(f"{prefix}  sub [{i+1}/4]", end="")
+        results.extend(
+            _fetch_chunk_adaptive(sub_bbox, cache_dir, depth + 1, timeout)
+        )
+    return results
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -537,19 +578,23 @@ def main():
         print(f"Downloading {len(chunks)} chunks from Overpass API ...")
         print(f"  (cached responses in {args.cache_dir}/)")
         print()
+        failed_chunks = 0
         for i, chunk in enumerate(chunks):
             print(f"  [{i+1}/{len(chunks)}]", end="")
-            data = _fetch_chunk(chunk, args.cache_dir)
-            new_segs = _parse_elements(
-                data.get("elements", []), seen_ids, allowed_classes)
-            segments.extend(new_segs)
-            if new_segs:
-                print(f"         +{len(new_segs):,} new  (total: {len(segments):,})")
-            if i < len(chunks) - 1 and not Path(args.cache_dir).joinpath(
-                f"chunk_{chunks[i+1][0]:.1f}_{chunks[i+1][1]:.1f}_"
-                f"{chunks[i+1][2]:.1f}_{chunks[i+1][3]:.1f}.json"
-            ).exists():
+            results = _fetch_chunk_adaptive(chunk, args.cache_dir)
+            if not results:
+                failed_chunks += 1
+            for data in results:
+                new_segs = _parse_elements(
+                    data.get("elements", []), seen_ids, allowed_classes)
+                segments.extend(new_segs)
+            if segments:
+                print(f"         total: {len(segments):,}")
+            if i < len(chunks) - 1:
                 time.sleep(CHUNK_PAUSE_S)
+        if failed_chunks:
+            print(f"\n  ⚠  {failed_chunks} chunk(s) failed — "
+                  f"re-run to retry (cached chunks are preserved)")
 
     if not segments:
         print("\nERROR: No road segments found!", file=sys.stderr)
