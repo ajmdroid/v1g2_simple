@@ -135,6 +135,23 @@ void RoadMapReader::begin() {
     gridIndex_ = reinterpret_cast<const RoadMapGridEntry*>(buf + hdr->gridIndexOffset);
     segData_ = buf + hdr->segDataOffset;
 
+    // Parse camera section if present (cameraIndexOffset != 0).
+    if (hdr->cameraIndexOffset > 0 && hdr->cameraCount > 0) {
+        const uint32_t camGridSize =
+            static_cast<uint32_t>(hdr->gridRows) * hdr->gridCols * sizeof(RoadMapGridEntry);
+        const uint32_t camDataOffset = hdr->cameraIndexOffset + camGridSize;
+        const uint32_t camDataEnd =
+            camDataOffset + hdr->cameraCount * sizeof(CameraRecord);
+        if (camDataEnd <= fSize) {
+            camGridIndex_ = reinterpret_cast<const RoadMapGridEntry*>(
+                buf + hdr->cameraIndexOffset);
+            camData_ = reinterpret_cast<const CameraRecord*>(
+                buf + camDataOffset);
+        } else {
+            Serial.println("[RoadMap] Camera section extends past EOF — skipping cameras");
+        }
+    }
+
     // Derive snap radius from the RDP tolerance stored in the header.
     // 1.5× tolerance so we don't miss roads simplified away from their
     // true position.  toleranceCm → metres → E5 (1 E5 ≈ 1.11 m).
@@ -147,11 +164,12 @@ void RoadMapReader::begin() {
     }
 
     Serial.printf("[RoadMap] Loaded %lu bytes into PSRAM in %lu ms "
-                  "(segs=%lu pts=%lu grid=%ux%u cell=%.2f° snapR=%uE5)\n",
+                  "(segs=%lu pts=%lu cams=%lu grid=%ux%u cell=%.2f° snapR=%uE5)\n",
                   static_cast<unsigned long>(fSize),
                   static_cast<unsigned long>(readMs),
                   static_cast<unsigned long>(hdr->totalSegments),
                   static_cast<unsigned long>(hdr->totalPoints),
+                  static_cast<unsigned long>(hdr->cameraCount),
                   static_cast<unsigned>(hdr->gridRows),
                   static_cast<unsigned>(hdr->gridCols),
                   static_cast<float>(hdr->cellSizeE5) / 100000.0f,
@@ -161,6 +179,10 @@ void RoadMapReader::begin() {
 
 uint32_t RoadMapReader::segmentCount() const {
     return header_ ? header_->totalSegments : 0;
+}
+
+uint32_t RoadMapReader::cameraCount() const {
+    return header_ ? header_->cameraCount : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +392,90 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
                                         bestSegBLat, bestSegBLon);
 
         // Distance is already in metres — convert to cm.
+        const float distCm = bestDistM * 100.0f;
+        result.distanceCm = (distCm > 65534.0f) ? 0xFFFE
+                            : static_cast<uint16_t>(distCm);
+    }
+
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// nearestCamera — spatial query over camera grid, pure PSRAM pointer math
+// ---------------------------------------------------------------------------
+
+CameraResult RoadMapReader::nearestCamera(int32_t latE5, int32_t lonE5,
+                                           uint16_t searchRadiusE5) const {
+    CameraResult result;
+    if (!data_ || !header_ || !camGridIndex_ || !camData_) {
+        return result;
+    }
+
+    // Default search radius: ~1 km ≈ 900 E5
+    if (searchRadiusE5 == 0) {
+        searchRadiusE5 = 900;
+    }
+
+    const RoadMapHeader& h = *header_;
+
+    // Bounds check (with one cell margin).
+    if (latE5 < h.minLatE5 - h.cellSizeE5 || latE5 > h.maxLatE5 + h.cellSizeE5 ||
+        lonE5 < h.minLonE5 - h.cellSizeE5 || lonE5 > h.maxLonE5 + h.cellSizeE5) {
+        return result;
+    }
+
+    // cos(lat) for longitude correction.
+    const float latRad = static_cast<float>(latE5) / 100000.0f * (3.14159265f / 180.0f);
+    const float cosLat = cosf(latRad);
+    static constexpr float E5_TO_METRES = 1.11f;
+
+    const float searchRadiusM = static_cast<float>(searchRadiusE5) * E5_TO_METRES;
+
+    // Grid cell for query point.
+    const int centerRow = (latE5 - h.minLatE5) / h.cellSizeE5;
+    const int centerCol = (lonE5 - h.minLonE5) / h.cellSizeE5;
+
+    float bestDistM = searchRadiusM;
+    const CameraRecord* bestCam = nullptr;
+
+    // Search 3×3 neighbourhood.
+    for (int dr = -1; dr <= 1; ++dr) {
+        const int row = centerRow + dr;
+        if (row < 0 || row >= static_cast<int>(h.gridRows)) continue;
+
+        for (int dc = -1; dc <= 1; ++dc) {
+            const int col = centerCol + dc;
+            if (col < 0 || col >= static_cast<int>(h.gridCols)) continue;
+
+            const uint32_t cellIdx = static_cast<uint32_t>(row) * h.gridCols
+                                     + static_cast<uint32_t>(col);
+            const RoadMapGridEntry& cell = camGridIndex_[cellIdx];
+            if (cell.segCount == 0) continue;  // segCount re-used as camCount
+
+            // Camera records for this cell.
+            const CameraRecord* cams = reinterpret_cast<const CameraRecord*>(
+                reinterpret_cast<const uint8_t*>(camData_) + cell.dataOffset);
+
+            for (uint16_t i = 0; i < cell.segCount; ++i) {
+                const CameraRecord& cam = cams[i];
+                const float dLat = static_cast<float>(cam.latE5 - latE5) * E5_TO_METRES;
+                const float dLon = static_cast<float>(cam.lonE5 - lonE5) * E5_TO_METRES * cosLat;
+                const float dist = sqrtf(dLat * dLat + dLon * dLon);
+                if (dist < bestDistM) {
+                    bestDistM = dist;
+                    bestCam = &cam;
+                }
+            }
+        }
+    }
+
+    if (bestCam) {
+        result.valid = true;
+        result.latE5 = bestCam->latE5;
+        result.lonE5 = bestCam->lonE5;
+        result.bearing = bestCam->bearing;
+        result.flags = bestCam->flags;
+        result.speedMph = bestCam->speedMph;
         const float distCm = bestDistM * 100.0f;
         result.distanceCm = (distCm > 65534.0f) ? 0xFFFE
                             : static_cast<uint16_t>(distCm);

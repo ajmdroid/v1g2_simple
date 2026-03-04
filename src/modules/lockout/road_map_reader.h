@@ -15,10 +15,31 @@ struct RoadSnapResult {
     bool     valid     = false;  // True if a road was found within snap radius
 };
 
+/// Result of a camera proximity query.
+struct CameraResult {
+    int32_t  latE5      = 0;      // Camera latitude (E5)
+    int32_t  lonE5      = 0;      // Camera longitude (E5)
+    uint16_t bearing    = 0xFFFF; // Camera bearing (0-359, 0xFFFF=unknown)
+    uint8_t  flags      = 0;     // Camera type flags
+    uint8_t  speedMph   = 0;     // Speed limit at camera (mph), 0=unknown
+    uint16_t distanceCm = 0xFFFF; // Distance from query to camera (cm)
+    bool     valid      = false; // True if a camera was found within radius
+};
+
+/// On-disk camera record (12 bytes, little-endian).
+struct __attribute__((packed)) CameraRecord {
+    int32_t  latE5;              // Camera latitude (E5)
+    int32_t  lonE5;              // Camera longitude (E5)
+    uint16_t bearing;            // Bearing (0-359, 0xFFFF=unknown)
+    uint8_t  flags;              // Camera type flags
+    uint8_t  speedMph;           // Speed limit (mph), 0=unknown
+};
+static_assert(sizeof(CameraRecord) == 12, "CameraRecord must be 12 bytes");
+
 /// On-disk header for road_map.bin (64 bytes, little-endian).
 struct __attribute__((packed)) RoadMapHeader {
     char     magic[4];           // "RMAP"
-    uint8_t  version;            // 1
+    uint8_t  version;            // 2
     uint8_t  flags;
     uint8_t  roadClassCount;
     uint8_t  reserved;
@@ -36,7 +57,8 @@ struct __attribute__((packed)) RoadMapHeader {
     uint32_t gridIndexOffset;
     uint32_t segDataOffset;
     uint32_t fileSize;
-    uint8_t  reserved3[8];
+    uint32_t cameraIndexOffset;  // 0 = no cameras
+    uint32_t cameraCount;        // Total camera records
 };
 static_assert(sizeof(RoadMapHeader) == 64, "RoadMapHeader must be 64 bytes");
 
@@ -81,6 +103,16 @@ public:
     RoadSnapResult snapToRoad(int32_t latE5, int32_t lonE5,
                               uint16_t snapRadiusE5 = 0) const;
 
+    /// Find the nearest ALPR camera within searchRadiusE5.
+    /// Pure PSRAM pointer math — no SD I/O, no DMA, no locks.
+    /// If searchRadiusE5 == 0, defaults to ~1 km (~900 E5).
+    /// Returns result.valid == true if a camera was found.
+    CameraResult nearestCamera(int32_t latE5, int32_t lonE5,
+                               uint16_t searchRadiusE5 = 0) const;
+
+    /// Number of cameras loaded (0 if no camera section).
+    uint32_t cameraCount() const;
+
 private:
     uint8_t* data_ = nullptr;       // PSRAM buffer (entire file)
     uint32_t fileSize_ = 0;
@@ -90,6 +122,10 @@ private:
     const RoadMapHeader*    header_    = nullptr;
     const RoadMapGridEntry* gridIndex_ = nullptr;
     const uint8_t*          segData_   = nullptr;
+
+    // Camera section pointers (null if no cameras in file)
+    const RoadMapGridEntry* camGridIndex_ = nullptr;
+    const CameraRecord*     camData_      = nullptr;
 
     // Internal: point-to-segment distance in metres, with cos(lat) correction.
     // Applies cosLat scaling to longitude deltas so the projection is
