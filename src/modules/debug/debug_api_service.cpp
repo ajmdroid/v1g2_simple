@@ -1182,6 +1182,11 @@ static void sendMetrics(WebServer& server) {
     doc["heapDmaLargest"] = StorageManager::getCachedLargestDma();
     doc["heapDmaLargestMin"] = perfGetMinLargestDma();
     
+    // PSRAM stats
+    doc["psramTotal"] = static_cast<uint32_t>(ESP.getPsramSize());
+    doc["psramFree"] = static_cast<uint32_t>(ESP.getFreePsram());
+    doc["psramLargest"] = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+
     // SD access contention stats
     doc["sdTryLockFails"] = StorageManager::sdTryLockFailCount.load();
     doc["sdDmaStarvation"] = StorageManager::sdDmaStarvationCount.load();
