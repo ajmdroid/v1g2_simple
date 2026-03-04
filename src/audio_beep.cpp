@@ -411,15 +411,20 @@ StackType_t* g_sdAudioTaskStack = nullptr;
 StaticTask_t g_sdAudioTaskTCB;
 
 // ============================================================================
-// Eager hardware init — called once from setup() before WiFi starts.
-// Parks I2S DMA descriptors (~6 KB, MALLOC_CAP_DMA) in the early contiguous
-// heap so they don't fragment the WiFi region later.
+// Audio buffer pre-allocation — called once from setup() before WiFi starts.
+// Moves ~21 KB of audio buffers from .bss (internal SRAM) to PSRAM, freeing
+// internal heap for WiFi / BLE / DMA consumers.
+//
+// I2S + ES8311 hardware init is intentionally LEFT LAZY (first playback).
+// Eager I2S init was tried and reverted: the ~6 KB DMA descriptor allocation
+// fragments the contiguous heap before WiFi, shrinking the largest free block
+// from ~17 KB to ~13 KB (measured on real drive logs).
 // ============================================================================
 void audio_init_hw() {
-    // ---- Allocate audio buffers in PSRAM (saves ~9KB internal SRAM) ----
+    // ---- Allocate audio buffers in PSRAM (saves ~21KB internal SRAM) ----
     if (g_stereoChunkBuffer == nullptr) {
         g_stereoChunkBuffer = static_cast<int16_t*>(
-            heap_caps_malloc(AUDIO_STEREO_CHUNK_SIZE * sizeof(int16_t), MALLOC_CAP_SPIRAM));
+            heap_caps_malloc(AUDIO_STEREO_CHUNK_SIZE * sizeof(int16_t), MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
         if (!g_stereoChunkBuffer) {
             Serial.println("[AUDIO] WARN: PSRAM stereo buffer alloc failed, falling back to internal");
             g_stereoChunkBuffer = static_cast<int16_t*>(
@@ -428,7 +433,7 @@ void audio_init_hw() {
     }
     if (g_mulawChunkBuffer == nullptr) {
         g_mulawChunkBuffer = static_cast<uint8_t*>(
-            heap_caps_malloc(AUDIO_CHUNK_SAMPLES, MALLOC_CAP_SPIRAM));
+            heap_caps_malloc(AUDIO_CHUNK_SAMPLES, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
         if (!g_mulawChunkBuffer) {
             Serial.println("[AUDIO] WARN: PSRAM mulaw buffer alloc failed, falling back to internal");
             g_mulawChunkBuffer = static_cast<uint8_t*>(malloc(AUDIO_CHUNK_SAMPLES));
@@ -436,7 +441,7 @@ void audio_init_hw() {
     }
     if (g_sdAudioTaskStack == nullptr) {
         g_sdAudioTaskStack = static_cast<StackType_t*>(
-            heap_caps_malloc(SD_AUDIO_TASK_STACK_SIZE * sizeof(StackType_t), MALLOC_CAP_SPIRAM));
+            heap_caps_malloc(SD_AUDIO_TASK_STACK_SIZE * sizeof(StackType_t), MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
         if (!g_sdAudioTaskStack) {
             Serial.println("[AUDIO] WARN: PSRAM task stack alloc failed, falling back to internal");
             g_sdAudioTaskStack = static_cast<StackType_t*>(
@@ -446,19 +451,8 @@ void audio_init_hw() {
 
     if (!g_stereoChunkBuffer || !g_mulawChunkBuffer || !g_sdAudioTaskStack) {
         Serial.println("[AUDIO] ERROR: Critical audio buffer alloc failed!");
-    }
-
-    // ---- Eager I2S + ES8311 init ----
-    if (!i2s_initialized) {
-        i2s_init();
-        if (i2s_initialized) {
-            // ES8311 needs MCLK running; I2S provides it.
-            vTaskDelay(pdMS_TO_TICKS(50));
-            es8311_init();
-            Serial.println("[AUDIO] Early HW init complete (I2S + ES8311)");
-        } else {
-            Serial.println("[AUDIO] WARN: Early I2S init failed; will retry on first playback");
-        }
+    } else {
+        Serial.println("[AUDIO] PSRAM buffers allocated OK");
     }
 }
 

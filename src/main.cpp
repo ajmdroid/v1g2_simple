@@ -776,8 +776,10 @@ static void configureTouchUiModule() {
 static void configureAlertAudioDisplayPipeline() {
     // Initialize alert/audio/display pipeline dependencies before WiFi starts
 
-    // Eager I2S + ES8311 init: parks ~6KB of DMA buffers in the early
-    // contiguous heap region, before WiFi runtime can fragment it.
+    // Pre-allocate audio buffers in PSRAM — frees ~21 KB of internal .bss
+    // for the heap, improving DMA headroom for WiFi and BLE.
+    // I2S/ES8311 hardware init stays lazy (first playback) to avoid
+    // fragmenting the contiguous DMA region before WiFi allocates.
     audio_init_hw();
 
     alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager);
