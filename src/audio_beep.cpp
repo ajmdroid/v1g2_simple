@@ -405,15 +405,22 @@ TaskHandle_t audioTaskHandle = NULL;
 // Static task allocation for SD audio playback.
 // Pre-allocates stack and TCB at compile time to avoid heap allocation failures
 // when heap is low during alerts.
+//
+// IMPORTANT: g_sdAudioTaskStack MUST live in internal SRAM (not PSRAM).
+// The sd_audio task reads LittleFS (SPI flash).  Flash reads require
+// disabling the SPI cache, which makes PSRAM inaccessible.  A PSRAM
+// stack would cause an assertion failure in cache_utils.c.
 // ============================================================================
-// Static task stack for SD audio playback — PSRAM
-StackType_t* g_sdAudioTaskStack = nullptr;
+StackType_t g_sdAudioTaskStack[SD_AUDIO_TASK_STACK_SIZE];
 StaticTask_t g_sdAudioTaskTCB;
 
 // ============================================================================
 // Audio buffer pre-allocation — called once from setup() before WiFi starts.
-// Moves ~21 KB of audio buffers from .bss (internal SRAM) to PSRAM, freeing
-// internal heap for WiFi / BLE / DMA consumers.
+// Moves ~5 KB of audio DATA buffers from .bss (internal SRAM) to PSRAM.
+//
+// g_sdAudioTaskStack stays in .bss (internal SRAM, 16 KB) because the
+// sd_audio task accesses LittleFS, which requires SPI cache disable —
+// incompatible with PSRAM stacks.
 //
 // I2S + ES8311 hardware init is intentionally LEFT LAZY (first playback).
 // Eager I2S init was tried and reverted: the ~6 KB DMA descriptor allocation
@@ -421,7 +428,9 @@ StaticTask_t g_sdAudioTaskTCB;
 // from ~17 KB to ~13 KB (measured on real drive logs).
 // ============================================================================
 void audio_init_hw() {
-    // ---- Allocate audio buffers in PSRAM (saves ~21KB internal SRAM) ----
+    // ---- Allocate audio DATA buffers in PSRAM (saves ~5KB internal SRAM) ----
+    // Note: g_sdAudioTaskStack is static .bss — NOT moved to PSRAM.
+    // See comment above g_sdAudioTaskStack declaration for rationale.
     if (g_stereoChunkBuffer == nullptr) {
         g_stereoChunkBuffer = static_cast<int16_t*>(
             heap_caps_malloc(AUDIO_STEREO_CHUNK_SIZE * sizeof(int16_t), MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
@@ -439,20 +448,11 @@ void audio_init_hw() {
             g_mulawChunkBuffer = static_cast<uint8_t*>(malloc(AUDIO_CHUNK_SAMPLES));
         }
     }
-    if (g_sdAudioTaskStack == nullptr) {
-        g_sdAudioTaskStack = static_cast<StackType_t*>(
-            heap_caps_malloc(SD_AUDIO_TASK_STACK_SIZE * sizeof(StackType_t), MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
-        if (!g_sdAudioTaskStack) {
-            Serial.println("[AUDIO] WARN: PSRAM task stack alloc failed, falling back to internal");
-            g_sdAudioTaskStack = static_cast<StackType_t*>(
-                malloc(SD_AUDIO_TASK_STACK_SIZE * sizeof(StackType_t)));
-        }
-    }
 
-    if (!g_stereoChunkBuffer || !g_mulawChunkBuffer || !g_sdAudioTaskStack) {
+    if (!g_stereoChunkBuffer || !g_mulawChunkBuffer) {
         Serial.println("[AUDIO] ERROR: Critical audio buffer alloc failed!");
     } else {
-        Serial.println("[AUDIO] PSRAM buffers allocated OK");
+        Serial.println("[AUDIO] PSRAM data buffers allocated OK");
     }
 }
 

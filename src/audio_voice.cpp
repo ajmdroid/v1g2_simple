@@ -93,14 +93,9 @@ static bool start_sd_audio_task(const SDAudioTaskParams& localParams) {
         g_sdAudioTaskParams.filePaths[i][47] = '\0';
     }
     
-    // Use static task creation - stack is pre-allocated in PSRAM via audio_init_hw()
-    // This avoids heap allocation failures when heap is low during alerts
-    if (!g_sdAudioTaskStack) {
-        Serial.println("[AUDIO] ERROR: SD audio task stack not allocated!");
-        PERF_INC(audioTaskFail);
-        audio_playing = false;
-        return false;
-    }
+    // Use static task creation - stack is .bss (internal SRAM, always valid).
+    // This avoids heap allocation failures when heap is low during alerts.
+    // Stack MUST be internal (not PSRAM) because this task reads LittleFS.
     audioTaskHandle = xTaskCreateStaticPinnedToCore(
         sd_audio_playback_task,
         "sd_audio",

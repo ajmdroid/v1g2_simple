@@ -70,9 +70,9 @@ extern uint8_t* g_mulawChunkBuffer;    // AUDIO_CHUNK_SAMPLES elements
 extern SDAudioTaskParams g_sdAudioTaskParams;
 
 // Static task allocation (defined in audio_beep.cpp)
-// Stack lives in PSRAM (CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY=1).
-// TCB must remain in internal SRAM per IDF requirement.
-extern StackType_t* g_sdAudioTaskStack;  // SD_AUDIO_TASK_STACK_SIZE elements
+// Stack MUST be internal SRAM — sd_audio task accesses LittleFS (SPI flash).
+// SPI flash reads disable cache, making PSRAM inaccessible.
+extern StackType_t g_sdAudioTaskStack[SD_AUDIO_TASK_STACK_SIZE];
 extern StaticTask_t g_sdAudioTaskTCB;
 
 // ---- Promoted hardware helper declarations (defined in audio_beep.cpp) ----
