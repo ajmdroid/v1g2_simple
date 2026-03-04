@@ -144,7 +144,7 @@ def rdp_simplify(coords, tolerance_m):
 # Overpass API
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _make_chunks(bbox, lat_step=5.0, lon_step=15.0):
+def _make_chunks(bbox, lat_step=3.0, lon_step=10.0):
     """Split bounding box into Overpass query chunks."""
     south, west, north, east = bbox
     chunks = []
@@ -481,10 +481,10 @@ def main():
                     help="Cache directory for Overpass responses")
     ap.add_argument("--classes", default="motorway,trunk,primary",
                     help="Comma-separated road classes (default: all three)")
-    ap.add_argument("--chunk-lat", type=float, default=5.0,
-                    help="Chunk latitude step for Overpass queries (default: 5.0)")
-    ap.add_argument("--chunk-lon", type=float, default=15.0,
-                    help="Chunk longitude step for Overpass queries (default: 15.0)")
+    ap.add_argument("--chunk-lat", type=float, default=3.0,
+                    help="Chunk latitude step for Overpass queries (default: 3.0)")
+    ap.add_argument("--chunk-lon", type=float, default=10.0,
+                    help="Chunk longitude step for Overpass queries (default: 10.0)")
     ap.add_argument("--verify", action="store_true", default=True,
                     help="Verify output after writing (default: true)")
     ap.add_argument("--no-verify", action="store_false", dest="verify")
