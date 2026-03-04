@@ -10,6 +10,7 @@ struct RoadSnapResult {
     uint16_t headingDeg = 0xFFFF; // Road bearing at snap point (0-359, 0xFFFF=invalid)
     uint16_t distanceCm = 0xFFFF; // Distance from query to snap point (cm, capped at 0xFFFE)
     uint8_t  roadClass = 0xFF;   // 0=motorway, 1=trunk, 2=primary, 0xFF=none
+    bool     oneway    = false;  // True if road is one-way (bearing == travel direction)
     bool     valid     = false;  // True if a road was found within snap radius
 };
 
@@ -71,14 +72,18 @@ public:
     /// Pure PSRAM pointer math — no SD I/O, no DMA, no locks.
     /// headingDeg is returned as the raw A→B polyline bearing — caller
     /// must resolve direction ambiguity (bearing vs bearing+180) using
-    /// GPS-observed travel heading.
+    /// GPS-observed travel heading, unless result.oneway is true
+    /// (in which case A→B bearing IS the travel direction).
+    /// If snapRadiusE5 == 0, auto-derives from the file header's
+    /// RDP tolerance (1.5× toleranceCm / 111).
     /// Returns result.valid == true if a road was found.
     RoadSnapResult snapToRoad(int32_t latE5, int32_t lonE5,
-                              uint16_t snapRadiusE5 = 45) const;
+                              uint16_t snapRadiusE5 = 0) const;
 
 private:
     uint8_t* data_ = nullptr;       // PSRAM buffer (entire file)
     uint32_t fileSize_ = 0;
+    uint16_t defaultSnapRadiusE5_ = 135; // Derived from header tolerance in begin()
 
     // Convenience pointers into data_ (set during begin)
     const RoadMapHeader*    header_    = nullptr;

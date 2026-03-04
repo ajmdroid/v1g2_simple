@@ -312,7 +312,11 @@ def _split_long(segments, max_extent_deg):
 
     Ensures every segment fits within ~1 grid cell of its midpoint,
     so the ESP32's 3×3 cell search is guaranteed to find it.
+    Also ensures no consecutive-point delta exceeds the int16 range
+    (±32767 E5 ≈ ±36.4 km) used by the binary encoding.
     """
+    DELTA_LIMIT_DEG = 32767.0 / 100_000.0  # ≈ 0.32767°
+
     out = []
     splits = 0
     stack = list(segments)
@@ -321,7 +325,24 @@ def _split_long(segments, max_extent_deg):
         lats = [p[0] for p in seg.pts]
         lons = [p[1] for p in seg.pts]
         extent = max(max(lats) - min(lats), max(lons) - min(lons))
-        if extent <= max_extent_deg or len(seg.pts) <= 2:
+
+        if len(seg.pts) <= 2:
+            # Check if the 2-point segment exceeds the int16 delta limit.
+            if len(seg.pts) == 2:
+                dlat = abs(seg.pts[1][0] - seg.pts[0][0])
+                dlon = abs(seg.pts[1][1] - seg.pts[0][1])
+                if dlat > DELTA_LIMIT_DEG or dlon > DELTA_LIMIT_DEG:
+                    # Insert midpoint to split into two safe sub-segments.
+                    mid = ((seg.pts[0][0] + seg.pts[1][0]) / 2.0,
+                           (seg.pts[0][1] + seg.pts[1][1]) / 2.0)
+                    stack.append(Segment(seg.rc, seg.oneway,
+                                         [seg.pts[0], mid]))
+                    stack.append(Segment(seg.rc, seg.oneway,
+                                         [mid, seg.pts[1]]))
+                    splits += 1
+                    continue
+            out.append(seg)
+        elif extent <= max_extent_deg:
             out.append(seg)
         else:
             mid = len(seg.pts) // 2

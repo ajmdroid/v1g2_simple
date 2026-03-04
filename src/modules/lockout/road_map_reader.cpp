@@ -135,15 +135,27 @@ void RoadMapReader::begin() {
     gridIndex_ = reinterpret_cast<const RoadMapGridEntry*>(buf + hdr->gridIndexOffset);
     segData_ = buf + hdr->segDataOffset;
 
+    // Derive snap radius from the RDP tolerance stored in the header.
+    // 1.5× tolerance so we don't miss roads simplified away from their
+    // true position.  toleranceCm → metres → E5 (1 E5 ≈ 1.11 m).
+    if (hdr->toleranceCm > 0) {
+        const float tolMetres = static_cast<float>(hdr->toleranceCm) / 100.0f;
+        const float radiusM = tolMetres * 1.5f;
+        const float radiusE5f = radiusM / 1.11f;
+        defaultSnapRadiusE5_ = static_cast<uint16_t>(
+            std::min(radiusE5f, 65534.0f));
+    }
+
     Serial.printf("[RoadMap] Loaded %lu bytes into PSRAM in %lu ms "
-                  "(segs=%lu pts=%lu grid=%ux%u cell=%.2f°)\n",
+                  "(segs=%lu pts=%lu grid=%ux%u cell=%.2f° snapR=%uE5)\n",
                   static_cast<unsigned long>(fSize),
                   static_cast<unsigned long>(readMs),
                   static_cast<unsigned long>(hdr->totalSegments),
                   static_cast<unsigned long>(hdr->totalPoints),
                   static_cast<unsigned>(hdr->gridRows),
                   static_cast<unsigned>(hdr->gridCols),
-                  static_cast<float>(hdr->cellSizeE5) / 100000.0f);
+                  static_cast<float>(hdr->cellSizeE5) / 100000.0f,
+                  static_cast<unsigned>(defaultSnapRadiusE5_));
 #endif  // UNIT_TEST
 }
 
@@ -231,6 +243,11 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
         return result;
     }
 
+    // Auto-derive snap radius from header tolerance when caller passes 0.
+    if (snapRadiusE5 == 0) {
+        snapRadiusE5 = defaultSnapRadiusE5_;
+    }
+
     const RoadMapHeader& h = *header_;
 
     // Check if query is within bounding box (with one cell margin).
@@ -257,6 +274,7 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
     int32_t bestSegALat = 0, bestSegALon = 0;
     int32_t bestSegBLat = 0, bestSegBLon = 0;
     uint8_t bestRoadClass = 0xFF;
+    bool bestOneway = false;
 
     // Search 3x3 neighbourhood.
     for (int dr = -1; dr <= 1; ++dr) {
@@ -277,7 +295,8 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
             for (uint16_t s = 0; s < cell.segCount; ++s) {
                 // Parse segment header (variable-length record).
                 const uint8_t roadClass = ptr[0];
-                // ptr[1] = flags (unused in snap)
+                const uint8_t segFlags = ptr[1];
+                const bool oneway = (segFlags & 0x01) != 0;
                 const uint16_t pointCount = *reinterpret_cast<const uint16_t*>(ptr + 2);
                 const int32_t lat0 = *reinterpret_cast<const int32_t*>(ptr + 4);
                 const int32_t lon0 = *reinterpret_cast<const int32_t*>(ptr + 8);
@@ -314,6 +333,7 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
                         bestSegBLat = curLat;
                         bestSegBLon = curLon;
                         bestRoadClass = roadClass;
+                        bestOneway = oneway;
                     }
 
                     prevLat = curLat;
@@ -331,8 +351,10 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
         result.latE5 = bestNearLat;
         result.lonE5 = bestNearLon;
         result.roadClass = bestRoadClass;
-        // Raw A→B bearing of the matched edge. Caller must resolve
-        // direction ambiguity (bearing vs bearing+180) using GPS heading.
+        result.oneway = bestOneway;
+        // Raw A→B bearing of the matched edge. For one-way roads this IS
+        // the travel direction. For two-way roads, caller must resolve
+        // ambiguity (bearing vs bearing+180) using GPS heading.
         result.headingDeg = bearingDeg(bestSegALat, bestSegALon,
                                         bestSegBLat, bestSegBLon);
 

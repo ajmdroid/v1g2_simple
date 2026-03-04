@@ -333,12 +333,19 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
             entry.latE5 = snap.latE5;
             entry.lonE5 = snap.lonE5;
 
-            // Resolve heading direction: road segment gives raw A→B bearing.
-            // Pick whichever of (bearing, bearing+180) is closer to GPS heading.
+            // Resolve heading direction from road segment bearing.
+            // One-way roads: A→B bearing IS the travel direction — no ambiguity.
+            // Two-way roads: pick whichever of (bearing, bearing+180) is closer
+            // to GPS heading; if no GPS heading, keep DIRECTION_ALL.
             uint16_t roadBearing = snap.headingDeg;
-            if (entry.directionMode == LockoutEntry::DIRECTION_FORWARD &&
+            if (snap.oneway && roadBearing != 0xFFFF) {
+                // One-way road — bearing is unambiguous travel direction.
+                entry.headingDeg = roadBearing;
+                entry.directionMode = LockoutEntry::DIRECTION_FORWARD;
+                entry.headingTolDeg = 45;
+            } else if (entry.directionMode == LockoutEntry::DIRECTION_FORWARD &&
                 entry.headingDeg != LockoutEntry::HEADING_INVALID) {
-                // GPS heading was computed above — use it to pick direction.
+                // Two-way road with GPS heading — pick closer direction.
                 const uint16_t gpsHdg = entry.headingDeg;
                 const uint16_t rev = (roadBearing + 180) % 360;
                 // Angular distance: min of clockwise and counter-clockwise.
@@ -352,17 +359,18 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
                 }
                 entry.headingDeg = roadBearing;
             } else if (snap.headingDeg != 0xFFFF) {
-                // No strong GPS heading — use road bearing as-is, keep DIRECTION_ALL.
-                // Don't set DIRECTION_FORWARD without directional evidence.
+                // Two-way road, no strong GPS heading — use road bearing as-is,
+                // keep DIRECTION_ALL. Don't force direction without evidence.
                 entry.headingDeg = roadBearing;
             }
 
-            Serial.printf("[Learner] ROAD_SNAP lat=%ld->%ld lon=%ld->%ld hdg=%u dist=%ucm class=%u\n",
+            Serial.printf("[Learner] ROAD_SNAP lat=%ld->%ld lon=%ld->%ld hdg=%u dist=%ucm class=%u ow=%d\n",
                           static_cast<long>(origLat), static_cast<long>(snap.latE5),
                           static_cast<long>(origLon), static_cast<long>(snap.lonE5),
                           static_cast<unsigned>(entry.headingDeg),
                           static_cast<unsigned>(snap.distanceCm),
-                          static_cast<unsigned>(snap.roadClass));
+                          static_cast<unsigned>(snap.roadClass),
+                          static_cast<int>(snap.oneway));
         }
     }
 
