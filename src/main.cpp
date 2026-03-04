@@ -775,6 +775,11 @@ static void configureTouchUiModule() {
 
 static void configureAlertAudioDisplayPipeline() {
     // Initialize alert/audio/display pipeline dependencies before BLE starts
+
+    // Eager I2S + ES8311 init: parks ~6KB of DMA buffers in the early
+    // contiguous heap region, before WiFi runtime can fragment it.
+    audio_init_hw();
+
     alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager);
     voiceModule.begin(&settingsManager, &bleClient);
     volumeFadeModule.begin(&settingsManager);

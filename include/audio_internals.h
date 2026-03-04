@@ -61,14 +61,18 @@ extern std::atomic<bool> amp_is_warm;
 extern std::atomic<unsigned long> amp_last_used_ms;
 
 // ---- Shared pre-allocated buffers (defined in audio_beep.cpp) ----
-extern int16_t g_stereoChunkBuffer[AUDIO_STEREO_CHUNK_SIZE];
-extern uint8_t g_mulawChunkBuffer[AUDIO_CHUNK_SAMPLES];
+// Allocated in PSRAM at boot via audio_init_hw() to reduce internal SRAM usage.
+// CPU-only buffers — i2s_channel_write() copies from src to internal DMA ring.
+extern int16_t* g_stereoChunkBuffer;   // AUDIO_STEREO_CHUNK_SIZE elements
+extern uint8_t* g_mulawChunkBuffer;    // AUDIO_CHUNK_SAMPLES elements
 
 // SD audio task pre-allocated global (defined in audio_beep.cpp)
 extern SDAudioTaskParams g_sdAudioTaskParams;
 
 // Static task allocation (defined in audio_beep.cpp)
-extern StackType_t g_sdAudioTaskStack[SD_AUDIO_TASK_STACK_SIZE];
+// Stack lives in PSRAM (CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY=1).
+// TCB must remain in internal SRAM per IDF requirement.
+extern StackType_t* g_sdAudioTaskStack;  // SD_AUDIO_TASK_STACK_SIZE elements
 extern StaticTask_t g_sdAudioTaskTCB;
 
 // ---- Promoted hardware helper declarations (defined in audio_beep.cpp) ----

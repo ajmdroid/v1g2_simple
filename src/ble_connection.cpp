@@ -10,6 +10,7 @@
 #include "../include/config.h"
 #include "perf_metrics.h"
 #include <cstring>
+#include <esp_heap_caps.h>
 
 // Bond backup helper defined in ble_client.cpp (non-static)
 extern int backupBondsToSD();
@@ -455,7 +456,7 @@ void V1BLEClient::discoveryTaskFunc(void* param) {
     self->discoveryTaskResult.store(result);
     self->discoveryTaskDone.store(true);
     self->discoveryTaskRunning.store(false);
-    vTaskDelete(nullptr);
+    vTaskDeleteWithCaps(nullptr);
 }
 
 // Process DISCOVERING state - spawns discovery in a short-lived task
@@ -483,8 +484,8 @@ void V1BLEClient::processDiscovering() {
     }
     if (!discoveryTaskDone.load()) {
         discoveryTaskRunning.store(true);
-        BaseType_t rc = xTaskCreatePinnedToCore(
-            discoveryTaskFunc, "disc", 4096, this, 1, nullptr, tskNO_AFFINITY);
+        BaseType_t rc = xTaskCreatePinnedToCoreWithCaps(
+            discoveryTaskFunc, "disc", 4096, this, 1, nullptr, tskNO_AFFINITY, MALLOC_CAP_SPIRAM);
         if (rc != pdPASS) {
             // Never run discovery synchronously on the main loop; back off and retry.
             Serial.println("[BLE] disc task create failed - backing off");

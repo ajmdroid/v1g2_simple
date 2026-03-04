@@ -12,6 +12,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "driver/gpio.h"
+#include <esp_heap_caps.h>
 
 // ES8311 I2C address
 #define ES8311_ADDR 0x18
@@ -385,10 +386,10 @@ std::atomic<unsigned long> amp_last_used_ms{0};
 // These are safe to use without mutex because audio_playing atomic flag
 // ensures only one audio task runs at a time.
 // ============================================================================
-// Stereo buffer for PCM/mu-law to stereo conversion (8KB)
-int16_t g_stereoChunkBuffer[AUDIO_STEREO_CHUNK_SIZE];
-// Mu-law decode buffer for SD audio (2KB)
-uint8_t g_mulawChunkBuffer[AUDIO_CHUNK_SAMPLES];
+// Stereo buffer for PCM/mu-law to stereo conversion (8KB) — PSRAM
+int16_t* g_stereoChunkBuffer = nullptr;
+// Mu-law decode buffer for SD audio (2KB) — PSRAM
+uint8_t* g_mulawChunkBuffer = nullptr;
 // Pre-allocated task params (avoids malloc for param passing)
 static struct {
     const int16_t* pcm_data;
@@ -405,8 +406,61 @@ TaskHandle_t audioTaskHandle = NULL;
 // Pre-allocates stack and TCB at compile time to avoid heap allocation failures
 // when heap is low during alerts.
 // ============================================================================
-StackType_t g_sdAudioTaskStack[SD_AUDIO_TASK_STACK_SIZE];
+// Static task stack for SD audio playback — PSRAM
+StackType_t* g_sdAudioTaskStack = nullptr;
 StaticTask_t g_sdAudioTaskTCB;
+
+// ============================================================================
+// Eager hardware init — called once from setup() before WiFi starts.
+// Parks I2S DMA descriptors (~6 KB, MALLOC_CAP_DMA) in the early contiguous
+// heap so they don't fragment the WiFi region later.
+// ============================================================================
+void audio_init_hw() {
+    // ---- Allocate audio buffers in PSRAM (saves ~9KB internal SRAM) ----
+    if (g_stereoChunkBuffer == nullptr) {
+        g_stereoChunkBuffer = static_cast<int16_t*>(
+            heap_caps_malloc(AUDIO_STEREO_CHUNK_SIZE * sizeof(int16_t), MALLOC_CAP_SPIRAM));
+        if (!g_stereoChunkBuffer) {
+            Serial.println("[AUDIO] WARN: PSRAM stereo buffer alloc failed, falling back to internal");
+            g_stereoChunkBuffer = static_cast<int16_t*>(
+                malloc(AUDIO_STEREO_CHUNK_SIZE * sizeof(int16_t)));
+        }
+    }
+    if (g_mulawChunkBuffer == nullptr) {
+        g_mulawChunkBuffer = static_cast<uint8_t*>(
+            heap_caps_malloc(AUDIO_CHUNK_SAMPLES, MALLOC_CAP_SPIRAM));
+        if (!g_mulawChunkBuffer) {
+            Serial.println("[AUDIO] WARN: PSRAM mulaw buffer alloc failed, falling back to internal");
+            g_mulawChunkBuffer = static_cast<uint8_t*>(malloc(AUDIO_CHUNK_SAMPLES));
+        }
+    }
+    if (g_sdAudioTaskStack == nullptr) {
+        g_sdAudioTaskStack = static_cast<StackType_t*>(
+            heap_caps_malloc(SD_AUDIO_TASK_STACK_SIZE * sizeof(StackType_t), MALLOC_CAP_SPIRAM));
+        if (!g_sdAudioTaskStack) {
+            Serial.println("[AUDIO] WARN: PSRAM task stack alloc failed, falling back to internal");
+            g_sdAudioTaskStack = static_cast<StackType_t*>(
+                malloc(SD_AUDIO_TASK_STACK_SIZE * sizeof(StackType_t)));
+        }
+    }
+
+    if (!g_stereoChunkBuffer || !g_mulawChunkBuffer || !g_sdAudioTaskStack) {
+        Serial.println("[AUDIO] ERROR: Critical audio buffer alloc failed!");
+    }
+
+    // ---- Eager I2S + ES8311 init ----
+    if (!i2s_initialized) {
+        i2s_init();
+        if (i2s_initialized) {
+            // ES8311 needs MCLK running; I2S provides it.
+            vTaskDelay(pdMS_TO_TICKS(50));
+            es8311_init();
+            Serial.println("[AUDIO] Early HW init complete (I2S + ES8311)");
+        } else {
+            Serial.println("[AUDIO] WARN: Early I2S init failed; will retry on first playback");
+        }
+    }
+}
 
 // Background task for audio playback - runs on separate core to avoid blocking main loop
 // Uses pre-allocated g_stereoChunkBuffer - streams in chunks instead of full buffer
@@ -416,7 +470,15 @@ static void audio_playback_task(void* pvParameters) {
     int num_samples = g_pcmTaskParams.num_samples;
     int duration_ms = g_pcmTaskParams.duration_ms;
     (void)pvParameters;  // Unused - params are in global struct
-    
+
+    if (!g_stereoChunkBuffer) {
+        Serial.println("[AUDIO] ERROR: stereo buffer not allocated!");
+        audio_playing = false;
+        audioTaskHandle = NULL;
+        vTaskDeleteWithCaps(NULL);
+        return;
+    }
+
     if (i2s_tx_chan == NULL) {
         // CRITICAL: Start I2S FIRST so MCLK is running before ES8311 init
         i2s_init();
@@ -474,7 +536,7 @@ static void audio_playback_task(void* pvParameters) {
     audio_playing = false;
     
     audioTaskHandle = NULL;
-    vTaskDelete(NULL);
+    vTaskDeleteWithCaps(NULL);
 }
 
 // Helper to play any PCM audio (mono input, converts to stereo for I2S)
@@ -494,15 +556,17 @@ static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duratio
     g_pcmTaskParams.duration_ms = duration_ms;
     
     // Create task on core 1 (core 0 is for WiFi/BLE) with adequate stack
+    // Stack allocated in PSRAM via WithCaps API to reduce internal SRAM fragmentation.
     // Task params are passed via g_pcmTaskParams global (no malloc needed)
-    BaseType_t result = xTaskCreatePinnedToCore(
+    BaseType_t result = xTaskCreatePinnedToCoreWithCaps(
         audio_playback_task,
         "audio_play",
         4096,           // Stack size
         nullptr,        // Params passed via global struct
         1,              // Priority (low)
         &audioTaskHandle,
-        1               // Core 1
+        1,              // Core 1
+        MALLOC_CAP_SPIRAM
     );
     
     if (result != pdPASS) {
