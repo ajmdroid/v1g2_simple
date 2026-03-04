@@ -6,7 +6,9 @@
 
 #include "storage_manager.h"
 #include "perf_metrics.h"
+#include "time_service.h"
 #include <FS.h>
+#include <ctime>
 #include <cstring>
 #include <esp_system.h>
 
@@ -53,6 +55,26 @@ static void buildPerfCsvPath(uint32_t bootId, char* out, size_t outLen) {
         snprintf(out, outLen, "%s", PERF_CSV_PATH_FALLBACK);
         return;
     }
+
+    const int64_t epochMs = timeService.nowEpochMsOr0();
+    if (epochMs > 0) {
+        const time_t epochSeconds = static_cast<time_t>(epochMs / 1000LL);
+        struct tm utcTime {};
+        if (gmtime_r(&epochSeconds, &utcTime) != nullptr) {
+            const unsigned year = static_cast<unsigned>(utcTime.tm_year + 1900);
+            const unsigned month = static_cast<unsigned>(utcTime.tm_mon + 1);
+            const unsigned day = static_cast<unsigned>(utcTime.tm_mday);
+            const unsigned hour = static_cast<unsigned>(utcTime.tm_hour);
+            const unsigned minute = static_cast<unsigned>(utcTime.tm_min);
+            const unsigned second = static_cast<unsigned>(utcTime.tm_sec);
+            snprintf(out, outLen,
+                     "/perf/%04u%02u%02u_%02u%02u%02u_perf_%lu.csv",
+                     year, month, day, hour, minute, second,
+                     static_cast<unsigned long>(bootId));
+            return;
+        }
+    }
+
     snprintf(out, outLen, "/perf/perf_boot_%lu.csv", static_cast<unsigned long>(bootId));
 }
 }  // namespace

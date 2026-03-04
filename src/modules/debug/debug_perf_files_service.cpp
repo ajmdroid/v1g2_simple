@@ -17,6 +17,80 @@ String fileNameFromPath(const String& path) {
     return path;
 }
 
+bool isDigitsOnly(const String& text) {
+    if (text.isEmpty()) {
+        return false;
+    }
+    for (size_t i = 0; i < text.length(); ++i) {
+        const char c = text.charAt(static_cast<unsigned>(i));
+        if (c < '0' || c > '9') {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool parseLegacyBootId(const String& name, uint32_t& outBootId) {
+    if (!name.startsWith("perf_boot_") || !name.endsWith(".csv")) {
+        return false;
+    }
+    const int digitStart = strlen("perf_boot_");
+    const int digitEnd = name.length() - 4;  // Exclude ".csv"
+    if (digitEnd <= digitStart) {
+        return false;
+    }
+    String digits = name.substring(digitStart, digitEnd);
+    if (!isDigitsOnly(digits)) {
+        return false;
+    }
+    outBootId = static_cast<uint32_t>(strtoul(digits.c_str(), nullptr, 10));
+    return true;
+}
+
+bool parseTimestampedBootId(const String& name, uint32_t& outBootId) {
+    if (!name.endsWith(".csv")) {
+        return false;
+    }
+
+    // Expected: YYYYMMDD_HHMMSS_perf_<bootId>.csv
+    const int perfTokenPos = name.indexOf("_perf_");
+    if (perfTokenPos <= 0) {
+        return false;
+    }
+
+    const String timestamp = name.substring(0, perfTokenPos);
+    if (timestamp.length() != 15 || timestamp.charAt(8) != '_') {
+        return false;
+    }
+    const String datePart = timestamp.substring(0, 8);
+    const String timePart = timestamp.substring(9);
+    if (!isDigitsOnly(datePart) || !isDigitsOnly(timePart)) {
+        return false;
+    }
+
+    const int idStart = perfTokenPos + strlen("_perf_");
+    const int idEnd = name.length() - 4;  // Exclude ".csv"
+    if (idEnd <= idStart) {
+        return false;
+    }
+    const String bootDigits = name.substring(idStart, idEnd);
+    if (!isDigitsOnly(bootDigits)) {
+        return false;
+    }
+    outBootId = static_cast<uint32_t>(strtoul(bootDigits.c_str(), nullptr, 10));
+    return true;
+}
+
+bool parsePerfBootId(const String& name, uint32_t& outBootId) {
+    if (parseLegacyBootId(name, outBootId)) {
+        return true;
+    }
+    if (parseTimestampedBootId(name, outBootId)) {
+        return true;
+    }
+    return false;
+}
+
 bool isValidPerfFileName(const String& name) {
     if (name.length() == 0 || name.length() > 64) {
         return false;
@@ -27,21 +101,8 @@ bool isValidPerfFileName(const String& name) {
     if (name == "perf.csv") {
         return true;  // Legacy fallback filename.
     }
-    if (!name.startsWith("perf_boot_") || !name.endsWith(".csv")) {
-        return false;
-    }
-    int digitStart = strlen("perf_boot_");
-    int digitEnd = name.length() - 4;  // Exclude ".csv"
-    if (digitEnd <= digitStart) {
-        return false;
-    }
-    for (int i = digitStart; i < digitEnd; ++i) {
-        char c = name.charAt(i);
-        if (c < '0' || c > '9') {
-            return false;
-        }
-    }
-    return true;
+    uint32_t bootId = 0;
+    return parsePerfBootId(name, bootId);
 }
 
 bool perfFilePathFromName(const String& name, String& outPath) {
@@ -149,10 +210,7 @@ void sendPerfFilesList(WebServer& server) {
             }
 
             uint32_t bootId = 0;
-            if (name.startsWith("perf_boot_") && name.endsWith(".csv")) {
-                String digits = name.substring(strlen("perf_boot_"), name.length() - 4);
-                bootId = static_cast<uint32_t>(strtoul(digits.c_str(), nullptr, 10));
-            }
+            (void)parsePerfBootId(name, bootId);
 
             rows.push_back({name, static_cast<uint32_t>(entry.size()), bootId});
             entry.close();
