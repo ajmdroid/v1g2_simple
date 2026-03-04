@@ -10,6 +10,7 @@ struct RoadSnapResult {
     uint16_t headingDeg = 0xFFFF; // Road bearing at snap point (0-359, 0xFFFF=invalid)
     uint16_t distanceCm = 0xFFFF; // Distance from query to snap point (cm, capped at 0xFFFE)
     uint8_t  roadClass = 0xFF;   // 0=motorway, 1=trunk, 2=primary, 0xFF=none
+    uint8_t  speedMph  = 0;      // Speed limit (mph), 0=unknown
     bool     oneway    = false;  // True if road is one-way (bearing == travel direction)
     bool     valid     = false;  // True if a road was found within snap radius
 };

@@ -102,7 +102,7 @@ void RoadMapReader::begin() {
         free(buf);
         return;
     }
-    if (hdr->version != 1) {
+    if (hdr->version != 1 && hdr->version != 2) {
         Serial.printf("[RoadMap] Unsupported version: %u\n", hdr->version);
         free(buf);
         return;
@@ -274,7 +274,11 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
     int32_t bestSegALat = 0, bestSegALon = 0;
     int32_t bestSegBLat = 0, bestSegBLon = 0;
     uint8_t bestRoadClass = 0xFF;
+    uint8_t bestSpeedMph = 0;
     bool bestOneway = false;
+
+    // v2 segments have a trailing speed byte (1 extra byte per segment).
+    const bool isV2 = (h.version >= 2);
 
     // Search 3x3 neighbourhood.
     for (int dr = -1; dr <= 1; ++dr) {
@@ -303,7 +307,9 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
 
                 if (pointCount < 2) {
                     // Skip degenerate segment.
-                    ptr += 12 + (pointCount > 1 ? (pointCount - 1) * 4 : 0);
+                    const uint32_t segSize = 12 + (pointCount > 1 ? (pointCount - 1) * 4 : 0)
+                                             + (isV2 ? 1 : 0);
+                    ptr += segSize;
                     continue;
                 }
 
@@ -334,6 +340,10 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
                         bestSegBLon = curLon;
                         bestRoadClass = roadClass;
                         bestOneway = oneway;
+                        // Read speed byte from end of this segment (v2 only).
+                        if (isV2) {
+                            bestSpeedMph = ptr[12 + (pointCount - 1) * 4];
+                        }
                     }
 
                     prevLat = curLat;
@@ -341,7 +351,7 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
                 }
 
                 // Advance pointer to next segment.
-                ptr += 12 + (pointCount - 1) * 4;
+                ptr += 12 + (pointCount - 1) * 4 + (isV2 ? 1 : 0);
             }
         }
     }
@@ -351,6 +361,7 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
         result.latE5 = bestNearLat;
         result.lonE5 = bestNearLon;
         result.roadClass = bestRoadClass;
+        result.speedMph = bestSpeedMph;
         result.oneway = bestOneway;
         // Raw A→B bearing of the matched edge. For one-way roads this IS
         // the travel direction. For two-way roads, caller must resolve

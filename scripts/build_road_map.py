@@ -44,7 +44,7 @@ from pathlib import Path
 # ═══════════════════════════════════════════════════════════════════════════════
 
 MAGIC = b"RMAP"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 HEADER_SIZE = 64
 
 # Road class enum — must match ESP32 reader
@@ -376,7 +376,8 @@ def _load_from_pbf(pbf_path, allowed_classes, bbox=None):
                     return
 
             oneway = w.tags.get("oneway") == "yes"
-            self.segments.append(Segment(rc, oneway, pts))
+            speed = _parse_maxspeed(w.tags.get("maxspeed"))
+            self.segments.append(Segment(rc, oneway, pts, speed))
 
     # For large files, pre-filter with osmium-tool to avoid OOM.
     # osmium tags-filter extracts just highway ways + their nodes,
@@ -435,14 +436,41 @@ def _load_from_pbf(pbf_path, allowed_classes, bbox=None):
 # Road segment data structure
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _parse_maxspeed(tag_value):
+    """Parse an OSM maxspeed tag to integer mph. Returns 0 if unknown."""
+    if not tag_value:
+        return 0
+    tag_value = tag_value.strip()
+    # "55 mph", "55", "65 mph"
+    for suffix in (" mph", "mph"):
+        if tag_value.endswith(suffix):
+            try:
+                return int(tag_value[:-len(suffix)].strip())
+            except ValueError:
+                return 0
+    # "80 km/h", "80 kph", "80"
+    for suffix in (" km/h", "km/h", " kph", "kph"):
+        if tag_value.endswith(suffix):
+            try:
+                return int(round(int(tag_value[:-len(suffix)].strip()) * 0.621371))
+            except ValueError:
+                return 0
+    # Bare number — assume mph in US context
+    try:
+        return int(tag_value)
+    except ValueError:
+        return 0
+
+
 class Segment:
     """A single road segment after simplification."""
-    __slots__ = ("rc", "oneway", "pts")
+    __slots__ = ("rc", "oneway", "pts", "speed_mph")
 
-    def __init__(self, rc, oneway, pts):
+    def __init__(self, rc, oneway, pts, speed_mph=0):
         self.rc = rc            # road class enum (0/1/2)
         self.oneway = oneway    # bool
         self.pts = pts          # list of (lat_deg, lon_deg)
+        self.speed_mph = speed_mph  # 0 = unknown, 1-254 = mph
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -468,7 +496,8 @@ def _parse_elements(elements, seen_ids, allowed_classes):
         if len(geom) < 2:
             continue
         pts = [(g["lat"], g["lon"]) for g in geom]
-        out.append(Segment(rc, tags.get("oneway") == "yes", pts))
+        speed = _parse_maxspeed(tags.get("maxspeed"))
+        out.append(Segment(rc, tags.get("oneway") == "yes", pts, speed))
     return out
 
 
@@ -516,6 +545,7 @@ def _merge_ways(segments):
     # Use Union-Find to chain multi-segment merges efficiently.
     parent = list(range(len(segments)))
     chains = {i: list(seg.pts) for i, seg in enumerate(segments)}
+    chain_speed = {i: seg.speed_mph for i, seg in enumerate(segments)}
 
     def find(x):
         while parent[x] != x:
@@ -561,14 +591,20 @@ def _merge_ways(segments):
         # Merge: b_root → a_root
         parent[b_root] = a_root
         chains[a_root] = new_pts
+        # Keep the non-zero speed (prefer higher if both set)
+        chain_speed[a_root] = max(chain_speed.get(a_root, 0),
+                                   chain_speed.get(b_root, 0))
         del chains[b_root]
+        if b_root in chain_speed:
+            del chain_speed[b_root]
         merge_count += 1
 
     # Collect results.
     result = []
     for root, pts in chains.items():
         seg = segments[root]
-        result.append(Segment(seg.rc, seg.oneway, pts))
+        result.append(Segment(seg.rc, seg.oneway, pts,
+                              chain_speed.get(root, seg.speed_mph)))
 
     return result, merge_count
 
@@ -649,9 +685,9 @@ def _split_long(segments, max_extent_deg):
                     mid = ((seg.pts[0][0] + seg.pts[1][0]) / 2.0,
                            (seg.pts[0][1] + seg.pts[1][1]) / 2.0)
                     stack.append(Segment(seg.rc, seg.oneway,
-                                         [seg.pts[0], mid]))
+                                         [seg.pts[0], mid], seg.speed_mph))
                     stack.append(Segment(seg.rc, seg.oneway,
-                                         [mid, seg.pts[1]]))
+                                         [mid, seg.pts[1]], seg.speed_mph))
                     splits += 1
                     continue
             out.append(seg)
@@ -660,8 +696,10 @@ def _split_long(segments, max_extent_deg):
         else:
             mid = len(seg.pts) // 2
             # Split into two sub-segments sharing the midpoint
-            stack.append(Segment(seg.rc, seg.oneway, seg.pts[:mid + 1]))
-            stack.append(Segment(seg.rc, seg.oneway, seg.pts[mid:]))
+            stack.append(Segment(seg.rc, seg.oneway, seg.pts[:mid + 1],
+                                 seg.speed_mph))
+            stack.append(Segment(seg.rc, seg.oneway, seg.pts[mid:],
+                                 seg.speed_mph))
             splits += 1
     return out, splits
 
@@ -682,7 +720,11 @@ def _assign_cell(seg, cell_e5, min_lat_e5, min_lon_e5, rows, cols):
 
 
 def _encode_segment(seg):
-    """Encode one segment to binary bytes."""
+    """Encode one segment to binary bytes.
+
+    v2 format: same as v1 but with a trailing speed byte (u8 mph, 0=unknown).
+    Segment size = 12 + (pointCount-1)*4 + 1 bytes.
+    """
     pts_e5 = [(to_e5(lat), to_e5(lon)) for lat, lon in seg.pts]
     buf = struct.pack("<BBH", seg.rc, 1 if seg.oneway else 0, len(pts_e5))
     buf += struct.pack("<ii", pts_e5[0][0], pts_e5[0][1])
@@ -692,6 +734,9 @@ def _encode_segment(seg):
         dn = max(-32768, min(32767, lon - prev[1]))
         buf += struct.pack("<hh", dl, dn)
         prev = (prev[0] + dl, prev[1] + dn)
+    # v2: append speed limit byte
+    spd = max(0, min(254, seg.speed_mph))
+    buf += struct.pack("<B", spd)
     return buf
 
 
@@ -1051,6 +1096,9 @@ def main():
           f"({stats['cells_used']:,}/{stats['cells_total']:,} cells used)")
     print(f"  Grid index:   {stats['grid_index_kb']:>10.1f} KB")
     print(f"  Segment data: {stats['seg_data_kb']:>10.1f} KB")
+    speed_known = sum(1 for s in segments if s.speed_mph > 0)
+    print(f"  Speed limits: {speed_known:>12,} / {len(segments):,} "
+          f"({100*speed_known/max(1,len(segments)):.0f}%)")
     print("═" * 60)
 
     # ── Step 6: Verify ────────────────────────────────────────────────────
