@@ -518,6 +518,13 @@ void WiFiManager::setupWebServer() {
             rateLimitCallback,
             markUiActivityCallback);
     });
+    server.on("/api/lockouts/pending/clear", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+        LockoutApiService::handleApiPendingClear(
+            server,
+            lockoutLearner,
+            rateLimitCallback,
+            markUiActivityCallback);
+    });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
 }

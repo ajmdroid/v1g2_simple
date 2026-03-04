@@ -659,6 +659,27 @@ void test_promotion_without_course_stays_direction_all() {
     TEST_ASSERT_EQUAL(LockoutEntry::HEADING_INVALID, entry->headingDeg);
 }
 
+void test_clear_candidates_removes_all() {
+    testLog.publish(makeObs(LAT, LON, K_BAND, K_FREQ));
+    learner.process(2000, EPOCH_BASE);
+    testLog.publish(makeObs(LAT + 5000, LON + 5000, K_BAND, K_FREQ));
+    learner.process(4100, EPOCH_BASE + 2100);
+
+    TEST_ASSERT_EQUAL(2, learner.activeCandidateCount());
+    learner.clearDirty();  // Reset dirty flag from candidate creation.
+
+    learner.clearCandidates();
+
+    TEST_ASSERT_EQUAL(0, learner.activeCandidateCount());
+    TEST_ASSERT_TRUE(learner.isDirty());
+
+    // Verify all slots are empty.
+    for (size_t i = 0; i < LockoutLearner::kCandidateCapacity; ++i) {
+        const LearnerCandidate* c = learner.candidateAt(i);
+        TEST_ASSERT_FALSE(c->active);
+    }
+}
+
 // ================================================================
 // Runner
 // ================================================================
@@ -698,6 +719,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_heading_accumulates_on_non_counted_hits);
     RUN_TEST(test_promotion_with_course_sets_direction_forward);
     RUN_TEST(test_promotion_without_course_stays_direction_all);
+    RUN_TEST(test_clear_candidates_removes_all);
 
     return UNITY_END();
 }

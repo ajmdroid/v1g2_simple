@@ -1007,7 +1007,12 @@
 			return;
 		}
 		const zoneCount = lockoutZonesStats.activeCount || 0;
-		if (!confirm(`Delete ALL ${zoneCount} lockout zones? This cannot be undone.\n\nConsider exporting first.`)) {
+		const pendingCount = lockoutZonesStats.pendingCount || 0;
+		const parts = [];
+		if (zoneCount > 0) parts.push(`${zoneCount} active`);
+		if (pendingCount > 0) parts.push(`${pendingCount} pending`);
+		const desc = parts.length > 0 ? parts.join(' + ') : '0';
+		if (!confirm(`Delete ALL ${desc} lockout zones? This cannot be undone.\n\nConsider exporting first.`)) {
 			return;
 		}
 		clearingAllZones = true;
@@ -1023,10 +1028,18 @@
 				setMsg('error', data.message || `Failed to clear zones (${res.status})`);
 				return;
 			}
+			// Also clear pending learner candidates so they don't re-promote.
+			if (pendingCount > 0) {
+				try {
+					await fetchWithTimeout('/api/lockouts/pending/clear', { method: 'POST' });
+				} catch (_) {
+					// Best-effort; active zones already cleared.
+				}
+			}
 			zoneEditorOpen = false;
 			zoneEditorSlot = null;
 			zoneEditor = defaultZoneEditorState();
-			setMsg('success', `Cleared ${zoneCount} lockout zones.`);
+			setMsg('success', `Cleared ${desc} lockout zones.`);
 			await fetchLockoutZones({ silent: true });
 		} catch (e) {
 			setMsg('error', e?.message ? `Failed to clear zones (${e.message})` : 'Failed to clear zones');
@@ -1567,7 +1580,7 @@
 					<button
 						class="btn btn-outline btn-error btn-sm"
 						onclick={clearAllZones}
-						disabled={!advancedUnlocked || clearingAllZones || importingZones || (lockoutZonesStats.activeCount === 0)}
+						disabled={!advancedUnlocked || clearingAllZones || importingZones || (lockoutZonesStats.activeCount === 0 && lockoutZonesStats.pendingCount === 0)}
 					>
 						{#if clearingAllZones}
 							<span class="loading loading-spinner loading-xs"></span>

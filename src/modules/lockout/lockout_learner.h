@@ -66,6 +66,9 @@ public:
     uint16_t freqToleranceMHz() const { return freqToleranceMHz_; }
     uint8_t learnIntervalHours() const { return learnIntervalHours_; }
 
+    /// Clear all learner candidates (pending zones).
+    void clearCandidates();
+
     /// Ingest new observations and manage candidates.
     /// Rate-limited internally; safe to call every loop().
     void process(uint32_t nowMs, int64_t epochMs);

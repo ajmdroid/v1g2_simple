@@ -52,6 +52,13 @@ void LockoutLearner::begin(LockoutIndex* index, SignalObservationLog* log) {
     dirty_ = false;
 }
 
+void LockoutLearner::clearCandidates() {
+    for (auto& c : candidates_) {
+        c = LearnerCandidate{};
+    }
+    dirty_ = true;
+}
+
 void LockoutLearner::setTuning(uint8_t promotionHits,
                                uint16_t radiusE5,
                                uint16_t freqToleranceMHz,

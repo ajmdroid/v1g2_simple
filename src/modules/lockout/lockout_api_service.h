@@ -69,4 +69,10 @@ void handleApiZoneImport(WebServer& server,
                          const std::function<bool()>& checkRateLimit,
                          const std::function<void()>& markUiActivity);
 
+/// POST /api/lockouts/pending/clear handler with route-level policy callbacks.
+void handleApiPendingClear(WebServer& server,
+                           LockoutLearner& lockoutLearner,
+                           const std::function<bool()>& checkRateLimit,
+                           const std::function<void()>& markUiActivity);
+
 }  // namespace LockoutApiService

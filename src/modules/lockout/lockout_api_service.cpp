@@ -676,6 +676,22 @@ void handleApiZoneImport(WebServer& server,
     handleZoneImport(server, lockoutIndex, lockoutStore);
 }
 
+void handleApiPendingClear(WebServer& server,
+                           LockoutLearner& lockoutLearner,
+                           const std::function<bool()>& checkRateLimit,
+                           const std::function<void()>& markUiActivity) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    const uint32_t count = static_cast<uint32_t>(lockoutLearner.activeCandidateCount());
+    lockoutLearner.clearCandidates();
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["cleared"] = count;
+    sendJsonStream(server, doc);
+}
+
 void handleZoneDelete(WebServer& server,
                       LockoutIndex& lockoutIndex,
                       LockoutStore& lockoutStore) {
