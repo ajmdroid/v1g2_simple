@@ -52,6 +52,7 @@ docs/MODULE_DETECTION.md
 docs/PERF_SLOS.md
 docs/SD_BACKUP.md
 docs/SD_BACKUP_IMPLEMENTATION.md
+docs/AUTOLOCKOUT_RESEARCH.md
 
 # Web UI build/cache (Svelte/Vite)
 /interface/node_modules/

@@ -1503,16 +1503,17 @@
 				<div class="divider text-xs my-1">GPS Quality Gates</div>
 				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
 					<label class="form-control">
-						<span class="label-text font-medium">GPS Accuracy Limit</span>
+						<span class="label-text font-medium">GPS Accuracy Limit (HDOP)</span>
 						<input
 							type="number"
-							min={GPS_MAX_HDOP_X10_MIN}
-							max={GPS_MAX_HDOP_X10_MAX}
+							min={GPS_MAX_HDOP_X10_MIN / 10}
+							max={GPS_MAX_HDOP_X10_MAX / 10}
+							step="0.1"
 							class="input input-bordered input-sm"
-							value={lockoutConfig.maxHdopX10}
+							value={(lockoutConfig.maxHdopX10 / 10).toFixed(1)}
 							disabled={!advancedUnlocked}
 							onchange={(e) => {
-								lockoutConfig.maxHdopX10 = clampHdopX10(e.currentTarget.value);
+								lockoutConfig.maxHdopX10 = clampHdopX10(Math.round(parseFloat(e.currentTarget.value) * 10));
 								markLockoutDirty();
 							}}
 						/>
