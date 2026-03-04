@@ -2,18 +2,25 @@
 """
 build_road_map.py — Generate road_map.bin for ESP32 lockout road-snapping.
 
-Downloads US road geometry (motorway / trunk / primary) from OpenStreetMap
-via Overpass API, applies Ramer-Douglas-Peucker simplification, and writes
-a compact binary spatial-index file for the ESP32 to read from SD card.
+Reads US road geometry (motorway / trunk / primary) from an OSM PBF file,
+applies Ramer-Douglas-Peucker simplification, and writes a compact binary
+spatial-index file for the ESP32 to read from SD card.
 
-No pip packages required — uses only Python standard library.
+Requires: pip install osmium
 
 Usage:
-    python scripts/build_road_map.py                          # Full US build
-    python scripts/build_road_map.py --tolerance 200          # Larger tolerance
-    python scripts/build_road_map.py --region test            # Denver test area
-    python scripts/build_road_map.py --classes motorway,trunk # Fewer classes
-    python scripts/build_road_map.py --input cached.json      # From saved JSON
+    # Download a PBF from Geofabrik, then convert:
+    python scripts/build_road_map.py --download              # Auto-download US PBF
+    python scripts/build_road_map.py --pbf us-latest.osm.pbf # From local PBF
+    python scripts/build_road_map.py --pbf colorado-latest.osm.pbf --region test
+
+    # Options:
+    python scripts/build_road_map.py --pbf us.pbf --tolerance 200
+    python scripts/build_road_map.py --pbf us.pbf --classes motorway,trunk
+
+    # Legacy (Overpass API — slow, unreliable):
+    python scripts/build_road_map.py --overpass
+    python scripts/build_road_map.py --overpass --region test
 
 Output: road_map.bin (copy to ESP32 SD card root)
 
@@ -64,7 +71,11 @@ US48_BBOX = (24.0, -126.0, 50.0, -66.0)
 # Small test region (I-25/I-70 interchange, Denver) — quick download
 TEST_BBOX = (39.72, -105.02, 39.80, -104.92)
 
-# Overpass API
+# Geofabrik PBF downloads
+GEOFABRIK_US_URL = "https://download.geofabrik.de/north-america/us-latest.osm.pbf"
+GEOFABRIK_CO_URL = "https://download.geofabrik.de/north-america/us/colorado-latest.osm.pbf"
+
+# Overpass API (legacy fallback)
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 OVERPASS_TIMEOUT = 180  # seconds
 CHUNK_PAUSE_S = 5       # polite pause between queries
@@ -246,6 +257,131 @@ def _fetch_chunk_adaptive(bbox, cache_dir, depth=0, timeout=OVERPASS_TIMEOUT):
             _fetch_chunk_adaptive(sub_bbox, cache_dir, depth + 1, timeout)
         )
     return results
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PBF loading (primary path — fast, reliable, offline)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _download_pbf(url, dest_path):
+    """Download a PBF file from Geofabrik with progress display."""
+    dest = Path(dest_path)
+    if dest.exists():
+        sz = dest.stat().st_size
+        print(f"  PBF already downloaded: {dest} ({sz / 1024 / 1024:.0f} MB)")
+        return str(dest)
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    print(f"  Downloading {url}")
+    print(f"  → {dest}")
+
+    req = urllib.request.Request(url)
+    req.add_header("User-Agent", "V1Simple-RoadMapBuilder/1.0")
+
+    try:
+        with urllib.request.urlopen(req, timeout=600) as resp:
+            total = int(resp.headers.get("Content-Length", 0))
+            downloaded = 0
+            chunk_size = 1024 * 1024  # 1 MB chunks
+            with open(str(dest), "wb") as f:
+                while True:
+                    chunk = resp.read(chunk_size)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if total > 0:
+                        pct = downloaded * 100 // total
+                        mb = downloaded / 1024 / 1024
+                        total_mb = total / 1024 / 1024
+                        print(f"\r  {mb:.0f}/{total_mb:.0f} MB ({pct}%)",
+                              end="", flush=True)
+                    else:
+                        mb = downloaded / 1024 / 1024
+                        print(f"\r  {mb:.0f} MB", end="", flush=True)
+        print()  # newline after progress
+    except Exception as ex:
+        # Clean up partial download
+        if dest.exists():
+            dest.unlink()
+        print(f"\n  ERROR downloading PBF: {ex}", file=sys.stderr)
+        sys.exit(1)
+
+    sz = dest.stat().st_size
+    print(f"  Downloaded {sz / 1024 / 1024:.0f} MB")
+    return str(dest)
+
+
+def _load_from_pbf(pbf_path, allowed_classes, bbox=None):
+    """Load road segments from an OSM PBF file using pyosmium.
+
+    Streams through the PBF — does not load the entire file into memory.
+    Node locations are resolved via pyosmium's internal index (requires
+    ~4-6 GB RAM for the full US PBF).
+
+    Args:
+        pbf_path: Path to .osm.pbf file.
+        allowed_classes: Set of road class enums (RC_MOTORWAY, etc.)
+        bbox: Optional (south, west, north, east) filter. Ways with ALL
+              points outside the bbox are dropped.
+
+    Returns list of Segment.
+    """
+    try:
+        import osmium
+    except ImportError:
+        print("ERROR: pyosmium not installed.\n"
+              "  Install with:  pip install osmium\n"
+              "  Or:            pip install -r requirements.txt",
+              file=sys.stderr)
+        sys.exit(1)
+
+    class RoadHandler(osmium.SimpleHandler):
+        def __init__(self, allowed, bbox_filter):
+            super().__init__()
+            self.allowed = allowed
+            self.bbox_filter = bbox_filter
+            self.segments = []
+            self.way_count = 0
+
+        def way(self, w):
+            self.way_count += 1
+            if self.way_count % 500_000 == 0:
+                print(f"\r  Scanned {self.way_count:,} ways, "
+                      f"found {len(self.segments):,} roads ...",
+                      end="", flush=True)
+
+            hw = w.tags.get("highway", "")
+            rc = HIGHWAY_TO_CLASS.get(hw)
+            if rc is None or rc not in self.allowed:
+                return
+
+            try:
+                pts = [(n.lat, n.lon) for n in w.nodes]
+            except Exception:
+                return  # Unresolvable node locations
+
+            if len(pts) < 2:
+                return
+
+            # Bbox filter: keep if ANY point is inside the bbox.
+            if self.bbox_filter:
+                s, west, n, east = self.bbox_filter
+                if not any(s <= lat <= n and west <= lon <= east
+                           for lat, lon in pts):
+                    return
+
+            oneway = w.tags.get("oneway") == "yes"
+            self.segments.append(Segment(rc, oneway, pts))
+
+    handler = RoadHandler(allowed_classes, bbox)
+    print(f"  Reading {pbf_path} ...")
+    t0 = time.monotonic()
+    handler.apply_file(pbf_path, locations=True)
+    dt = time.monotonic() - t0
+    print(f"\r  Scanned {handler.way_count:,} ways in {dt:.1f}s — "
+          f"found {len(handler.segments):,} road segments")
+    return handler.segments
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -529,6 +665,19 @@ def verify_bin(path):
 def main():
     ap = argparse.ArgumentParser(
         description="Generate road_map.bin for ESP32 lockout road-snapping")
+
+    # ── Data source (mutually exclusive) ──────────────────────────────────
+    src = ap.add_mutually_exclusive_group()
+    src.add_argument("--pbf", metavar="FILE",
+                     help="OSM PBF file (download from Geofabrik)")
+    src.add_argument("--download", action="store_true",
+                     help="Auto-download PBF from Geofabrik (US or Colorado test)")
+    src.add_argument("--overpass", action="store_true",
+                     help="Legacy: fetch from Overpass API (slow, unreliable)")
+    src.add_argument("--input", metavar="FILE",
+                     help="Legacy: load from saved Overpass JSON")
+
+    # ── Common options ────────────────────────────────────────────────────
     ap.add_argument("-o", "--output", default="road_map.bin",
                     help="Output file path (default: road_map.bin)")
     ap.add_argument("-t", "--tolerance", type=int, default=DEFAULT_TOLERANCE_M,
@@ -537,20 +686,31 @@ def main():
                     help=f"Grid cell size in degrees (default: {DEFAULT_CELL_DEG})")
     ap.add_argument("--region", choices=["us48", "test"], default="us48",
                     help="Geographic region (default: us48)")
-    ap.add_argument("--input", metavar="FILE",
-                    help="Load from saved Overpass JSON instead of downloading")
-    ap.add_argument("--cache-dir", default=".road_map_cache",
-                    help="Cache directory for Overpass responses")
     ap.add_argument("--classes", default="motorway,trunk,primary",
                     help="Comma-separated road classes (default: all three)")
+    ap.add_argument("--pbf-dir", default=".road_map_cache",
+                    help="Directory for downloaded PBF files (default: .road_map_cache)")
+    ap.add_argument("--verify", action="store_true", default=True,
+                    help="Verify output after writing (default: true)")
+    ap.add_argument("--no-verify", action="store_false", dest="verify")
+
+    # ── Legacy Overpass options ───────────────────────────────────────────
+    ap.add_argument("--cache-dir", default=".road_map_cache",
+                    help="Cache directory for Overpass responses")
     ap.add_argument("--chunk-lat", type=float, default=2.0,
                     help="Chunk latitude step for Overpass queries (default: 2.0)")
     ap.add_argument("--chunk-lon", type=float, default=5.0,
                     help="Chunk longitude step for Overpass queries (default: 5.0)")
-    ap.add_argument("--verify", action="store_true", default=True,
-                    help="Verify output after writing (default: true)")
-    ap.add_argument("--no-verify", action="store_false", dest="verify")
+
     args = ap.parse_args()
+
+    # If no data source specified, default to --download
+    use_pbf = args.pbf or args.download
+    use_overpass = args.overpass
+    use_input = args.input
+    if not use_pbf and not use_overpass and not use_input:
+        use_pbf = True
+        args.download = True
 
     # Parse allowed road classes
     allowed_classes = set()
@@ -581,17 +741,43 @@ def main():
     # ── Step 1: Load road data ────────────────────────────────────────────
 
     segments = []
-    seen_ids = set()
 
-    if args.input:
-        print(f"Loading from {args.input} ...")
+    if args.pbf:
+        # PBF file provided directly
+        pbf_path = args.pbf
+        if not os.path.exists(pbf_path):
+            print(f"ERROR: PBF file not found: {pbf_path}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Loading from PBF: {pbf_path}")
+        segments = _load_from_pbf(pbf_path, allowed_classes, bbox)
+
+    elif args.download:
+        # Auto-download from Geofabrik
+        if args.region == "test":
+            url = GEOFABRIK_CO_URL
+            filename = "colorado-latest.osm.pbf"
+        else:
+            url = GEOFABRIK_US_URL
+            filename = "us-latest.osm.pbf"
+        pbf_path = os.path.join(args.pbf_dir, filename)
+        print(f"Downloading PBF from Geofabrik ...")
+        _download_pbf(url, pbf_path)
+        print(f"\nLoading from PBF: {pbf_path}")
+        segments = _load_from_pbf(pbf_path, allowed_classes, bbox)
+
+    elif use_input:
+        # Legacy: Overpass JSON file
+        print(f"Loading from JSON: {args.input} ...")
+        seen_ids = set()
         with open(args.input, "r") as f:
             data = json.load(f)
-        # Support both raw Overpass response and list-of-elements
         elements = data if isinstance(data, list) else data.get("elements", [])
         segments = _parse_elements(elements, seen_ids, allowed_classes)
         print(f"  Parsed {len(segments):,} ways")
-    else:
+
+    elif use_overpass:
+        # Legacy: Overpass API download
+        seen_ids = set()
         if args.region == "test":
             chunks = [bbox]
         else:
