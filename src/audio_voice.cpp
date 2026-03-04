@@ -122,13 +122,6 @@ static bool start_sd_audio_task(const SDAudioTaskParams& localParams) {
 static void sd_audio_playback_task(void* pvParameters) {
     (void)pvParameters;  // Unused - params are in g_sdAudioTaskParams
 
-    if (!g_stereoChunkBuffer || !g_mulawChunkBuffer) {
-        Serial.println("[AUDIO] ERROR: audio buffers not allocated!");
-        audio_playing = false;
-        vTaskDelete(NULL);
-        return;
-    }
-
     if (i2s_tx_chan == NULL) {
         i2s_init();
         vTaskDelay(pdMS_TO_TICKS(30));  // Reduced from 50ms

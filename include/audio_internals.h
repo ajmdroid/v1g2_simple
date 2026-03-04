@@ -61,10 +61,12 @@ extern std::atomic<bool> amp_is_warm;
 extern std::atomic<unsigned long> amp_last_used_ms;
 
 // ---- Shared pre-allocated buffers (defined in audio_beep.cpp) ----
-// Allocated in PSRAM at boot via audio_init_hw() to reduce internal SRAM usage.
+// Static .bss arrays — must stay internal SRAM to preserve heap layout.
+// Moving them to PSRAM was tried and reverted: the .bss shift changed
+// WiFi's fragmentation pattern, reducing heapDmaLargestMin from ~17K to ~13K.
 // CPU-only buffers — i2s_channel_write() copies from src to internal DMA ring.
-extern int16_t* g_stereoChunkBuffer;   // AUDIO_STEREO_CHUNK_SIZE elements
-extern uint8_t* g_mulawChunkBuffer;    // AUDIO_CHUNK_SAMPLES elements
+extern int16_t g_stereoChunkBuffer[AUDIO_STEREO_CHUNK_SIZE];
+extern uint8_t g_mulawChunkBuffer[AUDIO_CHUNK_SAMPLES];
 
 // SD audio task pre-allocated global (defined in audio_beep.cpp)
 extern SDAudioTaskParams g_sdAudioTaskParams;

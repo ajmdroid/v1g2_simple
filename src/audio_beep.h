@@ -64,10 +64,7 @@ void play_band_only(AlertBand band);
 // Initialize SD audio (call after storage manager is ready)
 void audio_init_sd();
 
-// Early hardware init: I2S DMA + codec.
-// Call at boot BEFORE WiFi to park ~6KB of DMA buffers in the
-// early contiguous heap region and avoid runtime fragmentation.
-void audio_init_hw();
+
 
 // Process amp warm timeout - call from main loop
 // Disables speaker amp after 3 seconds of inactivity to save power

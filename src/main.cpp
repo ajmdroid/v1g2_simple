@@ -775,13 +775,6 @@ static void configureTouchUiModule() {
 
 static void configureAlertAudioDisplayPipeline() {
     // Initialize alert/audio/display pipeline dependencies before WiFi starts
-
-    // Pre-allocate audio buffers in PSRAM — frees ~21 KB of internal .bss
-    // for the heap, improving DMA headroom for WiFi and BLE.
-    // I2S/ES8311 hardware init stays lazy (first playback) to avoid
-    // fragmenting the contiguous DMA region before WiFi allocates.
-    audio_init_hw();
-
     alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager);
     voiceModule.begin(&settingsManager, &bleClient);
     volumeFadeModule.begin(&settingsManager);
