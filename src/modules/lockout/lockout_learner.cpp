@@ -320,8 +320,10 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
         }
     }
 
-    // Road snap: if road map is loaded, snap zone centre to nearest road
-    // and derive heading from road bearing (overrides GPS-derived heading).
+    // Road snap: if road map is loaded, snap zone centre to nearest road.
+    // Uses GPS-observed heading to resolve road direction ambiguity:
+    // the road gives us an axis (bearing and bearing+180), GPS circular
+    // mean tells us which direction along that axis we were actually going.
     // Pure PSRAM pointer math — zero SD I/O, zero DMA, zero locks.
     if (roadMapReader.isLoaded()) {
         const RoadSnapResult snap = roadMapReader.snapToRoad(entry.latE5, entry.lonE5);
@@ -330,13 +332,35 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
             const int32_t origLon = entry.lonE5;
             entry.latE5 = snap.latE5;
             entry.lonE5 = snap.lonE5;
-            entry.headingDeg = snap.headingDeg;
-            entry.directionMode = LockoutEntry::DIRECTION_FORWARD;
-            entry.headingTolDeg = 45;
+
+            // Resolve heading direction: road segment gives raw A→B bearing.
+            // Pick whichever of (bearing, bearing+180) is closer to GPS heading.
+            uint16_t roadBearing = snap.headingDeg;
+            if (entry.directionMode == LockoutEntry::DIRECTION_FORWARD &&
+                entry.headingDeg != LockoutEntry::HEADING_INVALID) {
+                // GPS heading was computed above — use it to pick direction.
+                const uint16_t gpsHdg = entry.headingDeg;
+                const uint16_t rev = (roadBearing + 180) % 360;
+                // Angular distance: min of clockwise and counter-clockwise.
+                auto angDist = [](uint16_t a, uint16_t b) -> int {
+                    int d = static_cast<int>(a) - static_cast<int>(b);
+                    if (d < 0) d = -d;
+                    return (d > 180) ? (360 - d) : d;
+                };
+                if (angDist(gpsHdg, rev) < angDist(gpsHdg, roadBearing)) {
+                    roadBearing = rev;
+                }
+                entry.headingDeg = roadBearing;
+            } else if (snap.headingDeg != 0xFFFF) {
+                // No strong GPS heading — use road bearing as-is, keep DIRECTION_ALL.
+                // Don't set DIRECTION_FORWARD without directional evidence.
+                entry.headingDeg = roadBearing;
+            }
+
             Serial.printf("[Learner] ROAD_SNAP lat=%ld->%ld lon=%ld->%ld hdg=%u dist=%ucm class=%u\n",
                           static_cast<long>(origLat), static_cast<long>(snap.latE5),
                           static_cast<long>(origLon), static_cast<long>(snap.lonE5),
-                          static_cast<unsigned>(snap.headingDeg),
+                          static_cast<unsigned>(entry.headingDeg),
                           static_cast<unsigned>(snap.distanceCm),
                           static_cast<unsigned>(snap.roadClass));
         }

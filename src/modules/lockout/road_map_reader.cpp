@@ -155,32 +155,49 @@ uint32_t RoadMapReader::segmentCount() const {
 // Geometry helpers — all pure math, no I/O
 // ---------------------------------------------------------------------------
 
-float RoadMapReader::pointToSegmentDistE5(int32_t px, int32_t py,
+float RoadMapReader::pointToSegmentMetres(int32_t px, int32_t py,
                                            int32_t ax, int32_t ay,
                                            int32_t bx, int32_t by,
+                                           float cosLat,
                                            int32_t& nearX, int32_t& nearY) {
-    // Point-to-segment distance in E5 coordinate space.
-    // px/py = query point, ax/ay..bx/by = segment endpoints.
-    const float dx = static_cast<float>(bx - ax);
-    const float dy = static_cast<float>(by - ay);
+    // Point-to-segment distance with cos(lat) correction.
+    // Lat deltas are in E5 (1 E5 ≈ 1.11 m). Lon deltas must be scaled
+    // by cos(latitude) to get true east-west distance.
+    // We work in a local metre-like frame for the projection, then
+    // convert the nearest point back to E5 coords.
+    static constexpr float E5_TO_METRES = 1.11f;  // 1 E5 unit ≈ 1.11 m (lat)
+
+    // Scale to approximate metres for projection.
+    const float axM = static_cast<float>(ax) * E5_TO_METRES;
+    const float ayM = static_cast<float>(ay) * E5_TO_METRES * cosLat;
+    const float bxM = static_cast<float>(bx) * E5_TO_METRES;
+    const float byM = static_cast<float>(by) * E5_TO_METRES * cosLat;
+    const float pxM = static_cast<float>(px) * E5_TO_METRES;
+    const float pyM = static_cast<float>(py) * E5_TO_METRES * cosLat;
+
+    const float dx = bxM - axM;
+    const float dy = byM - ayM;
     const float lenSq = dx * dx + dy * dy;
 
     float t;
-    if (lenSq < 1.0f) {
+    if (lenSq < 0.01f) {
         // Degenerate segment (endpoints identical).
         t = 0.0f;
     } else {
-        t = (static_cast<float>(px - ax) * dx +
-             static_cast<float>(py - ay) * dy) / lenSq;
+        t = ((pxM - axM) * dx + (pyM - ayM) * dy) / lenSq;
         if (t < 0.0f) t = 0.0f;
         if (t > 1.0f) t = 1.0f;
     }
 
-    nearX = ax + static_cast<int32_t>(t * dx);
-    nearY = ay + static_cast<int32_t>(t * dy);
+    // Nearest point in E5 coords (interpolate in original coord space).
+    nearX = ax + static_cast<int32_t>(t * static_cast<float>(bx - ax));
+    nearY = ay + static_cast<int32_t>(t * static_cast<float>(by - ay));
 
-    const float ex = static_cast<float>(px - nearX);
-    const float ey = static_cast<float>(py - nearY);
+    // Distance in metres.
+    const float nxM = axM + t * dx;
+    const float nyM = ayM + t * dy;
+    const float ex = pxM - nxM;
+    const float ey = pyM - nyM;
     return sqrtf(ex * ex + ey * ey);
 }
 
@@ -222,14 +239,21 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
         return result;
     }
 
+    // Precompute cos(lat) once for all distance calculations.
+    const float latRad = static_cast<float>(latE5) / 100000.0f * (3.14159265f / 180.0f);
+    const float cosLat = cosf(latRad);
+
+    // Convert snap radius from E5 to metres (1 E5 ≈ 1.11 m along latitude).
+    const float snapRadiusMetres = static_cast<float>(snapRadiusE5) * 1.11f;
+
     // Compute grid cell for query point.
     const int centerRow = (latE5 - h.minLatE5) / h.cellSizeE5;
     const int centerCol = (lonE5 - h.minLonE5) / h.cellSizeE5;
 
-    float bestDistE5 = static_cast<float>(snapRadiusE5);
+    float bestDistM = snapRadiusMetres;
     int32_t bestNearLat = 0;
     int32_t bestNearLon = 0;
-    // Track the segment endpoints nearest to the snap point for heading.
+    // Track the segment edge endpoints nearest to the snap point for heading.
     int32_t bestSegALat = 0, bestSegALon = 0;
     int32_t bestSegBLat = 0, bestSegBLon = 0;
     uint8_t bestRoadClass = 0xFF;
@@ -274,14 +298,15 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
                     const int32_t curLon = prevLon + deltas[(p - 1) * 2 + 1];
 
                     int32_t nearLat, nearLon;
-                    const float dist = pointToSegmentDistE5(
+                    const float dist = pointToSegmentMetres(
                         latE5, lonE5,
                         prevLat, prevLon,
                         curLat, curLon,
+                        cosLat,
                         nearLat, nearLon);
 
-                    if (dist < bestDistE5) {
-                        bestDistE5 = dist;
+                    if (dist < bestDistM) {
+                        bestDistM = dist;
                         bestNearLat = nearLat;
                         bestNearLon = nearLon;
                         bestSegALat = prevLat;
@@ -306,13 +331,13 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
         result.latE5 = bestNearLat;
         result.lonE5 = bestNearLon;
         result.roadClass = bestRoadClass;
+        // Raw A→B bearing of the matched edge. Caller must resolve
+        // direction ambiguity (bearing vs bearing+180) using GPS heading.
         result.headingDeg = bearingDeg(bestSegALat, bestSegALon,
                                         bestSegBLat, bestSegBLon);
 
-        // Convert E5 distance to approximate centimeters.
-        // 1 E5 unit ≈ 1.11 m at equator (lat), so distCm ≈ dist * 111.
-        // Good enough for a "within 50m" check.
-        const float distCm = bestDistE5 * 111.0f;
+        // Distance is already in metres — convert to cm.
+        const float distCm = bestDistM * 100.0f;
         result.distanceCm = (distCm > 65534.0f) ? 0xFFFE
                             : static_cast<uint16_t>(distCm);
     }

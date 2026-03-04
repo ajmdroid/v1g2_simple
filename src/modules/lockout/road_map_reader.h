@@ -69,6 +69,9 @@ public:
 
     /// Snap a lat/lon to the nearest road within snapRadiusE5.
     /// Pure PSRAM pointer math — no SD I/O, no DMA, no locks.
+    /// headingDeg is returned as the raw A→B polyline bearing — caller
+    /// must resolve direction ambiguity (bearing vs bearing+180) using
+    /// GPS-observed travel heading.
     /// Returns result.valid == true if a road was found.
     RoadSnapResult snapToRoad(int32_t latE5, int32_t lonE5,
                               uint16_t snapRadiusE5 = 45) const;
@@ -82,11 +85,14 @@ private:
     const RoadMapGridEntry* gridIndex_ = nullptr;
     const uint8_t*          segData_   = nullptr;
 
-    // Internal: compute squared E5 distance from point to line segment.
-    // Returns distance in E5 units (not squared) and the nearest point on segment.
-    static float pointToSegmentDistE5(int32_t px, int32_t py,
+    // Internal: point-to-segment distance in metres, with cos(lat) correction.
+    // Applies cosLat scaling to longitude deltas so the projection is
+    // geometrically correct at any latitude.
+    // Returns distance in approximate metres and the nearest E5 point.
+    static float pointToSegmentMetres(int32_t px, int32_t py,
                                       int32_t ax, int32_t ay,
                                       int32_t bx, int32_t by,
+                                      float cosLat,
                                       int32_t& nearX, int32_t& nearY);
 
     // Internal: compute bearing from point A to point B in degrees (0-359).
