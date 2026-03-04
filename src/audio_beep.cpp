@@ -385,11 +385,28 @@ std::atomic<unsigned long> amp_last_used_ms{0};
 // Pre-allocated audio buffers (no malloc in audio tasks)
 // These are safe to use without mutex because audio_playing atomic flag
 // ensures only one audio task runs at a time.
+//
+// Allocated in PSRAM by audio_init_buffers() to keep ~5 KiB off internal
+// .bss — this prevents WiFi/BLE transient allocations from fragmenting
+// the largest contiguous DMA block below the 10 KiB SLO floor.
+// i2s_channel_write() copies from src to its DMA ring, so PSRAM is fine.
 // ============================================================================
-// Stereo buffer for PCM/mu-law to stereo conversion
-int16_t g_stereoChunkBuffer[AUDIO_STEREO_CHUNK_SIZE];
-// Mu-law decode buffer for SD audio
-uint8_t g_mulawChunkBuffer[AUDIO_CHUNK_SAMPLES];
+int16_t* g_stereoChunkBuffer = nullptr;
+uint8_t* g_mulawChunkBuffer = nullptr;
+
+// ---- PSRAM buffer allocation (call once from setup, before audio_init_sd) ---
+void audio_init_buffers() {
+    g_stereoChunkBuffer = static_cast<int16_t*>(
+        heap_caps_malloc(AUDIO_STEREO_CHUNK_SIZE * sizeof(int16_t),
+                         MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
+    g_mulawChunkBuffer = static_cast<uint8_t*>(
+        heap_caps_malloc(AUDIO_CHUNK_SAMPLES * sizeof(uint8_t),
+                         MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
+    if (!g_stereoChunkBuffer || !g_mulawChunkBuffer) {
+        Serial.println("[AUDIO] FATAL: PSRAM buffer alloc failed");
+    }
+}
+
 // Pre-allocated task params (avoids malloc for param passing)
 static struct {
     const int16_t* pcm_data;
@@ -422,6 +439,13 @@ static void audio_playback_task(void* pvParameters) {
     int num_samples = g_pcmTaskParams.num_samples;
     int duration_ms = g_pcmTaskParams.duration_ms;
     (void)pvParameters;  // Unused - params are in global struct
+
+    if (!g_stereoChunkBuffer) {
+        Serial.println("[AUDIO] ERROR: PSRAM buffers not allocated!");
+        audio_playing = false;
+        vTaskDeleteWithCaps(NULL);
+        return;
+    }
 
     if (i2s_tx_chan == NULL) {
         // CRITICAL: Start I2S FIRST so MCLK is running before ES8311 init

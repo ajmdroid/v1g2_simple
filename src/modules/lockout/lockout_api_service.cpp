@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <cmath>
 #include "json_stream_response.h"
+#include <esp_heap_caps.h>
 
 #include "lockout_index.h"
 #include "lockout_learner.h"
@@ -380,8 +381,19 @@ void sendEvents(WebServer& server,
         limit = clampU16Value(server.arg("limit").toInt(), 1, 96);
     }
 
-    // Keep this large scratch buffer off the loop-task stack.
-    static SignalObservation samples[128];
+    // Scratch buffer in PSRAM — saves ~5.6 KiB internal .bss.
+    // Allocated once on first call; never freed (HTTP handlers are single-threaded).
+    static SignalObservation* samples = nullptr;
+    if (!samples) {
+        samples = static_cast<SignalObservation*>(
+            heap_caps_malloc(128 * sizeof(SignalObservation),
+                            MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
+    }
+    if (!samples) {
+        server.send(500, "application/json",
+                    "{\"success\":false,\"error\":\"PSRAM alloc failed\"}");
+        return;
+    }
     const size_t count = signalObservationLog.copyRecent(samples, limit);
     const SignalObservationLogStats stats = signalObservationLog.stats();
 

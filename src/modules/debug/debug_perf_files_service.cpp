@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <vector>
+#include <esp_heap_caps.h>
 
 #include "../../storage_manager.h"
 #include "../../perf_sd_logger.h"
@@ -298,7 +299,19 @@ void handlePerfFileDownload(WebServer& server) {
     server.send(200, "text/csv", "");
 
     static constexpr size_t CHUNK_SIZE = 4096;
-    static uint8_t buffer[CHUNK_SIZE];
+    // File-download buffer in PSRAM — saves 4 KiB internal .bss.
+    // VFS reads use an internal bounce buffer; lwIP copies for TX.
+    static uint8_t* buffer = nullptr;
+    if (!buffer) {
+        buffer = static_cast<uint8_t*>(
+            heap_caps_malloc(CHUNK_SIZE, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
+    }
+    if (!buffer) {
+        f.close();
+        server.send(500, "application/json",
+                    "{\"success\":false,\"error\":\"PSRAM alloc failed\"}");
+        return;
+    }
 
     size_t totalSent = 0;
     while (f.available() && server.client().connected()) {

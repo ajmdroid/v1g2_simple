@@ -870,6 +870,7 @@ static void initializeStorageAndProfiles() {
         SerialLog.printf("[Setup] Storage ready: %s\n", storageManager.statusText().c_str());
         v1ProfileManager.begin(storageManager.getFilesystem(), storageManager.getLittleFS());
         v1DeviceStore.begin(storageManager.getFilesystem(), storageManager.getLittleFS());
+        audio_init_buffers();  // Allocate audio decode buffers in PSRAM (before audio_init_sd).
         audio_init_sd();  // Initialize SD-based frequency voice audio.
 
         // Retry settings restore now that SD is mounted

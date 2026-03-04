@@ -64,7 +64,9 @@ void play_band_only(AlertBand band);
 // Initialize SD audio (call after storage manager is ready)
 void audio_init_sd();
 
-
+// Allocate audio decode buffers in PSRAM (call once from setup, before audio_init_sd).
+// Frees ~5 KiB of internal .bss to preserve contiguous DMA headroom.
+void audio_init_buffers();
 
 // Process amp warm timeout - call from main loop
 // Disables speaker amp after 3 seconds of inactivity to save power

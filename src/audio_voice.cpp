@@ -158,7 +158,13 @@ static void sd_audio_playback_task(void* pvParameters) {
         return;
     }
     
-    // Play each clip in sequence using pre-allocated buffers
+    // Play each clip in sequence using pre-allocated PSRAM buffers
+    if (!g_stereoChunkBuffer || !g_mulawChunkBuffer) {
+        Serial.println("[AUDIO] ERROR: PSRAM buffers not allocated!");
+        audio_playing = false;
+        vTaskDelete(NULL);
+        return;
+    }
     for (int i = 0; i < g_sdAudioTaskParams.numClips; i++) {
         File audioFile = audioFS->open(g_sdAudioTaskParams.filePaths[i], "r");
         if (!audioFile) {
