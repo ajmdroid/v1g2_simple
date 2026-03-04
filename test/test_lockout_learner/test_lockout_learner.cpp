@@ -573,6 +573,93 @@ void test_null_deps_no_crash() {
 }
 
 // ================================================================
+// Heading accumulates on all observations, not just counted hits.
+// With learn interval = 4h, non-counted obs should still feed heading.
+// ================================================================
+
+void test_heading_accumulates_on_non_counted_hits() {
+    learner.setTuning(3, LockoutLearner::kDefaultRadiusE5, LockoutLearner::kDefaultFreqToleranceMHz, 4);
+    const int64_t hourMs = 3600LL * 1000LL;
+
+    // First observation: creates candidate with course. Counted hit.
+    auto o1 = makeObs(LAT, LON, K_BAND, K_FREQ);
+    o1.courseValid = true;
+    o1.courseDeg = 90.0f;
+    o1.speedMph = 55.0f;
+    testLog.publish(o1);
+    learner.process(2000, EPOCH_BASE);
+    TEST_ASSERT_EQUAL(1, learner.candidateAt(0)->hitCount);
+    TEST_ASSERT_EQUAL(1, learner.candidateAt(0)->headingSampleCount);
+
+    // Second observation: 2h later (under 4h interval), NOT a counted hit,
+    // but should still accumulate heading.
+    auto o2 = makeObs(LAT + 1, LON - 1, K_BAND, K_FREQ);
+    o2.courseValid = true;
+    o2.courseDeg = 92.0f;
+    o2.speedMph = 60.0f;
+    testLog.publish(o2);
+    learner.process(4000, EPOCH_BASE + (2 * hourMs));
+    TEST_ASSERT_EQUAL(1, learner.candidateAt(0)->hitCount);  // Not counted
+    TEST_ASSERT_EQUAL(2, learner.candidateAt(0)->headingSampleCount);  // But heading accumulated!
+
+    // Third observation: 4h after first. Counted hit. Also gets heading.
+    auto o3 = makeObs(LAT + 2, LON + 1, K_BAND, K_FREQ);
+    o3.courseValid = true;
+    o3.courseDeg = 88.0f;
+    o3.speedMph = 50.0f;
+    testLog.publish(o3);
+    learner.process(6000, EPOCH_BASE + (4 * hourMs));
+    TEST_ASSERT_EQUAL(2, learner.candidateAt(0)->hitCount);
+    TEST_ASSERT_EQUAL(3, learner.candidateAt(0)->headingSampleCount);
+}
+
+// ================================================================
+// Promotion produces DIRECTION_FORWARD when heading samples are consistent
+// ================================================================
+
+void test_promotion_with_course_sets_direction_forward() {
+    // 3-hit promotion with consistent 90° heading on all observations.
+    for (int i = 0; i < 3; ++i) {
+        auto o = makeObs(LAT + i, LON, K_BAND, K_FREQ);
+        o.courseValid = true;
+        o.courseDeg = 90.0f + static_cast<float>(i);  // 90, 91, 92 — very consistent
+        o.speedMph = 55.0f;
+        testLog.publish(o);
+        learner.process(static_cast<uint32_t>(2000 + i * 2001), EPOCH_BASE + static_cast<int64_t>(i) * 10000LL);
+    }
+
+    TEST_ASSERT_EQUAL(1, learner.stats().promotions);
+    TEST_ASSERT_EQUAL(1, testIndex.activeCount());
+
+    // Verify the promoted entry has directional data.
+    const auto* entry = testIndex.at(0);
+    TEST_ASSERT_NOT_NULL(entry);
+    TEST_ASSERT_EQUAL(LockoutEntry::DIRECTION_FORWARD, entry->directionMode);
+    TEST_ASSERT_NOT_EQUAL(LockoutEntry::HEADING_INVALID, entry->headingDeg);
+    // Heading should be near 90°.
+    TEST_ASSERT_INT_WITHIN(5, 90, static_cast<int>(entry->headingDeg));
+}
+
+// ================================================================
+// Promotion without course data produces DIRECTION_ALL
+// ================================================================
+
+void test_promotion_without_course_stays_direction_all() {
+    for (int i = 0; i < 3; ++i) {
+        auto o = makeObs(LAT + i, LON, K_BAND, K_FREQ);
+        // courseValid stays false (default)
+        testLog.publish(o);
+        learner.process(static_cast<uint32_t>(2000 + i * 2001), EPOCH_BASE + static_cast<int64_t>(i) * 10000LL);
+    }
+
+    TEST_ASSERT_EQUAL(1, learner.stats().promotions);
+    const auto* entry = testIndex.at(0);
+    TEST_ASSERT_NOT_NULL(entry);
+    TEST_ASSERT_EQUAL(LockoutEntry::DIRECTION_ALL, entry->directionMode);
+    TEST_ASSERT_EQUAL(LockoutEntry::HEADING_INVALID, entry->headingDeg);
+}
+
+// ================================================================
 // Runner
 // ================================================================
 
@@ -608,6 +695,9 @@ int main(int argc, char** argv) {
     RUN_TEST(test_learn_interval_24h_promotes_before_stale_expiry);
     RUN_TEST(test_no_observations_no_crash);
     RUN_TEST(test_null_deps_no_crash);
+    RUN_TEST(test_heading_accumulates_on_non_counted_hits);
+    RUN_TEST(test_promotion_with_course_sets_direction_forward);
+    RUN_TEST(test_promotion_without_course_stays_direction_all);
 
     return UNITY_END();
 }
