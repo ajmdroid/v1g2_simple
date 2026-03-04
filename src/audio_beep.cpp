@@ -475,6 +475,7 @@ static void audio_playback_task(void* pvParameters) {
         Serial.println("[AUDIO] ERROR: stereo buffer not allocated!");
         audio_playing = false;
         audioTaskHandle = NULL;
+        // Self-delete: see note at end of function
         vTaskDeleteWithCaps(NULL);
         return;
     }
@@ -536,6 +537,9 @@ static void audio_playback_task(void* pvParameters) {
     audio_playing = false;
     
     audioTaskHandle = NULL;
+    // Self-delete: IDF recommends external deletion, but this fire-and-forget
+    // task has no external owner.  Deferred cleanup (prvTaskDeleteWithCapsTask)
+    // handles the stack free safely.
     vTaskDeleteWithCaps(NULL);
 }
 
@@ -566,7 +570,7 @@ static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duratio
         1,              // Priority (low)
         &audioTaskHandle,
         1,              // Core 1
-        MALLOC_CAP_SPIRAM
+        MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM
     );
     
     if (result != pdPASS) {

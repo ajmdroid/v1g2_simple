@@ -456,6 +456,9 @@ void V1BLEClient::discoveryTaskFunc(void* param) {
     self->discoveryTaskResult.store(result);
     self->discoveryTaskDone.store(true);
     self->discoveryTaskRunning.store(false);
+    // Self-delete: IDF recommends external deletion, but this fire-and-forget
+    // task has no external owner.  Deferred cleanup (prvTaskDeleteWithCapsTask)
+    // handles the stack free safely.
     vTaskDeleteWithCaps(nullptr);
 }
 
@@ -485,7 +488,8 @@ void V1BLEClient::processDiscovering() {
     if (!discoveryTaskDone.load()) {
         discoveryTaskRunning.store(true);
         BaseType_t rc = xTaskCreatePinnedToCoreWithCaps(
-            discoveryTaskFunc, "disc", 4096, this, 1, nullptr, tskNO_AFFINITY, MALLOC_CAP_SPIRAM);
+            discoveryTaskFunc, "disc", 4096, this, 1, nullptr, tskNO_AFFINITY,
+            MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
         if (rc != pdPASS) {
             // Never run discovery synchronously on the main loop; back off and retry.
             Serial.println("[BLE] disc task create failed - backing off");
