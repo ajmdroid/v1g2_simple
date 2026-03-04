@@ -577,6 +577,35 @@ def _merge_ways(segments):
 # Processing pipeline
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _seg_length_m(pts):
+    """Approximate total length of a polyline in metres (flat-earth)."""
+    total = 0.0
+    for i in range(len(pts) - 1):
+        dlat = (pts[i + 1][0] - pts[i][0]) * 111_320.0
+        cos_lat = math.cos(math.radians(pts[i][0]))
+        dlon = (pts[i + 1][1] - pts[i][1]) * 111_320.0 * cos_lat
+        total += math.sqrt(dlat * dlat + dlon * dlon)
+    return total
+
+
+def _drop_short(segments, min_length_m):
+    """Drop segments shorter than min_length_m.
+
+    Short segments are typically ramps, slip roads, and interchange
+    connectors that aren't useful for lockout road-snapping.
+    """
+    if min_length_m <= 0:
+        return segments, 0
+    result = []
+    dropped = 0
+    for seg in segments:
+        if _seg_length_m(seg.pts) >= min_length_m:
+            result.append(seg)
+        else:
+            dropped += 1
+    return result, dropped
+
+
 def _simplify_all(segments, tolerance_m):
     """Apply RDP to every segment; drop any that collapse to < 2 points."""
     result = []
@@ -842,6 +871,9 @@ def main():
     ap.add_argument("--verify", action="store_true", default=True,
                     help="Verify output after writing (default: true)")
     ap.add_argument("--no-verify", action="store_false", dest="verify")
+    ap.add_argument("--min-length", type=int, default=200,
+                    help="Drop segments shorter than N metres (default: 200; "
+                         "removes ramps/connectors to reduce file size)")
 
     # ── Legacy Overpass options ───────────────────────────────────────────
     ap.add_argument("--cache-dir", default=".road_map_cache",
@@ -970,6 +1002,15 @@ def main():
     merge_pts = sum(len(s.pts) for s in segments)
     print(f"  → {len(segments):,} segments, {merge_pts:,} points "
           f"({merges:,} merges, {dt:.1f}s)")
+
+    # ── Step 2b: Drop short segments ───────────────────────────────────────
+
+    if args.min_length > 0:
+        print(f"  Dropping segments < {args.min_length}m ...")
+        segments, short_dropped = _drop_short(segments, args.min_length)
+        ds_pts = sum(len(s.pts) for s in segments)
+        print(f"  → {len(segments):,} segments, {ds_pts:,} points "
+              f"(dropped {short_dropped:,} short segments)")
 
     # ── Step 3: Simplify ──────────────────────────────────────────────────
 
