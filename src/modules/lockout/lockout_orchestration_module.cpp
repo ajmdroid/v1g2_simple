@@ -159,7 +159,9 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
                 const uint16_t bufferE5 = lockoutSettings.gpsLockoutPreQuietBufferE5;
                 nearbyCount = index_->findNearbyDirectional(
                     latE5, lonE5,
-                    gpsStatus.courseValid, gpsStatus.courseDeg,
+                    gpsStatus.courseValid &&
+                        gpsStatus.courseAgeMs <= LOCKOUT_GPS_COURSE_MAX_AGE_MS,
+                    gpsStatus.courseDeg,
                     bufferE5, nearbyBuf, 16);
             }
             const PreQuietDecision pqDecision = evaluatePreQuiet(

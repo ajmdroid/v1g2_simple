@@ -123,7 +123,8 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
                                                       lonE5,
                                                       band,
                                                       freqMHz,
-                                                      gpsStatus.courseValid,
+                                                      gpsStatus.courseValid &&
+                                                          gpsStatus.courseAgeMs <= LOCKOUT_GPS_COURSE_MAX_AGE_MS,
                                                       gpsStatus.courseDeg);
 
     lastResult_.evaluated  = true;

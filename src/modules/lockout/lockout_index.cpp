@@ -407,18 +407,25 @@ bool LockoutIndex::withinRadius(int32_t latE5,
     if (dLat > radius || dLat < -radius) {
         return false;
     }
-    if (dLon > radius || dLon < -radius) {
+
+    // cos(lat) correction: 1° longitude is shorter than 1° latitude by cos(lat).
+    // Without this, zones are ~15-30% narrower east-west at US latitudes.
+    // E5-to-radians: latE5 / 100000 * (π/180) = latE5 * 1.74533e-7
+    const float cosLat = cosf(static_cast<float>(entry.latE5) * 1.74533e-7f);
+    const float cosLatClamped = std::max(cosLat, 0.3f);  // Clamp for extreme latitudes
+
+    // Widen longitude bounding box: real-world radius needs more E5 lon units.
+    const int32_t lonRadius = static_cast<int32_t>(radius / cosLatClamped) + 1;
+    if (dLon > lonRadius || dLon < -lonRadius) {
         return false;
     }
 
-    // Squared-distance check (avoids sqrt).
-    // At mid-latitudes 1 E5 unit ≈ 1.11 m latitude, ~0.85 m longitude (varies).
-    // We treat E5 units as isotropic for simplicity — the radius is already
-    // tuned conservatively (~150 m ≈ 135 E5) so the error is acceptable.
+    // Squared-distance check with cos(lat)-scaled longitude.
+    // Scale dLon to equivalent latitude distance units before squaring.
     const int64_t dLat64 = static_cast<int64_t>(dLat);
-    const int64_t dLon64 = static_cast<int64_t>(dLon);
+    const int64_t dLonScaled = static_cast<int64_t>(lroundf(static_cast<float>(dLon) * cosLatClamped));
     const int64_t r64    = static_cast<int64_t>(radius);
-    return (dLat64 * dLat64 + dLon64 * dLon64) <= (r64 * r64);
+    return (dLat64 * dLat64 + dLonScaled * dLonScaled) <= (r64 * r64);
 }
 
 bool LockoutIndex::withinInflatedRadius(int32_t latE5,
@@ -430,12 +437,16 @@ bool LockoutIndex::withinInflatedRadius(int32_t latE5,
     const int32_t radius = static_cast<int32_t>(entry.radiusE5) + static_cast<int32_t>(bufferE5);
 
     if (dLat > radius || dLat < -radius) return false;
-    if (dLon > radius || dLon < -radius) return false;
+
+    const float cosLat = cosf(static_cast<float>(entry.latE5) * 1.74533e-7f);
+    const float cosLatClamped = std::max(cosLat, 0.3f);
+    const int32_t lonRadius = static_cast<int32_t>(radius / cosLatClamped) + 1;
+    if (dLon > lonRadius || dLon < -lonRadius) return false;
 
     const int64_t dLat64 = static_cast<int64_t>(dLat);
-    const int64_t dLon64 = static_cast<int64_t>(dLon);
+    const int64_t dLonScaled = static_cast<int64_t>(lroundf(static_cast<float>(dLon) * cosLatClamped));
     const int64_t r64    = static_cast<int64_t>(radius);
-    return (dLat64 * dLat64 + dLon64 * dLon64) <= (r64 * r64);
+    return (dLat64 * dLat64 + dLonScaled * dLonScaled) <= (r64 * r64);
 }
 
 bool LockoutIndex::freqMatches(uint16_t alertFreqMHz, const LockoutEntry& entry) {
@@ -500,5 +511,6 @@ bool LockoutIndex::courseMatches(bool courseValid, float courseDeg, const Lockou
         return std::isfinite(delta) && delta <= tolerance;
     }
 
-    return true;
+    // Unknown directionMode → fail-open (don't match → alert plays).
+    return false;
 }

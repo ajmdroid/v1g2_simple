@@ -673,6 +673,65 @@ void test_findNearby_empty_returns_zero() {
 }
 
 // ================================================================
+// Fix: courseMatches fallthrough — unknown directionMode returns false
+// ================================================================
+
+void test_courseMatches_unknown_direction_mode_fails_open() {
+    LockoutEntry e = makeKBandEntry(1012345, -2054321, 24148);
+    e.directionMode = 42;  // Unknown value — not ALL/FORWARD/REVERSE
+    e.headingDeg = 90;
+    e.headingTolDeg = 45;
+    idx.add(e);
+
+    // Course perfectly matches heading, but unknown directionMode → no match.
+    LockoutDecision d = idx.evaluate(1012345, -2054321, 0x04, 24148, true, 90.0f);
+    TEST_ASSERT_FALSE(d.shouldMute);
+}
+
+// ================================================================
+// Fix: cos(lat) correction — zone is circular in real-world space
+// ================================================================
+
+void test_withinRadius_cosLat_expands_east_west() {
+    // At latitude ~40° N (4000000 E5), cos(40°) ≈ 0.766.
+    // Zone radius = 1350 E5 units (~150m in latitude).
+    // Without cos(lat), a point 1350 E5 east would be right at edge.
+    // With cos(lat), 1350 E5 east is only ~1034 scaled → well inside.
+    // So a point at 1400 E5 east that was OUTSIDE before should now be INSIDE.
+    const int32_t centerLat = 4000000;  // 40.0° N
+    const int32_t centerLon = -7400000; // -74.0° W (NYC area)
+    idx.add(makeKBandEntry(centerLat, centerLon, 24148, 1350));
+
+    // 1400 E5 units east — old code would reject (1400 > 1350),
+    // but with cos(40°) ≈ 0.766: scaled dLon = 1400 * 0.766 ≈ 1072 < 1350 → inside.
+    LockoutDecision d = idx.evaluate(centerLat, centerLon + 1400, 0x04, 24148);
+    TEST_ASSERT_TRUE(d.shouldMute);
+}
+
+void test_withinRadius_cosLat_north_south_unchanged() {
+    // cos(lat) correction should NOT change latitude behavior.
+    // 1400 E5 units north is still outside a 1350-radius zone.
+    const int32_t centerLat = 4000000;
+    const int32_t centerLon = -7400000;
+    idx.add(makeKBandEntry(centerLat, centerLon, 24148, 1350));
+
+    LockoutDecision d = idx.evaluate(centerLat + 1400, centerLon, 0x04, 24148);
+    TEST_ASSERT_FALSE(d.shouldMute);
+}
+
+void test_withinRadius_cosLat_beyond_corrected_radius_still_rejects() {
+    // A point far enough east should still be outside even after cos(lat) correction.
+    // At 40° N: effectiveLonRadius = 1350 / cos(40°) ≈ 1762 E5 in lon units.
+    // A point 1800 E5 east: scaled = 1800 * 0.766 ≈ 1379 > 1350 → outside.
+    const int32_t centerLat = 4000000;
+    const int32_t centerLon = -7400000;
+    idx.add(makeKBandEntry(centerLat, centerLon, 24148, 1350));
+
+    LockoutDecision d = idx.evaluate(centerLat, centerLon + 1800, 0x04, 24148);
+    TEST_ASSERT_FALSE(d.shouldMute);
+}
+
+// ================================================================
 // Runner
 // ================================================================
 
@@ -747,6 +806,14 @@ int main(int argc, char** argv) {
     RUN_TEST(test_findNearby_excludes_distant_entries);
     RUN_TEST(test_findNearby_respects_outCap);
     RUN_TEST(test_findNearby_empty_returns_zero);
+
+    // Fix: courseMatches fallthrough
+    RUN_TEST(test_courseMatches_unknown_direction_mode_fails_open);
+
+    // Fix: cos(lat) longitude correction
+    RUN_TEST(test_withinRadius_cosLat_expands_east_west);
+    RUN_TEST(test_withinRadius_cosLat_north_south_unchanged);
+    RUN_TEST(test_withinRadius_cosLat_beyond_corrected_radius_still_rejects);
 
     return UNITY_END();
 }

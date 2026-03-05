@@ -14,8 +14,8 @@ struct LockoutCleanPassResult {
 /// Fixed-size lockout zone index.
 ///
 /// Provides O(N) scan per query where N ≤ kCapacity (~500).
-/// All operations are integer-only (no floats, no haversine) to keep
-/// query time bounded on the Core-1 hot path.
+/// Proximity checks use integer bounding boxes with a cos(lat)-corrected
+/// squared-distance test to produce circular zones in real-world space.
 ///
 /// Thread safety: designed for single-threaded access from loop().
 /// If background tasks need to mutate (e.g. persistence restore at boot),
@@ -130,9 +130,9 @@ public:
                                  size_t outCap) const;
 
 private:
-    /// Fast integer-only proximity check.
+    /// Fast proximity check with cos(lat) correction.
     /// Returns true if (latE5, lonE5) is within the entry's bounding box AND
-    /// the squared E5 distance is within radius^2.
+    /// the cos(lat)-corrected squared distance is within radius^2.
     static bool withinRadius(int32_t latE5,
                              int32_t lonE5,
                              const LockoutEntry& entry);

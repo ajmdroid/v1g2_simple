@@ -124,6 +124,10 @@ static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT = 5;       /
 static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MIN = 0;           // 0 = disabled
 static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MAX = 20;          // 20 mph ceiling
 
+// Maximum age of GPS course before treating it as invalid for directional matching.
+// Fail-open: stale course → directional entries don't match → alert plays.
+static constexpr uint32_t LOCKOUT_GPS_COURSE_MAX_AGE_MS = 5000;                // 5 seconds
+
 inline uint16_t clampLockoutPreQuietBufferE5Value(int rawBuffer) {
     return static_cast<uint16_t>(std::max(0,
                                           std::min(rawBuffer, static_cast<int>(LOCKOUT_PRE_QUIET_BUFFER_E5_MAX))));

@@ -46,6 +46,7 @@ inline const char* lockoutRuntimeModeName(LockoutRuntimeMode mode) {
 
 // GPS quality gate constants (must match real settings.h)
 static constexpr uint8_t  LOCKOUT_GPS_MIN_SATELLITES = 4;
+static constexpr uint32_t LOCKOUT_GPS_COURSE_MAX_AGE_MS = 5000;
 
 // Minimal display font enum (for compatibility with older tests)
 enum FontStyle : uint8_t {
