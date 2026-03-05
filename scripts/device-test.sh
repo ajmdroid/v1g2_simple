@@ -613,9 +613,120 @@ if [[ "$AUTO_KILL_MONITOR" -eq 1 ]]; then
   fi
 fi
 
+run_camera_api_test() {
+  local test_name="camera_api"
+  local base_url="${METRICS_URL%%/api/debug/metrics*}"
+
+  local settings_url="${base_url}/api/cameras/settings"
+  local status_url="${base_url}/api/cameras/status"
+
+  local cam_log="$OUT_DIR/${test_name}.log"
+  : > "$cam_log"
+
+  local rc
+  local parse_out
+  parse_out="$(python3 - "$settings_url" "$status_url" "$HTTP_TIMEOUT_SECONDS" 2>&1 | tee -a "$cam_log")"
+  rc=${PIPESTATUS[0]}
+
+  if python3 - "$settings_url" "$status_url" "$HTTP_TIMEOUT_SECONDS" >>"$cam_log" 2>&1 <<'PY'
+import json
+import sys
+import urllib.request
+
+settings_url = sys.argv[1]
+status_url = sys.argv[2]
+timeout = int(sys.argv[3])
+
+ok = True
+reasons = []
+
+def get_json(url):
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.load(resp)
+
+def post_json(url, payload):
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=body, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.load(resp)
+
+try:
+    # 1. GET settings — validate shape
+    settings = get_json(settings_url)
+    required_settings = [
+        "cameraAlertsEnabled", "cameraAlertRangeM", "cameraTypeAlpr",
+        "cameraTypeRedLight", "cameraTypeSpeed", "cameraTypeBusLane",
+        "colorCameraArrow", "colorCameraText", "cameraVoiceEnabled",
+        "cameraVoiceClose", "cameraCount",
+    ]
+    missing = [k for k in required_settings if k not in settings]
+    if missing:
+        ok = False
+        reasons.append(f"settings missing keys: {','.join(missing)}")
+    cam_count = int(settings.get("cameraCount", 0))
+    print(f"settings_ok={1 if not missing else 0} cameraCount={cam_count}")
+
+    # 2. GET status — validate shape
+    status = get_json(status_url)
+    required_status = ["active", "encounterActive", "cameraCount"]
+    missing_st = [k for k in required_status if k not in status]
+    if missing_st:
+        ok = False
+        reasons.append(f"status missing keys: {','.join(missing_st)}")
+    print(f"status_ok={1 if not missing_st else 0} active={status.get('active')}")
+
+    # 3. Round-trip: toggle cameraTypeBusLane, read back, verify, restore
+    original_bus = settings.get("cameraTypeBusLane", False)
+    toggled_bus = not original_bus
+    post_resp = post_json(settings_url, {"cameraTypeBusLane": toggled_bus})
+    readback = get_json(settings_url)
+    if readback.get("cameraTypeBusLane") != toggled_bus:
+        ok = False
+        reasons.append(f"round-trip failed: expected cameraTypeBusLane={toggled_bus}, got {readback.get('cameraTypeBusLane')}")
+    # Restore original value
+    post_json(settings_url, {"cameraTypeBusLane": original_bus})
+    restore_check = get_json(settings_url)
+    if restore_check.get("cameraTypeBusLane") != original_bus:
+        ok = False
+        reasons.append(f"restore failed: expected cameraTypeBusLane={original_bus}, got {restore_check.get('cameraTypeBusLane')}")
+    print(f"round_trip_ok={1 if ok else 0}")
+
+    if reasons:
+        print("reasons=" + "; ".join(reasons))
+
+except Exception as exc:
+    ok = False
+    print(f"reasons=exception: {exc}")
+
+sys.exit(0 if ok else 1)
+PY
+  then
+    rc=0
+  else
+    rc=$?
+  fi
+
+  local metrics
+  metrics="$(tr '\n' '; ' < "$cam_log" | sed 's/; $//')"
+  local cmd_text="curl -> ${settings_url} + ${status_url}"
+  if [[ "$rc" -eq 0 ]]; then
+    add_result "$test_name" "PASS" "$metrics" "$cam_log" "$cmd_text"
+  else
+    add_result "$test_name" "FAIL" "$metrics" "$cam_log" "$cmd_text"
+  fi
+}
+
 check_uptime_continuity "before metrics_endpoint"
 run_metrics_endpoint_test
 check_uptime_continuity "after metrics_endpoint"
+
+check_uptime_continuity "before camera_api"
+run_camera_api_test
+check_uptime_continuity "after camera_api"
 
 check_uptime_continuity "before rad_short"
 run_rad_short_test
