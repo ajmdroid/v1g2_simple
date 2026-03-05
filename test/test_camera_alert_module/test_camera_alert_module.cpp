@@ -323,49 +323,6 @@ void test_unknown_flag_ignored() {
     TEST_ASSERT_FALSE(module.consumePendingVoice(voice));
 }
 
-void test_stale_course_uses_motion_heading_to_clear_after_turn() {
-    CameraAlertModule module;
-    module.begin(CameraAlertProviders{nearestCameraStub, cameraCountStub, nullptr});
-    configureAheadSpeedCamera(12000);
-
-    // Initial lock with fresh heading east.
-    TEST_ASSERT_TRUE(process(module, 1000, makeGps(90.0f, true, 100, 40.0000f, -75.0000f)).displayActive);
-
-    // Course becomes stale, but movement indicates westbound turn (away from camera).
-    const auto result = process(module, 1600, makeGps(90.0f, true, 5000, 40.0000f, -75.0002f));
-    TEST_ASSERT_FALSE(result.displayActive);
-}
-
-void test_stale_course_diverging_distance_clears_after_grace() {
-    CameraAlertModule module;
-    module.begin(CameraAlertProviders{nearestCameraStub, cameraCountStub, nullptr});
-    configureAheadSpeedCamera(12000);
-
-    // Start stale with no meaningful movement-derived heading.
-    TEST_ASSERT_TRUE(process(module, 1000, makeGps(90.0f, true, 5000, 40.0000f, -75.0000f)).displayActive);
-
-    // Distance steadily increases while stale and no heading available.
-    gCameraResult.distanceCm = 13000;
-    TEST_ASSERT_TRUE(process(module, 11500, makeGps(90.0f, true, 5000, 40.0000f, -75.0000f)).displayActive);
-    gCameraResult.distanceCm = 19000;
-    TEST_ASSERT_TRUE(process(module, 12100, makeGps(90.0f, true, 5000, 40.0000f, -75.0000f)).displayActive);
-    gCameraResult.distanceCm = 19500;
-    TEST_ASSERT_TRUE(process(module, 12700, makeGps(90.0f, true, 5000, 40.0000f, -75.0000f)).displayActive);
-    gCameraResult.distanceCm = 20000;
-    const auto result = process(module, 13300, makeGps(90.0f, true, 5000, 40.0000f, -75.0000f));
-    TEST_ASSERT_FALSE(result.displayActive);
-}
-
-void test_stale_course_hard_timeout_clears_without_divergence() {
-    CameraAlertModule module;
-    module.begin(CameraAlertProviders{nearestCameraStub, cameraCountStub, nullptr});
-    configureAheadSpeedCamera(12000);
-
-    TEST_ASSERT_TRUE(process(module, 1000, makeGps(90.0f, true, 5000, 40.0000f, -75.0000f)).displayActive);
-    const auto result = process(module, 32000, makeGps(90.0f, true, 5000, 40.0000f, -75.0000f));
-    TEST_ASSERT_FALSE(result.displayActive);
-}
-
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_no_camera_no_alert);
@@ -387,8 +344,5 @@ int main() {
     RUN_TEST(test_same_latlon_different_flags_is_new_encounter);
     RUN_TEST(test_audio_busy_retries_stage_without_losing_announcement);
     RUN_TEST(test_unknown_flag_ignored);
-    RUN_TEST(test_stale_course_uses_motion_heading_to_clear_after_turn);
-    RUN_TEST(test_stale_course_diverging_distance_clears_after_grace);
-    RUN_TEST(test_stale_course_hard_timeout_clears_without_divergence);
     return UNITY_END();
 }

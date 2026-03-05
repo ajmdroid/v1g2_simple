@@ -50,12 +50,6 @@ public:
     static constexpr uint32_t CAMERA_POLL_INTERVAL_MS = 500;
     static constexpr uint32_t ENCOUNTER_EXPIRE_MS = 10000;
     static constexpr uint32_t CAMERA_COURSE_MAX_AGE_MS = 3000;
-    static constexpr uint32_t CAMERA_STALE_GRACE_MS = 10000;
-    static constexpr uint32_t CAMERA_STALE_HARD_CLEAR_MS = 30000;
-    static constexpr uint32_t CAMERA_DERIVED_COURSE_MAX_AGE_MS = 5000;
-    static constexpr float CAMERA_DERIVED_MIN_MOVE_M = 15.0f;
-    static constexpr uint16_t CAMERA_STALE_DIVERGE_CLEAR_CM = 6000;
-    static constexpr uint8_t CAMERA_STALE_DIVERGE_POLLS = 3;
 
     void begin(const CameraAlertProviders& providers);
 
@@ -75,17 +69,11 @@ private:
     bool isCameraTypeEnabled(const V1Settings& settings, CameraType type) const;
     void updateEncounterFromResult(uint32_t nowMs, const CameraResult& result, CameraType type);
     void maybeExpireEncounter(uint32_t nowMs, bool sawValidCamera);
-    void updateDerivedCourseFromGps(uint32_t nowMs, const GpsRuntimeStatus& gps);
-    void resetStaleCourseTracking();
     uint16_t rangeMetersToE5(uint16_t meters) const;
     static float bearingToPointDeg(float fromLatDeg,
                                    float fromLonDeg,
                                    float toLatDeg,
                                    float toLonDeg);
-    static float distanceBetweenPointsM(float fromLatDeg,
-                                        float fromLonDeg,
-                                        float toLatDeg,
-                                        float toLonDeg);
     static int32_t degToE5(float deg);
 
     CameraAlertProviders providers_{};
@@ -107,16 +95,4 @@ private:
     bool displayActive_ = false;
     bool hasPayload_ = false;
     CameraAlertDisplayPayload payload_{};
-
-    bool staleCourseActive_ = false;
-    uint32_t staleCourseStartMs_ = 0;
-    uint16_t staleBestDistanceCm_ = 0xFFFF;
-    uint8_t staleDivergePolls_ = 0;
-
-    bool lastGpsValid_ = false;
-    float lastGpsLatDeg_ = 0.0f;
-    float lastGpsLonDeg_ = 0.0f;
-    bool derivedCourseValid_ = false;
-    float derivedCourseDeg_ = 0.0f;
-    uint32_t derivedCourseTsMs_ = 0;
 };
