@@ -102,3 +102,4 @@ REFACTOR_LOG.md
 .github/instructions/v1_simple.instructions.md
 docs/AUTOLOCKOUT_RESEARCH.md
 .road_map_cache/
+.vite/
