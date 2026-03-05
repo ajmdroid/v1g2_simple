@@ -99,6 +99,8 @@ void handleApiSave(WebServer& server,
     if (server.hasArg("rssiProxy")) s.colorRssiProxy = server.arg("rssiProxy").toInt();
     if (server.hasArg("lockout")) s.colorLockout = server.arg("lockout").toInt();
     if (server.hasArg("gps")) s.colorGps = server.arg("gps").toInt();
+    if (server.hasArg("cameraArrow")) s.colorCameraArrow = server.arg("cameraArrow").toInt();
+    if (server.hasArg("cameraText")) s.colorCameraText = server.arg("cameraText").toInt();
 
     // Display toggles
     if (server.hasArg("freqUseBandColor")) s.freqUseBandColor = argBool("freqUseBandColor", s.freqUseBandColor);
@@ -250,6 +252,8 @@ void handleApiReset(WebServer& server,
     s.colorRssiProxy = 0x001F;
     s.colorLockout = 0x07E0;
     s.colorGps = 0x07FF;
+    s.colorCameraArrow = 0x780F;
+    s.colorCameraText = 0x780F;
     s.freqUseBandColor = false;
 
     if (runtime.saveSettings) {
@@ -351,6 +355,8 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["rssiProxy"] = s.colorRssiProxy;
     doc["lockout"] = s.colorLockout;
     doc["gps"] = s.colorGps;
+    doc["cameraArrow"] = s.colorCameraArrow;
+    doc["cameraText"] = s.colorCameraText;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;

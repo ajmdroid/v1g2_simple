@@ -37,6 +37,8 @@
 		rssiProxy: 0x001F, // Blue (Proxy RSSI label)
 		lockout: 0x07E0, // Green (lockout badge "L")
 		gps: 0x07FF, // Cyan (GPS badge "G")
+		cameraArrow: 0x780F, // Purple (camera arrow)
+		cameraText: 0x780F, // Purple (camera text)
 		hideWifiIcon: false,
 		hideProfileIndicator: false,
 		hideBatteryIcon: false,
@@ -257,6 +259,8 @@
 			params.append('rssiProxy', colors.rssiProxy);
 			params.append('lockout', colors.lockout);
 			params.append('gps', colors.gps);
+			params.append('cameraArrow', colors.cameraArrow);
+			params.append('cameraText', colors.cameraText);
 			params.append('hideWifiIcon', colors.hideWifiIcon);
 			params.append('hideProfileIndicator', colors.hideProfileIndicator);
 			params.append('hideBatteryIcon', colors.hideBatteryIcon);
@@ -334,6 +338,8 @@
 					rssiProxy: 0x001F,
 					lockout: 0x07E0,
 					gps: 0x07FF,
+					cameraArrow: 0x780F,
+					cameraText: 0x780F,
 					hideWifiIcon: false,
 					hideProfileIndicator: false,
 					hideBatteryIcon: false,
@@ -915,6 +921,70 @@
 								class="text-xl font-bold font-mono"
 								style="color: {rgb565ToHex(colors.gps)}"
 							>G</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		
+		<!-- Camera Alerts -->
+		<div class="surface-card">
+			<div class="card-body">
+				<CardSectionHead
+					title="Camera Alerts"
+					subtitle="Arrow and text color during camera proximity alerts."
+				/>
+				<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+					<div class="form-control">
+						<label class="label" for="camera-arrow-color">
+							<span class="label-text">Camera Arrow</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button
+								id="camera-arrow-color"
+								type="button"
+								aria-label="Camera arrow color"
+								class="color-swatch-btn md"
+								style="background-color: {rgb565ToHex(colors.cameraArrow)}"
+								onclick={() => openPicker('cameraArrow', 'Camera Arrow')}
+							></button>
+							<input
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.cameraArrow)}
+								onchange={(e) => handleHexInput('cameraArrow', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span
+								class="text-2xl font-bold"
+								style="color: {rgb565ToHex(colors.cameraArrow)}"
+							>▲</span>
+						</div>
+					</div>
+					<div class="form-control">
+						<label class="label" for="camera-text-color">
+							<span class="label-text">Camera Text</span>
+						</label>
+						<div class="flex items-center gap-2">
+							<button
+								id="camera-text-color"
+								type="button"
+								aria-label="Camera text color"
+								class="color-swatch-btn md"
+								style="background-color: {rgb565ToHex(colors.cameraText)}"
+								onclick={() => openPicker('cameraText', 'Camera Text')}
+							></button>
+							<input
+								type="text"
+								class="input input-bordered input-xs w-16 font-mono text-xs"
+								value={rgb565ToHexStr(colors.cameraText)}
+								onchange={(e) => handleHexInput('cameraText', e.target.value)}
+								title="RGB565 hex (or RGB888)"
+							/>
+							<span
+								class="text-sm font-bold font-mono"
+								style="color: {rgb565ToHex(colors.cameraText)}"
+							>SPD CAM</span>
 						</div>
 					</div>
 				</div>
