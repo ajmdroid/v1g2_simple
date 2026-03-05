@@ -35,7 +35,6 @@
 #include "v1_devices.h"
 #include "battery_manager.h"
 #include "storage_manager.h"
-#include "debug_logger.h"
 #include "audio_beep.h"
 #include "perf_metrics.h"
 #include "perf_sd_logger.h"

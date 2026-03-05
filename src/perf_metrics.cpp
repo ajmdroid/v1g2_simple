@@ -3,7 +3,6 @@
  */
 
 #include "perf_metrics.h"
-#include "debug_logger.h"  // For drop counter access (never log via debug logger)
 #include "perf_sd_logger.h"
 #include "storage_manager.h"
 #include "time_service.h"

@@ -10,7 +10,6 @@
 #define AUDIO_INTERNALS_H
 
 #include "audio_beep.h"
-#include "debug_logger.h"
 #include "perf_metrics.h"
 #include <atomic>
 #include <cstdint>
@@ -21,19 +20,8 @@
 // ---- Debug / logging infrastructure ----
 static constexpr bool AUDIO_DEBUG_LOGS = false;
 
-#if defined(DISABLE_DEBUG_LOGGER)
 #define AUDIO_LOGF(...) do { } while(0)
 #define AUDIO_LOGLN(msg) do { } while(0)
-#else
-#define AUDIO_LOGF(...) do { \
-    if (AUDIO_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
-    DBG_LOGF(DebugLogCategory::Audio, __VA_ARGS__); \
-} while(0)
-#define AUDIO_LOGLN(msg) do { \
-    if (AUDIO_DEBUG_LOGS) Serial.println(msg); \
-    DBG_LOGLN(DebugLogCategory::Audio, msg); \
-} while(0)
-#endif
 
 // ---- Shared constants ----
 static constexpr int AUDIO_CHUNK_SAMPLES = 1024;

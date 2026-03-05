@@ -19,7 +19,6 @@
 
 #include "ble_client.h"
 #include "settings.h"
-#include "debug_logger.h"
 #include "perf_metrics.h"
 #include "storage_manager.h"
 #include "../include/config.h"

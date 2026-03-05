@@ -5,7 +5,6 @@
 #include "battery_manager.h"
 #include "display.h"
 #include "settings.h"
-#include "debug_logger.h"
 
 class PowerModule {
 public:

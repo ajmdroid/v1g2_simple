@@ -4,7 +4,6 @@
  */
 
 #include "display.h"
-#include "debug_logger.h"
 #include "../include/config.h"
 #include "../include/display_layout.h"  // Centralized layout constants
 #include "../include/color_themes.h"

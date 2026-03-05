@@ -5,15 +5,8 @@
 #include "modules/power/power_module.h"
 #include "modules/ble/ble_queue_module.h"
 #include "modules/system/system_event_bus.h"
-#include "debug_logger.h"
 
-#if defined(DISABLE_DEBUG_LOGGER)
 #define CONN_LOG(...) do { } while(0)
-#else
-#define CONN_LOG(...) do { \
-    DBG_LOGF(DebugLogCategory::Ble, __VA_ARGS__); \
-} while(0)
-#endif
 
 void ConnectionStateModule::begin(V1BLEClient* bleClient,
                                   PacketParser* parserPtr,

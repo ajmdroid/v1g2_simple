@@ -5,7 +5,6 @@
 #include "packet_parser.h"
 #include "../include/band_utils.h"
 #include <algorithm>
-#include "debug_logger.h"
 
 #ifndef UNIT_TEST
 #include "perf_metrics.h"

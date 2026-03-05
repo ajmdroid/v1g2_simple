@@ -2,7 +2,6 @@
 
 #include "voice_module.h"
 #include "settings.h"
-#include "debug_logger.h"
 #ifndef UNIT_TEST
 #include "perf_metrics.h"
 #define VOICE_PERF_INC(counter) PERF_INC(counter)
@@ -154,9 +153,6 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         markAlertAnnounced(priority.band, currentFreq);
         VOICE_PERF_INC(voiceAnnouncePriority);
         
-        DBG_LOGF(DebugLogCategory::Audio,
-                 "[Voice] New priority: band=%d freq=%u dir=%d bogeys=%d\n",
-                 (int)action.band, action.freq, (int)action.dir, action.bogeyCount);
         return action;
     }
     
@@ -168,9 +164,6 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         
         if (throttled) {
             VOICE_PERF_INC(voiceDirectionThrottled);
-            DBG_LOGF(DebugLogCategory::Audio,
-                     "[Voice] Direction THROTTLED: freq=%u changes=%d\n",
-                     currentFreq, getDirectionChangeCount());
             return action;
         }
         
@@ -182,9 +175,6 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         markPriorityAnnounced(ctx.now);
         VOICE_PERF_INC(voiceAnnounceDirection);
         
-        DBG_LOGF(DebugLogCategory::Audio,
-                 "[Voice] Direction change: freq=%u dir=%d bogeys=%d\n",
-                 currentFreq, (int)action.dir, action.bogeyCount);
         return action;
     }
     
@@ -202,9 +192,6 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         markPriorityAnnounced(ctx.now);
         VOICE_PERF_INC(voiceAnnounceDirection);
         
-        DBG_LOGF(DebugLogCategory::Audio,
-                 "[Voice] Bogey count: freq=%u dir=%d bogeys=%d (was %d)\n",
-                 currentFreq, (int)action.dir, action.bogeyCount, previousBogeyCount);
         return action;
     }
     
@@ -240,9 +227,6 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
             updateLastAnnouncedTime(ctx.now);
             VOICE_PERF_INC(voiceAnnounceSecondary);
             
-            DBG_LOGF(DebugLogCategory::Audio,
-                     "[Voice] Secondary: band=%d freq=%u dir=%d\n",
-                     (int)action.band, action.freq, (int)action.dir);
             return action;
         }
     }
@@ -309,9 +293,6 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
                     updateLastAnnouncedTime(ctx.now);
                     VOICE_PERF_INC(voiceAnnounceEscalation);
                     
-                    DBG_LOGF(DebugLogCategory::Audio,
-                             "[Voice] Escalation: band=%d freq=%u - %d bogeys (%d/%d/%d)\n",
-                             (int)action.band, action.freq, total, aheadCount, behindCount, sideCount);
                     return action;
                 }
             }
@@ -451,9 +432,6 @@ bool VoiceModule::shouldAnnounceThreatEscalation(Band band, uint16_t freq, uint8
     bool notAnnounced = !h->escalationAnnounced;
     
     if (wasWeak && nowStrong && sustained && notNoisy && notAnnounced) {
-        DBG_LOGF(DebugLogCategory::Audio,
-                 "[Voice] Escalation trigger: band=%d freq=%u bars=%d strongFor=%lums\n",
-                 (int)band, freq, h->currentBars, now - h->strongSinceMs);
         return true;
     }
     return false;

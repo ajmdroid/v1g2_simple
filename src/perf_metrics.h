@@ -6,9 +6,6 @@
  *   Counters only, no strings, no heap, no locks, no I/O.
  *   Emitted periodically from safe zone (once per second max).
  * 
- * - Channel B (debug_logger.h): Human-readable diagnostic logs. SAFE ZONE ONLY.
- *   Rate-limited, can be dropped, never called from red zones.
- * 
  * RED ZONE SAFE MACROS (use these everywhere):
  *   PERF_INC(counter)        - Atomic increment, zero overhead
  *   PERF_MAX(counter, value) - Atomic max update, zero overhead

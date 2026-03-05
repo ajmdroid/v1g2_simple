@@ -9,7 +9,6 @@
 #define WIFI_MANAGER_INTERNALS_H
 
 #include "wifi_manager.h"
-#include "debug_logger.h"
 #include "ble_client.h"
 #include "modules/system/system_event_bus.h"
 
@@ -28,14 +27,7 @@ extern void cancelColorPreview();
 static constexpr bool WIFI_DEBUG_LOGS = false;  // Set true for verbose Serial logging
 static constexpr bool WIFI_DEBUG_FS_DUMP = false; // Set true to dump LittleFS root on WiFi start
 
-#if defined(DISABLE_DEBUG_LOGGER)
 #define WIFI_LOG(...) do { } while(0)
-#else
-#define WIFI_LOG(...) do { \
-    if (WIFI_DEBUG_LOGS) Serial.printf(__VA_ARGS__); \
-    DBG_LOGF(DebugLogCategory::Wifi, __VA_ARGS__); \
-} while(0)
-#endif
 
 // ---- Promoted helper declarations ----
 
