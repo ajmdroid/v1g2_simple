@@ -33,31 +33,11 @@ docs/install/*.bin
 *.iml
 
 # Temporary/development files
-PROGRESS.md
-TODO.md
 RDF_POST*
-CHANGELOG_WIP.md
-code_review.txt
 *.tmp
 *~
 *.bak
 
-# Archived docs (keep local, don't track)
-docs/ARCHIVE.md
-docs/CODEBASE_REVIEW.md
-docs/GPS_ALERT_LOGGING.md
-docs/LOGGING_CONVENTION.md
-docs/M10-25Q_TESTING.md
-docs/MODULE_DETECTION.md
-docs/PERF_SLOS.md
-docs/SD_BACKUP.md
-docs/SD_BACKUP_IMPLEMENTATION.md
-docs/AUTOLOCKOUT_RESEARCH.md
-docs/*REVIEW.md
-docs/*NOTES.md
-docs/*FORMAT.md
-docs/*PLAN.md
-docs/CAMERA_ALERTS_PLAN.md
 # Web UI build/cache (Svelte/Vite)
 /interface/node_modules/
 /interface/.svelte-kit/
@@ -82,24 +62,16 @@ docs/CAMERA_ALERTS_PLAN.md
 *.wav
 *.mp3
 
-# Local reference repos (kept out of version control)
+# Local reference repos
 ESP32-S3-Touch-LCD-3.49/
 AndroidESPLibrary2/
 .scratch/
-AUDIT_SUMMARY.md
 
-# Local test captures
+# Local test captures / caches
 r8/
 bench_testing/
-TESTING_NOTES.md
-FUTURE_NOTES.md
-CLAUDE.md
-jbv1_2.ttf
-QUALITY_ROADMAP.md
-ARCHITECTURE_NOTES.md
-VOICE_ALERT_MIGRATION.md
-REFACTOR_LOG.md
-.github/instructions/v1_simple.instructions.md
-docs/AUTOLOCKOUT_RESEARCH.md
 .road_map_cache/
 .vite/
+
+# Local research docs (not tracked)
+docs/AUTOLOCKOUT_RESEARCH.md
