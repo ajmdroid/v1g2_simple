@@ -21,6 +21,10 @@ void CameraAlertModule::begin(const CameraAlertProviders& providers) {
     cachedNearest_ = CameraResult{};
     lastPollMs_ = 0;
     hasPolled_ = false;
+    resetStaleCourseTracking();
+    lastGpsValid_ = false;
+    derivedCourseValid_ = false;
+    derivedCourseTsMs_ = 0;
     resetEncounter();
 }
 
@@ -80,6 +84,13 @@ void CameraAlertModule::resetEncounter() {
     displayActive_ = false;
     hasPayload_ = false;
     payload_ = CameraAlertDisplayPayload{};
+}
+
+void CameraAlertModule::resetStaleCourseTracking() {
+    staleCourseActive_ = false;
+    staleCourseStartMs_ = 0;
+    staleBestDistanceCm_ = 0xFFFF;
+    staleDivergePolls_ = 0;
 }
 
 bool CameraAlertModule::getStatusSnapshot(CameraAlertStatusSnapshot& snapshot) const {
@@ -154,6 +165,28 @@ void CameraAlertModule::maybeExpireEncounter(uint32_t nowMs, bool sawValidCamera
     }
 }
 
+void CameraAlertModule::updateDerivedCourseFromGps(uint32_t nowMs, const GpsRuntimeStatus& gps) {
+    if (!std::isfinite(gps.latitudeDeg) || !std::isfinite(gps.longitudeDeg)) {
+        lastGpsValid_ = false;
+        return;
+    }
+
+    if (lastGpsValid_) {
+        const float moveM = distanceBetweenPointsM(
+            lastGpsLatDeg_, lastGpsLonDeg_, gps.latitudeDeg, gps.longitudeDeg);
+        if (moveM >= CAMERA_DERIVED_MIN_MOVE_M) {
+            derivedCourseDeg_ = bearingToPointDeg(
+                lastGpsLatDeg_, lastGpsLonDeg_, gps.latitudeDeg, gps.longitudeDeg);
+            derivedCourseValid_ = true;
+            derivedCourseTsMs_ = nowMs;
+        }
+    }
+
+    lastGpsValid_ = true;
+    lastGpsLatDeg_ = gps.latitudeDeg;
+    lastGpsLonDeg_ = gps.longitudeDeg;
+}
+
 uint16_t CameraAlertModule::rangeMetersToE5(uint16_t meters) const {
     if (meters == 0) {
         return 0;
@@ -181,6 +214,21 @@ float CameraAlertModule::bearingToPointDeg(float fromLatDeg,
     return bearing;
 }
 
+float CameraAlertModule::distanceBetweenPointsM(float fromLatDeg,
+                                                float fromLonDeg,
+                                                float toLatDeg,
+                                                float toLonDeg) {
+    const float dLat = (toLatDeg - fromLatDeg) * kDegToRad;
+    const float dLon = (toLonDeg - fromLonDeg) * kDegToRad;
+    const float lat1 = fromLatDeg * kDegToRad;
+    const float lat2 = toLatDeg * kDegToRad;
+    const float a = sinf(dLat / 2.0f) * sinf(dLat / 2.0f) +
+                    cosf(lat1) * cosf(lat2) *
+                    sinf(dLon / 2.0f) * sinf(dLon / 2.0f);
+    const float c = 2.0f * atanf(sqrtf(a) / sqrtf(fmaxf(1.0f - a, 0.0f)));
+    return 6371000.0f * c;
+}
+
 int32_t CameraAlertModule::degToE5(float deg) {
     return static_cast<int32_t>(lroundf(deg * 100000.0f));
 }
@@ -192,12 +240,18 @@ CameraAlertResult CameraAlertModule::process(uint32_t nowMs, const CameraAlertCo
     result.payload = payload_;
 
     if (!ctx.settings || !ctx.settings->cameraAlertsEnabled) {
+        resetStaleCourseTracking();
+        lastGpsValid_ = false;
+        derivedCourseValid_ = false;
         resetEncounter();
         return result;
     }
 
     const V1Settings& settings = *ctx.settings;
     if (!isGpsUsable(ctx)) {
+        resetStaleCourseTracking();
+        lastGpsValid_ = false;
+        derivedCourseValid_ = false;
         displayActive_ = false;
         result.displayActive = false;
         maybeExpireEncounter(nowMs, false);
@@ -205,8 +259,11 @@ CameraAlertResult CameraAlertModule::process(uint32_t nowMs, const CameraAlertCo
     }
 
     const GpsRuntimeStatus& gps = *ctx.gpsStatus;
+    updateDerivedCourseFromGps(nowMs, gps);
+
     if (!providers_.nearestCamera || !providers_.cameraCount ||
         providers_.cameraCount(providers_.context) == 0) {
+        resetStaleCourseTracking();
         displayActive_ = false;
         result.displayActive = false;
         maybeExpireEncounter(nowMs, false);
@@ -226,6 +283,7 @@ CameraAlertResult CameraAlertModule::process(uint32_t nowMs, const CameraAlertCo
     }
 
     if (!cachedNearest_.valid) {
+        resetStaleCourseTracking();
         displayActive_ = false;
         result.displayActive = false;
         maybeExpireEncounter(nowMs, false);
@@ -235,28 +293,87 @@ CameraAlertResult CameraAlertModule::process(uint32_t nowMs, const CameraAlertCo
     CameraType mappedType = CameraType::SPEED;
     if (!cameraTypeFromFlags(cachedNearest_.flags, mappedType) ||
         !isCameraTypeEnabled(settings, mappedType)) {
+        resetStaleCourseTracking();
         displayActive_ = false;
         result.displayActive = false;
         maybeExpireEncounter(nowMs, false);
         return result;
     }
 
+    const bool sameEncounter = encounterActive_ &&
+                               encounterLatE5_ == cachedNearest_.latE5 &&
+                               encounterLonE5_ == cachedNearest_.lonE5 &&
+                               encounterFlags_ == cachedNearest_.flags;
+    if (!sameEncounter) {
+        resetStaleCourseTracking();
+    }
+
     const bool courseFresh = gps.courseValid &&
                              std::isfinite(gps.courseDeg) &&
                              gps.courseAgeMs <= CAMERA_COURSE_MAX_AGE_MS;
+    const bool derivedCourseFresh = derivedCourseValid_ &&
+                                    static_cast<uint32_t>(nowMs - derivedCourseTsMs_) <=
+                                        CAMERA_DERIVED_COURSE_MAX_AGE_MS;
+
+    bool effectiveCourseValid = false;
+    float effectiveCourseDeg = 0.0f;
+    if (courseFresh) {
+        effectiveCourseValid = true;
+        effectiveCourseDeg = gps.courseDeg;
+        resetStaleCourseTracking();
+    } else {
+        if (!staleCourseActive_) {
+            staleCourseActive_ = true;
+            staleCourseStartMs_ = nowMs;
+            staleBestDistanceCm_ = cachedNearest_.distanceCm;
+            staleDivergePolls_ = 0;
+        }
+
+        if (cachedNearest_.distanceCm < staleBestDistanceCm_) {
+            staleBestDistanceCm_ = cachedNearest_.distanceCm;
+            staleDivergePolls_ = 0;
+        }
+
+        if (derivedCourseFresh) {
+            effectiveCourseValid = true;
+            effectiveCourseDeg = derivedCourseDeg_;
+        }
+
+        if (!effectiveCourseValid) {
+            const uint32_t staleElapsed = static_cast<uint32_t>(nowMs - staleCourseStartMs_);
+            const uint32_t divergeThresholdCm =
+                static_cast<uint32_t>(staleBestDistanceCm_) + CAMERA_STALE_DIVERGE_CLEAR_CM;
+            if (cachedNearest_.distanceCm > divergeThresholdCm) {
+                if (staleDivergePolls_ < 255) {
+                    staleDivergePolls_++;
+                }
+            } else {
+                staleDivergePolls_ = 0;
+            }
+
+            const bool divergedAway = staleElapsed >= CAMERA_STALE_GRACE_MS &&
+                                      staleDivergePolls_ >= CAMERA_STALE_DIVERGE_POLLS;
+            const bool staleTimeout = staleElapsed >= CAMERA_STALE_HARD_CLEAR_MS;
+            if (divergedAway || staleTimeout) {
+                resetEncounter();
+                result.displayActive = false;
+                return result;
+            }
+        }
+    }
 
     bool orientationRelevant = true;
-    if (courseFresh && cachedNearest_.bearing != 0xFFFF) {
-        orientationRelevant = isAheadByCourse(gps.courseDeg,
+    if (effectiveCourseValid && cachedNearest_.bearing != 0xFFFF) {
+        orientationRelevant = isAheadByCourse(effectiveCourseDeg,
                                               static_cast<float>(cachedNearest_.bearing));
     }
 
     bool positionAhead = true;
-    if (courseFresh) {
+    if (effectiveCourseValid) {
         const float camLatDeg = static_cast<float>(cachedNearest_.latE5) / 100000.0f;
         const float camLonDeg = static_cast<float>(cachedNearest_.lonE5) / 100000.0f;
         const float toCamera = bearingToPointDeg(gps.latitudeDeg, gps.longitudeDeg, camLatDeg, camLonDeg);
-        positionAhead = isAheadByCourse(gps.courseDeg, toCamera);
+        positionAhead = isAheadByCourse(effectiveCourseDeg, toCamera);
     }
 
     if (!positionAhead) {
