@@ -130,8 +130,8 @@ test/
 | Metric | Native | Device |
 |--------|--------|--------|
 | Test suites | 76 | 9 (device-only) |
-| Test cases | 939 | ~90 |
-| Result | ✅ 939 passed | Compile-verified |
+| Test cases | 960 | ~90 |
+| Result | ✅ 960 passed | Compile-verified |
 | Command | `pio test -e native` | `./scripts/run_device_tests.sh` |
 
 ## Display Torture Test Categories

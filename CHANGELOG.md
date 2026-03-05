@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 8 CI contract scripts enforcing architectural invariants.
 
 **Quality + Runtime Hardening**
-- Expanded to 76 native test suites, 939 test cases (`pio test -e native`).
+- Expanded to 76 native test suites, 960 test cases (`pio test -e native`).
 - Drive-scenario integration tests (15 scenarios).
 - Lockout runtime stack fully integrated (capture, learner, enforcer, store/index, zone APIs).
 - Heap safety hardened with RAII ownership and teardown guards.
@@ -87,7 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| 4.0.0-dev | 2026-02-25 | Modular architecture, 139 module files, 939 tests, CI contracts |
+| 4.0.0-dev | 2026-02-25 | Modular architecture, 141 module files, 960 tests, CI contracts |
 | 3.0.7 | 2026 | Quality baseline before 4.x refactors |
 | 3.0.x | 2024 | Auto-lockout improvements |
 | 2.x.x | 2024 | Auto-lockout, profiles |

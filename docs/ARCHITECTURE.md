@@ -191,9 +191,9 @@ Migration history is tracked via module commits and [CHANGELOG.md](../CHANGELOG.
 ### After (February 25, 2026):
 - main.cpp: ~1420 lines (orchestration + module wiring)
 - main_boot.cpp: ~248 lines, main_loop_phases.cpp: ~190 lines, main_persist.cpp: ~445 lines
-- 15 module directories, 139 module files in src/modules/
+- 15 module directories, 141 module files in src/modules/
 - 5 additional extracted core-service files (ble_runtime, packet_parser_alerts, settings_restore, main_loop_phases)
-- 76 native test suites, 939 test cases
+- 76 native test suites, 960 test cases
 - 8 CI contract scripts
 - State consolidated in owning modules
 - Change risk: LOW (isolated modules)

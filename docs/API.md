@@ -530,6 +530,15 @@ Import lockout zones from JSON.
 
 **Request (JSON body):** Array of zone definitions.
 
+### POST /api/lockouts/pending/clear
+
+Clear all pending learner candidates.
+
+**Response:**
+```json
+{"success": true, "cleared": 3}
+```
+
 ---
 
 ## GPS

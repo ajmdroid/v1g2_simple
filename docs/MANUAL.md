@@ -173,18 +173,18 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 
 | File(s) | Lines | Purpose |
 |---------|-------|---------|
-| `main.cpp` + `main_boot.cpp` + `main_loop_phases.cpp` + `main_persist.cpp` | ~2303 | Application entry, loop, boot sequence, loop phase routing, persistence helpers |
-| `ble_client.cpp` + `ble_commands.cpp` + `ble_connection.cpp` + `ble_proxy.cpp` + `ble_runtime.cpp` | ~2834 | NimBLE client/server, V1 connection, proxy |
+| `main.cpp` + `main_boot.cpp` + `main_loop_phases.cpp` + `main_persist.cpp` | ~2310 | Application entry, loop, boot sequence, loop phase routing, persistence helpers |
+| `ble_client.cpp` + `ble_commands.cpp` + `ble_connection.cpp` + `ble_proxy.cpp` + `ble_runtime.cpp` | ~2839 | NimBLE client/server, V1 connection, proxy |
 | `display.cpp` + 11 display_*.cpp files | ~4377 | Arduino_GFX drawing, segments, cards, status bar, frequency, etc. |
-| `wifi_manager.cpp` + `wifi_routes.cpp` + `wifi_runtimes.cpp` + `wifi_client.cpp` | ~2333 | WebServer, API route registration, runtime routes, client mode |
-| `audio_beep.cpp` + `audio_voice.cpp` | ~1269 | ES8311 DAC, I2S audio, voice alerts, SD clip playback |
-| `settings.cpp` + `settings_backup.cpp` + `settings_nvs.cpp` + `settings_setters.cpp` + `settings_restore.cpp` | ~2526 | Preferences (NVS) storage, backup/restore, setters |
-| `v1_profiles.cpp` | ~776 | Profile JSON on SD/LittleFS |
+| `wifi_manager.cpp` + `wifi_routes.cpp` + `wifi_runtimes.cpp` + `wifi_client.cpp` | ~2346 | WebServer, API route registration, runtime routes, client mode |
+| `audio_beep.cpp` + `audio_voice.cpp` | ~1311 | ES8311 DAC, I2S audio, voice alerts, SD clip playback |
+| `settings.cpp` + `settings_backup.cpp` + `settings_nvs.cpp` + `settings_setters.cpp` + `settings_restore.cpp` | ~2538 | Preferences (NVS) storage, backup/restore, setters |
+| `v1_profiles.cpp` | ~782 | Profile JSON on SD/LittleFS |
 | `battery_manager.cpp` | ~623 | ADC, TCA9554 I/O expander |
 | `packet_parser.cpp` + `packet_parser_alerts.cpp` | ~883 | ESP packet framing and decoding |
 | `storage_manager.cpp` | ~118 | SD/LittleFS mount abstraction |
 | `touch_handler.cpp` | ~178 | AXS15231B I2C touch polling |
-| `src/modules/` (67 .cpp files, 15 dirs) | ~17k | Runtime modules for GPS, lockout, display pipeline, voice, power, WiFi API services, etc. |
+| `src/modules/` (68 .cpp files, 15 dirs) | ~17k | Runtime modules for GPS, lockout, display pipeline, voice, power, WiFi API services, etc. |
 | `perf_metrics.cpp` | ~698 | Latency tracking (ArduinoJson) |
 
 ### Data Flow
@@ -1460,7 +1460,7 @@ v1g2_simple/
 
 1. **Header:** Declare in appropriate `.h` file
 2. **Implementation:** Implement in corresponding `.cpp`
-3. **Web API:** Add endpoint in `wifi_routes.cpp` (or a dedicated `wifi_*_api_service.cpp` module) if needed
+3. **Web API:** Add endpoint in a dedicated `wifi_*_api_service.cpp` module under `src/modules/wifi/`
 4. **Settings:** Add to `settings.h`/`settings.cpp` if persistent
 5. **Web UI:** Add page in `interface/src/routes/`
 
@@ -1517,7 +1517,7 @@ npm run deploy                            # Copy build/ to data/
 Automated unit tests run via PlatformIO's Unity framework:
 
 ```bash
-pio test -e native          # Run all native unit tests (76 suites, 939 tests)
+pio test -e native          # Run all native unit tests (76 suites, 960 tests)
 ```
 
 Manual testing procedure:
