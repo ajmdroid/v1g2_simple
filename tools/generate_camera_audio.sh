@@ -28,7 +28,7 @@ build_clip() {
     say -v "$VOICE" -r "$RATE" -o "$aiff" "$text"
     ffmpeg -y -i "$aiff" -ar 22050 -ac 1 -f s16le -acodec pcm_s16le "$raw" >/dev/null 2>&1
     ffmpeg -y -f s16le -ar 22050 -ac 1 -i "$raw" -f mulaw -ar 22050 "$mul" >/dev/null 2>&1
-    rm -f "$aiff"
+    rm -f "$aiff" "$raw"
 }
 
 build_clip "cam_speed" "speed camera"
