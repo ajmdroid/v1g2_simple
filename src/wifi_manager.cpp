@@ -22,7 +22,7 @@ static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Requi
 // ---- Promoted helpers (declared in wifi_manager_internals.h) ----
 
 void dumpLittleFSRoot() {
-    if (!LittleFS.begin(true)) {
+    if (!LittleFS.begin(true, "/littlefs", 10, "littlefs")) {
         Serial.println("[SetupMode] ERROR: Failed to mount LittleFS for root dump");
         return;
     }
@@ -641,14 +641,21 @@ void WiFiManager::process() {
         return;  // No WiFi processing when Setup Mode is off
     }
 
+    const uint32_t processStartUs = PERF_TIMESTAMP_US();
+    auto finalizeProcessTiming = [&processStartUs]() {
+        PERF_MAX(wifiProcessMaxUs, PERF_TIMESTAMP_US() - processStartUs);
+    };
+
     // Graceful shutdown runs as a staged sequence to avoid long stop-time stalls.
     if (wifiStopPhase != WifiStopPhase::IDLE) {
         processStopSetupModePhase();
+        finalizeProcessTiming();
         return;
     }
 
     // Runtime SRAM guard with persistence + mode-aware thresholds:
     // AP+STA needs more memory than AP-only, and short dips should not force shutdown.
+    const uint32_t heapGuardStartUs = PERF_TIMESTAMP_US();
     const wifi_mode_t mode = WiFi.getMode();
     const bool staRadioOn = (mode == WIFI_AP_STA || mode == WIFI_STA);
     const bool dualRadioMode = isSetupModeActive() && staRadioOn;
@@ -670,6 +677,7 @@ void WiFiManager::process() {
     heapGuardInput.apStaFreeJitterTolerance = WIFI_RUNTIME_AP_STA_FREE_JITTER_TOLERANCE;
     heapGuardInput.staOnlyBlockJitterTolerance = WIFI_RUNTIME_STA_BLOCK_JITTER_TOLERANCE;
     const WifiHeapGuardResult heapGuard = sWifiHeapGuardModule.evaluate(heapGuardInput);
+    PERF_MAX(wifiHeapGuardMaxUs, PERF_TIMESTAMP_US() - heapGuardStartUs);
     const bool lowHeap = heapGuard.lowHeap;
 
     if (lowHeap) {
@@ -720,10 +728,12 @@ void WiFiManager::process() {
                 lowDmaCooldownUntilMs = now + WIFI_LOW_DMA_RETRY_COOLDOWN_MS;
                 lowDmaSinceMs = 0;
                 Serial.printf("[WiFi] AP dropped; STA status=%s\n", wifiClientStateApiName(wifiClientState));
+                finalizeProcessTiming();
                 return;
             }
 
             stopSetupMode(false, "low_dma");  // Graceful shutdown to free memory
+            finalizeProcessTiming();
             return;
         }
     } else if (lowDmaSinceMs != 0) {
@@ -739,8 +749,10 @@ void WiFiManager::process() {
     if (apInterfaceActive) {
         if (lastApStaCountPollMs == 0 ||
             (now - lastApStaCountPollMs) >= AP_STA_COUNT_POLL_MS) {
+            const uint32_t apStaPollStartUs = PERF_TIMESTAMP_US();
             cachedApStaCount = WiFi.softAPgetStationNum();
             lastApStaCountPollMs = now;
+            PERF_MAX(wifiApStaPollMaxUs, PERF_TIMESTAMP_US() - apStaPollStartUs);
         }
         apClientCount = cachedApStaCount;
     } else {
@@ -778,6 +790,7 @@ void WiFiManager::process() {
                 connectToNetwork(settings.wifiClientSSID, savedPassword, false);
             }
         }
+        finalizeProcessTiming();
         return;
     }
 
@@ -792,34 +805,45 @@ void WiFiManager::process() {
                           static_cast<unsigned long>(noClientLimit),
                           wasAutoStarted ? "auto-start" : "manual");
             stopSetupMode(false, wasAutoStarted ? "no_clients_auto" : "no_clients");
+            finalizeProcessTiming();
             return;
         }
     }
 
     // Continue serving HTTP while STA remains online even after AP is retired.
     if (isWifiServiceActive()) {
+        const uint32_t handleClientStartUs = PERF_TIMESTAMP_US();
         server.handleClient();
+        PERF_MAX(wifiHandleClientMaxUs, PERF_TIMESTAMP_US() - handleClientStartUs);
     }
 
     if (lastMaintenanceFastMs == 0 ||
         (now - lastMaintenanceFastMs) >= WIFI_MAINTENANCE_FAST_MS) {
+        const uint32_t maintenanceStartUs = PERF_TIMESTAMP_US();
         processWifiClientConnectPhase();
         processPendingPushNow();
         lastMaintenanceFastMs = now;
+        PERF_MAX(wifiMaintenanceMaxUs, PERF_TIMESTAMP_US() - maintenanceStartUs);
     }
     if (lastTimeoutCheckMs == 0 ||
         (now - lastTimeoutCheckMs) >= WIFI_TIMEOUT_CHECK_MS) {
+        const uint32_t timeoutCheckStartUs = PERF_TIMESTAMP_US();
         checkAutoTimeout();
         lastTimeoutCheckMs = now;
+        PERF_MAX(wifiTimeoutCheckMaxUs, PERF_TIMESTAMP_US() - timeoutCheckStartUs);
     }
 
     // Check WiFi client (STA) status at a moderate cadence to avoid tight-loop
     // status polling jitter while preserving reconnect responsiveness.
     if (lastStatusCheckMs == 0 ||
         (now - lastStatusCheckMs) >= WIFI_STATUS_CHECK_MS) {
+        const uint32_t statusCheckStartUs = PERF_TIMESTAMP_US();
         checkWifiClientStatus();
         lastStatusCheckMs = now;
+        PERF_MAX(wifiStatusCheckMaxUs, PERF_TIMESTAMP_US() - statusCheckStartUs);
     }
+
+    finalizeProcessTiming();
 }
 
 // --- getAPIPAddress, getIPAddress, getConnectedSSID, startWifiScan,

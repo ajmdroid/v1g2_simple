@@ -29,12 +29,20 @@ uint32_t perfLastReportMs = 0;
 // Session minima for true MALLOC_CAP_DMA heap (updated only in sampled snapshot path).
 static uint32_t sDmaFreeCapMin = UINT32_MAX;
 static uint32_t sDmaLargestCapMin = UINT32_MAX;
+static std::atomic<uint32_t> sPrevWindowLoopMaxUs{0};
+static std::atomic<uint32_t> sPrevWindowWifiMaxUs{0};
+static std::atomic<uint32_t> sPrevWindowBleProcessMaxUs{0};
+static std::atomic<uint32_t> sPrevWindowDispPipeMaxUs{0};
 
 void perfMetricsInit() {
     perfCounters.reset();
     perfExtended.reset();
     sDmaFreeCapMin = UINT32_MAX;
     sDmaLargestCapMin = UINT32_MAX;
+    sPrevWindowLoopMaxUs.store(0, std::memory_order_relaxed);
+    sPrevWindowWifiMaxUs.store(0, std::memory_order_relaxed);
+    sPrevWindowBleProcessMaxUs.store(0, std::memory_order_relaxed);
+    sPrevWindowDispPipeMaxUs.store(0, std::memory_order_relaxed);
 #if PERF_METRICS
     perfLatency.reset();
 #if PERF_MONITORING
@@ -49,6 +57,10 @@ void perfMetricsReset() {
     perfExtended.reset();
     sDmaFreeCapMin = UINT32_MAX;
     sDmaLargestCapMin = UINT32_MAX;
+    sPrevWindowLoopMaxUs.store(0, std::memory_order_relaxed);
+    sPrevWindowWifiMaxUs.store(0, std::memory_order_relaxed);
+    sPrevWindowBleProcessMaxUs.store(0, std::memory_order_relaxed);
+    sPrevWindowDispPipeMaxUs.store(0, std::memory_order_relaxed);
 #if PERF_METRICS
     perfLatency.reset();
 #endif
@@ -259,6 +271,13 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.bleConnectStartMs = perfExtended.bleConnectStartMs;
     snapshot.bleConnectedMs = perfExtended.bleConnectedMs;
     snapshot.bleFirstRxMs = perfExtended.bleFirstRxMs;
+
+    // Keep previous window maxima available to low-cost API samples. This helps
+    // explain transient strict peaks even when current-window values look calm.
+    sPrevWindowLoopMaxUs.store(snapshot.loopMaxUs, std::memory_order_relaxed);
+    sPrevWindowWifiMaxUs.store(snapshot.wifiMaxUs, std::memory_order_relaxed);
+    sPrevWindowBleProcessMaxUs.store(snapshot.bleProcessMaxUs, std::memory_order_relaxed);
+    sPrevWindowDispPipeMaxUs.store(snapshot.dispPipeMaxUs, std::memory_order_relaxed);
 
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
@@ -526,6 +545,18 @@ uint32_t perfGetFlushMaxUs() { return perfExtended.flushMaxUs; }
 uint32_t perfGetBleDrainMaxUs() { return perfExtended.bleDrainMaxUs; }
 uint32_t perfGetBleProcessMaxUs() { return perfExtended.bleProcessMaxUs; }
 uint32_t perfGetDispPipeMaxUs() { return perfExtended.dispPipeMaxUs; }
+uint32_t perfGetPrevWindowLoopMaxUs() {
+    return sPrevWindowLoopMaxUs.load(std::memory_order_relaxed);
+}
+uint32_t perfGetPrevWindowWifiMaxUs() {
+    return sPrevWindowWifiMaxUs.load(std::memory_order_relaxed);
+}
+uint32_t perfGetPrevWindowBleProcessMaxUs() {
+    return sPrevWindowBleProcessMaxUs.load(std::memory_order_relaxed);
+}
+uint32_t perfGetPrevWindowDispPipeMaxUs() {
+    return sPrevWindowDispPipeMaxUs.load(std::memory_order_relaxed);
+}
 
 #if PERF_METRICS && PERF_MONITORING
 bool perfMetricsCheckReport() {

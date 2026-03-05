@@ -1028,6 +1028,13 @@ static void sendMetrics(WebServer& server) {
     doc["wifiStopOther"] = perfCounters.wifiStopOther.load();
     doc["wifiApDropLowDma"] = perfCounters.wifiApDropLowDma.load();
     doc["wifiApDropIdleSta"] = perfCounters.wifiApDropIdleSta.load();
+    doc["wifiProcessMaxUs"] = perfCounters.wifiProcessMaxUs.load();
+    doc["wifiHandleClientMaxUs"] = perfCounters.wifiHandleClientMaxUs.load();
+    doc["wifiMaintenanceMaxUs"] = perfCounters.wifiMaintenanceMaxUs.load();
+    doc["wifiStatusCheckMaxUs"] = perfCounters.wifiStatusCheckMaxUs.load();
+    doc["wifiTimeoutCheckMaxUs"] = perfCounters.wifiTimeoutCheckMaxUs.load();
+    doc["wifiHeapGuardMaxUs"] = perfCounters.wifiHeapGuardMaxUs.load();
+    doc["wifiApStaPollMaxUs"] = perfCounters.wifiApStaPollMaxUs.load();
     doc["pushNowRetries"] = perfCounters.pushNowRetries.load();
     doc["pushNowFailures"] = perfCounters.pushNowFailures.load();
     doc["alertPersistStarts"] = perfCounters.alertPersistStarts.load();
@@ -1077,6 +1084,10 @@ static void sendMetrics(WebServer& server) {
     doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
     doc["bleProcessMaxUs"] = perfGetBleProcessMaxUs();
     doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
+    doc["loopMaxPrevWindowUs"] = perfGetPrevWindowLoopMaxUs();
+    doc["wifiMaxPrevWindowUs"] = perfGetPrevWindowWifiMaxUs();
+    doc["bleProcessMaxPrevWindowUs"] = perfGetPrevWindowBleProcessMaxUs();
+    doc["dispPipeMaxPrevWindowUs"] = perfGetPrevWindowDispPipeMaxUs();
 
     const uint32_t nowMs = millis();
     const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
@@ -1303,6 +1314,13 @@ static void sendMetricsSoak(WebServer& server) {
     doc["wifiStopOther"] = perfCounters.wifiStopOther.load();
     doc["wifiApDropLowDma"] = perfCounters.wifiApDropLowDma.load();
     doc["wifiApDropIdleSta"] = perfCounters.wifiApDropIdleSta.load();
+    doc["wifiProcessMaxUs"] = perfCounters.wifiProcessMaxUs.load();
+    doc["wifiHandleClientMaxUs"] = perfCounters.wifiHandleClientMaxUs.load();
+    doc["wifiMaintenanceMaxUs"] = perfCounters.wifiMaintenanceMaxUs.load();
+    doc["wifiStatusCheckMaxUs"] = perfCounters.wifiStatusCheckMaxUs.load();
+    doc["wifiTimeoutCheckMaxUs"] = perfCounters.wifiTimeoutCheckMaxUs.load();
+    doc["wifiHeapGuardMaxUs"] = perfCounters.wifiHeapGuardMaxUs.load();
+    doc["wifiApStaPollMaxUs"] = perfCounters.wifiApStaPollMaxUs.load();
 
     doc["loopMaxUs"] = perfGetLoopMaxUs();
     doc["uptimeMs"] = millis();
@@ -1313,6 +1331,10 @@ static void sendMetricsSoak(WebServer& server) {
     doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
     doc["bleProcessMaxUs"] = perfGetBleProcessMaxUs();
     doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
+    doc["loopMaxPrevWindowUs"] = perfGetPrevWindowLoopMaxUs();
+    doc["wifiMaxPrevWindowUs"] = perfGetPrevWindowWifiMaxUs();
+    doc["bleProcessMaxPrevWindowUs"] = perfGetPrevWindowBleProcessMaxUs();
+    doc["dispPipeMaxPrevWindowUs"] = perfGetPrevWindowDispPipeMaxUs();
 
     const GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
     doc["gpsObsDrops"] = gpsLogStats.drops;

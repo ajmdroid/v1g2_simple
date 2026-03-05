@@ -122,6 +122,13 @@ struct PerfCounters {
     std::atomic<uint32_t> wifiStopOther{0}; // stop reasons not covered above
     std::atomic<uint32_t> wifiApDropLowDma{0}; // AP retired due to sustained low SRAM in AP+STA
     std::atomic<uint32_t> wifiApDropIdleSta{0}; // AP retired while STA remained connected
+    std::atomic<uint32_t> wifiProcessMaxUs{0}; // max WiFiManager::process() duration
+    std::atomic<uint32_t> wifiHandleClientMaxUs{0}; // max server.handleClient() duration inside WiFi process
+    std::atomic<uint32_t> wifiMaintenanceMaxUs{0}; // max maintenance block duration inside WiFi process
+    std::atomic<uint32_t> wifiStatusCheckMaxUs{0}; // max checkWifiClientStatus() duration
+    std::atomic<uint32_t> wifiTimeoutCheckMaxUs{0}; // max checkAutoTimeout() duration
+    std::atomic<uint32_t> wifiHeapGuardMaxUs{0}; // max heap guard sampling/evaluation duration
+    std::atomic<uint32_t> wifiApStaPollMaxUs{0}; // max softAP station poll duration
     std::atomic<uint32_t> pushNowRetries{0};      // Non-blocking Push Now retry attempts
     std::atomic<uint32_t> pushNowFailures{0};     // Non-blocking Push Now exhausted retries
     std::atomic<uint32_t> alertPersistStarts{0};  // Persisted-alert sessions started
@@ -226,6 +233,13 @@ struct PerfCounters {
         wifiStopOther.store(0, std::memory_order_relaxed);
         wifiApDropLowDma.store(0, std::memory_order_relaxed);
         wifiApDropIdleSta.store(0, std::memory_order_relaxed);
+        wifiProcessMaxUs.store(0, std::memory_order_relaxed);
+        wifiHandleClientMaxUs.store(0, std::memory_order_relaxed);
+        wifiMaintenanceMaxUs.store(0, std::memory_order_relaxed);
+        wifiStatusCheckMaxUs.store(0, std::memory_order_relaxed);
+        wifiTimeoutCheckMaxUs.store(0, std::memory_order_relaxed);
+        wifiHeapGuardMaxUs.store(0, std::memory_order_relaxed);
+        wifiApStaPollMaxUs.store(0, std::memory_order_relaxed);
         pushNowRetries.store(0, std::memory_order_relaxed);
         pushNowFailures.store(0, std::memory_order_relaxed);
         alertPersistStarts.store(0, std::memory_order_relaxed);
@@ -458,6 +472,10 @@ uint32_t perfGetFlushMaxUs();
 uint32_t perfGetBleDrainMaxUs();
 uint32_t perfGetBleProcessMaxUs();
 uint32_t perfGetDispPipeMaxUs();
+uint32_t perfGetPrevWindowLoopMaxUs();
+uint32_t perfGetPrevWindowWifiMaxUs();
+uint32_t perfGetPrevWindowBleProcessMaxUs();
+uint32_t perfGetPrevWindowDispPipeMaxUs();
 
 // ============================================================================
 // Sampled latency tracking (only when PERF_METRICS=1)
