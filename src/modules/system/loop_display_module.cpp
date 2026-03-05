@@ -85,9 +85,6 @@ LoopDisplayResult LoopDisplayModule::process(const LoopDisplayContext& ctx) {
         refreshCtx.bootSplashHoldActive = ctx.bootSplashHoldActive;
         refreshCtx.overloadLateThisLoop = ctx.overloadLateThisLoop;
         refreshCtx.pipelineRanThisLoop = pipelineRanThisLoop;
-        refreshCtx.cameraAlertActive =
-            providers.readCameraAlertActive &&
-            providers.readCameraAlertActive(providers.cameraAlertContext);
         const auto refreshResult =
             providers.runLightweightRefresh(providers.lightweightRefreshContext, refreshCtx);
         result.signalPriorityActive = refreshResult.signalPriorityActive;

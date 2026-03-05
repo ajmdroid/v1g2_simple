@@ -26,7 +26,6 @@
 #include "modules/wifi/wifi_autopush_api_service.h"
 #include "modules/wifi/wifi_v1_profile_api_service.h"
 #include "modules/wifi/wifi_v1_devices_api_service.h"
-#include "modules/camera_alert/camera_alert_api_service.h"
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/signal_observation_log.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
@@ -138,19 +137,6 @@ void WiFiManager::setupWebServer() {
             makeSettingsRuntime(),
             rateLimitCallback);
     });  // Consistent API endpoint
-
-    server.on("/api/cameras/settings", HTTP_GET, [this]() {
-        CameraAlertApiService::handleApiSettingsGet(server, makeCameraAlertRuntime());
-    });
-    server.on("/api/cameras/settings", HTTP_POST, [this, rateLimitCallback]() {
-        CameraAlertApiService::handleApiSettingsSave(
-            server,
-            makeCameraAlertRuntime(),
-            rateLimitCallback);
-    });
-    server.on("/api/cameras/status", HTTP_GET, [this]() {
-        CameraAlertApiService::handleApiStatusGet(server, makeCameraAlertRuntime());
-    });
     
     server.on("/darkmode", HTTP_POST, [this, rateLimitCallback]() {
         WifiControlApiService::handleApiDarkMode(

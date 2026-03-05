@@ -370,34 +370,6 @@ void play_band_only(AlertBand band) {
     start_sd_audio_task(params);
 }
 
-bool play_camera_alert(CameraType type, bool isNearStage) {
-    AUDIO_LOGF("[AUDIO] play_camera_alert() type=%s near=%d\n",
-               cameraTypeStatusName(type),
-               isNearStage ? 1 : 0);
-
-    if (!sd_audio_ready) {
-        AUDIO_LOGLN("[AUDIO] SD audio not ready, skipping camera voice");
-        return false;
-    }
-
-    const char* cameraClip = cameraTypeVoiceClip(type);
-    if (!cameraClip) {
-        AUDIO_LOGLN("[AUDIO] Unknown camera clip mapping");
-        return false;
-    }
-
-    SDAudioTaskParams params;
-    params.numClips = 0;
-    snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, cameraClip);
-    snprintf(params.filePaths[params.numClips++],
-             48,
-             "%s/%s",
-             AUDIO_PATH,
-             isNearStage ? "cam_close.mul" : "dir_ahead.mul");
-
-    return start_sd_audio_task(params);
-}
-
 // Play direction-only announcement (used when same alert changes direction)
 // Says "ahead", "behind", or "side", optionally with bogey count if > 1
 void play_direction_only(AlertDirection direction, uint8_t bogeyCount) {

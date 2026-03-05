@@ -39,7 +39,6 @@ LOCAL_HANDLER_ROUTE_CONTRACT_FILE = (
 )
 
 ROUTE_PREFIXES = (
-    "/api/cameras/",
     "/api/settings/backup",
     "/api/settings/restore",
     "/api/debug/",
@@ -47,7 +46,6 @@ ROUTE_PREFIXES = (
     "/api/lockouts/",
 )
 POLICY_CALLBACK_PREFIXES = (
-    "/api/cameras/",
     "/api/gps/",
     "/api/lockouts/",
 )

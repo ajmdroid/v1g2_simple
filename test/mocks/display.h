@@ -8,7 +8,6 @@
 #else
 #include "Arduino.h"
 #endif
-#include "../../include/camera_alert_types.h"
 
 // Forward declare AlertData
 struct AlertData;
@@ -42,7 +41,6 @@ public:
     int showRestingCalls = 0;
     int showDisconnectedCalls = 0;
     int updateCalls = 0;
-    int updateCameraAlertCalls = 0;
     int updatePersistedCalls = 0;
     int flushCalls = 0;
     int forceNextRedrawCalls = 0;
@@ -73,7 +71,6 @@ public:
     int refreshSecondaryAlertCardsCalls = 0;
     int lastSecondaryAlertCount = 0;
     bool lastSecondaryMuted = false;
-    CameraAlertDisplayPayload lastCameraPayload{};
 
     // Static method tracking
     static int resetChangeTrackingCalls;
@@ -83,7 +80,6 @@ public:
         showRestingCalls = 0;
         showDisconnectedCalls = 0;
         updateCalls = 0;
-        updateCameraAlertCalls = 0;
         updatePersistedCalls = 0;
         flushCalls = 0;
         forceNextRedrawCalls = 0;
@@ -114,7 +110,6 @@ public:
         refreshSecondaryAlertCardsCalls = 0;
         lastSecondaryAlertCount = 0;
         lastSecondaryMuted = false;
-        lastCameraPayload = CameraAlertDisplayPayload{};
         resetChangeTrackingCalls = 0;
     }
 
@@ -126,10 +121,6 @@ public:
     void update(const DisplayState& /*state*/) { updateCalls++; }
     void update(const AlertData& /*priority*/, const AlertData* /*alerts*/, 
                 int /*count*/, const DisplayState& /*state*/) { updateCalls++; }
-    void updateCameraAlert(const CameraAlertDisplayPayload& payload, const DisplayState& /*state*/) {
-        updateCameraAlertCalls++;
-        lastCameraPayload = payload;
-    }
     void updatePersisted(const AlertData& /*alert*/, const DisplayState& /*state*/) { 
         updatePersistedCalls++; 
     }

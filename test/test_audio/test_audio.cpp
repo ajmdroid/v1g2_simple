@@ -48,13 +48,6 @@ enum VoiceAlertMode : uint8_t {
     VOICE_MODE_BAND_FREQ = 3
 };
 
-enum class CameraType : uint8_t {
-    SPEED = 1,
-    RED_LIGHT = 2,
-    BUS_LANE = 3,
-    ALPR = 4
-};
-
 // ============================================================================
 // PURE FUNCTIONS EXTRACTED FOR TESTING
 // ============================================================================
@@ -123,25 +116,6 @@ int getHundredsDigit(uint16_t freqMHz) {
 int getLastTwoDigits(uint16_t freqMHz) {
     int mhz = freqMHz % 1000;
     return mhz % 100;
-}
-
-const char* cameraTypeVoiceClip(CameraType type) {
-    switch (type) {
-        case CameraType::SPEED:
-            return "cam_speed.mul";
-        case CameraType::RED_LIGHT:
-            return "cam_red_light.mul";
-        case CameraType::BUS_LANE:
-            return "cam_bus_lane.mul";
-        case CameraType::ALPR:
-            return "cam_alpr.mul";
-        default:
-            return nullptr;
-    }
-}
-
-const char* cameraStageSuffix(bool isNearStage) {
-    return isNearStage ? "cam_close.mul" : "dir_ahead.mul";
 }
 
 // ============================================================================
@@ -346,25 +320,6 @@ void test_full_freq_parse_24150() {
     TEST_ASSERT_EQUAL_INT(50, getLastTwoDigits(freqMHz));
 }
 
-void test_camera_clip_mapping_for_each_type() {
-    TEST_ASSERT_EQUAL_STRING("cam_speed.mul", cameraTypeVoiceClip(CameraType::SPEED));
-    TEST_ASSERT_EQUAL_STRING("cam_red_light.mul", cameraTypeVoiceClip(CameraType::RED_LIGHT));
-    TEST_ASSERT_EQUAL_STRING("cam_bus_lane.mul", cameraTypeVoiceClip(CameraType::BUS_LANE));
-    TEST_ASSERT_EQUAL_STRING("cam_alpr.mul", cameraTypeVoiceClip(CameraType::ALPR));
-}
-
-void test_camera_clip_mapping_unknown_returns_null() {
-    TEST_ASSERT_NULL(cameraTypeVoiceClip(static_cast<CameraType>(99)));
-}
-
-void test_camera_far_stage_suffix_is_ahead() {
-    TEST_ASSERT_EQUAL_STRING("dir_ahead.mul", cameraStageSuffix(false));
-}
-
-void test_camera_near_stage_suffix_is_close() {
-    TEST_ASSERT_EQUAL_STRING("cam_close.mul", cameraStageSuffix(true));
-}
-
 // ============================================================================
 // TEST RUNNER
 // ============================================================================
@@ -419,12 +374,6 @@ void runAllTests() {
     RUN_TEST(test_full_freq_parse_34749);
     RUN_TEST(test_full_freq_parse_35500);
     RUN_TEST(test_full_freq_parse_24150);
-
-    // Camera voice clip mapping tests
-    RUN_TEST(test_camera_clip_mapping_for_each_type);
-    RUN_TEST(test_camera_clip_mapping_unknown_returns_null);
-    RUN_TEST(test_camera_far_stage_suffix_is_ahead);
-    RUN_TEST(test_camera_near_stage_suffix_is_close);
 }
 
 #ifdef ARDUINO

@@ -31,7 +31,6 @@ static size_t perfTsCount = 0;
 static size_t perfTsIndex = 0;
 
 static uint32_t displayNowMs = 0;
-static bool cameraAlertActive = false;
 static ParsedFrameSignal parsedSignal;
 static DisplayOrchestrationParsedResult parsedResult;
 static DisplayOrchestrationRefreshResult refreshResult;
@@ -73,7 +72,6 @@ static void resetState() {
 
     displayNowMs = 0;
     parsedSignal = ParsedFrameSignal{};
-    cameraAlertActive = false;
     parsedResult = DisplayOrchestrationParsedResult{};
     refreshResult = DisplayOrchestrationRefreshResult{};
     lastParsedCtx = DisplayOrchestrationParsedContext{};
@@ -98,10 +96,6 @@ static ParsedFrameSignal collectParsedSignal(void*) {
     collectCalls++;
     noteCall(CALL_COLLECT);
     return parsedSignal;
-}
-
-static bool readCameraAlertActive(void*) {
-    return cameraAlertActive;
 }
 
 static DisplayOrchestrationParsedResult runParsedFrame(
@@ -167,7 +161,6 @@ static LoopDisplayModule::Providers makeDefaultProviders() {
     providers.collectParsedSignal = collectParsedSignal;
     providers.runParsedFrame = runParsedFrame;
     providers.runLightweightRefresh = runRefresh;
-    providers.readCameraAlertActive = readCameraAlertActive;
     providers.timestampUs = nextPerfTs;
     providers.recordLockoutUs = recordLockoutUs;
     providers.recordDispPipeUs = recordDispPipeUs;
@@ -221,7 +214,6 @@ void test_process_full_pipeline_with_runtime_callback_and_perf_records() {
     TEST_ASSERT_FALSE(lastRefreshCtx.bootSplashHoldActive);
     TEST_ASSERT_TRUE(lastRefreshCtx.overloadLateThisLoop);
     TEST_ASSERT_TRUE(lastRefreshCtx.pipelineRanThisLoop);
-    TEST_ASSERT_FALSE(lastRefreshCtx.cameraAlertActive);
 
     TEST_ASSERT_EQUAL(7, callLogCount);
     TEST_ASSERT_EQUAL(CALL_COLLECT, callLog[0]);
@@ -282,7 +274,6 @@ void test_process_skips_pipeline_when_parsed_result_disables_pipeline() {
     TEST_ASSERT_EQUAL(0u, dispPipeElapsedUs);
     TEST_ASSERT_EQUAL(0u, notifyElapsedMs);
     TEST_ASSERT_FALSE(lastRefreshCtx.pipelineRanThisLoop);
-    TEST_ASSERT_FALSE(lastRefreshCtx.cameraAlertActive);
 }
 
 void test_notify_to_display_skips_for_zero_or_future_timestamp() {
@@ -337,20 +328,6 @@ void test_empty_providers_is_safe_noop() {
     TEST_ASSERT_EQUAL(0, providerPipelineCalls);
 }
 
-void test_refresh_context_propagates_camera_alert_active_flag() {
-    LoopDisplayModule::Providers providers = makeDefaultProviders();
-    module.begin(providers);
-
-    displayNowMs = 9000;
-    parsedSignal = ParsedFrameSignal{false, 0};
-    parsedResult = DisplayOrchestrationParsedResult{false, false, false};
-    cameraAlertActive = true;
-
-    module.process(LoopDisplayContext{});
-
-    TEST_ASSERT_TRUE(lastRefreshCtx.cameraAlertActive);
-}
-
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_process_full_pipeline_with_runtime_callback_and_perf_records);
@@ -359,6 +336,5 @@ int main() {
     RUN_TEST(test_notify_to_display_skips_for_zero_or_future_timestamp);
     RUN_TEST(test_wrap_safe_perf_elapsed_for_lockout_and_pipeline);
     RUN_TEST(test_empty_providers_is_safe_noop);
-    RUN_TEST(test_refresh_context_propagates_camera_alert_active_flag);
     return UNITY_END();
 }

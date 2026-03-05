@@ -23,7 +23,6 @@
 // Include display driver abstraction (Arduino_GFX only)
 #include "display_driver.h"
 #include "packet_parser.h"
-#include "../include/camera_alert_types.h"
 #include "../include/color_themes.h"
 #include "../include/display_layout.h"  // Centralized layout constants
 #include "../include/display_ble_context.h"
@@ -48,8 +47,6 @@ public:
     
     // Persisted alert display (shows last alert in dark grey after V1 clears it)
     void updatePersisted(const AlertData& alert, const DisplayState& state);
-    // Camera proximity display (distance + type + front arrow override).
-    void updateCameraAlert(const CameraAlertDisplayPayload& payload, const DisplayState& state);
 
     // Check if currently in persisted mode (for color selection)
     bool isPersistedMode() const { return persistedMode; }
@@ -148,7 +145,6 @@ private:
     void drawFrequency(uint32_t freqMHz, Band band = BAND_NONE, bool muted = false, bool isPhotoRadar = false);
     void drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);   // 7-segment style
     void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);// Serpentine font
-    void drawCameraAlert(const CameraAlertDisplayPayload& payload);
     void markFrequencyDirtyRegion(int16_t x, int16_t y, int16_t w, int16_t h);
     void drawVolumeZeroWarning();  // Flash "VOL 0" warning when volume=0 and no app connected
     void drawStatusText(const char* text, uint16_t color);

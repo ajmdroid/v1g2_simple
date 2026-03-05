@@ -13,12 +13,9 @@
 #include "ble_client.h"
 #include "modules/system/system_event_bus.h"
 
-class DisplayPipelineModule;
-
 // ---- External globals used across wifi_manager TU split ----
 extern V1BLEClient bleClient;
 extern SystemEventBus systemEventBus;
-extern DisplayPipelineModule displayPipelineModule;
 
 // Preview helpers for display demo flows (color).
 extern void requestColorPreviewHold(uint32_t durationMs);

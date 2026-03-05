@@ -8,7 +8,6 @@
 #include "settings.h"
 #include "settings_sanitize.h"
 #include "display.h"
-#include "modules/display/display_pipeline_module.h"
 #include "v1_profiles.h"
 #include "v1_devices.h"
 #include "audio_beep.h"
@@ -16,8 +15,6 @@
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/lockout/lockout_band_policy.h"
-#include "modules/lockout/road_map_reader.h"
-#include "modules/camera_alert/camera_alert_api_service.h"
 #include "modules/wifi/wifi_autopush_api_service.h"
 #include "modules/wifi/wifi_display_colors_api_service.h"
 #include "modules/wifi/wifi_settings_api_service.h"
@@ -320,26 +317,6 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
         },
         [this]() {
             settingsManager.save();
-        },
-    };
-}
-
-CameraAlertApiService::Runtime WiFiManager::makeCameraAlertRuntime() {
-    return CameraAlertApiService::Runtime{
-        [this]() -> const V1Settings& {
-            return settingsManager.get();
-        },
-        [this]() -> V1Settings& {
-            return settingsManager.mutableSettings();
-        },
-        [this]() {
-            settingsManager.save();
-        },
-        []() -> uint32_t {
-            return roadMapReader.cameraCount();
-        },
-        [] (CameraAlertStatusSnapshot& snapshot) -> bool {
-            return displayPipelineModule.getCameraStatusSnapshot(snapshot);
         },
     };
 }

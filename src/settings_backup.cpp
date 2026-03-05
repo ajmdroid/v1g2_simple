@@ -231,16 +231,6 @@ void SettingsManager::backupToSD() {
     doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
     doc["gpsLockoutPreQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
-    doc["cameraAlertsEnabled"] = settings.cameraAlertsEnabled;
-    doc["cameraAlertRangeM"] = settings.cameraAlertRangeM;
-    doc["cameraTypeAlpr"] = settings.cameraTypeAlpr;
-    doc["cameraTypeRedLight"] = settings.cameraTypeRedLight;
-    doc["cameraTypeSpeed"] = settings.cameraTypeSpeed;
-    doc["cameraTypeBusLane"] = settings.cameraTypeBusLane;
-    doc["colorCameraArrow"] = settings.colorCameraArrow;
-    doc["colorCameraText"] = settings.colorCameraText;
-    doc["cameraVoiceEnabled"] = settings.cameraVoiceEnabled;
-    doc["cameraVoiceClose"] = settings.cameraVoiceClose;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;

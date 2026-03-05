@@ -39,7 +39,6 @@ struct DisplayOrchestrationRefreshContext {
     bool bootSplashHoldActive = false;
     bool overloadLateThisLoop = false;
     bool pipelineRanThisLoop = false;
-    bool cameraAlertActive = false;
 };
 
 struct DisplayOrchestrationRefreshResult {

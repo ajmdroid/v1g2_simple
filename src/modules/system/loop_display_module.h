@@ -38,9 +38,6 @@ public:
             const DisplayOrchestrationRefreshContext& refreshCtx) = nullptr;
         void* lightweightRefreshContext = nullptr;
 
-        bool (*readCameraAlertActive)(void* ctx) = nullptr;
-        void* cameraAlertContext = nullptr;
-
         void (*runDisplayPipeline)(void* ctx, uint32_t nowMs, bool lockoutPrioritySuppressed) = nullptr;
         void* displayPipelineContext = nullptr;
 
