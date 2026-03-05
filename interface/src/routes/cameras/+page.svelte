@@ -17,6 +17,8 @@
 		cameraTypeRedLight: true,
 		cameraTypeSpeed: true,
 		cameraTypeBusLane: false,
+		colorCameraArrow: 0x780f,
+		colorCameraText: 0x780f,
 		cameraVoiceEnabled: true,
 		cameraVoiceClose: true,
 		cameraCount: 0
@@ -86,6 +88,8 @@
 				cameraTypeRedLight: settings.cameraTypeRedLight,
 				cameraTypeSpeed: settings.cameraTypeSpeed,
 				cameraTypeBusLane: settings.cameraTypeBusLane,
+				colorCameraArrow: Number(settings.colorCameraArrow),
+				colorCameraText: Number(settings.colorCameraText),
 				cameraVoiceEnabled: settings.cameraVoiceEnabled,
 				cameraVoiceClose: settings.cameraVoiceClose
 			};
@@ -169,6 +173,22 @@
 					<label class="label cursor-pointer">
 						<div><span class="label-text font-medium">500 ft Voice</span><p class="copy-caption-soft">`cam_<type> + close`</p></div>
 						<input type="checkbox" class="toggle toggle-primary" bind:checked={settings.cameraVoiceClose} />
+					</label>
+				</div>
+			</div>
+		</div>
+
+		<div class="surface-card">
+			<div class="card-body">
+				<CardSectionHead title="Colors" subtitle="RGB565 values used for camera text and front arrow." />
+				<div class="grid md:grid-cols-2 gap-3">
+					<label class="form-control">
+						<span class="label-text">Arrow Color (RGB565)</span>
+						<input type="number" min="0" max="65535" class="input input-bordered" bind:value={settings.colorCameraArrow} />
+					</label>
+					<label class="form-control">
+						<span class="label-text">Text Color (RGB565)</span>
+						<input type="number" min="0" max="65535" class="input input-bordered" bind:value={settings.colorCameraText} />
 					</label>
 				</div>
 			</div>
