@@ -65,6 +65,37 @@ def percentile(values, pct):
     return float(ordered[lo] + (ordered[hi] - ordered[lo]) * frac)
 
 
+def to_int_ms(delta_seconds):
+    if delta_seconds is None:
+        return None
+    return int(round(delta_seconds * 1000.0))
+
+
+def compute_window_stats(records, start_idx, end_idx):
+    if start_idx < 0:
+        start_idx = 0
+    if end_idx < start_idx:
+        end_idx = start_idx
+    if start_idx > len(records):
+        start_idx = len(records)
+    if end_idx > len(records):
+        end_idx = len(records)
+
+    window = records[start_idx:end_idx]
+    wifi_vals = [rec["wifi"] for rec in window if rec["wifi"] is not None]
+    loop_vals = [rec["loop"] for rec in window if rec["loop"] is not None]
+    disp_vals = [rec["disp"] for rec in window if rec["disp"] is not None]
+    return {
+        "samples": len(window),
+        "wifi_peak": max(wifi_vals) if wifi_vals else None,
+        "wifi_p95": percentile(wifi_vals, 95.0) if wifi_vals else None,
+        "loop_peak": max(loop_vals) if loop_vals else None,
+        "loop_p95": percentile(loop_vals, 95.0) if loop_vals else None,
+        "disp_peak": max(disp_vals) if disp_vals else None,
+        "disp_p95": percentile(disp_vals, 95.0) if disp_vals else None,
+    }
+
+
 def parse_args(argv):
     parser = argparse.ArgumentParser(description="Parse soak metrics JSONL into key=value fields")
     parser.add_argument("metrics_jsonl", help="Path to metrics.jsonl")
@@ -85,6 +116,12 @@ def parse_args(argv):
         type=int,
         default=2,
         help="Number of initial wifi samples to exclude for warmup-adjusted robust metrics",
+    )
+    parser.add_argument(
+        "--stable-consecutive-samples",
+        type=int,
+        default=2,
+        help="Consecutive in-threshold samples required to mark a transition as stabilized",
     )
     return parser.parse_args(argv)
 
@@ -166,6 +203,31 @@ def main() -> int:
     gps_obs_drops_last = None
     wifi_samples = []
     disp_pipe_samples = []
+    wifi_ap_up_first = None
+    wifi_ap_up_last = None
+    wifi_ap_down_first = None
+    wifi_ap_down_last = None
+    proxy_adv_on_first = None
+    proxy_adv_on_last = None
+    proxy_adv_off_first = None
+    proxy_adv_off_last = None
+    wifi_ap_active_samples = 0
+    wifi_ap_inactive_samples = 0
+    proxy_adv_on_samples = 0
+    proxy_adv_off_samples = 0
+    wifi_peak_ap_active = None
+    wifi_peak_ap_inactive = None
+    wifi_peak_proxy_adv_on = None
+    wifi_peak_proxy_adv_off = None
+    wifi_ap_last_reason_code = None
+    wifi_ap_last_reason = ""
+    proxy_adv_last_reason_code = None
+    proxy_adv_last_reason = ""
+    sample_records = []
+    wifi_ap_down_event_indices = []
+    proxy_adv_off_event_indices = []
+    prev_wifi_ap_down = None
+    prev_proxy_adv_off = None
 
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -224,6 +286,72 @@ def main() -> int:
                     wifi_peak_rx_packets = num(data.get("rxPackets"))
                 if wifi_val is not None:
                     wifi_samples.append(wifi_val)
+
+                wifi_ap_up = num(data.get("wifiApUpTransitions"))
+                if wifi_ap_up_first is None and wifi_ap_up is not None:
+                    wifi_ap_up_first = wifi_ap_up
+                if wifi_ap_up is not None:
+                    wifi_ap_up_last = wifi_ap_up
+
+                wifi_ap_down = num(data.get("wifiApDownTransitions"))
+                if wifi_ap_down_first is None and wifi_ap_down is not None:
+                    wifi_ap_down_first = wifi_ap_down
+                if wifi_ap_down is not None:
+                    wifi_ap_down_last = wifi_ap_down
+                    if prev_wifi_ap_down is not None and wifi_ap_down > prev_wifi_ap_down:
+                        wifi_ap_down_event_indices.append(len(sample_records))
+                    prev_wifi_ap_down = wifi_ap_down
+
+                proxy_adv_on = num(data.get("proxyAdvertisingOnTransitions"))
+                if proxy_adv_on_first is None and proxy_adv_on is not None:
+                    proxy_adv_on_first = proxy_adv_on
+                if proxy_adv_on is not None:
+                    proxy_adv_on_last = proxy_adv_on
+
+                proxy_adv_off = num(data.get("proxyAdvertisingOffTransitions"))
+                if proxy_adv_off_first is None and proxy_adv_off is not None:
+                    proxy_adv_off_first = proxy_adv_off
+                if proxy_adv_off is not None:
+                    proxy_adv_off_last = proxy_adv_off
+                    if prev_proxy_adv_off is not None and proxy_adv_off > prev_proxy_adv_off:
+                        proxy_adv_off_event_indices.append(len(sample_records))
+                    prev_proxy_adv_off = proxy_adv_off
+
+                wifi_ap_state = num(data.get("wifiApActive"))
+                if wifi_ap_state is not None:
+                    if int(wifi_ap_state) != 0:
+                        wifi_ap_active_samples += 1
+                        wifi_peak_ap_active = update_max(wifi_peak_ap_active, wifi_val)
+                    else:
+                        wifi_ap_inactive_samples += 1
+                        wifi_peak_ap_inactive = update_max(wifi_peak_ap_inactive, wifi_val)
+
+                proxy_adv_state = num(data.get("proxyAdvertising"))
+                if proxy_adv_state is None:
+                    proxy_obj = data.get("proxy")
+                    if isinstance(proxy_obj, dict):
+                        proxy_adv_state = num(proxy_obj.get("advertising"))
+                if proxy_adv_state is not None:
+                    if int(proxy_adv_state) != 0:
+                        proxy_adv_on_samples += 1
+                        wifi_peak_proxy_adv_on = update_max(wifi_peak_proxy_adv_on, wifi_val)
+                    else:
+                        proxy_adv_off_samples += 1
+                        wifi_peak_proxy_adv_off = update_max(wifi_peak_proxy_adv_off, wifi_val)
+
+                wifi_ap_reason_code = num(data.get("wifiApLastTransitionReasonCode"))
+                if wifi_ap_reason_code is not None:
+                    wifi_ap_last_reason_code = wifi_ap_reason_code
+                wifi_ap_reason = data.get("wifiApLastTransitionReason")
+                if isinstance(wifi_ap_reason, str):
+                    wifi_ap_last_reason = wifi_ap_reason
+
+                proxy_adv_reason_code = num(data.get("proxyAdvertisingLastTransitionReasonCode"))
+                if proxy_adv_reason_code is not None:
+                    proxy_adv_last_reason_code = proxy_adv_reason_code
+                proxy_adv_reason = data.get("proxyAdvertisingLastTransitionReason")
+                if isinstance(proxy_adv_reason, str):
+                    proxy_adv_last_reason = proxy_adv_reason
 
                 if ok_samples > 2 and wifi_val is not None and (
                     wifi_max_peak_excluding_first is None or wifi_val > wifi_max_peak_excluding_first
@@ -351,6 +479,15 @@ def main() -> int:
                     gps_obs_drops_first = gps_obs_drops
                 if gps_obs_drops is not None:
                     gps_obs_drops_last = gps_obs_drops
+
+                sample_records.append(
+                    {
+                        "epoch": sample_epoch,
+                        "wifi": wifi_val,
+                        "loop": loop_val,
+                        "disp": disp_pipe_val,
+                    }
+                )
     except FileNotFoundError:
         pass
 
@@ -372,6 +509,116 @@ def main() -> int:
     disp_pipe_over_limit_count = None
     if args.disp_threshold is not None:
         disp_pipe_over_limit_count = sum(1 for val in disp_pipe_samples if val > args.disp_threshold)
+
+    stable_required = max(args.stable_consecutive_samples, 1)
+
+    def sample_is_stable(rec):
+        if args.wifi_threshold is not None:
+            wifi_val = rec.get("wifi")
+            if wifi_val is None or wifi_val > args.wifi_threshold:
+                return False
+        if args.disp_threshold is not None:
+            disp_val = rec.get("disp")
+            if disp_val is None or disp_val > args.disp_threshold:
+                return False
+        return True
+
+    stable_flags = [sample_is_stable(rec) for rec in sample_records]
+
+    def find_stable_index(start_idx):
+        consec = 0
+        if start_idx < 0:
+            start_idx = 0
+        for idx in range(start_idx, len(sample_records)):
+            if stable_flags[idx]:
+                consec += 1
+                if consec >= stable_required:
+                    return idx
+            else:
+                consec = 0
+        return None
+
+    def recovery_from_events(event_indices):
+        if not event_indices:
+            return {
+                "events": 0,
+                "stabilized": 0,
+                "unstable": 0,
+                "time_ms": None,
+                "samples": None,
+            }
+        stabilized = 0
+        worst_time_ms = None
+        worst_samples = None
+        for event_idx in event_indices:
+            stable_idx = find_stable_index(event_idx)
+            if stable_idx is None:
+                continue
+            stabilized += 1
+            samples_to_stable = stable_idx - event_idx + 1
+            if worst_samples is None or samples_to_stable > worst_samples:
+                worst_samples = samples_to_stable
+
+            event_epoch = sample_records[event_idx].get("epoch")
+            stable_epoch = sample_records[stable_idx].get("epoch")
+            if event_epoch is not None and stable_epoch is not None:
+                time_ms = to_int_ms(stable_epoch - event_epoch)
+                if worst_time_ms is None or time_ms > worst_time_ms:
+                    worst_time_ms = time_ms
+
+        return {
+            "events": len(event_indices),
+            "stabilized": stabilized,
+            "unstable": len(event_indices) - stabilized,
+            "time_ms": worst_time_ms,
+            "samples": worst_samples,
+        }
+
+    ap_recovery = recovery_from_events(wifi_ap_down_event_indices)
+    proxy_recovery = recovery_from_events(proxy_adv_off_event_indices)
+
+    primary_source = "none"
+    primary_event_idx = None
+    if wifi_ap_down_event_indices and proxy_adv_off_event_indices:
+        ap_first = wifi_ap_down_event_indices[0]
+        proxy_first = proxy_adv_off_event_indices[0]
+        if ap_first <= proxy_first:
+            primary_source = "wifi_ap_down"
+            primary_event_idx = ap_first
+        else:
+            primary_source = "proxy_adv_off"
+            primary_event_idx = proxy_first
+    elif wifi_ap_down_event_indices:
+        primary_source = "wifi_ap_down"
+        primary_event_idx = wifi_ap_down_event_indices[0]
+    elif proxy_adv_off_event_indices:
+        primary_source = "proxy_adv_off"
+        primary_event_idx = proxy_adv_off_event_indices[0]
+
+    primary_stable_idx = None
+    primary_samples_to_stable = None
+    primary_time_to_stable_ms = None
+    if primary_event_idx is not None:
+        primary_stable_idx = find_stable_index(primary_event_idx)
+        if primary_stable_idx is not None:
+            primary_samples_to_stable = primary_stable_idx - primary_event_idx + 1
+            event_epoch = sample_records[primary_event_idx].get("epoch")
+            stable_epoch = sample_records[primary_stable_idx].get("epoch")
+            if event_epoch is not None and stable_epoch is not None:
+                primary_time_to_stable_ms = to_int_ms(stable_epoch - event_epoch)
+
+    if primary_event_idx is None:
+        pre_stats = compute_window_stats(sample_records, 0, len(sample_records))
+        transition_stats = compute_window_stats(sample_records, 0, 0)
+        post_stats = compute_window_stats(sample_records, 0, 0)
+    elif primary_stable_idx is None:
+        pre_stats = compute_window_stats(sample_records, 0, primary_event_idx)
+        transition_stats = compute_window_stats(sample_records, primary_event_idx, len(sample_records))
+        post_stats = compute_window_stats(sample_records, len(sample_records), len(sample_records))
+    else:
+        pre_stats = compute_window_stats(sample_records, 0, primary_event_idx)
+        transition_stats = compute_window_stats(sample_records, primary_event_idx, primary_stable_idx + 1)
+        post_stats = compute_window_stats(sample_records, primary_stable_idx + 1, len(sample_records))
 
     emit("samples", samples)
     emit("ok_samples", ok_samples)
@@ -451,6 +698,80 @@ def main() -> int:
     emit("disp_pipe_sample_count", len(disp_pipe_samples))
     emit("disp_pipe_p95", round(disp_pipe_p95, 3) if disp_pipe_p95 is not None else None)
     emit("disp_pipe_over_limit_count", disp_pipe_over_limit_count)
+    emit("wifi_ap_active_samples", wifi_ap_active_samples)
+    emit("wifi_ap_inactive_samples", wifi_ap_inactive_samples)
+    emit("proxy_adv_on_samples", proxy_adv_on_samples)
+    emit("proxy_adv_off_samples", proxy_adv_off_samples)
+    emit("wifi_peak_ap_active", wifi_peak_ap_active)
+    emit("wifi_peak_ap_inactive", wifi_peak_ap_inactive)
+    emit("wifi_peak_proxy_adv_on", wifi_peak_proxy_adv_on)
+    emit("wifi_peak_proxy_adv_off", wifi_peak_proxy_adv_off)
+    emit("wifi_ap_last_reason_code", wifi_ap_last_reason_code)
+    emit("wifi_ap_last_reason", wifi_ap_last_reason if wifi_ap_last_reason else None)
+    emit("proxy_adv_last_reason_code", proxy_adv_last_reason_code)
+    emit("proxy_adv_last_reason", proxy_adv_last_reason if proxy_adv_last_reason else None)
+    emit("stable_consecutive_samples_required", stable_required)
+    emit("wifi_ap_down_events_observed", ap_recovery["events"])
+    emit("wifi_ap_down_events_stabilized", ap_recovery["stabilized"])
+    emit("wifi_ap_down_events_unstable", ap_recovery["unstable"])
+    emit("samples_to_stable_after_ap_down", ap_recovery["samples"])
+    emit("time_to_stable_ms_after_ap_down", ap_recovery["time_ms"])
+    emit("proxy_adv_off_events_observed", proxy_recovery["events"])
+    emit("proxy_adv_off_events_stabilized", proxy_recovery["stabilized"])
+    emit("proxy_adv_off_events_unstable", proxy_recovery["unstable"])
+    emit("samples_to_stable_after_proxy_adv_off", proxy_recovery["samples"])
+    emit("time_to_stable_ms_after_proxy_adv_off", proxy_recovery["time_ms"])
+    emit("transition_primary_source", primary_source)
+    emit("transition_primary_event_index", primary_event_idx)
+    emit("transition_primary_stable_index", primary_stable_idx)
+    emit(
+        "transition_primary_stabilized",
+        (1 if primary_stable_idx is not None else 0) if primary_event_idx is not None else None,
+    )
+    emit("samples_to_stable", primary_samples_to_stable)
+    emit("time_to_stable_ms", primary_time_to_stable_ms)
+    emit("window_pre_samples", pre_stats["samples"])
+    emit("window_pre_wifi_peak", pre_stats["wifi_peak"])
+    emit("window_pre_wifi_p95", round(pre_stats["wifi_p95"], 3) if pre_stats["wifi_p95"] is not None else None)
+    emit("window_pre_loop_peak", pre_stats["loop_peak"])
+    emit("window_pre_loop_p95", round(pre_stats["loop_p95"], 3) if pre_stats["loop_p95"] is not None else None)
+    emit("window_pre_disp_pipe_peak", pre_stats["disp_peak"])
+    emit(
+        "window_pre_disp_pipe_p95",
+        round(pre_stats["disp_p95"], 3) if pre_stats["disp_p95"] is not None else None,
+    )
+    emit("window_transition_samples", transition_stats["samples"])
+    emit("window_transition_wifi_peak", transition_stats["wifi_peak"])
+    emit(
+        "window_transition_wifi_p95",
+        round(transition_stats["wifi_p95"], 3) if transition_stats["wifi_p95"] is not None else None,
+    )
+    emit("window_transition_loop_peak", transition_stats["loop_peak"])
+    emit(
+        "window_transition_loop_p95",
+        round(transition_stats["loop_p95"], 3) if transition_stats["loop_p95"] is not None else None,
+    )
+    emit("window_transition_disp_pipe_peak", transition_stats["disp_peak"])
+    emit(
+        "window_transition_disp_pipe_p95",
+        round(transition_stats["disp_p95"], 3) if transition_stats["disp_p95"] is not None else None,
+    )
+    emit("window_post_stable_samples", post_stats["samples"])
+    emit("window_post_stable_wifi_peak", post_stats["wifi_peak"])
+    emit(
+        "window_post_stable_wifi_p95",
+        round(post_stats["wifi_p95"], 3) if post_stats["wifi_p95"] is not None else None,
+    )
+    emit("window_post_stable_loop_peak", post_stats["loop_peak"])
+    emit(
+        "window_post_stable_loop_p95",
+        round(post_stats["loop_p95"], 3) if post_stats["loop_p95"] is not None else None,
+    )
+    emit("window_post_stable_disp_pipe_peak", post_stats["disp_peak"])
+    emit(
+        "window_post_stable_disp_pipe_p95",
+        round(post_stats["disp_p95"], 3) if post_stats["disp_p95"] is not None else None,
+    )
 
     inherited_counter_suspect = 0
     for first_val in (queue_drops_first, perf_drop_first, event_drop_first):
@@ -483,6 +804,26 @@ def main() -> int:
         print("ble_mutex_timeout_delta=")
     else:
         print(f"ble_mutex_timeout_delta={ble_mutex_timeout_last - ble_mutex_timeout_first}")
+
+    if wifi_ap_up_first is None or wifi_ap_up_last is None:
+        print("wifi_ap_up_transitions_delta=")
+    else:
+        print(f"wifi_ap_up_transitions_delta={wifi_ap_up_last - wifi_ap_up_first}")
+
+    if wifi_ap_down_first is None or wifi_ap_down_last is None:
+        print("wifi_ap_down_transitions_delta=")
+    else:
+        print(f"wifi_ap_down_transitions_delta={wifi_ap_down_last - wifi_ap_down_first}")
+
+    if proxy_adv_on_first is None or proxy_adv_on_last is None:
+        print("proxy_adv_on_transitions_delta=")
+    else:
+        print(f"proxy_adv_on_transitions_delta={proxy_adv_on_last - proxy_adv_on_first}")
+
+    if proxy_adv_off_first is None or proxy_adv_off_last is None:
+        print("proxy_adv_off_transitions_delta=")
+    else:
+        print(f"proxy_adv_off_transitions_delta={proxy_adv_off_last - proxy_adv_off_first}")
 
     if gps_obs_drops_first is None or gps_obs_drops_last is None:
         print("gps_obs_drops_delta=")

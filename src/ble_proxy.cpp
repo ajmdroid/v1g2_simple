@@ -31,6 +31,10 @@ void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEC
         bleClient->setProxyClientConnected(true);
         bleClient->proxyAdvertisingWindowStartMs = 0;
         bleClient->proxyAdvertisingRetryAtMs = 0;
+        perfRecordProxyAdvertisingTransition(
+            false,
+            static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopAppConnected),
+            millis());
     }
 }
 
@@ -44,7 +48,8 @@ void V1BLEClient::ProxyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimB
         bleClient->proxyAdvertisingWindowStartMs = 0;
         // Resume advertising if V1 is still connected and WiFi-priority suppression is off.
         if (bleClient->connected && !bleClient->wifiPriorityMode) {
-            bleClient->startProxyAdvertising();
+            bleClient->startProxyAdvertising(
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartAppDisconnect));
         }
     }
 }
@@ -210,13 +215,52 @@ bool V1BLEClient::isProxyAdvertising() const {
            NimBLEDevice::getAdvertising()->isAdvertising();
 }
 
-void V1BLEClient::startProxyAdvertising() {
+bool V1BLEClient::forceProxyAdvertising(bool enable, uint8_t reasonCode) {
+    if (!proxyEnabled || !proxyServerInitialized || !pServer) {
+        return false;
+    }
+
+    const uint8_t startReason = reasonCode == 0
+                                    ? static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartDirect)
+                                    : reasonCode;
+    const uint8_t stopReason = reasonCode == 0
+                                   ? static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopOther)
+                                   : reasonCode;
+
+    if (enable) {
+        if (!connected) {
+            return false;
+        }
+        // Allow explicit debug/test control to override no-client timeout latch.
+        if (proxyNoClientTimeoutLatched) {
+            proxyNoClientTimeoutLatched = false;
+            proxyNoClientDeadlineMs = 0;
+        }
+        startProxyAdvertising(startReason, true);
+        return isProxyAdvertising();
+    }
+
+    proxyAdvertisingStartMs = 0;
+    proxyAdvertisingStartReasonCode =
+        static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
+    proxyAdvertisingWindowStartMs = 0;
+    proxyAdvertisingRetryAtMs = 0;
+
+    NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+    if (pAdv && pAdv->isAdvertising()) {
+        NimBLEDevice::stopAdvertising();
+    }
+    perfRecordProxyAdvertisingTransition(false, stopReason, millis());
+    return true;
+}
+
+void V1BLEClient::startProxyAdvertising(uint8_t reasonCode, bool ignoreWifiPriority) {
     if (!proxyServerInitialized || !pServer) {
         Serial.println("Cannot start advertising - proxy server not initialized");
         return;
     }
 
-    if (wifiPriorityMode) {
+    if (wifiPriorityMode && !ignoreWifiPriority) {
         return;
     }
 
@@ -242,12 +286,14 @@ void V1BLEClient::startProxyAdvertising() {
     if (!NimBLEDevice::getAdvertising()->isAdvertising()) {
         if (NimBLEDevice::startAdvertising()) {
             proxyAdvertisingWindowStartMs = millis();
+            perfRecordProxyAdvertisingTransition(true, reasonCode, millis());
             Serial.println("Proxy advertising started");
         }
     } else {
         if (proxyAdvertisingWindowStartMs == 0) {
             proxyAdvertisingWindowStartMs = millis();
         }
+        perfRecordProxyAdvertisingTransition(true, reasonCode, millis());
         Serial.println("Proxy already advertising");
     }
 }

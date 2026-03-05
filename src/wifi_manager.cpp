@@ -91,6 +91,28 @@ static void getWifiRuntimeThresholds(bool apStaMode, bool staOnlyMode, uint32_t&
     minBlock = WiFiManager::WIFI_RUNTIME_MIN_BLOCK_AP_ONLY;
 }
 
+static uint8_t wifiApStopReasonCode(const String& stopReason, bool stopManual) {
+    if (stopManual) {
+        return static_cast<uint8_t>(PerfWifiApTransitionReason::StopManual);
+    }
+    if (stopReason == "timeout") {
+        return static_cast<uint8_t>(PerfWifiApTransitionReason::StopTimeout);
+    }
+    if (stopReason == "no_clients") {
+        return static_cast<uint8_t>(PerfWifiApTransitionReason::StopNoClients);
+    }
+    if (stopReason == "no_clients_auto") {
+        return static_cast<uint8_t>(PerfWifiApTransitionReason::StopNoClientsAuto);
+    }
+    if (stopReason == "low_dma") {
+        return static_cast<uint8_t>(PerfWifiApTransitionReason::DropLowDma);
+    }
+    if (stopReason == "poweroff") {
+        return static_cast<uint8_t>(PerfWifiApTransitionReason::StopPoweroff);
+    }
+    return static_cast<uint8_t>(PerfWifiApTransitionReason::StopOther);
+}
+
 static WifiStopReasonModule sWifiStopReasonModule(&perfCounters);
 static WifiHeapGuardModule sWifiHeapGuardModule;
 static WifiAutoTimeoutModule sWifiAutoTimeoutModule;
@@ -325,6 +347,10 @@ bool WiFiManager::startSetupMode() {
     server.begin();
     setupModeState = SETUP_MODE_AP_ON;
     apInterfaceEnabled = true;
+    perfRecordWifiApTransition(
+        true,
+        static_cast<uint8_t>(PerfWifiApTransitionReason::Startup),
+        millis());
 
     // When AP+STA mode is active, connect to the saved STA network directly.
     // WiFi.mode(WIFI_AP_STA) is already set and setupAP() has configured the AP,
@@ -401,6 +427,7 @@ void WiFiManager::finalizeStopSetupMode() {
     // ========== RESET ALL STATE ==========
     setupModeState = SETUP_MODE_OFF;
     apInterfaceEnabled = false;
+    perfRecordWifiApTransition(false, wifiApStopReasonCode(stopReason, stopManual), millis());
     wifiClientState = WIFI_CLIENT_DISABLED;
     wifiScanRunning = false;
     wifiConnectStartMs = 0;
@@ -479,6 +506,10 @@ void WiFiManager::processStopSetupModePhase() {
                     WiFi.softAPdisconnect(true);
                 }
                 apInterfaceEnabled = false;
+                perfRecordWifiApTransition(
+                    false,
+                    wifiApStopReasonCode(wifiStopReason, wifiStopManual),
+                    now);
                 cachedApStaCount = 0;
                 lastApStaCountPollMs = 0;
                 WIFI_LOG("[SetupMode] Graceful stop phase: AP disabled\n");
@@ -710,6 +741,10 @@ void WiFiManager::process() {
                     WiFi.softAPdisconnect(true);
                 }
                 apInterfaceEnabled = false;
+                perfRecordWifiApTransition(
+                    false,
+                    static_cast<uint8_t>(PerfWifiApTransitionReason::DropLowDma),
+                    now);
 
                 const wl_status_t staStatus = WiFi.status();
                 if (staStatus == WL_CONNECTED) {
@@ -779,6 +814,10 @@ void WiFiManager::process() {
             WiFi.softAPdisconnect(true);
         }
         apInterfaceEnabled = false;
+        perfRecordWifiApTransition(
+            false,
+            static_cast<uint8_t>(PerfWifiApTransitionReason::DropIdleSta),
+            now);
         cachedApStaCount = 0;
         lastApStaCountPollMs = 0;
         if (staWasConnected && WiFi.status() != WL_CONNECTED) {

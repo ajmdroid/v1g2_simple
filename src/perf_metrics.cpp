@@ -106,6 +106,64 @@ static uint32_t calcP95(const PerfHistogramMs& hist) {
     return hist.maxMs;
 }
 
+static const char* wifiApTransitionReasonNameInternal(uint32_t reasonCode) {
+    switch (static_cast<PerfWifiApTransitionReason>(reasonCode)) {
+        case PerfWifiApTransitionReason::Startup:
+            return "startup";
+        case PerfWifiApTransitionReason::StopManual:
+            return "stop_manual";
+        case PerfWifiApTransitionReason::StopTimeout:
+            return "stop_timeout";
+        case PerfWifiApTransitionReason::StopNoClients:
+            return "stop_no_clients";
+        case PerfWifiApTransitionReason::StopNoClientsAuto:
+            return "stop_no_clients_auto";
+        case PerfWifiApTransitionReason::DropLowDma:
+            return "drop_low_dma";
+        case PerfWifiApTransitionReason::DropIdleSta:
+            return "drop_idle_sta";
+        case PerfWifiApTransitionReason::StopPoweroff:
+            return "stop_poweroff";
+        case PerfWifiApTransitionReason::StopOther:
+            return "stop_other";
+        case PerfWifiApTransitionReason::Unknown:
+        default:
+            return "unknown";
+    }
+}
+
+static const char* proxyAdvertisingTransitionReasonNameInternal(uint32_t reasonCode) {
+    switch (static_cast<PerfProxyAdvertisingTransitionReason>(reasonCode)) {
+        case PerfProxyAdvertisingTransitionReason::StartConnected:
+            return "start_connected";
+        case PerfProxyAdvertisingTransitionReason::StartWifiPriorityResume:
+            return "start_wifi_priority_resume";
+        case PerfProxyAdvertisingTransitionReason::StartRetryWindow:
+            return "start_retry_window";
+        case PerfProxyAdvertisingTransitionReason::StartAppDisconnect:
+            return "start_app_disconnect";
+        case PerfProxyAdvertisingTransitionReason::StartDirect:
+            return "start_direct";
+        case PerfProxyAdvertisingTransitionReason::StopWifiPriority:
+            return "stop_wifi_priority";
+        case PerfProxyAdvertisingTransitionReason::StopNoClientTimeout:
+            return "stop_no_client_timeout";
+        case PerfProxyAdvertisingTransitionReason::StopIdleWindow:
+            return "stop_idle_window";
+        case PerfProxyAdvertisingTransitionReason::StopBeforeV1Connect:
+            return "stop_before_v1_connect";
+        case PerfProxyAdvertisingTransitionReason::StopV1Disconnect:
+            return "stop_v1_disconnect";
+        case PerfProxyAdvertisingTransitionReason::StopAppConnected:
+            return "stop_app_connected";
+        case PerfProxyAdvertisingTransitionReason::StopOther:
+            return "stop_other";
+        case PerfProxyAdvertisingTransitionReason::Unknown:
+        default:
+            return "unknown";
+    }
+}
+
 static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     // Keep expensive calls outside the critical section; only copy shared state
     // while holding the lock so the snapshot is internally consistent.
@@ -534,6 +592,37 @@ void perfRecordBleTimelineEvent(PerfBleTimelineEvent event, uint32_t nowMs) {
     portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 
+void perfRecordWifiApTransition(bool apActive, uint8_t reasonCode, uint32_t nowMs) {
+    const uint32_t newState = apActive ? 1u : 0u;
+    const uint32_t previousState = perfCounters.wifiApState.exchange(newState, std::memory_order_relaxed);
+    if (previousState == newState) {
+        return;
+    }
+    if (newState != 0u) {
+        PERF_INC(wifiApUpTransitions);
+    } else {
+        PERF_INC(wifiApDownTransitions);
+    }
+    perfCounters.wifiApLastTransitionMs.store(nowMs, std::memory_order_relaxed);
+    perfCounters.wifiApLastTransitionReason.store(reasonCode, std::memory_order_relaxed);
+}
+
+void perfRecordProxyAdvertisingTransition(bool advertising, uint8_t reasonCode, uint32_t nowMs) {
+    const uint32_t newState = advertising ? 1u : 0u;
+    const uint32_t previousState =
+        perfCounters.proxyAdvertisingState.exchange(newState, std::memory_order_relaxed);
+    if (previousState == newState) {
+        return;
+    }
+    if (newState != 0u) {
+        PERF_INC(proxyAdvertisingOnTransitions);
+    } else {
+        PERF_INC(proxyAdvertisingOffTransitions);
+    }
+    perfCounters.proxyAdvertisingLastTransitionMs.store(nowMs, std::memory_order_relaxed);
+    perfCounters.proxyAdvertisingLastTransitionReason.store(reasonCode, std::memory_order_relaxed);
+}
+
 uint32_t perfGetLoopMaxUs() { return perfExtended.loopMaxUs; }
 uint32_t perfGetMinFreeHeap() { return perfExtended.minFreeHeap == UINT32_MAX ? 0 : perfExtended.minFreeHeap; }
 uint32_t perfGetMinFreeDma() { return perfExtended.minFreeDma == UINT32_MAX ? 0 : perfExtended.minFreeDma; }
@@ -556,6 +645,30 @@ uint32_t perfGetPrevWindowBleProcessMaxUs() {
 }
 uint32_t perfGetPrevWindowDispPipeMaxUs() {
     return sPrevWindowDispPipeMaxUs.load(std::memory_order_relaxed);
+}
+uint32_t perfGetWifiApState() {
+    return perfCounters.wifiApState.load(std::memory_order_relaxed);
+}
+uint32_t perfGetWifiApLastTransitionMs() {
+    return perfCounters.wifiApLastTransitionMs.load(std::memory_order_relaxed);
+}
+uint32_t perfGetWifiApLastTransitionReason() {
+    return perfCounters.wifiApLastTransitionReason.load(std::memory_order_relaxed);
+}
+const char* perfWifiApTransitionReasonName(uint32_t reasonCode) {
+    return wifiApTransitionReasonNameInternal(reasonCode);
+}
+uint32_t perfGetProxyAdvertisingState() {
+    return perfCounters.proxyAdvertisingState.load(std::memory_order_relaxed);
+}
+uint32_t perfGetProxyAdvertisingLastTransitionMs() {
+    return perfCounters.proxyAdvertisingLastTransitionMs.load(std::memory_order_relaxed);
+}
+uint32_t perfGetProxyAdvertisingLastTransitionReason() {
+    return perfCounters.proxyAdvertisingLastTransitionReason.load(std::memory_order_relaxed);
+}
+const char* perfProxyAdvertisingTransitionReasonName(uint32_t reasonCode) {
+    return proxyAdvertisingTransitionReasonNameInternal(reasonCode);
 }
 
 #if PERF_METRICS && PERF_MONITORING
@@ -644,6 +757,20 @@ String perfMetricsToJson() {
     doc["wifiStopOther"] = perfCounters.wifiStopOther.load();
     doc["wifiApDropLowDma"] = perfCounters.wifiApDropLowDma.load();
     doc["wifiApDropIdleSta"] = perfCounters.wifiApDropIdleSta.load();
+    doc["wifiApUpTransitions"] = perfCounters.wifiApUpTransitions.load();
+    doc["wifiApDownTransitions"] = perfCounters.wifiApDownTransitions.load();
+    doc["wifiApActive"] = perfGetWifiApState();
+    doc["wifiApLastTransitionMs"] = perfGetWifiApLastTransitionMs();
+    doc["wifiApLastTransitionReasonCode"] = perfGetWifiApLastTransitionReason();
+    doc["wifiApLastTransitionReason"] =
+        perfWifiApTransitionReasonName(perfGetWifiApLastTransitionReason());
+    doc["proxyAdvertisingOnTransitions"] = perfCounters.proxyAdvertisingOnTransitions.load();
+    doc["proxyAdvertisingOffTransitions"] = perfCounters.proxyAdvertisingOffTransitions.load();
+    doc["proxyAdvertising"] = perfGetProxyAdvertisingState();
+    doc["proxyAdvertisingLastTransitionMs"] = perfGetProxyAdvertisingLastTransitionMs();
+    doc["proxyAdvertisingLastTransitionReasonCode"] = perfGetProxyAdvertisingLastTransitionReason();
+    doc["proxyAdvertisingLastTransitionReason"] =
+        perfProxyAdvertisingTransitionReasonName(perfGetProxyAdvertisingLastTransitionReason());
     doc["pushNowRetries"] = perfCounters.pushNowRetries.load();
     doc["pushNowFailures"] = perfCounters.pushNowFailures.load();
     doc["alertPersistStarts"] = perfCounters.alertPersistStarts.load();

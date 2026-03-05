@@ -122,6 +122,11 @@ struct PerfCounters {
     std::atomic<uint32_t> wifiStopOther{0}; // stop reasons not covered above
     std::atomic<uint32_t> wifiApDropLowDma{0}; // AP retired due to sustained low SRAM in AP+STA
     std::atomic<uint32_t> wifiApDropIdleSta{0}; // AP retired while STA remained connected
+    std::atomic<uint32_t> wifiApUpTransitions{0}; // AP transition marker: down->up
+    std::atomic<uint32_t> wifiApDownTransitions{0}; // AP transition marker: up->down
+    std::atomic<uint32_t> wifiApState{0}; // AP state marker (1=up, 0=down)
+    std::atomic<uint32_t> wifiApLastTransitionMs{0}; // millis() when AP state last changed
+    std::atomic<uint32_t> wifiApLastTransitionReason{0}; // PerfWifiApTransitionReason
     std::atomic<uint32_t> wifiProcessMaxUs{0}; // max WiFiManager::process() duration
     std::atomic<uint32_t> wifiHandleClientMaxUs{0}; // max server.handleClient() duration inside WiFi process
     std::atomic<uint32_t> wifiMaintenanceMaxUs{0}; // max maintenance block duration inside WiFi process
@@ -129,6 +134,11 @@ struct PerfCounters {
     std::atomic<uint32_t> wifiTimeoutCheckMaxUs{0}; // max checkAutoTimeout() duration
     std::atomic<uint32_t> wifiHeapGuardMaxUs{0}; // max heap guard sampling/evaluation duration
     std::atomic<uint32_t> wifiApStaPollMaxUs{0}; // max softAP station poll duration
+    std::atomic<uint32_t> proxyAdvertisingOnTransitions{0}; // proxy advertising transition marker: off->on
+    std::atomic<uint32_t> proxyAdvertisingOffTransitions{0}; // proxy advertising transition marker: on->off
+    std::atomic<uint32_t> proxyAdvertisingState{0}; // proxy advertising state marker (1=on, 0=off)
+    std::atomic<uint32_t> proxyAdvertisingLastTransitionMs{0}; // millis() when proxy advertising state last changed
+    std::atomic<uint32_t> proxyAdvertisingLastTransitionReason{0}; // PerfProxyAdvertisingTransitionReason
     std::atomic<uint32_t> pushNowRetries{0};      // Non-blocking Push Now retry attempts
     std::atomic<uint32_t> pushNowFailures{0};     // Non-blocking Push Now exhausted retries
     std::atomic<uint32_t> alertPersistStarts{0};  // Persisted-alert sessions started
@@ -233,6 +243,11 @@ struct PerfCounters {
         wifiStopOther.store(0, std::memory_order_relaxed);
         wifiApDropLowDma.store(0, std::memory_order_relaxed);
         wifiApDropIdleSta.store(0, std::memory_order_relaxed);
+        wifiApUpTransitions.store(0, std::memory_order_relaxed);
+        wifiApDownTransitions.store(0, std::memory_order_relaxed);
+        wifiApState.store(0, std::memory_order_relaxed);
+        wifiApLastTransitionMs.store(0, std::memory_order_relaxed);
+        wifiApLastTransitionReason.store(0, std::memory_order_relaxed);
         wifiProcessMaxUs.store(0, std::memory_order_relaxed);
         wifiHandleClientMaxUs.store(0, std::memory_order_relaxed);
         wifiMaintenanceMaxUs.store(0, std::memory_order_relaxed);
@@ -240,6 +255,11 @@ struct PerfCounters {
         wifiTimeoutCheckMaxUs.store(0, std::memory_order_relaxed);
         wifiHeapGuardMaxUs.store(0, std::memory_order_relaxed);
         wifiApStaPollMaxUs.store(0, std::memory_order_relaxed);
+        proxyAdvertisingOnTransitions.store(0, std::memory_order_relaxed);
+        proxyAdvertisingOffTransitions.store(0, std::memory_order_relaxed);
+        proxyAdvertisingState.store(0, std::memory_order_relaxed);
+        proxyAdvertisingLastTransitionMs.store(0, std::memory_order_relaxed);
+        proxyAdvertisingLastTransitionReason.store(0, std::memory_order_relaxed);
         pushNowRetries.store(0, std::memory_order_relaxed);
         pushNowFailures.store(0, std::memory_order_relaxed);
         alertPersistStarts.store(0, std::memory_order_relaxed);
@@ -332,6 +352,35 @@ enum class PerfBleTimelineEvent : uint8_t {
     ConnectStart = 3,
     Connected = 4,
     FirstRx = 5
+};
+
+enum class PerfWifiApTransitionReason : uint8_t {
+    Unknown = 0,
+    Startup = 1,
+    StopManual = 2,
+    StopTimeout = 3,
+    StopNoClients = 4,
+    StopNoClientsAuto = 5,
+    DropLowDma = 6,
+    DropIdleSta = 7,
+    StopPoweroff = 8,
+    StopOther = 9
+};
+
+enum class PerfProxyAdvertisingTransitionReason : uint8_t {
+    Unknown = 0,
+    StartConnected = 1,
+    StartWifiPriorityResume = 2,
+    StartRetryWindow = 3,
+    StartAppDisconnect = 4,
+    StartDirect = 5,
+    StopWifiPriority = 6,
+    StopNoClientTimeout = 7,
+    StopIdleWindow = 8,
+    StopBeforeV1Connect = 9,
+    StopV1Disconnect = 10,
+    StopAppConnected = 11,
+    StopOther = 12
 };
 
 struct PerfExtendedMetrics {
@@ -460,6 +509,8 @@ void perfRecordPerfReportUs(uint32_t us);
 void perfRecordDisplayScreenTransition(PerfDisplayScreen from, PerfDisplayScreen to, uint32_t nowMs);
 void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolume, uint8_t originalVolume, uint32_t nowMs);
 void perfRecordBleTimelineEvent(PerfBleTimelineEvent event, uint32_t nowMs);
+void perfRecordWifiApTransition(bool apActive, uint8_t reasonCode, uint32_t nowMs);
+void perfRecordProxyAdvertisingTransition(bool advertising, uint8_t reasonCode, uint32_t nowMs);
 
 uint32_t perfGetLoopMaxUs();
 uint32_t perfGetMinFreeHeap();
@@ -476,6 +527,14 @@ uint32_t perfGetPrevWindowLoopMaxUs();
 uint32_t perfGetPrevWindowWifiMaxUs();
 uint32_t perfGetPrevWindowBleProcessMaxUs();
 uint32_t perfGetPrevWindowDispPipeMaxUs();
+uint32_t perfGetWifiApState();
+uint32_t perfGetWifiApLastTransitionMs();
+uint32_t perfGetWifiApLastTransitionReason();
+const char* perfWifiApTransitionReasonName(uint32_t reasonCode);
+uint32_t perfGetProxyAdvertisingState();
+uint32_t perfGetProxyAdvertisingLastTransitionMs();
+uint32_t perfGetProxyAdvertisingLastTransitionReason();
+const char* perfProxyAdvertisingTransitionReasonName(uint32_t reasonCode);
 
 // ============================================================================
 // Sampled latency tracking (only when PERF_METRICS=1)

@@ -60,6 +60,7 @@ LATENCY_GATE_MODE="${REAL_FW_LATENCY_GATE_MODE:-hybrid}"
 LATENCY_ROBUST_MIN_SAMPLES="${REAL_FW_LATENCY_ROBUST_MIN_SAMPLES:-8}"
 LATENCY_ROBUST_MAX_EXCEED_PCT="${REAL_FW_LATENCY_ROBUST_MAX_EXCEED_PCT:-5}"
 WIFI_ROBUST_SKIP_FIRST_SAMPLES="${REAL_FW_WIFI_ROBUST_SKIP_FIRST_SAMPLES:-2}"
+IGNORE_GPS_ERRORS="${REAL_FW_IGNORE_GPS_ERRORS:-0}"
 CLI_OVERRIDE_MAX_FLUSH_MAX_US=0
 CLI_OVERRIDE_MAX_LOOP_MAX_US=0
 CLI_OVERRIDE_MAX_WIFI_MAX_US=0
@@ -103,6 +104,18 @@ DISPLAY_DRIVE_ENABLED=0
 DISPLAY_DRIVE_INTERVAL_SECONDS=7
 DISPLAY_PREVIEW_URL="${REAL_FW_DISPLAY_PREVIEW_URL:-}"
 DISPLAY_MIN_UPDATES_DELTA=1
+TRANSITION_DRIVE_ENABLED=0
+TRANSITION_DRIVE_INTERVAL_SECONDS=15
+TRANSITION_FLAP_CYCLES=3
+TRANSITION_CONTROL_URL="${REAL_FW_TRANSITION_CONTROL_URL:-${REAL_FW_SETTINGS_URL:-}}"
+TRANSITION_STABLE_CONSECUTIVE_SAMPLES="${REAL_FW_STABLE_CONSECUTIVE_SAMPLES:-2}"
+MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN=0
+MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF=0
+MAX_SAMPLES_TO_STABLE=0
+MAX_AP_TRANSITION_CHURN_DELTA=0
+MAX_PROXY_ADV_TRANSITION_CHURN_DELTA=0
+MIN_AP_DOWN_TRANSITIONS=0
+MIN_PROXY_ADV_OFF_TRANSITIONS=0
 OUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
@@ -457,6 +470,9 @@ while [[ $# -gt 0 ]]; do
     --allow-inconclusive)
       ALLOW_INCONCLUSIVE=1
       ;;
+    --ignore-gps-errors)
+      IGNORE_GPS_ERRORS=1
+      ;;
     --dry-run)
       DRY_RUN=1
       ;;
@@ -485,6 +501,97 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       DISPLAY_MIN_UPDATES_DELTA="$2"
+      shift
+      ;;
+    --drive-transition-flaps)
+      TRANSITION_DRIVE_ENABLED=1
+      ;;
+    --transition-drive-interval-seconds)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --transition-drive-interval-seconds" >&2
+        exit 2
+      fi
+      TRANSITION_DRIVE_INTERVAL_SECONDS="$2"
+      shift
+      ;;
+    --transition-flap-cycles)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --transition-flap-cycles" >&2
+        exit 2
+      fi
+      TRANSITION_FLAP_CYCLES="$2"
+      shift
+      ;;
+    --transition-control-url|--transition-settings-url)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --transition-control-url" >&2
+        exit 2
+      fi
+      TRANSITION_CONTROL_URL="$2"
+      shift
+      ;;
+    --stable-consecutive-samples)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --stable-consecutive-samples" >&2
+        exit 2
+      fi
+      TRANSITION_STABLE_CONSECUTIVE_SAMPLES="$2"
+      shift
+      ;;
+    --max-time-to-stable-ms-after-ap-down)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-time-to-stable-ms-after-ap-down" >&2
+        exit 2
+      fi
+      MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN="$2"
+      shift
+      ;;
+    --max-time-to-stable-ms-after-proxy-adv-off)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-time-to-stable-ms-after-proxy-adv-off" >&2
+        exit 2
+      fi
+      MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF="$2"
+      shift
+      ;;
+    --max-samples-to-stable)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-samples-to-stable" >&2
+        exit 2
+      fi
+      MAX_SAMPLES_TO_STABLE="$2"
+      shift
+      ;;
+    --max-ap-transition-churn-delta)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-ap-transition-churn-delta" >&2
+        exit 2
+      fi
+      MAX_AP_TRANSITION_CHURN_DELTA="$2"
+      shift
+      ;;
+    --max-proxy-adv-transition-churn-delta)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --max-proxy-adv-transition-churn-delta" >&2
+        exit 2
+      fi
+      MAX_PROXY_ADV_TRANSITION_CHURN_DELTA="$2"
+      shift
+      ;;
+    --min-ap-down-transitions)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --min-ap-down-transitions" >&2
+        exit 2
+      fi
+      MIN_AP_DOWN_TRANSITIONS="$2"
+      shift
+      ;;
+    --min-proxy-adv-off-transitions)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --min-proxy-adv-off-transitions" >&2
+        exit 2
+      fi
+      MIN_PROXY_ADV_OFF_TRANSITIONS="$2"
       shift
       ;;
     --out-dir)
@@ -556,6 +663,42 @@ Options:
                         Display preview endpoint URL (default: derived from metrics URL)
   --min-display-updates-delta N
                         Fail when parsed displayUpdates delta is below N (default: 1)
+  --ignore-gps-errors   Suppress gpsObsDrops advisory warnings
+  --drive-transition-flaps
+                        Toggle proxy BLE advertising off/on during soak
+                        using /api/debug/proxy-advertising for transition
+                        recovery checks
+  --transition-drive-interval-seconds N
+                        Interval between transition flap actions (default: 15)
+  --transition-flap-cycles N
+                        Number of off/on flap cycles to attempt (default: 3)
+  --transition-control-url URL
+                        Runtime proxy-control endpoint used by transition drive
+                        (default: derived from metrics URL)
+  --stable-consecutive-samples N
+                        Consecutive in-threshold samples required to mark
+                        transition stabilized (default: 2)
+  --max-time-to-stable-ms-after-ap-down N
+                        Maximum allowed recovery time after AP down transition
+                        (0 disables gate)
+  --max-time-to-stable-ms-after-proxy-adv-off N
+                        Maximum allowed recovery time after proxy advertising
+                        off transition (0 disables gate)
+  --max-samples-to-stable N
+                        Maximum allowed samples-to-stable after transition
+                        (0 disables gate)
+  --max-ap-transition-churn-delta N
+                        Maximum allowed AP down transitions in steady-state
+                        runs (default: 0)
+  --max-proxy-adv-transition-churn-delta N
+                        Maximum allowed proxy advertising on/off transitions in
+                        steady-state runs (default: 0)
+  --min-ap-down-transitions N
+                        Minimum required AP down transitions in transition-drive
+                        runs (default: 0)
+  --min-proxy-adv-off-transitions N
+                        Minimum required proxy advertising off transitions in
+                        transition-drive runs (default: 0)
   --max-sd-max-us N     Maximum observed sdMaxUs peak (0 disables gate)
   --max-fs-max-us N     Maximum observed fsMaxUs peak (0 disables gate)
   --max-oversize-drops-delta N
@@ -665,6 +808,19 @@ if [[ -n "$SOAK_PROFILE" ]]; then
   esac
 fi
 
+if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 ]]; then
+  # Transition-drive runs intentionally introduce proxy advertising churn.
+  if [[ "$MIN_PROXY_ADV_OFF_TRANSITIONS" -eq 0 && "$TRANSITION_FLAP_CYCLES" -gt 0 ]]; then
+    MIN_PROXY_ADV_OFF_TRANSITIONS="$TRANSITION_FLAP_CYCLES"
+  fi
+  if [[ "$MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF" -eq 0 ]]; then
+    MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF=30000
+  fi
+  if [[ "$MAX_SAMPLES_TO_STABLE" -eq 0 ]]; then
+    MAX_SAMPLES_TO_STABLE=6
+  fi
+fi
+
 if ! [[ "$DURATION_SECONDS" =~ ^[0-9]+$ ]] || [[ "$DURATION_SECONDS" -lt 1 ]]; then
   echo "Invalid --duration-seconds value '$DURATION_SECONDS' (expected positive integer)." >&2
   exit 2
@@ -692,6 +848,21 @@ fi
 
 if ! [[ "$DISPLAY_MIN_UPDATES_DELTA" =~ ^[0-9]+$ ]]; then
   echo "Invalid --min-display-updates-delta value '$DISPLAY_MIN_UPDATES_DELTA' (expected non-negative integer)." >&2
+  exit 2
+fi
+
+if ! [[ "$TRANSITION_DRIVE_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] || [[ "$TRANSITION_DRIVE_INTERVAL_SECONDS" -lt 1 ]]; then
+  echo "Invalid --transition-drive-interval-seconds value '$TRANSITION_DRIVE_INTERVAL_SECONDS' (expected positive integer)." >&2
+  exit 2
+fi
+
+if ! [[ "$TRANSITION_FLAP_CYCLES" =~ ^[0-9]+$ ]]; then
+  echo "Invalid --transition-flap-cycles value '$TRANSITION_FLAP_CYCLES' (expected non-negative integer)." >&2
+  exit 2
+fi
+
+if ! [[ "$TRANSITION_STABLE_CONSECUTIVE_SAMPLES" =~ ^[0-9]+$ ]] || [[ "$TRANSITION_STABLE_CONSECUTIVE_SAMPLES" -lt 1 ]]; then
+  echo "Invalid --stable-consecutive-samples value '$TRANSITION_STABLE_CONSECUTIVE_SAMPLES' (expected positive integer)." >&2
   exit 2
 fi
 
@@ -728,6 +899,11 @@ if ! [[ "$METRICS_SOAK_MODE" =~ ^[01]$ ]]; then
   exit 2
 fi
 
+if ! [[ "$IGNORE_GPS_ERRORS" =~ ^[01]$ ]]; then
+  echo "Invalid ignore-gps flag value '$IGNORE_GPS_ERRORS' (expected 0 or 1)." >&2
+  exit 2
+fi
+
 for gate_var in \
   MIN_RX_PACKETS_DELTA \
   MIN_PARSE_SUCCESSES_DELTA \
@@ -748,7 +924,14 @@ for gate_var in \
   MIN_DMA_LARGEST \
   MAX_BLE_PROCESS_MAX_US \
   MAX_DISP_PIPE_MAX_US \
-  MAX_BLE_MUTEX_TIMEOUT_DELTA
+  MAX_BLE_MUTEX_TIMEOUT_DELTA \
+  MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN \
+  MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF \
+  MAX_SAMPLES_TO_STABLE \
+  MAX_AP_TRANSITION_CHURN_DELTA \
+  MAX_PROXY_ADV_TRANSITION_CHURN_DELTA \
+  MIN_AP_DOWN_TRANSITIONS \
+  MIN_PROXY_ADV_OFF_TRANSITIONS
 do
   gate_val="${!gate_var}"
   if ! [[ "$gate_val" =~ ^[0-9]+$ ]]; then
@@ -844,6 +1027,9 @@ if [[ -n "$METRICS_URL" ]]; then
   if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" ]]; then
     DISPLAY_PREVIEW_URL="${metrics_url_base%/api/debug/metrics}/api/displaycolors/preview"
   fi
+  if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 && -z "$TRANSITION_CONTROL_URL" ]]; then
+    TRANSITION_CONTROL_URL="${metrics_url_base%/api/debug/metrics}/api/debug/proxy-advertising"
+  fi
 
   if [[ "$METRICS_SOAK_MODE" -eq 1 && "$METRICS_URL" != *"soak="* ]]; then
     if [[ "$METRICS_URL" == *"?"* ]]; then
@@ -864,6 +1050,12 @@ fi
 if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" ]]; then
   echo "Display drive is enabled but no preview URL was provided or derivable." >&2
   echo "Set --display-preview-url or provide --metrics-url ending in /api/debug/metrics." >&2
+  exit 2
+fi
+
+if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 && -z "$TRANSITION_CONTROL_URL" ]]; then
+  echo "Transition drive is enabled but no control URL was provided or derivable." >&2
+  echo "Set --transition-control-url or provide --metrics-url ending in /api/debug/metrics." >&2
   exit 2
 fi
 
@@ -1097,7 +1289,10 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} (0 disables)"
   echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA}"
   echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)"
+  echo "    transition gates: maxTimeToStableApDownMs=${MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN} maxTimeToStableProxyOffMs=${MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF} maxSamplesToStable=${MAX_SAMPLES_TO_STABLE} maxApTransitionChurn=${MAX_AP_TRANSITION_CHURN_DELTA} maxProxyAdvTransitionChurn=${MAX_PROXY_ADV_TRANSITION_CHURN_DELTA} minApDownTransitions=${MIN_AP_DOWN_TRANSITIONS} minProxyAdvOffTransitions=${MIN_PROXY_ADV_OFF_TRANSITIONS}"
+  echo "    gps advisory suppression: ${IGNORE_GPS_ERRORS}"
   echo "    display drive: enabled=${DISPLAY_DRIVE_ENABLED} url=${DISPLAY_PREVIEW_URL:-disabled} interval=${DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=${DISPLAY_MIN_UPDATES_DELTA}"
+  echo "    transition drive: enabled=${TRANSITION_DRIVE_ENABLED} controlUrl=${TRANSITION_CONTROL_URL:-disabled} interval=${TRANSITION_DRIVE_INTERVAL_SECONDS}s cycles=${TRANSITION_FLAP_CYCLES} stableConsecutiveSamples=${TRANSITION_STABLE_CONSECUTIVE_SAMPLES}"
   echo "    out dir: $OUT_DIR"
   if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
     echo "    baseline csv: ${BASELINE_PERF_CSV} (profile=${BASELINE_PROFILE}, stressClass=${BASELINE_STRESS_CLASS}, runStressClass=${RUN_STRESS_CLASS}, session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})"
@@ -1165,6 +1360,8 @@ echo "    latency gate mode: ${LATENCY_GATE_MODE} (robust minSamples=${LATENCY_R
 echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} (0 disables)" | tee -a "$RUN_LOG"
 echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA}" | tee -a "$RUN_LOG"
 echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)" | tee -a "$RUN_LOG"
+echo "    transition gates: maxTimeToStableApDownMs=${MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN} maxTimeToStableProxyOffMs=${MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF} maxSamplesToStable=${MAX_SAMPLES_TO_STABLE} maxApTransitionChurn=${MAX_AP_TRANSITION_CHURN_DELTA} maxProxyAdvTransitionChurn=${MAX_PROXY_ADV_TRANSITION_CHURN_DELTA} minApDownTransitions=${MIN_AP_DOWN_TRANSITIONS} minProxyAdvOffTransitions=${MIN_PROXY_ADV_OFF_TRANSITIONS}" | tee -a "$RUN_LOG"
+echo "    gps advisory suppression: ${IGNORE_GPS_ERRORS}" | tee -a "$RUN_LOG"
 if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
   echo "    baseline csv: ${BASELINE_PERF_CSV} (profile=${BASELINE_PROFILE}, stressClass=${BASELINE_STRESS_CLASS}, runStressClass=${RUN_STRESS_CLASS}, session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})" | tee -a "$RUN_LOG"
   echo "    baseline factors: latency x${BASELINE_LATENCY_FACTOR}, throughput x${BASELINE_THROUGHPUT_FACTOR}; rates rx=${BASELINE_RX_RATE_PER_SEC}/s parse=${BASELINE_PARSE_RATE_PER_SEC}/s" | tee -a "$RUN_LOG"
@@ -1173,6 +1370,11 @@ if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
   echo "    display drive: enabled (${DISPLAY_PREVIEW_URL}) every ${DISPLAY_DRIVE_INTERVAL_SECONDS}s, min displayUpdates delta=${DISPLAY_MIN_UPDATES_DELTA}" | tee -a "$RUN_LOG"
 else
   echo "    display drive: disabled" | tee -a "$RUN_LOG"
+fi
+if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 ]]; then
+  echo "    transition drive: enabled (${TRANSITION_CONTROL_URL}) every ${TRANSITION_DRIVE_INTERVAL_SECONDS}s, cycles=${TRANSITION_FLAP_CYCLES}, stableConsecutiveSamples=${TRANSITION_STABLE_CONSECUTIVE_SAMPLES}" | tee -a "$RUN_LOG"
+else
+  echo "    transition drive: disabled" | tee -a "$RUN_LOG"
 fi
 echo "    out dir: $OUT_DIR" | tee -a "$RUN_LOG"
 echo "" | tee -a "$RUN_LOG"
@@ -1253,6 +1455,9 @@ if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
   # Account for the preview retry path in the same loop iteration.
   serial_capture_call_budget=$((serial_capture_call_budget + 2))
 fi
+if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 ]]; then
+  serial_capture_call_budget=$((serial_capture_call_budget + 1))
+fi
 SERIAL_CAPTURE_GRACE_SECONDS=$((HTTP_TIMEOUT_SECONDS * serial_capture_call_budget + POLL_SECONDS + 15))
 if [[ "$SERIAL_CAPTURE_GRACE_SECONDS" -lt 20 ]]; then
   SERIAL_CAPTURE_GRACE_SECONDS=20
@@ -1325,6 +1530,14 @@ display_drive_calls=0
 display_drive_errors=0
 display_drive_start_misses=0
 next_display_drive_epoch="$soak_start_epoch"
+transition_drive_calls=0
+transition_drive_errors=0
+transition_flap_off_calls=0
+transition_flap_on_calls=0
+transition_flap_restore_calls=0
+transition_flap_cycles_completed=0
+transition_target_enabled=1
+next_transition_drive_epoch="$soak_start_epoch"
 
 echo "==> Soaking for ${DURATION_SECONDS}s..." | tee -a "$RUN_LOG"
 
@@ -1382,8 +1595,48 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
     next_display_drive_epoch=$((now_epoch + DISPLAY_DRIVE_INTERVAL_SECONDS))
   fi
 
+  if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 &&
+        "$now_epoch" -ge "$next_transition_drive_epoch" &&
+        "$transition_flap_cycles_completed" -lt "$TRANSITION_FLAP_CYCLES" ]]; then
+    transition_drive_calls=$((transition_drive_calls + 1))
+    transition_resp="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" \
+      -X POST --data "enabled=${transition_target_enabled}" \
+      "$TRANSITION_CONTROL_URL" 2>/dev/null || true)"
+    if [[ -z "$transition_resp" || "$transition_resp" != *'"success":true'* ]]; then
+      transition_drive_errors=$((transition_drive_errors + 1))
+      transition_resp_compact="$(printf "%s" "$transition_resp" | tr -d '\r\n')"
+      transition_resp_compact="${transition_resp_compact:0:180}"
+      if [[ -n "$transition_resp_compact" ]]; then
+        echo "[WARN] Transition drive action failed (enabled=${transition_target_enabled} response=${transition_resp_compact})." | tee -a "$RUN_LOG"
+      else
+        echo "[WARN] Transition drive action failed (enabled=${transition_target_enabled})." | tee -a "$RUN_LOG"
+      fi
+    else
+      if [[ "$transition_target_enabled" -eq 0 ]]; then
+        transition_flap_off_calls=$((transition_flap_off_calls + 1))
+        transition_flap_cycles_completed=$((transition_flap_cycles_completed + 1))
+        transition_target_enabled=1
+      else
+        transition_flap_on_calls=$((transition_flap_on_calls + 1))
+        transition_target_enabled=0
+      fi
+    fi
+    next_transition_drive_epoch=$((now_epoch + TRANSITION_DRIVE_INTERVAL_SECONDS))
+  fi
+
   sleep "$POLL_SECONDS"
 done
+
+if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 ]]; then
+  transition_restore_resp="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" \
+    -X POST --data "enabled=1" "$TRANSITION_CONTROL_URL" 2>/dev/null || true)"
+  if [[ -n "$transition_restore_resp" && "$transition_restore_resp" == *'"success":true'* ]]; then
+    transition_flap_restore_calls=$((transition_flap_restore_calls + 1))
+  else
+    transition_drive_errors=$((transition_drive_errors + 1))
+    echo "[WARN] Transition drive restore failed (enabled=1)." | tee -a "$RUN_LOG"
+  fi
+fi
 
 # Capture one final sample at/near soak end so throughput deltas span the full
 # run window instead of ending early due poll/sleep cadence.
@@ -1442,6 +1695,7 @@ metrics_parser_args=(
   "$ROOT_DIR/tools/soak_parse_metrics.py"
   "$METRICS_JSONL"
   "--skip-first-wifi-samples" "$WIFI_ROBUST_SKIP_FIRST_SAMPLES"
+  "--stable-consecutive-samples" "$TRANSITION_STABLE_CONSECUTIVE_SAMPLES"
 )
 if [[ "$MAX_WIFI_MAX_US" -gt 0 ]]; then
   metrics_parser_args+=(--wifi-threshold "$MAX_WIFI_MAX_US")
@@ -1525,6 +1779,60 @@ disp_pipe_p95=""
 disp_pipe_over_limit_count=""
 ble_mutex_timeout_delta=""
 gps_obs_drops_delta=""
+wifi_ap_up_transitions_delta=""
+wifi_ap_down_transitions_delta=""
+proxy_adv_on_transitions_delta=""
+proxy_adv_off_transitions_delta=""
+wifi_ap_active_samples=""
+wifi_ap_inactive_samples=""
+proxy_adv_on_samples=""
+proxy_adv_off_samples=""
+wifi_peak_ap_active=""
+wifi_peak_ap_inactive=""
+wifi_peak_proxy_adv_on=""
+wifi_peak_proxy_adv_off=""
+wifi_ap_last_reason_code=""
+wifi_ap_last_reason=""
+proxy_adv_last_reason_code=""
+proxy_adv_last_reason=""
+stable_consecutive_samples_required=""
+wifi_ap_down_events_observed=""
+wifi_ap_down_events_stabilized=""
+wifi_ap_down_events_unstable=""
+samples_to_stable_after_ap_down=""
+time_to_stable_ms_after_ap_down=""
+proxy_adv_off_events_observed=""
+proxy_adv_off_events_stabilized=""
+proxy_adv_off_events_unstable=""
+samples_to_stable_after_proxy_adv_off=""
+time_to_stable_ms_after_proxy_adv_off=""
+transition_primary_source=""
+transition_primary_event_index=""
+transition_primary_stable_index=""
+transition_primary_stabilized=""
+samples_to_stable=""
+time_to_stable_ms=""
+window_pre_samples=""
+window_pre_wifi_peak=""
+window_pre_wifi_p95=""
+window_pre_loop_peak=""
+window_pre_loop_p95=""
+window_pre_disp_pipe_peak=""
+window_pre_disp_pipe_p95=""
+window_transition_samples=""
+window_transition_wifi_peak=""
+window_transition_wifi_p95=""
+window_transition_loop_peak=""
+window_transition_loop_p95=""
+window_transition_disp_pipe_peak=""
+window_transition_disp_pipe_p95=""
+window_post_stable_samples=""
+window_post_stable_wifi_peak=""
+window_post_stable_wifi_p95=""
+window_post_stable_loop_peak=""
+window_post_stable_loop_p95=""
+window_post_stable_disp_pipe_peak=""
+window_post_stable_disp_pipe_p95=""
 
 while IFS='=' read -r key value; do
   case "$key" in
@@ -1595,6 +1903,60 @@ while IFS='=' read -r key value; do
     disp_pipe_over_limit_count) disp_pipe_over_limit_count="$value" ;;
     ble_mutex_timeout_delta) ble_mutex_timeout_delta="$value" ;;
     gps_obs_drops_delta) gps_obs_drops_delta="$value" ;;
+    wifi_ap_up_transitions_delta) wifi_ap_up_transitions_delta="$value" ;;
+    wifi_ap_down_transitions_delta) wifi_ap_down_transitions_delta="$value" ;;
+    proxy_adv_on_transitions_delta) proxy_adv_on_transitions_delta="$value" ;;
+    proxy_adv_off_transitions_delta) proxy_adv_off_transitions_delta="$value" ;;
+    wifi_ap_active_samples) wifi_ap_active_samples="$value" ;;
+    wifi_ap_inactive_samples) wifi_ap_inactive_samples="$value" ;;
+    proxy_adv_on_samples) proxy_adv_on_samples="$value" ;;
+    proxy_adv_off_samples) proxy_adv_off_samples="$value" ;;
+    wifi_peak_ap_active) wifi_peak_ap_active="$value" ;;
+    wifi_peak_ap_inactive) wifi_peak_ap_inactive="$value" ;;
+    wifi_peak_proxy_adv_on) wifi_peak_proxy_adv_on="$value" ;;
+    wifi_peak_proxy_adv_off) wifi_peak_proxy_adv_off="$value" ;;
+    wifi_ap_last_reason_code) wifi_ap_last_reason_code="$value" ;;
+    wifi_ap_last_reason) wifi_ap_last_reason="$value" ;;
+    proxy_adv_last_reason_code) proxy_adv_last_reason_code="$value" ;;
+    proxy_adv_last_reason) proxy_adv_last_reason="$value" ;;
+    stable_consecutive_samples_required) stable_consecutive_samples_required="$value" ;;
+    wifi_ap_down_events_observed) wifi_ap_down_events_observed="$value" ;;
+    wifi_ap_down_events_stabilized) wifi_ap_down_events_stabilized="$value" ;;
+    wifi_ap_down_events_unstable) wifi_ap_down_events_unstable="$value" ;;
+    samples_to_stable_after_ap_down) samples_to_stable_after_ap_down="$value" ;;
+    time_to_stable_ms_after_ap_down) time_to_stable_ms_after_ap_down="$value" ;;
+    proxy_adv_off_events_observed) proxy_adv_off_events_observed="$value" ;;
+    proxy_adv_off_events_stabilized) proxy_adv_off_events_stabilized="$value" ;;
+    proxy_adv_off_events_unstable) proxy_adv_off_events_unstable="$value" ;;
+    samples_to_stable_after_proxy_adv_off) samples_to_stable_after_proxy_adv_off="$value" ;;
+    time_to_stable_ms_after_proxy_adv_off) time_to_stable_ms_after_proxy_adv_off="$value" ;;
+    transition_primary_source) transition_primary_source="$value" ;;
+    transition_primary_event_index) transition_primary_event_index="$value" ;;
+    transition_primary_stable_index) transition_primary_stable_index="$value" ;;
+    transition_primary_stabilized) transition_primary_stabilized="$value" ;;
+    samples_to_stable) samples_to_stable="$value" ;;
+    time_to_stable_ms) time_to_stable_ms="$value" ;;
+    window_pre_samples) window_pre_samples="$value" ;;
+    window_pre_wifi_peak) window_pre_wifi_peak="$value" ;;
+    window_pre_wifi_p95) window_pre_wifi_p95="$value" ;;
+    window_pre_loop_peak) window_pre_loop_peak="$value" ;;
+    window_pre_loop_p95) window_pre_loop_p95="$value" ;;
+    window_pre_disp_pipe_peak) window_pre_disp_pipe_peak="$value" ;;
+    window_pre_disp_pipe_p95) window_pre_disp_pipe_p95="$value" ;;
+    window_transition_samples) window_transition_samples="$value" ;;
+    window_transition_wifi_peak) window_transition_wifi_peak="$value" ;;
+    window_transition_wifi_p95) window_transition_wifi_p95="$value" ;;
+    window_transition_loop_peak) window_transition_loop_peak="$value" ;;
+    window_transition_loop_p95) window_transition_loop_p95="$value" ;;
+    window_transition_disp_pipe_peak) window_transition_disp_pipe_peak="$value" ;;
+    window_transition_disp_pipe_p95) window_transition_disp_pipe_p95="$value" ;;
+    window_post_stable_samples) window_post_stable_samples="$value" ;;
+    window_post_stable_wifi_peak) window_post_stable_wifi_peak="$value" ;;
+    window_post_stable_wifi_p95) window_post_stable_wifi_p95="$value" ;;
+    window_post_stable_loop_peak) window_post_stable_loop_peak="$value" ;;
+    window_post_stable_loop_p95) window_post_stable_loop_p95="$value" ;;
+    window_post_stable_disp_pipe_peak) window_post_stable_disp_pipe_peak="$value" ;;
+    window_post_stable_disp_pipe_p95) window_post_stable_disp_pipe_p95="$value" ;;
   esac
 done < "$metrics_kv"
 
@@ -1766,6 +2128,13 @@ gate_dma_largest_fail=0
 gate_ble_process_max_fail=0
 gate_disp_pipe_max_fail=0
 gate_ble_mutex_timeout_fail=0
+gate_transition_churn_ap_fail=0
+gate_transition_churn_proxy_fail=0
+gate_transition_min_events_fail=0
+gate_transition_recovery_ap_fail=0
+gate_transition_recovery_proxy_fail=0
+gate_transition_samples_fail=0
+gate_transition_drive_fail=0
 
 # Advisory SLO tracking (warn-only, do not cause FAIL)
 advisory_warnings=()
@@ -2035,6 +2404,96 @@ if [[ "$reboot_evidence_detected" -eq 0 ]]; then
       mark_gate_fail gate_ble_mutex_timeout_fail "bleMutexTimeout delta ${ble_mutex_timeout_delta} above max ${MAX_BLE_MUTEX_TIMEOUT_DELTA}."
     fi
 
+    # Transition churn/recovery gates (Cycle 3)
+    if [[ "$TRANSITION_DRIVE_ENABLED" -eq 0 ]]; then
+      if ! is_uint "$wifi_ap_down_transitions_delta"; then
+        mark_gate_fail gate_transition_churn_ap_fail "AP down transition delta ${wifi_ap_down_transitions_delta:-n/a} unavailable (max ${MAX_AP_TRANSITION_CHURN_DELTA})."
+      elif [[ "$wifi_ap_down_transitions_delta" -gt "$MAX_AP_TRANSITION_CHURN_DELTA" ]]; then
+        mark_gate_fail gate_transition_churn_ap_fail "AP down transition delta ${wifi_ap_down_transitions_delta} above steady-state max ${MAX_AP_TRANSITION_CHURN_DELTA}."
+      fi
+
+      if ! is_uint "$proxy_adv_off_transitions_delta" || ! is_uint "$proxy_adv_on_transitions_delta"; then
+        mark_gate_fail gate_transition_churn_proxy_fail "Proxy advertising transition deltas on/off ${proxy_adv_on_transitions_delta:-n/a}/${proxy_adv_off_transitions_delta:-n/a} unavailable (max ${MAX_PROXY_ADV_TRANSITION_CHURN_DELTA})."
+      elif [[ "$proxy_adv_off_transitions_delta" -gt "$MAX_PROXY_ADV_TRANSITION_CHURN_DELTA" || "$proxy_adv_on_transitions_delta" -gt "$MAX_PROXY_ADV_TRANSITION_CHURN_DELTA" ]]; then
+        mark_gate_fail gate_transition_churn_proxy_fail "Proxy advertising transition deltas on/off ${proxy_adv_on_transitions_delta}/${proxy_adv_off_transitions_delta} above steady-state max ${MAX_PROXY_ADV_TRANSITION_CHURN_DELTA}."
+      fi
+    else
+      if [[ "$transition_drive_errors" -gt 0 ]]; then
+        mark_gate_fail gate_transition_drive_fail "Transition drive reported ${transition_drive_errors} failed action(s)."
+      fi
+      if [[ "$TRANSITION_FLAP_CYCLES" -gt 0 && "$transition_flap_cycles_completed" -lt "$TRANSITION_FLAP_CYCLES" ]]; then
+        mark_gate_fail gate_transition_drive_fail "Transition drive completed ${transition_flap_cycles_completed}/${TRANSITION_FLAP_CYCLES} flap cycle(s)."
+      fi
+
+      if [[ "$MIN_AP_DOWN_TRANSITIONS" -gt 0 ]]; then
+        if ! is_uint "$wifi_ap_down_transitions_delta"; then
+          mark_gate_fail gate_transition_min_events_fail "AP down transitions delta unavailable (required >= ${MIN_AP_DOWN_TRANSITIONS})."
+        elif [[ "$wifi_ap_down_transitions_delta" -lt "$MIN_AP_DOWN_TRANSITIONS" ]]; then
+          mark_gate_fail gate_transition_min_events_fail "AP down transitions delta ${wifi_ap_down_transitions_delta} below required ${MIN_AP_DOWN_TRANSITIONS}."
+        fi
+      fi
+      if [[ "$MIN_PROXY_ADV_OFF_TRANSITIONS" -gt 0 ]]; then
+        if ! is_uint "$proxy_adv_off_transitions_delta"; then
+          mark_gate_fail gate_transition_min_events_fail "Proxy advertising off transitions delta unavailable (required >= ${MIN_PROXY_ADV_OFF_TRANSITIONS})."
+        elif [[ "$proxy_adv_off_transitions_delta" -lt "$MIN_PROXY_ADV_OFF_TRANSITIONS" ]]; then
+          mark_gate_fail gate_transition_min_events_fail "Proxy advertising off transitions delta ${proxy_adv_off_transitions_delta} below required ${MIN_PROXY_ADV_OFF_TRANSITIONS}."
+        fi
+      fi
+
+      if is_uint "$wifi_ap_down_events_unstable" && [[ "$wifi_ap_down_events_unstable" -gt 0 ]]; then
+        mark_gate_fail gate_transition_recovery_ap_fail "AP down transitions had ${wifi_ap_down_events_unstable} unstable recovery event(s)."
+      fi
+      if is_uint "$proxy_adv_off_events_unstable" && [[ "$proxy_adv_off_events_unstable" -gt 0 ]]; then
+        proxy_unstable_allowed=0
+        if is_uint "$proxy_adv_off_events_observed" && is_uint "$transition_flap_off_calls" && [[ "$proxy_adv_off_events_observed" -ge "$transition_flap_off_calls" ]]; then
+          extra_proxy_off_events=$((proxy_adv_off_events_observed - transition_flap_off_calls))
+          if [[ "$proxy_adv_off_events_unstable" -le "$extra_proxy_off_events" ]]; then
+            proxy_unstable_allowed=1
+            advisory_warnings+=("[ADVISORY] proxy-off unstable events=${proxy_adv_off_events_unstable} within uncontrolled off-transition budget (observed=${proxy_adv_off_events_observed}, drive_off_calls=${transition_flap_off_calls}).")
+          fi
+        fi
+        if [[ "$proxy_unstable_allowed" -ne 1 ]]; then
+          mark_gate_fail gate_transition_recovery_proxy_fail "Proxy advertising off transitions had ${proxy_adv_off_events_unstable} unstable recovery event(s)."
+        fi
+      fi
+
+      if [[ "$MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN" -gt 0 ]]; then
+        if is_uint "$wifi_ap_down_events_observed" && [[ "$wifi_ap_down_events_observed" -gt 0 ]]; then
+          if ! is_uint "$time_to_stable_ms_after_ap_down"; then
+            mark_gate_fail gate_transition_recovery_ap_fail "AP down recovery time unavailable (max ${MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN}ms)."
+          elif [[ "$time_to_stable_ms_after_ap_down" -gt "$MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN" ]]; then
+            mark_gate_fail gate_transition_recovery_ap_fail "AP down recovery time ${time_to_stable_ms_after_ap_down}ms above max ${MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN}ms."
+          fi
+        fi
+      fi
+      if [[ "$MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF" -gt 0 ]]; then
+        if is_uint "$proxy_adv_off_events_observed" && [[ "$proxy_adv_off_events_observed" -gt 0 ]]; then
+          if ! is_uint "$time_to_stable_ms_after_proxy_adv_off"; then
+            mark_gate_fail gate_transition_recovery_proxy_fail "Proxy advertising off recovery time unavailable (max ${MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF}ms)."
+          elif [[ "$time_to_stable_ms_after_proxy_adv_off" -gt "$MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF" ]]; then
+            mark_gate_fail gate_transition_recovery_proxy_fail "Proxy advertising off recovery time ${time_to_stable_ms_after_proxy_adv_off}ms above max ${MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF}ms."
+          fi
+        fi
+      fi
+
+      if [[ "$MAX_SAMPLES_TO_STABLE" -gt 0 ]]; then
+        if is_uint "$wifi_ap_down_events_observed" && [[ "$wifi_ap_down_events_observed" -gt 0 ]]; then
+          if ! is_uint "$samples_to_stable_after_ap_down"; then
+            mark_gate_fail gate_transition_samples_fail "AP down samples-to-stable unavailable (max ${MAX_SAMPLES_TO_STABLE})."
+          elif [[ "$samples_to_stable_after_ap_down" -gt "$MAX_SAMPLES_TO_STABLE" ]]; then
+            mark_gate_fail gate_transition_samples_fail "AP down samples-to-stable ${samples_to_stable_after_ap_down} above max ${MAX_SAMPLES_TO_STABLE}."
+          fi
+        fi
+        if is_uint "$proxy_adv_off_events_observed" && [[ "$proxy_adv_off_events_observed" -gt 0 ]]; then
+          if ! is_uint "$samples_to_stable_after_proxy_adv_off"; then
+            mark_gate_fail gate_transition_samples_fail "Proxy advertising off samples-to-stable unavailable (max ${MAX_SAMPLES_TO_STABLE})."
+          elif [[ "$samples_to_stable_after_proxy_adv_off" -gt "$MAX_SAMPLES_TO_STABLE" ]]; then
+            mark_gate_fail gate_transition_samples_fail "Proxy advertising off samples-to-stable ${samples_to_stable_after_proxy_adv_off} above max ${MAX_SAMPLES_TO_STABLE}."
+          fi
+        fi
+      fi
+    fi
+
     # ----- Advisory SLOs (warn-only, do not cause FAIL) -----
     if is_uint "$display_updates_delta" && is_uint "$display_skips_delta"; then
       display_total=$((display_updates_delta + display_skips_delta))
@@ -2057,7 +2516,7 @@ if [[ "$reboot_evidence_detected" -eq 0 ]]; then
     if is_uint "$disconnects_delta" && [[ "$disconnects_delta" -gt 2 ]]; then
       advisory_warnings+=("disconnects delta=${disconnects_delta} exceeds advisory limit of 2.")
     fi
-    if is_uint "$gps_obs_drops_delta" && [[ "$gps_obs_drops_delta" -gt 0 ]]; then
+    if [[ "$IGNORE_GPS_ERRORS" -eq 0 ]] && is_uint "$gps_obs_drops_delta" && [[ "$gps_obs_drops_delta" -gt 0 ]]; then
       advisory_warnings+=("gpsObsDrops delta=${gps_obs_drops_delta} indicates dropped GPS observations.")
     fi
     fi
@@ -2107,6 +2566,9 @@ if [[ "$result" == "FAIL" ]]; then
   elif [[ "$gate_queue_high_water_fail" -eq 1 || "$gate_wifi_connect_deferred_fail" -eq 1 || "$gate_dma_free_fail" -eq 1 || "$gate_dma_largest_fail" -eq 1 ]]; then
     diagnosis_bucket="Resource Pressure Regression"
     diagnosis_next_action="Inspect queueHighWater/wifiConnectDeferred/DMA floor counters around failing samples and tune backpressure or memory usage."
+  elif [[ "$gate_transition_churn_ap_fail" -eq 1 || "$gate_transition_churn_proxy_fail" -eq 1 || "$gate_transition_min_events_fail" -eq 1 || "$gate_transition_recovery_ap_fail" -eq 1 || "$gate_transition_recovery_proxy_fail" -eq 1 || "$gate_transition_samples_fail" -eq 1 || "$gate_transition_drive_fail" -eq 1 ]]; then
+    diagnosis_bucket="Transition Recovery Regression"
+    diagnosis_next_action="Inspect transition flap/recovery windows and reason codes; reduce churn or shorten convergence after AP/proxy-down transitions."
   elif [[ "$gate_loop_fail" -eq 1 || "$gate_wifi_fail" -eq 1 || "$gate_flush_fail" -eq 1 || "$gate_ble_drain_fail" -eq 1 || "$gate_sd_max_fail" -eq 1 || "$gate_fs_max_fail" -eq 1 ]]; then
     if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]]; then
       diagnosis_bucket="Stress Latency Regression"
@@ -2211,6 +2673,26 @@ fi
   echo "- Robust wifi samples raw/excluding-first: ${wifi_sample_count:-n/a} / ${wifi_sample_count_excluding_first:-n/a}"
   echo "- Robust wifi p95 raw/excluding-first: ${wifi_p95_raw:-n/a} / ${wifi_p95_excluding_first:-n/a}"
   echo "- Robust wifi over-limit raw/excluding-first: ${wifi_over_limit_count_raw:-n/a} / ${wifi_over_limit_count_excluding_first:-n/a} (allowed ${wifi_robust_allowed_over_limit:-n/a}, basis ${wifi_robust_basis:-n/a})"
+  echo "- AP transition deltas up/down: ${wifi_ap_up_transitions_delta:-n/a} / ${wifi_ap_down_transitions_delta:-n/a}"
+  echo "- AP state sample split up/down: ${wifi_ap_active_samples:-n/a} / ${wifi_ap_inactive_samples:-n/a}"
+  echo "- AP-segment wifi peaks up/down: ${wifi_peak_ap_active:-n/a} / ${wifi_peak_ap_inactive:-n/a}"
+  echo "- AP last transition reason code/name: ${wifi_ap_last_reason_code:-n/a} / ${wifi_ap_last_reason:-n/a}"
+  echo "- Proxy advertising transition deltas on/off: ${proxy_adv_on_transitions_delta:-n/a} / ${proxy_adv_off_transitions_delta:-n/a}"
+  echo "- Proxy advertising sample split on/off: ${proxy_adv_on_samples:-n/a} / ${proxy_adv_off_samples:-n/a}"
+  echo "- Proxy-segment wifi peaks on/off: ${wifi_peak_proxy_adv_on:-n/a} / ${wifi_peak_proxy_adv_off:-n/a}"
+  echo "- Proxy advertising last transition reason code/name: ${proxy_adv_last_reason_code:-n/a} / ${proxy_adv_last_reason:-n/a}"
+  echo "- Transition stability consecutive samples required: ${stable_consecutive_samples_required:-n/a}"
+  echo "- Transition primary source/event/stable-index: ${transition_primary_source:-n/a} / ${transition_primary_event_index:-n/a} / ${transition_primary_stable_index:-n/a}"
+  echo "- Transition primary samples/time-to-stable: ${samples_to_stable:-n/a} / ${time_to_stable_ms:-n/a}ms"
+  echo "- AP down transition events observed/stabilized/unstable: ${wifi_ap_down_events_observed:-n/a} / ${wifi_ap_down_events_stabilized:-n/a} / ${wifi_ap_down_events_unstable:-n/a}"
+  echo "- AP down samples/time-to-stable: ${samples_to_stable_after_ap_down:-n/a} / ${time_to_stable_ms_after_ap_down:-n/a}ms (max ${MAX_SAMPLES_TO_STABLE}, ${MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN}ms)"
+  echo "- Proxy off transition events observed/stabilized/unstable: ${proxy_adv_off_events_observed:-n/a} / ${proxy_adv_off_events_stabilized:-n/a} / ${proxy_adv_off_events_unstable:-n/a}"
+  echo "- Proxy off samples/time-to-stable: ${samples_to_stable_after_proxy_adv_off:-n/a} / ${time_to_stable_ms_after_proxy_adv_off:-n/a}ms (max ${MAX_SAMPLES_TO_STABLE}, ${MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF}ms)"
+  echo "- Window pre samples wifiPeak/wifiP95 loopPeak/loopP95 dispPeak/dispP95: ${window_pre_samples:-n/a} ${window_pre_wifi_peak:-n/a}/${window_pre_wifi_p95:-n/a} ${window_pre_loop_peak:-n/a}/${window_pre_loop_p95:-n/a} ${window_pre_disp_pipe_peak:-n/a}/${window_pre_disp_pipe_p95:-n/a}"
+  echo "- Window transition samples wifiPeak/wifiP95 loopPeak/loopP95 dispPeak/dispP95: ${window_transition_samples:-n/a} ${window_transition_wifi_peak:-n/a}/${window_transition_wifi_p95:-n/a} ${window_transition_loop_peak:-n/a}/${window_transition_loop_p95:-n/a} ${window_transition_disp_pipe_peak:-n/a}/${window_transition_disp_pipe_p95:-n/a}"
+  echo "- Window post-stable samples wifiPeak/wifiP95 loopPeak/loopP95 dispPeak/dispP95: ${window_post_stable_samples:-n/a} ${window_post_stable_wifi_peak:-n/a}/${window_post_stable_wifi_p95:-n/a} ${window_post_stable_loop_peak:-n/a}/${window_post_stable_loop_p95:-n/a} ${window_post_stable_disp_pipe_peak:-n/a}/${window_post_stable_disp_pipe_p95:-n/a}"
+  echo "- Transition churn gates (steady-state): AP down <= ${MAX_AP_TRANSITION_CHURN_DELTA}, proxy on/off <= ${MAX_PROXY_ADV_TRANSITION_CHURN_DELTA}"
+  echo "- Transition minimum events gates (active drive): AP down >= ${MIN_AP_DOWN_TRANSITIONS}, proxy off >= ${MIN_PROXY_ADV_OFF_TRANSITIONS}"
   echo "- Peak bleDrainMaxUs: ${ble_drain_max_peak:-n/a} (max gate ${MAX_BLE_DRAIN_MAX_US})"
   echo "- Peak sdMaxUs: ${sd_max_peak:-n/a} (max gate ${MAX_SD_MAX_US})"
   echo "- Peak fsMaxUs: ${fs_max_peak:-n/a} (max gate ${MAX_FS_MAX_US})"
@@ -2274,6 +2756,19 @@ fi
   echo "- Display drive errors: ${display_drive_errors}"
   echo "- Display drive start misses: ${display_drive_start_misses}"
   echo "- Minimum required displayUpdates delta: ${DISPLAY_MIN_UPDATES_DELTA}"
+  echo ""
+  echo "## Transition Drive"
+  echo ""
+  echo "- Transition drive enabled: $([[ "$TRANSITION_DRIVE_ENABLED" -eq 1 ]] && echo "yes" || echo "no")"
+  echo "- Transition control URL: ${TRANSITION_CONTROL_URL:-disabled}"
+  echo "- Transition drive interval (s): ${TRANSITION_DRIVE_INTERVAL_SECONDS}"
+  echo "- Transition flap cycles target/completed: ${TRANSITION_FLAP_CYCLES} / ${transition_flap_cycles_completed}"
+  echo "- Transition flap off calls: ${transition_flap_off_calls}"
+  echo "- Transition flap on calls: ${transition_flap_on_calls}"
+  echo "- Transition restore calls: ${transition_flap_restore_calls}"
+  echo "- Transition drive actions: ${transition_drive_calls}"
+  echo "- Transition drive errors: ${transition_drive_errors}"
+  echo "- Stable consecutive samples required: ${TRANSITION_STABLE_CONSECUTIVE_SAMPLES}"
   echo ""
   echo "## Panic Endpoint"
   echo ""

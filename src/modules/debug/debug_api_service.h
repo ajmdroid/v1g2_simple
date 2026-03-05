@@ -26,6 +26,10 @@ void handleApiDebugEnable(WebServer& server,
 void handleApiMetricsReset(WebServer& server,
                            const std::function<bool()>& checkRateLimit);
 
+/// POST /api/debug/proxy-advertising handler with route-level rate limiting.
+void handleApiProxyAdvertisingControl(WebServer& server,
+                                      const std::function<bool()>& checkRateLimit);
+
 /// POST /api/debug/v1-scenario/load handler with route-level rate limiting.
 void handleApiV1ScenarioLoad(WebServer& server,
                              const std::function<bool()>& checkRateLimit);

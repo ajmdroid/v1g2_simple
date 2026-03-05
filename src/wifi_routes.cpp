@@ -359,6 +359,11 @@ void WiFiManager::setupWebServer() {
             server,
             rateLimitCallback);
     });
+    server.on("/api/debug/proxy-advertising", HTTP_POST, [this, rateLimitCallback]() {
+        DebugApiService::handleApiProxyAdvertisingControl(
+            server,
+            rateLimitCallback);
+    });
     server.on("/api/debug/perf-files", HTTP_GET, [this, rateLimitCallback]() {
         DebugApiService::handleApiPerfFilesList(
             server,

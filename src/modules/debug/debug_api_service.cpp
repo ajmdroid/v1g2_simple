@@ -1028,6 +1028,8 @@ static void sendMetrics(WebServer& server) {
     doc["wifiStopOther"] = perfCounters.wifiStopOther.load();
     doc["wifiApDropLowDma"] = perfCounters.wifiApDropLowDma.load();
     doc["wifiApDropIdleSta"] = perfCounters.wifiApDropIdleSta.load();
+    doc["wifiApUpTransitions"] = perfCounters.wifiApUpTransitions.load();
+    doc["wifiApDownTransitions"] = perfCounters.wifiApDownTransitions.load();
     doc["wifiProcessMaxUs"] = perfCounters.wifiProcessMaxUs.load();
     doc["wifiHandleClientMaxUs"] = perfCounters.wifiHandleClientMaxUs.load();
     doc["wifiMaintenanceMaxUs"] = perfCounters.wifiMaintenanceMaxUs.load();
@@ -1088,6 +1090,19 @@ static void sendMetrics(WebServer& server) {
     doc["wifiMaxPrevWindowUs"] = perfGetPrevWindowWifiMaxUs();
     doc["bleProcessMaxPrevWindowUs"] = perfGetPrevWindowBleProcessMaxUs();
     doc["dispPipeMaxPrevWindowUs"] = perfGetPrevWindowDispPipeMaxUs();
+    const uint32_t wifiApLastReasonCode = perfGetWifiApLastTransitionReason();
+    doc["wifiApActive"] = perfGetWifiApState();
+    doc["wifiApLastTransitionMs"] = perfGetWifiApLastTransitionMs();
+    doc["wifiApLastTransitionReasonCode"] = wifiApLastReasonCode;
+    doc["wifiApLastTransitionReason"] = perfWifiApTransitionReasonName(wifiApLastReasonCode);
+    doc["proxyAdvertisingOnTransitions"] = perfCounters.proxyAdvertisingOnTransitions.load();
+    doc["proxyAdvertisingOffTransitions"] = perfCounters.proxyAdvertisingOffTransitions.load();
+    const uint32_t proxyAdvertisingLastReasonCode = perfGetProxyAdvertisingLastTransitionReason();
+    doc["proxyAdvertising"] = perfGetProxyAdvertisingState();
+    doc["proxyAdvertisingLastTransitionMs"] = perfGetProxyAdvertisingLastTransitionMs();
+    doc["proxyAdvertisingLastTransitionReasonCode"] = proxyAdvertisingLastReasonCode;
+    doc["proxyAdvertisingLastTransitionReason"] =
+        perfProxyAdvertisingTransitionReasonName(proxyAdvertisingLastReasonCode);
 
     const uint32_t nowMs = millis();
     const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
@@ -1231,6 +1246,14 @@ static void sendMetrics(WebServer& server) {
     proxyObj["errorCount"] = proxy.errorCount;
     proxyObj["queueHighWater"] = proxy.queueHighWater;
     proxyObj["connected"] = bleClient.isProxyClientConnected();
+    proxyObj["advertising"] = perfGetProxyAdvertisingState() != 0;
+    proxyObj["advertisingOnTransitions"] = perfCounters.proxyAdvertisingOnTransitions.load();
+    proxyObj["advertisingOffTransitions"] = perfCounters.proxyAdvertisingOffTransitions.load();
+    proxyObj["advertisingLastTransitionMs"] = perfGetProxyAdvertisingLastTransitionMs();
+    const uint32_t proxyLastReasonCode = perfGetProxyAdvertisingLastTransitionReason();
+    proxyObj["advertisingLastTransitionReasonCode"] = proxyLastReasonCode;
+    proxyObj["advertisingLastTransitionReason"] =
+        perfProxyAdvertisingTransitionReasonName(proxyLastReasonCode);
 
     // Event-bus health metrics (used to verify no backlog/drop under load).
     JsonObject eventBusObj = doc["eventBus"].to<JsonObject>();
@@ -1314,6 +1337,8 @@ static void sendMetricsSoak(WebServer& server) {
     doc["wifiStopOther"] = perfCounters.wifiStopOther.load();
     doc["wifiApDropLowDma"] = perfCounters.wifiApDropLowDma.load();
     doc["wifiApDropIdleSta"] = perfCounters.wifiApDropIdleSta.load();
+    doc["wifiApUpTransitions"] = perfCounters.wifiApUpTransitions.load();
+    doc["wifiApDownTransitions"] = perfCounters.wifiApDownTransitions.load();
     doc["wifiProcessMaxUs"] = perfCounters.wifiProcessMaxUs.load();
     doc["wifiHandleClientMaxUs"] = perfCounters.wifiHandleClientMaxUs.load();
     doc["wifiMaintenanceMaxUs"] = perfCounters.wifiMaintenanceMaxUs.load();
@@ -1335,6 +1360,19 @@ static void sendMetricsSoak(WebServer& server) {
     doc["wifiMaxPrevWindowUs"] = perfGetPrevWindowWifiMaxUs();
     doc["bleProcessMaxPrevWindowUs"] = perfGetPrevWindowBleProcessMaxUs();
     doc["dispPipeMaxPrevWindowUs"] = perfGetPrevWindowDispPipeMaxUs();
+    const uint32_t wifiApLastReasonCode = perfGetWifiApLastTransitionReason();
+    doc["wifiApActive"] = perfGetWifiApState();
+    doc["wifiApLastTransitionMs"] = perfGetWifiApLastTransitionMs();
+    doc["wifiApLastTransitionReasonCode"] = wifiApLastReasonCode;
+    doc["wifiApLastTransitionReason"] = perfWifiApTransitionReasonName(wifiApLastReasonCode);
+    doc["proxyAdvertisingOnTransitions"] = perfCounters.proxyAdvertisingOnTransitions.load();
+    doc["proxyAdvertisingOffTransitions"] = perfCounters.proxyAdvertisingOffTransitions.load();
+    const uint32_t proxyAdvertisingLastReasonCode = perfGetProxyAdvertisingLastTransitionReason();
+    doc["proxyAdvertising"] = perfGetProxyAdvertisingState();
+    doc["proxyAdvertisingLastTransitionMs"] = perfGetProxyAdvertisingLastTransitionMs();
+    doc["proxyAdvertisingLastTransitionReasonCode"] = proxyAdvertisingLastReasonCode;
+    doc["proxyAdvertisingLastTransitionReason"] =
+        perfProxyAdvertisingTransitionReasonName(proxyAdvertisingLastReasonCode);
 
     const GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
     doc["gpsObsDrops"] = gpsLogStats.drops;
@@ -1355,6 +1393,14 @@ static void sendMetricsSoak(WebServer& server) {
     const ProxyMetrics& proxy = bleClient.getProxyMetrics();
     JsonObject proxyObj = doc["proxy"].to<JsonObject>();
     proxyObj["dropCount"] = proxy.dropCount;
+    proxyObj["advertising"] = perfGetProxyAdvertisingState() != 0;
+    proxyObj["advertisingOnTransitions"] = perfCounters.proxyAdvertisingOnTransitions.load();
+    proxyObj["advertisingOffTransitions"] = perfCounters.proxyAdvertisingOffTransitions.load();
+    proxyObj["advertisingLastTransitionMs"] = perfGetProxyAdvertisingLastTransitionMs();
+    const uint32_t proxyLastReasonCode = perfGetProxyAdvertisingLastTransitionReason();
+    proxyObj["advertisingLastTransitionReasonCode"] = proxyLastReasonCode;
+    proxyObj["advertisingLastTransitionReason"] =
+        perfProxyAdvertisingTransitionReasonName(proxyLastReasonCode);
 
     JsonObject eventBusObj = doc["eventBus"].to<JsonObject>();
     eventBusObj["publishCount"] = systemEventBus.getPublishCount();
@@ -1411,6 +1457,41 @@ void handleApiMetricsReset(WebServer& server,
                            const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
     handleMetricsReset(server);
+}
+
+void handleProxyAdvertisingControl(WebServer& server) {
+    JsonDocument body;
+    bool hasBody = false;
+    if (!parseRequestBody(server, body, hasBody)) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON body\"}");
+        return;
+    }
+    const JsonDocument* bodyPtr = hasBody ? &body : nullptr;
+    const bool enable = requestBoolArg(server, bodyPtr, "enabled", true);
+
+    const bool ok = bleClient.forceProxyAdvertising(
+        enable,
+        static_cast<uint8_t>(enable ? PerfProxyAdvertisingTransitionReason::StartDirect
+                                    : PerfProxyAdvertisingTransitionReason::StopOther));
+
+    JsonDocument doc;
+    doc["success"] = ok;
+    doc["requestedEnabled"] = enable;
+    doc["advertising"] = bleClient.isProxyAdvertising();
+    doc["proxyEnabled"] = bleClient.isProxyEnabled();
+    doc["v1Connected"] = bleClient.isConnected();
+    doc["wifiPriority"] = bleClient.isWifiPriority();
+    doc["proxyClientConnected"] = bleClient.isProxyClientConnected();
+    const uint32_t reasonCode = perfGetProxyAdvertisingLastTransitionReason();
+    doc["lastTransitionReasonCode"] = reasonCode;
+    doc["lastTransitionReason"] = perfProxyAdvertisingTransitionReasonName(reasonCode);
+    sendJsonStream(server, doc);
+}
+
+void handleApiProxyAdvertisingControl(WebServer& server,
+                                      const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    handleProxyAdvertisingControl(server);
 }
 
 void sendPanic(WebServer& server, bool soakMode) {

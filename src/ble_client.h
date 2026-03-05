@@ -114,6 +114,9 @@ public:
     
     // Check if proxy is actively advertising (only true after V1 connects)
     bool isProxyAdvertising() const;
+    
+    // Debug/test control: force proxy advertising on/off at runtime.
+    bool forceProxyAdvertising(bool enable, uint8_t reasonCode = 0);
 
     // Set proxy client connection status (for internal callback use)
     void setProxyClientConnected(bool connected);
@@ -430,6 +433,7 @@ private:
     // Deferred proxy advertising start (non-blocking - avoids stall)
     // Tuned lower to reduce post-connect latency while preserving radio settle margin
     unsigned long proxyAdvertisingStartMs = 0;  // When to start advertising (0 = not pending)
+    uint8_t proxyAdvertisingStartReasonCode = 0; // PerfProxyAdvertisingTransitionReason
     static constexpr unsigned long PROXY_STABILIZE_MS = 100;
     // When STA is connected, limit idle proxy advertising windows to reduce radio churn.
     unsigned long proxyAdvertisingWindowStartMs = 0;
@@ -470,7 +474,7 @@ private:
     void initProxyServer(const char* deviceName);
     
     // Start advertising proxy service
-    void startProxyAdvertising();
+    void startProxyAdvertising(uint8_t reasonCode = 0, bool ignoreWifiPriority = false);
     
     // Internal callbacks
     static void notifyCallback(NimBLERemoteCharacteristic* pChar, 

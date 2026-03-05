@@ -37,6 +37,12 @@ SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT=5
 SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES=2
 SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS=3
 SOAK_MIN_DISPLAY_UPDATES_DELTA=1
+SOAK_ENABLE_TRANSITION_QUAL=1
+SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS=15
+SOAK_TRANSITION_FLAP_CYCLES=3
+SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS=3
+SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS=30000
+SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE=6
 IGNORE_GPS_ERRORS="${REAL_FW_IGNORE_GPS_ERRORS:-0}"
 
 RAD_SCENARIO_ID="RAD-03"
@@ -118,6 +124,12 @@ Options:
   --rad-scenario ID              Short radar scenario ID (default: RAD-03)
   --rad-duration-scale-pct N     RAD scenario duration scale percent (default: 100)
   --rad-timeout-seconds N        RAD scenario completion timeout (default: auto from scale)
+  --no-transition-soak           Skip Cycle 3 transition qualification soak
+  --transition-flap-cycles N     Transition flap cycles for transition soak (default: 3)
+  --transition-drive-interval-seconds N
+                                 Transition flap action interval (default: 15)
+  --transition-max-recovery-ms N Max proxy-off recovery time gate (default: 30000)
+  --transition-max-samples N     Max samples-to-stable gate (default: 6)
   --ignore-gps-errors            Suppress GPS advisory warnings in soak scoring
   --no-auto-kill-monitor         Do not auto-stop pio device monitor when port is busy
   --out-dir PATH                 Write reports to PATH
@@ -194,6 +206,15 @@ extract_soak_metric() {
     disp_pipe) awk '/- Peak dispPipeMaxUs:/{print $4; exit}' "$summary" ;;
     dma_min) awk '/- Min heapDmaMin \(SLO\):/{print $5; exit}' "$summary" ;;
     dma_largest) awk '/- Min heapDmaLargestMin \(SLO\):/{print $5; exit}' "$summary" ;;
+    proxy_off_delta) awk '/- Proxy advertising transition deltas on\/off:/{print $9; exit}' "$summary" ;;
+    transition_samples) awk '/- Transition primary samples\/time-to-stable:/{print $5; exit}' "$summary" ;;
+    transition_ms)
+      awk '/- Transition primary samples\/time-to-stable:/{gsub("ms","",$7); print $7; exit}' "$summary"
+      ;;
+    proxy_off_samples) awk '/- Proxy off samples\/time-to-stable:/{print $5; exit}' "$summary" ;;
+    proxy_off_recovery_ms)
+      awk '/- Proxy off samples\/time-to-stable:/{gsub("ms","",$7); print $7; exit}' "$summary"
+      ;;
     fail_reasons)
       awk '
         /- Failing checks:/ {in_block=1; next}
@@ -266,7 +287,8 @@ run_soak_test() {
 
   local metrics="rc=$rc result=${result_word:-unknown}"
   if [[ -n "$summary" && -f "$summary" ]]; then
-    local rx parse_ok parse_fail wifi_gate disp_pipe dma_min dma_largest fail_reasons
+    local rx parse_ok parse_fail wifi_gate disp_pipe dma_min dma_largest proxy_off_delta
+    local transition_samples transition_ms proxy_off_samples proxy_off_recovery_ms fail_reasons
     rx="$(extract_soak_metric "$summary" rx)"
     parse_ok="$(extract_soak_metric "$summary" parse_ok)"
     parse_fail="$(extract_soak_metric "$summary" parse_fail)"
@@ -274,8 +296,14 @@ run_soak_test() {
     disp_pipe="$(extract_soak_metric "$summary" disp_pipe)"
     dma_min="$(extract_soak_metric "$summary" dma_min)"
     dma_largest="$(extract_soak_metric "$summary" dma_largest)"
+    proxy_off_delta="$(extract_soak_metric "$summary" proxy_off_delta)"
+    transition_samples="$(extract_soak_metric "$summary" transition_samples)"
+    transition_ms="$(extract_soak_metric "$summary" transition_ms)"
+    proxy_off_samples="$(extract_soak_metric "$summary" proxy_off_samples)"
+    proxy_off_recovery_ms="$(extract_soak_metric "$summary" proxy_off_recovery_ms)"
     fail_reasons="$(extract_soak_metric "$summary" fail_reasons)"
     metrics+=" rx=${rx:-n/a} parseOK=${parse_ok:-n/a} parseFail=${parse_fail:-n/a} wifiGate=${wifi_gate:-n/a} dispPipe=${disp_pipe:-n/a} dmaMin=${dma_min:-n/a} dmaLargest=${dma_largest:-n/a}"
+    metrics+=" proxyOffDelta=${proxy_off_delta:-n/a} tStableSamples=${transition_samples:-n/a} tStableMs=${transition_ms:-n/a} proxyOffStableSamples=${proxy_off_samples:-n/a} proxyOffStableMs=${proxy_off_recovery_ms:-n/a}"
     if [[ -n "$fail_reasons" ]]; then
       metrics+=" reasons=\"${fail_reasons}\""
     fi
@@ -512,6 +540,30 @@ while [[ $# -gt 0 ]]; do
       RAD_TIMEOUT_SECONDS="$2"
       shift
       ;;
+    --no-transition-soak)
+      SOAK_ENABLE_TRANSITION_QUAL=0
+      ;;
+    --transition-flap-cycles)
+      [[ $# -lt 2 ]] && { echo "Missing value for --transition-flap-cycles" >&2; exit 2; }
+      SOAK_TRANSITION_FLAP_CYCLES="$2"
+      SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS="$2"
+      shift
+      ;;
+    --transition-drive-interval-seconds)
+      [[ $# -lt 2 ]] && { echo "Missing value for --transition-drive-interval-seconds" >&2; exit 2; }
+      SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS="$2"
+      shift
+      ;;
+    --transition-max-recovery-ms)
+      [[ $# -lt 2 ]] && { echo "Missing value for --transition-max-recovery-ms" >&2; exit 2; }
+      SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS="$2"
+      shift
+      ;;
+    --transition-max-samples)
+      [[ $# -lt 2 ]] && { echo "Missing value for --transition-max-samples" >&2; exit 2; }
+      SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE="$2"
+      shift
+      ;;
     --ignore-gps-errors)
       IGNORE_GPS_ERRORS=1
       ;;
@@ -539,7 +591,18 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-for n in "$DURATION_SECONDS" "$HTTP_TIMEOUT_SECONDS" "$RAD_MIN_RX_DELTA" "$RAD_MIN_PARSE_SUCCESS_DELTA" "$RAD_MIN_DISPLAY_UPDATES_DELTA" "$RAD_DURATION_SCALE_PCT"; do
+for n in \
+  "$DURATION_SECONDS" \
+  "$HTTP_TIMEOUT_SECONDS" \
+  "$RAD_MIN_RX_DELTA" \
+  "$RAD_MIN_PARSE_SUCCESS_DELTA" \
+  "$RAD_MIN_DISPLAY_UPDATES_DELTA" \
+  "$RAD_DURATION_SCALE_PCT" \
+  "$SOAK_TRANSITION_FLAP_CYCLES" \
+  "$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS" \
+  "$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS" \
+  "$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
+do
   if ! is_uint "$n"; then
     echo "Invalid numeric option value '$n'." >&2
     exit 2
@@ -555,6 +618,10 @@ if [[ "$HTTP_TIMEOUT_SECONDS" -lt 1 ]]; then
 fi
 if [[ "$RAD_DURATION_SCALE_PCT" -lt 25 || "$RAD_DURATION_SCALE_PCT" -gt 1000 ]]; then
   echo "--rad-duration-scale-pct must be in 25..1000." >&2
+  exit 2
+fi
+if [[ "$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS" -lt 1 ]]; then
+  echo "--transition-drive-interval-seconds must be >= 1." >&2
   exit 2
 fi
 if [[ -n "$RAD_TIMEOUT_SECONDS" ]]; then
@@ -594,6 +661,7 @@ echo "  soak profile: $SOAK_PROFILE"
 echo "  soak robust gate: mode=$SOAK_LATENCY_GATE_MODE minSamples=$SOAK_LATENCY_ROBUST_MIN_SAMPLES maxExceedPct=$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT wifiSkipFirst=$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES"
 echo "  soak require-metrics: yes (min ok samples=$SOAK_MIN_METRICS_OK_SAMPLES)"
 echo "  display drive: displayInterval=${SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=$SOAK_MIN_DISPLAY_UPDATES_DELTA"
+echo "  transition qual: enabled=$SOAK_ENABLE_TRANSITION_QUAL flapCycles=$SOAK_TRANSITION_FLAP_CYCLES interval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s maxRecoveryMs=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS maxSamples=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
 echo "  RAD scenario: $RAD_SCENARIO_ID scalePct=$RAD_DURATION_SCALE_PCT timeout=${RESOLVED_RAD_TIMEOUT_SECONDS}s (rx>=$RAD_MIN_RX_DELTA parse>=$RAD_MIN_PARSE_SUCCESS_DELTA display>=$RAD_MIN_DISPLAY_UPDATES_DELTA parseFail==0)"
 echo "  out dir: $OUT_DIR"
 echo ""
@@ -631,6 +699,18 @@ check_uptime_continuity "after soak_display"
 check_uptime_continuity "before soak_core"
 run_soak_test "soak_core"
 check_uptime_continuity "after soak_core"
+
+if [[ "$SOAK_ENABLE_TRANSITION_QUAL" -eq 1 ]]; then
+  check_uptime_continuity "before soak_transition"
+  run_soak_test "soak_transition" \
+    --drive-transition-flaps \
+    --transition-drive-interval-seconds "$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS" \
+    --transition-flap-cycles "$SOAK_TRANSITION_FLAP_CYCLES" \
+    --min-proxy-adv-off-transitions "$SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS" \
+    --max-time-to-stable-ms-after-proxy-adv-off "$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS" \
+    --max-samples-to-stable "$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
+  check_uptime_continuity "after soak_transition"
+fi
 
 # If reboots were detected between test items, add a synthetic failure.
 if [[ "$suite_reboot_count" -gt 0 ]]; then
@@ -694,6 +774,7 @@ fi
   echo "- Soak metrics required: yes (\`--min-metrics-ok-samples $SOAK_MIN_METRICS_OK_SAMPLES\`)"
   echo "- Soak robust latency gate: \`mode=$SOAK_LATENCY_GATE_MODE min_samples=$SOAK_LATENCY_ROBUST_MIN_SAMPLES max_exceed_pct=$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT wifi_skip_first=$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES\`"
   echo "- Display drive defaults: \`display_interval_s=$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS min_display_updates_delta=$SOAK_MIN_DISPLAY_UPDATES_DELTA\`"
+  echo "- Transition qualification: \`enabled=$SOAK_ENABLE_TRANSITION_QUAL flap_cycles=$SOAK_TRANSITION_FLAP_CYCLES interval_s=$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS min_proxy_off_transitions=$SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS max_proxy_recovery_ms=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS max_samples_to_stable=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE\`"
   echo "- RAD short default gates: \`scenario=$RAD_SCENARIO_ID duration_scale_pct=$RAD_DURATION_SCALE_PCT timeout_s=$RESOLVED_RAD_TIMEOUT_SECONDS rx_delta>=$RAD_MIN_RX_DELTA parse_success_delta>=$RAD_MIN_PARSE_SUCCESS_DELTA display_updates_delta>=$RAD_MIN_DISPLAY_UPDATES_DELTA parse_fail_delta==0\`"
   echo ""
   echo "## Item Results"

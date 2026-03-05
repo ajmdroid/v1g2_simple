@@ -9,6 +9,7 @@
 #include <string>
 #include <WiFi.h>
 #include "settings.h"
+#include "perf_metrics.h"
 #include "../include/config.h"
 #include "../include/ble_internals.h"
 
@@ -145,11 +146,17 @@ void V1BLEClient::process() {
         if (static_cast<int32_t>(nowMs - proxyNoClientDeadlineMs) >= 0) {
             proxyNoClientTimeoutLatched = true;
             proxyAdvertisingStartMs = 0;
+            proxyAdvertisingStartReasonCode =
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
             proxyAdvertisingWindowStartMs = 0;
             proxyAdvertisingRetryAtMs = 0;
             NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
             if (pAdv && pAdv->isAdvertising()) {
                 NimBLEDevice::stopAdvertising();
+                perfRecordProxyAdvertisingTransition(
+                    false,
+                    static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopNoClientTimeout),
+                    nowMs);
             }
             Serial.printf("[BLE] Proxy disabled until reboot (no client connected within %lus)\n",
                           static_cast<unsigned long>(PROXY_NO_CLIENT_TIMEOUT_MS / 1000));
@@ -159,11 +166,14 @@ void V1BLEClient::process() {
     // Handle deferred proxy advertising start (non-blocking replacement for delay(1500))
     if (!proxyNoClientTimeoutLatched &&
         proxyAdvertisingStartMs != 0 && millis() >= proxyAdvertisingStartMs) {
+        const uint8_t startReason = proxyAdvertisingStartReasonCode;
         proxyAdvertisingStartMs = 0;  // Clear pending flag
+        proxyAdvertisingStartReasonCode =
+            static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
 
         if (isConnected() && proxyEnabled && proxyServerInitialized) {
             // Advertising data already configured in initProxyServer() with proper flags
-            startProxyAdvertising();
+            startProxyAdvertising(startReason);
         }
     }
 
@@ -186,6 +196,10 @@ void V1BLEClient::process() {
                     proxyAdvertisingWindowStartMs = nowMs;
                 } else if ((nowMs - proxyAdvertisingWindowStartMs) >= PROXY_ADVERTISING_WINDOW_MS) {
                     NimBLEDevice::stopAdvertising();
+                    perfRecordProxyAdvertisingTransition(
+                        false,
+                        static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopIdleWindow),
+                        nowMs);
                     proxyAdvertisingWindowStartMs = 0;
                     proxyAdvertisingRetryAtMs = nowMs + PROXY_ADVERTISING_RETRY_MS;
                     Serial.println("[BLE] Proxy idle window elapsed; pausing advertising");
@@ -193,6 +207,8 @@ void V1BLEClient::process() {
             } else if (proxyAdvertisingRetryAtMs != 0 && nowMs >= proxyAdvertisingRetryAtMs) {
                 proxyAdvertisingRetryAtMs = 0;
                 proxyAdvertisingStartMs = nowMs + 200;
+                proxyAdvertisingStartReasonCode =
+                    static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartRetryWindow);
                 Serial.println("[BLE] Proxy retry window opened; resuming advertising");
             }
         } else {
@@ -444,10 +460,16 @@ void V1BLEClient::setWifiPriority(bool enabled) {
         if (proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
             if (shouldLog) Serial.println("[BLE] Stopping proxy advertising for WiFi priority mode");
             NimBLEDevice::stopAdvertising();
+            perfRecordProxyAdvertisingTransition(
+                false,
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopWifiPriority),
+                nowMs);
         }
 
         // Cancel any pending deferred advertising start
         proxyAdvertisingStartMs = 0;
+        proxyAdvertisingStartReasonCode =
+            static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
         proxyAdvertisingWindowStartMs = 0;
 
         // Note: We keep existing V1 connection if already connected
@@ -461,6 +483,8 @@ void V1BLEClient::setWifiPriority(bool enabled) {
             if (shouldLog) Serial.println("[BLE] Resuming proxy advertising after WiFi priority mode");
             // Defer advertising start by 500ms to avoid stall
             proxyAdvertisingStartMs = millis() + 500;
+            proxyAdvertisingStartReasonCode =
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartWifiPriorityResume);
             proxyAdvertisingWindowStartMs = 0;
         }
 

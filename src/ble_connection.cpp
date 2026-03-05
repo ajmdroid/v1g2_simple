@@ -150,9 +150,15 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
         // Stop proxy advertising FIRST before any state changes
         if (instancePtr->proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
             NimBLEDevice::stopAdvertising();
+            perfRecordProxyAdvertisingTransition(
+                false,
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopV1Disconnect),
+                millis());
             // No delay here - callback must return quickly
         }
         instancePtr->proxyAdvertisingStartMs = 0;
+        instancePtr->proxyAdvertisingStartReasonCode =
+            static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
         instancePtr->proxyAdvertisingWindowStartMs = 0;
         instancePtr->proxyAdvertisingRetryAtMs = 0;
         
@@ -247,6 +253,10 @@ bool V1BLEClient::startAsyncConnect() {
     if (proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
         BLE_SM_LOGF("[BLE] Stopping proxy advertising before connect\n");
         NimBLEDevice::stopAdvertising();
+        perfRecordProxyAdvertisingTransition(
+            false,
+            static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopBeforeV1Connect),
+            millis());
         // No delay - stopAdvertising is quick, radio will settle during connect
     }
     
@@ -738,6 +748,8 @@ bool V1BLEClient::executeSubscribeStep() {
             // Schedule proxy advertising
             if (proxyEnabled && proxyServerInitialized) {
                 proxyAdvertisingStartMs = millis() + PROXY_STABILIZE_MS;
+                proxyAdvertisingStartReasonCode =
+                    static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartConnected);
             }
             
             subscribeStep = SubscribeStep::COMPLETE;
