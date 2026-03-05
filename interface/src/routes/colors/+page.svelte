@@ -278,11 +278,6 @@
 			
 			if (res.ok) {
 				message = { type: 'success', text: 'Colors saved! Previewing on display...' };
-				// Clear preview after 3 seconds
-				setTimeout(() => {
-					fetchWithTimeout('/api/displaycolors/clear', { method: 'POST' })
-						.catch(() => {}); // Ignore errors
-				}, 3000);
 			} else {
 				message = { type: 'error', text: 'Failed to save colors' };
 			}
