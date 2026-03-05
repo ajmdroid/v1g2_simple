@@ -169,45 +169,62 @@ void maybeLogSaveDiag(const char* tag, SaveDiagStats& stats, uint32_t nowMs) {
 }
 }  // namespace
 
-// ---- processLockoutStoreSave ----
+// ---- Generic dirty-save state machine ----
 
-void processLockoutStoreSave(uint32_t nowMs) {
-    uint32_t lockoutSaveStartUs = PERF_TIMESTAMP_US();
-    static uint32_t lastLockoutSaveMs = 0;
-    static uint32_t lastLockoutSaveAttemptMs = 0;
-    static uint32_t lockoutDirtySinceMs = 0;
-    static uint32_t lockoutDeferredSinceMs = 0;
-    static SaveDiagStats diag;
-    static constexpr uint32_t LOCKOUT_SAVE_INTERVAL_MS = 60000;  // 60s
-    static constexpr uint32_t LOCKOUT_SAVE_RETRY_MS = 15000;     // Retry backoff on contention/failure
-    if (lockoutStore.isDirty()) {
-        if (lockoutDirtySinceMs == 0) {
-            lockoutDirtySinceMs = nowMs;
+struct DirtySaveConfig {
+    const char* tag;           // Log prefix, e.g. "Lockout" or "Learner"
+    const char* filePath;      // JSON file path
+    uint32_t saveIntervalMs;   // Minimum interval between successful saves
+    uint32_t retryMs;          // Minimum interval between attempts
+
+    // Data source callbacks (no virtual overhead)
+    bool (*isDirty)();
+    void (*clearDirty)();
+    void (*serialize)(JsonDocument& doc);
+    void (*logSuccess)(const char* path);
+    void (*recordPerfUs)(uint32_t us);
+};
+
+struct DirtySaveState {
+    uint32_t lastSaveMs = 0;
+    uint32_t lastAttemptMs = 0;
+    uint32_t dirtySinceMs = 0;
+    uint32_t deferredSinceMs = 0;
+    SaveDiagStats diag;
+};
+
+static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, uint32_t nowMs) {
+    uint32_t startUs = PERF_TIMESTAMP_US();
+
+    if (cfg.isDirty()) {
+        if (state.dirtySinceMs == 0) {
+            state.dirtySinceMs = nowMs;
         }
     } else {
-        lockoutDirtySinceMs = 0;
-        lockoutDeferredSinceMs = 0;
+        state.dirtySinceMs = 0;
+        state.deferredSinceMs = 0;
     }
-    if (lockoutStore.isDirty() && storageManager.isReady() &&
-        (nowMs - lastLockoutSaveMs) >= LOCKOUT_SAVE_INTERVAL_MS &&
-        (nowMs - lastLockoutSaveAttemptMs) >= LOCKOUT_SAVE_RETRY_MS) {
-        diag.attempts++;
-        lastLockoutSaveAttemptMs = nowMs;
-        static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
+
+    if (cfg.isDirty() && storageManager.isReady() &&
+        (nowMs - state.lastSaveMs) >= cfg.saveIntervalMs &&
+        (nowMs - state.lastAttemptMs) >= cfg.retryMs) {
+        state.diag.attempts++;
+        state.lastAttemptMs = nowMs;
+
         fs::FS* fs = storageManager.getFilesystem();
         bool saveOk = false;
         bool saveDeferred = false;
         bool hadDmaSample = false;
         uint32_t sampledFreeDma = 0;
         uint32_t sampledLargestDma = 0;
+
         if (fs) {
             if (storageManager.isSDCard()) {
-                // Core 1 path must never block waiting for SD ownership.
                 const SaveDmaThresholds thresholds = getSaveDmaThresholds();
                 uint32_t freeDma = 0;
                 uint32_t largestDma = 0;
                 const bool normalHeadroom = hasDmaHeadroomForBackgroundSave(freeDma, largestDma, thresholds);
-                const uint32_t dirtyAgeMs = (lockoutDirtySinceMs == 0) ? 0 : (nowMs - lockoutDirtySinceMs);
+                const uint32_t dirtyAgeMs = (state.dirtySinceMs == 0) ? 0 : (nowMs - state.dirtySinceMs);
                 const bool allowAgedRetry =
                     thresholds.allowAgedRetry &&
                     !normalHeadroom &&
@@ -219,11 +236,12 @@ void processLockoutStoreSave(uint32_t nowMs) {
 
                 if (normalHeadroom || allowAgedRetry) {
                     if (allowAgedRetry) {
-                        diag.agedRetryAttempts++;
+                        state.diag.agedRetryAttempts++;
                         static uint32_t lastAgedRetryLogMs = 0;
                         if ((nowMs - lastAgedRetryLogMs) >= 10000) {
                             lastAgedRetryLogMs = nowMs;
-                            Serial.printf("[Lockout] Save retry (aged dirty=%lus free=%lu block=%lu relaxed>=%lu/%lu)\n",
+                            Serial.printf("[%s] Save retry (aged dirty=%lus free=%lu block=%lu relaxed>=%lu/%lu)\n",
+                                          cfg.tag,
                                           static_cast<unsigned long>(dirtyAgeMs / 1000),
                                           static_cast<unsigned long>(freeDma),
                                           static_cast<unsigned long>(largestDma),
@@ -234,26 +252,27 @@ void processLockoutStoreSave(uint32_t nowMs) {
                     StorageManager::SDTryLock sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
                     if (sdLock) {
                         JsonDocument doc;
-                        lockoutStore.toJson(doc);
-                        saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc);
+                        cfg.serialize(doc);
+                        saveOk = StorageManager::writeJsonFileAtomic(*fs, cfg.filePath, doc);
                     } else {
                         saveDeferred = true;
-                        diag.deferSdBusy++;
-                        static uint32_t lastLockoutSaveSkipLogMs = 0;
-                        if ((nowMs - lastLockoutSaveSkipLogMs) >= 10000) {
-                            lastLockoutSaveSkipLogMs = nowMs;
-                            Serial.println("[Lockout] Save deferred (SD busy)");
+                        state.diag.deferSdBusy++;
+                        static uint32_t lastSaveSkipLogMs = 0;
+                        if ((nowMs - lastSaveSkipLogMs) >= 10000) {
+                            lastSaveSkipLogMs = nowMs;
+                            Serial.printf("[%s] Save deferred (SD busy)\n", cfg.tag);
                         }
                     }
                 } else {
                     saveDeferred = true;
-                    diag.deferLowDma++;
-                    noteMin(diag.minFreeOnDeferLow, freeDma);
-                    noteMin(diag.minBlockOnDeferLow, largestDma);
+                    state.diag.deferLowDma++;
+                    noteMin(state.diag.minFreeOnDeferLow, freeDma);
+                    noteMin(state.diag.minBlockOnDeferLow, largestDma);
                     static uint32_t lastLowDmaLogMs = 0;
                     if ((nowMs - lastLowDmaLogMs) >= 10000) {
                         lastLowDmaLogMs = nowMs;
-                        Serial.printf("[Lockout] Save deferred (low DMA heap mode=%s free=%lu block=%lu need>=%lu/%lu dirty=%lus)\n",
+                        Serial.printf("[%s] Save deferred (low DMA heap mode=%s free=%lu block=%lu need>=%lu/%lu dirty=%lus)\n",
+                                      cfg.tag,
                                       thresholds.modeLabel,
                                       static_cast<unsigned long>(freeDma),
                                       static_cast<unsigned long>(largestDma),
@@ -263,183 +282,91 @@ void processLockoutStoreSave(uint32_t nowMs) {
                     }
                 }
             } else {
-                // LittleFS fallback path (single-CPU filesystem access).
                 JsonDocument doc;
-                lockoutStore.toJson(doc);
-                saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_ZONES_PATH, doc);
+                cfg.serialize(doc);
+                saveOk = StorageManager::writeJsonFileAtomic(*fs, cfg.filePath, doc);
             }
         }
+
         if (saveOk) {
-            if (lockoutDeferredSinceMs != 0) {
-                const uint32_t deferLatencyMs = nowMs - lockoutDeferredSinceMs;
-                const uint32_t dirtyAgeMs = (lockoutDirtySinceMs == 0) ? 0 : (nowMs - lockoutDirtySinceMs);
-                diag.deferRecoveries++;
-                diag.lastDeferToSaveMs = deferLatencyMs;
-                if (deferLatencyMs > diag.maxDeferToSaveMs) {
-                    diag.maxDeferToSaveMs = deferLatencyMs;
+            if (state.deferredSinceMs != 0) {
+                const uint32_t deferLatencyMs = nowMs - state.deferredSinceMs;
+                const uint32_t dirtyAgeMs = (state.dirtySinceMs == 0) ? 0 : (nowMs - state.dirtySinceMs);
+                state.diag.deferRecoveries++;
+                state.diag.lastDeferToSaveMs = deferLatencyMs;
+                if (deferLatencyMs > state.diag.maxDeferToSaveMs) {
+                    state.diag.maxDeferToSaveMs = deferLatencyMs;
                 }
-                Serial.printf("[Lockout] Save recovered after defer latency=%lus dirty=%lus\n",
+                Serial.printf("[%s] Save recovered after defer latency=%lus dirty=%lus\n",
+                              cfg.tag,
                               static_cast<unsigned long>(deferLatencyMs / 1000),
                               static_cast<unsigned long>(dirtyAgeMs / 1000));
-                lockoutDeferredSinceMs = 0;
+                state.deferredSinceMs = 0;
             }
-            lastLockoutSaveMs = nowMs;
-            lockoutStore.clearDirty();
-            lockoutDirtySinceMs = 0;
-            diag.success++;
+            state.lastSaveMs = nowMs;
+            cfg.clearDirty();
+            state.dirtySinceMs = 0;
+            state.diag.success++;
             if (hadDmaSample) {
-                noteMin(diag.minFreeOnSuccess, sampledFreeDma);
-                noteMin(diag.minBlockOnSuccess, sampledLargestDma);
+                noteMin(state.diag.minFreeOnSuccess, sampledFreeDma);
+                noteMin(state.diag.minBlockOnSuccess, sampledLargestDma);
             }
-            Serial.printf("[Lockout] Saved %lu zones to %s\n",
-                          static_cast<unsigned long>(lockoutStore.stats().entriesSaved),
-                          LOCKOUT_ZONES_PATH);
+            cfg.logSuccess(cfg.filePath);
         } else if (!saveDeferred) {
-            diag.fail++;
+            state.diag.fail++;
             if (hadDmaSample) {
-                noteMin(diag.minFreeOnFail, sampledFreeDma);
-                noteMin(diag.minBlockOnFail, sampledLargestDma);
+                noteMin(state.diag.minFreeOnFail, sampledFreeDma);
+                noteMin(state.diag.minBlockOnFail, sampledLargestDma);
             }
-            Serial.println("[Lockout] Save failed");
-        } else if (lockoutDeferredSinceMs == 0) {
-            lockoutDeferredSinceMs = nowMs;
+            Serial.printf("[%s] Save failed\n", cfg.tag);
+        } else if (state.deferredSinceMs == 0) {
+            state.deferredSinceMs = nowMs;
         }
-        maybeLogSaveDiag("Lockout", diag, nowMs);
+        maybeLogSaveDiag(cfg.tag, state.diag, nowMs);
     }
-    perfRecordLockoutSaveUs(PERF_TIMESTAMP_US() - lockoutSaveStartUs);
+
+    cfg.recordPerfUs(PERF_TIMESTAMP_US() - startUs);
 }
 
-// ---- processLearnerPendingSave ----
+// ---- Lockout and Learner save instances ----
+
+static const DirtySaveConfig lockoutSaveConfig = {
+    .tag = "Lockout",
+    .filePath = "/v1simple_lockout_zones.json",
+    .saveIntervalMs = 60000,
+    .retryMs = 15000,
+    .isDirty = []() { return lockoutStore.isDirty(); },
+    .clearDirty = []() { lockoutStore.clearDirty(); },
+    .serialize = [](JsonDocument& doc) { lockoutStore.toJson(doc); },
+    .logSuccess = [](const char* path) {
+        Serial.printf("[Lockout] Saved %lu zones to %s\n",
+                      static_cast<unsigned long>(lockoutStore.stats().entriesSaved), path);
+    },
+    .recordPerfUs = [](uint32_t us) { perfRecordLockoutSaveUs(us); },
+};
+
+static const DirtySaveConfig learnerSaveConfig = {
+    .tag = "Learner",
+    .filePath = "/v1simple_lockout_pending.json",
+    .saveIntervalMs = 15000,
+    .retryMs = 15000,
+    .isDirty = []() { return lockoutLearner.isDirty(); },
+    .clearDirty = []() { lockoutLearner.clearDirty(); },
+    .serialize = [](JsonDocument& doc) { lockoutLearner.toJson(doc); },
+    .logSuccess = [](const char* path) {
+        Serial.printf("[Learner] Saved %u pending candidates to %s\n",
+                      static_cast<unsigned>(lockoutLearner.activeCandidateCount()), path);
+    },
+    .recordPerfUs = [](uint32_t us) { perfRecordLearnerSaveUs(us); },
+};
+
+static DirtySaveState lockoutSaveState;
+static DirtySaveState learnerSaveState;
+
+void processLockoutStoreSave(uint32_t nowMs) {
+    processDirtySave(lockoutSaveConfig, lockoutSaveState, nowMs);
+}
 
 void processLearnerPendingSave(uint32_t nowMs) {
-    uint32_t learnerSaveStartUs = PERF_TIMESTAMP_US();
-    static uint32_t lastLearnerSaveMs = 0;
-    static uint32_t lastLearnerSaveAttemptMs = 0;
-    static uint32_t learnerDirtySinceMs = 0;
-    static uint32_t learnerDeferredSinceMs = 0;
-    static SaveDiagStats diag;
-    static constexpr uint32_t LEARNER_SAVE_INTERVAL_MS = 15000;  // 15s
-    static constexpr uint32_t LEARNER_SAVE_RETRY_MS = 15000;     // Retry backoff
-    if (lockoutLearner.isDirty()) {
-        if (learnerDirtySinceMs == 0) {
-            learnerDirtySinceMs = nowMs;
-        }
-    } else {
-        learnerDirtySinceMs = 0;
-        learnerDeferredSinceMs = 0;
-    }
-    if (lockoutLearner.isDirty() && storageManager.isReady() &&
-        (nowMs - lastLearnerSaveMs) >= LEARNER_SAVE_INTERVAL_MS &&
-        (nowMs - lastLearnerSaveAttemptMs) >= LEARNER_SAVE_RETRY_MS) {
-        diag.attempts++;
-        lastLearnerSaveAttemptMs = nowMs;
-        static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
-        fs::FS* fs = storageManager.getFilesystem();
-        bool saveOk = false;
-        bool saveDeferred = false;
-        bool hadDmaSample = false;
-        uint32_t sampledFreeDma = 0;
-        uint32_t sampledLargestDma = 0;
-        if (fs) {
-            if (storageManager.isSDCard()) {
-                // Core 1 path must never block waiting for SD ownership.
-                const SaveDmaThresholds thresholds = getSaveDmaThresholds();
-                uint32_t freeDma = 0;
-                uint32_t largestDma = 0;
-                const bool normalHeadroom = hasDmaHeadroomForBackgroundSave(freeDma, largestDma, thresholds);
-                const uint32_t dirtyAgeMs = (learnerDirtySinceMs == 0) ? 0 : (nowMs - learnerDirtySinceMs);
-                const bool allowAgedRetry =
-                    thresholds.allowAgedRetry &&
-                    !normalHeadroom &&
-                    (dirtyAgeMs >= LOCKOUT_SAVE_MAX_DIRTY_AGE_MS) &&
-                    hasAgedDmaHeadroomForBackgroundSave(freeDma, largestDma, thresholds);
-                hadDmaSample = true;
-                sampledFreeDma = freeDma;
-                sampledLargestDma = largestDma;
-
-                if (normalHeadroom || allowAgedRetry) {
-                    if (allowAgedRetry) {
-                        diag.agedRetryAttempts++;
-                        static uint32_t lastAgedRetryLogMs = 0;
-                        if ((nowMs - lastAgedRetryLogMs) >= 10000) {
-                            lastAgedRetryLogMs = nowMs;
-                            Serial.printf("[Learner] Save retry (aged dirty=%lus free=%lu block=%lu relaxed>=%lu/%lu)\n",
-                                          static_cast<unsigned long>(dirtyAgeMs / 1000),
-                                          static_cast<unsigned long>(freeDma),
-                                          static_cast<unsigned long>(largestDma),
-                                          static_cast<unsigned long>(thresholds.agedFree),
-                                          static_cast<unsigned long>(thresholds.agedBlock));
-                        }
-                    }
-                    StorageManager::SDTryLock sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
-                    if (sdLock) {
-                        JsonDocument doc;
-                        lockoutLearner.toJson(doc);
-                        saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc);
-                    } else {
-                        saveDeferred = true;
-                        diag.deferSdBusy++;
-                    }
-                } else {
-                    saveDeferred = true;
-                    diag.deferLowDma++;
-                    noteMin(diag.minFreeOnDeferLow, freeDma);
-                    noteMin(diag.minBlockOnDeferLow, largestDma);
-                    static uint32_t lastLowDmaLogMs = 0;
-                    if ((nowMs - lastLowDmaLogMs) >= 10000) {
-                        lastLowDmaLogMs = nowMs;
-                        Serial.printf("[Learner] Save deferred (low DMA heap mode=%s free=%lu block=%lu need>=%lu/%lu dirty=%lus)\n",
-                                      thresholds.modeLabel,
-                                      static_cast<unsigned long>(freeDma),
-                                      static_cast<unsigned long>(largestDma),
-                                      static_cast<unsigned long>(thresholds.minFree),
-                                      static_cast<unsigned long>(thresholds.minBlock),
-                                      static_cast<unsigned long>(dirtyAgeMs / 1000));
-                    }
-                }
-            } else {
-                // LittleFS fallback path (single-CPU filesystem access).
-                JsonDocument doc;
-                lockoutLearner.toJson(doc);
-                saveOk = StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc);
-            }
-        }
-        if (saveOk) {
-            if (learnerDeferredSinceMs != 0) {
-                const uint32_t deferLatencyMs = nowMs - learnerDeferredSinceMs;
-                const uint32_t dirtyAgeMs = (learnerDirtySinceMs == 0) ? 0 : (nowMs - learnerDirtySinceMs);
-                diag.deferRecoveries++;
-                diag.lastDeferToSaveMs = deferLatencyMs;
-                if (deferLatencyMs > diag.maxDeferToSaveMs) {
-                    diag.maxDeferToSaveMs = deferLatencyMs;
-                }
-                Serial.printf("[Learner] Save recovered after defer latency=%lus dirty=%lus\n",
-                              static_cast<unsigned long>(deferLatencyMs / 1000),
-                              static_cast<unsigned long>(dirtyAgeMs / 1000));
-                learnerDeferredSinceMs = 0;
-            }
-            lastLearnerSaveMs = nowMs;
-            lockoutLearner.clearDirty();
-            learnerDirtySinceMs = 0;
-            diag.success++;
-            if (hadDmaSample) {
-                noteMin(diag.minFreeOnSuccess, sampledFreeDma);
-                noteMin(diag.minBlockOnSuccess, sampledLargestDma);
-            }
-            Serial.printf("[Learner] Saved %u pending candidates to %s\n",
-                          static_cast<unsigned>(lockoutLearner.activeCandidateCount()),
-                          LOCKOUT_PENDING_PATH);
-        } else if (!saveDeferred) {
-            diag.fail++;
-            if (hadDmaSample) {
-                noteMin(diag.minFreeOnFail, sampledFreeDma);
-                noteMin(diag.minBlockOnFail, sampledLargestDma);
-            }
-            Serial.println("[Learner] Pending save failed");
-        } else if (learnerDeferredSinceMs == 0) {
-            learnerDeferredSinceMs = nowMs;
-        }
-        maybeLogSaveDiag("Learner", diag, nowMs);
-    }
-    perfRecordLearnerSaveUs(PERF_TIMESTAMP_US() - learnerSaveStartUs);
+    processDirtySave(learnerSaveConfig, learnerSaveState, nowMs);
 }
