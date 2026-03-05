@@ -469,64 +469,6 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
     displayState.hasJunkAlert = anyJunk;
     displayState.hasPhotoAlert = anyPhoto;
 
-    if (debugLogger.isEnabledFor(DebugLogCategory::Alerts)) {
-        static bool hasLast = false;
-        static size_t lastCount = 0;
-        static Band lastBand = BAND_NONE;
-        static Direction lastDir = DIR_NONE;
-        static uint32_t lastFreq = 0;
-        static uint8_t lastFront = 0;
-        static uint8_t lastRear = 0;
-        static bool lastMuted = false;
-
-        Band priBand = BAND_NONE;
-        Direction priDir = DIR_NONE;
-        uint32_t priFreq = 0;
-        uint8_t priFront = 0;
-        uint8_t priRear = 0;
-
-        if (alertCount > 0) {
-            size_t idx = std::min<size_t>(displayState.v1PriorityIndex, alertCount - 1);
-            const AlertData& pri = alerts[idx];
-            priBand = pri.band;
-            priDir = pri.direction;
-            priFreq = pri.frequency;
-            priFront = pri.frontStrength;
-            priRear = pri.rearStrength;
-        }
-
-        bool changed = !hasLast ||
-                       alertCount != lastCount ||
-                       priBand != lastBand ||
-                       priDir != lastDir ||
-                       priFreq != lastFreq ||
-                       priFront != lastFront ||
-                       priRear != lastRear ||
-                       displayState.muted != lastMuted;
-
-        if (changed) {
-            debugLogger.logf(
-                DebugLogCategory::Alerts,
-                "[Alerts] count=%u pri=%s dir=%s freq=%u front=%u rear=%u muted=%s",
-                static_cast<unsigned>(alertCount),
-                bandToString(priBand),
-                directionToString(priDir),
-                static_cast<unsigned>(priFreq),
-                static_cast<unsigned>(priFront),
-                static_cast<unsigned>(priRear),
-                displayState.muted ? "true" : "false");
-
-            hasLast = true;
-            lastCount = alertCount;
-            lastBand = priBand;
-            lastDir = priDir;
-            lastFreq = priFreq;
-            lastFront = priFront;
-            lastRear = priRear;
-            lastMuted = displayState.muted;
-        }
-    }
-
     PARSER_PERF_INC(alertTablePublishes);
     if (receivedAlertCount == 3) {
         PARSER_PERF_INC(alertTablePublishes3Bogey);

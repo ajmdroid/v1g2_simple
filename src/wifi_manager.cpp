@@ -334,7 +334,6 @@ bool WiFiManager::startSetupMode() {
     if (apStaMode) {
         String savedPassword = settingsManager.getWifiClientPassword();
         Serial.printf("[SetupMode] STA connecting to '%s'\n", settings.wifiClientSSID.c_str());
-        debugLogger.notifyWifiTransition(false);
         WiFi.setSleep(false);
         WiFi.setAutoReconnect(true);
         WiFi.begin(settings.wifiClientSSID.c_str(), savedPassword.c_str());
@@ -429,8 +428,6 @@ void WiFiManager::finalizeStopSetupMode() {
     wifiStopManual = false;
     wifiStopHadSta = false;
     wifiStopHadAp = false;
-
-    debugLogger.notifyWifiTransition(true);
 
     // ========== OBSERVABILITY ==========
     uint32_t freeInternalAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -722,7 +719,6 @@ void WiFiManager::process() {
                 wifiConnectPhaseStartMs = 0;
                 lowDmaCooldownUntilMs = now + WIFI_LOW_DMA_RETRY_COOLDOWN_MS;
                 lowDmaSinceMs = 0;
-                debugLogger.notifyWifiTransition(true);
                 Serial.printf("[WiFi] AP dropped; STA status=%s\n", wifiClientStateApiName(wifiClientState));
                 return;
             }

@@ -11,7 +11,6 @@
 #include "modules/alert_persistence/alert_persistence_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/voice/voice_module.h"
-#include "debug_logger.h"
 
 class DisplayPipelineModule {
 public:
@@ -22,8 +21,7 @@ public:
                V1BLEClient* bleClient,
                AlertPersistenceModule* alertPersistenceModule,
                VolumeFadeModule* volumeFadeModule,
-               VoiceModule* voiceModule,
-               DebugLogger* debugLogger);
+               VoiceModule* voiceModule);
 
     // Process after a successful parser.parse(); expects parser state already updated.
     // prioritySuppressed is a per-frame software suppression flag (e.g. lockout ENFORCE match).
@@ -38,7 +36,6 @@ private:
     AlertPersistenceModule* alertPersistence = nullptr;
     VolumeFadeModule* volumeFade = nullptr;
     VoiceModule* voice = nullptr;
-    DebugLogger* debug = nullptr;
 
     // Mute debounce
     bool debouncedMuteState = false;
@@ -55,7 +52,6 @@ private:
     unsigned long displayLatencyMax = 0;
     unsigned long displayLatencyLastLog = 0;
     static constexpr unsigned long DISPLAY_LOG_INTERVAL_MS = 10000;
-    static constexpr unsigned long DISPLAY_SLOW_THRESHOLD_US = 16000;
     static constexpr bool PERF_TIMING_LOGS = false;
     unsigned long perfTimingAccum = 0;
     unsigned long perfTimingCount = 0;

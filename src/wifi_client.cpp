@@ -110,9 +110,6 @@ bool WiFiManager::connectToNetwork(const String& ssid,
         return false;
     }
 
-    // WiFi transitioning - defer SD writes to avoid NVS flash contention
-    debugLogger.notifyWifiTransition(false);
-
     // Stage a non-blocking connect sequence to avoid stalling loop().
     pendingConnectSSID = ssid;
     pendingConnectPassword = password;
@@ -190,7 +187,6 @@ void WiFiManager::processWifiClientConnectPhase() {
             if (pendingConnectSSID.length() == 0) {
                 wifiConnectPhase = WifiConnectPhase::IDLE;
                 wifiClientState = WIFI_CLIENT_FAILED;
-                debugLogger.notifyWifiTransition(true);
                 break;
             }
             // Improve coexistence stability while connecting alongside BLE links.
@@ -319,9 +315,6 @@ void WiFiManager::checkWifiClientStatus() {
                 // Reset failure counter on successful connection
                 wifiReconnectFailures = 0;
                 
-                // WiFi stable - resume SD writes (NVS contention window closed)
-                debugLogger.notifyWifiTransition(true);
-                
                 // Save credentials on successful connection
                 if (pendingConnectSSID.length() > 0) {
                     if (pendingConnectPersistCredentials) {
@@ -346,9 +339,6 @@ void WiFiManager::checkWifiClientStatus() {
                 Serial.printf("[WiFiClient] Connection failed: %d\n", status);
                 wifiConnectStartMs = 0;
                 
-                // WiFi stable (failed but not transitioning) - resume SD writes
-                debugLogger.notifyWifiTransition(true);
-                
                 pendingConnectSSID = "";
                 pendingConnectPassword = "";
                 pendingConnectPersistCredentials = true;
@@ -357,9 +347,6 @@ void WiFiManager::checkWifiClientStatus() {
                 Serial.println("[WiFiClient] Connection timeout");
                 WiFi.disconnect(false);
                 wifiConnectStartMs = 0;
-                
-                // WiFi stable (timed out) - resume SD writes
-                debugLogger.notifyWifiTransition(true);
                 
                 pendingConnectSSID = "";
                 pendingConnectPassword = "";
@@ -373,8 +360,6 @@ void WiFiManager::checkWifiClientStatus() {
                 wifiClientState = WIFI_CLIENT_DISCONNECTED;
                 Serial.println("[WiFiClient] Lost connection");
                 
-                // WiFi transitioning - defer SD writes to avoid NVS flash contention
-                debugLogger.notifyWifiTransition(false);
             }
             break;
         }

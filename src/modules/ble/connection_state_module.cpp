@@ -7,8 +7,6 @@
 #include "modules/system/system_event_bus.h"
 #include "debug_logger.h"
 
-extern DebugLogger debugLogger;
-
 #if defined(DISABLE_DEBUG_LOGGER)
 #define CONN_LOG(...) do { } while(0)
 #else

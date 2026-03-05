@@ -9,8 +9,7 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
                                   V1BLEClient* bleClient,
                                   AlertPersistenceModule* alertPersistenceModule,
                                   VolumeFadeModule* volumeFadeModule,
-                                  VoiceModule* voiceModule,
-                                  DebugLogger* debugLogger) {
+                                  VoiceModule* voiceModule) {
     displayMode = displayModePtr;
     display = displayPtr;
     parser = parserPtr;
@@ -19,7 +18,6 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     alertPersistence = alertPersistenceModule;
     volumeFade = volumeFadeModule;
     voice = voiceModule;
-    debug = debugLogger;
 }
 
 // Track lastAlertGapRecoverMs locally since it was removed from header
@@ -127,7 +125,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
 
         // Draw display FIRST (before audio) to eliminate perceived lag
         // User sees the alert card immediately, then hears the announcement
-        if (debug) debug->notifyRenderState(true);  // Defer SD flush during render
         unsigned long startUs = micros();
         if (hasRenderablePriority) {
             display->update(priority, currentAlerts.data(), alertCount, state);
@@ -135,7 +132,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
             display->update(state);
         }
         unsigned long endUs = micros();
-        if (debug) debug->notifyRenderState(false);
         recordDisplayTiming("display.update(alerts)", startUs, endUs);
         recordPerfTiming("display.update(alerts)", startUs, endUs);
 
@@ -191,32 +187,26 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
 
             unsigned long persistMs = persistSec * 1000UL;
             if (alertPersistence->shouldShowPersisted(nowMs, persistMs)) {
-                if (debug) debug->notifyRenderState(true);
                 unsigned long startUs = micros();
                 display->updatePersisted(alertPersistence->getPersistedAlert(), state);
                 unsigned long endUs = micros();
-                if (debug) debug->notifyRenderState(false);
                 recordDisplayTiming("display.persisted", startUs, endUs);
                 recordPerfTiming("display.persisted", startUs, endUs);
             } else {
                 // Persistence window expired - clear flag so isPersistenceActive() returns false
                 PERF_INC(alertPersistExpires);
                 alertPersistence->clearPersistence();
-                if (debug) debug->notifyRenderState(true);
                 unsigned long startUs = micros();
                 display->update(state);
                 unsigned long endUs = micros();
-                if (debug) debug->notifyRenderState(false);
                 recordDisplayTiming("display.resting", startUs, endUs);
                 recordPerfTiming("display.resting", startUs, endUs);
             }
         } else {
             alertPersistence->clearPersistence();
-            if (debug) debug->notifyRenderState(true);
             unsigned long startUs = micros();
             display->update(state);
             unsigned long endUs = micros();
-            if (debug) debug->notifyRenderState(false);
             recordDisplayTiming("display.resting", startUs, endUs);
             recordPerfTiming("display.resting", startUs, endUs);
         }
@@ -229,21 +219,9 @@ void DisplayPipelineModule::recordDisplayTiming(const char* label, unsigned long
     displayLatencyCount++;
     if (dur > displayLatencyMax) displayLatencyMax = dur;
 
-    // Rate-limit SLOW logs to max 1/sec to prevent log spam during stalls
-    static unsigned long lastSlowLogMs = 0;
     unsigned long nowMs = millis();
-    if (dur > DISPLAY_SLOW_THRESHOLD_US && debug && debug->isEnabledFor(DebugLogCategory::Display)) {
-        if (nowMs - lastSlowLogMs >= 1000) {
-            debug->logf(DebugLogCategory::Display, "[SLOW] %s: %lums", label, dur / 1000);
-            lastSlowLogMs = nowMs;
-        }
-    }
 
     if ((nowMs - displayLatencyLastLog) > DISPLAY_LOG_INTERVAL_MS && displayLatencyCount > 0) {
-        if (debug && debug->isEnabledFor(DebugLogCategory::Display)) {
-            debug->logf(DebugLogCategory::Display, "Display: avg=%luus max=%luus n=%lu",
-                        displayLatencySum / displayLatencyCount, displayLatencyMax, displayLatencyCount);
-        }
         displayLatencySum = 0;
         displayLatencyCount = 0;
         displayLatencyMax = 0;

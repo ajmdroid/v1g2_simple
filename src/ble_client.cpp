@@ -596,36 +596,19 @@ bool V1BLEClient::isConnected() {
 static int s_cachedV1Rssi = 0;
 static unsigned long s_lastV1RssiQueryMs = 0;
 static constexpr unsigned long RSSI_QUERY_INTERVAL_MS = 2000;
-static int s_lastLoggedV1Rssi = 0;
-static bool s_loggedV1Rssi = false;
 
 int V1BLEClient::getConnectionRssi() {
     // Return RSSI of connected V1 device, or 0 if not connected
     if (!connected || !pClient || !pClient->isConnected()) {
-        if (debugLogger.isEnabledFor(DebugLogCategory::Ble) && s_loggedV1Rssi && s_lastLoggedV1Rssi != 0) {
-            debugLogger.log(DebugLogCategory::Ble, "V1 RSSI unavailable (not connected)");
-        }
         s_cachedV1Rssi = 0;
-        s_lastLoggedV1Rssi = 0;
-        s_loggedV1Rssi = true;
         return 0;
     }
     
     // Only query BLE stack every 2 seconds - return cached value otherwise
     unsigned long now = millis();
-    bool updated = false;
     if (now - s_lastV1RssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
         s_cachedV1Rssi = pClient->getRssi();
         s_lastV1RssiQueryMs = now;
-        updated = true;
-    }
-
-    if (updated && debugLogger.isEnabledFor(DebugLogCategory::Ble)) {
-        if (!s_loggedV1Rssi || s_cachedV1Rssi != s_lastLoggedV1Rssi) {
-            debugLogger.logf(DebugLogCategory::Ble, "V1 RSSI: %d dBm", s_cachedV1Rssi);
-            s_lastLoggedV1Rssi = s_cachedV1Rssi;
-            s_loggedV1Rssi = true;
-        }
     }
     return s_cachedV1Rssi;
 }
@@ -633,24 +616,16 @@ int V1BLEClient::getConnectionRssi() {
 // Proxy client RSSI caching
 static int s_cachedProxyRssi = 0;
 static unsigned long s_lastProxyRssiQueryMs = 0;
-static int s_lastLoggedProxyRssi = 0;
-static bool s_loggedProxyRssi = false;
 
 int V1BLEClient::getProxyClientRssi() {
     // Return RSSI of connected proxy client (app), or 0 if not connected
     if (!proxyClientConnected || !pServer || pServer->getConnectedCount() == 0) {
-        if (debugLogger.isEnabledFor(DebugLogCategory::Ble) && s_loggedProxyRssi && s_lastLoggedProxyRssi != 0) {
-            debugLogger.log(DebugLogCategory::Ble, "Proxy RSSI unavailable (no client)");
-        }
         s_cachedProxyRssi = 0;
-        s_lastLoggedProxyRssi = 0;
-        s_loggedProxyRssi = true;
         return 0;
     }
     
     // Only query BLE stack every 2 seconds
     unsigned long now = millis();
-    bool updated = false;
     if (now - s_lastProxyRssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
         // Get connection handle of first connected peer
         NimBLEConnInfo peerInfo = pServer->getPeerInfo(0);
@@ -660,15 +635,6 @@ int V1BLEClient::getProxyClientRssi() {
             s_cachedProxyRssi = rssi;
         }
         s_lastProxyRssiQueryMs = now;
-        updated = true;
-    }
-
-    if (updated && debugLogger.isEnabledFor(DebugLogCategory::Ble)) {
-        if (!s_loggedProxyRssi || s_cachedProxyRssi != s_lastLoggedProxyRssi) {
-            debugLogger.logf(DebugLogCategory::Ble, "Proxy RSSI: %d dBm", s_cachedProxyRssi);
-            s_lastLoggedProxyRssi = s_cachedProxyRssi;
-            s_loggedProxyRssi = true;
-        }
     }
     return s_cachedProxyRssi;
 }

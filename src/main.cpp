@@ -785,8 +785,7 @@ static void configureAlertAudioDisplayPipeline() {
                                 &bleClient,
                                 &alertPersistenceModule,
                                 &volumeFadeModule,
-                                &voiceModule,
-                                &debugLogger);
+                                &voiceModule);
 }
 
 static void configureSystemLoopCoreModules() {
