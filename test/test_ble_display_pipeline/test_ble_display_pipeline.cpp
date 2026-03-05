@@ -6,7 +6,6 @@
 #include "../mocks/v1_profiles.h"
 #include "../mocks/modules/display/display_preview_module.h"
 #include "../mocks/modules/power/power_module.h"
-#include "../../src/debug_logger.h"
 
 #ifndef ARDUINO
 SerialClass Serial;

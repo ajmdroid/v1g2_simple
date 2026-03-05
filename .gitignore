@@ -75,3 +75,5 @@ bench_testing/
 
 # Local research docs (not tracked)
 docs/AUTOLOCKOUT_RESEARCH.md
+docs/ROAD_MAP_FORMAT.md
+.github/instructions/*

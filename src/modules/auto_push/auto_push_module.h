@@ -32,9 +32,6 @@ public:
     bool isActive() const { return state.step != Step::Idle; }
 
 private:
-    // Local debug gate; keep noisy logs off by default.
-    static constexpr bool kDebugLogs = true;
-
     static constexpr uint8_t kMaxProfileWriteRetries = 5;
 
     enum class Step : uint8_t {

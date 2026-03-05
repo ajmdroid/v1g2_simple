@@ -27,15 +27,8 @@ extern WiFiManager wifiManager;
 
 BatteryManager batteryManager;
 
-// Gate verbose battery logs to reduce boot noise
-static constexpr bool BATTERY_LOG_VERBOSE = false;
-#if defined(DISABLE_DEBUG_LOGGER)
 #define BATTERY_LOGF(...) do { } while (0)
 #define BATTERY_LOGLN(msg) do { } while (0)
-#else
-#define BATTERY_LOGF(...) do { if (BATTERY_LOG_VERBOSE) Serial.printf(__VA_ARGS__); } while (0)
-#define BATTERY_LOGLN(msg) do { if (BATTERY_LOG_VERBOSE) Serial.println(msg); } while (0)
-#endif
 
 // ADC handles
 static adc_oneshot_unit_handle_t adc1_handle = NULL;
