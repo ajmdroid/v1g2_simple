@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "settings.h"  // For VoiceAlertMode enum
+#include "../include/camera_alert_types.h"
 
 // Band types for voice alerts
 enum class AlertBand : uint8_t {
@@ -60,6 +61,12 @@ void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection dir
 
 // Play band-only announcement (e.g., "Ka", "K", "X", "Laser")
 void play_band_only(AlertBand band);
+
+// Play camera proximity announcement.
+// Far stage: cam_<type>.mul + dir_ahead.mul
+// Near stage: cam_<type>.mul + cam_close.mul
+// Returns true only when playback task successfully starts.
+bool play_camera_alert(CameraType type, bool isNearStage);
 
 // Initialize SD audio (call after storage manager is ready)
 void audio_init_sd();

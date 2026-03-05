@@ -20,6 +20,7 @@
 
 using namespace DisplaySegments;
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;
+static constexpr float CAMERA_CM_TO_MILES = 0.000006213712f;
 
 // Convenience alias (matches display.cpp)
 using TextWidthCacheEntry = DisplayFontManager::WidthCacheEntry;
@@ -376,6 +377,104 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     lastDrawWidth = textW;
     cacheValid = true;
     lastDrawMs = nowMs;
+}
+
+void V1Display::drawCameraAlert(const CameraAlertDisplayPayload& payload) {
+    const V1Settings& s = settingsManager.get();
+
+    static CameraType lastType = CameraType::SPEED;
+    static uint16_t lastDistanceCm = 0xFFFF;
+    static uint16_t lastColor = 0;
+    static bool cacheValid = false;
+
+    if (dirty.frequency) {
+        cacheValid = false;
+        dirty.frequency = false;
+    }
+
+    const uint16_t textColor = s.colorCameraText;
+    if (cacheValid &&
+        lastType == payload.type &&
+        lastDistanceCm == payload.distanceCm &&
+        lastColor == textColor) {
+        return;
+    }
+
+    const float distanceMiles = static_cast<float>(payload.distanceCm) * CAMERA_CM_TO_MILES;
+    char distanceBuf[8];
+    if (distanceMiles >= 10.0f) {
+        snprintf(distanceBuf, sizeof(distanceBuf), "%.0f", distanceMiles);
+    } else {
+        snprintf(distanceBuf, sizeof(distanceBuf), "%.1f", distanceMiles);
+    }
+    const char* label = cameraTypeDisplayLabel(payload.type);
+
+    const int zoneX = DisplayLayout::CONTENT_LEFT_MARGIN;
+    const int zoneY = DisplayLayout::PRIMARY_ZONE_Y;
+    const int zoneW = DisplayLayout::CONTENT_AVAILABLE_WIDTH;
+    const int zoneH = DisplayLayout::PRIMARY_ZONE_HEIGHT;
+    FILL_RECT(zoneX, zoneY, zoneW, zoneH, PALETTE_BG);
+    markFrequencyDirtyRegion(zoneX, zoneY, zoneW, zoneH);
+
+    if (fontMgr.segment7Ready) {
+        const int fontSize = 75;
+        const int leftMargin = 135;
+        const int rightMargin = 200;
+        const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+
+        static TextWidthCacheEntry widthCache[16];
+        static uint8_t widthCacheNextSlot = 0;
+        const int textWidth = DisplayFontManager::cachedTextWidth(
+            fontMgr.segment7,
+            fontSize,
+            distanceBuf,
+            widthCache,
+            widthCacheNextSlot);
+        int x = leftMargin + (maxWidth - textWidth) / 2;
+        if (x < leftMargin) x = leftMargin;
+
+        const int y = 88;
+        const uint8_t bgR = (PALETTE_BG >> 11) << 3;
+        const uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+        const uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+        fontMgr.segment7.setBackgroundColor(bgR, bgG, bgB);
+        fontMgr.segment7.setFontSize(fontSize);
+        fontMgr.segment7.setFontColor((textColor >> 11) << 3,
+                                      ((textColor >> 5) & 0x3F) << 2,
+                                      (textColor & 0x1F) << 3);
+        fontMgr.segment7.setCursor(x, y);
+        fontMgr.segment7.printf("%s", distanceBuf);
+    } else {
+        const float scale = 2.3f;
+        const int width = measureSevenSegmentText(distanceBuf, scale);
+        const int x = 190;
+        const int y = 36;
+        drawSevenSegmentText(distanceBuf,
+                             x,
+                             y,
+                             scale,
+                             textColor,
+                             PALETTE_BG);
+        markFrequencyDirtyRegion(x - 4, y - 2, width + 8, 75);
+    }
+
+    // "MI" unit marker.
+    tft->setTextSize(2);
+    tft->setTextColor(textColor, PALETTE_BG);
+    tft->setCursor(360, 83);
+    tft->print("MI");
+
+    // Camera type label below distance.
+    tft->setTextSize(2);
+    tft->setTextColor(textColor, PALETTE_BG);
+    tft->setCursor(250, 120);
+    tft->print(label);
+    markFrequencyDirtyRegion(220, 80, 190, 52);
+
+    lastType = payload.type;
+    lastDistanceCm = payload.distanceCm;
+    lastColor = textColor;
+    cacheValid = true;
 }
 
 // ---------------------------------------------------------------------------

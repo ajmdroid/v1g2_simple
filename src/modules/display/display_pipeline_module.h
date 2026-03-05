@@ -11,6 +11,8 @@
 #include "modules/alert_persistence/alert_persistence_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/voice/voice_module.h"
+#include "modules/camera_alert/camera_alert_module.h"
+#include "modules/gps/gps_runtime_module.h"
 #include "debug_logger.h"
 
 class DisplayPipelineModule {
@@ -22,12 +24,16 @@ public:
                V1BLEClient* bleClient,
                AlertPersistenceModule* alertPersistenceModule,
                VolumeFadeModule* volumeFadeModule,
+               CameraAlertModule* cameraAlertModule,
+               GpsRuntimeModule* gpsRuntimeModule,
                VoiceModule* voiceModule,
                DebugLogger* debugLogger);
 
     // Process after a successful parser.parse(); expects parser state already updated.
     // prioritySuppressed is a per-frame software suppression flag (e.g. lockout ENFORCE match).
     void handleParsed(unsigned long nowMs, bool prioritySuppressed);
+    bool isCameraAlertActive() const { return cameraAlertActive_; }
+    bool getCameraStatusSnapshot(CameraAlertStatusSnapshot& snapshot) const;
 
 private:
     DisplayMode* displayMode = nullptr;
@@ -37,8 +43,11 @@ private:
     V1BLEClient* ble = nullptr;
     AlertPersistenceModule* alertPersistence = nullptr;
     VolumeFadeModule* volumeFade = nullptr;
+    CameraAlertModule* cameraAlerts = nullptr;
+    GpsRuntimeModule* gpsRuntime = nullptr;
     VoiceModule* voice = nullptr;
     DebugLogger* debug = nullptr;
+    bool cameraAlertActive_ = false;
 
     // Mute debounce
     bool debouncedMuteState = false;

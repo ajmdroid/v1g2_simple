@@ -1,5 +1,7 @@
 # WiFi API route contract (extracted ApiService endpoints)
 
+HTTP_GET /api/cameras/settings
+HTTP_GET /api/cameras/status
 HTTP_GET /api/debug/metrics
 HTTP_GET /api/debug/panic
 HTTP_GET /api/debug/perf-files
@@ -13,6 +15,7 @@ HTTP_GET /api/lockouts/summary
 HTTP_GET /api/lockouts/zones
 HTTP_GET /api/lockouts/zones/export
 HTTP_GET /api/settings/backup
+HTTP_POST /api/cameras/settings
 HTTP_POST /api/debug/enable
 HTTP_POST /api/debug/metrics/reset
 HTTP_POST /api/debug/perf-files/delete

@@ -175,6 +175,16 @@ inline uint8_t clampLockoutManualDemotionMissCountValue(int rawCount) {
     return 50;
 }
 
+// Camera alert settings limits.
+static constexpr uint16_t CAMERA_ALERT_RANGE_M_DEFAULT = 805;  // ~0.5 mi
+static constexpr uint16_t CAMERA_ALERT_RANGE_M_MIN = 50;
+static constexpr uint16_t CAMERA_ALERT_RANGE_M_MAX = 5000;
+
+inline uint16_t clampCameraAlertRangeMValue(int rawMeters) {
+    return static_cast<uint16_t>(std::max(static_cast<int>(CAMERA_ALERT_RANGE_M_MIN),
+                                          std::min(rawMeters, static_cast<int>(CAMERA_ALERT_RANGE_M_MAX))));
+}
+
 // Auto-push profile slot
 struct AutoPushSlot {
     String profileName;
@@ -220,6 +230,18 @@ struct V1Settings {
     uint16_t gpsLockoutPreQuietBufferE5;                // Extra radius for pre-quiet approach zone (0 = same as zone)
     uint16_t gpsLockoutMaxHdopX10;                    // Max HDOP ×10 for lockout eval/learn (50 = 5.0, 0 = disabled)
     uint8_t gpsLockoutMinLearnerSpeedMph;             // Min speed (mph) for learner ingestion (0 = disabled)
+
+    // Camera proximity alerts
+    bool cameraAlertsEnabled;      // Master camera alert enable
+    uint16_t cameraAlertRangeM;    // Camera visual range in meters
+    bool cameraTypeAlpr;           // Alert on ALPR cameras (flag 4)
+    bool cameraTypeRedLight;       // Alert on red-light cameras (flag 2)
+    bool cameraTypeSpeed;          // Alert on speed cameras (flag 1)
+    bool cameraTypeBusLane;        // Alert on bus-lane cameras (flag 3)
+    uint16_t colorCameraArrow;     // Camera front arrow color
+    uint16_t colorCameraText;      // Camera distance/label text color
+    bool cameraVoiceEnabled;       // Voice trigger at 1000 ft
+    bool cameraVoiceClose;         // Voice trigger at 500 ft
     
     // Display settings
     bool turnOffDisplay;
@@ -358,6 +380,16 @@ struct V1Settings {
         gpsLockoutPreQuietBufferE5(LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT),
         gpsLockoutMaxHdopX10(LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT),
         gpsLockoutMinLearnerSpeedMph(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT),
+        cameraAlertsEnabled(true),
+        cameraAlertRangeM(CAMERA_ALERT_RANGE_M_DEFAULT),
+        cameraTypeAlpr(true),
+        cameraTypeRedLight(true),
+        cameraTypeSpeed(true),
+        cameraTypeBusLane(false),
+        colorCameraArrow(0x780F),
+        colorCameraText(0x780F),
+        cameraVoiceEnabled(true),
+        cameraVoiceClose(true),
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment

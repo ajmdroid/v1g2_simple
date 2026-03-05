@@ -54,6 +54,7 @@
 #include "modules/ble/connection_state_dispatch_module.h"
 #include "modules/display/display_pipeline_module.h"
 #include "modules/display/display_orchestration_module.h"
+#include "modules/camera_alert/camera_alert_module.h"
 #include "modules/system/system_event_bus.h"
 #include "modules/system/parsed_frame_event_module.h"
 #include "modules/system/periodic_maintenance_module.h"
@@ -188,6 +189,7 @@ ConnectionRuntimeModule connectionRuntimeModule;
 ConnectionStateDispatchModule connectionStateDispatchModule;
 DisplayPipelineModule displayPipelineModule;
 DisplayOrchestrationModule displayOrchestrationModule;
+CameraAlertModule cameraAlertModule;
 DisplayRestoreModule displayRestoreModule;
 SystemEventBus systemEventBus;
 PeriodicMaintenanceModule periodicMaintenanceModule;
@@ -725,6 +727,10 @@ static void configureLoopDisplayModule() {
             return static_cast<DisplayOrchestrationModule*>(ctx)->processLightweightRefresh(refreshCtx);
         };
     loopDisplayProviders.lightweightRefreshContext = &displayOrchestrationModule;
+    loopDisplayProviders.readCameraAlertActive = [](void* ctx) -> bool {
+        return static_cast<DisplayPipelineModule*>(ctx)->isCameraAlertActive();
+    };
+    loopDisplayProviders.cameraAlertContext = &displayPipelineModule;
     loopDisplayProviders.timestampUs = [](void*) -> uint32_t {
         return PERF_TIMESTAMP_US();
     };
@@ -778,6 +784,18 @@ static void configureAlertAudioDisplayPipeline() {
     alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager);
     voiceModule.begin(&settingsManager, &bleClient);
     volumeFadeModule.begin(&settingsManager);
+    CameraAlertProviders cameraProviders;
+    cameraProviders.nearestCamera = [](void*,
+                                       int32_t latE5,
+                                       int32_t lonE5,
+                                       uint16_t searchRadiusE5) -> CameraResult {
+        return roadMapReader.nearestCamera(latE5, lonE5, searchRadiusE5);
+    };
+    cameraProviders.cameraCount = [](void*) -> uint32_t {
+        return roadMapReader.cameraCount();
+    };
+    cameraProviders.context = nullptr;
+    cameraAlertModule.begin(cameraProviders);
     displayPipelineModule.begin(&displayMode,
                                 &display,
                                 &parser,
@@ -785,6 +803,8 @@ static void configureAlertAudioDisplayPipeline() {
                                 &bleClient,
                                 &alertPersistenceModule,
                                 &volumeFadeModule,
+                                &cameraAlertModule,
+                                &gpsRuntimeModule,
                                 &voiceModule,
                                 &debugLogger);
 }

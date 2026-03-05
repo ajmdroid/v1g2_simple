@@ -512,6 +512,18 @@ bool SettingsManager::restoreFromSD() {
         settings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
             doc["gpsLockoutPreQuietBufferE5"].as<int>());
     }
+    restoreBool("cameraAlertsEnabled", settings.cameraAlertsEnabled);
+    if (doc["cameraAlertRangeM"].is<int>()) {
+        settings.cameraAlertRangeM = clampCameraAlertRangeMValue(doc["cameraAlertRangeM"].as<int>());
+    }
+    restoreBool("cameraTypeAlpr", settings.cameraTypeAlpr);
+    restoreBool("cameraTypeRedLight", settings.cameraTypeRedLight);
+    restoreBool("cameraTypeSpeed", settings.cameraTypeSpeed);
+    restoreBool("cameraTypeBusLane", settings.cameraTypeBusLane);
+    if (doc["colorCameraArrow"].is<int>()) settings.colorCameraArrow = doc["colorCameraArrow"];
+    if (doc["colorCameraText"].is<int>()) settings.colorCameraText = doc["colorCameraText"];
+    restoreBool("cameraVoiceEnabled", settings.cameraVoiceEnabled);
+    restoreBool("cameraVoiceClose", settings.cameraVoiceClose);
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
     if (doc["autoPowerOffMinutes"].is<int>()) {
         settings.autoPowerOffMinutes = clampU8(doc["autoPowerOffMinutes"].as<int>(), 0, 60);

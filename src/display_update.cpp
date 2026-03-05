@@ -368,6 +368,26 @@ void V1Display::refreshSecondaryAlertCards(const AlertData* alerts, int alertCou
                 SECONDARY_ROW_HEIGHT);
 }
 
+void V1Display::updateCameraAlert(const CameraAlertDisplayPayload& payload, const DisplayState& state) {
+    persistedMode = false;
+    currentScreen = ScreenMode::Resting;
+
+    // Camera ownership path intentionally touches only frequency and arrow surfaces.
+    dirty.frequency = true;
+    dirty.arrow = true;
+    drawCameraAlert(payload);
+    drawDirectionArrow(DIR_FRONT, false, 0, settingsManager.get().colorCameraArrow);
+
+    // Frequency zone + right arrow strip.
+    flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
+                DisplayLayout::PRIMARY_ZONE_Y,
+                DisplayLayout::CONTENT_AVAILABLE_WIDTH,
+                DisplayLayout::PRIMARY_ZONE_HEIGHT);
+    flushRegion(420, 0, 220, 130);
+
+    lastState = state;
+}
+
 // Persisted alert display - shows last alert in dark grey after V1 clears it
 // Only draws frequency, band, and arrows - no signal bars, no mute badge
 // Bogey counter shows V1 mode (from state), not "1"

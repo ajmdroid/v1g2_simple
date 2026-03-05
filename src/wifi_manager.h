@@ -48,6 +48,10 @@ namespace WifiV1DevicesApiService {
 struct Runtime;
 }
 
+namespace CameraAlertApiService {
+struct Runtime;
+}
+
 // WiFi service state (AP may be enabled or disabled while service is active)
 enum SetupModeState {
     SETUP_MODE_OFF = 0,
@@ -302,6 +306,7 @@ private:
     WifiClientApiService::Runtime makeWifiClientRuntime();
     WifiV1ProfileApiService::Runtime makeV1ProfileRuntime();
     WifiV1DevicesApiService::Runtime makeV1DevicesRuntime();
+    CameraAlertApiService::Runtime makeCameraAlertRuntime();
     
     // API endpoints
     void handleNotFound();

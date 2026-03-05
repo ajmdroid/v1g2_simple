@@ -47,6 +47,10 @@ enum LockoutRuntimeMode {
     LOCKOUT_RUNTIME_ENFORCE = 3
 };
 
+static constexpr uint16_t CAMERA_ALERT_RANGE_M_DEFAULT = 805;
+static constexpr uint16_t CAMERA_ALERT_RANGE_M_MIN = 50;
+static constexpr uint16_t CAMERA_ALERT_RANGE_M_MAX = 5000;
+
 WiFiMode deriveWifiMode(bool wifiClientEnabled) {
     return wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
 }
@@ -77,6 +81,11 @@ LockoutRuntimeMode clampLockoutRuntimeMode(int raw) {
 
 uint16_t clampGuardDropThreshold(int raw) {
     return static_cast<uint16_t>(clampValue<int>(raw, 0, 65535));
+}
+
+uint16_t clampCameraAlertRangeMValue(int raw) {
+    return static_cast<uint16_t>(
+        clampValue<int>(raw, CAMERA_ALERT_RANGE_M_MIN, CAMERA_ALERT_RANGE_M_MAX));
 }
 
 /**
@@ -138,6 +147,21 @@ void test_clamp_guard_drop_threshold_0_to_65535() {
     TEST_ASSERT_EQUAL(42, clampGuardDropThreshold(42));
     TEST_ASSERT_EQUAL(65535, clampGuardDropThreshold(65535));
     TEST_ASSERT_EQUAL(65535, clampGuardDropThreshold(70000));
+}
+
+void test_camera_alert_range_clamp_50_to_5000() {
+    TEST_ASSERT_EQUAL(50, clampCameraAlertRangeMValue(-10));
+    TEST_ASSERT_EQUAL(50, clampCameraAlertRangeMValue(0));
+    TEST_ASSERT_EQUAL(50, clampCameraAlertRangeMValue(50));
+    TEST_ASSERT_EQUAL(805, clampCameraAlertRangeMValue(805));
+    TEST_ASSERT_EQUAL(5000, clampCameraAlertRangeMValue(5000));
+    TEST_ASSERT_EQUAL(5000, clampCameraAlertRangeMValue(65000));
+}
+
+void test_camera_setting_defaults_match_contract() {
+    TEST_ASSERT_EQUAL_UINT16(805, CAMERA_ALERT_RANGE_M_DEFAULT);
+    TEST_ASSERT_EQUAL_UINT16(50, CAMERA_ALERT_RANGE_M_MIN);
+    TEST_ASSERT_EQUAL_UINT16(5000, CAMERA_ALERT_RANGE_M_MAX);
 }
 
 // ============================================================================
@@ -254,6 +278,8 @@ void runAllTests() {
     RUN_TEST(test_clamp_volume_0_to_9);
     RUN_TEST(test_clamp_lockout_runtime_mode_0_to_3);
     RUN_TEST(test_clamp_guard_drop_threshold_0_to_65535);
+    RUN_TEST(test_camera_alert_range_clamp_50_to_5000);
+    RUN_TEST(test_camera_setting_defaults_match_contract);
     
     // Slot index tests (2 tests)
     RUN_TEST(test_clampSlotIndex_valid_values);
