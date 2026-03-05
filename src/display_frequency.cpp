@@ -458,13 +458,13 @@ void V1Display::drawCameraAlert(const CameraAlertDisplayPayload& payload) {
         markFrequencyDirtyRegion(x - 4, y - 2, width + 8, 75);
     }
 
-    // "MI" unit marker.  TODO: tune pixel positions on-device.
+    // "MI" unit marker.
     tft->setTextSize(2);
     tft->setTextColor(textColor, PALETTE_BG);
     tft->setCursor(360, 83);
     tft->print("MI");
 
-    // Camera type label below distance.  TODO: tune pixel positions on-device.
+    // Camera type label below distance.
     tft->setTextSize(2);
     tft->setTextColor(textColor, PALETTE_BG);
     tft->setCursor(250, 120);

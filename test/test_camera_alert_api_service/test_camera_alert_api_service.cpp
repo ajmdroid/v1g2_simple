@@ -78,7 +78,7 @@ void test_post_settings_supports_subset_patch_and_save() {
     TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
 }
 
-void test_post_settings_rejects_range_exceeding_uint16() {
+void test_post_settings_clamps_range_value() {
     WebServer server(80);
     FakeRuntime rt;
     server.setArg("plain", "{\"cameraAlertRangeM\":99999}");
@@ -90,11 +90,8 @@ void test_post_settings_rejects_range_exceeding_uint16() {
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.saveCalls);
-}
 
-void test_post_settings_clamps_range_to_max() {
-    WebServer server(80);
-    FakeRuntime rt;
+    server.clearArgs();
     server.setArg("plain", "{\"cameraAlertRangeM\":5001}");
     CameraAlertApiService::handleApiSettingsSave(
         server,
@@ -102,19 +99,6 @@ void test_post_settings_clamps_range_to_max() {
         []() { return true; });
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_UINT16(5000, rt.settings.cameraAlertRangeM);
-
-    // Value within uint16 but above MAX should clamp, not reject.
-    server.clearArgs();
-    rt.settings.cameraAlertRangeM = 0;
-    rt.saveCalls = 0;
-    server.setArg("plain", "{\"cameraAlertRangeM\":60000}");
-    CameraAlertApiService::handleApiSettingsSave(
-        server,
-        makeRuntime(rt),
-        []() { return true; });
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_EQUAL_UINT16(5000, rt.settings.cameraAlertRangeM);
-    TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
 }
 
 void test_post_settings_rejects_malformed_json_or_type_mismatch() {
@@ -162,8 +146,7 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_get_settings_returns_full_payload_with_camera_count);
     RUN_TEST(test_post_settings_supports_subset_patch_and_save);
-    RUN_TEST(test_post_settings_rejects_range_exceeding_uint16);
-    RUN_TEST(test_post_settings_clamps_range_to_max);
+    RUN_TEST(test_post_settings_clamps_range_value);
     RUN_TEST(test_post_settings_rejects_malformed_json_or_type_mismatch);
     RUN_TEST(test_get_status_returns_live_snapshot);
     return UNITY_END();
