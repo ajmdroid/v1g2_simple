@@ -21,4 +21,7 @@ public:
 
 private:
     unsigned long wifiPriorityLastTransitionMs = 0;
+    bool pendingPriorityValid = false;
+    bool pendingPriorityState = false;
+    unsigned long pendingPrioritySinceMs = 0;
 };
