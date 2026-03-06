@@ -41,6 +41,22 @@ inline const char* cameraTypeDisplayLabel(CameraType type) {
     }
 }
 
+inline const char* cameraTypeApiName(CameraType type) {
+    switch (type) {
+        case CameraType::SPEED:
+            return "speed";
+        case CameraType::RED_LIGHT:
+            return "red_light";
+        case CameraType::BUS_LANE:
+            return "bus_lane";
+        case CameraType::ALPR:
+            return "alpr";
+        case CameraType::INVALID:
+        default:
+            return nullptr;
+    }
+}
+
 inline const char* cameraTypeClipName(CameraType type) {
     switch (type) {
         case CameraType::SPEED:

@@ -117,8 +117,6 @@ uint16_t searchRadiusE5FromRangeCm(uint32_t rangeCm) {
 
 CameraAlertModule cameraAlertModule;
 
-CameraAlertModule::CameraAlertModule() = default;
-
 void CameraAlertModule::begin(RoadMapReader* roadMap, SettingsManager* settings) {
     roadMap_ = roadMap;
     settings_ = settings;

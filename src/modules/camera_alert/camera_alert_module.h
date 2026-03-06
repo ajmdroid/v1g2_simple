@@ -11,7 +11,7 @@ struct V1Settings;
 
 class CameraAlertModule {
 public:
-    CameraAlertModule();
+    CameraAlertModule() = default;
 
     void begin(RoadMapReader* roadMap, SettingsManager* settings);
     void process(uint32_t nowMs, const CameraAlertContext& ctx);

@@ -141,13 +141,15 @@ using Settings = V1Settings;
 class SettingsManager {
 public:
     V1Settings settings;
+    int saveCalls = 0;
     
     void load() {}
-    void save() {}
+    void save() { ++saveCalls; }
     void setDefaults() {}
     
     const V1Settings& get() const { return settings; }
     V1Settings& getMutable() { return settings; }
+    V1Settings& mutableSettings() { return settings; }
     
     // Convenience helpers used by some tests
     uint8_t getBrightness() const { return settings.brightness; }
