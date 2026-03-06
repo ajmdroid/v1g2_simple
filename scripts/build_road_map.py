@@ -479,16 +479,23 @@ class Segment:
 
 CAMERA_RECORD_SIZE = 12  # bytes per camera record
 
+# Camera type flags — must match firmware CameraType enum in camera_alert_types.h
+CAM_TYPE_SPEED     = 1  # Speed camera
+CAM_TYPE_RED_LIGHT = 2  # Red-light camera
+CAM_TYPE_BUS_LANE  = 3  # Bus-lane camera
+CAM_TYPE_ALPR      = 4  # ALPR / plate-reader camera
+CAM_VALID_TYPES    = {CAM_TYPE_SPEED, CAM_TYPE_RED_LIGHT, CAM_TYPE_BUS_LANE, CAM_TYPE_ALPR}
+
 
 class Camera:
-    """A single ALPR/speed camera point."""
+    """A single camera overlay point."""
     __slots__ = ("lat", "lon", "bearing", "flags", "speed_mph")
 
     def __init__(self, lat, lon, bearing=-1, flags=0, speed_mph=0):
         self.lat = lat
         self.lon = lon
         self.bearing = bearing      # degrees 0-359, -1 = unknown
-        self.flags = flags          # camera type (2 or 4)
+        self.flags = flags          # camera type: 1=speed, 2=red_light, 3=bus_lane, 4=ALPR
         self.speed_mph = speed_mph  # speed limit at camera, 0 = unknown
 
 
@@ -533,6 +540,7 @@ def _load_cameras_from_db(container="v1simple_osm_postgis",
         return []
 
     cameras = []
+    skipped = 0
     for line in result.stdout.strip().split("\n"):
         if not line.strip():
             continue
@@ -540,16 +548,23 @@ def _load_cameras_from_db(container="v1simple_osm_postgis",
         if len(parts) < 5:
             continue
         try:
+            flg = int(parts[3])
+            if flg not in CAM_VALID_TYPES:
+                skipped += 1
+                continue
             cameras.append(Camera(
                 lat=float(parts[0]),
                 lon=float(parts[1]),
                 bearing=int(parts[2]),
-                flags=int(parts[3]),
+                flags=flg,
                 speed_mph=_parse_maxspeed(parts[4]),
             ))
         except (ValueError, IndexError):
             continue
 
+    if skipped:
+        print(f"  → {skipped} cameras skipped (unknown type flags)",
+              file=sys.stderr)
     return cameras
 
 
@@ -1090,7 +1105,7 @@ def main():
 
     # ── Camera enrichment ─────────────────────────────────────────────────
     ap.add_argument("--cameras", action="store_true",
-                    help="Include ALPR camera data from PostGIS container")
+                    help="Include camera overlay data from PostGIS container")
     ap.add_argument("--cameras-container", default="v1simple_osm_postgis",
                     help="Docker container name for PostGIS (default: v1simple_osm_postgis)")
 

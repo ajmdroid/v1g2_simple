@@ -103,7 +103,9 @@ public:
     RoadSnapResult snapToRoad(int32_t latE5, int32_t lonE5,
                               uint16_t snapRadiusE5 = 0) const;
 
-    /// Find the nearest ALPR camera within searchRadiusE5.
+    /// Find the nearest camera overlay point within searchRadiusE5.
+    /// Current map data may include ALPR and/or speed camera records depending
+    /// on the builder/export contract.
     /// Pure PSRAM pointer math — no SD I/O, no DMA, no locks.
     /// If searchRadiusE5 == 0, defaults to ~1 km (~900 E5).
     /// Returns result.valid == true if a camera was found.
