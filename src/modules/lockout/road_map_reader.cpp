@@ -498,8 +498,7 @@ CameraResult RoadMapReader::nearestCamera(int32_t latE5, int32_t lonE5,
         result.flags = bestCam->flags;
         result.speedMph = bestCam->speedMph;
         const float distCm = bestDistM * 100.0f;
-        result.distanceCm = (distCm > 65534.0f) ? 0xFFFE
-                            : static_cast<uint16_t>(distCm);
+        result.distanceCm = static_cast<uint32_t>(distCm);
     }
 
     return result;

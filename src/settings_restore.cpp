@@ -118,6 +118,16 @@ bool backupAppearsInSyncWithNvs(const JsonDocument& doc, const V1Settings& curre
         backupFieldMatchesBool(doc, "proxyBLE", current.proxyBLE) &&
         backupFieldMatchesString(doc, "proxyName", current.proxyName) &&
         backupFieldMatchesBool(doc, "gpsEnabled", current.gpsEnabled) &&
+        backupFieldMatchesBool(doc, "cameraAlertsEnabled", current.cameraAlertsEnabled) &&
+        backupFieldMatchesInt(doc, "cameraAlertRangeCm", static_cast<int>(current.cameraAlertRangeCm)) &&
+        backupFieldMatchesBool(doc, "cameraTypeAlpr", current.cameraTypeAlpr) &&
+        backupFieldMatchesBool(doc, "cameraTypeRedLight", current.cameraTypeRedLight) &&
+        backupFieldMatchesBool(doc, "cameraTypeSpeed", current.cameraTypeSpeed) &&
+        backupFieldMatchesBool(doc, "cameraTypeBusLane", current.cameraTypeBusLane) &&
+        backupFieldMatchesInt(doc, "colorCameraArrow", current.colorCameraArrow) &&
+        backupFieldMatchesInt(doc, "colorCameraText", current.colorCameraText) &&
+        backupFieldMatchesBool(doc, "cameraVoiceFarEnabled", current.cameraVoiceFarEnabled) &&
+        backupFieldMatchesBool(doc, "cameraVoiceNearEnabled", current.cameraVoiceNearEnabled) &&
         backupFieldMatchesInt(doc, "brightness", current.brightness) &&
         backupFieldMatchesInt(doc, "displayStyle", static_cast<int>(current.displayStyle)) &&
         backupFieldMatchesBool(doc, "autoPushEnabled", current.autoPushEnabled) &&
@@ -512,6 +522,19 @@ bool SettingsManager::restoreFromSD() {
         settings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
             doc["gpsLockoutPreQuietBufferE5"].as<int>());
     }
+    restoreBool("cameraAlertsEnabled", settings.cameraAlertsEnabled);
+    if (doc["cameraAlertRangeCm"].is<int>()) {
+        settings.cameraAlertRangeCm = clampCameraAlertRangeCmValue(
+            doc["cameraAlertRangeCm"].as<int>());
+    }
+    restoreBool("cameraTypeAlpr", settings.cameraTypeAlpr);
+    restoreBool("cameraTypeRedLight", settings.cameraTypeRedLight);
+    restoreBool("cameraTypeSpeed", settings.cameraTypeSpeed);
+    restoreBool("cameraTypeBusLane", settings.cameraTypeBusLane);
+    if (doc["colorCameraArrow"].is<int>()) settings.colorCameraArrow = doc["colorCameraArrow"];
+    if (doc["colorCameraText"].is<int>()) settings.colorCameraText = doc["colorCameraText"];
+    restoreBool("cameraVoiceFarEnabled", settings.cameraVoiceFarEnabled);
+    restoreBool("cameraVoiceNearEnabled", settings.cameraVoiceNearEnabled);
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
     if (doc["autoPowerOffMinutes"].is<int>()) {
         settings.autoPowerOffMinutes = clampU8(doc["autoPowerOffMinutes"].as<int>(), 0, 60);

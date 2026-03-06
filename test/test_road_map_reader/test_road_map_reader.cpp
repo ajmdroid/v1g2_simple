@@ -130,6 +130,18 @@ void test_no_camera_outside_grid() {
     TEST_ASSERT_FALSE(r.valid);
 }
 
+void test_camera_distance_exceeds_legacy_uint16_cap() {
+    RoadMapReader reader;
+    reader.loadFromBuffer(fixtureData, fixtureSize);
+
+    // Roughly 666 m south of CAM0, still within the default 900 E5 search radius.
+    CameraResult r = reader.nearestCamera(CAM0_LAT - 600, CAM0_LON, 900);
+    TEST_ASSERT_TRUE_MESSAGE(r.valid, "far camera query should still resolve");
+    TEST_ASSERT_EQUAL_UINT8(1, r.flags);
+    TEST_ASSERT_TRUE_MESSAGE(r.distanceCm > 65534u,
+                             "camera distance should exceed legacy uint16_t cap");
+}
+
 void test_loadFromBuffer_rejects_bad_magic() {
     uint8_t bad[145];
     memcpy(bad, fixtureData, fixtureSize);
@@ -199,6 +211,7 @@ int main() {
     RUN_TEST(test_nearest_camera_type_bus_lane);
     RUN_TEST(test_nearest_camera_type_alpr);
     RUN_TEST(test_no_camera_outside_grid);
+    RUN_TEST(test_camera_distance_exceeds_legacy_uint16_cap);
     RUN_TEST(test_loadFromBuffer_rejects_bad_magic);
     RUN_TEST(test_loadFromBuffer_rejects_short_buffer);
     RUN_TEST(test_failed_reload_clears_prior_state);

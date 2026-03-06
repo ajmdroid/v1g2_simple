@@ -19,7 +19,7 @@
 const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
 const char* SETTINGS_BACKUP_TMP_PATH = "/v1simple_backup.tmp";
 const char* SETTINGS_BACKUP_PREV_PATH = "/v1simple_backup.prev";
-const int SD_BACKUP_VERSION = 9;  // Increment when adding new fields to backup
+const int SD_BACKUP_VERSION = 10;  // Increment when adding new fields to backup
 const size_t SETTINGS_BACKUP_MAX_BYTES = 512 * 1024;
 const char* SETTINGS_NS_A = "v1settingsA";
 const char* SETTINGS_NS_B = "v1settingsB";
@@ -73,7 +73,7 @@ SettingsManager settingsManager;
 // XOR obfuscation key - deters casual reading but NOT cryptographically secure
 // See security note above for rationale
 const char XOR_KEY[] = "V1G2-S3cr3t-K3y!";
-const int SETTINGS_VERSION = 6;  // Increment when changing persisted settings schema
+const int SETTINGS_VERSION = 7;  // Increment when changing persisted settings schema
 const char* OBFUSCATION_HEX_PREFIX = "hex:";
 
 
@@ -203,6 +203,17 @@ void SettingsManager::load() {
         preferences.getUShort("gpsLkHdop", LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT));
     settings.gpsLockoutMinLearnerSpeedMph = clampLockoutGpsMinLearnerSpeedMphValue(
         preferences.getUChar("gpsLkMinSpd", LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT));
+    settings.cameraAlertsEnabled = preferences.getBool("camEn", true);
+    settings.cameraAlertRangeCm = clampCameraAlertRangeCmValue(
+        static_cast<int>(preferences.getUInt("camRngCm", CAMERA_ALERT_RANGE_CM_DEFAULT)));
+    settings.cameraTypeAlpr = preferences.getBool("camTAlpr", true);
+    settings.cameraTypeRedLight = preferences.getBool("camTRL", true);
+    settings.cameraTypeSpeed = preferences.getBool("camTSpd", true);
+    settings.cameraTypeBusLane = preferences.getBool("camTBus", false);
+    settings.colorCameraArrow = preferences.getUShort("colCamArr", 0x780F);
+    settings.colorCameraText = preferences.getUShort("colCamTxt", 0x780F);
+    settings.cameraVoiceFarEnabled = preferences.getBool("camVFar", true);
+    settings.cameraVoiceNearEnabled = preferences.getBool("camVNear", true);
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = std::max<uint8_t>(1, preferences.getUChar("brightness", 200));  // Min 1 to avoid blank screen
     settings.displayStyle = normalizeDisplayStyle(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));

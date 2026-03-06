@@ -47,6 +47,19 @@ inline const char* lockoutRuntimeModeName(LockoutRuntimeMode mode) {
 // GPS quality gate constants (must match real settings.h)
 static constexpr uint8_t  LOCKOUT_GPS_MIN_SATELLITES = 4;
 static constexpr uint32_t LOCKOUT_GPS_COURSE_MAX_AGE_MS = 5000;
+static constexpr uint32_t CAMERA_ALERT_RANGE_CM_MIN = 16093;
+static constexpr uint32_t CAMERA_ALERT_RANGE_CM_MAX = 160934;
+static constexpr uint32_t CAMERA_ALERT_RANGE_CM_DEFAULT = 128748;
+
+inline uint32_t clampCameraAlertRangeCmValue(int rawRangeCm) {
+    if (rawRangeCm < static_cast<int>(CAMERA_ALERT_RANGE_CM_MIN)) {
+        return CAMERA_ALERT_RANGE_CM_MIN;
+    }
+    if (rawRangeCm > static_cast<int>(CAMERA_ALERT_RANGE_CM_MAX)) {
+        return CAMERA_ALERT_RANGE_CM_MAX;
+    }
+    return static_cast<uint32_t>(rawRangeCm);
+}
 
 // Minimal display font enum (for compatibility with older tests)
 enum FontStyle : uint8_t {
@@ -107,6 +120,18 @@ struct V1Settings {
     uint16_t gpsLockoutMaxHdopX10 = 50;          // 5.0 HDOP × 10
     uint8_t gpsLockoutMinLearnerSpeedMph = 5;
     bool bleProxyEnabled = true;
+
+    // Camera alerts
+    bool cameraAlertsEnabled = true;
+    uint32_t cameraAlertRangeCm = CAMERA_ALERT_RANGE_CM_DEFAULT;
+    bool cameraTypeAlpr = true;
+    bool cameraTypeRedLight = true;
+    bool cameraTypeSpeed = true;
+    bool cameraTypeBusLane = false;
+    uint16_t colorCameraArrow = 0x780F;
+    uint16_t colorCameraText = 0x780F;
+    bool cameraVoiceFarEnabled = true;
+    bool cameraVoiceNearEnabled = true;
 };
 
 // Backwards compatibility alias used by some legacy tests

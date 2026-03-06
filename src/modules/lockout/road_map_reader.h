@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+static constexpr uint32_t CAMERA_DISTANCE_INVALID_CM = UINT32_MAX;
+
 /// Result of a road snap query.
 struct RoadSnapResult {
     int32_t  latE5     = 0;      // Snapped latitude (E5)
@@ -22,7 +24,7 @@ struct CameraResult {
     uint16_t bearing    = 0xFFFF; // Camera bearing (0-359, 0xFFFF=unknown)
     uint8_t  flags      = 0;     // Camera type flags
     uint8_t  speedMph   = 0;     // Speed limit at camera (mph), 0=unknown
-    uint16_t distanceCm = 0xFFFF; // Distance from query to camera (cm)
+    uint32_t distanceCm = CAMERA_DISTANCE_INVALID_CM; // Distance from query to camera (cm)
     bool     valid      = false; // True if a camera was found within radius
 };
 
@@ -104,8 +106,8 @@ public:
                               uint16_t snapRadiusE5 = 0) const;
 
     /// Find the nearest camera overlay point within searchRadiusE5.
-    /// Current map data may include ALPR and/or speed camera records depending
-    /// on the builder/export contract.
+    /// Camera flags are carried through exactly as stored in the map builder's
+    /// camera overlay contract.
     /// Pure PSRAM pointer math — no SD I/O, no DMA, no locks.
     /// If searchRadiusE5 == 0, defaults to ~1 km (~900 E5).
     /// Returns result.valid == true if a camera was found.

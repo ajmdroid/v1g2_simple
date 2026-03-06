@@ -82,6 +82,8 @@ int backupDocumentVersion(const JsonDocument& doc) {
 int backupCriticalFieldScore(const JsonDocument& doc) {
     int score = 0;
     if (!doc["gpsEnabled"].isNull()) score++;
+    if (!doc["cameraAlertsEnabled"].isNull()) score++;
+    if (!doc["cameraAlertRangeCm"].isNull()) score++;
     if (!doc["brightness"].isNull()) score++;
     if (!doc["displayStyle"].isNull()) score++;
     if (!doc["proxyBLE"].isNull()) score++;
@@ -231,6 +233,16 @@ void SettingsManager::backupToSD() {
     doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
     doc["gpsLockoutPreQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
+    doc["cameraAlertsEnabled"] = settings.cameraAlertsEnabled;
+    doc["cameraAlertRangeCm"] = settings.cameraAlertRangeCm;
+    doc["cameraTypeAlpr"] = settings.cameraTypeAlpr;
+    doc["cameraTypeRedLight"] = settings.cameraTypeRedLight;
+    doc["cameraTypeSpeed"] = settings.cameraTypeSpeed;
+    doc["cameraTypeBusLane"] = settings.cameraTypeBusLane;
+    doc["colorCameraArrow"] = settings.colorCameraArrow;
+    doc["colorCameraText"] = settings.colorCameraText;
+    doc["cameraVoiceFarEnabled"] = settings.cameraVoiceFarEnabled;
+    doc["cameraVoiceNearEnabled"] = settings.cameraVoiceNearEnabled;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;

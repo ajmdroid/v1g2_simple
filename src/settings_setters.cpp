@@ -36,6 +36,37 @@ void SettingsManager::setGpsEnabled(bool enabled) {
     save();
 }
 
+void SettingsManager::setCameraAlertsEnabled(bool enabled) {
+    settings.cameraAlertsEnabled = enabled;
+    save();
+}
+
+void SettingsManager::setCameraAlertRangeCm(uint32_t rangeCm) {
+    settings.cameraAlertRangeCm = clampCameraAlertRangeCmValue(static_cast<int>(rangeCm));
+    save();
+}
+
+void SettingsManager::setCameraTypeFilters(bool alprEnabled, bool redLightEnabled,
+                                           bool speedEnabled, bool busLaneEnabled) {
+    settings.cameraTypeAlpr = alprEnabled;
+    settings.cameraTypeRedLight = redLightEnabled;
+    settings.cameraTypeSpeed = speedEnabled;
+    settings.cameraTypeBusLane = busLaneEnabled;
+    save();
+}
+
+void SettingsManager::setCameraColors(uint16_t arrowColor, uint16_t textColor) {
+    settings.colorCameraArrow = arrowColor;
+    settings.colorCameraText = textColor;
+    save();
+}
+
+void SettingsManager::setCameraVoiceStages(bool farEnabled, bool nearEnabled) {
+    settings.cameraVoiceFarEnabled = farEnabled;
+    settings.cameraVoiceNearEnabled = nearEnabled;
+    save();
+}
+
 void SettingsManager::setAutoPowerOffMinutes(uint8_t minutes) {
     settings.autoPowerOffMinutes = clampU8(minutes, 0, 60);
     save();

@@ -24,6 +24,7 @@
 #include <Preferences.h>
 #include <FS.h>
 #include <algorithm>
+#include <cstdint>
 #include "../include/color_themes.h"
 
 // Forward declaration
@@ -128,6 +129,11 @@ static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MAX = 20;          /
 // Fail-open: stale course → directional entries don't match → alert plays.
 static constexpr uint32_t LOCKOUT_GPS_COURSE_MAX_AGE_MS = 5000;                // 5 seconds
 
+// Camera alert range is stored in centimeters end-to-end.
+static constexpr uint32_t CAMERA_ALERT_RANGE_CM_MIN = 16093;                   // 0.1 mi
+static constexpr uint32_t CAMERA_ALERT_RANGE_CM_MAX = 160934;                  // 1.0 mi
+static constexpr uint32_t CAMERA_ALERT_RANGE_CM_DEFAULT = 128748;              // 0.8 mi
+
 inline uint16_t clampLockoutPreQuietBufferE5Value(int rawBuffer) {
     return static_cast<uint16_t>(std::max(0,
                                           std::min(rawBuffer, static_cast<int>(LOCKOUT_PRE_QUIET_BUFFER_E5_MAX))));
@@ -141,6 +147,12 @@ inline uint16_t clampLockoutGpsMaxHdopX10Value(int rawHdopX10) {
 inline uint8_t clampLockoutGpsMinLearnerSpeedMphValue(int rawSpeed) {
     return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MIN),
                                          std::min(rawSpeed, static_cast<int>(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MAX))));
+}
+
+inline uint32_t clampCameraAlertRangeCmValue(int rawRangeCm) {
+    return static_cast<uint32_t>(
+        std::max(static_cast<int>(CAMERA_ALERT_RANGE_CM_MIN),
+                 std::min(rawRangeCm, static_cast<int>(CAMERA_ALERT_RANGE_CM_MAX))));
 }
 
 inline uint8_t clampLockoutLearnerHitsValue(int rawHits) {
@@ -224,6 +236,18 @@ struct V1Settings {
     uint16_t gpsLockoutPreQuietBufferE5;                // Extra radius for pre-quiet approach zone (0 = same as zone)
     uint16_t gpsLockoutMaxHdopX10;                    // Max HDOP ×10 for lockout eval/learn (50 = 5.0, 0 = disabled)
     uint8_t gpsLockoutMinLearnerSpeedMph;             // Min speed (mph) for learner ingestion (0 = disabled)
+
+    // Camera alert settings
+    bool cameraAlertsEnabled;      // Enable camera proximity alerts
+    uint32_t cameraAlertRangeCm;   // Camera alert search/display range in centimeters
+    bool cameraTypeAlpr;           // Alert on ALPR cameras
+    bool cameraTypeRedLight;       // Alert on red-light cameras
+    bool cameraTypeSpeed;          // Alert on speed cameras
+    bool cameraTypeBusLane;        // Alert on bus-lane cameras
+    uint16_t colorCameraArrow;     // Camera alert arrow color
+    uint16_t colorCameraText;      // Camera alert text color
+    bool cameraVoiceFarEnabled;    // Enable far-stage camera voice clip
+    bool cameraVoiceNearEnabled;   // Enable near-stage camera voice clip
     
     // Display settings
     bool turnOffDisplay;
@@ -362,6 +386,16 @@ struct V1Settings {
         gpsLockoutPreQuietBufferE5(LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT),
         gpsLockoutMaxHdopX10(LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT),
         gpsLockoutMinLearnerSpeedMph(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT),
+        cameraAlertsEnabled(true),
+        cameraAlertRangeCm(CAMERA_ALERT_RANGE_CM_DEFAULT),
+        cameraTypeAlpr(true),
+        cameraTypeRedLight(true),
+        cameraTypeSpeed(true),
+        cameraTypeBusLane(false),
+        colorCameraArrow(0x780F),
+        colorCameraText(0x780F),
+        cameraVoiceFarEnabled(true),
+        cameraVoiceNearEnabled(true),
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment
@@ -469,6 +503,12 @@ public:
     void setProxyBLE(bool enabled);
     void setProxyName(const String& name);
     void setGpsEnabled(bool enabled);
+    void setCameraAlertsEnabled(bool enabled);
+    void setCameraAlertRangeCm(uint32_t rangeCm);
+    void setCameraTypeFilters(bool alprEnabled, bool redLightEnabled,
+                              bool speedEnabled, bool busLaneEnabled);
+    void setCameraColors(uint16_t arrowColor, uint16_t textColor);
+    void setCameraVoiceStages(bool farEnabled, bool nearEnabled);
     void setAutoPowerOffMinutes(uint8_t minutes);
     void setApTimeoutMinutes(uint8_t minutes);
     uint8_t getApTimeoutMinutes() const { return settings.apTimeoutMinutes; }
