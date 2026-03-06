@@ -120,9 +120,14 @@ public:
     bool loadFromBuffer(uint8_t* buf, uint32_t size);
 
 private:
+    void clearState(bool releaseOwnedData = true);
+    bool bindBuffer(uint8_t* buf, uint32_t size, bool takeOwnership,
+                    bool logCameraBoundsWarning);
+
     uint8_t* data_ = nullptr;       // PSRAM buffer (entire file)
     uint32_t fileSize_ = 0;
     uint16_t defaultSnapRadiusE5_ = 135; // Derived from header tolerance in begin()
+    bool ownsData_ = false;         // True when data_ must be freed by this object.
 
     // Convenience pointers into data_ (set during begin)
     const RoadMapHeader*    header_    = nullptr;

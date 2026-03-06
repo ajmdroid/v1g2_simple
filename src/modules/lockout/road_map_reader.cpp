@@ -31,8 +31,87 @@ static constexpr const char* ROAD_MAP_PATH = "/road_map.bin";
 static constexpr uint32_t MAX_FILE_SIZE = 8 * 1024 * 1024;  // 8 MB sanity cap
 static constexpr uint32_t MIN_FILE_SIZE = 64;                // Header alone
 
+void RoadMapReader::clearState(bool releaseOwnedData) {
+    if (releaseOwnedData && ownsData_ && data_) {
+        free(data_);
+    }
+
+    data_ = nullptr;
+    fileSize_ = 0;
+    defaultSnapRadiusE5_ = 135;
+    ownsData_ = false;
+    header_ = nullptr;
+    gridIndex_ = nullptr;
+    segData_ = nullptr;
+    camGridIndex_ = nullptr;
+    camData_ = nullptr;
+}
+
+bool RoadMapReader::bindBuffer(uint8_t* buf, uint32_t size, bool takeOwnership,
+                               bool logCameraBoundsWarning) {
+    if (!buf || size < MIN_FILE_SIZE) {
+        clearState(true);
+        return false;
+    }
+
+    const RoadMapHeader* hdr = reinterpret_cast<const RoadMapHeader*>(buf);
+    if (memcmp(hdr->magic, "RMAP", 4) != 0 ||
+        (hdr->version != 1 && hdr->version != 2) ||
+        hdr->fileSize != size) {
+        clearState(true);
+        return false;
+    }
+
+    const uint32_t gridSize = static_cast<uint32_t>(hdr->gridRows) *
+                              hdr->gridCols * sizeof(RoadMapGridEntry);
+    if (hdr->gridIndexOffset + gridSize > size || hdr->segDataOffset > size) {
+        clearState(true);
+        return false;
+    }
+
+    const RoadMapGridEntry* camGridIndex = nullptr;
+    const CameraRecord* camData = nullptr;
+    if (hdr->cameraIndexOffset > 0 && hdr->cameraCount > 0) {
+        const uint32_t camGridSize = static_cast<uint32_t>(hdr->gridRows) *
+                                     hdr->gridCols * sizeof(RoadMapGridEntry);
+        const uint32_t camDataOffset = hdr->cameraIndexOffset + camGridSize;
+        const uint32_t camDataEnd = camDataOffset +
+                                    hdr->cameraCount * sizeof(CameraRecord);
+        if (camDataEnd <= size) {
+            camGridIndex = reinterpret_cast<const RoadMapGridEntry*>(
+                buf + hdr->cameraIndexOffset);
+            camData = reinterpret_cast<const CameraRecord*>(buf + camDataOffset);
+        } else if (logCameraBoundsWarning) {
+            Serial.println("[RoadMap] Camera section extends past EOF — skipping cameras");
+        }
+    }
+
+    uint16_t defaultSnapRadiusE5 = 135;
+    if (hdr->toleranceCm > 0) {
+        const float tolMetres = static_cast<float>(hdr->toleranceCm) / 100.0f;
+        const float radiusM = tolMetres * 1.5f;
+        const float radiusE5f = radiusM / 1.11f;
+        defaultSnapRadiusE5 = static_cast<uint16_t>(
+            std::min(radiusE5f, 65534.0f));
+    }
+
+    clearState(true);
+    data_ = buf;
+    fileSize_ = size;
+    defaultSnapRadiusE5_ = defaultSnapRadiusE5;
+    ownsData_ = takeOwnership;
+    header_ = hdr;
+    gridIndex_ = reinterpret_cast<const RoadMapGridEntry*>(buf + hdr->gridIndexOffset);
+    segData_ = buf + hdr->segDataOffset;
+    camGridIndex_ = camGridIndex;
+    camData_ = camData;
+    return true;
+}
+
 void RoadMapReader::begin() {
 #ifndef UNIT_TEST
+    clearState(true);
+
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
         Serial.println("[RoadMap] No SD card — road snap disabled");
         return;
@@ -95,84 +174,22 @@ void RoadMapReader::begin() {
         return;
     }
 
-    // Validate header.
-    const RoadMapHeader* hdr = reinterpret_cast<const RoadMapHeader*>(buf);
-    if (memcmp(hdr->magic, "RMAP", 4) != 0) {
-        Serial.println("[RoadMap] Bad magic (expected RMAP)");
+    if (!bindBuffer(buf, fSize, true, true)) {
+        Serial.println("[RoadMap] Invalid road_map.bin header/layout");
         free(buf);
         return;
-    }
-    if (hdr->version != 1 && hdr->version != 2) {
-        Serial.printf("[RoadMap] Unsupported version: %u\n", hdr->version);
-        free(buf);
-        return;
-    }
-    if (hdr->fileSize != fSize) {
-        Serial.printf("[RoadMap] Header fileSize mismatch: header=%lu actual=%lu\n",
-                      static_cast<unsigned long>(hdr->fileSize),
-                      static_cast<unsigned long>(fSize));
-        free(buf);
-        return;
-    }
-
-    // Validate grid index bounds.
-    const uint32_t gridSize = static_cast<uint32_t>(hdr->gridRows) * hdr->gridCols * 8;
-    if (hdr->gridIndexOffset + gridSize > fSize) {
-        Serial.println("[RoadMap] Grid index extends past end of file");
-        free(buf);
-        return;
-    }
-    if (hdr->segDataOffset > fSize) {
-        Serial.println("[RoadMap] Segment data offset past end of file");
-        free(buf);
-        return;
-    }
-
-    // All good — commit pointers.
-    data_ = buf;
-    fileSize_ = fSize;
-    header_ = hdr;
-    gridIndex_ = reinterpret_cast<const RoadMapGridEntry*>(buf + hdr->gridIndexOffset);
-    segData_ = buf + hdr->segDataOffset;
-
-    // Parse camera section if present (cameraIndexOffset != 0).
-    if (hdr->cameraIndexOffset > 0 && hdr->cameraCount > 0) {
-        const uint32_t camGridSize =
-            static_cast<uint32_t>(hdr->gridRows) * hdr->gridCols * sizeof(RoadMapGridEntry);
-        const uint32_t camDataOffset = hdr->cameraIndexOffset + camGridSize;
-        const uint32_t camDataEnd =
-            camDataOffset + hdr->cameraCount * sizeof(CameraRecord);
-        if (camDataEnd <= fSize) {
-            camGridIndex_ = reinterpret_cast<const RoadMapGridEntry*>(
-                buf + hdr->cameraIndexOffset);
-            camData_ = reinterpret_cast<const CameraRecord*>(
-                buf + camDataOffset);
-        } else {
-            Serial.println("[RoadMap] Camera section extends past EOF — skipping cameras");
-        }
-    }
-
-    // Derive snap radius from the RDP tolerance stored in the header.
-    // 1.5× tolerance so we don't miss roads simplified away from their
-    // true position.  toleranceCm → metres → E5 (1 E5 ≈ 1.11 m).
-    if (hdr->toleranceCm > 0) {
-        const float tolMetres = static_cast<float>(hdr->toleranceCm) / 100.0f;
-        const float radiusM = tolMetres * 1.5f;
-        const float radiusE5f = radiusM / 1.11f;
-        defaultSnapRadiusE5_ = static_cast<uint16_t>(
-            std::min(radiusE5f, 65534.0f));
     }
 
     Serial.printf("[RoadMap] Loaded %lu bytes into PSRAM in %lu ms "
                   "(segs=%lu pts=%lu cams=%lu grid=%ux%u cell=%.2f° snapR=%uE5)\n",
                   static_cast<unsigned long>(fSize),
                   static_cast<unsigned long>(readMs),
-                  static_cast<unsigned long>(hdr->totalSegments),
-                  static_cast<unsigned long>(hdr->totalPoints),
-                  static_cast<unsigned long>(hdr->cameraCount),
-                  static_cast<unsigned>(hdr->gridRows),
-                  static_cast<unsigned>(hdr->gridCols),
-                  static_cast<float>(hdr->cellSizeE5) / 100000.0f,
+                  static_cast<unsigned long>(header_->totalSegments),
+                  static_cast<unsigned long>(header_->totalPoints),
+                  static_cast<unsigned long>(header_->cameraCount),
+                  static_cast<unsigned>(header_->gridRows),
+                  static_cast<unsigned>(header_->gridCols),
+                  static_cast<float>(header_->cellSizeE5) / 100000.0f,
                   static_cast<unsigned>(defaultSnapRadiusE5_));
 #endif  // UNIT_TEST
 }
@@ -186,47 +203,7 @@ uint32_t RoadMapReader::cameraCount() const {
 }
 
 bool RoadMapReader::loadFromBuffer(uint8_t* buf, uint32_t size) {
-    if (!buf || size < MIN_FILE_SIZE) return false;
-
-    const RoadMapHeader* hdr = reinterpret_cast<const RoadMapHeader*>(buf);
-    if (memcmp(hdr->magic, "RMAP", 4) != 0) return false;
-    if (hdr->version != 1 && hdr->version != 2) return false;
-    if (hdr->fileSize != size) return false;
-
-    const uint32_t gridSize =
-        static_cast<uint32_t>(hdr->gridRows) * hdr->gridCols * 8;
-    if (hdr->gridIndexOffset + gridSize > size) return false;
-    if (hdr->segDataOffset > size) return false;
-
-    data_ = buf;
-    fileSize_ = size;
-    header_ = hdr;
-    gridIndex_ = reinterpret_cast<const RoadMapGridEntry*>(buf + hdr->gridIndexOffset);
-    segData_ = buf + hdr->segDataOffset;
-
-    if (hdr->cameraIndexOffset > 0 && hdr->cameraCount > 0) {
-        const uint32_t camGridSize =
-            static_cast<uint32_t>(hdr->gridRows) * hdr->gridCols * sizeof(RoadMapGridEntry);
-        const uint32_t camDataOffset = hdr->cameraIndexOffset + camGridSize;
-        const uint32_t camDataEnd =
-            camDataOffset + hdr->cameraCount * sizeof(CameraRecord);
-        if (camDataEnd <= size) {
-            camGridIndex_ = reinterpret_cast<const RoadMapGridEntry*>(
-                buf + hdr->cameraIndexOffset);
-            camData_ = reinterpret_cast<const CameraRecord*>(
-                buf + camDataOffset);
-        }
-    }
-
-    if (hdr->toleranceCm > 0) {
-        const float tolMetres = static_cast<float>(hdr->toleranceCm) / 100.0f;
-        const float radiusM = tolMetres * 1.5f;
-        const float radiusE5f = radiusM / 1.11f;
-        defaultSnapRadiusE5_ = static_cast<uint16_t>(
-            std::min(radiusE5f, 65534.0f));
-    }
-
-    return true;
+    return bindBuffer(buf, size, false, false);
 }
 
 // ---------------------------------------------------------------------------

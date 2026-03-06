@@ -143,9 +143,9 @@ camera records at `cameraIndexOffset + gridRows × gridCols × 8`.
 | 3     | `bus_lane`  | Bus-lane camera |
 | 4     | `alpr`      | ALPR / plate-reader camera |
 
-Unknown flag values are rejected by the builder and silently ignored
-by firmware. The builder validates that every emitted camera record
-has a `flags` value in {1, 2, 3, 4}.
+Unknown flag values are rejected by the builder. Firmware currently
+returns the stored `flags` byte verbatim, so malformed map data should
+be treated as invalid input rather than relying on runtime filtering.
 
 ---
 

@@ -144,6 +144,38 @@ void test_loadFromBuffer_rejects_short_buffer() {
     TEST_ASSERT_FALSE(reader.loadFromBuffer(fixtureData, 32));
 }
 
+void test_failed_reload_clears_prior_state() {
+    RoadMapReader reader;
+    TEST_ASSERT_TRUE(reader.loadFromBuffer(fixtureData, fixtureSize));
+
+    uint8_t bad[145];
+    memcpy(bad, fixtureData, fixtureSize);
+    bad[0] = 'X';  // corrupt magic after a valid load
+
+    TEST_ASSERT_FALSE(reader.loadFromBuffer(bad, fixtureSize));
+    TEST_ASSERT_FALSE(reader.isLoaded());
+    TEST_ASSERT_EQUAL_UINT32(0, reader.cameraCount());
+
+    CameraResult r = reader.nearestCamera(CAM0_LAT, CAM0_LON, 900);
+    TEST_ASSERT_FALSE(r.valid);
+}
+
+void test_reload_without_camera_section_clears_camera_lookup() {
+    RoadMapReader reader;
+    TEST_ASSERT_TRUE(reader.loadFromBuffer(fixtureData, fixtureSize));
+
+    uint8_t noCams[145];
+    memcpy(noCams, fixtureData, fixtureSize);
+    memset(noCams + 56, 0, 8);  // cameraIndexOffset = 0, cameraCount = 0
+
+    TEST_ASSERT_TRUE(reader.loadFromBuffer(noCams, fixtureSize));
+    TEST_ASSERT_TRUE(reader.isLoaded());
+    TEST_ASSERT_EQUAL_UINT32(0, reader.cameraCount());
+
+    CameraResult r = reader.nearestCamera(CAM0_LAT, CAM0_LON, 900);
+    TEST_ASSERT_FALSE(r.valid);
+}
+
 // ---------------------------------------------------------------------------
 // Runner
 // ---------------------------------------------------------------------------
@@ -169,6 +201,8 @@ int main() {
     RUN_TEST(test_no_camera_outside_grid);
     RUN_TEST(test_loadFromBuffer_rejects_bad_magic);
     RUN_TEST(test_loadFromBuffer_rejects_short_buffer);
+    RUN_TEST(test_failed_reload_clears_prior_state);
+    RUN_TEST(test_reload_without_camera_section_clears_camera_lookup);
     int result = UNITY_END();
 
     delete[] fixtureData;
