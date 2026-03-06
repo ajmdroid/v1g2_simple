@@ -330,6 +330,26 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
     renderIdleOwner(nowMs, state, true);
 }
 
+bool DisplayPipelineModule::debugRenderCameraPayload(uint32_t nowMs,
+                                                     const CameraAlertDisplayPayload& payload) {
+    if (!display || !parser || !settings || !displayMode || !payload.active) {
+        return false;
+    }
+
+    const DisplayState state = parser->getDisplayState();
+    display->forceNextRedraw();
+    const unsigned long startUs = micros();
+    display->updateCameraAlert(payload, state);
+    const unsigned long endUs = micros();
+    recordDisplayTiming("display.camera.debug", startUs, endUs);
+    recordPerfTiming("display.camera.debug", startUs, endUs);
+    *displayMode = DisplayMode::IDLE;
+    cameraAlertActive_ = true;
+    lastRenderedOwner_ = RenderOwner::Camera;
+    lastDisplayDraw = nowMs;
+    return true;
+}
+
 void DisplayPipelineModule::recordDisplayTiming(const char* label, unsigned long startUs, unsigned long endUs) {
     unsigned long dur = endUs - startUs;
     displayLatencySum += dur;

@@ -16,6 +16,7 @@
 #include "../../ble_client.h"
 #include "../../storage_manager.h"
 #include "../../perf_sd_logger.h"
+#include "../display/display_pipeline_module.h"
 #include "../ble/ble_queue_module.h"
 #include "../gps/gps_runtime_module.h"
 #include "../gps/gps_observation_log.h"
@@ -24,11 +25,15 @@
 #include "../lockout/lockout_band_policy.h"
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
+#include "../../../include/camera_alert_types.h"
 
 // Extern globals (defined in main.cpp / module .cpp files).
 extern V1BLEClient bleClient;
 extern BleQueueModule bleQueueModule;
 extern SystemEventBus systemEventBus;
+#ifndef UNIT_TEST
+extern DisplayPipelineModule displayPipelineModule;
+#endif
 
 // Conditionally-compiled perf latency externs (must be at file scope, not inside namespace).
 #if PERF_METRICS && PERF_MONITORING
@@ -41,6 +46,47 @@ namespace {
 bool isTruthyArgValue(const String& value) {
     return value == "1" || value == "true" || value == "TRUE" ||
            value == "on" || value == "ON";
+}
+
+bool parseUint32Arg(const String& token, uint32_t& outValue) {
+    if (token.length() == 0) {
+        return false;
+    }
+
+    uint32_t value = 0;
+    for (size_t i = 0; i < token.length(); ++i) {
+        const char ch = token.charAt(i);
+        if (ch < '0' || ch > '9') {
+            return false;
+        }
+        const uint32_t nextValue = (value * 10U) + static_cast<uint32_t>(ch - '0');
+        if (nextValue < value) {
+            return false;
+        }
+        value = nextValue;
+    }
+
+    outValue = value;
+    return true;
+}
+
+CameraType parseCameraTypeArg(const String& token) {
+    String normalized = token;
+    normalized.trim();
+    normalized.toLowerCase();
+    if (normalized == "speed") {
+        return CameraType::SPEED;
+    }
+    if (normalized == "red_light" || normalized == "red-light" || normalized == "redlight") {
+        return CameraType::RED_LIGHT;
+    }
+    if (normalized == "bus_lane" || normalized == "bus-lane" || normalized == "buslane") {
+        return CameraType::BUS_LANE;
+    }
+    if (normalized == "alpr") {
+        return CameraType::ALPR;
+    }
+    return CameraType::INVALID;
 }
 
 struct PanicFileSnapshot {
@@ -1457,6 +1503,71 @@ void handleApiMetricsReset(WebServer& server,
                            const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
     handleMetricsReset(server);
+}
+
+void handleCameraAlertRender(WebServer& server) {
+#ifdef UNIT_TEST
+    server.send(200, "application/json", "{\"success\":true,\"testStub\":true}");
+    return;
+#else
+    CameraType type = CameraType::SPEED;
+    if (server.hasArg("type")) {
+        type = parseCameraTypeArg(server.arg("type"));
+        if (type == CameraType::INVALID) {
+            server.send(400, "application/json", "{\"success\":false,\"error\":\"invalid type\"}");
+            return;
+        }
+    }
+
+    uint32_t distanceCm = 16093;
+    if (server.hasArg("distanceCm") && !parseUint32Arg(server.arg("distanceCm"), distanceCm)) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"invalid distanceCm\"}");
+        return;
+    }
+    if (distanceCm == 0) {
+        distanceCm = 1;
+    }
+
+    CameraAlertDisplayPayload payload{};
+    payload.type = type;
+    payload.active = true;
+    payload.distanceCm = distanceCm;
+    if (!displayPipelineModule.debugRenderCameraPayload(millis(), payload)) {
+        server.send(500, "application/json", "{\"success\":false,\"error\":\"display unavailable\"}");
+        return;
+    }
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["type"] = cameraTypeApiName(type);
+    doc["distanceCm"] = distanceCm;
+    sendJsonStream(server, doc);
+#endif
+}
+
+void handleApiCameraAlertRender(WebServer& server,
+                                const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    handleCameraAlertRender(server);
+}
+
+void handleCameraAlertClear(WebServer& server) {
+#ifdef UNIT_TEST
+    server.send(200, "application/json", "{\"success\":true,\"testStub\":true}");
+#else
+    displayPipelineModule.restoreCurrentOwner(millis());
+
+    JsonDocument doc;
+    doc["success"] = true;
+    doc["restored"] = true;
+    sendJsonStream(server, doc);
+#endif
+}
+
+void handleApiCameraAlertClear(WebServer& server,
+                               const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) return;
+    handleCameraAlertClear(server);
 }
 
 void handleProxyAdvertisingControl(WebServer& server) {

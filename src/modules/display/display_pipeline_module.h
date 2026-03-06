@@ -32,6 +32,7 @@ public:
     // prioritySuppressed is a per-frame software suppression flag (e.g. lockout ENFORCE match).
     void handleParsed(unsigned long nowMs, bool prioritySuppressed);
     bool isCameraAlertActive() const { return cameraAlertActive_; }
+    bool debugRenderCameraPayload(uint32_t nowMs, const CameraAlertDisplayPayload& payload);
     void restoreCurrentOwner(uint32_t nowMs);
 
 private:

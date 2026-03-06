@@ -362,6 +362,16 @@ void WiFiManager::setupWebServer() {
             server,
             rateLimitCallback);
     });
+    server.on("/api/debug/camera-alert/render", HTTP_POST, [this, rateLimitCallback]() {
+        DebugApiService::handleApiCameraAlertRender(
+            server,
+            rateLimitCallback);
+    });
+    server.on("/api/debug/camera-alert/clear", HTTP_POST, [this, rateLimitCallback]() {
+        DebugApiService::handleApiCameraAlertClear(
+            server,
+            rateLimitCallback);
+    });
     server.on("/api/debug/proxy-advertising", HTTP_POST, [this, rateLimitCallback]() {
         DebugApiService::handleApiProxyAdvertisingControl(
             server,

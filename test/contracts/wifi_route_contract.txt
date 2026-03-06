@@ -16,6 +16,8 @@ HTTP_GET /api/lockouts/zones
 HTTP_GET /api/lockouts/zones/export
 HTTP_GET /api/settings/backup
 HTTP_POST /api/cameras/settings
+HTTP_POST /api/debug/camera-alert/clear
+HTTP_POST /api/debug/camera-alert/render
 HTTP_POST /api/debug/enable
 HTTP_POST /api/debug/metrics/reset
 HTTP_POST /api/debug/perf-files/delete
