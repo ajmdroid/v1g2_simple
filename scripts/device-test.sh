@@ -35,6 +35,7 @@ SOAK_LATENCY_GATE_MODE="hybrid"
 SOAK_LATENCY_ROBUST_MIN_SAMPLES=8
 SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT=5
 SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES=2
+SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES="${REAL_FW_SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES:-3}"
 SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS=3
 SOAK_MIN_DISPLAY_UPDATES_DELTA=1
 SOAK_ENABLE_TRANSITION_QUAL=1
@@ -130,6 +131,8 @@ Options:
                                  Transition flap action interval (default: 15)
   --transition-max-recovery-ms N Max proxy-off recovery time gate (default: 30000)
   --transition-max-samples N     Max samples-to-stable gate (default: 6)
+  --soak-minima-tail-exclude-samples N
+                                 Ignore last N soak samples for DMA minima floors (default: 3)
   --ignore-gps-errors            Suppress GPS advisory warnings in soak scoring
   --no-auto-kill-monitor         Do not auto-stop pio device monitor when port is busy
   --out-dir PATH                 Write reports to PATH
@@ -247,6 +250,7 @@ run_soak_test() {
     --latency-robust-min-samples "$SOAK_LATENCY_ROBUST_MIN_SAMPLES"
     --latency-robust-max-exceed-pct "$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT"
     --wifi-robust-skip-first-samples "$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES"
+    --exclude-tail-samples-for-minima "$SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES"
     --out-dir "$item_out_dir")
   if [[ "$IGNORE_GPS_ERRORS" -eq 1 ]]; then
     cmd+=(--ignore-gps-errors)
@@ -564,6 +568,11 @@ while [[ $# -gt 0 ]]; do
       SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE="$2"
       shift
       ;;
+    --soak-minima-tail-exclude-samples)
+      [[ $# -lt 2 ]] && { echo "Missing value for --soak-minima-tail-exclude-samples" >&2; exit 2; }
+      SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES="$2"
+      shift
+      ;;
     --ignore-gps-errors)
       IGNORE_GPS_ERRORS=1
       ;;
@@ -598,6 +607,7 @@ for n in \
   "$RAD_MIN_PARSE_SUCCESS_DELTA" \
   "$RAD_MIN_DISPLAY_UPDATES_DELTA" \
   "$RAD_DURATION_SCALE_PCT" \
+  "$SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES" \
   "$SOAK_TRANSITION_FLAP_CYCLES" \
   "$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS" \
   "$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS" \
@@ -659,6 +669,7 @@ echo "  port: ${TEST_PORT:-auto}"
 echo "  suite profile: $SUITE_PROFILE_VERSION"
 echo "  soak profile: $SOAK_PROFILE"
 echo "  soak robust gate: mode=$SOAK_LATENCY_GATE_MODE minSamples=$SOAK_LATENCY_ROBUST_MIN_SAMPLES maxExceedPct=$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT wifiSkipFirst=$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES"
+echo "  soak minima tail exclusion: ${SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES} sample(s)"
 echo "  soak require-metrics: yes (min ok samples=$SOAK_MIN_METRICS_OK_SAMPLES)"
 echo "  display drive: displayInterval=${SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=$SOAK_MIN_DISPLAY_UPDATES_DELTA"
 echo "  transition qual: enabled=$SOAK_ENABLE_TRANSITION_QUAL flapCycles=$SOAK_TRANSITION_FLAP_CYCLES interval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s maxRecoveryMs=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS maxSamples=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"

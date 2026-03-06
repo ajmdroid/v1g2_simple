@@ -123,6 +123,12 @@ def parse_args(argv):
         default=2,
         help="Consecutive in-threshold samples required to mark a transition as stabilized",
     )
+    parser.add_argument(
+        "--exclude-tail-samples-for-minima",
+        type=int,
+        default=0,
+        help="Ignore the last N ok samples when computing minima used by floor gates",
+    )
     return parser.parse_args(argv)
 
 
@@ -193,8 +199,10 @@ def main() -> int:
     reconnects_last = None
     disconnects_first = None
     disconnects_last = None
-    dma_free_min_val = None
-    dma_largest_min_val = None
+    dma_free_min_val_raw = None
+    dma_largest_min_val_raw = None
+    dma_free_samples = []
+    dma_largest_samples = []
     ble_process_max_peak = None
     disp_pipe_max_peak = None
     ble_mutex_timeout_first = None
@@ -460,8 +468,12 @@ def main() -> int:
                 if disconnects_val is not None:
                     disconnects_last = disconnects_val
 
-                dma_free_min_val = update_min(dma_free_min_val, num(data.get("heapDmaMin")))
-                dma_largest_min_val = update_min(dma_largest_min_val, num(data.get("heapDmaLargestMin")))
+                dma_free_val = num(data.get("heapDmaMin"))
+                dma_largest_val = num(data.get("heapDmaLargestMin"))
+                dma_free_min_val_raw = update_min(dma_free_min_val_raw, dma_free_val)
+                dma_largest_min_val_raw = update_min(dma_largest_min_val_raw, dma_largest_val)
+                dma_free_samples.append(dma_free_val)
+                dma_largest_samples.append(dma_largest_val)
 
                 ble_process_max_peak = update_max(ble_process_max_peak, num(data.get("bleProcessMaxUs")))
                 disp_pipe_max_peak = update_max(disp_pipe_max_peak, disp_pipe_val)
@@ -493,6 +505,17 @@ def main() -> int:
 
     wifi_skip = max(args.skip_first_wifi_samples, 0)
     wifi_samples_excluding_first = wifi_samples[wifi_skip:] if wifi_skip > 0 else list(wifi_samples)
+
+    minima_tail_requested = max(args.exclude_tail_samples_for_minima, 0)
+    minima_sample_count = len(dma_free_samples)
+    minima_tail_excluded = min(minima_tail_requested, max(minima_sample_count - 1, 0))
+    minima_cutoff = minima_sample_count - minima_tail_excluded
+    dma_free_window = dma_free_samples[:minima_cutoff]
+    dma_largest_window = dma_largest_samples[:minima_cutoff]
+    dma_free_vals_window = [val for val in dma_free_window if val is not None]
+    dma_largest_vals_window = [val for val in dma_largest_window if val is not None]
+    dma_free_min_val = min(dma_free_vals_window) if dma_free_vals_window else None
+    dma_largest_min_val = min(dma_largest_vals_window) if dma_largest_vals_window else None
 
     wifi_p95_raw = percentile(wifi_samples, 95.0)
     wifi_p95_excluding_first = percentile(wifi_samples_excluding_first, 95.0)
@@ -684,6 +707,10 @@ def main() -> int:
     emit("disconnects_last", disconnects_last)
     emit("dma_free_min", dma_free_min_val)
     emit("dma_largest_min", dma_largest_min_val)
+    emit("dma_free_min_raw", dma_free_min_val_raw)
+    emit("dma_largest_min_raw", dma_largest_min_val_raw)
+    emit("minima_tail_samples_excluded", minima_tail_excluded)
+    emit("minima_samples_considered", minima_cutoff)
     emit("ble_process_max_peak", ble_process_max_peak)
     emit("disp_pipe_max_peak", disp_pipe_max_peak)
     emit("wifi_sample_count", len(wifi_samples))

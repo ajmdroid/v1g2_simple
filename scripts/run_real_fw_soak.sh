@@ -60,6 +60,7 @@ LATENCY_GATE_MODE="${REAL_FW_LATENCY_GATE_MODE:-hybrid}"
 LATENCY_ROBUST_MIN_SAMPLES="${REAL_FW_LATENCY_ROBUST_MIN_SAMPLES:-8}"
 LATENCY_ROBUST_MAX_EXCEED_PCT="${REAL_FW_LATENCY_ROBUST_MAX_EXCEED_PCT:-5}"
 WIFI_ROBUST_SKIP_FIRST_SAMPLES="${REAL_FW_WIFI_ROBUST_SKIP_FIRST_SAMPLES:-2}"
+MINIMA_TAIL_EXCLUDE_SAMPLES="${REAL_FW_MINIMA_TAIL_EXCLUDE_SAMPLES:-0}"
 IGNORE_GPS_ERRORS="${REAL_FW_IGNORE_GPS_ERRORS:-0}"
 CLI_OVERRIDE_MAX_FLUSH_MAX_US=0
 CLI_OVERRIDE_MAX_LOOP_MAX_US=0
@@ -419,6 +420,14 @@ while [[ $# -gt 0 ]]; do
       WIFI_ROBUST_SKIP_FIRST_SAMPLES="$2"
       shift
       ;;
+    --exclude-tail-samples-for-minima)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --exclude-tail-samples-for-minima" >&2
+        exit 2
+      fi
+      MINIMA_TAIL_EXCLUDE_SAMPLES="$2"
+      shift
+      ;;
     --baseline-perf-csv)
       if [[ $# -lt 2 ]]; then
         echo "Missing value for --baseline-perf-csv" >&2
@@ -730,6 +739,9 @@ Options:
                         (default: 5)
   --wifi-robust-skip-first-samples N
                         Robust wifi warmup exclusion (default: 2)
+  --exclude-tail-samples-for-minima N
+                        Ignore the last N metrics samples for DMA floor minima
+                        (default: 0)
   --dry-run             Print resolved config/gates and exit
   --allow-inconclusive   Exit 0 even when no telemetry signals were captured
   --out-dir PATH         Write artifacts to PATH
@@ -891,6 +903,11 @@ fi
 
 if ! [[ "$WIFI_ROBUST_SKIP_FIRST_SAMPLES" =~ ^[0-9]+$ ]]; then
   echo "Invalid --wifi-robust-skip-first-samples value '$WIFI_ROBUST_SKIP_FIRST_SAMPLES' (expected non-negative integer)." >&2
+  exit 2
+fi
+
+if ! [[ "$MINIMA_TAIL_EXCLUDE_SAMPLES" =~ ^[0-9]+$ ]]; then
+  echo "Invalid --exclude-tail-samples-for-minima value '$MINIMA_TAIL_EXCLUDE_SAMPLES' (expected non-negative integer)." >&2
   exit 2
 fi
 
@@ -1289,6 +1306,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} (0 disables)"
   echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA}"
   echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)"
+  echo "    minima floor tail exclusion: ${MINIMA_TAIL_EXCLUDE_SAMPLES} sample(s)"
   echo "    transition gates: maxTimeToStableApDownMs=${MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN} maxTimeToStableProxyOffMs=${MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF} maxSamplesToStable=${MAX_SAMPLES_TO_STABLE} maxApTransitionChurn=${MAX_AP_TRANSITION_CHURN_DELTA} maxProxyAdvTransitionChurn=${MAX_PROXY_ADV_TRANSITION_CHURN_DELTA} minApDownTransitions=${MIN_AP_DOWN_TRANSITIONS} minProxyAdvOffTransitions=${MIN_PROXY_ADV_OFF_TRANSITIONS}"
   echo "    gps advisory suppression: ${IGNORE_GPS_ERRORS}"
   echo "    display drive: enabled=${DISPLAY_DRIVE_ENABLED} url=${DISPLAY_PREVIEW_URL:-disabled} interval=${DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=${DISPLAY_MIN_UPDATES_DELTA}"
@@ -1360,6 +1378,7 @@ echo "    latency gate mode: ${LATENCY_GATE_MODE} (robust minSamples=${LATENCY_R
 echo "    firmware gates: maxBleProcessMax=${MAX_BLE_PROCESS_MAX_US} maxDispPipeMax=${MAX_DISP_PIPE_MAX_US} (0 disables)" | tee -a "$RUN_LOG"
 echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA}" | tee -a "$RUN_LOG"
 echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)" | tee -a "$RUN_LOG"
+echo "    minima floor tail exclusion: ${MINIMA_TAIL_EXCLUDE_SAMPLES} sample(s)" | tee -a "$RUN_LOG"
 echo "    transition gates: maxTimeToStableApDownMs=${MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN} maxTimeToStableProxyOffMs=${MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF} maxSamplesToStable=${MAX_SAMPLES_TO_STABLE} maxApTransitionChurn=${MAX_AP_TRANSITION_CHURN_DELTA} maxProxyAdvTransitionChurn=${MAX_PROXY_ADV_TRANSITION_CHURN_DELTA} minApDownTransitions=${MIN_AP_DOWN_TRANSITIONS} minProxyAdvOffTransitions=${MIN_PROXY_ADV_OFF_TRANSITIONS}" | tee -a "$RUN_LOG"
 echo "    gps advisory suppression: ${IGNORE_GPS_ERRORS}" | tee -a "$RUN_LOG"
 if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
@@ -1696,6 +1715,7 @@ metrics_parser_args=(
   "$METRICS_JSONL"
   "--skip-first-wifi-samples" "$WIFI_ROBUST_SKIP_FIRST_SAMPLES"
   "--stable-consecutive-samples" "$TRANSITION_STABLE_CONSECUTIVE_SAMPLES"
+  "--exclude-tail-samples-for-minima" "$MINIMA_TAIL_EXCLUDE_SAMPLES"
 )
 if [[ "$MAX_WIFI_MAX_US" -gt 0 ]]; then
   metrics_parser_args+=(--wifi-threshold "$MAX_WIFI_MAX_US")
@@ -1765,6 +1785,10 @@ reconnects_delta=""
 disconnects_delta=""
 dma_free_min_parsed=""
 dma_largest_min_parsed=""
+dma_free_min_raw_parsed=""
+dma_largest_min_raw_parsed=""
+minima_tail_samples_excluded=""
+minima_samples_considered=""
 inherited_counter_suspect=""
 ble_process_max_peak=""
 disp_pipe_max_peak=""
@@ -1889,6 +1913,10 @@ while IFS='=' read -r key value; do
     disconnects_delta) disconnects_delta="$value" ;;
     dma_free_min) dma_free_min_parsed="$value" ;;
     dma_largest_min) dma_largest_min_parsed="$value" ;;
+    dma_free_min_raw) dma_free_min_raw_parsed="$value" ;;
+    dma_largest_min_raw) dma_largest_min_raw_parsed="$value" ;;
+    minima_tail_samples_excluded) minima_tail_samples_excluded="$value" ;;
+    minima_samples_considered) minima_samples_considered="$value" ;;
     inherited_counter_suspect) inherited_counter_suspect="$value" ;;
     ble_process_max_peak) ble_process_max_peak="$value" ;;
     disp_pipe_max_peak) disp_pipe_max_peak="$value" ;;
@@ -2705,8 +2733,8 @@ fi
   echo "- wifiConnectDeferred delta: ${wifi_connect_deferred_delta:-n/a} (max ${MAX_WIFI_CONNECT_DEFERRED}; drive_wifi_off requires 0)"
   echo "- bleMutexTimeout delta: ${ble_mutex_timeout_delta:-n/a} (max ${MAX_BLE_MUTEX_TIMEOUT_DELTA})"
   echo "- gpsObsDrops delta: ${gps_obs_drops_delta:-n/a} (advisory report-only)"
-  echo "- Min heapDmaMin (SLO): ${dma_free_min_parsed:-n/a} (floor ${MIN_DMA_FREE})"
-  echo "- Min heapDmaLargestMin (SLO): ${dma_largest_min_parsed:-n/a} (floor ${MIN_DMA_LARGEST})"
+  echo "- Min heapDmaMin (SLO): ${dma_free_min_parsed:-n/a} (floor ${MIN_DMA_FREE}; raw ${dma_free_min_raw_parsed:-n/a}; tailExcluded ${minima_tail_samples_excluded:-0}; samplesUsed ${minima_samples_considered:-n/a})"
+  echo "- Min heapDmaLargestMin (SLO): ${dma_largest_min_parsed:-n/a} (floor ${MIN_DMA_LARGEST}; raw ${dma_largest_min_raw_parsed:-n/a}; tailExcluded ${minima_tail_samples_excluded:-0}; samplesUsed ${minima_samples_considered:-n/a})"
   echo "- reconnects delta: ${reconnects_delta:-n/a}"
   echo "- disconnects delta: ${disconnects_delta:-n/a}"
   echo "- Proxy drop peak: ${proxy_drop_peak:-n/a}"
