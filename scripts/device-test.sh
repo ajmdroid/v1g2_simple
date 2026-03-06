@@ -435,6 +435,17 @@ def subset(metrics):
 
 ok = True
 reasons = []
+keys = ["rxPackets", "parseSuccesses", "parseFailures", "displayUpdates", "dispPipeMaxUs", "wifiMaxUs"]
+reset_resp = {"success": False}
+start_resp = {"success": False}
+status = {}
+pre = {k: 0 for k in keys}
+post = {k: 0 for k in keys}
+delta = {k: 0 for k in keys}
+status_poll_errors = 0
+status_poll_last_error = ""
+cleanup_stop_success = False
+cleanup_stop_error = ""
 
 try:
     reset_resp = post_json("/api/debug/metrics/reset")
@@ -446,15 +457,20 @@ try:
         "durationScalePct": scale_pct,
     })
 
-    status = {}
     t0 = time.time()
     while True:
-        status = get_json("/api/debug/v1-scenario/status")
-        if not status.get("running", False):
-            break
         if time.time() - t0 > scenario_timeout_s:
             reasons.append(f"scenario timeout waiting for completion (> {scenario_timeout_s}s)")
             ok = False
+            break
+        try:
+            status = get_json("/api/debug/v1-scenario/status")
+        except Exception as status_exc:
+            status_poll_errors += 1
+            status_poll_last_error = str(status_exc)
+            time.sleep(0.25)
+            continue
+        if not status.get("running", False):
             break
         time.sleep(0.25)
 
@@ -488,18 +504,36 @@ try:
     if delta["displayUpdates"] < min_display:
         ok = False
         reasons.append(f"displayUpdates delta {delta['displayUpdates']} < {min_display}")
-
-    print(f"scenario={scenario_id}")
-    print(f"durationScalePct={scale_pct}")
-    print(f"timeoutSec={scenario_timeout_s}")
-    print(f"start_success={int(bool(start_resp.get('success')))} reset_success={int(bool(reset_resp.get('success')))} completedRuns={status.get('completedRuns', 'n/a')} events={status.get('eventsEmitted', 'n/a')}/{status.get('eventsTotal', 'n/a')} durationMs={status.get('durationMs', 'n/a')}")
-    print(f"delta_rxPackets={delta['rxPackets']} delta_parseSuccesses={delta['parseSuccesses']} delta_parseFailures={delta['parseFailures']} delta_displayUpdates={delta['displayUpdates']}")
-    print(f"peak_dispPipeMaxUs={post['dispPipeMaxUs']} peak_wifiMaxUs={post['wifiMaxUs']}")
-    if reasons:
-        print("reasons=" + "; ".join(reasons))
 except Exception as exc:
     ok = False
-    print(f"reasons=exception: {exc}")
+    reasons.append(f"exception: {exc}")
+finally:
+    # Prevent scenario bleed-through into subsequent soak items.
+    try:
+        stop_resp = post_json("/api/debug/v1-scenario/stop")
+        cleanup_stop_success = bool(stop_resp.get("success"))
+    except Exception as stop_exc:
+        cleanup_stop_success = False
+        cleanup_stop_error = str(stop_exc)
+
+if not cleanup_stop_success:
+    ok = False
+    if cleanup_stop_error:
+        reasons.append(f"scenario cleanup stop exception: {cleanup_stop_error}")
+    else:
+        reasons.append("scenario cleanup stop failed")
+
+print(f"scenario={scenario_id}")
+print(f"durationScalePct={scale_pct}")
+print(f"timeoutSec={scenario_timeout_s}")
+print(f"start_success={int(bool(start_resp.get('success')))} reset_success={int(bool(reset_resp.get('success')))} completedRuns={status.get('completedRuns', 'n/a')} events={status.get('eventsEmitted', 'n/a')}/{status.get('eventsTotal', 'n/a')} durationMs={status.get('durationMs', 'n/a')}")
+print(f"delta_rxPackets={delta['rxPackets']} delta_parseSuccesses={delta['parseSuccesses']} delta_parseFailures={delta['parseFailures']} delta_displayUpdates={delta['displayUpdates']}")
+print(f"peak_dispPipeMaxUs={post['dispPipeMaxUs']} peak_wifiMaxUs={post['wifiMaxUs']}")
+print(f"status_poll_errors={status_poll_errors} cleanup_stop_success={int(cleanup_stop_success)}")
+if status_poll_last_error:
+    print(f"status_poll_last_error={status_poll_last_error}")
+if reasons:
+    print("reasons=" + "; ".join(reasons))
 
 sys.exit(0 if ok else 1)
 PY
