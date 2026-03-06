@@ -7,6 +7,7 @@
 
 	const RANGE_MIN_CM = 16093;
 	const RANGE_MAX_CM = 160934;
+	const NEAR_RANGE_MIN_CM = 8047;
 	const STATUS_POLL_INTERVAL_MS = 2500;
 	const CM_PER_MILE = 160934;
 	const CM_PER_FOOT = 30.48;
@@ -18,6 +19,7 @@
 	let settings = $state({
 		cameraAlertsEnabled: true,
 		cameraAlertRangeCm: 128748,
+		cameraAlertNearRangeCm: 15240,
 		cameraTypeAlpr: true,
 		cameraTypeRedLight: true,
 		cameraTypeSpeed: true,
@@ -41,6 +43,8 @@
 	let pickerR = $state(0);
 	let pickerG = $state(0);
 	let pickerB = $state(0);
+	let firstAlertMilesInput = $state('0.80');
+	let closeAlertMilesInput = $state('0.09');
 
 	const statusPoll = createPoll(async () => {
 		await fetchStatus();
@@ -66,6 +70,7 @@
 				...settings,
 				...data
 			};
+			syncDistanceInputs();
 		} catch (error) {
 			message = { type: 'error', text: 'Failed to load camera settings' };
 		} finally {
@@ -101,6 +106,7 @@
 			const params = new URLSearchParams();
 			params.append('cameraAlertsEnabled', settings.cameraAlertsEnabled);
 			params.append('cameraAlertRangeCm', settings.cameraAlertRangeCm);
+			params.append('cameraAlertNearRangeCm', settings.cameraAlertNearRangeCm);
 			params.append('cameraTypeAlpr', settings.cameraTypeAlpr);
 			params.append('cameraTypeRedLight', settings.cameraTypeRedLight);
 			params.append('cameraTypeSpeed', settings.cameraTypeSpeed);
@@ -120,6 +126,7 @@
 				throw new Error('save');
 			}
 
+			syncDistanceInputs();
 			message = { type: 'success', text: 'Camera settings saved.' };
 			await fetchStatus();
 		} catch (error) {
@@ -143,6 +150,74 @@
 
 	function formatMiles(cm) {
 		return `${cmToMiles(cm)} mi`;
+	}
+
+	function formatMilesInput(cm) {
+		return (cm / CM_PER_MILE).toFixed(2);
+	}
+
+	function parseMilesInput(rawMiles, minCm, maxCm) {
+		const miles = Number.parseFloat(rawMiles);
+		if (!Number.isFinite(miles)) {
+			return null;
+		}
+
+		const rangeCm = Math.round(miles * CM_PER_MILE);
+		return Math.max(minCm, Math.min(rangeCm, maxCm));
+	}
+
+	function syncDistanceInputs() {
+		firstAlertMilesInput = formatMilesInput(settings.cameraAlertRangeCm);
+		closeAlertMilesInput = formatMilesInput(settings.cameraAlertNearRangeCm);
+	}
+
+	function handleFirstAlertInput(value) {
+		firstAlertMilesInput = value;
+		const parsedCm = parseMilesInput(value, RANGE_MIN_CM, RANGE_MAX_CM);
+		if (parsedCm === null) {
+			return;
+		}
+
+		settings.cameraAlertRangeCm = parsedCm;
+		if (settings.cameraAlertNearRangeCm > parsedCm) {
+			settings.cameraAlertNearRangeCm = parsedCm;
+			closeAlertMilesInput = formatMilesInput(parsedCm);
+		}
+	}
+
+	function normalizeFirstAlertInput() {
+		const parsedCm = parseMilesInput(firstAlertMilesInput, RANGE_MIN_CM, RANGE_MAX_CM);
+		if (parsedCm === null) {
+			syncDistanceInputs();
+			return;
+		}
+
+		settings.cameraAlertRangeCm = parsedCm;
+		if (settings.cameraAlertNearRangeCm > parsedCm) {
+			settings.cameraAlertNearRangeCm = parsedCm;
+		}
+		syncDistanceInputs();
+	}
+
+	function handleCloseAlertInput(value) {
+		closeAlertMilesInput = value;
+		const parsedCm = parseMilesInput(value, NEAR_RANGE_MIN_CM, settings.cameraAlertRangeCm);
+		if (parsedCm === null) {
+			return;
+		}
+
+		settings.cameraAlertNearRangeCm = parsedCm;
+	}
+
+	function normalizeCloseAlertInput() {
+		const parsedCm = parseMilesInput(closeAlertMilesInput, NEAR_RANGE_MIN_CM, settings.cameraAlertRangeCm);
+		if (parsedCm === null) {
+			syncDistanceInputs();
+			return;
+		}
+
+		settings.cameraAlertNearRangeCm = parsedCm;
+		closeAlertMilesInput = formatMilesInput(parsedCm);
 	}
 
 	function formatType(type) {
@@ -271,28 +346,59 @@
 						</label>
 					</div>
 
-					<div class="surface-panel">
-						<div class="flex items-center justify-between gap-4">
-							<div>
-								<p class="font-medium">Alert Range</p>
-								<p class="copy-caption-soft">Search radius and display handoff distance</p>
+					<div class="grid gap-4 md:grid-cols-2">
+						<div class="surface-panel">
+							<div class="flex items-center justify-between gap-4">
+								<div>
+									<p class="font-medium">First Alert Distance</p>
+									<p class="copy-caption-soft">Search radius, display handoff, and far-stage voice trigger</p>
+								</div>
+								<div class="text-right">
+									<p class="text-lg font-mono">{formatFeet(settings.cameraAlertRangeCm)}</p>
+									<p class="copy-caption-soft">{formatMiles(settings.cameraAlertRangeCm)}</p>
+								</div>
 							</div>
-							<div class="text-right">
-								<p class="text-lg font-mono">{formatFeet(settings.cameraAlertRangeCm)}</p>
-								<p class="copy-caption-soft">{formatMiles(settings.cameraAlertRangeCm)}</p>
+							<div class="mt-4 flex items-center gap-2">
+								<input
+									type="number"
+									min={formatMilesInput(RANGE_MIN_CM)}
+									max={formatMilesInput(RANGE_MAX_CM)}
+									step="0.01"
+									class="input input-bordered w-full font-mono"
+									value={firstAlertMilesInput}
+									oninput={(event) => handleFirstAlertInput(event.currentTarget.value)}
+									onchange={normalizeFirstAlertInput}
+								/>
+								<span class="badge badge-outline badge-lg font-mono">mi</span>
 							</div>
+							<p class="mt-2 copy-caption-soft">Range: {formatMiles(RANGE_MIN_CM)} to {formatMiles(RANGE_MAX_CM)}</p>
 						</div>
-						<input
-							type="range"
-							min={RANGE_MIN_CM}
-							max={RANGE_MAX_CM}
-							step="1"
-							class="range range-primary mt-4"
-							bind:value={settings.cameraAlertRangeCm}
-						/>
-						<div class="mt-2 flex justify-between copy-caption-soft">
-							<span>{formatFeet(RANGE_MIN_CM)}</span>
-							<span>{formatFeet(RANGE_MAX_CM)}</span>
+
+						<div class="surface-panel">
+							<div class="flex items-center justify-between gap-4">
+								<div>
+									<p class="font-medium">Close Alert Distance</p>
+									<p class="copy-caption-soft">Near-stage voice trigger. Must stay at or under the first alert distance.</p>
+								</div>
+								<div class="text-right">
+									<p class="text-lg font-mono">{formatFeet(settings.cameraAlertNearRangeCm)}</p>
+									<p class="copy-caption-soft">{formatMiles(settings.cameraAlertNearRangeCm)}</p>
+								</div>
+							</div>
+							<div class="mt-4 flex items-center gap-2">
+								<input
+									type="number"
+									min={formatMilesInput(NEAR_RANGE_MIN_CM)}
+									max={formatMilesInput(settings.cameraAlertRangeCm)}
+									step="0.01"
+									class="input input-bordered w-full font-mono"
+									value={closeAlertMilesInput}
+									oninput={(event) => handleCloseAlertInput(event.currentTarget.value)}
+									onchange={normalizeCloseAlertInput}
+								/>
+								<span class="badge badge-outline badge-lg font-mono">mi</span>
+							</div>
+							<p class="mt-2 copy-caption-soft">Range: {formatMiles(NEAR_RANGE_MIN_CM)} to {formatMiles(settings.cameraAlertRangeCm)}</p>
 						</div>
 					</div>
 

@@ -84,6 +84,7 @@ int backupCriticalFieldScore(const JsonDocument& doc) {
     if (!doc["gpsEnabled"].isNull()) score++;
     if (!doc["cameraAlertsEnabled"].isNull()) score++;
     if (!doc["cameraAlertRangeCm"].isNull()) score++;
+    if (!doc["cameraAlertNearRangeCm"].isNull()) score++;
     if (!doc["brightness"].isNull()) score++;
     if (!doc["displayStyle"].isNull()) score++;
     if (!doc["proxyBLE"].isNull()) score++;
@@ -235,6 +236,7 @@ void SettingsManager::backupToSD() {
     doc["gpsLockoutPreQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
     doc["cameraAlertsEnabled"] = settings.cameraAlertsEnabled;
     doc["cameraAlertRangeCm"] = settings.cameraAlertRangeCm;
+    doc["cameraAlertNearRangeCm"] = settings.cameraAlertNearRangeCm;
     doc["cameraTypeAlpr"] = settings.cameraTypeAlpr;
     doc["cameraTypeRedLight"] = settings.cameraTypeRedLight;
     doc["cameraTypeSpeed"] = settings.cameraTypeSpeed;

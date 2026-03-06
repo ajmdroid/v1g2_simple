@@ -206,6 +206,9 @@ void SettingsManager::load() {
     settings.cameraAlertsEnabled = preferences.getBool("camEn", true);
     settings.cameraAlertRangeCm = clampCameraAlertRangeCmValue(
         static_cast<int>(preferences.getUInt("camRngCm", CAMERA_ALERT_RANGE_CM_DEFAULT)));
+    settings.cameraAlertNearRangeCm = clampCameraAlertNearRangeCmValue(
+        static_cast<int>(preferences.getUInt("camNearCm", CAMERA_ALERT_NEAR_RANGE_CM_DEFAULT)));
+    normalizeCameraAlertRanges(settings.cameraAlertRangeCm, settings.cameraAlertNearRangeCm);
     settings.cameraTypeAlpr = preferences.getBool("camTAlpr", true);
     settings.cameraTypeRedLight = preferences.getBool("camTRL", true);
     settings.cameraTypeSpeed = preferences.getBool("camTSpd", true);

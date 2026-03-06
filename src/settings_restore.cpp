@@ -120,6 +120,8 @@ bool backupAppearsInSyncWithNvs(const JsonDocument& doc, const V1Settings& curre
         backupFieldMatchesBool(doc, "gpsEnabled", current.gpsEnabled) &&
         backupFieldMatchesBool(doc, "cameraAlertsEnabled", current.cameraAlertsEnabled) &&
         backupFieldMatchesInt(doc, "cameraAlertRangeCm", static_cast<int>(current.cameraAlertRangeCm)) &&
+        backupFieldMatchesInt(doc, "cameraAlertNearRangeCm",
+                              static_cast<int>(current.cameraAlertNearRangeCm)) &&
         backupFieldMatchesBool(doc, "cameraTypeAlpr", current.cameraTypeAlpr) &&
         backupFieldMatchesBool(doc, "cameraTypeRedLight", current.cameraTypeRedLight) &&
         backupFieldMatchesBool(doc, "cameraTypeSpeed", current.cameraTypeSpeed) &&
@@ -527,6 +529,11 @@ bool SettingsManager::restoreFromSD() {
         settings.cameraAlertRangeCm = clampCameraAlertRangeCmValue(
             doc["cameraAlertRangeCm"].as<int>());
     }
+    if (doc["cameraAlertNearRangeCm"].is<int>()) {
+        settings.cameraAlertNearRangeCm = clampCameraAlertNearRangeCmValue(
+            doc["cameraAlertNearRangeCm"].as<int>());
+    }
+    normalizeCameraAlertRanges(settings.cameraAlertRangeCm, settings.cameraAlertNearRangeCm);
     restoreBool("cameraTypeAlpr", settings.cameraTypeAlpr);
     restoreBool("cameraTypeRedLight", settings.cameraTypeRedLight);
     restoreBool("cameraTypeSpeed", settings.cameraTypeSpeed);

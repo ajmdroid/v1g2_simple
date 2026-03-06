@@ -7,8 +7,6 @@
 
 namespace {
 
-constexpr uint32_t CAMERA_FAR_THRESHOLD_CM = 30480;
-constexpr uint32_t CAMERA_NEAR_THRESHOLD_CM = 15240;
 constexpr uint32_t CAMERA_POLL_INTERVAL_MS = 500;
 constexpr uint32_t ENCOUNTER_EXPIRE_MS = 10000;
 constexpr uint32_t CAMERA_COURSE_MAX_AGE_MS = 3000;
@@ -287,12 +285,17 @@ void CameraAlertModule::maybeQueueVoice(const V1Settings& settings, CameraType t
         return;
     }
 
-    if (settings.cameraVoiceNearEnabled && !nearAnnounced_ && distanceCm <= CAMERA_NEAR_THRESHOLD_CM) {
+    const uint32_t firstAlertRangeCm = clampCameraAlertRangeCmValue(
+        static_cast<int>(settings.cameraAlertRangeCm));
+    const uint32_t closeAlertRangeCm = normalizeCameraAlertNearRangeCmValue(
+        firstAlertRangeCm, static_cast<int>(settings.cameraAlertNearRangeCm));
+
+    if (settings.cameraVoiceNearEnabled && !nearAnnounced_ && distanceCm <= closeAlertRangeCm) {
         queueVoice(type, true);
         return;
     }
 
-    if (settings.cameraVoiceFarEnabled && !farAnnounced_ && distanceCm <= CAMERA_FAR_THRESHOLD_CM) {
+    if (settings.cameraVoiceFarEnabled && !farAnnounced_ && distanceCm <= firstAlertRangeCm) {
         queueVoice(type, false);
     }
 }

@@ -327,6 +327,27 @@ void test_near_voice_wins_when_first_confirmation_is_close() {
     module.onVoicePlaybackResult(event, true);
 }
 
+void test_configured_close_alert_range_can_force_far_stage_first() {
+    const TestCameraSpec camera{
+        offsetLatE5(BASE_LAT_E5, 100.0f), BASE_LON_E5, 0, 1, 45};
+    std::vector<uint8_t> mapData = buildCameraMap({camera});
+
+    RoadMapReader reader;
+    SettingsManager settings;
+    settings.settings.cameraAlertNearRangeCm = 10000;
+    TEST_ASSERT_TRUE(reader.loadFromBuffer(mapData.data(), static_cast<uint32_t>(mapData.size())));
+    CameraAlertModule module = makeModule(reader, settings);
+
+    processAt(module, 500, makeContext(offsetLatE5(BASE_LAT_E5, -120.0f), BASE_LON_E5));
+    processAt(module, 1000, makeContext(offsetLatE5(BASE_LAT_E5, -80.0f), BASE_LON_E5));
+    processAt(module, 1500, makeContext(offsetLatE5(BASE_LAT_E5, -40.0f), BASE_LON_E5));
+
+    CameraVoiceEvent event;
+    TEST_ASSERT_TRUE(module.consumePendingVoice(event));
+    TEST_ASSERT_EQUAL(CameraType::SPEED, event.type);
+    TEST_ASSERT_FALSE(event.isNearStage);
+}
+
 void test_voice_stage_requeues_until_playback_starts() {
     const TestCameraSpec camera{
         offsetLatE5(BASE_LAT_E5, 200.0f), BASE_LON_E5, 0, 1, 45};
@@ -383,6 +404,7 @@ int main() {
     RUN_TEST(test_raw_course_fallback_confirms_when_breadcrumbs_are_too_close);
     RUN_TEST(test_far_voice_queues_once_after_confirmation);
     RUN_TEST(test_near_voice_wins_when_first_confirmation_is_close);
+    RUN_TEST(test_configured_close_alert_range_can_force_far_stage_first);
     RUN_TEST(test_voice_stage_requeues_until_playback_starts);
     RUN_TEST(test_module_keeps_distance_above_legacy_uint16_cap);
     return UNITY_END();

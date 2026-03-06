@@ -133,6 +133,9 @@ static constexpr uint32_t LOCKOUT_GPS_COURSE_MAX_AGE_MS = 5000;                /
 static constexpr uint32_t CAMERA_ALERT_RANGE_CM_MIN = 16093;                   // 0.1 mi
 static constexpr uint32_t CAMERA_ALERT_RANGE_CM_MAX = 160934;                  // 1.0 mi
 static constexpr uint32_t CAMERA_ALERT_RANGE_CM_DEFAULT = 128748;              // 0.8 mi
+static constexpr uint32_t CAMERA_ALERT_NEAR_RANGE_CM_MIN = 8047;               // 0.05 mi
+static constexpr uint32_t CAMERA_ALERT_NEAR_RANGE_CM_MAX = CAMERA_ALERT_RANGE_CM_MAX;
+static constexpr uint32_t CAMERA_ALERT_NEAR_RANGE_CM_DEFAULT = 15240;          // 500 ft
 
 inline uint16_t clampLockoutPreQuietBufferE5Value(int rawBuffer) {
     return static_cast<uint16_t>(std::max(0,
@@ -153,6 +156,23 @@ inline uint32_t clampCameraAlertRangeCmValue(int rawRangeCm) {
     return static_cast<uint32_t>(
         std::max(static_cast<int>(CAMERA_ALERT_RANGE_CM_MIN),
                  std::min(rawRangeCm, static_cast<int>(CAMERA_ALERT_RANGE_CM_MAX))));
+}
+
+inline uint32_t clampCameraAlertNearRangeCmValue(int rawRangeCm) {
+    return static_cast<uint32_t>(
+        std::max(static_cast<int>(CAMERA_ALERT_NEAR_RANGE_CM_MIN),
+                 std::min(rawRangeCm, static_cast<int>(CAMERA_ALERT_NEAR_RANGE_CM_MAX))));
+}
+
+inline uint32_t normalizeCameraAlertNearRangeCmValue(uint32_t firstAlertRangeCm, int rawNearRangeCm) {
+    return std::min(clampCameraAlertRangeCmValue(static_cast<int>(firstAlertRangeCm)),
+                    clampCameraAlertNearRangeCmValue(rawNearRangeCm));
+}
+
+inline void normalizeCameraAlertRanges(uint32_t& firstAlertRangeCm, uint32_t& nearAlertRangeCm) {
+    firstAlertRangeCm = clampCameraAlertRangeCmValue(static_cast<int>(firstAlertRangeCm));
+    nearAlertRangeCm = normalizeCameraAlertNearRangeCmValue(firstAlertRangeCm,
+                                                            static_cast<int>(nearAlertRangeCm));
 }
 
 inline uint8_t clampLockoutLearnerHitsValue(int rawHits) {
@@ -239,7 +259,8 @@ struct V1Settings {
 
     // Camera alert settings
     bool cameraAlertsEnabled;      // Enable camera proximity alerts
-    uint32_t cameraAlertRangeCm;   // Camera alert search/display range in centimeters
+    uint32_t cameraAlertRangeCm;   // First alert/search/display range in centimeters
+    uint32_t cameraAlertNearRangeCm; // Close alert voice threshold in centimeters
     bool cameraTypeAlpr;           // Alert on ALPR cameras
     bool cameraTypeRedLight;       // Alert on red-light cameras
     bool cameraTypeSpeed;          // Alert on speed cameras
@@ -388,6 +409,7 @@ struct V1Settings {
         gpsLockoutMinLearnerSpeedMph(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT),
         cameraAlertsEnabled(true),
         cameraAlertRangeCm(CAMERA_ALERT_RANGE_CM_DEFAULT),
+        cameraAlertNearRangeCm(CAMERA_ALERT_NEAR_RANGE_CM_DEFAULT),
         cameraTypeAlpr(true),
         cameraTypeRedLight(true),
         cameraTypeSpeed(true),
@@ -505,6 +527,7 @@ public:
     void setGpsEnabled(bool enabled);
     void setCameraAlertsEnabled(bool enabled);
     void setCameraAlertRangeCm(uint32_t rangeCm);
+    void setCameraAlertNearRangeCm(uint32_t rangeCm);
     void setCameraTypeFilters(bool alprEnabled, bool redLightEnabled,
                               bool speedEnabled, bool busLaneEnabled);
     void setCameraColors(uint16_t arrowColor, uint16_t textColor);

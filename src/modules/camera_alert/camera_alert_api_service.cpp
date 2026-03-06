@@ -150,6 +150,7 @@ void sendSettings(WebServer& server, const V1Settings& settings) {
     JsonDocument doc;
     doc["cameraAlertsEnabled"] = settings.cameraAlertsEnabled;
     doc["cameraAlertRangeCm"] = settings.cameraAlertRangeCm;
+    doc["cameraAlertNearRangeCm"] = settings.cameraAlertNearRangeCm;
     doc["cameraTypeAlpr"] = settings.cameraTypeAlpr;
     doc["cameraTypeRedLight"] = settings.cameraTypeRedLight;
     doc["cameraTypeSpeed"] = settings.cameraTypeSpeed;
@@ -221,6 +222,13 @@ void handleApiSettingsPost(WebServer& server,
                                updated.cameraAlertRangeCm,
                                invalidField,
                                sawKnownArg) ||
+        !parseClampedUint32Arg(server,
+                               "cameraAlertNearRangeCm",
+                               CAMERA_ALERT_NEAR_RANGE_CM_MIN,
+                               CAMERA_ALERT_NEAR_RANGE_CM_MAX,
+                               updated.cameraAlertNearRangeCm,
+                               invalidField,
+                               sawKnownArg) ||
         !parseBoolArg(server, "cameraTypeAlpr", updated.cameraTypeAlpr, invalidField, sawKnownArg) ||
         !parseBoolArg(server, "cameraTypeRedLight", updated.cameraTypeRedLight, invalidField, sawKnownArg) ||
         !parseBoolArg(server, "cameraTypeSpeed", updated.cameraTypeSpeed, invalidField, sawKnownArg) ||
@@ -232,6 +240,8 @@ void handleApiSettingsPost(WebServer& server,
         sendError(server, 400, String("invalid ") + invalidField);
         return;
     }
+
+    normalizeCameraAlertRanges(updated.cameraAlertRangeCm, updated.cameraAlertNearRangeCm);
 
     if (sawKnownArg) {
         settingsManager.mutableSettings() = updated;

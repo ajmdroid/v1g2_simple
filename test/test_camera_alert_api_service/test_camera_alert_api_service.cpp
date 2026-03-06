@@ -65,6 +65,7 @@ void test_settings_get_serializes_camera_payload() {
 
     settings.cameraAlertsEnabled = false;
     settings.cameraAlertRangeCm = 77777;
+    settings.cameraAlertNearRangeCm = 22222;
     settings.cameraTypeBusLane = true;
     settings.colorCameraArrow = 0x1234;
     settings.cameraVoiceNearEnabled = false;
@@ -78,6 +79,7 @@ void test_settings_get_serializes_camera_payload() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"cameraAlertsEnabled\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"cameraAlertRangeCm\":77777"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"cameraAlertNearRangeCm\":22222"));
     TEST_ASSERT_TRUE(responseContains(server, "\"cameraTypeBusLane\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"colorCameraArrow\":4660"));
     TEST_ASSERT_TRUE(responseContains(server, "\"cameraVoiceNearEnabled\":false"));
@@ -114,7 +116,8 @@ void test_settings_post_updates_all_fields_and_saves_once() {
     int uiActivityCalls = 0;
 
     server.setArg("cameraAlertsEnabled", "0");
-    server.setArg("cameraAlertRangeCm", "999999");
+    server.setArg("cameraAlertRangeCm", "40000");
+    server.setArg("cameraAlertNearRangeCm", "999999");
     server.setArg("cameraTypeAlpr", "0");
     server.setArg("cameraTypeRedLight", "1");
     server.setArg("cameraTypeSpeed", "false");
@@ -138,7 +141,8 @@ void test_settings_post_updates_all_fields_and_saves_once() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
     TEST_ASSERT_FALSE(settingsManager.get().cameraAlertsEnabled);
-    TEST_ASSERT_EQUAL_UINT32(CAMERA_ALERT_RANGE_CM_MAX, settingsManager.get().cameraAlertRangeCm);
+    TEST_ASSERT_EQUAL_UINT32(40000u, settingsManager.get().cameraAlertRangeCm);
+    TEST_ASSERT_EQUAL_UINT32(40000u, settingsManager.get().cameraAlertNearRangeCm);
     TEST_ASSERT_FALSE(settingsManager.get().cameraTypeAlpr);
     TEST_ASSERT_TRUE(settingsManager.get().cameraTypeRedLight);
     TEST_ASSERT_FALSE(settingsManager.get().cameraTypeSpeed);
@@ -148,6 +152,23 @@ void test_settings_post_updates_all_fields_and_saves_once() {
     TEST_ASSERT_FALSE(settingsManager.get().cameraVoiceFarEnabled);
     TEST_ASSERT_TRUE(settingsManager.get().cameraVoiceNearEnabled);
     TEST_ASSERT_EQUAL_INT(1, settingsManager.saveCalls);
+}
+
+void test_settings_post_clamps_close_alert_range_to_supported_minimum() {
+    WebServer server(80);
+    SettingsManager settingsManager;
+
+    server.setArg("cameraAlertNearRangeCm", "1");
+
+    CameraAlertApiService::handleApiSettingsPost(
+        server,
+        settingsManager,
+        []() { return true; },
+        []() {});
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_EQUAL_UINT32(CAMERA_ALERT_NEAR_RANGE_CM_MIN,
+                             settingsManager.get().cameraAlertNearRangeCm);
 }
 
 void test_settings_post_rejects_invalid_bool_without_partial_mutation() {
@@ -171,6 +192,8 @@ void test_settings_post_rejects_invalid_bool_without_partial_mutation() {
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"invalid cameraTypeSpeed\""));
     TEST_ASSERT_TRUE(settingsManager.get().cameraTypeSpeed);
     TEST_ASSERT_EQUAL_UINT32(CAMERA_ALERT_RANGE_CM_DEFAULT, settingsManager.get().cameraAlertRangeCm);
+    TEST_ASSERT_EQUAL_UINT32(CAMERA_ALERT_NEAR_RANGE_CM_DEFAULT,
+                             settingsManager.get().cameraAlertNearRangeCm);
     TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
 }
 
@@ -244,6 +267,7 @@ int main() {
     RUN_TEST(test_settings_get_serializes_camera_payload);
     RUN_TEST(test_settings_post_rate_limit_short_circuits);
     RUN_TEST(test_settings_post_updates_all_fields_and_saves_once);
+    RUN_TEST(test_settings_post_clamps_close_alert_range_to_supported_minimum);
     RUN_TEST(test_settings_post_rejects_invalid_bool_without_partial_mutation);
     RUN_TEST(test_settings_post_rejects_invalid_numeric_token);
     RUN_TEST(test_status_returns_camera_count_and_active_payload);

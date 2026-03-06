@@ -43,6 +43,14 @@ void SettingsManager::setCameraAlertsEnabled(bool enabled) {
 
 void SettingsManager::setCameraAlertRangeCm(uint32_t rangeCm) {
     settings.cameraAlertRangeCm = clampCameraAlertRangeCmValue(static_cast<int>(rangeCm));
+    settings.cameraAlertNearRangeCm = normalizeCameraAlertNearRangeCmValue(
+        settings.cameraAlertRangeCm, static_cast<int>(settings.cameraAlertNearRangeCm));
+    save();
+}
+
+void SettingsManager::setCameraAlertNearRangeCm(uint32_t rangeCm) {
+    settings.cameraAlertNearRangeCm = normalizeCameraAlertNearRangeCmValue(
+        settings.cameraAlertRangeCm, static_cast<int>(rangeCm));
     save();
 }
 
