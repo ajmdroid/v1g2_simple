@@ -115,6 +115,10 @@ public:
     /// Number of cameras loaded (0 if no camera section).
     uint32_t cameraCount() const;
 
+    /// Load from a caller-supplied buffer (no SD, no PSRAM alloc).
+    /// Buffer must outlive this object. Returns true on success.
+    bool loadFromBuffer(uint8_t* buf, uint32_t size);
+
 private:
     uint8_t* data_ = nullptr;       // PSRAM buffer (entire file)
     uint32_t fileSize_ = 0;

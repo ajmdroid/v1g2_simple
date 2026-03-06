@@ -185,6 +185,50 @@ uint32_t RoadMapReader::cameraCount() const {
     return header_ ? header_->cameraCount : 0;
 }
 
+bool RoadMapReader::loadFromBuffer(uint8_t* buf, uint32_t size) {
+    if (!buf || size < MIN_FILE_SIZE) return false;
+
+    const RoadMapHeader* hdr = reinterpret_cast<const RoadMapHeader*>(buf);
+    if (memcmp(hdr->magic, "RMAP", 4) != 0) return false;
+    if (hdr->version != 1 && hdr->version != 2) return false;
+    if (hdr->fileSize != size) return false;
+
+    const uint32_t gridSize =
+        static_cast<uint32_t>(hdr->gridRows) * hdr->gridCols * 8;
+    if (hdr->gridIndexOffset + gridSize > size) return false;
+    if (hdr->segDataOffset > size) return false;
+
+    data_ = buf;
+    fileSize_ = size;
+    header_ = hdr;
+    gridIndex_ = reinterpret_cast<const RoadMapGridEntry*>(buf + hdr->gridIndexOffset);
+    segData_ = buf + hdr->segDataOffset;
+
+    if (hdr->cameraIndexOffset > 0 && hdr->cameraCount > 0) {
+        const uint32_t camGridSize =
+            static_cast<uint32_t>(hdr->gridRows) * hdr->gridCols * sizeof(RoadMapGridEntry);
+        const uint32_t camDataOffset = hdr->cameraIndexOffset + camGridSize;
+        const uint32_t camDataEnd =
+            camDataOffset + hdr->cameraCount * sizeof(CameraRecord);
+        if (camDataEnd <= size) {
+            camGridIndex_ = reinterpret_cast<const RoadMapGridEntry*>(
+                buf + hdr->cameraIndexOffset);
+            camData_ = reinterpret_cast<const CameraRecord*>(
+                buf + camDataOffset);
+        }
+    }
+
+    if (hdr->toleranceCm > 0) {
+        const float tolMetres = static_cast<float>(hdr->toleranceCm) / 100.0f;
+        const float radiusM = tolMetres * 1.5f;
+        const float radiusE5f = radiusM / 1.11f;
+        defaultSnapRadiusE5_ = static_cast<uint16_t>(
+            std::min(radiusE5f, 65534.0f));
+    }
+
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // Geometry helpers — all pure math, no I/O
 // ---------------------------------------------------------------------------
