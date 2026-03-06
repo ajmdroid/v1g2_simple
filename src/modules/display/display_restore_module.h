@@ -6,6 +6,8 @@
 #include "ble_client.h"
 #include "modules/display/display_preview_module.h"
 
+class DisplayPipelineModule;
+
 /**
  * DisplayRestoreModule - Handles display restoration after preview modes end.
  * 
@@ -18,7 +20,8 @@ public:
     void begin(V1Display* disp,
                PacketParser* pktParser,
                V1BLEClient* ble,
-               DisplayPreviewModule* preview);
+               DisplayPreviewModule* preview,
+               DisplayPipelineModule* displayPipeline);
 
     /**
      * Check if preview ended and restore display if needed.
@@ -31,4 +34,5 @@ private:
     PacketParser* parser = nullptr;
     V1BLEClient* bleClient = nullptr;
     DisplayPreviewModule* previewModule = nullptr;
+    DisplayPipelineModule* displayPipelineModule = nullptr;
 };

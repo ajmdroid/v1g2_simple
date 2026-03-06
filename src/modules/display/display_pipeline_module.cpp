@@ -1,6 +1,10 @@
 #include "display_pipeline_module.h"
 #include "audio_beep.h"  // play_frequency_voice, play_direction_only, play_threat_escalation
 #include "perf_metrics.h"  // perfRecordDisplayRenderUs
+#include "modules/camera_alert/camera_alert_module.h"
+#include "modules/gps/gps_runtime_module.h"
+
+#include <math.h>
 
 void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
                                   V1Display* displayPtr,
@@ -9,7 +13,9 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
                                   V1BLEClient* bleClient,
                                   AlertPersistenceModule* alertPersistenceModule,
                                   VolumeFadeModule* volumeFadeModule,
-                                  VoiceModule* voiceModule) {
+                                  VoiceModule* voiceModule,
+                                  GpsRuntimeModule* gpsModulePtr,
+                                  CameraAlertModule* cameraModulePtr) {
     displayMode = displayModePtr;
     display = displayPtr;
     parser = parserPtr;
@@ -18,14 +24,117 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     alertPersistence = alertPersistenceModule;
     volumeFade = volumeFadeModule;
     voice = voiceModule;
+    gpsModule = gpsModulePtr;
+    cameraModule = cameraModulePtr;
+    cameraAlertActive_ = false;
+    lastPersistenceSlot = -1;
+    lastRenderedOwner_ = RenderOwner::Unknown;
 }
 
 // Track lastAlertGapRecoverMs locally since it was removed from header
 static unsigned long lastAlertGapRecoverMs = 0;
 
+void DisplayPipelineModule::processCameraState(uint32_t nowMs) {
+    if (!cameraModule || !gpsModule) {
+        return;
+    }
+
+    const GpsRuntimeStatus gpsStatus = gpsModule->snapshot(nowMs);
+    CameraAlertContext ctx;
+    ctx.gpsValid = gpsStatus.locationValid;
+    if (gpsStatus.locationValid) {
+        ctx.latE5 = static_cast<int32_t>(lroundf(gpsStatus.latitudeDeg * 100000.0f));
+        ctx.lonE5 = static_cast<int32_t>(lroundf(gpsStatus.longitudeDeg * 100000.0f));
+    }
+    ctx.speedMph = gpsStatus.speedMph;
+    ctx.courseValid = gpsStatus.courseValid;
+    ctx.courseDeg = gpsStatus.courseDeg;
+    ctx.courseAgeMs = gpsStatus.courseAgeMs;
+    cameraModule->process(nowMs, ctx);
+}
+
+void DisplayPipelineModule::dispatchCameraVoice() {
+    if (!cameraModule) {
+        return;
+    }
+
+    CameraVoiceEvent event;
+    if (!cameraModule->consumePendingVoice(event)) {
+        return;
+    }
+
+    const bool playbackStarted = play_camera_alert(event.type, event.isNearStage);
+    cameraModule->onVoicePlaybackResult(event, playbackStarted);
+}
+
+void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
+                                            const DisplayState& state,
+                                            bool forceRedraw) {
+    const V1Settings& s = settings->get();
+    const uint8_t persistSec = settings->getSlotAlertPersistSec(s.activeSlot);
+
+    if (s.activeSlot != lastPersistenceSlot) {
+        lastPersistenceSlot = s.activeSlot;
+        alertPersistence->clearPersistence();
+    }
+
+    if (persistSec > 0 && alertPersistence->getPersistedAlert().isValid) {
+        alertPersistence->startPersistence(nowMs);
+
+        const unsigned long persistMs = persistSec * 1000UL;
+        if (alertPersistence->shouldShowPersisted(nowMs, persistMs)) {
+            if (forceRedraw || lastRenderedOwner_ != RenderOwner::Persisted) {
+                display->forceNextRedraw();
+            }
+
+            const unsigned long startUs = micros();
+            display->updatePersisted(alertPersistence->getPersistedAlert(), state);
+            const unsigned long endUs = micros();
+            recordDisplayTiming("display.persisted", startUs, endUs);
+            recordPerfTiming("display.persisted", startUs, endUs);
+            cameraAlertActive_ = false;
+            lastRenderedOwner_ = RenderOwner::Persisted;
+            return;
+        }
+
+        PERF_INC(alertPersistExpires);
+        alertPersistence->clearPersistence();
+    } else {
+        alertPersistence->clearPersistence();
+    }
+
+    if (cameraModule && cameraModule->isDisplayActive()) {
+        if (forceRedraw || lastRenderedOwner_ != RenderOwner::Camera) {
+            display->forceNextRedraw();
+        }
+
+        const unsigned long startUs = micros();
+        display->updateCameraAlert(cameraModule->displayPayload(), state);
+        const unsigned long endUs = micros();
+        recordDisplayTiming("display.camera", startUs, endUs);
+        recordPerfTiming("display.camera", startUs, endUs);
+        cameraAlertActive_ = true;
+        lastRenderedOwner_ = RenderOwner::Camera;
+        return;
+    }
+
+    if (forceRedraw || lastRenderedOwner_ != RenderOwner::Resting) {
+        display->forceNextRedraw();
+    }
+
+    const unsigned long startUs = micros();
+    display->update(state);
+    const unsigned long endUs = micros();
+    recordDisplayTiming("display.resting", startUs, endUs);
+    recordPerfTiming("display.resting", startUs, endUs);
+    cameraAlertActive_ = false;
+    lastRenderedOwner_ = RenderOwner::Resting;
+}
+
 void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppressed) {
     if (!display || !parser || !settings || !ble || !alertPersistence ||
         !volumeFade || !voice || !displayMode) {
+        cameraAlertActive_ = false;
         return;
     }
 
@@ -95,6 +204,11 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         }
     }
 
+    if (!hasAlerts) {
+        processCameraState(nowMs);
+        dispatchCameraVoice();
+    }
+
     if (nowMs - lastDisplayDraw < DISPLAY_DRAW_MIN_MS) {
         PERF_INC(displaySkips);
         return;
@@ -110,6 +224,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         // Live V1 alerts own the screen/audio path.
 
         *displayMode = DisplayMode::LIVE;
+        cameraAlertActive_ = false;
 
         VoiceContext voiceCtx;
         voiceCtx.alerts = currentAlerts.data();
@@ -164,53 +279,55 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         if (hasRenderablePriority) {
             alertPersistence->setPersistedAlert(priority);
         }
+        lastRenderedOwner_ = RenderOwner::Live;
 
     } else {
         *displayMode = DisplayMode::IDLE;
 
         voice->clearAllState();
-        // Note: Do NOT clear alertPersistence here - we need the stored alert for persistence display
-        // Persistence is cleared on slot change (below) or when window expires
-
-        const V1Settings& s = settingsRef;
-        uint8_t persistSec = settings->getSlotAlertPersistSec(s.activeSlot);
-
-        static int lastPersistenceSlot = -1;
-        if (s.activeSlot != lastPersistenceSlot) {
-            lastPersistenceSlot = s.activeSlot;
-            alertPersistence->clearPersistence();
-        }
-
-        if (persistSec > 0 && alertPersistence->getPersistedAlert().isValid) {
-            // Persisted V1 alert remains higher priority.
-            alertPersistence->startPersistence(nowMs);
-
-            unsigned long persistMs = persistSec * 1000UL;
-            if (alertPersistence->shouldShowPersisted(nowMs, persistMs)) {
-                unsigned long startUs = micros();
-                display->updatePersisted(alertPersistence->getPersistedAlert(), state);
-                unsigned long endUs = micros();
-                recordDisplayTiming("display.persisted", startUs, endUs);
-                recordPerfTiming("display.persisted", startUs, endUs);
-            } else {
-                // Persistence window expired - clear flag so isPersistenceActive() returns false
-                PERF_INC(alertPersistExpires);
-                alertPersistence->clearPersistence();
-                unsigned long startUs = micros();
-                display->update(state);
-                unsigned long endUs = micros();
-                recordDisplayTiming("display.resting", startUs, endUs);
-                recordPerfTiming("display.resting", startUs, endUs);
-            }
-        } else {
-            alertPersistence->clearPersistence();
-            unsigned long startUs = micros();
-            display->update(state);
-            unsigned long endUs = micros();
-            recordDisplayTiming("display.resting", startUs, endUs);
-            recordPerfTiming("display.resting", startUs, endUs);
-        }
+        renderIdleOwner(nowMs, state, false);
     }
+}
+
+void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
+    if (!display || !parser || !settings || !ble || !alertPersistence ||
+        !volumeFade || !voice || !displayMode) {
+        cameraAlertActive_ = false;
+        return;
+    }
+
+    display->forceNextRedraw();
+
+    if (!ble->isConnected()) {
+        display->showScanning();
+        *displayMode = DisplayMode::IDLE;
+        cameraAlertActive_ = false;
+        lastRenderedOwner_ = RenderOwner::Scanning;
+        return;
+    }
+
+    const DisplayState state = parser->getDisplayState();
+    const bool hasAlerts = parser->hasAlerts();
+    AlertData priority;
+    const bool hasRenderablePriority =
+        hasAlerts && parser->getRenderablePriorityAlert(priority);
+
+    if (hasAlerts) {
+        *displayMode = DisplayMode::LIVE;
+        cameraAlertActive_ = false;
+        if (hasRenderablePriority) {
+            const auto& alerts = parser->getAllAlerts();
+            display->update(priority, alerts.data(), parser->getAlertCount(), state);
+        } else {
+            display->update(state);
+        }
+        lastRenderedOwner_ = RenderOwner::Live;
+        return;
+    }
+
+    *displayMode = DisplayMode::IDLE;
+    processCameraState(nowMs);
+    renderIdleOwner(nowMs, state, true);
 }
 
 void DisplayPipelineModule::recordDisplayTiming(const char* label, unsigned long startUs, unsigned long endUs) {

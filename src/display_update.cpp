@@ -2,7 +2,7 @@
  * Update methods — extracted from display.cpp (Phase 3C/3D)
  *
  * Contains update(DisplayState), update(AlertData, ...), refreshFrequencyOnly,
- * refreshSecondaryAlertCards, updatePersisted.
+ * refreshSecondaryAlertCards, updatePersisted, updateCameraAlert.
  */
 
 #include "display.h"
@@ -173,6 +173,7 @@ void V1Display::update(const DisplayState& state) {
     
     // Check if transitioning from a non-resting visual mode.
     bool leavingLiveMode = (currentScreen == ScreenMode::Live);
+    bool leavingCameraMode = (currentScreen == ScreenMode::Camera);
     
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
@@ -180,6 +181,7 @@ void V1Display::update(const DisplayState& state) {
         flashJustExpired ||
         wasPersistedMode ||  // Force full redraw when leaving persisted mode
         leavingLiveMode ||   // Force full redraw when alerts end (clear cards/frequency)
+        leavingCameraMode || // Force full redraw when camera owner releases frequency zone
         restingDebouncedBands != lastRestingDebouncedBands ||
         effectiveMuted != lastState.muted;
     
@@ -381,14 +383,13 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     // Enable persisted mode so draw functions use PALETTE_PERSISTED instead of PALETTE_MUTED
     persistedMode = true;
     
-    // Track screen mode - persisted is NOT Live, so transition to Live will trigger full redraw
-    if (currentScreen != ScreenMode::Resting) {
+    if (currentScreen != ScreenMode::Persisted) {
         perfRecordDisplayScreenTransition(
             static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
-            PerfDisplayScreen::Resting,
+            PerfDisplayScreen::Persisted,
             millis());
     }
-    currentScreen = ScreenMode::Resting;
+    currentScreen = ScreenMode::Persisted;
     
     // Always use multi-alert layout positioning
     dirty.multiAlert = true;
@@ -430,6 +431,47 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     drawSecondaryAlertCards(nullptr, 0, emptyPriority, true);
 
     DISPLAY_FLUSH();
+}
+
+void V1Display::updateCameraAlert(const CameraAlertDisplayPayload& payload,
+                                  const DisplayState& state) {
+    persistedMode = false;
+
+    if (!payload.active || payload.type == CameraType::INVALID) {
+        update(state);
+        return;
+    }
+
+    if (currentScreen != ScreenMode::Camera) {
+        perfRecordDisplayScreenTransition(
+            static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
+            PerfDisplayScreen::Camera,
+            millis());
+    }
+    currentScreen = ScreenMode::Camera;
+
+    dirty.multiAlert = true;
+    multiAlertMode = false;
+    wasInMultiAlertMode = false;
+
+    drawBaseFrame();
+
+    const V1Settings& settings = settingsManager.get();
+    drawStatusStrip(state, state.bogeyCounterChar, false, state.bogeyCounterDot);
+    drawBandIndicators(0, false);
+    drawCameraLabel(cameraTypeDisplayLabel(payload.type), settings.colorCameraText);
+    drawVerticalSignalBars(0, 0, BAND_NONE, false);
+    drawDirectionArrow(DIR_FRONT, false, 0, settings.colorCameraArrow);
+    drawMuteIcon(false);
+    drawLockoutIndicator();
+    drawGpsIndicator();
+    drawProfileIndicator(currentProfileSlot);
+
+    AlertData emptyPriority;
+    drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
+
+    DISPLAY_FLUSH();
+    lastState = state;
 }
 
 // Multi-alert update: draws priority alert with secondary alert cards below

@@ -12,6 +12,9 @@
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/voice/voice_module.h"
 
+class GpsRuntimeModule;
+class CameraAlertModule;
+
 class DisplayPipelineModule {
 public:
     void begin(DisplayMode* displayModePtr,
@@ -21,13 +24,26 @@ public:
                V1BLEClient* bleClient,
                AlertPersistenceModule* alertPersistenceModule,
                VolumeFadeModule* volumeFadeModule,
-               VoiceModule* voiceModule);
+               VoiceModule* voiceModule,
+               GpsRuntimeModule* gpsModule = nullptr,
+               CameraAlertModule* cameraModule = nullptr);
 
     // Process after a successful parser.parse(); expects parser state already updated.
     // prioritySuppressed is a per-frame software suppression flag (e.g. lockout ENFORCE match).
     void handleParsed(unsigned long nowMs, bool prioritySuppressed);
+    bool isCameraAlertActive() const { return cameraAlertActive_; }
+    void restoreCurrentOwner(uint32_t nowMs);
 
 private:
+    enum class RenderOwner : uint8_t {
+        Unknown = 0,
+        Scanning,
+        Live,
+        Persisted,
+        Camera,
+        Resting
+    };
+
     DisplayMode* displayMode = nullptr;
     V1Display* display = nullptr;
     PacketParser* parser = nullptr;
@@ -36,6 +52,9 @@ private:
     AlertPersistenceModule* alertPersistence = nullptr;
     VolumeFadeModule* volumeFade = nullptr;
     VoiceModule* voice = nullptr;
+    GpsRuntimeModule* gpsModule = nullptr;
+    CameraAlertModule* cameraModule = nullptr;
+    bool cameraAlertActive_ = false;
 
     // Mute debounce
     bool debouncedMuteState = false;
@@ -57,7 +76,12 @@ private:
     unsigned long perfTimingCount = 0;
     unsigned long perfTimingMax = 0;
     unsigned long perfLastReport = 0;
+    int lastPersistenceSlot = -1;
+    RenderOwner lastRenderedOwner_ = RenderOwner::Unknown;
 
     void recordDisplayTiming(const char* label, unsigned long startUs, unsigned long endUs);
     void recordPerfTiming(const char* label, unsigned long startUs, unsigned long endUs);
+    void processCameraState(uint32_t nowMs);
+    void dispatchCameraVoice();
+    void renderIdleOwner(uint32_t nowMs, const DisplayState& state, bool forceRedraw);
 };

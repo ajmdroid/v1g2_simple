@@ -139,6 +139,24 @@ bool CameraAlertModule::consumePendingVoice(CameraVoiceEvent& event) {
     return true;
 }
 
+void CameraAlertModule::onVoicePlaybackResult(const CameraVoiceEvent& event, bool playbackStarted) {
+    if (event.type == CameraType::INVALID) {
+        return;
+    }
+
+    if (!playbackStarted) {
+        queueVoice(event.type, event.isNearStage);
+        return;
+    }
+
+    if (event.isNearStage) {
+        nearAnnounced_ = true;
+        farAnnounced_ = true;
+    } else {
+        farAnnounced_ = true;
+    }
+}
+
 void CameraAlertModule::clearBreadcrumbs() {
     breadcrumbCount_ = 0;
     breadcrumbWriteIndex_ = 0;
@@ -273,14 +291,11 @@ void CameraAlertModule::maybeQueueVoice(const V1Settings& settings, CameraType t
 
     if (settings.cameraVoiceNearEnabled && !nearAnnounced_ && distanceCm <= CAMERA_NEAR_THRESHOLD_CM) {
         queueVoice(type, true);
-        nearAnnounced_ = true;
-        farAnnounced_ = true;
         return;
     }
 
     if (settings.cameraVoiceFarEnabled && !farAnnounced_ && distanceCm <= CAMERA_FAR_THRESHOLD_CM) {
         queueVoice(type, false);
-        farAnnounced_ = true;
     }
 }
 

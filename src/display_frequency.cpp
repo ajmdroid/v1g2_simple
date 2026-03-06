@@ -21,6 +21,32 @@
 using namespace DisplaySegments;
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 
+namespace {
+
+int measure14SegmentTextWidth(const char* text, float scale) {
+    SegMetrics m = segMetrics(scale);
+    int width = 0;
+    size_t glyphCount = 0;
+    const size_t len = strlen(text);
+    for (size_t i = 0; i < len; ++i) {
+        if (text[i] == '.') {
+            continue;
+        }
+        width += m.digitW;
+        if (i + 1 < len && text[i + 1] == '.') {
+            width += m.dot / 2;
+            ++i;
+        }
+        ++glyphCount;
+    }
+    if (glyphCount > 1) {
+        width += static_cast<int>((glyphCount - 1) * m.spacing);
+    }
+    return width;
+}
+
+}  // namespace
+
 // Convenience alias (matches display.cpp)
 using TextWidthCacheEntry = DisplayFontManager::WidthCacheEntry;
 
@@ -374,6 +400,126 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     lastColor = freqColor;
     lastDrawX = x;
     lastDrawWidth = textW;
+    cacheValid = true;
+    lastDrawMs = nowMs;
+}
+
+void V1Display::drawCameraLabel(const char* label, uint16_t color) {
+    const V1Settings& s = settingsManager.get();
+    const char* text = (label != nullptr) ? label : "";
+
+    static char lastText[16] = "";
+    static uint16_t lastColor = 0;
+    static bool lastUsedSerpentine = false;
+    static bool cacheValid = false;
+    static int lastDrawX = 0;
+    static int lastDrawWidth = 0;
+    static unsigned long lastDrawMs = 0;
+    static constexpr unsigned long FORCE_REDRAW_MS = 500;
+    static TextWidthCacheEntry widthCache[16];
+    static uint8_t widthCacheNextSlot = 0;
+
+    if (dirty.frequency) {
+        cacheValid = false;
+        dirty.frequency = false;
+    }
+
+    const bool wantsSerpentine = (s.displayStyle == DISPLAY_STYLE_SERPENTINE);
+    if (wantsSerpentine && !fontMgr.serpentineReady) {
+        fontMgr.ensureSerpentineLoaded(tft);
+    }
+    const bool useSerpentine = wantsSerpentine && fontMgr.serpentineReady;
+
+    const unsigned long nowMs = millis();
+    const bool textChanged = (strcmp(lastText, text) != 0);
+    const bool changed = !cacheValid ||
+                         textChanged ||
+                         (lastColor != color) ||
+                         (lastUsedSerpentine != useSerpentine) ||
+                         ((nowMs - lastDrawMs) >= FORCE_REDRAW_MS);
+    if (!changed) {
+        return;
+    }
+
+    const int leftMargin = 140;
+    const int rightMargin = 200;
+    const int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
+    int drawX = leftMargin;
+    int drawWidth = 0;
+
+    if (useSerpentine) {
+        const int fontSize = 65;
+        const int baselineY = 35;
+        const int clearTop = 20;
+        const int clearHeight = getEffectiveScreenHeight() - clearTop;
+
+        if (textChanged || !cacheValid || !lastUsedSerpentine) {
+            drawWidth = DisplayFontManager::cachedTextWidth(
+                fontMgr.serpentine, fontSize, text, widthCache, widthCacheNextSlot);
+            drawX = leftMargin + (maxWidth - drawWidth) / 2;
+        } else {
+            drawWidth = lastDrawWidth;
+            drawX = lastDrawX;
+        }
+
+        int clearLeft = drawX - 5;
+        int clearRight = drawX + drawWidth + 5;
+        if (cacheValid) {
+            clearLeft = std::min(clearLeft, lastDrawX - 5);
+            clearRight = std::max(clearRight, lastDrawX + lastDrawWidth + 5);
+        }
+        clearLeft = std::max(clearLeft, leftMargin);
+        clearRight = std::min(clearRight, leftMargin + maxWidth);
+        const int clearWidth = clearRight - clearLeft;
+        if (clearWidth > 0 && clearHeight > 0) {
+            FILL_RECT(clearLeft, clearTop, clearWidth, clearHeight, PALETTE_BG);
+            markFrequencyDirtyRegion(clearLeft, clearTop, clearWidth, clearHeight);
+        }
+
+        fontMgr.serpentine.setFontSize(fontSize);
+        fontMgr.serpentine.setBackgroundColor(0, 0, 0);
+        fontMgr.serpentine.setFontColor((color >> 11) << 3,
+                                        ((color >> 5) & 0x3F) << 2,
+                                        (color & 0x1F) << 3);
+        fontMgr.serpentine.setCursor(drawX, baselineY);
+        fontMgr.serpentine.printf("%s", text);
+    } else {
+        const float scale = 2.3f;
+        const SegMetrics m = segMetrics(scale);
+        const int muteIconBottom = 33;
+        const int effectiveHeight = getEffectiveScreenHeight();
+        const int drawY = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
+        drawWidth = measure14SegmentTextWidth(text, scale);
+        drawX = leftMargin + (maxWidth - drawWidth) / 2;
+        if (drawX < leftMargin) {
+            drawX = leftMargin;
+        }
+
+        int clearLeft = drawX - 4;
+        int clearRight = drawX + drawWidth + 4;
+        if (cacheValid) {
+            clearLeft = std::min(clearLeft, lastDrawX - 4);
+            clearRight = std::max(clearRight, lastDrawX + lastDrawWidth + 4);
+        }
+        clearLeft = std::max(clearLeft, leftMargin);
+        clearRight = std::min(clearRight, leftMargin + maxWidth);
+        const int clearWidth = clearRight - clearLeft;
+        const int clearTop = drawY - 4;
+        const int clearHeight = m.digitH + 8;
+        if (clearWidth > 0 && clearHeight > 0) {
+            FILL_RECT(clearLeft, clearTop, clearWidth, clearHeight, PALETTE_BG);
+            markFrequencyDirtyRegion(clearLeft, clearTop, clearWidth, clearHeight);
+        }
+
+        draw14SegmentText(text, drawX, drawY, scale, color, PALETTE_BG);
+    }
+
+    strncpy(lastText, text, sizeof(lastText));
+    lastText[sizeof(lastText) - 1] = '\0';
+    lastColor = color;
+    lastUsedSerpentine = useSerpentine;
+    lastDrawX = drawX;
+    lastDrawWidth = drawWidth;
     cacheValid = true;
     lastDrawMs = nowMs;
 }

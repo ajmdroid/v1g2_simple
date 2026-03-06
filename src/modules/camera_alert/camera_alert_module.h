@@ -18,6 +18,7 @@ public:
 
     bool isDisplayActive() const { return displayPayload_.active; }
     bool consumePendingVoice(CameraVoiceEvent& event);
+    void onVoicePlaybackResult(const CameraVoiceEvent& event, bool playbackStarted);
     void resetEncounter();
 
     const CameraAlertDisplayPayload& displayPayload() const { return displayPayload_; }

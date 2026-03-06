@@ -136,7 +136,7 @@ DisplayOrchestrationRefreshResult DisplayOrchestrationModule::processLightweight
                                           loopPriority.band,
                                           state.muted,
                                           isPhotoRadar);
-        } else {
+        } else if (!ctx.cameraAlertActive) {
             display->refreshFrequencyOnly(0, BAND_NONE, false, false);
         }
         lastFreqUiMs = ctx.nowMs;

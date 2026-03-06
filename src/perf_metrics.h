@@ -334,7 +334,8 @@ enum class PerfDisplayScreen : uint8_t {
     Scanning = 2,
     Disconnected = 3,
     Live = 4,
-    Persisted = 5
+    Persisted = 5,
+    Camera = 6
 };
 
 enum class PerfFadeDecision : uint8_t {

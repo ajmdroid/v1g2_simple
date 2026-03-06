@@ -70,6 +70,7 @@
 #include "modules/voice/voice_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/display/display_restore_module.h"
+#include "modules/camera_alert/camera_alert_module.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/lockout/signal_capture_module.h"
@@ -736,6 +737,10 @@ static void configureLoopDisplayModule() {
     loopDisplayProviders.recordNotifyToDisplayMs = [](void*, uint32_t elapsedMs) {
         perfRecordNotifyToDisplayMs(elapsedMs);
     };
+    loopDisplayProviders.isCameraActive = [](void* ctx) -> bool {
+        return static_cast<DisplayPipelineModule*>(ctx)->isCameraAlertActive();
+    };
+    loopDisplayProviders.cameraActiveContext = &displayPipelineModule;
     loopDisplayModule.begin(loopDisplayProviders);
 }
 
@@ -749,24 +754,7 @@ static void configureTouchUiModule() {
             if (bootSplashHoldActive) {
                 return;
             }
-            if (bleClient.isConnected()) {
-                display.forceNextRedraw();
-                DisplayState state = parser.getDisplayState();
-                if (parser.hasAlerts()) {
-                    AlertData priority;
-                    if (parser.getRenderablePriorityAlert(priority)) {
-                        const auto& alerts = parser.getAllAlerts();
-                        display.update(priority, alerts.data(), parser.getAlertCount(), state);
-                    } else {
-                        display.update(state);
-                    }
-                } else {
-                    display.update(state);
-                }
-            } else {
-                display.forceNextRedraw();
-                display.showScanning();
-            }
+            displayPipelineModule.restoreCurrentOwner(millis());
         }
     };
     touchUiModule.begin(&display, &touchHandler, &settingsManager, touchCbs);
@@ -777,6 +765,7 @@ static void configureAlertAudioDisplayPipeline() {
     alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager);
     voiceModule.begin(&settingsManager, &bleClient);
     volumeFadeModule.begin(&settingsManager);
+    cameraAlertModule.begin(&roadMapReader, &settingsManager);
     displayPipelineModule.begin(&displayMode,
                                 &display,
                                 &parser,
@@ -784,7 +773,9 @@ static void configureAlertAudioDisplayPipeline() {
                                 &bleClient,
                                 &alertPersistenceModule,
                                 &volumeFadeModule,
-                                &voiceModule);
+                                &voiceModule,
+                                &gpsRuntimeModule,
+                                &cameraAlertModule);
 }
 
 static void configureSystemLoopCoreModules() {
@@ -797,7 +788,11 @@ static void configureSystemLoopCoreModules() {
     configureLoopTailModule();
     configureLoopTelemetryModule();
     configureLoopIngestModule();
-    displayRestoreModule.begin(&display, &parser, &bleClient, &displayPreviewModule);
+    displayRestoreModule.begin(&display,
+                               &parser,
+                               &bleClient,
+                               &displayPreviewModule,
+                               &displayPipelineModule);
     displayOrchestrationModule.begin(&display,
                                      &bleClient,
                                      &bleQueueModule,
