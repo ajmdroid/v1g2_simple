@@ -31,8 +31,11 @@ public:
     // Process after a successful parser.parse(); expects parser state already updated.
     // prioritySuppressed is a per-frame software suppression flag (e.g. lockout ENFORCE match).
     void handleParsed(unsigned long nowMs, bool prioritySuppressed);
-    bool isCameraAlertActive() const { return cameraAlertActive_; }
-    bool debugRenderCameraPayload(uint32_t nowMs, const CameraAlertDisplayPayload& payload);
+    bool isCameraAlertActive() const;
+    bool debugRenderCameraPayload(uint32_t nowMs,
+                                  const CameraAlertDisplayPayload& payload,
+                                  uint32_t holdMs = 0);
+    void clearDebugCameraOverride();
     void restoreCurrentOwner(uint32_t nowMs);
 
 private:
@@ -79,10 +82,14 @@ private:
     unsigned long perfLastReport = 0;
     int lastPersistenceSlot = -1;
     RenderOwner lastRenderedOwner_ = RenderOwner::Unknown;
+    bool debugCameraOverrideEnabled_ = false;
+    uint32_t debugCameraOverrideUntilMs_ = 0;
+    CameraAlertDisplayPayload debugCameraPayload_{};
 
     void recordDisplayTiming(const char* label, unsigned long startUs, unsigned long endUs);
     void recordPerfTiming(const char* label, unsigned long startUs, unsigned long endUs);
     void processCameraState(uint32_t nowMs);
     void dispatchCameraVoice();
+    bool debugCameraOverrideActiveAt(uint32_t nowMs) const;
     void renderIdleOwner(uint32_t nowMs, const DisplayState& state, bool forceRedraw);
 };
