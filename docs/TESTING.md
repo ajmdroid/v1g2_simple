@@ -12,12 +12,13 @@ If scripts change, this file must change in the same commit.
 1. [Testing Principles](#testing-principles)
 2. [Canonical Workflows](#canonical-workflows)
 3. [Hardware Cycle Workflow (Authoritative)](#hardware-cycle-workflow-authoritative)
-4. [What `device-test.sh` Actually Runs](#what-device-testsh-actually-runs)
-5. [Real Firmware Soak (`run_real_fw_soak.sh`)](#real-firmware-soak-run_real_fw_soaksh)
-6. [Drive Log Analysis](#drive-log-analysis)
-7. [Artifacts and Reports](#artifacts-and-reports)
-8. [Release Gate](#release-gate)
-9. [Change Control (Keep This Consistent)](#change-control-keep-this-consistent)
+4. [Bench Stress Ladder (Authoritative)](#bench-stress-ladder-authoritative)
+5. [What `device-test.sh` Actually Runs](#what-device-testsh-actually-runs)
+6. [Real Firmware Soak (`run_real_fw_soak.sh`)](#real-firmware-soak-run_real_fw_soaksh)
+7. [Drive Log Analysis](#drive-log-analysis)
+8. [Artifacts and Reports](#artifacts-and-reports)
+9. [Release Gate](#release-gate)
+10. [Change Control (Keep This Consistent)](#change-control-keep-this-consistent)
 
 ## Testing Principles
 
@@ -98,6 +99,127 @@ This is the process that must remain consistent over time.
 
 - Cycle 4 pass: [summary.md](/Users/ajmedford/v1g2_simple/.artifacts/test_reports/device_test_20260305_193153/summary.md)
 - Cycle 5 pass: [summary.md](/Users/ajmedford/v1g2_simple/.artifacts/test_reports/device_test_20260305_194900/summary.md)
+
+## Bench Stress Ladder (Authoritative)
+
+This is the canonical bench stress escalation process for stability/performance qualification.
+
+### Required bench profile (true-to-conditions)
+
+Use this locked profile for every ladder level:
+
+- WiFi AP active (`drive_wifi_ap` context)
+- display drive active
+- transition flaps active
+
+Use the same physical setup across all levels:
+
+- same power source and cable path
+- same device placement/orientation
+- same AP client behavior and traffic context
+
+Run invariants:
+
+- no code changes during a ladder campaign
+- if code changes: re-upload and restart at `L0`
+- fixed soak duration per run: `--duration-seconds 240`
+
+### Stress ramp axes (locked)
+
+Ramp two dimensions together at each level:
+
+- RAD load: `--rad-duration-scale-pct`
+- transition stress density: `--transition-drive-interval-seconds` (smaller is harsher)
+
+### Fixed ladder levels
+
+| Level | RAD % | Transition interval (s) |
+|---|---:|---:|
+| L0 | 200 | 15 |
+| L1 | 250 | 12 |
+| L2 | 300 | 10 |
+| L3 | 350 | 8 |
+| L4 | 400 | 7 |
+| L5 | 500 | 6 |
+| L6 | 650 | 5 |
+| L7 | 800 | 4 |
+| L8 | 1000 | 3 |
+
+Per-level command template:
+
+```bash
+./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct <rad> --transition-drive-interval-seconds <interval>
+```
+
+Run count rule:
+
+- run each level **2 times**
+- level is cleared only if both runs pass (`2/2`)
+
+### Failure classification and action policy (severity-based)
+
+Class A (reliability-critical):
+
+- reboot/panic/reset evidence
+- parser/integrity hard failures
+- unrecoverable transition stability failures
+
+Action:
+
+- stop ladder immediately
+- mark result **not acceptable**
+
+Class B (performance/stability limit):
+
+- latency/churn/recovery gate failures without crash
+
+Action:
+
+- rerun once at same level
+- if second fail: stop ladder and record that level as first sustained limit
+
+Class C (harness transient):
+
+- isolated endpoint/no-response transient with immediate clean rerun
+
+Action:
+
+- rerun once
+- if rerun passes: continue and log transient
+- if rerun fails: reclassify as Class B
+
+### Acceptance decision rules
+
+- minimum acceptable bar: **L6 must be cleared (`2/2`)**
+- if first sustained Class B failure is at `L7+` and no Class A before L6: acceptable (optional optimization backlog)
+- any Class A before or at L6: not acceptable (reliability improvement required)
+
+### Campaign reporting requirements
+
+For each ladder campaign, record:
+
+- highest cleared level
+- first failing level
+- failure class (A/B/C and final classification if reclassified)
+- artifact paths (run summaries/results)
+
+Append the latest campaign summary path in this doc:
+
+- Latest bench stress ladder campaign summary: `(pending - add path after first campaign)`
+
+### Maintenance validation checklist (when this section changes)
+
+Run these checks before declaring the doc update complete:
+
+1. Confirm documented flags still exist:
+   - `./scripts/device-test.sh --help` includes `--rad-duration-scale-pct`, `--transition-drive-interval-seconds`, `--duration-seconds`
+   - `./build.sh --help` includes `--upload-fs`
+2. Dry-run sanity commands:
+   - `./scripts/device-test.sh --dry-run --duration-seconds 240 --rad-duration-scale-pct 200 --transition-drive-interval-seconds 15`
+   - `./scripts/run_real_fw_soak.sh --dry-run --duration-seconds 240 --transition-drive-interval-seconds 15`
+3. Artifact naming/path alignment:
+   - verify outputs continue under `.artifacts/test_reports/`
+   - verify cycle artifacts still include `device_test_<timestamp>/summary.md` and soak artifact subdirectories documented below
 
 ## What `device-test.sh` Actually Runs
 
