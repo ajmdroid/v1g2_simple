@@ -16,6 +16,7 @@ route=HTTP_GET /api/settings/backup rate_limit=0 ui_activity=1 delegates=BackupA
 route=HTTP_POST /api/debug/enable rate_limit=0 ui_activity=0 delegates=DebugApiService::handleApiDebugEnable
 route=HTTP_POST /api/debug/metrics/reset rate_limit=0 ui_activity=0 delegates=DebugApiService::handleApiMetricsReset
 route=HTTP_POST /api/debug/perf-files/delete rate_limit=0 ui_activity=1 delegates=DebugApiService::handleApiPerfFilesDelete
+route=HTTP_POST /api/debug/proxy-advertising rate_limit=0 ui_activity=0 delegates=DebugApiService::handleApiProxyAdvertisingControl
 route=HTTP_POST /api/debug/v1-scenario/load rate_limit=0 ui_activity=0 delegates=DebugApiService::handleApiV1ScenarioLoad
 route=HTTP_POST /api/debug/v1-scenario/start rate_limit=0 ui_activity=0 delegates=DebugApiService::handleApiV1ScenarioStart
 route=HTTP_POST /api/debug/v1-scenario/stop rate_limit=0 ui_activity=0 delegates=DebugApiService::handleApiV1ScenarioStop

@@ -16,6 +16,7 @@ HTTP_GET /api/settings/backup
 HTTP_POST /api/debug/enable
 HTTP_POST /api/debug/metrics/reset
 HTTP_POST /api/debug/perf-files/delete
+HTTP_POST /api/debug/proxy-advertising
 HTTP_POST /api/debug/v1-scenario/load
 HTTP_POST /api/debug/v1-scenario/start
 HTTP_POST /api/debug/v1-scenario/stop

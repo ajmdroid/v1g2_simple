@@ -22,6 +22,8 @@ cd "$ROOT_DIR"
 
 METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.160.212/api/debug/metrics}"
 HTTP_TIMEOUT_SECONDS="${REAL_FW_HTTP_TIMEOUT_SECONDS:-5}"
+METRICS_ENDPOINT_ATTEMPTS="${REAL_FW_METRICS_ENDPOINT_ATTEMPTS:-3}"
+METRICS_ENDPOINT_RETRY_DELAY_SECONDS="${REAL_FW_METRICS_ENDPOINT_RETRY_DELAY_SECONDS:-1}"
 DURATION_SECONDS=60
 SKIP_FLASH=1
 TEST_PORT="${DEVICE_PORT:-}"
@@ -331,10 +333,23 @@ run_metrics_endpoint_test() {
     fi
   fi
 
-  local payload
-  payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$endpoint" 2>/dev/null || true)"
+  local payload=""
+  local attempt=1
+  while [[ "$attempt" -le "$METRICS_ENDPOINT_ATTEMPTS" ]]; do
+    payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$endpoint" 2>/dev/null || true)"
+    if [[ -n "$payload" ]]; then
+      break
+    fi
+    if [[ "$attempt" -lt "$METRICS_ENDPOINT_ATTEMPTS" && "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS" -gt 0 ]]; then
+      sleep "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS"
+    fi
+    attempt=$((attempt + 1))
+  done
   if [[ -z "$payload" ]]; then
-    add_result "$test_name" "FAIL" "No response from $endpoint" "$endpoint" "curl -fsS --max-time $HTTP_TIMEOUT_SECONDS $endpoint"
+    add_result "$test_name" "FAIL" \
+      "No response from $endpoint after ${METRICS_ENDPOINT_ATTEMPTS} attempt(s)" \
+      "$endpoint" \
+      "curl -fsS --max-time $HTTP_TIMEOUT_SECONDS $endpoint (attempts=$METRICS_ENDPOINT_ATTEMPTS retryDelay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s)"
     return
   fi
 
@@ -364,10 +379,12 @@ PY
 )"
   rc=$?
 
+  local metric_text="attempt=${attempt} ${parse_out}"
+  local cmd_text="curl -fsS --max-time $HTTP_TIMEOUT_SECONDS $endpoint (attempts=$METRICS_ENDPOINT_ATTEMPTS retryDelay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s)"
   if [[ "$rc" -eq 0 ]]; then
-    add_result "$test_name" "PASS" "$parse_out" "$endpoint" "curl -fsS --max-time $HTTP_TIMEOUT_SECONDS $endpoint"
+    add_result "$test_name" "PASS" "$metric_text" "$endpoint" "$cmd_text"
   else
-    add_result "$test_name" "FAIL" "$parse_out" "$endpoint" "curl -fsS --max-time $HTTP_TIMEOUT_SECONDS $endpoint"
+    add_result "$test_name" "FAIL" "$metric_text" "$endpoint" "$cmd_text"
   fi
 }
 
@@ -603,6 +620,8 @@ done
 for n in \
   "$DURATION_SECONDS" \
   "$HTTP_TIMEOUT_SECONDS" \
+  "$METRICS_ENDPOINT_ATTEMPTS" \
+  "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS" \
   "$RAD_MIN_RX_DELTA" \
   "$RAD_MIN_PARSE_SUCCESS_DELTA" \
   "$RAD_MIN_DISPLAY_UPDATES_DELTA" \
@@ -624,6 +643,10 @@ if [[ "$DURATION_SECONDS" -lt 1 ]]; then
 fi
 if [[ "$HTTP_TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "--http-timeout-seconds must be >= 1." >&2
+  exit 2
+fi
+if [[ "$METRICS_ENDPOINT_ATTEMPTS" -lt 1 ]]; then
+  echo "metrics endpoint attempts must be >= 1." >&2
   exit 2
 fi
 if [[ "$RAD_DURATION_SCALE_PCT" -lt 25 || "$RAD_DURATION_SCALE_PCT" -gt 1000 ]]; then
@@ -664,6 +687,7 @@ echo "Config:"
 echo "  metrics url: $METRICS_URL"
 echo "  duration: ${DURATION_SECONDS}s"
 echo "  http timeout: ${HTTP_TIMEOUT_SECONDS}s"
+echo "  metrics endpoint retries: attempts=${METRICS_ENDPOINT_ATTEMPTS} delay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s"
 echo "  skip flash: $SKIP_FLASH"
 echo "  port: ${TEST_PORT:-auto}"
 echo "  suite profile: $SUITE_PROFILE_VERSION"
