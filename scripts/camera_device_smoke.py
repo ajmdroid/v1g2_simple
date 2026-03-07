@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import signal
 import shutil
 import subprocess
 import sys
@@ -93,7 +94,29 @@ def find_chrome(explicit: str | None) -> str:
     raise SmokeFailure("Chrome binary not found; set --chrome-bin or CHROME_BIN")
 
 
-def dump_dom(chrome_bin: str, url: str, timeout_ms: int) -> str:
+def terminate_process_group(proc: subprocess.Popen[str], grace_seconds: float = 2.0) -> None:
+    if proc.poll() is not None:
+        return
+
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+
+    try:
+        proc.communicate(timeout=grace_seconds)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    proc.communicate(timeout=grace_seconds)
+
+
+def dump_dom(chrome_bin: str, url: str, timeout_ms: int, wall_timeout_seconds: float) -> str:
     cmd = [
         chrome_bin,
         "--headless=new",
@@ -102,10 +125,23 @@ def dump_dom(chrome_bin: str, url: str, timeout_ms: int) -> str:
         "--dump-dom",
         url,
     ]
-    proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=wall_timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        terminate_process_group(proc)
+        raise SmokeFailure(
+            f"Chrome dump-dom timed out after {wall_timeout_seconds:.1f}s for {url}"
+        ) from exc
     if proc.returncode != 0:
-        raise SmokeFailure(f"Chrome dump-dom failed: {proc.stderr.strip() or proc.returncode}")
-    return proc.stdout
+        raise SmokeFailure(f"Chrome dump-dom failed: {stderr.strip() or proc.returncode}")
+    return stdout
 
 
 def write_summary(path: Path,
@@ -157,6 +193,8 @@ def main() -> int:
                         help="Request voice playback for every camera type instead of only the first one.")
     parser.add_argument("--voice-wait-seconds", type=float, default=4.5,
                         help="Delay after a voiced render so the clip can finish before the next type starts.")
+    parser.add_argument("--chrome-timeout-seconds", type=float, default=15.0,
+                        help="Hard wall-clock timeout for the headless Chrome DOM dump.")
     args = parser.parse_args()
 
     base_url = args.base_url.rstrip("/") if args.base_url else derive_base_url(args.metrics_url)
@@ -216,7 +254,7 @@ def main() -> int:
                 f"cameraAlertNearRangeCm did not persist ({after_update['cameraAlertNearRangeCm']} != {close_cm})")
         checks.append("camera settings API round-trip persists first and close alert distances")
 
-        dom = dump_dom(chrome_bin, base_url + "/cameras", 7000)
+        dom = dump_dom(chrome_bin, base_url + "/cameras", 7000, args.chrome_timeout_seconds)
         require("Camera Alerts" in dom, "camera page title missing from DOM")
         require("First Alert Distance" in dom, "first alert label missing from DOM")
         require("Close Alert Distance" in dom, "close alert label missing from DOM")
