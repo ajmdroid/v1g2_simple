@@ -231,11 +231,10 @@ bool V1BLEClient::forceProxyAdvertising(bool enable, uint8_t reasonCode) {
         if (!connected) {
             return false;
         }
-        // Allow explicit debug/test control to override no-client timeout latch.
-        if (proxyNoClientTimeoutLatched) {
-            proxyNoClientTimeoutLatched = false;
-            proxyNoClientDeadlineMs = 0;
-        }
+        // Explicit debug/test control refreshes the no-client window so
+        // transition-drive flaps do not inherit a stale boot-time deadline.
+        proxyNoClientTimeoutLatched = false;
+        proxyNoClientDeadlineMs = millis() + PROXY_NO_CLIENT_TIMEOUT_MS;
         startProxyAdvertising(startReason, true);
         return isProxyAdvertising();
     }
