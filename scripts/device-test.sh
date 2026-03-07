@@ -105,6 +105,13 @@ check_uptime_continuity() {
   if [[ ! "$current_uptime" =~ ^[0-9]+$ ]]; then
     return
   fi
+  # Flash-enabled soak items intentionally reboot the device inside the test
+  # harness, so comparing pre/post uptime across those item boundaries is not a
+  # valid stability signal.
+  if [[ "$SKIP_FLASH" -eq 0 && "$context" == after\ soak_* ]]; then
+    suite_last_uptime_ms="$current_uptime"
+    return
+  fi
   if [[ -n "$suite_last_uptime_ms" && "$current_uptime" -lt "$suite_last_uptime_ms" ]]; then
     suite_reboot_count=$((suite_reboot_count + 1))
     local msg="[FAIL] Device reboot detected ${context}: uptimeMs dropped from ${suite_last_uptime_ms} to ${current_uptime}"

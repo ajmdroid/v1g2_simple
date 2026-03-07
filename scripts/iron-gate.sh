@@ -17,6 +17,8 @@ OUT_DIR=""
 DEVICE_FLASH_MODE="--with-flash"
 DRY_RUN=0
 DEVICE_ARGS=()
+HAS_DURATION_ARG=0
+HAS_RAD_SCALE_ARG=0
 
 usage() {
   cat <<'USAGE'
@@ -66,6 +68,11 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
+      if [[ "$1" == "--duration-seconds" ]]; then
+        HAS_DURATION_ARG=1
+      elif [[ "$1" == "--rad-duration-scale-pct" ]]; then
+        HAS_RAD_SCALE_ARG=1
+      fi
       DEVICE_ARGS+=("$1")
       ;;
   esac
@@ -133,6 +140,13 @@ NATIVE_LOG="$OUT_DIR/parser_native_smoke.log"
 DEVICE_LOG="$OUT_DIR/device_suite.log"
 DEVICE_OUT_DIR="$OUT_DIR/device_suite"
 mkdir -p "$DEVICE_OUT_DIR"
+
+if [[ "$HAS_DURATION_ARG" -eq 0 ]]; then
+  DEVICE_ARGS+=(--duration-seconds 240)
+fi
+if [[ "$HAS_RAD_SCALE_ARG" -eq 0 ]]; then
+  DEVICE_ARGS+=(--rad-duration-scale-pct 200)
+fi
 
 DEVICE_CMD=("./scripts/device-test.sh" "$DEVICE_FLASH_MODE" "--out-dir" "$DEVICE_OUT_DIR")
 if [[ ${#DEVICE_ARGS[@]} -gt 0 ]]; then
