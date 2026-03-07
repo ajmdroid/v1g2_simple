@@ -153,6 +153,10 @@ def main() -> int:
     parser.add_argument("--render-hold-ms", type=int, default=5000)
     parser.add_argument("--voice-stage", default="far", choices=["none", "far", "near"])
     parser.add_argument("--observe-seconds", type=float, default=2.5)
+    parser.add_argument("--voice-all-types", action="store_true",
+                        help="Request voice playback for every camera type instead of only the first one.")
+    parser.add_argument("--voice-wait-seconds", type=float, default=4.5,
+                        help="Delay after a voiced render so the clip can finish before the next type starts.")
     args = parser.parse_args()
 
     base_url = args.base_url.rstrip("/") if args.base_url else derive_base_url(args.metrics_url)
@@ -222,11 +226,15 @@ def main() -> int:
         all_types = ["speed", "red_light", "bus_lane", "alpr"]
         total_display_delta = 0
         total_audio_delta = 0
-        last_voice_started = False
+        voice_started_count = 0
+        voiced_type_count = 0
         metrics_before = request_json(base_url, "/api/debug/metrics?soak=1", args.http_timeout_seconds)
 
         for cam_type in all_types:
-            voice_for_type = args.voice_stage if cam_type == all_types[0] else "none"
+            voice_for_type = "none"
+            if args.voice_stage != "none":
+                if args.voice_all_types or cam_type == all_types[0]:
+                    voice_for_type = args.voice_stage
             render_response = request_json(
                 base_url,
                 "/api/debug/camera-alert/render",
@@ -245,8 +253,13 @@ def main() -> int:
                     f"camera debug render echoed wrong type (expected {cam_type})")
             checks.append(f"camera debug render succeeded for type={cam_type}")
             if voice_for_type != "none":
-                last_voice_started = bool(render_response.get("voiceStarted", False))
-            time.sleep(max(0.5, args.observe_seconds))
+                voiced_type_count += 1
+                if bool(render_response.get("voiceStarted", False)):
+                    voice_started_count += 1
+            pause_seconds = max(0.5, args.observe_seconds)
+            if voice_for_type != "none":
+                pause_seconds = max(pause_seconds, args.voice_wait_seconds)
+            time.sleep(pause_seconds)
 
         metrics_after = request_json(base_url, "/api/debug/metrics?soak=1", args.http_timeout_seconds)
         total_display_delta = int(metrics_after.get("displayUpdates", 0)) - int(metrics_before.get("displayUpdates", 0))
@@ -257,16 +270,23 @@ def main() -> int:
         metrics["audio_play_count_before"] = metrics_before.get("audioPlayCount", 0)
         metrics["audio_play_count_after"] = metrics_after.get("audioPlayCount", 0)
         metrics["audio_play_count_delta"] = total_audio_delta
-        metrics["render_voice_started"] = last_voice_started
+        metrics["render_voice_started_count"] = voice_started_count
+        metrics["render_voice_requested_count"] = voiced_type_count
+        metrics["voice_all_types"] = args.voice_all_types
         require(total_display_delta >= len(all_types),
                 f"camera debug render did not increment displayUpdates for all types (delta={total_display_delta})")
         checks.append(f"camera debug render cycled all {len(all_types)} camera types on hardware")
 
-        if args.voice_stage != "none":
-            require(last_voice_started, "camera debug render did not start voice playback")
-            require(total_audio_delta >= 1,
-                    f"camera debug render did not increment audioPlayCount (delta={total_audio_delta})")
-            checks.append("camera debug render started the expected camera voice playback")
+        if voiced_type_count > 0:
+            require(voice_started_count == voiced_type_count,
+                    f"camera debug render only started voice {voice_started_count}/{voiced_type_count} time(s)")
+            require(total_audio_delta >= voiced_type_count,
+                    f"camera debug render did not increment audioPlayCount for all voiced types "
+                    f"(delta={total_audio_delta}, expected>={voiced_type_count})")
+            if args.voice_all_types:
+                checks.append("camera debug render started voice playback for every camera type")
+            else:
+                checks.append("camera debug render started the expected camera voice playback")
 
         request_json(
             base_url,
