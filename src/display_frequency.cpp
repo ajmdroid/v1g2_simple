@@ -484,34 +484,52 @@ void V1Display::drawCameraLabel(const char* label, uint16_t color) {
         fontMgr.serpentine.setCursor(drawX, baselineY);
         fontMgr.serpentine.printf("%s", text);
     } else {
-        const float scale = 2.3f;
-        const SegMetrics m = segMetrics(scale);
+        // Classic: use Segment7 TTF font (same renderer as frequency display)
+        const int fontSize = 75;
+        const int classicLeftMargin = 135;
+        const int classicRightMargin = 200;
+        const int classicMaxWidth = SCREEN_WIDTH - classicLeftMargin - classicRightMargin;
+
         const int muteIconBottom = 33;
         const int effectiveHeight = getEffectiveScreenHeight();
-        const int drawY = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
-        drawWidth = measure14SegmentTextWidth(text, scale);
-        drawX = leftMargin + (maxWidth - drawWidth) / 2;
-        if (drawX < leftMargin) {
-            drawX = leftMargin;
+        const int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 13;
+
+        if (textChanged || !cacheValid || lastUsedSerpentine) {
+            drawWidth = DisplayFontManager::cachedTextWidth(
+                fontMgr.segment7, fontSize, text, widthCache, widthCacheNextSlot);
+            drawX = classicLeftMargin + (classicMaxWidth - drawWidth) / 2;
+            if (drawX < classicLeftMargin) drawX = classicLeftMargin;
+        } else {
+            drawWidth = lastDrawWidth;
+            drawX = lastDrawX;
         }
 
-        int clearLeft = drawX - 4;
-        int clearRight = drawX + drawWidth + 4;
-        if (cacheValid) {
-            clearLeft = std::min(clearLeft, lastDrawX - 4);
-            clearRight = std::max(clearRight, lastDrawX + lastDrawWidth + 4);
+        int clearY = y - 5;
+        int clearH = fontSize + 10;
+        const int maxClearBottom = DisplayLayout::PRIMARY_ZONE_Y + DisplayLayout::PRIMARY_ZONE_HEIGHT;
+        if (clearY + clearH > maxClearBottom) clearH = maxClearBottom - clearY;
+        int clearLeft = drawX - 6;
+        int clearRight = drawX + drawWidth + 6;
+        if (cacheValid && !lastUsedSerpentine && lastDrawWidth > 0) {
+            clearLeft = std::min(clearLeft, lastDrawX - 6);
+            clearRight = std::max(clearRight, lastDrawX + lastDrawWidth + 6);
         }
-        clearLeft = std::max(clearLeft, leftMargin);
-        clearRight = std::min(clearRight, leftMargin + maxWidth);
-        const int clearWidth = clearRight - clearLeft;
-        const int clearTop = drawY - 4;
-        const int clearHeight = m.digitH + 8;
-        if (clearWidth > 0 && clearHeight > 0) {
-            FILL_RECT(clearLeft, clearTop, clearWidth, clearHeight, PALETTE_BG);
-            markFrequencyDirtyRegion(clearLeft, clearTop, clearWidth, clearHeight);
+        clearLeft = std::max(clearLeft, classicLeftMargin + 10);
+        clearRight = std::min(clearRight, classicLeftMargin + classicMaxWidth);
+        const int clearW = clearRight - clearLeft;
+        if (clearH > 0 && clearW > 0) {
+            FILL_RECT(clearLeft, clearY, clearW, clearH, PALETTE_BG);
+            markFrequencyDirtyRegion(clearLeft, clearY, clearW, clearH);
         }
 
-        draw14SegmentText(text, drawX, drawY, scale, color, PALETTE_BG);
+        uint8_t bgR = (PALETTE_BG >> 11) << 3;
+        uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
+        uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
+        fontMgr.segment7.setBackgroundColor(bgR, bgG, bgB);
+        fontMgr.segment7.setFontSize(fontSize);
+        fontMgr.segment7.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
+        fontMgr.segment7.setCursor(drawX, y);
+        fontMgr.segment7.printf("%s", text);
     }
 
     strncpy(lastText, text, sizeof(lastText));

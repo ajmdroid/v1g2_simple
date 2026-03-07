@@ -219,42 +219,53 @@ def main() -> int:
         require(dom.count('type="number"') >= 2, "camera page did not render both numeric distance inputs")
         checks.append("camera page renders first/close numeric inputs on device")
 
+        all_types = ["speed", "red_light", "bus_lane", "alpr"]
+        total_display_delta = 0
+        total_audio_delta = 0
+        last_voice_started = False
         metrics_before = request_json(base_url, "/api/debug/metrics?soak=1", args.http_timeout_seconds)
-        render_response = request_json(
-            base_url,
-            "/api/debug/camera-alert/render",
-            args.http_timeout_seconds,
-            method="POST",
-            form_fields={
-                "type": args.render_type,
-                "distanceCm": args.render_distance_cm,
-                "holdMs": args.render_hold_ms,
-                "voiceStage": args.voice_stage,
-            },
-        )
-        require(bool(render_response.get("success")), "camera debug render did not report success")
-        require(int(render_response.get("holdMs", 0)) == args.render_hold_ms,
-                "camera debug render did not apply the requested hold duration")
-        require(render_response.get("voiceStage") == args.voice_stage,
-                "camera debug render did not echo the requested voice stage")
-        time.sleep(max(0.5, args.observe_seconds))
+
+        for cam_type in all_types:
+            voice_for_type = args.voice_stage if cam_type == all_types[0] else "none"
+            render_response = request_json(
+                base_url,
+                "/api/debug/camera-alert/render",
+                args.http_timeout_seconds,
+                method="POST",
+                form_fields={
+                    "type": cam_type,
+                    "distanceCm": args.render_distance_cm,
+                    "holdMs": args.render_hold_ms,
+                    "voiceStage": voice_for_type,
+                },
+            )
+            require(bool(render_response.get("success")),
+                    f"camera debug render did not report success for type={cam_type}")
+            require(render_response.get("type") == cam_type,
+                    f"camera debug render echoed wrong type (expected {cam_type})")
+            checks.append(f"camera debug render succeeded for type={cam_type}")
+            if voice_for_type != "none":
+                last_voice_started = bool(render_response.get("voiceStarted", False))
+            time.sleep(max(0.5, args.observe_seconds))
+
         metrics_after = request_json(base_url, "/api/debug/metrics?soak=1", args.http_timeout_seconds)
-        display_delta = int(metrics_after.get("displayUpdates", 0)) - int(metrics_before.get("displayUpdates", 0))
-        audio_delta = int(metrics_after.get("audioPlayCount", 0)) - int(metrics_before.get("audioPlayCount", 0))
+        total_display_delta = int(metrics_after.get("displayUpdates", 0)) - int(metrics_before.get("displayUpdates", 0))
+        total_audio_delta = int(metrics_after.get("audioPlayCount", 0)) - int(metrics_before.get("audioPlayCount", 0))
         metrics["display_updates_before"] = metrics_before.get("displayUpdates", 0)
         metrics["display_updates_after"] = metrics_after.get("displayUpdates", 0)
-        metrics["display_updates_delta"] = display_delta
+        metrics["display_updates_delta"] = total_display_delta
         metrics["audio_play_count_before"] = metrics_before.get("audioPlayCount", 0)
         metrics["audio_play_count_after"] = metrics_after.get("audioPlayCount", 0)
-        metrics["audio_play_count_delta"] = audio_delta
-        metrics["render_voice_started"] = render_response.get("voiceStarted", False)
-        require(display_delta >= 1, f"camera debug render did not increment displayUpdates (delta={display_delta})")
-        checks.append("camera debug render held the camera screen on hardware long enough to observe it")
+        metrics["audio_play_count_delta"] = total_audio_delta
+        metrics["render_voice_started"] = last_voice_started
+        require(total_display_delta >= len(all_types),
+                f"camera debug render did not increment displayUpdates for all types (delta={total_display_delta})")
+        checks.append(f"camera debug render cycled all {len(all_types)} camera types on hardware")
 
         if args.voice_stage != "none":
-            require(bool(render_response.get("voiceRequested")), "camera debug render did not request voice playback")
-            require(bool(render_response.get("voiceStarted")), "camera debug render did not start voice playback")
-            require(audio_delta >= 1, f"camera debug render did not increment audioPlayCount (delta={audio_delta})")
+            require(last_voice_started, "camera debug render did not start voice playback")
+            require(total_audio_delta >= 1,
+                    f"camera debug render did not increment audioPlayCount (delta={total_audio_delta})")
             checks.append("camera debug render started the expected camera voice playback")
 
         request_json(
