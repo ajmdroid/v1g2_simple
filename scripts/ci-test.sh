@@ -51,12 +51,17 @@ echo -e "${YELLOW}🔒 Checking main loop call-order contract...${NC}"
 python3 scripts/check_main_loop_call_order_contract.py
 echo -e "${GREEN}✅ Main loop call-order contract matches${NC}"
 
-# Step 0g: Native unit tests
+# Step 0g: Extern/global usage contract guard
+echo -e "${YELLOW}🔒 Checking extern/global usage contract...${NC}"
+python3 scripts/check_extern_usage_contract.py
+echo -e "${GREEN}✅ Extern/global usage contract matches${NC}"
+
+# Step 0h: Native unit tests
 echo -e "${YELLOW}🧪 Running native unit tests...${NC}"
 pio test -e native
 echo -e "${GREEN}✅ Native unit tests passed${NC}"
 
-# Step 0h: Frontend HTTP resilience contract guard
+# Step 0i: Frontend HTTP resilience contract guard
 echo -e "${YELLOW}🔒 Checking frontend HTTP resilience contract...${NC}"
 python3 scripts/check_frontend_http_resilience_contract.py
 echo -e "${GREEN}✅ Frontend HTTP resilience contract matches${NC}"

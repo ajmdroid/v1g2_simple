@@ -271,6 +271,7 @@ These suites contain the densest concentration of failure handling:
 Now fails on:
 
 - contract guard mismatches
+- extern/global usage contract mismatches
 - native test failures
 - frontend lint/type failures via `svelte-check`
 - frontend unit test failures via Vitest
@@ -348,6 +349,8 @@ Special result:
 
 ## Blind Spots And Follow-Ups
 
+- Extern/global drift is now snapshotted in CI, but the current global surface
+  still allows direct subsystem access in legacy paths
 - Frontend browser/route tests are still absent; current frontend unit coverage
   is scoped to shared helpers and one reusable control
 - The strict packet-parser backup audit is off by default, so part of the
