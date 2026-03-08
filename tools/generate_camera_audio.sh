@@ -19,7 +19,6 @@ CLIPS=(
   "cam_red_light"
   "cam_bus_lane"
   "cam_alpr"
-  "cam_close"
 )
 
 clip_text() {
@@ -28,7 +27,6 @@ clip_text() {
         cam_red_light) echo "red light camera" ;;
         cam_bus_lane) echo "bus lane camera" ;;
         cam_alpr) echo "A. L. P. R." ;;
-        cam_close) echo "close" ;;
         *)
             echo "Unknown clip: $1" >&2
             return 1

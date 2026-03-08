@@ -400,7 +400,7 @@ bool play_camera_alert(CameraType type, bool isNearStage) {
              48,
              "%s/%s",
              AUDIO_PATH,
-             isNearStage ? "cam_close.mul" : "dir_ahead.mul");
+             "dir_ahead.mul");
 
     return start_sd_audio_task(params);
 }

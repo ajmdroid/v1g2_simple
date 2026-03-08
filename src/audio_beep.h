@@ -63,8 +63,7 @@ void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection dir
 void play_band_only(AlertBand band);
 
 // Play camera voice announcement from LittleFS audio clips.
-// Far stage: "camera type" + "ahead"
-// Near stage: "camera type" + "close"
+// Announces "camera type" + "ahead" (matches standard alert pattern).
 // Returns false if audio is busy, disabled, or clips are unavailable.
 bool play_camera_alert(CameraType type, bool isNearStage);
 
