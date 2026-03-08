@@ -301,6 +301,8 @@ Concrete fail triggers:
 - `rxPackets`, `parseSuccesses`, or `displayUpdates` below required deltas
 - `parseFailures != 0`
 - synthetic suite failure when `uptimeMs` decreases between test items
+- fail-fast suite abort when foundational prechecks fail (`metrics_endpoint` or
+  `camera_smoke`) unless `--no-fail-fast` is set
 
 Operational prerequisites:
 
