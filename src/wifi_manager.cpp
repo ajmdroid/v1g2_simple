@@ -12,57 +12,11 @@
 #include "modules/wifi/wifi_auto_timeout_module.h"
 #include "modules/wifi/wifi_heap_guard_module.h"
 #include "modules/wifi/wifi_stop_reason_module.h"
-#include "json_stream_response.h"
-#include <LittleFS.h>
 #include "esp_wifi.h"
 
 // Optional AP auto-timeout (milliseconds). Set to 0 to keep always-on behavior.
 static constexpr unsigned long WIFI_AP_AUTO_TIMEOUT_MS = 0;            // e.g., 10 * 60 * 1000 for 10 minutes
 static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Require no UI activity/clients for this long before stopping
-
-// ---- Promoted helpers (declared in wifi_manager_internals.h) ----
-
-void dumpLittleFSRoot() {
-    if (!LittleFS.begin(true, "/littlefs", 10, "littlefs")) {
-        Serial.println("[SetupMode] ERROR: Failed to mount LittleFS for root dump");
-        return;
-    }
-    
-    Serial.println("[SetupMode] Dumping LittleFS root...");
-    Serial.println("[SetupMode] Files in LittleFS root:");
-    
-    File root = LittleFS.open("/");
-    if (!root || !root.isDirectory()) {
-        Serial.println("[SetupMode] ERROR: Could not open root directory");
-        if (root) root.close();
-        return;
-    }
-    
-    File file = root.openNextFile();
-    bool hasFiles = false;
-    while (file) {
-        hasFiles = true;
-        Serial.printf("[SetupMode]   %s (%u bytes)\n", file.name(), file.size());
-        file = root.openNextFile();
-    }
-    
-    if (!hasFiles) {
-        Serial.println("[SetupMode]   (empty)");
-    }
-    
-    root.close();
-}
-
-const char* wifiClientStateApiName(WifiClientState state) {
-    switch (state) {
-        case WIFI_CLIENT_DISABLED: return "disabled";
-        case WIFI_CLIENT_DISCONNECTED: return "disconnected";
-        case WIFI_CLIENT_CONNECTING: return "connecting";
-        case WIFI_CLIENT_CONNECTED: return "connected";
-        case WIFI_CLIENT_FAILED: return "failed";
-        default: return "unknown";
-    }
-}
 
 // ---- Static helpers (used only in this TU) ----
 
@@ -117,92 +71,6 @@ static uint8_t wifiApStopReasonCode(const String& stopReason, bool stopManual) {
 static WifiStopReasonModule sWifiStopReasonModule(&perfCounters);
 static WifiHeapGuardModule sWifiHeapGuardModule;
 static WifiAutoTimeoutModule sWifiAutoTimeoutModule;
-
-// Helper to serve files from LittleFS (with gzip support)
-static bool streamOpenFile(WebServer& server,
-                           File& file,
-                           const char* path,
-                           const char* contentType,
-                           size_t fileSize,
-                           bool gzip) {
-    server.setContentLength(fileSize);
-    if (gzip) {
-        server.sendHeader("Content-Encoding", "gzip");
-    }
-    server.sendHeader("Cache-Control", "max-age=86400");
-    server.sendHeader("ETag",
-                      String("\"") + String(path) + (gzip ? ".gz-" : "-") + String(fileSize) + String("\""));
-    server.send(200, contentType, "");
-
-    auto client = server.client();
-    uint8_t buf[1024];
-    while (file.available()) {
-        const size_t len = file.read(buf, sizeof(buf));
-        if (len == 0) {
-            break;
-        }
-        if (!client_write_retry::writeAll(client, buf, len)) {
-            Serial.printf("[HTTP] WARN short stream %s (%u/%u bytes)\n",
-                          path,
-                          static_cast<unsigned>(file.position()),
-                          static_cast<unsigned>(fileSize));
-            return false;
-        }
-        client_write_retry::service();
-    }
-    return true;
-}
-
-bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* contentType) {
-    uint32_t startUs = PERF_TIMESTAMP_US();
-    // Try compressed version first (only if client accepts gzip)
-    String acceptEncoding = server.header("Accept-Encoding");
-    bool clientAcceptsGzip = acceptEncoding.indexOf("gzip") >= 0;
-    
-    if (clientAcceptsGzip) {
-        String gzPath = String(path) + ".gz";
-        if (LittleFS.exists(gzPath.c_str())) {
-            File file = LittleFS.open(gzPath.c_str(), "r");
-            if (file) {
-                size_t fileSize = file.size();
-                String etag = String("\"") + String(path) + ".gz-" + String(fileSize) + String("\"");
-                if (server.header("If-None-Match") == etag) {
-                    server.sendHeader("ETag", etag);
-                    server.send(304, contentType, "");
-                    file.close();
-                    return true;
-                }
-                Serial.printf("[HTTP] 200 %s -> %s.gz (%u bytes)\n", path, path, fileSize);
-                streamOpenFile(server, file, path, contentType, fileSize, true);
-                file.close();
-                perfRecordFsServeUs(PERF_TIMESTAMP_US() - startUs);
-                return true;
-            }
-        }
-    }
-    
-    // Fall back to uncompressed
-    File file = LittleFS.open(path, "r");
-    if (!file) {
-        Serial.printf("[HTTP] MISS %s (file not found)\n", path);
-        return false;
-    }
-    size_t fileSize = file.size();
-    String etag = String("\"") + String(path) + "-" + String(fileSize) + String("\"");
-    if (server.header("If-None-Match") == etag) {
-        server.sendHeader("ETag", etag);
-        server.send(304, contentType, "");
-        file.close();
-        return true;
-    }
-    server.sendHeader("Cache-Control", "max-age=86400");
-    server.sendHeader("ETag", etag);
-    Serial.printf("[HTTP] 200 %s (%u bytes)\n", path, fileSize);
-    streamOpenFile(server, file, path, contentType, fileSize, false);
-    file.close();
-    perfRecordFsServeUs(PERF_TIMESTAMP_US() - startUs);
-    return true;
-}
 
 // Global instance
 WiFiManager wifiManager;
