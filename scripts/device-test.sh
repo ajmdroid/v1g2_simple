@@ -30,7 +30,6 @@ SKIP_FLASH=1
 TEST_PORT="${DEVICE_PORT:-}"
 AUTO_KILL_MONITOR=1
 DRY_RUN=0
-FAIL_FAST=1
 
 SUITE_PROFILE_VERSION="device_v2"
 SOAK_PROFILE="drive_wifi_ap"
@@ -145,7 +144,6 @@ Options:
   --soak-minima-tail-exclude-samples N
                                  Ignore last N soak samples for DMA minima floors (default: 3)
   --ignore-gps-errors            Suppress GPS advisory warnings in soak scoring
-  --no-fail-fast                Continue after precheck failures (default: fail fast)
   --no-auto-kill-monitor         Do not auto-stop pio device monitor when port is busy
   --out-dir PATH                 Write reports to PATH
   --dry-run                      Print resolved config and exit
@@ -207,15 +205,6 @@ shell_join() {
     fi
   done
   printf "%s" "$out"
-}
-
-last_test_failed() {
-  local count="${#TEST_STATUS[@]}"
-  if [[ "$count" -eq 0 ]]; then
-    return 1
-  fi
-  local last_status="${TEST_STATUS[$((count - 1))]}"
-  [[ "$last_status" == "FAIL" ]]
 }
 
 extract_soak_metric() {
@@ -701,9 +690,6 @@ while [[ $# -gt 0 ]]; do
     --ignore-gps-errors)
       IGNORE_GPS_ERRORS=1
       ;;
-    --no-fail-fast)
-      FAIL_FAST=0
-      ;;
     --no-auto-kill-monitor)
       AUTO_KILL_MONITOR=0
       ;;
@@ -807,7 +793,6 @@ echo "  soak robust gate: mode=$SOAK_LATENCY_GATE_MODE minSamples=$SOAK_LATENCY_
 echo "  soak minima tail exclusion: ${SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES} sample(s)"
 echo "  soak require-metrics: yes (min ok samples=$SOAK_MIN_METRICS_OK_SAMPLES)"
 echo "  camera smoke: api/ui/render on hardware"
-echo "  fail-fast prechecks: $FAIL_FAST"
 echo "  display drive: displayInterval=${SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=$SOAK_MIN_DISPLAY_UPDATES_DELTA"
 echo "  transition qual: enabled=$SOAK_ENABLE_TRANSITION_QUAL flapCycles=$SOAK_TRANSITION_FLAP_CYCLES interval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s maxRecoveryMs=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS maxSamples=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
 echo "  RAD scenario: $RAD_SCENARIO_ID scalePct=$RAD_DURATION_SCALE_PCT timeout=${RESOLVED_RAD_TIMEOUT_SECONDS}s (rx>=$RAD_MIN_RX_DELTA parse>=$RAD_MIN_PARSE_SUCCESS_DELTA display>=$RAD_MIN_DISPLAY_UPDATES_DELTA parseFail==0)"
@@ -829,56 +814,39 @@ if [[ "$AUTO_KILL_MONITOR" -eq 1 ]]; then
   fi
 fi
 
-suite_aborted_early=0
-suite_abort_reason=""
-
 check_uptime_continuity "before metrics_endpoint"
 run_metrics_endpoint_test
 check_uptime_continuity "after metrics_endpoint"
-if [[ "$FAIL_FAST" -eq 1 ]] && last_test_failed; then
-  suite_aborted_early=1
-  suite_abort_reason="metrics_endpoint failed"
-fi
 
-if [[ "$suite_aborted_early" -eq 0 ]]; then
-  check_uptime_continuity "before camera_smoke"
-  run_camera_smoke_test
-  check_uptime_continuity "after camera_smoke"
-  if [[ "$FAIL_FAST" -eq 1 ]] && last_test_failed; then
-    suite_aborted_early=1
-    suite_abort_reason="camera_smoke failed"
-  fi
-fi
+check_uptime_continuity "before camera_smoke"
+run_camera_smoke_test
+check_uptime_continuity "after camera_smoke"
 
-if [[ "$suite_aborted_early" -eq 0 ]]; then
-  check_uptime_continuity "before rad_short"
-  run_rad_short_test
-  check_uptime_continuity "after rad_short"
+check_uptime_continuity "before rad_short"
+run_rad_short_test
+check_uptime_continuity "after rad_short"
 
-  check_uptime_continuity "before soak_display"
-  run_soak_test "soak_display" \
-    --drive-display-preview \
-    --display-drive-interval-seconds "$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS" \
-    --min-display-updates-delta "$SOAK_MIN_DISPLAY_UPDATES_DELTA"
-  check_uptime_continuity "after soak_display"
+check_uptime_continuity "before soak_display"
+run_soak_test "soak_display" \
+  --drive-display-preview \
+  --display-drive-interval-seconds "$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS" \
+  --min-display-updates-delta "$SOAK_MIN_DISPLAY_UPDATES_DELTA"
+check_uptime_continuity "after soak_display"
 
-  check_uptime_continuity "before soak_core"
-  run_soak_test "soak_core"
-  check_uptime_continuity "after soak_core"
+check_uptime_continuity "before soak_core"
+run_soak_test "soak_core"
+check_uptime_continuity "after soak_core"
 
-  if [[ "$SOAK_ENABLE_TRANSITION_QUAL" -eq 1 ]]; then
-    check_uptime_continuity "before soak_transition"
-    run_soak_test "soak_transition" \
-      --drive-transition-flaps \
-      --transition-drive-interval-seconds "$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS" \
-      --transition-flap-cycles "$SOAK_TRANSITION_FLAP_CYCLES" \
-      --min-proxy-adv-off-transitions "$SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS" \
-      --max-time-to-stable-ms-after-proxy-adv-off "$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS" \
-      --max-samples-to-stable "$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
-    check_uptime_continuity "after soak_transition"
-  fi
-else
-  echo -e "${YELLOW}Fail-fast: aborting remaining suite items (${suite_abort_reason}).${NC}"
+if [[ "$SOAK_ENABLE_TRANSITION_QUAL" -eq 1 ]]; then
+  check_uptime_continuity "before soak_transition"
+  run_soak_test "soak_transition" \
+    --drive-transition-flaps \
+    --transition-drive-interval-seconds "$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS" \
+    --transition-flap-cycles "$SOAK_TRANSITION_FLAP_CYCLES" \
+    --min-proxy-adv-off-transitions "$SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS" \
+    --max-time-to-stable-ms-after-proxy-adv-off "$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS" \
+    --max-samples-to-stable "$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
+  check_uptime_continuity "after soak_transition"
 fi
 
 # If reboots were detected between test items, add a synthetic failure.
@@ -924,14 +892,9 @@ fi
   echo "- Metrics URL: \`$METRICS_URL\`"
   echo "- Soak duration (s): $DURATION_SECONDS"
   echo "- Skip flash: $SKIP_FLASH"
-  echo "- Fail-fast prechecks: $FAIL_FAST"
   echo "- Port: \`${TEST_PORT:-auto}\`"
   echo "- Passed: $pass_count"
   echo "- Failed: $fail_count"
-  echo "- Early abort: $([[ "$suite_aborted_early" -eq 1 ]] && echo "yes" || echo "no")"
-  if [[ "$suite_aborted_early" -eq 1 ]]; then
-    echo "- Early abort reason: ${suite_abort_reason}"
-  fi
   echo "- Suite reboot detections: $suite_reboot_count"
   if [[ -n "$suite_reboot_log" ]]; then
     echo ""
