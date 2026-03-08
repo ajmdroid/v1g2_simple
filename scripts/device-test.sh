@@ -242,6 +242,31 @@ extract_soak_metric() {
   esac
 }
 
+parse_metrics_payload() {
+  local payload="$1"
+  python3 - "$payload" <<'PY'
+import json
+import sys
+
+required = ["rxPackets", "parseSuccesses", "parseFailures", "dispPipeMaxUs", "wifiMaxUs", "displayUpdates"]
+try:
+    data = json.loads(sys.argv[1])
+except Exception as exc:
+    print(f"invalid_json={exc}")
+    sys.exit(2)
+
+missing = [k for k in required if k not in data]
+if missing:
+    print("missing=" + ",".join(missing))
+    sys.exit(3)
+
+print(
+    "rxPackets={rxPackets} parseSuccesses={parseSuccesses} parseFailures={parseFailures} "
+    "dispPipeMaxUs={dispPipeMaxUs} wifiMaxUs={wifiMaxUs} displayUpdates={displayUpdates}".format(**data)
+)
+PY
+}
+
 run_soak_test() {
   local test_name="$1"
   shift
@@ -342,54 +367,40 @@ run_metrics_endpoint_test() {
   fi
 
   local payload=""
+  local parse_out=""
+  local parse_rc=4
+  local had_payload=0
   local attempt=1
   while [[ "$attempt" -le "$METRICS_ENDPOINT_ATTEMPTS" ]]; do
     payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$endpoint" 2>/dev/null || true)"
     if [[ -n "$payload" ]]; then
-      break
+      had_payload=1
+      parse_out="$(parse_metrics_payload "$payload" 2>/dev/null)"
+      parse_rc=$?
+      if [[ "$parse_rc" -eq 0 ]]; then
+        break
+      fi
+    else
+      parse_out="no_response"
+      parse_rc=4
     fi
     if [[ "$attempt" -lt "$METRICS_ENDPOINT_ATTEMPTS" && "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS" -gt 0 ]]; then
       sleep "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS"
     fi
     attempt=$((attempt + 1))
   done
-  if [[ -z "$payload" ]]; then
+
+  local cmd_text="curl -fsS --max-time $HTTP_TIMEOUT_SECONDS $endpoint (attempts=$METRICS_ENDPOINT_ATTEMPTS retryDelay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s)"
+  if [[ "$had_payload" -eq 0 ]]; then
     add_result "$test_name" "FAIL" \
       "No response from $endpoint after ${METRICS_ENDPOINT_ATTEMPTS} attempt(s)" \
       "$endpoint" \
-      "curl -fsS --max-time $HTTP_TIMEOUT_SECONDS $endpoint (attempts=$METRICS_ENDPOINT_ATTEMPTS retryDelay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s)"
+      "$cmd_text"
     return
   fi
 
-  local parse_out
-  local rc
-  parse_out="$(python3 - "$payload" <<'PY'
-import json
-import sys
-
-required = ["rxPackets", "parseSuccesses", "parseFailures", "dispPipeMaxUs", "wifiMaxUs", "displayUpdates"]
-try:
-    data = json.loads(sys.argv[1])
-except Exception as exc:
-    print(f"invalid_json={exc}")
-    sys.exit(2)
-
-missing = [k for k in required if k not in data]
-if missing:
-    print("missing=" + ",".join(missing))
-    sys.exit(3)
-
-print(
-    "rxPackets={rxPackets} parseSuccesses={parseSuccesses} parseFailures={parseFailures} "
-    "dispPipeMaxUs={dispPipeMaxUs} wifiMaxUs={wifiMaxUs} displayUpdates={displayUpdates}".format(**data)
-)
-PY
-)"
-  rc=$?
-
   local metric_text="attempt=${attempt} ${parse_out}"
-  local cmd_text="curl -fsS --max-time $HTTP_TIMEOUT_SECONDS $endpoint (attempts=$METRICS_ENDPOINT_ATTEMPTS retryDelay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s)"
-  if [[ "$rc" -eq 0 ]]; then
+  if [[ "$parse_rc" -eq 0 ]]; then
     add_result "$test_name" "PASS" "$metric_text" "$endpoint" "$cmd_text"
   else
     add_result "$test_name" "FAIL" "$metric_text" "$endpoint" "$cmd_text"

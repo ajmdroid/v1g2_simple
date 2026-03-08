@@ -355,9 +355,9 @@ Special result:
   is scoped to shared helpers and one reusable control
 - The strict packet-parser backup audit is off by default, so part of the
   parser/backup compatibility coverage is opt-in
-- Hardware gate results are only as good as the flashed firmware on the device;
-  the reachable device at `192.168.160.63` likely needs flash alignment before
-  it can be used for authoritative review
+- Hardware gate results are only as good as the flashed firmware on the target
+  device; align uploads before authoritative review (default metrics target:
+  `192.168.160.212`)
 - Some older docs still mention larger native test counts than the current
   local run; use this file plus the current script outputs as the active audit
 
