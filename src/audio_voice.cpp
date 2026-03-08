@@ -22,7 +22,7 @@ static fs::FS* audioFS = nullptr;  // Filesystem containing audio files
 // This works regardless of whether SD card is the primary storage
 void audio_init_sd() {
     // Always check LittleFS for audio files (they're uploaded with firmware)
-    if (!LittleFS.begin(false, "/littlefs", 10, "littlefs")) {  // Don't format if not found
+    if (!LittleFS.begin(false, "/littlefs", 10, "storage")) {  // Don't format if not found
         Serial.println("[AUDIO] LittleFS not available");
         return;
     }

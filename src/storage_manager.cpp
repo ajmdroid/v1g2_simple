@@ -41,7 +41,7 @@ bool StorageManager::begin() {
         
         // Also mount LittleFS as secondary for backups
         // Use begin(false) to avoid auto-formatting existing data on transient errors
-        littlefsReady = LittleFS.begin(false, "/littlefs", 10, "littlefs");
+        littlefsReady = LittleFS.begin(false, "/littlefs", 10, "storage");
         if (!littlefsReady) {
             Serial.println("[Storage] WARNING: LittleFS secondary mount failed - mirror backups disabled");
             Serial.println("[Storage] (Run 'Format LittleFS' from maintenance if needed)");
@@ -55,7 +55,7 @@ bool StorageManager::begin() {
 
     // Fallback to LittleFS
     Serial.println("[Storage] Trying LittleFS fallback...");
-    if (LittleFS.begin(true, "/littlefs", 10, "littlefs")) {
+    if (LittleFS.begin(true, "/littlefs", 10, "storage")) {
         fs = &LittleFS;
         ready = true;
         littlefsReady = true;

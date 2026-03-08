@@ -11,7 +11,7 @@
 #include <LittleFS.h>
 
 void dumpLittleFSRoot() {
-    if (!LittleFS.begin(true, "/littlefs", 10, "littlefs")) {
+    if (!LittleFS.begin(true, "/littlefs", 10, "storage")) {
         Serial.println("[SetupMode] ERROR: Failed to mount LittleFS for root dump");
         return;
     }

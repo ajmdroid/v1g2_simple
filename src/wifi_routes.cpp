@@ -39,7 +39,7 @@
 
 void WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
-    if (!LittleFS.begin(false, "/littlefs", 10, "littlefs")) {
+    if (!LittleFS.begin(false, "/littlefs", 10, "storage")) {
         WIFI_LOG("[SetupMode] ERROR: LittleFS mount failed (not formatting automatically)\n");
         return;
     }
