@@ -132,7 +132,7 @@ export function rgb565ToHexStr(rgb565) {
 
 export function rgbComponentsToHex(red, green, blue) {
 	return `#${[red, green, blue]
-		.map((value) => Math.min(255, Number(value) || 0).toString(16).padStart(2, '0'))
+		.map((value) => Math.max(0, Math.min(255, Number(value) || 0)).toString(16).padStart(2, '0'))
 		.join('')}`;
 }
 

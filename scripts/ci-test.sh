@@ -61,10 +61,24 @@ echo -e "${YELLOW}🔒 Checking frontend HTTP resilience contract...${NC}"
 python3 scripts/check_frontend_http_resilience_contract.py
 echo -e "${GREEN}✅ Frontend HTTP resilience contract matches${NC}"
 
-# Step 1: Build web interface
-echo -e "${YELLOW}📦 Building web interface...${NC}"
+# Step 1: Install frontend dependencies
+echo -e "${YELLOW}📦 Installing frontend dependencies...${NC}"
 cd interface
 npm ci --silent 2>/dev/null || npm install --silent
+echo -e "${GREEN}✅ Frontend dependencies installed${NC}"
+
+# Step 1b: Frontend lint/type checks
+echo -e "${YELLOW}🔎 Running frontend lint/type checks...${NC}"
+npm run lint
+echo -e "${GREEN}✅ Frontend lint/type checks passed${NC}"
+
+# Step 1c: Frontend unit tests + coverage
+echo -e "${YELLOW}🧪 Running frontend unit tests with coverage...${NC}"
+npm run test:coverage
+echo -e "${GREEN}✅ Frontend unit tests and coverage passed${NC}"
+
+# Step 1d: Build web interface
+echo -e "${YELLOW}📦 Building web interface...${NC}"
 npm run build
 echo -e "${GREEN}✅ Web interface built${NC}"
 
@@ -80,12 +94,17 @@ echo -e "${YELLOW}🔒 Checking web asset guardrails...${NC}"
 python3 scripts/check_web_asset_budget.py
 echo -e "${GREEN}✅ Web asset guardrails pass${NC}"
 
-# Step 3: Build firmware
+# Step 3: Firmware static analysis
+echo -e "${YELLOW}🔎 Running firmware static analysis...${NC}"
+./scripts/pio-check.sh
+echo -e "${GREEN}✅ Firmware static analysis passed${NC}"
+
+# Step 4: Build firmware
 echo -e "${YELLOW}🏗️  Building firmware (waveshare-349)...${NC}"
 pio run -e waveshare-349
 echo -e "${GREEN}✅ Firmware built${NC}"
 
-# Step 4: Size report
+# Step 5: Size report
 echo ""
 echo "╔════════════════════════════════════════════════════╗"
 echo "║               Build Size Report                    ║"

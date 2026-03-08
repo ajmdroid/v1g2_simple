@@ -18,6 +18,10 @@ extern int backupBondsToSD();
 // ---- scan callbacks ---------------------------------------------------
 
 void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertisedDevice) {
+    if (!bleClient) {
+        return;
+    }
+
     const std::string& name = advertisedDevice->getName();
     const std::string& addrStr = advertisedDevice->getAddress().toString();
     int rssi = advertisedDevice->getRSSI();
@@ -59,9 +63,7 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     }
     
     // Save this address for future fast reconnects (deferred to main loop)
-    if (bleClient) {
-        bleClient->deferLastV1Address(addrStr.c_str());
-    }
+    bleClient->deferLastV1Address(addrStr.c_str());
     
     // Stop scanning - state machine will handle the connection after settle time
     NimBLEScan* pScan = NimBLEDevice::getScan();
@@ -81,7 +83,7 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
         bleClient->scanStopRequestedMs = millis();
         bleClient->setBLEState(BLEState::SCAN_STOPPING, "V1 found");
         xSemaphoreGive(bleClient->bleMutex);
-    } else if (bleClient) {
+    } else {
         // Defer update to main loop if mutex is busy
         portENTER_CRITICAL(&pendingAddrMux);
         snprintf(bleClient->pendingScanTargetAddress, sizeof(bleClient->pendingScanTargetAddress), "%s", addrStr.c_str());
