@@ -1,0 +1,98 @@
+<script>
+	import StatusAlert from '$lib/components/StatusAlert.svelte';
+
+	let {
+		open = false,
+		wifiScanning = false,
+		wifiNetworks = [],
+		selectedNetwork = $bindable(null),
+		wifiPassword = $bindable(''),
+		wifiConnecting = false,
+		onstartWifiScan,
+		onselectNetwork,
+		onconnectToNetwork,
+		oncloseWifiModal
+	} = $props();
+</script>
+
+{#if open}
+	<div class="modal modal-open">
+		<div class="modal-box surface-modal max-w-md">
+			<h3 class="font-bold text-lg">Select WiFi Network</h3>
+
+			{#if wifiScanning}
+				<div class="state-loading stack">
+					<span class="loading loading-spinner loading-lg"></span>
+					<p class="mt-4 copy-muted">Scanning for networks...</p>
+				</div>
+			{:else if selectedNetwork}
+				<div class="py-4 space-y-4">
+					<p>Connect to <strong>{selectedNetwork.ssid}</strong></p>
+
+					{#if selectedNetwork.secure}
+						<div class="form-control">
+							<label class="label" for="wifi-password">
+								<span class="label-text">Password</span>
+							</label>
+							<input
+								id="wifi-password"
+								type="password"
+								class="input input-bordered"
+								bind:value={wifiPassword}
+								placeholder="Enter WiFi password"
+								onkeydown={(event) => event.key === 'Enter' && onconnectToNetwork()}
+							/>
+						</div>
+					{:else}
+						<StatusAlert message="This is an open network" fallbackType="warning" />
+					{/if}
+
+					<div class="flex gap-2 justify-end">
+						<button class="btn btn-ghost" onclick={() => (selectedNetwork = null)}>
+							Back
+						</button>
+						<button class="btn btn-primary" onclick={onconnectToNetwork} disabled={wifiConnecting || (selectedNetwork.secure && !wifiPassword)}>
+							{#if wifiConnecting}
+								<span class="loading loading-spinner loading-sm"></span>
+							{/if}
+							Connect
+						</button>
+					</div>
+				</div>
+			{:else}
+				<div class="py-4">
+					{#if wifiNetworks.length === 0}
+						<p class="state-empty center">No networks found</p>
+					{:else}
+						<ul class="menu surface-menu max-h-64 overflow-y-auto">
+							{#each wifiNetworks as network}
+								<li>
+									<button onclick={() => onselectNetwork(network)} class="flex justify-between">
+										<span class="flex items-center gap-2">
+											{#if network.secure}🔒{:else}🔓{/if}
+											{network.ssid}
+										</span>
+										<span class="copy-muted">
+											{network.rssi} dBm
+										</span>
+									</button>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+
+					<div class="flex gap-2 justify-end mt-4">
+						<button class="btn btn-ghost btn-sm" onclick={onstartWifiScan}>
+							Rescan
+						</button>
+					</div>
+				</div>
+			{/if}
+
+			<div class="modal-action">
+				<button class="btn" onclick={oncloseWifiModal}>Close</button>
+			</div>
+		</div>
+		<div class="modal-backdrop bg-black/50" role="presentation" onclick={oncloseWifiModal}></div>
+	</div>
+{/if}

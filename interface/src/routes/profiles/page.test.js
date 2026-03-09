@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 
-import { installFetchMock, jsonResponse } from '../../test/fetch-mock.js';
+import { installFetchMock, jsonResponse, textResponse } from '../../test/fetch-mock.js';
 import Page from './+page.svelte';
 
 function installDefaultFetch(overrides = []) {
@@ -64,6 +64,43 @@ describe('profiles route page', () => {
 			expect(screen.queryByText('Save Profile')).toBeNull();
 		});
 
+		unmount();
+	});
+
+	it('saves a profile successfully from the save dialog', async () => {
+		const fetchMock = installDefaultFetch([
+			{ method: 'POST', match: '/api/v1/profile', respond: jsonResponse({ success: true }) }
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('V1 Profiles');
+		const saveButtons = await screen.findAllByRole('button', { name: /^Save$/i });
+		await fireEvent.click(saveButtons[0]);
+		const dialogTitle = await screen.findByText('Save Profile');
+		const modal = dialogTitle.closest('.modal-box');
+		await fireEvent.input(screen.getByLabelText('Profile Name'), { target: { value: 'Bench Profile' } });
+		await fireEvent.click(within(modal).getByRole('button', { name: /^Save$/i }));
+
+		await screen.findByText('Profile "Bench Profile" saved');
+		expect(fetchMock.mock.calls.some(([url, init]) => url === '/api/v1/profile' && init?.method === 'POST')).toBe(true);
+		unmount();
+	});
+
+	it('shows API error message when save profile fails', async () => {
+		installDefaultFetch([
+			{ method: 'POST', match: '/api/v1/profile', respond: textResponse('bad save', 500) }
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('V1 Profiles');
+		const saveButtons = await screen.findAllByRole('button', { name: /^Save$/i });
+		await fireEvent.click(saveButtons[0]);
+		const dialogTitle = await screen.findByText('Save Profile');
+		const modal = dialogTitle.closest('.modal-box');
+		await fireEvent.input(screen.getByLabelText('Profile Name'), { target: { value: 'Broken Profile' } });
+		await fireEvent.click(within(modal).getByRole('button', { name: /^Save$/i }));
+
+		await screen.findByText('Failed to save: bad save');
 		unmount();
 	});
 

@@ -36,6 +36,11 @@ echo -e "${YELLOW}🔒 Checking perf CSV column contract...${NC}"
 python3 scripts/check_perf_csv_column_contract.py
 echo -e "${GREEN}✅ Perf CSV column contract matches${NC}"
 
+# Step 0c1: Perf SLO doc/json contract guard
+echo -e "${YELLOW}🔒 Checking perf SLO contract...${NC}"
+python3 scripts/check_perf_slo_contract.py
+echo -e "${GREEN}✅ Perf SLO contract matches${NC}"
+
 # Step 0d: Display flush discipline contract guard
 echo -e "${YELLOW}🔒 Checking display flush discipline contract...${NC}"
 python3 scripts/check_display_flush_discipline_contract.py

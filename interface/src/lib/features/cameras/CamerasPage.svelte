@@ -1,16 +1,26 @@
-<script>
-	import { onMount } from 'svelte';
-	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
-	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import StatusAlert from '$lib/components/StatusAlert.svelte';
+	<script>
+		import { onMount } from 'svelte';
+		import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
+		import CardSectionHead from '$lib/components/CardSectionHead.svelte';
+		import CameraColorPickerModal from '$lib/features/cameras/CameraColorPickerModal.svelte';
+		import PageHeader from '$lib/components/PageHeader.svelte';
+		import StatusAlert from '$lib/components/StatusAlert.svelte';
+		import {
+			NEAR_RANGE_MIN_CM,
+			RANGE_MAX_CM,
+			RANGE_MIN_CM,
+			formatFeet,
+			formatMiles,
+			formatMilesInput,
+			formatType,
+			parseColorInput,
+			parseMilesInput,
+			rgb565ToChannels,
+			rgb565ToHex,
+			rgb565ToHexStr
+		} from '$lib/features/cameras/cameraFormat';
 
-	const RANGE_MIN_CM = 16093;
-	const RANGE_MAX_CM = 160934;
-	const NEAR_RANGE_MIN_CM = 8047;
-	const STATUS_POLL_INTERVAL_MS = 2500;
-	const CM_PER_MILE = 160934;
-	const CM_PER_FOOT = 30.48;
+		const STATUS_POLL_INTERVAL_MS = 2500;
 
 	let loading = $state(true);
 	let saving = $state(false);
@@ -136,36 +146,6 @@
 		}
 	}
 
-	function cmToMiles(cm) {
-		return (cm / CM_PER_MILE).toFixed(2);
-	}
-
-	function cmToFeet(cm) {
-		return Math.round(cm / CM_PER_FOOT);
-	}
-
-	function formatFeet(cm) {
-		return `${cmToFeet(cm).toLocaleString()} ft`;
-	}
-
-	function formatMiles(cm) {
-		return `${cmToMiles(cm)} mi`;
-	}
-
-	function formatMilesInput(cm) {
-		return (cm / CM_PER_MILE).toFixed(2);
-	}
-
-	function parseMilesInput(rawMiles, minCm, maxCm) {
-		const miles = Number.parseFloat(rawMiles);
-		if (!Number.isFinite(miles)) {
-			return null;
-		}
-
-		const rangeCm = Math.round(miles * CM_PER_MILE);
-		return Math.max(minCm, Math.min(rangeCm, maxCm));
-	}
-
 	function syncDistanceInputs() {
 		firstAlertMilesInput = formatMilesInput(settings.cameraAlertRangeCm);
 		closeAlertMilesInput = formatMilesInput(settings.cameraAlertNearRangeCm);
@@ -220,64 +200,6 @@
 		closeAlertMilesInput = formatMilesInput(parsedCm);
 	}
 
-	function formatType(type) {
-		switch (type) {
-			case 'speed':
-				return 'Speed';
-			case 'red_light':
-				return 'Red Light';
-			case 'bus_lane':
-				return 'Bus Lane';
-			case 'alpr':
-				return 'ALPR';
-			default:
-				return 'None';
-		}
-	}
-
-	function rgb565ToHex(rgb565) {
-		const val = typeof rgb565 === 'number' ? rgb565 : 0;
-		const r = ((val >> 11) & 0x1f) << 3;
-		const g = ((val >> 5) & 0x3f) << 2;
-		const b = (val & 0x1f) << 3;
-		return `#${[r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')}`;
-	}
-
-	function rgb565ToHexStr(rgb565) {
-		const val = typeof rgb565 === 'number' ? rgb565 : 0;
-		return val.toString(16).toUpperCase().padStart(4, '0');
-	}
-
-	function hexToRgb565(hex) {
-		if (!hex || hex.length < 7) return 0;
-		const r = parseInt(hex.slice(1, 3), 16) >> 3;
-		const g = parseInt(hex.slice(3, 5), 16) >> 2;
-		const b = parseInt(hex.slice(5, 7), 16) >> 3;
-		return (r << 11) | (g << 5) | b;
-	}
-
-	function parseColorInput(input) {
-		let clean = input.trim().toUpperCase();
-
-		if (clean.startsWith('0X')) clean = clean.slice(2);
-		if (clean.startsWith('#')) clean = clean.slice(1);
-		if (!/^[0-9A-F]+$/.test(clean)) return null;
-
-		if (clean.length <= 5) {
-			const value = parseInt(clean, 16);
-			return value <= 0xffff ? value : null;
-		}
-
-		if (clean.length === 6) {
-			const r = parseInt(clean.slice(0, 2), 16) >> 3;
-			const g = parseInt(clean.slice(2, 4), 16) >> 2;
-			const b = parseInt(clean.slice(4, 6), 16) >> 3;
-			return (r << 11) | (g << 5) | b;
-		}
-
-		return null;
-	}
-
 	function handleHexInput(key, value) {
 		const parsed = parseColorInput(value);
 		if (parsed !== null) {
@@ -288,10 +210,10 @@
 	function openPicker(key, label) {
 		pickerKey = key;
 		pickerLabel = label;
-		const rgb565 = settings[key] || 0;
-		pickerR = ((rgb565 >> 11) & 0x1f) << 3;
-		pickerG = ((rgb565 >> 5) & 0x3f) << 2;
-		pickerB = (rgb565 & 0x1f) << 3;
+		const channels = rgb565ToChannels(settings[key] || 0);
+		pickerR = channels.r;
+		pickerG = channels.g;
+		pickerB = channels.b;
 		pickerOpen = true;
 	}
 
@@ -307,10 +229,6 @@
 
 	function cancelPicker() {
 		pickerOpen = false;
-	}
-
-	function getPickerHex() {
-		return `#${[pickerR, pickerG, pickerB].map((x) => Math.min(255, x).toString(16).padStart(2, '0')).join('')}`;
 	}
 </script>
 
@@ -555,94 +473,12 @@
 	{/if}
 </div>
 
-{#if pickerOpen}
-	<div class="modal modal-open">
-		<div class="modal-box surface-modal">
-			<h3 class="font-bold text-lg mb-4">{pickerLabel}</h3>
-
-			<div class="surface-color-preview" style="background-color: {getPickerHex()}"></div>
-
-			<div class="space-y-4">
-				<div class="form-control">
-					<label class="label" for="camera-picker-red">
-						<span class="label-text font-semibold text-error">Red</span>
-						<span class="label-text-alt font-mono">{pickerR}</span>
-					</label>
-					<input
-						id="camera-picker-red"
-						type="range"
-						min="0"
-						max="248"
-						step="8"
-						bind:value={pickerR}
-						class="range range-error"
-					/>
-				</div>
-
-				<div class="form-control">
-					<label class="label" for="camera-picker-green">
-						<span class="label-text font-semibold text-success">Green</span>
-						<span class="label-text-alt font-mono">{pickerG}</span>
-					</label>
-					<input
-						id="camera-picker-green"
-						type="range"
-						min="0"
-						max="252"
-						step="4"
-						bind:value={pickerG}
-						class="range range-success"
-					/>
-				</div>
-
-				<div class="form-control">
-					<label class="label" for="camera-picker-blue">
-						<span class="label-text font-semibold text-info">Blue</span>
-						<span class="label-text-alt font-mono">{pickerB}</span>
-					</label>
-					<input
-						id="camera-picker-blue"
-						type="range"
-						min="0"
-						max="248"
-						step="8"
-						bind:value={pickerB}
-						class="range range-info"
-					/>
-				</div>
-			</div>
-
-			<div class="mt-4">
-				<span class="copy-muted">Quick colors:</span>
-				<div class="flex gap-2 mt-2 flex-wrap">
-					<button class="btn btn-sm" style="background-color: #f80000" onclick={() => { pickerR = 248; pickerG = 0; pickerB = 0; }}>Red</button>
-					<button class="btn btn-sm" style="background-color: #00fc00" onclick={() => { pickerR = 0; pickerG = 252; pickerB = 0; }}>Green</button>
-					<button class="btn btn-sm" style="background-color: #0000f8" onclick={() => { pickerR = 0; pickerG = 0; pickerB = 248; }}>Blue</button>
-					<button class="btn btn-sm" style="background-color: #f8fc00" onclick={() => { pickerR = 248; pickerG = 252; pickerB = 0; }}>Yellow</button>
-					<button class="btn btn-sm" style="background-color: #00fcf8" onclick={() => { pickerR = 0; pickerG = 252; pickerB = 248; }}>Cyan</button>
-					<button class="btn btn-sm" style="background-color: #f800f8" onclick={() => { pickerR = 248; pickerG = 0; pickerB = 248; }}>Magenta</button>
-					<button class="btn btn-sm" style="background-color: #f8a000" onclick={() => { pickerR = 248; pickerG = 160; pickerB = 0; }}>Orange</button>
-					<button class="btn btn-sm bg-white text-black" onclick={() => { pickerR = 248; pickerG = 252; pickerB = 248; }}>White</button>
-				</div>
-			</div>
-
-			<div class="modal-action">
-				<button class="btn btn-ghost" onclick={cancelPicker}>Cancel</button>
-				<button class="btn btn-primary" onclick={applyPickerColor}>Apply</button>
-			</div>
-		</div>
-		<div
-			class="modal-backdrop"
-			onclick={cancelPicker}
-			onkeydown={(event) => {
-				if (event.key === 'Enter' || event.key === ' ') {
-					event.preventDefault();
-					cancelPicker();
-				}
-			}}
-			role="button"
-			tabindex="0"
-			aria-label="Close color picker"
-		></div>
-	</div>
-{/if}
+<CameraColorPickerModal
+	open={pickerOpen}
+	label={pickerLabel}
+	bind:r={pickerR}
+	bind:g={pickerG}
+	bind:b={pickerB}
+	oncancel={cancelPicker}
+	onapply={applyPickerColor}
+/>

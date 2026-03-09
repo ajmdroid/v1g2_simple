@@ -75,6 +75,11 @@ TEST_METRICS=()
 TEST_ARTIFACTS=()
 TEST_COMMANDS=()
 
+HARNESS_PRECHECK_CLASS=""
+HARNESS_PRECHECK_CODE=""
+HARNESS_PRECHECK_REASON=""
+SUITE_EXIT_REASON=""
+
 # Cross-test uptime continuity tracking
 suite_last_uptime_ms=""
 suite_reboot_count=0
@@ -205,6 +210,12 @@ shell_join() {
     fi
   done
   printf "%s" "$out"
+}
+
+set_harness_precheck_failure() {
+  HARNESS_PRECHECK_CLASS="$1"
+  HARNESS_PRECHECK_CODE="$2"
+  HARNESS_PRECHECK_REASON="$3"
 }
 
 extract_soak_metric() {
@@ -371,6 +382,10 @@ run_metrics_endpoint_test() {
   local parse_rc=4
   local had_payload=0
   local attempt=1
+  local max_wait_seconds=$((METRICS_ENDPOINT_ATTEMPTS * HTTP_TIMEOUT_SECONDS))
+  if [[ "$METRICS_ENDPOINT_ATTEMPTS" -gt 1 ]]; then
+    max_wait_seconds=$((max_wait_seconds + (METRICS_ENDPOINT_ATTEMPTS - 1) * METRICS_ENDPOINT_RETRY_DELAY_SECONDS))
+  fi
   while [[ "$attempt" -le "$METRICS_ENDPOINT_ATTEMPTS" ]]; do
     payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$endpoint" 2>/dev/null || true)"
     if [[ -n "$payload" ]]; then
@@ -392,8 +407,13 @@ run_metrics_endpoint_test() {
 
   local cmd_text="curl -fsS --max-time $HTTP_TIMEOUT_SECONDS $endpoint (attempts=$METRICS_ENDPOINT_ATTEMPTS retryDelay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s)"
   if [[ "$had_payload" -eq 0 ]]; then
+    local reason="Metrics endpoint unreachable after ${METRICS_ENDPOINT_ATTEMPTS} attempt(s) (timeout=${HTTP_TIMEOUT_SECONDS}s, retryDelay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s, boundedWait<=${max_wait_seconds}s)."
+    set_harness_precheck_failure \
+      "Class C (harness transient)" \
+      "HARNESS_PRECHECK_AP_UNREACHABLE" \
+      "$reason"
     add_result "$test_name" "FAIL" \
-      "No response from $endpoint after ${METRICS_ENDPOINT_ATTEMPTS} attempt(s)" \
+      "class=${HARNESS_PRECHECK_CLASS} code=${HARNESS_PRECHECK_CODE} reason=\"${reason}\"" \
       "$endpoint" \
       "$cmd_text"
     return
@@ -401,9 +421,20 @@ run_metrics_endpoint_test() {
 
   local metric_text="attempt=${attempt} ${parse_out}"
   if [[ "$parse_rc" -eq 0 ]]; then
+    HARNESS_PRECHECK_CLASS=""
+    HARNESS_PRECHECK_CODE=""
+    HARNESS_PRECHECK_REASON=""
     add_result "$test_name" "PASS" "$metric_text" "$endpoint" "$cmd_text"
   else
-    add_result "$test_name" "FAIL" "$metric_text" "$endpoint" "$cmd_text"
+    local reason="Metrics endpoint payload invalid for soak parser (parse_rc=${parse_rc}, detail=${parse_out})."
+    set_harness_precheck_failure \
+      "Class B (harness contract mismatch)" \
+      "HARNESS_PRECHECK_INVALID_PAYLOAD" \
+      "$reason"
+    add_result "$test_name" "FAIL" \
+      "class=${HARNESS_PRECHECK_CLASS} code=${HARNESS_PRECHECK_CODE} attempt=${attempt} ${parse_out}" \
+      "$endpoint" \
+      "$cmd_text"
   fi
 }
 
@@ -766,6 +797,10 @@ if [[ -n "$RAD_TIMEOUT_SECONDS" ]]; then
 fi
 
 RESOLVED_RAD_TIMEOUT_SECONDS="$(resolve_rad_timeout_seconds)"
+METRICS_PRECHECK_MAX_WAIT_SECONDS=$((METRICS_ENDPOINT_ATTEMPTS * HTTP_TIMEOUT_SECONDS))
+if [[ "$METRICS_ENDPOINT_ATTEMPTS" -gt 1 ]]; then
+  METRICS_PRECHECK_MAX_WAIT_SECONDS=$((METRICS_PRECHECK_MAX_WAIT_SECONDS + (METRICS_ENDPOINT_ATTEMPTS - 1) * METRICS_ENDPOINT_RETRY_DELAY_SECONDS))
+fi
 
 if [[ -z "$OUT_DIR" ]]; then
   OUT_DIR="$ROOT_DIR/.artifacts/test_reports/device_test_$(date +%Y%m%d_%H%M%S)"
@@ -784,7 +819,7 @@ echo "Config:"
 echo "  metrics url: $METRICS_URL"
 echo "  duration: ${DURATION_SECONDS}s"
 echo "  http timeout: ${HTTP_TIMEOUT_SECONDS}s"
-echo "  metrics endpoint retries: attempts=${METRICS_ENDPOINT_ATTEMPTS} delay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s"
+echo "  metrics endpoint retries: attempts=${METRICS_ENDPOINT_ATTEMPTS} delay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s boundedWait<=${METRICS_PRECHECK_MAX_WAIT_SECONDS}s"
 echo "  skip flash: $SKIP_FLASH"
 echo "  port: ${TEST_PORT:-auto}"
 echo "  suite profile: $SUITE_PROFILE_VERSION"
@@ -818,35 +853,40 @@ check_uptime_continuity "before metrics_endpoint"
 run_metrics_endpoint_test
 check_uptime_continuity "after metrics_endpoint"
 
-check_uptime_continuity "before camera_smoke"
-run_camera_smoke_test
-check_uptime_continuity "after camera_smoke"
+if [[ -n "$HARNESS_PRECHECK_CODE" ]]; then
+  SUITE_EXIT_REASON="$HARNESS_PRECHECK_CODE"
+  echo -e "${YELLOW}Preflight failed (${HARNESS_PRECHECK_CODE}); aborting remaining test items to avoid non-actionable failures.${NC}"
+else
+  check_uptime_continuity "before camera_smoke"
+  run_camera_smoke_test
+  check_uptime_continuity "after camera_smoke"
 
-check_uptime_continuity "before rad_short"
-run_rad_short_test
-check_uptime_continuity "after rad_short"
+  check_uptime_continuity "before rad_short"
+  run_rad_short_test
+  check_uptime_continuity "after rad_short"
 
-check_uptime_continuity "before soak_display"
-run_soak_test "soak_display" \
-  --drive-display-preview \
-  --display-drive-interval-seconds "$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS" \
-  --min-display-updates-delta "$SOAK_MIN_DISPLAY_UPDATES_DELTA"
-check_uptime_continuity "after soak_display"
+  check_uptime_continuity "before soak_display"
+  run_soak_test "soak_display" \
+    --drive-display-preview \
+    --display-drive-interval-seconds "$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS" \
+    --min-display-updates-delta "$SOAK_MIN_DISPLAY_UPDATES_DELTA"
+  check_uptime_continuity "after soak_display"
 
-check_uptime_continuity "before soak_core"
-run_soak_test "soak_core"
-check_uptime_continuity "after soak_core"
+  check_uptime_continuity "before soak_core"
+  run_soak_test "soak_core"
+  check_uptime_continuity "after soak_core"
 
-if [[ "$SOAK_ENABLE_TRANSITION_QUAL" -eq 1 ]]; then
-  check_uptime_continuity "before soak_transition"
-  run_soak_test "soak_transition" \
-    --drive-transition-flaps \
-    --transition-drive-interval-seconds "$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS" \
-    --transition-flap-cycles "$SOAK_TRANSITION_FLAP_CYCLES" \
-    --min-proxy-adv-off-transitions "$SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS" \
-    --max-time-to-stable-ms-after-proxy-adv-off "$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS" \
-    --max-samples-to-stable "$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
-  check_uptime_continuity "after soak_transition"
+  if [[ "$SOAK_ENABLE_TRANSITION_QUAL" -eq 1 ]]; then
+    check_uptime_continuity "before soak_transition"
+    run_soak_test "soak_transition" \
+      --drive-transition-flaps \
+      --transition-drive-interval-seconds "$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS" \
+      --transition-flap-cycles "$SOAK_TRANSITION_FLAP_CYCLES" \
+      --min-proxy-adv-off-transitions "$SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS" \
+      --max-time-to-stable-ms-after-proxy-adv-off "$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS" \
+      --max-samples-to-stable "$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
+    check_uptime_continuity "after soak_transition"
+  fi
 fi
 
 # If reboots were detected between test items, add a synthetic failure.
@@ -883,6 +923,14 @@ if [[ "$fail_count" -gt 0 ]]; then
   overall_result="FAIL"
 fi
 
+if [[ -z "$SUITE_EXIT_REASON" ]]; then
+  if [[ "$overall_result" == "PASS" ]]; then
+    SUITE_EXIT_REASON="PASS"
+  else
+    SUITE_EXIT_REASON="TEST_ITEM_FAILURES"
+  fi
+fi
+
 {
   echo "# Device Test Summary"
   echo ""
@@ -896,6 +944,7 @@ fi
   echo "- Passed: $pass_count"
   echo "- Failed: $fail_count"
   echo "- Suite reboot detections: $suite_reboot_count"
+  echo "- Exit reason: \`$SUITE_EXIT_REASON\`"
   if [[ -n "$suite_reboot_log" ]]; then
     echo ""
     echo "## Reboot Detections"
@@ -903,6 +952,14 @@ fi
     printf "%b" "$suite_reboot_log" | while IFS= read -r line; do
       echo "- $line"
     done
+  fi
+  if [[ -n "$HARNESS_PRECHECK_CODE" ]]; then
+    echo ""
+    echo "## Harness Preflight Classification"
+    echo ""
+    echo "- Classification: \`$HARNESS_PRECHECK_CLASS\`"
+    echo "- Code: \`$HARNESS_PRECHECK_CODE\`"
+    echo "- Reason: $HARNESS_PRECHECK_REASON"
   fi
   echo ""
   echo "## Standardized Gates"
@@ -960,7 +1017,7 @@ echo "  $SUMMARY_MD"
 echo "  $TSV_PATH"
 
 if [[ "$fail_count" -gt 0 ]]; then
-  echo -e "${RED}Device test suite FAILED ($fail_count item(s)).${NC}"
+  echo -e "${RED}Device test suite FAILED ($fail_count item(s)); reason=$SUITE_EXIT_REASON.${NC}"
   exit 1
 fi
 

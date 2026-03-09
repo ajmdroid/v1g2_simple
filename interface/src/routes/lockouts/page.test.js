@@ -116,6 +116,30 @@ describe('lockouts route page', () => {
 		await fireEvent.click(screen.getByRole('button', { name: /new manual zone/i }));
 
 		await screen.findByText('Create Manual Lockout Zone');
+		await fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+		await waitFor(() => {
+			expect(screen.queryByText('Create Manual Lockout Zone')).toBeNull();
+		});
+		unmount();
+	});
+
+	it('shows success message when lockout save succeeds', async () => {
+		const fetchMock = installDefaultFetch([
+			{ method: 'POST', match: '/api/gps/config', respond: jsonResponse({ success: true }) }
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Lockouts');
+		await fireEvent.click(screen.getByRole('checkbox', { name: /unlock advanced writes/i }));
+		await fireEvent.change(screen.getByLabelText('Mode'), { target: { value: '1' } });
+		const saveButton = screen.getByRole('button', { name: /^save$/i });
+		await waitFor(() => {
+			expect(saveButton).toBeEnabled();
+		});
+		await fireEvent.click(saveButton);
+
+		await screen.findByText('Lockout runtime settings updated');
+		expect(fetchMock.mock.calls.some(([url, init]) => url === '/api/gps/config' && init?.method === 'POST')).toBe(true);
 		unmount();
 	});
 

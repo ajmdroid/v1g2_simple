@@ -53,13 +53,41 @@ describe('settings route page', () => {
 	});
 
 	it('shows WiFi scan modal when connect action is clicked', async () => {
-		installDefaultFetch();
+		installDefaultFetch([
+			{
+				method: 'POST',
+				match: '/api/wifi/scan',
+				respond: jsonResponse({
+					scanning: false,
+					networks: [{ ssid: 'BenchAP', secure: true, rssi: -42 }]
+				})
+			}
+		]);
 		const { unmount } = render(Page);
 
 		const scanButton = await screen.findByRole('button', { name: /scan for networks/i });
 		await fireEvent.click(scanButton);
 
 		await screen.findByText('Select WiFi Network');
+		await fireEvent.click(await screen.findByRole('button', { name: /BenchAP/i }));
+		await screen.findByRole('button', { name: /^Back$/i });
+		await fireEvent.click(screen.getByRole('button', { name: /^Close$/i }));
+		await waitFor(() => {
+			expect(screen.queryByText('Select WiFi Network')).toBeNull();
+		});
+		unmount();
+	});
+
+	it('shows success message on save success', async () => {
+		const fetchMock = installDefaultFetch([
+			{ method: 'POST', match: '/api/settings', respond: jsonResponse({ success: true }) }
+		]);
+		const { unmount } = render(Page);
+
+		const saveButton = await screen.findByRole('button', { name: /save settings/i });
+		await fireEvent.click(saveButton);
+		await screen.findByText('Settings saved! WiFi will restart.');
+		expect(fetchMock.mock.calls.some(([url, init]) => url === '/api/settings' && init?.method === 'POST')).toBe(true);
 		unmount();
 	});
 

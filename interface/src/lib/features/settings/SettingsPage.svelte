@@ -1,10 +1,21 @@
-<script>
-	import { onMount } from 'svelte';
+	<script>
+		import { onMount } from 'svelte';
 	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
 	import { postSettingsForm } from '$lib/api/settings';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
+	import SettingsAutoPowerOffCard from '$lib/features/settings/SettingsAutoPowerOffCard.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
-	import StatusAlert from '$lib/components/StatusAlert.svelte';
+	import SettingsBackupCard from '$lib/features/settings/SettingsBackupCard.svelte';
+		import SettingsWifiModal from '$lib/features/settings/SettingsWifiModal.svelte';
+		import {
+			formatAgeMs,
+			formatDeviceDateTime,
+			getTimeConfidenceLabel,
+			getTimeSourceLabel,
+			projectAgeMs,
+			projectEpochMs
+		} from '$lib/features/settings/settingsTime';
+		import StatusAlert from '$lib/components/StatusAlert.svelte';
 	
     let settings = $state({
         ap_ssid: '',
@@ -111,67 +122,6 @@
 		} finally {
 			wifiStatusFetchInFlight = false;
 		}
-	}
-
-	function getTimeSourceLabel(source) {
-		switch (source) {
-			case 1: return 'CLIENT_AP';
-			case 2: return 'GPS';
-			case 3: return 'SNTP';
-			case 4: return 'RTC';
-			default: return 'NONE';
-		}
-	}
-
-	function getTimeConfidenceLabel(confidence) {
-		switch (confidence) {
-			case 2: return 'ACCURATE';
-			case 1: return 'ESTIMATED';
-			default: return 'NONE';
-		}
-	}
-
-	function pad2(n) {
-		return String(n).padStart(2, '0');
-	}
-
-	function formatOffset(mins) {
-		const sign = mins >= 0 ? '+' : '-';
-		const absMins = Math.abs(mins);
-		const hh = Math.floor(absMins / 60);
-		const mm = absMins % 60;
-		return `${sign}${pad2(hh)}:${pad2(mm)}`;
-	}
-
-	function getProjectedEpochMs() {
-		if (!timeStatus.valid || !timeStatus.epochMs || !timeStatus.sampleClientMs) return 0;
-		const deltaMs = Math.max(0, clientNowMs - timeStatus.sampleClientMs);
-		return timeStatus.epochMs + deltaMs;
-	}
-
-	function getProjectedAgeMs() {
-		if (!timeStatus.valid || !timeStatus.sampleClientMs) return 0;
-		const deltaMs = Math.max(0, clientNowMs - timeStatus.sampleClientMs);
-		return (timeStatus.ageMs || 0) + deltaMs;
-	}
-
-	function formatDeviceDateTime() {
-		const projectedEpochMs = getProjectedEpochMs();
-		if (!projectedEpochMs) return '—';
-		const tzOffsetMs = (timeStatus.tzOffsetMin || 0) * 60000;
-		const d = new Date(projectedEpochMs + tzOffsetMs);
-		return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())} (UTC${formatOffset(timeStatus.tzOffsetMin || 0)})`;
-	}
-
-	function formatAgeMs(ms) {
-		if (!ms || ms < 0) return '0s';
-		const totalSeconds = Math.floor(ms / 1000);
-		const hours = Math.floor(totalSeconds / 3600);
-		const minutes = Math.floor((totalSeconds % 3600) / 60);
-		const seconds = totalSeconds % 60;
-		if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
-		if (minutes > 0) return `${minutes}m ${seconds}s`;
-		return `${seconds}s`;
 	}
 
 	async function fetchTimeStatus() {
@@ -566,9 +516,9 @@
 					<div><strong>timeSource:</strong> {timeStatus.source} ({getTimeSourceLabel(timeStatus.source)})</div>
 					<div><strong>timeConfidence:</strong> {timeStatus.confidence} ({getTimeConfidenceLabel(timeStatus.confidence)})</div>
 					{#if timeStatus.valid}
-						<div><strong>deviceTime:</strong> <span class="font-mono">{formatDeviceDateTime()}</span></div>
-						<div><strong>timeAge:</strong> {formatAgeMs(getProjectedAgeMs())}</div>
-						<div><strong>epochMs (projected):</strong> <span class="font-mono">{getProjectedEpochMs()}</span></div>
+						<div><strong>deviceTime:</strong> <span class="font-mono">{formatDeviceDateTime(timeStatus, clientNowMs)}</span></div>
+						<div><strong>timeAge:</strong> {formatAgeMs(projectAgeMs(timeStatus, clientNowMs))}</div>
+						<div><strong>epochMs (projected):</strong> <span class="font-mono">{projectEpochMs(timeStatus, clientNowMs)}</span></div>
 						<div><strong>tzOffsetMin:</strong> {timeStatus.tzOffsetMin}</div>
 					{:else}
 						<div class="copy-warning"><strong>status:</strong> time not set</div>
@@ -631,93 +581,18 @@
 			</div>
 		</div>
 		
-		<!-- WiFi Scan Modal -->
-		{#if showWifiModal}
-		<div class="modal modal-open">
-			<div class="modal-box surface-modal max-w-md">
-				<h3 class="font-bold text-lg">Select WiFi Network</h3>
-				
-				{#if wifiScanning}
-					<div class="state-loading stack">
-						<span class="loading loading-spinner loading-lg"></span>
-						<p class="mt-4 copy-muted">Scanning for networks...</p>
-					</div>
-				{:else if selectedNetwork}
-					<div class="py-4 space-y-4">
-						<p>Connect to <strong>{selectedNetwork.ssid}</strong></p>
-						
-						{#if selectedNetwork.secure}
-							<div class="form-control">
-								<label class="label" for="wifi-password">
-									<span class="label-text">Password</span>
-								</label>
-								<input 
-									id="wifi-password"
-									type="password" 
-									class="input input-bordered" 
-									bind:value={wifiPassword}
-									placeholder="Enter WiFi password"
-									onkeydown={(e) => e.key === 'Enter' && connectToNetwork()}
-								/>
-							</div>
-						{:else}
-							<StatusAlert message="This is an open network" fallbackType="warning" />
-						{/if}
-						
-						<div class="flex gap-2 justify-end">
-							<button class="btn btn-ghost" onclick={() => selectedNetwork = null}>
-								Back
-							</button>
-							<button 
-								class="btn btn-primary" 
-								onclick={connectToNetwork}
-								disabled={wifiConnecting || (selectedNetwork.secure && !wifiPassword)}
-							>
-								{#if wifiConnecting}
-									<span class="loading loading-spinner loading-sm"></span>
-								{/if}
-								Connect
-							</button>
-						</div>
-					</div>
-				{:else}
-					<div class="py-4">
-						{#if wifiNetworks.length === 0}
-							<p class="state-empty center">No networks found</p>
-						{:else}
-							<ul class="menu surface-menu max-h-64 overflow-y-auto">
-								{#each wifiNetworks as network}
-									<li>
-										<button onclick={() => selectNetwork(network)} class="flex justify-between">
-											<span class="flex items-center gap-2">
-												{#if network.secure}🔒{:else}🔓{/if}
-												{network.ssid}
-											</span>
-											<span class="copy-muted">
-												{network.rssi} dBm
-											</span>
-										</button>
-									</li>
-								{/each}
-							</ul>
-						{/if}
-						
-						<div class="flex gap-2 justify-end mt-4">
-							<button class="btn btn-ghost btn-sm" onclick={startWifiScan}>
-								Rescan
-							</button>
-						</div>
-					</div>
-				{/if}
-				
-				<div class="modal-action">
-					<button class="btn" onclick={closeWifiModal}>Close</button>
-				</div>
-			</div>
-			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-			<div class="modal-backdrop bg-black/50" role="presentation" onclick={closeWifiModal}></div>
-		</div>
-		{/if}
+			<SettingsWifiModal
+				open={showWifiModal}
+				{wifiScanning}
+				{wifiNetworks}
+				bind:selectedNetwork
+				bind:wifiPassword
+				{wifiConnecting}
+				onstartWifiScan={startWifiScan}
+				onselectNetwork={selectNetwork}
+				onconnectToNetwork={connectToNetwork}
+				oncloseWifiModal={closeWifiModal}
+			/>
 		
 		<!-- BLE Proxy -->
 		<div class="surface-card">
@@ -743,38 +618,7 @@
 			</div>
 		</div>
 		
-		<!-- Auto Power Off -->
-		<div class="surface-card">
-			<div class="card-body space-y-4">
-				<CardSectionHead
-					title="Auto Power Off"
-					subtitle="Automatically power off when V1 disconnects (e.g., when you turn off your car)."
-				/>
-				<div class="form-control">
-					<label class="label" for="auto-power-off">
-						<span class="label-text">Minutes after disconnect (0 = disabled)</span>
-					</label>
-					<input
-						id="auto-power-off"
-						type="number"
-						class="input input-bordered w-24"
-						bind:value={settings.autoPowerOffMinutes}
-						min="0"
-						max="60"
-						placeholder="0"
-					/>
-					<div class="label">
-						<span class="label-text-alt">
-							{#if settings.autoPowerOffMinutes > 0}
-								Device will power off {settings.autoPowerOffMinutes} minute{settings.autoPowerOffMinutes !== 1 ? 's' : ''} after V1 disconnects
-							{:else}
-								Auto power-off is disabled
-							{/if}
-						</span>
-					</div>
-				</div>
-			</div>
-		</div>
+			<SettingsAutoPowerOffCard {settings} />
 		
 		<!-- Save Button -->
 		<button 
@@ -788,49 +632,14 @@
 			Save Settings
 		</button>
 		
-		<!-- Backup & Restore -->
-		<div class="surface-card">
-			<div class="card-body space-y-4">
-				<CardSectionHead
-					title="Backup & Restore"
-					subtitle="Download your settings or restore from a backup file."
-				/>
-				
-					<div class="flex flex-col gap-3">
-						<button class="btn btn-primary btn-sm" onclick={backupNowToSd} disabled={backingUpNow}>
-							{#if backingUpNow}
-								<span class="loading loading-spinner loading-sm"></span>
-							{/if}
-							Backup to SD Now
-						</button>
-
-						<div class="divider my-0">OR</div>
-
-						<button class="btn btn-outline btn-sm" onclick={downloadBackup}>
-							Download Backup
-						</button>
-
-						<div class="divider my-0">OR</div>
-
-						<input
-							type="file"
-							accept=".json,application/json"
-							class="file-input file-input-bordered file-input-sm w-full"
-							onchange={handleFileSelect}
-						/>
-
-						<button
-							class="btn btn-warning btn-sm"
-							onclick={restoreBackup}
-							disabled={!restoreFile || restoring}
-						>
-							{#if restoring}
-								<span class="loading loading-spinner loading-sm"></span>
-							{/if}
-							Restore from Backup
-						</button>
-					</div>
-			</div>
-		</div>
-	{/if}
-</div>
+			<SettingsBackupCard
+				{backingUpNow}
+				onbackupNowToSd={backupNowToSd}
+				ondownloadBackup={downloadBackup}
+				{restoreFile}
+				{restoring}
+				onfileSelect={handleFileSelect}
+				onrestoreBackup={restoreBackup}
+			/>
+		{/if}
+	</div>

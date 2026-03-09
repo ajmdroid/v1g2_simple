@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Score perf CSV captures against docs/PERF_SLOS.md.
+Score perf CSV captures against canonical SLO thresholds.
 
 Usage:
   python tools/score_perf_csv.py /Volumes/SDCARD/perf/perf_boot_1.csv --profile drive_wifi_off
@@ -25,49 +25,18 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 
-PROFILES = ("drive_wifi_off", "drive_wifi_ap")
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_SLO_FILE = ROOT / "tools" / "perf_slo_thresholds.json"
+CheckTuple = tuple[str, str, str, float]
 
 
-HARD_COMMON = [
-    ("qDrop", "final", "==", 0.0),
-    ("parseFail", "final", "==", 0.0),
-    ("oversizeDrops", "final", "==", 0.0),
-    ("bleMutexTimeout", "final", "==", 0.0),
-    ("loopMax_us", "max", "<=", 250000.0),
-    ("bleDrainMax_us", "max", "<=", 10000.0),
-    ("bleProcessMax_us", "max", "<=", 120000.0),
-    ("dispPipeMax_us", "max", "<=", 80000.0),
-    ("flushMax_us", "max", "<=", 100000.0),
-    ("sdMax_us", "max", "<=", 50000.0),
-    ("fsMax_us", "max", "<=", 50000.0),
-    ("queueHighWater", "final", "<=", 12.0),
-    ("dmaLargestMin", "min", ">=", 10000.0),
-    ("dmaFreeMin", "min", ">=", 20000.0),
-]
-
-HARD_PROFILE = {
-    "drive_wifi_off": [
-        ("wifiConnectDeferred", "final", "==", 0.0),
-        ("wifiMax_us", "max", "<=", 1000.0),
-    ],
-    "drive_wifi_ap": [
-        ("wifiConnectDeferred", "final", "<=", 5.0),
-        ("wifiMax_us", "max", "<=", 5000.0),
-    ],
-}
-
-ADVISORY = [
-    ("cmdPaceNotYetPerMin", "computed", "<=", 25.0),
-    ("displaySkipPct", "computed", "<=", 20.0),
-    ("displaySkipsPerMin", "computed", "<=", 120.0),
-    ("gpsObsDropsPerMin", "computed", "<=", 200.0),
-    ("audioPlayBusyPerMin", "computed", "<=", 2.0),
-    ("reconn", "final", "<=", 2.0),
-    ("disc", "final", "<=", 2.0),
-]
-
-HARD_COMPUTED = [
-]
+@dataclass
+class ThresholdConfig:
+    profiles: tuple[str, ...]
+    hard_common: list[CheckTuple]
+    hard_computed: list[CheckTuple]
+    hard_profile: dict[str, list[CheckTuple]]
+    advisory: list[CheckTuple]
 
 
 @dataclass
@@ -81,10 +50,66 @@ class CheckResult:
     source: str
 
 
+def _to_check_tuples(raw_checks: list[dict], section: str) -> list[CheckTuple]:
+    checks: list[CheckTuple] = []
+    for idx, entry in enumerate(raw_checks):
+        try:
+            metric = str(entry["metric"])
+            source = str(entry["source"])
+            op = str(entry["op"])
+            limit = float(entry["limit"])
+        except Exception as exc:
+            raise ValueError(f"Invalid check in {section}[{idx}]: {exc}") from exc
+        checks.append((metric, source, op, limit))
+    return checks
+
+
+def load_threshold_config(path: Path) -> ThresholdConfig:
+    if not path.exists():
+        raise RuntimeError(f"SLO threshold file not found: {path}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise RuntimeError(f"Failed to parse SLO threshold file {path}: {exc}") from exc
+
+    profiles_raw = payload.get("profiles")
+    if not isinstance(profiles_raw, list) or not profiles_raw:
+        raise RuntimeError("SLO threshold file missing non-empty 'profiles' list")
+
+    profiles = tuple(str(item) for item in profiles_raw)
+    hard_common = _to_check_tuples(payload.get("hard_common", []), "hard_common")
+    hard_computed = _to_check_tuples(payload.get("hard_computed", []), "hard_computed")
+    advisory = _to_check_tuples(payload.get("advisory", []), "advisory")
+
+    hard_profile_raw = payload.get("hard_profile", {})
+    if not isinstance(hard_profile_raw, dict):
+        raise RuntimeError("SLO threshold file field 'hard_profile' must be an object")
+
+    hard_profile: dict[str, list[CheckTuple]] = {}
+    for profile in profiles:
+        profile_checks = hard_profile_raw.get(profile)
+        if not isinstance(profile_checks, list):
+            raise RuntimeError(f"SLO threshold file missing hard_profile entries for '{profile}'")
+        hard_profile[profile] = _to_check_tuples(profile_checks, f"hard_profile.{profile}")
+
+    return ThresholdConfig(
+        profiles=profiles,
+        hard_common=hard_common,
+        hard_computed=hard_computed,
+        hard_profile=hard_profile,
+        advisory=advisory,
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Score perf CSV against Perf SLOs")
     parser.add_argument("csv_path", help="Path to perf_boot_*.csv")
-    parser.add_argument("--profile", choices=PROFILES, default="drive_wifi_off")
+    parser.add_argument("--profile", default="drive_wifi_off")
+    parser.add_argument(
+        "--slo-file",
+        default=str(DEFAULT_SLO_FILE),
+        help=f"Path to canonical SLO threshold file (default: {DEFAULT_SLO_FILE})",
+    )
     parser.add_argument("--json", action="store_true", help="Output JSON")
     parser.add_argument(
         "--session",
@@ -357,15 +382,15 @@ def run_check(
     )
 
 
-def evaluate(rows: List[Dict[str, int]], profile: str) -> List[CheckResult]:
+def evaluate(rows: List[Dict[str, int]], profile: str, config: ThresholdConfig) -> List[CheckResult]:
     checks: List[CheckResult] = []
-    for metric, source, op, limit in HARD_COMMON:
+    for metric, source, op, limit in config.hard_common:
         checks.append(run_check(rows, metric, source, op, limit, "hard"))
-    for metric, source, op, limit in HARD_COMPUTED:
+    for metric, source, op, limit in config.hard_computed:
         checks.append(run_check(rows, metric, source, op, limit, "hard"))
-    for metric, source, op, limit in HARD_PROFILE[profile]:
+    for metric, source, op, limit in config.hard_profile[profile]:
         checks.append(run_check(rows, metric, source, op, limit, "hard"))
-    for metric, source, op, limit in ADVISORY:
+    for metric, source, op, limit in config.advisory:
         checks.append(run_check(rows, metric, source, op, limit, "advisory"))
     return checks
 
@@ -465,6 +490,21 @@ def main() -> int:
         print(f"ERROR: file not found: {path}", file=sys.stderr)
         return 3
 
+    slo_file = Path(args.slo_file)
+    try:
+        config = load_threshold_config(slo_file)
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 3
+
+    if args.profile not in config.profiles:
+        valid = ", ".join(config.profiles)
+        print(
+            f"ERROR: Unknown profile '{args.profile}'. Valid profiles from {slo_file}: {valid}",
+            file=sys.stderr,
+        )
+        return 3
+
     try:
         sessions = load_sessions(path)
     except Exception as exc:
@@ -502,7 +542,7 @@ def main() -> int:
                 )
                 return 3
 
-        checks = evaluate(rows, args.profile)
+        checks = evaluate(rows, args.profile, config)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 3
@@ -514,6 +554,7 @@ def main() -> int:
         payload = {
             "file": str(path),
             "profile": args.profile,
+            "slo_file": str(slo_file),
             "session": selector if selector != "all" else "all",
             "session_index": session_idx,
             "total_sessions": total_sessions,

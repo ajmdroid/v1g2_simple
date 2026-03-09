@@ -79,6 +79,34 @@ describe('cameras route page', () => {
 		unmount();
 	});
 
+	it('applies the color picker modal value and closes the dialog', async () => {
+		installDefaultFetch();
+		const { unmount } = render(Page);
+
+		const colorButton = await screen.findByRole('button', { name: /camera arrow color/i });
+		await fireEvent.click(colorButton);
+		await screen.findByText('Camera Arrow Color');
+		await fireEvent.click(screen.getByRole('button', { name: /^Apply$/i }));
+		await waitFor(() => {
+			expect(screen.queryByText('Camera Arrow Color')).toBeNull();
+		});
+
+		unmount();
+	});
+
+	it('shows success message on save success', async () => {
+		const fetchMock = installDefaultFetch([
+			{ method: 'POST', match: '/api/cameras/settings', respond: jsonResponse({ success: true }) }
+		]);
+		const { unmount } = render(Page);
+
+		const saveButton = await screen.findByRole('button', { name: /save camera settings/i });
+		await fireEvent.click(saveButton);
+		await screen.findByText('Camera settings saved.');
+		expect(fetchMock.mock.calls.some(([url, init]) => url === '/api/cameras/settings' && init?.method === 'POST')).toBe(true);
+		unmount();
+	});
+
 	it('shows API error message on save failure', async () => {
 		installDefaultFetch([
 			{ method: 'POST', match: '/api/cameras/settings', respond: jsonResponse({ success: false }, 500) }
