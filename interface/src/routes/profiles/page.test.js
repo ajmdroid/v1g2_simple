@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { installFetchMock, jsonResponse, textResponse } from '../../test/fetch-mock.js';
 import Page from './+page.svelte';
@@ -22,6 +22,14 @@ function installDefaultFetch(overrides = []) {
 }
 
 describe('profiles route page', () => {
+	beforeEach(() => {
+		global.confirm = vi.fn(() => true);
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	it('loads profiles and current settings', async () => {
 		const fetchMock = installDefaultFetch();
 		const { unmount } = render(Page);
@@ -114,6 +122,21 @@ describe('profiles route page', () => {
 		const pullButton = await screen.findByRole('button', { name: /pull from v1/i });
 		await fireEvent.click(pullButton);
 		await screen.findByText('Failed to pull settings');
+
+		unmount();
+	});
+
+	it('shows API error message when delete profile fails', async () => {
+		installDefaultFetch([
+			{ method: 'POST', match: '/api/v1/profile/delete', respond: jsonResponse({ error: 'Profile not found' }, 404) }
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Daily Drive');
+		await fireEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+		await screen.findByText('Failed to delete: Profile not found');
+		expect(screen.getByText('Daily Drive')).toBeInTheDocument();
 
 		unmount();
 	});

@@ -440,7 +440,12 @@ export async function exportLockoutZonesRequest(fetchWithTimeout) {
 }
 
 export async function importLockoutZonesFromFile(fetchWithTimeout, file, confirmFn) {
-	const payload = await file.text();
+	let payload;
+	try {
+		payload = await file.text();
+	} catch {
+		return { ok: false, error: 'Failed to read lockout zones file.' };
+	}
 	let parsed;
 	try {
 		parsed = JSON.parse(payload);

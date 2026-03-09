@@ -275,6 +275,10 @@
 			if (res.ok) {
 				profiles = profiles.filter((profile) => profile.name !== name);
 				message = { type: 'success', text: 'Profile deleted' };
+			} else {
+				const errorData = await res.json().catch(() => ({}));
+				const error = errorData?.error || errorData?.message;
+				message = { type: 'error', text: error ? `Failed to delete: ${error}` : 'Failed to delete' };
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to delete' };
