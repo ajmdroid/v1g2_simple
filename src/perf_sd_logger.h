@@ -174,6 +174,7 @@ private:
     TaskHandle_t writerTask = nullptr;
     PsramQueueAllocation queueAllocation = {};
     bool queueInPsram = false;
+    bool writerTaskStackInPsram = false;
     bool perfDirReady = false;
     bool csvHeaderReady = false;
     bool sessionMarkerPending = false;

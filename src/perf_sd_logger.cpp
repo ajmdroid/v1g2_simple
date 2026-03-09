@@ -121,17 +121,20 @@ void PerfSdLogger::begin(bool sdAvailable) {
     }
 
     if (!writerTask) {
-        BaseType_t rc = xTaskCreatePinnedToCore(
-            writerTaskEntry,
-            "PerfSdWriter",
-            PERF_SD_WRITER_STACK_SIZE,
-            this,
-            PERF_SD_WRITER_PRIORITY,
-            &writerTask,
-            0);
+        BaseType_t rc = createTaskPinnedToCorePreferPsram(writerTaskEntry,
+                                                          "PerfSdWriter",
+                                                          PERF_SD_WRITER_STACK_SIZE,
+                                                          this,
+                                                          PERF_SD_WRITER_PRIORITY,
+                                                          &writerTask,
+                                                          0,
+                                                          &writerTaskStackInPsram);
         if (rc != pdPASS) {
             Serial.println("[Perf] ERROR: Failed to create SD logger task");
             return;
+        }
+        if (!writerTaskStackInPsram) {
+            Serial.println("[Perf] WARN: SD logger task stack using internal SRAM fallback");
         }
     }
 
