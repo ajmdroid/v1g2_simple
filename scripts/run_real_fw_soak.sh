@@ -1723,6 +1723,9 @@ fi
 if [[ "$MAX_DISP_PIPE_MAX_US" -gt 0 ]]; then
   metrics_parser_args+=(--disp-threshold "$MAX_DISP_PIPE_MAX_US")
 fi
+if [[ "$MIN_DMA_LARGEST" -gt 0 ]]; then
+  metrics_parser_args+=(--dma-largest-floor "$MIN_DMA_LARGEST")
+fi
 if ! "$PARSER_PYTHON" "${metrics_parser_args[@]}" > "$metrics_kv"; then
   echo "Failed to parse soak metrics JSONL ($METRICS_JSONL)." >&2
   exit 1
@@ -1787,6 +1790,16 @@ dma_free_min_parsed=""
 dma_largest_min_parsed=""
 dma_free_min_raw_parsed=""
 dma_largest_min_raw_parsed=""
+dma_largest_current_sample_count=""
+dma_largest_below_floor_samples=""
+dma_largest_below_floor_pct=""
+dma_largest_below_floor_longest_streak=""
+dma_largest_to_free_pct_min=""
+dma_largest_to_free_pct_p05=""
+dma_largest_to_free_pct_p50=""
+dma_fragmentation_pct_p50=""
+dma_fragmentation_pct_p95=""
+dma_fragmentation_pct_max=""
 minima_tail_samples_excluded=""
 minima_samples_considered=""
 inherited_counter_suspect=""
@@ -1915,6 +1928,16 @@ while IFS='=' read -r key value; do
     dma_largest_min) dma_largest_min_parsed="$value" ;;
     dma_free_min_raw) dma_free_min_raw_parsed="$value" ;;
     dma_largest_min_raw) dma_largest_min_raw_parsed="$value" ;;
+    dma_largest_current_sample_count) dma_largest_current_sample_count="$value" ;;
+    dma_largest_below_floor_samples) dma_largest_below_floor_samples="$value" ;;
+    dma_largest_below_floor_pct) dma_largest_below_floor_pct="$value" ;;
+    dma_largest_below_floor_longest_streak) dma_largest_below_floor_longest_streak="$value" ;;
+    dma_largest_to_free_pct_min) dma_largest_to_free_pct_min="$value" ;;
+    dma_largest_to_free_pct_p05) dma_largest_to_free_pct_p05="$value" ;;
+    dma_largest_to_free_pct_p50) dma_largest_to_free_pct_p50="$value" ;;
+    dma_fragmentation_pct_p50) dma_fragmentation_pct_p50="$value" ;;
+    dma_fragmentation_pct_p95) dma_fragmentation_pct_p95="$value" ;;
+    dma_fragmentation_pct_max) dma_fragmentation_pct_max="$value" ;;
     minima_tail_samples_excluded) minima_tail_samples_excluded="$value" ;;
     minima_samples_considered) minima_samples_considered="$value" ;;
     inherited_counter_suspect) inherited_counter_suspect="$value" ;;
@@ -2352,10 +2375,29 @@ if [[ "$reboot_evidence_detected" -eq 0 ]]; then
       fi
     fi
     if [[ "$MIN_DMA_LARGEST" -gt 0 ]]; then
+      dma_largest_triage=""
+      if is_uint "$dma_largest_below_floor_samples" && is_uint "$dma_largest_current_sample_count"; then
+        dma_largest_triage+=" currentBelowFloor=${dma_largest_below_floor_samples}/${dma_largest_current_sample_count}"
+      fi
+      if [[ -n "$dma_largest_below_floor_pct" ]]; then
+        dma_largest_triage+=" belowFloorPct=${dma_largest_below_floor_pct}%"
+      fi
+      if is_uint "$dma_largest_below_floor_longest_streak"; then
+        dma_largest_triage+=" longestStreak=${dma_largest_below_floor_longest_streak}"
+      fi
+      if [[ -n "$dma_largest_to_free_pct_p05" || -n "$dma_largest_to_free_pct_p50" ]]; then
+        dma_largest_triage+=" largestToFreePct(p05/p50)=${dma_largest_to_free_pct_p05:-n/a}/${dma_largest_to_free_pct_p50:-n/a}"
+      fi
+      if [[ -n "$dma_fragmentation_pct_p50" || -n "$dma_fragmentation_pct_p95" ]]; then
+        dma_largest_triage+=" fragmentationPct(p50/p95)=${dma_fragmentation_pct_p50:-n/a}/${dma_fragmentation_pct_p95:-n/a}"
+      fi
+      if [[ -n "$dma_largest_triage" ]]; then
+        dma_largest_triage=" [DMA triage:${dma_largest_triage}]"
+      fi
       if ! is_uint "$dma_largest_min_parsed"; then
-        mark_gate_fail gate_dma_largest_fail "heapDmaLargestMin ${dma_largest_min_parsed:-n/a} below floor ${MIN_DMA_LARGEST}."
+        mark_gate_fail gate_dma_largest_fail "heapDmaLargestMin ${dma_largest_min_parsed:-n/a} below floor ${MIN_DMA_LARGEST}.${dma_largest_triage}"
       elif [[ "$dma_largest_min_parsed" -lt "$MIN_DMA_LARGEST" ]]; then
-        mark_gate_fail gate_dma_largest_fail "heapDmaLargestMin ${dma_largest_min_parsed} below floor ${MIN_DMA_LARGEST}."
+        mark_gate_fail gate_dma_largest_fail "heapDmaLargestMin ${dma_largest_min_parsed} below floor ${MIN_DMA_LARGEST}.${dma_largest_triage}"
       fi
     fi
 
@@ -2593,7 +2635,7 @@ if [[ "$result" == "FAIL" ]]; then
     diagnosis_next_action="Inspect parser/queue/event counters around failing timestamps and bisect recent BLE/parser changes."
   elif [[ "$gate_queue_high_water_fail" -eq 1 || "$gate_wifi_connect_deferred_fail" -eq 1 || "$gate_dma_free_fail" -eq 1 || "$gate_dma_largest_fail" -eq 1 ]]; then
     diagnosis_bucket="Resource Pressure Regression"
-    diagnosis_next_action="Inspect queueHighWater/wifiConnectDeferred/DMA floor counters around failing samples and tune backpressure or memory usage."
+    diagnosis_next_action="Inspect queueHighWater/wifiConnectDeferred and DMA triage stats (below-floor count/streak + largest/free p05/p50) to separate sustained fragmentation from single-sample dips."
   elif [[ "$gate_transition_churn_ap_fail" -eq 1 || "$gate_transition_churn_proxy_fail" -eq 1 || "$gate_transition_min_events_fail" -eq 1 || "$gate_transition_recovery_ap_fail" -eq 1 || "$gate_transition_recovery_proxy_fail" -eq 1 || "$gate_transition_samples_fail" -eq 1 || "$gate_transition_drive_fail" -eq 1 ]]; then
     diagnosis_bucket="Transition Recovery Regression"
     diagnosis_next_action="Inspect transition flap/recovery windows and reason codes; reduce churn or shorten convergence after AP/proxy-down transitions."
@@ -2735,6 +2777,9 @@ fi
   echo "- gpsObsDrops delta: ${gps_obs_drops_delta:-n/a} (advisory report-only)"
   echo "- Min heapDmaMin (SLO): ${dma_free_min_parsed:-n/a} (floor ${MIN_DMA_FREE}; raw ${dma_free_min_raw_parsed:-n/a}; tailExcluded ${minima_tail_samples_excluded:-0}; samplesUsed ${minima_samples_considered:-n/a})"
   echo "- Min heapDmaLargestMin (SLO): ${dma_largest_min_parsed:-n/a} (floor ${MIN_DMA_LARGEST}; raw ${dma_largest_min_raw_parsed:-n/a}; tailExcluded ${minima_tail_samples_excluded:-0}; samplesUsed ${minima_samples_considered:-n/a})"
+  echo "- DMA largest current below-floor samples/total: ${dma_largest_below_floor_samples:-n/a}/${dma_largest_current_sample_count:-n/a} (pct ${dma_largest_below_floor_pct:-n/a}%, longest streak ${dma_largest_below_floor_longest_streak:-n/a})"
+  echo "- DMA largest/free pct min/p05/p50: ${dma_largest_to_free_pct_min:-n/a} / ${dma_largest_to_free_pct_p05:-n/a} / ${dma_largest_to_free_pct_p50:-n/a}"
+  echo "- DMA fragmentation pct p50/p95/max: ${dma_fragmentation_pct_p50:-n/a} / ${dma_fragmentation_pct_p95:-n/a} / ${dma_fragmentation_pct_max:-n/a}"
   echo "- reconnects delta: ${reconnects_delta:-n/a}"
   echo "- disconnects delta: ${disconnects_delta:-n/a}"
   echo "- Proxy drop peak: ${proxy_drop_peak:-n/a}"

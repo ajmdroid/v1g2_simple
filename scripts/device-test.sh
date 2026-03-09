@@ -230,6 +230,9 @@ extract_soak_metric() {
     disp_pipe) awk '/- Peak dispPipeMaxUs:/{print $4; exit}' "$summary" ;;
     dma_min) awk '/- Min heapDmaMin \(SLO\):/{print $5; exit}' "$summary" ;;
     dma_largest) awk '/- Min heapDmaLargestMin \(SLO\):/{print $5; exit}' "$summary" ;;
+    dma_below_floor) awk '/- DMA largest current below-floor samples\/total:/{print $7; exit}' "$summary" ;;
+    dma_largest_to_free_p50) awk '/- DMA largest\/free pct min\/p05\/p50:/{print $11; exit}' "$summary" ;;
+    dma_fragmentation_p95) awk '/- DMA fragmentation pct p50\/p95\/max:/{print $9; exit}' "$summary" ;;
     proxy_off_delta) awk '/- Proxy advertising transition deltas on\/off:/{print $9; exit}' "$summary" ;;
     transition_samples) awk '/- Transition primary samples\/time-to-stable:/{print $5; exit}' "$summary" ;;
     transition_ms)
@@ -337,7 +340,8 @@ run_soak_test() {
 
   local metrics="rc=$rc result=${result_word:-unknown}"
   if [[ -n "$summary" && -f "$summary" ]]; then
-    local rx parse_ok parse_fail wifi_gate disp_pipe dma_min dma_largest proxy_off_delta
+    local rx parse_ok parse_fail wifi_gate disp_pipe dma_min dma_largest dma_below_floor
+    local dma_largest_to_free_p50 dma_fragmentation_p95 proxy_off_delta
     local transition_samples transition_ms proxy_off_samples proxy_off_recovery_ms fail_reasons
     rx="$(extract_soak_metric "$summary" rx)"
     parse_ok="$(extract_soak_metric "$summary" parse_ok)"
@@ -346,6 +350,9 @@ run_soak_test() {
     disp_pipe="$(extract_soak_metric "$summary" disp_pipe)"
     dma_min="$(extract_soak_metric "$summary" dma_min)"
     dma_largest="$(extract_soak_metric "$summary" dma_largest)"
+    dma_below_floor="$(extract_soak_metric "$summary" dma_below_floor)"
+    dma_largest_to_free_p50="$(extract_soak_metric "$summary" dma_largest_to_free_p50)"
+    dma_fragmentation_p95="$(extract_soak_metric "$summary" dma_fragmentation_p95)"
     proxy_off_delta="$(extract_soak_metric "$summary" proxy_off_delta)"
     transition_samples="$(extract_soak_metric "$summary" transition_samples)"
     transition_ms="$(extract_soak_metric "$summary" transition_ms)"
@@ -353,6 +360,7 @@ run_soak_test() {
     proxy_off_recovery_ms="$(extract_soak_metric "$summary" proxy_off_recovery_ms)"
     fail_reasons="$(extract_soak_metric "$summary" fail_reasons)"
     metrics+=" rx=${rx:-n/a} parseOK=${parse_ok:-n/a} parseFail=${parse_fail:-n/a} wifiGate=${wifi_gate:-n/a} dispPipe=${disp_pipe:-n/a} dmaMin=${dma_min:-n/a} dmaLargest=${dma_largest:-n/a}"
+    metrics+=" dmaBelowFloor=${dma_below_floor:-n/a} dmaLargestToFreeP50=${dma_largest_to_free_p50:-n/a} dmaFragP95=${dma_fragmentation_p95:-n/a}"
     metrics+=" proxyOffDelta=${proxy_off_delta:-n/a} tStableSamples=${transition_samples:-n/a} tStableMs=${transition_ms:-n/a} proxyOffStableSamples=${proxy_off_samples:-n/a} proxyOffStableMs=${proxy_off_recovery_ms:-n/a}"
     if [[ -n "$fail_reasons" ]]; then
       metrics+=" reasons=\"${fail_reasons}\""

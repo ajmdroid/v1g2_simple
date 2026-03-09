@@ -129,6 +129,12 @@ def parse_args(argv):
         default=0,
         help="Ignore the last N ok samples when computing minima used by floor gates",
     )
+    parser.add_argument(
+        "--dma-largest-floor",
+        type=float,
+        default=None,
+        help="Optional heapDmaLargest floor for below-floor sample/streak diagnostics",
+    )
     return parser.parse_args(argv)
 
 
@@ -203,6 +209,12 @@ def main() -> int:
     dma_largest_min_val_raw = None
     dma_free_samples = []
     dma_largest_samples = []
+    dma_largest_current_samples = []
+    dma_largest_to_free_pct_samples = []
+    dma_fragmentation_pct_samples = []
+    dma_largest_below_floor_samples = 0
+    dma_largest_below_floor_longest_streak = 0
+    dma_largest_below_floor_streak = 0
     ble_process_max_peak = None
     disp_pipe_max_peak = None
     ble_mutex_timeout_first = None
@@ -475,6 +487,28 @@ def main() -> int:
                 dma_free_samples.append(dma_free_val)
                 dma_largest_samples.append(dma_largest_val)
 
+                dma_free_current = num(data.get("heapDma"))
+                dma_largest_current = num(data.get("heapDmaLargest"))
+                if dma_largest_current is not None:
+                    dma_largest_current_samples.append(dma_largest_current)
+                    if args.dma_largest_floor is not None:
+                        if dma_largest_current < args.dma_largest_floor:
+                            dma_largest_below_floor_samples += 1
+                            dma_largest_below_floor_streak += 1
+                            if dma_largest_below_floor_streak > dma_largest_below_floor_longest_streak:
+                                dma_largest_below_floor_longest_streak = dma_largest_below_floor_streak
+                        else:
+                            dma_largest_below_floor_streak = 0
+                if (
+                    dma_free_current is not None
+                    and dma_largest_current is not None
+                    and dma_free_current > 0
+                ):
+                    largest_to_free_pct = (dma_largest_current * 100.0) / dma_free_current
+                    dma_largest_to_free_pct_samples.append(largest_to_free_pct)
+                    fragmentation_pct = max(0.0, 100.0 - largest_to_free_pct)
+                    dma_fragmentation_pct_samples.append(fragmentation_pct)
+
                 ble_process_max_peak = update_max(ble_process_max_peak, num(data.get("bleProcessMaxUs")))
                 disp_pipe_max_peak = update_max(disp_pipe_max_peak, disp_pipe_val)
                 if disp_pipe_val is not None:
@@ -516,6 +550,22 @@ def main() -> int:
     dma_largest_vals_window = [val for val in dma_largest_window if val is not None]
     dma_free_min_val = min(dma_free_vals_window) if dma_free_vals_window else None
     dma_largest_min_val = min(dma_largest_vals_window) if dma_largest_vals_window else None
+    dma_largest_current_sample_count = len(dma_largest_current_samples)
+    dma_largest_to_free_pct_min = (
+        min(dma_largest_to_free_pct_samples) if dma_largest_to_free_pct_samples else None
+    )
+    dma_largest_to_free_pct_p05 = percentile(dma_largest_to_free_pct_samples, 5.0)
+    dma_largest_to_free_pct_p50 = percentile(dma_largest_to_free_pct_samples, 50.0)
+    dma_fragmentation_pct_p50 = percentile(dma_fragmentation_pct_samples, 50.0)
+    dma_fragmentation_pct_p95 = percentile(dma_fragmentation_pct_samples, 95.0)
+    dma_fragmentation_pct_max = (
+        max(dma_fragmentation_pct_samples) if dma_fragmentation_pct_samples else None
+    )
+    dma_largest_below_floor_pct = None
+    if args.dma_largest_floor is not None and dma_largest_current_sample_count > 0:
+        dma_largest_below_floor_pct = (
+            dma_largest_below_floor_samples * 100.0
+        ) / dma_largest_current_sample_count
 
     wifi_p95_raw = percentile(wifi_samples, 95.0)
     wifi_p95_excluding_first = percentile(wifi_samples_excluding_first, 95.0)
@@ -709,6 +759,43 @@ def main() -> int:
     emit("dma_largest_min", dma_largest_min_val)
     emit("dma_free_min_raw", dma_free_min_val_raw)
     emit("dma_largest_min_raw", dma_largest_min_val_raw)
+    emit("dma_largest_current_sample_count", dma_largest_current_sample_count)
+    emit(
+        "dma_largest_below_floor_samples",
+        dma_largest_below_floor_samples if args.dma_largest_floor is not None else None,
+    )
+    emit(
+        "dma_largest_below_floor_pct",
+        round(dma_largest_below_floor_pct, 3) if dma_largest_below_floor_pct is not None else None,
+    )
+    emit(
+        "dma_largest_below_floor_longest_streak",
+        dma_largest_below_floor_longest_streak if args.dma_largest_floor is not None else None,
+    )
+    emit(
+        "dma_largest_to_free_pct_min",
+        round(dma_largest_to_free_pct_min, 3) if dma_largest_to_free_pct_min is not None else None,
+    )
+    emit(
+        "dma_largest_to_free_pct_p05",
+        round(dma_largest_to_free_pct_p05, 3) if dma_largest_to_free_pct_p05 is not None else None,
+    )
+    emit(
+        "dma_largest_to_free_pct_p50",
+        round(dma_largest_to_free_pct_p50, 3) if dma_largest_to_free_pct_p50 is not None else None,
+    )
+    emit(
+        "dma_fragmentation_pct_p50",
+        round(dma_fragmentation_pct_p50, 3) if dma_fragmentation_pct_p50 is not None else None,
+    )
+    emit(
+        "dma_fragmentation_pct_p95",
+        round(dma_fragmentation_pct_p95, 3) if dma_fragmentation_pct_p95 is not None else None,
+    )
+    emit(
+        "dma_fragmentation_pct_max",
+        round(dma_fragmentation_pct_max, 3) if dma_fragmentation_pct_max is not None else None,
+    )
     emit("minima_tail_samples_excluded", minima_tail_excluded)
     emit("minima_samples_considered", minima_cutoff)
     emit("ble_process_max_peak", ble_process_max_peak)
