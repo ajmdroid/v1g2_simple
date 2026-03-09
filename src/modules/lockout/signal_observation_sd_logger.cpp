@@ -13,7 +13,8 @@ constexpr const char* LOCKOUT_CSV_PATH_FALLBACK = "/lockout/lockout_candidates.c
 constexpr const char* LOCKOUT_CSV_HEADER =
     "tsMs,bandRaw,frequencyMHz,strength,hasFix,fixAgeMs,satellites,hdopX10,locationValid,latitudeE5,longitudeE5\n";
 constexpr UBaseType_t LOCKOUT_SD_QUEUE_DEPTH = 64;
-constexpr uint32_t LOCKOUT_SD_WRITER_STACK_SIZE = 6144;constexpr UBaseType_t LOCKOUT_SD_WRITER_PRIORITY = 1;
+constexpr uint32_t LOCKOUT_SD_WRITER_STACK_SIZE = 6144;
+constexpr UBaseType_t LOCKOUT_SD_WRITER_PRIORITY = 1;
 constexpr uint32_t LOCKOUT_SD_DEDUPE_MIN_REPEAT_MS = 15000;
 constexpr uint16_t LOCKOUT_SD_FREQ_TOL_MHZ = 5;
 constexpr uint8_t LOCKOUT_SD_STRENGTH_TOL = 1;
@@ -70,17 +71,20 @@ void SignalObservationSdLogger::begin(bool sdAvailable) {
     }
 
     if (!writerTask_) {
-        BaseType_t rc = xTaskCreatePinnedToCore(
-            writerTaskEntry,
-            "LockoutSdWriter",
-            LOCKOUT_SD_WRITER_STACK_SIZE,
-            this,
-            LOCKOUT_SD_WRITER_PRIORITY,
-            &writerTask_,
-            0);
+        BaseType_t rc = createTaskPinnedToCorePreferPsram(writerTaskEntry,
+                                                          "LockoutSdWriter",
+                                                          LOCKOUT_SD_WRITER_STACK_SIZE,
+                                                          this,
+                                                          LOCKOUT_SD_WRITER_PRIORITY,
+                                                          &writerTask_,
+                                                          0,
+                                                          &writerTaskStackInPsram_);
         if (rc != pdPASS) {
             Serial.println("[LockoutSD] ERROR: Failed to create writer task");
             return;
+        }
+        if (!writerTaskStackInPsram_) {
+            Serial.println("[LockoutSD] WARN: writer task stack using internal SRAM fallback");
         }
     }
 

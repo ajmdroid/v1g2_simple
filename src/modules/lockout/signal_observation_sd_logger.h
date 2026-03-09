@@ -57,6 +57,7 @@ private:
     TaskHandle_t writerTask_ = nullptr;
     PsramQueueAllocation queueAllocation_ = {};
     bool queueInPsram_ = false;
+    bool writerTaskStackInPsram_ = false;
     bool dirReady_ = false;
     bool headerReady_ = false;
     uint32_t bootId_ = 0;
