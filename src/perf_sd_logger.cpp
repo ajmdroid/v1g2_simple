@@ -107,10 +107,16 @@ void PerfSdLogger::begin(bool sdAvailable) {
     sessionSeq++;
 
     if (!queue) {
-        queue = xQueueCreate(PERF_SD_QUEUE_DEPTH, sizeof(PerfSdSnapshot));
+        queue = createQueuePreferPsram(PERF_SD_QUEUE_DEPTH,
+                                       sizeof(PerfSdSnapshot),
+                                       queueAllocation,
+                                       &queueInPsram);
         if (!queue) {
             Serial.println("[Perf] ERROR: Failed to create SD logger queue");
             return;
+        }
+        if (!queueInPsram) {
+            Serial.println("[Perf] WARN: SD logger queue using internal SRAM fallback");
         }
     }
 

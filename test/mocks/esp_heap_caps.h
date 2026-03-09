@@ -18,11 +18,18 @@
 #endif
 
 inline void* heap_caps_malloc(size_t size, uint32_t caps) {
-    (void)caps;
+    g_mock_heap_caps_malloc_calls++;
+    g_mock_heap_caps_last_malloc_size = size;
+    g_mock_heap_caps_last_malloc_caps = caps;
+    if (g_mock_heap_caps_fail_malloc) {
+        g_mock_heap_caps_fail_malloc = false;
+        return nullptr;
+    }
     return std::malloc(size);
 }
 
 inline void heap_caps_free(void* ptr) {
+    g_mock_heap_caps_free_calls++;
     std::free(ptr);
 }
 

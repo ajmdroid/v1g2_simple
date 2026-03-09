@@ -16,6 +16,8 @@
 #include <freertos/queue.h>
 #include <freertos/task.h>
 
+#include "psram_freertos_alloc.h"
+
 struct PerfSdSnapshot {
     uint32_t millisTs;
     uint8_t timeValid;
@@ -170,6 +172,8 @@ private:
     bool enabled = false;
     QueueHandle_t queue = nullptr;
     TaskHandle_t writerTask = nullptr;
+    PsramQueueAllocation queueAllocation = {};
+    bool queueInPsram = false;
     bool perfDirReady = false;
     bool csvHeaderReady = false;
     bool sessionMarkerPending = false;
