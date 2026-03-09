@@ -13,14 +13,9 @@
 #include "signal_observation_sd_logger.h"
 #include "../../settings.h"
 #include "../../../include/band_utils.h"
+#include "../../../include/clamp_utils.h"
 
 namespace {
-
-uint16_t clampU16Value(int value, int minVal, int maxVal) {
-    if (value < minVal) return static_cast<uint16_t>(minVal);
-    if (value > maxVal) return static_cast<uint16_t>(maxVal);
-    return static_cast<uint16_t>(value);
-}
 
 const char* lockoutDirectionModeName(uint8_t mode) {
     switch (mode) {
@@ -143,7 +138,7 @@ void sendEvents(WebServer& server,
                 SignalObservationSdLogger& signalObservationSdLogger) {
     uint16_t limit = 24;
     if (server.hasArg("limit")) {
-        limit = clampU16Value(server.arg("limit").toInt(), 1, 96);
+        limit = clamp_utils::clampU16Value(server.arg("limit").toInt(), 1, 96);
     }
 
     // Scratch buffer in PSRAM — saves ~5.6 KiB internal .bss.
@@ -222,10 +217,10 @@ void sendZones(WebServer& server,
     uint16_t activeOffset = 0;
     uint16_t pendingOffset = 0;
     if (server.hasArg("activeLimit")) {
-        activeLimit = clampU16Value(server.arg("activeLimit").toInt(), 1, 96);
+        activeLimit = clamp_utils::clampU16Value(server.arg("activeLimit").toInt(), 1, 96);
     }
     if (server.hasArg("pendingLimit")) {
-        pendingLimit = clampU16Value(server.arg("pendingLimit").toInt(), 1, 48);
+        pendingLimit = clamp_utils::clampU16Value(server.arg("pendingLimit").toInt(), 1, 48);
     }
 
     const int activeOffsetMax =
@@ -233,10 +228,10 @@ void sendZones(WebServer& server,
     const int pendingOffsetMax =
         (LockoutLearner::kCandidateCapacity > 0) ? static_cast<int>(LockoutLearner::kCandidateCapacity - 1) : 0;
     if (server.hasArg("activeOffset")) {
-        activeOffset = clampU16Value(server.arg("activeOffset").toInt(), 0, activeOffsetMax);
+        activeOffset = clamp_utils::clampU16Value(server.arg("activeOffset").toInt(), 0, activeOffsetMax);
     }
     if (server.hasArg("pendingOffset")) {
-        pendingOffset = clampU16Value(server.arg("pendingOffset").toInt(), 0, pendingOffsetMax);
+        pendingOffset = clamp_utils::clampU16Value(server.arg("pendingOffset").toInt(), 0, pendingOffsetMax);
     }
 
     JsonDocument doc;

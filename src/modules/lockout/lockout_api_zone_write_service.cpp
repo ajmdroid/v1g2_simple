@@ -13,14 +13,9 @@
 #include "signal_observation_sd_logger.h"
 #include "../../settings.h"
 #include "../../../include/band_utils.h"
+#include "../../../include/clamp_utils.h"
 
 namespace {
-
-uint16_t clampU16Value(int value, int minVal, int maxVal) {
-    if (value < minVal) return static_cast<uint16_t>(minVal);
-    if (value > maxVal) return static_cast<uint16_t>(maxVal);
-    return static_cast<uint16_t>(value);
-}
 
 const char* lockoutDirectionModeName(uint8_t mode) {
     switch (mode) {

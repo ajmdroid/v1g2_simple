@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "../gps/gps_lockout_safety.h"
+#include "../../../include/clamp_utils.h"
 
 #ifdef UNIT_TEST
 #include <string>
@@ -24,10 +25,6 @@ void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc
     serializeJson(doc, response);
     server.send(statusCode, "application/json", response);
 #endif
-}
-
-uint16_t clampU16Value(int value, int minVal, int maxVal) {
-    return static_cast<uint16_t>(std::max(minVal, std::min(value, maxVal)));
 }
 
 }  // namespace
@@ -133,15 +130,15 @@ void handleApiSave(WebServer& server,
     }
     if (server.hasArg("gpsLockoutMaxQueueDrops")) {
         s.gpsLockoutMaxQueueDrops =
-            clampU16Value(server.arg("gpsLockoutMaxQueueDrops").toInt(), 0, 65535);
+            clamp_utils::clampU16Value(server.arg("gpsLockoutMaxQueueDrops").toInt(), 0, 65535);
     }
     if (server.hasArg("gpsLockoutMaxPerfDrops")) {
         s.gpsLockoutMaxPerfDrops =
-            clampU16Value(server.arg("gpsLockoutMaxPerfDrops").toInt(), 0, 65535);
+            clamp_utils::clampU16Value(server.arg("gpsLockoutMaxPerfDrops").toInt(), 0, 65535);
     }
     if (server.hasArg("gpsLockoutMaxEventBusDrops")) {
         s.gpsLockoutMaxEventBusDrops =
-            clampU16Value(server.arg("gpsLockoutMaxEventBusDrops").toInt(), 0, 65535);
+            clamp_utils::clampU16Value(server.arg("gpsLockoutMaxEventBusDrops").toInt(), 0, 65535);
     }
 
     // Voice settings

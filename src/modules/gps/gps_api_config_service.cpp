@@ -14,16 +14,9 @@
 #include "../../settings.h"
 #include "../../settings_sanitize.h"
 #include "../../perf_metrics.h"
+#include "../../../include/clamp_utils.h"
 
 namespace GpsApiService {
-
-namespace {
-
-uint16_t clampU16Value(int value, int minVal, int maxVal) {
-    return static_cast<uint16_t>(std::max(minVal, std::min(value, maxVal)));
-}
-
-}  // namespace
 void handleConfig(WebServer& server,
                   SettingsManager& settingsManager,
                   GpsRuntimeModule& gpsRuntimeModule,
@@ -116,24 +109,24 @@ void handleConfig(WebServer& server,
             hasCoreGuardEnabled = true;
         }
         if (body["lockoutMaxQueueDrops"].is<int>()) {
-            maxQueueDrops = clampU16Value(body["lockoutMaxQueueDrops"].as<int>(), 0, 65535);
+            maxQueueDrops = clamp_utils::clampU16Value(body["lockoutMaxQueueDrops"].as<int>(), 0, 65535);
             hasMaxQueueDrops = true;
         } else if (body["gpsLockoutMaxQueueDrops"].is<int>()) {
-            maxQueueDrops = clampU16Value(body["gpsLockoutMaxQueueDrops"].as<int>(), 0, 65535);
+            maxQueueDrops = clamp_utils::clampU16Value(body["gpsLockoutMaxQueueDrops"].as<int>(), 0, 65535);
             hasMaxQueueDrops = true;
         }
         if (body["lockoutMaxPerfDrops"].is<int>()) {
-            maxPerfDrops = clampU16Value(body["lockoutMaxPerfDrops"].as<int>(), 0, 65535);
+            maxPerfDrops = clamp_utils::clampU16Value(body["lockoutMaxPerfDrops"].as<int>(), 0, 65535);
             hasMaxPerfDrops = true;
         } else if (body["gpsLockoutMaxPerfDrops"].is<int>()) {
-            maxPerfDrops = clampU16Value(body["gpsLockoutMaxPerfDrops"].as<int>(), 0, 65535);
+            maxPerfDrops = clamp_utils::clampU16Value(body["gpsLockoutMaxPerfDrops"].as<int>(), 0, 65535);
             hasMaxPerfDrops = true;
         }
         if (body["lockoutMaxEventBusDrops"].is<int>()) {
-            maxEventBusDrops = clampU16Value(body["lockoutMaxEventBusDrops"].as<int>(), 0, 65535);
+            maxEventBusDrops = clamp_utils::clampU16Value(body["lockoutMaxEventBusDrops"].as<int>(), 0, 65535);
             hasMaxEventBusDrops = true;
         } else if (body["gpsLockoutMaxEventBusDrops"].is<int>()) {
-            maxEventBusDrops = clampU16Value(body["gpsLockoutMaxEventBusDrops"].as<int>(), 0, 65535);
+            maxEventBusDrops = clamp_utils::clampU16Value(body["gpsLockoutMaxEventBusDrops"].as<int>(), 0, 65535);
             hasMaxEventBusDrops = true;
         }
         if (body["lockoutLearnerPromotionHits"].is<int>()) {
@@ -302,27 +295,27 @@ void handleConfig(WebServer& server,
         hasCoreGuardEnabled = true;
     }
     if (!hasMaxQueueDrops && server.hasArg("lockoutMaxQueueDrops")) {
-        maxQueueDrops = clampU16Value(server.arg("lockoutMaxQueueDrops").toInt(), 0, 65535);
+        maxQueueDrops = clamp_utils::clampU16Value(server.arg("lockoutMaxQueueDrops").toInt(), 0, 65535);
         hasMaxQueueDrops = true;
     }
     if (!hasMaxQueueDrops && server.hasArg("gpsLockoutMaxQueueDrops")) {
-        maxQueueDrops = clampU16Value(server.arg("gpsLockoutMaxQueueDrops").toInt(), 0, 65535);
+        maxQueueDrops = clamp_utils::clampU16Value(server.arg("gpsLockoutMaxQueueDrops").toInt(), 0, 65535);
         hasMaxQueueDrops = true;
     }
     if (!hasMaxPerfDrops && server.hasArg("lockoutMaxPerfDrops")) {
-        maxPerfDrops = clampU16Value(server.arg("lockoutMaxPerfDrops").toInt(), 0, 65535);
+        maxPerfDrops = clamp_utils::clampU16Value(server.arg("lockoutMaxPerfDrops").toInt(), 0, 65535);
         hasMaxPerfDrops = true;
     }
     if (!hasMaxPerfDrops && server.hasArg("gpsLockoutMaxPerfDrops")) {
-        maxPerfDrops = clampU16Value(server.arg("gpsLockoutMaxPerfDrops").toInt(), 0, 65535);
+        maxPerfDrops = clamp_utils::clampU16Value(server.arg("gpsLockoutMaxPerfDrops").toInt(), 0, 65535);
         hasMaxPerfDrops = true;
     }
     if (!hasMaxEventBusDrops && server.hasArg("lockoutMaxEventBusDrops")) {
-        maxEventBusDrops = clampU16Value(server.arg("lockoutMaxEventBusDrops").toInt(), 0, 65535);
+        maxEventBusDrops = clamp_utils::clampU16Value(server.arg("lockoutMaxEventBusDrops").toInt(), 0, 65535);
         hasMaxEventBusDrops = true;
     }
     if (!hasMaxEventBusDrops && server.hasArg("gpsLockoutMaxEventBusDrops")) {
-        maxEventBusDrops = clampU16Value(server.arg("gpsLockoutMaxEventBusDrops").toInt(), 0, 65535);
+        maxEventBusDrops = clamp_utils::clampU16Value(server.arg("gpsLockoutMaxEventBusDrops").toInt(), 0, 65535);
         hasMaxEventBusDrops = true;
     }
     if (!hasLearnerPromotionHits && server.hasArg("lockoutLearnerPromotionHits")) {

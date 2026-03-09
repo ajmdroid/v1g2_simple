@@ -1,7 +1,6 @@
 #include "gps_api_service.h"
 
 #include <ArduinoJson.h>
-#include <algorithm>
 #include <cmath>
 
 #include "gps_runtime_module.h"
@@ -14,16 +13,9 @@
 #include "../../settings.h"
 #include "../../settings_sanitize.h"
 #include "../../perf_metrics.h"
+#include "../../../include/clamp_utils.h"
 
 namespace GpsApiService {
-
-namespace {
-
-uint16_t clampU16Value(int value, int minVal, int maxVal) {
-    return static_cast<uint16_t>(std::max(minVal, std::min(value, maxVal)));
-}
-
-}  // namespace
 
 void sendStatus(WebServer& server,
                 GpsRuntimeModule& gpsRuntimeModule,
@@ -205,7 +197,7 @@ void sendObservations(WebServer& server,
                       GpsObservationLog& gpsObservationLog) {
     uint16_t limit = 16;
     if (server.hasArg("limit")) {
-        limit = clampU16Value(server.arg("limit").toInt(), 1, 32);
+        limit = clamp_utils::clampU16Value(server.arg("limit").toInt(), 1, 32);
     }
 
     GpsObservation samples[32] = {};

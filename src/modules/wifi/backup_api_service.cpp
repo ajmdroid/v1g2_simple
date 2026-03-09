@@ -11,6 +11,7 @@
 #include "../gps/gps_lockout_safety.h"
 #include "../lockout/lockout_band_policy.h"
 #include "../speed/speed_source_selector.h"
+#include "../../../include/clamp_utils.h"
 
 namespace {
 
@@ -18,12 +19,6 @@ uint8_t clampU8Value(int value, int minVal, int maxVal) {
     if (value < minVal) return static_cast<uint8_t>(minVal);
     if (value > maxVal) return static_cast<uint8_t>(maxVal);
     return static_cast<uint8_t>(value);
-}
-
-uint16_t clampU16Value(int value, int minVal, int maxVal) {
-    if (value < minVal) return static_cast<uint16_t>(minVal);
-    if (value > maxVal) return static_cast<uint16_t>(maxVal);
-    return static_cast<uint16_t>(value);
 }
 
 String sanitizeLastV1AddressForBackup(const String& raw) {
@@ -297,13 +292,16 @@ static void handleRestore(WebServer& server) {
         s.gpsLockoutCoreGuardEnabled = doc["gpsLockoutCoreGuardEnabled"];
     }
     if (doc["gpsLockoutMaxQueueDrops"].is<int>()) {
-        s.gpsLockoutMaxQueueDrops = clampU16Value(doc["gpsLockoutMaxQueueDrops"].as<int>(), 0, 65535);
+        s.gpsLockoutMaxQueueDrops =
+            clamp_utils::clampU16Value(doc["gpsLockoutMaxQueueDrops"].as<int>(), 0, 65535);
     }
     if (doc["gpsLockoutMaxPerfDrops"].is<int>()) {
-        s.gpsLockoutMaxPerfDrops = clampU16Value(doc["gpsLockoutMaxPerfDrops"].as<int>(), 0, 65535);
+        s.gpsLockoutMaxPerfDrops =
+            clamp_utils::clampU16Value(doc["gpsLockoutMaxPerfDrops"].as<int>(), 0, 65535);
     }
     if (doc["gpsLockoutMaxEventBusDrops"].is<int>()) {
-        s.gpsLockoutMaxEventBusDrops = clampU16Value(doc["gpsLockoutMaxEventBusDrops"].as<int>(), 0, 65535);
+        s.gpsLockoutMaxEventBusDrops =
+            clamp_utils::clampU16Value(doc["gpsLockoutMaxEventBusDrops"].as<int>(), 0, 65535);
     }
     if (doc["gpsLockoutLearnerPromotionHits"].is<int>()) {
         s.gpsLockoutLearnerPromotionHits = clampLockoutLearnerHitsValue(
