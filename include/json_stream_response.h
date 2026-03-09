@@ -18,6 +18,7 @@
 #include <WebServer.h>
 #include <stdint.h>
 #include <string.h>
+#include "client_write_retry.h"
 
 namespace json_stream_detail {
 
@@ -58,14 +59,9 @@ public:
             return !failed_;
         }
 
-        size_t offset = 0;
-        while (offset < used_) {
-            const size_t written = client_.write(buffer_ + offset, used_ - offset);
-            if (written == 0) {
-                failed_ = true;
-                break;
-            }
-            offset += written;
+        if (!client_write_retry::writeAll(client_, buffer_, used_)) {
+            failed_ = true;
+            client_.stop();
         }
 
         used_ = 0;
