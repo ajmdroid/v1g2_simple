@@ -29,18 +29,20 @@
 	import {
 		buildZoneEditorFromObservation,
 		buildZoneEditorFromZone,
-		clearAllZonesRequest,
 		deriveLockoutConfigFromStatus,
-		deleteZoneRequest,
 		describeZoneTotals,
-		exportLockoutZonesRequest,
-		importLockoutZonesFromFile,
 		lockoutConfigMatchesRuntime,
 		resetZoneEditorState,
-		saveLockoutConfigRequest,
-		saveZoneEditorRequest,
 		stageLearnerPresetValues
-	} from '$lib/features/lockouts/lockoutPageHelpers';
+	} from '$lib/features/lockouts/lockoutValidation';
+	import {
+		clearAllZonesRequest,
+		deleteZoneRequest,
+		exportLockoutZonesRequest,
+		importLockoutZonesFromFile,
+		saveLockoutConfigRequest,
+		saveZoneEditorRequest
+	} from '$lib/features/lockouts/lockoutRequests';
 
 	let loading = $state(true);
 	let message = $state(null);
