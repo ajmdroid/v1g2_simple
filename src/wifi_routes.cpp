@@ -48,6 +48,12 @@ void WiFiManager::setupWebServer() {
     if (WIFI_DEBUG_FS_DUMP) {
         dumpLittleFSRoot();
     }
+
+    // WebServer::stop() only closes the listening socket; registered handlers
+    // persist on the server instance across WiFi restarts.
+    if (webRoutesInitialized) {
+        return;
+    }
     
     // New UI served from LittleFS
     // Redirect /ui to root for backward compatibility
@@ -565,4 +571,5 @@ void WiFiManager::setupWebServer() {
     });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
+    webRoutesInitialized = true;
 }

@@ -163,6 +163,7 @@ public:
 
 private:
     WebServer server;
+    bool webRoutesInitialized = false;
     SetupModeState setupModeState;
     bool apInterfaceEnabled = false;  // True only when softAP interface is enabled
     unsigned long setupModeStartTime;
