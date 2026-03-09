@@ -21,7 +21,15 @@ export default defineConfig({
 			include: [
 				'src/lib/utils/colors.js',
 				'src/lib/utils/lockout.js',
-				'src/lib/components/ToggleSetting.svelte'
+				'src/lib/components/ToggleSetting.svelte',
+				'src/routes/lockouts/+page.svelte',
+				'src/routes/settings/+page.svelte',
+				'src/routes/profiles/+page.svelte',
+				'src/routes/cameras/+page.svelte',
+				'src/lib/features/lockouts/LockoutsPage.svelte',
+				'src/lib/features/settings/SettingsPage.svelte',
+				'src/lib/features/profiles/ProfilesPage.svelte',
+				'src/lib/features/cameras/CamerasPage.svelte'
 			]
 		}
 	}
