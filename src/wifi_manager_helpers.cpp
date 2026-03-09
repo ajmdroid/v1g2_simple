@@ -6,7 +6,6 @@
  */
 
 #include "wifi_manager_internals.h"
-#include "json_stream_response.h"
 #include "perf_metrics.h"
 #include <LittleFS.h>
 
@@ -52,40 +51,6 @@ const char* wifiClientStateApiName(WifiClientState state) {
     }
 }
 
-static bool streamOpenFile(WebServer& server,
-                           File& file,
-                           const char* path,
-                           const char* contentType,
-                           size_t fileSize,
-                           bool gzip) {
-    server.setContentLength(fileSize);
-    if (gzip) {
-        server.sendHeader("Content-Encoding", "gzip");
-    }
-    server.sendHeader("Cache-Control", "max-age=86400");
-    server.sendHeader("ETag",
-                      String("\"") + String(path) + (gzip ? ".gz-" : "-") + String(fileSize) + String("\""));
-    server.send(200, contentType, "");
-
-    auto client = server.client();
-    uint8_t buf[1024];
-    while (file.available()) {
-        const size_t len = file.read(buf, sizeof(buf));
-        if (len == 0) {
-            break;
-        }
-        if (!client_write_retry::writeAll(client, buf, len)) {
-            Serial.printf("[HTTP] WARN short stream %s (%u/%u bytes)\n",
-                          path,
-                          static_cast<unsigned>(file.position()),
-                          static_cast<unsigned>(fileSize));
-            return false;
-        }
-        client_write_retry::service();
-    }
-    return true;
-}
-
 bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* contentType) {
     uint32_t startUs = PERF_TIMESTAMP_US();
     String acceptEncoding = server.header("Accept-Encoding");
@@ -104,8 +69,20 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
                     file.close();
                     return true;
                 }
+                server.setContentLength(fileSize);
+                server.sendHeader("Content-Encoding", "gzip");
+                server.sendHeader("Cache-Control", "max-age=86400");
+                server.sendHeader("ETag", etag);
+                server.send(200, contentType, "");
                 Serial.printf("[HTTP] 200 %s -> %s.gz (%u bytes)\n", path, path, fileSize);
-                streamOpenFile(server, file, path, contentType, fileSize, true);
+
+                // Stream file content.
+                uint8_t buf[1024];
+                while (file.available()) {
+                    size_t len = file.read(buf, sizeof(buf));
+                    server.client().write(buf, len);
+                    yield();  // Allow FreeRTOS to schedule other tasks (BLE queue drain).
+                }
                 file.close();
                 perfRecordFsServeUs(PERF_TIMESTAMP_US() - startUs);
                 return true;
@@ -129,7 +106,7 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
     server.sendHeader("Cache-Control", "max-age=86400");
     server.sendHeader("ETag", etag);
     Serial.printf("[HTTP] 200 %s (%u bytes)\n", path, fileSize);
-    streamOpenFile(server, file, path, contentType, fileSize, false);
+    server.streamFile(file, contentType);
     file.close();
     perfRecordFsServeUs(PERF_TIMESTAMP_US() - startUs);
     return true;
