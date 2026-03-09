@@ -33,6 +33,35 @@ uint32_t nextBootId();
 /// Show fatal error on display (if available), wait, then restart.
 void fatalBootError(const char* message, bool displayAvailable);
 
+// ---- Setup orchestration helper declarations (main_setup_helpers.cpp) ----
+
+/// Callback invoked once BLE connection is fully established.
+void onV1Connected();
+
+/// Mount storage + initialize profile/device stores and restore dependent settings.
+void initializeStorageAndProfiles();
+
+/// Apply persisted lockout policy and hydrate lockout zones from storage.
+void applyLockoutPolicyAndLoadZonesFromStorage();
+
+/// Initialize perf/observation CSV loggers and return the boot session id.
+uint32_t initializeBootPerformanceLoggers();
+
+/// Restore persisted learner pending candidates from storage.
+void restorePendingLearnerCandidates();
+
+/// Initialize touch hardware and apply persisted display/audio controls.
+void initializeTouchAndDisplayControls();
+
+/// Configure auto-push + touch interaction modules after storage/BLE setup.
+void configureUiInteractionModules();
+
+/// Emit boot summary and WiFi startup policy logs.
+void logBootSummaryAndWifiStartup(uint32_t bootId, esp_reset_reason_t resetReason);
+
+/// Early setup diagnostics: serial settle, GPIO hold release, panic/NVS checks.
+void initializeEarlyBootDiagnostics();
+
 // ---- Persistence helper declarations (main_persist.cpp) ----
 
 /// Periodic best-effort save of lockout zones to SD/LittleFS (Tier 7).

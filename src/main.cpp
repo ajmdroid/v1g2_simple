@@ -120,7 +120,7 @@ static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_MS = 400;
 static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_WAKE_MS = 120;
 static constexpr unsigned long CONNECTION_STATE_PROCESS_MAX_GAP_MS = 1000;
 static unsigned long activeScanScreenDwellMs = MIN_SCAN_SCREEN_DWELL_MS;
-static unsigned long v1ConnectedAtMs = 0;
+unsigned long v1ConnectedAtMs = 0;
 static bool wifiAutoStartDone = false;
 
 // Display preview driver (color demos)
@@ -133,25 +133,19 @@ LockoutOrchestrationModule lockoutOrchestrationModule;
 void requestColorPreviewHold(uint32_t durationMs) {
     displayPreviewModule.requestHold(durationMs);
 }
-
 bool isDisplayPreviewRunning() {
     return displayPreviewModule.isRunning();
 }
-
 bool isColorPreviewRunning() {
     return isDisplayPreviewRunning();
 }
-
 void cancelDisplayPreview() {
     displayPreviewModule.cancel();
 }
-
 void cancelColorPreview() {
     cancelDisplayPreview();
 }
-
 // resetReasonToString() — moved to main_boot.cpp
-
 // normalizeLegacyLockoutRadiusScale() — moved to main_boot.cpp
 
 static void showInitialScanningScreen() {
@@ -170,7 +164,7 @@ static void showInitialScanningScreen() {
 
 // nextBootId() — moved to main_boot.cpp
 
-static DisplayMode displayMode = DisplayMode::IDLE;
+DisplayMode displayMode = DisplayMode::IDLE;
 
 // Voice alert tracking handled by VoiceModule
 
@@ -224,79 +218,6 @@ static WifiOrchestrator& getWifiOrchestrator() {
         autoPushModule,
         [](int slotIndex) { autoPushModule.start(slotIndex); });
     return orchestrator;
-}
-
-struct V1ConnectedAutoPushSelection {
-    int activeSlotIndex = 0;
-    String connectedAddress;
-    uint8_t deviceDefaultProfile = 0;
-    int selectedSlotIndex = 0;
-};
-
-static V1ConnectedAutoPushSelection resolveV1ConnectedAutoPushSelection(const V1Settings& settings) {
-    V1ConnectedAutoPushSelection selection;
-    selection.activeSlotIndex = std::max(0, std::min(2, settings.activeSlot));
-    selection.selectedSlotIndex = selection.activeSlotIndex;
-
-    NimBLEAddress connected = bleClient.getConnectedAddress();
-    if (!connected.isNull()) {
-        selection.connectedAddress = normalizeV1DeviceAddress(String(connected.toString().c_str()));
-    }
-    if (selection.connectedAddress.length() == 0) {
-        selection.connectedAddress = normalizeV1DeviceAddress(settings.lastV1Address);
-    }
-
-    if (selection.connectedAddress.length() > 0 && v1DeviceStore.isReady()) {
-        v1DeviceStore.upsertDevice(selection.connectedAddress);
-        selection.deviceDefaultProfile = v1DeviceStore.getDeviceDefaultProfile(selection.connectedAddress);
-        if (selection.deviceDefaultProfile >= 1 && selection.deviceDefaultProfile <= 3) {
-            selection.selectedSlotIndex = static_cast<int>(selection.deviceDefaultProfile) - 1;
-        }
-    }
-
-    return selection;
-}
-
-// Callback when V1 connection is fully established
-// Handles auto-push of default profile and mode
-void onV1Connected() {
-    v1ConnectedAtMs = millis();
-
-    // Start a new perf CSV session so scoring tools can isolate
-    // V1-connected data from idle boot noise.
-    perfSdLogger.startNewSession();
-
-    const V1Settings& s = settingsManager.get();
-    const V1ConnectedAutoPushSelection selection = resolveV1ConnectedAutoPushSelection(s);
-
-    const AutoPushSlot& slot = settingsManager.getSlot(selection.selectedSlotIndex);
-    SerialLog.printf("[AutoPush] onV1Connected autoPush=%s activeSlot=%d selectedSlot=%d defaultProfile=%u addr='%s' profile='%s' mode=%d\n",
-                     s.autoPushEnabled ? "on" : "off",
-                     selection.activeSlotIndex,
-                     selection.selectedSlotIndex,
-                     static_cast<unsigned>(selection.deviceDefaultProfile),
-                     selection.connectedAddress.c_str(),
-                     slot.profileName.c_str(),
-                     static_cast<int>(slot.mode));
-    if (selection.activeSlotIndex != s.activeSlot) {
-        AUTO_PUSH_LOGF("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
-                        s.activeSlot, selection.activeSlotIndex);
-    }
-
-    if (!s.autoPushEnabled) {
-        AUTO_PUSH_LOGLN("[AutoPush] Disabled, skipping");
-        return;
-    }
-
-    if (selection.deviceDefaultProfile >= 1 && selection.deviceDefaultProfile <= 3) {
-        AUTO_PUSH_LOGF("[AutoPush] Using per-device default profile %u -> slot %d\n",
-                       static_cast<unsigned>(selection.deviceDefaultProfile),
-                       selection.selectedSlotIndex);
-    } else {
-        AUTO_PUSH_LOGF("[AutoPush] Using global activeSlot: %d\n", selection.selectedSlotIndex);
-    }
-
-    autoPushModule.start(selection.selectedSlotIndex);
 }
 
 // fatalBootError() — moved to main_boot.cpp
@@ -744,7 +665,7 @@ static void configureLoopDisplayModule() {
     loopDisplayModule.begin(loopDisplayProviders);
 }
 
-static void configureTouchUiModule() {
+void configureTouchUiModule() {
     TouchUiModule::Callbacks touchCbs{
         .isWifiSetupActive = [] { return wifiManager.isWifiServiceActive(); },
         .stopWifiSetup = [] { wifiManager.stopSetupMode(true); },
@@ -856,146 +777,6 @@ static void configureRuntimeAndLockoutModules() {
     configureLockoutPipelineModules();
 }
 
-static void initializeStorageAndProfiles() {
-    // Mount storage (SD if available, else LittleFS) for profiles and settings.
-    SerialLog.println("[Setup] Mounting storage...");
-    if (storageManager.begin()) {
-        SerialLog.printf("[Setup] Storage ready: %s\n", storageManager.statusText().c_str());
-        v1ProfileManager.begin(storageManager.getFilesystem(), storageManager.getLittleFS());
-        v1DeviceStore.begin(storageManager.getFilesystem(), storageManager.getLittleFS());
-        audio_init_buffers();  // Allocate audio decode buffers in PSRAM (before audio_init_sd).
-        audio_init_sd();  // Initialize SD-based frequency voice audio.
-
-        // Retry settings restore now that SD is mounted
-        // (settings.begin() runs before storage, so restore may have failed)
-        if (settingsManager.checkAndRestoreFromSD()) {
-            // Settings were restored from SD - update display with restored brightness.
-            display.setBrightness(settingsManager.get().brightness);
-        }
-
-        const String restoredLastKnownV1 = normalizeV1DeviceAddress(settingsManager.get().lastV1Address);
-        if (restoredLastKnownV1.length() > 0 && v1DeviceStore.isReady()) {
-            v1DeviceStore.upsertDevice(restoredLastKnownV1);
-        }
-
-        // Validate profile references in auto-push slots.
-        // Clear references to profiles that don't exist.
-        settingsManager.validateProfileReferences(v1ProfileManager);
-    } else {
-        SerialLog.println("[Setup] Storage unavailable - profiles will be disabled");
-    }
-}
-
-static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
-static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
-
-static bool loadLockoutZonesJsonDocument(JsonDocument& outDoc) {
-    if (!storageManager.isReady()) {
-        return false;
-    }
-
-    fs::FS* fs = storageManager.getFilesystem();
-    if (!(fs && fs->exists(LOCKOUT_ZONES_PATH))) {
-        SerialLog.println("[Lockout] No saved zones file found");
-        return false;
-    }
-
-    File f = fs->open(LOCKOUT_ZONES_PATH, "r");
-    if (!(f && f.size() > 0 && f.size() < 65536)) {
-        if (f) {
-            f.close();
-        }
-        return false;
-    }
-
-    const DeserializationError err = deserializeJson(outDoc, f);
-    f.close();
-    if (err) {
-        SerialLog.printf("[Lockout] JSON parse error: %s\n", err.c_str());
-        return false;
-    }
-    return true;
-}
-
-static bool loadPendingLearnerJsonDocument(JsonDocument& outDoc) {
-    if (!storageManager.isReady()) {
-        return false;
-    }
-
-    fs::FS* fs = storageManager.getFilesystem();
-    if (!(fs && fs->exists(LOCKOUT_PENDING_PATH))) {
-        SerialLog.println("[Learner] No saved pending candidate file found");
-        return false;
-    }
-
-    File f = fs->open(LOCKOUT_PENDING_PATH, "r");
-    if (!(f && f.size() > 0 && f.size() < 32768)) {
-        if (f) {
-            f.close();
-        }
-        return false;
-    }
-
-    const DeserializationError err = deserializeJson(outDoc, f);
-    f.close();
-    if (err) {
-        SerialLog.printf("[Learner] Pending JSON parse error: %s\n", err.c_str());
-        return false;
-    }
-    return true;
-}
-
-static void applyLockoutPolicyAndLoadZonesFromStorage() {
-    // Apply persisted Ka lockout policy before loading/sanitizing lockout zones.
-    lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
-    lockoutSetKLearningEnabled(settingsManager.get().gpsLockoutKLearningEnabled);
-    lockoutSetXLearningEnabled(settingsManager.get().gpsLockoutXLearningEnabled);
-
-    JsonDocument doc;
-    if (!loadLockoutZonesJsonDocument(doc)) {
-        return;
-    }
-
-    const uint32_t legacyRadiusMigrations = normalizeLegacyLockoutRadiusScale(doc);
-    lockoutStore.begin(&lockoutIndex);
-    if (lockoutStore.fromJson(doc)) {
-        SerialLog.printf("[Lockout] Loaded %lu zones from %s\n",
-                         static_cast<unsigned long>(lockoutStore.stats().entriesLoaded),
-                         LOCKOUT_ZONES_PATH);
-        if (legacyRadiusMigrations > 0) {
-            SerialLog.printf("[Lockout] Normalized %lu legacy zone radius values (x10->x1 scale)\n",
-                             static_cast<unsigned long>(legacyRadiusMigrations));
-            // Persist normalized values on the next best-effort save cycle.
-            lockoutStore.markDirty();
-        }
-    }
-}
-
-static uint32_t initializeBootPerformanceLoggers() {
-    const uint32_t bootId = nextBootId();
-    perfSdLogger.setBootId(bootId);
-    signalObservationSdLogger.setBootId(bootId);
-
-    // Standalone perf CSV loggers (SD only).
-    const bool sdEnabled = storageManager.isReady() && storageManager.isSDCard();
-    perfSdLogger.begin(sdEnabled);
-    if (perfSdLogger.isEnabled()) {
-        SerialLog.printf("[PERF] SD logger enabled (%s)\n", perfSdLogger.csvPath());
-    } else {
-        SerialLog.println("[PERF] SD logger disabled (no SD)");
-    }
-    signalObservationSdLogger.begin(sdEnabled);
-    if (signalObservationSdLogger.isEnabled()) {
-        SerialLog.printf("[LockoutSD] Candidate logger enabled (%s)\n", signalObservationSdLogger.csvPath());
-    } else {
-        SerialLog.println("[LockoutSD] Candidate logger disabled (no SD)");
-    }
-
-    return bootId;
-}
-
-static void restorePendingLearnerCandidates();
-
 template <typename StageLogger>
 static void finalizeBootReadyAndBleScan(const unsigned long setupStartMs,
                                         const StageLogger& logBootStage) {
@@ -1028,87 +809,6 @@ static void finalizeBootReadyAndBleScan(const unsigned long setupStartMs,
     }
     logBootStage("wifi");
     SerialLog.printf("[Boot] setup total: %lu ms\n", millis() - setupStartMs);
-}
-
-static void restorePendingLearnerCandidates() {
-    JsonDocument doc;
-    if (!loadPendingLearnerJsonDocument(doc)) {
-        return;
-    }
-
-    if (lockoutLearner.fromJson(doc, timeService.nowEpochMsOr0())) {
-        SerialLog.printf("[Learner] Restored %u pending candidates from %s\n",
-                         static_cast<unsigned>(lockoutLearner.activeCandidateCount()),
-                         LOCKOUT_PENDING_PATH);
-    } else {
-        SerialLog.printf("[Learner] Ignoring invalid pending file format: %s\n",
-                         LOCKOUT_PENDING_PATH);
-    }
-}
-
-static void initializeTouchAndDisplayControls() {
-    // Initialize touch handler early - before BLE to avoid interleaved logs
-    SerialLog.println("Initializing touch handler...");
-    if (touchHandler.begin(17, 18, AXS_TOUCH_ADDR, -1)) {
-        SerialLog.println("Touch handler initialized successfully");
-    } else {
-        SerialLog.println("WARNING: Touch handler failed to initialize - continuing anyway");
-    }
-
-    // Initialize BOOT button (GPIO 0) for brightness adjustment
-    pinMode(BOOT_BUTTON_GPIO, INPUT_PULLUP);
-    const V1Settings& displaySettings = settingsManager.get();
-    display.setBrightness(displaySettings.brightness);  // Apply saved brightness
-    audio_set_volume(displaySettings.voiceVolume);      // Apply saved voice volume
-    SerialLog.printf("[Settings] Applied saved brightness: %d, voice volume: %d\n",
-                     displaySettings.brightness, displaySettings.voiceVolume);
-}
-
-static void configureUiAutoPushModule() {
-    // Initialize auto-push module after settings/profiles are ready
-    autoPushModule.begin(&settingsManager, &v1ProfileManager, &bleClient, &display);
-}
-
-static void configureUiTouchInteractionModules() {
-    configureTouchUiModule();
-
-    tapGestureModule.begin(&touchHandler,
-                           &settingsManager,
-                           &display,
-                           &bleClient,
-                           &parser,
-                           &autoPushModule,
-                           &alertPersistenceModule,
-                           &displayMode);
-}
-
-static void configureUiInteractionModules() {
-    configureUiAutoPushModule();
-    configureUiTouchInteractionModules();
-}
-
-static void logBootSummaryAndWifiStartup(uint32_t bootId, esp_reset_reason_t resetReason) {
-    const V1Settings& bootSettings = settingsManager.get();
-    const char* scenario = "default";
-#ifdef GIT_SHA
-    const char* gitSha = GIT_SHA;
-#else
-    const char* gitSha = "unknown";
-#endif
-    const char* resetStr = resetReasonToString(resetReason);
-    SerialLog.printf("BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s\n",
-                     static_cast<unsigned long>(bootId),
-                     resetStr,
-                     gitSha,
-                     scenario,
-                     bootSettings.enableWifi ? "on" : "off");
-
-    // WiFi startup behavior - either auto-start or wait for BOOT button
-    if (settingsManager.get().enableWifiAtBoot) {
-        SerialLog.println("[WiFi] Auto-start enabled (dev setting)");
-    } else {
-        SerialLog.println("[WiFi] Off by default - start with BOOT long-press");
-    }
 }
 
 template <typename CheckpointLogger>
@@ -1250,26 +950,6 @@ static void initializePreflightDisplayAndBootUi(esp_reset_reason_t resetReason,
 
     // Initialize display preview driver.
     displayPreviewModule.begin(&display);
-}
-
-static void initializeEarlyBootDiagnostics() {
-    // Wait for USB to stabilize after upload.
-    delay(50);
-
-    // Release GPIO hold from deep sleep (backlight was held off during sleep).
-    // Must happen before display init re-configures the pin.
-    gpio_deep_sleep_hold_dis();
-    gpio_hold_dis(static_cast<gpio_num_t>(LCD_BL));
-
-    // Backlight is handled in display.begin() (inverted PWM for Waveshare).
-    Serial.begin(115200);
-    delay(30);  // Conservative USB CDC settle.
-
-    // PANIC BREADCRUMBS: Log crash info FIRST (before any other init).
-    logPanicBreadcrumbs();
-
-    // Check NVS health early - before other subsystems start using it.
-    nvsHealthCheck();
 }
 
 template <typename CheckpointLogger, typename StageLogger>
