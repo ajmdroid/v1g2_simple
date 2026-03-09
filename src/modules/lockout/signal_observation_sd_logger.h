@@ -9,6 +9,7 @@
 
 #include <atomic>
 
+#include "../../psram_freertos_alloc.h"
 #include "signal_observation_log.h"
 
 struct SignalObservationSdStats {
@@ -54,6 +55,8 @@ private:
     bool enabled_ = false;
     QueueHandle_t queue_ = nullptr;
     TaskHandle_t writerTask_ = nullptr;
+    PsramQueueAllocation queueAllocation_ = {};
+    bool queueInPsram_ = false;
     bool dirReady_ = false;
     bool headerReady_ = false;
     uint32_t bootId_ = 0;

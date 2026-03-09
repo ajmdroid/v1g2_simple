@@ -56,10 +56,16 @@ void SignalObservationSdLogger::begin(bool sdAvailable) {
     resetDedupeState();
 
     if (!queue_) {
-        queue_ = xQueueCreate(LOCKOUT_SD_QUEUE_DEPTH, sizeof(SignalObservation));
+        queue_ = createQueuePreferPsram(LOCKOUT_SD_QUEUE_DEPTH,
+                                        sizeof(SignalObservation),
+                                        queueAllocation_,
+                                        &queueInPsram_);
         if (!queue_) {
             Serial.println("[LockoutSD] ERROR: Failed to create queue");
             return;
+        }
+        if (!queueInPsram_) {
+            Serial.println("[LockoutSD] WARN: queue using internal SRAM fallback");
         }
     }
 
