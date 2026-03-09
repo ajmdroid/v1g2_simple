@@ -230,9 +230,15 @@ extract_soak_metric() {
     disp_pipe) awk '/- Peak dispPipeMaxUs:/{print $4; exit}' "$summary" ;;
     dma_min) awk '/- Min heapDmaMin \(SLO\):/{print $5; exit}' "$summary" ;;
     dma_largest) awk '/- Min heapDmaLargestMin \(SLO\):/{print $5; exit}' "$summary" ;;
-    dma_below_floor) awk '/- DMA largest current below-floor samples\/total:/{print $7; exit}' "$summary" ;;
-    dma_largest_to_free_p50) awk '/- DMA largest\/free pct min\/p05\/p50:/{print $11; exit}' "$summary" ;;
-    dma_fragmentation_p95) awk '/- DMA fragmentation pct p50\/p95\/max:/{print $9; exit}' "$summary" ;;
+    dma_below_floor)
+      awk -F': ' '/- DMA largest current below-floor samples\/total:/{split($2,a," "); print a[1]; exit}' "$summary"
+      ;;
+    dma_largest_to_free_p50)
+      awk -F': ' '/- DMA largest\/free pct min\/p05\/p50:/{n=split($2,a," / "); if (n >= 3) print a[3]; exit}' "$summary"
+      ;;
+    dma_fragmentation_p95)
+      awk -F': ' '/- DMA fragmentation pct p50\/p95\/max:/{n=split($2,a," / "); if (n >= 2) print a[2]; exit}' "$summary"
+      ;;
     proxy_off_delta) awk '/- Proxy advertising transition deltas on\/off:/{print $9; exit}' "$summary" ;;
     transition_samples) awk '/- Transition primary samples\/time-to-stable:/{print $5; exit}' "$summary" ;;
     transition_ms)
