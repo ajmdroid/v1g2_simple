@@ -18,8 +18,13 @@
 #include <WebServer.h>
 #include <stdint.h>
 #include <string.h>
+#if defined(UNIT_TEST)
+#include <string>
+#else
 #include "client_write_retry.h"
+#endif
 
+#if !defined(UNIT_TEST)
 namespace json_stream_detail {
 
 // Buffered Print adapter to avoid byte-at-a-time TCP writes from serializeJson().
@@ -76,12 +81,13 @@ private:
 };
 
 }  // namespace json_stream_detail
+#endif
 
-inline void sendJsonStream(WebServer& server, JsonDocument& doc, int code = 200) {
+inline void sendJsonStream(WebServer& server, const JsonDocument& doc, int code = 200) {
 #if defined(UNIT_TEST)
-    String response;
+    std::string response;
     serializeJson(doc, response);
-    server.send(code, "application/json", response);
+    server.send(code, "application/json", response.c_str());
 #else
     const size_t len = measureJson(doc);
     server.setContentLength(len);

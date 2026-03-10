@@ -1,28 +1,9 @@
 #include "wifi_v1_devices_api_service.h"
 
 #include <ArduinoJson.h>
-
-#ifdef UNIT_TEST
-#include <string>
-#endif
+#include "wifi_api_response.h"
 
 namespace WifiV1DevicesApiService {
-
-namespace {
-
-void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc) {
-#ifdef UNIT_TEST
-    std::string response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response.c_str());
-#else
-    String response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response);
-#endif
-}
-
-}  // namespace
 
 void handleApiDevicesList(WebServer& server, const Runtime& runtime) {
     JsonDocument doc;
@@ -42,7 +23,7 @@ void handleApiDevicesList(WebServer& server, const Runtime& runtime) {
     }
 
     doc["count"] = devices.size();
-    sendJsonDocument(server, 200, doc);
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
 void handleApiDeviceNameSave(WebServer& server,

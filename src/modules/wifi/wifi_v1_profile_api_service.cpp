@@ -2,28 +2,9 @@
 
 #include <ArduinoJson.h>
 #include <cstring>
-
-#ifdef UNIT_TEST
-#include <string>
-#endif
+#include "wifi_api_response.h"
 
 namespace WifiV1ProfileApiService {
-
-namespace {
-
-void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc) {
-#ifdef UNIT_TEST
-    std::string response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response.c_str());
-#else
-    String response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response);
-#endif
-}
-
-}  // namespace
 
 void handleApiProfilesList(WebServer& server, const Runtime& runtime) {
     std::vector<String> profileNames;
@@ -46,7 +27,7 @@ void handleApiProfilesList(WebServer& server, const Runtime& runtime) {
         }
     }
 
-    sendJsonDocument(server, 200, doc);
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
 void handleApiProfileGet(WebServer& server, const Runtime& runtime) {
@@ -185,7 +166,7 @@ void handleApiCurrentSettings(WebServer& server, const Runtime& runtime) {
 
     if (!runtime.hasCurrentSettings || !runtime.hasCurrentSettings()) {
         doc["available"] = false;
-        sendJsonDocument(server, 200, doc);
+        WifiApiResponse::sendJsonDocument(server, 200, doc);
         return;
     }
 
@@ -198,7 +179,7 @@ void handleApiCurrentSettings(WebServer& server, const Runtime& runtime) {
         doc["settings"] = settingsDoc;
     }
 
-    sendJsonDocument(server, 200, doc);
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
 void handleApiSettingsPull(WebServer& server,

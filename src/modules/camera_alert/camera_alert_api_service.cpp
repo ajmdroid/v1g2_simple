@@ -14,28 +14,17 @@
 
 #include "../../../include/camera_alert_types.h"
 #include "../lockout/road_map_reader.h"
+#include "../wifi/wifi_api_response.h"
 #include "camera_alert_module.h"
 
 namespace CameraAlertApiService {
 
 namespace {
 
-void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc) {
-#ifdef UNIT_TEST
-    std::string response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response.c_str());
-#else
-    String response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response);
-#endif
-}
-
 void sendError(WebServer& server, int statusCode, const String& message) {
     JsonDocument doc;
     doc["error"] = message;
-    sendJsonDocument(server, statusCode, doc);
+    WifiApiResponse::sendJsonDocument(server, statusCode, doc);
 }
 
 bool parseBoolToken(String token, bool& outValue) {
@@ -159,7 +148,7 @@ void sendSettings(WebServer& server, const V1Settings& settings) {
     doc["colorCameraText"] = settings.colorCameraText;
     doc["cameraVoiceFarEnabled"] = settings.cameraVoiceFarEnabled;
     doc["cameraVoiceNearEnabled"] = settings.cameraVoiceNearEnabled;
-    sendJsonDocument(server, 200, doc);
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
 void sendStatus(WebServer& server,
@@ -184,7 +173,7 @@ void sendStatus(WebServer& server,
         doc["distanceCm"] = nullptr;
     }
 
-    sendJsonDocument(server, 200, doc);
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
 }  // namespace
@@ -250,7 +239,7 @@ void handleApiSettingsPost(WebServer& server,
 
     JsonDocument doc;
     doc["success"] = true;
-    sendJsonDocument(server, 200, doc);
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
 void handleApiStatus(WebServer& server,

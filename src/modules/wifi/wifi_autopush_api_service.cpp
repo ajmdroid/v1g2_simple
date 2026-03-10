@@ -2,28 +2,9 @@
 
 #include <ArduinoJson.h>
 #include <algorithm>
-
-#ifdef UNIT_TEST
-#include <string>
-#endif
+#include "wifi_api_response.h"
 
 namespace WifiAutoPushApiService {
-
-namespace {
-
-void sendJsonDocument(WebServer& server, int statusCode, const JsonDocument& doc) {
-#ifdef UNIT_TEST
-    std::string response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response.c_str());
-#else
-    String response;
-    serializeJson(doc, response);
-    server.send(statusCode, "application/json", response);
-#endif
-}
-
-}  // namespace
 
 void handleApiSlots(WebServer& server, const Runtime& runtime) {
     SlotsSnapshot snapshot;
@@ -50,7 +31,7 @@ void handleApiSlots(WebServer& server, const Runtime& runtime) {
         obj["priorityArrowOnly"] = slot.priorityArrowOnly;
     }
 
-    sendJsonDocument(server, 200, doc);
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
 void handleApiStatus(WebServer& server, const Runtime& runtime) {
