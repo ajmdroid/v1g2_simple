@@ -85,12 +85,12 @@ kind=source file=src/modules/debug/debug_api_scenario_service.cpp line=34 text=e
 kind=source file=src/modules/debug/debug_api_scenario_service.cpp line=36 text=extern DisplayPipelineModule displayPipelineModule;
 kind=source file=src/modules/debug/debug_api_scenario_service.cpp line=41 text=extern PerfLatency perfLatency;
 kind=source file=src/modules/debug/debug_api_scenario_service.cpp line=42 text=extern bool perfDebugEnabled;
-kind=source file=src/modules/debug/debug_api_service.cpp line=29 text=extern V1BLEClient bleClient;
-kind=source file=src/modules/debug/debug_api_service.cpp line=30 text=extern BleQueueModule bleQueueModule;
-kind=source file=src/modules/debug/debug_api_service.cpp line=31 text=extern SystemEventBus systemEventBus;
-kind=source file=src/modules/debug/debug_api_service.cpp line=33 text=extern DisplayPipelineModule displayPipelineModule;
-kind=source file=src/modules/debug/debug_api_service.cpp line=37 text=extern PerfLatency perfLatency;
-kind=source file=src/modules/debug/debug_api_service.cpp line=38 text=extern bool perfDebugEnabled;
+kind=source file=src/modules/debug/debug_api_service.cpp line=30 text=extern V1BLEClient bleClient;
+kind=source file=src/modules/debug/debug_api_service.cpp line=31 text=extern BleQueueModule bleQueueModule;
+kind=source file=src/modules/debug/debug_api_service.cpp line=32 text=extern SystemEventBus systemEventBus;
+kind=source file=src/modules/debug/debug_api_service.cpp line=34 text=extern DisplayPipelineModule displayPipelineModule;
+kind=source file=src/modules/debug/debug_api_service.cpp line=38 text=extern PerfLatency perfLatency;
+kind=source file=src/modules/debug/debug_api_service.cpp line=39 text=extern bool perfDebugEnabled;
 kind=header file=src/modules/gps/gps_observation_log.h line=73 text=extern GpsObservationLog gpsObservationLog;
 kind=header file=src/modules/gps/gps_runtime_module.h line=149 text=extern GpsRuntimeModule gpsRuntimeModule;
 kind=header file=src/modules/lockout/lockout_enforcer.h line=93 text=extern LockoutEnforcer lockoutEnforcer;
@@ -103,12 +103,12 @@ kind=header file=src/modules/lockout/signal_capture_module.h line=38 text=extern
 kind=header file=src/modules/lockout/signal_observation_log.h line=85 text=extern SignalObservationLog signalObservationLog;
 kind=header file=src/modules/lockout/signal_observation_sd_logger.h line=77 text=extern SignalObservationSdLogger signalObservationSdLogger;
 kind=header file=src/modules/speed/speed_source_selector.h line=46 text=extern SpeedSourceSelector speedSourceSelector;
-kind=header file=src/perf_metrics.h line=486 text=extern PerfExtendedMetrics perfExtended;
-kind=header file=src/perf_metrics.h line=575 text=extern PerfCounters perfCounters;
-kind=header file=src/perf_metrics.h line=578 text=extern PerfLatency perfLatency;
-kind=header file=src/perf_metrics.h line=582 text=extern bool perfDebugEnabled; // Runtime debug print enable
-kind=header file=src/perf_metrics.h line=583 text=extern uint32_t perfLastReportMs; // Last report timestamp
-kind=header file=src/perf_sd_logger.h line=188 text=extern PerfSdLogger perfSdLogger;
+kind=header file=src/perf_metrics.h line=504 text=extern PerfExtendedMetrics perfExtended;
+kind=header file=src/perf_metrics.h line=599 text=extern PerfCounters perfCounters;
+kind=header file=src/perf_metrics.h line=602 text=extern PerfLatency perfLatency;
+kind=header file=src/perf_metrics.h line=606 text=extern bool perfDebugEnabled; // Runtime debug print enable
+kind=header file=src/perf_metrics.h line=607 text=extern uint32_t perfLastReportMs; // Last report timestamp
+kind=header file=src/perf_sd_logger.h line=197 text=extern PerfSdLogger perfSdLogger;
 kind=header file=src/settings.h line=636 text=extern SettingsManager settingsManager;
 kind=header file=src/storage_manager.h line=251 text=extern StorageManager storageManager;
 kind=header file=src/time_service.h line=68 text=extern TimeService timeService;

@@ -4,6 +4,7 @@
 import { cpSync, rmSync, existsSync, mkdirSync, readdirSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { stageAudioFiles } from './audio-manifest.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const buildDir = join(__dirname, '..', 'build');
@@ -76,27 +77,15 @@ if (pruned.removedFiles > 0) {
 
 // Restore audio assets after deploy wipes data/.
 // Keep this here so both scripted and manual deploy flows stage audio consistently.
-const audioDir = join(dataDir, 'audio');
-const audioSources = [
-    {
-        dir: join(__dirname, '..', '..', 'tools', 'freq_audio', 'mulaw'),
-        // ghz_*.mul clips are legacy duplicates; runtime uses tens_XX for GHz tokens.
-        filter: (name) => name.endsWith('.mul') && !name.startsWith('ghz_')
-    },
-
-];
-
-let copiedAudioCount = 0;
-mkdirSync(audioDir, { recursive: true });
-for (const source of audioSources) {
-    if (!existsSync(source.dir)) continue;
-    for (const file of readdirSync(source.dir)) {
-        if (!source.filter(file)) continue;
-        cpSync(join(source.dir, file), join(audioDir, file));
-        copiedAudioCount++;
+const audioStageResult = stageAudioFiles({ targetDir: join(dataDir, 'audio') });
+if (audioStageResult.missing.length > 0) {
+    console.error('❌ Missing audio assets required by manifest:');
+    for (const file of audioStageResult.missing) {
+        console.error(`   - ${file}`);
     }
+    process.exit(1);
 }
-console.log(`🔊 Staged ${copiedAudioCount} audio clips to data/audio`);
+console.log(`🔊 Staged ${audioStageResult.copied} manifest-tracked audio clips to data/audio`);
 
 // List deployed files with sizes
 function listFiles(dir, prefix = '') {

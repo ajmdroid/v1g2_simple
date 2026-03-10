@@ -101,7 +101,11 @@ jobs:
       # ========== TEST (gate release on passing tests) ==========
       - name: Run unit tests
         if: steps.check.outputs.should_release == 'true'
-        run: pio test -e native
+        run: python3 scripts/run_native_tests_serial.py
+
+      - name: Run frontend unit tests
+        if: steps.check.outputs.should_release == 'true'
+        run: cd interface && npm run test:unit
       
       # ========== VERSION ==========
       - name: Get version from config.h
@@ -133,14 +137,20 @@ jobs:
       # ========== BUILD ==========
       - name: Build web interface
         if: steps.check.outputs.should_release == 'true'
-        run: cd interface && npm run deploy
-      
-      - name: Copy audio files
+        run: |
+          cd interface
+          npm run build
+          npm run deploy
+
+      - name: Check packaged web assets
         if: steps.check.outputs.should_release == 'true'
         run: |
-          mkdir -p data/audio
-          cp tools/freq_audio/mulaw/*.mul data/audio/
-          echo "Copied $(ls -1 data/audio/*.mul | wc -l) audio clips"
+          python3 scripts/check_web_asset_budget.py
+          python3 scripts/check_audio_asset_manifest.py
+
+      - name: Stage manifest-tracked audio files
+        if: steps.check.outputs.should_release == 'true'
+        run: node interface/scripts/stage-audio.js
       
       - name: Build firmware
         if: steps.check.outputs.should_release == 'true'
@@ -149,6 +159,32 @@ jobs:
       - name: Build filesystem
         if: steps.check.outputs.should_release == 'true'
         run: pio run -e waveshare-349 -t buildfs
+
+      - name: Enforce LittleFS size budget
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          python3 - <<'PY'
+          import csv
+          from pathlib import Path
+
+          partition_size = None
+          with Path("partitions_v1.csv").open(newline="", encoding="utf-8") as fh:
+              for row in csv.reader(fh):
+                  if not row or row[0].strip().startswith("#"):
+                      continue
+                  if row[0].strip() == "storage":
+                      partition_size = int(row[4].strip(), 0)
+                      break
+
+          if partition_size is None:
+              raise SystemExit("storage partition not found in partitions_v1.csv")
+
+          littlefs = Path(".pio/build/waveshare-349/littlefs.bin")
+          actual_size = littlefs.stat().st_size
+          print(f"LittleFS size: {actual_size} bytes / {partition_size} byte partition")
+          if actual_size > partition_size:
+              raise SystemExit("LittleFS image exceeds storage partition size")
+          PY
       
       - name: Create merged firmware
         if: steps.check.outputs.should_release == 'true'

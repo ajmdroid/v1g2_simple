@@ -125,3 +125,12 @@ parserRowsBandNone
 parserRowsKuRaw
 displayLiveInvalidPrioritySkips
 displayLiveFallbackToUsable
+cameraDisplayActive
+cameraDebugOverrideActive
+cameraDisplayFrames
+cameraDebugDisplayFrames
+cameraDisplayMaxUs
+cameraDebugDisplayMaxUs
+cameraProcessMaxUs
+cameraVoiceQueued
+cameraVoiceStarted

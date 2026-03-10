@@ -65,7 +65,7 @@ jobs:
     
     - name: 🧪 Run unit tests
       run: |
-        pio test -e native
+        python3 scripts/run_native_tests_serial.py
         echo "### ✅ Unit Tests Passed" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "All native unit tests completed successfully." >> $GITHUB_STEP_SUMMARY
@@ -90,6 +90,10 @@ jobs:
     - name: 📦 Install web dependencies
       working-directory: interface
       run: npm ci
+
+    - name: 🧪 Run frontend unit tests
+      working-directory: interface
+      run: npm run test:unit
     
     - name: 🎨 Build Svelte web interface
       working-directory: interface
@@ -106,6 +110,12 @@ jobs:
       run: |
         npm run deploy
         echo "✅ Web files deployed to data/"
+
+    - name: 🔒 Check web asset guardrails
+      run: python3 scripts/check_web_asset_budget.py
+
+    - name: 🔒 Check deployed audio manifest
+      run: python3 scripts/check_audio_asset_manifest.py
     
     - name: 🐍 Setup Python
       uses: actions/setup-python@v5
@@ -131,6 +141,38 @@ jobs:
       run: |
         pio run -e waveshare-349
         echo "✅ Firmware built successfully"
+
+    - name: 💾 Build LittleFS image
+      run: |
+        pio run -e waveshare-349 -t buildfs
+        echo "✅ LittleFS image built successfully"
+
+    - name: Enforce LittleFS size budget
+      run: |
+        python3 - <<'PY'
+        import csv
+        from pathlib import Path
+
+        partition_size = None
+        with Path("partitions_v1.csv").open(newline="", encoding="utf-8") as fh:
+            for row in csv.reader(fh):
+                if not row or row[0].strip().startswith("#"):
+                    continue
+                if row[0].strip() == "storage":
+                    partition_size = int(row[4].strip(), 0)
+                    break
+
+        if partition_size is None:
+            raise SystemExit("storage partition not found in partitions_v1.csv")
+
+        littlefs = Path(".pio/build/waveshare-349/littlefs.bin")
+        actual_size = littlefs.stat().st_size
+        print(f"LittleFS size: {actual_size} bytes ({actual_size * 100 // partition_size}% of partition)")
+        if actual_size > partition_size:
+            raise SystemExit(
+                f"LittleFS image {actual_size} exceeds storage partition {partition_size}"
+            )
+        PY
     
     - name: 📊 Check build size
       run: |

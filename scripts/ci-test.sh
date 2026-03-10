@@ -63,7 +63,7 @@ echo -e "${GREEN}✅ Extern/global usage contract matches${NC}"
 
 # Step 0h: Native unit tests
 echo -e "${YELLOW}🧪 Running native unit tests...${NC}"
-pio test -e native
+python3 scripts/run_native_tests_serial.py
 echo -e "${GREEN}✅ Native unit tests passed${NC}"
 
 # Step 0i: Frontend HTTP resilience contract guard
@@ -104,6 +104,11 @@ echo -e "${YELLOW}🔒 Checking web asset guardrails...${NC}"
 python3 scripts/check_web_asset_budget.py
 echo -e "${GREEN}✅ Web asset guardrails pass${NC}"
 
+# Step 2c: Audio manifest guardrail
+echo -e "${YELLOW}🔒 Checking deployed audio manifest...${NC}"
+python3 scripts/check_audio_asset_manifest.py
+echo -e "${GREEN}✅ Deployed audio manifest matches${NC}"
+
 # Step 3: Firmware static analysis
 echo -e "${YELLOW}🔎 Running firmware static analysis...${NC}"
 ./scripts/pio-check.sh
@@ -113,6 +118,37 @@ echo -e "${GREEN}✅ Firmware static analysis passed${NC}"
 echo -e "${YELLOW}🏗️  Building firmware (waveshare-349)...${NC}"
 pio run -e waveshare-349
 echo -e "${GREEN}✅ Firmware built${NC}"
+
+# Step 4b: Build filesystem image
+echo -e "${YELLOW}💾 Building LittleFS image...${NC}"
+pio run -e waveshare-349 -t buildfs
+echo -e "${GREEN}✅ LittleFS image built${NC}"
+
+# Step 4c: Check LittleFS size against storage partition
+echo -e "${YELLOW}📏 Checking LittleFS size budget...${NC}"
+python3 - <<'PY'
+import csv
+from pathlib import Path
+
+partition_size = None
+with Path("partitions_v1.csv").open(newline="", encoding="utf-8") as fh:
+    for row in csv.reader(fh):
+        if not row or row[0].strip().startswith("#"):
+            continue
+        if row[0].strip() == "storage":
+            partition_size = int(row[4].strip(), 0)
+            break
+
+if partition_size is None:
+    raise SystemExit("storage partition not found in partitions_v1.csv")
+
+littlefs = Path(".pio/build/waveshare-349/littlefs.bin")
+actual_size = littlefs.stat().st_size
+print(f"LittleFS size: {actual_size} bytes / {partition_size} byte partition")
+if actual_size > partition_size:
+    raise SystemExit("LittleFS image exceeds storage partition size")
+PY
+echo -e "${GREEN}✅ LittleFS image fits storage partition${NC}"
 
 # Step 5: Size report
 echo ""

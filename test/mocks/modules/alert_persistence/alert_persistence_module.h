@@ -1,23 +1,11 @@
 // Mock alert_persistence_module.h for native unit testing
 #pragma once
 
-// Forward declare AlertData (don't include packet_parser.h to avoid conflicts)
-struct AlertData;
+#include "packet_parser.h"
 
 class AlertPersistenceModule {
 public:
-    // Test-controllable state - use simple inline AlertData for testing
-    struct MockAlertData {
-        int band = 0;
-        int direction = 0;
-        int frontStrength = 0;
-        int rearStrength = 0;
-        int frequency = 0;
-        bool isValid = false;
-        bool isPriority = false;
-    };
-    
-    MockAlertData persistedAlert;
+    AlertData persistedAlert;
     unsigned long persistenceStartMs = 0;
     bool persistenceActive = false;
     
@@ -29,7 +17,7 @@ public:
     int shouldShowPersistedCalls = 0;
     
     void reset() {
-        persistedAlert = MockAlertData();
+        persistedAlert = AlertData{};
         persistenceStartMs = 0;
         persistenceActive = false;
         setPersistedAlertCalls = 0;
@@ -44,10 +32,15 @@ public:
     void setPersistedAlert(const T& alert) {
         setPersistedAlertCalls++;
         persistedAlert.band = alert.band;
+        persistedAlert.direction = alert.direction;
+        persistedAlert.frontStrength = alert.frontStrength;
+        persistedAlert.rearStrength = alert.rearStrength;
+        persistedAlert.frequency = alert.frequency;
         persistedAlert.isValid = alert.isValid;
+        persistedAlert.isPriority = alert.isPriority;
     }
     
-    const MockAlertData& getPersistedAlert() const {
+    const AlertData& getPersistedAlert() const {
         return persistedAlert;
     }
     

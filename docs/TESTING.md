@@ -175,15 +175,18 @@ Per-level command template:
 ./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct <rad> --transition-drive-interval-seconds <interval>
 ```
 
-Authoritative automation (recommended for release qualification):
+Authoritative execution pattern:
 
 ```bash
-./scripts/run_bench_ladder.sh --start-level L0 --end-level L8
+./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct 200 --transition-drive-interval-seconds 15
+./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct 250 --transition-drive-interval-seconds 12
+./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct 300 --transition-drive-interval-seconds 10
+# Continue through L8 using the fixed table above.
 ```
 
-This runner executes the fixed ladder levels, classifies each failure (`A/B/C`)
-using `tools/classify_device_test_failure.py`, and enforces the stop policy and
-acceptance decision automatically.
+There is currently no checked-in `run_bench_ladder.sh` wrapper in this repo.
+Run the ladder with the per-level `device-test.sh` commands above and record the
+results in the campaign summary artifacts under `.artifacts/test_reports/`.
 
 Run count rule:
 
@@ -514,7 +517,7 @@ When any of these change, update this document in the same commit:
 
 - script names or command order in the cycle process
 - default thresholds/gates in `device-test.sh` or `run_real_fw_soak.sh`
-- ladder policy or classification behavior in `run_bench_ladder.sh`
+- ladder policy or classification behavior in this Bench Stress Ladder section
 - artifact paths or report filenames
 - pass/fail interpretation rules
 

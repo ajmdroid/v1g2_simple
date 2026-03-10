@@ -14,10 +14,15 @@ unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
 #endif
 
+#include "../../src/perf_metrics.h"
 #include "../../src/modules/lockout/road_map_reader.h"
 #include "../../src/modules/lockout/road_map_reader.cpp"
 #include "../../src/modules/camera_alert/camera_alert_module.h"
 #include "../../src/modules/camera_alert/camera_alert_module.cpp"
+
+PerfCounters perfCounters;
+PerfExtendedMetrics perfExtended;
+void perfRecordCameraProcessUs(uint32_t /*us*/) {}
 
 namespace {
 

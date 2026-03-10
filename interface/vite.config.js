@@ -26,6 +26,8 @@ export default defineConfig({
 				'src/routes/settings/+page.svelte',
 				'src/routes/profiles/+page.svelte',
 				'src/routes/cameras/+page.svelte',
+				'src/routes/audio/+page.svelte',
+				'src/routes/colors/+page.svelte',
 				'src/lib/features/lockouts/LockoutsPage.svelte',
 				'src/lib/features/settings/SettingsPage.svelte',
 				'src/lib/features/profiles/ProfilesPage.svelte',

@@ -19,18 +19,7 @@ cd ..
 
 # Restore audio assets after deploy clears data/
 echo "🔊 Staging audio assets for LittleFS..."
-mkdir -p data/audio
-if ls tools/freq_audio/mulaw/*.mul 1>/dev/null 2>&1; then
-  # ghz_*.mul clips are legacy duplicates; runtime now uses tens_XX for GHz tokens.
-  for src in tools/freq_audio/mulaw/*.mul; do
-    [ -e "$src" ] || continue
-    base="$(basename "$src")"
-    case "$base" in
-      ghz_*.mul) continue ;;
-    esac
-    cp "$src" data/audio/
-  done
-fi
+node interface/scripts/stage-audio.js
 AUDIO_COUNT=$(ls -1 data/audio/*.mul 2>/dev/null | wc -l | tr -d ' ')
 echo "✅ Staged $AUDIO_COUNT audio clips"
 

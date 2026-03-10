@@ -145,6 +145,7 @@ struct V1Settings {
     uint16_t gpsLockoutMaxHdopX10 = 50;          // 5.0 HDOP × 10
     uint8_t gpsLockoutMinLearnerSpeedMph = 5;
     bool bleProxyEnabled = true;
+    uint8_t activeSlot = 0;
 
     // Camera alerts
     bool cameraAlertsEnabled = true;
@@ -168,6 +169,7 @@ class SettingsManager {
 public:
     V1Settings settings;
     int saveCalls = 0;
+    uint8_t slotAlertPersistSec[3] = {0, 0, 0};
     
     void load() {}
     void save() { ++saveCalls; }
@@ -176,6 +178,9 @@ public:
     const V1Settings& get() const { return settings; }
     V1Settings& getMutable() { return settings; }
     V1Settings& mutableSettings() { return settings; }
+    uint8_t getSlotAlertPersistSec(uint8_t slot) const {
+        return (slot < 3) ? slotAlertPersistSec[slot] : 0;
+    }
     
     // Convenience helpers used by some tests
     uint8_t getBrightness() const { return settings.brightness; }
