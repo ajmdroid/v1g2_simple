@@ -14,6 +14,7 @@
 #include <FS.h>
 #include <WebServer.h>
 #include "settings.h"
+#include "modules/wifi/backup_snapshot_cache.h"
 #include "modules/wifi/wifi_status_api_service.h"
 #include <functional>
 
@@ -250,6 +251,7 @@ private:
     static constexpr unsigned long STATUS_CACHE_TTL_MS = 500;  // 500ms cache
     WifiStatusApiService::StatusJsonCache cachedStatusJson;
     unsigned long lastStatusJsonTime = 0;
+    BackupApiService::BackupSnapshotCache cachedBackupSnapshot;
     
     std::function<void(JsonObject)> mergeAlert;
     std::function<void(JsonObject)> mergeStatus;

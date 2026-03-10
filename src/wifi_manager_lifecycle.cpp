@@ -299,6 +299,7 @@ void WiFiManager::finalizeStopSetupMode() {
     wifiStopManual = false;
     wifiStopHadSta = false;
     wifiStopHadAp = false;
+    BackupApiService::releaseBackupSnapshotCache(cachedBackupSnapshot);
     WifiStatusApiService::releaseStatusJsonCache(cachedStatusJson, lastStatusJsonTime);
 
     // ========== OBSERVABILITY ==========

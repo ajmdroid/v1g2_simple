@@ -83,6 +83,14 @@ const char* OBFUSCATION_HEX_PREFIX = "hex:";
 
 SettingsManager::SettingsManager() {}
 
+void SettingsManager::bumpBackupRevision() {
+    if (backupRevisionCounter == UINT32_MAX) {
+        backupRevisionCounter = 1;
+        return;
+    }
+    backupRevisionCounter++;
+}
+
 void SettingsManager::begin() {
     // Ensure WiFi client namespace exists so read-only opens do not spam
     // NOT_FOUND on fresh/erased NVS.
@@ -355,6 +363,7 @@ void SettingsManager::save() {
         return;
     }
 
+    bumpBackupRevision();
     Serial.println("Settings saved atomically");
 
     // Backup display settings to SD card (survives reflash)

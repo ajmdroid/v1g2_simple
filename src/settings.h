@@ -518,6 +518,7 @@ public:
     const V1Settings& get() const { return settings; }
     // Explicit mutable access for batch handlers that apply many fields then call save().
     V1Settings& mutableSettings() { return settings; }
+    uint32_t backupRevision() const { return backupRevisionCounter; }
     
     // Update settings (calls save automatically)
     void setWiFiEnabled(bool enabled);
@@ -625,6 +626,8 @@ public:
 private:
     V1Settings settings;
     Preferences preferences;
+    uint32_t backupRevisionCounter = 1;
+    void bumpBackupRevision();
     bool persistSettingsAtomically();
     bool writeSettingsToNamespace(const char* ns);
     String getActiveNamespace();

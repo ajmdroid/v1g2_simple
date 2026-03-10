@@ -32,19 +32,25 @@ String sanitizeLastV1AddressForBackup(const String& raw) {
 
 namespace BackupApiService {
 
-static void sendBackup(WebServer& server) {
+static void sendBackup(WebServer& server,
+                       BackupSnapshotCache& cachedSnapshot,
+                       const std::function<uint32_t()>& millisFn) {
     Serial.println("[HTTP] GET /api/settings/backup");
-    JsonDocument doc;
-    BackupPayloadBuilder::buildBackupDocument(
-        doc,
-        settingsManager.get(),
-        v1ProfileManager,
-        BackupPayloadBuilder::BackupTransport::HttpDownload,
-        millis());
-    
-    // Send with Content-Disposition header for download
     server.sendHeader("Content-Disposition", "attachment; filename=\"v1simple_backup.json\"");
-    sendJsonStream(server, doc);
+    sendCachedBackupSnapshot(
+        server,
+        cachedSnapshot,
+        settingsManager.backupRevision(),
+        v1ProfileManager.catalogRevision(),
+        [](JsonDocument& doc, uint32_t snapshotMs) {
+            BackupPayloadBuilder::buildBackupDocument(
+                doc,
+                settingsManager.get(),
+                v1ProfileManager,
+                BackupPayloadBuilder::BackupTransport::HttpDownload,
+                snapshotMs);
+        },
+        millisFn);
 }
 
 static void handleBackupNow(WebServer& server) {
@@ -62,11 +68,13 @@ static void handleBackupNow(WebServer& server) {
 }
 
 void handleApiBackup(WebServer& server,
-                     const std::function<void()>& markUiActivity) {
+                     BackupSnapshotCache& cachedSnapshot,
+                     const std::function<void()>& markUiActivity,
+                     const std::function<uint32_t()>& millisFn) {
     if (markUiActivity) {
         markUiActivity();
     }
-    sendBackup(server);
+    sendBackup(server, cachedSnapshot, millisFn);
 }
 
 void handleApiBackupNow(WebServer& server,

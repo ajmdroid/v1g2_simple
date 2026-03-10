@@ -133,6 +133,7 @@ public:
     ProfileSaveResult saveProfile(const V1Profile& profile);
     bool deleteProfile(const String& name);
     bool renameProfile(const String& oldName, const String& newName);
+    uint32_t catalogRevision() const { return catalogRevisionCounter; }
     
     // Get last error message
     const String& getLastError() const { return lastError; }
@@ -153,12 +154,14 @@ private:
     bool ready;
     String profileDir;
     mutable String lastError;  // Last error message for detailed reporting
+    uint32_t catalogRevisionCounter = 1;
     
     V1UserSettings currentSettings;
     bool currentValid;
     
     String profilePath(const String& name) const;
     static uint32_t calculateCRC32(const uint8_t* data, size_t length);
+    void bumpCatalogRevision();
     
     // Startup recovery for interrupted saves
     void recoverInterruptedSaves();

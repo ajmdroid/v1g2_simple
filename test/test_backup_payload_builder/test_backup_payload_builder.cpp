@@ -155,10 +155,32 @@ void test_builder_includes_profile_payloads_and_snapshot_time() {
     }
 }
 
+void test_profile_catalog_revision_advances_on_mutations() {
+    fs::FS fs(g_tempRoot);
+    V1ProfileManager profileManager;
+    TEST_ASSERT_TRUE(profileManager.begin(&fs));
+
+    const uint32_t initialRevision = profileManager.catalogRevision();
+
+    V1Profile profile("City");
+    ProfileSaveResult saveResult = profileManager.saveProfile(profile);
+    TEST_ASSERT_TRUE(saveResult.success);
+    const uint32_t afterSaveRevision = profileManager.catalogRevision();
+    TEST_ASSERT_TRUE(afterSaveRevision > initialRevision);
+
+    TEST_ASSERT_TRUE(profileManager.renameProfile("City", "Highway"));
+    const uint32_t afterRenameRevision = profileManager.catalogRevision();
+    TEST_ASSERT_TRUE(afterRenameRevision > afterSaveRevision);
+
+    TEST_ASSERT_TRUE(profileManager.deleteProfile("Highway"));
+    TEST_ASSERT_TRUE(profileManager.catalogRevision() > afterRenameRevision);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_builder_recognizes_http_and_sd_backup_types);
     RUN_TEST(test_builder_aligns_http_and_sd_schema);
     RUN_TEST(test_builder_includes_profile_payloads_and_snapshot_time);
+    RUN_TEST(test_profile_catalog_revision_advances_on_mutations);
     return UNITY_END();
 }

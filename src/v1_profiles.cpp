@@ -71,6 +71,14 @@ V1ProfileManager::V1ProfileManager()
     , currentValid(false) {
 }
 
+void V1ProfileManager::bumpCatalogRevision() {
+    if (catalogRevisionCounter == UINT32_MAX) {
+        catalogRevisionCounter = 1;
+        return;
+    }
+    catalogRevisionCounter++;
+}
+
 static String basenameFromPath(const String& path) {
     int lastSlash = path.lastIndexOf('/');
     if (lastSlash >= 0) {
@@ -549,6 +557,7 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
     
     Serial.printf("[V1Profiles] Saved profile: %s (%u bytes, CRC: %08lX)\n",
         profile.name.c_str(), written, static_cast<unsigned long>(crc));
+    bumpCatalogRevision();
     return ProfileSaveResult(true);
 }
 
@@ -580,6 +589,7 @@ bool V1ProfileManager::deleteProfile(const String& name) {
 
     if (ok && removedAny) {
         Serial.printf("[V1Profiles] Deleted profile: %s\n", name.c_str());
+        bumpCatalogRevision();
     }
     return ok && removedAny;
 }

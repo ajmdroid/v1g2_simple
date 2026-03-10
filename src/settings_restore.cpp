@@ -723,6 +723,7 @@ bool SettingsManager::restoreFromSD() {
         return false;
     }
 
+    bumpBackupRevision();
     Serial.printf("[Settings] ✅ Full restore from SD backup complete (%d profiles)\n", profilesRestored);
     return true;
 }
@@ -770,6 +771,7 @@ void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
     
     if (needsSave) {
         if (persistSettingsAtomically()) {
+            bumpBackupRevision();
             Serial.println("[Settings] Cleared invalid profile references and saved");
         } else {
             Serial.println("[Settings] ERROR: Failed to persist cleared profile references");

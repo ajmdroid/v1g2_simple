@@ -318,7 +318,9 @@ void WiFiManager::setupWebServer() {
     server.on("/api/settings/backup", HTTP_GET, [this]() {
         BackupApiService::handleApiBackup(
             server,
-            [this]() { markUiActivity(); });
+            cachedBackupSnapshot,
+            [this]() { markUiActivity(); },
+            []() { return static_cast<uint32_t>(millis()); });
     });
     server.on("/api/settings/backup-now", HTTP_POST, [this, rateLimitCallback]() {
         BackupApiService::handleApiBackupNow(

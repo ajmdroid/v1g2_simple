@@ -25,8 +25,11 @@ bool responseContains(const WebServer& server, const char* needle) {
 
 namespace BackupApiService {
 
-void sendBackup(WebServer& server) {
+void sendBackup(WebServer& server,
+                BackupSnapshotCache& /*cachedSnapshot*/,
+                const std::function<uint32_t()>& /*millisFn*/) {
     sendBackupCalls++;
+    server.sendHeader("Content-Disposition", "attachment; filename=\"v1simple_backup.json\"");
     server.send(200, "application/json", "{\"route\":\"backup\"}");
 }
 
@@ -54,16 +57,20 @@ void tearDown() {}
 
 void test_handle_api_backup_marks_ui_activity_and_delegates() {
     WebServer server(80);
+    BackupApiService::BackupSnapshotCache cache;
     int uiActivityCalls = 0;
 
     BackupApiService::handleApiBackup(
         server,
+        cache,
         [&uiActivityCalls]() { uiActivityCalls++; });
 
     TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
     TEST_ASSERT_EQUAL_INT(1, sendBackupCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"backup\""));
+    TEST_ASSERT_EQUAL_STRING("attachment; filename=\"v1simple_backup.json\"",
+                             server.sentHeader("Content-Disposition").c_str());
 }
 
 void test_handle_api_restore_rate_limited_short_circuits() {
