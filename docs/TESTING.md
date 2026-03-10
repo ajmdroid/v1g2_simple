@@ -112,7 +112,7 @@ This is the process that must remain consistent over time.
 - harness preflight fail-fast: classed preflight failure (`HARNESS_PRECHECK_*`) aborts remaining items with deterministic suite exit reason
 - minima tail exclusion for DMA floors: `3` samples
 - transition qualification enabled: flap cycles `3`, interval `15s`, max proxy-off recovery `30000ms`, max samples-to-stable `6`
-- optional camera+radar overlap item: disabled by default; enable with `--camera-radar-stress`
+- camera+radar overlap item: enabled by default; disable with `--no-camera-radar-stress`
 
 Camera smoke requires a local Chrome/Chromium binary because the suite verifies
 the rendered `/cameras` page with headless DOM capture.
@@ -249,11 +249,11 @@ Append the latest campaign summary path in this doc:
 Run these checks before declaring the doc update complete:
 
 1. Confirm documented flags still exist:
-   - `./scripts/device-test.sh --help` includes `--rad-duration-scale-pct`, `--transition-drive-interval-seconds`, `--duration-seconds`, `--camera-radar-stress`
+   - `./scripts/device-test.sh --help` includes `--rad-duration-scale-pct`, `--transition-drive-interval-seconds`, `--duration-seconds`, `--camera-radar-stress`, and `--no-camera-radar-stress`
    - `./build.sh --help` includes `--upload-fs`
 2. Dry-run sanity commands:
    - `./scripts/device-test.sh --dry-run --duration-seconds 240 --rad-duration-scale-pct 200 --transition-drive-interval-seconds 15`
-   - `./scripts/device-test.sh --dry-run --camera-radar-stress`
+   - `./scripts/device-test.sh --dry-run --no-camera-radar-stress`
    - `./scripts/run_real_fw_soak.sh --dry-run --duration-seconds 240 --transition-drive-interval-seconds 15`
 3. Artifact naming/path alignment:
    - verify outputs continue under `.artifacts/test_reports/`
@@ -267,7 +267,7 @@ Current sequence:
    - if preflight fails (AP unreachable/invalid payload), suite aborts here as a harness-classed failure
 2. Camera smoke (`scripts/camera_device_smoke.py`)
 3. Short radar scenario (`RAD-03` by default)
-4. Optional camera+radar overlap stress (`scripts/camera_radar_device_stress.py`) when `--camera-radar-stress` is set
+4. Camera+radar overlap stress (`scripts/camera_radar_device_stress.py`)
 5. Real firmware soak: display stress (`soak_display`)
 6. Real firmware soak: core (`soak_core`)
 7. Real firmware soak: transition qualification (`soak_transition`)
@@ -280,8 +280,8 @@ Outputs include per-item PASS/FAIL plus metrics, then an overall suite result.
 Use this when the question is specifically whether camera-driven display ownership or
 camera/display transitions correlate with `dispPipeMaxUs` spikes under radar load.
 
-This runner is not part of the default cycle gate. Run it directly when you need
-focused reproduction, or enable the suite wrapper with `device-test.sh --camera-radar-stress`.
+This runner is part of the default cycle gate. Run it directly when you need
+focused reproduction, or disable the suite wrapper with `device-test.sh --no-camera-radar-stress`.
 
 Standalone examples:
 

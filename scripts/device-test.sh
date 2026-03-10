@@ -55,7 +55,7 @@ RAD_TIMEOUT_SECONDS="${REAL_FW_RAD_TIMEOUT_SECONDS:-}"
 RAD_MIN_RX_DELTA=20
 RAD_MIN_PARSE_SUCCESS_DELTA=20
 RAD_MIN_DISPLAY_UPDATES_DELTA=10
-CAMERA_RADAR_STRESS=0
+CAMERA_RADAR_STRESS=1
 
 OUT_DIR=""
 
@@ -141,7 +141,8 @@ Options:
   --rad-scenario ID              Short radar scenario ID (default: RAD-03)
   --rad-duration-scale-pct N     RAD scenario duration scale percent (default: 100)
   --rad-timeout-seconds N        RAD scenario completion timeout (default: auto from scale)
-  --camera-radar-stress          Run opt-in camera+radar overlap stress item
+  --camera-radar-stress          Run camera+radar overlap stress item (default)
+  --no-camera-radar-stress       Skip camera+radar overlap stress item
   --no-transition-soak           Skip Cycle 3 transition qualification soak
   --transition-flap-cycles N     Transition flap cycles for transition soak (default: 3)
   --transition-drive-interval-seconds N
@@ -785,6 +786,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --camera-radar-stress)
       CAMERA_RADAR_STRESS=1
+      ;;
+    --no-camera-radar-stress)
+      CAMERA_RADAR_STRESS=0
       ;;
     --no-transition-soak)
       SOAK_ENABLE_TRANSITION_QUAL=0
