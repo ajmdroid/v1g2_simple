@@ -32,7 +32,7 @@ void handleApiTimeSet(WebServer& server,
                       const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
     (void)clientSource;
-    (void)invalidateStatusCache;
+    // When time-set is enabled, call invalidateStatusCache() after updating time state.
     sendTimeSetDisabled(server, runtime);
 }
 
