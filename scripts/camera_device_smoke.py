@@ -144,6 +144,33 @@ def dump_dom(chrome_bin: str, url: str, timeout_ms: int, wall_timeout_seconds: f
     return stdout
 
 
+def dump_dom_with_timeout_retry(
+    chrome_bin: str,
+    url: str,
+    timeout_ms: int,
+    wall_timeout_seconds: float,
+    timeout_retries: int,
+    retry_backoff_seconds: float,
+    retry_extra_seconds: float,
+) -> tuple[str, int]:
+    attempts = max(1, timeout_retries + 1)
+    for attempt_idx in range(attempts):
+        attempt_timeout = wall_timeout_seconds + (retry_extra_seconds * attempt_idx)
+        try:
+            dom = dump_dom(chrome_bin, url, timeout_ms, attempt_timeout)
+            return dom, attempt_idx
+        except SmokeFailure as exc:
+            timeout_like = "timed out" in str(exc).lower()
+            is_last_attempt = attempt_idx >= attempts - 1
+            if not timeout_like or is_last_attempt:
+                raise
+            sleep_seconds = max(0.0, retry_backoff_seconds) * (attempt_idx + 1)
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+
+    raise SmokeFailure("Chrome dump-dom failed for unknown retry reason")
+
+
 def write_summary(path: Path,
                   result: str,
                   metrics: dict[str, object],
@@ -195,7 +222,20 @@ def main() -> int:
                         help="Delay after a voiced render so the clip can finish before the next type starts.")
     parser.add_argument("--chrome-timeout-seconds", type=float, default=15.0,
                         help="Hard wall-clock timeout for the headless Chrome DOM dump.")
+    parser.add_argument("--chrome-timeout-retries", type=int, default=1,
+                        help="Additional retry attempts for timeout-only Chrome DOM failures.")
+    parser.add_argument("--chrome-timeout-retry-backoff-seconds", type=float, default=1.5,
+                        help="Base backoff before timeout-only DOM retries (scaled by attempt index).")
+    parser.add_argument("--chrome-timeout-retry-extra-seconds", type=float, default=10.0,
+                        help="Extra timeout seconds added per timeout-only DOM retry attempt.")
     args = parser.parse_args()
+
+    if args.chrome_timeout_retries < 0:
+        raise SystemExit("--chrome-timeout-retries must be >= 0")
+    if args.chrome_timeout_retry_backoff_seconds < 0:
+        raise SystemExit("--chrome-timeout-retry-backoff-seconds must be >= 0")
+    if args.chrome_timeout_retry_extra_seconds < 0:
+        raise SystemExit("--chrome-timeout-retry-extra-seconds must be >= 0")
 
     base_url = args.base_url.rstrip("/") if args.base_url else derive_base_url(args.metrics_url)
     out_dir = Path(args.out_dir) if args.out_dir else Path(
@@ -254,7 +294,20 @@ def main() -> int:
                 f"cameraAlertNearRangeCm did not persist ({after_update['cameraAlertNearRangeCm']} != {close_cm})")
         checks.append("camera settings API round-trip persists first and close alert distances")
 
-        dom = dump_dom(chrome_bin, base_url + "/cameras", 7000, args.chrome_timeout_seconds)
+        dom, dom_retry_count = dump_dom_with_timeout_retry(
+            chrome_bin=chrome_bin,
+            url=base_url + "/cameras",
+            timeout_ms=7000,
+            wall_timeout_seconds=args.chrome_timeout_seconds,
+            timeout_retries=args.chrome_timeout_retries,
+            retry_backoff_seconds=args.chrome_timeout_retry_backoff_seconds,
+            retry_extra_seconds=args.chrome_timeout_retry_extra_seconds,
+        )
+        metrics["chrome_dump_dom_attempts"] = dom_retry_count + 1
+        metrics["chrome_dump_dom_retries"] = dom_retry_count
+        metrics["chrome_dump_dom_timeout_seconds"] = args.chrome_timeout_seconds
+        if dom_retry_count > 0:
+            checks.append(f"camera page DOM capture recovered after {dom_retry_count} timeout retry")
         require("Camera Alerts" in dom, "camera page title missing from DOM")
         require("First Alert Distance" in dom, "first alert label missing from DOM")
         require("Close Alert Distance" in dom, "close alert label missing from DOM")

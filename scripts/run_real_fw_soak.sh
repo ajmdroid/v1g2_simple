@@ -1554,6 +1554,9 @@ transition_drive_errors=0
 transition_flap_off_calls=0
 transition_flap_on_calls=0
 transition_flap_restore_calls=0
+transition_restore_attempts=0
+transition_restore_max_attempts=3
+transition_restore_retry_delay_seconds=1
 transition_flap_cycles_completed=0
 transition_target_enabled=1
 next_transition_drive_epoch="$soak_start_epoch"
@@ -1647,13 +1650,33 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
 done
 
 if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 ]]; then
-  transition_restore_resp="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" \
-    -X POST --data "enabled=1" "$TRANSITION_CONTROL_URL" 2>/dev/null || true)"
-  if [[ -n "$transition_restore_resp" && "$transition_restore_resp" == *'"success":true'* ]]; then
-    transition_flap_restore_calls=$((transition_flap_restore_calls + 1))
-  else
+  transition_restore_ok=0
+  transition_restore_resp=""
+  transition_restore_attempts=0
+  while [[ "$transition_restore_attempts" -lt "$transition_restore_max_attempts" ]]; do
+    transition_restore_attempts=$((transition_restore_attempts + 1))
+    transition_restore_resp="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" \
+      -X POST --data "enabled=1" "$TRANSITION_CONTROL_URL" 2>/dev/null || true)"
+    if [[ -n "$transition_restore_resp" && "$transition_restore_resp" == *'"success":true'* ]]; then
+      transition_flap_restore_calls=$((transition_flap_restore_calls + 1))
+      transition_restore_ok=1
+      break
+    fi
+    if [[ "$transition_restore_attempts" -lt "$transition_restore_max_attempts" ]]; then
+      sleep "$transition_restore_retry_delay_seconds"
+    fi
+  done
+  if [[ "$transition_restore_ok" -ne 1 ]]; then
     transition_drive_errors=$((transition_drive_errors + 1))
-    echo "[WARN] Transition drive restore failed (enabled=1)." | tee -a "$RUN_LOG"
+    transition_restore_resp_compact="$(printf "%s" "$transition_restore_resp" | tr -d '\r\n')"
+    transition_restore_resp_compact="${transition_restore_resp_compact:0:180}"
+    if [[ -n "$transition_restore_resp_compact" ]]; then
+      echo "[WARN] Transition drive restore failed (enabled=1 attempts=${transition_restore_attempts}/${transition_restore_max_attempts} response=${transition_restore_resp_compact})." | tee -a "$RUN_LOG"
+    else
+      echo "[WARN] Transition drive restore failed (enabled=1 attempts=${transition_restore_attempts}/${transition_restore_max_attempts})." | tee -a "$RUN_LOG"
+    fi
+  elif [[ "$transition_restore_attempts" -gt 1 ]]; then
+    echo "[INFO] Transition drive restore succeeded after retry (${transition_restore_attempts}/${transition_restore_max_attempts})." | tee -a "$RUN_LOG"
   fi
 fi
 
@@ -2839,6 +2862,7 @@ fi
   echo "- Transition flap off calls: ${transition_flap_off_calls}"
   echo "- Transition flap on calls: ${transition_flap_on_calls}"
   echo "- Transition restore calls: ${transition_flap_restore_calls}"
+  echo "- Transition restore attempts used/max: ${transition_restore_attempts}/${transition_restore_max_attempts}"
   echo "- Transition drive actions: ${transition_drive_calls}"
   echo "- Transition drive errors: ${transition_drive_errors}"
   echo "- Stable consecutive samples required: ${TRANSITION_STABLE_CONSECUTIVE_SAMPLES}"
