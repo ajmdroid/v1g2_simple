@@ -159,7 +159,7 @@ Get all device settings.
 | `autoPowerOffMinutes` | int | 0-60 | Auto power off after V1 disconnect (0=disabled) |
 | `apTimeoutMinutes` | int | 0,5-60 | AP auto-off after inactivity (0=always on) |
 | `enableWifiAtBoot` | boolean | - | Boot with AP enabled instead of BOOT long-press |
-| `enableSignalTraceLogging` | boolean | - | Log all priority bands to lockout CSV for diagnostics (best-effort) |
+| `enableSignalTraceLogging` | boolean | - | Log all active V1 alert bands to lockout CSV for diagnostics (best-effort) |
 
 ### POST /api/settings
 
@@ -480,7 +480,8 @@ Get recent lockout candidate observations (newest first).
 
 **Notes:**
 - Candidate events are persisted to SD (when available) at `/lockout/lockout_candidates_boot_<bootId>.csv`.
-- `enableSignalTraceLogging` (default `true`) also captures unsupported lockout bands for diagnostics.
+- Supported lockout observations are captured from the full active V1 alert set, not only the current priority alert.
+- `enableSignalTraceLogging` (default `true`) also captures unsupported lockout bands from that same alert set for diagnostics.
 - SD writes apply a dedupe gate (~15s minimum repeat per same signal bucket) to reduce long-run growth.
 
 ### GET /api/lockouts/zones

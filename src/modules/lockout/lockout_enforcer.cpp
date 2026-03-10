@@ -25,6 +25,8 @@ uint32_t hoursToMs(uint8_t hours) {
     return static_cast<uint32_t>(hours) * 3600UL * 1000UL;
 }
 
+constexpr size_t LOCKOUT_MAX_MATCHED_SLOTS = 16;
+
 }  // namespace
 
 LockoutEnforcer lockoutEnforcer;
@@ -102,56 +104,80 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
         }
         return lastResult_;
     }
-    const AlertData priority = parser.getPriorityAlert();
-    if (!priority.isValid || priority.band == BAND_NONE) {
-        lastResult_.evaluated = true;
-        ++stats_.evaluations;
-        return lastResult_;
+    const bool courseValid = gpsStatus.courseValid &&
+                             gpsStatus.courseAgeMs <= LOCKOUT_GPS_COURSE_MAX_AGE_MS;
+    int16_t matchedSlots[LOCKOUT_MAX_MATCHED_SLOTS];
+    size_t matchedSlotCount = 0;
+
+    const auto& alerts = parser.getAllAlerts();
+    const size_t alertCount = static_cast<size_t>(parser.getAlertCount());
+    for (size_t i = 0; i < alertCount; ++i) {
+        const AlertData& alert = alerts[i];
+        if (!alert.isValid || alert.band == BAND_NONE) {
+            continue;
+        }
+
+        const uint8_t band = static_cast<uint8_t>(alert.band);
+        if (!lockoutBandSupported(band)) {
+            continue;
+        }
+
+        ++lastResult_.supportedAlertCount;
+        const uint16_t freqMHz = static_cast<uint16_t>(
+            (alert.frequency <= UINT16_MAX) ? alert.frequency : 0);
+        const LockoutDecision decision = index_->evaluate(latE5,
+                                                          lonE5,
+                                                          band,
+                                                          freqMHz,
+                                                          courseValid,
+                                                          gpsStatus.courseDeg);
+        if (!decision.shouldMute) {
+            continue;
+        }
+
+        ++lastResult_.matchedAlertCount;
+        if (lastResult_.matchIndex < 0) {
+            lastResult_.matchIndex = decision.matchIndex;
+            lastResult_.confidence = decision.confidence;
+        }
+
+        bool seenSlot = false;
+        for (size_t j = 0; j < matchedSlotCount; ++j) {
+            if (matchedSlots[j] == decision.matchIndex) {
+                seenSlot = true;
+                break;
+            }
+        }
+        if (!seenSlot && matchedSlotCount < LOCKOUT_MAX_MATCHED_SLOTS) {
+            matchedSlots[matchedSlotCount++] = decision.matchIndex;
+        }
     }
-    const uint8_t band = static_cast<uint8_t>(priority.band);
-    if (!lockoutBandSupported(band)) {
-        lastResult_.evaluated = true;
-        ++stats_.evaluations;
-        return lastResult_;
-    }
 
-    // --- Evaluate ---
-    const uint16_t freqMHz = static_cast<uint16_t>(
-        (priority.frequency <= UINT16_MAX) ? priority.frequency : 0);
-
-    const LockoutDecision decision = index_->evaluate(latE5,
-                                                      lonE5,
-                                                      band,
-                                                      freqMHz,
-                                                      gpsStatus.courseValid &&
-                                                          gpsStatus.courseAgeMs <= LOCKOUT_GPS_COURSE_MAX_AGE_MS,
-                                                      gpsStatus.courseDeg);
-
-    lastResult_.evaluated  = true;
-    lastResult_.shouldMute = decision.shouldMute;
-    lastResult_.matchIndex = decision.matchIndex;
-    lastResult_.confidence = decision.confidence;
+    lastResult_.evaluated = true;
+    lastResult_.shouldMute = (lastResult_.supportedAlertCount > 0) &&
+                             (lastResult_.matchedAlertCount == lastResult_.supportedAlertCount);
     ++stats_.evaluations;
+    stats_.matches += lastResult_.matchedAlertCount;
 
-    if (decision.shouldMute) {
-        ++stats_.matches;
-
+    if (lastResult_.matchedAlertCount > 0) {
         // Only ENFORCE mode mutates index state (confidence + lastSeenMs).
         // SHADOW and ADVISORY are read-only so toggling them has no side-effects.
         if (mode == LOCKOUT_RUNTIME_ENFORCE) {
-            index_->recordHit(static_cast<size_t>(decision.matchIndex), epochMs);
+            for (size_t i = 0; i < matchedSlotCount; ++i) {
+                index_->recordHit(static_cast<size_t>(matchedSlots[i]), epochMs);
+            }
             if (store_) store_->markDirty();
         }
 
-        // Rate-limited log for SHADOW / ADVISORY / ENFORCE.
-        if (nowMs - lastLogMs_ >= LOG_INTERVAL_MS) {
+        // Rate-limited log only when the full active alert set is covered.
+        if (lastResult_.shouldMute && (nowMs - lastLogMs_ >= LOG_INTERVAL_MS)) {
             lastLogMs_ = nowMs;
-            Serial.printf("[Lockout] MATCH mode=%s slot=%d conf=%u band=%u freq=%u lat=%ld lon=%ld\n",
+            Serial.printf("[Lockout] MATCH mode=%s alerts=%u/%u slot=%d conf=%u lat=%ld lon=%ld\n",
                           lockoutRuntimeModeName(mode),
-                          decision.matchIndex,
-                          decision.confidence,
-                          band,
-                          freqMHz,
+                          static_cast<unsigned>(lastResult_.matchedAlertCount),
+                          static_cast<unsigned>(lastResult_.supportedAlertCount),
+                          lastResult_.matchIndex,
+                          lastResult_.confidence,
                           static_cast<long>(latE5),
                           static_cast<long>(lonE5));
         }

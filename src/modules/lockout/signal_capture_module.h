@@ -8,7 +8,7 @@
 class PacketParser;
 struct GpsRuntimeStatus;
 
-// Captures bounded lockout-candidate observations from parsed priority alerts.
+// Captures bounded lockout-candidate observations from the current V1 alert set.
 class SignalCaptureModule {
 public:
     void reset();
@@ -18,13 +18,21 @@ public:
                                     bool captureUnsupportedBandsToSd = false);
 
 private:
+    struct RecentBucket {
+        SignalObservation observation = {};
+        bool valid = false;
+    };
+
+    static constexpr size_t kRecentBucketCount = 16;
+
     static int32_t degreesToE5(float degrees);
     static uint16_t hdopToX10(float hdop);
     static bool sameObservationBucket(const SignalObservation& a, const SignalObservation& b);
-    bool shouldPublish(const SignalObservation& sample) const;
+    bool shouldPublish(const SignalObservation& sample, size_t* matchedBucketIndex) const;
+    void rememberPublishedObservation(const SignalObservation& sample, size_t matchedBucketIndex);
 
-    bool lastValid_ = false;
-    SignalObservation lastSample_ = {};
+    RecentBucket recentBuckets_[kRecentBucketCount] = {};
+    size_t nextRecentBucketIndex_ = 0;
 };
 
 extern SignalCaptureModule signalCaptureModule;

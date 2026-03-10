@@ -95,8 +95,10 @@ size_t LockoutIndex::findNearbyDirectional(int32_t latE5,
 }
 
 void SignalCaptureModule::reset() {
-    lastValid_ = false;
-    lastSample_ = SignalObservation{};
+    for (size_t i = 0; i < kRecentBucketCount; ++i) {
+        recentBuckets_[i].valid = false;
+    }
+    nextRecentBucketIndex_ = 0;
 }
 
 void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,

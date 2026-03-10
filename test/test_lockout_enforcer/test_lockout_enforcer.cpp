@@ -196,6 +196,8 @@ void test_shadow_mode_match() {
     TEST_ASSERT_TRUE(r.evaluated);
     TEST_ASSERT_TRUE(r.shouldMute);
     TEST_ASSERT_EQUAL(0, r.matchIndex);
+    TEST_ASSERT_EQUAL(1, r.supportedAlertCount);
+    TEST_ASSERT_EQUAL(1, r.matchedAlertCount);
     TEST_ASSERT_EQUAL(LOCKOUT_RUNTIME_SHADOW, r.mode);
     TEST_ASSERT_EQUAL(1, enforcer.stats().evaluations);
     TEST_ASSERT_EQUAL(1, enforcer.stats().matches);
@@ -370,6 +372,92 @@ void test_directional_entry_requires_valid_course() {
 
     TEST_ASSERT_TRUE(r.evaluated);
     TEST_ASSERT_FALSE(r.shouldMute);
+}
+
+void test_multi_alert_all_supported_matches_mutes() {
+    testIndex.add(makeEntry(10.12345f, -20.54321f, 0x04, 24148));
+    testIndex.add(makeEntry(10.12345f, -20.54321f, 0x08, 10525));
+    parser.setAlerts({
+        AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true),
+        AlertData::create(BAND_X, DIR_SIDE, 3, 0, 10525, true, false)
+    });
+
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
+    LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
+
+    TEST_ASSERT_TRUE(r.evaluated);
+    TEST_ASSERT_TRUE(r.shouldMute);
+    TEST_ASSERT_EQUAL(2, r.supportedAlertCount);
+    TEST_ASSERT_EQUAL(2, r.matchedAlertCount);
+    TEST_ASSERT_EQUAL(0, r.matchIndex);
+    TEST_ASSERT_EQUAL(2, enforcer.stats().matches);
+}
+
+void test_multi_alert_partial_match_does_not_mute() {
+    testIndex.add(makeEntry(10.12345f, -20.54321f, 0x04, 24148));
+    parser.setAlerts({
+        AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true),
+        AlertData::create(BAND_X, DIR_SIDE, 3, 0, 10525, true, false)
+    });
+
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
+    LockoutEnforcerResult r = enforcer.process(1000, 1700000000000LL, parser, gps);
+
+    TEST_ASSERT_TRUE(r.evaluated);
+    TEST_ASSERT_FALSE(r.shouldMute);
+    TEST_ASSERT_EQUAL(2, r.supportedAlertCount);
+    TEST_ASSERT_EQUAL(1, r.matchedAlertCount);
+    TEST_ASSERT_EQUAL(0, r.matchIndex);
+    TEST_ASSERT_EQUAL(1, enforcer.stats().matches);
+}
+
+void test_enforce_partial_multi_alert_records_matched_slot_hit() {
+    settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
+    enforcer.begin(&settingsManager, &testIndex, &testStore);
+
+    testIndex.add(makeEntry(10.12345f, -20.54321f, 0x04, 24148));
+    testStore.clearDirty();
+    parser.setAlerts({
+        AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true),
+        AlertData::create(BAND_X, DIR_SIDE, 3, 0, 10525, true, false)
+    });
+
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
+    LockoutEnforcerResult r = enforcer.process(1000, 1700000100000LL, parser, gps);
+
+    TEST_ASSERT_TRUE(r.evaluated);
+    TEST_ASSERT_FALSE(r.shouldMute);
+    TEST_ASSERT_EQUAL(2, r.supportedAlertCount);
+    TEST_ASSERT_EQUAL(1, r.matchedAlertCount);
+    TEST_ASSERT_EQUAL(101, testIndex.at(0)->confidence);
+    TEST_ASSERT_EQUAL(1700000100000LL, testIndex.at(0)->lastSeenMs);
+    TEST_ASSERT_TRUE(testStore.isDirty());
+}
+
+void test_enforce_multi_alert_same_slot_records_hit_once() {
+    settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
+    enforcer.begin(&settingsManager, &testIndex, &testStore);
+
+    LockoutEntry e = makeEntry(10.12345f, -20.54321f, 0x04, 0);
+    e.freqTolMHz = 0;
+    testIndex.add(e);
+    testStore.clearDirty();
+    parser.setAlerts({
+        AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true),
+        AlertData::create(BAND_K, DIR_REAR, 3, 0, 24160, true, false)
+    });
+
+    GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
+    LockoutEnforcerResult r = enforcer.process(1000, 1700000100000LL, parser, gps);
+
+    TEST_ASSERT_TRUE(r.evaluated);
+    TEST_ASSERT_TRUE(r.shouldMute);
+    TEST_ASSERT_EQUAL(2, r.supportedAlertCount);
+    TEST_ASSERT_EQUAL(2, r.matchedAlertCount);
+    TEST_ASSERT_EQUAL(101, testIndex.at(0)->confidence);
+    TEST_ASSERT_EQUAL(1700000100000LL, testIndex.at(0)->lastSeenMs);
+    TEST_ASSERT_EQUAL(2, enforcer.stats().matches);
+    TEST_ASSERT_TRUE(testStore.isDirty());
 }
 
 // ================================================================
@@ -616,6 +704,10 @@ int main(int argc, char** argv) {
     RUN_TEST(test_directional_forward_match_with_course);
     RUN_TEST(test_directional_forward_mismatch_blocks_match);
     RUN_TEST(test_directional_entry_requires_valid_course);
+    RUN_TEST(test_multi_alert_all_supported_matches_mutes);
+    RUN_TEST(test_multi_alert_partial_match_does_not_mute);
+    RUN_TEST(test_enforce_partial_multi_alert_records_matched_slot_hit);
+    RUN_TEST(test_enforce_multi_alert_same_slot_records_hit_once);
     RUN_TEST(test_stats_accumulate);
     RUN_TEST(test_empty_index_no_match);
     RUN_TEST(test_lastResult_reflects_latest);

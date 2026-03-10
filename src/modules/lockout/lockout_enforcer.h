@@ -13,10 +13,12 @@ class PacketParser;
 /// Per-frame summary emitted by the enforcer for diagnostics / display.
 struct LockoutEnforcerResult {
     bool     evaluated   = false;  // True if evaluation ran (mode >= SHADOW, GPS valid)
-    bool     shouldMute  = false;  // True if a lockout zone matched the priority alert
-    int16_t  matchIndex  = -1;     // Slot index in LockoutIndex (-1 = no match)
-    uint8_t  confidence  = 0;      // Confidence of the matched entry
+    bool     shouldMute  = false;  // True if all active lockout-eligible alerts were matched
+    int16_t  matchIndex  = -1;     // First matched slot in V1 alert order (-1 = no matched alerts)
+    uint8_t  confidence  = 0;      // Confidence of the first matched entry
     uint8_t  mode        = 0;      // LockoutRuntimeMode active during evaluation
+    uint8_t  supportedAlertCount = 0; // Eligible V1 alerts considered for lockout this frame
+    uint8_t  matchedAlertCount = 0;   // Eligible V1 alerts matched by active lockout entries
 };
 
 /// Evaluates incoming alerts against the LockoutIndex and decides
@@ -39,7 +41,7 @@ public:
                LockoutIndex* index,
                LockoutStore* store = nullptr);
 
-    /// Evaluate the current priority alert against the lockout index.
+    /// Evaluate the current V1 alert set against the lockout index.
     /// Called once per parsed BLE frame from the main loop.
     ///
     /// @param nowMs       Current millis() timestamp
@@ -58,7 +60,7 @@ public:
     /// Cumulative counters for diagnostics.
     struct Stats {
         uint32_t evaluations   = 0;  // Total process() calls that ran evaluation
-        uint32_t matches       = 0;  // Times a lockout zone matched an alert
+        uint32_t matches       = 0;  // Total eligible alerts matched by lockout zones
         uint32_t cleanPasses   = 0;  // Counted clean-pass updates applied
         uint32_t demotions     = 0;  // Entries auto-removed by clean-pass decay
         uint32_t skippedOff    = 0;  // Skipped because mode == OFF

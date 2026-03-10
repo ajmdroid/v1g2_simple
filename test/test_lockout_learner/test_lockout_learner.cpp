@@ -244,6 +244,30 @@ void test_different_freq_separate_candidate() {
     TEST_ASSERT_EQUAL(2, learner.activeCandidateCount());
 }
 
+void test_simultaneous_different_freq_candidates_promote_separately() {
+    learner.setTuning(2,
+                      LockoutLearner::kDefaultRadiusE5,
+                      LockoutLearner::kDefaultFreqToleranceMHz,
+                      0);
+
+    testLog.publish(makeObs(LAT, LON, K_BAND, K_FREQ));
+    testLog.publish(makeObs(LAT, LON, K_BAND, K_FREQ + 50));
+    learner.process(2000, EPOCH_BASE);
+
+    TEST_ASSERT_EQUAL(2, learner.activeCandidateCount());
+    TEST_ASSERT_EQUAL(0, learner.stats().promotions);
+
+    testLog.publish(makeObs(LAT + 2, LON - 2, K_BAND, K_FREQ));
+    testLog.publish(makeObs(LAT - 2, LON + 2, K_BAND, K_FREQ + 50));
+    learner.process(4000, EPOCH_BASE + 1000);
+
+    TEST_ASSERT_EQUAL(0, learner.activeCandidateCount());
+    TEST_ASSERT_EQUAL(2, learner.stats().promotions);
+    TEST_ASSERT_EQUAL(2, testIndex.activeCount());
+    TEST_ASSERT_EQUAL(K_FREQ, testIndex.at(0)->freqMHz);
+    TEST_ASSERT_EQUAL(K_FREQ + 50, testIndex.at(1)->freqMHz);
+}
+
 // ================================================================
 // Far away location creates separate candidate
 // ================================================================
@@ -701,6 +725,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_promoted_entry_uses_runtime_radius_and_freq_tolerance);
     RUN_TEST(test_supported_different_band_separate_candidate);
     RUN_TEST(test_different_freq_separate_candidate);
+    RUN_TEST(test_simultaneous_different_freq_candidates_promote_separately);
     RUN_TEST(test_far_away_separate_candidate);
     RUN_TEST(test_already_in_index_skipped);
     RUN_TEST(test_no_location_skipped);

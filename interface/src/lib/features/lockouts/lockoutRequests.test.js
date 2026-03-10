@@ -293,6 +293,46 @@ describe('lockoutRequests', () => {
 		});
 	});
 
+	it('keeps same-location same-band zones distinct when frequency differs', async () => {
+		const file = {
+			name: 'zones.json',
+			text: vi.fn().mockResolvedValue(
+				JSON.stringify({
+					zones: [
+						{ lat: 1, lon: 2, rad: 135, band: 4, freq: 24148, ftol: 10, dir: 0, hdg: -1, htol: 45 },
+						{ lat: 1, lon: 2, rad: 135, band: 4, freq: 24160, ftol: 10, dir: 0, hdg: -1, htol: 45 }
+					]
+				})
+			)
+		};
+
+		const fetchWithTimeout = vi
+			.fn()
+			.mockResolvedValueOnce(
+				makeResponse({
+					json: {
+						zones: [{ lat: 1, lon: 2, rad: 135, band: 4, freq: 24148, ftol: 10, dir: 0, hdg: -1, htol: 45 }]
+					}
+				})
+			)
+			.mockResolvedValueOnce(makeResponse({ json: {} }));
+
+		const merged = await importLockoutZonesFromFile(fetchWithTimeout, file, vi.fn(() => true));
+
+		expect(JSON.parse(fetchWithTimeout.mock.calls[1][1].body)).toEqual({
+			_type: 'v1simple_lockout_zones',
+			_version: 1,
+			zones: [
+				{ lat: 1, lon: 2, rad: 135, band: 4, freq: 24148, ftol: 10, dir: 0, hdg: -1, htol: 45 },
+				{ lat: 1, lon: 2, rad: 135, band: 4, freq: 24160, ftol: 10, dir: 0, hdg: -1, htol: 45 }
+			]
+		});
+		expect(merged).toEqual({
+			ok: true,
+			message: 'Merged 1 new zones into 1 existing (1 duplicates skipped).'
+		});
+	});
+
 	it('clears zones and keeps pending clear as best effort', async () => {
 		const fetchWithTimeout = vi
 			.fn()

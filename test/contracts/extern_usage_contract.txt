@@ -93,13 +93,13 @@ kind=source file=src/modules/debug/debug_api_service.cpp line=37 text=extern Per
 kind=source file=src/modules/debug/debug_api_service.cpp line=38 text=extern bool perfDebugEnabled;
 kind=header file=src/modules/gps/gps_observation_log.h line=73 text=extern GpsObservationLog gpsObservationLog;
 kind=header file=src/modules/gps/gps_runtime_module.h line=149 text=extern GpsRuntimeModule gpsRuntimeModule;
-kind=header file=src/modules/lockout/lockout_enforcer.h line=91 text=extern LockoutEnforcer lockoutEnforcer;
+kind=header file=src/modules/lockout/lockout_enforcer.h line=93 text=extern LockoutEnforcer lockoutEnforcer;
 kind=header file=src/modules/lockout/lockout_index.h line=160 text=extern LockoutIndex lockoutIndex;
 kind=header file=src/modules/lockout/lockout_learner.h line=134 text=extern LockoutLearner lockoutLearner;
 kind=header file=src/modules/lockout/lockout_store.h line=108 text=extern LockoutStore lockoutStore;
 kind=header file=src/modules/lockout/road_map_reader.h line=159 text=extern RoadMapReader roadMapReader;
 kind=source file=src/modules/lockout/signal_capture_module.cpp line=8 text=extern SignalObservationSdLogger signalObservationSdLogger;
-kind=header file=src/modules/lockout/signal_capture_module.h line=30 text=extern SignalCaptureModule signalCaptureModule;
+kind=header file=src/modules/lockout/signal_capture_module.h line=38 text=extern SignalCaptureModule signalCaptureModule;
 kind=header file=src/modules/lockout/signal_observation_log.h line=85 text=extern SignalObservationLog signalObservationLog;
 kind=header file=src/modules/lockout/signal_observation_sd_logger.h line=77 text=extern SignalObservationSdLogger signalObservationSdLogger;
 kind=header file=src/modules/speed/speed_source_selector.h line=46 text=extern SpeedSourceSelector speedSourceSelector;

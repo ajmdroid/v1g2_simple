@@ -20,6 +20,26 @@ function extractResponseMessage(data, fallback) {
 	return data.message || data.error || fallback;
 }
 
+function normalizeDirectionIdentity(value) {
+	if (value === 1 || value === '1' || value === 'forward') return 1;
+	if (value === 2 || value === '2' || value === 'reverse') return 2;
+	return 0;
+}
+
+function zoneStructuralFingerprint(zone) {
+	return [
+		zone?.lat ?? zone?.latitude ?? '',
+		zone?.lon ?? zone?.longitude ?? '',
+		zone?.rad ?? zone?.radiusE5 ?? '',
+		zone?.band ?? zone?.bandMask ?? '',
+		zone?.freq ?? zone?.frequencyMHz ?? 0,
+		zone?.ftol ?? zone?.frequencyToleranceMHz ?? 0,
+		normalizeDirectionIdentity(zone?.dir ?? zone?.directionMode),
+		zone?.hdg ?? zone?.headingDeg ?? -1,
+		zone?.htol ?? zone?.headingToleranceDeg ?? 45
+	].join(',');
+}
+
 async function readResponsePayload(res) {
 	const contentType = res.headers.get('content-type') || '';
 	if (contentType.includes('application/json')) {
@@ -221,10 +241,10 @@ export async function importLockoutZonesFromFile(fetchWithTimeout, file, confirm
 	const currentData = await exportRes.json().catch(() => ({}));
 	const currentZones = Array.isArray(currentData?.zones) ? currentData.zones : [];
 	const fileZones = Array.isArray(parsed?.zones) ? parsed.zones : [];
-	const existingKeys = new Set(currentZones.map((zone) => `${zone.lat},${zone.lon},${zone.band}`));
+	const existingKeys = new Set(currentZones.map((zone) => zoneStructuralFingerprint(zone)));
 	let addedCount = 0;
 	for (const zone of fileZones) {
-		const key = `${zone.lat},${zone.lon},${zone.band}`;
+		const key = zoneStructuralFingerprint(zone);
 		if (!existingKeys.has(key)) {
 			currentZones.push(zone);
 			existingKeys.add(key);

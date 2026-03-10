@@ -28,8 +28,10 @@ constexpr int32_t SIGNAL_OBS_LOCATION_TOL_E5 = 25;  // ~28m latitude
 SignalCaptureModule signalCaptureModule;
 
 void SignalCaptureModule::reset() {
-    lastValid_ = false;
-    lastSample_ = SignalObservation{};
+    for (size_t i = 0; i < kRecentBucketCount; ++i) {
+        recentBuckets_[i].valid = false;
+    }
+    nextRecentBucketIndex_ = 0;
 }
 
 int32_t SignalCaptureModule::degreesToE5(float degrees) {
@@ -76,16 +78,41 @@ bool SignalCaptureModule::sameObservationBucket(const SignalObservation& a,
     return latDiff <= SIGNAL_OBS_LOCATION_TOL_E5 && lonDiff <= SIGNAL_OBS_LOCATION_TOL_E5;
 }
 
-bool SignalCaptureModule::shouldPublish(const SignalObservation& sample) const {
-    if (!lastValid_) {
-        return true;
+bool SignalCaptureModule::shouldPublish(const SignalObservation& sample,
+                                        size_t* matchedBucketIndex) const {
+    if (matchedBucketIndex) {
+        *matchedBucketIndex = kRecentBucketCount;
     }
 
-    if (!sameObservationBucket(sample, lastSample_)) {
-        return true;
+    for (size_t i = 0; i < kRecentBucketCount; ++i) {
+        const RecentBucket& bucket = recentBuckets_[i];
+        if (!bucket.valid) {
+            continue;
+        }
+        if (!sameObservationBucket(sample, bucket.observation)) {
+            continue;
+        }
+        if (matchedBucketIndex) {
+            *matchedBucketIndex = i;
+        }
+        const uint32_t elapsedMs =
+            static_cast<uint32_t>(sample.tsMs - bucket.observation.tsMs);
+        return elapsedMs >= SIGNAL_OBS_MIN_REPEAT_MS;
     }
 
-    return static_cast<uint32_t>(sample.tsMs - lastSample_.tsMs) >= SIGNAL_OBS_MIN_REPEAT_MS;
+    return true;
+}
+
+void SignalCaptureModule::rememberPublishedObservation(const SignalObservation& sample,
+                                                       size_t matchedBucketIndex) {
+    size_t bucketIndex = matchedBucketIndex;
+    if (bucketIndex >= kRecentBucketCount) {
+        bucketIndex = nextRecentBucketIndex_;
+        nextRecentBucketIndex_ = (nextRecentBucketIndex_ + 1) % kRecentBucketCount;
+    }
+
+    recentBuckets_[bucketIndex].observation = sample;
+    recentBuckets_[bucketIndex].valid = true;
 }
 
 void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
@@ -96,45 +123,54 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
         return;
     }
 
-    const AlertData priority = parser.getPriorityAlert();
-    if (!priority.isValid || priority.band == BAND_NONE) {
-        return;
-    }
-    const uint8_t bandRaw = static_cast<uint8_t>(priority.band);
-    const bool bandSupportedForLockout = lockoutBandSupported(bandRaw);
-    if (!bandSupportedForLockout && !captureUnsupportedBandsToSd) {
-        return;
-    }
-
-    SignalObservation observation;
-    observation.tsMs = nowMs;
-    observation.bandRaw = bandRaw;
-    observation.strength = std::max(priority.frontStrength, priority.rearStrength);
-    observation.frequencyMHz = static_cast<uint16_t>(std::min<uint32_t>(priority.frequency, UINT16_MAX));
-    observation.hasFix = gpsStatus.hasFix;
-    observation.fixAgeMs = gpsStatus.fixAgeMs;
-    observation.satellites = gpsStatus.satellites;
-    observation.hdopX10 = hdopToX10(gpsStatus.hdop);
-    observation.speedMph = gpsStatus.speedMph;
-    observation.courseValid = gpsStatus.courseValid;
-    observation.courseDeg = gpsStatus.courseDeg;
     const bool locationValid = gpsStatus.locationValid &&
                                std::isfinite(gpsStatus.latitudeDeg) &&
                                std::isfinite(gpsStatus.longitudeDeg);
-    observation.locationValid = locationValid;
-    if (locationValid) {
-        observation.latitudeE5 = degreesToE5(gpsStatus.latitudeDeg);
-        observation.longitudeE5 = degreesToE5(gpsStatus.longitudeDeg);
-    }
+    const int32_t latitudeE5 = locationValid ? degreesToE5(gpsStatus.latitudeDeg) : 0;
+    const int32_t longitudeE5 = locationValid ? degreesToE5(gpsStatus.longitudeDeg) : 0;
 
-    if (!shouldPublish(observation)) {
-        return;
-    }
+    const auto& alerts = parser.getAllAlerts();
+    const size_t alertCount = static_cast<size_t>(parser.getAlertCount());
+    for (size_t i = 0; i < alertCount; ++i) {
+        const AlertData& alert = alerts[i];
+        if (!alert.isValid || alert.band == BAND_NONE) {
+            continue;
+        }
 
-    if (bandSupportedForLockout) {
-        signalObservationLog.publish(observation);
+        const uint8_t bandRaw = static_cast<uint8_t>(alert.band);
+        const bool bandSupportedForLockout = lockoutBandSupported(bandRaw);
+        if (!bandSupportedForLockout && !captureUnsupportedBandsToSd) {
+            continue;
+        }
+
+        SignalObservation observation;
+        observation.tsMs = nowMs;
+        observation.bandRaw = bandRaw;
+        observation.strength = std::max(alert.frontStrength, alert.rearStrength);
+        observation.frequencyMHz = static_cast<uint16_t>(
+            std::min<uint32_t>(alert.frequency, UINT16_MAX));
+        observation.hasFix = gpsStatus.hasFix;
+        observation.fixAgeMs = gpsStatus.fixAgeMs;
+        observation.satellites = gpsStatus.satellites;
+        observation.hdopX10 = hdopToX10(gpsStatus.hdop);
+        observation.speedMph = gpsStatus.speedMph;
+        observation.courseValid = gpsStatus.courseValid;
+        observation.courseDeg = gpsStatus.courseDeg;
+        observation.locationValid = locationValid;
+        if (locationValid) {
+            observation.latitudeE5 = latitudeE5;
+            observation.longitudeE5 = longitudeE5;
+        }
+
+        size_t matchedBucketIndex = kRecentBucketCount;
+        if (!shouldPublish(observation, &matchedBucketIndex)) {
+            continue;
+        }
+
+        if (bandSupportedForLockout) {
+            signalObservationLog.publish(observation);
+        }
+        signalObservationSdLogger.enqueue(observation);
+        rememberPublishedObservation(observation, matchedBucketIndex);
     }
-    signalObservationSdLogger.enqueue(observation);
-    lastSample_ = observation;
-    lastValid_ = true;
 }

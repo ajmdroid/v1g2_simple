@@ -26,6 +26,19 @@ bool SignalObservationSdLogger::enqueue(const SignalObservation& observation) {
     return true;
 }
 
+static bool hasObservation(const SignalObservation* observations,
+                           size_t count,
+                           uint8_t bandRaw,
+                           uint16_t frequencyMHz) {
+    for (size_t i = 0; i < count; ++i) {
+        if (observations[i].bandRaw == bandRaw &&
+            observations[i].frequencyMHz == frequencyMHz) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static GpsRuntimeStatus makeGps() {
     GpsRuntimeStatus gps;
     gps.hasFix = true;
@@ -119,6 +132,40 @@ void test_different_bucket_publishes_immediately() {
     TEST_ASSERT_EQUAL_UINT16(24160, lastEnqueued.frequencyMHz);
 }
 
+void test_multiple_alerts_publish_separately_in_same_frame() {
+    PacketParser parser;
+    GpsRuntimeStatus gps = makeGps();
+
+    parser.setAlerts({
+        AlertData::create(BAND_K, DIR_FRONT, 4, 4, 24148, true, true),
+        AlertData::create(BAND_X, DIR_SIDE, 2, 3, 10525, true, false)
+    });
+    signalCaptureModule.capturePriorityObservation(1000, parser, gps);
+
+    SignalObservation out[4] = {};
+    const size_t copied = signalObservationLog.copyRecent(out, 4);
+    TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(copied));
+    TEST_ASSERT_EQUAL_UINT32(2, signalObservationLog.stats().published);
+    TEST_ASSERT_EQUAL_UINT32(2, sdEnqueueCount);
+    TEST_ASSERT_TRUE(hasObservation(out, copied, BAND_K, 24148));
+    TEST_ASSERT_TRUE(hasObservation(out, copied, BAND_X, 10525));
+}
+
+void test_multi_alert_repeat_gate_is_per_bucket() {
+    PacketParser parser;
+    GpsRuntimeStatus gps = makeGps();
+
+    parser.setAlerts({
+        AlertData::create(BAND_K, DIR_FRONT, 4, 4, 24148, true, true),
+        AlertData::create(BAND_X, DIR_SIDE, 2, 3, 10525, true, false)
+    });
+    signalCaptureModule.capturePriorityObservation(1000, parser, gps);
+    signalCaptureModule.capturePriorityObservation(1100, parser, gps);
+
+    TEST_ASSERT_EQUAL_UINT32(2, signalObservationLog.stats().published);
+    TEST_ASSERT_EQUAL_UINT32(2, sdEnqueueCount);
+}
+
 void test_unsupported_bands_not_published() {
     PacketParser parser;
     GpsRuntimeStatus gps = makeGps();
@@ -158,6 +205,25 @@ void test_unsupported_bands_enqueued_when_trace_enabled() {
     TEST_ASSERT_EQUAL_UINT8(BAND_KA, lastEnqueued.bandRaw);
 }
 
+void test_trace_enabled_enqueues_unsupported_alerts_from_full_alert_set() {
+    PacketParser parser;
+    GpsRuntimeStatus gps = makeGps();
+
+    parser.setAlerts({
+        AlertData::create(BAND_K, DIR_FRONT, 4, 4, 24148, true, true),
+        AlertData::create(BAND_KA, DIR_FRONT, 4, 4, 34700, true, false)
+    });
+    signalCaptureModule.capturePriorityObservation(1000, parser, gps, true);
+
+    SignalObservation out[2] = {};
+    const size_t copied = signalObservationLog.copyRecent(out, 2);
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(copied));
+    TEST_ASSERT_TRUE(hasObservation(out, copied, BAND_K, 24148));
+    TEST_ASSERT_EQUAL_UINT32(1, signalObservationLog.stats().published);
+    TEST_ASSERT_EQUAL_UINT32(2, sdEnqueueCount);
+    TEST_ASSERT_EQUAL_UINT8(BAND_KA, lastEnqueued.bandRaw);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_no_alerts_no_publish);
@@ -165,8 +231,11 @@ int main() {
     RUN_TEST(test_same_bucket_within_repeat_window_suppressed);
     RUN_TEST(test_same_bucket_after_repeat_window_publishes);
     RUN_TEST(test_different_bucket_publishes_immediately);
+    RUN_TEST(test_multiple_alerts_publish_separately_in_same_frame);
+    RUN_TEST(test_multi_alert_repeat_gate_is_per_bucket);
     RUN_TEST(test_unsupported_bands_not_published);
     RUN_TEST(test_ka_band_published_when_policy_enabled);
     RUN_TEST(test_unsupported_bands_enqueued_when_trace_enabled);
+    RUN_TEST(test_trace_enabled_enqueues_unsupported_alerts_from_full_alert_set);
     return UNITY_END();
 }

@@ -364,7 +364,7 @@
 						<div>
 							<span class="label-text font-semibold">Signal Trace Logging (All Bands)</span>
 							<p class="copy-caption-soft mt-1">
-								Default ON. Best-effort logging of priority alerts (including Ka) to lockout CSV for bench analysis.
+								Default ON. Best-effort logging of all active V1 alerts (including Ka) to lockout CSV for bench analysis.
 							</p>
 						</div>
 						<input
