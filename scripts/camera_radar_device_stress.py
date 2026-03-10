@@ -229,9 +229,7 @@ def write_summary(
     path: Path,
     result: str,
     config: dict[str, object],
-    checks: list[str],
-    metrics: dict[str, object],
-    failure: str | None,
+    phase_results: list[dict[str, object]],
 ) -> None:
     lines = [
         "# Camera + Radar Stress Summary",
@@ -244,76 +242,78 @@ def write_summary(
     ]
     for key, value in config.items():
         lines.append(f"- {key}: `{value}`")
-    lines.extend([
-        "",
-        "## Checks",
-        "",
-    ])
-    for check in checks:
-        lines.append(f"- {check}")
-    lines.extend([
-        "",
-        "## Metrics",
-        "",
-    ])
-    for key, value in metrics.items():
-        lines.append(f"- {key}: `{value}`")
-    lines.extend([
-        "",
-        "## Failure",
-        "",
-        f"- {failure or 'none'}",
-        "",
-    ])
+    for phase in phase_results:
+        lines.extend(
+            [
+                "",
+                f"## {phase['phase_label']}",
+                "",
+                f"- Result: **{phase['result']}**",
+                f"- Failure: `{phase['failure'] or 'none'}`",
+                f"- Samples: `{phase['sample_count']}`",
+                f"- Samples path: `{phase['samples_path']}`",
+                "",
+                "### Checks",
+                "",
+            ]
+        )
+        for check in phase["checks"]:
+            lines.append(f"- {check}")
+        lines.extend(
+            [
+                "",
+                "### Metrics",
+                "",
+            ]
+        )
+        for key, value in phase["metrics"].items():
+            lines.append(f"- {key}: `{value}`")
+        if phase.get("actions"):
+            lines.extend(
+                [
+                    "",
+                    "### Actions",
+                    "",
+                ]
+            )
+            for action in phase["actions"]:
+                lines.append(
+                    f"- {action['elapsed_s']}s `{action['action']}` hold_ms=`{action.get('hold_ms', 0)}`"
+                )
+        if phase.get("over_limit_samples"):
+            lines.extend(
+                [
+                    "",
+                    "### Over-Limit Samples",
+                    "",
+                ]
+            )
+            for sample in phase["over_limit_samples"]:
+                lines.append(
+                    "- "
+                    f"{sample['sample_elapsed_s']}s "
+                    f"dispPipe={sample['dispPipeMaxUs']} "
+                    f"activity={sample['cameraActivity']} "
+                    f"loop={sample['loopMaxUs']} flush={sample['flushMaxUs']} wifi={sample['wifiMaxUs']}"
+                )
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--metrics-url",
-        default=os.environ.get("REAL_FW_METRICS_URL", "http://192.168.160.212/api/debug/metrics"),
-    )
-    parser.add_argument("--base-url", default="")
-    parser.add_argument(
-        "--http-timeout-seconds",
-        type=int,
-        default=int(os.environ.get("REAL_FW_HTTP_TIMEOUT_SECONDS", "5")),
-    )
-    parser.add_argument("--out-dir", default="")
-    parser.add_argument("--scenario-id", default="RAD-03")
-    parser.add_argument("--duration-scale-pct", type=int, default=120)
-    parser.add_argument("--camera-type", default="speed")
-    parser.add_argument("--camera-distance-cm", type=int, default=16093)
-    parser.add_argument("--voice-stage", default="far", choices=["none", "far", "near"])
-    parser.add_argument("--hold-ms", type=int, default=45000)
-    parser.add_argument("--sample-seconds", type=float, default=2.0)
-    parser.add_argument("--scenario-timeout-seconds", type=int, default=0)
-    args = parser.parse_args()
-
-    base_url = args.base_url.rstrip("/") if args.base_url else derive_base_url(args.metrics_url)
-    out_dir = Path(args.out_dir) if args.out_dir else Path(
-        f".artifacts/test_reports/camera_radar_stress_{time.strftime('%Y%m%d_%H%M%S')}"
-    )
-    out_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = out_dir / "summary.md"
-    details_path = out_dir / "details.json"
-    samples_path = out_dir / "samples.jsonl"
+def run_phase(
+    phase_name: str,
+    base_url: str,
+    args: argparse.Namespace,
+    scenario_timeout_seconds: int,
+    disp_pipe_limit_us: int,
+    out_dir: Path,
+) -> dict[str, object]:
+    phase_label = "Steady-State" if phase_name == "overlap" else "Transition"
+    samples_path = out_dir / f"{phase_name}_samples.jsonl"
+    if samples_path.exists():
+        samples_path.unlink()
 
     checks: list[str] = []
-    config = {
-        "base_url": base_url,
-        "metrics_url": args.metrics_url,
-        "scenario_id": args.scenario_id,
-        "duration_scale_pct": args.duration_scale_pct,
-        "camera_type": args.camera_type,
-        "camera_distance_cm": args.camera_distance_cm,
-        "voice_stage": args.voice_stage,
-        "hold_ms": args.hold_ms,
-        "sample_seconds": args.sample_seconds,
-    }
-    disp_pipe_limit_us = 80000
-    config["disp_pipe_limit_us"] = disp_pipe_limit_us
+    actions: list[dict[str, object]] = []
     failure: str | None = None
     result = "FAIL"
     samples: list[dict[str, object]] = []
@@ -326,19 +326,14 @@ def main() -> int:
     cleanup_camera_clear = False
     cleanup_scenario_stop = False
 
-    scenario_timeout_seconds = (
-        args.scenario_timeout_seconds
-        if args.scenario_timeout_seconds > 0
-        else resolve_scenario_timeout_seconds(args.duration_scale_pct)
-    )
-    config["scenario_timeout_seconds"] = scenario_timeout_seconds
-
     try:
         request_json(base_url, "/api/debug/camera-alert/clear", args.http_timeout_seconds, method="POST", form_fields={})
         request_json(base_url, "/api/debug/v1-scenario/stop", args.http_timeout_seconds, method="POST", json_body={})
 
-        reset_response = request_json(base_url, "/api/debug/metrics/reset", args.http_timeout_seconds, method="POST", json_body={})
-        require(bool(reset_response.get("success")), "metrics reset failed")
+        reset_response = request_json(
+            base_url, "/api/debug/metrics/reset", args.http_timeout_seconds, method="POST", json_body={}
+        )
+        require(bool(reset_response.get("success")), f"{phase_name}: metrics reset failed")
         checks.append("metrics reset succeeded")
 
         pre_metrics = request_json(base_url, "/api/debug/metrics?soak=1", args.http_timeout_seconds)
@@ -356,37 +351,84 @@ def main() -> int:
                 "durationScalePct": args.duration_scale_pct,
             },
         )
-        require(bool(start_response.get("success")), "scenario start failed")
+        require(bool(start_response.get("success")), f"{phase_name}: scenario start failed")
         checks.append("scenario start succeeded")
-
-        render_response = request_json(
-            base_url,
-            "/api/debug/camera-alert/render",
-            args.http_timeout_seconds,
-            method="POST",
-            form_fields={
-                "type": args.camera_type,
-                "distanceCm": args.camera_distance_cm,
-                "holdMs": args.hold_ms,
-                "voiceStage": args.voice_stage,
-            },
-        )
-        require(bool(render_response.get("success")), "camera debug render failed")
-        checks.append("camera debug render succeeded")
 
         t0 = time.time()
         next_sample_at = t0
+
+        if phase_name == "overlap":
+            effective_hold_ms = max(args.hold_ms, (scenario_timeout_seconds + 5) * 1000)
+            render_response = request_json(
+                base_url,
+                "/api/debug/camera-alert/render",
+                args.http_timeout_seconds,
+                method="POST",
+                form_fields={
+                    "type": args.camera_type,
+                    "distanceCm": args.camera_distance_cm,
+                    "holdMs": effective_hold_ms,
+                    "voiceStage": args.voice_stage,
+                },
+            )
+            require(bool(render_response.get("success")), "overlap: camera debug render failed")
+            actions.append({"elapsed_s": 0.0, "action": "render", "hold_ms": effective_hold_ms})
+            checks.append("camera debug render succeeded")
+        elif phase_name == "flap":
+            checks.append("flap transition driver armed")
+        else:
+            raise StressFailure(f"unsupported phase '{phase_name}'")
+
+        flap_camera_active = False
+        flap_remaining_cycles = args.flap_cycles
+        flap_next_action_at = t0
+
         while True:
             now = time.time()
-            if now - t0 > scenario_timeout_seconds:
+            elapsed_s = now - t0
+            if elapsed_s > scenario_timeout_seconds:
                 raise StressFailure(
-                    f"scenario timed out waiting for completion (> {scenario_timeout_seconds}s)"
+                    f"{phase_name}: scenario timed out waiting for completion (> {scenario_timeout_seconds}s)"
                 )
+
+            if phase_name == "flap" and flap_remaining_cycles > 0 and now >= flap_next_action_at:
+                if not flap_camera_active:
+                    render_response = request_json(
+                        base_url,
+                        "/api/debug/camera-alert/render",
+                        args.http_timeout_seconds,
+                        method="POST",
+                        form_fields={
+                            "type": args.camera_type,
+                            "distanceCm": args.camera_distance_cm,
+                            "holdMs": args.hold_ms,
+                            "voiceStage": args.voice_stage,
+                        },
+                    )
+                    require(bool(render_response.get("success")), "flap: camera debug render failed")
+                    flap_camera_active = True
+                    actions.append(
+                        {"elapsed_s": round(elapsed_s, 3), "action": "render", "hold_ms": args.hold_ms}
+                    )
+                else:
+                    clear_resp = request_json(
+                        base_url,
+                        "/api/debug/camera-alert/clear",
+                        args.http_timeout_seconds,
+                        method="POST",
+                        form_fields={},
+                    )
+                    require(bool(clear_resp.get("success")), "flap: camera debug clear failed")
+                    flap_camera_active = False
+                    flap_remaining_cycles -= 1
+                    actions.append({"elapsed_s": round(elapsed_s, 3), "action": "clear", "hold_ms": 0})
+                flap_next_action_at = now + max(0.5, args.flap_interval_seconds)
+
             if now >= next_sample_at:
                 metrics = request_json(base_url, "/api/debug/metrics?soak=1", args.http_timeout_seconds)
                 status = request_json(base_url, "/api/debug/v1-scenario/status", args.http_timeout_seconds)
                 sample = {
-                    "sample_elapsed_s": round(now - t0, 3),
+                    "sample_elapsed_s": round(elapsed_s, 3),
                     "metrics": metrics,
                     "status": status,
                 }
@@ -399,13 +441,13 @@ def main() -> int:
                     break
             time.sleep(0.1)
 
-        require(samples, "no samples collected")
-        require(int(final_status.get("eventsTotal", 0) or 0) > 0, "scenario eventsTotal is 0")
+        require(samples, f"{phase_name}: no samples collected")
+        require(int(final_status.get("eventsTotal", 0) or 0) > 0, f"{phase_name}: scenario eventsTotal is 0")
         require(
             int(final_status.get("eventsEmitted", 0) or 0) >= int(final_status.get("eventsTotal", 0) or 0),
-            "scenario eventsEmitted < eventsTotal",
+            f"{phase_name}: scenario eventsEmitted < eventsTotal",
         )
-        require(int(final_status.get("completedRuns", 0) or 0) >= 1, "scenario completedRuns < 1")
+        require(int(final_status.get("completedRuns", 0) or 0) >= 1, f"{phase_name}: scenario completedRuns < 1")
         checks.append("scenario completed and emitted all events")
         analyzed_metrics, over_limit_samples, failure_reasons = analyze_samples(
             pre_metrics, samples, disp_pipe_limit_us
@@ -449,43 +491,122 @@ def main() -> int:
                 pre_metrics, samples, disp_pipe_limit_us
             )
 
-        metrics = {
-            "render_voice_requested": render_response.get("voiceRequested", False),
-            "render_voice_started": render_response.get("voiceStarted", False),
-            "scenario_events_total": final_status.get("eventsTotal", 0),
-            "scenario_events_emitted": final_status.get("eventsEmitted", 0),
-            "scenario_completed_runs": final_status.get("completedRuns", 0),
-            "cleanup_camera_clear": cleanup_camera_clear,
-            "cleanup_scenario_stop": cleanup_scenario_stop,
-            "pre_rx_packets": pre_metrics.get("rxPackets", 0),
-            **analyzed_metrics,
-        }
-        details_path.write_text(
-            json.dumps(
-                {
-                    "result": result,
-                    "config": config,
-                    "checks": checks,
-                    "metrics": metrics,
-                    "failure": failure,
-                    "render_response": render_response,
-                    "start_response": start_response,
-                    "final_status": final_status,
-                    "over_limit_samples": over_limit_samples,
-                    "sample_count": len(samples),
-                    "samples_path": str(samples_path),
-                },
-                indent=2,
-                sort_keys=True,
-            ),
-            encoding="utf-8",
-        )
-        write_summary(summary_path, result, config, checks, metrics, failure)
+    metrics = {
+        "render_voice_requested": render_response.get("voiceRequested", False),
+        "render_voice_started": render_response.get("voiceStarted", False),
+        "scenario_events_total": final_status.get("eventsTotal", 0),
+        "scenario_events_emitted": final_status.get("eventsEmitted", 0),
+        "scenario_completed_runs": final_status.get("completedRuns", 0),
+        "cleanup_camera_clear": cleanup_camera_clear,
+        "cleanup_scenario_stop": cleanup_scenario_stop,
+        "pre_rx_packets": pre_metrics.get("rxPackets", 0),
+        **analyzed_metrics,
+    }
+    return {
+        "phase": phase_name,
+        "phase_label": phase_label,
+        "result": result,
+        "checks": checks,
+        "metrics": metrics,
+        "failure": failure,
+        "render_response": render_response,
+        "start_response": start_response,
+        "final_status": final_status,
+        "sample_count": len(samples),
+        "samples_path": str(samples_path),
+        "over_limit_samples": over_limit_samples,
+        "actions": actions,
+    }
 
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--metrics-url",
+        default=os.environ.get("REAL_FW_METRICS_URL", "http://192.168.160.212/api/debug/metrics"),
+    )
+    parser.add_argument("--base-url", default="")
+    parser.add_argument(
+        "--http-timeout-seconds",
+        type=int,
+        default=int(os.environ.get("REAL_FW_HTTP_TIMEOUT_SECONDS", "5")),
+    )
+    parser.add_argument("--out-dir", default="")
+    parser.add_argument("--scenario-id", default="RAD-03")
+    parser.add_argument("--duration-scale-pct", type=int, default=120)
+    parser.add_argument("--camera-type", default="speed")
+    parser.add_argument("--camera-distance-cm", type=int, default=16093)
+    parser.add_argument("--voice-stage", default="far", choices=["none", "far", "near"])
+    parser.add_argument("--hold-ms", type=int, default=45000)
+    parser.add_argument("--mode", default="both", choices=["overlap", "flap", "both"])
+    parser.add_argument("--flap-cycles", type=int, default=3)
+    parser.add_argument("--flap-interval-seconds", type=float, default=5.0)
+    parser.add_argument("--sample-seconds", type=float, default=2.0)
+    parser.add_argument("--scenario-timeout-seconds", type=int, default=0)
+    args = parser.parse_args()
+
+    base_url = args.base_url.rstrip("/") if args.base_url else derive_base_url(args.metrics_url)
+    out_dir = Path(args.out_dir) if args.out_dir else Path(
+        f".artifacts/test_reports/camera_radar_stress_{time.strftime('%Y%m%d_%H%M%S')}"
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = out_dir / "summary.md"
+    details_path = out_dir / "details.json"
+
+    config = {
+        "base_url": base_url,
+        "metrics_url": args.metrics_url,
+        "scenario_id": args.scenario_id,
+        "duration_scale_pct": args.duration_scale_pct,
+        "camera_type": args.camera_type,
+        "camera_distance_cm": args.camera_distance_cm,
+        "voice_stage": args.voice_stage,
+        "hold_ms": args.hold_ms,
+        "mode": args.mode,
+        "flap_cycles": args.flap_cycles,
+        "flap_interval_seconds": args.flap_interval_seconds,
+        "sample_seconds": args.sample_seconds,
+    }
+    disp_pipe_limit_us = 80000
+    config["disp_pipe_limit_us"] = disp_pipe_limit_us
+
+    scenario_timeout_seconds = (
+        args.scenario_timeout_seconds
+        if args.scenario_timeout_seconds > 0
+        else resolve_scenario_timeout_seconds(args.duration_scale_pct)
+    )
+    config["scenario_timeout_seconds"] = scenario_timeout_seconds
+    phase_order = ["overlap", "flap"] if args.mode == "both" else [args.mode]
+    phase_results = [
+        run_phase(
+            phase_name=phase_name,
+            base_url=base_url,
+            args=args,
+            scenario_timeout_seconds=scenario_timeout_seconds,
+            disp_pipe_limit_us=disp_pipe_limit_us,
+            out_dir=out_dir,
+        )
+        for phase_name in phase_order
+    ]
+    result = "PASS" if all(phase["result"] == "PASS" for phase in phase_results) else "FAIL"
+    details_path.write_text(
+        json.dumps(
+            {
+                "result": result,
+                "config": config,
+                "phases": phase_results,
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    write_summary(summary_path, result, config, phase_results)
     print(f"result: {result}")
     print(f"summary: {summary_path}")
-    if failure:
-        print(f"failure={failure}")
+    for phase in phase_results:
+        if phase["failure"]:
+            print(f"{phase['phase']}_failure={phase['failure']}")
     return 0 if result == "PASS" else 1
 
 
