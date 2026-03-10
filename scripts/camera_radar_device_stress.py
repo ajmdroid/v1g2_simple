@@ -18,6 +18,19 @@ class StressFailure(RuntimeError):
     pass
 
 
+REQUIRED_CAMERA_METRIC_KEYS = (
+    "cameraDisplayActive",
+    "cameraDebugOverrideActive",
+    "cameraDisplayFrames",
+    "cameraDebugDisplayFrames",
+    "cameraDisplayMaxUs",
+    "cameraDebugDisplayMaxUs",
+    "cameraProcessMaxUs",
+    "cameraVoiceQueued",
+    "cameraVoiceStarted",
+)
+
+
 def derive_base_url(metrics_url: str) -> str:
     marker = "/api/debug/metrics"
     idx = metrics_url.find(marker)
@@ -62,6 +75,11 @@ def request_json(
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise StressFailure(message)
+
+
+def require_camera_metric_keys(metrics: dict[str, object], context: str) -> None:
+    missing = [key for key in REQUIRED_CAMERA_METRIC_KEYS if key not in metrics]
+    require(not missing, f"{context}: metrics payload missing keys: {', '.join(missing)}")
 
 
 def resolve_scenario_timeout_seconds(scale_pct: int) -> int:
@@ -337,6 +355,7 @@ def run_phase(
         checks.append("metrics reset succeeded")
 
         pre_metrics = request_json(base_url, "/api/debug/metrics?soak=1", args.http_timeout_seconds)
+        require_camera_metric_keys(pre_metrics, f"{phase_name}: pre-run")
         checks.append("pre-run metrics snapshot succeeded")
 
         start_response = request_json(
@@ -426,6 +445,7 @@ def run_phase(
 
             if now >= next_sample_at:
                 metrics = request_json(base_url, "/api/debug/metrics?soak=1", args.http_timeout_seconds)
+                require_camera_metric_keys(metrics, f"{phase_name}: sample")
                 status = request_json(base_url, "/api/debug/v1-scenario/status", args.http_timeout_seconds)
                 sample = {
                     "sample_elapsed_s": round(elapsed_s, 3),
@@ -448,6 +468,15 @@ def run_phase(
             f"{phase_name}: scenario eventsEmitted < eventsTotal",
         )
         require(int(final_status.get("completedRuns", 0) or 0) >= 1, f"{phase_name}: scenario completedRuns < 1")
+        if phase_name == "flap":
+            completed_flap_cycles = args.flap_cycles - flap_remaining_cycles
+            require(
+                completed_flap_cycles >= args.flap_cycles,
+                f"flap: completed {completed_flap_cycles}/{args.flap_cycles} requested flap cycle(s)",
+            )
+            checks.append(
+                f"flap transition cycles completed ({completed_flap_cycles}/{args.flap_cycles})"
+            )
         checks.append("scenario completed and emitted all events")
         analyzed_metrics, over_limit_samples, failure_reasons = analyze_samples(
             pre_metrics, samples, disp_pipe_limit_us
@@ -500,6 +529,8 @@ def run_phase(
         "cleanup_camera_clear": cleanup_camera_clear,
         "cleanup_scenario_stop": cleanup_scenario_stop,
         "pre_rx_packets": pre_metrics.get("rxPackets", 0),
+        "requested_flap_cycles": args.flap_cycles if phase_name == "flap" else 0,
+        "completed_flap_cycles": (args.flap_cycles - flap_remaining_cycles) if phase_name == "flap" else 0,
         **analyzed_metrics,
     }
     return {
