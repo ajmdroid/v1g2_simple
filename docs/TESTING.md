@@ -1,7 +1,7 @@
 # Testing Suite Documentation
 
 > Status: Active
-> Last validated against scripts: March 9, 2026
+> Last validated against scripts: March 10, 2026
 
 This document is the source of truth for how we test this repo today.
 
@@ -17,11 +17,12 @@ For a current inventory of failure points covered by the suite, see
 3. [Hardware Cycle Workflow (Authoritative)](#hardware-cycle-workflow-authoritative)
 4. [Bench Stress Ladder (Authoritative)](#bench-stress-ladder-authoritative)
 5. [What `device-test.sh` Actually Runs](#what-device-testsh-actually-runs)
-6. [Real Firmware Soak (`run_real_fw_soak.sh`)](#real-firmware-soak-run_real_fw_soaksh)
-7. [Drive Log Analysis](#drive-log-analysis)
-8. [Artifacts and Reports](#artifacts-and-reports)
-9. [Release Gate](#release-gate)
-10. [Change Control (Keep This Consistent)](#change-control-keep-this-consistent)
+6. [Camera + Radar Overlap Stress (`camera_radar_device_stress.py`)](#camera--radar-overlap-stress-camera_radar_device_stresspy)
+7. [Real Firmware Soak (`run_real_fw_soak.sh`)](#real-firmware-soak-run_real_fw_soaksh)
+8. [Drive Log Analysis](#drive-log-analysis)
+9. [Artifacts and Reports](#artifacts-and-reports)
+10. [Release Gate](#release-gate)
+11. [Change Control (Keep This Consistent)](#change-control-keep-this-consistent)
 
 ## Testing Principles
 
@@ -111,6 +112,7 @@ This is the process that must remain consistent over time.
 - harness preflight fail-fast: classed preflight failure (`HARNESS_PRECHECK_*`) aborts remaining items with deterministic suite exit reason
 - minima tail exclusion for DMA floors: `3` samples
 - transition qualification enabled: flap cycles `3`, interval `15s`, max proxy-off recovery `30000ms`, max samples-to-stable `6`
+- optional camera+radar overlap item: disabled by default; enable with `--camera-radar-stress`
 
 Camera smoke requires a local Chrome/Chromium binary because the suite verifies
 the rendered `/cameras` page with headless DOM capture.
@@ -244,10 +246,11 @@ Append the latest campaign summary path in this doc:
 Run these checks before declaring the doc update complete:
 
 1. Confirm documented flags still exist:
-   - `./scripts/device-test.sh --help` includes `--rad-duration-scale-pct`, `--transition-drive-interval-seconds`, `--duration-seconds`
+   - `./scripts/device-test.sh --help` includes `--rad-duration-scale-pct`, `--transition-drive-interval-seconds`, `--duration-seconds`, `--camera-radar-stress`
    - `./build.sh --help` includes `--upload-fs`
 2. Dry-run sanity commands:
    - `./scripts/device-test.sh --dry-run --duration-seconds 240 --rad-duration-scale-pct 200 --transition-drive-interval-seconds 15`
+   - `./scripts/device-test.sh --dry-run --camera-radar-stress`
    - `./scripts/run_real_fw_soak.sh --dry-run --duration-seconds 240 --transition-drive-interval-seconds 15`
 3. Artifact naming/path alignment:
    - verify outputs continue under `.artifacts/test_reports/`
@@ -261,12 +264,91 @@ Current sequence:
    - if preflight fails (AP unreachable/invalid payload), suite aborts here as a harness-classed failure
 2. Camera smoke (`scripts/camera_device_smoke.py`)
 3. Short radar scenario (`RAD-03` by default)
-4. Real firmware soak: display stress (`soak_display`)
-5. Real firmware soak: core (`soak_core`)
-6. Real firmware soak: transition qualification (`soak_transition`)
-7. Cross-item uptime continuity check (detect reboot via `uptimeMs` regression)
+4. Optional camera+radar overlap stress (`scripts/camera_radar_device_stress.py`) when `--camera-radar-stress` is set
+5. Real firmware soak: display stress (`soak_display`)
+6. Real firmware soak: core (`soak_core`)
+7. Real firmware soak: transition qualification (`soak_transition`)
+8. Cross-item uptime continuity check (detect reboot via `uptimeMs` regression)
 
 Outputs include per-item PASS/FAIL plus metrics, then an overall suite result.
+
+## Camera + Radar Overlap Stress (`camera_radar_device_stress.py`)
+
+Use this when the question is specifically whether camera-driven display ownership or
+camera/display transitions correlate with `dispPipeMaxUs` spikes under radar load.
+
+This runner is not part of the default cycle gate. Run it directly when you need
+focused reproduction, or enable the suite wrapper with `device-test.sh --camera-radar-stress`.
+
+Standalone examples:
+
+```bash
+# Run both steady-state overlap and transition-flap phases
+python3 ./scripts/camera_radar_device_stress.py \
+  --metrics-url http://<device-ip>/api/debug/metrics \
+  --scenario-id RAD-03 \
+  --duration-scale-pct 120 \
+  --mode both
+
+# Run steady-state overlap only
+python3 ./scripts/camera_radar_device_stress.py \
+  --metrics-url http://<device-ip>/api/debug/metrics \
+  --mode overlap
+
+# Run transition flaps only
+python3 ./scripts/camera_radar_device_stress.py \
+  --metrics-url http://<device-ip>/api/debug/metrics \
+  --mode flap \
+  --flap-cycles 3 \
+  --flap-interval-seconds 5
+```
+
+What it does:
+
+- resets `/api/debug/metrics`
+- starts a V1 scenario (`/api/debug/v1-scenario/start`)
+- drives the debug camera override endpoint (`/api/debug/camera-alert/render` and `/api/debug/camera-alert/clear`)
+- polls `/api/debug/metrics?soak=1`
+- emits:
+  - `summary.md`
+  - `details.json`
+  - `<phase>_samples.jsonl`
+
+Mode semantics:
+
+- `overlap`: holds the debug camera override for the full scenario window and answers the steady-state question
+- `flap`: alternates render/clear actions while the scenario is active and answers the transition/owner-switch question
+- `both`: runs `overlap` first, then `flap`, and reports them separately
+
+Current pass/fail behavior:
+
+- FAIL if `parseFailures`, `queueDrops`, `oversizeDrops`, or `bleMutexTimeout` increase during a phase
+- FAIL if any sampled `dispPipeMaxUs` window exceeds `80000us` while camera activity is present in the same sample window
+- PASS if over-limit `dispPipeMaxUs` samples are observed only with `cameraActivity=neither`
+
+Camera fields surfaced in `/api/debug/metrics` and perf CSV schema `10`:
+
+- `cameraDisplayActive`
+- `cameraDebugOverrideActive`
+- `cameraDisplayFrames`
+- `cameraDebugDisplayFrames`
+- `cameraDisplayMaxUs`
+- `cameraDebugDisplayMaxUs`
+- `cameraProcessMaxUs`
+- `cameraVoiceQueued`
+- `cameraVoiceStarted`
+
+Interpretation:
+
+- `camera-correlated`: over-limit `dispPipeMaxUs` sample occurred while real camera display activity, debug override activity, or both were active in the same sampled window
+- `non-camera-correlated`: over-limit `dispPipeMaxUs` sample occurred with `cameraActivity=neither`; this is surfaced in the summary/details but does not fail the focused runner
+- `overlap` FAIL with `flap` PASS: sustained camera display ownership is the stronger suspect
+- `flap` FAIL with `overlap` PASS: owner transitions are the stronger suspect
+
+Important limitation:
+
+- this runner uses the debug camera override path, not the full GPS/road-map encounter path
+- it is the bench reproduction harness for display/camera overlap, not a substitute for real driving logs
 
 ## Real Firmware Soak (`run_real_fw_soak.sh`)
 
@@ -367,6 +449,8 @@ Cycle run outputs:
   results.tsv
   summary.md
   rad_short_*.log
+  camera_radar_overlap.log
+  camera_radar_overlap_artifacts/
   soak_display_artifacts/
   soak_core_artifacts/
   soak_transition_artifacts/
@@ -376,6 +460,16 @@ Soak-only outputs:
 
 ```text
 .artifacts/test_reports/real_fw_soak_<timestamp>/
+```
+
+Focused camera/radar outputs:
+
+```text
+.artifacts/test_reports/camera_radar_stress_<timestamp>/
+  summary.md
+  details.json
+  overlap_samples.jsonl
+  flap_samples.jsonl
 ```
 
 Device-suite wrapper outputs:
