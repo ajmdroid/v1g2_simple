@@ -121,7 +121,7 @@ void WiFiManager::setupWebServer() {
             requestProfilePush,
             rateLimitCallback); 
     });
-    server.on("/api/time/set", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/time/set", HTTP_POST, [this, rateLimitCallback, invalidateStatusCacheCallback]() {
         WifiTimeApiService::handleApiTimeSet(
             server,
             makeTimeRuntime(),
