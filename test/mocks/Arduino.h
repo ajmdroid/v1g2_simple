@@ -34,6 +34,9 @@ public:
     String& operator+=(const String& other) { data_ += other.data_; return *this; }
     String& operator+=(const char* s) { if(s) data_ += s; return *this; }
     String operator+(const String& other) const { return String(data_ + other.data_); }
+    friend String operator+(const char* lhs, const String& rhs) {
+        return String(std::string(lhs ? lhs : "") + rhs.data_);
+    }
     bool operator==(const String& other) const { return data_ == other.data_; }
     bool operator==(const char* s) const { return data_ == (s ? s : ""); }
     bool operator!=(const String& other) const { return data_ != other.data_; }
@@ -61,6 +64,44 @@ public:
         return String(data_.substr(from, count));
     }
 
+    String substring(size_t from) const {
+        if (from >= data_.size()) {
+            return String("");
+        }
+        return String(data_.substr(from));
+    }
+
+    int lastIndexOf(char needle) const {
+        const std::size_t pos = data_.find_last_of(needle);
+        return pos == std::string::npos ? -1 : static_cast<int>(pos);
+    }
+
+    bool startsWith(const char* prefix) const {
+        const std::string needle = prefix ? prefix : "";
+        return data_.rfind(needle, 0) == 0;
+    }
+
+    bool endsWith(const char* suffix) const {
+        const std::string needle = suffix ? suffix : "";
+        if (needle.size() > data_.size()) {
+            return false;
+        }
+        return data_.compare(data_.size() - needle.size(), needle.size(), needle) == 0;
+    }
+
+    void replace(const char* find, const char* replaceWith) {
+        const std::string needle = find ? find : "";
+        const std::string replacement = replaceWith ? replaceWith : "";
+        if (needle.empty()) {
+            return;
+        }
+        std::size_t pos = 0;
+        while ((pos = data_.find(needle, pos)) != std::string::npos) {
+            data_.replace(pos, needle.size(), replacement);
+            pos += replacement.size();
+        }
+    }
+
     bool equalsIgnoreCase(const String& other) const {
         if (data_.size() != other.data_.size()) {
             return false;
@@ -76,9 +117,37 @@ public:
     
     int toInt() const { return std::stoi(data_); }
     float toFloat() const { return std::stof(data_); }
+
+    size_t write(const uint8_t* data, size_t length) {
+        if (!data || length == 0) {
+            return 0;
+        }
+        data_.append(reinterpret_cast<const char*>(data), length);
+        return length;
+    }
+
+    size_t write(uint8_t byte) {
+        data_.push_back(static_cast<char>(byte));
+        return 1;
+    }
+
+    int read() const {
+        if (read_pos_ >= data_.size()) {
+            return -1;
+        }
+        return static_cast<unsigned char>(data_[read_pos_++]);
+    }
+
+    int peek() const {
+        if (read_pos_ >= data_.size()) {
+            return -1;
+        }
+        return static_cast<unsigned char>(data_[read_pos_]);
+    }
     
 private:
     std::string data_;
+    mutable size_t read_pos_ = 0;
 };
 
 // Serial stub

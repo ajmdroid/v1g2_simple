@@ -7,6 +7,7 @@
 #include "../../settings_sanitize.h"
 #include "../../storage_manager.h"
 #include "../../v1_profiles.h"
+#include "../../backup_payload_builder.h"
 #include "../gps/gps_runtime_module.h"
 #include "../gps/gps_lockout_safety.h"
 #include "../lockout/lockout_band_policy.h"
@@ -33,170 +34,13 @@ namespace BackupApiService {
 
 static void sendBackup(WebServer& server) {
     Serial.println("[HTTP] GET /api/settings/backup");
-    
-    const V1Settings& s = settingsManager.get();
     JsonDocument doc;
-    
-    // Metadata
-    doc["_version"] = 6;  // Backup format version
-    doc["_type"] = "v1simple_backup";
-    doc["_timestamp"] = millis();
-    doc["timestamp"] = doc["_timestamp"];
-    
-    // WiFi settings (exclude password for security)
-    doc["enableWifi"] = s.enableWifi;
-    doc["apSSID"] = s.apSSID;
-    // Note: password not included in backup for security
-    
-    // BLE settings
-    doc["proxyBLE"] = s.proxyBLE;
-    doc["proxyName"] = s.proxyName;
-    doc["gpsEnabled"] = s.gpsEnabled;
-    doc["gpsLockoutMode"] = static_cast<int>(s.gpsLockoutMode);
-    doc["gpsLockoutCoreGuardEnabled"] = s.gpsLockoutCoreGuardEnabled;
-    doc["gpsLockoutMaxQueueDrops"] = s.gpsLockoutMaxQueueDrops;
-    doc["gpsLockoutMaxPerfDrops"] = s.gpsLockoutMaxPerfDrops;
-    doc["gpsLockoutMaxEventBusDrops"] = s.gpsLockoutMaxEventBusDrops;
-    doc["gpsLockoutLearnerPromotionHits"] = s.gpsLockoutLearnerPromotionHits;
-    doc["gpsLockoutLearnerRadiusE5"] = s.gpsLockoutLearnerRadiusE5;
-    doc["gpsLockoutLearnerFreqToleranceMHz"] = s.gpsLockoutLearnerFreqToleranceMHz;
-    doc["gpsLockoutLearnerLearnIntervalHours"] = s.gpsLockoutLearnerLearnIntervalHours;
-    doc["gpsLockoutLearnerUnlearnIntervalHours"] = s.gpsLockoutLearnerUnlearnIntervalHours;
-    doc["gpsLockoutLearnerUnlearnCount"] = s.gpsLockoutLearnerUnlearnCount;
-    doc["gpsLockoutManualDemotionMissCount"] = s.gpsLockoutManualDemotionMissCount;
-    doc["gpsLockoutKaLearningEnabled"] = s.gpsLockoutKaLearningEnabled;
-    doc["gpsLockoutKLearningEnabled"] = s.gpsLockoutKLearningEnabled;
-    doc["gpsLockoutXLearningEnabled"] = s.gpsLockoutXLearningEnabled;
-    doc["gpsLockoutPreQuiet"] = s.gpsLockoutPreQuiet;
-    doc["gpsLockoutPreQuietBufferE5"] = s.gpsLockoutPreQuietBufferE5;
-    doc["lastV1Address"] = s.lastV1Address;
-    
-    // Display settings
-    doc["brightness"] = s.brightness;
-    doc["displayStyle"] = (int)s.displayStyle;
-    doc["turnOffDisplay"] = s.turnOffDisplay;
-    
-    // All colors (RGB565)
-    doc["colorBogey"] = s.colorBogey;
-    doc["colorFrequency"] = s.colorFrequency;
-    doc["colorArrowFront"] = s.colorArrowFront;
-    doc["colorArrowSide"] = s.colorArrowSide;
-    doc["colorArrowRear"] = s.colorArrowRear;
-    doc["colorBandL"] = s.colorBandL;
-    doc["colorBandKa"] = s.colorBandKa;
-    doc["colorBandK"] = s.colorBandK;
-    doc["colorBandX"] = s.colorBandX;
-    doc["colorBandPhoto"] = s.colorBandPhoto;
-    doc["colorWiFiIcon"] = s.colorWiFiIcon;
-    doc["colorBleConnected"] = s.colorBleConnected;
-    doc["colorBleDisconnected"] = s.colorBleDisconnected;
-    doc["colorBar1"] = s.colorBar1;
-    doc["colorBar2"] = s.colorBar2;
-    doc["colorBar3"] = s.colorBar3;
-    doc["colorBar4"] = s.colorBar4;
-    doc["colorBar5"] = s.colorBar5;
-    doc["colorBar6"] = s.colorBar6;
-    doc["colorMuted"] = s.colorMuted;
-    doc["colorPersisted"] = s.colorPersisted;
-    doc["colorVolumeMain"] = s.colorVolumeMain;
-    doc["colorVolumeMute"] = s.colorVolumeMute;
-    doc["colorWiFiConnected"] = s.colorWiFiConnected;
-    doc["colorRssiV1"] = s.colorRssiV1;
-    doc["colorRssiProxy"] = s.colorRssiProxy;
-    doc["colorLockout"] = s.colorLockout;
-    doc["colorGps"] = s.colorGps;
-    doc["freqUseBandColor"] = s.freqUseBandColor;
-    
-    // Display visibility
-    doc["hideWifiIcon"] = s.hideWifiIcon;
-    doc["hideProfileIndicator"] = s.hideProfileIndicator;
-    doc["hideBatteryIcon"] = s.hideBatteryIcon;
-    doc["showBatteryPercent"] = s.showBatteryPercent;
-    doc["hideBleIcon"] = s.hideBleIcon;
-    doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
-    doc["hideRssiIndicator"] = s.hideRssiIndicator;
-    
-    // Development
-    doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
-    doc["enableSignalTraceLogging"] = s.enableSignalTraceLogging;
-    
-    // WiFi client settings
-    doc["wifiMode"] = (int)s.wifiMode;
-    doc["wifiClientEnabled"] = s.wifiClientEnabled;
-    doc["wifiClientSSID"] = s.wifiClientSSID;
-    
-    // Auto power-off
-    doc["autoPowerOffMinutes"] = s.autoPowerOffMinutes;
-    doc["apTimeoutMinutes"] = s.apTimeoutMinutes;
-    
-    // Voice settings
-    doc["voiceAlertMode"] = (int)s.voiceAlertMode;
-    doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
-    doc["announceBogeyCount"] = s.announceBogeyCount;
-    doc["muteVoiceIfVolZero"] = s.muteVoiceIfVolZero;
-    doc["voiceVolume"] = s.voiceVolume;
-    doc["announceSecondaryAlerts"] = s.announceSecondaryAlerts;
-    doc["secondaryLaser"] = s.secondaryLaser;
-    doc["secondaryKa"] = s.secondaryKa;
-    doc["secondaryK"] = s.secondaryK;
-    doc["secondaryX"] = s.secondaryX;
-    doc["alertVolumeFadeEnabled"] = s.alertVolumeFadeEnabled;
-    doc["alertVolumeFadeDelaySec"] = s.alertVolumeFadeDelaySec;
-    doc["alertVolumeFadeVolume"] = s.alertVolumeFadeVolume;
-    
-    // Auto-push slot settings
-    doc["autoPushEnabled"] = s.autoPushEnabled;
-    doc["activeSlot"] = s.activeSlot;
-    doc["slot0Name"] = s.slot0Name;
-    doc["slot1Name"] = s.slot1Name;
-    doc["slot2Name"] = s.slot2Name;
-    doc["slot0Color"] = s.slot0Color;
-    doc["slot1Color"] = s.slot1Color;
-    doc["slot2Color"] = s.slot2Color;
-    doc["slot0Volume"] = s.slot0Volume;
-    doc["slot1Volume"] = s.slot1Volume;
-    doc["slot2Volume"] = s.slot2Volume;
-    doc["slot0MuteVolume"] = s.slot0MuteVolume;
-    doc["slot1MuteVolume"] = s.slot1MuteVolume;
-    doc["slot2MuteVolume"] = s.slot2MuteVolume;
-    doc["slot0DarkMode"] = s.slot0DarkMode;
-    doc["slot1DarkMode"] = s.slot1DarkMode;
-    doc["slot2DarkMode"] = s.slot2DarkMode;
-    doc["slot0MuteToZero"] = s.slot0MuteToZero;
-    doc["slot1MuteToZero"] = s.slot1MuteToZero;
-    doc["slot2MuteToZero"] = s.slot2MuteToZero;
-    doc["slot0AlertPersist"] = s.slot0AlertPersist;
-    doc["slot1AlertPersist"] = s.slot1AlertPersist;
-    doc["slot2AlertPersist"] = s.slot2AlertPersist;
-    doc["slot0PriorityArrow"] = s.slot0PriorityArrow;
-    doc["slot1PriorityArrow"] = s.slot1PriorityArrow;
-    doc["slot2PriorityArrow"] = s.slot2PriorityArrow;
-    doc["slot0ProfileName"] = s.slot0_default.profileName;
-    doc["slot0Mode"] = s.slot0_default.mode;
-    doc["slot1ProfileName"] = s.slot1_highway.profileName;
-    doc["slot1Mode"] = s.slot1_highway.mode;
-    doc["slot2ProfileName"] = s.slot2_comfort.profileName;
-    doc["slot2Mode"] = s.slot2_comfort.mode;
-    
-    // V1 Profiles backup
-    JsonArray profilesArr = doc["profiles"].to<JsonArray>();
-    std::vector<String> profileNames = v1ProfileManager.listProfiles();
-    for (const String& name : profileNames) {
-        V1Profile profile;
-        if (v1ProfileManager.loadProfile(name, profile)) {
-            JsonObject p = profilesArr.add<JsonObject>();
-            p["name"] = profile.name;
-            p["description"] = profile.description;
-            p["displayOn"] = profile.displayOn;
-            p["mainVolume"] = profile.mainVolume;
-            p["mutedVolume"] = profile.mutedVolume;
-            // Store raw bytes array
-            JsonArray bytes = p["bytes"].to<JsonArray>();
-            for (int i = 0; i < 6; i++) {
-                bytes.add(profile.settings.bytes[i]);
-            }
-        }
-    }
+    BackupPayloadBuilder::buildBackupDocument(
+        doc,
+        settingsManager.get(),
+        v1ProfileManager,
+        BackupPayloadBuilder::BackupTransport::HttpDownload,
+        millis());
     
     // Send with Content-Disposition header for download
     server.sendHeader("Content-Disposition", "attachment; filename=\"v1simple_backup.json\"");
@@ -267,7 +111,8 @@ static void handleRestore(WebServer& server) {
     }
     
     // Verify backup format
-    if (!doc["_type"].is<const char*>() || String(doc["_type"].as<const char*>()) != "v1simple_backup") {
+    if (!doc["_type"].is<const char*>() ||
+        !BackupPayloadBuilder::isRecognizedBackupType(doc["_type"].as<const char*>())) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid backup format\"}");
         return;
     }
@@ -344,6 +189,41 @@ static void handleRestore(WebServer& server) {
     if (doc["gpsLockoutPreQuietBufferE5"].is<int>()) {
         s.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
             doc["gpsLockoutPreQuietBufferE5"].as<int>());
+    }
+    if (doc["cameraAlertsEnabled"].is<bool>()) {
+        s.cameraAlertsEnabled = doc["cameraAlertsEnabled"];
+    }
+    if (doc["cameraAlertRangeCm"].is<int>()) {
+        s.cameraAlertRangeCm = clampCameraAlertRangeCmValue(doc["cameraAlertRangeCm"].as<int>());
+    }
+    if (doc["cameraAlertNearRangeCm"].is<int>()) {
+        s.cameraAlertNearRangeCm = clampCameraAlertNearRangeCmValue(
+            doc["cameraAlertNearRangeCm"].as<int>());
+    }
+    normalizeCameraAlertRanges(s.cameraAlertRangeCm, s.cameraAlertNearRangeCm);
+    if (doc["cameraTypeAlpr"].is<bool>()) {
+        s.cameraTypeAlpr = doc["cameraTypeAlpr"];
+    }
+    if (doc["cameraTypeRedLight"].is<bool>()) {
+        s.cameraTypeRedLight = doc["cameraTypeRedLight"];
+    }
+    if (doc["cameraTypeSpeed"].is<bool>()) {
+        s.cameraTypeSpeed = doc["cameraTypeSpeed"];
+    }
+    if (doc["cameraTypeBusLane"].is<bool>()) {
+        s.cameraTypeBusLane = doc["cameraTypeBusLane"];
+    }
+    if (doc["colorCameraArrow"].is<int>()) {
+        s.colorCameraArrow = doc["colorCameraArrow"];
+    }
+    if (doc["colorCameraText"].is<int>()) {
+        s.colorCameraText = doc["colorCameraText"];
+    }
+    if (doc["cameraVoiceFarEnabled"].is<bool>()) {
+        s.cameraVoiceFarEnabled = doc["cameraVoiceFarEnabled"];
+    }
+    if (doc["cameraVoiceNearEnabled"].is<bool>()) {
+        s.cameraVoiceNearEnabled = doc["cameraVoiceNearEnabled"];
     }
     if (doc["lastV1Address"].is<const char*>()) {
         s.lastV1Address = sanitizeLastV1AddressForBackup(doc["lastV1Address"].as<String>());
