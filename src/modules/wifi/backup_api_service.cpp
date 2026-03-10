@@ -12,6 +12,7 @@
 #include "../lockout/lockout_band_policy.h"
 #include "../speed/speed_source_selector.h"
 #include "../../../include/clamp_utils.h"
+#include "json_stream_response.h"
 
 namespace {
 
@@ -197,12 +198,9 @@ static void sendBackup(WebServer& server) {
         }
     }
     
-    String json;
-    serializeJsonPretty(doc, json);
-    
     // Send with Content-Disposition header for download
     server.sendHeader("Content-Disposition", "attachment; filename=\"v1simple_backup.json\"");
-    server.send(200, "application/json", json);
+    sendJsonStream(server, doc);
 }
 
 static void handleBackupNow(WebServer& server) {
