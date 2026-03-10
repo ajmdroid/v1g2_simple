@@ -6,6 +6,12 @@
 
 #include <math.h>
 
+namespace {
+bool cameraPayloadEqual(const CameraAlertDisplayPayload& a, const CameraAlertDisplayPayload& b) {
+    return a.active == b.active && a.type == b.type && a.distanceCm == b.distanceCm;
+}
+}  // namespace
+
 void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
                                   V1Display* displayPtr,
                                   PacketParser* parserPtr,
@@ -32,6 +38,11 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     debugCameraOverrideEnabled_ = false;
     debugCameraOverrideUntilMs_ = 0;
     debugCameraPayload_ = CameraAlertDisplayPayload{};
+    lastDebugCameraRenderedPayload_ = CameraAlertDisplayPayload{};
+    lastDebugCameraRenderedBogeyChar_ = 0;
+    lastDebugCameraRenderedBogeyDot_ = false;
+    lastDebugCameraRenderMs_ = 0;
+    debugCameraFrameValid_ = false;
     PERF_SET(cameraDisplayActive, 0);
     PERF_SET(cameraDebugOverrideActive, 0);
 }
@@ -93,6 +104,7 @@ void DisplayPipelineModule::clearDebugCameraOverride() {
     debugCameraOverrideEnabled_ = false;
     debugCameraOverrideUntilMs_ = 0;
     debugCameraPayload_ = CameraAlertDisplayPayload{};
+    debugCameraFrameValid_ = false;
     PERF_SET(cameraDebugOverrideActive, 0);
 }
 
@@ -139,7 +151,27 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
     }
 
     if (debugCameraOverrideActiveAt(nowMs)) {
-        if (forceRedraw || lastRenderedOwner_ != RenderOwner::Camera) {
+        const bool ownerChanged = lastRenderedOwner_ != RenderOwner::Camera;
+        const bool payloadChanged =
+            !debugCameraFrameValid_ ||
+            !cameraPayloadEqual(debugCameraPayload_, lastDebugCameraRenderedPayload_);
+        const bool statusStripChanged =
+            !debugCameraFrameValid_ ||
+            state.bogeyCounterChar != lastDebugCameraRenderedBogeyChar_ ||
+            state.bogeyCounterDot != lastDebugCameraRenderedBogeyDot_;
+        const bool refreshDue =
+            !debugCameraFrameValid_ ||
+            static_cast<uint32_t>(nowMs - lastDebugCameraRenderMs_) >= DEBUG_CAMERA_REDRAW_MIN_MS;
+        const bool shouldRender = forceRedraw || ownerChanged || payloadChanged || statusStripChanged || refreshDue;
+
+        if (!shouldRender) {
+            PERF_SET(cameraDebugOverrideActive, 1);
+            cameraAlertActive_ = true;
+            lastRenderedOwner_ = RenderOwner::Camera;
+            return;
+        }
+
+        if (forceRedraw || ownerChanged) {
             display->forceNextRedraw();
         }
 
@@ -151,6 +183,11 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
         PERF_SET(cameraDebugOverrideActive, 1);
         PERF_INC(cameraDebugDisplayFrames);
         perfRecordCameraDebugDisplayUs(endUs - startUs);
+        lastDebugCameraRenderedPayload_ = debugCameraPayload_;
+        lastDebugCameraRenderedBogeyChar_ = state.bogeyCounterChar;
+        lastDebugCameraRenderedBogeyDot_ = state.bogeyCounterDot;
+        lastDebugCameraRenderMs_ = nowMs;
+        debugCameraFrameValid_ = true;
         cameraAlertActive_ = true;
         lastRenderedOwner_ = RenderOwner::Camera;
         return;
@@ -401,24 +438,16 @@ bool DisplayPipelineModule::debugRenderCameraPayload(uint32_t nowMs,
         debugCameraPayload_ = payload;
         debugCameraOverrideUntilMs_ = nowMs + holdMs;
         debugCameraOverrideEnabled_ = true;
+        debugCameraFrameValid_ = false;
         PERF_SET(cameraDebugOverrideActive, 1);
     } else {
         clearDebugCameraOverride();
     }
-
-    const DisplayState state = parser->getDisplayState();
-    display->forceNextRedraw();
-    PERF_SET(cameraDisplayActive, 0);
-    const unsigned long startUs = micros();
-    display->updateCameraAlert(payload, state);
-    const unsigned long endUs = micros();
-    recordDisplayTiming("display.camera.debug", startUs, endUs);
-    recordPerfTiming("display.camera.debug", startUs, endUs);
-    PERF_INC(cameraDebugDisplayFrames);
-    perfRecordCameraDebugDisplayUs(endUs - startUs);
     *displayMode = DisplayMode::IDLE;
-    cameraAlertActive_ = false;
-    lastRenderedOwner_ = RenderOwner::Camera;
+    cameraAlertActive_ = holdMs > 0;
+    if (holdMs > 0) {
+        lastRenderedOwner_ = RenderOwner::Unknown;
+    }
     lastDisplayDraw = nowMs;
     return true;
 }
