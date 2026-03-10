@@ -1,4 +1,5 @@
 #include "debug_api_service.h"
+#include "debug_metrics_payload.h"
 #include "debug_perf_files_service.h"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
@@ -234,6 +235,7 @@ static void sendMetrics(WebServer& server) {
     doc["audioPlayCount"] = perfCounters.audioPlayCount.load();
     doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
     doc["audioTaskFail"] = perfCounters.audioTaskFail.load();
+    appendCameraMetricsPayload(doc);
     doc["reconnects"] = perfCounters.reconnects.load();
     doc["disconnects"] = perfCounters.disconnects.load();
     doc["connectionDispatchRuns"] = perfCounters.connectionDispatchRuns.load();
@@ -533,6 +535,7 @@ static void sendMetricsSoak(WebServer& server) {
     doc["audioPlayCount"] = perfCounters.audioPlayCount.load();
     doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
     doc["audioTaskFail"] = perfCounters.audioTaskFail.load();
+    appendCameraMetricsPayload(doc);
     doc["reconnects"] = perfCounters.reconnects.load();
     doc["disconnects"] = perfCounters.disconnects.load();
     doc["connectionDispatchRuns"] = perfCounters.connectionDispatchRuns.load();

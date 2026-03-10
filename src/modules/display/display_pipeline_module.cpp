@@ -32,6 +32,8 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     debugCameraOverrideEnabled_ = false;
     debugCameraOverrideUntilMs_ = 0;
     debugCameraPayload_ = CameraAlertDisplayPayload{};
+    PERF_SET(cameraDisplayActive, 0);
+    PERF_SET(cameraDebugOverrideActive, 0);
 }
 
 // Track lastAlertGapRecoverMs locally since it was removed from header
@@ -91,6 +93,7 @@ void DisplayPipelineModule::clearDebugCameraOverride() {
     debugCameraOverrideEnabled_ = false;
     debugCameraOverrideUntilMs_ = 0;
     debugCameraPayload_ = CameraAlertDisplayPayload{};
+    PERF_SET(cameraDebugOverrideActive, 0);
 }
 
 void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
@@ -99,6 +102,8 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
     if (debugCameraOverrideEnabled_ && !debugCameraOverrideActiveAt(nowMs)) {
         clearDebugCameraOverride();
     }
+    PERF_SET(cameraDebugOverrideActive, debugCameraOverrideActiveAt(nowMs) ? 1U : 0U);
+    PERF_SET(cameraDisplayActive, 0);
 
     const V1Settings& s = settings->get();
     const uint8_t persistSec = settings->getSlotAlertPersistSec(s.activeSlot);
@@ -143,6 +148,9 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
         const unsigned long endUs = micros();
         recordDisplayTiming("display.camera.debug", startUs, endUs);
         recordPerfTiming("display.camera.debug", startUs, endUs);
+        PERF_SET(cameraDebugOverrideActive, 1);
+        PERF_INC(cameraDebugDisplayFrames);
+        perfRecordCameraDebugDisplayUs(endUs - startUs);
         cameraAlertActive_ = true;
         lastRenderedOwner_ = RenderOwner::Camera;
         return;
@@ -158,6 +166,9 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
         const unsigned long endUs = micros();
         recordDisplayTiming("display.camera", startUs, endUs);
         recordPerfTiming("display.camera", startUs, endUs);
+        PERF_SET(cameraDisplayActive, 1);
+        PERF_INC(cameraDisplayFrames);
+        perfRecordCameraDisplayUs(endUs - startUs);
         cameraAlertActive_ = true;
         lastRenderedOwner_ = RenderOwner::Camera;
         return;
@@ -344,6 +355,8 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
     display->forceNextRedraw();
 
     if (!ble->isConnected()) {
+        PERF_SET(cameraDisplayActive, 0);
+        PERF_SET(cameraDebugOverrideActive, 0);
         display->showScanning();
         *displayMode = DisplayMode::IDLE;
         cameraAlertActive_ = false;
@@ -359,6 +372,8 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
 
     if (hasAlerts) {
         *displayMode = DisplayMode::LIVE;
+        PERF_SET(cameraDisplayActive, 0);
+        PERF_SET(cameraDebugOverrideActive, 0);
         cameraAlertActive_ = false;
         if (hasRenderablePriority) {
             const auto& alerts = parser->getAllAlerts();
@@ -386,17 +401,21 @@ bool DisplayPipelineModule::debugRenderCameraPayload(uint32_t nowMs,
         debugCameraPayload_ = payload;
         debugCameraOverrideUntilMs_ = nowMs + holdMs;
         debugCameraOverrideEnabled_ = true;
+        PERF_SET(cameraDebugOverrideActive, 1);
     } else {
         clearDebugCameraOverride();
     }
 
     const DisplayState state = parser->getDisplayState();
     display->forceNextRedraw();
+    PERF_SET(cameraDisplayActive, 0);
     const unsigned long startUs = micros();
     display->updateCameraAlert(payload, state);
     const unsigned long endUs = micros();
     recordDisplayTiming("display.camera.debug", startUs, endUs);
     recordPerfTiming("display.camera.debug", startUs, endUs);
+    PERF_INC(cameraDebugDisplayFrames);
+    perfRecordCameraDebugDisplayUs(endUs - startUs);
     *displayMode = DisplayMode::IDLE;
     cameraAlertActive_ = false;
     lastRenderedOwner_ = RenderOwner::Camera;

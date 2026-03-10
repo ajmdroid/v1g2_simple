@@ -265,12 +265,20 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.bleDiscTaskCreateFail = perfCounters.bleDiscTaskCreateFail.load(std::memory_order_relaxed);
     snapshot.displayUpdates = perfCounters.displayUpdates.load(std::memory_order_relaxed);
     snapshot.displaySkips = perfCounters.displaySkips.load(std::memory_order_relaxed);
+    snapshot.cameraDisplayActive = perfCounters.cameraDisplayActive.load(std::memory_order_relaxed);
+    snapshot.cameraDebugOverrideActive =
+        perfCounters.cameraDebugOverrideActive.load(std::memory_order_relaxed);
+    snapshot.cameraDisplayFrames = perfCounters.cameraDisplayFrames.load(std::memory_order_relaxed);
+    snapshot.cameraDebugDisplayFrames =
+        perfCounters.cameraDebugDisplayFrames.load(std::memory_order_relaxed);
     snapshot.wifiConnectDeferred = perfCounters.wifiConnectDeferred.load(std::memory_order_relaxed);
     snapshot.pushNowRetries = perfCounters.pushNowRetries.load(std::memory_order_relaxed);
     snapshot.pushNowFailures = perfCounters.pushNowFailures.load(std::memory_order_relaxed);
     snapshot.audioPlayCount = perfCounters.audioPlayCount.load(std::memory_order_relaxed);
     snapshot.audioPlayBusy = perfCounters.audioPlayBusy.load(std::memory_order_relaxed);
     snapshot.audioTaskFail = perfCounters.audioTaskFail.load(std::memory_order_relaxed);
+    snapshot.cameraVoiceQueued = perfCounters.cameraVoiceQueued.load(std::memory_order_relaxed);
+    snapshot.cameraVoiceStarted = perfCounters.cameraVoiceStarted.load(std::memory_order_relaxed);
     snapshot.sigObsQueueDrops = perfCounters.sigObsQueueDrops.load(std::memory_order_relaxed);
     snapshot.sigObsWriteFail = perfCounters.sigObsWriteFail.load(std::memory_order_relaxed);
 
@@ -291,6 +299,9 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.dispMaxUs = perfExtended.dispPipeMaxUs;
     snapshot.bleProcessMaxUs = perfExtended.bleProcessMaxUs;
     snapshot.touchMaxUs = perfExtended.touchMaxUs;
+    snapshot.cameraDisplayMaxUs = perfExtended.cameraDisplayMaxUs;
+    snapshot.cameraDebugDisplayMaxUs = perfExtended.cameraDebugDisplayMaxUs;
+    snapshot.cameraProcessMaxUs = perfExtended.cameraProcessMaxUs;
     snapshot.gpsMaxUs = perfExtended.gpsMaxUs;
     snapshot.lockoutMaxUs = perfExtended.lockoutMaxUs;
     snapshot.wifiMaxUs = perfExtended.wifiMaxUs;
@@ -343,6 +354,9 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     perfExtended.dispPipeMaxUs = 0;
     perfExtended.bleProcessMaxUs = 0;
     perfExtended.touchMaxUs = 0;
+    perfExtended.cameraDisplayMaxUs = 0;
+    perfExtended.cameraDebugDisplayMaxUs = 0;
+    perfExtended.cameraProcessMaxUs = 0;
     perfExtended.gpsMaxUs = 0;
     perfExtended.lockoutMaxUs = 0;
     perfExtended.wifiMaxUs = 0;
@@ -462,6 +476,30 @@ void perfRecordTouchUs(uint32_t us) {
     if (us > perfExtended.touchMaxUs) {
         perfExtended.touchMaxUs = us;
     }
+}
+
+void perfRecordCameraDisplayUs(uint32_t us) {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    if (us > perfExtended.cameraDisplayMaxUs) {
+        perfExtended.cameraDisplayMaxUs = us;
+    }
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
+}
+
+void perfRecordCameraDebugDisplayUs(uint32_t us) {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    if (us > perfExtended.cameraDebugDisplayMaxUs) {
+        perfExtended.cameraDebugDisplayMaxUs = us;
+    }
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
+}
+
+void perfRecordCameraProcessUs(uint32_t us) {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    if (us > perfExtended.cameraProcessMaxUs) {
+        perfExtended.cameraProcessMaxUs = us;
+    }
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 
 void perfRecordGpsUs(uint32_t us) {
@@ -634,6 +672,9 @@ uint32_t perfGetFlushMaxUs() { return perfExtended.flushMaxUs; }
 uint32_t perfGetBleDrainMaxUs() { return perfExtended.bleDrainMaxUs; }
 uint32_t perfGetBleProcessMaxUs() { return perfExtended.bleProcessMaxUs; }
 uint32_t perfGetDispPipeMaxUs() { return perfExtended.dispPipeMaxUs; }
+uint32_t perfGetCameraDisplayMaxUs() { return perfExtended.cameraDisplayMaxUs; }
+uint32_t perfGetCameraDebugDisplayMaxUs() { return perfExtended.cameraDebugDisplayMaxUs; }
+uint32_t perfGetCameraProcessMaxUs() { return perfExtended.cameraProcessMaxUs; }
 uint32_t perfGetPrevWindowLoopMaxUs() {
     return sPrevWindowLoopMaxUs.load(std::memory_order_relaxed);
 }
@@ -730,6 +771,10 @@ String perfMetricsToJson() {
     doc["phoneCmdQueueHighWater"] = perfCounters.phoneCmdQueueHighWater.load();
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();
+    doc["cameraDisplayActive"] = perfCounters.cameraDisplayActive.load();
+    doc["cameraDebugOverrideActive"] = perfCounters.cameraDebugOverrideActive.load();
+    doc["cameraDisplayFrames"] = perfCounters.cameraDisplayFrames.load();
+    doc["cameraDebugDisplayFrames"] = perfCounters.cameraDebugDisplayFrames.load();
     doc["reconnects"] = perfCounters.reconnects.load();
     doc["disconnects"] = perfCounters.disconnects.load();
     doc["connectionDispatchRuns"] = perfCounters.connectionDispatchRuns.load();
@@ -814,8 +859,13 @@ String perfMetricsToJson() {
     doc["audioPlayCount"] = perfCounters.audioPlayCount.load();
     doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
     doc["audioTaskFail"] = perfCounters.audioTaskFail.load();
+    doc["cameraVoiceQueued"] = perfCounters.cameraVoiceQueued.load();
+    doc["cameraVoiceStarted"] = perfCounters.cameraVoiceStarted.load();
     doc["sigObsQueueDrops"] = perfCounters.sigObsQueueDrops.load();
     doc["sigObsWriteFail"] = perfCounters.sigObsWriteFail.load();
+    doc["cameraDisplayMaxUs"] = perfGetCameraDisplayMaxUs();
+    doc["cameraDebugDisplayMaxUs"] = perfGetCameraDebugDisplayMaxUs();
+    doc["cameraProcessMaxUs"] = perfGetCameraProcessMaxUs();
     
 #if PERF_METRICS
     doc["monitoringEnabled"] = (bool)PERF_MONITORING;
