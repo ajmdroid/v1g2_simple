@@ -55,6 +55,7 @@ RAD_TIMEOUT_SECONDS="${REAL_FW_RAD_TIMEOUT_SECONDS:-}"
 RAD_MIN_RX_DELTA=20
 RAD_MIN_PARSE_SUCCESS_DELTA=20
 RAD_MIN_DISPLAY_UPDATES_DELTA=10
+CAMERA_RADAR_STRESS=0
 
 OUT_DIR=""
 
@@ -140,6 +141,7 @@ Options:
   --rad-scenario ID              Short radar scenario ID (default: RAD-03)
   --rad-duration-scale-pct N     RAD scenario duration scale percent (default: 100)
   --rad-timeout-seconds N        RAD scenario completion timeout (default: auto from scale)
+  --camera-radar-stress          Run opt-in camera+radar overlap stress item
   --no-transition-soak           Skip Cycle 3 transition qualification soak
   --transition-flap-cycles N     Transition flap cycles for transition soak (default: 3)
   --transition-drive-interval-seconds N
@@ -660,6 +662,84 @@ PY
   fi
 }
 
+run_camera_radar_overlap_test() {
+  local test_name="camera_radar_overlap"
+  local run_log="$OUT_DIR/${test_name}.log"
+  local item_out_dir="$OUT_DIR/${test_name}_artifacts"
+  mkdir -p "$item_out_dir"
+  local cmd=(python3 "./scripts/camera_radar_device_stress.py"
+    --metrics-url "$METRICS_URL"
+    --http-timeout-seconds "$HTTP_TIMEOUT_SECONDS"
+    --out-dir "$item_out_dir"
+    --scenario-id "$RAD_SCENARIO_ID"
+    --duration-scale-pct "$RAD_DURATION_SCALE_PCT"
+    --mode both
+    --flap-cycles "$SOAK_TRANSITION_FLAP_CYCLES"
+    --flap-interval-seconds "$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS")
+  local cmd_text
+  cmd_text="$(shell_join "${cmd[@]}")"
+
+  echo -e "${YELLOW}==> Running $test_name...${NC}"
+  local rc
+  if "${cmd[@]}" >"$run_log" 2>&1; then
+    rc=0
+  else
+    rc=$?
+  fi
+
+  local summary="$item_out_dir/summary.md"
+  local details="$item_out_dir/details.json"
+  local result_word
+  result_word="$(awk '/^result:/{r=$2} END{print r}' "$run_log")"
+  local status="FAIL"
+  if [[ "$rc" -eq 0 && "$result_word" == "PASS" ]]; then
+    status="PASS"
+  fi
+
+  local metrics="rc=$rc result=${result_word:-unknown}"
+  if [[ -f "$details" ]]; then
+    local detail_metrics
+    detail_metrics="$(python3 - "$details" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+phases = {phase.get("phase"): phase for phase in data.get("phases", [])}
+parts = []
+for name in ("overlap", "flap"):
+    phase = phases.get(name)
+    if not phase:
+        continue
+    metrics = phase.get("metrics", {})
+    parts.append(f"{name}={phase.get('result', 'unknown')}")
+    parts.append(f"{name}_camPeak={metrics.get('camera_correlated_disp_pipe_peak_us', 'n/a')}")
+    parts.append(f"{name}_camSamples={metrics.get('camera_correlated_disp_pipe_sample_count', 'n/a')}")
+    parts.append(f"{name}_dispPeak={metrics.get('dispPipeMaxUs_peak', 'n/a')}")
+    parts.append(f"{name}_parseFail={metrics.get('parseFailures_delta', 'n/a')}")
+    parts.append(f"{name}_qDrop={metrics.get('queueDrops_delta', 'n/a')}")
+print(" ".join(parts))
+PY
+)"
+    if [[ -n "$detail_metrics" ]]; then
+      metrics+=" $detail_metrics"
+    fi
+  fi
+
+  local failure
+  failure="$(awk -F= '/_failure=/{sub(/^[^=]*=/,""); print; exit}' "$run_log")"
+  if [[ -n "$failure" ]]; then
+    metrics+=" failure=\"${failure}\""
+  fi
+
+  local artifact="$run_log"
+  if [[ -f "$summary" ]]; then
+    artifact="$summary"
+  fi
+  add_result "$test_name" "$status" "$metrics" "$artifact" "$cmd_text"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --metrics-url)
@@ -702,6 +782,9 @@ while [[ $# -gt 0 ]]; do
       [[ $# -lt 2 ]] && { echo "Missing value for --rad-timeout-seconds" >&2; exit 2; }
       RAD_TIMEOUT_SECONDS="$2"
       shift
+      ;;
+    --camera-radar-stress)
+      CAMERA_RADAR_STRESS=1
       ;;
     --no-transition-soak)
       SOAK_ENABLE_TRANSITION_QUAL=0
@@ -845,6 +928,7 @@ echo "  camera smoke: api/ui/render on hardware"
 echo "  display drive: displayInterval=${SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=$SOAK_MIN_DISPLAY_UPDATES_DELTA"
 echo "  transition qual: enabled=$SOAK_ENABLE_TRANSITION_QUAL flapCycles=$SOAK_TRANSITION_FLAP_CYCLES interval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s maxRecoveryMs=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS maxSamples=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
 echo "  RAD scenario: $RAD_SCENARIO_ID scalePct=$RAD_DURATION_SCALE_PCT timeout=${RESOLVED_RAD_TIMEOUT_SECONDS}s (rx>=$RAD_MIN_RX_DELTA parse>=$RAD_MIN_PARSE_SUCCESS_DELTA display>=$RAD_MIN_DISPLAY_UPDATES_DELTA parseFail==0)"
+echo "  camera+radar stress: enabled=$CAMERA_RADAR_STRESS mode=both flapCycles=$SOAK_TRANSITION_FLAP_CYCLES flapInterval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s"
 echo "  out dir: $OUT_DIR"
 echo ""
 
@@ -878,6 +962,12 @@ else
   check_uptime_continuity "before rad_short"
   run_rad_short_test
   check_uptime_continuity "after rad_short"
+
+  if [[ "$CAMERA_RADAR_STRESS" -eq 1 ]]; then
+    check_uptime_continuity "before camera_radar_overlap"
+    run_camera_radar_overlap_test
+    check_uptime_continuity "after camera_radar_overlap"
+  fi
 
   check_uptime_continuity "before soak_display"
   run_soak_test "soak_display" \
@@ -983,6 +1073,7 @@ fi
   echo "- Camera smoke: \`scripts/camera_device_smoke.py\` (settings API, /cameras UI render, debug camera display render)"
   echo "- Soak robust latency gate: \`mode=$SOAK_LATENCY_GATE_MODE min_samples=$SOAK_LATENCY_ROBUST_MIN_SAMPLES max_exceed_pct=$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT wifi_skip_first=$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES\`"
   echo "- Display drive defaults: \`display_interval_s=$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS min_display_updates_delta=$SOAK_MIN_DISPLAY_UPDATES_DELTA\`"
+  echo "- Camera+radar overlap: \`enabled=$CAMERA_RADAR_STRESS scenario=$RAD_SCENARIO_ID scale_pct=$RAD_DURATION_SCALE_PCT mode=both flap_cycles=$SOAK_TRANSITION_FLAP_CYCLES flap_interval_s=$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS\`"
   echo "- Transition qualification: \`enabled=$SOAK_ENABLE_TRANSITION_QUAL flap_cycles=$SOAK_TRANSITION_FLAP_CYCLES interval_s=$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS min_proxy_off_transitions=$SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS max_proxy_recovery_ms=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS max_samples_to_stable=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE\`"
   echo "- RAD short default gates: \`scenario=$RAD_SCENARIO_ID duration_scale_pct=$RAD_DURATION_SCALE_PCT timeout_s=$RESOLVED_RAD_TIMEOUT_SECONDS rx_delta>=$RAD_MIN_RX_DELTA parse_success_delta>=$RAD_MIN_PARSE_SUCCESS_DELTA display_updates_delta>=$RAD_MIN_DISPLAY_UPDATES_DELTA parse_fail_delta==0\`"
   echo ""
