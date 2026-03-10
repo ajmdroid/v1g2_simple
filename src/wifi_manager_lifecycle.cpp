@@ -299,6 +299,7 @@ void WiFiManager::finalizeStopSetupMode() {
     wifiStopManual = false;
     wifiStopHadSta = false;
     wifiStopHadAp = false;
+    WifiStatusApiService::releaseStatusJsonCache(cachedStatusJson, lastStatusJsonTime);
 
     // ========== OBSERVABILITY ==========
     uint32_t freeInternalAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);

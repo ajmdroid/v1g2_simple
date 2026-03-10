@@ -9,6 +9,13 @@
 
 namespace WifiStatusApiService {
 
+struct StatusJsonCache {
+    char* data = nullptr;
+    size_t capacity = 0;
+    size_t length = 0;
+    bool inPsram = false;
+};
+
 struct StatusRuntime {
     std::function<bool()> setupModeActive;
     std::function<bool()> staConnected;
@@ -42,9 +49,15 @@ struct StatusRuntime {
     std::function<void(JsonObject)> mergeAlert;    // Write fields into alert sub-object
 };
 
+void invalidateStatusJsonCache(StatusJsonCache& cachedStatusJson,
+                               unsigned long& lastStatusJsonTime);
+
+void releaseStatusJsonCache(StatusJsonCache& cachedStatusJson,
+                            unsigned long& lastStatusJsonTime);
+
 void handleApiStatus(WebServer& server,
                      const StatusRuntime& runtime,
-                     String& cachedStatusJson,
+                     StatusJsonCache& cachedStatusJson,
                      unsigned long& lastStatusJsonTime,
                      unsigned long cacheTtlMs,
                      const std::function<unsigned long()>& millisFn,
@@ -52,7 +65,7 @@ void handleApiStatus(WebServer& server,
 
 void handleApiLegacyStatus(WebServer& server,
                            const StatusRuntime& runtime,
-                           String& cachedStatusJson,
+                           StatusJsonCache& cachedStatusJson,
                            unsigned long& lastStatusJsonTime,
                            unsigned long cacheTtlMs,
                            const std::function<unsigned long()>& millisFn);

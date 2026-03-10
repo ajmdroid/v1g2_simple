@@ -99,3 +99,16 @@ inline void sendJsonStream(WebServer& server, const JsonDocument& doc, int code 
     buffered.flushBuffer();
 #endif
 }
+
+inline void sendSerializedJson(WebServer& server, const char* data, size_t len, int code = 200) {
+#if defined(UNIT_TEST)
+    const std::string body(data ? data : "", len);
+    server.send(code, "application/json", body.c_str());
+#else
+    server.setContentLength(len);
+    server.send(code, "application/json", "");
+    if (data != nullptr && len > 0) {
+        server.sendContent(data, len);
+    }
+#endif
+}

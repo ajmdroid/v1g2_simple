@@ -2,6 +2,8 @@
 #include <cstring>
 
 #include <ArduinoJson.h>
+#include "../mocks/mock_heap_caps_state.h"
+#include "../mocks/esp_heap_caps.h"
 #include "../../src/modules/wifi/wifi_status_api_service.h"
 #include "../../src/modules/wifi/wifi_status_api_service.cpp"  // Pull implementation for UNIT_TEST.
 
@@ -14,6 +16,10 @@ unsigned long mockMicros = 0;
 
 static bool responseContains(const WebServer& server, const char* needle) {
     return std::strstr(server.lastBody.c_str(), needle) != nullptr;
+}
+
+static void releaseCache(WifiStatusApiService::StatusJsonCache& cache, unsigned long& cacheTime) {
+    WifiStatusApiService::releaseStatusJsonCache(cache, cacheTime);
 }
 
 struct FakeStatusRuntime {
@@ -92,6 +98,7 @@ static WifiStatusApiService::StatusRuntime makeRuntime(FakeStatusRuntime& rt) {
 void setUp() {
     mockMillis = 1000;
     mockMicros = 1000000;
+    mock_reset_heap_caps();
 }
 
 void tearDown() {}
@@ -121,7 +128,7 @@ void test_handle_status_builds_core_payload() {
     rt.batteryHasBattery = true;
     rt.v1Connected = true;
 
-    String cache;
+    WifiStatusApiService::StatusJsonCache cache;
     unsigned long cacheTime = 0;
     unsigned long now = 1000;
 
@@ -152,6 +159,7 @@ void test_handle_status_builds_core_payload() {
     TEST_ASSERT_TRUE(responseContains(server, "\"v1_connected\":true"));
     TEST_ASSERT_EQUAL_UINT32(1000, cacheTime);
     TEST_ASSERT_EQUAL_INT(1, rt.setupModeActiveCalls);
+    releaseCache(cache, cacheTime);
 }
 
 void test_handle_status_merges_legacy_status_and_alert_json() {
@@ -166,7 +174,7 @@ void test_handle_status_merges_legacy_status_and_alert_json() {
         obj["band"] = "Ka";
     };
 
-    String cache;
+    WifiStatusApiService::StatusJsonCache cache;
     unsigned long cacheTime = 0;
     unsigned long now = 2000;
 
@@ -183,6 +191,7 @@ void test_handle_status_merges_legacy_status_and_alert_json() {
     TEST_ASSERT_TRUE(responseContains(server, "\"foo\":123"));
     TEST_ASSERT_TRUE(responseContains(server, "\"v1_connected\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"alert\":{\"band\":\"Ka\"}"));
+    releaseCache(cache, cacheTime);
 }
 
 void test_handle_status_cache_hit_reuses_cached_payload() {
@@ -190,7 +199,7 @@ void test_handle_status_cache_hit_reuses_cached_payload() {
     FakeStatusRuntime rt;
     rt.apSsid = "InitialAP";
 
-    String cache;
+    WifiStatusApiService::StatusJsonCache cache;
     unsigned long cacheTime = 0;
     unsigned long now = 1000;
 
@@ -222,6 +231,7 @@ void test_handle_status_cache_hit_reuses_cached_payload() {
     TEST_ASSERT_EQUAL_STRING(firstBody.c_str(), server.lastBody.c_str());
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"InitialAP\""));
     TEST_ASSERT_EQUAL_INT(1, rt.setupModeActiveCalls);
+    releaseCache(cache, cacheTime);
 }
 
 void test_handle_status_cache_expiry_rebuilds_payload() {
@@ -229,7 +239,7 @@ void test_handle_status_cache_expiry_rebuilds_payload() {
     FakeStatusRuntime rt;
     rt.apSsid = "InitialAP";
 
-    String cache;
+    WifiStatusApiService::StatusJsonCache cache;
     unsigned long cacheTime = 0;
     unsigned long now = 1000;
 
@@ -259,12 +269,152 @@ void test_handle_status_cache_expiry_rebuilds_payload() {
 
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"ChangedAP\""));
     TEST_ASSERT_EQUAL_INT(2, rt.setupModeActiveCalls);
+    releaseCache(cache, cacheTime);
+}
+
+void test_handle_status_prefers_psram_cache_allocation() {
+    WebServer server(80);
+    FakeStatusRuntime rt;
+    WifiStatusApiService::StatusJsonCache cache;
+    unsigned long cacheTime = 0;
+
+    WifiStatusApiService::handleApiStatus(
+        server,
+        makeRuntime(rt),
+        cache,
+        cacheTime,
+        500,
+        []() { return 1000UL; },
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_UINT32(1, g_mock_heap_caps_malloc_calls);
+    TEST_ASSERT_EQUAL_UINT32(MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM, g_mock_heap_caps_last_malloc_caps);
+    TEST_ASSERT_NOT_NULL(cache.data);
+    TEST_ASSERT_TRUE(cache.inPsram);
+    TEST_ASSERT_TRUE(cache.capacity >= cache.length + 1u);
+    releaseCache(cache, cacheTime);
+}
+
+void test_handle_status_falls_back_to_internal_cache_allocation() {
+    WebServer server(80);
+    FakeStatusRuntime rt;
+    WifiStatusApiService::StatusJsonCache cache;
+    unsigned long cacheTime = 0;
+
+    g_mock_heap_caps_fail_on_call = 1u;
+
+    WifiStatusApiService::handleApiStatus(
+        server,
+        makeRuntime(rt),
+        cache,
+        cacheTime,
+        500,
+        []() { return 1000UL; },
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_UINT32(2, g_mock_heap_caps_malloc_calls);
+    TEST_ASSERT_EQUAL_UINT32(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL, g_mock_heap_caps_last_malloc_caps);
+    TEST_ASSERT_NOT_NULL(cache.data);
+    TEST_ASSERT_FALSE(cache.inPsram);
+    releaseCache(cache, cacheTime);
+}
+
+void test_handle_status_allocation_failure_falls_back_to_uncached_send() {
+    WebServer server(80);
+    FakeStatusRuntime rt;
+    rt.apSsid = "FallbackAP";
+    WifiStatusApiService::StatusJsonCache cache;
+    unsigned long cacheTime = 0;
+
+    g_mock_heap_caps_fail_call_mask = 0x3u;
+
+    WifiStatusApiService::handleApiStatus(
+        server,
+        makeRuntime(rt),
+        cache,
+        cacheTime,
+        500,
+        []() { return 1000UL; },
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"FallbackAP\""));
+    TEST_ASSERT_NULL(cache.data);
+    TEST_ASSERT_EQUAL_UINT(0, cache.capacity);
+    TEST_ASSERT_EQUAL_UINT(0, cache.length);
+    TEST_ASSERT_FALSE(cache.inPsram);
+    TEST_ASSERT_EQUAL_UINT32(0, cacheTime);
+}
+
+void test_handle_status_invalidation_forces_rebuild_within_ttl() {
+    WebServer server(80);
+    FakeStatusRuntime rt;
+    rt.apSsid = "InitialAP";
+    WifiStatusApiService::StatusJsonCache cache;
+    unsigned long cacheTime = 0;
+    unsigned long now = 1000;
+
+    WifiStatusApiService::handleApiStatus(
+        server,
+        makeRuntime(rt),
+        cache,
+        cacheTime,
+        500,
+        [&now]() { return now; },
+        []() { return true; });
+
+    TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"InitialAP\""));
+    TEST_ASSERT_EQUAL_INT(1, rt.setupModeActiveCalls);
+
+    WifiStatusApiService::invalidateStatusJsonCache(cache, cacheTime);
+    rt.apSsid = "UpdatedAP";
+    now = 1200;
+
+    WifiStatusApiService::handleApiStatus(
+        server,
+        makeRuntime(rt),
+        cache,
+        cacheTime,
+        500,
+        [&now]() { return now; },
+        []() { return true; });
+
+    TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"UpdatedAP\""));
+    TEST_ASSERT_EQUAL_UINT32(1200, cacheTime);
+    TEST_ASSERT_EQUAL_INT(2, rt.setupModeActiveCalls);
+    releaseCache(cache, cacheTime);
+}
+
+void test_release_status_cache_frees_buffer_and_resets_state() {
+    WebServer server(80);
+    FakeStatusRuntime rt;
+    WifiStatusApiService::StatusJsonCache cache;
+    unsigned long cacheTime = 0;
+
+    WifiStatusApiService::handleApiStatus(
+        server,
+        makeRuntime(rt),
+        cache,
+        cacheTime,
+        500,
+        []() { return 1000UL; },
+        []() { return true; });
+
+    TEST_ASSERT_NOT_NULL(cache.data);
+    WifiStatusApiService::releaseStatusJsonCache(cache, cacheTime);
+
+    TEST_ASSERT_EQUAL_UINT32(1, g_mock_heap_caps_free_calls);
+    TEST_ASSERT_NULL(cache.data);
+    TEST_ASSERT_EQUAL_UINT(0, cache.capacity);
+    TEST_ASSERT_EQUAL_UINT(0, cache.length);
+    TEST_ASSERT_FALSE(cache.inPsram);
+    TEST_ASSERT_EQUAL_UINT32(0, cacheTime);
 }
 
 void test_handle_api_status_rate_limited_short_circuits() {
     WebServer server(80);
     FakeStatusRuntime rt;
-    String cache;
+    WifiStatusApiService::StatusJsonCache cache;
     unsigned long cacheTime = 0;
 
     WifiStatusApiService::handleApiStatus(
@@ -284,7 +434,7 @@ void test_handle_api_status_delegates_when_allowed() {
     WebServer server(80);
     FakeStatusRuntime rt;
     rt.apSsid = "StatusApiAP";
-    String cache;
+    WifiStatusApiService::StatusJsonCache cache;
     unsigned long cacheTime = 0;
 
     WifiStatusApiService::handleApiStatus(
@@ -299,13 +449,14 @@ void test_handle_api_status_delegates_when_allowed() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"StatusApiAP\""));
     TEST_ASSERT_EQUAL_INT(1, rt.setupModeActiveCalls);
+    releaseCache(cache, cacheTime);
 }
 
 void test_handle_legacy_status_delegates_without_rate_limit() {
     WebServer server(80);
     FakeStatusRuntime rt;
     rt.apSsid = "LegacyAP";
-    String cache;
+    WifiStatusApiService::StatusJsonCache cache;
     unsigned long cacheTime = 0;
 
     WifiStatusApiService::handleApiLegacyStatus(
@@ -319,6 +470,7 @@ void test_handle_legacy_status_delegates_without_rate_limit() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"LegacyAP\""));
     TEST_ASSERT_EQUAL_INT(1, rt.setupModeActiveCalls);
+    releaseCache(cache, cacheTime);
 }
 
 int main() {
@@ -327,6 +479,11 @@ int main() {
     RUN_TEST(test_handle_status_merges_legacy_status_and_alert_json);
     RUN_TEST(test_handle_status_cache_hit_reuses_cached_payload);
     RUN_TEST(test_handle_status_cache_expiry_rebuilds_payload);
+    RUN_TEST(test_handle_status_prefers_psram_cache_allocation);
+    RUN_TEST(test_handle_status_falls_back_to_internal_cache_allocation);
+    RUN_TEST(test_handle_status_allocation_failure_falls_back_to_uncached_send);
+    RUN_TEST(test_handle_status_invalidation_forces_rebuild_within_ttl);
+    RUN_TEST(test_release_status_cache_frees_buffer_and_resets_state);
     RUN_TEST(test_handle_api_status_rate_limited_short_circuits);
     RUN_TEST(test_handle_api_status_delegates_when_allowed);
     RUN_TEST(test_handle_legacy_status_delegates_without_rate_limit);

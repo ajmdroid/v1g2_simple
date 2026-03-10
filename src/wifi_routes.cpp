@@ -100,6 +100,9 @@ void WiFiManager::setupWebServer() {
     
     auto rateLimitCallback = [this]() { return checkRateLimit(); };
     auto markUiActivityCallback = [this]() { markUiActivity(); };
+    auto invalidateStatusCacheCallback = [this]() {
+        WifiStatusApiService::invalidateStatusJsonCache(cachedStatusJson, lastStatusJsonTime);
+    };
     // New API endpoints (PHASE A)
     server.on("/api/status", HTTP_GET, [this, rateLimitCallback]() {
         WifiStatusApiService::handleApiStatus(
@@ -123,7 +126,7 @@ void WiFiManager::setupWebServer() {
             server,
             makeTimeRuntime(),
             TimeService::SOURCE_CLIENT_AP,
-            [this]() { lastStatusJsonTime = 0; },
+            invalidateStatusCacheCallback,
             rateLimitCallback);
     });
     

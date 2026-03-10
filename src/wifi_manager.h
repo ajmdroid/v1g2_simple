@@ -14,6 +14,7 @@
 #include <FS.h>
 #include <WebServer.h>
 #include "settings.h"
+#include "modules/wifi/wifi_status_api_service.h"
 #include <functional>
 
 namespace WifiAutoPushApiService {
@@ -26,10 +27,6 @@ struct Runtime;
 
 namespace WifiTimeApiService {
 struct TimeRuntime;
-}
-
-namespace WifiStatusApiService {
-struct StatusRuntime;
 }
 
 namespace WifiSettingsApiService {
@@ -251,7 +248,7 @@ private:
     
     // Status JSON caching (Option 2 optimization)
     static constexpr unsigned long STATUS_CACHE_TTL_MS = 500;  // 500ms cache
-    String cachedStatusJson;
+    WifiStatusApiService::StatusJsonCache cachedStatusJson;
     unsigned long lastStatusJsonTime = 0;
     
     std::function<void(JsonObject)> mergeAlert;
