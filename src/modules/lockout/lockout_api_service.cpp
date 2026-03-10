@@ -116,9 +116,7 @@ void sendSummary(WebServer& server,
         doc["latest"] = nullptr;
     }
 
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, doc);
 }
 
 void handleApiSummary(WebServer& server,

@@ -14,6 +14,7 @@
 #include "../../settings_sanitize.h"
 #include "../../perf_metrics.h"
 #include "../../../include/clamp_utils.h"
+#include "json_stream_response.h"
 
 namespace GpsApiService {
 
@@ -166,9 +167,7 @@ void sendStatus(WebServer& server,
     doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
 
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, doc);
 }
 
 void handleApiStatus(WebServer& server,
@@ -238,9 +237,7 @@ void sendObservations(WebServer& server,
         }
     }
 
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
+    sendJsonStream(server, doc);
 }
 
 void handleApiObservations(WebServer& server,
