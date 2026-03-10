@@ -69,42 +69,160 @@ def resolve_scenario_timeout_seconds(scale_pct: int) -> int:
     return max(60, auto_timeout + 30)
 
 
-def summarize_samples(samples: list[dict[str, object]]) -> dict[str, object]:
-    if not samples:
-        return {
-            "sample_count": 0,
-            "duration_s": 0.0,
-        }
+def metric_int(metrics: dict[str, object], key: str) -> int:
+    return int(metrics.get(key, 0) or 0)
 
-    first_metrics = samples[0]["metrics"]
+
+def metric_delta(before: dict[str, object], after: dict[str, object], key: str) -> int:
+    return metric_int(after, key) - metric_int(before, key)
+
+
+def classify_camera_activity(
+    before: dict[str, object], after: dict[str, object]
+) -> tuple[bool, bool, str]:
+    real_active = (
+        metric_int(after, "cameraDisplayActive") > 0
+        or metric_delta(before, after, "cameraDisplayFrames") > 0
+    )
+    debug_active = (
+        metric_int(after, "cameraDebugOverrideActive") > 0
+        or metric_delta(before, after, "cameraDebugDisplayFrames") > 0
+    )
+    if real_active and debug_active:
+        return real_active, debug_active, "both"
+    if real_active:
+        return real_active, debug_active, "real"
+    if debug_active:
+        return real_active, debug_active, "debug"
+    return real_active, debug_active, "neither"
+
+
+def analyze_samples(
+    pre_metrics: dict[str, object], samples: list[dict[str, object]], disp_pipe_limit_us: int
+) -> tuple[dict[str, object], list[dict[str, object]], list[str]]:
+    if not samples:
+        return (
+            {
+                "sample_count": 0,
+                "duration_s": 0.0,
+                "camera_correlated_disp_pipe_peak_us": 0,
+                "camera_correlated_disp_pipe_sample_count": 0,
+                "over_limit_real_samples": 0,
+                "over_limit_debug_samples": 0,
+                "over_limit_both_samples": 0,
+                "over_limit_neither_samples": 0,
+            },
+            [],
+            [],
+        )
+
     last_metrics = samples[-1]["metrics"]
-    keys = [
+    delta_keys = [
         "rxPackets",
         "parseSuccesses",
         "parseFailures",
         "queueDrops",
         "oversizeDrops",
+        "bleMutexTimeout",
         "displayUpdates",
         "audioPlayCount",
         "audioPlayBusy",
+        "cameraDisplayFrames",
+        "cameraDebugDisplayFrames",
+        "cameraVoiceQueued",
+        "cameraVoiceStarted",
     ]
-    deltas = {
-        f"{key}_delta": int(last_metrics.get(key, 0) or 0) - int(first_metrics.get(key, 0) or 0)
-        for key in keys
+    metrics = {
+        f"{key}_delta": metric_delta(pre_metrics, last_metrics, key)
+        for key in delta_keys
     }
-    peaks = {
-        "dispPipeMaxUs_peak": max(int(sample["metrics"].get("dispPipeMaxUs", 0) or 0) for sample in samples),
-        "loopMaxUs_peak": max(int(sample["metrics"].get("loopMaxUs", 0) or 0) for sample in samples),
-        "wifiMaxUs_peak": max(int(sample["metrics"].get("wifiMaxUs", 0) or 0) for sample in samples),
-        "flushMaxUs_peak": max(int(sample["metrics"].get("flushMaxUs", 0) or 0) for sample in samples),
+    metrics["camera_display_frame_delta"] = metrics.pop("cameraDisplayFrames_delta")
+    metrics["camera_debug_frame_delta"] = metrics.pop("cameraDebugDisplayFrames_delta")
+    metrics["camera_voice_queued_delta"] = metrics.pop("cameraVoiceQueued_delta")
+    metrics["camera_voice_started_delta"] = metrics.pop("cameraVoiceStarted_delta")
+
+    metrics.update(
+        {
+            "sample_count": len(samples),
+            "duration_s": round(
+                max(0.0, float(samples[-1]["sample_elapsed_s"]) - float(samples[0]["sample_elapsed_s"])),
+                3,
+            ),
+            "dispPipeMaxUs_peak": max(metric_int(sample["metrics"], "dispPipeMaxUs") for sample in samples),
+            "loopMaxUs_peak": max(metric_int(sample["metrics"], "loopMaxUs") for sample in samples),
+            "wifiMaxUs_peak": max(metric_int(sample["metrics"], "wifiMaxUs") for sample in samples),
+            "flushMaxUs_peak": max(metric_int(sample["metrics"], "flushMaxUs") for sample in samples),
+            "cameraDisplayMaxUs_peak": max(
+                metric_int(sample["metrics"], "cameraDisplayMaxUs") for sample in samples
+            ),
+            "cameraDebugDisplayMaxUs_peak": max(
+                metric_int(sample["metrics"], "cameraDebugDisplayMaxUs") for sample in samples
+            ),
+            "cameraProcessMaxUs_peak": max(
+                metric_int(sample["metrics"], "cameraProcessMaxUs") for sample in samples
+            ),
+        }
+    )
+
+    breakdown = {
+        "real": 0,
+        "debug": 0,
+        "both": 0,
+        "neither": 0,
     }
-    duration_s = max(0.0, float(samples[-1]["sample_elapsed_s"]) - float(samples[0]["sample_elapsed_s"]))
-    return {
-        "sample_count": len(samples),
-        "duration_s": round(duration_s, 3),
-        **deltas,
-        **peaks,
-    }
+    over_limit_samples: list[dict[str, object]] = []
+    prev_metrics = pre_metrics
+    camera_correlated_peak_us = 0
+    camera_correlated_sample_count = 0
+    for sample in samples:
+        sample_metrics = sample["metrics"]
+        disp_pipe_us = metric_int(sample_metrics, "dispPipeMaxUs")
+        if disp_pipe_us > disp_pipe_limit_us:
+            real_active, debug_active, activity_kind = classify_camera_activity(prev_metrics, sample_metrics)
+            breakdown[activity_kind] += 1
+            if real_active or debug_active:
+                camera_correlated_sample_count += 1
+                camera_correlated_peak_us = max(camera_correlated_peak_us, disp_pipe_us)
+            over_limit_samples.append(
+                {
+                    "sample_elapsed_s": sample["sample_elapsed_s"],
+                    "dispPipeMaxUs": disp_pipe_us,
+                    "loopMaxUs": metric_int(sample_metrics, "loopMaxUs"),
+                    "flushMaxUs": metric_int(sample_metrics, "flushMaxUs"),
+                    "wifiMaxUs": metric_int(sample_metrics, "wifiMaxUs"),
+                    "cameraActivity": activity_kind,
+                    "cameraDisplayFramesDelta": metric_delta(prev_metrics, sample_metrics, "cameraDisplayFrames"),
+                    "cameraDebugDisplayFramesDelta": metric_delta(
+                        prev_metrics, sample_metrics, "cameraDebugDisplayFrames"
+                    ),
+                    "cameraVoiceStartedDelta": metric_delta(prev_metrics, sample_metrics, "cameraVoiceStarted"),
+                }
+            )
+        prev_metrics = sample_metrics
+
+    metrics.update(
+        {
+            "camera_correlated_disp_pipe_peak_us": camera_correlated_peak_us,
+            "camera_correlated_disp_pipe_sample_count": camera_correlated_sample_count,
+            "over_limit_real_samples": breakdown["real"],
+            "over_limit_debug_samples": breakdown["debug"],
+            "over_limit_both_samples": breakdown["both"],
+            "over_limit_neither_samples": breakdown["neither"],
+        }
+    )
+
+    failure_reasons: list[str] = []
+    for key in ("parseFailures", "queueDrops", "oversizeDrops", "bleMutexTimeout"):
+        delta_value = metric_delta(pre_metrics, last_metrics, key)
+        if delta_value > 0:
+            failure_reasons.append(f"{key} delta {delta_value} > 0")
+    if camera_correlated_sample_count > 0:
+        failure_reasons.append(
+            "camera-correlated dispPipeMaxUs over limit "
+            f"({camera_correlated_sample_count} samples, peak {camera_correlated_peak_us} us > {disp_pipe_limit_us})"
+        )
+
+    return metrics, over_limit_samples, failure_reasons
 
 
 def write_summary(
@@ -194,6 +312,8 @@ def main() -> int:
         "hold_ms": args.hold_ms,
         "sample_seconds": args.sample_seconds,
     }
+    disp_pipe_limit_us = 80000
+    config["disp_pipe_limit_us"] = disp_pipe_limit_us
     failure: str | None = None
     result = "FAIL"
     samples: list[dict[str, object]] = []
@@ -201,6 +321,8 @@ def main() -> int:
     render_response: dict[str, object] = {}
     start_response: dict[str, object] = {}
     final_status: dict[str, object] = {}
+    analyzed_metrics: dict[str, object] = {}
+    over_limit_samples: list[dict[str, object]] = []
     cleanup_camera_clear = False
     cleanup_scenario_stop = False
 
@@ -285,6 +407,16 @@ def main() -> int:
         )
         require(int(final_status.get("completedRuns", 0) or 0) >= 1, "scenario completedRuns < 1")
         checks.append("scenario completed and emitted all events")
+        analyzed_metrics, over_limit_samples, failure_reasons = analyze_samples(
+            pre_metrics, samples, disp_pipe_limit_us
+        )
+        if failure_reasons:
+            raise StressFailure("; ".join(failure_reasons))
+        checks.append("parser and queue integrity gates passed")
+        if over_limit_samples:
+            checks.append("dispPipe over-limit samples were non-camera-correlated only")
+        else:
+            checks.append("no dispPipe over-limit samples observed")
         result = "PASS"
     except Exception as exc:
         failure = str(exc)
@@ -312,7 +444,11 @@ def main() -> int:
         except Exception:
             cleanup_scenario_stop = False
 
-        summarized = summarize_samples(samples)
+        if samples and not analyzed_metrics:
+            analyzed_metrics, over_limit_samples, _ = analyze_samples(
+                pre_metrics, samples, disp_pipe_limit_us
+            )
+
         metrics = {
             "render_voice_requested": render_response.get("voiceRequested", False),
             "render_voice_started": render_response.get("voiceStarted", False),
@@ -322,7 +458,7 @@ def main() -> int:
             "cleanup_camera_clear": cleanup_camera_clear,
             "cleanup_scenario_stop": cleanup_scenario_stop,
             "pre_rx_packets": pre_metrics.get("rxPackets", 0),
-            **summarized,
+            **analyzed_metrics,
         }
         details_path.write_text(
             json.dumps(
@@ -335,6 +471,7 @@ def main() -> int:
                     "render_response": render_response,
                     "start_response": start_response,
                     "final_status": final_status,
+                    "over_limit_samples": over_limit_samples,
                     "sample_count": len(samples),
                     "samples_path": str(samples_path),
                 },
