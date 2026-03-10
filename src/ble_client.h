@@ -298,12 +298,13 @@ private:
         uint16_t charUUID;
         uint32_t tsMs;
     };
-    ProxyPacket proxyQueue[PROXY_QUEUE_SIZE];
+    ProxyPacket* proxyQueue = nullptr;
 
     // Phone→V1 command queue for safe writes (decoupled from callback context)
     static constexpr size_t PHONE_CMD_QUEUE_SIZE = 4;  // Small queue for phone commands
     static constexpr size_t MAX_PHONE_CMDS_PER_LOOP = 4;
-    ProxyPacket phone2v1Queue[PHONE_CMD_QUEUE_SIZE];
+    ProxyPacket* phone2v1Queue = nullptr;
+    bool proxyQueuesInPsram = false;
     volatile size_t phone2v1QueueHead = 0;
     volatile size_t phone2v1QueueTail = 0;
     volatile size_t phone2v1QueueCount = 0;
@@ -471,7 +472,9 @@ private:
     bool bootReadyFlag = false;
     
     // Initialize BLE server for proxy mode
-    void initProxyServer(const char* deviceName);
+    bool initProxyServer(const char* deviceName);
+    bool allocateProxyQueues();
+    void releaseProxyQueues();
     
     // Start advertising proxy service
     void startProxyAdvertising(uint8_t reasonCode = 0, bool ignoreWifiPriority = false);

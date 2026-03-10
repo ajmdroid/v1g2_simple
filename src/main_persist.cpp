@@ -173,13 +173,14 @@ void maybeLogSaveDiag(const char* tag, SaveDiagStats& stats, uint32_t nowMs) {
 
 struct DirtySaveConfig {
     const char* tag;           // Log prefix, e.g. "Lockout" or "Learner"
-    const char* filePath;      // JSON file path
+    const char* filePath;      // Destination file path
     uint32_t saveIntervalMs;   // Minimum interval between successful saves
     uint32_t retryMs;          // Minimum interval between attempts
 
     // Data source callbacks (no virtual overhead)
     bool (*isDirty)();
     void (*clearDirty)();
+    bool (*saveDirect)(fs::FS& fs, const char* path);
     void (*serialize)(JsonDocument& doc);
     void (*logSuccess)(const char* path);
     void (*recordPerfUs)(uint32_t us);
@@ -251,9 +252,13 @@ static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, 
                     }
                     StorageManager::SDTryLock sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
                     if (sdLock) {
-                        JsonDocument doc;
-                        cfg.serialize(doc);
-                        saveOk = StorageManager::writeJsonFileAtomic(*fs, cfg.filePath, doc);
+                        if (cfg.saveDirect) {
+                            saveOk = cfg.saveDirect(*fs, cfg.filePath);
+                        } else {
+                            JsonDocument doc;
+                            cfg.serialize(doc);
+                            saveOk = StorageManager::writeJsonFileAtomic(*fs, cfg.filePath, doc);
+                        }
                     } else {
                         saveDeferred = true;
                         state.diag.deferSdBusy++;
@@ -282,9 +287,13 @@ static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, 
                     }
                 }
             } else {
-                JsonDocument doc;
-                cfg.serialize(doc);
-                saveOk = StorageManager::writeJsonFileAtomic(*fs, cfg.filePath, doc);
+                if (cfg.saveDirect) {
+                    saveOk = cfg.saveDirect(*fs, cfg.filePath);
+                } else {
+                    JsonDocument doc;
+                    cfg.serialize(doc);
+                    saveOk = StorageManager::writeJsonFileAtomic(*fs, cfg.filePath, doc);
+                }
             }
         }
 
@@ -332,12 +341,13 @@ static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, 
 
 static const DirtySaveConfig lockoutSaveConfig = {
     .tag = "Lockout",
-    .filePath = "/v1simple_lockout_zones.json",
+    .filePath = LockoutStore::kBinaryPath,
     .saveIntervalMs = 60000,
     .retryMs = 15000,
     .isDirty = []() { return lockoutStore.isDirty(); },
     .clearDirty = []() { lockoutStore.clearDirty(); },
-    .serialize = [](JsonDocument& doc) { lockoutStore.toJson(doc); },
+    .saveDirect = [](fs::FS& fs, const char* path) { return lockoutStore.saveBinary(fs, path); },
+    .serialize = nullptr,
     .logSuccess = [](const char* path) {
         Serial.printf("[Lockout] Saved %lu zones to %s\n",
                       static_cast<unsigned long>(lockoutStore.stats().entriesSaved), path);
@@ -352,6 +362,7 @@ static const DirtySaveConfig learnerSaveConfig = {
     .retryMs = 15000,
     .isDirty = []() { return lockoutLearner.isDirty(); },
     .clearDirty = []() { lockoutLearner.clearDirty(); },
+    .saveDirect = nullptr,
     .serialize = [](JsonDocument& doc) { lockoutLearner.toJson(doc); },
     .logSuccess = [](const char* path) {
         Serial.printf("[Learner] Saved %u pending candidates to %s\n",

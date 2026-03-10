@@ -21,6 +21,17 @@ inline void* heap_caps_malloc(size_t size, uint32_t caps) {
     g_mock_heap_caps_malloc_calls++;
     g_mock_heap_caps_last_malloc_size = size;
     g_mock_heap_caps_last_malloc_caps = caps;
+    if (g_mock_heap_caps_malloc_calls <= 32u) {
+        const uint32_t bit = 1u << (g_mock_heap_caps_malloc_calls - 1u);
+        if ((g_mock_heap_caps_fail_call_mask & bit) != 0u) {
+            return nullptr;
+        }
+    }
+    if (g_mock_heap_caps_fail_on_call != 0u &&
+        g_mock_heap_caps_malloc_calls == g_mock_heap_caps_fail_on_call) {
+        g_mock_heap_caps_fail_on_call = 0u;
+        return nullptr;
+    }
     if (g_mock_heap_caps_fail_malloc) {
         g_mock_heap_caps_fail_malloc = false;
         return nullptr;

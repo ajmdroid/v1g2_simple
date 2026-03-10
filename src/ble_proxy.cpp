@@ -10,6 +10,7 @@
 #include "../include/ble_internals.h"
 #include "../include/config.h"
 #include "perf_metrics.h"
+#include <esp_heap_caps.h>
 #include <algorithm>
 #include <cstring>
 
@@ -108,8 +109,92 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
     bleClient->enqueuePhoneCommand(cmdBuf, rawLen, sourceChar);
 }
 
-void V1BLEClient::initProxyServer(const char* deviceName) {
+bool V1BLEClient::allocateProxyQueues() {
+    if (proxyQueue && phone2v1Queue) {
+        return true;
+    }
+
+    releaseProxyQueues();
+
+    bool proxyQueueAllocatedInPsram = false;
+    bool phoneQueueAllocatedInPsram = false;
+
+    auto allocateBuffer = [&](size_t count, const char* label, bool& allocatedInPsram) -> ProxyPacket* {
+        const size_t bytes = sizeof(ProxyPacket) * count;
+        allocatedInPsram = false;
+
+        ProxyPacket* buffer = static_cast<ProxyPacket*>(
+            heap_caps_malloc(bytes, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
+        if (buffer) {
+            allocatedInPsram = true;
+            memset(buffer, 0, bytes);
+            return buffer;
+        }
+
+        Serial.printf("[BLE] WARN: %s PSRAM allocation failed (%lu bytes), falling back to internal SRAM\n",
+                      label,
+                      static_cast<unsigned long>(bytes));
+        buffer = static_cast<ProxyPacket*>(
+            heap_caps_malloc(bytes, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL));
+        if (buffer) {
+            memset(buffer, 0, bytes);
+        }
+        return buffer;
+    };
+
+    proxyQueue = allocateBuffer(PROXY_QUEUE_SIZE, "proxyQueue", proxyQueueAllocatedInPsram);
+    phone2v1Queue = allocateBuffer(PHONE_CMD_QUEUE_SIZE, "phone2v1Queue", phoneQueueAllocatedInPsram);
+
+    if (!proxyQueue || !phone2v1Queue) {
+        Serial.println("[BLE] ERROR: Proxy queue allocation failed; disabling proxy");
+        releaseProxyQueues();
+        proxyEnabled = false;
+        return false;
+    }
+
+    proxyQueuesInPsram = proxyQueueAllocatedInPsram && phoneQueueAllocatedInPsram;
+    proxyQueueHead = 0;
+    proxyQueueTail = 0;
+    proxyQueueCount = 0;
+    phone2v1QueueHead = 0;
+    phone2v1QueueTail = 0;
+    phone2v1QueueCount = 0;
+    phoneCmdDropsOverflow = 0;
+    phoneCmdDropsInvalid = 0;
+    phoneCmdDropsBleFail = 0;
+    phoneCmdDropsLockBusy = 0;
+    proxyMetrics.reset();
+
+    Serial.printf("[BLE] Proxy queues allocated (proxy=%s phone=%s)\n",
+                  proxyQueueAllocatedInPsram ? "PSRAM" : "INTERNAL",
+                  phoneQueueAllocatedInPsram ? "PSRAM" : "INTERNAL");
+    return true;
+}
+
+void V1BLEClient::releaseProxyQueues() {
+    if (proxyQueue) {
+        heap_caps_free(proxyQueue);
+        proxyQueue = nullptr;
+    }
+    if (phone2v1Queue) {
+        heap_caps_free(phone2v1Queue);
+        phone2v1Queue = nullptr;
+    }
+
+    proxyQueuesInPsram = false;
+    proxyQueueHead = 0;
+    proxyQueueTail = 0;
+    proxyQueueCount = 0;
+    phone2v1QueueHead = 0;
+    phone2v1QueueTail = 0;
+    phone2v1QueueCount = 0;
+}
+
+bool V1BLEClient::initProxyServer(const char* deviceName) {
     // Proxy server init (name logged in initBLE summary)
+    if (!allocateProxyQueues()) {
+        return false;
+    }
     
     // Kenny's exact order:
     // 1. Create server (no callbacks yet)
@@ -208,6 +293,8 @@ void V1BLEClient::initProxyServer(const char* deviceName) {
     delay(25);
     NimBLEDevice::stopAdvertising();
     delay(25);
+
+    return true;
 }
 
 bool V1BLEClient::isProxyAdvertising() const {

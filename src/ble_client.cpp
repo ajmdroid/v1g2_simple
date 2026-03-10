@@ -289,6 +289,9 @@ V1BLEClient::V1BLEClient()
     , proxyServerInitialized(false)
     // proxyClientConnected - uses default member initializer (atomic)
     , proxyName_("V1-Proxy")
+    , proxyQueue(nullptr)
+    , phone2v1Queue(nullptr)
+    , proxyQueuesInPsram(false)
     , dataCallback(nullptr)
     , connectCallback(nullptr)
     // connected, shouldConnect - use default member initializers (atomic)
@@ -303,7 +306,9 @@ V1BLEClient::V1BLEClient()
     instancePtr = this;
 }
 
-V1BLEClient::~V1BLEClient() = default;
+V1BLEClient::~V1BLEClient() {
+    releaseProxyQueues();
+}
 
 // ==================== BLE State Machine ====================
 
@@ -501,8 +506,10 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
         
         // Create proxy server before scanning for dual-role stability
-        initProxyServer(proxyName_.c_str());
-        proxyServerInitialized = true;
+        proxyServerInitialized = initProxyServer(proxyName_.c_str());
+        if (!proxyServerInitialized) {
+            Serial.println("[BLE] Proxy disabled during init");
+        }
     } else {
         NimBLEDevice::init("V1Display");
         NimBLEDevice::setPower(ESP_PWR_LVL_P9);

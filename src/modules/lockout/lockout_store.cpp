@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
 
 LockoutStore lockoutStore;
 
@@ -37,6 +38,106 @@ uint16_t clampHeading(int raw) {
         return LockoutEntry::HEADING_INVALID;
     }
     return static_cast<uint16_t>(raw);
+}
+
+void diskEntryFromRuntime(const LockoutEntry& entry, LockoutStore::LockoutDiskEntry& diskEntry) {
+    memset(&diskEntry, 0, sizeof(diskEntry));
+    diskEntry.latE5 = entry.latE5;
+    diskEntry.lonE5 = entry.lonE5;
+    diskEntry.radiusE5 = entry.radiusE5;
+    diskEntry.bandMask = lockoutSanitizeBandMask(entry.bandMask);
+    diskEntry.freqMHz = entry.freqMHz;
+    diskEntry.freqTolMHz = entry.freqTolMHz;
+    diskEntry.confidence = entry.confidence;
+    diskEntry.flags = entry.flags;
+    diskEntry.directionMode = clampDirectionMode(entry.directionMode);
+    diskEntry.headingTolDeg = clampHeadingTolerance(entry.headingTolDeg);
+    diskEntry.missCount = entry.missCount;
+    diskEntry.headingDeg = (entry.headingDeg == LockoutEntry::HEADING_INVALID)
+                               ? LockoutEntry::HEADING_INVALID
+                               : entry.headingDeg;
+    diskEntry.firstSeenMs = entry.firstSeenMs;
+    diskEntry.lastSeenMs = entry.lastSeenMs;
+    diskEntry.lastPassMs = entry.lastPassMs;
+    diskEntry.lastCountedMissMs = entry.lastCountedMissMs;
+}
+
+bool runtimeEntryFromDisk(const LockoutStore::LockoutDiskEntry& diskEntry, LockoutEntry& entry) {
+    entry.clear();
+    entry.latE5 = diskEntry.latE5;
+    entry.lonE5 = diskEntry.lonE5;
+    entry.radiusE5 = diskEntry.radiusE5;
+    entry.bandMask = lockoutSanitizeBandMask(diskEntry.bandMask);
+    if (entry.bandMask == 0) {
+        return false;
+    }
+    entry.freqMHz = diskEntry.freqMHz;
+    entry.freqTolMHz = diskEntry.freqTolMHz;
+    entry.confidence = diskEntry.confidence;
+    entry.flags = diskEntry.flags;
+    entry.directionMode = clampDirectionMode(diskEntry.directionMode);
+    entry.headingDeg = (diskEntry.headingDeg == LockoutEntry::HEADING_INVALID)
+                           ? LockoutEntry::HEADING_INVALID
+                           : clampHeading(diskEntry.headingDeg);
+    entry.headingTolDeg = clampHeadingTolerance(diskEntry.headingTolDeg);
+    entry.missCount = diskEntry.missCount;
+    entry.firstSeenMs = diskEntry.firstSeenMs;
+    entry.lastSeenMs = diskEntry.lastSeenMs;
+    entry.lastPassMs = diskEntry.lastPassMs;
+    entry.lastCountedMissMs = diskEntry.lastCountedMissMs;
+
+    if (entry.directionMode != LockoutEntry::DIRECTION_ALL &&
+        entry.headingDeg == LockoutEntry::HEADING_INVALID) {
+        entry.directionMode = LockoutEntry::DIRECTION_ALL;
+    }
+
+    entry.setActive(true);
+    return true;
+}
+
+size_t countActiveEntries(const LockoutIndex* index) {
+    if (!index) {
+        return 0;
+    }
+
+    size_t count = 0;
+    for (size_t i = 0; i < index->capacity(); ++i) {
+        const LockoutEntry* entry = index->at(i);
+        if (!entry || !entry->isActive()) {
+            continue;
+        }
+        if (lockoutSanitizeBandMask(entry->bandMask) == 0) {
+            continue;
+        }
+        ++count;
+    }
+    return count;
+}
+
+uint32_t crc32Update(uint32_t crc, const uint8_t* data, size_t length) {
+    for (size_t i = 0; i < length; ++i) {
+        crc ^= data[i];
+        for (uint8_t bit = 0; bit < 8; ++bit) {
+            const uint32_t mask = static_cast<uint32_t>(-(static_cast<int32_t>(crc & 1u)));
+            crc = (crc >> 1) ^ (0xEDB88320u & mask);
+        }
+    }
+    return crc;
+}
+
+bool ensureParentDirectory(fs::FS& fs, const char* path) {
+    if (!path || path[0] != '/') {
+        return true;
+    }
+
+    const char* lastSlash = strrchr(path + 1, '/');
+    if (!lastSlash) {
+        return true;
+    }
+
+    String parent(path);
+    parent = parent.substring(0, static_cast<size_t>(lastSlash - path));
+    return fs.exists(parent) || fs.mkdir(parent);
 }
 
 }  // namespace
@@ -198,5 +299,225 @@ bool LockoutStore::fromJson(JsonDocument& doc) {
     Serial.printf("[LockoutStore] Loaded %lu entries\n",
                   static_cast<unsigned long>(loaded));
 
+    return true;
+}
+
+bool LockoutStore::saveBinary(fs::FS& fs, const char* path) const {
+    if (!index_ || !path || path[0] == '\0') {
+        return false;
+    }
+
+    if (!ensureParentDirectory(fs, path)) {
+        Serial.printf("[LockoutStore] saveBinary: failed to ensure parent dir for %s\n", path);
+        return false;
+    }
+
+    const size_t entryCount = countActiveEntries(index_);
+    if (entryCount > UINT16_MAX) {
+        Serial.printf("[LockoutStore] saveBinary: entry count too large (%lu)\n",
+                      static_cast<unsigned long>(entryCount));
+        return false;
+    }
+
+    LockoutDiskHeader header = {};
+    memcpy(header.magic, kBinaryMagic, sizeof(header.magic));
+    header.version = kBinaryVersion;
+    header.entryCount = static_cast<uint16_t>(entryCount);
+    header.payloadBytes = static_cast<uint32_t>(entryCount * sizeof(LockoutDiskEntry));
+    header.payloadCrc32 = 0;
+
+    const String tmpPath = String(path) + ".tmp";
+    File tmp = fs.open(tmpPath.c_str(), "w");
+    if (!tmp) {
+        Serial.printf("[LockoutStore] saveBinary: failed to open %s\n", tmpPath.c_str());
+        return false;
+    }
+
+    if (tmp.write(reinterpret_cast<const uint8_t*>(&header), sizeof(header)) != sizeof(header)) {
+        tmp.close();
+        fs.remove(tmpPath.c_str());
+        Serial.printf("[LockoutStore] saveBinary: failed to write header to %s\n", tmpPath.c_str());
+        return false;
+    }
+
+    uint32_t crc = 0xFFFFFFFFu;
+    uint32_t writtenEntries = 0;
+
+    for (size_t i = 0; i < index_->capacity(); ++i) {
+        const LockoutEntry* entry = index_->at(i);
+        if (!entry || !entry->isActive()) {
+            continue;
+        }
+        if (lockoutSanitizeBandMask(entry->bandMask) == 0) {
+            continue;
+        }
+
+        LockoutDiskEntry diskEntry;
+        diskEntryFromRuntime(*entry, diskEntry);
+        crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(&diskEntry), sizeof(diskEntry));
+        if (tmp.write(reinterpret_cast<const uint8_t*>(&diskEntry), sizeof(diskEntry)) != sizeof(diskEntry)) {
+            tmp.close();
+            fs.remove(tmpPath.c_str());
+            Serial.printf("[LockoutStore] saveBinary: failed to write entry %lu\n",
+                          static_cast<unsigned long>(writtenEntries));
+            return false;
+        }
+        ++writtenEntries;
+    }
+
+    header.payloadCrc32 = crc ^ 0xFFFFFFFFu;
+    if (!tmp.seek(0) ||
+        tmp.write(reinterpret_cast<const uint8_t*>(&header), sizeof(header)) != sizeof(header)) {
+        tmp.close();
+        fs.remove(tmpPath.c_str());
+        Serial.printf("[LockoutStore] saveBinary: failed to rewrite header for %s\n", tmpPath.c_str());
+        return false;
+    }
+
+    tmp.flush();
+    tmp.close();
+
+    if (fs.exists(path)) {
+        fs.remove(path);
+    }
+    if (!fs.rename(tmpPath.c_str(), path)) {
+        fs.remove(tmpPath.c_str());
+        Serial.printf("[LockoutStore] saveBinary: rename failed %s -> %s\n",
+                      tmpPath.c_str(),
+                      path);
+        return false;
+    }
+
+    stats_.entriesSaved = writtenEntries;
+    ++stats_.saves;
+    return true;
+}
+
+bool LockoutStore::loadBinary(fs::FS& fs, const char* path) {
+    if (!index_) {
+        Serial.println("[LockoutStore] loadBinary: no index wired");
+        ++stats_.loadErrors;
+        return false;
+    }
+
+    if (!path || path[0] == '\0' || !fs.exists(path)) {
+        return false;
+    }
+
+    File file = fs.open(path, "r");
+    if (!file) {
+        Serial.printf("[LockoutStore] loadBinary: failed to open %s\n", path);
+        ++stats_.loadErrors;
+        return false;
+    }
+
+    const size_t fileSize = file.size();
+    if (fileSize < sizeof(LockoutDiskHeader)) {
+        file.close();
+        Serial.printf("[LockoutStore] loadBinary: file too small (%lu bytes)\n",
+                      static_cast<unsigned long>(fileSize));
+        ++stats_.loadErrors;
+        return false;
+    }
+
+    LockoutDiskHeader header = {};
+    if (file.read(reinterpret_cast<uint8_t*>(&header), sizeof(header)) != sizeof(header)) {
+        file.close();
+        Serial.println("[LockoutStore] loadBinary: failed to read header");
+        ++stats_.loadErrors;
+        return false;
+    }
+
+    if (memcmp(header.magic, kBinaryMagic, sizeof(header.magic)) != 0) {
+        file.close();
+        Serial.println("[LockoutStore] loadBinary: bad magic");
+        ++stats_.loadErrors;
+        return false;
+    }
+
+    if (header.version != kBinaryVersion) {
+        file.close();
+        Serial.printf("[LockoutStore] loadBinary: unsupported version %u\n",
+                      static_cast<unsigned>(header.version));
+        ++stats_.loadErrors;
+        return false;
+    }
+
+    if (header.entryCount > index_->capacity()) {
+        file.close();
+        Serial.printf("[LockoutStore] loadBinary: entry count %u exceeds capacity %u\n",
+                      static_cast<unsigned>(header.entryCount),
+                      static_cast<unsigned>(index_->capacity()));
+        ++stats_.loadErrors;
+        return false;
+    }
+
+    const uint32_t expectedPayloadBytes =
+        static_cast<uint32_t>(header.entryCount) * sizeof(LockoutDiskEntry);
+    if (header.payloadBytes != expectedPayloadBytes ||
+        fileSize != (sizeof(LockoutDiskHeader) + static_cast<size_t>(header.payloadBytes))) {
+        file.close();
+        Serial.println("[LockoutStore] loadBinary: payload size mismatch");
+        ++stats_.loadErrors;
+        return false;
+    }
+
+    std::unique_ptr<LockoutIndex> stagedIndex(new (std::nothrow) LockoutIndex());
+    if (!stagedIndex) {
+        file.close();
+        Serial.println("[LockoutStore] loadBinary: failed to allocate staging index");
+        ++stats_.loadErrors;
+        return false;
+    }
+
+    uint32_t crc = 0xFFFFFFFFu;
+    uint32_t loaded = 0;
+    uint32_t skipped = 0;
+
+    for (uint16_t i = 0; i < header.entryCount; ++i) {
+        LockoutDiskEntry diskEntry = {};
+        if (file.read(reinterpret_cast<uint8_t*>(&diskEntry), sizeof(diskEntry)) != sizeof(diskEntry)) {
+            file.close();
+            Serial.printf("[LockoutStore] loadBinary: truncated while reading entry %u\n",
+                          static_cast<unsigned>(i));
+            ++stats_.loadErrors;
+            return false;
+        }
+
+        crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(&diskEntry), sizeof(diskEntry));
+
+        LockoutEntry entry;
+        if (!runtimeEntryFromDisk(diskEntry, entry)) {
+            ++skipped;
+            continue;
+        }
+
+        if (stagedIndex->add(entry) >= 0) {
+            ++loaded;
+        }
+    }
+    file.close();
+
+    if ((crc ^ 0xFFFFFFFFu) != header.payloadCrc32) {
+        Serial.println("[LockoutStore] loadBinary: CRC32 mismatch");
+        ++stats_.loadErrors;
+        return false;
+    }
+
+    index_->clear();
+    for (size_t i = 0; i < stagedIndex->capacity(); ++i) {
+        const LockoutEntry* entry = stagedIndex->at(i);
+        if (!entry || !entry->isActive()) {
+            continue;
+        }
+        (void)index_->add(*entry);
+    }
+
+    stats_.entriesLoaded = loaded;
+    stats_.entriesSkipped = skipped;
+    ++stats_.loads;
+
+    Serial.printf("[LockoutStore] Loaded %lu entries from binary\n",
+                  static_cast<unsigned long>(loaded));
     return true;
 }

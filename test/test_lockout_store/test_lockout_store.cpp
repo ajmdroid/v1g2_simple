@@ -1,5 +1,8 @@
 #include <unity.h>
 #include <ArduinoJson.h>
+#include <filesystem>
+#include <fstream>
+#include <string>
 
 // Mock Arduino first — resolved by -I test/mocks for <Arduino.h> includes.
 #include "../mocks/Arduino.h"
@@ -53,6 +56,56 @@ static LockoutEntry makeEntry(int32_t latE5      = 1012345,
     e.lastPassMs  = 1700000090000LL;
     e.lastCountedMissMs = 0;
     return e;
+}
+
+static std::filesystem::path makeFsRoot(const char* testName) {
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() / ("v1g2_lockout_store_" + std::string(testName));
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+    return root;
+}
+
+static std::filesystem::path resolveFsPath(const std::filesystem::path& root, const char* logicalPath) {
+    std::filesystem::path relative = logicalPath ? std::filesystem::path(logicalPath) : std::filesystem::path();
+    if (relative.is_absolute()) {
+        relative = relative.relative_path();
+    }
+    return root / relative;
+}
+
+static void overwriteFileBytes(const std::filesystem::path& path,
+                               std::streamoff offset,
+                               const void* data,
+                               size_t length) {
+    std::fstream stream(path, std::ios::in | std::ios::out | std::ios::binary);
+    TEST_ASSERT_TRUE(stream.is_open());
+    stream.seekp(offset);
+    stream.write(static_cast<const char*>(data), static_cast<std::streamsize>(length));
+    TEST_ASSERT_TRUE(stream.good());
+}
+
+static void assertEntriesEqual(const LockoutEntry& expected, const LockoutEntry* actual) {
+    TEST_ASSERT_NOT_NULL(actual);
+    TEST_ASSERT_EQUAL(expected.latE5, actual->latE5);
+    TEST_ASSERT_EQUAL(expected.lonE5, actual->lonE5);
+    TEST_ASSERT_EQUAL(expected.radiusE5, actual->radiusE5);
+    TEST_ASSERT_EQUAL(expected.bandMask, actual->bandMask);
+    TEST_ASSERT_EQUAL(expected.freqMHz, actual->freqMHz);
+    TEST_ASSERT_EQUAL(expected.freqTolMHz, actual->freqTolMHz);
+    TEST_ASSERT_EQUAL(expected.confidence, actual->confidence);
+    TEST_ASSERT_EQUAL(expected.flags, actual->flags);
+    TEST_ASSERT_EQUAL(expected.directionMode, actual->directionMode);
+    TEST_ASSERT_EQUAL(expected.headingDeg, actual->headingDeg);
+    TEST_ASSERT_EQUAL(expected.headingTolDeg, actual->headingTolDeg);
+    TEST_ASSERT_EQUAL(expected.missCount, actual->missCount);
+    TEST_ASSERT_EQUAL(expected.firstSeenMs, actual->firstSeenMs);
+    TEST_ASSERT_EQUAL(expected.lastSeenMs, actual->lastSeenMs);
+    TEST_ASSERT_EQUAL(expected.lastPassMs, actual->lastPassMs);
+    TEST_ASSERT_EQUAL(expected.lastCountedMissMs, actual->lastCountedMissMs);
+    TEST_ASSERT_EQUAL(expected.isActive(), actual->isActive());
+    TEST_ASSERT_EQUAL(expected.isLearned(), actual->isLearned());
 }
 
 // ================================================================
@@ -531,6 +584,175 @@ void test_fromJson_overflow_truncates() {
 }
 
 // ================================================================
+// Binary persistence tests
+// ================================================================
+
+void test_binary_save_load_atomic_roundtrip_on_real_fs() {
+    const std::filesystem::path root = makeFsRoot("binary_roundtrip");
+    fs::FS fs(root);
+
+    LockoutEntry first = makeEntry(1000000, -1000000, 24120, 0x04);
+    first.directionMode = LockoutEntry::DIRECTION_FORWARD;
+    first.headingDeg = 87;
+    first.headingTolDeg = 22;
+    first.missCount = 3;
+
+    LockoutEntry second = makeEntry(2000000, -2000000, 10525, 0x08);
+    second.radiusE5 = 2700;
+    second.freqTolMHz = 15;
+    second.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    second.directionMode = LockoutEntry::DIRECTION_REVERSE;
+    second.headingDeg = 240;
+    second.headingTolDeg = 15;
+    second.missCount = 5;
+    second.firstSeenMs = 1234567890000LL;
+    second.lastSeenMs = 1234567895000LL;
+    second.lastPassMs = 1234567900000LL;
+    second.lastCountedMissMs = 1234567905000LL;
+
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(first));
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(second));
+
+    TEST_ASSERT_TRUE(store.saveBinary(fs, LockoutStore::kBinaryPath));
+    TEST_ASSERT_TRUE(fs.exists(LockoutStore::kBinaryPath));
+    TEST_ASSERT_EQUAL(1, store.stats().saves);
+    TEST_ASSERT_EQUAL(2, store.stats().entriesSaved);
+
+    testIndex.clear();
+    TEST_ASSERT_TRUE(store.loadBinary(fs, LockoutStore::kBinaryPath));
+    TEST_ASSERT_EQUAL(2, testIndex.activeCount());
+
+    const LockoutEntry* loadedFirst = nullptr;
+    const LockoutEntry* loadedSecond = nullptr;
+    for (size_t i = 0; i < testIndex.capacity(); ++i) {
+        const LockoutEntry* entry = testIndex.at(i);
+        if (!entry || !entry->isActive()) {
+            continue;
+        }
+        if (entry->latE5 == first.latE5) {
+            loadedFirst = entry;
+        } else if (entry->latE5 == second.latE5) {
+            loadedSecond = entry;
+        }
+    }
+
+    assertEntriesEqual(first, loadedFirst);
+    assertEntriesEqual(second, loadedSecond);
+}
+
+void test_loadBinary_rejects_bad_magic() {
+    const std::filesystem::path root = makeFsRoot("bad_magic");
+    fs::FS fs(root);
+
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(makeEntry()));
+    TEST_ASSERT_TRUE(store.saveBinary(fs, LockoutStore::kBinaryPath));
+
+    const uint8_t badMagic[4] = {'B', 'A', 'D', '!'};
+    overwriteFileBytes(resolveFsPath(root, LockoutStore::kBinaryPath), 0, badMagic, sizeof(badMagic));
+
+    testIndex.clear();
+    TEST_ASSERT_FALSE(store.loadBinary(fs, LockoutStore::kBinaryPath));
+}
+
+void test_loadBinary_rejects_wrong_version() {
+    const std::filesystem::path root = makeFsRoot("bad_version");
+    fs::FS fs(root);
+
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(makeEntry()));
+    TEST_ASSERT_TRUE(store.saveBinary(fs, LockoutStore::kBinaryPath));
+
+    const uint16_t badVersion = 99;
+    overwriteFileBytes(resolveFsPath(root, LockoutStore::kBinaryPath), 4, &badVersion, sizeof(badVersion));
+
+    testIndex.clear();
+    TEST_ASSERT_FALSE(store.loadBinary(fs, LockoutStore::kBinaryPath));
+}
+
+void test_loadBinary_rejects_bad_entry_count() {
+    const std::filesystem::path root = makeFsRoot("bad_count");
+    fs::FS fs(root);
+
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(makeEntry()));
+    TEST_ASSERT_TRUE(store.saveBinary(fs, LockoutStore::kBinaryPath));
+
+    const uint16_t badEntryCount = static_cast<uint16_t>(LockoutIndex::kCapacity + 1);
+    overwriteFileBytes(resolveFsPath(root, LockoutStore::kBinaryPath), 6, &badEntryCount, sizeof(badEntryCount));
+
+    testIndex.clear();
+    TEST_ASSERT_FALSE(store.loadBinary(fs, LockoutStore::kBinaryPath));
+}
+
+void test_loadBinary_rejects_bad_crc() {
+    const std::filesystem::path root = makeFsRoot("bad_crc");
+    fs::FS fs(root);
+
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(makeEntry()));
+    TEST_ASSERT_TRUE(store.saveBinary(fs, LockoutStore::kBinaryPath));
+
+    uint8_t flipped = 0;
+    const std::filesystem::path filePath = resolveFsPath(root, LockoutStore::kBinaryPath);
+    {
+        std::ifstream stream(filePath, std::ios::binary);
+        TEST_ASSERT_TRUE(stream.is_open());
+        stream.seekg(-1, std::ios::end);
+        stream.read(reinterpret_cast<char*>(&flipped), 1);
+        TEST_ASSERT_TRUE(stream.good());
+    }
+    flipped ^= 0xFFu;
+    const std::streamoff lastByteOffset =
+        static_cast<std::streamoff>(std::filesystem::file_size(filePath) - 1);
+    overwriteFileBytes(filePath, lastByteOffset, &flipped, sizeof(flipped));
+
+    testIndex.clear();
+    TEST_ASSERT_FALSE(store.loadBinary(fs, LockoutStore::kBinaryPath));
+}
+
+void test_loadBinary_rejects_truncated_file() {
+    const std::filesystem::path root = makeFsRoot("truncated");
+    fs::FS fs(root);
+
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(makeEntry()));
+    TEST_ASSERT_TRUE(store.saveBinary(fs, LockoutStore::kBinaryPath));
+
+    const std::filesystem::path filePath = resolveFsPath(root, LockoutStore::kBinaryPath);
+    const auto originalSize = std::filesystem::file_size(filePath);
+    std::filesystem::resize_file(filePath, originalSize - 1);
+
+    testIndex.clear();
+    TEST_ASSERT_FALSE(store.loadBinary(fs, LockoutStore::kBinaryPath));
+}
+
+void test_loadBinary_failure_does_not_mutate_live_index() {
+    const std::filesystem::path root = makeFsRoot("load_failure_preserves_live_state");
+    fs::FS fs(root);
+
+    LockoutEntry persisted = makeEntry(1000000, -1000000, 24120, 0x04);
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(persisted));
+    TEST_ASSERT_TRUE(store.saveBinary(fs, LockoutStore::kBinaryPath));
+
+    LockoutEntry sentinel = makeEntry(9000000, -9000000, 10525, 0x08);
+    sentinel.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    testIndex.clear();
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(sentinel));
+
+    const uint8_t badMagic[4] = {'B', 'A', 'D', '!'};
+    overwriteFileBytes(resolveFsPath(root, LockoutStore::kBinaryPath), 0, badMagic, sizeof(badMagic));
+
+    TEST_ASSERT_FALSE(store.loadBinary(fs, LockoutStore::kBinaryPath));
+    TEST_ASSERT_EQUAL(1, testIndex.activeCount());
+
+    const LockoutEntry* live = nullptr;
+    for (size_t i = 0; i < testIndex.capacity(); ++i) {
+        const LockoutEntry* entry = testIndex.at(i);
+        if (entry && entry->isActive()) {
+            live = entry;
+            break;
+        }
+    }
+    assertEntriesEqual(sentinel, live);
+}
+
+// ================================================================
 // Dirty tracking
 // ================================================================
 
@@ -617,6 +839,15 @@ int main(int argc, char** argv) {
     RUN_TEST(test_fromJson_clears_index_first);
     RUN_TEST(test_fromJson_overflow_truncates);
     RUN_TEST(test_fromJson_no_index_returns_false);
+
+    // binary persistence
+    RUN_TEST(test_binary_save_load_atomic_roundtrip_on_real_fs);
+    RUN_TEST(test_loadBinary_rejects_bad_magic);
+    RUN_TEST(test_loadBinary_rejects_wrong_version);
+    RUN_TEST(test_loadBinary_rejects_bad_entry_count);
+    RUN_TEST(test_loadBinary_rejects_bad_crc);
+    RUN_TEST(test_loadBinary_rejects_truncated_file);
+    RUN_TEST(test_loadBinary_failure_does_not_mutate_live_index);
 
     // Dirty tracking & stats
     RUN_TEST(test_dirty_tracking);

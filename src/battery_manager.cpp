@@ -491,9 +491,7 @@ bool BatteryManager::powerOff() {
         if (fs) {
             auto flushDirtyLockoutData = [&]() {
                 if (lockoutStore.isDirty()) {
-                    JsonDocument doc;
-                    lockoutStore.toJson(doc);
-                    if (StorageManager::writeJsonFileAtomic(*fs, "/v1simple_lockout_zones.json", doc)) {
+                    if (lockoutStore.saveBinary(*fs, LockoutStore::kBinaryPath)) {
                         lockoutStore.clearDirty();
                         Serial.printf("[Battery] Flushed %lu lockout zones\n",
                                       static_cast<unsigned long>(lockoutStore.stats().entriesSaved));
@@ -613,4 +611,3 @@ bool BatteryManager::processPowerButton() {
     
     return false;
 }
-

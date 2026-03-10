@@ -29,6 +29,7 @@
 #include "modules/auto_push/auto_push_module.h"
 #include "modules/alert_persistence/alert_persistence_module.h"
 #include "modules/lockout/lockout_band_policy.h"
+#include "modules/lockout/lockout_boot_storage.h"
 #include "modules/lockout/lockout_index.h"
 #include "modules/lockout/lockout_learner.h"
 #include "modules/lockout/lockout_store.h"
@@ -82,35 +83,8 @@ V1ConnectedAutoPushSelection resolveV1ConnectedAutoPushSelection(const V1Setting
 }
 
 static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
+static constexpr const char* LOCKOUT_ZONES_BINARY_PATH = LockoutStore::kBinaryPath;
 static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
-
-bool loadLockoutZonesJsonDocument(JsonDocument& outDoc) {
-    if (!storageManager.isReady()) {
-        return false;
-    }
-
-    fs::FS* fs = storageManager.getFilesystem();
-    if (!(fs && fs->exists(LOCKOUT_ZONES_PATH))) {
-        SerialLog.println("[Lockout] No saved zones file found");
-        return false;
-    }
-
-    File f = fs->open(LOCKOUT_ZONES_PATH, "r");
-    if (!(f && f.size() > 0 && f.size() < 65536)) {
-        if (f) {
-            f.close();
-        }
-        return false;
-    }
-
-    const DeserializationError err = deserializeJson(outDoc, f);
-    f.close();
-    if (err) {
-        SerialLog.printf("[Lockout] JSON parse error: %s\n", err.c_str());
-        return false;
-    }
-    return true;
-}
 
 bool loadPendingLearnerJsonDocument(JsonDocument& outDoc) {
     if (!storageManager.isReady()) {
@@ -218,23 +192,77 @@ void applyLockoutPolicyAndLoadZonesFromStorage() {
     lockoutSetKLearningEnabled(settingsManager.get().gpsLockoutKLearningEnabled);
     lockoutSetXLearningEnabled(settingsManager.get().gpsLockoutXLearningEnabled);
 
-    JsonDocument doc;
-    if (!loadLockoutZonesJsonDocument(doc)) {
+    lockoutStore.begin(&lockoutIndex);
+
+    if (!storageManager.isReady()) {
         return;
     }
 
-    const uint32_t legacyRadiusMigrations = normalizeLegacyLockoutRadiusScale(doc);
-    lockoutStore.begin(&lockoutIndex);
-    if (lockoutStore.fromJson(doc)) {
-        SerialLog.printf("[Lockout] Loaded %lu zones from %s\n",
-                         static_cast<unsigned long>(lockoutStore.stats().entriesLoaded),
-                         LOCKOUT_ZONES_PATH);
-        if (legacyRadiusMigrations > 0) {
-            SerialLog.printf("[Lockout] Normalized %lu legacy zone radius values (x10->x1 scale)\n",
-                             static_cast<unsigned long>(legacyRadiusMigrations));
-            // Persist normalized values on the next best-effort save cycle.
-            lockoutStore.markDirty();
+    fs::FS* fs = storageManager.getFilesystem();
+    if (!fs) {
+        return;
+    }
+
+    LockoutBootLoadResult loadResult;
+    if (!loadLockoutZonesBinaryFirst(*fs,
+                                     lockoutStore,
+                                     LOCKOUT_ZONES_BINARY_PATH,
+                                     LOCKOUT_ZONES_PATH,
+                                     LockoutStore::kJsonMigratedBackupPath,
+                                     normalizeLegacyLockoutRadiusScale,
+                                     &loadResult)) {
+        switch (loadResult.outcome) {
+            case LockoutBootLoadOutcome::NoneFound:
+                SerialLog.println("[Lockout] No saved zones file found");
+                break;
+            case LockoutBootLoadOutcome::BinaryFailedNoJson:
+                SerialLog.printf("[Lockout] Binary load failed and no JSON migration source remains: %s\n",
+                                 LOCKOUT_ZONES_BINARY_PATH);
+                break;
+            case LockoutBootLoadOutcome::JsonInvalid:
+                SerialLog.printf("[Lockout] JSON migration source invalid: %s\n", LOCKOUT_ZONES_PATH);
+                break;
+            case LockoutBootLoadOutcome::LoadedBinary:
+            case LockoutBootLoadOutcome::MigratedJson:
+            case LockoutBootLoadOutcome::LoadedJsonSavePending:
+                break;
         }
+        return;
+    }
+
+    switch (loadResult.outcome) {
+        case LockoutBootLoadOutcome::LoadedBinary:
+            SerialLog.printf("[Lockout] Loaded %lu zones from %s\n",
+                             static_cast<unsigned long>(lockoutStore.stats().entriesLoaded),
+                             LOCKOUT_ZONES_BINARY_PATH);
+            break;
+        case LockoutBootLoadOutcome::MigratedJson:
+        case LockoutBootLoadOutcome::LoadedJsonSavePending:
+            SerialLog.printf("[Lockout] Loaded %lu zones from %s\n",
+                             static_cast<unsigned long>(lockoutStore.stats().entriesLoaded),
+                             LOCKOUT_ZONES_PATH);
+            if (loadResult.legacyRadiusMigrations > 0) {
+                SerialLog.printf("[Lockout] Normalized %lu legacy zone radius values (x10->x1 scale)\n",
+                                 static_cast<unsigned long>(loadResult.legacyRadiusMigrations));
+            }
+            if (loadResult.outcome == LockoutBootLoadOutcome::MigratedJson) {
+                SerialLog.printf("[Lockout] Migrated zones to %s\n", LOCKOUT_ZONES_BINARY_PATH);
+                if (loadResult.archivedJson) {
+                    SerialLog.printf("[Lockout] Archived migrated JSON to %s\n",
+                                     LockoutStore::kJsonMigratedBackupPath);
+                } else {
+                    SerialLog.printf("[Lockout] WARN: Failed to archive migrated JSON from %s\n",
+                                     LOCKOUT_ZONES_PATH);
+                }
+            } else {
+                SerialLog.printf("[Lockout] WARN: Failed to migrate zones to %s; will retry later\n",
+                                 LOCKOUT_ZONES_BINARY_PATH);
+            }
+            break;
+        case LockoutBootLoadOutcome::NoneFound:
+        case LockoutBootLoadOutcome::BinaryFailedNoJson:
+        case LockoutBootLoadOutcome::JsonInvalid:
+            break;
     }
 }
 
