@@ -23,6 +23,7 @@ constexpr uint32_t SIGNAL_OBS_MIN_REPEAT_MS = 1500;
 constexpr uint16_t SIGNAL_OBS_FREQ_TOL_MHZ = 5;
 constexpr uint8_t SIGNAL_OBS_STRENGTH_TOL = 1;
 constexpr int32_t SIGNAL_OBS_LOCATION_TOL_E5 = 25;  // ~28m latitude
+constexpr size_t SIGNAL_OBS_MAX_FRAME_ALERTS = 15;
 }  // namespace
 
 SignalCaptureModule signalCaptureModule;
@@ -128,6 +129,9 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
                                std::isfinite(gpsStatus.longitudeDeg);
     const int32_t latitudeE5 = locationValid ? degreesToE5(gpsStatus.latitudeDeg) : 0;
     const int32_t longitudeE5 = locationValid ? degreesToE5(gpsStatus.longitudeDeg) : 0;
+    SignalObservation publishedObservations[SIGNAL_OBS_MAX_FRAME_ALERTS];
+    size_t publishedBucketIndices[SIGNAL_OBS_MAX_FRAME_ALERTS];
+    size_t publishedCount = 0;
 
     const auto& alerts = parser.getAllAlerts();
     const size_t alertCount = static_cast<size_t>(parser.getAlertCount());
@@ -171,6 +175,16 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
             signalObservationLog.publish(observation);
         }
         signalObservationSdLogger.enqueue(observation);
-        rememberPublishedObservation(observation, matchedBucketIndex);
+        if (publishedCount < SIGNAL_OBS_MAX_FRAME_ALERTS) {
+            publishedObservations[publishedCount] = observation;
+            publishedBucketIndices[publishedCount] = matchedBucketIndex;
+            ++publishedCount;
+        } else {
+            rememberPublishedObservation(observation, matchedBucketIndex);
+        }
+    }
+
+    for (size_t i = 0; i < publishedCount; ++i) {
+        rememberPublishedObservation(publishedObservations[i], publishedBucketIndices[i]);
     }
 }

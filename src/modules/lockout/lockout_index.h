@@ -78,12 +78,22 @@ public:
     ///   The entry demotes when missCount reaches missThreshold.
     LockoutCleanPassResult recordCleanPassWithPolicy(size_t index,
                                                      int64_t epochMs,
+                                                     uint8_t localHour,
                                                      uint32_t missIntervalMs,
                                                      uint8_t missThreshold);
+    LockoutCleanPassResult recordCleanPassWithPolicy(size_t index,
+                                                     int64_t epochMs,
+                                                     uint32_t missIntervalMs,
+                                                     uint8_t missThreshold) {
+        return recordCleanPassWithPolicy(index, epochMs, 0xFF, missIntervalMs, missThreshold);
+    }
 
     /// Record a hit (alert matched) at the given index.
     /// Returns the new confidence value.
-    uint8_t recordHit(size_t index, int64_t epochMs);
+    uint8_t recordHit(size_t index, int64_t epochMs, uint16_t observedFreqMHz, uint8_t localHour);
+    uint8_t recordHit(size_t index, int64_t epochMs) {
+        return recordHit(index, epochMs, 0, 0xFF);
+    }
 
     /// Find the first active entry whose zone contains the given position
     /// and matches band+freq.  Returns index, or -1 if none.
@@ -130,6 +140,9 @@ public:
                                  size_t outCap) const;
 
 private:
+    int findEquivalentSignature(const LockoutEntry& entry) const;
+    uint16_t nextAreaId() const;
+
     /// Fast proximity check with cos(lat) correction.
     /// Returns true if (latE5, lonE5) is within the entry's bounding box AND
     /// the cos(lat)-corrected squared distance is within radius^2.

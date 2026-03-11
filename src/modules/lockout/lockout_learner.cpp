@@ -2,6 +2,7 @@
 #include "lockout_band_policy.h"
 #include "lockout_entry.h"
 #include "lockout_index.h"
+#include "lockout_signature_utils.h"
 #include "lockout_store.h"
 #include "road_map_reader.h"
 #include "signal_observation_log.h"
@@ -91,7 +92,7 @@ void LockoutLearner::setTuning(uint8_t promotionHits,
     minLearnerSpeedMph_ = minLearnerSpeedMph;
 }
 
-void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
+void LockoutLearner::process(uint32_t nowMs, int64_t epochMs, int32_t tzOffsetMinutes) {
     if (!index_ || !log_) return;
 
     // Rate-limit polling (priority 7 — never block higher tiers)
@@ -162,6 +163,7 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
             const int32_t  lon  = obs.longitudeE5;
             const uint8_t  band = obs.bandRaw;
             const uint16_t freq = obs.frequencyMHz;
+            const uint8_t localHour = lockout_signature::localHourFromEpochMs(epochMs, tzOffsetMinutes);
 
             // Gate: already covered by an existing lockout in the index
             if (index_->findMatch(lat, lon, band, freq) >= 0) {
@@ -169,13 +171,35 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
                 continue;
             }
 
+            uint16_t areaId = findExistingAreaId(lat, lon);
+            if (areaId == 0) {
+                const int areaCandidate = findAreaCandidate(lat, lon);
+                if (areaCandidate >= 0) {
+                    areaId = candidates_[static_cast<size_t>(areaCandidate)].areaId;
+                }
+            }
+            if (areaId == 0) {
+                areaId = allocAreaId();
+            }
+
             // Try to match an existing candidate
-            int idx = findCandidate(lat, lon, band, freq);
+            int idx = findCandidate(lat, lon, areaId, band, freq);
             if (idx >= 0) {
                 LearnerCandidate& c = candidates_[idx];
                 if (epochMs > 0 && c.lastSeenMs != epochMs) {
                     c.lastSeenMs = epochMs;
                     dirty_ = true;
+                }
+                if (freq > 0) {
+                    if (c.observedFreqMinMHz == 0 || freq < c.observedFreqMinMHz) {
+                        c.observedFreqMinMHz = freq;
+                    }
+                    if (c.observedFreqMaxMHz == 0 || freq > c.observedFreqMaxMHz) {
+                        c.observedFreqMaxMHz = freq;
+                    }
+                }
+                if (localHour < 24) {
+                    c.activeHourMask = lockout_signature::addHourToMask(c.activeHourMask, localHour);
                 }
                 bool countedHit = true;
                 if (learnHitIntervalMs_ > 0 && epochMs > 0 && c.lastCountedHitMs > 0 &&
@@ -212,12 +236,19 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
                     LearnerCandidate& c = candidates_[slot];
                     c.latE5      = lat;
                     c.lonE5      = lon;
+                    c.areaId     = areaId;
+                    c.radiusE5   = radiusE5_;
                     c.band       = band;
                     c.freqMHz    = freq;
+                    c.observedFreqMinMHz = freq;
+                    c.observedFreqMaxMHz = freq;
                     c.hitCount   = 1;
                     c.firstSeenMs = (epochMs > 0) ? epochMs : 0;
                     c.lastSeenMs  = (epochMs > 0) ? epochMs : 0;
                     c.lastCountedHitMs = (epochMs > 0) ? epochMs : 0;
+                    if (localHour < 24) {
+                        c.activeHourMask = lockout_signature::addHourToMask(c.activeHourMask, localHour);
+                    }
                     c.active     = true;
                     // Record initial GPS heading
                     if (obs.courseValid && std::isfinite(obs.courseDeg)) {
@@ -262,16 +293,71 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs) {
 // --- Candidate management ---
 
 int LockoutLearner::findCandidate(int32_t latE5, int32_t lonE5,
-                                  uint8_t band, uint16_t freqMHz) const {
+                                  uint16_t areaId, uint8_t band, uint16_t freqMHz) const {
     for (size_t i = 0; i < kCandidateCapacity; ++i) {
         const LearnerCandidate& c = candidates_[i];
         if (!c.active) continue;
+        if (c.areaId != areaId) continue;
         if (c.band != band) continue;
         if (!freqClose(freqMHz, c.freqMHz, freqToleranceMHz_)) continue;
-        if (!withinRadius(latE5, lonE5, c.latE5, c.lonE5, radiusE5_)) continue;
+        if (!withinRadius(latE5, lonE5, c.latE5, c.lonE5, c.radiusE5)) continue;
         return static_cast<int>(i);
     }
     return -1;
+}
+
+int LockoutLearner::findAreaCandidate(int32_t latE5, int32_t lonE5) const {
+    for (size_t i = 0; i < kCandidateCapacity; ++i) {
+        const LearnerCandidate& c = candidates_[i];
+        if (!c.active) continue;
+        const uint16_t radius = c.radiusE5 > 0 ? c.radiusE5 : radiusE5_;
+        if (!withinRadius(latE5, lonE5, c.latE5, c.lonE5, radius)) continue;
+        return static_cast<int>(i);
+    }
+    return -1;
+}
+
+uint16_t LockoutLearner::findExistingAreaId(int32_t latE5, int32_t lonE5) const {
+    if (!index_) {
+        return 0;
+    }
+    int16_t nearby[16];
+    const size_t count = index_->findNearby(latE5, lonE5, nearby, 16);
+    for (size_t i = 0; i < count; ++i) {
+        const LockoutEntry* entry = index_->at(static_cast<size_t>(nearby[i]));
+        if (!entry || !entry->isActive() || !entry->isLearned()) {
+            continue;
+        }
+        if (entry->areaId != 0) {
+            return entry->areaId;
+        }
+    }
+    return 0;
+}
+
+uint16_t LockoutLearner::allocAreaId() const {
+    uint16_t maxAreaId = 0;
+    if (index_) {
+        for (size_t i = 0; i < index_->capacity(); ++i) {
+            const LockoutEntry* entry = index_->at(i);
+            if (!entry || !entry->isActive()) {
+                continue;
+            }
+            if (entry->areaId > maxAreaId) {
+                maxAreaId = entry->areaId;
+            }
+        }
+    }
+    for (size_t i = 0; i < kCandidateCapacity; ++i) {
+        const LearnerCandidate& candidate = candidates_[i];
+        if (!candidate.active) {
+            continue;
+        }
+        if (candidate.areaId > maxAreaId) {
+            maxAreaId = candidate.areaId;
+        }
+    }
+    return (maxAreaId == UINT16_MAX) ? UINT16_MAX : static_cast<uint16_t>(maxAreaId + 1);
 }
 
 int LockoutLearner::allocCandidate() {
@@ -294,12 +380,19 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
     LockoutEntry entry;
     entry.latE5      = c.latE5;
     entry.lonE5      = c.lonE5;
-    entry.radiusE5   = radiusE5_;
+    entry.radiusE5   = c.radiusE5 > 0 ? c.radiusE5 : radiusE5_;
+    entry.areaId     = c.areaId;
     entry.bandMask   = bandMask;
     entry.freqMHz    = c.freqMHz;
     entry.freqTolMHz = freqToleranceMHz_;
+    entry.freqWindowMinMHz = (c.observedFreqMinMHz > 0) ? c.observedFreqMinMHz : c.freqMHz;
+    entry.freqWindowMaxMHz = (c.observedFreqMaxMHz > 0) ? c.observedFreqMaxMHz : c.freqMHz;
     entry.confidence = c.hitCount;
     entry.flags      = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
+    entry.activeHourMask = c.activeHourMask;
+    if (lockout_signature::shouldMarkAllTime(entry.activeHourMask)) {
+        entry.setAllTime(true);
+    }
     entry.firstSeenMs = c.firstSeenMs;
     entry.lastSeenMs  = (epochMs > 0) ? epochMs : c.lastSeenMs;
     entry.lastPassMs  = 0;
@@ -432,12 +525,17 @@ void LockoutLearner::toJson(JsonDocument& doc) const {
         JsonObject out = candidates.add<JsonObject>();
         out["lat"] = candidate.latE5;
         out["lon"] = candidate.lonE5;
+        out["area"] = candidate.areaId;
+        out["rad"] = candidate.radiusE5;
         out["band"] = candidate.band;
         out["freq"] = candidate.freqMHz;
+        out["fmin"] = candidate.observedFreqMinMHz;
+        out["fmax"] = candidate.observedFreqMaxMHz;
         out["hits"] = candidate.hitCount;
         out["first"] = candidate.firstSeenMs;
         out["last"] = candidate.lastSeenMs;
         out["lastHit"] = candidate.lastCountedHitMs;
+        out["hours"] = candidate.activeHourMask;
         if (candidate.headingSampleCount > 0) {
             out["hsin"] = candidate.headingSinSum;
             out["hcos"] = candidate.headingCosSum;
@@ -452,7 +550,7 @@ bool LockoutLearner::fromJson(JsonDocument& doc, int64_t epochMs) {
         return false;
     }
     const uint8_t version = doc["_version"] | static_cast<uint8_t>(0);
-    if (version != kPersistVersion) {
+    if (version != 1 && version != kPersistVersion) {
         return false;
     }
 
@@ -478,12 +576,17 @@ bool LockoutLearner::fromJson(JsonDocument& doc, int64_t epochMs) {
         LearnerCandidate candidate;
         candidate.latE5 = in["lat"].as<int32_t>();
         candidate.lonE5 = in["lon"].as<int32_t>();
+        candidate.areaId = in["area"] | static_cast<uint16_t>(0);
+        candidate.radiusE5 = in["rad"] | radiusE5_;
         candidate.band = in["band"].as<uint8_t>();
         candidate.freqMHz = in["freq"].as<uint16_t>();
+        candidate.observedFreqMinMHz = in["fmin"] | candidate.freqMHz;
+        candidate.observedFreqMaxMHz = in["fmax"] | candidate.freqMHz;
         candidate.hitCount = in["hits"].as<uint8_t>();
         candidate.firstSeenMs = in["first"] | static_cast<int64_t>(0);
         candidate.lastSeenMs = in["last"] | static_cast<int64_t>(0);
         candidate.lastCountedHitMs = in["lastHit"] | static_cast<int64_t>(0);
+        candidate.activeHourMask = in["hours"] | static_cast<uint32_t>(0);
         candidate.headingSinSum = in["hsin"] | static_cast<int16_t>(0);
         candidate.headingCosSum = in["hcos"] | static_cast<int16_t>(0);
         candidate.headingSampleCount = in["hcnt"] | static_cast<uint8_t>(0);
@@ -494,6 +597,9 @@ bool LockoutLearner::fromJson(JsonDocument& doc, int64_t epochMs) {
         if (epochMs > 0 && candidate.lastSeenMs > 0 &&
             (epochMs - candidate.lastSeenMs) > kStaleDurationMs) {
             continue;
+        }
+        if (candidate.areaId == 0) {
+            candidate.areaId = allocAreaId();
         }
         if (index_ && index_->findMatch(candidate.latE5,
                                         candidate.lonE5,

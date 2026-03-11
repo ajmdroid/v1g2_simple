@@ -543,7 +543,7 @@ static void configurePeriodicMaintenanceModule() {
     };
     periodicMaintenanceProviders.epochContext = &timeService;
     periodicMaintenanceProviders.runLockoutLearner = [](void* ctx, uint32_t nowMs, int64_t epochMs) {
-        static_cast<LockoutLearner*>(ctx)->process(nowMs, epochMs);
+        static_cast<LockoutLearner*>(ctx)->process(nowMs, epochMs, timeService.tzOffsetMinutes());
     };
     periodicMaintenanceProviders.lockoutLearnerContext = &lockoutLearner;
     periodicMaintenanceProviders.runLockoutStoreSave = [](void*, uint32_t nowMs) {

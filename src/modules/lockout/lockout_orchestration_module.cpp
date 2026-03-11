@@ -58,7 +58,11 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
         enableSignalTrace);
 
     if (!proxyClientConnected) {
-        enforcer_->process(nowMs, timeSvc_->nowEpochMsOr0(), *parser_, gpsStatus);
+        enforcer_->process(nowMs,
+                           timeSvc_->nowEpochMsOr0(),
+                           timeSvc_ ? timeSvc_->tzOffsetMinutes() : 0,
+                           *parser_,
+                           gpsStatus);
 
         const auto& lockRes = enforcer_->lastResult();
         const DisplayState& lockoutDisplayState = parser_->getDisplayState();

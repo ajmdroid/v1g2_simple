@@ -2,6 +2,7 @@
 #include "lockout_band_policy.h"
 #include "lockout_entry.h"
 #include "lockout_index.h"
+#include "lockout_signature_utils.h"
 #include "../../storage_manager.h"
 
 #ifndef UNIT_TEST
@@ -46,9 +47,12 @@ void diskEntryFromRuntime(const LockoutEntry& entry, LockoutStore::LockoutDiskEn
     diskEntry.latE5 = entry.latE5;
     diskEntry.lonE5 = entry.lonE5;
     diskEntry.radiusE5 = entry.radiusE5;
+    diskEntry.areaId = entry.areaId;
     diskEntry.bandMask = lockoutSanitizeBandMask(entry.bandMask);
     diskEntry.freqMHz = entry.freqMHz;
     diskEntry.freqTolMHz = entry.freqTolMHz;
+    diskEntry.freqWindowMinMHz = entry.freqWindowMinMHz;
+    diskEntry.freqWindowMaxMHz = entry.freqWindowMaxMHz;
     diskEntry.confidence = entry.confidence;
     diskEntry.flags = entry.flags;
     diskEntry.directionMode = clampDirectionMode(entry.directionMode);
@@ -61,6 +65,33 @@ void diskEntryFromRuntime(const LockoutEntry& entry, LockoutStore::LockoutDiskEn
     diskEntry.lastSeenMs = entry.lastSeenMs;
     diskEntry.lastPassMs = entry.lastPassMs;
     diskEntry.lastCountedMissMs = entry.lastCountedMissMs;
+    diskEntry.activeHourMask = entry.activeHourMask;
+    diskEntry.allTime = entry.isAllTime() ? 1 : 0;
+}
+
+bool finalizeRuntimeEntry(LockoutEntry& entry, bool migratedFromLegacy, uint16_t areaId) {
+    entry.areaId = areaId;
+    entry.setManual(false);
+    entry.setLearned(true);
+    if (entry.freqMHz == 0) {
+        return false;
+    }
+    if (entry.freqWindowMinMHz == 0) {
+        entry.freqWindowMinMHz = entry.freqMHz;
+    }
+    if (entry.freqWindowMaxMHz == 0) {
+        entry.freqWindowMaxMHz = entry.freqMHz;
+    }
+    if (entry.freqWindowMinMHz > entry.freqWindowMaxMHz) {
+        std::swap(entry.freqWindowMinMHz, entry.freqWindowMaxMHz);
+    }
+    if (migratedFromLegacy) {
+        entry.setAllTime(true);
+    } else if (!entry.isAllTime() && lockout_signature::shouldMarkAllTime(entry.activeHourMask)) {
+        entry.setAllTime(true);
+    }
+    entry.setActive(true);
+    return true;
 }
 
 bool runtimeEntryFromDisk(const LockoutStore::LockoutDiskEntry& diskEntry, LockoutEntry& entry) {
@@ -68,12 +99,15 @@ bool runtimeEntryFromDisk(const LockoutStore::LockoutDiskEntry& diskEntry, Locko
     entry.latE5 = diskEntry.latE5;
     entry.lonE5 = diskEntry.lonE5;
     entry.radiusE5 = diskEntry.radiusE5;
+    entry.areaId = diskEntry.areaId;
     entry.bandMask = lockoutSanitizeBandMask(diskEntry.bandMask);
     if (entry.bandMask == 0) {
         return false;
     }
     entry.freqMHz = diskEntry.freqMHz;
     entry.freqTolMHz = diskEntry.freqTolMHz;
+    entry.freqWindowMinMHz = diskEntry.freqWindowMinMHz;
+    entry.freqWindowMaxMHz = diskEntry.freqWindowMaxMHz;
     entry.confidence = diskEntry.confidence;
     entry.flags = diskEntry.flags;
     entry.directionMode = clampDirectionMode(diskEntry.directionMode);
@@ -86,14 +120,49 @@ bool runtimeEntryFromDisk(const LockoutStore::LockoutDiskEntry& diskEntry, Locko
     entry.lastSeenMs = diskEntry.lastSeenMs;
     entry.lastPassMs = diskEntry.lastPassMs;
     entry.lastCountedMissMs = diskEntry.lastCountedMissMs;
+    entry.activeHourMask = diskEntry.activeHourMask;
+    entry.setAllTime(diskEntry.allTime != 0);
 
     if (entry.directionMode != LockoutEntry::DIRECTION_ALL &&
         entry.headingDeg == LockoutEntry::HEADING_INVALID) {
         entry.directionMode = LockoutEntry::DIRECTION_ALL;
     }
 
-    entry.setActive(true);
-    return true;
+    return finalizeRuntimeEntry(entry, false, entry.areaId);
+}
+
+bool runtimeEntryFromLegacyDisk(const LockoutStore::LegacyLockoutDiskEntryV1& diskEntry,
+                                LockoutEntry& entry,
+                                uint16_t areaId) {
+    entry.clear();
+    entry.latE5 = diskEntry.latE5;
+    entry.lonE5 = diskEntry.lonE5;
+    entry.radiusE5 = diskEntry.radiusE5;
+    entry.bandMask = lockoutSanitizeBandMask(diskEntry.bandMask);
+    if (entry.bandMask == 0 || (diskEntry.flags & LockoutEntry::FLAG_MANUAL) != 0) {
+        return false;
+    }
+    entry.freqMHz = diskEntry.freqMHz;
+    entry.freqTolMHz = diskEntry.freqTolMHz;
+    entry.freqWindowMinMHz = diskEntry.freqMHz;
+    entry.freqWindowMaxMHz = diskEntry.freqMHz;
+    entry.confidence = diskEntry.confidence;
+    entry.flags = diskEntry.flags;
+    entry.directionMode = clampDirectionMode(diskEntry.directionMode);
+    entry.headingDeg = (diskEntry.headingDeg == LockoutEntry::HEADING_INVALID)
+                           ? LockoutEntry::HEADING_INVALID
+                           : clampHeading(diskEntry.headingDeg);
+    entry.headingTolDeg = clampHeadingTolerance(diskEntry.headingTolDeg);
+    entry.missCount = diskEntry.missCount;
+    entry.firstSeenMs = diskEntry.firstSeenMs;
+    entry.lastSeenMs = diskEntry.lastSeenMs;
+    entry.lastPassMs = diskEntry.lastPassMs;
+    entry.lastCountedMissMs = diskEntry.lastCountedMissMs;
+    if (entry.directionMode != LockoutEntry::DIRECTION_ALL &&
+        entry.headingDeg == LockoutEntry::HEADING_INVALID) {
+        entry.directionMode = LockoutEntry::DIRECTION_ALL;
+    }
+    return finalizeRuntimeEntry(entry, true, areaId);
 }
 
 size_t countActiveEntries(const LockoutIndex* index) {
@@ -105,6 +174,9 @@ size_t countActiveEntries(const LockoutIndex* index) {
     for (size_t i = 0; i < index->capacity(); ++i) {
         const LockoutEntry* entry = index->at(i);
         if (!entry || !entry->isActive()) {
+            continue;
+        }
+        if (!entry->isLearned() || entry->isManual()) {
             continue;
         }
         if (lockoutSanitizeBandMask(entry->bandMask) == 0) {
@@ -163,32 +235,69 @@ void LockoutStore::toJson(JsonDocument& doc) const {
     doc["_type"]    = kTypeTag;
     doc["_version"] = kVersion;
 
+    JsonArray areas = doc["areas"].to<JsonArray>();
     JsonArray zones = doc["zones"].to<JsonArray>();
     uint32_t count = 0;
 
     for (size_t i = 0; i < index_->capacity(); ++i) {
         const LockoutEntry* e = index_->at(i);
         if (!e || !e->isActive()) continue;
+        if (!e->isLearned() || e->isManual()) continue;
         const uint8_t bandMask = lockoutSanitizeBandMask(e->bandMask);
         if (bandMask == 0) continue;
 
-        JsonObject z = zones.add<JsonObject>();
-        z["lat"]   = e->latE5;
-        z["lon"]   = e->lonE5;
-        z["rad"]   = e->radiusE5;
-        z["band"]  = bandMask;
-        z["freq"]  = e->freqMHz;
-        z["ftol"]  = e->freqTolMHz;
-        z["conf"]  = e->confidence;
-        z["flags"] = e->flags;
-        z["dir"]   = clampDirectionMode(e->directionMode);
-        z["hdg"]   = (e->headingDeg == LockoutEntry::HEADING_INVALID) ? -1 : e->headingDeg;
-        z["htol"]  = clampHeadingTolerance(e->headingTolDeg);
-        z["miss"]  = e->missCount;
+        JsonObject areaObj;
+        for (JsonObject existing : areas) {
+            if ((existing["id"] | static_cast<uint16_t>(0)) == e->areaId) {
+                areaObj = existing;
+                break;
+            }
+        }
+        if (areaObj.isNull()) {
+            areaObj = areas.add<JsonObject>();
+            areaObj["id"] = e->areaId;
+            areaObj["lat"] = e->latE5;
+            areaObj["lon"] = e->lonE5;
+            areaObj["rad"] = e->radiusE5;
+            areaObj["signatures"].to<JsonArray>();
+        }
+
+        JsonObject z = areaObj["signatures"].as<JsonArray>().add<JsonObject>();
+        z["band"] = bandMask;
+        z["freq"] = e->freqMHz;
+        z["ftol"] = e->freqTolMHz;
+        z["fmin"] = e->freqWindowMinMHz;
+        z["fmax"] = e->freqWindowMaxMHz;
+        z["conf"] = e->confidence;
+        z["flags"] = e->flags & static_cast<uint8_t>(~LockoutEntry::FLAG_MANUAL);
+        z["dir"] = clampDirectionMode(e->directionMode);
+        z["hdg"] = (e->headingDeg == LockoutEntry::HEADING_INVALID) ? -1 : e->headingDeg;
+        z["htol"] = clampHeadingTolerance(e->headingTolDeg);
+        z["miss"] = e->missCount;
         z["first"] = e->firstSeenMs;
-        z["last"]  = e->lastSeenMs;
-        z["pass"]  = e->lastPassMs;
-        z["mms"]   = e->lastCountedMissMs;
+        z["last"] = e->lastSeenMs;
+        z["pass"] = e->lastPassMs;
+        z["mms"] = e->lastCountedMissMs;
+        z["hours"] = e->activeHourMask;
+        z["allTime"] = e->isAllTime();
+
+        JsonObject legacy = zones.add<JsonObject>();
+        legacy["lat"] = e->latE5;
+        legacy["lon"] = e->lonE5;
+        legacy["rad"] = e->radiusE5;
+        legacy["band"] = bandMask;
+        legacy["freq"] = e->freqMHz;
+        legacy["ftol"] = e->freqTolMHz;
+        legacy["conf"] = e->confidence;
+        legacy["flags"] = e->flags;
+        legacy["dir"] = clampDirectionMode(e->directionMode);
+        legacy["hdg"] = (e->headingDeg == LockoutEntry::HEADING_INVALID) ? -1 : e->headingDeg;
+        legacy["htol"] = clampHeadingTolerance(e->headingTolDeg);
+        legacy["miss"] = e->missCount;
+        legacy["first"] = e->firstSeenMs;
+        legacy["last"] = e->lastSeenMs;
+        legacy["pass"] = e->lastPassMs;
+        legacy["mms"] = e->lastCountedMissMs;
         ++count;
     }
 
@@ -216,16 +325,8 @@ bool LockoutStore::fromJson(JsonDocument& doc) {
 
     // Validate version.
     uint8_t version = doc["_version"] | (uint8_t)0;
-    if (version != kVersion) {
+    if (version != 1 && version != kVersion) {
         Serial.printf("[LockoutStore] Unknown version: %u\n", version);
-        ++stats_.loadErrors;
-        return false;
-    }
-
-    // Zones array.
-    JsonArray zones = doc["zones"];
-    if (zones.isNull()) {
-        Serial.println("[LockoutStore] Missing zones array");
         ++stats_.loadErrors;
         return false;
     }
@@ -235,56 +336,128 @@ bool LockoutStore::fromJson(JsonDocument& doc) {
 
     uint32_t loaded  = 0;
     uint32_t skipped = 0;
+    uint16_t nextAreaId = 1;
 
-    for (JsonObject z : zones) {
-        if (loaded >= index_->capacity()) {
-            Serial.printf("[LockoutStore] Capacity reached (%u), truncating\n",
-                          static_cast<unsigned>(index_->capacity()));
-            break;
+    if (version == 1) {
+        JsonArray zones = doc["zones"];
+        if (zones.isNull()) {
+            Serial.println("[LockoutStore] Missing zones array");
+            ++stats_.loadErrors;
+            return false;
         }
 
-        // lat and lon are required.
-        if (z["lat"].isNull() || z["lon"].isNull()) {
-            ++skipped;
-            continue;
+        for (JsonObject z : zones) {
+            if (loaded >= index_->capacity()) {
+                Serial.printf("[LockoutStore] Capacity reached (%u), truncating\n",
+                              static_cast<unsigned>(index_->capacity()));
+                break;
+            }
+            if (z["lat"].isNull() || z["lon"].isNull()) {
+                ++skipped;
+                continue;
+            }
+
+            const uint8_t flags = z["flags"] | static_cast<uint8_t>(LockoutEntry::FLAG_ACTIVE);
+            if ((flags & LockoutEntry::FLAG_MANUAL) != 0) {
+                ++skipped;
+                continue;
+            }
+
+            LockoutEntry entry;
+            entry.latE5 = z["lat"].as<int32_t>();
+            entry.lonE5 = z["lon"].as<int32_t>();
+            entry.radiusE5 = z["rad"] | static_cast<uint16_t>(135);
+            entry.bandMask = lockoutSanitizeBandMask(z["band"] | static_cast<uint8_t>(0));
+            entry.freqMHz = z["freq"] | static_cast<uint16_t>(0);
+            entry.freqTolMHz = z["ftol"] | static_cast<uint16_t>(10);
+            entry.freqWindowMinMHz = entry.freqMHz;
+            entry.freqWindowMaxMHz = entry.freqMHz;
+            entry.confidence = z["conf"] | static_cast<uint8_t>(100);
+            entry.flags = flags;
+            entry.directionMode = clampDirectionMode(
+                z["dir"] | static_cast<int>(LockoutEntry::DIRECTION_ALL));
+            entry.headingDeg = clampHeading(z["hdg"] | -1);
+            entry.headingTolDeg = clampHeadingTolerance(z["htol"] | 45);
+            entry.missCount = z["miss"] | static_cast<uint8_t>(0);
+            entry.firstSeenMs = z["first"] | static_cast<int64_t>(0);
+            entry.lastSeenMs = z["last"] | static_cast<int64_t>(0);
+            entry.lastPassMs = z["pass"] | static_cast<int64_t>(0);
+            entry.lastCountedMissMs = z["mms"] | static_cast<int64_t>(0);
+            if (!finalizeRuntimeEntry(entry, true, nextAreaId++)) {
+                ++skipped;
+                continue;
+            }
+            if (index_->add(entry) >= 0) {
+                ++loaded;
+            }
+        }
+    } else {
+        JsonArray areas = doc["areas"];
+        if (areas.isNull()) {
+            Serial.println("[LockoutStore] Missing areas array");
+            ++stats_.loadErrors;
+            return false;
         }
 
-        LockoutEntry entry;
-        entry.latE5      = z["lat"].as<int32_t>();
-        entry.lonE5      = z["lon"].as<int32_t>();
-        entry.radiusE5   = z["rad"]  | (uint16_t)135;
-        entry.bandMask   = lockoutSanitizeBandMask(z["band"] | (uint8_t)0);
-        if (entry.bandMask == 0) {
-            ++skipped;
-            continue;
-        }
-        entry.freqMHz    = z["freq"] | (uint16_t)0;
-        entry.freqTolMHz = z["ftol"] | (uint16_t)10;
-        entry.confidence = z["conf"] | (uint8_t)100;
-        entry.flags      = z["flags"] | (uint8_t)LockoutEntry::FLAG_ACTIVE;
-        entry.directionMode = clampDirectionMode(z["dir"] | static_cast<int>(LockoutEntry::DIRECTION_ALL));
-        entry.headingDeg = clampHeading(z["hdg"] | -1);
-        entry.headingTolDeg = clampHeadingTolerance(z["htol"] | 45);
-        entry.missCount  = z["miss"] | (uint8_t)0;
-        entry.firstSeenMs = z["first"] | (int64_t)0;
-        entry.lastSeenMs  = z["last"]  | (int64_t)0;
-        entry.lastPassMs  = z["pass"]  | (int64_t)0;
-        entry.lastCountedMissMs = z["mms"] | (int64_t)0;
+        for (JsonObject area : areas) {
+            if (loaded >= index_->capacity()) {
+                break;
+            }
+            if (area["lat"].isNull() || area["lon"].isNull()) {
+                ++skipped;
+                continue;
+            }
+            const uint16_t areaId = area["id"] | nextAreaId++;
+            const int32_t latE5 = area["lat"].as<int32_t>();
+            const int32_t lonE5 = area["lon"].as<int32_t>();
+            const uint16_t radiusE5 = area["rad"] | static_cast<uint16_t>(135);
+            JsonArray signatures = area["signatures"].as<JsonArray>();
+            if (signatures.isNull()) {
+                ++skipped;
+                continue;
+            }
 
-        if (entry.directionMode != LockoutEntry::DIRECTION_ALL &&
-            entry.headingDeg == LockoutEntry::HEADING_INVALID) {
-            // Corrupt directional metadata: disable direction gate instead of creating
-            // an entry that can never match.
-            entry.directionMode = LockoutEntry::DIRECTION_ALL;
-        }
+            for (JsonObject z : signatures) {
+                if (loaded >= index_->capacity()) {
+                    break;
+                }
+                const uint8_t flags = z["flags"] | static_cast<uint8_t>(LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED);
+                if ((flags & LockoutEntry::FLAG_MANUAL) != 0) {
+                    ++skipped;
+                    continue;
+                }
 
-        // Always ensure the entry is active (we only serialize active entries,
-        // so deserialize should restore them as active).
-        entry.setActive(true);
-
-        int slot = index_->add(entry);
-        if (slot >= 0) {
-            ++loaded;
+                LockoutEntry entry;
+                entry.latE5 = latE5;
+                entry.lonE5 = lonE5;
+                entry.radiusE5 = radiusE5;
+                entry.areaId = areaId;
+                entry.bandMask = lockoutSanitizeBandMask(z["band"] | static_cast<uint8_t>(0));
+                entry.freqMHz = z["freq"] | static_cast<uint16_t>(0);
+                entry.freqTolMHz = z["ftol"] | static_cast<uint16_t>(10);
+                entry.freqWindowMinMHz = z["fmin"] | entry.freqMHz;
+                entry.freqWindowMaxMHz = z["fmax"] | entry.freqMHz;
+                entry.confidence = z["conf"] | static_cast<uint8_t>(100);
+                entry.flags = flags;
+                entry.directionMode = clampDirectionMode(
+                    z["dir"] | static_cast<int>(LockoutEntry::DIRECTION_ALL));
+                entry.headingDeg = clampHeading(z["hdg"] | -1);
+                entry.headingTolDeg = clampHeadingTolerance(z["htol"] | 45);
+                entry.missCount = z["miss"] | static_cast<uint8_t>(0);
+                entry.firstSeenMs = z["first"] | static_cast<int64_t>(0);
+                entry.lastSeenMs = z["last"] | static_cast<int64_t>(0);
+                entry.lastPassMs = z["pass"] | static_cast<int64_t>(0);
+                entry.lastCountedMissMs = z["mms"] | static_cast<int64_t>(0);
+                entry.activeHourMask = z["hours"] | static_cast<uint32_t>(0);
+                entry.setAllTime(z["allTime"] | false);
+                if (!finalizeRuntimeEntry(entry, false, areaId)) {
+                    ++skipped;
+                    continue;
+                }
+                if (index_->add(entry) >= 0) {
+                    ++loaded;
+                }
+            }
         }
     }
 
@@ -347,6 +520,9 @@ bool LockoutStore::saveBinary(fs::FS& fs, const char* path) const {
     for (size_t i = 0; i < index_->capacity(); ++i) {
         const LockoutEntry* entry = index_->at(i);
         if (!entry || !entry->isActive()) {
+            continue;
+        }
+        if (!entry->isLearned() || entry->isManual()) {
             continue;
         }
         if (lockoutSanitizeBandMask(entry->bandMask) == 0) {
@@ -432,14 +608,6 @@ bool LockoutStore::loadBinary(fs::FS& fs, const char* path) {
         return false;
     }
 
-    if (header.version != kBinaryVersion) {
-        file.close();
-        Serial.printf("[LockoutStore] loadBinary: unsupported version %u\n",
-                      static_cast<unsigned>(header.version));
-        ++stats_.loadErrors;
-        return false;
-    }
-
     if (header.entryCount > index_->capacity()) {
         file.close();
         Serial.printf("[LockoutStore] loadBinary: entry count %u exceeds capacity %u\n",
@@ -449,8 +617,17 @@ bool LockoutStore::loadBinary(fs::FS& fs, const char* path) {
         return false;
     }
 
+    const size_t diskEntrySize =
+        (header.version == 1) ? sizeof(LegacyLockoutDiskEntryV1) : sizeof(LockoutDiskEntry);
+    if (header.version != 1 && header.version != kBinaryVersion) {
+        file.close();
+        Serial.printf("[LockoutStore] loadBinary: unsupported version %u\n",
+                      static_cast<unsigned>(header.version));
+        ++stats_.loadErrors;
+        return false;
+    }
     const uint32_t expectedPayloadBytes =
-        static_cast<uint32_t>(header.entryCount) * sizeof(LockoutDiskEntry);
+        static_cast<uint32_t>(header.entryCount) * static_cast<uint32_t>(diskEntrySize);
     if (header.payloadBytes != expectedPayloadBytes ||
         fileSize != (sizeof(LockoutDiskHeader) + static_cast<size_t>(header.payloadBytes))) {
         file.close();
@@ -470,23 +647,38 @@ bool LockoutStore::loadBinary(fs::FS& fs, const char* path) {
     uint32_t crc = 0xFFFFFFFFu;
     uint32_t loaded = 0;
     uint32_t skipped = 0;
+    uint16_t nextAreaId = 1;
 
     for (uint16_t i = 0; i < header.entryCount; ++i) {
-        LockoutDiskEntry diskEntry = {};
-        if (file.read(reinterpret_cast<uint8_t*>(&diskEntry), sizeof(diskEntry)) != sizeof(diskEntry)) {
-            file.close();
-            Serial.printf("[LockoutStore] loadBinary: truncated while reading entry %u\n",
-                          static_cast<unsigned>(i));
-            ++stats_.loadErrors;
-            return false;
-        }
-
-        crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(&diskEntry), sizeof(diskEntry));
-
         LockoutEntry entry;
-        if (!runtimeEntryFromDisk(diskEntry, entry)) {
-            ++skipped;
-            continue;
+        if (header.version == 1) {
+            LegacyLockoutDiskEntryV1 diskEntry = {};
+            if (file.read(reinterpret_cast<uint8_t*>(&diskEntry), sizeof(diskEntry)) != sizeof(diskEntry)) {
+                file.close();
+                Serial.printf("[LockoutStore] loadBinary: truncated while reading entry %u\n",
+                              static_cast<unsigned>(i));
+                ++stats_.loadErrors;
+                return false;
+            }
+            crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(&diskEntry), sizeof(diskEntry));
+            if (!runtimeEntryFromLegacyDisk(diskEntry, entry, nextAreaId++)) {
+                ++skipped;
+                continue;
+            }
+        } else {
+            LockoutDiskEntry diskEntry = {};
+            if (file.read(reinterpret_cast<uint8_t*>(&diskEntry), sizeof(diskEntry)) != sizeof(diskEntry)) {
+                file.close();
+                Serial.printf("[LockoutStore] loadBinary: truncated while reading entry %u\n",
+                              static_cast<unsigned>(i));
+                ++stats_.loadErrors;
+                return false;
+            }
+            crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(&diskEntry), sizeof(diskEntry));
+            if (!runtimeEntryFromDisk(diskEntry, entry)) {
+                ++skipped;
+                continue;
+            }
         }
 
         if (stagedIndex->add(entry) >= 0) {

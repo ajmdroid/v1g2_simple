@@ -238,7 +238,6 @@ void sendZones(WebServer& server,
     const uint8_t learnIntervalHours = lockoutLearner.learnIntervalHours();
     const uint8_t unlearnIntervalHours = settings.gpsLockoutLearnerUnlearnIntervalHours;
     const uint8_t unlearnCount = settings.gpsLockoutLearnerUnlearnCount;
-    const uint8_t manualDemotionMissCount = settings.gpsLockoutManualDemotionMissCount;
     const int64_t learnIntervalMs = (learnIntervalHours > 0)
                                         ? static_cast<int64_t>(learnIntervalHours) * 3600LL * 1000LL
                                         : 0;
@@ -255,7 +254,7 @@ void sendZones(WebServer& server,
     doc["learnIntervalHours"] = static_cast<uint32_t>(learnIntervalHours);
     doc["unlearnIntervalHours"] = static_cast<uint32_t>(unlearnIntervalHours);
     doc["unlearnCount"] = static_cast<uint32_t>(unlearnCount);
-    doc["manualDemotionMissCount"] = static_cast<uint32_t>(manualDemotionMissCount);
+    doc["manualDemotionMissCount"] = 0;
     doc["kaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     doc["activeLimit"] = activeLimit;
     doc["pendingLimit"] = pendingLimit;
@@ -286,12 +285,19 @@ void sendZones(WebServer& server,
         zone["longitude"] = static_cast<double>(entry->lonE5) / 100000.0;
         zone["radiusE5"] = entry->radiusE5;
         zone["radiusM"] = static_cast<float>(entry->radiusE5) * 1.11f;
+        zone["areaId"] = entry->areaId;
         zone["bandMask"] = entry->bandMask;
         zone["frequencyMHz"] = entry->freqMHz;
         zone["frequencyToleranceMHz"] = entry->freqTolMHz;
+        zone["frequencyWindowMinMHz"] =
+            entry->freqWindowMinMHz > 0 ? entry->freqWindowMinMHz : entry->freqMHz;
+        zone["frequencyWindowMaxMHz"] =
+            entry->freqWindowMaxMHz > 0 ? entry->freqWindowMaxMHz : entry->freqMHz;
         zone["confidence"] = entry->confidence;
         zone["manual"] = entry->isManual();
         zone["learned"] = entry->isLearned();
+        zone["allTime"] = entry->isAllTime();
+        zone["activeHourMask"] = entry->activeHourMask;
         zone["directionModeRaw"] = entry->directionMode;
         zone["directionMode"] = lockoutDirectionModeName(entry->directionMode);
         if (entry->headingDeg == LockoutEntry::HEADING_INVALID) {
@@ -301,7 +307,7 @@ void sendZones(WebServer& server,
         }
         zone["headingToleranceDeg"] = entry->headingTolDeg;
         zone["missCount"] = entry->missCount;
-        const uint8_t demotionThreshold = entry->isManual() ? manualDemotionMissCount : unlearnCount;
+        const uint8_t demotionThreshold = entry->isLearned() ? unlearnCount : 0;
         if (demotionThreshold > 0) {
             zone["demotionMissThreshold"] = demotionThreshold;
             zone["demotionMissesRemaining"] = static_cast<uint8_t>(

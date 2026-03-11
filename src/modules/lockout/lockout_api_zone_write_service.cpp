@@ -338,6 +338,12 @@ void handleZoneDelete(WebServer& server,
 void handleZoneCreate(WebServer& server,
                       LockoutIndex& lockoutIndex,
                       LockoutStore& lockoutStore) {
+    (void)lockoutIndex;
+    (void)lockoutStore;
+    server.send(410, "application/json",
+                "{\"success\":false,\"message\":\"manual lockout creation has been removed\"}");
+    return;
+
     JsonDocument body;
     if (!parseRequestJson(server, body)) {
         server.send(400, "application/json",
@@ -391,6 +397,12 @@ void handleZoneCreate(WebServer& server,
 void handleZoneUpdate(WebServer& server,
                       LockoutIndex& lockoutIndex,
                       LockoutStore& lockoutStore) {
+    (void)lockoutIndex;
+    (void)lockoutStore;
+    server.send(410, "application/json",
+                "{\"success\":false,\"message\":\"manual lockout updates have been removed\"}");
+    return;
+
     JsonDocument body;
     if (!parseRequestJson(server, body)) {
         server.send(400, "application/json",

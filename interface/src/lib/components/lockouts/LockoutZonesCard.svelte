@@ -23,13 +23,11 @@
 		activeLockoutZones = [],
 		pendingLockoutZones = [],
 		importFileInput = $bindable(),
-		openZoneCreateEditor,
 		promptLockoutImport,
 		exportLockoutZones,
 		refreshZones,
 		clearAllZones,
 		handleImportFileSelected,
-		openZoneEditEditor,
 		deleteZone,
 		deletingZoneSlot = null
 	} = $props();
@@ -43,16 +41,9 @@
 	<div class="card-body gap-3">
 		<CardSectionHead
 			title="Lockout Zones"
-			subtitle="Active lockouts and pending candidates. Create, edit, export, or import zones."
+			subtitle="Active learned lockouts and pending candidates. Manual create/update has been removed."
 		>
 			<div class="flex flex-wrap gap-2">
-				<button
-					class="btn btn-primary btn-sm"
-					onclick={openZoneCreateEditor}
-					disabled={!advancedUnlocked || zoneEditorSaving || importingZones}
-				>
-					New Manual Zone
-				</button>
 				<button
 					class="btn btn-outline btn-sm"
 					onclick={promptLockoutImport}
@@ -149,37 +140,25 @@
 										<td class="font-mono text-xs">{zone.slot}</td>
 										<td class="text-xs">
 											<div class="flex flex-wrap gap-1">
-												{#if zone.manual}
-													<div class="badge badge-outline badge-xs">manual</div>
-												{/if}
 												{#if zone.learned}
 													<div class="badge badge-info badge-outline badge-xs">learned</div>
 												{/if}
-												{#if !zone.manual && !zone.learned}
+												{#if !zone.learned}
 													<div class="badge badge-ghost badge-xs">active</div>
 												{/if}
 											</div>
 										</td>
 										<td class="text-xs">
-											<div class="flex flex-wrap gap-1">
-												<button
-													class="btn btn-xs btn-outline"
-													onclick={() => openZoneEditEditor(zone)}
-													disabled={!advancedUnlocked || zoneEditorSaving || importingZones}
-												>
-													Edit
-												</button>
-												<button
-													class="btn btn-xs btn-error btn-outline"
-													onclick={() => deleteZone(zone)}
-													disabled={!advancedUnlocked || deletingZoneSlot === zone.slot}
-												>
-													{#if deletingZoneSlot === zone.slot}
-														<span class="loading loading-spinner loading-xs"></span>
-													{/if}
-													Delete
-												</button>
-											</div>
+											<button
+												class="btn btn-xs btn-error btn-outline"
+												onclick={() => deleteZone(zone)}
+												disabled={!advancedUnlocked || deletingZoneSlot === zone.slot}
+											>
+												{#if deletingZoneSlot === zone.slot}
+													<span class="loading loading-spinner loading-xs"></span>
+												{/if}
+												Delete
+											</button>
 										</td>
 										<td>{formatBandMask(zone.bandMask)}</td>
 										<td class="whitespace-nowrap">{formatRoundedFrequencyMhz(zone.frequencyMHz)}</td>
@@ -193,7 +172,7 @@
 													({zone.demotionMissesRemaining} to remove)
 												{/if}
 											{:else}
-												manual only
+												disabled
 											{/if}
 										</td>
 										<td>

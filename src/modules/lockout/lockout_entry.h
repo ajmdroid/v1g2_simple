@@ -17,9 +17,12 @@ struct LockoutEntry {
     int32_t  latE5       = 0;       // Center latitude  (E5 fixed-point)
     int32_t  lonE5       = 0;       // Center longitude (E5 fixed-point)
     uint16_t radiusE5    = 0;       // Radius in E5 units (~135 ≈ 150 m lat)
+    uint16_t areaId      = 0;       // Physical-area identity shared by learned signatures
     uint8_t  bandMask    = 0;       // Which bands to mute (bitmask, matches Band enum)
     uint16_t freqMHz     = 0;       // Center frequency (MHz)
-    uint16_t freqTolMHz  = 10;      // ±tolerance (MHz) for frequency match
+    uint16_t freqTolMHz  = 10;      // Hard max adaptive drift cap (MHz)
+    uint16_t freqWindowMinMHz = 0;  // Learned runtime frequency window low edge
+    uint16_t freqWindowMaxMHz = 0;  // Learned runtime frequency window high edge
     uint8_t  confidence  = 0;       // 0-255: decays on clean pass, grows on hit
     uint8_t  flags       = 0;       // See Flag constants below
     uint8_t  directionMode = DIRECTION_ALL; // Optional directional gate (all/forward/reverse)
@@ -30,6 +33,8 @@ struct LockoutEntry {
     int64_t  lastSeenMs  = 0;       // Unix epoch ms — most recent hit
     int64_t  lastPassMs  = 0;       // Unix epoch ms — most recent clean pass
     int64_t  lastCountedMissMs = 0; // Unix epoch ms — most recent missCount increment
+    uint32_t activeHourMask = 0;    // Observed local hour buckets for learner-derived time window
+    bool     allTime = false;       // True when the learner has widened this signature to all-day
 
     // --- Flag bit definitions ---
     static constexpr uint8_t FLAG_ACTIVE   = 1 << 0;  // Slot is in use
@@ -39,11 +44,13 @@ struct LockoutEntry {
     bool isActive()  const { return (flags & FLAG_ACTIVE)  != 0; }
     bool isManual()  const { return (flags & FLAG_MANUAL)  != 0; }
     bool isLearned() const { return (flags & FLAG_LEARNED) != 0; }
+    bool isAllTime() const { return allTime; }
     bool hasDirectionConstraint() const { return directionMode != DIRECTION_ALL; }
 
     void setActive(bool v)  { if (v) flags |= FLAG_ACTIVE;  else flags &= ~FLAG_ACTIVE; }
     void setManual(bool v)  { if (v) flags |= FLAG_MANUAL;  else flags &= ~FLAG_MANUAL; }
     void setLearned(bool v) { if (v) flags |= FLAG_LEARNED; else flags &= ~FLAG_LEARNED; }
+    void setAllTime(bool v) { allTime = v; }
 
     void clear() { *this = LockoutEntry{}; }
 };

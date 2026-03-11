@@ -28,9 +28,12 @@ static LockoutEntry makeKBandEntry(int32_t latE5, int32_t lonE5,
     e.latE5      = latE5;
     e.lonE5      = lonE5;
     e.radiusE5   = radiusE5;
+    e.areaId     = 1;
     e.bandMask   = 0x04;          // BAND_K = 1 << 2
     e.freqMHz    = freqMHz;
     e.freqTolMHz = 10;
+    e.freqWindowMinMHz = freqMHz;
+    e.freqWindowMaxMHz = freqMHz;
     e.confidence = 100;
     e.flags      = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     e.firstSeenMs = 1700000000000LL;

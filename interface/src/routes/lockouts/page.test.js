@@ -107,19 +107,14 @@ describe('lockouts route page', () => {
 		unmount();
 	});
 
-	it('opens manual zone editor after safety gate unlock', async () => {
+	it('does not expose manual zone creation after safety gate unlock', async () => {
 		installDefaultFetch();
 		const { unmount } = render(Page);
 
 		await screen.findByText('Lockouts');
 		await fireEvent.click(screen.getByRole('checkbox', { name: /unlock advanced writes/i }));
-		await fireEvent.click(screen.getByRole('button', { name: /new manual zone/i }));
-
-		await screen.findByText('Create Manual Lockout Zone');
-		await fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
-		await waitFor(() => {
-			expect(screen.queryByText('Create Manual Lockout Zone')).toBeNull();
-		});
+		expect(screen.queryByRole('button', { name: /new manual zone/i })).toBeNull();
+		expect(screen.queryByText('Create Manual Lockout Zone')).toBeNull();
 		unmount();
 	});
 

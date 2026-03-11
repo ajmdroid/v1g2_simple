@@ -13,12 +13,17 @@ struct SignalObservation;
 struct LearnerCandidate {
     int32_t  latE5      = 0;     // Center latitude (E5 fixed-point)
     int32_t  lonE5      = 0;     // Center longitude (E5 fixed-point)
+    uint16_t areaId     = 0;     // Physical-area identity shared across signatures
+    uint16_t radiusE5   = 0;     // Area radius used for grouping/promoting
     uint8_t  band       = 0;     // Band enum value (single, not a mask)
     uint16_t freqMHz    = 0;     // Center frequency (MHz)
+    uint16_t observedFreqMinMHz = 0; // Adaptive runtime window low edge seed
+    uint16_t observedFreqMaxMHz = 0; // Adaptive runtime window high edge seed
     uint8_t  hitCount   = 0;     // Number of matching observations
     int64_t  firstSeenMs = 0;    // Epoch ms — first observation
     int64_t  lastSeenMs  = 0;    // Epoch ms — most recent observation
     int64_t  lastCountedHitMs = 0; // Epoch ms — most recent hitCount increment
+    uint32_t activeHourMask = 0; // Local-hour observations used to learn time window
     bool     active     = false; // Slot in use
     int16_t  headingSinSum = 0;  // Accumulated sin(course) × 100 for circular mean
     int16_t  headingCosSum = 0;  // Accumulated cos(course) × 100 for circular mean
@@ -49,7 +54,7 @@ public:
     static constexpr uint32_t kPruneIntervalMs    = 60000;  // Prune every 60s
     static constexpr size_t   kBatchSize          = 32;     // Max observations per poll
     static constexpr const char* kPersistTypeTag = "v1simple_lockout_pending";
-    static constexpr uint8_t kPersistVersion = 1;
+    static constexpr uint8_t kPersistVersion = 2;
 
     /// Wire dependencies. Must be called once before process().
     void begin(LockoutIndex* index, SignalObservationLog* log);
@@ -71,7 +76,7 @@ public:
 
     /// Ingest new observations and manage candidates.
     /// Rate-limited internally; safe to call every loop().
-    void process(uint32_t nowMs, int64_t epochMs);
+    void process(uint32_t nowMs, int64_t epochMs, int32_t tzOffsetMinutes = 0);
 
     /// Read-only access to candidate table.
     const LearnerCandidate* candidateAt(size_t index) const;
@@ -99,7 +104,10 @@ public:
     const Stats& stats() const { return stats_; }
 
 private:
-    int findCandidate(int32_t latE5, int32_t lonE5, uint8_t band, uint16_t freqMHz) const;
+    int findCandidate(int32_t latE5, int32_t lonE5, uint16_t areaId, uint8_t band, uint16_t freqMHz) const;
+    int findAreaCandidate(int32_t latE5, int32_t lonE5) const;
+    uint16_t findExistingAreaId(int32_t latE5, int32_t lonE5) const;
+    uint16_t allocAreaId() const;
     int allocCandidate();
     void promoteCandidate(size_t idx, int64_t epochMs);
     void pruneStale(int64_t epochMs);

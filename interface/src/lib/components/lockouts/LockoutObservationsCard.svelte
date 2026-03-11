@@ -21,7 +21,6 @@
 		advancedUnlocked,
 		zoneEditorSaving,
 		refreshEvents,
-		openZoneFromObservation
 	} = $props();
 
 	function formatRoundedFrequencyMhz(mhz) {
@@ -33,7 +32,7 @@
 	<div class="card-body gap-3">
 		<CardSectionHead
 			title="Signal Observations"
-			subtitle="Recent signals seen during driving. Use observations to create manual lockout zones."
+			subtitle="Recent signals seen during driving. These observations feed the area learner; manual lockout writes are disabled."
 		>
 			<button class="btn btn-outline btn-sm" onclick={refreshEvents} disabled={lockoutLoading}>
 				{#if lockoutLoading}
@@ -93,7 +92,6 @@
 							<th>Sats</th>
 							<th>HDOP</th>
 							<th>Location</th>
-							<th>Action</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -122,19 +120,6 @@
 										{/if}
 									{:else}
 										<span class="copy-caption">no fix</span>
-									{/if}
-								</td>
-								<td>
-									{#if event.locationValid}
-										<button
-											class="btn btn-xs btn-primary btn-outline"
-											onclick={() => openZoneFromObservation(event)}
-											disabled={!advancedUnlocked || zoneEditorSaving}
-										>
-											Lock Out
-										</button>
-									{:else}
-										<span class="copy-caption">—</span>
 									{/if}
 								</td>
 							</tr>

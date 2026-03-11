@@ -89,9 +89,12 @@ static LockoutEntry makeEntry(float latDeg, float lonDeg,
     e.latE5      = static_cast<int32_t>(lroundf(latDeg * 100000.0f));
     e.lonE5      = static_cast<int32_t>(lroundf(lonDeg * 100000.0f));
     e.radiusE5   = radiusE5;
+    e.areaId     = 1;
     e.bandMask   = bandMask;
     e.freqMHz    = freqMHz;
     e.freqTolMHz = 10;
+    e.freqWindowMinMHz = freqMHz;
+    e.freqWindowMaxMHz = freqMHz;
     e.confidence = 100;
     e.flags      = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     e.firstSeenMs = 1700000000000LL;

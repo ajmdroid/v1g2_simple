@@ -1,5 +1,6 @@
 #include "lockout_index.h"
 #include "lockout_band_policy.h"
+#include "lockout_signature_utils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -62,6 +63,16 @@ int LockoutIndex::add(const LockoutEntry& entry) {
     if (sanitized.bandMask == 0) {
         return -1;
     }
+    sanitized.setManual(false);
+    if (sanitized.areaId == 0) {
+        sanitized.areaId = nextAreaId();
+    }
+    if (sanitized.freqWindowMinMHz == 0 && sanitized.freqMHz > 0) {
+        sanitized.freqWindowMinMHz = sanitized.freqMHz;
+    }
+    if (sanitized.freqWindowMaxMHz == 0 && sanitized.freqMHz > 0) {
+        sanitized.freqWindowMaxMHz = sanitized.freqMHz;
+    }
     for (size_t i = 0; i < kCapacity; ++i) {
         if (!entries_[i].isActive()) {
             entries_[i] = sanitized;
@@ -85,9 +96,17 @@ int LockoutIndex::addOrUpdate(const LockoutEntry& entry) {
     if (sanitized.bandMask == 0) {
         return -1;
     }
-    // Check for an existing entry that covers the same zone+band+freq.
-    const int existing = findMatch(sanitized.latE5, sanitized.lonE5,
-                                   sanitized.bandMask, sanitized.freqMHz);
+    sanitized.setManual(false);
+    if (sanitized.areaId == 0) {
+        sanitized.areaId = nextAreaId();
+    }
+    if (sanitized.freqWindowMinMHz == 0 && sanitized.freqMHz > 0) {
+        sanitized.freqWindowMinMHz = sanitized.freqMHz;
+    }
+    if (sanitized.freqWindowMaxMHz == 0 && sanitized.freqMHz > 0) {
+        sanitized.freqWindowMaxMHz = sanitized.freqMHz;
+    }
+    const int existing = findEquivalentSignature(sanitized);
     if (existing >= 0) {
         LockoutEntry& e = entries_[existing];
         e.bandMask = lockoutSanitizeBandMask(static_cast<uint8_t>(e.bandMask | sanitized.bandMask));
@@ -104,6 +123,20 @@ int LockoutIndex::addOrUpdate(const LockoutEntry& entry) {
         if (sanitized.lastSeenMs > e.lastSeenMs) {
             e.lastSeenMs = sanitized.lastSeenMs;
         }
+        if (sanitized.lastPassMs > e.lastPassMs) {
+            e.lastPassMs = sanitized.lastPassMs;
+        }
+        if (sanitized.lastCountedMissMs > e.lastCountedMissMs) {
+            e.lastCountedMissMs = sanitized.lastCountedMissMs;
+        }
+        e.activeHourMask |= sanitized.activeHourMask;
+        if (sanitized.isAllTime()) {
+            e.setAllTime(true);
+        } else if (!e.isAllTime() && lockout_signature::shouldMarkAllTime(e.activeHourMask)) {
+            e.setAllTime(true);
+        }
+        lockout_signature::updateAdaptiveWindow(e, sanitized.freqWindowMinMHz);
+        lockout_signature::updateAdaptiveWindow(e, sanitized.freqWindowMaxMHz);
         // Existing-zone refresh should clear miss streak.
         e.missCount = 0;
         e.lastCountedMissMs = 0;
@@ -170,6 +203,7 @@ uint8_t LockoutIndex::recordCleanPass(size_t index, int64_t epochMs) {
 
 LockoutCleanPassResult LockoutIndex::recordCleanPassWithPolicy(size_t index,
                                                                int64_t epochMs,
+                                                               uint8_t localHour,
                                                                uint32_t missIntervalMs,
                                                                uint8_t missThreshold) {
     LockoutCleanPassResult result;
@@ -191,6 +225,10 @@ LockoutCleanPassResult LockoutIndex::recordCleanPassWithPolicy(size_t index,
     }
 
     if (epochMs <= 0) {
+        result.confidence = e.confidence;
+        return result;
+    }
+    if (!lockout_signature::hourIsExpected(e, localHour)) {
         result.confidence = e.confidence;
         return result;
     }
@@ -219,7 +257,10 @@ LockoutCleanPassResult LockoutIndex::recordCleanPassWithPolicy(size_t index,
     return result;
 }
 
-uint8_t LockoutIndex::recordHit(size_t index, int64_t epochMs) {
+uint8_t LockoutIndex::recordHit(size_t index,
+                                int64_t epochMs,
+                                uint16_t observedFreqMHz,
+                                uint8_t localHour) {
     if (index >= kCapacity) {
         return 0;
     }
@@ -232,6 +273,15 @@ uint8_t LockoutIndex::recordHit(size_t index, int64_t epochMs) {
     }
     if (e.confidence < 255) {
         ++e.confidence;
+    }
+    if (observedFreqMHz > 0) {
+        lockout_signature::updateAdaptiveWindow(e, observedFreqMHz);
+    }
+    if (localHour < 24) {
+        e.activeHourMask = lockout_signature::addHourToMask(e.activeHourMask, localHour);
+        if (!e.isAllTime() && lockout_signature::shouldMarkAllTime(e.activeHourMask)) {
+            e.setAllTime(true);
+        }
     }
     e.missCount = 0;
     e.lastCountedMissMs = 0;
@@ -450,12 +500,35 @@ bool LockoutIndex::withinInflatedRadius(int32_t latE5,
 }
 
 bool LockoutIndex::freqMatches(uint16_t alertFreqMHz, const LockoutEntry& entry) {
-    if (entry.freqTolMHz == 0 && entry.freqMHz == 0) {
-        // No frequency filter — band-only lockout.
-        return true;
+    return lockout_signature::freqMatches(entry, alertFreqMHz);
+}
+
+int LockoutIndex::findEquivalentSignature(const LockoutEntry& entry) const {
+    for (size_t i = 0; i < kCapacity; ++i) {
+        const LockoutEntry& existing = entries_[i];
+        if (!existing.isActive()) {
+            continue;
+        }
+        if (!lockout_signature::signatureEquivalent(existing, entry)) {
+            continue;
+        }
+        return static_cast<int>(i);
     }
-    const int diff = abs(static_cast<int>(alertFreqMHz) - static_cast<int>(entry.freqMHz));
-    return diff <= static_cast<int>(entry.freqTolMHz);
+    return -1;
+}
+
+uint16_t LockoutIndex::nextAreaId() const {
+    uint16_t maxAreaId = 0;
+    for (size_t i = 0; i < kCapacity; ++i) {
+        const LockoutEntry& entry = entries_[i];
+        if (!entry.isActive()) {
+            continue;
+        }
+        if (entry.areaId > maxAreaId) {
+            maxAreaId = entry.areaId;
+        }
+    }
+    return (maxAreaId == UINT16_MAX) ? UINT16_MAX : static_cast<uint16_t>(maxAreaId + 1);
 }
 
 namespace {

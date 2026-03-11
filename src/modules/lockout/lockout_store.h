@@ -12,11 +12,11 @@ class LockoutIndex;
 /// Designed for periodic SD card persistence (Tier 7 — best-effort,
 /// drops OK, corruption not).
 ///
-/// File format (v1):
+/// File format (v2):
 /// {
 ///   "_type": "v1simple_lockout_zones",
-///   "_version": 1,
-///   "zones": [ { "lat":…, "lon":…, … }, … ]
+///   "_version": 2,
+///   "areas": [ { "id":…, "lat":…, "lon":…, "signatures":[…] }, … ]
 /// }
 ///
 /// Thread safety: single-threaded from loop() like everything else
@@ -24,11 +24,11 @@ class LockoutIndex;
 class LockoutStore {
 public:
     static constexpr const char* kTypeTag = "v1simple_lockout_zones";
-    static constexpr uint8_t     kVersion = 1;
+    static constexpr uint8_t     kVersion = 2;
     static constexpr const char* kBinaryPath = "/v1simple_lockout_zones.bin";
     static constexpr const char* kJsonMigratedBackupPath = "/v1simple_lockout_zones.json.migrated.bak";
     inline static constexpr uint8_t kBinaryMagic[4] = {'L', 'Z', 'O', 'N'};
-    static constexpr uint16_t kBinaryVersion = 1;
+    static constexpr uint16_t kBinaryVersion = 2;
 
     struct __attribute__((packed)) LockoutDiskHeader {
         uint8_t magic[4];
@@ -40,6 +40,31 @@ public:
     static_assert(sizeof(LockoutDiskHeader) == 16, "LockoutDiskHeader must be 16 bytes");
 
     struct __attribute__((packed)) LockoutDiskEntry {
+        int32_t latE5;
+        int32_t lonE5;
+        uint16_t radiusE5;
+        uint16_t areaId;
+        uint8_t bandMask;
+        uint16_t freqMHz;
+        uint16_t freqTolMHz;
+        uint16_t freqWindowMinMHz;
+        uint16_t freqWindowMaxMHz;
+        uint8_t confidence;
+        uint8_t flags;
+        uint8_t directionMode;
+        uint8_t headingTolDeg;
+        uint8_t missCount;
+        uint16_t headingDeg;
+        int64_t firstSeenMs;
+        int64_t lastSeenMs;
+        int64_t lastPassMs;
+        int64_t lastCountedMissMs;
+        uint32_t activeHourMask;
+        uint8_t allTime;
+    };
+    static_assert(sizeof(LockoutDiskEntry) == 65, "LockoutDiskEntry must be 65 bytes");
+
+    struct __attribute__((packed)) LegacyLockoutDiskEntryV1 {
         int32_t latE5;
         int32_t lonE5;
         uint16_t radiusE5;
@@ -57,7 +82,8 @@ public:
         int64_t lastPassMs;
         int64_t lastCountedMissMs;
     };
-    static_assert(sizeof(LockoutDiskEntry) == 54, "LockoutDiskEntry must be 54 bytes");
+    static_assert(sizeof(LegacyLockoutDiskEntryV1) == 54,
+                  "LegacyLockoutDiskEntryV1 must be 54 bytes");
 
     /// Wire the index dependency.  Must be called once before toJson/fromJson.
     void begin(LockoutIndex* index);

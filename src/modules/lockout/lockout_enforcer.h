@@ -51,8 +51,15 @@ public:
     /// @return            Decision result (also cached in lastResult())
     LockoutEnforcerResult process(uint32_t nowMs,
                                   int64_t epochMs,
+                                  int32_t tzOffsetMinutes,
                                   const PacketParser& parser,
                                   const GpsRuntimeStatus& gpsStatus);
+    LockoutEnforcerResult process(uint32_t nowMs,
+                                  int64_t epochMs,
+                                  const PacketParser& parser,
+                                  const GpsRuntimeStatus& gpsStatus) {
+        return process(nowMs, epochMs, 0, parser, gpsStatus);
+    }
 
     /// Most recent evaluation result (valid after process() returns).
     const LockoutEnforcerResult& lastResult() const { return lastResult_; }
@@ -73,7 +80,7 @@ public:
 
 private:
     void recordCleanPasses(int32_t latE5, int32_t lonE5,
-                           int16_t matchedSlot, int64_t epochMs);
+                           int16_t matchedSlot, int64_t epochMs, uint8_t localHour);
 
     const SettingsManager* settings_ = nullptr;
     LockoutIndex* index_             = nullptr;
