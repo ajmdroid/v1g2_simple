@@ -143,7 +143,7 @@ void logPanicBreadcrumbs() {
 
 // ---- nvsHealthCheck ----
 
-// Log NVS statistics and perform cleanup if needed
+// Log NVS statistics without mutating settings namespaces during early boot.
 void nvsHealthCheck() {
     nvs_stats_t stats;
     if (nvs_get_stats(NULL, &stats) == ESP_OK) {
@@ -155,50 +155,8 @@ void nvsHealthCheck() {
                       (unsigned long)stats.namespace_count,
                       (unsigned long)stats.free_entries);
         
-        // If NVS is >80% full, attempt recovery
         if (usedPct > 80) {
-            Serial.println("[NVS] WARNING: NVS >80% full, clearing stale data...");
-            
-            // Clear legacy settings namespace if it exists
-            Preferences legacy;
-            if (legacy.begin("v1settings", false)) {
-                legacy.clear();
-                legacy.end();
-                Serial.println("[NVS] Cleared legacy v1settings namespace");
-            }
-            
-            // Clear inactive settings namespace
-            Preferences meta;
-            String activeNs = "";
-            if (meta.begin("v1settingsMeta", true)) {
-                activeNs = meta.getString("active", "");
-                meta.end();
-            }
-            
-            const char* inactiveNs = nullptr;
-            if (activeNs == "v1settingsA") {
-                inactiveNs = "v1settingsB";
-            } else if (activeNs == "v1settingsB") {
-                inactiveNs = "v1settingsA";
-            }
-            
-            if (inactiveNs) {
-                Preferences inactive;
-                if (inactive.begin(inactiveNs, false)) {
-                    inactive.clear();
-                    inactive.end();
-                    Serial.printf("[NVS] Cleared inactive namespace %s\n", inactiveNs);
-                }
-            }
-            
-            // Log stats after cleanup
-            if (nvs_get_stats(NULL, &stats) == ESP_OK) {
-                usedPct = (stats.used_entries * 100) / stats.total_entries;
-                Serial.printf("[NVS] After cleanup: %lu/%lu used (%lu%%)\n",
-                              (unsigned long)stats.used_entries, 
-                              (unsigned long)stats.total_entries,
-                              (unsigned long)usedPct);
-            }
+            Serial.println("[NVS] WARNING: NVS >80% full; deferring namespace cleanup until settings load resolves the active namespace");
         }
     } else {
         Serial.println("[NVS] WARNING: Could not get NVS stats");

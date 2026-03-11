@@ -74,6 +74,10 @@ struct PerfCounters {
     std::atomic<uint32_t> queueHighWater{0};   // Max queue depth seen
     std::atomic<uint32_t> proxyQueueHighWater{0}; // Max proxy queue depth
     std::atomic<uint32_t> phoneCmdQueueHighWater{0}; // Max phone→V1 cmd queue depth
+    std::atomic<uint32_t> phoneCmdDropsOverflow{0}; // Phone→V1 queue overflow drops
+    std::atomic<uint32_t> phoneCmdDropsInvalid{0}; // Phone→V1 malformed packet drops
+    std::atomic<uint32_t> phoneCmdDropsBleFail{0}; // Phone→V1 hard BLE send failures
+    std::atomic<uint32_t> phoneCmdDropsLockBusy{0}; // Phone→V1 queue lock-busy drops
     std::atomic<uint32_t> parseSuccesses{0};   // Successfully parsed packets
     std::atomic<uint32_t> parseFailures{0};    // Parse failures (resync)
     std::atomic<uint32_t> perfDrop{0};         // Perf SD snapshot drops (queue full)
@@ -207,6 +211,10 @@ struct PerfCounters {
         queueHighWater.store(0, std::memory_order_relaxed);
         proxyQueueHighWater.store(0, std::memory_order_relaxed);
         phoneCmdQueueHighWater.store(0, std::memory_order_relaxed);
+        phoneCmdDropsOverflow.store(0, std::memory_order_relaxed);
+        phoneCmdDropsInvalid.store(0, std::memory_order_relaxed);
+        phoneCmdDropsBleFail.store(0, std::memory_order_relaxed);
+        phoneCmdDropsLockBusy.store(0, std::memory_order_relaxed);
         parseSuccesses.store(0, std::memory_order_relaxed);
         parseFailures.store(0, std::memory_order_relaxed);
         perfDrop.store(0, std::memory_order_relaxed);

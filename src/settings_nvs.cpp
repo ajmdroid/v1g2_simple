@@ -29,14 +29,6 @@ bool attemptNvsRecovery(const char* activeNs) {
         }
     }
     
-    // Also clear legacy namespace if it exists
-    Preferences legacy;
-    if (legacy.begin(SETTINGS_NS_LEGACY, false)) {
-        legacy.clear();
-        legacy.end();
-        Serial.println("[Settings] Cleared legacy namespace");
-    }
-    
     return true;
 }
 

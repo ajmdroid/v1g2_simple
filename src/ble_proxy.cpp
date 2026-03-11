@@ -526,11 +526,13 @@ int V1BLEClient::processProxyQueue() {
 bool V1BLEClient::enqueuePhoneCommand(const uint8_t* data, size_t length, uint16_t sourceCharUUID) {
     if (!data || length == 0 || length > 32) {
         phoneCmdDropsInvalid++;
+        PERF_INC(phoneCmdDropsInvalid);
         return false;
     }
 
     if (!phoneCmdMutex || xSemaphoreTake(phoneCmdMutex, 0) != pdTRUE) {
         phoneCmdDropsLockBusy++;
+        PERF_INC(phoneCmdDropsLockBusy);
         return false;
     }
 
@@ -538,6 +540,7 @@ bool V1BLEClient::enqueuePhoneCommand(const uint8_t* data, size_t length, uint16
         phone2v1QueueTail = (phone2v1QueueTail + 1) % PHONE_CMD_QUEUE_SIZE;
         phone2v1QueueCount--;
         phoneCmdDropsOverflow++;
+        PERF_INC(phoneCmdDropsOverflow);
     }
 
     ProxyPacket& pkt = phone2v1Queue[phone2v1QueueHead];
@@ -654,6 +657,7 @@ int V1BLEClient::processPhoneCommandQueue() {
             // Hard failure: drop packet, clear pending, count error
             hasPending = false;
             phoneCmdDropsBleFail++;  // Count as BLE failure (not connected, char null)
+            PERF_INC(phoneCmdDropsBleFail);
             return 0;
     }
 }

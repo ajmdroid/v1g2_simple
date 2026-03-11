@@ -62,6 +62,37 @@ bool   attemptNvsRecovery(const char* activeNs);
 int    namespaceHealthScore(const char* ns);
 bool   isKnownSettingsNamespace(const String& ns);
 
+struct SettingsNamespaceCleanupPlan {
+    bool shouldCleanup = false;
+    const char* inactiveNamespace = nullptr;
+    bool clearLegacyNamespace = false;
+};
+
+inline SettingsNamespaceCleanupPlan buildSettingsNamespaceCleanupPlan(uint32_t usedPct,
+                                                                     const String& activeNs,
+                                                                     bool hasSdBackup) {
+    SettingsNamespaceCleanupPlan plan;
+    if (usedPct <= 80) {
+        return plan;
+    }
+
+    if (activeNs == SETTINGS_NS_A) {
+        plan.shouldCleanup = true;
+        plan.inactiveNamespace = SETTINGS_NS_B;
+        plan.clearLegacyNamespace = hasSdBackup;
+        return plan;
+    }
+    if (activeNs == SETTINGS_NS_B) {
+        plan.shouldCleanup = true;
+        plan.inactiveNamespace = SETTINGS_NS_A;
+        plan.clearLegacyNamespace = hasSdBackup;
+        return plan;
+    }
+
+    // If the active namespace is legacy or unknown, avoid destructive cleanup.
+    return plan;
+}
+
 // Crypto / obfuscation
 String xorObfuscate(const String& input);
 char   hexDigit(uint8_t nibble);

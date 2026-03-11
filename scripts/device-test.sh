@@ -48,6 +48,8 @@ SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS=3
 SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS=30000
 SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE=6
 IGNORE_GPS_ERRORS="${REAL_FW_IGNORE_GPS_ERRORS:-0}"
+SOAK_TIMEOUT_PADDING_SECONDS="${DEVICE_TEST_SOAK_TIMEOUT_PADDING_SECONDS:-180}"
+SOAK_TIMEOUT_WITH_FLASH_PADDING_SECONDS="${DEVICE_TEST_SOAK_TIMEOUT_WITH_FLASH_PADDING_SECONDS:-480}"
 
 RAD_SCENARIO_ID="RAD-03"
 RAD_DURATION_SCALE_PCT="${REAL_FW_RAD_DURATION_SCALE_PCT:-100}"
@@ -215,6 +217,44 @@ shell_join() {
   printf "%s" "$out"
 }
 
+run_command_with_timeout() {
+  local timeout_seconds="$1"
+  local log_path="$2"
+  shift 2
+
+  python3 - "$timeout_seconds" "$log_path" "$@" <<'PY'
+import os
+import signal
+import subprocess
+import sys
+
+timeout_s = int(sys.argv[1])
+log_path = sys.argv[2]
+cmd = sys.argv[3:]
+
+with open(log_path, "w", encoding="utf-8", errors="replace") as log:
+    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    try:
+        raise SystemExit(proc.wait(timeout=timeout_s))
+    except subprocess.TimeoutExpired:
+        log.write(f"\n[device-test] TIMEOUT: command exceeded {timeout_s}s\n")
+        log.flush()
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            raise SystemExit(124)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
+        raise SystemExit(124)
+PY
+}
+
 set_harness_precheck_failure() {
   HARNESS_PRECHECK_CLASS="$1"
   HARNESS_PRECHECK_CODE="$2"
@@ -325,10 +365,15 @@ run_soak_test() {
   done
   local cmd_text
   cmd_text="$(shell_join "${cmd[@]}")"
+  local timeout_padding="$SOAK_TIMEOUT_PADDING_SECONDS"
+  if [[ "$SKIP_FLASH" -eq 0 ]]; then
+    timeout_padding="$SOAK_TIMEOUT_WITH_FLASH_PADDING_SECONDS"
+  fi
+  local soak_timeout_seconds=$((DURATION_SECONDS + timeout_padding))
 
   echo -e "${YELLOW}==> Running $test_name...${NC}"
   local rc
-  if "${cmd[@]}" >"$run_log" 2>&1; then
+  if run_command_with_timeout "$soak_timeout_seconds" "$run_log" "${cmd[@]}"; then
     rc=0
   else
     rc=$?
@@ -347,7 +392,7 @@ run_soak_test() {
     status="PASS"
   fi
 
-  local metrics="rc=$rc result=${result_word:-unknown}"
+  local metrics="rc=$rc result=${result_word:-unknown} timeout=${soak_timeout_seconds}s"
   if [[ -n "$summary" && -f "$summary" ]]; then
     local rx parse_ok parse_fail wifi_gate disp_pipe dma_min dma_largest dma_below_floor
     local dma_largest_to_free_p50 dma_fragmentation_p95 proxy_off_delta
@@ -859,7 +904,9 @@ for n in \
   "$SOAK_TRANSITION_FLAP_CYCLES" \
   "$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS" \
   "$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS" \
-  "$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
+  "$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE" \
+  "$SOAK_TIMEOUT_PADDING_SECONDS" \
+  "$SOAK_TIMEOUT_WITH_FLASH_PADDING_SECONDS"
 do
   if ! is_uint "$n"; then
     echo "Invalid numeric option value '$n'." >&2
@@ -884,6 +931,14 @@ if [[ "$RAD_DURATION_SCALE_PCT" -lt 25 || "$RAD_DURATION_SCALE_PCT" -gt 1000 ]];
 fi
 if [[ "$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS" -lt 1 ]]; then
   echo "--transition-drive-interval-seconds must be >= 1." >&2
+  exit 2
+fi
+if [[ "$SOAK_TIMEOUT_PADDING_SECONDS" -lt 1 ]]; then
+  echo "DEVICE_TEST_SOAK_TIMEOUT_PADDING_SECONDS must be >= 1." >&2
+  exit 2
+fi
+if [[ "$SOAK_TIMEOUT_WITH_FLASH_PADDING_SECONDS" -lt 1 ]]; then
+  echo "DEVICE_TEST_SOAK_TIMEOUT_WITH_FLASH_PADDING_SECONDS must be >= 1." >&2
   exit 2
 fi
 if [[ -n "$RAD_TIMEOUT_SECONDS" ]]; then
@@ -928,6 +983,7 @@ echo "  soak profile: $SOAK_PROFILE"
 echo "  soak robust gate: mode=$SOAK_LATENCY_GATE_MODE minSamples=$SOAK_LATENCY_ROBUST_MIN_SAMPLES maxExceedPct=$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT wifiSkipFirst=$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES"
 echo "  soak minima tail exclusion: ${SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES} sample(s)"
 echo "  soak require-metrics: yes (min ok samples=$SOAK_MIN_METRICS_OK_SAMPLES)"
+echo "  soak watchdog padding: skip-flash=+${SOAK_TIMEOUT_PADDING_SECONDS}s with-flash=+${SOAK_TIMEOUT_WITH_FLASH_PADDING_SECONDS}s"
 echo "  camera smoke: api/ui/render on hardware"
 echo "  display drive: displayInterval=${SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=$SOAK_MIN_DISPLAY_UPDATES_DELTA"
 echo "  transition qual: enabled=$SOAK_ENABLE_TRANSITION_QUAL flapCycles=$SOAK_TRANSITION_FLAP_CYCLES interval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s maxRecoveryMs=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS maxSamples=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"

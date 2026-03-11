@@ -29,6 +29,9 @@ typedef unsigned int UBaseType_t;
 #ifndef pdFALSE
 #define pdFALSE 0
 #endif
+#ifndef pdMS_TO_TICKS
+#define pdMS_TO_TICKS(ms) (ms)
+#endif
 
 // Semaphore stubs
 inline SemaphoreHandle_t xSemaphoreCreateMutex() { return (void*)1; }

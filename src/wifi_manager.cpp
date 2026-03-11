@@ -18,29 +18,21 @@
 // Global instance
 WiFiManager wifiManager;
 
-WiFiManager::WiFiManager() : server(80), setupModeState(SETUP_MODE_OFF), apInterfaceEnabled(false), setupModeStartTime(0), rateLimitWindowStart(0), rateLimitRequestCount(0) {
+WiFiManager::WiFiManager() : server(80), setupModeState(SETUP_MODE_OFF), apInterfaceEnabled(false), setupModeStartTime(0) {
 }
 
 // Rate limiting: returns true if request is allowed, false if rate limited
 bool WiFiManager::checkRateLimit() {
-    unsigned long now = millis();
+    const uint32_t now = millis();
     
     // Mark UI activity on every request
     markUiActivity();
-    
-    // Reset window if expired
-    if (now - rateLimitWindowStart > RATE_LIMIT_WINDOW_MS) {
-        rateLimitWindowStart = now;
-        rateLimitRequestCount = 0;
-    }
-    
-    rateLimitRequestCount++;
-    
-    if (rateLimitRequestCount > RATE_LIMIT_MAX_REQUESTS) {
-        unsigned long retryAfterSec = 1;
-        if (now >= rateLimitWindowStart && (now - rateLimitWindowStart) < RATE_LIMIT_WINDOW_MS) {
-            retryAfterSec = ((RATE_LIMIT_WINDOW_MS - (now - rateLimitWindowStart)) + 999) / 1000;
-        }
+
+    const SlidingWindowRateLimitDecision decision = rateLimiter.evaluate(now);
+    if (!decision.allowed) {
+        const unsigned long roundedRetryAfter =
+            static_cast<unsigned long>((decision.retryAfterMs + 999u) / 1000u);
+        const unsigned long retryAfterSec = (roundedRetryAfter == 0) ? 1 : roundedRetryAfter;
         server.sendHeader("Retry-After", String(retryAfterSec));
         server.send(429, "application/json",
                     "{\"success\":false,\"message\":\"Too many requests\"}");

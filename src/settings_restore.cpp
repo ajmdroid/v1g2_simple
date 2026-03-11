@@ -4,6 +4,7 @@
  */
 
 #include "settings_internals.h"
+#include <nvs.h>
 
 bool shouldSkipProfileReferenceValidation(size_t availableProfileCount,
                                           bool hasConfiguredSlotReferences) {
@@ -225,6 +226,7 @@ bool SettingsManager::checkAndRestoreFromSD() {
             Serial.println("[Settings] Restored settings from SD backup!");
             // Immediately re-emit backup in current schema after a successful restore.
             backupToSD();
+            cleanupNamespacesIfNeeded(true);
             return true;
         }
         Serial.println("[Settings] Restore requested but no valid SD backup was applied");
@@ -323,7 +325,50 @@ bool SettingsManager::checkAndRestoreFromSD() {
             }
         }
     }
+    cleanupNamespacesIfNeeded(hasSdBackup);
     return false;
+}
+
+void SettingsManager::cleanupNamespacesIfNeeded(bool hasSdBackup) {
+    nvs_stats_t stats;
+    if (nvs_get_stats(NULL, &stats) != ESP_OK || stats.total_entries == 0) {
+        return;
+    }
+
+    const uint32_t usedPct = (stats.used_entries * 100u) / stats.total_entries;
+    const String activeNs = getActiveNamespace();
+    const SettingsNamespaceCleanupPlan plan =
+        buildSettingsNamespaceCleanupPlan(usedPct, activeNs, hasSdBackup);
+
+    if (!plan.shouldCleanup) {
+        if (usedPct > 80) {
+            Serial.printf("[Settings] NVS high usage (%lu%%); deferring cleanup (active=%s backup=%s)\n",
+                          static_cast<unsigned long>(usedPct),
+                          activeNs.c_str(),
+                          hasSdBackup ? "yes" : "no");
+        }
+        return;
+    }
+
+    auto clearNamespaceIfPresent = [](const char* ns, const char* label) {
+        if (!ns || ns[0] == '\0' || namespaceHealthScore(ns) <= 0) {
+            return;
+        }
+        Preferences prefs;
+        if (prefs.begin(ns, false)) {
+            prefs.clear();
+            prefs.end();
+            Serial.printf("[Settings] Cleared %s namespace %s\n", label, ns);
+        }
+    };
+
+    Serial.printf("[Settings] NVS high usage (%lu%%); cleaning stale namespaces after active resolution (active=%s)\n",
+                  static_cast<unsigned long>(usedPct),
+                  activeNs.c_str());
+    clearNamespaceIfPresent(plan.inactiveNamespace, "inactive");
+    if (plan.clearLegacyNamespace) {
+        clearNamespaceIfPresent(SETTINGS_NS_LEGACY, "legacy");
+    }
 }
 
 bool SettingsManager::checkNeedsRestore() {

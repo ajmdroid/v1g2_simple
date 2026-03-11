@@ -301,7 +301,7 @@ private:
     ProxyPacket* proxyQueue = nullptr;
 
     // Phone→V1 command queue for safe writes (decoupled from callback context)
-    static constexpr size_t PHONE_CMD_QUEUE_SIZE = 4;  // Small queue for phone commands
+    static constexpr size_t PHONE_CMD_QUEUE_SIZE = 16;  // Small burst-tolerant queue for phone commands
     static constexpr size_t MAX_PHONE_CMDS_PER_LOOP = 4;
     ProxyPacket* phone2v1Queue = nullptr;
     bool proxyQueuesInPsram = false;

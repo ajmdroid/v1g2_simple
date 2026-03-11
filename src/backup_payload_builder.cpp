@@ -1,9 +1,8 @@
 #include "backup_payload_builder.h"
+#include "../include/settings_internals.h"
 
 #include <ArduinoJson.h>
 #include <cstring>
-
-extern const int SD_BACKUP_VERSION;
 
 namespace BackupPayloadBuilder {
 

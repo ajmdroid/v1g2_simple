@@ -13,7 +13,6 @@ Use `--update` after intentionally changing the extern/global surface.
 from __future__ import annotations
 
 import argparse
-import difflib
 import re
 import sys
 from pathlib import Path
@@ -23,6 +22,20 @@ SOURCE_ROOTS = (ROOT / "include", ROOT / "src")
 SOURCE_SUFFIXES = {".h", ".hpp", ".c", ".cc", ".cpp"}
 CONTRACT_FILE = ROOT / "test" / "contracts" / "extern_usage_contract.txt"
 EXTERN_RE = re.compile(r"^\s*extern\b(?!\s*\"C\")")
+ENTRY_RE = re.compile(
+    r"^kind=(?P<kind>\w+) file=(?P<file>\S+) line=(?P<line>\d+) text=(?P<text>.+)$"
+)
+
+
+def make_entry(kind: str, relative: str, line_no: int, compact: str) -> str:
+    return f"kind={kind} file={relative} line={line_no} text={compact}"
+
+
+def entry_key(raw: str) -> tuple[str, str, str]:
+    match = ENTRY_RE.match(raw)
+    if not match:
+        raise ValueError(f"unrecognized extern contract entry: {raw}")
+    return match.group("kind"), match.group("file"), match.group("text")
 
 
 def iter_source_files() -> list[Path]:
@@ -45,7 +58,7 @@ def scan_entries() -> list[str]:
                 continue
             if EXTERN_RE.match(raw_line):
                 compact = " ".join(line.split())
-                entries.append(f"kind={kind} file={relative} line={line_no} text={compact}")
+                entries.append(make_entry(kind, relative, line_no, compact))
     return entries
 
 
@@ -87,17 +100,23 @@ def main() -> int:
         )
         return 0
 
-    if actual != expected:
+    actual_by_key = {entry_key(entry): entry for entry in actual}
+    expected_by_key = {entry_key(entry): entry for entry in expected}
+
+    actual_keys = sorted(actual_by_key)
+    expected_keys = sorted(expected_by_key)
+    if actual_keys != expected_keys:
         print("[contract] extern/global usage drift detected.")
-        diff = difflib.unified_diff(
-            expected,
-            actual,
-            fromfile=CONTRACT_FILE.as_posix(),
-            tofile="current scan",
-            lineterm="",
-        )
-        for line in diff:
-            print(line)
+        removed = [expected_by_key[key] for key in expected_keys if key not in actual_by_key]
+        added = [actual_by_key[key] for key in actual_keys if key not in expected_by_key]
+        if removed:
+            print("Removed entries:")
+            for line in removed:
+                print(f"- {line}")
+        if added:
+            print("Added entries:")
+            for line in added:
+                print(f"+ {line}")
         print("\nRe-run with --update only if the extern/global surface change is intentional.")
         return 1
 

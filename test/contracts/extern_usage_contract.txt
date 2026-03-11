@@ -103,15 +103,15 @@ kind=header file=src/modules/lockout/signal_capture_module.h line=38 text=extern
 kind=header file=src/modules/lockout/signal_observation_log.h line=85 text=extern SignalObservationLog signalObservationLog;
 kind=header file=src/modules/lockout/signal_observation_sd_logger.h line=77 text=extern SignalObservationSdLogger signalObservationSdLogger;
 kind=header file=src/modules/speed/speed_source_selector.h line=46 text=extern SpeedSourceSelector speedSourceSelector;
-kind=header file=src/perf_metrics.h line=504 text=extern PerfExtendedMetrics perfExtended;
-kind=header file=src/perf_metrics.h line=599 text=extern PerfCounters perfCounters;
-kind=header file=src/perf_metrics.h line=602 text=extern PerfLatency perfLatency;
-kind=header file=src/perf_metrics.h line=606 text=extern bool perfDebugEnabled; // Runtime debug print enable
-kind=header file=src/perf_metrics.h line=607 text=extern uint32_t perfLastReportMs; // Last report timestamp
+kind=header file=src/perf_metrics.h line=512 text=extern PerfExtendedMetrics perfExtended;
+kind=header file=src/perf_metrics.h line=607 text=extern PerfCounters perfCounters;
+kind=header file=src/perf_metrics.h line=610 text=extern PerfLatency perfLatency;
+kind=header file=src/perf_metrics.h line=614 text=extern bool perfDebugEnabled; // Runtime debug print enable
+kind=header file=src/perf_metrics.h line=615 text=extern uint32_t perfLastReportMs; // Last report timestamp
 kind=header file=src/perf_sd_logger.h line=197 text=extern PerfSdLogger perfSdLogger;
-kind=header file=src/settings.h line=636 text=extern SettingsManager settingsManager;
+kind=header file=src/settings.h line=640 text=extern SettingsManager settingsManager;
 kind=header file=src/storage_manager.h line=251 text=extern StorageManager storageManager;
 kind=header file=src/time_service.h line=68 text=extern TimeService timeService;
 kind=header file=src/v1_devices.h line=65 text=extern V1DeviceStore v1DeviceStore;
-kind=header file=src/v1_profiles.h line=169 text=extern V1ProfileManager v1ProfileManager;
-kind=header file=src/wifi_manager.h line=315 text=extern WiFiManager wifiManager;
+kind=header file=src/v1_profiles.h line=172 text=extern V1ProfileManager v1ProfileManager;
+kind=header file=src/wifi_manager.h line=314 text=extern WiFiManager wifiManager;

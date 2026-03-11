@@ -13,6 +13,7 @@
 #include <WiFi.h>
 #include <FS.h>
 #include <WebServer.h>
+#include "../include/wifi_rate_limiter.h"
 #include "settings.h"
 #include "modules/wifi/backup_snapshot_cache.h"
 #include "modules/wifi/wifi_status_api_service.h"
@@ -241,10 +242,9 @@ private:
     bool wasAutoStarted = false;  // True when WiFi was started by boot auto-start (not manual)
 
     // Rate limiting
-    static constexpr int RATE_LIMIT_WINDOW_MS = 60000;  // 60 second window (1 minute)
-    static constexpr int RATE_LIMIT_MAX_REQUESTS = 120; // Max 120 requests per minute
-    unsigned long rateLimitWindowStart;
-    int rateLimitRequestCount;
+    static constexpr unsigned long RATE_LIMIT_WINDOW_MS = SlidingWindowRateLimiter::WINDOW_MS;
+    static constexpr size_t RATE_LIMIT_MAX_REQUESTS = SlidingWindowRateLimiter::MAX_REQUESTS;
+    SlidingWindowRateLimiter rateLimiter;
     bool checkRateLimit();  // Returns true if request allowed, false if rate limited
     
     // Status JSON caching (Option 2 optimization)

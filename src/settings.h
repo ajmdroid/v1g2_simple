@@ -633,6 +633,7 @@ private:
     String getActiveNamespace();
     String getStagingNamespace(const String& activeNamespace);
     bool checkNeedsRestore();  // Returns true if NVS appears to be default/empty
+    void cleanupNamespacesIfNeeded(bool hasSdBackup);
 };
 
 // Global settings instance
