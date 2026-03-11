@@ -48,10 +48,12 @@ void LockoutEnforcer::begin(const SettingsManager* settings,
 
 LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
                                                int64_t epochMs,
+                                               int32_t tzOffsetMinutes,
                                                const PacketParser& parser,
                                                const GpsRuntimeStatus& gpsStatus) {
     (void)nowMs;
     (void)epochMs;
+    (void)tzOffsetMinutes;
     (void)parser;
     (void)gpsStatus;
     lastResult_ = g_fakeEnforcerResult;
