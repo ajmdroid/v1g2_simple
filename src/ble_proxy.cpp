@@ -65,6 +65,22 @@ void V1BLEClient::deferLastV1Address(const char* addr) {
     portEXIT_CRITICAL(&pendingAddrMux);
 }
 
+uint32_t V1BLEClient::getPhoneCmdDropsOverflow() const {
+    return perfPhoneCmdDropMetricsSnapshot().overflow;
+}
+
+uint32_t V1BLEClient::getPhoneCmdDropsInvalid() const {
+    return perfPhoneCmdDropMetricsSnapshot().invalid;
+}
+
+uint32_t V1BLEClient::getPhoneCmdDropsBleFail() const {
+    return perfPhoneCmdDropMetricsSnapshot().bleFail;
+}
+
+uint32_t V1BLEClient::getPhoneCmdDropsLockBusy() const {
+    return perfPhoneCmdDropMetricsSnapshot().lockBusy;
+}
+
 void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) {
     // Forward commands from app to V1
     // NOTE: This is a BLE callback - avoid blocking operations (Serial, delays, long locks)
@@ -159,10 +175,6 @@ bool V1BLEClient::allocateProxyQueues() {
     phone2v1QueueHead = 0;
     phone2v1QueueTail = 0;
     phone2v1QueueCount = 0;
-    phoneCmdDropsOverflow = 0;
-    phoneCmdDropsInvalid = 0;
-    phoneCmdDropsBleFail = 0;
-    phoneCmdDropsLockBusy = 0;
     proxyMetrics.reset();
 
     Serial.printf("[BLE] Proxy queues allocated (proxy=%s phone=%s)\n",
@@ -525,21 +537,19 @@ int V1BLEClient::processProxyQueue() {
 
 bool V1BLEClient::enqueuePhoneCommand(const uint8_t* data, size_t length, uint16_t sourceCharUUID) {
     if (!data || length == 0 || length > 32) {
-        phoneCmdDropsInvalid++;
         PERF_INC(phoneCmdDropsInvalid);
         return false;
     }
 
     if (!phoneCmdMutex || xSemaphoreTake(phoneCmdMutex, 0) != pdTRUE) {
-        phoneCmdDropsLockBusy++;
         PERF_INC(phoneCmdDropsLockBusy);
         return false;
     }
 
     if (phone2v1QueueCount >= PHONE_CMD_QUEUE_SIZE) {
+        // Preserve the established queue policy: evict oldest, keep newest.
         phone2v1QueueTail = (phone2v1QueueTail + 1) % PHONE_CMD_QUEUE_SIZE;
         phone2v1QueueCount--;
-        phoneCmdDropsOverflow++;
         PERF_INC(phoneCmdDropsOverflow);
     }
 
@@ -656,7 +666,6 @@ int V1BLEClient::processPhoneCommandQueue() {
         default:
             // Hard failure: drop packet, clear pending, count error
             hasPending = false;
-            phoneCmdDropsBleFail++;  // Count as BLE failure (not connected, char null)
             PERF_INC(phoneCmdDropsBleFail);
             return 0;
     }

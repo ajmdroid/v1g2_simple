@@ -26,6 +26,7 @@
 #define PERF_METRICS_H
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <atomic>
 
 // ============================================================================
@@ -605,6 +606,30 @@ struct PerfLatency {
 // Global instances
 // ============================================================================
 extern PerfCounters perfCounters;
+
+struct PhoneCmdDropMetricsSnapshot {
+    uint32_t overflow = 0;
+    uint32_t invalid = 0;
+    uint32_t bleFail = 0;
+    uint32_t lockBusy = 0;
+};
+
+inline PhoneCmdDropMetricsSnapshot perfPhoneCmdDropMetricsSnapshot() {
+    PhoneCmdDropMetricsSnapshot snapshot;
+    snapshot.overflow = perfCounters.phoneCmdDropsOverflow.load(std::memory_order_relaxed);
+    snapshot.invalid = perfCounters.phoneCmdDropsInvalid.load(std::memory_order_relaxed);
+    snapshot.bleFail = perfCounters.phoneCmdDropsBleFail.load(std::memory_order_relaxed);
+    snapshot.lockBusy = perfCounters.phoneCmdDropsLockBusy.load(std::memory_order_relaxed);
+    return snapshot;
+}
+
+inline void perfAppendPhoneCmdDropMetrics(JsonDocument& doc,
+                                          const PhoneCmdDropMetricsSnapshot& snapshot) {
+    doc["phoneCmdDropsOverflow"] = snapshot.overflow;
+    doc["phoneCmdDropsInvalid"] = snapshot.invalid;
+    doc["phoneCmdDropsBleFail"] = snapshot.bleFail;
+    doc["phoneCmdDropsLockBusy"] = snapshot.lockBusy;
+}
 
 #if PERF_METRICS
 extern PerfLatency perfLatency;

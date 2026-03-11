@@ -752,6 +752,7 @@ bool perfMetricsEnqueueSnapshotNow() {
 
 String perfMetricsToJson() {
     JsonDocument doc;
+    const PhoneCmdDropMetricsSnapshot phoneCmdDropMetrics = perfPhoneCmdDropMetricsSnapshot();
     
     doc["rxPackets"] = perfCounters.rxPackets.load();
     doc["rxBytes"] = perfCounters.rxBytes.load();
@@ -769,10 +770,7 @@ String perfMetricsToJson() {
     doc["queueHighWater"] = perfCounters.queueHighWater.load();
     doc["proxyQueueHighWater"] = perfCounters.proxyQueueHighWater.load();
     doc["phoneCmdQueueHighWater"] = perfCounters.phoneCmdQueueHighWater.load();
-    doc["phoneCmdDropsOverflow"] = perfCounters.phoneCmdDropsOverflow.load();
-    doc["phoneCmdDropsInvalid"] = perfCounters.phoneCmdDropsInvalid.load();
-    doc["phoneCmdDropsBleFail"] = perfCounters.phoneCmdDropsBleFail.load();
-    doc["phoneCmdDropsLockBusy"] = perfCounters.phoneCmdDropsLockBusy.load();
+    perfAppendPhoneCmdDropMetrics(doc, phoneCmdDropMetrics);
     doc["displayUpdates"] = perfCounters.displayUpdates.load();
     doc["displaySkips"] = perfCounters.displaySkips.load();
     doc["cameraDisplayActive"] = perfCounters.cameraDisplayActive.load();

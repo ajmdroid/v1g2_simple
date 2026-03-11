@@ -207,15 +207,15 @@ public:
     int processProxyQueue();
 
     // Phone->V1 command drop counters (observability)
-    uint32_t getPhoneCmdDropsOverflow() const { return phoneCmdDropsOverflow; }
-    uint32_t getPhoneCmdDropsInvalid() const { return phoneCmdDropsInvalid; }  // Malformed packets
-    uint32_t getPhoneCmdDropsBleFail() const { return phoneCmdDropsBleFail; }  // Hard BLE failures
-    uint32_t getPhoneCmdDropsLockBusy() const { return phoneCmdDropsLockBusy; }
+    uint32_t getPhoneCmdDropsOverflow() const;
+    uint32_t getPhoneCmdDropsInvalid() const;  // Malformed packets
+    uint32_t getPhoneCmdDropsBleFail() const;  // Hard BLE failures
+    uint32_t getPhoneCmdDropsLockBusy() const;
     
     // Get proxy metrics (for instrumentation)
     const ProxyMetrics& getProxyMetrics() const { return proxyMetrics; }
     
-    // Reset proxy metrics (call after printing)
+    // Reset proxy notify/send metrics only; phone command drop counters reset with perfMetricsReset().
     void resetProxyMetrics() { proxyMetrics.reset(); }
     
     // WiFi priority mode - deprioritize BLE when web UI is active
@@ -308,10 +308,6 @@ private:
     volatile size_t phone2v1QueueHead = 0;
     volatile size_t phone2v1QueueTail = 0;
     volatile size_t phone2v1QueueCount = 0;
-    volatile uint32_t phoneCmdDropsOverflow = 0;
-    volatile uint32_t phoneCmdDropsInvalid = 0;   // Malformed packet (bad length, null data)
-    volatile uint32_t phoneCmdDropsBleFail = 0;   // Hard BLE failure (not connected, char null)
-    volatile uint32_t phoneCmdDropsLockBusy = 0;
     volatile size_t proxyQueueHead = 0;  // Next write position
     volatile size_t proxyQueueTail = 0;  // Next read position
     volatile size_t proxyQueueCount = 0; // Current items in queue
