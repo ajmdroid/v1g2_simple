@@ -480,11 +480,8 @@ class Segment:
 CAMERA_RECORD_SIZE = 12  # bytes per camera record
 
 # Camera type flags — must match firmware CameraType enum in camera_alert_types.h
-CAM_TYPE_SPEED     = 1  # Speed camera
-CAM_TYPE_RED_LIGHT = 2  # Red-light camera
-CAM_TYPE_BUS_LANE  = 3  # Bus-lane camera
-CAM_TYPE_ALPR      = 4  # ALPR / plate-reader camera
-CAM_VALID_TYPES    = {CAM_TYPE_SPEED, CAM_TYPE_RED_LIGHT, CAM_TYPE_BUS_LANE, CAM_TYPE_ALPR}
+CAM_TYPE_ALPR = 4  # ALPR / plate-reader camera
+CAM_VALID_TYPES = {CAM_TYPE_ALPR}
 
 
 class Camera:
@@ -495,7 +492,7 @@ class Camera:
         self.lat = lat
         self.lon = lon
         self.bearing = bearing      # degrees 0-359, -1 = unknown
-        self.flags = flags          # camera type: 1=speed, 2=red_light, 3=bus_lane, 4=ALPR
+        self.flags = flags          # camera type: 4=ALPR
         self.speed_mph = speed_mph  # speed limit at camera, 0 = unknown
 
 
@@ -563,7 +560,7 @@ def _load_cameras_from_db(container="v1simple_osm_postgis",
             continue
 
     if skipped:
-        print(f"  → {skipped} cameras skipped (unknown type flags)",
+        print(f"  → {skipped} cameras skipped (non-ALPR or unknown type flags)",
               file=sys.stderr)
     return cameras
 

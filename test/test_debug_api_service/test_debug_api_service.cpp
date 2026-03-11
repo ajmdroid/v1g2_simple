@@ -44,9 +44,7 @@ void assertCameraMetricsPayload(const JsonDocument& doc,
                                 uint32_t cameraDebugDisplayFrames,
                                 uint32_t cameraDisplayMaxUs,
                                 uint32_t cameraDebugDisplayMaxUs,
-                                uint32_t cameraProcessMaxUs,
-                                uint32_t cameraVoiceQueued,
-                                uint32_t cameraVoiceStarted) {
+                                uint32_t cameraProcessMaxUs) {
     TEST_ASSERT_FALSE(doc["cameraDisplayActive"].isNull());
     TEST_ASSERT_FALSE(doc["cameraDebugOverrideActive"].isNull());
     TEST_ASSERT_FALSE(doc["cameraDisplayFrames"].isNull());
@@ -54,8 +52,8 @@ void assertCameraMetricsPayload(const JsonDocument& doc,
     TEST_ASSERT_FALSE(doc["cameraDisplayMaxUs"].isNull());
     TEST_ASSERT_FALSE(doc["cameraDebugDisplayMaxUs"].isNull());
     TEST_ASSERT_FALSE(doc["cameraProcessMaxUs"].isNull());
-    TEST_ASSERT_FALSE(doc["cameraVoiceQueued"].isNull());
-    TEST_ASSERT_FALSE(doc["cameraVoiceStarted"].isNull());
+    TEST_ASSERT_TRUE(doc["cameraVoiceQueued"].isNull());
+    TEST_ASSERT_TRUE(doc["cameraVoiceStarted"].isNull());
     TEST_ASSERT_EQUAL_UINT32(cameraDisplayActive, doc["cameraDisplayActive"].as<uint32_t>());
     TEST_ASSERT_EQUAL_UINT32(cameraDebugOverrideActive, doc["cameraDebugOverrideActive"].as<uint32_t>());
     TEST_ASSERT_EQUAL_UINT32(cameraDisplayFrames, doc["cameraDisplayFrames"].as<uint32_t>());
@@ -63,8 +61,6 @@ void assertCameraMetricsPayload(const JsonDocument& doc,
     TEST_ASSERT_EQUAL_UINT32(cameraDisplayMaxUs, doc["cameraDisplayMaxUs"].as<uint32_t>());
     TEST_ASSERT_EQUAL_UINT32(cameraDebugDisplayMaxUs, doc["cameraDebugDisplayMaxUs"].as<uint32_t>());
     TEST_ASSERT_EQUAL_UINT32(cameraProcessMaxUs, doc["cameraProcessMaxUs"].as<uint32_t>());
-    TEST_ASSERT_EQUAL_UINT32(cameraVoiceQueued, doc["cameraVoiceQueued"].as<uint32_t>());
-    TEST_ASSERT_EQUAL_UINT32(cameraVoiceStarted, doc["cameraVoiceStarted"].as<uint32_t>());
 }
 
 }  // namespace
@@ -474,8 +470,6 @@ void test_append_camera_metrics_payload_for_normal_metrics_shape() {
     perfCounters.cameraDebugOverrideActive = 0;
     perfCounters.cameraDisplayFrames = 12;
     perfCounters.cameraDebugDisplayFrames = 3;
-    perfCounters.cameraVoiceQueued = 5;
-    perfCounters.cameraVoiceStarted = 4;
     perfExtended.cameraDisplayMaxUs = 60123;
     perfExtended.cameraDebugDisplayMaxUs = 32100;
     perfExtended.cameraProcessMaxUs = 7654;
@@ -486,7 +480,7 @@ void test_append_camera_metrics_payload_for_normal_metrics_shape() {
 
     DebugApiService::appendCameraMetricsPayload(doc);
 
-    assertCameraMetricsPayload(doc, 1, 0, 12, 3, 60123, 32100, 7654, 5, 4);
+    assertCameraMetricsPayload(doc, 1, 0, 12, 3, 60123, 32100, 7654);
 }
 
 void test_append_camera_metrics_payload_for_soak_metrics_shape() {
@@ -494,8 +488,6 @@ void test_append_camera_metrics_payload_for_soak_metrics_shape() {
     perfCounters.cameraDebugOverrideActive = 1;
     perfCounters.cameraDisplayFrames = 7;
     perfCounters.cameraDebugDisplayFrames = 19;
-    perfCounters.cameraVoiceQueued = 2;
-    perfCounters.cameraVoiceStarted = 1;
     perfExtended.cameraDisplayMaxUs = 44000;
     perfExtended.cameraDebugDisplayMaxUs = 55000;
     perfExtended.cameraProcessMaxUs = 9876;
@@ -506,7 +498,7 @@ void test_append_camera_metrics_payload_for_soak_metrics_shape() {
 
     DebugApiService::appendCameraMetricsPayload(doc);
 
-    assertCameraMetricsPayload(doc, 0, 1, 7, 19, 44000, 55000, 9876, 2, 1);
+    assertCameraMetricsPayload(doc, 0, 1, 7, 19, 44000, 55000, 9876);
 }
 
 int main() {

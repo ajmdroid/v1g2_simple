@@ -1,5 +1,4 @@
 #include "display_pipeline_module.h"
-#include "audio_beep.h"  // play_frequency_voice, play_direction_only, play_threat_escalation
 #include "perf_metrics.h"  // perfRecordDisplayRenderUs
 #include "modules/camera_alert/camera_alert_module.h"
 #include "modules/gps/gps_runtime_module.h"
@@ -8,7 +7,7 @@
 
 namespace {
 bool cameraPayloadEqual(const CameraAlertDisplayPayload& a, const CameraAlertDisplayPayload& b) {
-    return a.active == b.active && a.type == b.type && a.distanceCm == b.distanceCm;
+    return a.active == b.active && a.distanceCm == b.distanceCm;
 }
 }  // namespace
 
@@ -69,24 +68,8 @@ void DisplayPipelineModule::processCameraState(uint32_t nowMs) {
     cameraModule->process(nowMs, ctx);
 }
 
-void DisplayPipelineModule::dispatchCameraVoice() {
-    if (!cameraModule) {
-        return;
-    }
-
-    CameraVoiceEvent event;
-    if (!cameraModule->consumePendingVoice(event)) {
-        return;
-    }
-
-    const bool playbackStarted = play_camera_alert(event.type, event.isNearStage);
-    cameraModule->onVoicePlaybackResult(event, playbackStarted);
-}
-
 bool DisplayPipelineModule::debugCameraOverrideActiveAt(uint32_t nowMs) const {
-    if (!debugCameraOverrideEnabled_ ||
-        !debugCameraPayload_.active ||
-        debugCameraPayload_.type == CameraType::INVALID) {
+    if (!debugCameraOverrideEnabled_ || !debugCameraPayload_.active) {
         return false;
     }
 
@@ -299,7 +282,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
 
     if (!hasAlerts) {
         processCameraState(nowMs);
-        dispatchCameraVoice();
     }
 
     if (nowMs - lastDisplayDraw < DISPLAY_DRAW_MIN_MS) {

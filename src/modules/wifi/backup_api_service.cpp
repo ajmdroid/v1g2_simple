@@ -199,35 +199,6 @@ static void handleRestore(WebServer& server) {
     if (doc["cameraAlertRangeCm"].is<int>()) {
         s.cameraAlertRangeCm = clampCameraAlertRangeCmValue(doc["cameraAlertRangeCm"].as<int>());
     }
-    if (doc["cameraAlertNearRangeCm"].is<int>()) {
-        s.cameraAlertNearRangeCm = clampCameraAlertNearRangeCmValue(
-            doc["cameraAlertNearRangeCm"].as<int>());
-    }
-    normalizeCameraAlertRanges(s.cameraAlertRangeCm, s.cameraAlertNearRangeCm);
-    if (doc["cameraTypeAlpr"].is<bool>()) {
-        s.cameraTypeAlpr = doc["cameraTypeAlpr"];
-    }
-    if (doc["cameraTypeRedLight"].is<bool>()) {
-        s.cameraTypeRedLight = doc["cameraTypeRedLight"];
-    }
-    if (doc["cameraTypeSpeed"].is<bool>()) {
-        s.cameraTypeSpeed = doc["cameraTypeSpeed"];
-    }
-    if (doc["cameraTypeBusLane"].is<bool>()) {
-        s.cameraTypeBusLane = doc["cameraTypeBusLane"];
-    }
-    if (doc["colorCameraArrow"].is<int>()) {
-        s.colorCameraArrow = doc["colorCameraArrow"];
-    }
-    if (doc["colorCameraText"].is<int>()) {
-        s.colorCameraText = doc["colorCameraText"];
-    }
-    if (doc["cameraVoiceFarEnabled"].is<bool>()) {
-        s.cameraVoiceFarEnabled = doc["cameraVoiceFarEnabled"];
-    }
-    if (doc["cameraVoiceNearEnabled"].is<bool>()) {
-        s.cameraVoiceNearEnabled = doc["cameraVoiceNearEnabled"];
-    }
     if (doc["lastV1Address"].is<const char*>()) {
         s.lastV1Address = sanitizeLastV1AddressForBackup(doc["lastV1Address"].as<String>());
     }

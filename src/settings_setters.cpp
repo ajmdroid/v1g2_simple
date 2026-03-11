@@ -43,35 +43,6 @@ void SettingsManager::setCameraAlertsEnabled(bool enabled) {
 
 void SettingsManager::setCameraAlertRangeCm(uint32_t rangeCm) {
     settings.cameraAlertRangeCm = clampCameraAlertRangeCmValue(static_cast<int>(rangeCm));
-    settings.cameraAlertNearRangeCm = normalizeCameraAlertNearRangeCmValue(
-        settings.cameraAlertRangeCm, static_cast<int>(settings.cameraAlertNearRangeCm));
-    save();
-}
-
-void SettingsManager::setCameraAlertNearRangeCm(uint32_t rangeCm) {
-    settings.cameraAlertNearRangeCm = normalizeCameraAlertNearRangeCmValue(
-        settings.cameraAlertRangeCm, static_cast<int>(rangeCm));
-    save();
-}
-
-void SettingsManager::setCameraTypeFilters(bool alprEnabled, bool redLightEnabled,
-                                           bool speedEnabled, bool busLaneEnabled) {
-    settings.cameraTypeAlpr = alprEnabled;
-    settings.cameraTypeRedLight = redLightEnabled;
-    settings.cameraTypeSpeed = speedEnabled;
-    settings.cameraTypeBusLane = busLaneEnabled;
-    save();
-}
-
-void SettingsManager::setCameraColors(uint16_t arrowColor, uint16_t textColor) {
-    settings.colorCameraArrow = arrowColor;
-    settings.colorCameraText = textColor;
-    save();
-}
-
-void SettingsManager::setCameraVoiceStages(bool farEnabled, bool nearEnabled) {
-    settings.cameraVoiceFarEnabled = farEnabled;
-    settings.cameraVoiceNearEnabled = nearEnabled;
     save();
 }
 

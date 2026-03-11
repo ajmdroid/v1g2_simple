@@ -153,8 +153,6 @@ struct PerfSdSnapshot {
     uint32_t cameraDisplayMaxUs;           // Window max real camera display duration
     uint32_t cameraDebugDisplayMaxUs;      // Window max debug camera display duration
     uint32_t cameraProcessMaxUs;           // Window max CameraAlertModule::process() duration
-    uint32_t cameraVoiceQueued;            // Camera voice events queued
-    uint32_t cameraVoiceStarted;           // Camera voice playback starts confirmed
 };
 
 class PerfSdLogger {

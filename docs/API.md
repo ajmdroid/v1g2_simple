@@ -17,6 +17,7 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 - [Display Colors](#display-colors)
 - [Lockouts](#lockouts)
 - [GPS](#gps)
+- [Cameras](#cameras)
 - [WiFi Client](#wifi-client)
 - [Debug](#debug)
 
@@ -567,6 +568,52 @@ Get recent GPS observation ring samples.
 ### POST /api/gps/config
 
 Update GPS/lockout runtime config and optional scaffold samples.
+
+---
+
+## Cameras
+
+### GET /api/cameras/settings
+
+Get the ALPR camera settings.
+
+**Response:**
+```json
+{
+  "cameraAlertsEnabled": true,
+  "cameraAlertRangeCm": 128748
+}
+```
+
+### POST /api/cameras/settings
+
+Update the ALPR camera settings.
+
+**Request (form data):**
+```text
+cameraAlertsEnabled=true&cameraAlertRangeCm=80467
+```
+
+Removed legacy camera fields such as `cameraAlertNearRangeCm`, camera type toggles,
+camera voice toggles, and camera color fields are rejected with HTTP 400.
+
+**Response:**
+```json
+{"success": true}
+```
+
+### GET /api/cameras/status
+
+Get the live ALPR camera runtime status.
+
+**Response:**
+```json
+{
+  "cameraCount": 42,
+  "displayActive": false,
+  "distanceCm": null
+}
+```
 
 ---
 

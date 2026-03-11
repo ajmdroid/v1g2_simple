@@ -27,7 +27,6 @@ void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t 
 void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection direction,
                             uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);
 void play_band_only(AlertBand band);
-bool play_camera_alert(CameraType type, bool isNearStage);
 void audio_init_sd();
 void audio_init_buffers();
 void audio_process_amp_timeout();

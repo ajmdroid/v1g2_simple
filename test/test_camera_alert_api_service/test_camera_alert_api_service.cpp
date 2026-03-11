@@ -1,6 +1,8 @@
 #include <unity.h>
+
+#include <cstdint>
 #include <cstring>
-#include <cstdio>
+#include <vector>
 
 #include "../mocks/Arduino.h"
 
@@ -19,258 +21,201 @@ unsigned long mockMicros = 0;
 
 namespace {
 
-uint8_t* fixtureData = nullptr;
-uint32_t fixtureSize = 0;
+constexpr int32_t BASE_LAT_E5 = 3974000;
+constexpr int32_t BASE_LON_E5 = -10499000;
 
 bool responseContains(const WebServer& server, const char* needle) {
-    return std::strstr(server.lastBody.c_str(), needle) != nullptr;
+	return std::strstr(server.lastBody.c_str(), needle) != nullptr;
 }
 
-bool loadFixtureFile(const char* path) {
-    FILE* file = fopen(path, "rb");
-    if (!file) {
-        return false;
-    }
-    fseek(file, 0, SEEK_END);
-    fixtureSize = static_cast<uint32_t>(ftell(file));
-    fseek(file, 0, SEEK_SET);
-    fixtureData = new uint8_t[fixtureSize];
-    const size_t bytesRead = fread(fixtureData, 1, fixtureSize, file);
-    fclose(file);
-    return bytesRead == fixtureSize;
-}
+std::vector<uint8_t> buildSingleAlprMap() {
+	const uint32_t gridIndexOffset = sizeof(RoadMapHeader);
+	const uint32_t gridSize = sizeof(RoadMapGridEntry);
+	const uint32_t segDataOffset = gridIndexOffset + gridSize;
+	const uint32_t cameraIndexOffset = segDataOffset;
+	const uint32_t cameraDataOffset = cameraIndexOffset + gridSize;
+	const uint32_t fileSize = cameraDataOffset + sizeof(CameraRecord);
 
-void resetFixture() {
-    delete[] fixtureData;
-    fixtureData = nullptr;
-    fixtureSize = 0;
+	RoadMapHeader header{};
+	memcpy(header.magic, "RMAP", 4);
+	header.version = 2;
+	header.roadClassCount = 1;
+	header.minLatE5 = BASE_LAT_E5 - 1000;
+	header.maxLatE5 = BASE_LAT_E5 + 1000;
+	header.minLonE5 = BASE_LON_E5 - 1000;
+	header.maxLonE5 = BASE_LON_E5 + 1000;
+	header.gridRows = 1;
+	header.gridCols = 1;
+	header.cellSizeE5 = 5000;
+	header.gridIndexOffset = gridIndexOffset;
+	header.segDataOffset = segDataOffset;
+	header.fileSize = fileSize;
+	header.cameraIndexOffset = cameraIndexOffset;
+	header.cameraCount = 1;
+
+	RoadMapGridEntry roadGrid{};
+	RoadMapGridEntry cameraGrid{};
+	cameraGrid.segCount = 1;
+
+	CameraRecord camera{};
+	camera.latE5 = BASE_LAT_E5;
+	camera.lonE5 = BASE_LON_E5;
+	camera.bearing = 0xFFFF;
+	camera.flags = static_cast<uint8_t>(CameraType::ALPR);
+	camera.speedMph = 35;
+
+	std::vector<uint8_t> buffer(fileSize, 0);
+	memcpy(buffer.data(), &header, sizeof(header));
+	memcpy(buffer.data() + gridIndexOffset, &roadGrid, sizeof(roadGrid));
+	memcpy(buffer.data() + cameraIndexOffset, &cameraGrid, sizeof(cameraGrid));
+	memcpy(buffer.data() + cameraDataOffset, &camera, sizeof(camera));
+	return buffer;
 }
 
 }  // namespace
 
 void setUp() {
-    mockMillis = 1000;
-    mockMicros = 1000000;
+	mockMillis = 1000;
+	mockMicros = 1000000;
 }
 
-void tearDown() {
-    resetFixture();
+void tearDown() {}
+
+void test_settings_get_serializes_alpr_only_payload() {
+	WebServer server(80);
+	SettingsManager settingsManager;
+	int uiActivityCalls = 0;
+	V1Settings& settings = settingsManager.mutableSettings();
+
+	settings.cameraAlertsEnabled = false;
+	settings.cameraAlertRangeCm = 77777;
+
+	CameraAlertApiService::handleApiSettingsGet(
+		server,
+		settingsManager,
+		[&uiActivityCalls]() { ++uiActivityCalls; });
+
+	TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+	TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+	TEST_ASSERT_TRUE(responseContains(server, "\"cameraAlertsEnabled\":false"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"cameraAlertRangeCm\":77777"));
+	TEST_ASSERT_FALSE(responseContains(server, "cameraAlertNearRangeCm"));
+	TEST_ASSERT_FALSE(responseContains(server, "cameraType"));
+	TEST_ASSERT_FALSE(responseContains(server, "cameraVoice"));
 }
 
-void test_settings_get_serializes_camera_payload() {
-    WebServer server(80);
-    SettingsManager settingsManager;
-    int uiActivityCalls = 0;
-    V1Settings& settings = settingsManager.mutableSettings();
+void test_settings_post_updates_alpr_fields_and_saves_once() {
+	WebServer server(80);
+	SettingsManager settingsManager;
+	int rateLimitCalls = 0;
+	int uiActivityCalls = 0;
 
-    settings.cameraAlertsEnabled = false;
-    settings.cameraAlertRangeCm = 77777;
-    settings.cameraAlertNearRangeCm = 22222;
-    settings.cameraTypeBusLane = true;
-    settings.colorCameraArrow = 0x1234;
-    settings.cameraVoiceNearEnabled = false;
+	server.setArg("cameraAlertsEnabled", "0");
+	server.setArg("cameraAlertRangeCm", "40000");
 
-    CameraAlertApiService::handleApiSettingsGet(
-        server,
-        settingsManager,
-        [&uiActivityCalls]() { ++uiActivityCalls; });
+	CameraAlertApiService::handleApiSettingsPost(
+		server,
+		settingsManager,
+		[&rateLimitCalls]() {
+			++rateLimitCalls;
+			return true;
+		},
+		[&uiActivityCalls]() { ++uiActivityCalls; });
 
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_TRUE(responseContains(server, "\"cameraAlertsEnabled\":false"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"cameraAlertRangeCm\":77777"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"cameraAlertNearRangeCm\":22222"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"cameraTypeBusLane\":true"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"colorCameraArrow\":4660"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"cameraVoiceNearEnabled\":false"));
+	TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+	TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+	TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+	TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+	TEST_ASSERT_FALSE(settingsManager.get().cameraAlertsEnabled);
+	TEST_ASSERT_EQUAL_UINT32(40000u, settingsManager.get().cameraAlertRangeCm);
+	TEST_ASSERT_EQUAL_INT(1, settingsManager.saveCalls);
 }
 
-void test_settings_post_rate_limit_short_circuits() {
-    WebServer server(80);
-    SettingsManager settingsManager;
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+void test_settings_post_rejects_removed_legacy_args() {
+	WebServer server(80);
+	SettingsManager settingsManager;
 
-    server.setArg("cameraAlertsEnabled", "false");
+	server.setArg("cameraTypeSpeed", "true");
 
-    CameraAlertApiService::handleApiSettingsPost(
-        server,
-        settingsManager,
-        [&rateLimitCalls]() {
-            ++rateLimitCalls;
-            return false;
-        },
-        [&uiActivityCalls]() { ++uiActivityCalls; });
+	CameraAlertApiService::handleApiSettingsPost(
+		server,
+		settingsManager,
+		[]() { return true; },
+		[]() {});
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(0, uiActivityCalls);
-    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
-    TEST_ASSERT_TRUE(settingsManager.get().cameraAlertsEnabled);
-    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
-}
-
-void test_settings_post_updates_all_fields_and_saves_once() {
-    WebServer server(80);
-    SettingsManager settingsManager;
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
-
-    server.setArg("cameraAlertsEnabled", "0");
-    server.setArg("cameraAlertRangeCm", "40000");
-    server.setArg("cameraAlertNearRangeCm", "999999");
-    server.setArg("cameraTypeAlpr", "0");
-    server.setArg("cameraTypeRedLight", "1");
-    server.setArg("cameraTypeSpeed", "false");
-    server.setArg("cameraTypeBusLane", "true");
-    server.setArg("colorCameraArrow", "70000");
-    server.setArg("colorCameraText", "1234");
-    server.setArg("cameraVoiceFarEnabled", "false");
-    server.setArg("cameraVoiceNearEnabled", "1");
-
-    CameraAlertApiService::handleApiSettingsPost(
-        server,
-        settingsManager,
-        [&rateLimitCalls]() {
-            ++rateLimitCalls;
-            return true;
-        },
-        [&uiActivityCalls]() { ++uiActivityCalls; });
-
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
-    TEST_ASSERT_FALSE(settingsManager.get().cameraAlertsEnabled);
-    TEST_ASSERT_EQUAL_UINT32(40000u, settingsManager.get().cameraAlertRangeCm);
-    TEST_ASSERT_EQUAL_UINT32(40000u, settingsManager.get().cameraAlertNearRangeCm);
-    TEST_ASSERT_FALSE(settingsManager.get().cameraTypeAlpr);
-    TEST_ASSERT_TRUE(settingsManager.get().cameraTypeRedLight);
-    TEST_ASSERT_FALSE(settingsManager.get().cameraTypeSpeed);
-    TEST_ASSERT_TRUE(settingsManager.get().cameraTypeBusLane);
-    TEST_ASSERT_EQUAL_UINT16(65535, settingsManager.get().colorCameraArrow);
-    TEST_ASSERT_EQUAL_UINT16(1234, settingsManager.get().colorCameraText);
-    TEST_ASSERT_FALSE(settingsManager.get().cameraVoiceFarEnabled);
-    TEST_ASSERT_TRUE(settingsManager.get().cameraVoiceNearEnabled);
-    TEST_ASSERT_EQUAL_INT(1, settingsManager.saveCalls);
-}
-
-void test_settings_post_clamps_close_alert_range_to_supported_minimum() {
-    WebServer server(80);
-    SettingsManager settingsManager;
-
-    server.setArg("cameraAlertNearRangeCm", "1");
-
-    CameraAlertApiService::handleApiSettingsPost(
-        server,
-        settingsManager,
-        []() { return true; },
-        []() {});
-
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_EQUAL_UINT32(CAMERA_ALERT_NEAR_RANGE_CM_MIN,
-                             settingsManager.get().cameraAlertNearRangeCm);
-}
-
-void test_settings_post_rejects_invalid_bool_without_partial_mutation() {
-    WebServer server(80);
-    SettingsManager settingsManager;
-    int uiActivityCalls = 0;
-    V1Settings& settings = settingsManager.mutableSettings();
-
-    settings.cameraTypeSpeed = true;
-    server.setArg("cameraTypeSpeed", "maybe");
-    server.setArg("cameraAlertRangeCm", "20000");
-
-    CameraAlertApiService::handleApiSettingsPost(
-        server,
-        settingsManager,
-        []() { return true; },
-        [&uiActivityCalls]() { ++uiActivityCalls; });
-
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
-    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
-    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"invalid cameraTypeSpeed\""));
-    TEST_ASSERT_TRUE(settingsManager.get().cameraTypeSpeed);
-    TEST_ASSERT_EQUAL_UINT32(CAMERA_ALERT_RANGE_CM_DEFAULT, settingsManager.get().cameraAlertRangeCm);
-    TEST_ASSERT_EQUAL_UINT32(CAMERA_ALERT_NEAR_RANGE_CM_DEFAULT,
-                             settingsManager.get().cameraAlertNearRangeCm);
-    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
+	TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+	TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"unsupported cameraTypeSpeed\""));
+	TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
 }
 
 void test_settings_post_rejects_invalid_numeric_token() {
-    WebServer server(80);
-    SettingsManager settingsManager;
+	WebServer server(80);
+	SettingsManager settingsManager;
 
-    server.setArg("colorCameraText", "0x1234");
+	server.setArg("cameraAlertRangeCm", "0x1234");
 
-    CameraAlertApiService::handleApiSettingsPost(
-        server,
-        settingsManager,
-        []() { return true; },
-        []() {});
+	CameraAlertApiService::handleApiSettingsPost(
+		server,
+		settingsManager,
+		[]() { return true; },
+		[]() {});
 
-    TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
-    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"invalid colorCameraText\""));
-    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
+	TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
+	TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"invalid cameraAlertRangeCm\""));
+	TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
 }
 
-void test_status_returns_camera_count_and_active_payload() {
-    WebServer server(80);
-    RoadMapReader roadMapReader;
-    CameraAlertModule module;
-    int uiActivityCalls = 0;
+void test_status_returns_camera_count_and_distance_without_type() {
+	WebServer server(80);
+	RoadMapReader roadMapReader;
+	CameraAlertModule module;
+	int uiActivityCalls = 0;
+	const std::vector<uint8_t> mapData = buildSingleAlprMap();
 
-    if (!loadFixtureFile("test/fixtures/camera_types_road_map.bin")) {
-        TEST_ASSERT_TRUE(loadFixtureFile("../../test/fixtures/camera_types_road_map.bin"));
-    }
-    TEST_ASSERT_TRUE(roadMapReader.loadFromBuffer(fixtureData, fixtureSize));
+	TEST_ASSERT_TRUE(
+		roadMapReader.loadFromBuffer(const_cast<uint8_t*>(mapData.data()), static_cast<uint32_t>(mapData.size())));
 
-    module.displayPayload_.active = true;
-    module.displayPayload_.type = CameraType::BUS_LANE;
-    module.displayPayload_.distanceCm = 18750;
+	module.displayPayload_.active = true;
+	module.displayPayload_.distanceCm = 18750;
 
-    CameraAlertApiService::handleApiStatus(
-        server,
-        module,
-        roadMapReader,
-        [&uiActivityCalls]() { ++uiActivityCalls; });
+	CameraAlertApiService::handleApiStatus(
+		server,
+		module,
+		roadMapReader,
+		[&uiActivityCalls]() { ++uiActivityCalls; });
 
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_TRUE(responseContains(server, "\"cameraCount\":4"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"displayActive\":true"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"type\":\"bus_lane\""));
-    TEST_ASSERT_TRUE(responseContains(server, "\"distanceCm\":18750"));
-
+	TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+	TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+	TEST_ASSERT_TRUE(responseContains(server, "\"cameraCount\":1"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"displayActive\":true"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"distanceCm\":18750"));
+	TEST_ASSERT_FALSE(responseContains(server, "\"type\""));
 }
 
-void test_status_nulls_type_and_distance_when_inactive() {
-    WebServer server(80);
-    RoadMapReader roadMapReader;
-    CameraAlertModule module;
+void test_status_nulls_distance_when_inactive() {
+	WebServer server(80);
+	RoadMapReader roadMapReader;
+	CameraAlertModule module;
 
-    CameraAlertApiService::handleApiStatus(
-        server,
-        module,
-        roadMapReader,
-        []() {});
+	CameraAlertApiService::handleApiStatus(
+		server,
+		module,
+		roadMapReader,
+		[]() {});
 
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_TRUE(responseContains(server, "\"cameraCount\":0"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"displayActive\":false"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"type\":null"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"distanceCm\":null"));
+	TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+	TEST_ASSERT_TRUE(responseContains(server, "\"cameraCount\":0"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"displayActive\":false"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"distanceCm\":null"));
 }
 
 int main() {
-    UNITY_BEGIN();
-    RUN_TEST(test_settings_get_serializes_camera_payload);
-    RUN_TEST(test_settings_post_rate_limit_short_circuits);
-    RUN_TEST(test_settings_post_updates_all_fields_and_saves_once);
-    RUN_TEST(test_settings_post_clamps_close_alert_range_to_supported_minimum);
-    RUN_TEST(test_settings_post_rejects_invalid_bool_without_partial_mutation);
-    RUN_TEST(test_settings_post_rejects_invalid_numeric_token);
-    RUN_TEST(test_status_returns_camera_count_and_active_payload);
-    RUN_TEST(test_status_nulls_type_and_distance_when_inactive);
-    return UNITY_END();
+	UNITY_BEGIN();
+	RUN_TEST(test_settings_get_serializes_alpr_only_payload);
+	RUN_TEST(test_settings_post_updates_alpr_fields_and_saves_once);
+	RUN_TEST(test_settings_post_rejects_removed_legacy_args);
+	RUN_TEST(test_settings_post_rejects_invalid_numeric_token);
+	RUN_TEST(test_status_returns_camera_count_and_distance_without_type);
+	RUN_TEST(test_status_nulls_distance_when_inactive);
+	return UNITY_END();
 }

@@ -12,7 +12,7 @@ SerialClass Serial;
 
 unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
-const int SD_BACKUP_VERSION = 10;
+const int SD_BACKUP_VERSION = 11;
 
 namespace {
 
@@ -65,12 +65,6 @@ void test_builder_aligns_http_and_sd_schema() {
     settings.gpsLockoutXLearningEnabled = false;
     settings.cameraAlertsEnabled = false;
     settings.cameraAlertRangeCm = 54321;
-    settings.cameraAlertNearRangeCm = 12345;
-    settings.cameraTypeBusLane = true;
-    settings.colorCameraArrow = 0x1234;
-    settings.colorCameraText = 0x2345;
-    settings.cameraVoiceFarEnabled = false;
-    settings.cameraVoiceNearEnabled = true;
 
     JsonDocument httpDoc;
     JsonDocument sdDoc;
@@ -93,13 +87,21 @@ void test_builder_aligns_http_and_sd_schema() {
     TEST_ASSERT_EQUAL_UINT32(4242, httpDoc["_timestamp"].as<uint32_t>());
     TEST_ASSERT_EQUAL_UINT32(4242, httpDoc["timestamp"].as<uint32_t>());
     TEST_ASSERT_FALSE(httpDoc["cameraAlertsEnabled"].as<bool>());
-    TEST_ASSERT_TRUE(httpDoc["cameraTypeBusLane"].as<bool>());
+    TEST_ASSERT_EQUAL_INT(54321, httpDoc["cameraAlertRangeCm"].as<int>());
     TEST_ASSERT_TRUE(httpDoc["gpsLockoutKLearningEnabled"].as<bool>());
     TEST_ASSERT_FALSE(httpDoc["gpsLockoutXLearningEnabled"].as<bool>());
     TEST_ASSERT_FALSE(sdDoc["cameraAlertsEnabled"].as<bool>());
-    TEST_ASSERT_TRUE(sdDoc["cameraTypeBusLane"].as<bool>());
+    TEST_ASSERT_EQUAL_INT(54321, sdDoc["cameraAlertRangeCm"].as<int>());
     TEST_ASSERT_TRUE(sdDoc["gpsLockoutKLearningEnabled"].as<bool>());
     TEST_ASSERT_FALSE(sdDoc["gpsLockoutXLearningEnabled"].as<bool>());
+    TEST_ASSERT_TRUE(httpDoc["cameraAlertNearRangeCm"].isNull());
+    TEST_ASSERT_TRUE(httpDoc["cameraTypeBusLane"].isNull());
+    TEST_ASSERT_TRUE(httpDoc["colorCameraArrow"].isNull());
+    TEST_ASSERT_TRUE(httpDoc["cameraVoiceNearEnabled"].isNull());
+    TEST_ASSERT_TRUE(sdDoc["cameraAlertNearRangeCm"].isNull());
+    TEST_ASSERT_TRUE(sdDoc["cameraTypeBusLane"].isNull());
+    TEST_ASSERT_TRUE(sdDoc["colorCameraArrow"].isNull());
+    TEST_ASSERT_TRUE(sdDoc["cameraVoiceNearEnabled"].isNull());
 
     httpDoc["_type"] = "same_type";
     sdDoc["_type"] = "same_type";

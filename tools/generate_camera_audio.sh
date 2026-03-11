@@ -15,17 +15,11 @@ REGENERATE_RAW=0
 SELECTED_CLIP=""
 
 CLIPS=(
-  "cam_speed"
-  "cam_red_light"
-  "cam_bus_lane"
   "cam_alpr"
 )
 
 clip_text() {
     case "$1" in
-        cam_speed) echo "speed camera" ;;
-        cam_red_light) echo "red light camera" ;;
-        cam_bus_lane) echo "bus lane camera" ;;
         cam_alpr) echo "A. L. P. R." ;;
         *)
             echo "Unknown clip: $1" >&2

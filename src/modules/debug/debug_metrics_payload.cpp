@@ -12,8 +12,6 @@ void appendCameraMetricsPayload(JsonDocument& doc) {
     doc["cameraDisplayMaxUs"] = perfExtended.cameraDisplayMaxUs;
     doc["cameraDebugDisplayMaxUs"] = perfExtended.cameraDebugDisplayMaxUs;
     doc["cameraProcessMaxUs"] = perfExtended.cameraProcessMaxUs;
-    doc["cameraVoiceQueued"] = perfCounters.cameraVoiceQueued.load();
-    doc["cameraVoiceStarted"] = perfCounters.cameraVoiceStarted.load();
 }
 
 }  // namespace DebugApiService

@@ -54,6 +54,9 @@ src/
 │   │   ├── connection_state_module.h/cpp
 │   │   ├── connection_state_cadence_module.h/cpp
 │   │   └── connection_state_dispatch_module.h/cpp
+│   ├── camera_alert/                ALPR-only road-map camera encounter detection
+│   │   ├── camera_alert_api_service.h/cpp
+│   │   └── camera_alert_module.h/cpp
 │   ├── debug/                       Debug/metrics API + perf file endpoints
 │   │   ├── debug_api_service.h/cpp
 │   │   └── debug_perf_files_service.h/cpp
@@ -139,6 +142,7 @@ src/
 | **AlertPersistenceModule** | Keeps alerts on-screen after they clear; provides state resets |
 | **AutoPushModule** | Pushes V1 profiles on connect |
 | **BleQueueModule** | Thread-safe BLE data queuing between callback and main loop |
+| **CameraAlertModule + CameraAlertApiService** | ALPR-only road-map encounter detection, `/api/cameras/*`, and display handoff |
 | **ConnectionStateModule** | Manages BLE connect/disconnect display states |
 | **ConnectionStateCadenceModule** | Throttles connection-state display transitions |
 | **ConnectionStateDispatchModule** | Dispatches connection state processing at correct cadence |

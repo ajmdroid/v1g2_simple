@@ -11,7 +11,6 @@
 #include <vector>
 #include "../../../include/config.h"
 #include "../../perf_metrics.h"
-#include "../../audio_beep.h"
 #include "../../settings.h"
 #include "../../ble_client.h"
 #include "../../storage_manager.h"
@@ -66,53 +65,10 @@ CameraType parseCameraTypeArg(const String& token) {
     String normalized = token;
     normalized.trim();
     normalized.toLowerCase();
-    if (normalized == "speed") {
-        return CameraType::SPEED;
-    }
-    if (normalized == "red_light" || normalized == "red-light" || normalized == "redlight") {
-        return CameraType::RED_LIGHT;
-    }
-    if (normalized == "bus_lane" || normalized == "bus-lane" || normalized == "buslane") {
-        return CameraType::BUS_LANE;
-    }
     if (normalized == "alpr") {
         return CameraType::ALPR;
     }
     return CameraType::INVALID;
-}
-enum class DebugCameraVoiceStage : uint8_t {
-    NONE = 0,
-    FAR,
-    NEAR,
-};
-bool parseDebugCameraVoiceStageArg(const String& token, DebugCameraVoiceStage& outStage) {
-    String normalized = token;
-    normalized.trim();
-    normalized.toLowerCase();
-    if (normalized.length() == 0 || normalized == "far") {
-        outStage = DebugCameraVoiceStage::FAR;
-        return true;
-    }
-    if (normalized == "none" || normalized == "off") {
-        outStage = DebugCameraVoiceStage::NONE;
-        return true;
-    }
-    if (normalized == "near" || normalized == "close") {
-        outStage = DebugCameraVoiceStage::NEAR;
-        return true;
-    }
-    return false;
-}
-const char* debugCameraVoiceStageName(DebugCameraVoiceStage stage) {
-    switch (stage) {
-        case DebugCameraVoiceStage::NONE:
-            return "none";
-        case DebugCameraVoiceStage::NEAR:
-            return "near";
-        case DebugCameraVoiceStage::FAR:
-        default:
-            return "far";
-    }
 }
 struct PanicFileSnapshot {
     bool loaded = false;
@@ -676,7 +632,7 @@ void handleCameraAlertRender(WebServer& server) {
 #else
     static constexpr uint32_t kDebugCameraHoldMsDefault = 5000;
     static constexpr uint32_t kDebugCameraHoldMsMax = 15000;
-    CameraType type = CameraType::SPEED;
+    CameraType type = CameraType::ALPR;
     if (server.hasArg("type")) {
         type = parseCameraTypeArg(server.arg("type"));
         if (type == CameraType::INVALID) {
@@ -698,31 +654,20 @@ void handleCameraAlertRender(WebServer& server) {
         return;
     }
     holdMs = std::min(holdMs, kDebugCameraHoldMsMax);
-    DebugCameraVoiceStage voiceStage = DebugCameraVoiceStage::FAR;
-    if (server.hasArg("voiceStage") &&
-        !parseDebugCameraVoiceStageArg(server.arg("voiceStage"), voiceStage)) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"invalid voiceStage\"}");
-        return;
-    }
     CameraAlertDisplayPayload payload{};
-    payload.type = type;
     payload.active = true;
     payload.distanceCm = distanceCm;
     if (!displayPipelineModule.debugRenderCameraPayload(millis(), payload, holdMs)) {
         server.send(500, "application/json", "{\"success\":false,\"error\":\"display unavailable\"}");
         return;
     }
-    const bool voiceRequested = voiceStage != DebugCameraVoiceStage::NONE;
-    const bool voiceStarted =
-        voiceRequested ? play_camera_alert(type, voiceStage == DebugCameraVoiceStage::NEAR) : false;
     JsonDocument doc;
     doc["success"] = true;
     doc["type"] = cameraTypeApiName(type);
     doc["distanceCm"] = distanceCm;
     doc["holdMs"] = holdMs;
-    doc["voiceStage"] = debugCameraVoiceStageName(voiceStage);
-    doc["voiceRequested"] = voiceRequested;
-    doc["voiceStarted"] = voiceStarted;
+    doc["voiceRequested"] = false;
+    doc["voiceStarted"] = false;
     sendJsonStream(server, doc);
 #endif
 }

@@ -95,7 +95,6 @@ private:
     void recordDisplayTiming(const char* label, unsigned long startUs, unsigned long endUs);
     void recordPerfTiming(const char* label, unsigned long startUs, unsigned long endUs);
     void processCameraState(uint32_t nowMs);
-    void dispatchCameraVoice();
     bool debugCameraOverrideActiveAt(uint32_t nowMs) const;
     void renderIdleOwner(uint32_t nowMs, const DisplayState& state, bool forceRedraw);
 };

@@ -62,11 +62,6 @@ void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection dir
 // Play band-only announcement (e.g., "Ka", "K", "X", "Laser")
 void play_band_only(AlertBand band);
 
-// Play camera voice announcement from LittleFS audio clips.
-// Announces "camera type" + "ahead" (matches standard alert pattern).
-// Returns false if audio is busy, disabled, or clips are unavailable.
-bool play_camera_alert(CameraType type, bool isNearStage);
-
 // Initialize SD audio (call after storage manager is ready)
 void audio_init_sd();
 

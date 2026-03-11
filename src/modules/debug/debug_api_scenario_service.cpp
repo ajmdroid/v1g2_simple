@@ -12,7 +12,6 @@
 
 #include "../../../include/config.h"
 #include "../../perf_metrics.h"
-#include "../../audio_beep.h"
 #include "../../settings.h"
 #include "../../ble_client.h"
 #include "../../storage_manager.h"
@@ -74,56 +73,10 @@ CameraType parseCameraTypeArg(const String& token) {
     String normalized = token;
     normalized.trim();
     normalized.toLowerCase();
-    if (normalized == "speed") {
-        return CameraType::SPEED;
-    }
-    if (normalized == "red_light" || normalized == "red-light" || normalized == "redlight") {
-        return CameraType::RED_LIGHT;
-    }
-    if (normalized == "bus_lane" || normalized == "bus-lane" || normalized == "buslane") {
-        return CameraType::BUS_LANE;
-    }
     if (normalized == "alpr") {
         return CameraType::ALPR;
     }
     return CameraType::INVALID;
-}
-
-enum class DebugCameraVoiceStage : uint8_t {
-    NONE = 0,
-    FAR,
-    NEAR,
-};
-
-bool parseDebugCameraVoiceStageArg(const String& token, DebugCameraVoiceStage& outStage) {
-    String normalized = token;
-    normalized.trim();
-    normalized.toLowerCase();
-    if (normalized.length() == 0 || normalized == "far") {
-        outStage = DebugCameraVoiceStage::FAR;
-        return true;
-    }
-    if (normalized == "none" || normalized == "off") {
-        outStage = DebugCameraVoiceStage::NONE;
-        return true;
-    }
-    if (normalized == "near" || normalized == "close") {
-        outStage = DebugCameraVoiceStage::NEAR;
-        return true;
-    }
-    return false;
-}
-
-const char* debugCameraVoiceStageName(DebugCameraVoiceStage stage) {
-    switch (stage) {
-        case DebugCameraVoiceStage::NONE:
-            return "none";
-        case DebugCameraVoiceStage::NEAR:
-            return "near";
-        case DebugCameraVoiceStage::FAR:
-        default:
-            return "far";
-    }
 }
 
 struct PanicFileSnapshot {

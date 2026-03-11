@@ -6,9 +6,6 @@
     "band_x.mul",
     "bogeys.mul",
     "cam_alpr.mul",
-    "cam_bus_lane.mul",
-    "cam_red_light.mul",
-    "cam_speed.mul",
     "dir_ahead.mul",
     "dir_behind.mul",
     "dir_side.mul"

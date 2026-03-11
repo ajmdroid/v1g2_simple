@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate a minimal road_map.bin fixture with all 4 camera types.
+"""Generate a minimal road_map.bin fixture with ALPR-only camera data.
 
-Creates a valid v2 binary with one road segment and 4 camera records
-(one per type: speed, red_light, bus_lane, ALPR) at known coordinates
+Creates a valid v2 binary with one road segment and 1 ALPR camera record
+at a known coordinate
 near Denver, CO.  Used to validate the firmware camera reader contract.
 
 Usage:
@@ -20,10 +20,7 @@ FORMAT_VERSION = 2
 HEADER_SIZE = 64
 
 # Camera type flags — must match build_road_map.py and firmware
-CAM_TYPE_SPEED     = 1
-CAM_TYPE_RED_LIGHT = 2
-CAM_TYPE_BUS_LANE  = 3
-CAM_TYPE_ALPR      = 4
+CAM_TYPE_ALPR = 4
 
 
 def to_e5(deg):
@@ -43,13 +40,9 @@ def main():
     seg_oneway = 1
     seg_speed = 65   # mph
 
-    # 4 cameras at distinct positions, one per type, all within search range
+    # Single ALPR camera within search range
     cameras = [
-        # (lat, lon, bearing, flags, speedMph)
-        (39.7400, -104.9900, 0,      CAM_TYPE_SPEED,     45),
-        (39.7420, -104.9910, 180,    CAM_TYPE_RED_LIGHT,  0),
-        (39.7440, -104.9895, 90,     CAM_TYPE_BUS_LANE,   0),
-        (39.7460, -104.9905, 0xFFFF, CAM_TYPE_ALPR,      30),
+        (39.7460, -104.9905, 0xFFFF, CAM_TYPE_ALPR, 30),
     ]
 
     # --- Bounding box (with padding) ---
@@ -120,9 +113,7 @@ def main():
 
     print(f"  Wrote {output} ({file_size} bytes)")
     print(f"  Segments: 1, Points: {len(pts_e5)}")
-    print(f"  Cameras:  {cam_count} (speed={CAM_TYPE_SPEED}, "
-          f"red_light={CAM_TYPE_RED_LIGHT}, bus_lane={CAM_TYPE_BUS_LANE}, "
-          f"alpr={CAM_TYPE_ALPR})")
+    print(f"  Cameras:  {cam_count} (alpr={CAM_TYPE_ALPR})")
 
     # --- Verify by reading back ---
     with open(output, "rb") as f:
@@ -144,9 +135,9 @@ def main():
         lat_e5, lon_e5, brg, flg, spd = struct.unpack_from("<iiHBB", data, off)
         expected = cameras[i]
         assert flg == expected[3], f"Camera {i} flags: {flg} != {expected[3]}"
-        assert flg in {CAM_TYPE_SPEED, CAM_TYPE_RED_LIGHT, CAM_TYPE_BUS_LANE, CAM_TYPE_ALPR}
+        assert flg == CAM_TYPE_ALPR
 
-    print("  Verification: PASS — all 4 camera types present and valid")
+    print("  Verification: PASS — ALPR-only camera fixture present and valid")
 
 
 if __name__ == "__main__":

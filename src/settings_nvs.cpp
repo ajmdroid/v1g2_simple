@@ -356,15 +356,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUChar("gpsLkMinSpd", settings.gpsLockoutMinLearnerSpeedMph);
     written += prefs.putBool("camEn", settings.cameraAlertsEnabled);
     written += prefs.putUInt("camRngCm", settings.cameraAlertRangeCm);
-    written += prefs.putUInt("camNearCm", settings.cameraAlertNearRangeCm);
-    written += prefs.putBool("camTAlpr", settings.cameraTypeAlpr);
-    written += prefs.putBool("camTRL", settings.cameraTypeRedLight);
-    written += prefs.putBool("camTSpd", settings.cameraTypeSpeed);
-    written += prefs.putBool("camTBus", settings.cameraTypeBusLane);
-    written += prefs.putUShort("colCamArr", settings.colorCameraArrow);
-    written += prefs.putUShort("colCamTxt", settings.colorCameraText);
-    written += prefs.putBool("camVFar", settings.cameraVoiceFarEnabled);
-    written += prefs.putBool("camVNear", settings.cameraVoiceNearEnabled);
     written += prefs.putBool("displayOff", settings.turnOffDisplay);
     written += prefs.putUChar("brightness", settings.brightness);
     written += prefs.putInt("dispStyle", settings.displayStyle);

@@ -12,36 +12,32 @@ function installDefaultFetch(overrides = []) {
 				method: 'GET',
 				match: '/api/cameras/settings',
 				respond: jsonResponse({
-					enabled: true,
-					cameraAlertRangeCm: 1600,
-					cameraAlertNearRangeCm: 400,
-					cameraVoiceEnabled: true,
-					cameraVoiceNearEnabled: true,
-					cameraVoiceSpeedEnabled: true,
-					cameraVoiceRedEnabled: true,
-					cameraVoiceBusEnabled: true,
-					cameraVoiceAlprEnabled: true,
-					cameraDisplayEnabled: true,
-					cameraNotifyOnSignalMissing: true,
-					cameraSignalMissingThresholdSec: 15,
-					cameraSignalMissingCooldownSec: 30,
-					colorCameraArrow: 0x780f,
-					colorCameraText: 0x780f
+					cameraAlertsEnabled: true,
+					cameraAlertRangeCm: 160934
 				})
 			},
-			{ method: 'GET', match: '/api/cameras/status', respond: jsonResponse({ displayActive: false, type: 'speed', distanceCm: 0 }) },
-			{ method: 'POST', match: '/api/cameras/settings', respond: jsonResponse({ success: true }) },
+			{
+				method: 'GET',
+				match: '/api/cameras/status',
+				respond: jsonResponse({
+					cameraCount: 7,
+					displayActive: true,
+					distanceCm: 32000
+				})
+			},
+			{ method: 'POST', match: '/api/cameras/settings', respond: jsonResponse({ success: true }) }
 		],
 		jsonResponse({})
 	);
 }
 
 describe('cameras route page', () => {
-	it('loads camera settings and status', async () => {
+	it('loads ALPR settings and status', async () => {
 		const fetchMock = installDefaultFetch();
 		const { unmount } = render(Page);
 
-		await screen.findByText('Camera Alerts');
+		await screen.findByText('ALPR Cameras');
+		await screen.findByText('Loaded ALPR cameras');
 		await waitFor(() => {
 			expect(fetchMock.mock.calls.some(([url]) => url === '/api/cameras/settings')).toBe(true);
 			expect(fetchMock.mock.calls.some(([url]) => url === '/api/cameras/status')).toBe(true);
@@ -50,60 +46,46 @@ describe('cameras route page', () => {
 		unmount();
 	});
 
-	it('shows load error when camera settings fetch fails', async () => {
+	it('shows load error when settings fetch fails', async () => {
 		installFetchMock(
 			[
-				{ method: 'GET', match: '/api/cameras/settings', respond: () => Promise.reject(new Error('offline')) },
-				{ method: 'GET', match: '/api/cameras/status', respond: jsonResponse({ displayActive: false }) }
+				{
+					method: 'GET',
+					match: '/api/cameras/settings',
+					respond: () => Promise.reject(new Error('offline'))
+				},
+				{
+					method: 'GET',
+					match: '/api/cameras/status',
+					respond: jsonResponse({ cameraCount: 0, displayActive: false, distanceCm: null })
+				}
 			],
 			jsonResponse({})
 		);
 		const { unmount } = render(Page);
 
-		await screen.findByText('Failed to load camera settings');
+		await screen.findByText('Failed to load ALPR settings');
 		unmount();
 	});
 
-	it('opens and closes the color picker modal', async () => {
-		installDefaultFetch();
+	it('posts the reduced ALPR payload on save', async () => {
+		const fetchMock = installDefaultFetch();
 		const { unmount } = render(Page);
 
-		const colorButton = await screen.findByRole('button', { name: /camera arrow color/i });
-		await fireEvent.click(colorButton);
-		await screen.findByText('Camera Arrow Color');
-		await fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
-		await waitFor(() => {
-			expect(screen.queryByText('Camera Arrow Color')).toBeNull();
-		});
-
-		unmount();
-	});
-
-	it('applies the color picker modal value and closes the dialog', async () => {
-		installDefaultFetch();
-		const { unmount } = render(Page);
-
-		const colorButton = await screen.findByRole('button', { name: /camera arrow color/i });
-		await fireEvent.click(colorButton);
-		await screen.findByText('Camera Arrow Color');
-		await fireEvent.click(screen.getByRole('button', { name: /^Apply$/i }));
-		await waitFor(() => {
-			expect(screen.queryByText('Camera Arrow Color')).toBeNull();
-		});
-
-		unmount();
-	});
-
-	it('shows success message on save success', async () => {
-		const fetchMock = installDefaultFetch([
-			{ method: 'POST', match: '/api/cameras/settings', respond: jsonResponse({ success: true }) }
-		]);
-		const { unmount } = render(Page);
-
-		const saveButton = await screen.findByRole('button', { name: /save camera settings/i });
+		const saveButton = await screen.findByRole('button', { name: /save alpr settings/i });
 		await fireEvent.click(saveButton);
-		await screen.findByText('Camera settings saved.');
-		expect(fetchMock.mock.calls.some(([url, init]) => url === '/api/cameras/settings' && init?.method === 'POST')).toBe(true);
+		await screen.findByText('ALPR settings saved.');
+
+		const saveCall = fetchMock.mock.calls.find(
+			([url, init]) => url === '/api/cameras/settings' && init?.method === 'POST'
+		);
+		expect(saveCall).toBeTruthy();
+		const [, init] = saveCall;
+		expect(init.body.toString()).toContain('cameraAlertsEnabled=');
+		expect(init.body.toString()).toContain('cameraAlertRangeCm=');
+		expect(init.body.toString()).not.toContain('cameraAlertNearRangeCm');
+		expect(init.body.toString()).not.toContain('cameraVoice');
+
 		unmount();
 	});
 
@@ -113,9 +95,9 @@ describe('cameras route page', () => {
 		]);
 		const { unmount } = render(Page);
 
-		const saveButton = await screen.findByRole('button', { name: /save camera settings/i });
+		const saveButton = await screen.findByRole('button', { name: /save alpr settings/i });
 		await fireEvent.click(saveButton);
-		await screen.findByText('Failed to save camera settings');
+		await screen.findByText('Failed to save ALPR settings');
 
 		unmount();
 	});

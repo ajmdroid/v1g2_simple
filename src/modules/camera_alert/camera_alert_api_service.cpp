@@ -122,32 +122,30 @@ bool parseClampedUint32Arg(WebServer& server,
     return true;
 }
 
-bool parseClampedUint16Arg(WebServer& server,
-                           const char* key,
-                           uint16_t& target,
-                           String& invalidField,
-                           bool& sawKnownArg) {
-    uint32_t parsed = target;
-    if (!parseClampedUint32Arg(server, key, 0, 65535, parsed, invalidField, sawKnownArg)) {
-        return false;
+const char* findRemovedLegacyArg(WebServer& server) {
+    static constexpr const char* kRemovedArgs[] = {
+        "cameraAlertNearRangeCm",
+        "cameraTypeAlpr",
+        "cameraTypeRedLight",
+        "cameraTypeSpeed",
+        "cameraTypeBusLane",
+        "colorCameraArrow",
+        "colorCameraText",
+        "cameraVoiceFarEnabled",
+        "cameraVoiceNearEnabled",
+    };
+    for (const char* key : kRemovedArgs) {
+        if (server.hasArg(key)) {
+            return key;
+        }
     }
-    target = static_cast<uint16_t>(parsed);
-    return true;
+    return nullptr;
 }
 
 void sendSettings(WebServer& server, const V1Settings& settings) {
     JsonDocument doc;
     doc["cameraAlertsEnabled"] = settings.cameraAlertsEnabled;
     doc["cameraAlertRangeCm"] = settings.cameraAlertRangeCm;
-    doc["cameraAlertNearRangeCm"] = settings.cameraAlertNearRangeCm;
-    doc["cameraTypeAlpr"] = settings.cameraTypeAlpr;
-    doc["cameraTypeRedLight"] = settings.cameraTypeRedLight;
-    doc["cameraTypeSpeed"] = settings.cameraTypeSpeed;
-    doc["cameraTypeBusLane"] = settings.cameraTypeBusLane;
-    doc["colorCameraArrow"] = settings.colorCameraArrow;
-    doc["colorCameraText"] = settings.colorCameraText;
-    doc["cameraVoiceFarEnabled"] = settings.cameraVoiceFarEnabled;
-    doc["cameraVoiceNearEnabled"] = settings.cameraVoiceNearEnabled;
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
@@ -159,13 +157,6 @@ void sendStatus(WebServer& server,
     JsonDocument doc;
     doc["cameraCount"] = roadMapReader.cameraCount();
     doc["displayActive"] = cameraAlertModule.isDisplayActive();
-
-    const char* apiName = (payload.active ? cameraTypeApiName(payload.type) : nullptr);
-    if (apiName) {
-        doc["type"] = apiName;
-    } else {
-        doc["type"] = nullptr;
-    }
 
     if (payload.active && payload.distanceCm != CAMERA_DISTANCE_INVALID_CM) {
         doc["distanceCm"] = payload.distanceCm;
@@ -199,6 +190,11 @@ void handleApiSettingsPost(WebServer& server,
         markUiActivity();
     }
 
+    if (const char* removedArg = findRemovedLegacyArg(server)) {
+        sendError(server, 400, String("unsupported ") + removedArg);
+        return;
+    }
+
     V1Settings updated = settingsManager.get();
     bool sawKnownArg = false;
     String invalidField;
@@ -210,27 +206,10 @@ void handleApiSettingsPost(WebServer& server,
                                CAMERA_ALERT_RANGE_CM_MAX,
                                updated.cameraAlertRangeCm,
                                invalidField,
-                               sawKnownArg) ||
-        !parseClampedUint32Arg(server,
-                               "cameraAlertNearRangeCm",
-                               CAMERA_ALERT_NEAR_RANGE_CM_MIN,
-                               CAMERA_ALERT_NEAR_RANGE_CM_MAX,
-                               updated.cameraAlertNearRangeCm,
-                               invalidField,
-                               sawKnownArg) ||
-        !parseBoolArg(server, "cameraTypeAlpr", updated.cameraTypeAlpr, invalidField, sawKnownArg) ||
-        !parseBoolArg(server, "cameraTypeRedLight", updated.cameraTypeRedLight, invalidField, sawKnownArg) ||
-        !parseBoolArg(server, "cameraTypeSpeed", updated.cameraTypeSpeed, invalidField, sawKnownArg) ||
-        !parseBoolArg(server, "cameraTypeBusLane", updated.cameraTypeBusLane, invalidField, sawKnownArg) ||
-        !parseClampedUint16Arg(server, "colorCameraArrow", updated.colorCameraArrow, invalidField, sawKnownArg) ||
-        !parseClampedUint16Arg(server, "colorCameraText", updated.colorCameraText, invalidField, sawKnownArg) ||
-        !parseBoolArg(server, "cameraVoiceFarEnabled", updated.cameraVoiceFarEnabled, invalidField, sawKnownArg) ||
-        !parseBoolArg(server, "cameraVoiceNearEnabled", updated.cameraVoiceNearEnabled, invalidField, sawKnownArg)) {
+                               sawKnownArg)) {
         sendError(server, 400, String("invalid ") + invalidField);
         return;
     }
-
-    normalizeCameraAlertRanges(updated.cameraAlertRangeCm, updated.cameraAlertNearRangeCm);
 
     if (sawKnownArg) {
         settingsManager.mutableSettings() = updated;

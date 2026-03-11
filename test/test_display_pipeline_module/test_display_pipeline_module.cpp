@@ -27,10 +27,6 @@ void perfRecordDisplayRenderUs(uint32_t /*us*/) {}
 void perfRecordCameraDisplayUs(uint32_t /*us*/) {}
 void perfRecordCameraDebugDisplayUs(uint32_t /*us*/) {}
 
-static int g_playCameraAlertCalls = 0;
-static CameraType g_lastCameraType = CameraType::INVALID;
-static bool g_lastCameraNearStage = false;
-
 AlertPersistenceModule::AlertPersistenceModule() = default;
 
 void AlertPersistenceModule::begin(V1BLEClient* ble,
@@ -204,23 +200,6 @@ void CameraAlertModule::process(uint32_t nowMs, const CameraAlertContext& /*ctx*
     lastPollMs_ = nowMs;
 }
 
-bool CameraAlertModule::consumePendingVoice(CameraVoiceEvent& event) {
-    if (!pendingVoiceValid_) {
-        return false;
-    }
-    event = pendingVoice_;
-    pendingVoiceValid_ = false;
-    pendingVoice_ = CameraVoiceEvent{};
-    return true;
-}
-
-void CameraAlertModule::onVoicePlaybackResult(const CameraVoiceEvent& event, bool playbackStarted) {
-    if (!playbackStarted) {
-        pendingVoiceValid_ = true;
-        pendingVoice_ = event;
-    }
-}
-
 void CameraAlertModule::resetEncounter() {
     breadcrumbCount_ = 0;
     breadcrumbWriteIndex_ = 0;
@@ -231,10 +210,6 @@ void CameraAlertModule::resetEncounter() {
     lastDistanceCm_ = UINT32_MAX;
     lastSeenMs_ = 0;
     closingPollCount_ = 0;
-    farAnnounced_ = false;
-    nearAnnounced_ = false;
-    pendingVoiceValid_ = false;
-    pendingVoice_ = CameraVoiceEvent{};
     displayPayload_ = CameraAlertDisplayPayload{};
     lastPollMs_ = 0;
     hasPolled_ = false;
@@ -320,13 +295,6 @@ GpsRuntimeStatus GpsRuntimeModule::snapshot(uint32_t nowMs) const {
     return status;
 }
 
-bool play_camera_alert(CameraType type, bool isNearStage) {
-    ++g_playCameraAlertCalls;
-    g_lastCameraType = type;
-    g_lastCameraNearStage = isNearStage;
-    return true;
-}
-
 void audio_set_volume(uint8_t /*volumePercent*/) {}
 void play_test_voice() {}
 void play_vol0_beep() {}
@@ -392,9 +360,6 @@ void setUp() {
     settingsManager = SettingsManager{};
     perfCounters.reset();
     perfExtended.reset();
-    g_playCameraAlertCalls = 0;
-    g_lastCameraType = CameraType::INVALID;
-    g_lastCameraNearStage = false;
     beginModule();
 }
 
@@ -403,7 +368,6 @@ void tearDown() {}
 void test_debug_camera_override_throttles_duplicate_frames_until_state_changes() {
     CameraAlertDisplayPayload payload{};
     payload.active = true;
-    payload.type = CameraType::SPEED;
     payload.distanceCm = 16093;
 
     parser.state.bogeyCounterChar = '1';
@@ -432,7 +396,6 @@ void test_debug_camera_override_throttles_duplicate_frames_until_state_changes()
 void test_restore_current_owner_returns_to_resting_view_after_debug_override_clears() {
     CameraAlertDisplayPayload payload{};
     payload.active = true;
-    payload.type = CameraType::RED_LIGHT;
     payload.distanceCm = 32000;
 
     TEST_ASSERT_TRUE(module.debugRenderCameraPayload(1000, payload, 5000));

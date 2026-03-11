@@ -132,5 +132,3 @@ cameraDebugDisplayFrames
 cameraDisplayMaxUs
 cameraDebugDisplayMaxUs
 cameraProcessMaxUs
-cameraVoiceQueued
-cameraVoiceStarted

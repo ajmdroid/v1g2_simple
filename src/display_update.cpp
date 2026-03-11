@@ -437,7 +437,7 @@ void V1Display::updateCameraAlert(const CameraAlertDisplayPayload& payload,
                                   const DisplayState& state) {
     persistedMode = false;
 
-    if (!payload.active || payload.type == CameraType::INVALID) {
+    if (!payload.active) {
         update(state);
         return;
     }
@@ -451,12 +451,11 @@ void V1Display::updateCameraAlert(const CameraAlertDisplayPayload& payload,
     }
     currentScreen = ScreenMode::Camera;
 
-    static CameraType lastCameraType = CameraType::INVALID;
     static uint8_t lastMainVol = 0xFF;
     static uint8_t lastMuteVol = 0xFF;
     static uint8_t lastBogeyByte = 0;
     const unsigned long now = millis();
-    const bool fullRedraw = enteringCamera || payload.type != lastCameraType;
+    const bool fullRedraw = enteringCamera;
 
     if (fullRedraw) {
         dirty.multiAlert = true;
@@ -465,12 +464,11 @@ void V1Display::updateCameraAlert(const CameraAlertDisplayPayload& payload,
 
         drawBaseFrame();
 
-        const V1Settings& settings = settingsManager.get();
         drawStatusStrip(state, state.bogeyCounterChar, false, state.bogeyCounterDot);
         drawBandIndicators(0, false);
-        drawCameraLabel(cameraTypeDisplayLabel(payload.type), settings.colorCameraText);
+        drawCameraLabel("ALPR", 0x780F);
         drawVerticalSignalBars(0, 0, BAND_NONE, false);
-        drawDirectionArrow(DIR_FRONT, false, 0, settings.colorCameraArrow);
+        drawDirectionArrow(DIR_FRONT, false, 0, 0x780F);
         drawMuteIcon(false);
         drawLockoutIndicator();
         drawGpsIndicator();
@@ -512,7 +510,6 @@ void V1Display::updateCameraAlert(const CameraAlertDisplayPayload& payload,
     lastMainVol = state.mainVolume;
     lastMuteVol = state.muteVolume;
     lastBogeyByte = state.bogeyCounterByte;
-    lastCameraType = payload.type;
     lastState = state;
 }
 

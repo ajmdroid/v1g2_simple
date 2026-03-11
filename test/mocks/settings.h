@@ -50,9 +50,6 @@ static constexpr uint32_t LOCKOUT_GPS_COURSE_MAX_AGE_MS = 5000;
 static constexpr uint32_t CAMERA_ALERT_RANGE_CM_MIN = 16093;
 static constexpr uint32_t CAMERA_ALERT_RANGE_CM_MAX = 160934;
 static constexpr uint32_t CAMERA_ALERT_RANGE_CM_DEFAULT = 128748;
-static constexpr uint32_t CAMERA_ALERT_NEAR_RANGE_CM_MIN = 8047;
-static constexpr uint32_t CAMERA_ALERT_NEAR_RANGE_CM_MAX = CAMERA_ALERT_RANGE_CM_MAX;
-static constexpr uint32_t CAMERA_ALERT_NEAR_RANGE_CM_DEFAULT = 15240;
 
 inline uint32_t clampCameraAlertRangeCmValue(int rawRangeCm) {
     if (rawRangeCm < static_cast<int>(CAMERA_ALERT_RANGE_CM_MIN)) {
@@ -62,28 +59,6 @@ inline uint32_t clampCameraAlertRangeCmValue(int rawRangeCm) {
         return CAMERA_ALERT_RANGE_CM_MAX;
     }
     return static_cast<uint32_t>(rawRangeCm);
-}
-
-inline uint32_t clampCameraAlertNearRangeCmValue(int rawRangeCm) {
-    if (rawRangeCm < static_cast<int>(CAMERA_ALERT_NEAR_RANGE_CM_MIN)) {
-        return CAMERA_ALERT_NEAR_RANGE_CM_MIN;
-    }
-    if (rawRangeCm > static_cast<int>(CAMERA_ALERT_NEAR_RANGE_CM_MAX)) {
-        return CAMERA_ALERT_NEAR_RANGE_CM_MAX;
-    }
-    return static_cast<uint32_t>(rawRangeCm);
-}
-
-inline uint32_t normalizeCameraAlertNearRangeCmValue(uint32_t firstAlertRangeCm, int rawNearRangeCm) {
-    uint32_t first = clampCameraAlertRangeCmValue(static_cast<int>(firstAlertRangeCm));
-    uint32_t near = clampCameraAlertNearRangeCmValue(rawNearRangeCm);
-    return (near > first) ? first : near;
-}
-
-inline void normalizeCameraAlertRanges(uint32_t& firstAlertRangeCm, uint32_t& nearAlertRangeCm) {
-    firstAlertRangeCm = clampCameraAlertRangeCmValue(static_cast<int>(firstAlertRangeCm));
-    nearAlertRangeCm = normalizeCameraAlertNearRangeCmValue(firstAlertRangeCm,
-                                                            static_cast<int>(nearAlertRangeCm));
 }
 
 // Minimal display font enum (for compatibility with older tests)
@@ -150,15 +125,6 @@ struct V1Settings {
     // Camera alerts
     bool cameraAlertsEnabled = true;
     uint32_t cameraAlertRangeCm = CAMERA_ALERT_RANGE_CM_DEFAULT;
-    uint32_t cameraAlertNearRangeCm = CAMERA_ALERT_NEAR_RANGE_CM_DEFAULT;
-    bool cameraTypeAlpr = true;
-    bool cameraTypeRedLight = true;
-    bool cameraTypeSpeed = true;
-    bool cameraTypeBusLane = false;
-    uint16_t colorCameraArrow = 0x780F;
-    uint16_t colorCameraText = 0x780F;
-    bool cameraVoiceFarEnabled = true;
-    bool cameraVoiceNearEnabled = true;
 };
 
 // Backwards compatibility alias used by some legacy tests

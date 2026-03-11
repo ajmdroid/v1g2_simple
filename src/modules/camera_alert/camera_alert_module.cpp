@@ -28,7 +28,6 @@ constexpr float PI_F = 3.14159265f;
 
 CameraAlertDisplayPayload inactivePayload() {
     CameraAlertDisplayPayload payload;
-    payload.type = CameraType::INVALID;
     payload.active = false;
     payload.distanceCm = CAMERA_DISTANCE_INVALID_CM;
     return payload;
@@ -133,37 +132,6 @@ void CameraAlertModule::begin(RoadMapReader* roadMap, SettingsManager* settings)
     hasPolled_ = false;
 }
 
-bool CameraAlertModule::consumePendingVoice(CameraVoiceEvent& event) {
-    if (!pendingVoiceValid_) {
-        return false;
-    }
-
-    event = pendingVoice_;
-    pendingVoiceValid_ = false;
-    pendingVoice_ = CameraVoiceEvent{};
-    return true;
-}
-
-void CameraAlertModule::onVoicePlaybackResult(const CameraVoiceEvent& event, bool playbackStarted) {
-    if (event.type == CameraType::INVALID) {
-        return;
-    }
-
-    if (!playbackStarted) {
-        queueVoice(event.type, event.isNearStage);
-        return;
-    }
-
-    PERF_INC(cameraVoiceStarted);
-
-    if (event.isNearStage) {
-        nearAnnounced_ = true;
-        farAnnounced_ = true;
-    } else {
-        farAnnounced_ = true;
-    }
-}
-
 void CameraAlertModule::clearBreadcrumbs() {
     breadcrumbCount_ = 0;
     breadcrumbWriteIndex_ = 0;
@@ -184,10 +152,6 @@ void CameraAlertModule::clearEncounterState() {
     lastDistanceCm_ = CAMERA_DISTANCE_INVALID_CM;
     lastSeenMs_ = 0;
     closingPollCount_ = 0;
-    farAnnounced_ = false;
-    nearAnnounced_ = false;
-    pendingVoiceValid_ = false;
-    pendingVoice_ = CameraVoiceEvent{};
     deactivateDisplay();
 }
 
@@ -203,10 +167,6 @@ void CameraAlertModule::beginEncounter(const CameraResult& result) {
     encounterFlags_ = result.flags;
     lastDistanceCm_ = result.distanceCm;
     closingPollCount_ = 0;
-    farAnnounced_ = false;
-    nearAnnounced_ = false;
-    pendingVoiceValid_ = false;
-    pendingVoice_ = CameraVoiceEvent{};
     deactivateDisplay();
 }
 
@@ -263,55 +223,6 @@ bool CameraAlertModule::resolveTravelHeadingDeg(const CameraAlertContext& ctx, f
     return false;
 }
 
-bool CameraAlertModule::isTypeEnabled(const V1Settings& settings, CameraType type) const {
-    switch (type) {
-        case CameraType::SPEED:
-            return settings.cameraTypeSpeed;
-        case CameraType::RED_LIGHT:
-            return settings.cameraTypeRedLight;
-        case CameraType::BUS_LANE:
-            return settings.cameraTypeBusLane;
-        case CameraType::ALPR:
-            return settings.cameraTypeAlpr;
-        case CameraType::INVALID:
-        default:
-            return false;
-    }
-}
-
-void CameraAlertModule::queueVoice(CameraType type, bool isNearStage) {
-    if (type == CameraType::INVALID) {
-        return;
-    }
-
-    if (!pendingVoiceValid_ || (isNearStage && !pendingVoice_.isNearStage)) {
-        pendingVoiceValid_ = true;
-        pendingVoice_.type = type;
-        pendingVoice_.isNearStage = isNearStage;
-        PERF_INC(cameraVoiceQueued);
-    }
-}
-
-void CameraAlertModule::maybeQueueVoice(const V1Settings& settings, CameraType type, uint32_t distanceCm) {
-    if (type == CameraType::INVALID) {
-        return;
-    }
-
-    const uint32_t firstAlertRangeCm = clampCameraAlertRangeCmValue(
-        static_cast<int>(settings.cameraAlertRangeCm));
-    const uint32_t closeAlertRangeCm = normalizeCameraAlertNearRangeCmValue(
-        firstAlertRangeCm, static_cast<int>(settings.cameraAlertNearRangeCm));
-
-    if (settings.cameraVoiceNearEnabled && !nearAnnounced_ && distanceCm <= closeAlertRangeCm) {
-        queueVoice(type, true);
-        return;
-    }
-
-    if (settings.cameraVoiceFarEnabled && !farAnnounced_ && distanceCm <= firstAlertRangeCm) {
-        queueVoice(type, false);
-    }
-}
-
 void CameraAlertModule::expireEncounterIfNeeded(uint32_t nowMs) {
     if (state_ == ApproachState::IDLE) {
         return;
@@ -351,8 +262,7 @@ void CameraAlertModule::process(uint32_t nowMs, const CameraAlertContext& ctx) {
         return;
     }
 
-    const CameraType type = cameraTypeFromFlags(result.flags);
-    if (type == CameraType::INVALID || !isTypeEnabled(settings, type)) {
+    if (cameraTypeFromFlags(result.flags) == CameraType::INVALID) {
         deactivateDisplay();
         expireEncounterIfNeeded(nowMs);
         return;
@@ -412,10 +322,8 @@ void CameraAlertModule::process(uint32_t nowMs, const CameraAlertContext& ctx) {
     }
 
     if (state_ == ApproachState::CONFIRMED) {
-        displayPayload_.type = type;
         displayPayload_.active = true;
         displayPayload_.distanceCm = result.distanceCm;
-        maybeQueueVoice(settings, type, result.distanceCm);
         return;
     }
 

@@ -15,6 +15,7 @@ Feature-by-feature release history is maintained in `CHANGELOG.md`.
 
 Current train (`v4.0.0-dev`) highlights:
 - GPS lockout runtime stack (enforcer + learner + store/index) and lockout configuration controls.
+- ALPR-only camera overlay path with slim `/cameras` controls.
 - SD-backed perf CSV snapshots (`/perf/perf_boot_<id>.csv`) and runtime metrics correlation.
 - Settings backup/restore hardening and display/runtime stability fixes.
 
@@ -962,6 +963,7 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 | `/devices` | `devices/+page.svelte` | Known V1 device management |
 | `/lockouts` | `lockouts/+page.svelte` | GPS lockout zone management and observation log |
 | `/integrations` | `integrations/+page.svelte` | GPS and external integration settings |
+| `/cameras` | `cameras/+page.svelte` | ALPR camera enable/range controls and live status |
 | `/dev` | `dev/+page.svelte` | Debug tools: metrics, perf files, V1 scenarios, panic log |
 
 ### Settings Page (`/settings`)
@@ -1036,6 +1038,18 @@ Controls:
 - **Test Button:** Shows color demo on physical display (cycles through X, K, Ka, Laser with cards and muted state)
 
 **Source:** [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)
+
+### Cameras Page (`/cameras`)
+
+Controls:
+- **Enable ALPR Alerts:** Master toggle for ALPR overlays
+- **Alert Distance:** Single ALPR range threshold used for map search and display ownership
+- **Live Status:** Loaded ALPR count, display-active state, and current distance
+
+Legacy speed, red-light, bus-lane, camera voice, and camera color controls have
+been removed from this page.
+
+**Source:** [interface/src/routes/cameras/+page.svelte](interface/src/routes/cameras/+page.svelte)
 
 ### Auto-Push Page (`/autopush`)
 

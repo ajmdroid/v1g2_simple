@@ -277,8 +277,6 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.audioPlayCount = perfCounters.audioPlayCount.load(std::memory_order_relaxed);
     snapshot.audioPlayBusy = perfCounters.audioPlayBusy.load(std::memory_order_relaxed);
     snapshot.audioTaskFail = perfCounters.audioTaskFail.load(std::memory_order_relaxed);
-    snapshot.cameraVoiceQueued = perfCounters.cameraVoiceQueued.load(std::memory_order_relaxed);
-    snapshot.cameraVoiceStarted = perfCounters.cameraVoiceStarted.load(std::memory_order_relaxed);
     snapshot.sigObsQueueDrops = perfCounters.sigObsQueueDrops.load(std::memory_order_relaxed);
     snapshot.sigObsWriteFail = perfCounters.sigObsWriteFail.load(std::memory_order_relaxed);
 
@@ -861,8 +859,6 @@ String perfMetricsToJson() {
     doc["audioPlayCount"] = perfCounters.audioPlayCount.load();
     doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
     doc["audioTaskFail"] = perfCounters.audioTaskFail.load();
-    doc["cameraVoiceQueued"] = perfCounters.cameraVoiceQueued.load();
-    doc["cameraVoiceStarted"] = perfCounters.cameraVoiceStarted.load();
     doc["sigObsQueueDrops"] = perfCounters.sigObsQueueDrops.load();
     doc["sigObsWriteFail"] = perfCounters.sigObsWriteFail.load();
     doc["cameraDisplayMaxUs"] = perfGetCameraDisplayMaxUs();

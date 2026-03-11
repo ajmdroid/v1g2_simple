@@ -26,8 +26,6 @@ REQUIRED_CAMERA_METRIC_KEYS = (
     "cameraDisplayMaxUs",
     "cameraDebugDisplayMaxUs",
     "cameraProcessMaxUs",
-    "cameraVoiceQueued",
-    "cameraVoiceStarted",
 )
 
 
@@ -147,8 +145,6 @@ def analyze_samples(
         "audioPlayBusy",
         "cameraDisplayFrames",
         "cameraDebugDisplayFrames",
-        "cameraVoiceQueued",
-        "cameraVoiceStarted",
     ]
     metrics = {
         f"{key}_delta": metric_delta(pre_metrics, last_metrics, key)
@@ -156,8 +152,6 @@ def analyze_samples(
     }
     metrics["camera_display_frame_delta"] = metrics.pop("cameraDisplayFrames_delta")
     metrics["camera_debug_frame_delta"] = metrics.pop("cameraDebugDisplayFrames_delta")
-    metrics["camera_voice_queued_delta"] = metrics.pop("cameraVoiceQueued_delta")
-    metrics["camera_voice_started_delta"] = metrics.pop("cameraVoiceStarted_delta")
 
     metrics.update(
         {
@@ -213,7 +207,6 @@ def analyze_samples(
                     "cameraDebugDisplayFramesDelta": metric_delta(
                         prev_metrics, sample_metrics, "cameraDebugDisplayFrames"
                     ),
-                    "cameraVoiceStartedDelta": metric_delta(prev_metrics, sample_metrics, "cameraVoiceStarted"),
                 }
             )
         prev_metrics = sample_metrics
@@ -341,6 +334,7 @@ def run_phase(
     final_status: dict[str, object] = {}
     analyzed_metrics: dict[str, object] = {}
     over_limit_samples: list[dict[str, object]] = []
+    effective_flap_cycles = args.flap_cycles
     cleanup_camera_clear = False
     cleanup_scenario_stop = False
 
@@ -373,6 +367,19 @@ def run_phase(
         require(bool(start_response.get("success")), f"{phase_name}: scenario start failed")
         checks.append("scenario start succeeded")
 
+        if phase_name == "flap":
+            interval_seconds = max(0.5, args.flap_interval_seconds)
+            scenario_duration_seconds = float(start_response.get("durationMs", 0) or 0) / 1000.0
+            max_cycles_by_duration = int((scenario_duration_seconds / interval_seconds + 1.0) // 2.0)
+            max_cycles_by_duration = max(1, max_cycles_by_duration)
+            if effective_flap_cycles > max_cycles_by_duration:
+                checks.append(
+                    "flap cycles capped to "
+                    f"{max_cycles_by_duration}/{effective_flap_cycles} "
+                    f"for duration {scenario_duration_seconds:.3f}s at interval {interval_seconds:.3f}s"
+                )
+                effective_flap_cycles = max_cycles_by_duration
+
         t0 = time.time()
         next_sample_at = t0
 
@@ -387,11 +394,16 @@ def run_phase(
                     "type": args.camera_type,
                     "distanceCm": args.camera_distance_cm,
                     "holdMs": effective_hold_ms,
-                    "voiceStage": args.voice_stage,
                 },
             )
             require(bool(render_response.get("success")), "overlap: camera debug render failed")
-            actions.append({"elapsed_s": 0.0, "action": "render", "hold_ms": effective_hold_ms})
+            actions.append(
+                {
+                    "elapsed_s": 0.0,
+                    "action": "render",
+                    "hold_ms": int(render_response.get("holdMs", effective_hold_ms) or effective_hold_ms),
+                }
+            )
             checks.append("camera debug render succeeded")
         elif phase_name == "flap":
             checks.append("flap transition driver armed")
@@ -399,7 +411,7 @@ def run_phase(
             raise StressFailure(f"unsupported phase '{phase_name}'")
 
         flap_camera_active = False
-        flap_remaining_cycles = args.flap_cycles
+        flap_remaining_cycles = effective_flap_cycles
         flap_next_action_at = t0
 
         while True:
@@ -421,13 +433,16 @@ def run_phase(
                             "type": args.camera_type,
                             "distanceCm": args.camera_distance_cm,
                             "holdMs": args.hold_ms,
-                            "voiceStage": args.voice_stage,
                         },
                     )
                     require(bool(render_response.get("success")), "flap: camera debug render failed")
                     flap_camera_active = True
                     actions.append(
-                        {"elapsed_s": round(elapsed_s, 3), "action": "render", "hold_ms": args.hold_ms}
+                        {
+                            "elapsed_s": round(elapsed_s, 3),
+                            "action": "render",
+                            "hold_ms": int(render_response.get("holdMs", args.hold_ms) or args.hold_ms),
+                        }
                     )
                 else:
                     clear_resp = request_json(
@@ -469,13 +484,13 @@ def run_phase(
         )
         require(int(final_status.get("completedRuns", 0) or 0) >= 1, f"{phase_name}: scenario completedRuns < 1")
         if phase_name == "flap":
-            completed_flap_cycles = args.flap_cycles - flap_remaining_cycles
+            completed_flap_cycles = effective_flap_cycles - flap_remaining_cycles
             require(
-                completed_flap_cycles >= args.flap_cycles,
-                f"flap: completed {completed_flap_cycles}/{args.flap_cycles} requested flap cycle(s)",
+                completed_flap_cycles >= effective_flap_cycles,
+                f"flap: completed {completed_flap_cycles}/{effective_flap_cycles} effective flap cycle(s)",
             )
             checks.append(
-                f"flap transition cycles completed ({completed_flap_cycles}/{args.flap_cycles})"
+                f"flap transition cycles completed ({completed_flap_cycles}/{effective_flap_cycles})"
             )
         checks.append("scenario completed and emitted all events")
         analyzed_metrics, over_limit_samples, failure_reasons = analyze_samples(
@@ -521,8 +536,6 @@ def run_phase(
             )
 
     metrics = {
-        "render_voice_requested": render_response.get("voiceRequested", False),
-        "render_voice_started": render_response.get("voiceStarted", False),
         "scenario_events_total": final_status.get("eventsTotal", 0),
         "scenario_events_emitted": final_status.get("eventsEmitted", 0),
         "scenario_completed_runs": final_status.get("completedRuns", 0),
@@ -530,7 +543,8 @@ def run_phase(
         "cleanup_scenario_stop": cleanup_scenario_stop,
         "pre_rx_packets": pre_metrics.get("rxPackets", 0),
         "requested_flap_cycles": args.flap_cycles if phase_name == "flap" else 0,
-        "completed_flap_cycles": (args.flap_cycles - flap_remaining_cycles) if phase_name == "flap" else 0,
+        "effective_flap_cycles": effective_flap_cycles if phase_name == "flap" else 0,
+        "completed_flap_cycles": (effective_flap_cycles - flap_remaining_cycles) if phase_name == "flap" else 0,
         **analyzed_metrics,
     }
     return {
@@ -565,9 +579,8 @@ def main() -> int:
     parser.add_argument("--out-dir", default="")
     parser.add_argument("--scenario-id", default="RAD-03")
     parser.add_argument("--duration-scale-pct", type=int, default=120)
-    parser.add_argument("--camera-type", default="speed")
+    parser.add_argument("--camera-type", default="alpr")
     parser.add_argument("--camera-distance-cm", type=int, default=16093)
-    parser.add_argument("--voice-stage", default="far", choices=["none", "far", "near"])
     parser.add_argument("--hold-ms", type=int, default=45000)
     parser.add_argument("--mode", default="both", choices=["overlap", "flap", "both"])
     parser.add_argument("--flap-cycles", type=int, default=3)
@@ -591,7 +604,6 @@ def main() -> int:
         "duration_scale_pct": args.duration_scale_pct,
         "camera_type": args.camera_type,
         "camera_distance_cm": args.camera_distance_cm,
-        "voice_stage": args.voice_stage,
         "hold_ms": args.hold_ms,
         "mode": args.mode,
         "flap_cycles": args.flap_cycles,

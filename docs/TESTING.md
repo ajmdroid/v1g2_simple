@@ -104,7 +104,7 @@ This is the process that must remain consistent over time.
 
 - suite profile: `device_v2`
 - soak profile: `drive_wifi_ap`
-- camera smoke item: settings API round-trip, `/cameras` page render, and debug camera draw on hardware
+- camera smoke item: ALPR settings API round-trip, `/cameras` page render, and debug camera draw on hardware
 - robust latency mode: `hybrid` (`minSamples=8`, `maxExceedPct=5`, `wifiSkipFirst=2`)
 - metrics endpoint retry: `attempts=3`, `delay=1s`
 - harness preflight fail-fast: classed preflight failure (`HARNESS_PRECHECK_*`) aborts remaining items with deterministic suite exit reason
@@ -327,7 +327,7 @@ Current pass/fail behavior:
 - FAIL if any sampled `dispPipeMaxUs` window exceeds `80000us` while camera activity is present in the same sample window
 - PASS if over-limit `dispPipeMaxUs` samples are observed only with `cameraActivity=neither`
 
-Camera fields surfaced in `/api/debug/metrics` and perf CSV schema `10`:
+Camera fields surfaced in `/api/debug/metrics` and perf CSV schema `11`:
 
 - `cameraDisplayActive`
 - `cameraDebugOverrideActive`
@@ -336,8 +336,6 @@ Camera fields surfaced in `/api/debug/metrics` and perf CSV schema `10`:
 - `cameraDisplayMaxUs`
 - `cameraDebugDisplayMaxUs`
 - `cameraProcessMaxUs`
-- `cameraVoiceQueued`
-- `cameraVoiceStarted`
 
 Interpretation:
 

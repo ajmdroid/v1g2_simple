@@ -77,15 +77,6 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["gpsLockoutPreQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
     doc["cameraAlertsEnabled"] = settings.cameraAlertsEnabled;
     doc["cameraAlertRangeCm"] = settings.cameraAlertRangeCm;
-    doc["cameraAlertNearRangeCm"] = settings.cameraAlertNearRangeCm;
-    doc["cameraTypeAlpr"] = settings.cameraTypeAlpr;
-    doc["cameraTypeRedLight"] = settings.cameraTypeRedLight;
-    doc["cameraTypeSpeed"] = settings.cameraTypeSpeed;
-    doc["cameraTypeBusLane"] = settings.cameraTypeBusLane;
-    doc["colorCameraArrow"] = settings.colorCameraArrow;
-    doc["colorCameraText"] = settings.colorCameraText;
-    doc["cameraVoiceFarEnabled"] = settings.cameraVoiceFarEnabled;
-    doc["cameraVoiceNearEnabled"] = settings.cameraVoiceNearEnabled;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
