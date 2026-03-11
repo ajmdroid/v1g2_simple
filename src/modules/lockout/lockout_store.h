@@ -122,6 +122,7 @@ public:
         uint32_t entriesLoaded = 0; // Entries populated on last load
         uint32_t entriesSaved  = 0; // Entries serialized on last save/export
         uint32_t entriesSkipped = 0; // Entries skipped on last load (missing fields)
+        uint32_t droppedManualCount = 0; // Manual entries dropped during migration
     };
     const Stats& stats() const { return stats_; }
 

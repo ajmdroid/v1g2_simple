@@ -192,27 +192,35 @@ void test_evaluate_no_match_wrong_freq() {
 }
 
 void test_evaluate_matches_freq_within_tolerance() {
-    idx.add(makeKBandEntry(1012345, -2054321, 24148, 1350));
+    LockoutEntry e = makeKBandEntry(1012345, -2054321, 24148, 1350);
+    e.freqWindowMinMHz = 24140;
+    e.freqWindowMaxMHz = 24160;
+    idx.add(e);
 
-    // 24155 MHz is 7 MHz away — within ±10 MHz tolerance.
+    // 24155 MHz is within the adaptive window [24140, 24160].
     LockoutDecision d = idx.evaluate(1012345, -2054321, 0x04, 24155);
     TEST_ASSERT_TRUE(d.shouldMute);
 }
 
-void test_evaluate_band_only_lockout_no_freq_filter() {
+void test_evaluate_wide_window_matches_distant_freq() {
     LockoutEntry e;
     e.latE5      = 1012345;
     e.lonE5      = -2054321;
     e.radiusE5   = 1350;
+    e.areaId     = 1;
     e.bandMask   = 0x04;  // K
-    e.freqMHz    = 0;     // No frequency filter
-    e.freqTolMHz = 0;
+    e.freqMHz    = 24148;
+    e.freqTolMHz = 10;
+    e.freqWindowMinMHz = 24100;
+    e.freqWindowMaxMHz = 24200;
     e.confidence = 50;
-    e.flags      = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    e.flags      = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
+    e.firstSeenMs = 1700000000000LL;
+    e.lastSeenMs  = 1700000060000LL;
     idx.add(e);
 
-    // Should match any K-band frequency.
-    LockoutDecision d = idx.evaluate(1012345, -2054321, 0x04, 35000);
+    // 24180 is within the wide window [24100, 24200].
+    LockoutDecision d = idx.evaluate(1012345, -2054321, 0x04, 24180);
     TEST_ASSERT_TRUE(d.shouldMute);
 }
 
@@ -359,15 +367,16 @@ void test_recordCleanPass_auto_removes_learned_at_zero() {
     TEST_ASSERT_EQUAL(0, idx.activeCount());
 }
 
-void test_recordCleanPass_manual_entry_floors_at_zero_but_stays_active() {
+void test_recordCleanPass_learned_entry_auto_removed_at_zero() {
     LockoutEntry e = makeKBandEntry(1012345, -2054321);
     e.confidence = 1;
-    e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     int slot = idx.add(e);
 
     uint8_t c = idx.recordCleanPass(slot, 1700000120000LL);
     TEST_ASSERT_EQUAL(0, c);
-    TEST_ASSERT_TRUE(idx.at(slot)->isActive());  // Manual stays.
+    TEST_ASSERT_FALSE(idx.at(slot)->isActive());  // Learned auto-removed.
+    TEST_ASSERT_EQUAL(0, idx.activeCount());
 }
 
 void test_recordCleanPass_removes_plain_active_at_zero() {
@@ -587,7 +596,8 @@ void test_addOrUpdate_merges_flags() {
     e2.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
     int slot = idx.addOrUpdate(e2);
 
-    uint8_t expected = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED | LockoutEntry::FLAG_MANUAL;
+    // Manual flag is stripped by add/addOrUpdate — only ACTIVE|LEARNED survives.
+    uint8_t expected = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     TEST_ASSERT_EQUAL(expected, idx.at(slot)->flags);
 }
 
@@ -761,7 +771,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_evaluate_no_match_wrong_band);
     RUN_TEST(test_evaluate_no_match_wrong_freq);
     RUN_TEST(test_evaluate_matches_freq_within_tolerance);
-    RUN_TEST(test_evaluate_band_only_lockout_no_freq_filter);
+    RUN_TEST(test_evaluate_wide_window_matches_distant_freq);
     RUN_TEST(test_evaluate_empty_index_no_match);
     RUN_TEST(test_evaluate_multi_band_entry);
     RUN_TEST(test_evaluate_ka_matches_when_policy_enabled);
@@ -778,7 +788,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_recordHit_caps_at_255);
     RUN_TEST(test_recordCleanPass_decrements_confidence);
     RUN_TEST(test_recordCleanPass_auto_removes_learned_at_zero);
-    RUN_TEST(test_recordCleanPass_manual_entry_floors_at_zero_but_stays_active);
+    RUN_TEST(test_recordCleanPass_learned_entry_auto_removed_at_zero);
     RUN_TEST(test_recordCleanPass_removes_plain_active_at_zero);
     RUN_TEST(test_recordHit_resets_miss_tracking);
     RUN_TEST(test_recordCleanPassWithPolicy_threshold_demotes_after_count);

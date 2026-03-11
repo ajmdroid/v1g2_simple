@@ -336,28 +336,30 @@ uint16_t LockoutLearner::findExistingAreaId(int32_t latE5, int32_t lonE5) const 
 }
 
 uint16_t LockoutLearner::allocAreaId() const {
-    uint16_t maxAreaId = 0;
-    if (index_) {
-        for (size_t i = 0; i < index_->capacity(); ++i) {
-            const LockoutEntry* entry = index_->at(i);
-            if (!entry || !entry->isActive()) {
-                continue;
+    // Smallest-free scan: find the lowest areaId >= 1 not used by any active
+    // index entry or learner candidate.
+    for (uint16_t candidate = 1; candidate != 0; ++candidate) {
+        bool used = false;
+        if (index_) {
+            for (size_t i = 0; i < index_->capacity(); ++i) {
+                const LockoutEntry* entry = index_->at(i);
+                if (entry && entry->isActive() && entry->areaId == candidate) {
+                    used = true;
+                    break;
+                }
             }
-            if (entry->areaId > maxAreaId) {
-                maxAreaId = entry->areaId;
+        }
+        if (!used) {
+            for (size_t i = 0; i < kCandidateCapacity; ++i) {
+                if (candidates_[i].active && candidates_[i].areaId == candidate) {
+                    used = true;
+                    break;
+                }
             }
         }
+        if (!used) return candidate;
     }
-    for (size_t i = 0; i < kCandidateCapacity; ++i) {
-        const LearnerCandidate& candidate = candidates_[i];
-        if (!candidate.active) {
-            continue;
-        }
-        if (candidate.areaId > maxAreaId) {
-            maxAreaId = candidate.areaId;
-        }
-    }
-    return (maxAreaId == UINT16_MAX) ? UINT16_MAX : static_cast<uint16_t>(maxAreaId + 1);
+    return UINT16_MAX;
 }
 
 int LockoutLearner::allocCandidate() {

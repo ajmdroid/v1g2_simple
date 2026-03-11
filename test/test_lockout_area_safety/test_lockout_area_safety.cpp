@@ -1,4 +1,5 @@
 #include <unity.h>
+#include <ArduinoJson.h>
 
 #include "../mocks/Arduino.h"
 #include "../mocks/settings.h"
@@ -154,11 +155,92 @@ void test_record_hit_expands_runtime_frequency_window() {
     TEST_ASSERT_TRUE(testIndex.evaluate(1012345, -2054321, 0x04, 24150).shouldMute);
 }
 
+void test_allTime_false_blocks_clean_pass_when_hour_inactive() {
+    LockoutEntry e = makeSignature(44, 24147);
+    e.setAllTime(false);
+    e.activeHourMask = 0;  // No hours active.
+    e.confidence = 40;
+    e.missCount = 0;
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(e));
+
+    // recordCleanPassWithPolicy should not count because hourIsExpected is false.
+    LockoutCleanPassResult result =
+        testIndex.recordCleanPassWithPolicy(0, 1700000000000LL, 12, 0, 3);
+    TEST_ASSERT_FALSE(result.counted);
+    TEST_ASSERT_EQUAL(40, result.confidence);
+}
+
+void test_allTime_true_allows_clean_pass_decay() {
+    LockoutEntry e = makeSignature(55, 24147);
+    e.setAllTime(true);
+    e.confidence = 40;
+    e.missCount = 0;
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(e));
+
+    testIndex.recordCleanPass(0, 1700000000000LL);
+    const LockoutEntry* stored = testIndex.at(0);
+    TEST_ASSERT_NOT_NULL(stored);
+    TEST_ASSERT_TRUE(stored->confidence < 40);
+}
+
+void test_v1_json_migration_roundtrip_preserves_entries() {
+    // Build a v1 JSON doc with two K-band zones.
+    JsonDocument v1Doc;
+    v1Doc["_type"] = "v1simple_lockout_zones";
+    v1Doc["_version"] = 1;
+    JsonArray zones = v1Doc["zones"].to<JsonArray>();
+    {
+        JsonObject z = zones.add<JsonObject>();
+        z["lat"] = 1012345;
+        z["lon"] = -2054321;
+        z["band"] = 4;
+        z["freq"] = 24147;
+        z["conf"] = 80;
+    }
+    {
+        JsonObject z = zones.add<JsonObject>();
+        z["lat"] = 3056789;
+        z["lon"] = -4098765;
+        z["band"] = 4;
+        z["freq"] = 24169;
+        z["conf"] = 60;
+    }
+
+    // Load v1.
+    TEST_ASSERT_TRUE(testStore.fromJson(v1Doc));
+    TEST_ASSERT_EQUAL(2, testIndex.activeCount());
+
+    // Save as v2.
+    JsonDocument v2Doc;
+    testStore.toJson(v2Doc);
+    TEST_ASSERT_EQUAL(2, v2Doc["_version"].as<int>());
+    TEST_ASSERT_FALSE(v2Doc["areas"].isNull());
+
+    // Reload v2 into clean index.
+    testIndex.clear();
+    TEST_ASSERT_TRUE(testStore.fromJson(v2Doc));
+    TEST_ASSERT_EQUAL(2, testIndex.activeCount());
+
+    // Verify both entries survived migration.
+    bool found24147 = false, found24169 = false;
+    for (size_t i = 0; i < testIndex.capacity(); ++i) {
+        const LockoutEntry* e = testIndex.at(i);
+        if (!e || !e->isActive()) continue;
+        if (e->freqMHz == 24147) found24147 = true;
+        if (e->freqMHz == 24169) found24169 = true;
+    }
+    TEST_ASSERT_TRUE(found24147);
+    TEST_ASSERT_TRUE(found24169);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_learned_subset_in_area_still_mutes);
     RUN_TEST(test_new_same_band_frequency_in_area_fails_open);
     RUN_TEST(test_same_frequency_duplicates_fail_open);
     RUN_TEST(test_record_hit_expands_runtime_frequency_window);
+    RUN_TEST(test_allTime_false_blocks_clean_pass_when_hour_inactive);
+    RUN_TEST(test_allTime_true_allows_clean_pass_decay);
+    RUN_TEST(test_v1_json_migration_roundtrip_preserves_entries);
     return UNITY_END();
 }

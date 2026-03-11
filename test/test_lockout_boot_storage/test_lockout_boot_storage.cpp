@@ -72,7 +72,7 @@ static uint32_t normalizeNoop(JsonDocument&) {
 static void writeJsonZones(fs::FS& fs, const char* path, const LockoutEntry& entry) {
     JsonDocument doc;
     doc["_type"] = LockoutStore::kTypeTag;
-    doc["_version"] = LockoutStore::kVersion;
+    doc["_version"] = 1;  // v1 flat zones format for migration testing
     JsonObject zone = doc["zones"].to<JsonArray>().add<JsonObject>();
     zone["lat"] = entry.latE5;
     zone["lon"] = entry.lonE5;

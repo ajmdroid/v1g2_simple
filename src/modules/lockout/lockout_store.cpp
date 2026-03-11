@@ -73,7 +73,7 @@ bool finalizeRuntimeEntry(LockoutEntry& entry, bool migratedFromLegacy, uint16_t
     entry.areaId = areaId;
     entry.setManual(false);
     entry.setLearned(true);
-    if (entry.freqMHz == 0) {
+    if (entry.bandMask == 0 || entry.freqMHz == 0) {
         return false;
     }
     if (entry.freqWindowMinMHz == 0) {
@@ -91,6 +91,10 @@ bool finalizeRuntimeEntry(LockoutEntry& entry, bool migratedFromLegacy, uint16_t
         entry.setAllTime(true);
     }
     entry.setActive(true);
+    if (entry.directionMode != LockoutEntry::DIRECTION_ALL &&
+        entry.headingDeg == LockoutEntry::HEADING_INVALID) {
+        entry.directionMode = LockoutEntry::DIRECTION_ALL;
+    }
     return true;
 }
 
@@ -122,11 +126,6 @@ bool runtimeEntryFromDisk(const LockoutStore::LockoutDiskEntry& diskEntry, Locko
     entry.lastCountedMissMs = diskEntry.lastCountedMissMs;
     entry.activeHourMask = diskEntry.activeHourMask;
     entry.setAllTime(diskEntry.allTime != 0);
-
-    if (entry.directionMode != LockoutEntry::DIRECTION_ALL &&
-        entry.headingDeg == LockoutEntry::HEADING_INVALID) {
-        entry.directionMode = LockoutEntry::DIRECTION_ALL;
-    }
 
     return finalizeRuntimeEntry(entry, false, entry.areaId);
 }
@@ -236,7 +235,6 @@ void LockoutStore::toJson(JsonDocument& doc) const {
     doc["_version"] = kVersion;
 
     JsonArray areas = doc["areas"].to<JsonArray>();
-    JsonArray zones = doc["zones"].to<JsonArray>();
     uint32_t count = 0;
 
     for (size_t i = 0; i < index_->capacity(); ++i) {
@@ -281,23 +279,6 @@ void LockoutStore::toJson(JsonDocument& doc) const {
         z["hours"] = e->activeHourMask;
         z["allTime"] = e->isAllTime();
 
-        JsonObject legacy = zones.add<JsonObject>();
-        legacy["lat"] = e->latE5;
-        legacy["lon"] = e->lonE5;
-        legacy["rad"] = e->radiusE5;
-        legacy["band"] = bandMask;
-        legacy["freq"] = e->freqMHz;
-        legacy["ftol"] = e->freqTolMHz;
-        legacy["conf"] = e->confidence;
-        legacy["flags"] = e->flags;
-        legacy["dir"] = clampDirectionMode(e->directionMode);
-        legacy["hdg"] = (e->headingDeg == LockoutEntry::HEADING_INVALID) ? -1 : e->headingDeg;
-        legacy["htol"] = clampHeadingTolerance(e->headingTolDeg);
-        legacy["miss"] = e->missCount;
-        legacy["first"] = e->firstSeenMs;
-        legacy["last"] = e->lastSeenMs;
-        legacy["pass"] = e->lastPassMs;
-        legacy["mms"] = e->lastCountedMissMs;
         ++count;
     }
 
@@ -336,6 +317,7 @@ bool LockoutStore::fromJson(JsonDocument& doc) {
 
     uint32_t loaded  = 0;
     uint32_t skipped = 0;
+    uint32_t droppedManuals = 0;
     uint16_t nextAreaId = 1;
 
     if (version == 1) {
@@ -360,6 +342,7 @@ bool LockoutStore::fromJson(JsonDocument& doc) {
             const uint8_t flags = z["flags"] | static_cast<uint8_t>(LockoutEntry::FLAG_ACTIVE);
             if ((flags & LockoutEntry::FLAG_MANUAL) != 0) {
                 ++skipped;
+                ++droppedManuals;
                 continue;
             }
 
@@ -424,6 +407,7 @@ bool LockoutStore::fromJson(JsonDocument& doc) {
                 const uint8_t flags = z["flags"] | static_cast<uint8_t>(LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED);
                 if ((flags & LockoutEntry::FLAG_MANUAL) != 0) {
                     ++skipped;
+                    ++droppedManuals;
                     continue;
                 }
 
@@ -465,9 +449,14 @@ bool LockoutStore::fromJson(JsonDocument& doc) {
         Serial.printf("[LockoutStore] Skipped %lu entries (missing lat/lon or unsupported band)\n",
                       static_cast<unsigned long>(skipped));
     }
+    if (droppedManuals > 0) {
+        Serial.printf("[LockoutStore] Dropped %lu manual entries during migration\n",
+                      static_cast<unsigned long>(droppedManuals));
+    }
 
     stats_.entriesLoaded  = loaded;
     stats_.entriesSkipped = skipped;
+    stats_.droppedManualCount = droppedManuals;
     ++stats_.loads;
 
     Serial.printf("[LockoutStore] Loaded %lu entries\n",
@@ -647,6 +636,7 @@ bool LockoutStore::loadBinary(fs::FS& fs, const char* path) {
     uint32_t crc = 0xFFFFFFFFu;
     uint32_t loaded = 0;
     uint32_t skipped = 0;
+    uint32_t droppedManuals = 0;
     uint16_t nextAreaId = 1;
 
     for (uint16_t i = 0; i < header.entryCount; ++i) {
@@ -661,6 +651,9 @@ bool LockoutStore::loadBinary(fs::FS& fs, const char* path) {
                 return false;
             }
             crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(&diskEntry), sizeof(diskEntry));
+            if ((diskEntry.flags & LockoutEntry::FLAG_MANUAL) != 0) {
+                ++droppedManuals;
+            }
             if (!runtimeEntryFromLegacyDisk(diskEntry, entry, nextAreaId++)) {
                 ++skipped;
                 continue;
@@ -704,8 +697,13 @@ bool LockoutStore::loadBinary(fs::FS& fs, const char* path) {
 
     stats_.entriesLoaded = loaded;
     stats_.entriesSkipped = skipped;
+    stats_.droppedManualCount = droppedManuals;
     ++stats_.loads;
 
+    if (droppedManuals > 0) {
+        Serial.printf("[LockoutStore] Dropped %lu manual entries during binary migration\n",
+                      static_cast<unsigned long>(droppedManuals));
+    }
     Serial.printf("[LockoutStore] Loaded %lu entries from binary\n",
                   static_cast<unsigned long>(loaded));
     return true;

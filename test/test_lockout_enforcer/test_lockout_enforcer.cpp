@@ -408,10 +408,9 @@ void test_multi_alert_partial_match_does_not_mute() {
 
     TEST_ASSERT_TRUE(r.evaluated);
     TEST_ASSERT_FALSE(r.shouldMute);
+    // Fail-open: partial match → matchedAlertCount stays 0 (no partial recordHit).
     TEST_ASSERT_EQUAL(2, r.supportedAlertCount);
-    TEST_ASSERT_EQUAL(1, r.matchedAlertCount);
-    TEST_ASSERT_EQUAL(0, r.matchIndex);
-    TEST_ASSERT_EQUAL(1, enforcer.stats().matches);
+    TEST_ASSERT_EQUAL(0, r.matchedAlertCount);
 }
 
 void test_enforce_partial_multi_alert_records_matched_slot_hit() {
@@ -430,20 +429,24 @@ void test_enforce_partial_multi_alert_records_matched_slot_hit() {
 
     TEST_ASSERT_TRUE(r.evaluated);
     TEST_ASSERT_FALSE(r.shouldMute);
+    // Fail-open: partial match → no recordHit, confidence unchanged, store clean.
     TEST_ASSERT_EQUAL(2, r.supportedAlertCount);
-    TEST_ASSERT_EQUAL(1, r.matchedAlertCount);
-    TEST_ASSERT_EQUAL(101, testIndex.at(0)->confidence);
-    TEST_ASSERT_EQUAL(1700000100000LL, testIndex.at(0)->lastSeenMs);
-    TEST_ASSERT_TRUE(testStore.isDirty());
+    TEST_ASSERT_EQUAL(0, r.matchedAlertCount);
+    TEST_ASSERT_EQUAL(100, testIndex.at(0)->confidence);
+    TEST_ASSERT_FALSE(testStore.isDirty());
 }
 
-void test_enforce_multi_alert_same_slot_records_hit_once() {
+void test_enforce_multi_alert_same_area_records_hit() {
     settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
     enforcer.begin(&settingsManager, &testIndex, &testStore);
 
-    LockoutEntry e = makeEntry(10.12345f, -20.54321f, 0x04, 0);
-    e.freqTolMHz = 0;
-    testIndex.add(e);
+    // Two entries in the same area, each covering one K-band frequency.
+    LockoutEntry e1 = makeEntry(10.12345f, -20.54321f, 0x04, 24148);
+    e1.areaId = 1;
+    testIndex.add(e1);
+    LockoutEntry e2 = makeEntry(10.12345f, -20.54321f, 0x04, 24160);
+    e2.areaId = 1;
+    testIndex.add(e2);
     testStore.clearDirty();
     parser.setAlerts({
         AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24148, true, true),
@@ -458,7 +461,7 @@ void test_enforce_multi_alert_same_slot_records_hit_once() {
     TEST_ASSERT_EQUAL(2, r.supportedAlertCount);
     TEST_ASSERT_EQUAL(2, r.matchedAlertCount);
     TEST_ASSERT_EQUAL(101, testIndex.at(0)->confidence);
-    TEST_ASSERT_EQUAL(1700000100000LL, testIndex.at(0)->lastSeenMs);
+    TEST_ASSERT_EQUAL(101, testIndex.at(1)->confidence);
     TEST_ASSERT_EQUAL(2, enforcer.stats().matches);
     TEST_ASSERT_TRUE(testStore.isDirty());
 }
@@ -600,6 +603,7 @@ void test_enforce_clean_pass_policy_interval_and_threshold() {
     LockoutEntry e = makeEntry(10.12345f, -20.54321f);
     e.confidence = 50;
     e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
+    e.setAllTime(true);
     testIndex.add(e);
 
     parser.reset();
@@ -628,39 +632,31 @@ void test_enforce_clean_pass_policy_interval_and_threshold() {
     TEST_ASSERT_EQUAL(0, testIndex.activeCount());
 }
 
-void test_enforce_manual_demotion_policy_opt_in() {
+void test_enforce_learned_demotion_by_clean_pass_decay() {
     settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
     settingsManager.settings.gpsLockoutLearnerUnlearnCount = 0;
     settingsManager.settings.gpsLockoutLearnerUnlearnIntervalHours = 0;
-    settingsManager.settings.gpsLockoutManualDemotionMissCount = 10;
+    settingsManager.settings.gpsLockoutManualDemotionMissCount = 0;
     enforcer.begin(&settingsManager, &testIndex, &testStore);
 
     LockoutEntry e = makeEntry(10.12345f, -20.54321f);
-    e.confidence = 1;
-    e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    e.confidence = 5;
+    e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
+    e.setAllTime(true);
     testIndex.add(e);
 
     parser.reset();
     GpsRuntimeStatus gps = makeGps(10.12345f, -20.54321f);
 
-    for (int i = 0; i < 9; ++i) {
+    // 5 clean passes to decay confidence from 5 to 0 → demotion.
+    for (int i = 0; i < 5; ++i) {
         enforcer.process(static_cast<uint32_t>(1000 + i * 31000),
                          1700000000000LL + static_cast<int64_t>(i) * 31000LL,
                          parser,
                          gps);
     }
 
-    TEST_ASSERT_EQUAL(9, enforcer.stats().cleanPasses);
-    TEST_ASSERT_EQUAL(1, testIndex.activeCount());
-    TEST_ASSERT_EQUAL(9, testIndex.at(0)->missCount);
-    TEST_ASSERT_EQUAL(1, testIndex.at(0)->confidence);
-
-    // 10th counted miss removes manual lockout because opt-in threshold is set.
-    enforcer.process(1000 + 9 * 31000,
-                     1700000000000LL + 9LL * 31000LL,
-                     parser,
-                     gps);
-    TEST_ASSERT_EQUAL(10, enforcer.stats().cleanPasses);
+    TEST_ASSERT_EQUAL(5, enforcer.stats().cleanPasses);
     TEST_ASSERT_EQUAL(1, enforcer.stats().demotions);
     TEST_ASSERT_EQUAL(0, testIndex.activeCount());
 }
@@ -710,7 +706,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_multi_alert_all_supported_matches_mutes);
     RUN_TEST(test_multi_alert_partial_match_does_not_mute);
     RUN_TEST(test_enforce_partial_multi_alert_records_matched_slot_hit);
-    RUN_TEST(test_enforce_multi_alert_same_slot_records_hit_once);
+    RUN_TEST(test_enforce_multi_alert_same_area_records_hit);
     RUN_TEST(test_stats_accumulate);
     RUN_TEST(test_empty_index_no_match);
     RUN_TEST(test_lastResult_reflects_latest);
@@ -720,7 +716,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_enforce_clean_pass_demotes_nearby);
     RUN_TEST(test_enforce_clean_pass_rate_limited);
     RUN_TEST(test_enforce_clean_pass_policy_interval_and_threshold);
-    RUN_TEST(test_enforce_manual_demotion_policy_opt_in);
+    RUN_TEST(test_enforce_learned_demotion_by_clean_pass_decay);
     RUN_TEST(test_shadow_no_clean_pass);
 
     return UNITY_END();

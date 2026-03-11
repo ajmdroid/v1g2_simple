@@ -120,11 +120,11 @@ void test_toJson_empty_index() {
     store.toJson(doc);
 
     TEST_ASSERT_EQUAL_STRING("v1simple_lockout_zones", doc["_type"].as<const char*>());
-    TEST_ASSERT_EQUAL(1, doc["_version"].as<int>());
+    TEST_ASSERT_EQUAL(2, doc["_version"].as<int>());
 
-    JsonArray zones = doc["zones"];
-    TEST_ASSERT_FALSE(zones.isNull());
-    TEST_ASSERT_EQUAL(0, zones.size());
+    JsonArray areas = doc["areas"];
+    TEST_ASSERT_FALSE(areas.isNull());
+    TEST_ASSERT_EQUAL(0, areas.size());
     TEST_ASSERT_EQUAL(0, store.stats().entriesSaved);
 }
 
@@ -134,14 +134,18 @@ void test_toJson_single_entry() {
     JsonDocument doc;
     store.toJson(doc);
 
-    JsonArray zones = doc["zones"];
-    TEST_ASSERT_EQUAL(1, zones.size());
+    JsonArray areas = doc["areas"];
+    TEST_ASSERT_EQUAL(1, areas.size());
     TEST_ASSERT_EQUAL(1, store.stats().entriesSaved);
 
-    JsonObject z = zones[0];
-    TEST_ASSERT_EQUAL(1012345, z["lat"].as<int32_t>());
-    TEST_ASSERT_EQUAL(-2054321, z["lon"].as<int32_t>());
-    TEST_ASSERT_EQUAL(1350, z["rad"].as<uint16_t>());
+    JsonObject area = areas[0];
+    TEST_ASSERT_EQUAL(1012345, area["lat"].as<int32_t>());
+    TEST_ASSERT_EQUAL(-2054321, area["lon"].as<int32_t>());
+    TEST_ASSERT_EQUAL(1350, area["rad"].as<uint16_t>());
+
+    JsonArray sigs = area["signatures"];
+    TEST_ASSERT_EQUAL(1, sigs.size());
+    JsonObject z = sigs[0];
     TEST_ASSERT_EQUAL(0x04, z["band"].as<uint8_t>());
     TEST_ASSERT_EQUAL(24148, z["freq"].as<uint16_t>());
     TEST_ASSERT_EQUAL(10, z["ftol"].as<uint16_t>());
@@ -150,9 +154,12 @@ void test_toJson_single_entry() {
 }
 
 void test_toJson_skips_inactive_slots() {
-    int s0 = testIndex.add(makeEntry(1000000, -1000000));
-    int s1 = testIndex.add(makeEntry(2000000, -2000000));
-    testIndex.add(makeEntry(3000000, -3000000));
+    LockoutEntry e0 = makeEntry(1000000, -1000000); e0.areaId = 1;
+    LockoutEntry e1 = makeEntry(2000000, -2000000); e1.areaId = 2;
+    LockoutEntry e2 = makeEntry(3000000, -3000000); e2.areaId = 3;
+    int s0 = testIndex.add(e0);
+    int s1 = testIndex.add(e1);
+    testIndex.add(e2);
 
     // Remove the middle one.
     testIndex.remove(static_cast<size_t>(s1));
@@ -161,8 +168,7 @@ void test_toJson_skips_inactive_slots() {
     JsonDocument doc;
     store.toJson(doc);
 
-    JsonArray zones = doc["zones"];
-    TEST_ASSERT_EQUAL(2, zones.size());
+    // Count total signatures across all areas.
     TEST_ASSERT_EQUAL(2, store.stats().entriesSaved);
 }
 
@@ -178,8 +184,8 @@ void test_toJson_skips_unsupported_band_entries() {
     JsonDocument doc;
     store.toJson(doc);
 
-    JsonArray zones = doc["zones"];
-    TEST_ASSERT_EQUAL(0, zones.size());
+    JsonArray areas = doc["areas"];
+    TEST_ASSERT_EQUAL(0, areas.size());
     TEST_ASSERT_EQUAL(0, store.stats().entriesSaved);
 }
 
@@ -191,16 +197,16 @@ void test_toJson_keeps_ka_entries_when_policy_enabled() {
     JsonDocument doc;
     store.toJson(doc);
 
-    JsonArray zones = doc["zones"];
-    TEST_ASSERT_EQUAL(1, zones.size());
-    TEST_ASSERT_EQUAL(0x02, zones[0]["band"].as<uint8_t>());
+    JsonArray areas = doc["areas"];
+    TEST_ASSERT_EQUAL(1, areas.size());
+    TEST_ASSERT_EQUAL(0x02, areas[0]["signatures"][0]["band"].as<uint8_t>());
 }
 
 void test_toJson_all_fields_present() {
     LockoutEntry e = makeEntry();
     e.radiusE5    = 2700;
     e.freqTolMHz  = 15;
-    e.flags       = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    e.flags       = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     e.directionMode = LockoutEntry::DIRECTION_FORWARD;
     e.headingDeg = 87;
     e.headingTolDeg = 18;
@@ -214,10 +220,13 @@ void test_toJson_all_fields_present() {
     JsonDocument doc;
     store.toJson(doc);
 
-    JsonObject z = doc["zones"][0];
-    TEST_ASSERT_EQUAL(2700, z["rad"].as<uint16_t>());
+    JsonObject area = doc["areas"][0];
+    TEST_ASSERT_EQUAL(2700, area["rad"].as<uint16_t>());
+
+    JsonObject z = area["signatures"][0];
     TEST_ASSERT_EQUAL(15, z["ftol"].as<uint16_t>());
-    TEST_ASSERT_EQUAL(LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL,
+    // Manual flag stripped from serialized flags.
+    TEST_ASSERT_EQUAL(LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED,
                       z["flags"].as<uint8_t>());
     TEST_ASSERT_EQUAL(LockoutEntry::DIRECTION_FORWARD, z["dir"].as<uint8_t>());
     TEST_ASSERT_EQUAL(87, z["hdg"].as<int>());
@@ -286,10 +295,13 @@ void test_fromJson_valid_single_entry() {
 }
 
 void test_fromJson_roundtrip() {
-    // Populate index with 3 entries.
-    testIndex.add(makeEntry(1000000, -1000000, 24100));
-    testIndex.add(makeEntry(2000000, -2000000, 24160, 0x06));  // K + Ka -> sanitize to K
-    testIndex.add(makeEntry(3000000, -3000000, 10525, 0x08));  // X
+    // Populate index with 3 entries at distinct areas.
+    LockoutEntry e1 = makeEntry(1000000, -1000000, 24100); e1.areaId = 1;
+    LockoutEntry e2 = makeEntry(2000000, -2000000, 24160, 0x06); e2.areaId = 2; // K + Ka -> sanitize to K
+    LockoutEntry e3 = makeEntry(3000000, -3000000, 10525, 0x08); e3.areaId = 3; // X
+    testIndex.add(e1);
+    testIndex.add(e2);
+    testIndex.add(e3);
     TEST_ASSERT_EQUAL(3, testIndex.activeCount());
 
     // Serialize.
@@ -313,14 +325,14 @@ void test_fromJson_roundtrip() {
     TEST_ASSERT_TRUE(ok);
     TEST_ASSERT_EQUAL(3, testIndex.activeCount());
 
-    // Verify entries restored (order may differ; check by lat).
+    // Verify entries restored (check by freq since lat/lon come from area).
     bool found[3] = {false, false, false};
     for (size_t i = 0; i < testIndex.capacity(); ++i) {
         const LockoutEntry* e = testIndex.at(i);
         if (!e || !e->isActive()) continue;
-        if (e->latE5 == 1000000) { found[0] = true; TEST_ASSERT_EQUAL(24100, e->freqMHz); }
-        if (e->latE5 == 2000000) { found[1] = true; TEST_ASSERT_EQUAL(0x04, e->bandMask); }
-        if (e->latE5 == 3000000) { found[2] = true; TEST_ASSERT_EQUAL(0x08, e->bandMask); }
+        if (e->freqMHz == 24100) { found[0] = true; }
+        if (e->freqMHz == 24160) { found[1] = true; TEST_ASSERT_EQUAL(0x04, e->bandMask); }
+        if (e->freqMHz == 10525) { found[2] = true; TEST_ASSERT_EQUAL(0x08, e->bandMask); }
     }
     TEST_ASSERT_TRUE(found[0]);
     TEST_ASSERT_TRUE(found[1]);
@@ -333,8 +345,10 @@ void test_fromJson_all_fields_survive_roundtrip() {
     orig.bandMask    = 0x08;  // X
     orig.freqMHz     = 34720;
     orig.freqTolMHz  = 15;
+    orig.freqWindowMinMHz = 34710;
+    orig.freqWindowMaxMHz = 34730;
     orig.confidence  = 42;
-    orig.flags       = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    orig.flags       = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     orig.directionMode = LockoutEntry::DIRECTION_FORWARD;
     orig.headingDeg = 123;
     orig.headingTolDeg = 17;
@@ -365,6 +379,8 @@ void test_fromJson_all_fields_survive_roundtrip() {
     TEST_ASSERT_EQUAL(orig.bandMask,    e->bandMask);
     TEST_ASSERT_EQUAL(orig.freqMHz,     e->freqMHz);
     TEST_ASSERT_EQUAL(orig.freqTolMHz,  e->freqTolMHz);
+    TEST_ASSERT_EQUAL(orig.freqWindowMinMHz, e->freqWindowMinMHz);
+    TEST_ASSERT_EQUAL(orig.freqWindowMaxMHz, e->freqWindowMaxMHz);
     TEST_ASSERT_EQUAL(orig.confidence,  e->confidence);
     TEST_ASSERT_EQUAL(orig.flags,       e->flags);
     TEST_ASSERT_EQUAL(orig.directionMode, e->directionMode);
@@ -430,14 +446,17 @@ void test_fromJson_skips_entry_missing_lat() {
     z1["lat"] = 1000000;
     z1["lon"] = -1000000;
     z1["band"] = 4;
+    z1["freq"] = 24148;
 
     // Entry 2: missing lat.
     JsonObject z2 = zones.add<JsonObject>();
     z2["lon"] = -2000000;
+    z2["freq"] = 24148;
 
     // Entry 3: missing lon.
     JsonObject z3 = zones.add<JsonObject>();
     z3["lat"] = 3000000;
+    z3["freq"] = 24148;
 
     bool ok = store.fromJson(doc);
     TEST_ASSERT_TRUE(ok);
@@ -455,16 +474,19 @@ void test_fromJson_skips_unsupported_band() {
     ka["lat"] = 1000000;
     ka["lon"] = -1000000;
     ka["band"] = 0x02;  // Ka only
+    ka["freq"] = 34700;
 
     JsonObject laser = zones.add<JsonObject>();
     laser["lat"] = 2000000;
     laser["lon"] = -2000000;
     laser["band"] = 0x01;  // Laser only
+    laser["freq"] = 905;
 
     JsonObject k = zones.add<JsonObject>();
     k["lat"] = 3000000;
     k["lon"] = -3000000;
     k["band"] = 0x04;  // K
+    k["freq"] = 24148;
 
     bool ok = store.fromJson(doc);
     TEST_ASSERT_TRUE(ok);
@@ -479,11 +501,12 @@ void test_fromJson_defaults_optional_fields() {
     doc["_version"] = 1;
     JsonArray zones = doc["zones"].to<JsonArray>();
 
-    // Entry with required fields + band; everything else defaults.
+    // Entry with required fields + band + freq; everything else defaults.
     JsonObject z = zones.add<JsonObject>();
     z["lat"] = 5000000;
     z["lon"] = -8000000;
     z["band"] = 4;
+    z["freq"] = 24148;
 
     bool ok = store.fromJson(doc);
     TEST_ASSERT_TRUE(ok);
@@ -495,13 +518,14 @@ void test_fromJson_defaults_optional_fields() {
     TEST_ASSERT_EQUAL(-8000000, e->lonE5);
     TEST_ASSERT_EQUAL(135, e->radiusE5);       // Default radius (~150m)
     TEST_ASSERT_EQUAL(4, e->bandMask);          // Provided band
-    TEST_ASSERT_EQUAL(0, e->freqMHz);           // Default freq
+    TEST_ASSERT_EQUAL(24148, e->freqMHz);       // Provided freq
     TEST_ASSERT_EQUAL(10, e->freqTolMHz);       // Default tolerance
     TEST_ASSERT_EQUAL(100, e->confidence);       // Default confidence
     TEST_ASSERT_EQUAL(LockoutEntry::DIRECTION_ALL, e->directionMode);
     TEST_ASSERT_EQUAL(LockoutEntry::HEADING_INVALID, e->headingDeg);
     TEST_ASSERT_EQUAL(45, e->headingTolDeg);
     TEST_ASSERT_TRUE(e->isActive());             // Always active
+    TEST_ASSERT_TRUE(e->isAllTime());            // Legacy migration sets allTime
     TEST_ASSERT_EQUAL(0, e->missCount);
     TEST_ASSERT_EQUAL(0, e->firstSeenMs);
     TEST_ASSERT_EQUAL(0, e->lastSeenMs);
@@ -518,6 +542,7 @@ void test_fromJson_always_sets_active_flag() {
     z["lat"]   = 1000000;
     z["lon"]   = -1000000;
     z["band"]  = 4;
+    z["freq"]  = 24148;
     z["flags"] = 0;  // Deliberately clear all flags including ACTIVE.
 
     bool ok = store.fromJson(doc);
@@ -537,6 +562,7 @@ void test_fromJson_invalid_direction_metadata_falls_back_to_all() {
     z["lat"] = 1000000;
     z["lon"] = -1000000;
     z["band"] = 4;
+    z["freq"] = 24148;
     z["dir"] = LockoutEntry::DIRECTION_FORWARD;
     z["hdg"] = -1;  // Invalid heading for directional mode.
 
@@ -578,6 +604,7 @@ void test_fromJson_overflow_truncates() {
         z["lat"] = static_cast<int32_t>(1000000 + i);
         z["lon"] = static_cast<int32_t>(-1000000 - i);
         z["band"] = 4;
+        z["freq"] = static_cast<uint16_t>(24100 + i);
     }
 
     bool ok = store.fromJson(doc);
@@ -601,9 +628,10 @@ void test_binary_save_load_atomic_roundtrip_on_real_fs() {
     first.missCount = 3;
 
     LockoutEntry second = makeEntry(2000000, -2000000, 10525, 0x08);
+    second.areaId = 2;
     second.radiusE5 = 2700;
     second.freqTolMHz = 15;
-    second.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    second.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     second.directionMode = LockoutEntry::DIRECTION_REVERSE;
     second.headingDeg = 240;
     second.headingTolDeg = 15;
@@ -734,7 +762,7 @@ void test_loadBinary_failure_does_not_mutate_live_index() {
     TEST_ASSERT_TRUE(store.saveBinary(fs, LockoutStore::kBinaryPath));
 
     LockoutEntry sentinel = makeEntry(9000000, -9000000, 10525, 0x08);
-    sentinel.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+    sentinel.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
     testIndex.clear();
     TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(sentinel));
 

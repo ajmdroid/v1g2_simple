@@ -342,56 +342,6 @@ void handleZoneCreate(WebServer& server,
     (void)lockoutStore;
     server.send(410, "application/json",
                 "{\"success\":false,\"message\":\"manual lockout creation has been removed\"}");
-    return;
-
-    JsonDocument body;
-    if (!parseRequestJson(server, body)) {
-        server.send(400, "application/json",
-                    "{\"success\":false,\"message\":\"Invalid JSON\"}");
-        return;
-    }
-
-    LockoutEntry entry;
-    entry.radiusE5 = LOCKOUT_LEARNER_RADIUS_E5_DEFAULT;
-    entry.freqTolMHz = LOCKOUT_LEARNER_FREQ_TOL_DEFAULT;
-    entry.confidence = 100;
-    entry.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
-    entry.directionMode = LockoutEntry::DIRECTION_ALL;
-    entry.headingDeg = LockoutEntry::HEADING_INVALID;
-    entry.headingTolDeg = 45;
-
-    String errorMessage;
-    if (!parseZoneBody(body.as<JsonObjectConst>(), entry, false, errorMessage)) {
-        JsonDocument responseDoc;
-        responseDoc["success"] = false;
-        responseDoc["message"] = errorMessage;
-        sendJsonStream(server, responseDoc, 400);
-        return;
-    }
-
-    // Create endpoint is manual-first by design.
-    entry.setActive(true);
-    entry.setManual(true);
-    entry.setLearned(false);
-
-    const int slot = lockoutIndex.addOrUpdate(entry);
-    if (slot < 0) {
-        server.send(507, "application/json",
-                    "{\"success\":false,\"message\":\"lockout index full\"}");
-        return;
-    }
-    lockoutStore.markDirty();
-
-    const LockoutEntry* stored = lockoutIndex.at(static_cast<size_t>(slot));
-    JsonDocument responseDoc;
-    responseDoc["success"] = true;
-    responseDoc["activeCount"] = static_cast<uint32_t>(lockoutIndex.activeCount());
-    if (stored) {
-        appendZoneSummary(responseDoc, slot, *stored);
-    } else {
-        responseDoc["slot"] = slot;
-    }
-    sendJsonStream(server, responseDoc);
 }
 
 void handleZoneUpdate(WebServer& server,
@@ -401,60 +351,6 @@ void handleZoneUpdate(WebServer& server,
     (void)lockoutStore;
     server.send(410, "application/json",
                 "{\"success\":false,\"message\":\"manual lockout updates have been removed\"}");
-    return;
-
-    JsonDocument body;
-    if (!parseRequestJson(server, body)) {
-        server.send(400, "application/json",
-                    "{\"success\":false,\"message\":\"Invalid JSON\"}");
-        return;
-    }
-
-    const JsonObjectConst obj = body.as<JsonObjectConst>();
-    int slot = -1;
-    if (!parseIntArg(obj, "slot", slot)) {
-        server.send(400, "application/json",
-                    "{\"success\":false,\"message\":\"slot is required\"}");
-        return;
-    }
-    if (slot < 0 || slot >= static_cast<int>(lockoutIndex.capacity())) {
-        server.send(400, "application/json",
-                    "{\"success\":false,\"message\":\"slot out of range\"}");
-        return;
-    }
-
-    const LockoutEntry* current = lockoutIndex.at(static_cast<size_t>(slot));
-    if (!current || !current->isActive()) {
-        server.send(404, "application/json",
-                    "{\"success\":false,\"message\":\"zone not found\"}");
-        return;
-    }
-
-    LockoutEntry updated = *current;
-    String errorMessage;
-    if (!parseZoneBody(obj, updated, true, errorMessage)) {
-        JsonDocument responseDoc;
-        responseDoc["success"] = false;
-        responseDoc["message"] = errorMessage;
-        sendJsonStream(server, responseDoc, 400);
-        return;
-    }
-    updated.setActive(true);
-
-    LockoutEntry* slotPtr = lockoutIndex.mutableAt(static_cast<size_t>(slot));
-    if (!slotPtr) {
-        server.send(500, "application/json",
-                    "{\"success\":false,\"message\":\"failed to update slot\"}");
-        return;
-    }
-    *slotPtr = updated;
-    lockoutStore.markDirty();
-
-    JsonDocument responseDoc;
-    responseDoc["success"] = true;
-    responseDoc["activeCount"] = static_cast<uint32_t>(lockoutIndex.activeCount());
-    appendZoneSummary(responseDoc, slot, updated);
-    sendJsonStream(server, responseDoc);
 }
 
 void sendZoneExport(WebServer& server,

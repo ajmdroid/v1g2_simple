@@ -34,6 +34,19 @@ struct LockoutEnforcerResult {
 /// Thread safety: designed for single-threaded access from loop().
 class LockoutEnforcer {
 public:
+    static constexpr size_t kMaxNearbySlots = 128;
+    static constexpr size_t kMaxCandidateSlots = 64;
+    static constexpr size_t kMaxSupportedAlerts = 15;
+    static constexpr size_t kMaxMatchedSlots = 16;
+
+    struct LiveAlertMatch {
+        uint8_t band = 0;
+        uint16_t freqMHz = 0;
+        int16_t candidates[kMaxCandidateSlots] = {};
+        size_t candidateCount = 0;
+        int16_t assignedSlot = -1;
+    };
+
     /// Wire dependencies.  Must be called once before process().
     /// All pointers must remain valid for the lifetime of the enforcer.
     /// @param store  Optional — if non-null, markDirty() called on index mutation.
@@ -95,6 +108,13 @@ private:
     // Rate-limited clean-pass recording (one pass per zone per drive-through).
     int64_t lastCleanPassEpochMs_ = 0;
     static constexpr uint32_t CLEAN_PASS_INTERVAL_MS = 30000;
+
+    // --- Reusable scratch buffers (moved off stack to reduce per-call frame) ---
+    int16_t nearbySlots_[kMaxNearbySlots] = {};
+    LiveAlertMatch liveAlerts_[kMaxSupportedAlerts] = {};
+    int16_t slotToAlert_[LockoutIndex::kCapacity] = {};
+    bool visitedSlots_[LockoutIndex::kCapacity] = {};
+    int16_t matchedSlots_[kMaxMatchedSlots] = {};
 };
 
 extern LockoutEnforcer lockoutEnforcer;

@@ -518,17 +518,18 @@ int LockoutIndex::findEquivalentSignature(const LockoutEntry& entry) const {
 }
 
 uint16_t LockoutIndex::nextAreaId() const {
-    uint16_t maxAreaId = 0;
-    for (size_t i = 0; i < kCapacity; ++i) {
-        const LockoutEntry& entry = entries_[i];
-        if (!entry.isActive()) {
-            continue;
+    // Smallest-free scan: find the lowest areaId >= 1 not used by any active entry.
+    for (uint16_t candidate = 1; candidate != 0; ++candidate) {
+        bool used = false;
+        for (size_t i = 0; i < kCapacity; ++i) {
+            if (entries_[i].isActive() && entries_[i].areaId == candidate) {
+                used = true;
+                break;
+            }
         }
-        if (entry.areaId > maxAreaId) {
-            maxAreaId = entry.areaId;
-        }
+        if (!used) return candidate;
     }
-    return (maxAreaId == UINT16_MAX) ? UINT16_MAX : static_cast<uint16_t>(maxAreaId + 1);
+    return UINT16_MAX;
 }
 
 namespace {

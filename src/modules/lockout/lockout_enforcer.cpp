@@ -26,19 +26,6 @@ uint32_t hoursToMs(uint8_t hours) {
     return static_cast<uint32_t>(hours) * 3600UL * 1000UL;
 }
 
-constexpr size_t LOCKOUT_MAX_MATCHED_SLOTS = 16;
-constexpr size_t LOCKOUT_MAX_NEARBY_SLOTS = 128;
-constexpr size_t LOCKOUT_MAX_CANDIDATE_SLOTS = 64;
-constexpr size_t LOCKOUT_MAX_SUPPORTED_ALERTS = 15;
-
-struct LiveAlertMatch {
-    uint8_t band = 0;
-    uint16_t freqMHz = 0;
-    int16_t candidates[LOCKOUT_MAX_CANDIDATE_SLOTS] = {};
-    size_t candidateCount = 0;
-    int16_t assignedSlot = -1;
-};
-
 float normalizeEnforcerHeadingDeg(float heading) {
     if (!std::isfinite(heading)) {
         return NAN;
@@ -125,10 +112,10 @@ void sortCandidates(const LockoutIndex* index, int16_t* candidates, size_t count
 }
 
 bool assignAlert(size_t alertIndex,
-                 LiveAlertMatch* alerts,
+                 LockoutEnforcer::LiveAlertMatch* alerts,
                  int16_t* slotToAlert,
                  bool* visitedSlots) {
-    LiveAlertMatch& alert = alerts[alertIndex];
+    LockoutEnforcer::LiveAlertMatch& alert = alerts[alertIndex];
     for (size_t i = 0; i < alert.candidateCount; ++i) {
         const int16_t slot = alert.candidates[i];
         if (slot < 0 || visitedSlots[slot]) {
@@ -226,12 +213,12 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
     }
     const bool courseValid = gpsStatus.courseValid &&
                              gpsStatus.courseAgeMs <= LOCKOUT_GPS_COURSE_MAX_AGE_MS;
-    int16_t nearbySlots[LOCKOUT_MAX_NEARBY_SLOTS];
-    const size_t nearbyCount = index_->findNearby(latE5, lonE5, nearbySlots, LOCKOUT_MAX_NEARBY_SLOTS);
-    bool encounterOverflow = (nearbyCount >= LOCKOUT_MAX_NEARBY_SLOTS);
-    LiveAlertMatch liveAlerts[LOCKOUT_MAX_SUPPORTED_ALERTS];
+    const size_t nearbyCount = index_->findNearby(latE5, lonE5, nearbySlots_, kMaxNearbySlots);
+    bool encounterOverflow = (nearbyCount >= kMaxNearbySlots);
+    for (size_t i = 0; i < kMaxSupportedAlerts; ++i) {
+        liveAlerts_[i] = LiveAlertMatch{};
+    }
     size_t liveAlertCount = 0;
-    int16_t matchedSlots[LOCKOUT_MAX_MATCHED_SLOTS];
     size_t matchedSlotCount = 0;
 
     const auto& alerts = parser.getAllAlerts();
@@ -249,13 +236,13 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
 
         const uint16_t freqMHz = static_cast<uint16_t>(
             (alert.frequency <= UINT16_MAX) ? alert.frequency : 0);
-        LiveAlertMatch& live = liveAlerts[liveAlertCount++];
+        LiveAlertMatch& live = liveAlerts_[liveAlertCount++];
         live.band = band;
         live.freqMHz = freqMHz;
 
         ++lastResult_.supportedAlertCount;
         for (size_t j = 0; j < nearbyCount; ++j) {
-            const int16_t slot = nearbySlots[j];
+            const int16_t slot = nearbySlots_[j];
             if (slot < 0) {
                 continue;
             }
@@ -273,7 +260,7 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
             if (!courseMatchesEntry(courseValid, gpsStatus.courseDeg, *entry)) {
                 continue;
             }
-            if (live.candidateCount >= LOCKOUT_MAX_CANDIDATE_SLOTS) {
+            if (live.candidateCount >= kMaxCandidateSlots) {
                 encounterOverflow = true;
                 break;
             }
@@ -285,28 +272,27 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
     bool hasDuplicateSupportedFrequency = false;
     for (size_t i = 0; i < liveAlertCount && !hasDuplicateSupportedFrequency; ++i) {
         for (size_t j = i + 1; j < liveAlertCount; ++j) {
-            if (liveAlerts[i].band == liveAlerts[j].band &&
-                liveAlerts[i].freqMHz == liveAlerts[j].freqMHz) {
+            if (liveAlerts_[i].band == liveAlerts_[j].band &&
+                liveAlerts_[i].freqMHz == liveAlerts_[j].freqMHz) {
                 hasDuplicateSupportedFrequency = true;
                 break;
             }
         }
     }
 
-    int16_t slotToAlert[LockoutIndex::kCapacity];
     for (size_t i = 0; i < LockoutIndex::kCapacity; ++i) {
-        slotToAlert[i] = -1;
+        slotToAlert_[i] = -1;
     }
 
     bool allAssigned = !encounterOverflow && !hasDuplicateSupportedFrequency;
     if (allAssigned) {
         for (size_t i = 0; i < liveAlertCount; ++i) {
-            if (liveAlerts[i].candidateCount == 0) {
+            if (liveAlerts_[i].candidateCount == 0) {
                 allAssigned = false;
                 break;
             }
-            bool visitedSlots[LockoutIndex::kCapacity] = {};
-            if (!assignAlert(i, liveAlerts, slotToAlert, visitedSlots)) {
+            memset(visitedSlots_, 0, sizeof(visitedSlots_));
+            if (!assignAlert(i, liveAlerts_, slotToAlert_, visitedSlots_)) {
                 allAssigned = false;
                 break;
             }
@@ -316,7 +302,7 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
     if (allAssigned) {
         lastResult_.matchedAlertCount = static_cast<uint8_t>(liveAlertCount);
         for (size_t i = 0; i < liveAlertCount; ++i) {
-            const int16_t slot = liveAlerts[i].assignedSlot;
+            const int16_t slot = liveAlerts_[i].assignedSlot;
             if (i == 0 && slot >= 0) {
                 const LockoutEntry* first = index_->at(static_cast<size_t>(slot));
                 lastResult_.matchIndex = slot;
@@ -324,13 +310,13 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
             }
             bool seenSlot = false;
             for (size_t j = 0; j < matchedSlotCount; ++j) {
-                if (matchedSlots[j] == slot) {
+                if (matchedSlots_[j] == slot) {
                     seenSlot = true;
                     break;
                 }
             }
-            if (!seenSlot && matchedSlotCount < LOCKOUT_MAX_MATCHED_SLOTS) {
-                matchedSlots[matchedSlotCount++] = slot;
+            if (!seenSlot && matchedSlotCount < kMaxMatchedSlots) {
+                matchedSlots_[matchedSlotCount++] = slot;
             }
         }
     }
@@ -347,12 +333,12 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
             for (size_t i = 0; i < matchedSlotCount; ++i) {
                 uint16_t observedFreqMHz = 0;
                 for (size_t j = 0; j < liveAlertCount; ++j) {
-                    if (liveAlerts[j].assignedSlot == matchedSlots[i]) {
-                        observedFreqMHz = liveAlerts[j].freqMHz;
+                    if (liveAlerts_[j].assignedSlot == matchedSlots_[i]) {
+                        observedFreqMHz = liveAlerts_[j].freqMHz;
                         break;
                     }
                 }
-                index_->recordHit(static_cast<size_t>(matchedSlots[i]),
+                index_->recordHit(static_cast<size_t>(matchedSlots_[i]),
                                   epochMs,
                                   observedFreqMHz,
                                   localHour);

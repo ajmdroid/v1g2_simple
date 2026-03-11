@@ -82,6 +82,8 @@ struct DisplayState {
  */
 class PacketParser {
 public:
+    static constexpr size_t MAX_ALERTS = 15;
+
     // Test-controllable state
     DisplayState state;
     std::vector<AlertData> alerts;
