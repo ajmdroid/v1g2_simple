@@ -139,6 +139,19 @@ inline bool hitsV1BleHardResetThreshold(uint8_t consecutiveFailures) {
 // Debug Log Controls
 // =========================================================================
 
+// ===== BLE CLIENT DELETION RULE (CI-enforced) =====
+// NimBLE maintains a fixed 3-slot internal client array. Deleting a client
+// at runtime (NimBLEDevice::deleteClient) corrupts the heap — the slot is
+// freed but internal bookkeeping is not updated, leading to use-after-free.
+//
+// BANNED:      NimBLEDevice::deleteClient()  — NEVER call this.
+// RESTRICTED:  NimBLEDevice::deleteAllBonds() / deinit() — allowed ONLY
+//              in src/ble_client.cpp during fresh-flash boot (before the
+//              BLE stack is live and no clients exist).
+//
+// Enforced by: scripts/check_ble_deletion_contract.py (CI gate)
+// =================================================================
+
 constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default OFF - RED ZONE VIOLATION if enabled!)
 
 // BLE logging macros — permanent no-ops (debug logger removed).

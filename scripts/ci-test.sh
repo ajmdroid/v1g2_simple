@@ -31,6 +31,11 @@ echo -e "${YELLOW}🔒 Checking BLE hot-path contract...${NC}"
 python3 scripts/check_ble_hot_path_contract.py
 echo -e "${GREEN}✅ BLE hot-path contract matches${NC}"
 
+# Step 0b1: BLE deletion safety contract guard
+echo -e "${YELLOW}🔒 Checking BLE deletion contract...${NC}"
+python3 scripts/check_ble_deletion_contract.py
+echo -e "${GREEN}✅ BLE deletion contract matches${NC}"
+
 # Step 0c: Perf CSV column contract guard
 echo -e "${YELLOW}🔒 Checking perf CSV column contract...${NC}"
 python3 scripts/check_perf_csv_column_contract.py
