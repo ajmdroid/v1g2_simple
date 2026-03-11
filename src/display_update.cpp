@@ -442,7 +442,8 @@ void V1Display::updateCameraAlert(const CameraAlertDisplayPayload& payload,
         return;
     }
 
-    if (currentScreen != ScreenMode::Camera) {
+    const bool enteringCamera = (currentScreen != ScreenMode::Camera);
+    if (enteringCamera) {
         perfRecordDisplayScreenTransition(
             static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
             PerfDisplayScreen::Camera,
@@ -450,27 +451,68 @@ void V1Display::updateCameraAlert(const CameraAlertDisplayPayload& payload,
     }
     currentScreen = ScreenMode::Camera;
 
-    dirty.multiAlert = true;
-    multiAlertMode = false;
-    wasInMultiAlertMode = false;
+    static CameraType lastCameraType = CameraType::INVALID;
+    static uint8_t lastMainVol = 0xFF;
+    static uint8_t lastMuteVol = 0xFF;
+    static uint8_t lastBogeyByte = 0;
+    const unsigned long now = millis();
+    const bool fullRedraw = enteringCamera || payload.type != lastCameraType;
 
-    drawBaseFrame();
+    if (fullRedraw) {
+        dirty.multiAlert = true;
+        multiAlertMode = false;
+        wasInMultiAlertMode = false;
 
-    const V1Settings& settings = settingsManager.get();
-    drawStatusStrip(state, state.bogeyCounterChar, false, state.bogeyCounterDot);
-    drawBandIndicators(0, false);
-    drawCameraLabel(cameraTypeDisplayLabel(payload.type), settings.colorCameraText);
-    drawVerticalSignalBars(0, 0, BAND_NONE, false);
-    drawDirectionArrow(DIR_FRONT, false, 0, settings.colorCameraArrow);
-    drawMuteIcon(false);
-    drawLockoutIndicator();
-    drawGpsIndicator();
-    drawProfileIndicator(currentProfileSlot);
+        drawBaseFrame();
 
-    AlertData emptyPriority;
-    drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
+        const V1Settings& settings = settingsManager.get();
+        drawStatusStrip(state, state.bogeyCounterChar, false, state.bogeyCounterDot);
+        drawBandIndicators(0, false);
+        drawCameraLabel(cameraTypeDisplayLabel(payload.type), settings.colorCameraText);
+        drawVerticalSignalBars(0, 0, BAND_NONE, false);
+        drawDirectionArrow(DIR_FRONT, false, 0, settings.colorCameraArrow);
+        drawMuteIcon(false);
+        drawLockoutIndicator();
+        drawGpsIndicator();
+        drawProfileIndicator(currentProfileSlot);
 
-    DISPLAY_FLUSH();
+        AlertData emptyPriority;
+        drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
+
+        DISPLAY_FLUSH();
+        markRssiRefreshed(now);
+    } else {
+        // Camera payload/owner are unchanged; keep camera mode cheap by updating
+        // only dynamic strip/indicator elements instead of full-screen redraws.
+        bool flushLeftStrip = false;
+        bool flushRightStrip = false;
+        const bool volumeChanged =
+            (state.mainVolume != lastMainVol) || (state.muteVolume != lastMuteVol);
+        const bool rssiNeedsUpdate = shouldRefreshRssi(now);
+        const bool bogeyCounterChanged = (state.bogeyCounterByte != lastBogeyByte);
+        updateStatusStripIncremental(state,
+                                     state.bogeyCounterChar,
+                                     false,
+                                     state.bogeyCounterDot,
+                                     volumeChanged,
+                                     rssiNeedsUpdate,
+                                     bogeyCounterChanged,
+                                     lastMainVol,
+                                     lastMuteVol,
+                                     lastBogeyByte,
+                                     now,
+                                     flushLeftStrip,
+                                     flushRightStrip);
+        drawLockoutIndicator();
+        drawGpsIndicator();
+        drawProfileIndicator(currentProfileSlot);
+        DISPLAY_FLUSH();
+    }
+
+    lastMainVol = state.mainVolume;
+    lastMuteVol = state.muteVolume;
+    lastBogeyByte = state.bogeyCounterByte;
+    lastCameraType = payload.type;
     lastState = state;
 }
 

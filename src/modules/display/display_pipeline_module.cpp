@@ -315,6 +315,10 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         const auto& currentAlerts = parser->getAllAlerts();
 
         // Live V1 alerts own the screen/audio path.
+        // Keep camera activity metrics aligned with effective owner so stress
+        // correlation logic does not attribute live-alert render cost to camera.
+        PERF_SET(cameraDebugOverrideActive, 0);
+        PERF_SET(cameraDisplayActive, 0);
 
         *displayMode = DisplayMode::LIVE;
         cameraAlertActive_ = false;
