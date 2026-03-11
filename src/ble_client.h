@@ -426,9 +426,6 @@ private:
     // Exponential backoff for connection failures (error 13 = BLE_HS_EBUSY)
     uint8_t consecutiveConnectFailures = 0;
     unsigned long nextConnectAllowedMs = 0;  // Backoff until this time
-    static constexpr uint8_t MAX_BACKOFF_FAILURES = 5;
-    static constexpr unsigned long BACKOFF_BASE_MS = 200;    // 200ms base - quick retry
-    static constexpr unsigned long BACKOFF_MAX_MS = 1500;    // 1.5s max - keep retries snappy
     
     // Deferred proxy advertising start (non-blocking - avoids stall)
     // Tuned lower to reduce post-connect latency while preserving radio settle margin

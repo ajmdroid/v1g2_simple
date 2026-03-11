@@ -331,15 +331,12 @@ bool V1BLEClient::startAsyncConnect() {
         consecutiveConnectFailures++;
         perfRecordBleConnectUs(micros() - connectPhaseStartUs);
         
-        if (consecutiveConnectFailures >= MAX_BACKOFF_FAILURES) {
+        if (hitsV1BleHardResetThreshold(consecutiveConnectFailures)) {
             hardResetBLEClient();
             return false;
         }
         
-        // Calculate exponential backoff
-        unsigned long backoffMs =
-            computeExponentialBackoffMs(BACKOFF_BASE_MS, BACKOFF_MAX_MS, consecutiveConnectFailures);
-        nextConnectAllowedMs = millis() + backoffMs;
+        nextConnectAllowedMs = millis() + computeV1BleBackoffMs(consecutiveConnectFailures);
         
         connectInProgress = false;
         connectStartMs = 0;
@@ -402,15 +399,12 @@ void V1BLEClient::processConnectingWait() {
             consecutiveConnectFailures++;
             perfRecordBleConnectUs(micros() - connectPhaseStartUs);
             
-            if (consecutiveConnectFailures >= MAX_BACKOFF_FAILURES) {
+            if (hitsV1BleHardResetThreshold(consecutiveConnectFailures)) {
                 hardResetBLEClient();
                 return;
             }
             
-            // Calculate exponential backoff
-            unsigned long backoffMs =
-                computeExponentialBackoffMs(BACKOFF_BASE_MS, BACKOFF_MAX_MS, consecutiveConnectFailures);
-            nextConnectAllowedMs = millis() + backoffMs;
+            nextConnectAllowedMs = millis() + computeV1BleBackoffMs(consecutiveConnectFailures);
             
             connectInProgress = false;
             connectStartMs = 0;
@@ -444,15 +438,12 @@ void V1BLEClient::processConnectingWait() {
     consecutiveConnectFailures++;
     perfRecordBleConnectUs(micros() - connectPhaseStartUs);
     
-    if (consecutiveConnectFailures >= MAX_BACKOFF_FAILURES) {
+    if (hitsV1BleHardResetThreshold(consecutiveConnectFailures)) {
         hardResetBLEClient();
         return;
     }
     
-    // Calculate exponential backoff
-    unsigned long backoffMs =
-        computeExponentialBackoffMs(BACKOFF_BASE_MS, BACKOFF_MAX_MS, consecutiveConnectFailures);
-    nextConnectAllowedMs = millis() + backoffMs;
+    nextConnectAllowedMs = millis() + computeV1BleBackoffMs(consecutiveConnectFailures);
     
     connectInProgress = false;
     connectStartMs = 0;
@@ -510,14 +501,12 @@ void V1BLEClient::processDiscovering() {
             discoveryTaskDone.store(true);
             discoveryTaskRunning.store(false);
             consecutiveConnectFailures++;
-            if (consecutiveConnectFailures >= MAX_BACKOFF_FAILURES) {
+            if (hitsV1BleHardResetThreshold(consecutiveConnectFailures)) {
                 hardResetBLEClient();
                 return;
             }
 
-            unsigned long backoffMs =
-                computeExponentialBackoffMs(BACKOFF_BASE_MS, BACKOFF_MAX_MS, consecutiveConnectFailures);
-            nextConnectAllowedMs = millis() + backoffMs;
+            nextConnectAllowedMs = millis() + computeV1BleBackoffMs(consecutiveConnectFailures);
 
             connectInProgress = false;
             connectStartMs = 0;

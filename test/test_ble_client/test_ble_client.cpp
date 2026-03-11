@@ -1,9 +1,8 @@
 /**
  * BLE client header-level tests.
  *
- * Backoff coverage in this file binds directly to shipped helpers and constants
- * from ble_client.h / ble_internals.h so the suite fails if production config
- * changes.
+ * Backoff coverage in this file binds directly to the shipped internal BLE
+ * policy symbols so the suite fails if production config changes.
  */
 
 #include <unity.h>
@@ -20,9 +19,7 @@ unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
 #endif
 
-#define private public
 #include "../../src/ble_client.h"
-#undef private
 
 #include "../../include/ble_internals.h"
 
@@ -37,14 +34,11 @@ uint8_t calcV1Checksum(const uint8_t* data, size_t len) {
 }
 
 unsigned long productionBackoffMs(uint8_t consecutiveFailures) {
-    return computeExponentialBackoffMs(
-        V1BLEClient::BACKOFF_BASE_MS,
-        V1BLEClient::BACKOFF_MAX_MS,
-        consecutiveFailures);
+    return computeV1BleBackoffMs(consecutiveFailures);
 }
 
 bool hitsHardResetThreshold(uint8_t consecutiveFailures) {
-    return consecutiveFailures >= V1BLEClient::MAX_BACKOFF_FAILURES;
+    return hitsV1BleHardResetThreshold(consecutiveFailures);
 }
 
 struct BootGateStateMachine {
@@ -97,9 +91,9 @@ void test_state_enum_values() {
 }
 
 void test_production_backoff_constants_match_expected_profile() {
-    TEST_ASSERT_EQUAL_UINT8(5, V1BLEClient::MAX_BACKOFF_FAILURES);
-    TEST_ASSERT_EQUAL_UINT32(200, V1BLEClient::BACKOFF_BASE_MS);
-    TEST_ASSERT_EQUAL_UINT32(1500, V1BLEClient::BACKOFF_MAX_MS);
+    TEST_ASSERT_EQUAL_UINT8(5, V1_BLE_MAX_BACKOFF_FAILURES);
+    TEST_ASSERT_EQUAL_UINT32(200, V1_BLE_BACKOFF_BASE_MS);
+    TEST_ASSERT_EQUAL_UINT32(1500, V1_BLE_BACKOFF_MAX_MS);
 }
 
 void test_backoff_zero_failures_returns_zero() {
@@ -107,23 +101,23 @@ void test_backoff_zero_failures_returns_zero() {
 }
 
 void test_backoff_doubles_from_production_base() {
-    TEST_ASSERT_EQUAL_UINT32(V1BLEClient::BACKOFF_BASE_MS, productionBackoffMs(1));
-    TEST_ASSERT_EQUAL_UINT32(V1BLEClient::BACKOFF_BASE_MS * 2u, productionBackoffMs(2));
-    TEST_ASSERT_EQUAL_UINT32(V1BLEClient::BACKOFF_BASE_MS * 4u, productionBackoffMs(3));
-    TEST_ASSERT_EQUAL_UINT32(V1BLEClient::BACKOFF_MAX_MS, productionBackoffMs(4));
+    TEST_ASSERT_EQUAL_UINT32(V1_BLE_BACKOFF_BASE_MS, productionBackoffMs(1));
+    TEST_ASSERT_EQUAL_UINT32(V1_BLE_BACKOFF_BASE_MS * 2u, productionBackoffMs(2));
+    TEST_ASSERT_EQUAL_UINT32(V1_BLE_BACKOFF_BASE_MS * 4u, productionBackoffMs(3));
+    TEST_ASSERT_EQUAL_UINT32(V1_BLE_BACKOFF_MAX_MS, productionBackoffMs(4));
 }
 
 void test_backoff_caps_at_production_max() {
-    TEST_ASSERT_EQUAL_UINT32(V1BLEClient::BACKOFF_MAX_MS,
-                             productionBackoffMs(V1BLEClient::MAX_BACKOFF_FAILURES));
-    TEST_ASSERT_EQUAL_UINT32(V1BLEClient::BACKOFF_MAX_MS, productionBackoffMs(10));
-    TEST_ASSERT_EQUAL_UINT32(V1BLEClient::BACKOFF_MAX_MS, productionBackoffMs(100));
+    TEST_ASSERT_EQUAL_UINT32(V1_BLE_BACKOFF_MAX_MS,
+                             productionBackoffMs(V1_BLE_MAX_BACKOFF_FAILURES));
+    TEST_ASSERT_EQUAL_UINT32(V1_BLE_BACKOFF_MAX_MS, productionBackoffMs(10));
+    TEST_ASSERT_EQUAL_UINT32(V1_BLE_BACKOFF_MAX_MS, productionBackoffMs(100));
 }
 
 void test_hard_reset_threshold_uses_production_limit() {
-    TEST_ASSERT_FALSE(hitsHardResetThreshold(V1BLEClient::MAX_BACKOFF_FAILURES - 1));
-    TEST_ASSERT_TRUE(hitsHardResetThreshold(V1BLEClient::MAX_BACKOFF_FAILURES));
-    TEST_ASSERT_TRUE(hitsHardResetThreshold(V1BLEClient::MAX_BACKOFF_FAILURES + 1));
+    TEST_ASSERT_FALSE(hitsHardResetThreshold(V1_BLE_MAX_BACKOFF_FAILURES - 1));
+    TEST_ASSERT_TRUE(hitsHardResetThreshold(V1_BLE_MAX_BACKOFF_FAILURES));
+    TEST_ASSERT_TRUE(hitsHardResetThreshold(V1_BLE_MAX_BACKOFF_FAILURES + 1));
 }
 
 void test_checksum_empty_data() {

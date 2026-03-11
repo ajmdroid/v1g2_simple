@@ -106,6 +106,10 @@ inline uint16_t shortUuid(const NimBLEUUID& uuid) {
 // Exponential Backoff Calculator
 // =========================================================================
 
+constexpr uint8_t V1_BLE_MAX_BACKOFF_FAILURES = 5;
+constexpr unsigned long V1_BLE_BACKOFF_BASE_MS = 200;   // 200ms base - quick retry
+constexpr unsigned long V1_BLE_BACKOFF_MAX_MS = 1500;   // 1.5s max - keep retries snappy
+
 inline unsigned long computeExponentialBackoffMs(unsigned long baseMs,
                                                   unsigned long maxMs,
                                                   uint8_t consecutiveFailures) {
@@ -118,6 +122,17 @@ inline unsigned long computeExponentialBackoffMs(unsigned long baseMs,
         backoffMs = maxMs;
     }
     return backoffMs;
+}
+
+inline unsigned long computeV1BleBackoffMs(uint8_t consecutiveFailures) {
+    return computeExponentialBackoffMs(
+        V1_BLE_BACKOFF_BASE_MS,
+        V1_BLE_BACKOFF_MAX_MS,
+        consecutiveFailures);
+}
+
+inline bool hitsV1BleHardResetThreshold(uint8_t consecutiveFailures) {
+    return consecutiveFailures >= V1_BLE_MAX_BACKOFF_FAILURES;
 }
 
 // =========================================================================
