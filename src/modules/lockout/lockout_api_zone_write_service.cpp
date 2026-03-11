@@ -1,6 +1,7 @@
 #include "lockout_api_service.h"
 
 #include <ArduinoJson.h>
+#include <cstring>
 #include <cmath>
 #include "json_stream_response.h"
 #include <esp_heap_caps.h>
@@ -379,6 +380,15 @@ void handleZoneImport(WebServer& server,
                         "{\"success\":false,\"message\":\"Invalid JSON\"}");
             return;
         }
+        const char* type = importDoc["_type"];
+        const uint8_t version = importDoc["_version"] | static_cast<uint8_t>(0);
+        if (!type || strcmp(type, LockoutStore::kTypeTag) != 0 ||
+            version != LockoutStore::kVersion ||
+            importDoc["areas"].isNull()) {
+            server.send(400, "application/json",
+                        "{\"success\":false,\"message\":\"HTTP import requires a v2 area export file\"}");
+            return;
+        }
 
         if (!tempStore.fromJson(importDoc)) {
             server.send(400, "application/json",
@@ -405,6 +415,7 @@ void handleZoneImport(WebServer& server,
     responseDoc["success"] = true;
     responseDoc["activeCount"] = static_cast<uint32_t>(lockoutIndex.activeCount());
     responseDoc["entriesImported"] = lockoutStore.stats().entriesLoaded;
+    responseDoc["droppedManualCount"] = lockoutStore.stats().droppedManualCount;
     sendJsonStream(server, responseDoc);
 }
 

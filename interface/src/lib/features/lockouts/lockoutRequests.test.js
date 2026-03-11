@@ -179,7 +179,11 @@ describe('lockoutRequests', () => {
 		const fetchWithTimeout = vi.fn().mockResolvedValue(
 			makeResponse({
 				contentType: 'text/plain',
-				text: JSON.stringify({ zones: [{}, {}] })
+				text: JSON.stringify({
+					_type: 'v1simple_lockout_zones',
+					_version: 2,
+					areas: [{ id: 1, lat: 1, lon: 2, rad: 135, signatures: [{}, {}] }]
+				})
 			})
 		);
 		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
@@ -198,7 +202,7 @@ describe('lockoutRequests', () => {
 
 		const result = await exportLockoutZonesRequest(fetchWithTimeout);
 
-		expect(result).toEqual({ ok: true, message: 'Exported lockout zones (2 zones).' });
+		expect(result).toEqual({ ok: true, message: 'Exported lockout zones (2 signatures).' });
 		expect(createObjectURL).toHaveBeenCalledTimes(1);
 		expect(click).toHaveBeenCalledTimes(1);
 		expect(revokeObjectURL).toHaveBeenCalledWith('blob:test');
@@ -238,14 +242,48 @@ describe('lockoutRequests', () => {
 		expect(fetchWithTimeout).not.toHaveBeenCalled();
 	});
 
+	it('rejects legacy flat-zone import files before making a network call', async () => {
+		const fetchWithTimeout = vi.fn();
+		const confirmFn = vi.fn();
+		const file = {
+			name: 'legacy-v1.json',
+			text: vi.fn().mockResolvedValue(
+				JSON.stringify({
+					_type: 'v1simple_lockout_zones',
+					_version: 1,
+					zones: [{ lat: 1, lon: 2, band: 4, freq: 24148 }]
+				})
+			)
+		};
+
+		const result = await importLockoutZonesFromFile(fetchWithTimeout, file, confirmFn);
+
+		expect(result).toEqual({
+			ok: false,
+			error: 'Lockout import files must use the current v2 area export format.'
+		});
+		expect(confirmFn).not.toHaveBeenCalled();
+		expect(fetchWithTimeout).not.toHaveBeenCalled();
+	});
+
 	it('supports replace cancel, merge export failure, and merge dedupe behavior', async () => {
 		const file = {
 			name: 'zones.json',
 			text: vi.fn().mockResolvedValue(
 				JSON.stringify({
-					zones: [
-						{ lat: 1, lon: 2, band: 'K' },
-						{ lat: 3, lon: 4, band: 'Ka' }
+					_type: 'v1simple_lockout_zones',
+					_version: 2,
+					areas: [
+						{
+							id: 40,
+							lat: 1,
+							lon: 2,
+							rad: 135,
+							signatures: [
+								{ band: 4, freq: 24148, ftol: 10, fmin: 24148, fmax: 24148, dir: 0, hdg: -1, htol: 45 },
+								{ band: 4, freq: 24160, ftol: 10, fmin: 24160, fmax: 24160, dir: 0, hdg: -1, htol: 45 }
+							]
+						}
 					]
 				})
 			)
@@ -269,7 +307,19 @@ describe('lockoutRequests', () => {
 			.mockResolvedValueOnce(
 				makeResponse({
 					json: {
-						zones: [{ lat: 1, lon: 2, band: 'K' }]
+						_type: 'v1simple_lockout_zones',
+						_version: 2,
+						areas: [
+							{
+								id: 7,
+								lat: 1,
+								lon: 2,
+								rad: 135,
+								signatures: [
+									{ band: 4, freq: 24148, ftol: 10, fmin: 24148, fmax: 24148, dir: 0, hdg: -1, htol: 45 }
+								]
+							}
+						]
 					}
 				})
 			)
@@ -281,15 +331,24 @@ describe('lockoutRequests', () => {
 		expect(fetchWithTimeout.mock.calls[1][0]).toBe('/api/lockouts/zones/import');
 		expect(JSON.parse(fetchWithTimeout.mock.calls[1][1].body)).toEqual({
 			_type: 'v1simple_lockout_zones',
-			_version: 1,
-			zones: [
-				{ lat: 1, lon: 2, band: 'K' },
-				{ lat: 3, lon: 4, band: 'Ka' }
+			_version: 2,
+			areas: [
+				{
+					id: 1,
+					lat: 1,
+					lon: 2,
+					rad: 135,
+					signatures: [
+						{ band: 4, freq: 24148, ftol: 10, fmin: 24148, fmax: 24148, dir: 0, hdg: -1, htol: 45 },
+						{ band: 4, freq: 24160, ftol: 10, fmin: 24160, fmax: 24160, dir: 0, hdg: -1, htol: 45 }
+					]
+				}
 			]
 		});
 		expect(merged).toEqual({
 			ok: true,
-			message: 'Merged 1 new zones into 1 existing (1 duplicates skipped).'
+			message: 'Merged 1 new signatures into 1 existing (1 duplicates skipped).',
+			droppedManualCount: 0
 		});
 	});
 
@@ -298,9 +357,19 @@ describe('lockoutRequests', () => {
 			name: 'zones.json',
 			text: vi.fn().mockResolvedValue(
 				JSON.stringify({
-					zones: [
-						{ lat: 1, lon: 2, rad: 135, band: 4, freq: 24148, ftol: 10, dir: 0, hdg: -1, htol: 45 },
-						{ lat: 1, lon: 2, rad: 135, band: 4, freq: 24160, ftol: 10, dir: 0, hdg: -1, htol: 45 }
+					_type: 'v1simple_lockout_zones',
+					_version: 2,
+					areas: [
+						{
+							id: 12,
+							lat: 1,
+							lon: 2,
+							rad: 135,
+							signatures: [
+								{ band: 4, freq: 24148, ftol: 10, fmin: 24148, fmax: 24148, dir: 0, hdg: -1, htol: 45 },
+								{ band: 4, freq: 24160, ftol: 10, fmin: 24160, fmax: 24160, dir: 0, hdg: -1, htol: 45 }
+							]
+						}
 					]
 				})
 			)
@@ -311,7 +380,19 @@ describe('lockoutRequests', () => {
 			.mockResolvedValueOnce(
 				makeResponse({
 					json: {
-						zones: [{ lat: 1, lon: 2, rad: 135, band: 4, freq: 24148, ftol: 10, dir: 0, hdg: -1, htol: 45 }]
+						_type: 'v1simple_lockout_zones',
+						_version: 2,
+						areas: [
+							{
+								id: 3,
+								lat: 1,
+								lon: 2,
+								rad: 135,
+								signatures: [
+									{ band: 4, freq: 24148, ftol: 10, fmin: 24148, fmax: 24148, dir: 0, hdg: -1, htol: 45 }
+								]
+							}
+						]
 					}
 				})
 			)
@@ -321,15 +402,24 @@ describe('lockoutRequests', () => {
 
 		expect(JSON.parse(fetchWithTimeout.mock.calls[1][1].body)).toEqual({
 			_type: 'v1simple_lockout_zones',
-			_version: 1,
-			zones: [
-				{ lat: 1, lon: 2, rad: 135, band: 4, freq: 24148, ftol: 10, dir: 0, hdg: -1, htol: 45 },
-				{ lat: 1, lon: 2, rad: 135, band: 4, freq: 24160, ftol: 10, dir: 0, hdg: -1, htol: 45 }
+			_version: 2,
+			areas: [
+				{
+					id: 1,
+					lat: 1,
+					lon: 2,
+					rad: 135,
+					signatures: [
+						{ band: 4, freq: 24148, ftol: 10, fmin: 24148, fmax: 24148, dir: 0, hdg: -1, htol: 45 },
+						{ band: 4, freq: 24160, ftol: 10, fmin: 24160, fmax: 24160, dir: 0, hdg: -1, htol: 45 }
+					]
+				}
 			]
 		});
 		expect(merged).toEqual({
 			ok: true,
-			message: 'Merged 1 new zones into 1 existing (1 duplicates skipped).'
+			message: 'Merged 1 new signatures into 1 existing (1 duplicates skipped).',
+			droppedManualCount: 0
 		});
 	});
 
@@ -344,7 +434,7 @@ describe('lockoutRequests', () => {
 		expect(fetchWithTimeout).toHaveBeenNthCalledWith(1, '/api/lockouts/zones/import', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ _type: 'v1simple_lockout_zones', _version: 1, zones: [] })
+			body: JSON.stringify({ _type: 'v1simple_lockout_zones', _version: 2, areas: [] })
 		});
 		expect(fetchWithTimeout).toHaveBeenNthCalledWith(2, '/api/lockouts/pending/clear', {
 			method: 'POST'

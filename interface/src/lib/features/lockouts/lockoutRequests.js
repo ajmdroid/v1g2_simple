@@ -26,18 +26,155 @@ function normalizeDirectionIdentity(value) {
 	return 0;
 }
 
-function zoneStructuralFingerprint(zone) {
+function areaStructuralFingerprint(area) {
 	return [
-		zone?.lat ?? zone?.latitude ?? '',
-		zone?.lon ?? zone?.longitude ?? '',
-		zone?.rad ?? zone?.radiusE5 ?? '',
-		zone?.band ?? zone?.bandMask ?? '',
-		zone?.freq ?? zone?.frequencyMHz ?? 0,
-		zone?.ftol ?? zone?.frequencyToleranceMHz ?? 0,
-		normalizeDirectionIdentity(zone?.dir ?? zone?.directionMode),
-		zone?.hdg ?? zone?.headingDeg ?? -1,
-		zone?.htol ?? zone?.headingToleranceDeg ?? 45
+		area?.lat ?? area?.latitude ?? '',
+		area?.lon ?? area?.longitude ?? '',
+		area?.rad ?? area?.radiusE5 ?? ''
 	].join(',');
+}
+
+function signatureStructuralFingerprint(area, signature) {
+	return [
+		areaStructuralFingerprint(area),
+		signature?.band ?? signature?.bandMask ?? '',
+		signature?.freq ?? signature?.frequencyMHz ?? 0,
+		signature?.ftol ?? signature?.frequencyToleranceMHz ?? 0,
+		signature?.fmin ?? signature?.frequencyWindowMinMHz ?? signature?.freq ?? signature?.frequencyMHz ?? 0,
+		signature?.fmax ?? signature?.frequencyWindowMaxMHz ?? signature?.freq ?? signature?.frequencyMHz ?? 0,
+		normalizeDirectionIdentity(signature?.dir ?? signature?.directionMode),
+		signature?.hdg ?? signature?.headingDeg ?? -1,
+		signature?.htol ?? signature?.headingToleranceDeg ?? 45
+	].join(',');
+}
+
+function cloneJsonValue(value) {
+	return JSON.parse(JSON.stringify(value));
+}
+
+function countLockoutSignatures(doc) {
+	if (Array.isArray(doc?.areas)) {
+		return doc.areas.reduce(
+			(total, area) => total + (Array.isArray(area?.signatures) ? area.signatures.length : 0),
+			0
+		);
+	}
+	if (Array.isArray(doc?.zones)) {
+		return doc.zones.length;
+	}
+	return 0;
+}
+
+function normalizeV2ImportDoc(doc) {
+	if (!doc || typeof doc !== 'object') {
+		return null;
+	}
+	if (doc._type !== 'v1simple_lockout_zones' || Number(doc._version) !== 2 || !Array.isArray(doc.areas)) {
+		return null;
+	}
+
+	const mergedAreas = [];
+	const areaIndexByKey = new Map();
+	const seenSignatures = new Set();
+
+	for (const rawArea of doc.areas) {
+		if (!rawArea || typeof rawArea !== 'object' || !Array.isArray(rawArea.signatures)) {
+			return null;
+		}
+		const areaKey = areaStructuralFingerprint(rawArea);
+		let areaIndex = areaIndexByKey.get(areaKey);
+		if (areaIndex === undefined) {
+			areaIndex = mergedAreas.length;
+			areaIndexByKey.set(areaKey, areaIndex);
+			mergedAreas.push({
+				id: areaIndex + 1,
+				lat: rawArea?.lat ?? rawArea?.latitude ?? null,
+				lon: rawArea?.lon ?? rawArea?.longitude ?? null,
+				rad: rawArea?.rad ?? rawArea?.radiusE5 ?? null,
+				signatures: []
+			});
+		}
+
+		for (const rawSignature of rawArea.signatures) {
+			if (!rawSignature || typeof rawSignature !== 'object') {
+				return null;
+			}
+			const signatureKey = signatureStructuralFingerprint(rawArea, rawSignature);
+			if (seenSignatures.has(signatureKey)) {
+				continue;
+			}
+			seenSignatures.add(signatureKey);
+			mergedAreas[areaIndex].signatures.push(cloneJsonValue(rawSignature));
+		}
+	}
+
+	return {
+		_type: 'v1simple_lockout_zones',
+		_version: 2,
+		areas: mergedAreas
+	};
+}
+
+function mergeV2ImportDocs(currentDoc, fileDoc) {
+	const merged = normalizeV2ImportDoc(currentDoc);
+	const incoming = normalizeV2ImportDoc(fileDoc);
+	if (!merged || !incoming) {
+		return null;
+	}
+
+	const areaIndexByKey = new Map();
+	const seenSignatures = new Set();
+	let existingCount = 0;
+
+	for (let index = 0; index < merged.areas.length; ++index) {
+		const area = merged.areas[index];
+		const areaKey = areaStructuralFingerprint(area);
+		areaIndexByKey.set(areaKey, index);
+		for (const signature of area.signatures) {
+			seenSignatures.add(signatureStructuralFingerprint(area, signature));
+			++existingCount;
+		}
+	}
+
+	let addedCount = 0;
+	let skippedCount = 0;
+	for (const incomingArea of incoming.areas) {
+		const areaKey = areaStructuralFingerprint(incomingArea);
+		let targetIndex = areaIndexByKey.get(areaKey);
+		if (targetIndex === undefined) {
+			targetIndex = merged.areas.length;
+			areaIndexByKey.set(areaKey, targetIndex);
+			merged.areas.push({
+				id: targetIndex + 1,
+				lat: incomingArea.lat,
+				lon: incomingArea.lon,
+				rad: incomingArea.rad,
+				signatures: []
+			});
+		}
+		const targetArea = merged.areas[targetIndex];
+		for (const signature of incomingArea.signatures) {
+			const signatureKey = signatureStructuralFingerprint(incomingArea, signature);
+			if (seenSignatures.has(signatureKey)) {
+				skippedCount++;
+				continue;
+			}
+			seenSignatures.add(signatureKey);
+			targetArea.signatures.push(cloneJsonValue(signature));
+			addedCount++;
+		}
+	}
+
+	for (let index = 0; index < merged.areas.length; ++index) {
+		merged.areas[index].id = index + 1;
+	}
+
+	return {
+		payload: merged,
+		existingCount,
+		addedCount,
+		skippedCount
+	};
 }
 
 async function readResponsePayload(res) {
@@ -187,7 +324,8 @@ export async function exportLockoutZonesRequest(fetchWithTimeout) {
 	let zoneCount = '';
 	try {
 		const parsed = JSON.parse(payload);
-		if (Array.isArray(parsed?.zones)) zoneCount = ` (${parsed.zones.length} zones)`;
+		const signatureCount = countLockoutSignatures(parsed);
+		if (signatureCount > 0) zoneCount = ` (${signatureCount} signatures)`;
 	} catch {}
 
 	return { ok: true, message: `Exported lockout zones${zoneCount}.` };
@@ -206,17 +344,24 @@ export async function importLockoutZonesFromFile(fetchWithTimeout, file, confirm
 	} catch {
 		return { ok: false, error: 'Invalid JSON file.' };
 	}
+	const normalizedImport = normalizeV2ImportDoc(parsed);
+	if (!normalizedImport) {
+		return {
+			ok: false,
+			error: 'Lockout import files must use the current v2 area export format.'
+		};
+	}
 
-	const fileZoneCount = Array.isArray(parsed?.zones) ? parsed.zones.length : '?';
+	const fileZoneCount = countLockoutSignatures(normalizedImport);
 	const mergeChoice = confirmFn(
-		`File contains ${fileZoneCount} zones.\n\n` +
-			`OK = MERGE (add to existing zones)\n` +
+		`File contains ${fileZoneCount} signatures.\n\n` +
+			`OK = MERGE (add to existing lockouts)\n` +
 			`Cancel = go back`
 	);
 	if (!mergeChoice) {
 		const replaceChoice = confirmFn(
-			`Replace ALL current zones with ${fileZoneCount} zones from ${file.name}?\n\n` +
-				`This will delete all existing zones first.`
+			`Replace ALL current lockouts with ${fileZoneCount} signatures from ${file.name}?\n\n` +
+				`This will delete all existing learned lockouts first.`
 		);
 		if (!replaceChoice) {
 			return { ok: false, cancelled: true };
@@ -224,14 +369,27 @@ export async function importLockoutZonesFromFile(fetchWithTimeout, file, confirm
 		const replaceRes = await fetchWithTimeout('/api/lockouts/zones/import', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: payload
+			body: JSON.stringify(normalizedImport)
 		});
 		const replaceData = await replaceRes.json().catch(() => ({}));
 		if (!replaceRes.ok) {
 			return { ok: false, error: replaceData.message || `Failed to import lockout zones (${replaceRes.status})` };
 		}
 		const importedCount = typeof replaceData.entriesImported === 'number' ? replaceData.entriesImported : fileZoneCount;
-		return { ok: true, message: `Replaced with ${importedCount} lockout zones.` };
+		const warning =
+			typeof replaceData.droppedManualCount === 'number' && replaceData.droppedManualCount > 0
+				? `Dropped ${replaceData.droppedManualCount} legacy manual lockout ${
+						replaceData.droppedManualCount === 1 ? 'entry' : 'entries'
+					} during import.`
+				: '';
+		return {
+			ok: true,
+			message: warning
+				? `Replaced with ${importedCount} lockout signatures. ${warning}`
+				: `Replaced with ${importedCount} lockout signatures.`,
+			droppedManualCount:
+				typeof replaceData.droppedManualCount === 'number' ? replaceData.droppedManualCount : 0
+		};
 	}
 
 	const exportRes = await fetchWithTimeout('/api/lockouts/zones/export');
@@ -239,43 +397,35 @@ export async function importLockoutZonesFromFile(fetchWithTimeout, file, confirm
 		return { ok: false, error: `Failed to fetch current zones for merge (${exportRes.status})` };
 	}
 	const currentData = await exportRes.json().catch(() => ({}));
-	const currentZones = Array.isArray(currentData?.zones) ? currentData.zones : [];
-	const fileZones = Array.isArray(parsed?.zones) ? parsed.zones : [];
-	const existingKeys = new Set(currentZones.map((zone) => zoneStructuralFingerprint(zone)));
-	let addedCount = 0;
-	for (const zone of fileZones) {
-		const key = zoneStructuralFingerprint(zone);
-		if (!existingKeys.has(key)) {
-			currentZones.push(zone);
-			existingKeys.add(key);
-			addedCount++;
-		}
+	const merged = mergeV2ImportDocs(currentData, normalizedImport);
+	if (!merged) {
+		return { ok: false, error: 'Failed to merge lockout zones from the exported v2 area format.' };
 	}
-
-	const merged = {
-		_type: 'v1simple_lockout_zones',
-		_version: 1,
-		zones: currentZones
-	};
 	const mergeRes = await fetchWithTimeout('/api/lockouts/zones/import', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(merged)
+		body: JSON.stringify(merged.payload)
 	});
 	const mergeData = await mergeRes.json().catch(() => ({}));
 	if (!mergeRes.ok) {
 		return { ok: false, error: mergeData.message || `Failed to merge lockout zones (${mergeRes.status})` };
 	}
-	const skipped = fileZones.length - addedCount;
-	const skippedMsg = skipped > 0 ? ` (${skipped} duplicates skipped)` : '';
+	const skippedMsg = merged.skippedCount > 0 ? ` (${merged.skippedCount} duplicates skipped)` : '';
+	const warning =
+		typeof mergeData.droppedManualCount === 'number' && mergeData.droppedManualCount > 0
+			? ` Dropped ${mergeData.droppedManualCount} legacy manual lockout ${
+					mergeData.droppedManualCount === 1 ? 'entry' : 'entries'
+				} during import.`
+			: '';
 	return {
 		ok: true,
-		message: `Merged ${addedCount} new zones into ${currentZones.length - addedCount} existing${skippedMsg}.`
+		message: `Merged ${merged.addedCount} new signatures into ${merged.existingCount} existing${skippedMsg}.${warning}`,
+		droppedManualCount: typeof mergeData.droppedManualCount === 'number' ? mergeData.droppedManualCount : 0
 	};
 }
 
 export async function clearAllZonesRequest(fetchWithTimeout, pendingCount) {
-	const empty = JSON.stringify({ _type: 'v1simple_lockout_zones', _version: 1, zones: [] });
+	const empty = JSON.stringify({ _type: 'v1simple_lockout_zones', _version: 2, areas: [] });
 	const res = await fetchWithTimeout('/api/lockouts/zones/import', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },

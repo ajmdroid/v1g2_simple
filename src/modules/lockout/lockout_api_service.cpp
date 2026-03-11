@@ -255,6 +255,7 @@ void sendZones(WebServer& server,
     doc["unlearnIntervalHours"] = static_cast<uint32_t>(unlearnIntervalHours);
     doc["unlearnCount"] = static_cast<uint32_t>(unlearnCount);
     doc["manualDemotionMissCount"] = 0;
+    doc["droppedManualCount"] = lockoutStore.stats().droppedManualCount;
     doc["kaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
     doc["activeLimit"] = activeLimit;
     doc["pendingLimit"] = pendingLimit;

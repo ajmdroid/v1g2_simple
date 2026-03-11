@@ -65,7 +65,8 @@ function installDefaultFetch(overrides = []) {
 					learnIntervalHours: 12,
 					unlearnIntervalHours: 0,
 					unlearnCount: 0,
-					manualDemotionMissCount: 12
+					manualDemotionMissCount: 12,
+					droppedManualCount: 0
 				})
 			},
 			{ method: 'POST', match: '/api/gps/config', respond: jsonResponse({ success: true }) },
@@ -154,6 +155,37 @@ describe('lockouts route page', () => {
 		await fireEvent.click(saveButton);
 
 		await screen.findByText(/Failed lockout save/i);
+		unmount();
+	});
+
+	it('surfaces dropped legacy manual lockouts as a warning', async () => {
+		installDefaultFetch([
+			{
+				method: 'GET',
+				match: '/api/lockouts/zones',
+				respond: jsonResponse({
+					activeZones: [],
+					pendingZones: [],
+					activeCount: 0,
+					activeCapacity: 0,
+					activeReturned: 0,
+					pendingCount: 0,
+					pendingCapacity: 0,
+					pendingReturned: 0,
+					promotionHits: 3,
+					promotionRadiusE5: 45,
+					promotionFreqToleranceMHz: 8,
+					learnIntervalHours: 12,
+					unlearnIntervalHours: 0,
+					unlearnCount: 0,
+					manualDemotionMissCount: 12,
+					droppedManualCount: 2
+				})
+			}
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Dropped 2 legacy manual lockout entries during migration.');
 		unmount();
 	});
 });

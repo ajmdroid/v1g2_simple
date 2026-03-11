@@ -46,6 +46,7 @@
 
 	let loading = $state(true);
 	let message = $state(null);
+	let migrationNotice = $state(null);
 	let gpsStatusFetchInFlight = false;
 	let lockoutFetchInFlight = false;
 	let lockoutZonesFetchInFlight = false;
@@ -155,7 +156,8 @@
 		learnIntervalHours: 0,
 		unlearnIntervalHours: 0,
 		unlearnCount: LEARNER_UNLEARN_COUNT_DEFAULT,
-		manualDemotionMissCount: 0
+		manualDemotionMissCount: 0,
+		droppedManualCount: 0
 	});
 	let activeLockoutZones = $state([]);
 	let pendingLockoutZones = $state([]);
@@ -171,6 +173,17 @@
 
 	function setMsg(type, text) {
 		message = { type, text };
+	}
+
+	function setMigrationNotice(count) {
+		if (typeof count === 'number' && count > 0) {
+			migrationNotice = {
+				type: 'warning',
+				text: `Dropped ${count} legacy manual lockout ${count === 1 ? 'entry' : 'entries'} during migration.`
+			};
+			return;
+		}
+		migrationNotice = null;
 	}
 
 	function applyLockoutStatus(data) {
@@ -363,8 +376,11 @@
 					typeof data.unlearnIntervalHours === 'number' ? data.unlearnIntervalHours : 0,
 				unlearnCount: typeof data.unlearnCount === 'number' ? data.unlearnCount : 0,
 				manualDemotionMissCount:
-					typeof data.manualDemotionMissCount === 'number' ? data.manualDemotionMissCount : 0
+					typeof data.manualDemotionMissCount === 'number' ? data.manualDemotionMissCount : 0,
+				droppedManualCount:
+					typeof data.droppedManualCount === 'number' ? data.droppedManualCount : 0
 			};
+			setMigrationNotice(data.droppedManualCount);
 		} catch (e) {
 			if (!silent) lockoutZonesError = 'Failed to load lockout zones';
 		} finally {
@@ -425,6 +441,9 @@
 			if (!result.ok) {
 				setMsg('error', result.error);
 				return;
+			}
+			if (typeof result.droppedManualCount === 'number') {
+				setMigrationNotice(result.droppedManualCount);
 			}
 			setMsg('success', result.message);
 			zoneEditorOpen = false;
@@ -564,6 +583,7 @@
 	</PageHeader>
 
 	<StatusAlert {message} />
+	<StatusAlert message={migrationNotice} />
 
 	<LockoutSafetyGateCard bind:advancedUnlocked />
 
