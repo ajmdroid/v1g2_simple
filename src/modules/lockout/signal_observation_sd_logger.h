@@ -72,6 +72,11 @@ private:
     std::atomic<uint32_t> written_{0};
     std::atomic<uint32_t> writeFail_{0};
     std::atomic<uint32_t> rotations_{0};
+
+#ifdef UNIT_TEST
+public:
+    bool rotateIfNeededForTest(fs::FS& fs) { return rotateIfNeeded(fs); }
+#endif
 };
 
 extern SignalObservationSdLogger signalObservationSdLogger;

@@ -184,9 +184,9 @@ bool writeBackupAtomically(fs::FS* fs, const JsonDocument& doc) {
 
 // Backup display/color settings to SD card
 
-void SettingsManager::backupToSD() {
+bool SettingsManager::backupToSD() {
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
-        return;  // SD not available, skip silently
+        return false;  // SD not available, skip silently
     }
     
     // Acquire SD mutex to protect file I/O.
@@ -197,11 +197,11 @@ void SettingsManager::backupToSD() {
     StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
     if (!sdLock) {
         Serial.println("[Settings] Failed to acquire SD mutex for backup");
-        return;
+        return false;
     }
     
     fs::FS* fs = storageManager.getFilesystem();
-    if (!fs) return;
+    if (!fs) return false;
     
     JsonDocument doc;
     const BackupPayloadBuilder::BuildResult buildResult =
@@ -214,11 +214,12 @@ void SettingsManager::backupToSD() {
     
     if (!writeBackupAtomically(fs, doc)) {
         Serial.println("[Settings] ERROR: Failed to commit SD backup atomically");
-        return;
+        return false;
     }
     
     Serial.printf("[Settings] Full backup saved to SD card (%d profiles)\n",
                   buildResult.profilesBackedUp);
     Serial.printf("[Settings] Backed up: slot0Mode=%d, slot1Mode=%d, slot2Mode=%d\n",
                   settings.slot0_default.mode, settings.slot1_highway.mode, settings.slot2_comfort.mode);
+    return true;
 }

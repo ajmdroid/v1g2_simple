@@ -136,12 +136,7 @@ int backupBondsToSD() {
         return -1;
     }
 
-    // Atomic rename
-    if (sdFs->exists(BLE_BOND_BACKUP_PATH)) {
-        sdFs->remove(BLE_BOND_BACKUP_PATH);
-    }
-    if (!sdFs->rename(tmpPath.c_str(), BLE_BOND_BACKUP_PATH)) {
-        sdFs->remove(tmpPath.c_str());
+    if (!StorageManager::promoteTempFileWithRollback(*sdFs, tmpPath.c_str(), BLE_BOND_BACKUP_PATH)) {
         Serial.println("[BLE] WARN: Bond backup rename failed");
         return -1;
     }

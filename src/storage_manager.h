@@ -235,7 +235,55 @@ public:
         bool dmaStarved_;
     };
     
-    // Atomic JSON file write utility (write to .tmp, then rename).
+    // Promote a temp file to the live path with rollback if promotion fails.
+    // Returns true on success.
+    static bool promoteTempFileWithRollback(fs::FS& fs,
+                                            const char* tempPath,
+                                            const char* livePath,
+                                            const char* backupPath = nullptr) {
+        if (!tempPath || tempPath[0] == '\0' || !livePath || livePath[0] == '\0') {
+            return false;
+        }
+
+        String derivedBackupPath;
+        const char* backupPathToUse = backupPath;
+        if (!backupPathToUse || backupPathToUse[0] == '\0') {
+            derivedBackupPath = String(livePath) + ".prev";
+            backupPathToUse = derivedBackupPath.c_str();
+        }
+
+        if (backupPathToUse && backupPathToUse[0] != '\0' && fs.exists(backupPathToUse)) {
+            fs.remove(backupPathToUse);
+        }
+
+        const bool liveExists = fs.exists(livePath);
+        if (liveExists) {
+            if (!fs.rename(livePath, backupPathToUse)) {
+                fs.remove(tempPath);
+                return false;
+            }
+        }
+
+        if (!fs.rename(tempPath, livePath)) {
+            if (liveExists && fs.exists(backupPathToUse) && !fs.exists(livePath)) {
+                if (!fs.rename(backupPathToUse, livePath)) {
+                    Serial.printf("[Storage] promoteTempFileWithRollback: rollback failed %s -> %s\n",
+                                  backupPathToUse,
+                                  livePath);
+                }
+            }
+            fs.remove(tempPath);
+            return false;
+        }
+
+        if (liveExists && backupPathToUse && backupPathToUse[0] != '\0' && fs.exists(backupPathToUse)) {
+            fs.remove(backupPathToUse);
+        }
+
+        return true;
+    }
+
+    // Atomic JSON file write utility (write to .tmp, then promote).
     // Returns true on success.
     static bool writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc);
 

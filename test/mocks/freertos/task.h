@@ -58,3 +58,4 @@ inline BaseType_t xTaskCreatePinnedToCoreWithCaps(void (*)(void*),
 inline void vTaskDelete(void*) {}
 inline uint32_t ulTaskNotifyTake(BaseType_t, TickType_t) { return 0; }
 inline void xTaskNotifyGive(TaskHandle_t) {}
+inline void taskYIELD() {}

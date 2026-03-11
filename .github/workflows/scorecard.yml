@@ -10,7 +10,7 @@ jobs:
   scorecard:
     name: Run Stability Scorecard
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,41 +49,3 @@ jobs:
         run: |
           echo "::error::Scorecard grade is ${{ steps.scorecard.outputs.grade }}, expected GREEN"
           exit 1
-
-  build:
-    name: PlatformIO Build
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install PlatformIO
-        run: pip install platformio
-
-      - name: Build firmware
-        run: pio run -e waveshare-349
-
-  test:
-    name: PlatformIO Native Tests
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install PlatformIO
-        run: pip install platformio
-
-      - name: Run native tests
-        run: pio test -e native --verbose

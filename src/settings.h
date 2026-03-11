@@ -616,7 +616,7 @@ public:
     void clearWifiClientCredentials();  // Forget saved network
     
     // SD card backup/restore for display settings
-    void backupToSD();
+    bool backupToSD();
     bool restoreFromSD();
     bool checkAndRestoreFromSD();  // Call after storage is mounted to retry restore
     

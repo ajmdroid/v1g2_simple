@@ -55,16 +55,11 @@ static void sendBackup(WebServer& server,
 
 static void handleBackupNow(WebServer& server) {
     Serial.println("[HTTP] POST /api/settings/backup-now");
-
-    if (!storageManager.isReady() || !storageManager.isSDCard()) {
-        server.send(503, "application/json",
-                    "{\"success\":false,\"error\":\"SD card unavailable\"}");
-        return;
-    }
-
-    settingsManager.backupToSD();
-    server.send(200, "application/json",
-                "{\"success\":true,\"message\":\"Backup written to SD\"}");
+    sendBackupNowResponse(server, BackupNowRuntime{
+        []() { return storageManager.isReady(); },
+        []() { return storageManager.isSDCard(); },
+        []() { return settingsManager.backupToSD(); },
+    });
 }
 
 void handleApiBackup(WebServer& server,

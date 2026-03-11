@@ -2,6 +2,7 @@
 #include "lockout_band_policy.h"
 #include "lockout_entry.h"
 #include "lockout_index.h"
+#include "../../storage_manager.h"
 
 #ifndef UNIT_TEST
 #include <Arduino.h>
@@ -377,12 +378,8 @@ bool LockoutStore::saveBinary(fs::FS& fs, const char* path) const {
     tmp.flush();
     tmp.close();
 
-    if (fs.exists(path)) {
-        fs.remove(path);
-    }
-    if (!fs.rename(tmpPath.c_str(), path)) {
-        fs.remove(tmpPath.c_str());
-        Serial.printf("[LockoutStore] saveBinary: rename failed %s -> %s\n",
+    if (!StorageManager::promoteTempFileWithRollback(fs, tmpPath.c_str(), path)) {
+        Serial.printf("[LockoutStore] saveBinary: promote failed %s -> %s\n",
                       tmpPath.c_str(),
                       path);
         return false;

@@ -169,11 +169,17 @@ class SettingsManager {
 public:
     V1Settings settings;
     int saveCalls = 0;
+    int backupToSDCalls = 0;
     uint8_t slotAlertPersistSec[3] = {0, 0, 0};
+    bool backupToSDResult = true;
     
     void load() {}
     void save() { ++saveCalls; }
     void setDefaults() {}
+    bool backupToSD() {
+        ++backupToSDCalls;
+        return backupToSDResult;
+    }
     
     const V1Settings& get() const { return settings; }
     V1Settings& getMutable() { return settings; }

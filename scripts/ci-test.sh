@@ -1,6 +1,6 @@
 #!/bin/bash
-# Local CI test - mimics GitHub Actions build workflow
-# Run this before pushing to catch build failures early
+# Authoritative repo gate used locally and by GitHub workflows.
+# Run this before pushing to catch the same failures CI enforces.
 
 set -e  # Exit on any error
 
@@ -118,6 +118,18 @@ echo -e "${GREEN}✅ Firmware static analysis passed${NC}"
 echo -e "${YELLOW}🏗️  Building firmware (waveshare-349)...${NC}"
 pio run -e waveshare-349
 echo -e "${GREEN}✅ Firmware built${NC}"
+
+# Step 4a: Enforce firmware size budget
+echo -e "${YELLOW}📏 Checking firmware size budget...${NC}"
+MAX_SIZE=5570560
+ACTUAL_SIZE=$(wc -c < .pio/build/waveshare-349/firmware.bin | tr -d ' ')
+PCT=$(( ACTUAL_SIZE * 100 / 6553600 ))
+echo "Firmware size: ${ACTUAL_SIZE} bytes (${PCT}% of partition, budget: ${MAX_SIZE} bytes)"
+if [ "$ACTUAL_SIZE" -gt "$MAX_SIZE" ]; then
+  echo -e "${RED}❌ Firmware size exceeds budget${NC}"
+  exit 1
+fi
+echo -e "${GREEN}✅ Firmware within size budget${NC}"
 
 # Step 4b: Build filesystem image
 echo -e "${YELLOW}💾 Building LittleFS image...${NC}"

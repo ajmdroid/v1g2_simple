@@ -1,6 +1,6 @@
 # V1-Simple: Senior Engineer Takeover Report
 
-> **Date:** March 8, 2026 (updated — original draft March 7)
+> **Date:** March 11, 2026 (updated — original draft March 7)
 > **Codebase:** ESP32-S3 touchscreen display for Valentine One Gen2 radar detector
 > **Version:** 4.0.0-dev (1,807 commits, 1,371 ahead of `main`)
 
@@ -11,11 +11,11 @@
 This is a **well-engineered embedded project** that has been through a major
 architecture overhaul (v3 → v4). The codebase is in good shape overall — the
 modular rewrite is largely complete, test coverage is strong, and CI discipline
-is above-average for an embedded project. The CI gate is more comprehensive than
-initially assessed — it includes frontend linting, static analysis, frontend
-unit tests with coverage, and 8 architectural contract scripts. The remaining
-concerns are around frontend test depth, oversized page components, and
-continued `main.cpp` decomposition.
+is above-average for an embedded project. The authoritative repo gate is now
+`./scripts/ci-test.sh`, and GitHub workflows call that same script instead of
+re-declaring a weaker parallel check list. The remaining concerns are around
+frontend test depth, oversized page components, and continued `main.cpp`
+decomposition.
 
 **Release strategy:** `main` will be hard-reset to `dev` when v4.0.0 ships.
 This is an intentional choice — no merge is planned, so the commit delta between
@@ -32,7 +32,7 @@ branches carries no merge-conflict risk.
 | Frontend (interface/src/) | 8,493 lines (7,716 in Svelte) |
 | Tests (test/) | 89 test files, 27,394 lines, 1,006 test cases, 3,712 assertions |
 | Frontend tests | 7 files (utils/components + route-level suites for lockouts/settings/profiles/cameras) |
-| CI contract scripts | 8 scripts, 9 snapshot files |
+| CI contract scripts | 9 scripts, 10 snapshot files |
 | Web UI compressed size | 124 KB gzipped |
 | data/ partition usage | 2.2 MB / 3.25 MB budget (68%) |
 | Total commits | 1,807 |
@@ -62,14 +62,15 @@ branches carries no merge-conflict risk.
 - Bench ladder qualification (L0–L8) with automated failure classification.
 
 ### CI & Contract Enforcement (A)
-- 8 contract scripts checking architectural invariants (BLE hot-path discipline,
+- 9 contract scripts checking architectural invariants (BLE hot-path discipline,
   SD mutex safety, display flush stability, main loop ordering, WiFi API
   contracts, perf CSV schema, frontend HTTP resilience, extern/global usage).
-- 9 contract snapshot files — modifications require explicit `--update`.
-- Pre-push gate `ci-test.sh` runs: contracts → native tests → frontend lint
+- 10 contract snapshot files — modifications require explicit `--update`.
+- `./scripts/ci-test.sh` is the authoritative repo gate for both local runs and
+  GitHub workflows. It runs: contracts → native tests → frontend lint
   (`svelte-check`) → frontend unit tests with coverage → web build → web
   deploy → asset budget check → firmware static analysis (`pio check`) →
-  firmware build → size report.
+  firmware build → firmware size budget → LittleFS size budget → size report.
 - Ship gate `iron-gate.sh` adds hardware integration tests.
 
 ### Code Quality (A-)
@@ -207,7 +208,8 @@ Authoritative acceptance sources:
 This is a strong codebase for an embedded hobby/prosumer project. The
 architecture is sound, testing is thorough (1,006 cases, 3,712 assertions), and
 the CI gate is comprehensive — contracts, linting, static analysis, unit tests
-with coverage, asset budgets, and firmware builds all run in the pre-push gate.
+with coverage, asset budgets, and firmware builds all run in the authoritative
+repo gate.
 The module migration from v3 to v4 was executed well — the code reads cleanly
 and the priority stack is respected throughout.
 

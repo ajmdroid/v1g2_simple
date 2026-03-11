@@ -1,312 +1,101 @@
 name: CI Build Check
 
 on:
-  # Manual trigger from GitHub Actions tab
   workflow_dispatch:
-  
-  # Run on all pushes to dev branch
   push:
     branches:
       - dev
       - main
       - 'feature/**'
-  
-  # Validate all PRs to main (gate for merging)
   pull_request:
     branches:
       - main
 
 jobs:
-  # Run unit tests first (fast feedback)
-  test:
+  ci:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
-    
-    - name: 🐍 Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-    
-    - name: 📦 Cache PlatformIO
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.platformio
-          .pio
-        key: ${{ runner.os }}-pio-native-${{ hashFiles('platformio.ini') }}
-        restore-keys: |
-          ${{ runner.os }}-pio-native-
-    
-    - name: 🔧 Install PlatformIO
-      run: |
-        pip install --upgrade platformio
-        pio --version
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-    - name: 🔒 Check WiFi API contracts
-      run: python3 scripts/check_wifi_api_contract.py
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: interface/package-lock.json
 
-    - name: 🔒 Check BLE hot-path contract
-      run: python3 scripts/check_ble_hot_path_contract.py
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-    - name: 🔒 Check perf CSV column contract
-      run: python3 scripts/check_perf_csv_column_contract.py
+      - name: 📦 Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
 
-    - name: 🔒 Check display flush discipline contract
-      run: python3 scripts/check_display_flush_discipline_contract.py
+      - name: 🔧 Install dependencies
+        run: |
+          pip install --upgrade platformio
+          pio --version
+          cd interface && npm ci
 
-    - name: 🔒 Check SD lock discipline contract
-      run: python3 scripts/check_sd_lock_discipline_contract.py
+      - name: ✅ Run authoritative repo gate
+        run: ./scripts/ci-test.sh
 
-    - name: 🔒 Check main loop call-order contract
-      run: python3 scripts/check_main_loop_call_order_contract.py
-    
-    - name: 🧪 Run unit tests
-      run: |
-        python3 scripts/run_native_tests_serial.py
-        echo "### ✅ Unit Tests Passed" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "All native unit tests completed successfully." >> $GITHUB_STEP_SUMMARY
+      - name: 📦 Prepare artifacts
+        run: |
+          mkdir -p artifacts
+          cp .pio/build/waveshare-349/firmware.bin artifacts/
+          cp .pio/build/waveshare-349/bootloader.bin artifacts/
+          cp .pio/build/waveshare-349/partitions.bin artifacts/
+          if [ -f .pio/build/waveshare-349/littlefs.bin ]; then
+            cp .pio/build/waveshare-349/littlefs.bin artifacts/
+          fi
+          echo "Build Date: $(date)" > artifacts/BUILD_INFO.txt
+          echo "Commit: ${{ github.sha }}" >> artifacts/BUILD_INFO.txt
+          echo "Branch: ${{ github.ref_name }}" >> artifacts/BUILD_INFO.txt
+          echo "Triggered by: ${{ github.event_name }}" >> artifacts/BUILD_INFO.txt
+          ls -lhR artifacts/
 
-  build:
-    runs-on: ubuntu-latest
-    needs: test  # Tests must pass before building
-    
-    steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    
-    - name: 🟢 Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22'
-        cache: 'npm'
-        cache-dependency-path: interface/package-lock.json
-    
-    - name: 📦 Install web dependencies
-      working-directory: interface
-      run: npm ci
+      - name: 📤 Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ github.sha }}
+          path: artifacts/
+          retention-days: 30
 
-    - name: 🧪 Run frontend unit tests
-      working-directory: interface
-      run: npm run test:unit
-    
-    - name: 🎨 Build Svelte web interface
-      working-directory: interface
-      run: |
-        npm run build
-        echo "✅ Web interface built successfully"
-    
-    - name: Lint web interface
-      working-directory: interface
-      run: npm run lint
-    
-    - name: 📁 Deploy web files to data/ folder
-      working-directory: interface
-      run: |
-        npm run deploy
-        echo "✅ Web files deployed to data/"
-
-    - name: 🔒 Check web asset guardrails
-      run: python3 scripts/check_web_asset_budget.py
-
-    - name: 🔒 Check deployed audio manifest
-      run: python3 scripts/check_audio_asset_manifest.py
-    
-    - name: 🐍 Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-    
-    - name: 📦 Cache PlatformIO
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.platformio
-          .pio
-        key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
-        restore-keys: |
-          ${{ runner.os }}-pio-
-    
-    - name: 🔧 Install PlatformIO
-      run: |
-        pip install --upgrade platformio
-        pio --version
-    
-    - name: 🏗️ Build firmware
-      run: |
-        pio run -e waveshare-349
-        echo "✅ Firmware built successfully"
-
-    - name: 💾 Build LittleFS image
-      run: |
-        pio run -e waveshare-349 -t buildfs
-        echo "✅ LittleFS image built successfully"
-
-    - name: Enforce LittleFS size budget
-      run: |
-        python3 - <<'PY'
-        import csv
-        from pathlib import Path
-
-        partition_size = None
-        with Path("partitions_v1.csv").open(newline="", encoding="utf-8") as fh:
-            for row in csv.reader(fh):
-                if not row or row[0].strip().startswith("#"):
-                    continue
-                if row[0].strip() == "storage":
-                    partition_size = int(row[4].strip(), 0)
-                    break
-
-        if partition_size is None:
-            raise SystemExit("storage partition not found in partitions_v1.csv")
-
-        littlefs = Path(".pio/build/waveshare-349/littlefs.bin")
-        actual_size = littlefs.stat().st_size
-        print(f"LittleFS size: {actual_size} bytes ({actual_size * 100 // partition_size}% of partition)")
-        if actual_size > partition_size:
-            raise SystemExit(
-                f"LittleFS image {actual_size} exceeds storage partition {partition_size}"
-            )
-        PY
-    
-    - name: 📊 Check build size
-      run: |
-        echo "### Build Size Report" >> $GITHUB_STEP_SUMMARY
-        echo "#### waveshare-349" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        pio run -e waveshare-349 -t size >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-    
-    - name: Enforce firmware size budget
-      run: |
-        # App partition: 0x640000 = 6,553,600 bytes
-        # Budget: 85% = 5,570,560 bytes
-        MAX_SIZE=5570560
-        ACTUAL_SIZE=$(wc -c < .pio/build/waveshare-349/firmware.bin | tr -d ' ')
-        PCT=$(( ACTUAL_SIZE * 100 / 6553600 ))
-        echo "Firmware size: ${ACTUAL_SIZE} bytes (${PCT}% of partition, budget: ${MAX_SIZE} bytes)"
-        if [ "$ACTUAL_SIZE" -gt "$MAX_SIZE" ]; then
-          echo "::error::Firmware size ${ACTUAL_SIZE} exceeds budget ${MAX_SIZE} bytes (85% of 6,553,600 app partition)"
-          exit 1
-        fi
-        echo "✅ Firmware within size budget (${PCT}% of partition)" >> $GITHUB_STEP_SUMMARY
-    
-    - name: 📦 Prepare artifacts
-      run: |
-        mkdir -p artifacts
-        
-        cp .pio/build/waveshare-349/firmware.bin artifacts/
-        cp .pio/build/waveshare-349/bootloader.bin artifacts/
-        cp .pio/build/waveshare-349/partitions.bin artifacts/
-        if [ -f .pio/build/waveshare-349/littlefs.bin ]; then
-          cp .pio/build/waveshare-349/littlefs.bin artifacts/
-        fi
-        
-        # Create version info
-        echo "Build Date: $(date)" > artifacts/BUILD_INFO.txt
-        echo "Commit: ${{ github.sha }}" >> artifacts/BUILD_INFO.txt
-        echo "Branch: ${{ github.ref_name }}" >> artifacts/BUILD_INFO.txt
-        echo "Triggered by: ${{ github.event_name }}" >> artifacts/BUILD_INFO.txt
-        
-        ls -lhR artifacts/
-    
-    - name: 📤 Upload firmware artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: firmware-${{ github.sha }}
-        path: artifacts/
-        retention-days: 30
-    
-    - name: 📝 Create release notes
-      if: github.event_name == 'workflow_dispatch'
-      run: |
-        echo "## 🎉 Build Complete!" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
-        echo "- \`firmware.bin\` - Main firmware binary" >> $GITHUB_STEP_SUMMARY
-        echo "- \`bootloader.bin\` - ESP32-S3 bootloader" >> $GITHUB_STEP_SUMMARY
-        echo "- \`partitions.bin\` - Partition table" >> $GITHUB_STEP_SUMMARY
-        echo "- \`littlefs.bin\` - Filesystem with web interface" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 🚀 Flash Instructions" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-        echo "# Download artifacts, then:" >> $GITHUB_STEP_SUMMARY
-        echo "esptool.py --chip esp32s3 --port /dev/ttyUSB0 write_flash \\" >> $GITHUB_STEP_SUMMARY
-        echo "  0x0000 bootloader.bin \\" >> $GITHUB_STEP_SUMMARY
-        echo "  0x8000 partitions.bin \\" >> $GITHUB_STEP_SUMMARY
-        echo "  0x10000 firmware.bin \\" >> $GITHUB_STEP_SUMMARY
-        echo "  0xca0000 littlefs.bin" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Or use PlatformIO:" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-        echo "pio run -t upload" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-
-  # Static analysis (runs in parallel with test→build)
-  check:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
-    
-    - name: 🐍 Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-    
-    - name: 📦 Cache PlatformIO
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.platformio
-          .pio
-        key: ${{ runner.os }}-pio-check-${{ hashFiles('platformio.ini') }}
-        restore-keys: |
-          ${{ runner.os }}-pio-check-
-    
-    - name: 🔧 Install PlatformIO
-      run: |
-        pip install --upgrade platformio
-        pio --version
-    
-    - name: 🔬 Static analysis (high-severity gate)
-      run: |
-        pio check -e waveshare-349 --fail-on-defect=high
-        echo "### ✅ Static Analysis Passed" >> $GITHUB_STEP_SUMMARY
-        echo "No high-severity defects found." >> $GITHUB_STEP_SUMMARY
-
-  # Test web interface build on Windows (firmware cross-compilation
-  # is validated by the Linux build job; pioarduino ESP32 platform
-  # does not reliably resolve toolchain paths on Windows runners)
-  build-windows:
-    runs-on: windows-latest
-    
-    steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
-    
-    - name: 🟢 Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22'
-        cache: 'npm'
-        cache-dependency-path: interface/package-lock.json
-    
-    - name: 📦 Install web dependencies
-      working-directory: interface
-      run: npm ci
-    
-    - name: 🎨 Build Svelte web interface
-      working-directory: interface
-      run: npm run build
-
-    - name: 📁 Deploy web files to data/ folder
-      working-directory: interface
-      run: npm run deploy
+      - name: 📝 Create release notes
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "## 🎉 Build Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- \`firmware.bin\` - Main firmware binary" >> $GITHUB_STEP_SUMMARY
+          echo "- \`bootloader.bin\` - ESP32-S3 bootloader" >> $GITHUB_STEP_SUMMARY
+          echo "- \`partitions.bin\` - Partition table" >> $GITHUB_STEP_SUMMARY
+          echo "- \`littlefs.bin\` - Filesystem with web interface" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 Flash Instructions" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Download artifacts, then:" >> $GITHUB_STEP_SUMMARY
+          echo "esptool.py --chip esp32s3 --port /dev/ttyUSB0 write_flash \\" >> $GITHUB_STEP_SUMMARY
+          echo "  0x0000 bootloader.bin \\" >> $GITHUB_STEP_SUMMARY
+          echo "  0x8000 partitions.bin \\" >> $GITHUB_STEP_SUMMARY
+          echo "  0x10000 firmware.bin \\" >> $GITHUB_STEP_SUMMARY
+          echo "  0xca0000 littlefs.bin" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Or use PlatformIO:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "pio run -t upload" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

@@ -1,14 +1,11 @@
 # Testing Suite Documentation
 
 > Status: Active
-> Last validated against scripts: March 10, 2026
+> Last validated against scripts: March 11, 2026
 
 This document is the source of truth for how we test this repo today.
 
 If scripts change, this file must change in the same commit.
-
-For a current inventory of failure points covered by the suite, see
-[`docs/TEST_FAILURE_POINTS.md`](TEST_FAILURE_POINTS.md).
 
 ## Table of Contents
 
@@ -41,6 +38,7 @@ For a current inventory of failure points covered by the suite, see
 
 This runs contract guards, native tests, frontend lint/type checks, frontend
 unit tests with coverage, web build checks, and firmware build checks.
+It is the authoritative repo gate locally and in GitHub workflows.
 
 When only the Svelte interface changed and you want the narrower frontend gate
 before the full repo pass:

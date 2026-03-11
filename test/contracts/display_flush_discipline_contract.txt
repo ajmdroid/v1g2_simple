@@ -15,9 +15,10 @@ kind=DISPLAY_FLUSH file=src/display_sliders.cpp line=93 function=showSettingsSli
 kind=DISPLAY_FLUSH file=src/display_update.cpp line=247 function=update
 kind=DISPLAY_FLUSH file=src/display_update.cpp line=302 function=update
 kind=DISPLAY_FLUSH file=src/display_update.cpp line=433 function=updatePersisted
-kind=DISPLAY_FLUSH file=src/display_update.cpp line=473 function=updateCameraAlert
-kind=DISPLAY_FLUSH file=src/display_update.cpp line=680 function=update
-kind=DISPLAY_FLUSH file=src/display_update.cpp line=742 function=update
+kind=DISPLAY_FLUSH file=src/display_update.cpp line=482 function=updateCameraAlert
+kind=DISPLAY_FLUSH file=src/display_update.cpp line=509 function=updateCameraAlert
+kind=DISPLAY_FLUSH file=src/display_update.cpp line=722 function=update
+kind=DISPLAY_FLUSH file=src/display_update.cpp line=784 function=update
 kind=POINTER_FLUSH file=include/display_flush.h line=11 function=<global>
 kind=POINTER_FLUSH file=src/modules/ble/connection_state_module.cpp line=83 function=process
 kind=POINTER_FLUSH file=src/modules/touch/touch_ui_module.cpp line=37 function=process

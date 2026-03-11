@@ -218,6 +218,25 @@ private:
 
 namespace fs {
 
+struct MockRenameState {
+    size_t renameCalls = 0;
+    size_t failOnCall = 0;
+};
+
+inline MockRenameState g_mock_fs_rename_state{};
+
+inline void mock_reset_fs_rename_state() {
+    g_mock_fs_rename_state = MockRenameState{};
+}
+
+inline void mock_fail_next_rename() {
+    g_mock_fs_rename_state.failOnCall = g_mock_fs_rename_state.renameCalls + 1;
+}
+
+inline void mock_fail_rename_on_call(size_t callNumber) {
+    g_mock_fs_rename_state.failOnCall = callNumber;
+}
+
 class FS {
 public:
     FS()
@@ -259,6 +278,12 @@ public:
     }
 
     bool rename(const char* from, const char* to) {
+        g_mock_fs_rename_state.renameCalls++;
+        if (g_mock_fs_rename_state.failOnCall != 0 &&
+            g_mock_fs_rename_state.renameCalls == g_mock_fs_rename_state.failOnCall) {
+            g_mock_fs_rename_state.failOnCall = 0;
+            return false;
+        }
         std::error_code ec;
         const std::filesystem::path target = resolve(to);
         std::filesystem::create_directories(target.parent_path(), ec);

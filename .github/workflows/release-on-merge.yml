@@ -1,7 +1,5 @@
 name: Release on Merge
 
-# Single workflow: PR merge → build → release → deploy
-# Version is read from include/config.h (set it before merging PR)
 on:
   push:
     branches:
@@ -22,23 +20,21 @@ jobs:
     concurrency:
       group: release-${{ github.ref }}
       cancel-in-progress: false
-    
+
     steps:
       - name: Check if version bump commit
         id: check
         run: |
-          # For workflow_dispatch, always proceed
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "should_release=true" >> $GITHUB_OUTPUT
             exit 0
           fi
-          
-          # Get commit message
+
           COMMIT_MSG=$(cat << 'EOF'
           ${{ github.event.head_commit.message }}
           EOF
           )
-          
+
           if [[ "$COMMIT_MSG" == "chore(release):"* ]]; then
             echo "This is a version bump commit, skipping"
             echo "should_release=false" >> $GITHUB_OUTPUT
@@ -46,14 +42,14 @@ jobs:
             echo "Proceeding with release"
             echo "should_release=true" >> $GITHUB_OUTPUT
           fi
-      
+
       - name: Checkout
         if: steps.check.outputs.should_release == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Setup Node.js
         if: steps.check.outputs.should_release == 'true'
         uses: actions/setup-node@v4
@@ -61,65 +57,46 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: interface/package-lock.json
-      
+
       - name: Setup Python
         if: steps.check.outputs.should_release == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
+      - name: Cache PlatformIO
+        if: steps.check.outputs.should_release == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ runner.os }}-pio-release-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-release-
+            ${{ runner.os }}-pio-
+
       - name: Install dependencies
         if: steps.check.outputs.should_release == 'true'
         run: |
           pip install platformio esptool
+          pio --version
           cd interface && npm ci
 
-      - name: Check WiFi API contracts
+      - name: ✅ Run authoritative repo gate
         if: steps.check.outputs.should_release == 'true'
-        run: python3 scripts/check_wifi_api_contract.py
+        run: ./scripts/ci-test.sh
 
-      - name: Check BLE hot-path contract
-        if: steps.check.outputs.should_release == 'true'
-        run: python3 scripts/check_ble_hot_path_contract.py
-
-      - name: Check perf CSV column contract
-        if: steps.check.outputs.should_release == 'true'
-        run: python3 scripts/check_perf_csv_column_contract.py
-
-      - name: Check display flush discipline contract
-        if: steps.check.outputs.should_release == 'true'
-        run: python3 scripts/check_display_flush_discipline_contract.py
-
-      - name: Check SD lock discipline contract
-        if: steps.check.outputs.should_release == 'true'
-        run: python3 scripts/check_sd_lock_discipline_contract.py
-
-      - name: Check main loop call-order contract
-        if: steps.check.outputs.should_release == 'true'
-        run: python3 scripts/check_main_loop_call_order_contract.py
-      
-      # ========== TEST (gate release on passing tests) ==========
-      - name: Run unit tests
-        if: steps.check.outputs.should_release == 'true'
-        run: python3 scripts/run_native_tests_serial.py
-
-      - name: Run frontend unit tests
-        if: steps.check.outputs.should_release == 'true'
-        run: cd interface && npm run test:unit
-      
-      # ========== VERSION ==========
       - name: Get version from config.h
         if: steps.check.outputs.should_release == 'true'
         id: version
         run: |
-          # Read version from config.h (source of truth)
           VERSION=$(grep '#define FIRMWARE_VERSION' include/config.h | sed 's/.*"\(.*\)".*/\1/')
           echo "Version from config.h: $VERSION"
-          
           NEW_TAG="v${VERSION}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
-      
+
       - name: Guard against tag collision
         if: steps.check.outputs.should_release == 'true'
         run: |
@@ -133,8 +110,7 @@ jobs:
         run: |
           sed -i 's/"version": ".*"/"version": "${{ steps.version.outputs.tag }}"/' docs/install/manifest.json
           sed -i 's/^\*\*Version:\*\* .*/**Version:** ${{ steps.version.outputs.version }}/' docs/MANUAL.md
-      
-      # ========== BUILD ==========
+
       - name: Build web interface
         if: steps.check.outputs.should_release == 'true'
         run: |
@@ -151,41 +127,15 @@ jobs:
       - name: Stage manifest-tracked audio files
         if: steps.check.outputs.should_release == 'true'
         run: node interface/scripts/stage-audio.js
-      
+
       - name: Build firmware
         if: steps.check.outputs.should_release == 'true'
         run: pio run -e waveshare-349
-      
+
       - name: Build filesystem
         if: steps.check.outputs.should_release == 'true'
         run: pio run -e waveshare-349 -t buildfs
 
-      - name: Enforce LittleFS size budget
-        if: steps.check.outputs.should_release == 'true'
-        run: |
-          python3 - <<'PY'
-          import csv
-          from pathlib import Path
-
-          partition_size = None
-          with Path("partitions_v1.csv").open(newline="", encoding="utf-8") as fh:
-              for row in csv.reader(fh):
-                  if not row or row[0].strip().startswith("#"):
-                      continue
-                  if row[0].strip() == "storage":
-                      partition_size = int(row[4].strip(), 0)
-                      break
-
-          if partition_size is None:
-              raise SystemExit("storage partition not found in partitions_v1.csv")
-
-          littlefs = Path(".pio/build/waveshare-349/littlefs.bin")
-          actual_size = littlefs.stat().st_size
-          print(f"LittleFS size: {actual_size} bytes / {partition_size} byte partition")
-          if actual_size > partition_size:
-              raise SystemExit("LittleFS image exceeds storage partition size")
-          PY
-      
       - name: Create merged firmware
         if: steps.check.outputs.should_release == 'true'
         run: |
@@ -195,7 +145,7 @@ jobs:
           cp ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin release/
           cp .pio/build/waveshare-349/firmware.bin release/
           cp .pio/build/waveshare-349/littlefs.bin release/
-          
+
           esptool.py --chip esp32s3 merge_bin \
             -o release/merged-firmware.bin \
             --flash_mode qio \
@@ -206,17 +156,15 @@ jobs:
             0xe000 release/boot_app0.bin \
             0x10000 release/firmware.bin \
             0xca0000 release/littlefs.bin
-          
+
           cp docs/install/manifest.json release/
-      
-      # ========== TAG ==========
+
       - name: Create tag
         if: steps.check.outputs.should_release == 'true'
         run: |
           git tag ${{ steps.version.outputs.tag }}
           git push origin ${{ steps.version.outputs.tag }}
-      
-      # ========== RELEASE ==========
+
       - name: Create GitHub Release
         if: steps.check.outputs.should_release == 'true'
         uses: softprops/action-gh-release@v1
@@ -230,14 +178,13 @@ jobs:
             release/*.bin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      # ========== DEPLOY TO FLASHER ==========
+
       - name: Prepare web installer files
         if: steps.check.outputs.should_release == 'true'
         run: |
           cp release/*.bin docs/install/
           cp release/manifest.json docs/install/
-      
+
       - name: Deploy to GitHub Pages
         if: steps.check.outputs.should_release == 'true'
         uses: peaceiris/actions-gh-pages@v4
@@ -245,7 +192,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs/install
           destination_dir: install
-      
+
       - name: Summary
         if: steps.check.outputs.should_release == 'true'
         run: |
@@ -253,6 +200,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Authoritative repo gate passed" >> $GITHUB_STEP_SUMMARY
           echo "✅ Tag created (immutable)" >> $GITHUB_STEP_SUMMARY
           echo "✅ Firmware built" >> $GITHUB_STEP_SUMMARY
           echo "✅ GitHub Release created" >> $GITHUB_STEP_SUMMARY

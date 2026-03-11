@@ -21,6 +21,11 @@ public:
     String(const char* s) : data_(s ? s : "") {}
     String(const std::string& s) : data_(s) {}
     String(int val) : data_(std::to_string(val)) {}
+    String(unsigned int val) : data_(std::to_string(val)) {}
+    String(long val) : data_(std::to_string(val)) {}
+    String(unsigned long val) : data_(std::to_string(val)) {}
+    String(long long val) : data_(std::to_string(val)) {}
+    String(unsigned long long val) : data_(std::to_string(val)) {}
     String(float val, int decimals = 2) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%.*f", decimals, val);

@@ -250,7 +250,10 @@ bool SignalObservationSdLogger::rotateIfNeeded(fs::FS& fs) {
         fs.remove(prevPath);
     }
     if (!fs.rename(path, prevPath)) {
-        fs.remove(path);
+        Serial.printf("[LockoutSD] WARN: rotation rename failed %s -> %s; keeping current file\n",
+                      path,
+                      prevPath.c_str());
+        return true;
     }
 
     headerReady_ = false;

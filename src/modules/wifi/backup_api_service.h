@@ -8,6 +8,32 @@
 
 namespace BackupApiService {
 
+struct BackupNowRuntime {
+    std::function<bool()> isStorageReady;
+    std::function<bool()> isSDCard;
+    std::function<bool()> backupToSD;
+};
+
+inline void sendBackupNowResponse(WebServer& server, const BackupNowRuntime& runtime) {
+    const bool storageReady = runtime.isStorageReady && runtime.isStorageReady();
+    const bool sdCard = runtime.isSDCard && runtime.isSDCard();
+    if (!storageReady || !sdCard) {
+        server.send(503, "application/json",
+                    "{\"success\":false,\"error\":\"SD card unavailable\"}");
+        return;
+    }
+
+    const bool backupOk = runtime.backupToSD && runtime.backupToSD();
+    if (!backupOk) {
+        server.send(500, "application/json",
+                    "{\"success\":false,\"error\":\"Backup write failed\"}");
+        return;
+    }
+
+    server.send(200, "application/json",
+                "{\"success\":true,\"message\":\"Backup written to SD\"}");
+}
+
 /// GET /api/settings/backup handler with route-level UI activity callback.
 void handleApiBackup(WebServer& server,
                      BackupSnapshotCache& cachedSnapshot,

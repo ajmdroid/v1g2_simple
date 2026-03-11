@@ -1,4 +1,5 @@
 #include "v1_devices.h"
+#include "storage_manager.h"
 
 #include <ArduinoJson.h>
 
@@ -72,11 +73,7 @@ bool copyStoreFile(fs::FS* sourceFs, fs::FS* targetFs) {
         return false;
     }
 
-    if (targetFs->exists(STORE_PATH)) {
-        targetFs->remove(STORE_PATH);
-    }
-    if (!targetFs->rename(STORE_TMP_PATH, STORE_PATH)) {
-        targetFs->remove(STORE_TMP_PATH);
+    if (!StorageManager::promoteTempFileWithRollback(*targetFs, STORE_TMP_PATH, STORE_PATH)) {
         return false;
     }
 
@@ -197,12 +194,7 @@ bool V1DeviceStore::saveToStore() const {
         return false;
     }
 
-    if (fs->exists(STORE_PATH)) {
-        fs->remove(STORE_PATH);
-    }
-
-    if (!fs->rename(STORE_TMP_PATH, STORE_PATH)) {
-        fs->remove(STORE_TMP_PATH);
+    if (!StorageManager::promoteTempFileWithRollback(*fs, STORE_TMP_PATH, STORE_PATH)) {
         return false;
     }
 

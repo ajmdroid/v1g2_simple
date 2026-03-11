@@ -194,11 +194,16 @@ Restore settings from backup JSON file.
 
 ### POST /api/settings/backup-now
 
-Trigger an immediate settings backup to SD/LittleFS.
+Trigger an immediate settings backup to SD.
 
 **Response (200):**
 ```json
 {"success": true, "message": "Backup written to SD"}
+```
+
+**Response (500):**
+```json
+{"success": false, "error": "Backup write failed"}
 ```
 
 **Response (503):**

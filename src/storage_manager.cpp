@@ -44,7 +44,6 @@ bool StorageManager::begin() {
         littlefsReady = LittleFS.begin(false, "/littlefs", 10, "storage");
         if (!littlefsReady) {
             Serial.println("[Storage] WARNING: LittleFS secondary mount failed - mirror backups disabled");
-            Serial.println("[Storage] (Run 'Format LittleFS' from maintenance if needed)");
         }
 
         return true;
@@ -55,7 +54,7 @@ bool StorageManager::begin() {
 
     // Fallback to LittleFS
     Serial.println("[Storage] Trying LittleFS fallback...");
-    if (LittleFS.begin(true, "/littlefs", 10, "storage")) {
+    if (LittleFS.begin(false, "/littlefs", 10, "storage")) {
         fs = &LittleFS;
         ready = true;
         littlefsReady = true;
@@ -63,6 +62,7 @@ bool StorageManager::begin() {
         return true;
     }
 
+    Serial.println("[Storage] LittleFS fallback mount failed (storage left unchanged)");
     Serial.println("[Storage] All storage mount attempts failed!");
     return false;
 }
@@ -104,14 +104,9 @@ bool StorageManager::writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocum
         fs.remove(tmpPath.c_str());
         return false;
     }
-    // Only remove old file if it exists (avoids VFS error log spam)
-    if (fs.exists(path)) {
-        fs.remove(path);
-    }
-    if (!fs.rename(tmpPath.c_str(), path)) {
-        Serial.printf("[Storage] writeJsonFileAtomic: rename failed %s -> %s\n", tmpPath.c_str(), path);
-        // If rename fails, try to clean up
-        fs.remove(tmpPath.c_str());
+
+    if (!promoteTempFileWithRollback(fs, tmpPath.c_str(), path)) {
+        Serial.printf("[Storage] writeJsonFileAtomic: promote failed %s -> %s\n", tmpPath.c_str(), path);
         return false;
     }
     return true;
