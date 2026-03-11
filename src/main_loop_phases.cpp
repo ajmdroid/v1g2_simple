@@ -121,6 +121,7 @@ LoopDisplayPreWifiPhaseValues processLoopDisplayPreWifiPhase(
 LoopWifiPhaseValues processLoopWifiPhase(
     const unsigned long nowMs,
     const unsigned long v1ConnectedAtMs,
+    const bool enableWifi,
     const bool enableWifiAtBoot,
     const bool currentWifiAutoStartDone,
     const bool skipLateNonCoreThisLoop,
@@ -133,6 +134,7 @@ LoopWifiPhaseValues processLoopWifiPhase(
     WifiRuntimeContext wifiRuntimeCtx;
     wifiRuntimeCtx.nowMs = nowMs;
     wifiRuntimeCtx.v1ConnectedAtMs = v1ConnectedAtMs;
+    wifiRuntimeCtx.enableWifi = enableWifi;
     wifiRuntimeCtx.enableWifiAtBoot = enableWifiAtBoot;
     wifiRuntimeCtx.bleConnected = loopRuntimeSnapshotValues.bleConnected;
     wifiRuntimeCtx.canStartDma = loopRuntimeSnapshotValues.canStartDma;

@@ -231,6 +231,7 @@ static void configureLoopSettingsPrepModule() {
     loopSettingsPrepProviders.readSettingsValues = [](void* ctx) -> LoopSettingsPrepValues {
         const V1Settings& settings = static_cast<SettingsManager*>(ctx)->get();
         LoopSettingsPrepValues values;
+        values.enableWifi = settings.enableWifi;
         values.enableWifiAtBoot = settings.enableWifiAtBoot;
         values.enableSignalTraceLogging = settings.enableSignalTraceLogging;
         return values;
@@ -286,6 +287,7 @@ static void configureWifiRuntimeModule() {
         [](void* ctx,
            uint32_t nowMs,
            uint32_t v1ConnectedAtMs,
+           bool enableWifi,
            bool enableWifiAtBoot,
            bool bleConnected,
            bool canStartDma,
@@ -293,6 +295,7 @@ static void configureWifiRuntimeModule() {
             static_cast<WifiAutoStartModule*>(ctx)->process(
                 nowMs,
                 v1ConnectedAtMs,
+                enableWifi,
                 enableWifiAtBoot,
                 bleConnected,
                 canStartDma,
@@ -302,9 +305,9 @@ static void configureWifiRuntimeModule() {
         };
     wifiRuntimeProviders.wifiAutoStartContext = &wifiAutoStartModule;
     wifiRuntimeProviders.shouldRunWifiProcessingPolicy =
-        [](void* ctx, bool enableWifiAtBoot, bool wifiAutoStartDone) {
+        [](void* ctx, bool enableWifi, bool enableWifiAtBoot, bool wifiAutoStartDone) {
             return isWifiProcessingEnabledPolicy(
-                *static_cast<WiFiManager*>(ctx), enableWifiAtBoot, wifiAutoStartDone);
+                *static_cast<WiFiManager*>(ctx), enableWifi, enableWifiAtBoot, wifiAutoStartDone);
         };
     wifiRuntimeProviders.wifiPolicyContext = &wifiManager;
     wifiRuntimeProviders.perfTimestampUs = [](void*) -> uint32_t {
@@ -802,7 +805,10 @@ static void finalizeBootReadyAndBleScan(const unsigned long setupStartMs,
 
     // WiFi auto-start is deferred to loop() with a V1 settle gate.
     // See WifiBootPolicy::shouldAutoStartWifi() for the gating logic.
-    if (settingsManager.get().enableWifiAtBoot) {
+    const V1Settings& wifiSettings = settingsManager.get();
+    if (!wifiSettings.enableWifi) {
+        SerialLog.println("[WiFi] Master disabled in settings — startup and loop processing skipped");
+    } else if (wifiSettings.enableWifiAtBoot) {
         SerialLog.println("[WiFi] Auto-start enabled — will defer until V1 settles or 30 s timeout");
     } else {
         SerialLog.println("Setup complete - BLE scanning, WiFi off until BOOT long-press");
@@ -1075,6 +1081,7 @@ void loop() {
     const LoopWifiPhaseValues loopWifiValues = processLoopWifiPhase(
         now,
         v1ConnectedAtMs,
+        loopSettingsPrepValues.enableWifi,
         loopSettingsPrepValues.enableWifiAtBoot,
         wifiAutoStartDone,
         skipLateNonCoreThisLoop,

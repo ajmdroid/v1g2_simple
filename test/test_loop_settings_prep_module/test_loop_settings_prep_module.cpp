@@ -82,6 +82,7 @@ void test_runtime_callbacks_path_runs_tap_then_reads_settings() {
 
     runtimeValues.enableWifiAtBoot = true;
     runtimeValues.enableSignalTraceLogging = false;
+    runtimeValues.enableWifi = false;
 
     LoopSettingsPrepContext ctx;
     ctx.nowMs = 123;
@@ -98,6 +99,7 @@ void test_runtime_callbacks_path_runs_tap_then_reads_settings() {
 
     TEST_ASSERT_TRUE(result.enableWifiAtBoot);
     TEST_ASSERT_FALSE(result.enableSignalTraceLogging);
+    TEST_ASSERT_FALSE(result.enableWifi);
 
     TEST_ASSERT_EQUAL(2, callLogCount);
     TEST_ASSERT_EQUAL(CALL_TAP, callLog[0]);
@@ -112,6 +114,7 @@ void test_provider_fallback_path_runs_tap_then_reads_settings() {
 
     providerValues.enableWifiAtBoot = true;
     providerValues.enableSignalTraceLogging = true;
+    providerValues.enableWifi = true;
 
     LoopSettingsPrepContext ctx;
     ctx.nowMs = 456;
@@ -126,6 +129,7 @@ void test_provider_fallback_path_runs_tap_then_reads_settings() {
 
     TEST_ASSERT_TRUE(result.enableWifiAtBoot);
     TEST_ASSERT_TRUE(result.enableSignalTraceLogging);
+    TEST_ASSERT_TRUE(result.enableWifi);
 
     TEST_ASSERT_EQUAL(2, callLogCount);
     TEST_ASSERT_EQUAL(CALL_TAP, callLog[0]);
@@ -139,6 +143,7 @@ void test_runtime_read_overrides_provider_read() {
 
     runtimeValues.enableWifiAtBoot = false;
     runtimeValues.enableSignalTraceLogging = true;
+    runtimeValues.enableWifi = false;
 
     LoopSettingsPrepContext ctx;
     ctx.readSettingsValues = readRuntimeSettings;
@@ -149,6 +154,7 @@ void test_runtime_read_overrides_provider_read() {
     TEST_ASSERT_EQUAL(0, providerSettingsCalls);
     TEST_ASSERT_FALSE(result.enableWifiAtBoot);
     TEST_ASSERT_TRUE(result.enableSignalTraceLogging);
+    TEST_ASSERT_FALSE(result.enableWifi);
 }
 
 void test_empty_providers_and_context_returns_defaults() {
@@ -158,6 +164,7 @@ void test_empty_providers_and_context_returns_defaults() {
     LoopSettingsPrepContext ctx;
     const LoopSettingsPrepValues result = module.process(ctx);
 
+    TEST_ASSERT_TRUE(result.enableWifi);
     TEST_ASSERT_FALSE(result.enableWifiAtBoot);
     TEST_ASSERT_FALSE(result.enableSignalTraceLogging);
     TEST_ASSERT_EQUAL(0, runtimeTapCalls);

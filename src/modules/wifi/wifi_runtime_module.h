@@ -7,6 +7,7 @@
 struct WifiRuntimeContext {
     uint32_t nowMs = 0;
     uint32_t v1ConnectedAtMs = 0;
+    bool enableWifi = true;
     bool enableWifiAtBoot = false;
     bool bleConnected = false;
     bool canStartDma = false;
@@ -28,6 +29,7 @@ public:
         void (*runWifiAutoStartProcess)(void* ctx,
                                         uint32_t nowMs,
                                         uint32_t v1ConnectedAtMs,
+                                        bool enableWifi,
                                         bool enableWifiAtBoot,
                                         bool bleConnected,
                                         bool canStartDma,
@@ -35,6 +37,7 @@ public:
         void* wifiAutoStartContext = nullptr;
 
         bool (*shouldRunWifiProcessingPolicy)(void* ctx,
+                                              bool enableWifi,
                                               bool enableWifiAtBoot,
                                               bool wifiAutoStartDone) = nullptr;
         void* wifiPolicyContext = nullptr;

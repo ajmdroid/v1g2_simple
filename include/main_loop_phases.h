@@ -77,6 +77,7 @@ LoopDisplayPreWifiPhaseValues processLoopDisplayPreWifiPhase(
 LoopWifiPhaseValues processLoopWifiPhase(
     unsigned long nowMs,
     unsigned long v1ConnectedAtMs,
+    bool enableWifi,
     bool enableWifiAtBoot,
     bool currentWifiAutoStartDone,
     bool skipLateNonCoreThisLoop,

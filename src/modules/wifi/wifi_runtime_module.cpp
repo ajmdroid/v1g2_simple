@@ -15,6 +15,7 @@ WifiRuntimeResult WifiRuntimeModule::process(const WifiRuntimeContext& ctx) {
         providers.runWifiAutoStartProcess(providers.wifiAutoStartContext,
                                           ctx.nowMs,
                                           ctx.v1ConnectedAtMs,
+                                          ctx.enableWifi,
                                           ctx.enableWifiAtBoot,
                                           ctx.bleConnected,
                                           ctx.canStartDma,
@@ -24,7 +25,7 @@ WifiRuntimeResult WifiRuntimeModule::process(const WifiRuntimeContext& ctx) {
     if (!ctx.skipLateNonCoreThisLoop &&
         providers.shouldRunWifiProcessingPolicy &&
         providers.shouldRunWifiProcessingPolicy(
-            providers.wifiPolicyContext, ctx.enableWifiAtBoot, result.wifiAutoStartDone) &&
+            providers.wifiPolicyContext, ctx.enableWifi, ctx.enableWifiAtBoot, result.wifiAutoStartDone) &&
         providers.runWifiCadence &&
         ctx.runWifiManagerProcess) {
         WifiProcessCadenceContext wifiCadenceCtx;

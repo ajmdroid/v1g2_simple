@@ -30,12 +30,14 @@ static bool autoStartSetDoneValue = false;
 static int autoStartCalls = 0;
 static uint32_t lastAutoStartNowMs = 0;
 static uint32_t lastAutoStartV1ConnectedAtMs = 0;
+static bool lastAutoStartEnableWifi = false;
 static bool lastAutoStartEnableWifiAtBoot = false;
 static bool lastAutoStartBleConnected = false;
 static bool lastAutoStartCanStartDma = false;
 
 static bool scriptedPolicyResult = false;
 static int policyCalls = 0;
+static bool lastPolicyEnableWifi = false;
 static bool lastPolicyEnableWifiAtBoot = false;
 static bool lastPolicyWifiAutoStartDone = false;
 
@@ -91,6 +93,7 @@ static uint32_t nextTimestampUs(void*) {
 static void runWifiAutoStartProcess(void*,
                                     uint32_t nowMs,
                                     uint32_t v1ConnectedAtMs,
+                                    bool enableWifi,
                                     bool enableWifiAtBoot,
                                     bool bleConnected,
                                     bool canStartDma,
@@ -99,6 +102,7 @@ static void runWifiAutoStartProcess(void*,
     autoStartCalls++;
     lastAutoStartNowMs = nowMs;
     lastAutoStartV1ConnectedAtMs = v1ConnectedAtMs;
+    lastAutoStartEnableWifi = enableWifi;
     lastAutoStartEnableWifiAtBoot = enableWifiAtBoot;
     lastAutoStartBleConnected = bleConnected;
     lastAutoStartCanStartDma = canStartDma;
@@ -107,9 +111,10 @@ static void runWifiAutoStartProcess(void*,
     }
 }
 
-static bool shouldRunWifiProcessingPolicy(void*, bool enableWifiAtBoot, bool wifiAutoStartDone) {
+static bool shouldRunWifiProcessingPolicy(void*, bool enableWifi, bool enableWifiAtBoot, bool wifiAutoStartDone) {
     noteCall(CALL_POLICY);
     policyCalls++;
+    lastPolicyEnableWifi = enableWifi;
     lastPolicyEnableWifiAtBoot = enableWifiAtBoot;
     lastPolicyWifiAutoStartDone = wifiAutoStartDone;
     return scriptedPolicyResult;
@@ -183,11 +188,13 @@ static void resetState() {
     autoStartCalls = 0;
     lastAutoStartNowMs = 0;
     lastAutoStartV1ConnectedAtMs = 0;
+    lastAutoStartEnableWifi = false;
     lastAutoStartEnableWifiAtBoot = false;
     lastAutoStartBleConnected = false;
     lastAutoStartCanStartDma = false;
     scriptedPolicyResult = false;
     policyCalls = 0;
+    lastPolicyEnableWifi = false;
     lastPolicyEnableWifiAtBoot = false;
     lastPolicyWifiAutoStartDone = false;
     timestampSequenceCount = 0;
@@ -229,6 +236,7 @@ void test_process_runs_wifi_path_with_updated_autostart_state_and_perf_recording
     WifiRuntimeContext ctx;
     ctx.nowMs = 5000;
     ctx.v1ConnectedAtMs = 4500;
+    ctx.enableWifi = true;
     ctx.enableWifiAtBoot = true;
     ctx.bleConnected = true;
     ctx.canStartDma = true;
@@ -244,11 +252,13 @@ void test_process_runs_wifi_path_with_updated_autostart_state_and_perf_recording
     TEST_ASSERT_EQUAL(1, autoStartCalls);
     TEST_ASSERT_EQUAL(5000u, lastAutoStartNowMs);
     TEST_ASSERT_EQUAL(4500u, lastAutoStartV1ConnectedAtMs);
+    TEST_ASSERT_TRUE(lastAutoStartEnableWifi);
     TEST_ASSERT_TRUE(lastAutoStartEnableWifiAtBoot);
     TEST_ASSERT_TRUE(lastAutoStartBleConnected);
     TEST_ASSERT_TRUE(lastAutoStartCanStartDma);
 
     TEST_ASSERT_EQUAL(1, policyCalls);
+    TEST_ASSERT_TRUE(lastPolicyEnableWifi);
     TEST_ASSERT_TRUE(lastPolicyEnableWifiAtBoot);
     TEST_ASSERT_TRUE(lastPolicyWifiAutoStartDone);
 
@@ -284,6 +294,7 @@ void test_skip_non_core_blocks_policy_and_wifi_process_but_keeps_visual_sync() {
 
     WifiRuntimeContext ctx;
     ctx.nowMs = 900;
+    ctx.enableWifi = true;
     ctx.enableWifiAtBoot = true;
     ctx.wifiAutoStartDone = true;
     ctx.skipLateNonCoreThisLoop = true;
@@ -309,6 +320,7 @@ void test_policy_false_skips_cadence_and_wifi_process() {
 
     WifiRuntimeContext ctx;
     ctx.nowMs = 1400;
+    ctx.enableWifi = true;
     ctx.enableWifiAtBoot = true;
     ctx.wifiAutoStartDone = true;
     ctx.runWifiManagerProcess = runWifiManagerProcess;
@@ -330,6 +342,7 @@ void test_cadence_false_skips_wifi_process_and_perf_record() {
 
     WifiRuntimeContext ctx;
     ctx.nowMs = 200;
+    ctx.enableWifi = true;
     ctx.enableWifiAtBoot = true;
     ctx.wifiAutoStartDone = true;
     ctx.runWifiManagerProcess = runWifiManagerProcess;

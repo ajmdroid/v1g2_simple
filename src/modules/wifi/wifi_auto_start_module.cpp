@@ -5,13 +5,14 @@
 
 bool WifiAutoStartModule::process(unsigned long nowMs,
                                   unsigned long v1ConnectedAtMs,
+                                  bool enableWifi,
                                   bool enableWifiAtBoot,
                                   bool bleConnected,
                                   bool canStartDma,
                                   bool& wifiAutoStartDone,
                                   const std::function<void()>& startWifi,
                                   const std::function<void()>& markAutoStarted) {
-    if (wifiAutoStartDone || !enableWifiAtBoot) {
+    if (wifiAutoStartDone || !enableWifi || !enableWifiAtBoot) {
         return false;
     }
 

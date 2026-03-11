@@ -9,6 +9,7 @@ class WifiAutoStartModule {
 public:
     bool process(unsigned long nowMs,
                  unsigned long v1ConnectedAtMs,
+                 bool enableWifi,
                  bool enableWifiAtBoot,
                  bool bleConnected,
                  bool canStartDma,

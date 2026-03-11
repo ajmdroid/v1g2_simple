@@ -359,15 +359,18 @@ void logBootSummaryAndWifiStartup(uint32_t bootId, esp_reset_reason_t resetReaso
     const char* gitSha = "unknown";
 #endif
     const char* resetStr = resetReasonToString(resetReason);
-    SerialLog.printf("BOOT bootId=%lu reset=%s git=%s scenario=%s wifi=%s\n",
+    SerialLog.printf("BOOT bootId=%lu reset=%s git=%s scenario=%s wifiMaster=%s wifiAtBoot=%s\n",
                      static_cast<unsigned long>(bootId),
                      resetStr,
                      gitSha,
                      scenario,
-                     bootSettings.enableWifi ? "on" : "off");
+                     bootSettings.enableWifi ? "on" : "off",
+                     bootSettings.enableWifiAtBoot ? "on" : "off");
 
     // WiFi startup behavior - either auto-start or wait for BOOT button
-    if (settingsManager.get().enableWifiAtBoot) {
+    if (!bootSettings.enableWifi) {
+        SerialLog.println("[WiFi] Master disabled - startup and loop processing skipped");
+    } else if (bootSettings.enableWifiAtBoot) {
         SerialLog.println("[WiFi] Auto-start enabled (dev setting)");
     } else {
         SerialLog.println("[WiFi] Off by default - start with BOOT long-press");

@@ -7,6 +7,7 @@ class WiFiManager;
 
 // Returns true when WiFi processing should run this loop iteration.
 bool isWifiProcessingEnabledPolicy(const WiFiManager& wifiManager,
+                                   bool enableWifi,
                                    bool enableWifiAtBoot,
                                    bool wifiAutoStartDone);
 

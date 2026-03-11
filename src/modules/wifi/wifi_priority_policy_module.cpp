@@ -4,11 +4,12 @@
 #include "../../wifi_manager.h"
 
 bool isWifiProcessingEnabledPolicy(const WiFiManager& wifiManager,
+                                   bool enableWifi,
                                    bool enableWifiAtBoot,
                                    bool wifiAutoStartDone) {
     return wifiManager.isWifiServiceActive() ||
            wifiManager.isConnected() ||
-           (enableWifiAtBoot && !wifiAutoStartDone);
+           (enableWifi && enableWifiAtBoot && !wifiAutoStartDone);
 }
 
 void WifiPriorityPolicyModule::reset() {

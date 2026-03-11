@@ -30,6 +30,7 @@ void tearDown() {}
 void test_noop_when_feature_disabled() {
     const bool started = module.process(5000,
                                         1000,
+                                        true,
                                         false,
                                         true,
                                         true,
@@ -50,6 +51,7 @@ void test_noop_when_already_done() {
                                         true,
                                         true,
                                         true,
+                                        true,
                                         wifiAutoStartDone,
                                         [] { startCalls++; },
                                         [] { markCalls++; });
@@ -63,6 +65,7 @@ void test_noop_when_already_done() {
 void test_noop_before_ble_settle_and_timeout() {
     const bool started = module.process(2500,
                                         1000,
+                                        true,
                                         true,
                                         true,
                                         true,
@@ -82,6 +85,7 @@ void test_starts_after_ble_settle() {
                                         true,
                                         true,
                                         true,
+                                        true,
                                         wifiAutoStartDone,
                                         [] { startCalls++; },
                                         [] { markCalls++; });
@@ -95,6 +99,7 @@ void test_starts_after_ble_settle() {
 void test_starts_on_boot_timeout_without_ble() {
     const bool started = module.process(30000,
                                         0,
+                                        true,
                                         true,
                                         false,
                                         true,
@@ -113,6 +118,7 @@ void test_noop_when_dma_not_available() {
                                         1000,
                                         true,
                                         true,
+                                        true,
                                         false,
                                         wifiAutoStartDone,
                                         [] { startCalls++; },
@@ -127,6 +133,24 @@ void test_noop_when_dma_not_available() {
 void test_v1_timestamp_ahead_of_now_saturates_elapsed() {
     const bool started = module.process(1000,
                                         2000,
+                                        true,
+                                        true,
+                                        true,
+                                        true,
+                                        wifiAutoStartDone,
+                                        [] { startCalls++; },
+                                        [] { markCalls++; });
+
+    TEST_ASSERT_FALSE(started);
+    TEST_ASSERT_FALSE(wifiAutoStartDone);
+    TEST_ASSERT_EQUAL_INT(0, startCalls);
+    TEST_ASSERT_EQUAL_INT(0, markCalls);
+}
+
+void test_noop_when_wifi_master_disabled() {
+    const bool started = module.process(5000,
+                                        1000,
+                                        false,
                                         true,
                                         true,
                                         true,
@@ -149,5 +173,6 @@ int main() {
     RUN_TEST(test_starts_on_boot_timeout_without_ble);
     RUN_TEST(test_noop_when_dma_not_available);
     RUN_TEST(test_v1_timestamp_ahead_of_now_saturates_elapsed);
+    RUN_TEST(test_noop_when_wifi_master_disabled);
     return UNITY_END();
 }
