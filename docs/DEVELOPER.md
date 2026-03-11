@@ -137,9 +137,6 @@ perfMetricsCheckReport();          // periodic snapshot enqueue
 perfMetricsEnqueueSnapshotNow();   // immediate snapshot on critical paths
 ```
 
-### Legacy `debugLogger`
-`debugLogger` remains as a compatibility stub so existing call sites compile, but SD-backed `debug.log` capture is removed.
-
 ---
 
 ## Testing Without Hardware (REPLAY_MODE)
