@@ -9,13 +9,15 @@ unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
 #endif
 
-const char* SETTINGS_NS_A = "settings_a";
-const char* SETTINGS_NS_B = "settings_b";
-const char* SETTINGS_NS_META = "settings_meta";
-const char* SETTINGS_NS_LEGACY = "v1settings";
-
 void setUp(void) {}
 void tearDown(void) {}
+
+void test_production_namespace_ids_match_expected_literals() {
+    TEST_ASSERT_EQUAL_STRING("v1settingsA", SETTINGS_NS_A);
+    TEST_ASSERT_EQUAL_STRING("v1settingsB", SETTINGS_NS_B);
+    TEST_ASSERT_EQUAL_STRING("v1settingsMeta", SETTINGS_NS_META);
+    TEST_ASSERT_EQUAL_STRING("v1settings", SETTINGS_NS_LEGACY);
+}
 
 void test_legacy_only_namespace_defers_cleanup_even_when_usage_is_high() {
     const SettingsNamespaceCleanupPlan plan =
@@ -64,6 +66,7 @@ void test_low_usage_never_triggers_cleanup() {
 
 int main() {
     UNITY_BEGIN();
+    RUN_TEST(test_production_namespace_ids_match_expected_literals);
     RUN_TEST(test_legacy_only_namespace_defers_cleanup_even_when_usage_is_high);
     RUN_TEST(test_active_a_cleans_inactive_b_without_clearing_legacy_when_no_sd_backup);
     RUN_TEST(test_active_b_cleans_inactive_a_and_legacy_when_sd_backup_exists);

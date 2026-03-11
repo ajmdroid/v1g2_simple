@@ -10,6 +10,7 @@
 #define SETTINGS_INTERNALS_H
 
 #include "settings.h"
+#include "settings_namespace_ids.h"
 #include "settings_sanitize.h"
 #include "storage_manager.h"
 #include "v1_profiles.h"
@@ -23,10 +24,6 @@ extern const char* SETTINGS_BACKUP_TMP_PATH;
 extern const char* SETTINGS_BACKUP_PREV_PATH;
 extern const int   SD_BACKUP_VERSION;
 extern const size_t SETTINGS_BACKUP_MAX_BYTES;
-extern const char* SETTINGS_NS_A;
-extern const char* SETTINGS_NS_B;
-extern const char* SETTINGS_NS_META;
-extern const char* SETTINGS_NS_LEGACY;
 extern const char* WIFI_CLIENT_NS;
 extern const char* WIFI_CLIENT_SD_SECRET_PATH;
 extern const char* WIFI_CLIENT_SD_SECRET_TYPE;

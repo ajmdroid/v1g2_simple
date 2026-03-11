@@ -12,30 +12,26 @@ kind=header file=include/audio_internals.h line=56 text=extern uint8_t* g_mulawC
 kind=header file=include/audio_internals.h line=59 text=extern SDAudioTaskParams g_sdAudioTaskParams;
 kind=header file=include/audio_internals.h line=64 text=extern StackType_t g_sdAudioTaskStack[SD_AUDIO_TASK_STACK_SIZE];
 kind=header file=include/audio_internals.h line=65 text=extern StaticTask_t g_sdAudioTaskTCB;
-kind=header file=include/ble_internals.h line=140 text=extern portMUX_TYPE pendingAddrMux;
-kind=header file=include/ble_internals.h line=142 text=extern portMUX_TYPE proxyCmdMux;
-kind=header file=include/ble_internals.h line=144 text=extern V1BLEClient* instancePtr;
+kind=header file=include/ble_internals.h line=155 text=extern portMUX_TYPE pendingAddrMux;
+kind=header file=include/ble_internals.h line=157 text=extern portMUX_TYPE proxyCmdMux;
+kind=header file=include/ble_internals.h line=159 text=extern V1BLEClient* instancePtr;
 kind=header file=include/display_dirty_flags.h line=40 text=extern DisplayDirtyFlags dirty;
 kind=header file=include/display_palette.h line=19 text=extern V1Display* g_displayInstance;
 kind=header file=include/display_vol_warn.h line=84 text=extern VolumeZeroWarning volZeroWarn;
-kind=header file=include/settings_internals.h line=21 text=extern const char* SETTINGS_BACKUP_PATH;
-kind=header file=include/settings_internals.h line=22 text=extern const char* SETTINGS_BACKUP_TMP_PATH;
-kind=header file=include/settings_internals.h line=23 text=extern const char* SETTINGS_BACKUP_PREV_PATH;
-kind=header file=include/settings_internals.h line=24 text=extern const int SD_BACKUP_VERSION;
-kind=header file=include/settings_internals.h line=25 text=extern const size_t SETTINGS_BACKUP_MAX_BYTES;
-kind=header file=include/settings_internals.h line=26 text=extern const char* SETTINGS_NS_A;
-kind=header file=include/settings_internals.h line=27 text=extern const char* SETTINGS_NS_B;
-kind=header file=include/settings_internals.h line=28 text=extern const char* SETTINGS_NS_META;
-kind=header file=include/settings_internals.h line=29 text=extern const char* SETTINGS_NS_LEGACY;
-kind=header file=include/settings_internals.h line=30 text=extern const char* WIFI_CLIENT_NS;
-kind=header file=include/settings_internals.h line=31 text=extern const char* WIFI_CLIENT_SD_SECRET_PATH;
-kind=header file=include/settings_internals.h line=32 text=extern const char* WIFI_CLIENT_SD_SECRET_TYPE;
-kind=header file=include/settings_internals.h line=33 text=extern const int WIFI_CLIENT_SD_SECRET_VERSION;
-kind=header file=include/settings_internals.h line=34 text=extern const char* const SETTINGS_BACKUP_CANDIDATES[];
-kind=header file=include/settings_internals.h line=35 text=extern const size_t SETTINGS_BACKUP_CANDIDATES_COUNT;
-kind=header file=include/settings_internals.h line=37 text=extern const char XOR_KEY[];
-kind=header file=include/settings_internals.h line=38 text=extern const int SETTINGS_VERSION;
-kind=header file=include/settings_internals.h line=39 text=extern const char* OBFUSCATION_HEX_PREFIX;
+kind=header file=include/settings_internals.h line=22 text=extern const char* SETTINGS_BACKUP_PATH;
+kind=header file=include/settings_internals.h line=23 text=extern const char* SETTINGS_BACKUP_TMP_PATH;
+kind=header file=include/settings_internals.h line=24 text=extern const char* SETTINGS_BACKUP_PREV_PATH;
+kind=header file=include/settings_internals.h line=25 text=extern const int SD_BACKUP_VERSION;
+kind=header file=include/settings_internals.h line=26 text=extern const size_t SETTINGS_BACKUP_MAX_BYTES;
+kind=header file=include/settings_internals.h line=27 text=extern const char* WIFI_CLIENT_NS;
+kind=header file=include/settings_internals.h line=28 text=extern const char* WIFI_CLIENT_SD_SECRET_PATH;
+kind=header file=include/settings_internals.h line=29 text=extern const char* WIFI_CLIENT_SD_SECRET_TYPE;
+kind=header file=include/settings_internals.h line=30 text=extern const int WIFI_CLIENT_SD_SECRET_VERSION;
+kind=header file=include/settings_internals.h line=31 text=extern const char* const SETTINGS_BACKUP_CANDIDATES[];
+kind=header file=include/settings_internals.h line=32 text=extern const size_t SETTINGS_BACKUP_CANDIDATES_COUNT;
+kind=header file=include/settings_internals.h line=34 text=extern const char XOR_KEY[];
+kind=header file=include/settings_internals.h line=35 text=extern const int SETTINGS_VERSION;
+kind=header file=include/settings_internals.h line=36 text=extern const char* OBFUSCATION_HEX_PREFIX;
 kind=header file=include/wifi_manager_internals.h line=16 text=extern V1BLEClient bleClient;
 kind=header file=include/wifi_manager_internals.h line=17 text=extern SystemEventBus systemEventBus;
 kind=header file=include/wifi_manager_internals.h line=20 text=extern void requestColorPreviewHold(uint32_t durationMs);
@@ -103,11 +99,11 @@ kind=header file=src/modules/lockout/signal_capture_module.h line=38 text=extern
 kind=header file=src/modules/lockout/signal_observation_log.h line=85 text=extern SignalObservationLog signalObservationLog;
 kind=header file=src/modules/lockout/signal_observation_sd_logger.h line=77 text=extern SignalObservationSdLogger signalObservationSdLogger;
 kind=header file=src/modules/speed/speed_source_selector.h line=46 text=extern SpeedSourceSelector speedSourceSelector;
-kind=header file=src/perf_metrics.h line=512 text=extern PerfExtendedMetrics perfExtended;
-kind=header file=src/perf_metrics.h line=607 text=extern PerfCounters perfCounters;
-kind=header file=src/perf_metrics.h line=610 text=extern PerfLatency perfLatency;
-kind=header file=src/perf_metrics.h line=614 text=extern bool perfDebugEnabled; // Runtime debug print enable
-kind=header file=src/perf_metrics.h line=615 text=extern uint32_t perfLastReportMs; // Last report timestamp
+kind=header file=src/perf_metrics.h line=513 text=extern PerfExtendedMetrics perfExtended;
+kind=header file=src/perf_metrics.h line=608 text=extern PerfCounters perfCounters;
+kind=header file=src/perf_metrics.h line=635 text=extern PerfLatency perfLatency;
+kind=header file=src/perf_metrics.h line=639 text=extern bool perfDebugEnabled; // Runtime debug print enable
+kind=header file=src/perf_metrics.h line=640 text=extern uint32_t perfLastReportMs; // Last report timestamp
 kind=header file=src/perf_sd_logger.h line=197 text=extern PerfSdLogger perfSdLogger;
 kind=header file=src/settings.h line=640 text=extern SettingsManager settingsManager;
 kind=header file=src/storage_manager.h line=251 text=extern StorageManager storageManager;
