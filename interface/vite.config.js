@@ -32,7 +32,13 @@ export default defineConfig({
 				'src/lib/features/settings/SettingsPage.svelte',
 				'src/lib/features/profiles/ProfilesPage.svelte',
 				'src/lib/features/cameras/CamerasPage.svelte'
-			]
+			],
+			thresholds: {
+				lines: 60,
+				branches: 40,
+				functions: 60,
+				statements: 60
+			}
 		}
 	}
 });
