@@ -6,18 +6,7 @@
 #include "modules/system/periodic_maintenance_module.h"
 #include "modules/wifi/wifi_runtime_module.h"
 #include "../include/config.h"
-
-extern LoopConnectionEarlyModule loopConnectionEarlyModule;
-extern LoopSettingsPrepModule loopSettingsPrepModule;
-extern LoopPreIngestModule loopPreIngestModule;
-extern LoopIngestModule loopIngestModule;
-extern LoopDisplayModule loopDisplayModule;
-extern LoopPostDisplayModule loopPostDisplayModule;
-extern LoopRuntimeSnapshotModule loopRuntimeSnapshotModule;
-extern WifiRuntimeModule wifiRuntimeModule;
-extern PeriodicMaintenanceModule periodicMaintenanceModule;
-extern LoopTailModule loopTailModule;
-extern LoopPowerTouchModule loopPowerTouchModule;
+#include "../include/main_globals.h"
 
 LoopConnectionEarlyPhaseValues processLoopConnectionEarlyPhase(
     const unsigned long nowMs,

@@ -27,19 +27,7 @@
 #include "../system/system_event_bus.h"
 #include "../../../include/camera_alert_types.h"
 
-// Extern globals (defined in main.cpp / module .cpp files).
-extern V1BLEClient bleClient;
-extern BleQueueModule bleQueueModule;
-extern SystemEventBus systemEventBus;
-#ifndef UNIT_TEST
-extern DisplayPipelineModule displayPipelineModule;
-#endif
-
-// Conditionally-compiled perf latency externs (must be at file scope, not inside namespace).
-#if PERF_METRICS && PERF_MONITORING
-extern PerfLatency perfLatency;
-extern bool perfDebugEnabled;
-#endif
+#include "../../../include/main_globals.h"
 namespace {
 
 bool isTruthyArgValue(const String& value) {

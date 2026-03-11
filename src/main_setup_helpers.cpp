@@ -39,15 +39,7 @@
 #include "modules/touch/tap_gesture_module.h"
 #include <driver/gpio.h>
 
-extern unsigned long v1ConnectedAtMs;
-extern AutoPushModule autoPushModule;
-extern TouchHandler touchHandler;
-extern V1BLEClient bleClient;
-extern PacketParser parser;
-extern TapGestureModule tapGestureModule;
-extern AlertPersistenceModule alertPersistenceModule;
-extern DisplayMode displayMode;
-extern void configureTouchUiModule();
+#include "../include/main_globals.h"
 
 namespace {
 
