@@ -526,6 +526,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         // NVS has bonds — keep SD backup fresh
         backupBondsToSD();
     }
+    lastBondBackupCount = static_cast<uint8_t>(NimBLEDevice::getNumBonds());
     
     // Create client once during init - reuse for all connection attempts
     // Don't delete/recreate on failures - causes callback pointer corruption

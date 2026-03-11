@@ -592,7 +592,13 @@ void V1BLEClient::processSubscribing() {
         Serial.println("[BLE] OK");
 
         // Keep SD bond backup fresh after successful connection
-        backupBondsToSD();
+        const uint8_t currentBondCount = static_cast<uint8_t>(NimBLEDevice::getNumBonds());
+        if (lastBondBackupCount != currentBondCount) {
+            const int backed = backupBondsToSD();
+            if (backed >= 0) {
+                lastBondBackupCount = currentBondCount;
+            }
+        }
         return;
     }
     

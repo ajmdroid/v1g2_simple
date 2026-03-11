@@ -378,6 +378,9 @@ private:
     
     // Fresh flash detection - set when firmware version changed
     bool freshFlashBoot = false;
+    // Tracks the bond-count snapshot that has already been persisted to SD.
+    // 0xFF means unknown/uninitialized.
+    uint8_t lastBondBackupCount = 0xFF;
     
     // Non-blocking subscribe step machine
     // Each step does one BLE operation then yields to loop()
