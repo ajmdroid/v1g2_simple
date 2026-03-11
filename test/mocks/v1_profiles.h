@@ -1,4 +1,5 @@
-#pragma once
+#ifndef V1_PROFILES_H
+#define V1_PROFILES_H
 
 #include <cstdint>
 #include <cstring>
@@ -20,3 +21,5 @@ public:
         }
     }
 };
+
+#endif  // V1_PROFILES_H

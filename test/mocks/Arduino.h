@@ -35,9 +35,14 @@ public:
     const char* c_str() const { return data_.c_str(); }
     size_t length() const { return data_.length(); }
     bool isEmpty() const { return data_.empty(); }
-    
+    void reserve(size_t capacity) { data_.reserve(capacity); }
+
+    char operator[](size_t index) const { return data_[index]; }
+    char& operator[](size_t index) { return data_[index]; }
+
     String& operator+=(const String& other) { data_ += other.data_; return *this; }
     String& operator+=(const char* s) { if(s) data_ += s; return *this; }
+    String& operator+=(char c) { data_ += c; return *this; }
     String operator+(const String& other) const { return String(data_ + other.data_); }
     friend String operator+(const char* lhs, const String& rhs) {
         return String(std::string(lhs ? lhs : "") + rhs.data_);
@@ -118,6 +123,18 @@ public:
             }
         }
         return true;
+    }
+
+    void trim() {
+        const auto first = std::find_if_not(
+            data_.begin(), data_.end(), [](unsigned char c) { return std::isspace(c) != 0; });
+        const auto last = std::find_if_not(
+            data_.rbegin(), data_.rend(), [](unsigned char c) { return std::isspace(c) != 0; }).base();
+        if (first >= last) {
+            data_.clear();
+            return;
+        }
+        data_ = std::string(first, last);
     }
     
     int toInt() const { return std::stoi(data_); }

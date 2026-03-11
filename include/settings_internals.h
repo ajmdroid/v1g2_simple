@@ -22,7 +22,7 @@
 extern const char* SETTINGS_BACKUP_PATH;
 extern const char* SETTINGS_BACKUP_TMP_PATH;
 extern const char* SETTINGS_BACKUP_PREV_PATH;
-extern const int   SD_BACKUP_VERSION;
+inline constexpr int SD_BACKUP_VERSION = 11;
 extern const size_t SETTINGS_BACKUP_MAX_BYTES;
 extern const char* WIFI_CLIENT_NS;
 extern const char* WIFI_CLIENT_SD_SECRET_PATH;
@@ -32,7 +32,7 @@ extern const char* const SETTINGS_BACKUP_CANDIDATES[];
 extern const size_t      SETTINGS_BACKUP_CANDIDATES_COUNT;
 
 extern const char  XOR_KEY[];
-extern const int   SETTINGS_VERSION;
+inline constexpr int SETTINGS_VERSION = 8;
 extern const char* OBFUSCATION_HEX_PREFIX;
 
 // ── Static helpers promoted to internal-linkage-free functions ──────────────

@@ -21,7 +21,7 @@ kind=header file=include/display_vol_warn.h line=84 text=extern VolumeZeroWarnin
 kind=header file=include/settings_internals.h line=22 text=extern const char* SETTINGS_BACKUP_PATH;
 kind=header file=include/settings_internals.h line=23 text=extern const char* SETTINGS_BACKUP_TMP_PATH;
 kind=header file=include/settings_internals.h line=24 text=extern const char* SETTINGS_BACKUP_PREV_PATH;
-kind=header file=include/settings_internals.h line=25 text=extern const int SD_BACKUP_VERSION;
+kind=header file=include/settings_internals.h line=25 text=inline constexpr int SD_BACKUP_VERSION = 11;
 kind=header file=include/settings_internals.h line=26 text=extern const size_t SETTINGS_BACKUP_MAX_BYTES;
 kind=header file=include/settings_internals.h line=27 text=extern const char* WIFI_CLIENT_NS;
 kind=header file=include/settings_internals.h line=28 text=extern const char* WIFI_CLIENT_SD_SECRET_PATH;
@@ -30,7 +30,7 @@ kind=header file=include/settings_internals.h line=30 text=extern const int WIFI
 kind=header file=include/settings_internals.h line=31 text=extern const char* const SETTINGS_BACKUP_CANDIDATES[];
 kind=header file=include/settings_internals.h line=32 text=extern const size_t SETTINGS_BACKUP_CANDIDATES_COUNT;
 kind=header file=include/settings_internals.h line=34 text=extern const char XOR_KEY[];
-kind=header file=include/settings_internals.h line=35 text=extern const int SETTINGS_VERSION;
+kind=header file=include/settings_internals.h line=35 text=inline constexpr int SETTINGS_VERSION = 8;
 kind=header file=include/settings_internals.h line=36 text=extern const char* OBFUSCATION_HEX_PREFIX;
 kind=header file=include/wifi_manager_internals.h line=16 text=extern V1BLEClient bleClient;
 kind=header file=include/wifi_manager_internals.h line=17 text=extern SystemEventBus systemEventBus;

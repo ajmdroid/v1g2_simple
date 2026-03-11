@@ -12,7 +12,6 @@ SerialClass Serial;
 
 unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
-const int SD_BACKUP_VERSION = 11;
 
 namespace {
 

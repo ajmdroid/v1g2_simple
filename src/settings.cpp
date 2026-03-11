@@ -19,7 +19,6 @@
 const char* SETTINGS_BACKUP_PATH = "/v1simple_backup.json";
 const char* SETTINGS_BACKUP_TMP_PATH = "/v1simple_backup.tmp";
 const char* SETTINGS_BACKUP_PREV_PATH = "/v1simple_backup.prev";
-const int SD_BACKUP_VERSION = 11;  // Increment when adding new fields to backup
 const size_t SETTINGS_BACKUP_MAX_BYTES = 512 * 1024;
 const char* WIFI_CLIENT_NS = "v1wificlient";
 const char* WIFI_CLIENT_SD_SECRET_PATH = "/v1wifi_secret.json";
@@ -69,7 +68,6 @@ SettingsManager settingsManager;
 // XOR obfuscation key - deters casual reading but NOT cryptographically secure
 // See security note above for rationale
 const char XOR_KEY[] = "V1G2-S3cr3t-K3y!";
-const int SETTINGS_VERSION = 8;  // Increment when changing persisted settings schema
 const char* OBFUSCATION_HEX_PREFIX = "hex:";
 
 
