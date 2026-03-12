@@ -50,7 +50,7 @@ void handleApiForget(WebServer& server,
     if (markUiActivity) markUiActivity();
     if (checkRateLimit && checkRateLimit()) return;
     obdRuntime.forgetDevice();
-    V1Settings& settings = settingsManager.getMutable();
+    V1Settings& settings = settingsManager.mutableSettings();
     settings.obdSavedAddress = "";
     settingsManager.save();
     JsonDocument doc;

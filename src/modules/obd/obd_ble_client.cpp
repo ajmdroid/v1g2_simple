@@ -94,7 +94,7 @@ bool ObdBleClient::connect(const char* address, uint32_t timeoutMs) {
     if (!pClient_ || !address || address[0] == '\0') return false;
     if (pClient_->isConnected()) return true;
 
-    NimBLEAddress addr(std::string(address));
+    NimBLEAddress addr{std::string(address), BLE_ADDR_PUBLIC};
     pClient_->setConnectTimeout(timeoutMs / 1000);
     return pClient_->connect(addr);
 }
@@ -116,14 +116,15 @@ bool ObdBleClient::discoverServices() {
 
     // OBDLink CX uses SPP-over-GATT. Common service UUIDs: FFF0, FFE0
     // Try to discover all services and find TX/RX characteristics
-    auto* pServices = pClient_->getServices(true);
-    if (!pServices) return false;
+    const auto& services = pClient_->getServices(true);
+    if (services.empty()) return false;
 
     pTxChar_ = nullptr;
     pRxChar_ = nullptr;
 
-    for (auto* svc : *pServices) {
-        for (auto& chr : svc->getCharacteristics(true)) {
+    for (auto* svc : services) {
+        const auto& chars = svc->getCharacteristics(true);
+        for (auto* chr : chars) {
             if (chr->canNotify()) {
                 pTxChar_ = chr;
             }
