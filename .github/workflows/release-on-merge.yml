@@ -175,9 +175,8 @@ jobs:
             exit 1
           fi
 
-      - name: Update other version files
+      - name: Update versioned docs
         run: |
-          sed -i 's/"version": ".*"/"version": "${{ needs.validate_release.outputs.tag }}"/' docs/install/manifest.json
           sed -i 's/^\*\*Version:\*\* .*/**Version:** ${{ needs.validate_release.outputs.version }}/' docs/MANUAL.md
 
       - name: Build web interface
@@ -201,6 +200,8 @@ jobs:
         run: pio run -e waveshare-349 -t buildfs -j 1
 
       - name: Create merged firmware
+        env:
+          RELEASE_TAG: ${{ needs.validate_release.outputs.tag }}
         run: |
           mkdir -p release
           cp .pio/build/waveshare-349/bootloader.bin release/
@@ -219,8 +220,27 @@ jobs:
             0xe000 release/boot_app0.bin \
             0x10000 release/firmware.bin \
             0xda0000 release/littlefs.bin
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
 
-          cp docs/install/manifest.json release/
+          manifest = {
+              "name": "V1-Simple",
+              "version": os.environ["RELEASE_TAG"],
+              "home_assistant_domain": "",
+              "funding_url": "",
+              "new_install_prompt_erase": True,
+              "new_install_improv_wait_time": 0,
+              "builds": [
+                  {
+                      "chipFamily": "ESP32-S3",
+                      "parts": [{"path": "merged-firmware.bin", "offset": 0}],
+                  }
+              ],
+          }
+          Path("release/manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
 
       - name: Create tag
         run: |
@@ -242,14 +262,17 @@ jobs:
 
       - name: Prepare web installer files
         run: |
-          cp release/*.bin docs/install/
-          cp release/manifest.json docs/install/
+          rm -rf .artifacts/web-installer
+          mkdir -p .artifacts/web-installer
+          cp web-installer/index.html .artifacts/web-installer/
+          cp release/merged-firmware.bin .artifacts/web-installer/
+          cp release/manifest.json .artifacts/web-installer/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/install
+          publish_dir: ./.artifacts/web-installer
           destination_dir: install
 
       - name: Summary
