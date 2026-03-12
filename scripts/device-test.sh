@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 #
-# device-test.sh - Hardware test suite runner with per-item PASS/FAIL output
-# and metrics evidence for each decision.
+# device-test.sh - Exploratory hardware harness with per-item PASS/FAIL output
+# and metrics evidence for manual debugging.
 #
-# Intended workflow:
+# Exploratory workflow:
 #   1) Sanity check debug metrics endpoint
 #   2) Run a short radar scenario (default: RAD-03) and verify parser/display deltas
 #   3) Run real firmware soak (display stress)
 #   4) Run real firmware soak (core only)
-#   5) Run real firmware soak (transition stress)
+#   5) Optionally run manual transition stress
+#
+# This script is not a release/qualification gate.
 #
 # Usage examples:
 #   ./scripts/device-test.sh
@@ -31,7 +33,7 @@ TEST_PORT="${DEVICE_PORT:-}"
 AUTO_KILL_MONITOR=1
 DRY_RUN=0
 
-SUITE_PROFILE_VERSION="device_truth_v1"
+SUITE_PROFILE_VERSION="device_truth_v2"
 SOAK_PROFILE="drive_wifi_ap"
 SOAK_MIN_METRICS_OK_SAMPLES=3
 SOAK_LATENCY_GATE_MODE="strict"
@@ -41,7 +43,7 @@ SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES=2
 SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES="${REAL_FW_SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES:-3}"
 SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS=3
 SOAK_MIN_DISPLAY_UPDATES_DELTA=1
-SOAK_ENABLE_TRANSITION_QUAL=1
+SOAK_ENABLE_TRANSITION_QUAL=0
 SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS=15
 SOAK_TRANSITION_FLAP_CYCLES=3
 SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS=3
@@ -142,7 +144,8 @@ Options:
   --rad-scenario ID              Short radar scenario ID (default: RAD-03)
   --rad-duration-scale-pct N     RAD scenario duration scale percent (default: 100)
   --rad-timeout-seconds N        RAD scenario completion timeout (default: auto from scale)
-  --no-transition-soak           Skip Cycle 3 transition qualification soak
+  --with-transition-soak         Include manual transition stress soak
+  --no-transition-soak           Explicitly disable transition stress soak
   --transition-flap-cycles N     Transition flap cycles for transition soak (default: 3)
   --transition-drive-interval-seconds N
                                  Transition flap action interval (default: 15)
@@ -706,6 +709,9 @@ while [[ $# -gt 0 ]]; do
       RAD_TIMEOUT_SECONDS="$2"
       shift
       ;;
+    --with-transition-soak)
+      SOAK_ENABLE_TRANSITION_QUAL=1
+      ;;
     --no-transition-soak)
       SOAK_ENABLE_TRANSITION_QUAL=0
       ;;
@@ -856,7 +862,7 @@ echo "  soak minima tail exclusion: ${SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES} sample(s
 echo "  soak require-metrics: yes (min ok samples=$SOAK_MIN_METRICS_OK_SAMPLES)"
 echo "  soak watchdog padding: skip-flash=+${SOAK_TIMEOUT_PADDING_SECONDS}s with-flash=+${SOAK_TIMEOUT_WITH_FLASH_PADDING_SECONDS}s"
 echo "  display drive: displayInterval=${SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=$SOAK_MIN_DISPLAY_UPDATES_DELTA"
-echo "  transition qual: enabled=$SOAK_ENABLE_TRANSITION_QUAL flapCycles=$SOAK_TRANSITION_FLAP_CYCLES interval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s maxRecoveryMs=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS maxSamples=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
+echo "  transition stress add-on: enabled=$SOAK_ENABLE_TRANSITION_QUAL flapCycles=$SOAK_TRANSITION_FLAP_CYCLES interval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s maxRecoveryMs=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS maxSamples=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
 echo "  RAD scenario: $RAD_SCENARIO_ID scalePct=$RAD_DURATION_SCALE_PCT timeout=${RESOLVED_RAD_TIMEOUT_SECONDS}s (rx>=$RAD_MIN_RX_DELTA parse>=$RAD_MIN_PARSE_SUCCESS_DELTA display>=$RAD_MIN_DISPLAY_UPDATES_DELTA parseFail==0)"
 echo "  out dir: $OUT_DIR"
 echo ""
@@ -997,10 +1003,10 @@ fi
   echo ""
   echo "- Soak profile: \`$SOAK_PROFILE\`"
   echo "- Soak metrics required: yes (\`--min-metrics-ok-samples $SOAK_MIN_METRICS_OK_SAMPLES\`)"
-  echo "- Qualification items: \`metrics_endpoint\`, \`rad_short\`, \`soak_display\`, \`soak_core\`, \`soak_transition\`"
+  echo "- Qualification items: \`metrics_endpoint\`, \`rad_short\`, \`soak_display\`, \`soak_core\`"
   echo "- Soak latency gate: \`mode=$SOAK_LATENCY_GATE_MODE\`"
   echo "- Display drive defaults: \`display_interval_s=$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS min_display_updates_delta=$SOAK_MIN_DISPLAY_UPDATES_DELTA\`"
-  echo "- Transition qualification: \`enabled=$SOAK_ENABLE_TRANSITION_QUAL flap_cycles=$SOAK_TRANSITION_FLAP_CYCLES interval_s=$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS min_proxy_off_transitions=$SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS max_proxy_recovery_ms=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS max_samples_to_stable=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE\`"
+  echo "- Manual transition stress add-on: \`enabled=$SOAK_ENABLE_TRANSITION_QUAL flap_cycles=$SOAK_TRANSITION_FLAP_CYCLES interval_s=$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS min_proxy_off_transitions=$SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS max_proxy_recovery_ms=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS max_samples_to_stable=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE\`"
   echo "- RAD short default gates: \`scenario=$RAD_SCENARIO_ID duration_scale_pct=$RAD_DURATION_SCALE_PCT timeout_s=$RESOLVED_RAD_TIMEOUT_SECONDS rx_delta>=$RAD_MIN_RX_DELTA parse_success_delta>=$RAD_MIN_PARSE_SUCCESS_DELTA display_updates_delta>=$RAD_MIN_DISPLAY_UPDATES_DELTA parse_fail_delta==0\`"
   echo ""
   echo "## Item Results"

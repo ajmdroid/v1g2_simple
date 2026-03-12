@@ -41,11 +41,11 @@ before production. Requires ESP32-S3 connected via USB.
 # Repeat device test firmware cycles and collect flake metrics (CSV + summary)
 ./scripts/run_device_soak.sh --cycles 20 --cooldown-seconds 6
 
-# Flash REAL production firmware (waveshare-349) and soak runtime behavior
+# Exploratory only: flash REAL production firmware (waveshare-349) and soak runtime behavior
 ./scripts/run_real_fw_soak.sh --duration-seconds 900 \
   --metrics-url http://192.168.35.5/api/debug/metrics
 
-# Real display-path lag check (forces preview redraw during soak)
+# Exploratory only: display-path lag check (forces preview redraw during soak)
 ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 \
   --metrics-url http://192.168.35.5/api/debug/metrics \
   --require-metrics --min-metrics-ok-samples 50 \
@@ -56,7 +56,8 @@ before production. Requires ESP32-S3 connected via USB.
 pio test -e device --filter test_device_heap
 ```
 
-`run_real_fw_soak.sh` validates the normal app image (not UNIT_TEST firmware).
+`run_real_fw_soak.sh` exercises the normal app image (not UNIT_TEST firmware),
+but it is exploratory/manual only and not release evidence.
 If you provide `--metrics-url`, enable the setup AP first (default URL assumes
 `http://192.168.35.5`). If no telemetry is captured, the run is marked
 `INCONCLUSIVE` (exit code `2`) instead of reporting a false pass.

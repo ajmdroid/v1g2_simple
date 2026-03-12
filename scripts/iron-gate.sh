@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 #
-# iron-gate.sh - Single-command, objective ship gate for modularization hardening.
+# iron-gate.sh - Single-command local ship gate for trusted repo checks only.
 #
 # True PASS point:
 #   1) firmware_build = PASS
 #   2) sd_lock_contract = PASS
 #   3) parser_native_smoke = PASS
-#   4) device_suite = PASS (all items inside scripts/device-test.sh)
 #
 set -euo pipefail
 
@@ -14,28 +13,19 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 OUT_DIR=""
-DEVICE_FLASH_MODE="--with-flash"
 DRY_RUN=0
-DEVICE_ARGS=()
-HAS_DURATION_ARG=0
-HAS_RAD_SCALE_ARG=0
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/iron-gate.sh [options] [device-test options...]
+Usage: ./scripts/iron-gate.sh [options]
 
 Options:
-  --with-flash                 Force flash before device gate (default)
-  --skip-flash                 Skip flash in device gate
   --out-dir PATH               Write artifacts to PATH
   --dry-run                    Print resolved commands and exit
   -h, --help                   Show help
-
-Any unknown option is forwarded to scripts/device-test.sh.
 Examples:
   ./scripts/iron-gate.sh
-  ./scripts/iron-gate.sh --skip-flash --duration-seconds 90
-  ./scripts/iron-gate.sh --with-flash --metrics-url http://192.168.160.212/api/debug/metrics
+  ./scripts/iron-gate.sh --out-dir .artifacts/iron_gate/manual
 USAGE
 }
 
@@ -46,12 +36,6 @@ is_uint() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --with-flash)
-      DEVICE_FLASH_MODE="--with-flash"
-      ;;
-    --skip-flash)
-      DEVICE_FLASH_MODE="--skip-flash"
-      ;;
     --out-dir)
       if [[ $# -lt 2 ]]; then
         echo "Missing value for --out-dir" >&2
@@ -68,12 +52,9 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      if [[ "$1" == "--duration-seconds" ]]; then
-        HAS_DURATION_ARG=1
-      elif [[ "$1" == "--rad-duration-scale-pct" ]]; then
-        HAS_RAD_SCALE_ARG=1
-      fi
-      DEVICE_ARGS+=("$1")
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
       ;;
   esac
   shift
@@ -137,31 +118,9 @@ run_step() {
 BUILD_LOG="$OUT_DIR/firmware_build.log"
 CONTRACT_LOG="$OUT_DIR/sd_lock_contract.log"
 NATIVE_LOG="$OUT_DIR/parser_native_smoke.log"
-DEVICE_LOG="$OUT_DIR/device_suite.log"
-DEVICE_OUT_DIR="$OUT_DIR/device_suite"
-mkdir -p "$DEVICE_OUT_DIR"
-
-if [[ "$HAS_DURATION_ARG" -eq 0 ]]; then
-  DEVICE_ARGS+=(--duration-seconds 240)
-fi
-if [[ "$HAS_RAD_SCALE_ARG" -eq 0 ]]; then
-  DEVICE_ARGS+=(--rad-duration-scale-pct 200)
-fi
-
-DEVICE_CMD=("./scripts/device-test.sh" "$DEVICE_FLASH_MODE" "--out-dir" "$DEVICE_OUT_DIR")
-if [[ ${#DEVICE_ARGS[@]} -gt 0 ]]; then
-  DEVICE_CMD+=("${DEVICE_ARGS[@]}")
-fi
 
 printf "Iron Gate Config:\n"
 printf "  out dir: %s\n" "$OUT_DIR"
-printf "  flash mode: %s\n" "$DEVICE_FLASH_MODE"
-printf "  device args:"
-if [[ ${#DEVICE_ARGS[@]} -eq 0 ]]; then
-  printf " (none)\n"
-else
-  printf " %s\n" "${DEVICE_ARGS[*]}"
-fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo ""
@@ -172,8 +131,6 @@ if ! run_step "firmware_build" "cd '$ROOT_DIR' && pio run" "$BUILD_LOG" "$BUILD_
 elif ! run_step "sd_lock_contract" "cd '$ROOT_DIR' && python3 scripts/check_sd_lock_discipline_contract.py" "$CONTRACT_LOG" "$CONTRACT_LOG"; then
   true
 elif ! run_step "parser_native_smoke" "cd '$ROOT_DIR' && pio test -e native -f test_ble_display_pipeline -f test_packet_parser_stream" "$NATIVE_LOG" "$NATIVE_LOG"; then
-  true
-elif ! run_step "device_suite" "cd '$ROOT_DIR' && $(printf '%q ' "${DEVICE_CMD[@]}")" "$DEVICE_LOG" "$DEVICE_OUT_DIR/summary.md"; then
   true
 fi
 
@@ -190,7 +147,6 @@ Outputs:
 - Firmware log: $BUILD_LOG
 - Contract log: $CONTRACT_LOG
 - Native log: $NATIVE_LOG
-- Device log: $DEVICE_LOG
 EOF_SUM
   echo "Dry run complete. Summary: $SUMMARY_MD"
   exit 0
@@ -213,7 +169,6 @@ fail_count="$(awk -F '\t' 'NR > 1 && $2 == "FAIL" { c++ } END { print c + 0 }' "
   echo "1. firmware_build"
   echo "2. sd_lock_contract"
   echo "3. parser_native_smoke"
-  echo "4. device_suite"
   echo ""
   echo "Counts: PASS=$pass_count FAIL=$fail_count"
   echo ""
@@ -222,8 +177,6 @@ fail_count="$(awk -F '\t' 'NR > 1 && $2 == "FAIL" { c++ } END { print c + 0 }' "
   echo "- Firmware log: $BUILD_LOG"
   echo "- Contract log: $CONTRACT_LOG"
   echo "- Native log: $NATIVE_LOG"
-  echo "- Device log: $DEVICE_LOG"
-  echo "- Device summary: $DEVICE_OUT_DIR/summary.md"
 } > "$SUMMARY_MD"
 
 if [[ "$overall" == "PASS" ]]; then

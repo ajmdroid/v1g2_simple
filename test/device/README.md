@@ -20,11 +20,11 @@ pio test -e device --filter test_device_heap
 # Repeat the device test gate and collect failure-rate metrics
 ./scripts/run_device_soak.sh --cycles 20 --cooldown-seconds 6
 
-# Flash and soak REAL production firmware (waveshare-349)
+# Exploratory only: flash and soak REAL production firmware (waveshare-349)
 ./scripts/run_real_fw_soak.sh --duration-seconds 900 \
   --metrics-url http://192.168.35.5/api/debug/metrics
 
-# Display lag soak (forces preview redraw and enforces display activity)
+# Exploratory only: display lag soak (forces preview redraw and enforces display activity)
 ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 \
   --metrics-url http://192.168.35.5/api/debug/metrics \
   --require-metrics --min-metrics-ok-samples 50 \
@@ -32,10 +32,11 @@ pio test -e device --filter test_device_heap
   --min-display-updates-delta 100
 ```
 
-`run_real_fw_soak.sh` uses the normal firmware image (not test firmware). If
-it captures no telemetry, it reports `INCONCLUSIVE` (exit code `2`) so you
-don't mistake silence for stability. Add `--drive-display-preview` for real
-display-path stress coverage.
+`run_real_fw_soak.sh` uses the normal firmware image (not test firmware), but
+it is exploratory/manual only and not release evidence. If it captures no
+telemetry, it reports `INCONCLUSIVE` (exit code `2`) so you don't mistake
+silence for stability. Add `--drive-display-preview` for display-path stress
+coverage.
 
 ## Suites
 
