@@ -11,15 +11,15 @@ or release policy document.
 
 ## Reference
 
-- `API.md`: HTTP and runtime API reference.
-- `MANUAL.md`: command reference and operator notes.
-- `ARCHITECTURE.md`: architecture background and module structure reference.
-- `ROAD_MAP_FORMAT.md`: map-data format reference.
-- `TROUBLESHOOTING.md`: operational troubleshooting reference.
-- `WINDOWS_SETUP.md`: Windows-specific setup reference.
+- `MANUAL.md`: comprehensive technical reference — architecture, BLE protocol,
+  display, audio, storage, troubleshooting, developer guide, and API quick reference.
+- `API.md`: full HTTP REST API reference with request/response schemas.
+- `ROAD_MAP_FORMAT.md`: GPS road-map binary format specification.
+- `WINDOWS_SETUP.md`: Windows-specific setup and troubleshooting.
 
 ## Rules
 
 - Release/testing authority comes from the Authoritative set only.
 - Reference docs may lag implementation details and must not be treated as policy.
+- Each topic has ONE home. Architecture and troubleshooting live in MANUAL.md.
 - Historical material should be recovered from git history, not the active docs tree.

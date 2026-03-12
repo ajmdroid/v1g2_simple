@@ -189,41 +189,24 @@ Speed and location sources:
 
 ## Troubleshooting
 
-**V1 won't connect:**
-- Disconnect companion app or other apps from V1 first
-- Power cycle both devices
+For comprehensive troubleshooting (connection, display, GPS, lockouts, audio,
+performance, factory reset), see [docs/MANUAL.md Section J](docs/MANUAL.md#j-troubleshooting).
 
-**Can't find WiFi network:**
-- Long-press BOOT to start AP (look for WiFi icon on display)
-- WiFi is off by default
-
-**Upload fails:**
-- Try different USB cable (must support data, not charge-only)
-- Try different USB port
-- Hold BOOT button while connecting USB
-- Run `pio device list` to verify detection
-
-**Factory reset:**
-```bash
-# Erase all settings (Windows):
-"$HOME/.platformio/penv/Scripts/python.exe" "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" --port COM4 erase_flash
-
-# Mac/Linux:
-~/.platformio/packages/tool-esptoolpy/esptool.py --port /dev/cu.usbmodem* erase_flash
-
-# Then re-upload firmware
-./build.sh --all
-```
+**Quick fixes:**
+- **V1 won't connect** — disconnect phone apps from V1 first, power cycle both devices
+- **Can't find WiFi** — long-press BOOT (~4s) to start AP; WiFi is off by default
+- **Upload fails** — try a different USB-C data cable; hold BOOT while connecting
 
 ---
 
 ## Documentation
 
 - **Authority Map:** [docs/README.md](docs/README.md)
+- **Full Manual:** [docs/MANUAL.md](docs/MANUAL.md) — architecture, BLE protocol, display, troubleshooting, developer guide
+- **API Reference:** [docs/API.md](docs/API.md)
 - **Testing Policy:** [docs/TESTING.md](docs/TESTING.md)
 - **Hardware Qualification:** [docs/HARDWARE_QUALIFICATION.md](docs/HARDWARE_QUALIFICATION.md)
 - **Perf SLOs:** [docs/PERF_SLOS.md](docs/PERF_SLOS.md)
-- **Full Manual:** [docs/MANUAL.md](docs/MANUAL.md)
 - **Windows Setup:** [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md)
 
 ---

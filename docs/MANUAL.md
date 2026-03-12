@@ -248,6 +248,121 @@ V1 Gen2 (BLE)
 | Touch debounce | 200ms | touch_handler.cpp |
 | Tap window (triple-tap) | 600ms | `TAP_WINDOW_MS` in tap_gesture_module.h |
 
+### Design Principles
+
+1. **Feature-Based Organization** — Organize by what the code does for users, not technical layers.
+2. **Single Responsibility Modules** — Each module owns ONE logical subsystem completely.
+3. **Narrow Communication Interfaces** — Modules talk through small, well-defined APIs.
+4. **Testable Boundaries** — Each module can be tested independently with mocks.
+
+### Key Design Rules
+
+1. **Modules receive dependencies via begin()** — dependency injection for testability
+2. **Data flows DOWN** — main loop gets data and passes it to modules
+3. **State lives in ONE place** — e.g., voice announcement state only in VoiceModule
+4. **Incremental migration** — never break working functionality
+
+### Module Responsibilities
+
+| Module | Responsibility |
+|--------|----------------|
+| **AlertPersistenceModule** | Keeps alerts on-screen after they clear; provides state resets |
+| **AutoPushModule** | Pushes V1 profiles on connect |
+| **BleQueueModule** | Thread-safe BLE data queuing between callback and main loop |
+| **CameraAlertModule + CameraAlertApiService** | ALPR-only road-map encounter detection, `/api/cameras/*`, and display handoff |
+| **ConnectionStateModule** | Manages BLE connect/disconnect display states |
+| **ConnectionStateCadenceModule** | Throttles connection-state display transitions |
+| **ConnectionStateDispatchModule** | Dispatches connection state processing at correct cadence |
+| **ConnectionRuntimeModule** | BLE runtime state (connected, backpressure, last-rx) |
+| **DebugApiService + DebugPerfFilesService** | Debug/metrics REST API + perf file listing/download |
+| **DisplayPipelineModule** | Owns alert rendering, display state updates, and V1 packet processing |
+| **DisplayOrchestrationModule** | Coordinates parsed-frame rendering, lightweight refresh, and early-loop display |
+| **DisplayPreviewModule** | Color preview overlay lifecycle |
+| **DisplayRestoreModule** | Restores display state after preview/settings overlay ends |
+| **GpsRuntimeModule** | GPS ingest and fix/course/speed runtime state |
+| **GpsApiService** | GPS lockout REST API endpoints |
+| **Lockout stack** | Capture/observe/store/enforce/learn lockout state with best-effort persistence |
+| **LockoutApiService + LockoutOrchestrationModule** | Lockout REST API + zone CRUD + pre-quiet controller |
+| **PowerModule** | Battery monitoring, power button, sleep |
+| **SpeedSourceSelector** | Runtime speed source arbitration (GPS-only policy) |
+| **SystemEventBus** | Thread-safe bounded ring buffer for cross-module event coordination |
+| **ParsedFrameEventModule** | Collects parsed-frame signal from BLE queue for display orchestration |
+| **PeriodicMaintenanceModule** | Rate-limited perf reporting, time saves, lockout learner ticks, persistence |
+| **Loop phase modules** | `loop_connection_early`, `loop_power_touch`, `loop_pre_ingest`, `loop_settings_prep`, `loop_ingest`, `loop_display`, `loop_post_display`, `loop_runtime_snapshot`, `loop_tail`, `loop_telemetry` — each owns one phase of the main loop |
+| **TouchUiModule** | Touch-based settings UI overlay |
+| **TapGestureModule** | Triple-tap mute and other gestures |
+| **VoiceModule** | All voice announcement decisions (priority/secondary/escalation) and cooldowns |
+| **VolumeFadeModule** | Decides when to fade/restore volume for long-running alerts |
+| **WifiOrchestrator** | WiFi/web server lifecycle |
+| **WifiAutoStartModule** | Deferred WiFi auto-start with V1 settle gate |
+| **WifiPriorityPolicyModule** | WiFi/BLE priority balancing at runtime |
+| **WifiProcessCadenceModule** | Throttles WiFi processing cadence |
+| **WifiRuntimeModule** | Orchestrates WiFi auto-start, processing, and visual sync per loop |
+| **WifiVisualSyncModule** | WiFi indicator redraw debounce |
+| **WiFi API services** | Settings, status, colors, profiles, devices, backup, time, autopush, control, portal, client REST endpoints |
+
+### Dependency Injection Patterns
+
+The codebase uses three patterns. Choose based on the module's coupling needs.
+
+**Pattern 1: Direct Pointer Injection** (preferred for data dependencies)
+
+Dependencies passed as pointers in `begin()`:
+
+```cpp
+class DisplayPipelineModule {
+public:
+    void begin(V1Display* display, PacketParser* parser, SettingsManager* settings, ...);
+private:
+    V1Display* display = nullptr;
+};
+```
+
+Use when the module needs to read state or call methods on dependencies. Examples: `DisplayPipelineModule`, `VoiceModule`, `TapGestureModule`.
+
+**Pattern 2: Callback Injection** (hybrid — pointers + `std::function<>`)
+
+For actions that cross architectural boundaries:
+
+```cpp
+class TouchUiModule {
+public:
+    struct Callbacks {
+        std::function<bool()> isWifiSetupActive;
+        std::function<void()> stopWifiSetup;
+        std::function<void()> startWifi;
+    };
+    void begin(V1Display* disp, TouchHandler* touch, SettingsManager* settings, const Callbacks& cbs);
+};
+```
+
+Use when module needs direct pointer access plus cross-boundary actions. Example: `TouchUiModule`.
+
+**Pattern 3: Providers** (C function-pointers + `void*` context)
+
+The dominant pattern for loop-phase modules. Avoids `std::function<>` heap overhead:
+
+```cpp
+class LoopConnectionEarlyModule {
+public:
+    struct Providers {
+        ConnectionRuntimeSnapshot (*runConnectionRuntime)(void* ctx, uint32_t nowMs, ...) = nullptr;
+        void* connectionRuntimeContext = nullptr;
+    };
+    void begin(const Providers& hooks);
+};
+```
+
+Use for loop-phase orchestration with narrow function interfaces. Examples: all `Loop*Module` types, `WifiRuntimeModule`.
+
+| Scenario | Pattern | Reason |
+|----------|---------|--------|
+| Read settings, display state | Direct pointers | Need full interface |
+| Toggle WiFi from touch | Callbacks | Crosses boundaries |
+| Loop-phase orchestration | Providers | Narrow fn interface, no heap |
+
+**Testing:** Direct pointers → mock classes. Callbacks → test lambdas. Providers → static functions with context capture.
+
 ---
 
 ## D. Boot Flow
@@ -1309,26 +1424,104 @@ Connect at 115200 baud. Key prefixes:
 | `[AutoPush]` | modules/auto_push/auto_push_module.cpp |
 | `[Touch]` | touch_handler.cpp |
 
-### Common Issues
+### Connection Issues
 
-| Symptom | Cause | Solution |
-|---------|-------|----------|
-| "SCAN" never changes | V1 not advertising | Ensure V1 Gen2 BLE enabled |
-| Connects then disconnects | Bad bonding info | V1 will auto-clear; wait 10s |
-| No web UI | LittleFS empty | Run `pio run -t uploadfs` |
-| Touch not working | I2C init failed | Check serial for "[Touch] ERROR" |
-| Display blank | QSPI init failed | Check pin definitions |
-| Battery icon missing | USB power detected | Normal - only shows on battery |
-| Settings won't reset | NVS persists | Use `esptool.py erase_flash` (see below) |
+**Can't find V1-Simple WiFi network:**
+1. WiFi is **off by default** — long-press BOOT (~4s) to toggle WiFi AP on/off
+2. Optional: set `enableWifiAtBoot=true` in `/settings` if you need AP on every boot
+3. Move closer — ESP32 WiFi range is limited to ~30 feet
 
-### Factory Reset (Full Flash Erase)
+**Can't connect to V1-Simple WiFi:**
+1. Use correct password: default is `setupv1g2`
+2. Forget and reconnect (remove saved network, reconnect fresh)
+3. Disable 5GHz on your phone — some phones try 5GHz first
 
-Settings are stored in NVS (non-volatile storage) and persist across firmware updates. The `pio run -t erase` target only erases firmware, not NVS.
+**V1 won't connect via BLE:**
+1. Ensure V1 Bluetooth is ON (V1 Menu → Expert → Bluetooth → ON, "Visible" mode)
+2. Power cycle both V1 and V1-Simple
+3. Disconnect V1 from phone apps first
+4. Keep V1 within 3 feet during initial pairing
 
-**To fully reset all settings to defaults:**
+**Frequent BLE disconnections:**
+1. Reduce distance between V1-Simple and V1
+2. Check battery — low V1-Simple battery affects BLE stability
+3. Disable proxy mode if not needed (reduces disconnect risk)
+
+### Display Problems
+
+**Display is blank/black:**
+1. Touch the display to wake it
+2. Check serial for "[Display] QSPI init failed"
+3. Power cycle (hold power 10 seconds)
+
+**Display colors wrong/inverted:**
+1. Reset colors: Settings → Display Colors → Reset to Default
+2. If testing colors, send clear preview command
+
+**Touch not responding:**
+1. Clean screen — fingerprints can affect capacitive touch
+2. Restart device — touch controller may need reset
+3. Check serial for "[Touch] ERROR"
+
+### GPS Issues
+
+**GPS shows "No Fix":**
+1. Wait longer — first fix can take 2-5 minutes (cold start)
+2. Go outside — GPS needs clear sky view
+3. Not all units have GPS installed
+
+**Speed doesn't match speedometer:**
+- Vehicle speedometers typically read 2-5% high — this is normal
+
+### Auto-Lockout Issues
+
+**Lockouts not learning:**
+1. Check `gpsLockoutMode` is not set to `off`
+2. Default requires 3 passes (`gpsLockoutLearnerPromotionHits`)
+3. Must be within lockout learner radius and frequency tolerance
+4. Ka band learning is disabled by default (`gpsLockoutKaLearningEnabled`)
+
+**Lockouts learning too aggressively:**
+1. Increase `gpsLockoutLearnerPromotionHits` (default is 3)
+2. Decrease `gpsLockoutLearnerRadiusE5` for tighter geo-match
+3. Decrease `gpsLockoutLearnerFreqToleranceMHz`
+4. Disable Ka learning: set `gpsLockoutKaLearningEnabled` to false
+
+### Audio Problems
+
+**No sound:**
+1. Check mute state and volume level
+2. Check audio profile in Settings → Audio
+3. Test speaker via debug page
+
+**Audio distorted:**
+1. Lower volume — high volume can cause clipping
+2. Power cycle — audio codec may need reset
+
+### Performance Issues
+
+**Web UI is slow:**
+1. Reduce connected clients (1-2 devices max)
+2. Close unused pages (each page polls for updates)
+3. Disable `/dev` auto-refresh metrics when not debugging
+4. Score perf CSV: `python3 tools/score_perf_csv.py <csv> --profile drive_wifi_off --session longest-connected`
+
+**Device restarting/crashing:**
+1. Check battery — low battery can cause restarts
+2. Collect diagnostics: `/api/debug/panic`, `/api/debug/metrics`, latest `/perf/perf_boot_*.csv`
+3. Update firmware
+
+### Factory Reset
+
+Settings are stored in NVS (non-volatile storage) and persist across firmware updates.
+
+**Method 1 — Via Web UI:**
+1. Connect to device WiFi → Settings page → Factory Reset
+
+**Method 2 — Via USB Serial (full flash erase):**
 
 ```bash
-# Windows (Git Bash) - use PlatformIO's Python:
+# Windows (Git Bash):
 "$HOME/.platformio/penv/Scripts/python.exe" "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" --port COM4 erase_flash
 
 # Mac/Linux:
@@ -1336,16 +1529,9 @@ Settings are stored in NVS (non-volatile storage) and persist across firmware up
 
 # Then re-upload everything:
 ./build.sh --all
-
-# Or manually:
-pio run -e waveshare-349 -t upload
-pio run -e waveshare-349 -t uploadfs
 ```
 
-**Port names:**
-- Windows: `COM4`, `COM5`, etc.
-- Mac: `/dev/cu.usbmodem*`
-- Linux: `/dev/ttyACM0` or `/dev/ttyUSB0`
+**Port names:** Windows: `COM4`/`COM5`. Mac: `/dev/cu.usbmodem*`. Linux: `/dev/ttyACM0` or `/dev/ttyUSB0`.
 
 **After erase:** Device boots with factory defaults (WiFi: V1-Simple/setupv1g2).
 
@@ -1364,81 +1550,23 @@ Enable verbose logging by checking serial output for:
 - Connection attempts: 5 (see MAX_CONNECT_ATTEMPTS in [src/ble_client.h](src/ble_client.h#L377)).
 - Backoff/settle: adjust `BACKOFF_BASE_MS` / `BACKOFF_MAX_MS` and `SCAN_STOP_SETTLE_MS` / `SCAN_STOP_SETTLE_FRESH_MS` in [src/ble_client.h](src/ble_client.h#L440) if you need slower retries or longer radio settle time.
 
-### Web API Endpoints
+### Web API Quick Reference
 
-**Core APIs:**
+For the full API reference with request/response schemas and examples, see [API.md](API.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/status` | BLE connection state, V1 info |
 | GET | `/api/settings` | All current settings (JSON) |
 | POST | `/api/settings` | Save settings |
-| POST | `/api/profile/push` | Push profile to V1 |
-| POST | `/darkmode` | Toggle display dark mode |
-| POST | `/mute` | Toggle mute |
-
-**Settings Backup/Restore:**
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/settings/backup` | Download all settings as JSON file |
-| POST | `/api/settings/restore` | Restore settings from uploaded JSON |
-
-**V1 Profile Management:**
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/profiles` | List all saved profiles |
-| GET | `/api/v1/profile?name=X` | Get specific profile |
-| POST | `/api/v1/profile` | Save/create profile |
-| POST | `/api/v1/profile/delete` | Delete profile |
-| POST | `/api/v1/pull` | Pull current settings from V1 |
+| GET | `/api/settings/backup` | Download settings as JSON |
+| POST | `/api/settings/restore` | Restore settings from JSON |
+| GET | `/api/v1/profiles` | List saved profiles |
 | POST | `/api/v1/push` | Push profile to V1 |
-| GET | `/api/v1/current` | Get V1's current settings |
-
-**Auto-Push System:**
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/autopush/slots` | Get all 3 slot configurations |
-| POST | `/api/autopush/slot` | Save slot configuration |
-| POST | `/api/autopush/activate` | Activate a slot (0-2) |
-| POST | `/api/autopush/push` | Push active slot now |
-| GET | `/api/autopush/status` | Get auto-push state |
-
-**Display Colors:**
-
-| Method | Path | Description |
-|--------|------|-------------|
+| GET | `/api/autopush/slots` | Get slot configurations |
 | GET | `/api/displaycolors` | Get current colors |
-| POST | `/api/displaycolors` | Save custom colors |
-| POST | `/api/displaycolors/reset` | Reset to theme defaults |
-| POST | `/api/displaycolors/preview` | Preview colors on display |
-| POST | `/api/displaycolors/clear` | Clear preview |
-
-**Device Management:**
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/v1/devices` | List known V1 devices |
-| POST | `/api/v1/devices/name` | Set device friendly name |
-| POST | `/api/v1/devices/profile` | Set default profile for device |
-| POST | `/api/v1/devices/delete` | Remove device |
-
-**Debug/Diagnostics:**
-
-| Method | Path | Description |
-|--------|------|-------------|
 | GET | `/api/debug/metrics` | Performance metrics |
-| POST | `/api/debug/enable` | Toggle debug features |
-
-**Captive Portal Handlers:**
-- `/generate_204`, `/gen_204` - Android captive portal
-- `/hotspot-detect.html` - iOS captive portal
-- `/fwlink` - Windows captive portal
-- `/ncsi.txt` - Windows NCSI check
-
-**Source:** [src/wifi_routes.cpp](src/wifi_routes.cpp#L42-L710) (setupWebServer)
+| GET | `/ping` | Health check |
 
 ---
 

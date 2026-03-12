@@ -145,4 +145,4 @@ pio run -e waveshare-349
 ---
 
 *For detailed API documentation, see [docs/API.md](docs/API.md)*
-*For troubleshooting, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)*
+*For troubleshooting, see [docs/MANUAL.md](docs/MANUAL.md#j-troubleshooting)*
