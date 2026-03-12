@@ -3,4 +3,5 @@
 bleClient.process
 bleQueueModule.process
 displayPipelineModule.handleParsed
+obdRuntimeModule.update
 wifiManager.process

@@ -65,9 +65,9 @@ kind=header file=include/wifi_manager_internals.h line=24 text=extern void cance
 kind=source file=src/battery_manager.cpp line=24 text=extern V1Display display;
 kind=source file=src/battery_manager.cpp line=25 text=extern SettingsManager settingsManager;
 kind=source file=src/battery_manager.cpp line=26 text=extern WiFiManager wifiManager;
-kind=header file=src/battery_manager.h line=100 text=extern BatteryManager batteryManager;
-kind=header file=src/battery_manager.h line=103 text=extern TwoWire tca9554Wire;
-kind=header file=src/battery_manager.h line=104 text=extern SemaphoreHandle_t tca9554WireMutex;
+kind=header file=src/battery_manager.h line=101 text=extern BatteryManager batteryManager;
+kind=header file=src/battery_manager.h line=104 text=extern TwoWire tca9554Wire;
+kind=header file=src/battery_manager.h line=105 text=extern SemaphoreHandle_t tca9554WireMutex;
 kind=source file=src/ble_connection.cpp line=16 text=extern int backupBondsToSD();
 kind=header file=src/display.h line=230 text=extern V1Display display;
 kind=header file=src/display_font_manager.h line=118 text=extern DisplayFontManager fontMgr;
@@ -77,7 +77,7 @@ kind=source file=src/display_status_bar.cpp line=278 text=extern SettingsManager
 kind=source file=src/display_status_bar.cpp line=552 text=extern WiFiManager wifiManager;
 kind=source file=src/display_status_bar.cpp line=553 text=extern SettingsManager settingsManager;
 kind=source file=src/main_boot.cpp line=22 text=extern V1Display display;
-kind=header file=src/modules/camera_alert/camera_alert_module.h line=69 text=extern CameraAlertModule cameraAlertModule;
+kind=header file=src/modules/camera_alert/camera_alert_module.h line=74 text=extern CameraAlertModule cameraAlertModule;
 kind=header file=src/modules/gps/gps_observation_log.h line=73 text=extern GpsObservationLog gpsObservationLog;
 kind=header file=src/modules/gps/gps_runtime_module.h line=149 text=extern GpsRuntimeModule gpsRuntimeModule;
 kind=header file=src/modules/lockout/lockout_enforcer.h line=120 text=extern LockoutEnforcer lockoutEnforcer;
@@ -89,14 +89,16 @@ kind=source file=src/modules/lockout/signal_capture_module.cpp line=8 text=exter
 kind=header file=src/modules/lockout/signal_capture_module.h line=38 text=extern SignalCaptureModule signalCaptureModule;
 kind=header file=src/modules/lockout/signal_observation_log.h line=85 text=extern SignalObservationLog signalObservationLog;
 kind=header file=src/modules/lockout/signal_observation_sd_logger.h line=82 text=extern SignalObservationSdLogger signalObservationSdLogger;
-kind=header file=src/modules/speed/speed_source_selector.h line=46 text=extern SpeedSourceSelector speedSourceSelector;
+kind=header file=src/modules/obd/obd_ble_client.h line=88 text=extern ObdBleClient obdBleClient;
+kind=header file=src/modules/obd/obd_runtime_module.h line=112 text=extern ObdRuntimeModule obdRuntimeModule;
+kind=header file=src/modules/speed/speed_source_selector.h line=61 text=extern SpeedSourceSelector speedSourceSelector;
 kind=header file=src/perf_metrics.h line=509 text=extern PerfExtendedMetrics perfExtended;
 kind=header file=src/perf_metrics.h line=604 text=extern PerfCounters perfCounters;
 kind=header file=src/perf_metrics.h line=631 text=extern PerfLatency perfLatency;
 kind=header file=src/perf_metrics.h line=635 text=extern bool perfDebugEnabled; // Runtime debug print enable
 kind=header file=src/perf_metrics.h line=636 text=extern uint32_t perfLastReportMs; // Last report timestamp
 kind=header file=src/perf_sd_logger.h line=195 text=extern PerfSdLogger perfSdLogger;
-kind=header file=src/settings.h line=597 text=extern SettingsManager settingsManager;
+kind=header file=src/settings.h line=605 text=extern SettingsManager settingsManager;
 kind=header file=src/storage_manager.h line=299 text=extern StorageManager storageManager;
 kind=header file=src/time_service.h line=68 text=extern TimeService timeService;
 kind=header file=src/v1_devices.h line=65 text=extern V1DeviceStore v1DeviceStore;

@@ -22,6 +22,7 @@ BLE_CALLBACK_FILES: Tuple[Path, ...] = (
     ROOT / "src" / "ble_client.cpp",
     ROOT / "src" / "ble_connection.cpp",
     ROOT / "src" / "ble_proxy.cpp",
+    ROOT / "src" / "modules" / "obd" / "obd_ble_client.cpp",
 )
 BLE_QUEUE_FILE = ROOT / "src" / "modules" / "ble" / "ble_queue_module.cpp"
 CONTRACT_FILE = ROOT / "test" / "contracts" / "ble_hot_path_contract.txt"
@@ -37,6 +38,9 @@ BLE_CLIENT_CALLBACK_TARGETS: Sequence[Sequence[str]] = (
     ("V1BLEClient::ProxyWriteCallbacks::onWrite",),
     ("V1BLEClient::ProxyServerCallbacks::onConnect",),
     ("V1BLEClient::ProxyServerCallbacks::onDisconnect",),
+    ("ObdScanCallback::onResult",),
+    ("ObdScanCallback::onScanEnd",),
+    ("ObdClientCallback::onDisconnect",),
 )
 
 BLE_QUEUE_CALLBACK_TARGETS: Sequence[Sequence[str]] = (

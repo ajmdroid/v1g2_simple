@@ -58,6 +58,7 @@ run_step "Perf CSV column contract" python3 scripts/check_perf_csv_column_contra
 run_step "Display flush discipline contract" python3 scripts/check_display_flush_discipline_contract.py
 run_step "SD lock discipline contract" python3 scripts/check_sd_lock_discipline_contract.py
 run_step "Main loop call-order contract" python3 scripts/check_main_loop_call_order_contract.py
+run_step "OBD boot-safety contract" python3 scripts/check_obd_boot_safety_contract.py
 run_step "Extern/global usage contract" python3 scripts/check_extern_usage_contract.py
 
 section "Docs Hygiene"
