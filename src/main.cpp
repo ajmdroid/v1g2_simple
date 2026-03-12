@@ -1083,6 +1083,9 @@ void loop() {
         runDisplayPipeline);
     const bool loopSignalPriorityActive = loopDisplayPreWifiValues.loopSignalPriorityActive;
 
+    // OBD runtime update — between DisplayPreWifi and WiFi phases.
+    obdRuntimeModule.update(now, bootReady, bleConnectedNow, !bleClient.isScanning());
+
     auto runWifiManagerProcess = []() { wifiManager.process(); };
     const LoopWifiPhaseValues loopWifiValues = processLoopWifiPhase(
         now,
