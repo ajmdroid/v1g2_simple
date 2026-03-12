@@ -200,7 +200,7 @@ PY
     path.chmod(0o755)
 
 
-def write_metrics_jsonl(path: Path) -> None:
+def write_metrics_jsonl(path: Path, *, include_display_counters: bool = True) -> None:
     start = datetime(2026, 3, 12, 12, 0, 0, tzinfo=timezone.utc)
     records = []
     samples = [
@@ -341,6 +341,10 @@ def write_metrics_jsonl(path: Path) -> None:
         },
     ]
     for index, data in enumerate(samples):
+        if not include_display_counters:
+            data = dict(data)
+            data.pop("displayUpdates", None)
+            data.pop("displaySkips", None)
         records.append(
             {
                 "ts": (start + timedelta(seconds=index)).isoformat().replace("+00:00", "Z"),
@@ -349,6 +353,40 @@ def write_metrics_jsonl(path: Path) -> None:
             }
         )
     path.write_text("".join(json.dumps(item) + "\n" for item in records), encoding="utf-8")
+
+
+def write_panic_jsonl(path: Path, *, runtime_crash: bool = False) -> None:
+    start = datetime(2026, 3, 12, 12, 0, 0, tzinfo=timezone.utc)
+    samples = [
+        {
+            "ts": start.isoformat().replace("+00:00", "Z"),
+            "ok": True,
+            "data": {
+                "wasCrash": False,
+                "hasPanicFile": False,
+                "lastResetReason": "boot",
+            },
+        },
+        {
+            "ts": (start + timedelta(seconds=1)).isoformat().replace("+00:00", "Z"),
+            "ok": True,
+            "data": {
+                "wasCrash": runtime_crash,
+                "hasPanicFile": runtime_crash,
+                "lastResetReason": "panic" if runtime_crash else "steady",
+            },
+        },
+    ]
+    path.write_text("".join(json.dumps(item) + "\n" for item in samples), encoding="utf-8")
+
+
+def write_serial_log(path: Path, *, reset_count: int = 0, panic_signature_count: int = 0) -> None:
+    lines = ["I (0) boot: firmware ready"]
+    for _ in range(reset_count):
+        lines.append("rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)")
+    for _ in range(panic_signature_count):
+        lines.append("Guru Meditation Error: Core 0 panic'ed (LoadProhibited).")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def run_test_script(env_overrides: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
@@ -547,6 +585,8 @@ def main() -> int:
         parse_input_dir = temp_root / "captured_drive"
         parse_input_dir.mkdir(parents=True, exist_ok=True)
         write_metrics_jsonl(parse_input_dir / "metrics.jsonl")
+        write_panic_jsonl(parse_input_dir / "panic.jsonl")
+        write_serial_log(parse_input_dir / "serial.log")
 
         parsed_display = run_test_script(
             {
@@ -566,6 +606,58 @@ def main() -> int:
         assert_true(parsed_scoring["result"] in {"NO_BASELINE", "PASS", "PASS_WITH_WARNINGS"}, f"unexpected parsed scoring: {parsed_scoring}")
         parsed_comparison = (parse_latest / "display_soak" / "comparison.txt").read_text(encoding="utf-8")
         assert_true("display_updates_delta" in parsed_comparison, "parsed comparison missing display metric")
+        assert_true("## Imported Signals" in parsed_comparison, "parsed comparison missing imported signals section")
+        assert_true("Reboot evidence detected: no" in parsed_comparison, "parsed comparison should show no reboot evidence")
+        parsed_manifest = json.loads((parse_latest / "display_soak" / "manifest.json").read_text(encoding="utf-8"))
+        assert_true(parsed_manifest["source_serial_log"].endswith("/serial.log"), f"missing serial source: {parsed_manifest}")
+        assert_true(parsed_manifest["source_panic_jsonl"].endswith("/panic.jsonl"), f"missing panic source: {parsed_manifest}")
+        import_diagnostics = json.loads((parse_latest / "display_soak" / "import_diagnostics.json").read_text(encoding="utf-8"))
+        assert_true(import_diagnostics["source_coverage"]["signal_sources"] == 3, f"unexpected signal coverage: {import_diagnostics}")
+
+        serial_only_artifact_root = temp_root / "serial_only_artifacts"
+        serial_only_dir = temp_root / "serial_only_drive"
+        serial_only_dir.mkdir(parents=True, exist_ok=True)
+        write_serial_log(serial_only_dir / "serial.log")
+        serial_only = run_test_script(
+            {
+                **common_env,
+                "HARDWARE_TEST_ARTIFACT_ROOT": str(serial_only_artifact_root),
+            },
+            "--core",
+            "--parse-drive-log",
+            str(serial_only_dir / "serial.log"),
+        )
+        assert_true(serial_only.returncode == 0, f"serial-only parse should be non-failing: {serial_only.stdout}\n{serial_only.stderr}")
+        serial_only_latest = serial_only_artifact_root / "release" / "latest"
+        serial_only_result = json.loads((serial_only_latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(serial_only_result["result"] == "PASS_WITH_WARNINGS", f"unexpected serial-only result: {serial_only_result}")
+        serial_only_step_manifest = json.loads((serial_only_latest / "core_soak" / "manifest.json").read_text(encoding="utf-8"))
+        assert_true(serial_only_step_manifest["result"] == "INCONCLUSIVE", f"serial-only manifest should be inconclusive: {serial_only_step_manifest}")
+        serial_only_comparison = (serial_only_latest / "core_soak" / "comparison.txt").read_text(encoding="utf-8")
+        assert_true("Metrics JSONL: missing" in serial_only_comparison, "serial-only comparison should note missing metrics")
+
+        crash_artifact_root = temp_root / "crash_artifacts"
+        crash_input_dir = temp_root / "crash_drive"
+        crash_input_dir.mkdir(parents=True, exist_ok=True)
+        write_metrics_jsonl(crash_input_dir / "metrics.jsonl", include_display_counters=False)
+        write_panic_jsonl(crash_input_dir / "panic.jsonl", runtime_crash=True)
+        write_serial_log(crash_input_dir / "serial.log", panic_signature_count=1)
+        parsed_crash = run_test_script(
+            {
+                **common_env,
+                "HARDWARE_TEST_ARTIFACT_ROOT": str(crash_artifact_root),
+            },
+            "--core",
+            "--parse-drive-log",
+            str(crash_input_dir),
+        )
+        assert_true(parsed_crash.returncode == 1, f"crash parse should fail: {parsed_crash.stdout}\n{parsed_crash.stderr}")
+        crash_latest = crash_artifact_root / "release" / "latest"
+        crash_result = json.loads((crash_latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(crash_result["result"] == "FAIL", f"unexpected crash result: {crash_result}")
+        crash_comparison = (crash_latest / "core_soak" / "comparison.txt").read_text(encoding="utf-8")
+        assert_true("Reboot evidence detected: yes" in crash_comparison, "crash comparison should note reboot evidence")
+        assert_true("serial_panic_signatures=1" in crash_comparison, "crash comparison missing serial panic detail")
 
     print("hardware test script regression tests: PASS")
     return 0

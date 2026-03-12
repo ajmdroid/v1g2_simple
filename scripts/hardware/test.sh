@@ -29,10 +29,10 @@ Options:
   -d, --device              Run only the device suite step
   -c, --core                Run only the core soak step
   -p, --display             Run only the display-preview soak step
-  --parse-drive-log PATH    Parse a saved soak directory or metrics.jsonl instead of
-                            running a live soak step. If no soak step is selected,
-                            the script infers core/display from the input manifest
-                            and otherwise defaults to core.
+  --parse-drive-log PATH    Parse a saved soak directory, metrics.jsonl, panic.jsonl,
+                            or serial.log instead of running a live soak step. If
+                            no soak step is selected, the script infers core/display
+                            from the input manifest and otherwise defaults to core.
   --board-id ID             Board id from test/device/board_inventory.json
                             (default: release)
   --duration-seconds N      Soak duration for live soak steps (default: 300)
@@ -47,6 +47,7 @@ Examples:
   ./scripts/hardware/test.sh --display
   ./scripts/hardware/test.sh --all --board-id release --strict
   ./scripts/hardware/test.sh --device --parse-drive-log /path/to/metrics.jsonl
+  ./scripts/hardware/test.sh --core --parse-drive-log /path/to/serial.log
   ./scripts/hardware/test.sh --parse-drive-log /path/to/real_fw_soak_run
 EOF
 }

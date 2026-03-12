@@ -183,8 +183,11 @@ def main() -> int:
     )
 
     for step in steps:
-        scoring_path = Path(str(step["scoring_path"]))
-        if not scoring_path.exists():
+        scoring_path_text = str(step["scoring_path"] or "")
+        if not scoring_path_text:
+            continue
+        scoring_path = Path(scoring_path_text)
+        if not scoring_path.is_file():
             continue
         scoring = load_json(scoring_path) or {}
         for metric in scoring.get("metrics", []):
