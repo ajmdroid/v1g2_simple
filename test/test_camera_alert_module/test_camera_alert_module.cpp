@@ -190,6 +190,13 @@ void test_corridor_rejects_side_road_camera() {
 	TEST_ASSERT_FALSE(module.isDisplayActive());
 }
 
+void test_forward_corridor_rejects_exact_perpendicular_boundary() {
+	const int32_t camLat = BASE_LAT_E5;
+	const int32_t camLon = offsetLonE5(BASE_LAT_E5, BASE_LON_E5, 40.0f);
+
+	TEST_ASSERT_FALSE(cameraInForwardCorridor(BASE_LAT_E5, BASE_LON_E5, camLat, camLon, 0.0f));
+}
+
 void test_closing_confirmation_requires_two_closing_polls_for_alpr() {
 	const TestCameraSpec camera{
 		offsetLatE5(BASE_LAT_E5, 200.0f), offsetLonE5(BASE_LAT_E5, BASE_LON_E5, 5.0f), 0,
@@ -255,6 +262,7 @@ int main() {
 	RUN_TEST(test_unknown_flag_is_ignored);
 	RUN_TEST(test_below_min_speed_clears_alerts);
 	RUN_TEST(test_corridor_rejects_side_road_camera);
+	RUN_TEST(test_forward_corridor_rejects_exact_perpendicular_boundary);
 	RUN_TEST(test_closing_confirmation_requires_two_closing_polls_for_alpr);
 	RUN_TEST(test_driving_away_clears_confirmed_display);
 	RUN_TEST(test_module_keeps_distance_above_legacy_uint16_cap);

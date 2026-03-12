@@ -11,6 +11,7 @@
 #define BATTERY_MANAGER_H
 
 #include <Arduino.h>
+#include "../include/battery_math.h"
 #include <Wire.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -30,10 +31,10 @@
 #define TCA9554_CONFIG_PORT     0x03
 
 // Battery voltage thresholds (mV)
-#define BATTERY_FULL_MV         4095  // Measured full charge voltage
-#define BATTERY_EMPTY_MV        3200
-#define BATTERY_WARNING_MV      3400  // Low battery warning (yellow)
-#define BATTERY_CRITICAL_MV     3250  // Critical - auto shutdown soon
+#define BATTERY_FULL_MV         battery_math::kFullMv
+#define BATTERY_EMPTY_MV        battery_math::kEmptyMv
+#define BATTERY_WARNING_MV      battery_math::kWarningMv
+#define BATTERY_CRITICAL_MV     battery_math::kCriticalMv
 
 class BatteryManager {
 public:

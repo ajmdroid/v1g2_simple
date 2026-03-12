@@ -84,11 +84,31 @@ PacketParser::PacketParser()
 }
 
 bool PacketParser::parse(const uint8_t* data, size_t length) {
-    if (!validatePacket(data, length)) {
+    if (!data || length < 7) {
+        return false;
+    }
+    if (data[0] != ESP_PACKET_START || data[length - 1] != ESP_PACKET_END) {
         return false;
     }
 
     uint8_t packetId = data[3];
+    switch (packetId) {
+        case PACKET_ID_WRITE_USER_BYTES:
+        case PACKET_ID_TURN_OFF_DISPLAY:
+        case PACKET_ID_TURN_ON_DISPLAY:
+        case PACKET_ID_MUTE_ON:
+        case PACKET_ID_MUTE_OFF:
+        case 0x36:
+        case PACKET_ID_REQ_WRITE_VOLUME:
+        case PACKET_ID_RESP_USER_BYTES:
+            break;
+        default:
+            if (!validatePacket(data, length)) {
+                return false;
+            }
+            break;
+    }
+
     const uint8_t* payload = (length > 5) ? &data[5] : nullptr;
     size_t payloadLen = (length > 6) ? length - 6 : 0; // drop start/dest/src/id/len/end
 

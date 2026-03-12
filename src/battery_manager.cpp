@@ -407,15 +407,7 @@ void BatteryManager::update() {
         uint16_t voltage = readADCMillivolts();
         cachedVoltage = voltage;
         
-        // Calculate percentage
-        if (voltage >= BATTERY_FULL_MV) {
-            cachedPercent = 100;
-        } else if (voltage <= BATTERY_EMPTY_MV) {
-            cachedPercent = 0;
-        } else {
-            // Linear interpolation
-            cachedPercent = (uint8_t)((voltage - BATTERY_EMPTY_MV) * 100 / (BATTERY_FULL_MV - BATTERY_EMPTY_MV));
-        }
+        cachedPercent = battery_math::voltageToPercent(voltage);
         
         lastUpdateMs = now;
     }
@@ -430,11 +422,11 @@ uint8_t BatteryManager::getPercentage() const {
 }
 
 bool BatteryManager::isLow() const {
-    return cachedVoltage < BATTERY_WARNING_MV && cachedVoltage > 0;
+    return battery_math::isLow(cachedVoltage);
 }
 
 bool BatteryManager::isCritical() const {
-    return cachedVoltage < BATTERY_CRITICAL_MV && cachedVoltage > 0;
+    return battery_math::isCritical(cachedVoltage);
 }
 
 bool BatteryManager::latchPowerOn() {

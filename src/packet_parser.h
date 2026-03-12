@@ -121,11 +121,13 @@ public:
 
     // Clear any partially assembled alert chunks (used when we re-request alert data)
     void resetAlertAssembly();
-    
 
-    
+#ifdef UNIT_TEST
+    bool validatePacketForTest(const uint8_t* data, size_t length) {
+        return validatePacket(data, length);
+    }
+#endif
 
-    
     // Reset alert count tracker (call on V1 disconnect to clear stale assembly state)
     static void resetAlertCountTracker();
 

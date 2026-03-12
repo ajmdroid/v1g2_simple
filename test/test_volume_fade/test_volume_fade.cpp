@@ -59,6 +59,21 @@ void test_fade_triggers_after_delay() {
     TEST_ASSERT_EQUAL_UINT8(3, action2.targetVolume);
 }
 
+void test_fade_triggers_at_exact_delay_boundary() {
+    settingsManager.settings.alertVolumeFadeEnabled = true;
+    settingsManager.settings.alertVolumeFadeDelaySec = 2;
+    settingsManager.settings.alertVolumeFadeVolume = 3;
+
+    auto ctx = makeCtx(true, 1000, 7, 34700);
+    auto action1 = fade.process(ctx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, action1.type);
+
+    ctx.now = 3000;  // Exactly 2000ms later.
+    auto action2 = fade.process(ctx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::FADE_DOWN, action2.type);
+    TEST_ASSERT_EQUAL_UINT8(3, action2.targetVolume);
+}
+
 void test_new_frequency_restores_when_faded() {
     settingsManager.settings.alertVolumeFadeEnabled = true;
     settingsManager.settings.alertVolumeFadeDelaySec = 1;
@@ -247,6 +262,7 @@ void test_restore_retries_stop_after_pending_window_expires() {
 void runAllTests() {
     RUN_TEST(test_disabled_feature_returns_none);
     RUN_TEST(test_fade_triggers_after_delay);
+    RUN_TEST(test_fade_triggers_at_exact_delay_boundary);
     RUN_TEST(test_new_frequency_restores_when_faded);
     RUN_TEST(test_muted_alert_restores_and_resets);
     RUN_TEST(test_alert_clear_restores_if_needed);

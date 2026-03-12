@@ -165,6 +165,13 @@ void test_evaluate_matches_near_edge_of_radius() {
     TEST_ASSERT_TRUE(d.shouldMute);
 }
 
+void test_evaluate_matches_exact_radius_boundary() {
+    idx.add(makeKBandEntry(1012345, -2054321, 24148, 1350));
+
+    LockoutDecision d = idx.evaluate(1012345 + 1350, -2054321, 0x04, 24148);
+    TEST_ASSERT_TRUE(d.shouldMute);
+}
+
 void test_evaluate_no_match_outside_radius() {
     idx.add(makeKBandEntry(1012345, -2054321, 24148, 1350));
 
@@ -390,6 +397,18 @@ void test_recordCleanPass_removes_plain_active_at_zero() {
     uint8_t c = idx.recordCleanPass(slot, 1700000120000LL);
     TEST_ASSERT_EQUAL(0, c);
     TEST_ASSERT_FALSE(idx.at(slot)->isActive());  // Non-manual removed.
+    TEST_ASSERT_EQUAL(0, idx.activeCount());
+}
+
+void test_recordCleanPass_zero_confidence_does_not_underflow() {
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
+    e.confidence = 0;
+    e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
+    int slot = idx.add(e);
+
+    uint8_t c = idx.recordCleanPass(slot, 1700000120000LL);
+    TEST_ASSERT_EQUAL(0, c);
+    TEST_ASSERT_FALSE(idx.at(slot)->isActive());
     TEST_ASSERT_EQUAL(0, idx.activeCount());
 }
 
@@ -767,6 +786,7 @@ int main(int argc, char** argv) {
     // evaluate
     RUN_TEST(test_evaluate_matches_inside_radius);
     RUN_TEST(test_evaluate_matches_near_edge_of_radius);
+    RUN_TEST(test_evaluate_matches_exact_radius_boundary);
     RUN_TEST(test_evaluate_no_match_outside_radius);
     RUN_TEST(test_evaluate_no_match_wrong_band);
     RUN_TEST(test_evaluate_no_match_wrong_freq);
@@ -790,6 +810,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_recordCleanPass_auto_removes_learned_at_zero);
     RUN_TEST(test_recordCleanPass_learned_entry_auto_removed_at_zero);
     RUN_TEST(test_recordCleanPass_removes_plain_active_at_zero);
+    RUN_TEST(test_recordCleanPass_zero_confidence_does_not_underflow);
     RUN_TEST(test_recordHit_resets_miss_tracking);
     RUN_TEST(test_recordCleanPassWithPolicy_threshold_demotes_after_count);
     RUN_TEST(test_recordCleanPassWithPolicy_interval_gate);

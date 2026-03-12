@@ -20,6 +20,7 @@
 #include <freertos/semphr.h>
 #include <esp_task_wdt.h>
 #include <driver/gpio.h>
+#include "../../include/battery_math.h"
 #include "../device_test_reset.h"
 
 // GPIO definitions from battery_manager.h
@@ -30,10 +31,6 @@ static constexpr int TCA9554_SCL_GPIO   = 48;
 static constexpr uint8_t TCA9554_ADDR   = 0x20;
 static constexpr uint8_t TCA9554_CONFIG_PORT  = 0x03;
 static constexpr uint8_t TCA9554_OUTPUT_PORT  = 0x01;
-
-// Voltage thresholds from battery_manager.h
-static constexpr uint16_t BATTERY_FULL_MV     = 4095;
-static constexpr uint16_t BATTERY_EMPTY_MV    = 3200;
 
 void setUp() {}
 void tearDown() {}
@@ -191,21 +188,14 @@ void test_battery_i2c_concurrent_access_safe() {
 // VOLTAGE CONVERSION SANITY CHECK
 // ===========================================================================
 
-// Pure function extracted from battery_manager.cpp for on-device validation
-static uint8_t voltageToPercent(uint16_t voltageMV) {
-    if (voltageMV >= BATTERY_FULL_MV) return 100;
-    if (voltageMV <= BATTERY_EMPTY_MV) return 0;
-    return (uint8_t)((voltageMV - BATTERY_EMPTY_MV) * 100 / (BATTERY_FULL_MV - BATTERY_EMPTY_MV));
-}
-
 void test_battery_voltage_to_percent_on_device() {
     // These should produce identical results on device and native
-    TEST_ASSERT_EQUAL_UINT8(100, voltageToPercent(4095));
-    TEST_ASSERT_EQUAL_UINT8(0, voltageToPercent(3200));
-    TEST_ASSERT_EQUAL_UINT8(0, voltageToPercent(3000));
+    TEST_ASSERT_EQUAL_UINT8(100, battery_math::voltageToPercent(4095));
+    TEST_ASSERT_EQUAL_UINT8(0, battery_math::voltageToPercent(3200));
+    TEST_ASSERT_EQUAL_UINT8(0, battery_math::voltageToPercent(3000));
 
     // Midpoint
-    uint8_t mid = voltageToPercent(3648);
+    uint8_t mid = battery_math::voltageToPercent(3648);
     TEST_ASSERT_UINT8_WITHIN(1, 50, mid);
 }
 
