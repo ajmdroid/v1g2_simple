@@ -33,6 +33,8 @@
 #include "modules/lockout/signal_observation_log.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/speed/speed_source_selector.h"
+#include "modules/obd/obd_api_service.h"
+#include "modules/obd/obd_runtime_module.h"
 #include "time_service.h"
 #include "battery_manager.h"
 #include <LittleFS.h>
@@ -573,6 +575,17 @@ void WiFiManager::setupWebServer() {
             lockoutLearner,
             rateLimitCallback,
             markUiActivityCallback);
+    });
+
+    // OBD API routes
+    server.on("/api/obd/status", HTTP_GET, [this, markUiActivityCallback]() {
+        ObdApiService::handleApiStatus(server, obdRuntimeModule, markUiActivityCallback);
+    });
+    server.on("/api/obd/scan", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+        ObdApiService::handleApiScan(server, obdRuntimeModule, rateLimitCallback, markUiActivityCallback);
+    });
+    server.on("/api/obd/forget", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+        ObdApiService::handleApiForget(server, obdRuntimeModule, settingsManager, rateLimitCallback, markUiActivityCallback);
     });
     
     // Note: onNotFound is set earlier to handle LittleFS static files
