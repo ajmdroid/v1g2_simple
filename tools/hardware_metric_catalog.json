@@ -763,6 +763,20 @@
     {
       "metric": "display_updates_delta",
       "run_kind": "real_fw_soak",
+      "selector": { "stress_class": "core" },
+      "unit": "count",
+      "aggregation": "last",
+      "direction": "higher_better",
+      "score_level": "info",
+      "required": false,
+      "absolute_min": null,
+      "absolute_max": null,
+      "regress_abs": 25,
+      "regress_pct": 0.25
+    },
+    {
+      "metric": "display_updates_delta",
+      "run_kind": "real_fw_soak",
       "selector": { "stress_class": "display_preview" },
       "unit": "count",
       "aggregation": "last",

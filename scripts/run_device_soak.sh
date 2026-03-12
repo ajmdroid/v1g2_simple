@@ -116,16 +116,20 @@ for cycle in $(seq 1 "$CYCLES"); do
   cycle_start_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   cycle_start_epoch="$(date +%s)"
   cycle_log="$OUT_DIR/cycle_${cycle}.log"
+  device_cmd=(./scripts/run_device_tests.sh)
 
   echo "==> [cycle $cycle/$CYCLES] starting at $cycle_start_utc"
 
-  compare_args=()
-  if [[ -n "$previous_manifest" ]]; then
-    compare_args=(--compare-to "$previous_manifest")
+  if [[ ${#RUN_ARGS[@]} -gt 0 ]]; then
+    device_cmd+=("${RUN_ARGS[@]}")
   fi
-
   set +e
-  ./scripts/run_device_tests.sh "${RUN_ARGS[@]}" "${compare_args[@]}" 2>&1 | tee "$cycle_log"
+  if [[ -n "$previous_manifest" ]]; then
+    device_cmd+=(--compare-to "$previous_manifest")
+    "${device_cmd[@]}" 2>&1 | tee "$cycle_log"
+  else
+    "${device_cmd[@]}" 2>&1 | tee "$cycle_log"
+  fi
   cmd_status=${PIPESTATUS[0]}
   set -e
 

@@ -409,26 +409,35 @@ PY
 
 score_manifest() {
   local scorer_status=0
-  local compare_args=()
-  if [[ -n "$COMPARE_TO" ]]; then
-    compare_args+=(--compare-to "$COMPARE_TO")
-  fi
 
   set +e
-  python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-    "$MANIFEST_JSON" \
-    --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-    "${compare_args[@]}" \
-    --json > "$SCORING_JSON"
+  if [[ -n "$COMPARE_TO" ]]; then
+    python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+      "$MANIFEST_JSON" \
+      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+      --compare-to "$COMPARE_TO" \
+      --json > "$SCORING_JSON"
+  else
+    python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+      "$MANIFEST_JSON" \
+      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+      --json > "$SCORING_JSON"
+  fi
   scorer_status=$?
   set -e
 
   if [[ "$scorer_status" -le 2 ]]; then
     set +e
-    python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-      "$MANIFEST_JSON" \
-      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-      "${compare_args[@]}" > "$SUMMARY_MD"
+    if [[ -n "$COMPARE_TO" ]]; then
+      python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+        "$MANIFEST_JSON" \
+        --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+        --compare-to "$COMPARE_TO" > "$SUMMARY_MD"
+    else
+      python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+        "$MANIFEST_JSON" \
+        --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" > "$SUMMARY_MD"
+    fi
     set -e
 
     python3 - "$MANIFEST_JSON" "$SCORING_JSON" <<'PY'

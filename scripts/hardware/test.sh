@@ -14,6 +14,8 @@ ARTIFACT_ROOT="${HARDWARE_TEST_ARTIFACT_ROOT:-$ROOT_DIR/.artifacts/hardware/test
 SOAK_DURATION_SECONDS="${HARDWARE_TEST_SOAK_DURATION_SECONDS:-300}"
 STRICT_WARNINGS="${HARDWARE_TEST_STRICT_WARNINGS:-0}"
 HTTP_TIMEOUT_SECONDS="${HARDWARE_TEST_HTTP_TIMEOUT_SECONDS:-5}"
+METRICS_ENDPOINT_ATTEMPTS="${HARDWARE_TEST_METRICS_ENDPOINT_ATTEMPTS:-6}"
+METRICS_ENDPOINT_RETRY_DELAY_SECONDS="${HARDWARE_TEST_METRICS_ENDPOINT_RETRY_DELAY_SECONDS:-2}"
 RAD_SCENARIO_ID="${HARDWARE_TEST_RAD_SCENARIO_ID:-RAD-03}"
 RAD_DURATION_SCALE_PCT="${HARDWARE_TEST_RAD_DURATION_SCALE_PCT:-100}"
 RAD_MIN_RX_DELTA="${HARDWARE_TEST_RAD_MIN_RX_DELTA:-20}"
@@ -336,7 +338,7 @@ render_step_views() {
     return 0
   fi
 
-  python3 - "$scoring_json" "$step_dir/comparison.txt" "$step_dir/comparison.tsv" <<'PY'
+  if ! python3 - "$scoring_json" "$step_dir/comparison.txt" "$step_dir/comparison.tsv" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -346,10 +348,16 @@ from tools.hardware_report_utils import write_comparison_text, write_comparison_
 scoring_path = Path(sys.argv[1])
 text_path = Path(sys.argv[2])
 tsv_path = Path(sys.argv[3])
-payload = json.loads(scoring_path.read_text(encoding="utf-8"))
+try:
+    payload = json.loads(scoring_path.read_text(encoding="utf-8"))
+except json.JSONDecodeError as exc:
+    raise SystemExit(f"invalid scoring json: {exc}")
 write_comparison_text(payload, text_path)
 write_comparison_tsv(payload, tsv_path)
 PY
+  then
+    echo "[WARN] Skipping comparison view render for $step_dir because scoring.json is invalid." | tee -a "$RUN_LOG"
+  fi
 }
 
 # ── Uptime continuity tracking ───────────────────────────────────────
@@ -373,6 +381,50 @@ poll_uptime_ms() {
     return
   fi
   printf "%s" "$payload" | tr -d '\r\n' | sed -n 's/.*"uptimeMs":[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1
+}
+
+validate_json_payload() {
+  python3 -c 'import json, sys; json.load(sys.stdin)' >/dev/null 2>&1
+}
+
+metrics_endpoint_max_wait_seconds() {
+  local max_wait_seconds=$((METRICS_ENDPOINT_ATTEMPTS * HTTP_TIMEOUT_SECONDS))
+  if [[ "$METRICS_ENDPOINT_ATTEMPTS" -gt 1 ]]; then
+    max_wait_seconds=$((max_wait_seconds + (METRICS_ENDPOINT_ATTEMPTS - 1) * METRICS_ENDPOINT_RETRY_DELAY_SECONDS))
+  fi
+  echo "$max_wait_seconds"
+}
+
+wait_for_metrics_endpoint_recovery() {
+  local endpoint_name="$1"
+  local endpoint_url="$2"
+  local attempt=1
+  local payload=""
+  local max_wait_seconds
+  max_wait_seconds="$(metrics_endpoint_max_wait_seconds)"
+
+  if [[ -z "$endpoint_url" ]]; then
+    return 0
+  fi
+
+  echo "==> waiting for ${endpoint_name} (${METRICS_ENDPOINT_ATTEMPTS} attempt(s), retry ${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s, bounded wait <= ${max_wait_seconds}s)" | tee -a "$RUN_LOG"
+  while [[ "$attempt" -le "$METRICS_ENDPOINT_ATTEMPTS" ]]; do
+    payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$endpoint_url" 2>/dev/null || true)"
+    if [[ -n "$payload" ]] && printf "%s" "$payload" | validate_json_payload; then
+      if [[ "$attempt" -eq 1 ]]; then
+        echo "    ${endpoint_name}: OK" | tee -a "$RUN_LOG"
+      else
+        echo "    ${endpoint_name}: OK after retry (${attempt}/${METRICS_ENDPOINT_ATTEMPTS})" | tee -a "$RUN_LOG"
+      fi
+      return 0
+    fi
+    if [[ "$attempt" -lt "$METRICS_ENDPOINT_ATTEMPTS" && "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS" -gt 0 ]]; then
+      sleep "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS"
+    fi
+    attempt=$((attempt + 1))
+  done
+  echo "    ${endpoint_name}: timeout waiting for recovery" | tee -a "$RUN_LOG"
+  return 1
 }
 
 check_uptime_continuity() {
@@ -401,9 +453,8 @@ run_rad_scenario() {
   if [[ "$NEEDS_LIVE_BOARD" -eq 0 || -z "$METRICS_URL" ]]; then
     return 0
   fi
-  # Verify endpoint reachable before committing to the scenario
-  if ! curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$METRICS_URL" >/dev/null 2>&1; then
-    echo "==> rad_scenario [skip] metrics endpoint unreachable" | tee -a "$RUN_LOG"
+  if ! wait_for_metrics_endpoint_recovery "RAD metrics endpoint" "$METRICS_URL"; then
+    echo "==> rad_scenario [skip] metrics endpoint failed to recover" | tee -a "$RUN_LOG"
     return 0
   fi
   local debug_base="${METRICS_URL%%\?*}"
@@ -544,10 +595,12 @@ core_exit=0
 display_exit=0
 rad_exit=0
 
-# ── RAD scenario preflight ──────────────────────────────────────
-check_uptime_continuity "before_rad_scenario"
-run_rad_scenario || rad_exit=$?
-check_uptime_continuity "after_rad_scenario"
+if [[ "$RUN_DEVICE" -eq 1 ]]; then
+  # ── RAD scenario preflight ────────────────────────────────────
+  check_uptime_continuity "before_rad_scenario"
+  run_rad_scenario || rad_exit=$?
+  check_uptime_continuity "after_rad_scenario"
+fi
 
 if [[ "$RUN_DEVICE" -eq 1 ]]; then
   device_args=(

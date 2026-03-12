@@ -25,6 +25,8 @@ DURATION_SECONDS=300
 POLL_SECONDS=5
 SERIAL_BAUD="${REAL_FW_SERIAL_BAUD:-115200}"
 HTTP_TIMEOUT_SECONDS="${REAL_FW_HTTP_TIMEOUT_SECONDS:-2}"
+METRICS_ENDPOINT_ATTEMPTS="${REAL_FW_METRICS_ENDPOINT_ATTEMPTS:-12}"
+METRICS_ENDPOINT_RETRY_DELAY_SECONDS="${REAL_FW_METRICS_ENDPOINT_RETRY_DELAY_SECONDS:-2}"
 UPLOAD_FS=0
 SKIP_FLASH=0
 METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.35.5/api/debug/metrics}"
@@ -1368,6 +1370,57 @@ run_and_log() {
   return "${PIPESTATUS[0]}"
 }
 
+metrics_endpoint_max_wait_seconds() {
+  local max_wait_seconds=$((METRICS_ENDPOINT_ATTEMPTS * HTTP_TIMEOUT_SECONDS))
+  if [[ "$METRICS_ENDPOINT_ATTEMPTS" -gt 1 ]]; then
+    max_wait_seconds=$((max_wait_seconds + (METRICS_ENDPOINT_ATTEMPTS - 1) * METRICS_ENDPOINT_RETRY_DELAY_SECONDS))
+  fi
+  echo "$max_wait_seconds"
+}
+
+validate_json_payload() {
+  python3 -c 'import json, sys; json.load(sys.stdin)' >/dev/null 2>&1
+}
+
+wait_for_json_endpoint() {
+  local endpoint_name="$1"
+  local endpoint_url="$2"
+  local required="${3:-1}"
+  local attempt=1
+  local payload=""
+  local max_wait_seconds
+  max_wait_seconds="$(metrics_endpoint_max_wait_seconds)"
+
+  if [[ -z "$endpoint_url" ]]; then
+    return 0
+  fi
+
+  echo "==> Waiting for ${endpoint_name} recovery (${METRICS_ENDPOINT_ATTEMPTS} attempt(s), retry ${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s, bounded wait <= ${max_wait_seconds}s)" | tee -a "$RUN_LOG"
+  while [[ "$attempt" -le "$METRICS_ENDPOINT_ATTEMPTS" ]]; do
+    payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$endpoint_url" 2>/dev/null || true)"
+    if [[ -n "$payload" ]] && printf "%s" "$payload" | validate_json_payload; then
+      if [[ "$attempt" -eq 1 ]]; then
+        echo "    ${endpoint_name}: OK" | tee -a "$RUN_LOG"
+      else
+        echo "    ${endpoint_name}: OK after retry (${attempt}/${METRICS_ENDPOINT_ATTEMPTS})" | tee -a "$RUN_LOG"
+      fi
+      return 0
+    fi
+    if [[ "$attempt" -lt "$METRICS_ENDPOINT_ATTEMPTS" && "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS" -gt 0 ]]; then
+      sleep "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS"
+    fi
+    attempt=$((attempt + 1))
+  done
+
+  local reason="Timed out waiting for ${endpoint_name} after ${METRICS_ENDPOINT_ATTEMPTS} attempt(s) (timeout=${HTTP_TIMEOUT_SECONDS}s, retryDelay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s, boundedWait<=${max_wait_seconds}s)."
+  if [[ "$required" -eq 1 ]]; then
+    echo "$reason" | tee -a "$RUN_LOG" >&2
+    return 1
+  fi
+  echo "[WARN] $reason" | tee -a "$RUN_LOG"
+  return 0
+}
+
 find_serial_python() {
   if command -v python3 >/dev/null 2>&1; then
     if python3 - <<'PY' >/dev/null 2>&1
@@ -1404,6 +1457,7 @@ echo "    duration: ${DURATION_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    poll: ${POLL_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    serial baud: ${SERIAL_BAUD}" | tee -a "$RUN_LOG"
 echo "    http timeout: ${HTTP_TIMEOUT_SECONDS}s" | tee -a "$RUN_LOG"
+echo "    endpoint recovery retries: attempts=${METRICS_ENDPOINT_ATTEMPTS} delay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s boundedWait<=$(metrics_endpoint_max_wait_seconds)s" | tee -a "$RUN_LOG"
 echo "    metrics url: ${METRICS_URL:-disabled}" | tee -a "$RUN_LOG"
 echo "    metrics poll url: ${METRICS_POLL_URL:-disabled}" | tee -a "$RUN_LOG"
 echo "    metrics soak mode: ${METRICS_SOAK_MODE}" | tee -a "$RUN_LOG"
@@ -1518,6 +1572,9 @@ if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 ]]; then
   serial_capture_call_budget=$((serial_capture_call_budget + 1))
 fi
 SERIAL_CAPTURE_GRACE_SECONDS=$((HTTP_TIMEOUT_SECONDS * serial_capture_call_budget + POLL_SECONDS + 15))
+if [[ -n "$METRICS_POLL_URL" ]]; then
+  SERIAL_CAPTURE_GRACE_SECONDS=$((SERIAL_CAPTURE_GRACE_SECONDS + $(metrics_endpoint_max_wait_seconds)))
+fi
 if [[ "$SERIAL_CAPTURE_GRACE_SECONDS" -lt 20 ]]; then
   SERIAL_CAPTURE_GRACE_SECONDS=20
 fi
@@ -1575,6 +1632,12 @@ sleep 1
 monitor_died_early=0
 if ! kill -0 "$MONITOR_PID" >/dev/null 2>&1; then
   monitor_died_early=1
+fi
+
+if [[ -n "$METRICS_POLL_URL" ]]; then
+  if ! wait_for_json_endpoint "metrics endpoint" "$METRICS_POLL_URL" 1; then
+    exit 1
+  fi
 fi
 
 soak_start_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -3137,26 +3200,35 @@ manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 PY
 
 trend_scorer_exit=0
-trend_compare_args=()
-if [[ -n "$COMPARE_TO" ]]; then
-  trend_compare_args=(--compare-to "$COMPARE_TO")
-fi
 
 set +e
-python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-  "$MANIFEST_JSON" \
-  --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-  "${trend_compare_args[@]}" \
-  --json > "$TREND_SCORING_JSON"
+if [[ -n "$COMPARE_TO" ]]; then
+  python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+    "$MANIFEST_JSON" \
+    --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+    --compare-to "$COMPARE_TO" \
+    --json > "$TREND_SCORING_JSON"
+else
+  python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+    "$MANIFEST_JSON" \
+    --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+    --json > "$TREND_SCORING_JSON"
+fi
 trend_scorer_exit=$?
 set -e
 
 if [[ "$trend_scorer_exit" -le 2 ]]; then
   set +e
-  python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-    "$MANIFEST_JSON" \
-    --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-    "${trend_compare_args[@]}" > "$TREND_SUMMARY_MD"
+  if [[ -n "$COMPARE_TO" ]]; then
+    python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+      "$MANIFEST_JSON" \
+      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+      --compare-to "$COMPARE_TO" > "$TREND_SUMMARY_MD"
+  else
+    python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+      "$MANIFEST_JSON" \
+      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" > "$TREND_SUMMARY_MD"
+  fi
   set -e
 
   python3 - "$MANIFEST_JSON" "$TREND_SCORING_JSON" <<'PY'

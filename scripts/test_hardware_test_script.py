@@ -437,6 +437,9 @@ def main() -> int:
             "HARDWARE_TEST_REAL_SOAK_SCRIPT": str(fake_soak),
             "HARDWARE_TEST_ARTIFACT_ROOT": str(artifact_root),
             "HARDWARE_TEST_SOAK_DURATION_SECONDS": "1",
+            "HARDWARE_TEST_HTTP_TIMEOUT_SECONDS": "1",
+            "HARDWARE_TEST_METRICS_ENDPOINT_ATTEMPTS": "1",
+            "HARDWARE_TEST_METRICS_ENDPOINT_RETRY_DELAY_SECONDS": "0",
         }
         release_root = artifact_root / "release"
         radio_root = artifact_root / "radio"
