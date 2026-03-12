@@ -22,6 +22,7 @@
 #include <unity.h>
 #include <Arduino.h>
 #include <WiFi.h>
+#include <NimBLEDevice.h>
 #include <esp_heap_caps.h>
 #include "../device_test_reset.h"
 
@@ -40,6 +41,22 @@ static uint32_t internalLargest() {
 // Thresholds from wifi_manager.cpp
 static constexpr uint32_t WIFI_MIN_FREE_DMA     = 40 * 1024;   // 40 KB
 static constexpr uint32_t WIFI_MIN_LARGEST_BLOCK = 20 * 1024;   // 20 KB
+static constexpr int BLE_TARGET_TX_POWER_DBM = 9;
+static bool bleStackInitialised = false;
+
+static void ensureBleStackInitialised() {
+    if (bleStackInitialised) {
+        return;
+    }
+
+    NimBLEDevice::init("coex-test");
+    TEST_ASSERT_TRUE_MESSAGE(
+        NimBLEDevice::setPower(BLE_TARGET_TX_POWER_DBM),
+        "Failed to set BLE TX power"
+    );
+    bleStackInitialised = true;
+    delay(200);
+}
 
 // ---------------------------------------------------------------------------
 // Safety: tearDown ALWAYS turns WiFi off, even on assertion failure
@@ -181,6 +198,40 @@ void test_coex_wifi_tx_power_setting() {
     // tearDown() cleans up WiFi
 }
 
+void test_coex_ble_tx_power_setting() {
+    ensureBleStackInitialised();
+
+    const int advPower = NimBLEDevice::getPower(NimBLETxPowerType::Advertise);
+    const int scanPower = NimBLEDevice::getPower(NimBLETxPowerType::Scan);
+    const int defaultPower = NimBLEDevice::getPower(NimBLETxPowerType::Connection);
+
+    Serial.printf("  [coex] BLE TX power baseline: adv=%d scan=%d default=%d dBm\n",
+                  advPower, scanPower, defaultPower);
+
+    TEST_ASSERT_EQUAL_INT(BLE_TARGET_TX_POWER_DBM, advPower);
+    TEST_ASSERT_EQUAL_INT(BLE_TARGET_TX_POWER_DBM, scanPower);
+    TEST_ASSERT_EQUAL_INT(BLE_TARGET_TX_POWER_DBM, defaultPower);
+}
+
+void test_coex_ble_tx_power_persists_with_wifi_ap_active() {
+    ensureBleStackInitialised();
+
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP("v1test_blecoex", "testpass123");
+    delay(500);
+
+    const int advPower = NimBLEDevice::getPower(NimBLETxPowerType::Advertise);
+    const int scanPower = NimBLEDevice::getPower(NimBLETxPowerType::Scan);
+    const int defaultPower = NimBLEDevice::getPower(NimBLETxPowerType::Connection);
+
+    Serial.printf("  [coex] BLE TX power with WiFi AP active: adv=%d scan=%d default=%d dBm\n",
+                  advPower, scanPower, defaultPower);
+
+    TEST_ASSERT_EQUAL_INT(BLE_TARGET_TX_POWER_DBM, advPower);
+    TEST_ASSERT_EQUAL_INT(BLE_TARGET_TX_POWER_DBM, scanPower);
+    TEST_ASSERT_EQUAL_INT(BLE_TARGET_TX_POWER_DBM, defaultPower);
+}
+
 // ===========================================================================
 // WIFI REPEATED START/STOP STABILITY
 // ===========================================================================
@@ -224,6 +275,8 @@ void setup() {
     RUN_TEST(test_coex_dma_gate_passes_at_boot);
     RUN_TEST(test_coex_dma_gate_under_pressure);
     RUN_TEST(test_coex_wifi_tx_power_setting);
+    RUN_TEST(test_coex_ble_tx_power_setting);
+    RUN_TEST(test_coex_ble_tx_power_persists_with_wifi_ap_active);
     RUN_TEST(test_coex_wifi_repeated_start_stop_no_leak);
 
     UNITY_END();

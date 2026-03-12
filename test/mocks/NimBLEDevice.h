@@ -11,7 +11,9 @@ typedef void* SemaphoreHandle_t;
 static constexpr uint8_t BLE_ADDR_PUBLIC = 0;
 static constexpr int BLE_UUID_TYPE_16 = 16;
 static constexpr int BLE_UUID_TYPE_128 = 128;
-static constexpr int ESP_PWR_LVL_P9 = 9;
+static constexpr int ESP_PWR_LVL_P9 = 11;
+
+enum class NimBLETxPowerType { All = 0, Advertise = 1, Scan = 2, Connection = 3 };
 
 enum NIMBLE_PROPERTY : uint32_t {
     READ = 1 << 0,
@@ -211,6 +213,7 @@ public:
     static void deinit(bool = false) {}
     static void setDeviceName(const char*) {}
     static void setPower(int) {}
+    static int getPower(NimBLETxPowerType = NimBLETxPowerType::All) { return 9; }
     static void setMTU(uint16_t) {}
     static NimBLEScan* getScan() { static NimBLEScan scan; return &scan; }
     static NimBLEServer* createServer() {

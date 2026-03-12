@@ -54,6 +54,7 @@ extern "C" {
 static constexpr const char* BLE_BOND_BACKUP_PATH = "/v1simple_ble_bonds.bin";
 static constexpr uint8_t BLE_BOND_MAGIC[4] = { 'B', 'L', 'B', 0x01 };
 static constexpr size_t MAX_BOND_ENTRIES = 8;  // Generous limit
+static constexpr int8_t BLE_TX_POWER_DBM = 9;
 
 struct BondBackupHeader {
     uint8_t magic[4];
@@ -497,7 +498,8 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     if (proxyEnabled) {
         NimBLEDevice::init("V1 Proxy");
         NimBLEDevice::setDeviceName(proxyName_.c_str());
-        NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+        // NimBLE-Arduino expects dBm here, not esp_power_level_t enum indices.
+        NimBLEDevice::setPower(BLE_TX_POWER_DBM);
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
         
         // Create proxy server before scanning for dual-role stability
@@ -507,7 +509,8 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         }
     } else {
         NimBLEDevice::init("V1Display");
-        NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+        // NimBLE-Arduino expects dBm here, not esp_power_level_t enum indices.
+        NimBLEDevice::setPower(BLE_TX_POWER_DBM);
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
     }
 
