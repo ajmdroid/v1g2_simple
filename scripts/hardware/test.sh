@@ -12,6 +12,7 @@ IMPORT_DRIVE_LOG_SCRIPT="${HARDWARE_TEST_IMPORT_DRIVE_LOG_SCRIPT:-$ROOT_DIR/tool
 ASSEMBLE_RESULT_SCRIPT="${HARDWARE_TEST_ASSEMBLE_RESULT_SCRIPT:-$ROOT_DIR/tools/assemble_hardware_test_result.py}"
 ARTIFACT_ROOT="${HARDWARE_TEST_ARTIFACT_ROOT:-$ROOT_DIR/.artifacts/hardware/test}"
 SOAK_DURATION_SECONDS="${HARDWARE_TEST_SOAK_DURATION_SECONDS:-300}"
+STRICT_WARNINGS="${HARDWARE_TEST_STRICT_WARNINGS:-0}"
 
 SELECTED_EXPLICITLY=0
 RUN_DEVICE=0
@@ -35,13 +36,16 @@ Options:
   --board-id ID             Board id from test/device/board_inventory.json
                             (default: release)
   --duration-seconds N      Soak duration for live soak steps (default: 300)
-  --artifact-root PATH      Canonical output root (default: .artifacts/hardware/test)
+  --artifact-root PATH      Base output root (default: .artifacts/hardware/test);
+                            runs are stored under <artifact-root>/<board-id>/
+  --strict                  Treat PASS_WITH_WARNINGS as a failing exit
   -h, --help                Show this help
 
 Examples:
   ./scripts/hardware/test.sh
   ./scripts/hardware/test.sh --core
   ./scripts/hardware/test.sh --display
+  ./scripts/hardware/test.sh --all --board-id release --strict
   ./scripts/hardware/test.sh --device --parse-drive-log /path/to/metrics.jsonl
   ./scripts/hardware/test.sh --parse-drive-log /path/to/real_fw_soak_run
 EOF
@@ -98,6 +102,9 @@ while [[ $# -gt 0 ]]; do
       fi
       ARTIFACT_ROOT="$2"
       shift
+      ;;
+    --strict)
+      STRICT_WARNINGS=1
       ;;
     --help|-h)
       usage
@@ -253,12 +260,13 @@ PY
   fi
 fi
 
-mkdir -p "$ARTIFACT_ROOT/runs"
+BOARD_ARTIFACT_ROOT="$ARTIFACT_ROOT/$BOARD_ID"
+mkdir -p "$BOARD_ARTIFACT_ROOT/runs"
 
 GIT_SHA="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
 GIT_REF="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
 TIMESTAMP="$(date -u +%Y%m%d_%H%M%S)"
-RUN_DIR="$ARTIFACT_ROOT/runs/${TIMESTAMP}_${GIT_SHA}"
+RUN_DIR="$BOARD_ARTIFACT_ROOT/runs/${TIMESTAMP}_${GIT_SHA}"
 if [[ -e "$RUN_DIR" ]]; then
   suffix=2
   while [[ -e "${RUN_DIR}_${suffix}" ]]; do
@@ -271,14 +279,14 @@ mkdir -p "$RUN_DIR"
 RUN_LOG="$RUN_DIR/run.log"
 RESULT_JSON="$RUN_DIR/result.json"
 COMPARISON_TXT="$RUN_DIR/comparison.txt"
-RUN_HISTORY_TSV="$ARTIFACT_ROOT/run_history.tsv"
-METRIC_HISTORY_TSV="$ARTIFACT_ROOT/metric_history.tsv"
+RUN_HISTORY_TSV="$BOARD_ARTIFACT_ROOT/run_history.tsv"
+METRIC_HISTORY_TSV="$BOARD_ARTIFACT_ROOT/metric_history.tsv"
 
 DEVICE_DIR="$RUN_DIR/device_tests"
 CORE_DIR="$RUN_DIR/core_soak"
 DISPLAY_DIR="$RUN_DIR/display_soak"
 
-PREVIOUS_RUN_DIR="$(find "$ARTIFACT_ROOT/runs" -mindepth 1 -maxdepth 1 -type d ! -path "$RUN_DIR" | sort | tail -n1 || true)"
+PREVIOUS_RUN_DIR="$(find "$BOARD_ARTIFACT_ROOT/runs" -mindepth 1 -maxdepth 1 -type d ! -path "$RUN_DIR" | sort | tail -n1 || true)"
 PREVIOUS_DEVICE_MANIFEST=""
 PREVIOUS_CORE_MANIFEST=""
 PREVIOUS_DISPLAY_MANIFEST=""
@@ -438,6 +446,7 @@ python3 "$ASSEMBLE_RESULT_SCRIPT" \
   --comparison-txt "$COMPARISON_TXT" \
   --run-history-tsv "$RUN_HISTORY_TSV" \
   --metric-history-tsv "$METRIC_HISTORY_TSV" \
+  --warning-policy "$( [[ "$STRICT_WARNINGS" == "1" ]] && echo blocking || echo non_blocking )" \
   --board-id "$BOARD_ID" \
   --device-port "$DEVICE_PORT" \
   --metrics-url "$METRICS_URL" \
@@ -449,18 +458,19 @@ python3 "$ASSEMBLE_RESULT_SCRIPT" \
   --core-exit "$core_exit" \
   --display-exit "$display_exit"
 
-rm -rf "$ARTIFACT_ROOT/latest"
-ln -s "runs/$(basename "$RUN_DIR")" "$ARTIFACT_ROOT/latest"
+rm -rf "$BOARD_ARTIFACT_ROOT/latest"
+ln -s "runs/$(basename "$RUN_DIR")" "$BOARD_ARTIFACT_ROOT/latest"
 
 suite_result="$(python3 -c 'import json, sys; from pathlib import Path; print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["result"])' "$RESULT_JSON")"
 echo "Hardware test result: $suite_result"
-echo "Latest artifacts: $ARTIFACT_ROOT/latest"
+echo "Warning policy: $( [[ "$STRICT_WARNINGS" == "1" ]] && echo blocking || echo non-blocking )"
+echo "Latest artifacts: $BOARD_ARTIFACT_ROOT/latest"
 echo "Readable summary: $COMPARISON_TXT"
 
 if [[ "$suite_result" == "FAIL" ]]; then
   exit 1
 fi
-if [[ "$suite_result" == "PASS_WITH_WARNINGS" ]]; then
+if [[ "$suite_result" == "PASS_WITH_WARNINGS" && "$STRICT_WARNINGS" == "1" ]]; then
   exit 1
 fi
 exit 0

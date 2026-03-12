@@ -41,6 +41,7 @@ set -euo pipefail
 OUT_DIR=""
 COMPARE_TO=""
 STEP_KIND="{child_type}"
+BOARD_ID="${{DEVICE_BOARD_ID:-release}}"
 if [[ "$STEP_KIND" == "soak" ]]; then
   STEP_KIND="core"
 fi
@@ -73,7 +74,7 @@ COMPARE_VAR="FAKE_${{STEP_UPPER}}_COMPARE_KIND"
 VALUE_VAR="FAKE_${{STEP_UPPER}}_VALUE"
 BASELINE_VAR="FAKE_${{STEP_UPPER}}_BASELINE"
 
-python3 - "$OUT_DIR" "$COMPARE_TO" "$STEP_KIND" "${{!RESULT_VAR}}" "${{!COMPARE_VAR}}" "${{!VALUE_VAR}}" "${{!BASELINE_VAR:-}}" <<'PY'
+python3 - "$OUT_DIR" "$COMPARE_TO" "$STEP_KIND" "$BOARD_ID" "${{!RESULT_VAR}}" "${{!COMPARE_VAR}}" "${{!VALUE_VAR}}" "${{!BASELINE_VAR:-}}" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
@@ -82,10 +83,11 @@ from pathlib import Path
 out_dir = Path(sys.argv[1])
 compare_to = sys.argv[2]
 step_kind = sys.argv[3]
-result = sys.argv[4]
-compare_kind = sys.argv[5]
-value = float(sys.argv[6])
-baseline_raw = sys.argv[7]
+board_id = sys.argv[4]
+result = sys.argv[5]
+compare_kind = sys.argv[6]
+value = float(sys.argv[7])
+baseline_raw = sys.argv[8]
 baseline_value = None if baseline_raw == "" else float(baseline_raw)
 
 suite_or_profile = {{
@@ -121,7 +123,7 @@ manifest = {{
     "git_sha": "fakegit",
     "git_ref": "main",
     "run_kind": run_kind,
-    "board_id": "release",
+    "board_id": board_id,
     "env": "device" if step_kind == "device" else "waveshare-349",
     "lane": lane,
     "suite_or_profile": suite_or_profile,
@@ -151,7 +153,7 @@ scoring = {{
         "git_sha": "fakegit",
         "git_ref": "main",
         "run_kind": run_kind,
-        "board_id": "release",
+        "board_id": board_id,
         "env": "device" if step_kind == "device" else "waveshare-349",
         "lane": lane,
         "suite_or_profile": suite_or_profile,
@@ -374,6 +376,11 @@ def main() -> int:
                         "board_id": "release",
                         "device_path": "/dev/test-release",
                         "metrics_url": "http://127.0.0.1:9999/api/debug/metrics",
+                    },
+                    {
+                        "board_id": "radio",
+                        "device_path": "/dev/test-radio",
+                        "metrics_url": "http://127.0.0.1:9998/api/debug/metrics",
                     }
                 ],
             },
@@ -393,6 +400,8 @@ def main() -> int:
             "HARDWARE_TEST_ARTIFACT_ROOT": str(artifact_root),
             "HARDWARE_TEST_SOAK_DURATION_SECONDS": "1",
         }
+        release_root = artifact_root / "release"
+        radio_root = artifact_root / "radio"
 
         first = run_test_script(
             {
@@ -410,15 +419,42 @@ def main() -> int:
         )
         assert_true(first.returncode == 0, f"first hardware test failed: {first.stdout}\n{first.stderr}")
 
-        latest = artifact_root / "latest"
+        latest = release_root / "latest"
         first_result = json.loads((latest / "result.json").read_text(encoding="utf-8"))
         first_run_dir = Path(first_result["run_dir"])
         assert_true(first_result["result"] == "NO_BASELINE", f"unexpected first result: {first_result}")
+        assert_true(first_result["board_id"] == "release", f"unexpected first board id: {first_result}")
         assert_true(first_result["previous_run_dir"] == "", "first run should not have previous_run_dir")
         assert_true((latest / "comparison.txt").exists(), "suite comparison.txt missing")
         assert_true((latest / "device_tests" / "comparison.txt").exists(), "device comparison.txt missing")
         assert_true((latest / "core_soak" / "comparison.txt").exists(), "core comparison.txt missing")
         assert_true((latest / "display_soak" / "comparison.txt").exists(), "display comparison.txt missing")
+
+        radio = run_test_script(
+            {
+                **common_env,
+                "FAKE_DEVICE_RESULT": "NO_BASELINE",
+                "FAKE_DEVICE_COMPARE_KIND": "no_baseline",
+                "FAKE_DEVICE_VALUE": "40",
+                "FAKE_CORE_RESULT": "NO_BASELINE",
+                "FAKE_CORE_COMPARE_KIND": "no_baseline",
+                "FAKE_CORE_VALUE": "50",
+                "FAKE_DISPLAY_RESULT": "NO_BASELINE",
+                "FAKE_DISPLAY_COMPARE_KIND": "no_baseline",
+                "FAKE_DISPLAY_VALUE": "60",
+            },
+            "--board-id",
+            "radio",
+        )
+        assert_true(radio.returncode == 0, f"radio hardware test failed: {radio.stdout}\n{radio.stderr}")
+
+        radio_latest = radio_root / "latest"
+        radio_result = json.loads((radio_latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(radio_result["board_id"] == "radio", f"unexpected radio board id: {radio_result}")
+        assert_true(radio_result["previous_run_dir"] == "", "first radio run should not have previous_run_dir")
+
+        release_after_radio = json.loads((latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(release_after_radio["run_dir"] == str(first_run_dir), "radio run should not move release latest")
 
         second = run_test_script(
             {
@@ -450,16 +486,23 @@ def main() -> int:
         assert_true(core_compare.endswith("/core_soak/manifest.json"), f"unexpected core compare path: {core_compare}")
         assert_true(display_compare.endswith("/display_soak/manifest.json"), f"unexpected display compare path: {display_compare}")
 
-        run_history = read_tsv(artifact_root / "run_history.tsv")
+        run_history = read_tsv(release_root / "run_history.tsv")
         assert_true(len(run_history) == 2, f"expected 2 run-history rows, saw {len(run_history)}")
         assert_true(run_history[-1]["result"] == "PASS", f"unexpected run-history row: {run_history[-1]}")
+        assert_true(run_history[-1]["warning_policy"] == "non_blocking", f"unexpected warning policy: {run_history[-1]}")
 
-        metric_history = read_tsv(artifact_root / "metric_history.tsv")
+        metric_history = read_tsv(release_root / "metric_history.tsv")
         assert_true(len(metric_history) == 6, f"expected 6 metric-history rows, saw {len(metric_history)}")
+
+        radio_run_history = read_tsv(radio_root / "run_history.tsv")
+        assert_true(len(radio_run_history) == 1, f"expected 1 radio run-history row, saw {len(radio_run_history)}")
+        radio_metric_history = read_tsv(radio_root / "metric_history.tsv")
+        assert_true(len(radio_metric_history) == 3, f"expected 3 radio metric-history rows, saw {len(radio_metric_history)}")
 
         suite_comparison = (latest / "comparison.txt").read_text(encoding="utf-8")
         assert_true("device_tests" in suite_comparison, "suite comparison missing device_tests row")
         assert_true("commit_regression" in suite_comparison, "suite comparison missing compare kind")
+        assert_true("warning_policy: non_blocking" in suite_comparison, "suite comparison missing warning policy")
 
         device_only = run_test_script(
             {
@@ -473,6 +516,32 @@ def main() -> int:
         assert_true(device_only.returncode == 0, f"device-only hardware test failed: {device_only.stdout}\n{device_only.stderr}")
         device_only_result = json.loads((latest / "result.json").read_text(encoding="utf-8"))
         assert_true([step["name"] for step in device_only_result["steps"]] == ["device_tests"], f"unexpected device-only steps: {device_only_result}")
+
+        warning_artifact_root = temp_root / "warning_artifacts"
+        warning_env = {
+            **common_env,
+            "HARDWARE_TEST_ARTIFACT_ROOT": str(warning_artifact_root),
+            "FAKE_DEVICE_RESULT": "PASS_WITH_WARNINGS",
+            "FAKE_DEVICE_COMPARE_KIND": "run_variance",
+            "FAKE_DEVICE_VALUE": "13",
+        }
+        warning_non_strict = run_test_script(warning_env, "--device")
+        assert_true(
+            warning_non_strict.returncode == 0,
+            f"non-strict warning run should pass: {warning_non_strict.stdout}\n{warning_non_strict.stderr}",
+        )
+        warning_latest = warning_artifact_root / "release" / "latest"
+        warning_result = json.loads((warning_latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(warning_result["result"] == "PASS_WITH_WARNINGS", f"unexpected warning result: {warning_result}")
+        assert_true(warning_result["warning_policy"] == "non_blocking", f"unexpected warning policy: {warning_result}")
+
+        warning_strict = run_test_script(warning_env, "--device", "--strict")
+        assert_true(
+            warning_strict.returncode == 1,
+            f"strict warning run should fail: {warning_strict.stdout}\n{warning_strict.stderr}",
+        )
+        strict_result = json.loads((warning_latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(strict_result["warning_policy"] == "blocking", f"unexpected strict warning policy: {strict_result}")
 
         parse_artifact_root = temp_root / "parse_artifacts"
         parse_input_dir = temp_root / "captured_drive"
@@ -490,7 +559,7 @@ def main() -> int:
         )
         assert_true(parsed_display.returncode == 0, f"parsed display hardware test failed: {parsed_display.stdout}\n{parsed_display.stderr}")
 
-        parse_latest = parse_artifact_root / "latest"
+        parse_latest = parse_artifact_root / "release" / "latest"
         parsed_result = json.loads((parse_latest / "result.json").read_text(encoding="utf-8"))
         assert_true([step["name"] for step in parsed_result["steps"]] == ["display_soak"], f"unexpected parsed steps: {parsed_result}")
         parsed_scoring = json.loads((parse_latest / "display_soak" / "scoring.json").read_text(encoding="utf-8"))

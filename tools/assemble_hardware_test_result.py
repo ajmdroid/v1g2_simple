@@ -18,6 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--comparison-txt", required=True)
     parser.add_argument("--run-history-tsv", required=True)
     parser.add_argument("--metric-history-tsv", required=True)
+    parser.add_argument("--warning-policy", default="non_blocking")
     parser.add_argument("--board-id", required=True)
     parser.add_argument("--device-port", required=True)
     parser.add_argument("--metrics-url", required=True)
@@ -115,6 +116,7 @@ def main() -> int:
         "test_name": "hardware_test",
         "timestamp_utc": timestamp_utc,
         "board_id": args.board_id,
+        "warning_policy": args.warning_policy,
         "device_port": args.device_port,
         "metrics_url": args.metrics_url,
         "git_sha": args.git_sha,
@@ -130,6 +132,7 @@ def main() -> int:
     lines = [
         f"hardware_test: {args.board_id}",
         f"result: {suite_result}",
+        f"warning_policy: {args.warning_policy}",
         f"git: {args.git_sha} ({args.git_ref})",
         f"run_dir: {run_dir}",
         f"previous_run_dir: {args.previous_run_dir or 'n/a'}",
@@ -154,6 +157,7 @@ def main() -> int:
             "board_id",
             "git_sha",
             "git_ref",
+            "warning_policy",
             "result",
             "run_dir",
             "previous_run_dir",
@@ -167,6 +171,7 @@ def main() -> int:
             "board_id": args.board_id,
             "git_sha": args.git_sha,
             "git_ref": args.git_ref,
+            "warning_policy": args.warning_policy,
             "result": suite_result,
             "run_dir": str(run_dir),
             "previous_run_dir": args.previous_run_dir,

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Pre-release validation gate.
 # Runs everything in the nightly gate plus:
-#   - hardware qualification on the release board
+#   - hardware test on the release board
 #   - replay with perf evidence extraction
 #   - validation manifest generation
 #
@@ -52,13 +52,9 @@ fi
 section "Nightly Gate (ci-nightly.sh)"
 run_step "Full nightly gate" ./scripts/ci-nightly.sh
 
-# ── Hardware qualification ───────────────────────────────────────────
-section "Hardware Qualification"
-if [ -f test/device/board_inventory.json ]; then
-  run_step "Release board qualification" ./scripts/qualify_hardware.sh --board-id release
-else
-  run_step "Release board qualification (legacy)" ./scripts/qualify_hardware.sh
-fi
+# ── Hardware test ────────────────────────────────────────────────────
+section "Hardware Test"
+run_step "Release board hardware test" ./scripts/hardware/test.sh --all --board-id release --strict
 
 # ── Pre-release replay with summary ─────────────────────────────────
 section "Pre-Release Replay"
