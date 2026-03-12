@@ -104,6 +104,8 @@ DRY_RUN=0
 DISPLAY_DRIVE_ENABLED=0
 DISPLAY_DRIVE_INTERVAL_SECONDS=7
 DISPLAY_PREVIEW_URL="${REAL_FW_DISPLAY_PREVIEW_URL:-}"
+DISPLAY_CLEAR_URL="${REAL_FW_DISPLAY_CLEAR_URL:-}"
+DISPLAY_PREVIEW_HOLD_SECONDS="${REAL_FW_DISPLAY_PREVIEW_HOLD_SECONDS:-7}"
 DISPLAY_MIN_UPDATES_DELTA=1
 TRANSITION_DRIVE_ENABLED=0
 TRANSITION_DRIVE_INTERVAL_SECONDS=15
@@ -118,6 +120,16 @@ MAX_PROXY_ADV_TRANSITION_CHURN_DELTA=0
 MIN_AP_DOWN_TRANSITIONS=0
 MIN_PROXY_ADV_OFF_TRANSITIONS=0
 OUT_DIR=""
+
+is_uint() {
+  local value="${1:-}"
+  [[ "$value" =~ ^[0-9]+$ ]]
+}
+
+is_int() {
+  local value="${1:-}"
+  [[ "$value" =~ ^-?[0-9]+$ ]]
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -1044,6 +1056,9 @@ if [[ -n "$METRICS_URL" ]]; then
   if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" ]]; then
     DISPLAY_PREVIEW_URL="${metrics_url_base%/api/debug/metrics}/api/displaycolors/preview"
   fi
+  if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_CLEAR_URL" ]]; then
+    DISPLAY_CLEAR_URL="${metrics_url_base%/api/debug/metrics}/api/displaycolors/clear"
+  fi
   if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 && -z "$TRANSITION_CONTROL_URL" ]]; then
     TRANSITION_CONTROL_URL="${metrics_url_base%/api/debug/metrics}/api/debug/proxy-advertising"
   fi
@@ -1548,6 +1563,9 @@ panic_ok_samples=0
 display_drive_calls=0
 display_drive_errors=0
 display_drive_start_misses=0
+display_drive_skipped_while_active=0
+display_drive_restore_errors=0
+display_drive_active_until_epoch=0
 next_display_drive_epoch="$soak_start_epoch"
 transition_drive_calls=0
 transition_drive_errors=0
@@ -1597,24 +1615,26 @@ while [[ "$(date +%s)" -lt "$soak_end_epoch" ]]; do
   fi
 
   if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && "$now_epoch" -ge "$next_display_drive_epoch" ]]; then
-    display_drive_calls=$((display_drive_calls + 1))
-    drive_resp="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" -X POST "$DISPLAY_PREVIEW_URL" 2>/dev/null || true)"
-    if [[ -z "$drive_resp" ]]; then
-      display_drive_errors=$((display_drive_errors + 1))
-      echo "[WARN] Display drive call failed (no response)." | tee -a "$RUN_LOG"
-    elif [[ "$drive_resp" == *'"active":false'* ]]; then
-      # /api/displaycolors/preview toggles off when already running. Call again
-      # to ensure preview is active for stress coverage.
-      drive_resp2="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" -X POST "$DISPLAY_PREVIEW_URL" 2>/dev/null || true)"
-      if [[ -z "$drive_resp2" ]]; then
+    if [[ "$display_drive_active_until_epoch" -gt "$now_epoch" ]]; then
+      display_drive_skipped_while_active=$((display_drive_skipped_while_active + 1))
+      next_display_drive_epoch="$display_drive_active_until_epoch"
+    else
+      display_drive_calls=$((display_drive_calls + 1))
+      drive_resp="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" -X POST "$DISPLAY_PREVIEW_URL" 2>/dev/null || true)"
+      if [[ -z "$drive_resp" ]]; then
         display_drive_errors=$((display_drive_errors + 1))
-        echo "[WARN] Display drive retry failed (no response)." | tee -a "$RUN_LOG"
-      elif [[ "$drive_resp2" == *'"active":false'* ]]; then
+        echo "[WARN] Display drive call failed (no response)." | tee -a "$RUN_LOG"
+        next_display_drive_epoch=$((now_epoch + DISPLAY_DRIVE_INTERVAL_SECONDS))
+      elif [[ "$drive_resp" == *'"active":true'* ]]; then
+        display_drive_active_until_epoch=$((now_epoch + DISPLAY_PREVIEW_HOLD_SECONDS))
+        next_display_drive_epoch="$display_drive_active_until_epoch"
+      else
         display_drive_start_misses=$((display_drive_start_misses + 1))
-        echo "[WARN] Display preview did not remain active after retry." | tee -a "$RUN_LOG"
+        echo "[WARN] Display preview was already active during a start attempt; suppressing retry churn." | tee -a "$RUN_LOG"
+        display_drive_active_until_epoch=$((now_epoch + DISPLAY_PREVIEW_HOLD_SECONDS))
+        next_display_drive_epoch="$display_drive_active_until_epoch"
       fi
     fi
-    next_display_drive_epoch=$((now_epoch + DISPLAY_DRIVE_INTERVAL_SECONDS))
   fi
 
   if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 &&
@@ -1677,6 +1697,14 @@ if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 ]]; then
     fi
   elif [[ "$transition_restore_attempts" -gt 1 ]]; then
     echo "[INFO] Transition drive restore succeeded after retry (${transition_restore_attempts}/${transition_restore_max_attempts})." | tee -a "$RUN_LOG"
+  fi
+fi
+
+if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -n "$DISPLAY_CLEAR_URL" ]]; then
+  display_restore_resp="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" -X POST "$DISPLAY_CLEAR_URL" 2>/dev/null || true)"
+  if [[ -z "$display_restore_resp" ]]; then
+    display_drive_restore_errors=$((display_drive_restore_errors + 1))
+    echo "[WARN] Display drive restore failed (no response)." | tee -a "$RUN_LOG"
   fi
 fi
 
@@ -2878,10 +2906,14 @@ fi
   echo ""
   echo "- Display drive enabled: $([[ "$DISPLAY_DRIVE_ENABLED" -eq 1 ]] && echo "yes" || echo "no")"
   echo "- Display preview URL: ${DISPLAY_PREVIEW_URL:-disabled}"
+  echo "- Display clear URL: ${DISPLAY_CLEAR_URL:-disabled}"
   echo "- Display drive interval (s): ${DISPLAY_DRIVE_INTERVAL_SECONDS}"
+  echo "- Display preview hold window (s): ${DISPLAY_PREVIEW_HOLD_SECONDS}"
   echo "- Display drive calls: ${display_drive_calls}"
   echo "- Display drive errors: ${display_drive_errors}"
   echo "- Display drive start misses: ${display_drive_start_misses}"
+  echo "- Display drive skips while active: ${display_drive_skipped_while_active}"
+  echo "- Display drive restore errors: ${display_drive_restore_errors}"
   echo "- Minimum required displayUpdates delta: ${DISPLAY_MIN_UPDATES_DELTA}"
   echo ""
   echo "## Transition Drive"
