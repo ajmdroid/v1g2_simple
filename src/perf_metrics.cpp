@@ -300,6 +300,9 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.cameraDisplayMaxUs = perfExtended.cameraDisplayMaxUs;
     snapshot.cameraDebugDisplayMaxUs = perfExtended.cameraDebugDisplayMaxUs;
     snapshot.cameraProcessMaxUs = perfExtended.cameraProcessMaxUs;
+    snapshot.obdMaxUs = perfExtended.obdMaxUs;
+    snapshot.obdPollErrors = 0;
+    snapshot.obdStaleCount = 0;
     snapshot.gpsMaxUs = perfExtended.gpsMaxUs;
     snapshot.lockoutMaxUs = perfExtended.lockoutMaxUs;
     snapshot.wifiMaxUs = perfExtended.wifiMaxUs;
@@ -355,6 +358,7 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     perfExtended.cameraDisplayMaxUs = 0;
     perfExtended.cameraDebugDisplayMaxUs = 0;
     perfExtended.cameraProcessMaxUs = 0;
+    perfExtended.obdMaxUs = 0;
     perfExtended.gpsMaxUs = 0;
     perfExtended.lockoutMaxUs = 0;
     perfExtended.wifiMaxUs = 0;
@@ -503,6 +507,12 @@ void perfRecordCameraProcessUs(uint32_t us) {
 void perfRecordGpsUs(uint32_t us) {
     if (us > perfExtended.gpsMaxUs) {
         perfExtended.gpsMaxUs = us;
+    }
+}
+
+void perfRecordObdUs(uint32_t us) {
+    if (us > perfExtended.obdMaxUs) {
+        perfExtended.obdMaxUs = us;
     }
 }
 

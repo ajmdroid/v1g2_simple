@@ -132,3 +132,6 @@ cameraDebugDisplayFrames
 cameraDisplayMaxUs
 cameraDebugDisplayMaxUs
 cameraProcessMaxUs
+obdMax_us
+obdPollErrors
+obdStaleCount

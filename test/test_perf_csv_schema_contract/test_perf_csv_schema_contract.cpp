@@ -25,7 +25,7 @@ void test_perf_csv_schema_version_matches_alpr_only_header() {
     TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_sd_logger.cpp");
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 11;"));
+        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 12;"));
 }
 
 void test_perf_csv_header_drops_camera_voice_columns() {
@@ -36,7 +36,7 @@ void test_perf_csv_header_drops_camera_voice_columns() {
     TEST_ASSERT_EQUAL(std::string::npos, source.find("cameraVoiceStarted"));
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("cameraProcessMaxUs\\n\";"));
+        source.find("obdStaleCount\\n\";")); 
 }
 
 int main() {

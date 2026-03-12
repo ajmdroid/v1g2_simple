@@ -425,6 +425,7 @@ struct PerfExtendedMetrics {
     uint32_t cameraDisplayMaxUs = 0;  // Real camera display update duration
     uint32_t cameraDebugDisplayMaxUs = 0; // Debug camera display update duration
     uint32_t cameraProcessMaxUs = 0;  // CameraAlertModule::process() duration
+    uint32_t obdMaxUs = 0;              // obdRuntimeModule.update() duration
     uint32_t gpsMaxUs = 0;             // gpsRuntimeModule.update() duration
     uint32_t lockoutMaxUs = 0;         // lockoutEnforcer.process() + signalCapture duration
     uint32_t lockoutSaveMaxUs = 0;     // lockout zone JSON serialize + SD write
@@ -476,6 +477,7 @@ struct PerfExtendedMetrics {
         cameraDisplayMaxUs = 0;
         cameraDebugDisplayMaxUs = 0;
         cameraProcessMaxUs = 0;
+        obdMaxUs = 0;
         gpsMaxUs = 0;
         lockoutMaxUs = 0;
         lockoutSaveMaxUs = 0;
@@ -553,6 +555,7 @@ uint32_t perfGetDispPipeMaxUs();
 uint32_t perfGetCameraDisplayMaxUs();
 uint32_t perfGetCameraDebugDisplayMaxUs();
 uint32_t perfGetCameraProcessMaxUs();
+void perfRecordObdUs(uint32_t us);
 uint32_t perfGetPrevWindowLoopMaxUs();
 uint32_t perfGetPrevWindowWifiMaxUs();
 uint32_t perfGetPrevWindowBleProcessMaxUs();
