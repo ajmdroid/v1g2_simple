@@ -709,6 +709,68 @@ void test_clear_candidates_removes_all() {
 }
 
 // ================================================================
+// cos(lat) correction: east-west matching expands at mid-latitudes
+// ================================================================
+
+void test_cosLat_east_offset_still_matches_candidate() {
+    // At 40°N (4000000 E5), cos(40°) ≈ 0.766.
+    // Default candidate radius = 135 E5.
+    // Without cos(lat), a point 130 E5 east is barely inside (130 < 135).
+    // But 140 E5 east (just beyond raw radius) should still match WITH cos(lat),
+    // because scaled dLon = 140 * 0.766 ≈ 107 < 135.
+    // If cos(lat) is working, both observations should hit the same candidate.
+    const int32_t lat40 = 4000000;   // 40.0°N
+    const int32_t lon74 = -7400000;  // -74.0°W (NYC area)
+
+    testLog.publish(makeObs(lat40, lon74, K_BAND, K_FREQ));
+    learner.process(2000, EPOCH_BASE);
+    TEST_ASSERT_EQUAL(1, learner.activeCandidateCount());
+
+    // 140 E5 east — beyond raw radius (135) but inside cos(lat)-corrected radius
+    testLog.publish(makeObs(lat40, lon74 + 140, K_BAND, K_FREQ));
+    learner.process(4000, EPOCH_BASE + 1000);
+
+    // Should still be 1 candidate (matched existing), not 2 (separate)
+    TEST_ASSERT_EQUAL(1, learner.activeCandidateCount());
+    const LearnerCandidate* c = learner.candidateAt(0);
+    TEST_ASSERT_EQUAL(2, c->hitCount);
+}
+
+void test_cosLat_north_offset_unchanged() {
+    // cos(lat) should NOT change latitude behavior.
+    // 140 E5 north is outside a 135-radius zone regardless of correction.
+    const int32_t lat40 = 4000000;
+    const int32_t lon74 = -7400000;
+
+    testLog.publish(makeObs(lat40, lon74, K_BAND, K_FREQ));
+    learner.process(2000, EPOCH_BASE);
+    TEST_ASSERT_EQUAL(1, learner.activeCandidateCount());
+
+    // 140 E5 north — outside radius in latitude (not corrected by cos(lat))
+    testLog.publish(makeObs(lat40 + 140, lon74, K_BAND, K_FREQ));
+    learner.process(4000, EPOCH_BASE + 1000);
+
+    // Should be 2 separate candidates
+    TEST_ASSERT_EQUAL(2, learner.activeCandidateCount());
+}
+
+void test_cosLat_far_east_still_creates_separate() {
+    // At 40°N: effectiveLonRadius = 135 / cos(40°) ≈ 176 E5 in lon units.
+    // A point 180 E5 east: scaled = 180 * 0.766 ≈ 138 > 135 → outside.
+    const int32_t lat40 = 4000000;
+    const int32_t lon74 = -7400000;
+
+    testLog.publish(makeObs(lat40, lon74, K_BAND, K_FREQ));
+    learner.process(2000, EPOCH_BASE);
+
+    testLog.publish(makeObs(lat40, lon74 + 180, K_BAND, K_FREQ));
+    learner.process(4000, EPOCH_BASE + 1000);
+
+    // Should be 2 separate candidates (too far east even with correction)
+    TEST_ASSERT_EQUAL(2, learner.activeCandidateCount());
+}
+
+// ================================================================
 // Runner
 // ================================================================
 
@@ -749,6 +811,9 @@ int main(int argc, char** argv) {
     RUN_TEST(test_promotion_with_course_sets_direction_forward);
     RUN_TEST(test_promotion_without_course_stays_direction_all);
     RUN_TEST(test_clear_candidates_removes_all);
+    RUN_TEST(test_cosLat_east_offset_still_matches_candidate);
+    RUN_TEST(test_cosLat_north_offset_unchanged);
+    RUN_TEST(test_cosLat_far_east_still_creates_separate);
 
     return UNITY_END();
 }

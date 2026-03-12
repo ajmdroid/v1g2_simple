@@ -626,13 +626,23 @@ bool LockoutLearner::withinRadius(int32_t latE5, int32_t lonE5,
     const int32_t dLat = latE5 - centerLatE5;
     const int32_t dLon = lonE5 - centerLonE5;
     const int32_t r = static_cast<int32_t>(radiusE5);
-    // Bounding box pre-check
+    // Bounding box pre-check (latitude)
     if (dLat > r || dLat < -r) return false;
-    if (dLon > r || dLon < -r) return false;
-    // Squared distance (no sqrt needed)
-    const int64_t d2 = static_cast<int64_t>(dLat) * dLat + static_cast<int64_t>(dLon) * dLon;
-    const int64_t r2 = static_cast<int64_t>(r) * r;
-    return d2 <= r2;
+
+    // cos(lat) correction: 1° longitude is shorter than 1° latitude by cos(lat).
+    // Without this, zones are ~15-30% narrower east-west at US latitudes.
+    const float cosLat = cosf(static_cast<float>(centerLatE5) * 1.74533e-7f);
+    const float cosLatClamped = (cosLat > 0.3f) ? cosLat : 0.3f;
+
+    // Widen longitude bounding box for real-world radius.
+    const int32_t lonRadius = static_cast<int32_t>(r / cosLatClamped) + 1;
+    if (dLon > lonRadius || dLon < -lonRadius) return false;
+
+    // Squared-distance check with cos(lat)-scaled longitude.
+    const int64_t dLat64 = static_cast<int64_t>(dLat);
+    const int64_t dLonScaled = static_cast<int64_t>(lroundf(static_cast<float>(dLon) * cosLatClamped));
+    const int64_t r64 = static_cast<int64_t>(r);
+    return (dLat64 * dLat64 + dLonScaled * dLonScaled) <= (r64 * r64);
 }
 
 bool LockoutLearner::freqClose(uint16_t freqA, uint16_t freqB, uint16_t tolerance) {

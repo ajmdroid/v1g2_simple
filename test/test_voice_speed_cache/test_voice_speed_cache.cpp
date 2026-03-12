@@ -1,4 +1,5 @@
 #include <unity.h>
+#include <climits>
 
 #include "../mocks/settings.h"
 #include "../../src/modules/voice/voice_module.h"
@@ -59,11 +60,43 @@ void test_clear_speed_sample_invalidates_cache() {
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, voiceModule.getCurrentSpeedMph(1200));
 }
 
+void test_alert_history_recycle_evicts_oldest_after_wraparound() {
+    // Fill all alert history slots
+    for (int i = 0; i < VoiceModule::TEST_MAX_ALERT_HISTORIES; i++) {
+        // Use timestamps near ULONG_MAX to simulate pre-wraparound state
+        unsigned long ts = (ULONG_MAX - 5000) + (i * 100);
+        voiceModule.testUpdateAlertHistory(BAND_K, static_cast<uint16_t>(24100 + i), 3, ts);
+    }
+    TEST_ASSERT_EQUAL(VoiceModule::TEST_MAX_ALERT_HISTORIES, voiceModule.getAlertHistoryCount());
+
+    // Now millis() has wrapped around to a small value
+    unsigned long wrappedNow = 500;
+    // Slot 0 has timestamp (ULONG_MAX - 5000) → oldest by elapsed time
+    // Creating a new alert should evict slot 0 (the truly oldest)
+    voiceModule.testUpdateAlertHistory(BAND_KA, 34700, 4, wrappedNow);
+
+    // The new alert should have replaced the oldest slot
+    // Verify the new alert exists in history
+    bool foundNew = false;
+    uint32_t newId = VoiceModule::makeAlertId(BAND_KA, 34700);
+    auto& histories = voiceModule.getAlertHistories();
+    uint8_t count = voiceModule.getAlertHistoryCount();
+    for (int i = 0; i < count; i++) {
+        if (histories[i].alertId == newId) {
+            foundNew = true;
+            TEST_ASSERT_EQUAL(wrappedNow, histories[i].lastUpdateMs);
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(foundNew, "New alert should be in history after wraparound recycle");
+}
+
 void runAllTests() {
     RUN_TEST(test_speed_sample_valid_within_ttl);
     RUN_TEST(test_speed_sample_expires_after_ttl);
     RUN_TEST(test_invalid_sample_preserves_previous_cache);
     RUN_TEST(test_clear_speed_sample_invalidates_cache);
+    RUN_TEST(test_alert_history_recycle_evicts_oldest_after_wraparound);
 }
 
 #ifdef ARDUINO

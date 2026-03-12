@@ -224,4 +224,15 @@ private:
     bool shouldAnnounceThreatEscalation(Band band, uint16_t freq, uint8_t totalBogeys, unsigned long now);
     void markThreatEscalationAnnounced(Band band, uint16_t freq);
     void clearAlertHistories();
+
+#ifdef UNIT_TEST
+public:
+    using AlertHistoryArray = decltype(alertHistories);
+    AlertHistoryArray& getAlertHistories() { return alertHistories; }
+    uint8_t& getAlertHistoryCount() { return alertHistoryCount; }
+    static constexpr int TEST_MAX_ALERT_HISTORIES = MAX_ALERT_HISTORIES;
+    void testUpdateAlertHistory(Band band, uint16_t freq, uint8_t bars, unsigned long now) {
+        updateAlertHistory(band, freq, bars, now);
+    }
+#endif
 };

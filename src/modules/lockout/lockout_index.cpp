@@ -402,7 +402,10 @@ size_t LockoutIndex::findNearbyDirectional(int32_t latE5,
                 const float sinH = sinf(headRad);  // east  component
                 const float dLat = static_cast<float>(latE5 - e.latE5);
                 const float dLon = static_cast<float>(lonE5 - e.lonE5);
-                const float dot  = dLat * cosH + dLon * sinH;
+                // cos(lat) correction: scale dLon to match dLat units
+                const float cosLat = cosf(static_cast<float>(e.latE5) * 1.74533e-7f);
+                const float cosLatClamped = (cosLat > 0.3f) ? cosLat : 0.3f;
+                const float dot  = dLat * cosH + (dLon * cosLatClamped) * sinH;
 
                 if (dot < 0.0f) {
                     // Approaching — inflate to trigger pre-quiet early.

@@ -365,12 +365,13 @@ VoiceModule::AlertHistory* VoiceModule::getOrCreateAlertHistory(uint32_t alertId
         return h;
     }
     
-    // Recycle oldest
-    unsigned long oldestTime = now;
+    // Recycle oldest (by elapsed time, handles millis() wraparound)
+    unsigned long oldestElapsed = 0;
     int oldestIdx = -1;
     for (int i = 0; i < alertHistoryCount; i++) {
-        if (alertHistories[i].lastUpdateMs < oldestTime) {
-            oldestTime = alertHistories[i].lastUpdateMs;
+        unsigned long elapsed = now - alertHistories[i].lastUpdateMs;
+        if (elapsed > oldestElapsed) {
+            oldestElapsed = elapsed;
             oldestIdx = i;
         }
     }
