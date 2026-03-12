@@ -5,10 +5,10 @@
 #
 # Intended workflow:
 #   1) Sanity check debug metrics endpoint
-#   2) Run camera API/UI/display smoke on hardware
-#   3) Run a short radar scenario (default: RAD-03) and verify parser/display deltas
-#   4) Run real firmware soak (display stress)
-#   5) Run real firmware soak (core only)
+#   2) Run a short radar scenario (default: RAD-03) and verify parser/display deltas
+#   3) Run real firmware soak (display stress)
+#   4) Run real firmware soak (core only)
+#   5) Run real firmware soak (transition stress)
 #
 # Usage examples:
 #   ./scripts/device-test.sh
@@ -31,10 +31,10 @@ TEST_PORT="${DEVICE_PORT:-}"
 AUTO_KILL_MONITOR=1
 DRY_RUN=0
 
-SUITE_PROFILE_VERSION="device_v2"
+SUITE_PROFILE_VERSION="device_truth_v1"
 SOAK_PROFILE="drive_wifi_ap"
 SOAK_MIN_METRICS_OK_SAMPLES=3
-SOAK_LATENCY_GATE_MODE="hybrid"
+SOAK_LATENCY_GATE_MODE="strict"
 SOAK_LATENCY_ROBUST_MIN_SAMPLES=8
 SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT=5
 SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES=2
@@ -57,7 +57,8 @@ RAD_TIMEOUT_SECONDS="${REAL_FW_RAD_TIMEOUT_SECONDS:-}"
 RAD_MIN_RX_DELTA=20
 RAD_MIN_PARSE_SUCCESS_DELTA=20
 RAD_MIN_DISPLAY_UPDATES_DELTA=10
-CAMERA_RADAR_STRESS=1
+CAMERA_SMOKE=0
+CAMERA_RADAR_STRESS=0
 
 OUT_DIR=""
 
@@ -143,8 +144,10 @@ Options:
   --rad-scenario ID              Short radar scenario ID (default: RAD-03)
   --rad-duration-scale-pct N     RAD scenario duration scale percent (default: 100)
   --rad-timeout-seconds N        RAD scenario completion timeout (default: auto from scale)
-  --camera-radar-stress          Run camera+radar overlap stress item (default)
-  --no-camera-radar-stress       Skip camera+radar overlap stress item
+  --camera-smoke                 Run Chrome/browser-dependent camera smoke item (manual only)
+  --no-camera-smoke              Skip camera smoke item (default)
+  --camera-radar-stress          Run synthetic debug camera+radar overlap item (manual only)
+  --no-camera-radar-stress       Skip synthetic camera+radar overlap item (default)
   --no-transition-soak           Skip Cycle 3 transition qualification soak
   --transition-flap-cycles N     Transition flap cycles for transition soak (default: 3)
   --transition-drive-interval-seconds N
@@ -199,6 +202,8 @@ status_color() {
   local status="$1"
   if [[ "$status" == "PASS" ]]; then
     printf "%bPASS%b" "$GREEN" "$NC"
+  elif [[ "$status" == "INVALID" ]]; then
+    printf "%bINVALID%b" "$YELLOW" "$NC"
   else
     printf "%bFAIL%b" "$RED" "$NC"
   fi
@@ -474,7 +479,7 @@ run_metrics_endpoint_test() {
       "Class C (harness transient)" \
       "HARNESS_PRECHECK_AP_UNREACHABLE" \
       "$reason"
-    add_result "$test_name" "FAIL" \
+    add_result "$test_name" "INVALID" \
       "class=${HARNESS_PRECHECK_CLASS} code=${HARNESS_PRECHECK_CODE} reason=\"${reason}\"" \
       "$endpoint" \
       "$cmd_text"
@@ -493,7 +498,7 @@ run_metrics_endpoint_test() {
       "Class B (harness contract mismatch)" \
       "HARNESS_PRECHECK_INVALID_PAYLOAD" \
       "$reason"
-    add_result "$test_name" "FAIL" \
+    add_result "$test_name" "INVALID" \
       "class=${HARNESS_PRECHECK_CLASS} code=${HARNESS_PRECHECK_CODE} attempt=${attempt} ${parse_out}" \
       "$endpoint" \
       "$cmd_text"
@@ -829,6 +834,12 @@ while [[ $# -gt 0 ]]; do
       RAD_TIMEOUT_SECONDS="$2"
       shift
       ;;
+    --camera-smoke)
+      CAMERA_SMOKE=1
+      ;;
+    --no-camera-smoke)
+      CAMERA_SMOKE=0
+      ;;
     --camera-radar-stress)
       CAMERA_RADAR_STRESS=1
       ;;
@@ -980,15 +991,15 @@ echo "  skip flash: $SKIP_FLASH"
 echo "  port: ${TEST_PORT:-auto}"
 echo "  suite profile: $SUITE_PROFILE_VERSION"
 echo "  soak profile: $SOAK_PROFILE"
-echo "  soak robust gate: mode=$SOAK_LATENCY_GATE_MODE minSamples=$SOAK_LATENCY_ROBUST_MIN_SAMPLES maxExceedPct=$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT wifiSkipFirst=$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES"
+echo "  soak latency gate: mode=$SOAK_LATENCY_GATE_MODE"
 echo "  soak minima tail exclusion: ${SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES} sample(s)"
 echo "  soak require-metrics: yes (min ok samples=$SOAK_MIN_METRICS_OK_SAMPLES)"
 echo "  soak watchdog padding: skip-flash=+${SOAK_TIMEOUT_PADDING_SECONDS}s with-flash=+${SOAK_TIMEOUT_WITH_FLASH_PADDING_SECONDS}s"
-echo "  camera smoke: api/ui/render on hardware"
+echo "  camera smoke: enabled=$CAMERA_SMOKE (manual only; host/browser dependent)"
 echo "  display drive: displayInterval=${SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=$SOAK_MIN_DISPLAY_UPDATES_DELTA"
 echo "  transition qual: enabled=$SOAK_ENABLE_TRANSITION_QUAL flapCycles=$SOAK_TRANSITION_FLAP_CYCLES interval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s maxRecoveryMs=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS maxSamples=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
 echo "  RAD scenario: $RAD_SCENARIO_ID scalePct=$RAD_DURATION_SCALE_PCT timeout=${RESOLVED_RAD_TIMEOUT_SECONDS}s (rx>=$RAD_MIN_RX_DELTA parse>=$RAD_MIN_PARSE_SUCCESS_DELTA display>=$RAD_MIN_DISPLAY_UPDATES_DELTA parseFail==0)"
-echo "  camera+radar stress: enabled=$CAMERA_RADAR_STRESS mode=both flapCycles=$SOAK_TRANSITION_FLAP_CYCLES flapInterval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s"
+echo "  camera+radar stress: enabled=$CAMERA_RADAR_STRESS (synthetic/manual only) mode=both flapCycles=$SOAK_TRANSITION_FLAP_CYCLES flapInterval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s"
 echo "  out dir: $OUT_DIR"
 echo ""
 
@@ -1015,9 +1026,11 @@ if [[ -n "$HARNESS_PRECHECK_CODE" ]]; then
   SUITE_EXIT_REASON="$HARNESS_PRECHECK_CODE"
   echo -e "${YELLOW}Preflight failed (${HARNESS_PRECHECK_CODE}); aborting remaining test items to avoid non-actionable failures.${NC}"
 else
-  check_uptime_continuity "before camera_smoke"
-  run_camera_smoke_test
-  check_uptime_continuity "after camera_smoke"
+  if [[ "$CAMERA_SMOKE" -eq 1 ]]; then
+    check_uptime_continuity "before camera_smoke"
+    run_camera_smoke_test
+    check_uptime_continuity "after camera_smoke"
+  fi
 
   check_uptime_continuity "before rad_short"
   run_rad_short_test
@@ -1063,6 +1076,7 @@ fi
 
 pass_count=0
 fail_count=0
+invalid_count=0
 
 echo ""
 echo "Per-item results:"
@@ -1073,6 +1087,8 @@ for i in "${!TEST_NAMES[@]}"; do
   artifact="${TEST_ARTIFACTS[$i]}"
   if [[ "$status" == "PASS" ]]; then
     pass_count=$((pass_count + 1))
+  elif [[ "$status" == "INVALID" ]]; then
+    invalid_count=$((invalid_count + 1))
   else
     fail_count=$((fail_count + 1))
   fi
@@ -1083,13 +1099,17 @@ for i in "${!TEST_NAMES[@]}"; do
 done
 
 overall_result="PASS"
-if [[ "$fail_count" -gt 0 ]]; then
+if [[ -n "$HARNESS_PRECHECK_CODE" || "$invalid_count" -gt 0 ]]; then
+  overall_result="INVALID"
+elif [[ "$fail_count" -gt 0 ]]; then
   overall_result="FAIL"
 fi
 
 if [[ -z "$SUITE_EXIT_REASON" ]]; then
   if [[ "$overall_result" == "PASS" ]]; then
     SUITE_EXIT_REASON="PASS"
+  elif [[ "$overall_result" == "INVALID" ]]; then
+    SUITE_EXIT_REASON="${HARNESS_PRECHECK_CODE:-INVALID_PRECHECK}"
   else
     SUITE_EXIT_REASON="TEST_ITEM_FAILURES"
   fi
@@ -1107,6 +1127,7 @@ fi
   echo "- Port: \`${TEST_PORT:-auto}\`"
   echo "- Passed: $pass_count"
   echo "- Failed: $fail_count"
+  echo "- Invalid: $invalid_count"
   echo "- Suite reboot detections: $suite_reboot_count"
   echo "- Exit reason: \`$SUITE_EXIT_REASON\`"
   if [[ -n "$suite_reboot_log" ]]; then
@@ -1130,10 +1151,11 @@ fi
   echo ""
   echo "- Soak profile: \`$SOAK_PROFILE\`"
   echo "- Soak metrics required: yes (\`--min-metrics-ok-samples $SOAK_MIN_METRICS_OK_SAMPLES\`)"
-  echo "- Camera smoke: \`scripts/camera_device_smoke.py\` (settings API, /cameras UI render, debug camera display render)"
-  echo "- Soak robust latency gate: \`mode=$SOAK_LATENCY_GATE_MODE min_samples=$SOAK_LATENCY_ROBUST_MIN_SAMPLES max_exceed_pct=$SOAK_LATENCY_ROBUST_MAX_EXCEED_PCT wifi_skip_first=$SOAK_WIFI_ROBUST_SKIP_FIRST_SAMPLES\`"
+  echo "- Qualification items: \`metrics_endpoint\`, \`rad_short\`, \`soak_display\`, \`soak_core\`, \`soak_transition\`"
+  echo "- Soak latency gate: \`mode=$SOAK_LATENCY_GATE_MODE\`"
   echo "- Display drive defaults: \`display_interval_s=$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS min_display_updates_delta=$SOAK_MIN_DISPLAY_UPDATES_DELTA\`"
-  echo "- Camera+radar overlap: \`enabled=$CAMERA_RADAR_STRESS scenario=$RAD_SCENARIO_ID scale_pct=$RAD_DURATION_SCALE_PCT mode=both flap_cycles=$SOAK_TRANSITION_FLAP_CYCLES flap_interval_s=$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS\`"
+  echo "- Camera smoke: \`enabled=$CAMERA_SMOKE\` (manual only; not qualification)"
+  echo "- Camera+radar overlap: \`enabled=$CAMERA_RADAR_STRESS\` (synthetic/manual only; not qualification)"
   echo "- Transition qualification: \`enabled=$SOAK_ENABLE_TRANSITION_QUAL flap_cycles=$SOAK_TRANSITION_FLAP_CYCLES interval_s=$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS min_proxy_off_transitions=$SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS max_proxy_recovery_ms=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS max_samples_to_stable=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE\`"
   echo "- RAD short default gates: \`scenario=$RAD_SCENARIO_ID duration_scale_pct=$RAD_DURATION_SCALE_PCT timeout_s=$RESOLVED_RAD_TIMEOUT_SECONDS rx_delta>=$RAD_MIN_RX_DELTA parse_success_delta>=$RAD_MIN_PARSE_SUCCESS_DELTA display_updates_delta>=$RAD_MIN_DISPLAY_UPDATES_DELTA parse_fail_delta==0\`"
   echo ""
@@ -1158,13 +1180,13 @@ fi
     echo "- Artifact: \`${TEST_ARTIFACTS[$i]}\`"
     echo ""
   done
-  echo "## Failures"
+  echo "## Failures And Invalids"
   echo ""
-  if [[ "$fail_count" -eq 0 ]]; then
+  if [[ "$fail_count" -eq 0 && "$invalid_count" -eq 0 ]]; then
     echo "- none"
   else
     for i in "${!TEST_NAMES[@]}"; do
-      if [[ "${TEST_STATUS[$i]}" == "FAIL" ]]; then
+      if [[ "${TEST_STATUS[$i]}" != "PASS" ]]; then
         echo "- ${TEST_NAMES[$i]}: \`${TEST_METRICS[$i]}\`"
       fi
     done
@@ -1180,6 +1202,11 @@ echo ""
 echo "Summary files:"
 echo "  $SUMMARY_MD"
 echo "  $TSV_PATH"
+
+if [[ "$overall_result" == "INVALID" ]]; then
+  echo -e "${YELLOW}Device test suite INVALID ($invalid_count item(s)); reason=$SUITE_EXIT_REASON.${NC}"
+  exit 2
+fi
 
 if [[ "$fail_count" -gt 0 ]]; then
   echo -e "${RED}Device test suite FAILED ($fail_count item(s)); reason=$SUITE_EXIT_REASON.${NC}"

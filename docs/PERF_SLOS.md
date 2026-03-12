@@ -99,4 +99,4 @@ Exit codes:
 - If thresholds change, update `tools/perf_slo_thresholds.json` and `docs/PERF_SLOS.md` in the same change.
 - Run `python3 scripts/check_perf_slo_contract.py` after any threshold/doc edits.
 - `wifiMax_us` soak gating excludes the first 2 API samples (TCP cold-start overhead on ESP32 SoftAP).
-- **Hybrid gating (soak-only):** `scripts/run_real_fw_soak.sh` defaults latency classification for `wifiMax_us` and `dispPipeMax_us` to `hybrid` mode: strict peak gates are still reported, while pass/fail uses a robust N-of-M check (default: max 5% over-limit samples, min 8 samples). Use `--latency-gate-mode strict` for peak-only gating. Note: `tools/score_perf_csv.py` always uses strict peak gating — hybrid mode is not implemented in the per-file scorer.
+- **Bench latency gating:** `scripts/run_real_fw_soak.sh` now defaults latency classification for `wifiMax_us` and `dispPipeMax_us` to `strict` mode so default bench pass/fail matches `tools/score_perf_csv.py`. `hybrid` and `robust` remain available for manual exploratory analysis only; they are not the default qualification contract.

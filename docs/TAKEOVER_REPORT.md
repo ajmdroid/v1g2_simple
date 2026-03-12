@@ -11,7 +11,7 @@
 This is a **well-engineered embedded project** that has been through a major
 architecture overhaul (v3 → v4). The codebase is in good shape overall — the
 modular rewrite is largely complete, test coverage is strong, and CI discipline
-is above-average for an embedded project. The authoritative repo gate is now
+is above-average for an embedded project. The main repo gate is
 `./scripts/ci-test.sh`, and GitHub workflows call that same script instead of
 re-declaring a weaker parallel check list. The remaining concerns are around
 frontend test depth, oversized page components, and continued `main.cpp`
@@ -59,15 +59,16 @@ branches carries no merge-conflict risk.
 - All critical subsystems have dedicated test suites: BLE (4), lockout (7+),
   WiFi (16+), GPS (4), display (3).
 - Device-level integration tests for heap stress, coexistence, boot sequence.
-- Bench ladder qualification (L0–L8) with automated failure classification.
+- Bench and hardware workflows should be read from `TESTING.md`, not inferred
+  from this report.
 
 ### CI & Contract Enforcement (A)
 - 9 contract scripts checking architectural invariants (BLE hot-path discipline,
   SD mutex safety, display flush stability, main loop ordering, WiFi API
   contracts, perf CSV schema, frontend HTTP resilience, extern/global usage).
 - 10 contract snapshot files — modifications require explicit `--update`.
-- `./scripts/ci-test.sh` is the authoritative repo gate for both local runs and
-  GitHub workflows. It runs: contracts → native tests → frontend lint
+- `./scripts/ci-test.sh` is the main repo gate for both local runs and GitHub
+  workflows. It runs: contracts → native tests → frontend lint
   (`svelte-check`) → frontend unit tests with coverage → web build → web
   deploy → asset budget check → firmware static analysis (`pio check`) →
   firmware build → firmware size budget → LittleFS size budget → size report.
@@ -85,7 +86,7 @@ branches carries no merge-conflict risk.
 ### Documentation (A-)
 - `ARCHITECTURE.md` — accurate module map with responsibilities table.
 - `PERF_SLOS.md` — quantitative SLOs with scoring tooling.
-- `TESTING.md` — canonical test workflows with hardware validation procedures.
+- `TESTING.md` — current truthful testing contract and known gaps.
 - `TROUBLESHOOTING.md` — user-facing issue resolution guide.
 - `API.md` — complete REST API reference.
 
@@ -148,58 +149,18 @@ Service regrouping work is complete for the original takeover concern.
 | `main.cpp` size | `src/main.cpp` reduced to `<=1100` lines with setup/loop behavior unchanged. |
 | Large service files | Debug/GPS/Lockout/WiFi service regrouping completed with API routes/signatures unchanged and wrapper tests still passing. |
 
-Authoritative acceptance sources:
+Current acceptance references:
 
-- [`docs/TESTING.md`](TESTING.md) for cycle workflow, bench ladder policy, and failure classification.
+- [`docs/TESTING.md`](TESTING.md) for the current qualification contract and known gaps.
 - [`docs/PERF_SLOS.md`](PERF_SLOS.md) for hard SLO pass/fail thresholds and scoring expectations.
 
 ---
 
-## Operational Qualification Baseline (Authoritative)
+## Testing Reference
 
-1. **Source of truth**
-   - Use `docs/TESTING.md` for workflow and ladder policy.
-   - Use `docs/PERF_SLOS.md` for hard SLO pass/fail thresholds.
-
-2. **Preconditions before any stability/perf cycle**
-   - V1 must be powered on and connected before starting runs.
-   - Bench truth profile is fixed to AP + display drive + transition flaps.
-   - Keep physical setup consistent (power source, placement, AP client behavior).
-
-3. **Canonical cycle commands**
-   - On firmware/runtime code changes:
-     - `./build.sh --clean --upload --upload-fs`
-     - `./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct 200`
-     - `./scripts/iron-gate.sh --skip-flash`
-   - If code changes during testing, restart cycle from the first command.
-
-4. **Bench stress ladder acceptance bar**
-   - Ladder levels L0-L8 are fixed and executed in order per `TESTING.md`.
-   - Each level requires `2/2` pass.
-   - Minimum acceptable release bar: **L6 cleared 2/2**.
-
-5. **Failure policy and release decision**
-   - Class A (reliability-critical) before or at L6 is **not acceptable**.
-   - First sustained Class B at L7+ (with no Class A before L6) is acceptable with optimization backlog.
-   - Class C transients require rerun and reclassification rules exactly as documented in `TESTING.md`.
-
-6. **Evidence and traceability**
-   - Latest validated cycle pass artifact (March 9, 2026):
-     - `/Users/ajmedford/v1g2_simple/.artifacts/test_reports/device_test_20260309_062011/summary.md`
-   - Every qualification campaign must record highest cleared level, first failing level, failure class, and artifact paths.
-
----
-
-## First-Week Plan
-
-| Priority | Task | Why |
-|----------|------|-----|
-| **P0** | Run hardware gate (`./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct 200` + `./scripts/iron-gate.sh --skip-flash`) with V1 on/connected | Confirm software-only green gates still hold on bench hardware |
-| **P0** | Run camera-enabled bench ladder (`L0`→`L8`) and record campaign summary path in `TESTING.md` | Complete acceptance evidence under the authoritative ladder policy |
-| **P1** | Execute intermittent triage batch at `L6` when instability appears | Distinguish harness transients from real runtime limits |
-| **P1** | Keep route-level frontend tests aligned with future UI edits | Preserve no-breakage safety net now that route coverage exists |
-| **P2** | Continue weekly perf trend checks with `tools/compare_perf_csv.py` | Detect gradual regressions before hard SLO failures |
-| **P3** | Keep `.mul` inventory audit on backlog | Largest contributor to data partition pressure |
+This report no longer carries workflow, ladder, or release-acceptance policy.
+Use [`docs/TESTING.md`](TESTING.md) for the current truthful test contract and
+[`docs/PERF_SLOS.md`](PERF_SLOS.md) for numeric scoring thresholds.
 
 ---
 
@@ -208,8 +169,8 @@ Authoritative acceptance sources:
 This is a strong codebase for an embedded hobby/prosumer project. The
 architecture is sound, testing is thorough (1,006 cases, 3,712 assertions), and
 the CI gate is comprehensive — contracts, linting, static analysis, unit tests
-with coverage, asset budgets, and firmware builds all run in the authoritative
-repo gate.
+with coverage, asset budgets, and firmware builds all run in the main repo
+gate.
 The module migration from v3 to v4 was executed well — the code reads cleanly
 and the priority stack is respected throughout.
 

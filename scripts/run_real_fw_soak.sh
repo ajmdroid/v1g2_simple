@@ -56,7 +56,7 @@ MAX_BLE_PROCESS_MAX_US=0
 MAX_DISP_PIPE_MAX_US=0
 MAX_BLE_MUTEX_TIMEOUT_DELTA=0
 SOAK_PROFILE=""
-LATENCY_GATE_MODE="${REAL_FW_LATENCY_GATE_MODE:-hybrid}"
+LATENCY_GATE_MODE="${REAL_FW_LATENCY_GATE_MODE:-strict}"
 LATENCY_ROBUST_MIN_SAMPLES="${REAL_FW_LATENCY_ROBUST_MIN_SAMPLES:-8}"
 LATENCY_ROBUST_MAX_EXCEED_PCT="${REAL_FW_LATENCY_ROBUST_MAX_EXCEED_PCT:-5}"
 WIFI_ROBUST_SKIP_FIRST_SAMPLES="${REAL_FW_WIFI_ROBUST_SKIP_FIRST_SAMPLES:-2}"
@@ -730,7 +730,7 @@ Options:
                         metrics enabled) or drive_wifi_off
   --latency-gate-mode MODE
                         Latency classification mode for wifi/disp gates:
-                        strict (peak-only), robust (N-of-M), hybrid (default)
+                        strict (peak-only, default), robust (N-of-M), hybrid
   --latency-robust-min-samples N
                         Minimum samples required to evaluate robust mode
                         (default: 8)
@@ -2038,7 +2038,13 @@ panic_samples_parsed=""
 panic_ok_samples_parsed=""
 panic_was_crash_true=""
 panic_has_panic_file_true=""
+panic_first_was_crash=""
+panic_last_was_crash=""
+panic_first_has_panic_file=""
+panic_last_has_panic_file=""
+panic_first_reset_reason=""
 panic_last_reset_reason=""
+panic_state_change_count=""
 
 while IFS='=' read -r key value; do
   case "$key" in
@@ -2046,13 +2052,20 @@ while IFS='=' read -r key value; do
     ok_samples) panic_ok_samples_parsed="$value" ;;
     was_crash_true) panic_was_crash_true="$value" ;;
     has_panic_file_true) panic_has_panic_file_true="$value" ;;
+    first_was_crash) panic_first_was_crash="$value" ;;
+    last_was_crash) panic_last_was_crash="$value" ;;
+    first_has_panic_file) panic_first_has_panic_file="$value" ;;
+    last_has_panic_file) panic_last_has_panic_file="$value" ;;
+    first_reset_reason) panic_first_reset_reason="$value" ;;
     last_reset_reason) panic_last_reset_reason="$value" ;;
+    state_change_count) panic_state_change_count="$value" ;;
   esac
 done < "$panic_kv"
 
 reboot_evidence_detected=0
 reboot_evidence_detail_parts=()
 reboot_evidence_detail="none"
+panic_endpoint_new_crash_detected=0
 if [[ "$serial_reset_count" -gt 0 ]]; then
   reboot_evidence_detected=1
   reboot_evidence_detail_parts+=("serial_rst=${serial_reset_count}")
@@ -2061,9 +2074,16 @@ if [[ "$serial_wdt_or_panic_count" -gt 0 ]]; then
   reboot_evidence_detected=1
   reboot_evidence_detail_parts+=("serial_panic_signatures=${serial_wdt_or_panic_count}")
 fi
-if [[ "$panic_was_crash_true" =~ ^[0-9]+$ ]] && [[ "$panic_was_crash_true" -gt 0 ]]; then
+if is_uint "$panic_first_was_crash" &&
+   is_uint "$panic_last_was_crash" &&
+   is_uint "$panic_state_change_count" &&
+   [[ "$panic_last_was_crash" -eq 1 ]] &&
+   ([[ "$panic_first_was_crash" -eq 0 ]] || [[ "$panic_state_change_count" -gt 0 ]]); then
+  panic_endpoint_new_crash_detected=1
   reboot_evidence_detected=1
-  reboot_evidence_detail_parts+=("panic_endpoint_crash=${panic_was_crash_true}")
+  reboot_evidence_detail_parts+=(
+    "panic_endpoint_runtime_crash=first:${panic_first_was_crash},last:${panic_last_was_crash},changes:${panic_state_change_count}"
+  )
 fi
 if [[ ${#reboot_evidence_detail_parts[@]} -gt 0 ]]; then
   reboot_evidence_detail="${reboot_evidence_detail_parts[0]}"
@@ -2222,8 +2242,19 @@ fi
 if [[ "$serial_reset_count" -gt 0 ]]; then
   mark_gate_fail gate_serial_reset_fail "Serial reset signatures detected (${serial_reset_count} rst:0x lines). Device rebooted during soak."
 fi
-if is_uint "$panic_was_crash_true" && [[ "$panic_was_crash_true" -gt 0 ]]; then
-  mark_gate_fail gate_panic_endpoint_fail "Panic endpoint reported crashes (${panic_was_crash_true})."
+if [[ "$panic_endpoint_new_crash_detected" -eq 1 ]]; then
+  mark_gate_fail gate_panic_endpoint_fail \
+    "Panic endpoint changed to/reported a crash during soak (first=${panic_first_was_crash:-n/a} last=${panic_last_was_crash:-n/a} changes=${panic_state_change_count:-n/a})."
+fi
+if is_uint "$panic_first_was_crash" &&
+   is_uint "$panic_last_was_crash" &&
+   is_uint "$panic_state_change_count" &&
+   [[ "$panic_first_was_crash" -eq 1 ]] &&
+   [[ "$panic_last_was_crash" -eq 1 ]] &&
+   [[ "$panic_state_change_count" -eq 0 ]]; then
+  advisory_warnings+=(
+    "Panic endpoint reported a preexisting crash state before soak and it remained unchanged during this run."
+  )
 fi
 if [[ "$reboot_evidence_detected" -eq 0 ]]; then
   if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
@@ -2875,7 +2906,13 @@ fi
   echo "- Panic successful parsed: ${panic_ok_samples_parsed:-0}"
   echo "- Panic wasCrash=true count: ${panic_was_crash_true:-0}"
   echo "- Panic hasPanicFile=true count: ${panic_has_panic_file_true:-0}"
+  echo "- Panic first wasCrash: ${panic_first_was_crash:-n/a}"
+  echo "- Panic last wasCrash: ${panic_last_was_crash:-n/a}"
+  echo "- Panic first hasPanicFile: ${panic_first_has_panic_file:-n/a}"
+  echo "- Panic last hasPanicFile: ${panic_last_has_panic_file:-n/a}"
+  echo "- Panic first reset reason: ${panic_first_reset_reason:-n/a}"
   echo "- Panic latest reset reason: ${panic_last_reset_reason:-n/a}"
+  echo "- Panic state changes during soak: ${panic_state_change_count:-0}"
   echo ""
   echo "## Artifacts"
   echo ""

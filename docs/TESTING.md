@@ -1,58 +1,25 @@
-# Testing Suite Documentation
+# Testing
 
-> Status: Active
+> Status: active
 > Last validated against scripts: March 11, 2026
 
-This document is the source of truth for how we test this repo today.
+This file documents only the tests and commands that are still trusted today.
+If a script changes, this file must change in the same commit.
 
-If scripts change, this file must change in the same commit.
+## What Is Real Today
 
-## Table of Contents
-
-1. [Testing Principles](#testing-principles)
-2. [Canonical Workflows](#canonical-workflows)
-3. [Hardware Cycle Workflow (Authoritative)](#hardware-cycle-workflow-authoritative)
-4. [Bench Stress Ladder (Authoritative)](#bench-stress-ladder-authoritative)
-5. [What `device-test.sh` Actually Runs](#what-device-testsh-actually-runs)
-6. [Camera + Radar Overlap Stress (`camera_radar_device_stress.py`)](#camera--radar-overlap-stress-camera_radar_device_stresspy)
-7. [Real Firmware Soak (`run_real_fw_soak.sh`)](#real-firmware-soak-run_real_fw_soaksh)
-8. [Drive Log Analysis](#drive-log-analysis)
-9. [Artifacts and Reports](#artifacts-and-reports)
-10. [Release Gate](#release-gate)
-11. [Change Control (Keep This Consistent)](#change-control-keep-this-consistent)
-
-## Testing Principles
-
-- Use script-driven testing, not ad-hoc commands, so results are reproducible.
-- Treat hardware cycle testing as the behavioral truth for stability/performance regressions.
-- Prefer incremental changes with a full hardware verification run after each change set.
-- Keep the process documented as it evolves.
-
-## Canonical Workflows
-
-### 1. Pre-push code validation (required)
+### Local repo gate
 
 ```bash
 ./scripts/ci-test.sh
 ```
 
-This runs contract guards, native tests, frontend lint/type checks, frontend
-unit tests with coverage, web build checks, and firmware build checks.
-It is the authoritative repo gate locally and in GitHub workflows.
+This is the trusted local/code gate. It runs repo contracts, native tests,
+frontend checks, and firmware build checks.
 
-When only the Svelte interface changed and you want the narrower frontend gate
-before the full repo pass:
+### Hardware qualification
 
-```bash
-cd interface
-npm run lint
-npm run test:unit
-npm run test:coverage
-```
-
-### 2. Hardware cycle validation (required for stability/perf work)
-
-When firmware/runtime code changed:
+If firmware changed:
 
 ```bash
 ./build.sh --clean --upload --upload-fs
@@ -60,475 +27,104 @@ When firmware/runtime code changed:
 ./scripts/iron-gate.sh --skip-flash
 ```
 
-When no code changed and device is already uploaded:
+If firmware did not change and the device already has the intended build:
 
 ```bash
 ./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct 200
 ./scripts/iron-gate.sh --skip-flash
 ```
 
-### 3. Device suite wrappers (optional, separate from cycle gate)
+### Drive log scoring
 
 ```bash
-./scripts/run_device_tests.sh
-./scripts/run_device_tests.sh --quick
-./scripts/run_device_tests.sh --full
-./scripts/run_device_soak.sh --cycles 20
+python3 tools/score_perf_csv.py /path/to/perf.csv --profile drive_wifi_ap
+python3 tools/score_perf_csv.py /path/to/perf.csv --profile drive_wifi_off
 ```
 
-These are still useful, but the stability/performance cycle gate is `device-test.sh`.
+Default bench latency gating now uses the same strict pass/fail model as the
+drive scorer. See [PERF_SLOS.md](/Users/ajmedford/v1g2_simple/docs/PERF_SLOS.md)
+for the numeric thresholds.
 
-## Hardware Cycle Workflow (Authoritative)
+## What `device-test.sh` Really Does
 
-This is the process that must remain consistent over time.
+Default qualification runs these items only:
 
-### Standard cycle run
+1. `metrics_endpoint`
+2. `rad_short`
+3. `soak_display`
+4. `soak_core`
+5. `soak_transition` (unless `--no-transition-soak` is passed)
+
+Default qualification does **not** run:
+
+- `camera_smoke`
+- `camera_radar_overlap`
+
+Those paths are not part of release qualification today.
+
+### Qualification behavior
+
+- Metrics preflight must succeed before the suite continues.
+- AP unreachable or invalid metrics payload aborts the suite as `INVALID`.
+- Default soak latency gating is `strict`.
+- Real firmware soaks keep raw peak values in artifacts and summaries.
+- Inherited stale panic state is reported, but it is not treated as a new crash
+  unless the panic/reset state changes during the soak.
+
+### Trusted qualification command
 
 ```bash
-./build.sh --clean --upload --upload-fs
 ./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct 200
-./scripts/iron-gate.sh --skip-flash
 ```
 
-### Notes
-
-- `device-test.sh` defaults to `--skip-flash`; cycle workflow relies on explicit upload via `build.sh`.
-- The validated final release gate after a successful upload cycle is `./scripts/iron-gate.sh --skip-flash`.
-- Use `./scripts/iron-gate.sh` without `--skip-flash` only when you intentionally want the gate to include an additional flash/bootstrap step.
-- Use `--duration-seconds` and `--rad-duration-scale-pct` as primary knobs for longer/shorter qualification windows.
-- On code changes, always re-upload before running `device-test.sh`.
-
-### Current cycle baseline knobs
-
-`device-test.sh` currently applies:
-
-- suite profile: `device_v2`
-- soak profile: `drive_wifi_ap`
-- camera smoke item: ALPR settings API round-trip, `/cameras` page render, and debug camera draw on hardware
-- robust latency mode: `hybrid` (`minSamples=8`, `maxExceedPct=5`, `wifiSkipFirst=2`)
-- metrics endpoint retry: `attempts=3`, `delay=1s`
-- harness preflight fail-fast: classed preflight failure (`HARNESS_PRECHECK_*`) aborts remaining items with deterministic suite exit reason
-- minima tail exclusion for DMA floors: `3` samples
-- transition qualification enabled: flap cycles `3`, interval `15s`, max proxy-off recovery `30000ms`, max samples-to-stable `6`
-- camera+radar overlap item: enabled by default; disable with `--no-camera-radar-stress`
-
-Camera smoke requires a local Chrome/Chromium binary because the suite verifies
-the rendered `/cameras` page with headless DOM capture.
-
-### Reference qualification runs (March 6, 2026)
-
-- Cycle 4 pass: [summary.md](/Users/ajmedford/v1g2_simple/.artifacts/test_reports/device_test_20260305_193153/summary.md)
-- Cycle 5 pass: [summary.md](/Users/ajmedford/v1g2_simple/.artifacts/test_reports/device_test_20260305_194900/summary.md)
-- Camera runtime cycle pass: [summary.md](/Users/ajmedford/v1g2_simple/.artifacts/test_reports/device_test_20260306_195806/summary.md)
-- Camera release gate pass (`--skip-flash`): [summary.md](/Users/ajmedford/v1g2_simple/.artifacts/iron_gate/iron_20260306_201454/summary.md)
-
-## Bench Stress Ladder (Authoritative)
-
-This is the canonical bench stress escalation process for stability/performance qualification.
-
-### Required bench profile (true-to-conditions)
-
-Use this locked profile for every ladder level:
-
-- WiFi AP active (`drive_wifi_ap` context)
-- display drive active
-- transition flaps active
-
-Use the same physical setup across all levels:
-
-- same power source and cable path
-- same device placement/orientation
-- same AP client behavior and traffic context
-
-Run invariants:
-
-- no code changes during a ladder campaign
-- if code changes: re-upload and restart at `L0`
-- fixed soak duration per run: `--duration-seconds 240`
-
-### Stress ramp axes (locked)
-
-Ramp two dimensions together at each level:
-
-- RAD load: `--rad-duration-scale-pct`
-- transition stress density: `--transition-drive-interval-seconds` (smaller is harsher)
-
-### Fixed ladder levels
-
-| Level | RAD % | Transition interval (s) |
-|---|---:|---:|
-| L0 | 200 | 15 |
-| L1 | 250 | 12 |
-| L2 | 300 | 10 |
-| L3 | 350 | 8 |
-| L4 | 400 | 7 |
-| L5 | 500 | 6 |
-| L6 | 650 | 5 |
-| L7 | 800 | 4 |
-| L8 | 1000 | 3 |
-
-Per-level command template:
-
-```bash
-./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct <rad> --transition-drive-interval-seconds <interval>
-```
-
-Authoritative execution pattern:
-
-```bash
-./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct 200 --transition-drive-interval-seconds 15
-./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct 250 --transition-drive-interval-seconds 12
-./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct 300 --transition-drive-interval-seconds 10
-# Continue through L8 using the fixed table above.
-```
-
-There is currently no checked-in `run_bench_ladder.sh` wrapper in this repo.
-Run the ladder with the per-level `device-test.sh` commands above and record the
-results in the campaign summary artifacts under `.artifacts/test_reports/`.
-
-Run count rule:
-
-- run each level **2 times**
-- level is cleared only if both runs pass (`2/2`)
-
-### Failure classification and action policy (severity-based)
-
-Class A (reliability-critical):
-
-- reboot/panic/reset evidence
-- parser/integrity hard failures
-- unrecoverable transition stability failures
-
-Action:
-
-- stop ladder immediately
-- mark result **not acceptable**
-
-Class B (performance/stability limit):
-
-- latency/churn/recovery gate failures without crash
-
-Action:
-
-- rerun once at same level
-- if second fail: stop ladder and record that level as first sustained limit
-
-Class C (harness transient):
-
-- isolated endpoint/no-response transient with immediate clean rerun
-
-Action:
-
-- rerun once
-- if rerun passes: continue and log transient
-- if rerun fails: reclassify as Class B
-
-### Acceptance decision rules
-
-- minimum acceptable bar: **L6 must be cleared (`2/2`)**
-- if first sustained Class B failure is at `L7+` and no Class A before L6: acceptable (optional optimization backlog)
-- any Class A before or at L6: not acceptable (reliability improvement required)
-
-### Campaign reporting requirements
-
-For each ladder campaign, record:
-
-- highest cleared level
-- first failing level
-- failure class (A/B/C and final classification if reclassified)
-- artifact paths (run summaries/results)
-
-Append the latest campaign summary path in this doc:
-
-- Latest bench stress ladder campaign summary: [`ladder_summary_validated.md`](/Users/ajmedford/v1g2_simple/.artifacts/test_reports/bench_ladder_20260305_202319/ladder_summary_validated.md)
-
-### Maintenance validation checklist (when this section changes)
-
-Run these checks before declaring the doc update complete:
-
-1. Confirm documented flags still exist:
-   - `./scripts/device-test.sh --help` includes `--rad-duration-scale-pct`, `--transition-drive-interval-seconds`, `--duration-seconds`, `--camera-radar-stress`, and `--no-camera-radar-stress`
-   - `./build.sh --help` includes `--upload-fs`
-2. Dry-run sanity commands:
-   - `./scripts/device-test.sh --dry-run --duration-seconds 240 --rad-duration-scale-pct 200 --transition-drive-interval-seconds 15`
-   - `./scripts/device-test.sh --dry-run --no-camera-radar-stress`
-   - `./scripts/run_real_fw_soak.sh --dry-run --duration-seconds 240 --transition-drive-interval-seconds 15`
-3. Artifact naming/path alignment:
-   - verify outputs continue under `.artifacts/test_reports/`
-   - verify cycle artifacts still include `device_test_<timestamp>/summary.md` and soak artifact subdirectories documented below
-
-## What `device-test.sh` Actually Runs
-
-Current sequence:
-
-1. Metrics endpoint sanity check (`/api/debug/metrics?soak=1`)
-   - if preflight fails (AP unreachable/invalid payload), suite aborts here as a harness-classed failure
-2. Camera smoke (`scripts/camera_device_smoke.py`)
-3. Short radar scenario (`RAD-03` by default)
-4. Camera+radar overlap stress (`scripts/camera_radar_device_stress.py`)
-5. Real firmware soak: display stress (`soak_display`)
-6. Real firmware soak: core (`soak_core`)
-7. Real firmware soak: transition qualification (`soak_transition`)
-8. Cross-item uptime continuity check (detect reboot via `uptimeMs` regression)
-
-Outputs include per-item PASS/FAIL plus metrics, then an overall suite result.
-
-## Camera + Radar Overlap Stress (`camera_radar_device_stress.py`)
-
-Use this when the question is specifically whether camera-driven display ownership or
-camera/display transitions correlate with `dispPipeMaxUs` spikes under radar load.
-
-This runner is part of the default cycle gate. Run it directly when you need
-focused reproduction, or disable the suite wrapper with `device-test.sh --no-camera-radar-stress`.
-
-Standalone examples:
-
-```bash
-# Run both steady-state overlap and transition-flap phases
-python3 ./scripts/camera_radar_device_stress.py \
-  --metrics-url http://<device-ip>/api/debug/metrics \
-  --scenario-id RAD-03 \
-  --duration-scale-pct 120 \
-  --mode both
-
-# Run steady-state overlap only
-python3 ./scripts/camera_radar_device_stress.py \
-  --metrics-url http://<device-ip>/api/debug/metrics \
-  --mode overlap
-
-# Run transition flaps only
-python3 ./scripts/camera_radar_device_stress.py \
-  --metrics-url http://<device-ip>/api/debug/metrics \
-  --mode flap \
-  --flap-cycles 3 \
-  --flap-interval-seconds 5
-```
-
-What it does:
-
-- resets `/api/debug/metrics`
-- starts a V1 scenario (`/api/debug/v1-scenario/start`)
-- drives the debug camera override endpoint (`/api/debug/camera-alert/render` and `/api/debug/camera-alert/clear`)
-- polls `/api/debug/metrics?soak=1`
-- emits:
-  - `summary.md`
-  - `details.json`
-  - `<phase>_samples.jsonl`
-
-Mode semantics:
-
-- `overlap`: holds the debug camera override for the full scenario window and answers the steady-state question
-- `flap`: alternates render/clear actions while the scenario is active and answers the transition/owner-switch question
-- `both`: runs `overlap` first, then `flap`, and reports them separately
-
-Current pass/fail behavior:
-
-- FAIL if `parseFailures`, `queueDrops`, `oversizeDrops`, or `bleMutexTimeout` increase during a phase
-- FAIL if any sampled `dispPipeMaxUs` window exceeds `80000us` while camera activity is present in the same sample window
-- PASS if over-limit `dispPipeMaxUs` samples are observed only with `cameraActivity=neither`
-
-Camera fields surfaced in `/api/debug/metrics` and perf CSV schema `11`:
-
-- `cameraDisplayActive`
-- `cameraDebugOverrideActive`
-- `cameraDisplayFrames`
-- `cameraDebugDisplayFrames`
-- `cameraDisplayMaxUs`
-- `cameraDebugDisplayMaxUs`
-- `cameraProcessMaxUs`
-
-Interpretation:
-
-- `camera-correlated`: over-limit `dispPipeMaxUs` sample occurred while real camera display activity, debug override activity, or both were active in the same sampled window
-- `non-camera-correlated`: over-limit `dispPipeMaxUs` sample occurred with `cameraActivity=neither`; this is surfaced in the summary/details but does not fail the focused runner
-- `overlap` FAIL with `flap` PASS: sustained camera display ownership is the stronger suspect
-- `flap` FAIL with `overlap` PASS: owner transitions are the stronger suspect
-
-Important limitation:
-
-- this runner uses the debug camera override path, not the full GPS/road-map encounter path
-- it is the bench reproduction harness for display/camera overlap, not a substitute for real driving logs
-
-## Real Firmware Soak (`run_real_fw_soak.sh`)
-
-Use directly when you need focused soak tests outside `device-test.sh`.
-
-```bash
-./scripts/run_real_fw_soak.sh \
-  --duration-seconds 900 \
-  --metrics-url http://<device-ip>/api/debug/metrics \
-  --require-metrics
-```
-
-Examples:
-
-```bash
-# Display stress
-./scripts/run_real_fw_soak.sh --skip-flash \
-  --duration-seconds 900 \
-  --metrics-url http://<device-ip>/api/debug/metrics \
-  --drive-display-preview --display-drive-interval-seconds 6
-
-# Transition flap qualification
-./scripts/run_real_fw_soak.sh --skip-flash \
-  --duration-seconds 900 \
-  --metrics-url http://<device-ip>/api/debug/metrics \
-  --drive-transition-flaps --transition-flap-cycles 3
-```
-
-Important: the flag is `--drive-transition-flaps` (plural).
-
-## Drive Log Analysis
-
-Drive perf CSVs are produced on SD and can be scored with:
-
-```bash
-python tools/score_perf_csv.py /Volumes/SDCARD/perf/perf_boot_<id>.csv --profile drive_wifi_ap
-python tools/score_perf_csv.py /Volumes/SDCARD/perf/perf_boot_<id>.csv --profile drive_wifi_off
-```
-
-Teardown caveat: end-of-run WiFi activity (for log pulling) can depress DMA minima. The cycle flow addresses this with tail exclusion for DMA floor gating.
-
-### DMA Fragmentation Triage (Heap DMA Floors)
-
-As of March 9, 2026, soak summaries include non-gating DMA fragmentation
-diagnostics to make `heapDmaLargestMin` floor failures actionable.
-
-These lines are emitted in `run_real_fw_soak.sh` summaries:
-
-- `DMA largest current below-floor samples/total: <n>/<total> (pct <x>%, longest streak <s>)`
-- `DMA largest/free pct min/p05/p50: <min> / <p05> / <p50>`
-- `DMA fragmentation pct p50/p95/max: <p50> / <p95> / <max>`
-- DMA floor gate failures append an inline triage block:
-  - `[DMA triage: currentBelowFloor=<n>/<total> belowFloorPct=<x>% longestStreak=<s> largestToFreePct(p05/p50)=... fragmentationPct(p50/p95)=...]`
-
-`device-test.sh` also surfaces these in per-item metrics:
-
-- `dmaBelowFloor=<n>/<total>`
-- `dmaLargestToFreeP50=<value>`
-- `dmaFragP95=<value>`
-
-Policy:
-
-- pass/fail thresholds are unchanged (the existing DMA floors still gate)
-- diagnostics above are classification aids only
-
-Interpretation guide:
-
-- one-off dip: low `dmaBelowFloor` percent and `longest streak=1` usually indicates transient pressure
-- sustained fragmentation: repeated below-floor samples with multi-sample streaks indicate persistent contiguous-block loss
-- fragmentation shape: lower `largest/free p50` plus higher `frag p95` indicates the allocator retains free DMA bytes but loses large contiguous blocks
-
-Triage workflow (when DMA floor fails repeatedly):
-
-1. Freeze code and bench setup (no changes between runs).
-2. Run repeated L2 stress (example):
-   - `./scripts/device-test.sh --duration-seconds 240 --rad-duration-scale-pct 300 --transition-drive-interval-seconds 10`
-3. Collect run summaries and compare:
-   - `dmaBelowFloor`
-   - `longest streak`
-   - `dmaLargestToFreeP50`
-   - `dmaFragP95`
-4. Decide outcome:
-   - mostly transient one-off dips: treat as noise/harness sensitivity and continue investigation
-   - sustained streaked dips: treat as real fragmentation limit/bug and prioritize memory-layout/runtime mitigation
-
-## Artifacts and Reports
-
-Primary output root:
-
-```text
-.artifacts/test_reports/
-```
-
-Cycle run outputs:
+Typical artifact location:
 
 ```text
 .artifacts/test_reports/device_test_<timestamp>/
-  results.tsv
-  summary.md
-  rad_short_*.log
-  camera_radar_overlap.log
-  camera_radar_overlap_artifacts/
-  soak_display_artifacts/
-  soak_core_artifacts/
-  soak_transition_artifacts/
 ```
 
-Soak-only outputs:
+Important outputs:
 
-```text
-.artifacts/test_reports/real_fw_soak_<timestamp>/
-```
+- `summary.md`
+- `results.tsv`
+- per-item logs and soak artifact directories
 
-Focused camera/radar outputs:
+## Manual And Exploratory Only
 
-```text
-.artifacts/test_reports/camera_radar_stress_<timestamp>/
-  summary.md
-  details.json
-  overlap_samples.jsonl
-  flap_samples.jsonl
-```
+These tools still exist, but they are not qualification today:
 
-Device-suite wrapper outputs:
+- `python3 ./scripts/camera_device_smoke.py`
+  - host/browser dependent
+  - mutates camera settings during the run
+- `python3 ./scripts/camera_radar_device_stress.py`
+  - synthetic debug camera render path
+  - not real camera-runtime overlap coverage
+- `./scripts/run_real_fw_soak.sh --latency-gate-mode hybrid`
+- `./scripts/run_real_fw_soak.sh --latency-gate-mode robust`
 
-```text
-.artifacts/test_reports/device_<timestamp>/
-.artifacts/test_reports/device_soak_<timestamp>/
-```
+Use them only for manual debugging or exploratory work. Do not treat them as
+release evidence.
 
-Frontend coverage outputs:
+## What Is Not Covered
 
-```text
-interface/coverage/
-  index.html
-  lcov.info
-```
+- Real bench camera-overlap coverage through the actual camera runtime path
+- A trustworthy top-end camera+radar combined qualification gate
+- Any claim that headless browser camera smoke proves runtime camera behavior
 
-## Release Gate
+If one of those areas matters for a release, new real coverage must be added
+before claiming it is tested.
 
-```bash
-./scripts/iron-gate.sh --skip-flash
-```
+## Known Gaps
 
-Current iron gate points:
+- Real bench camera-overlap coverage does not currently exist.
+- Synthetic debug camera tools are not qualification.
+- Exploratory stress runs are manual and non-blocking unless explicitly called
+  out in the summary for a specific campaign.
 
-1. firmware build
-2. SD lock contract
-3. parser native smoke
-4. device suite (`scripts/device-test.sh`)
+## Current Rules
 
-Notes:
-
-- `iron-gate.sh` now defaults the embedded device suite to the current qualification profile:
-  - `--duration-seconds 240`
-  - `--rad-duration-scale-pct 200`
-- Preferred release usage after `./build.sh --clean --upload --upload-fs` is `--skip-flash`, because that measures runtime stability on the image already loaded on the device.
-- Running `iron-gate.sh` without `--skip-flash` is still valid for standalone bootstrap verification, but it intentionally includes a fresh upload inside the device suite.
-
-## Change Control (Keep This Consistent)
-
-When any of these change, update this document in the same commit:
-
-- script names or command order in the cycle process
-- default thresholds/gates in `device-test.sh` or `run_real_fw_soak.sh`
-- ladder policy or classification behavior in this Bench Stress Ladder section
-- artifact paths or report filenames
-- pass/fail interpretation rules
-
-### Required update checklist
-
-1. Update this file (`docs/TESTING.md`).
-2. If behavior contracts changed, update snapshots in `test/contracts/`.
-3. Include at least one fresh hardware cycle artifact path in PR/commit notes.
-4. Keep examples executable with current script flags.
-
-## Related Docs
-
-- [PERF_SLOS.md](PERF_SLOS.md)
-- [DEVELOPER.md](DEVELOPER.md)
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- [test/README.md](../test/README.md)
-- [test/device/README.md](../test/device/README.md)
+- Reduced but truthful coverage is better than broad fake coverage.
+- If a gate cannot be made honest quickly, remove it from qualification instead
+  of softening it.
+- No default qualification step may depend on host Chrome or mutate persistent
+  camera settings.
