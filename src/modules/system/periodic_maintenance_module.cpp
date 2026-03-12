@@ -2,10 +2,7 @@
 
 void PeriodicMaintenanceModule::begin(const Providers& hooks) {
     providers = hooks;
-    reset();
 }
-
-void PeriodicMaintenanceModule::reset() {}
 
 void PeriodicMaintenanceModule::process(uint32_t nowMs) {
     if (providers.runPerfReport) {

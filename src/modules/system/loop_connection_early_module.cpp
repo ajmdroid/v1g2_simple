@@ -2,10 +2,7 @@
 
 void LoopConnectionEarlyModule::begin(const Providers& hooks) {
     providers = hooks;
-    reset();
 }
-
-void LoopConnectionEarlyModule::reset() {}
 
 LoopConnectionEarlyResult LoopConnectionEarlyModule::process(const LoopConnectionEarlyContext& ctx) {
     ConnectionRuntimeSnapshot snapshot;

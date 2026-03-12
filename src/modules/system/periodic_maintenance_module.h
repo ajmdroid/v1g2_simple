@@ -31,7 +31,6 @@ public:
     };
 
     void begin(const Providers& hooks);
-    void reset();
     void process(uint32_t nowMs);
 
 private:

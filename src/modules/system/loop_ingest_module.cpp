@@ -2,10 +2,7 @@
 
 void LoopIngestModule::begin(const Providers& hooks) {
     providers = hooks;
-    reset();
 }
-
-void LoopIngestModule::reset() {}
 
 LoopIngestResult LoopIngestModule::process(const LoopIngestContext& ctx) {
     LoopIngestResult result;

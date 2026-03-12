@@ -29,7 +29,6 @@ public:
     };
 
     void begin(const Providers& hooks);
-    void reset();
     LoopRuntimeSnapshotValues process(const LoopRuntimeSnapshotContext& ctx);
 
 private:

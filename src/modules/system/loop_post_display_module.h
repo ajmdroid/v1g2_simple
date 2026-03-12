@@ -49,7 +49,6 @@ public:
     };
 
     void begin(const Providers& hooks);
-    void reset();
     LoopPostDisplayResult process(const LoopPostDisplayContext& ctx);
 
 private:

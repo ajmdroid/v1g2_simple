@@ -57,7 +57,6 @@ public:
     };
 
     void begin(const Providers& hooks);
-    void reset();
     LoopPowerTouchResult process(const LoopPowerTouchContext& ctx);
 
 private:

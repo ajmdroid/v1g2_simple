@@ -2,10 +2,7 @@
 
 void LoopPreIngestModule::begin(const Providers& hooks) {
     providers = hooks;
-    reset();
 }
-
-void LoopPreIngestModule::reset() {}
 
 LoopPreIngestResult LoopPreIngestModule::process(const LoopPreIngestContext& ctx) {
     LoopPreIngestResult result;

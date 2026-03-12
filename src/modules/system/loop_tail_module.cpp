@@ -2,10 +2,7 @@
 
 void LoopTailModule::begin(const Providers& hooks) {
     providers = hooks;
-    reset();
 }
-
-void LoopTailModule::reset() {}
 
 uint32_t LoopTailModule::process(bool bleBackpressure, uint32_t loopStartUs) {
     if (bleBackpressure) {

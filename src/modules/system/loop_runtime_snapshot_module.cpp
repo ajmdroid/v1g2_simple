@@ -2,10 +2,7 @@
 
 void LoopRuntimeSnapshotModule::begin(const Providers& hooks) {
     providers = hooks;
-    reset();
 }
-
-void LoopRuntimeSnapshotModule::reset() {}
 
 LoopRuntimeSnapshotValues LoopRuntimeSnapshotModule::process(
     const LoopRuntimeSnapshotContext& ctx) {

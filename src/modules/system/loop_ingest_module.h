@@ -43,7 +43,6 @@ public:
     };
 
     void begin(const Providers& hooks);
-    void reset();
     LoopIngestResult process(const LoopIngestContext& ctx);
 
 private:

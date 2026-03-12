@@ -2,10 +2,7 @@
 
 void WifiRuntimeModule::begin(const Providers& hooks) {
     providers = hooks;
-    reset();
 }
-
-void WifiRuntimeModule::reset() {}
 
 WifiRuntimeResult WifiRuntimeModule::process(const WifiRuntimeContext& ctx) {
     WifiRuntimeResult result;

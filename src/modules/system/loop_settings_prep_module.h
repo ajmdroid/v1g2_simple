@@ -27,7 +27,6 @@ public:
     };
 
     void begin(const Providers& hooks);
-    void reset();
     LoopSettingsPrepValues process(const LoopSettingsPrepContext& ctx);
 
 private:

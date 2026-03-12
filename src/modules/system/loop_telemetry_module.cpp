@@ -2,10 +2,7 @@
 
 void LoopTelemetryModule::begin(const Providers& hooks) {
     providers = hooks;
-    reset();
 }
-
-void LoopTelemetryModule::reset() {}
 
 void LoopTelemetryModule::process(uint32_t loopStartUs) {
     if (providers.recordLoopJitterUs && providers.microsNow) {

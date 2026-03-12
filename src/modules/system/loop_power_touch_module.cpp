@@ -2,10 +2,7 @@
 
 void LoopPowerTouchModule::begin(const Providers& hooks) {
     providers = hooks;
-    reset();
 }
-
-void LoopPowerTouchModule::reset() {}
 
 LoopPowerTouchResult LoopPowerTouchModule::process(const LoopPowerTouchContext& ctx) {
     LoopPowerTouchResult result;

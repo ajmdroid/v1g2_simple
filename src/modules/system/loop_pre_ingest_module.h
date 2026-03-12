@@ -34,7 +34,6 @@ public:
     };
 
     void begin(const Providers& hooks);
-    void reset();
     LoopPreIngestResult process(const LoopPreIngestContext& ctx);
 
 private:

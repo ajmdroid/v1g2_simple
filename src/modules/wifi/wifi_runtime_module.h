@@ -65,7 +65,6 @@ public:
     };
 
     void begin(const Providers& hooks);
-    void reset();
     WifiRuntimeResult process(const WifiRuntimeContext& ctx);
 
 private:

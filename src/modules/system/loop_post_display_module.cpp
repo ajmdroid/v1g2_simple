@@ -2,10 +2,7 @@
 
 void LoopPostDisplayModule::begin(const Providers& hooks) {
     providers = hooks;
-    reset();
 }
-
-void LoopPostDisplayModule::reset() {}
 
 LoopPostDisplayResult LoopPostDisplayModule::process(const LoopPostDisplayContext& ctx) {
     LoopPostDisplayResult result;

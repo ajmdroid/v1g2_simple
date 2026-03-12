@@ -2,10 +2,7 @@
 
 void LoopSettingsPrepModule::begin(const Providers& hooks) {
     providers = hooks;
-    reset();
 }
-
-void LoopSettingsPrepModule::reset() {}
 
 LoopSettingsPrepValues LoopSettingsPrepModule::process(const LoopSettingsPrepContext& ctx) {
     if (ctx.runTapGesture) {

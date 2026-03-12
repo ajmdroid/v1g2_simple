@@ -22,7 +22,6 @@ public:
     };
 
     void begin(const Providers& hooks);
-    void reset();
     uint32_t process(bool bleBackpressure, uint32_t loopStartUs);
 
 private:

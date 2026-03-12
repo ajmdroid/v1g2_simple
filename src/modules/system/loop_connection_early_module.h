@@ -64,7 +64,6 @@ public:
     };
 
     void begin(const Providers& hooks);
-    void reset();
     LoopConnectionEarlyResult process(const LoopConnectionEarlyContext& ctx);
 
 private:
