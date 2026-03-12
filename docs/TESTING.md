@@ -96,9 +96,6 @@ These tools still exist, but they are not qualification today:
 - `python3 ./scripts/camera_device_smoke.py`
   - host/browser dependent
   - mutates camera settings during the run
-- `python3 ./scripts/camera_radar_device_stress.py`
-  - synthetic debug camera render path
-  - not real camera-runtime overlap coverage
 - `./scripts/run_real_fw_soak.sh --latency-gate-mode hybrid`
 - `./scripts/run_real_fw_soak.sh --latency-gate-mode robust`
 
@@ -117,7 +114,6 @@ before claiming it is tested.
 ## Known Gaps
 
 - Real bench camera-overlap coverage does not currently exist.
-- Synthetic debug camera tools are not qualification.
 - Exploratory stress runs are manual and non-blocking unless explicitly called
   out in the summary for a specific campaign.
 
