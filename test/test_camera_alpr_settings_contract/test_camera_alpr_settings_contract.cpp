@@ -98,7 +98,7 @@ void tearDown() {
 }
 
 void test_schema_versions_match_alpr_contract() {
-    TEST_ASSERT_EQUAL_INT(8, SETTINGS_VERSION);
+    TEST_ASSERT_EQUAL_INT(9, SETTINGS_VERSION);
     TEST_ASSERT_EQUAL_INT(11, SD_BACKUP_VERSION);
 }
 

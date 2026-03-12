@@ -282,6 +282,14 @@ static void handleRestore(WebServer& server) {
         s.apTimeoutMinutes = clampApTimeoutValue(doc["apTimeoutMinutes"].as<int>());
     }
     
+    // OBD settings
+    if (doc["obdEnabled"].is<bool>()) s.obdEnabled = doc["obdEnabled"];
+    if (doc["obdSavedAddress"].is<const char*>()) s.obdSavedAddress = doc["obdSavedAddress"].as<String>();
+    if (doc["obdMinRssi"].is<int>()) {
+        int rssi = doc["obdMinRssi"].as<int>();
+        s.obdMinRssi = static_cast<int8_t>(std::max(-90, std::min(rssi, -40)));
+    }
+
     // Voice settings
     if (doc["voiceAlertMode"].is<int>()) {
         int mode = doc["voiceAlertMode"].as<int>();

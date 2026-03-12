@@ -43,6 +43,10 @@ void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
     doc["enableSignalTraceLogging"] = settings.enableSignalTraceLogging;
 
+    // OBD settings
+    doc["obdEnabled"] = settings.obdEnabled;
+    doc["obdMinRssi"] = settings.obdMinRssi;
+
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
@@ -186,6 +190,23 @@ void handleApiSettingsSave(WebServer& server,
         mutableSettings.enableSignalTraceLogging =
             (server.arg("enableSignalTraceLogging") == "true" ||
              server.arg("enableSignalTraceLogging") == "1");
+    }
+
+    // OBD settings
+    if (server.hasArg("obdEnabled")) {
+        mutableSettings.obdEnabled =
+            (server.arg("obdEnabled") == "true" || server.arg("obdEnabled") == "1");
+        if (runtime.setObdRuntimeEnabled) {
+            runtime.setObdRuntimeEnabled(mutableSettings.obdEnabled);
+        }
+        if (runtime.setSpeedSourceObdEnabled) {
+            runtime.setSpeedSourceObdEnabled(mutableSettings.obdEnabled);
+        }
+    }
+    if (server.hasArg("obdMinRssi")) {
+        int rssi = server.arg("obdMinRssi").toInt();
+        rssi = std::max(-90, std::min(rssi, -40));
+        mutableSettings.obdMinRssi = static_cast<int8_t>(rssi);
     }
 
     // Display style setting

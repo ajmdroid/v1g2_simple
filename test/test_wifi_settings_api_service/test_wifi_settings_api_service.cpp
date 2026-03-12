@@ -92,6 +92,8 @@ static WifiSettingsApiService::Runtime makeRuntime(FakeRuntime& rt) {
         },
         [](bool) {},  // setLockoutKLearningEnabled
         [](bool) {},  // setLockoutXLearningEnabled
+        [](bool) {},  // setObdRuntimeEnabled
+        [](bool) {},  // setSpeedSourceObdEnabled
         [&rt]() {
             rt.saveCalls++;
         },

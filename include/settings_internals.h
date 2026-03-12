@@ -32,7 +32,7 @@ extern const char* const SETTINGS_BACKUP_CANDIDATES[];
 extern const size_t      SETTINGS_BACKUP_CANDIDATES_COUNT;
 
 extern const char  XOR_KEY[];
-inline constexpr int SETTINGS_VERSION = 8;
+inline constexpr int SETTINGS_VERSION = 9;
 extern const char* OBFUSCATION_HEX_PREFIX;
 
 // ── Static helpers promoted to internal-linkage-free functions ──────────────

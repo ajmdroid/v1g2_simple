@@ -22,6 +22,8 @@ struct Runtime {
     std::function<void(bool)> setLockoutKaLearningEnabled;
     std::function<void(bool)> setLockoutKLearningEnabled;
     std::function<void(bool)> setLockoutXLearningEnabled;
+    std::function<void(bool)> setObdRuntimeEnabled;
+    std::function<void(bool)> setSpeedSourceObdEnabled;
     std::function<void()> save;
 };
 

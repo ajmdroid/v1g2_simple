@@ -332,6 +332,12 @@ void SettingsManager::load() {
     settings.autoPowerOffMinutes = clampU8(preferences.getUChar("autoPwrOff", 0), 0, 60);
     settings.apTimeoutMinutes = clampApTimeoutValue(preferences.getUChar("apTimeout", 0));
     
+    // OBD settings
+    settings.obdEnabled = preferences.getBool("obdEn", false);
+    settings.obdSavedAddress = preferences.getString("obdAddr", "");
+    settings.obdMinRssi = static_cast<int8_t>(
+        preferences.getChar("obdMinRssi", -80));
+
     preferences.end();
     
     Serial.printf("[Settings] OK wifi=%s proxy=%s bright=%d autoPush=%s\n",

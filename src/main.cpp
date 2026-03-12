@@ -85,6 +85,7 @@
 #include "modules/lockout/lockout_orchestration_module.h"
 #include "modules/debug/debug_api_service.h"
 #include "modules/speed/speed_source_selector.h"
+#include "modules/obd/obd_runtime_module.h"
 #include "modules/wifi/wifi_boot_policy.h"
 #include "modules/wifi/wifi_auto_start_module.h"
 #include "modules/wifi/wifi_priority_policy_module.h"
@@ -745,7 +746,12 @@ static void configureSystemLoopModules() {
 
 static void configureRuntimeSensorModules() {
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
-    speedSourceSelector.begin(settingsManager.get().gpsEnabled);
+    speedSourceSelector.begin(settingsManager.get().gpsEnabled,
+                              settingsManager.get().obdEnabled);
+    obdRuntimeModule.begin(
+        settingsManager.get().obdEnabled,
+        settingsManager.get().obdSavedAddress.c_str(),
+        settingsManager.get().obdMinRssi);
 }
 
 static void configureRuntimeCoreModules() {

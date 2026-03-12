@@ -446,6 +446,11 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
     written += prefs.putUChar("apTimeout", settings.apTimeoutMinutes);
     
+    // OBD settings
+    written += prefs.putBool("obdEn", settings.obdEnabled);
+    written += prefs.putString("obdAddr", settings.obdSavedAddress);
+    written += prefs.putChar("obdMinRssi", settings.obdMinRssi);
+
     // NVS validity marker - used to detect if NVS was wiped.
     // Written LAST so its presence proves the entire write completed.
     written += prefs.putInt("nvsValid", SETTINGS_VERSION);

@@ -345,6 +345,11 @@ struct V1Settings {
     // Auto power-off on V1 disconnect
     uint8_t autoPowerOffMinutes;  // Minutes to wait after V1 disconnect before power off (0=disabled)
     uint8_t apTimeoutMinutes;       // Minutes before AP auto-stops (0=always on, 5-60)
+
+    // OBD-II speed source settings
+    bool obdEnabled;             // Enable OBD module
+    String obdSavedAddress;      // Saved OBDLink CX BLE address for auto-reconnect
+    int8_t obdMinRssi;           // Minimum RSSI for scan acceptance (dBm)
     
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wreorder"
@@ -465,7 +470,10 @@ struct V1Settings {
         slot2_comfort(),
         lastV1Address(""),
         autoPowerOffMinutes(0),  // Default: disabled
-        apTimeoutMinutes(0) {}     // Default: always on (0=unlimited)
+        apTimeoutMinutes(0),     // Default: always on (0=unlimited)
+        obdEnabled(false),       // OBD disabled by default
+        obdSavedAddress(""),     // No saved device
+        obdMinRssi(-80) {}       // Default -80 dBm minimum RSSI
 #pragma GCC diagnostic pop
 };
 

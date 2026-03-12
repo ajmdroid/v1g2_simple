@@ -24,6 +24,7 @@
 #include "modules/wifi/wifi_v1_profile_api_service.h"
 #include "modules/wifi/wifi_v1_devices_api_service.h"
 #include "modules/speed/speed_source_selector.h"
+#include "modules/obd/obd_runtime_module.h"
 #include "time_service.h"
 #include "../include/config.h"
 
@@ -314,6 +315,12 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
         },
         [this](bool enabled) {
             lockoutSetXLearningEnabled(enabled);
+        },
+        [](bool enabled) {
+            obdRuntimeModule.setEnabled(enabled);
+        },
+        [](bool enabled) {
+            speedSourceSelector.setObdEnabled(enabled);
         },
         [this]() {
             settingsManager.save();

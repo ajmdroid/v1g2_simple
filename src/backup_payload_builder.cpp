@@ -81,6 +81,11 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
 
+    // OBD settings
+    doc["obdEnabled"] = settings.obdEnabled;
+    doc["obdSavedAddress"] = settings.obdSavedAddress;
+    doc["obdMinRssi"] = settings.obdMinRssi;
+
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
