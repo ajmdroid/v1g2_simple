@@ -1,27 +1,25 @@
 #!/usr/bin/env bash
 #
-# device-test.sh - Exploratory hardware harness with per-item PASS/FAIL output
-# and metrics evidence for manual debugging.
+# DEPRECATED: device-test.sh has been superseded by ./scripts/hardware/test.sh
 #
-# Exploratory workflow:
-#   1) Sanity check debug metrics endpoint
-#   2) Run a short radar scenario (default: RAD-03) and verify parser/display deltas
-#   3) Run real firmware soak (display stress)
-#   4) Run real firmware soak (core only)
-#   5) Optionally run manual transition stress
+# The unified hardware test entry point includes RAD scenario validation,
+# uptime continuity checking, device tests, and soak steps with structured
+# artifact storage and run-to-run comparison.
 #
-# This script is not a release/qualification gate.
+# Use:
+#   ./scripts/hardware/test.sh --all --board-id release
 #
-# Usage examples:
-#   ./scripts/device-test.sh
-#   ./scripts/device-test.sh --metrics-url http://192.168.160.212/api/debug/metrics
-#   ./scripts/device-test.sh --duration-seconds 90 --rad-scenario RAD-02
-#   ./scripts/device-test.sh --with-flash --port /dev/cu.usbmodem21201
-#
-set -uo pipefail
+echo "================================================================"
+echo "DEPRECATED: device-test.sh is retired."
+echo "Redirecting to: ./scripts/hardware/test.sh --all"
+echo "================================================================"
+echo ""
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT_DIR"
+exec "$ROOT_DIR/scripts/hardware/test.sh" --all
+
+# --- Original exploratory harness code below (unreachable) ---
+
 
 METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.160.212/api/debug/metrics}"
 HTTP_TIMEOUT_SECONDS="${REAL_FW_HTTP_TIMEOUT_SECONDS:-5}"

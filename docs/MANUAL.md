@@ -1990,27 +1990,34 @@ Runs the nightly gate plus:
 ### Hardware Qualification
 
 ```bash
-./scripts/qualify_hardware.sh
-./scripts/qualify_hardware.sh --board-id release
+./scripts/hardware/test.sh --all --board-id release --strict
+./scripts/hardware/test.sh --all --board-id release
 ./scripts/qualify_hardware_matrix.sh
 ```
 
 Single-board or multi-board hardware qualification.
 
-`qualify_hardware.sh` runs this fixed sequence:
+`./scripts/hardware/test.sh` is the unified hardware test entry point. With `--all` it runs this fixed sequence:
 
-1. Build the real firmware image and LittleFS image.
-2. Flash the real firmware image and filesystem image to the connected board.
-3. Verify the device serial port is available.
-4. Verify the metrics endpoint is reachable.
-5. Run `./scripts/run_device_tests.sh --full`.
-6. Run a `300s` real-firmware telemetry soak with `--profile drive_wifi_ap`.
-7. Run a `300s` display-preview telemetry soak with forced preview driving.
-8. Fail qualification on any non-zero result, including `INCONCLUSIVE`.
+1. RAD scenario preflight — verifies BLE parser pipeline is functional.
+2. Device tests — `run_device_tests.sh --full` (heap, PSRAM, FreeRTOS, etc.).
+3. Core soak — 300s real-firmware telemetry soak with `--profile drive_wifi_ap`
+   (builds + flashes firmware and filesystem via `--with-fs`).
+4. Display soak — 300s display-preview telemetry soak.
+5. Assembly — scores all steps, compares against the previous run, updates
+   run history.
+
+Uptime continuity is checked between steps to detect unexpected reboots.
+
+`--strict` treats `PASS_WITH_WARNINGS` as a failing exit. Per-board artifact
+isolation stores runs under `<artifact-root>/<board-id>/runs/<timestamp>_<sha>/`.
 
 **Prerequisites:** ESP32-S3 connected over USB, setup AP enabled so `http://192.168.35.5/api/debug/metrics` is reachable.
 
-Artifacts: `.artifacts/test_reports/qualification_<timestamp>/`
+Artifacts: `.artifacts/hardware/test/<board-id>/runs/<timestamp>_<sha>/`
+
+> **Note:** `qualify_hardware.sh` and `device-test.sh` are deprecated and
+> redirect to `./scripts/hardware/test.sh`.
 
 ### Authoritative Scoring
 
@@ -2030,9 +2037,11 @@ not release authority.
 
 These tools still exist, but they are exploratory/manual only:
 
-- `./scripts/device-test.sh`
 - `./scripts/run_real_fw_soak.sh`
 - `tools/scorecard.py` — stability trend analysis (nightly only, non-blocking)
+
+> `device-test.sh` and `qualify_hardware.sh` are deprecated and redirect to
+> `./scripts/hardware/test.sh`.
 
 ### Known Validation Gaps
 

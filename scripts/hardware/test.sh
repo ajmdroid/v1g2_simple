@@ -13,6 +13,13 @@ ASSEMBLE_RESULT_SCRIPT="${HARDWARE_TEST_ASSEMBLE_RESULT_SCRIPT:-$ROOT_DIR/tools/
 ARTIFACT_ROOT="${HARDWARE_TEST_ARTIFACT_ROOT:-$ROOT_DIR/.artifacts/hardware/test}"
 SOAK_DURATION_SECONDS="${HARDWARE_TEST_SOAK_DURATION_SECONDS:-300}"
 STRICT_WARNINGS="${HARDWARE_TEST_STRICT_WARNINGS:-0}"
+HTTP_TIMEOUT_SECONDS="${HARDWARE_TEST_HTTP_TIMEOUT_SECONDS:-5}"
+RAD_SCENARIO_ID="${HARDWARE_TEST_RAD_SCENARIO_ID:-RAD-03}"
+RAD_DURATION_SCALE_PCT="${HARDWARE_TEST_RAD_DURATION_SCALE_PCT:-100}"
+RAD_MIN_RX_DELTA="${HARDWARE_TEST_RAD_MIN_RX_DELTA:-20}"
+RAD_MIN_PARSE_SUCCESS_DELTA="${HARDWARE_TEST_RAD_MIN_PARSE_SUCCESS_DELTA:-20}"
+RAD_MIN_DISPLAY_UPDATES_DELTA="${HARDWARE_TEST_RAD_MIN_DISPLAY_UPDATES_DELTA:-10}"
+RAD_TIMEOUT_SECONDS="${HARDWARE_TEST_RAD_TIMEOUT_SECONDS:-25}"
 
 SELECTED_EXPLICITLY=0
 RUN_DEVICE=0
@@ -282,6 +289,7 @@ RESULT_JSON="$RUN_DIR/result.json"
 COMPARISON_TXT="$RUN_DIR/comparison.txt"
 RUN_HISTORY_TSV="$BOARD_ARTIFACT_ROOT/run_history.tsv"
 METRIC_HISTORY_TSV="$BOARD_ARTIFACT_ROOT/metric_history.tsv"
+UPTIME_LOG="$RUN_DIR/uptime_continuity.log"
 
 DEVICE_DIR="$RUN_DIR/device_tests"
 CORE_DIR="$RUN_DIR/core_soak"
@@ -344,9 +352,202 @@ write_comparison_tsv(payload, tsv_path)
 PY
 }
 
+# ── Uptime continuity tracking ───────────────────────────────────────
+suite_last_uptime_ms=""
+suite_reboot_count=0
+UPTIME_LOG=""
+
+poll_uptime_ms() {
+  local endpoint="$METRICS_URL"
+  if [[ "$endpoint" != *"soak="* ]]; then
+    if [[ "$endpoint" == *"?"* ]]; then
+      endpoint="${endpoint}&soak=1"
+    else
+      endpoint="${endpoint}?soak=1"
+    fi
+  fi
+  local payload
+  payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$endpoint" 2>/dev/null || true)"
+  if [[ -z "$payload" ]]; then
+    echo ""
+    return
+  fi
+  printf "%s" "$payload" | tr -d '\r\n' | sed -n 's/.*"uptimeMs":[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1
+}
+
+check_uptime_continuity() {
+  local context="$1"
+  if [[ "$NEEDS_LIVE_BOARD" -eq 0 || -z "$METRICS_URL" ]]; then
+    return
+  fi
+  local current_uptime
+  current_uptime="$(poll_uptime_ms)"
+  if [[ ! "$current_uptime" =~ ^[0-9]+$ ]]; then
+    return
+  fi
+  if [[ -n "$suite_last_uptime_ms" && "$current_uptime" -lt "$suite_last_uptime_ms" ]]; then
+    suite_reboot_count=$((suite_reboot_count + 1))
+    local msg="[reboot] uptimeMs dropped from ${suite_last_uptime_ms} to ${current_uptime} (${context})"
+    echo "$msg" | tee -a "$RUN_LOG"
+    if [[ -n "$UPTIME_LOG" ]]; then
+      echo "$msg" >> "$UPTIME_LOG"
+    fi
+  fi
+  suite_last_uptime_ms="$current_uptime"
+}
+
+# ── RAD scenario preflight ───────────────────────────────────────────
+run_rad_scenario() {
+  if [[ "$NEEDS_LIVE_BOARD" -eq 0 || -z "$METRICS_URL" ]]; then
+    return 0
+  fi
+  # Verify endpoint reachable before committing to the scenario
+  if ! curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$METRICS_URL" >/dev/null 2>&1; then
+    echo "==> rad_scenario [skip] metrics endpoint unreachable" | tee -a "$RUN_LOG"
+    return 0
+  fi
+  local debug_base="${METRICS_URL%%\?*}"
+  debug_base="${debug_base%/api/debug/metrics}"
+  local rad_log="$RUN_DIR/rad_scenario.log"
+  local rc=0
+
+  echo "==> rad_scenario" | tee -a "$RUN_LOG"
+  set +e
+  python3 - "$debug_base" "$RAD_SCENARIO_ID" "$RAD_MIN_RX_DELTA" \
+    "$RAD_MIN_PARSE_SUCCESS_DELTA" "$RAD_MIN_DISPLAY_UPDATES_DELTA" \
+    "$HTTP_TIMEOUT_SECONDS" "$RAD_DURATION_SCALE_PCT" "$RAD_TIMEOUT_SECONDS" \
+    >"$rad_log" 2>&1 <<'RADPY'
+import json
+import sys
+import time
+import urllib.request
+
+base = sys.argv[1].rstrip("/")
+scenario_id = sys.argv[2]
+min_rx = int(sys.argv[3])
+min_parse = int(sys.argv[4])
+min_display = int(sys.argv[5])
+timeout = int(sys.argv[6])
+scale_pct = int(sys.argv[7])
+scenario_timeout_s = int(sys.argv[8])
+
+def get_json(path):
+    req = urllib.request.Request(base + path, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.load(resp)
+
+def post_json(path, payload=None):
+    body = b"" if payload is None else json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        base + path,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.load(resp)
+
+def subset(metrics):
+    keys = ["rxPackets", "parseSuccesses", "parseFailures", "displayUpdates"]
+    return {k: int(metrics.get(k, 0) or 0) for k in keys}
+
+ok = True
+reasons = []
+keys = ["rxPackets", "parseSuccesses", "parseFailures", "displayUpdates"]
+reset_resp = {"success": False}
+start_resp = {"success": False}
+status = {}
+pre = {k: 0 for k in keys}
+post = {k: 0 for k in keys}
+delta = {k: 0 for k in keys}
+cleanup_stop_success = False
+
+try:
+    reset_resp = post_json("/api/debug/metrics/reset")
+    pre = subset(get_json("/api/debug/metrics?soak=1"))
+    start_resp = post_json("/api/debug/v1-scenario/start", {
+        "id": scenario_id,
+        "loop": False,
+        "streamRepeatMs": 700,
+        "durationScalePct": scale_pct,
+    })
+
+    t0 = time.time()
+    while True:
+        if time.time() - t0 > scenario_timeout_s:
+            reasons.append(f"scenario timeout (> {scenario_timeout_s}s)")
+            ok = False
+            break
+        try:
+            status = get_json("/api/debug/v1-scenario/status")
+        except Exception:
+            time.sleep(0.25)
+            continue
+        if not status.get("running", False):
+            break
+        time.sleep(0.25)
+
+    post = subset(get_json("/api/debug/metrics?soak=1"))
+    delta = {k: post[k] - pre[k] for k in pre}
+
+    if not reset_resp.get("success"):
+        ok = False
+        reasons.append("metrics reset failed")
+    if not start_resp.get("success"):
+        ok = False
+        reasons.append("scenario start failed")
+    if delta["rxPackets"] < min_rx:
+        ok = False
+        reasons.append(f"rxPackets delta {delta['rxPackets']} < {min_rx}")
+    if delta["parseSuccesses"] < min_parse:
+        ok = False
+        reasons.append(f"parseSuccesses delta {delta['parseSuccesses']} < {min_parse}")
+    if delta["parseFailures"] != 0:
+        ok = False
+        reasons.append(f"parseFailures delta {delta['parseFailures']} != 0")
+    if delta["displayUpdates"] < min_display:
+        ok = False
+        reasons.append(f"displayUpdates delta {delta['displayUpdates']} < {min_display}")
+except Exception as exc:
+    ok = False
+    reasons.append(f"exception: {exc}")
+finally:
+    try:
+        stop_resp = post_json("/api/debug/v1-scenario/stop")
+        cleanup_stop_success = bool(stop_resp.get("success"))
+    except Exception as stop_exc:
+        cleanup_stop_success = False
+        reasons.append(f"scenario stop failed: {stop_exc}")
+
+if not cleanup_stop_success and "scenario stop failed" not in " ".join(reasons):
+    ok = False
+    reasons.append("scenario cleanup stop failed")
+
+print(f"scenario={scenario_id} durationScalePct={scale_pct} timeoutSec={scenario_timeout_s}")
+print(f"delta_rxPackets={delta['rxPackets']} delta_parseSuccesses={delta['parseSuccesses']} delta_parseFailures={delta['parseFailures']} delta_displayUpdates={delta['displayUpdates']}")
+if reasons:
+    print("reasons=" + "; ".join(reasons))
+print(f"result={'PASS' if ok else 'FAIL'}")
+
+sys.exit(0 if ok else 1)
+RADPY
+  rc=$?
+  set -e
+  cat "$rad_log" | tee -a "$RUN_LOG"
+  echo "==> rad_scenario exit=${rc}" | tee -a "$RUN_LOG"
+  echo "" | tee -a "$RUN_LOG"
+  return "$rc"
+}
+
 device_exit=0
 core_exit=0
 display_exit=0
+rad_exit=0
+
+# ── RAD scenario preflight ──────────────────────────────────────
+check_uptime_continuity "before_rad_scenario"
+run_rad_scenario || rad_exit=$?
+check_uptime_continuity "after_rad_scenario"
 
 if [[ "$RUN_DEVICE" -eq 1 ]]; then
   device_args=(
@@ -362,6 +563,7 @@ if [[ "$RUN_DEVICE" -eq 1 ]]; then
   fi
   run_step "device_tests" "${device_args[@]}" || device_exit=$?
   render_step_views "$DEVICE_DIR"
+  check_uptime_continuity "after_device_tests"
 fi
 
 if [[ "$RUN_CORE" -eq 1 ]]; then
@@ -399,6 +601,7 @@ if [[ "$RUN_CORE" -eq 1 ]]; then
     fi
     run_step "core_soak" "${core_args[@]}" || core_exit=$?
     render_step_views "$CORE_DIR"
+    check_uptime_continuity "after_core_soak"
   fi
 fi
 
@@ -438,6 +641,7 @@ if [[ "$RUN_DISPLAY" -eq 1 ]]; then
     fi
     run_step "display_soak" "${display_args[@]}" || display_exit=$?
     render_step_views "$DISPLAY_DIR"
+    check_uptime_continuity "after_display_soak"
   fi
 fi
 
@@ -465,8 +669,18 @@ ln -s "runs/$(basename "$RUN_DIR")" "$BOARD_ARTIFACT_ROOT/latest"
 suite_result="$(python3 -c 'import json, sys; from pathlib import Path; print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["result"])' "$RESULT_JSON")"
 echo "Hardware test result: $suite_result"
 echo "Warning policy: $( [[ "$STRICT_WARNINGS" == "1" ]] && echo blocking || echo non-blocking )"
+if [[ "$rad_exit" -ne 0 ]]; then
+  echo "RAD scenario: FAIL (exit=$rad_exit)"
+fi
+if [[ "$suite_reboot_count" -gt 0 ]]; then
+  echo "Uptime continuity: ${suite_reboot_count} reboot(s) detected (see $UPTIME_LOG)"
+fi
 echo "Latest artifacts: $BOARD_ARTIFACT_ROOT/latest"
 echo "Readable summary: $COMPARISON_TXT"
+
+if [[ "$rad_exit" -ne 0 ]]; then
+  exit 1
+fi
 
 if [[ "$suite_result" == "FAIL" ]]; then
   exit 1

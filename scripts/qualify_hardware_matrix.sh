@@ -2,9 +2,12 @@
 # Hardware qualification matrix — runs qualification across all lab boards.
 #
 # Board roles (from test/device/board_inventory.json):
-#   release — full qualify_hardware.sh gate
-#   radio   — full device test suite (BLE+WiFi coexistence)
-#   stress  — extended soak (20 cycles, 6s cooldown)
+#   release — full hardware test gate (build + flash + device tests + soak)
+#   radio   — full hardware test gate (BLE+WiFi coexistence focus)
+#   stress  — full hardware test gate (stability focus)
+#
+# All boards route through ./scripts/hardware/test.sh for unified metrics
+# and artifact storage.
 #
 # Usage:
 #   ./scripts/qualify_hardware_matrix.sh           # run all boards
@@ -57,49 +60,23 @@ echo "============================================"
 
 # ── Release board ────────────────────────────────────────────────────
 if [ "$BOARD_FILTER" = "all" ] || [ "$BOARD_FILTER" = "release" ]; then
-  section "Board: release — Full Qualification"
-  run_board release "Release board qualification" \
-    ./scripts/qualify_hardware.sh --board-id release
+  section "Board: release — Full Hardware Test"
+  run_board release "Release board hardware test" \
+    ./scripts/hardware/test.sh --all --board-id release --strict
 fi
 
 # ── Radio board ──────────────────────────────────────────────────────
 if [ "$BOARD_FILTER" = "all" ] || [ "$BOARD_FILTER" = "radio" ]; then
-  section "Board: radio — Device Tests (full)"
-  RADIO_PORT=$(python3 -c "
-import json
-with open('$INVENTORY') as f:
-    inv = json.load(f)
-for b in inv['boards']:
-    if b['board_id'] == 'radio':
-        print(b['device_path'])
-        break
-" 2>/dev/null || echo "")
-  if [ -n "$RADIO_PORT" ] && [ -e "$RADIO_PORT" ]; then
-    run_board radio "Radio board device tests" \
-      env DEVICE_PORT="$RADIO_PORT" DEVICE_BOARD_ID="radio" ./scripts/run_device_tests.sh --full
-  else
-    echo -e "${YELLOW}[skip] Radio board not connected at expected port${NC}"
-  fi
+  section "Board: radio — Full Hardware Test"
+  run_board radio "Radio board hardware test" \
+    ./scripts/hardware/test.sh --all --board-id radio
 fi
 
 # ── Stress board ─────────────────────────────────────────────────────
 if [ "$BOARD_FILTER" = "all" ] || [ "$BOARD_FILTER" = "stress" ]; then
-  section "Board: stress — Soak Test"
-  STRESS_PORT=$(python3 -c "
-import json
-with open('$INVENTORY') as f:
-    inv = json.load(f)
-for b in inv['boards']:
-    if b['board_id'] == 'stress':
-        print(b['device_path'])
-        break
-" 2>/dev/null || echo "")
-  if [ -n "$STRESS_PORT" ] && [ -e "$STRESS_PORT" ]; then
-    run_board stress "Stress board soak (20 cycles)" \
-      env DEVICE_PORT="$STRESS_PORT" DEVICE_BOARD_ID="stress" ./scripts/run_device_soak.sh --cycles 20 --cooldown-seconds 6
-  else
-    echo -e "${YELLOW}[skip] Stress board not connected at expected port${NC}"
-  fi
+  section "Board: stress — Full Hardware Test"
+  run_board stress "Stress board hardware test" \
+    ./scripts/hardware/test.sh --all --board-id stress
 fi
 
 echo ""

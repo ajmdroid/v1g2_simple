@@ -154,7 +154,7 @@ historical totals.
 | Metric | Native | Device |
 |--------|--------|--------|
 | Command | `pio test -e native` | `./scripts/run_device_tests.sh` |
-| Authoritative gate | `./scripts/ci-test.sh` | `./scripts/qualify_hardware.sh` |
+| Authoritative gate | `./scripts/ci-test.sh` | `./scripts/hardware/test.sh --all --strict` |
 
 ## Display Torture Test Categories
 

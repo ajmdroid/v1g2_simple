@@ -101,4 +101,4 @@ Exit codes:
 - Release evidence should use an explicit `--session` selector for multi-session captures.
 - `wifiMax_us` soak gating excludes the first 2 API samples (TCP cold-start overhead on ESP32 SoftAP).
 - `tools/scorecard.py` is a debug/analysis utility, not the authoritative scorer.
-- **Bench note:** `./scripts/qualify_hardware.sh` is the trusted hardware gate. `run_real_fw_soak.sh` remains an exploratory lower-level tool when run directly.
+- **Bench note:** `./scripts/hardware/test.sh --all --board-id release --strict` is the trusted hardware gate. `run_real_fw_soak.sh` remains an exploratory lower-level tool when run directly.

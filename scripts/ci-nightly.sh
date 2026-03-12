@@ -70,12 +70,12 @@ done
 section "Expanded Mutation Catalog"
 run_step "Full mutation catalog" ./scripts/mutation_test.sh --full
 
-# ── Device soak (optional — requires connected hardware) ─────────────
-section "Device Soak (if available)"
+# ── Hardware test (optional — requires connected hardware) ────────────
+section "Hardware Test (if available)"
 if command -v pio >/dev/null 2>&1 && pio device list 2>/dev/null | grep -qE 'usbmodem|ttyACM|ttyUSB'; then
-  run_step "Device soak (20 cycles)" ./scripts/run_device_soak.sh --cycles 20 --cooldown-seconds 6
+  run_step "Hardware test (nightly)" ./scripts/hardware/test.sh --all --board-id release
 else
-  echo -e "${YELLOW}[skip] No device detected — skipping device soak${NC}"
+  echo -e "${YELLOW}[skip] No device detected — skipping hardware test${NC}"
 fi
 
 # ── Timing ───────────────────────────────────────────────────────────
