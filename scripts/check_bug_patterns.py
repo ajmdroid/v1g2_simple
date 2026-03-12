@@ -17,9 +17,8 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -83,7 +82,7 @@ PATTERNS: list[BugPattern] = [
             re.VERBOSE,
         ),
         # Skip lines that already use the safe cast pattern
-        exclude=re.compile(r"static_cast<int32_t>|//.*(?:safe|wrap)"),
+        exclude=re.compile(r"static_cast<int32_t>"),
     ),
 
     # ── int16_t accumulator overflow ─────────────────────────────
@@ -116,7 +115,7 @@ PATTERNS: list[BugPattern] = [
             r"(?:dLon|deltaLon|lonDiff|dlonE5|dlon)\s*\*\s*(?:dLon|deltaLon|lonDiff|dlonE5|dlon)"
         ),
         # Exclude if cosLat appears nearby (checked via context window in scan_file)
-        exclude=re.compile(r"cos|cosLat|cosLatScale"),
+        exclude=re.compile(r"\b(?:cos|cosf)\s*\(|\bcosLat(?:Scale|Clamped)?\b"),
     ),
 
     # ── Blocking semaphore take in BLE callbacks ─────────────────
@@ -159,6 +158,58 @@ PATTERNS: list[BugPattern] = [
 # Scanner
 # ---------------------------------------------------------------------------
 
+def strip_comments_from_line(line: str, in_block_comment: bool) -> tuple[str, bool]:
+    """Remove C/C++ comments from one line while preserving code outside them."""
+    out: list[str] = []
+    index = 0
+
+    while index < len(line):
+        if in_block_comment:
+            end = line.find("*/", index)
+            if end == -1:
+                return "".join(out), True
+            index = end + 2
+            in_block_comment = False
+            continue
+
+        line_comment = line.find("//", index)
+        block_comment = line.find("/*", index)
+
+        if line_comment != -1 and (block_comment == -1 or line_comment < block_comment):
+            out.append(line[index:line_comment])
+            return "".join(out), False
+
+        if block_comment != -1:
+            out.append(line[index:block_comment])
+            index = block_comment + 2
+            in_block_comment = True
+            continue
+
+        out.append(line[index:])
+        return "".join(out), False
+
+    return "".join(out), in_block_comment
+
+
+def strip_comments(lines: list[str]) -> list[str]:
+    """Strip comments from a list of source lines."""
+    in_block_comment = False
+    code_lines: list[str] = []
+    for line in lines:
+        code_line, in_block_comment = strip_comments_from_line(line, in_block_comment)
+        code_lines.append(code_line)
+    return code_lines
+
+
+def find_matching_files(base: Path, files_glob: str) -> list[Path]:
+    """Resolve the file glob for a bug pattern."""
+    if files_glob.startswith("**/"):
+        matches = base.rglob(files_glob[3:])
+    else:
+        matches = base.glob(files_glob)
+    return sorted(path for path in matches if path.is_file())
+
+
 def scan_file(path: Path, pattern: BugPattern) -> list[Violation]:
     """Scan a single file for a single pattern."""
     violations = []
@@ -168,25 +219,23 @@ def scan_file(path: Path, pattern: BugPattern) -> list[Violation]:
         return violations
 
     lines = text.splitlines()
+    code_lines = strip_comments(lines)
     # Patterns that need multi-line context to check guards
     CONTEXT_PATTERNS = {"INT16_ACCUMULATOR", "GEO_DISTANCE_NO_COSLAT"}
     context_window = 5  # lines above/below to check for exclude pattern
 
-    for i, line in enumerate(lines):
+    for i, line in enumerate(code_lines):
         lineno = i + 1
         stripped = line.strip()
-        # Skip comments and preprocessor
-        if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
-            continue
-        if stripped.startswith("#"):
+        if not stripped:
             continue
         if pattern.regex.search(line):
             if pattern.exclude:
                 # For context-aware patterns, check surrounding lines too
                 if pattern.id in CONTEXT_PATTERNS:
                     start = max(0, i - context_window)
-                    end = min(len(lines), i + context_window + 1)
-                    context = "\n".join(lines[start:end])
+                    end = min(len(code_lines), i + context_window + 1)
+                    context = "\n".join(code_lines[start:end])
                     if pattern.exclude.search(context):
                         continue
                 elif pattern.exclude.search(line):
@@ -195,7 +244,7 @@ def scan_file(path: Path, pattern: BugPattern) -> list[Violation]:
                 pattern_id=pattern.id,
                 file=path,
                 line=lineno,
-                text=stripped,
+                text=lines[i].strip(),
             ))
     return violations
 
@@ -205,27 +254,7 @@ def scan_all(patterns: list[BugPattern]) -> list[Violation]:
     all_violations: list[Violation] = []
 
     for pattern in patterns:
-        for path in sorted(SRC.rglob(pattern.files.replace("**/", "")
-                                     if pattern.files.startswith("**/")
-                                     else Path())):
-            if pattern.files.startswith("**/"):
-                matches = sorted(SRC.rglob(pattern.files.lstrip("**/")))
-            else:
-                matches = sorted(SRC.glob(pattern.files))
-            break  # just need to compute matches once
-        else:
-            matches = []
-
-        # Recompute properly
-        if pattern.files.startswith("**/"):
-            suffix = pattern.files[3:]  # strip **/
-            matches = sorted(SRC.rglob(suffix))
-        else:
-            matches = sorted(SRC.glob(pattern.files))
-
-        for path in matches:
-            if not path.is_file():
-                continue
+        for path in find_matching_files(SRC, pattern.files):
             all_violations.extend(scan_file(path, pattern))
 
     return all_violations

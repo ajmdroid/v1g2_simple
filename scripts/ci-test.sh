@@ -33,6 +33,7 @@ echo "============================================"
 
 section "Semantic Gates"
 run_step "Bug pattern scanner" python3 scripts/check_bug_patterns.py
+run_step "Bug pattern scanner regression tests" python3 scripts/test_bug_pattern_scanner.py
 run_step "BLE deletion semantic guard" python3 scripts/check_ble_deletion_contract.py
 run_step "Frontend HTTP resilience semantic guard" python3 scripts/check_frontend_http_resilience_contract.py
 run_step "BLE hot-path semantic guard" python3 scripts/check_ble_hot_path_semantic_guard.py
