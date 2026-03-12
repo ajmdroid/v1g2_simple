@@ -55,12 +55,7 @@ Default qualification runs these items only:
 4. `soak_core`
 5. `soak_transition` (unless `--no-transition-soak` is passed)
 
-Default qualification does **not** run:
-
-- `camera_smoke`
-- `camera_radar_overlap`
-
-Those paths are not part of release qualification today.
+Default qualification does not include any camera-specific bench item today.
 
 ### Qualification behavior
 
@@ -93,9 +88,6 @@ Important outputs:
 
 These tools still exist, but they are not qualification today:
 
-- `python3 ./scripts/camera_device_smoke.py`
-  - host/browser dependent
-  - mutates camera settings during the run
 - `./scripts/run_real_fw_soak.sh --latency-gate-mode hybrid`
 - `./scripts/run_real_fw_soak.sh --latency-gate-mode robust`
 
@@ -106,7 +98,6 @@ release evidence.
 
 - Real bench camera-overlap coverage through the actual camera runtime path
 - A trustworthy top-end camera+radar combined qualification gate
-- Any claim that headless browser camera smoke proves runtime camera behavior
 
 If one of those areas matters for a release, new real coverage must be added
 before claiming it is tested.
@@ -123,4 +114,4 @@ before claiming it is tested.
 - If a gate cannot be made honest quickly, remove it from qualification instead
   of softening it.
 - No default qualification step may depend on host Chrome or mutate persistent
-  camera settings.
+  device settings.

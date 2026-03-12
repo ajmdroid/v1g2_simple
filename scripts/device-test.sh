@@ -57,7 +57,6 @@ RAD_TIMEOUT_SECONDS="${REAL_FW_RAD_TIMEOUT_SECONDS:-}"
 RAD_MIN_RX_DELTA=20
 RAD_MIN_PARSE_SUCCESS_DELTA=20
 RAD_MIN_DISPLAY_UPDATES_DELTA=10
-CAMERA_SMOKE=0
 
 OUT_DIR=""
 
@@ -143,8 +142,6 @@ Options:
   --rad-scenario ID              Short radar scenario ID (default: RAD-03)
   --rad-duration-scale-pct N     RAD scenario duration scale percent (default: 100)
   --rad-timeout-seconds N        RAD scenario completion timeout (default: auto from scale)
-  --camera-smoke                 Run Chrome/browser-dependent camera smoke item (manual only)
-  --no-camera-smoke              Skip camera smoke item (default)
   --no-transition-soak           Skip Cycle 3 transition qualification soak
   --transition-flap-cycles N     Transition flap cycles for transition soak (default: 3)
   --transition-drive-interval-seconds N
@@ -502,50 +499,6 @@ run_metrics_endpoint_test() {
   fi
 }
 
-run_camera_smoke_test() {
-  local test_name="camera_smoke"
-  local run_log="$OUT_DIR/${test_name}.log"
-  local item_out_dir="$OUT_DIR/${test_name}_artifacts"
-  mkdir -p "$item_out_dir"
-  local cmd=(python3 "./scripts/camera_device_smoke.py"
-    --metrics-url "$METRICS_URL"
-    --http-timeout-seconds "$HTTP_TIMEOUT_SECONDS"
-    --out-dir "$item_out_dir")
-  local cmd_text
-  cmd_text="$(shell_join "${cmd[@]}")"
-
-  echo -e "${YELLOW}==> Running $test_name...${NC}"
-  local rc
-  if "${cmd[@]}" >"$run_log" 2>&1; then
-    rc=0
-  else
-    rc=$?
-  fi
-
-  local summary="$item_out_dir/summary.md"
-  local result_word
-  result_word="$(awk '/^result:/{r=$2} END{print r}' "$run_log")"
-  local display_delta
-  display_delta="$(awk -F= '/^display_updates_delta=/{v=$2} END{print v}' "$run_log")"
-  local status="FAIL"
-  if [[ "$rc" -eq 0 && "$result_word" == "PASS" ]]; then
-    status="PASS"
-  fi
-
-  local metrics="rc=$rc result=${result_word:-unknown} displayDelta=${display_delta:-n/a}"
-  local failure
-  failure="$(awk -F= '/^failure=/{sub(/^failure=/,""); print; exit}' "$run_log")"
-  if [[ -n "$failure" ]]; then
-    metrics+=" failure=\"${failure}\""
-  fi
-
-  local artifact="$run_log"
-  if [[ -f "$summary" ]]; then
-    artifact="$summary"
-  fi
-  add_result "$test_name" "$status" "$metrics" "$artifact" "$cmd_text"
-}
-
 run_rad_short_test() {
   local test_name="rad_short_${RAD_SCENARIO_ID}"
   local debug_base="${METRICS_URL%%\?*}"
@@ -753,12 +706,6 @@ while [[ $# -gt 0 ]]; do
       RAD_TIMEOUT_SECONDS="$2"
       shift
       ;;
-    --camera-smoke)
-      CAMERA_SMOKE=1
-      ;;
-    --no-camera-smoke)
-      CAMERA_SMOKE=0
-      ;;
     --no-transition-soak)
       SOAK_ENABLE_TRANSITION_QUAL=0
       ;;
@@ -908,7 +855,6 @@ echo "  soak latency gate: mode=$SOAK_LATENCY_GATE_MODE"
 echo "  soak minima tail exclusion: ${SOAK_MINIMA_TAIL_EXCLUDE_SAMPLES} sample(s)"
 echo "  soak require-metrics: yes (min ok samples=$SOAK_MIN_METRICS_OK_SAMPLES)"
 echo "  soak watchdog padding: skip-flash=+${SOAK_TIMEOUT_PADDING_SECONDS}s with-flash=+${SOAK_TIMEOUT_WITH_FLASH_PADDING_SECONDS}s"
-echo "  camera smoke: enabled=$CAMERA_SMOKE (manual only; host/browser dependent)"
 echo "  display drive: displayInterval=${SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=$SOAK_MIN_DISPLAY_UPDATES_DELTA"
 echo "  transition qual: enabled=$SOAK_ENABLE_TRANSITION_QUAL flapCycles=$SOAK_TRANSITION_FLAP_CYCLES interval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s maxRecoveryMs=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS maxSamples=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
 echo "  RAD scenario: $RAD_SCENARIO_ID scalePct=$RAD_DURATION_SCALE_PCT timeout=${RESOLVED_RAD_TIMEOUT_SECONDS}s (rx>=$RAD_MIN_RX_DELTA parse>=$RAD_MIN_PARSE_SUCCESS_DELTA display>=$RAD_MIN_DISPLAY_UPDATES_DELTA parseFail==0)"
@@ -938,12 +884,6 @@ if [[ -n "$HARNESS_PRECHECK_CODE" ]]; then
   SUITE_EXIT_REASON="$HARNESS_PRECHECK_CODE"
   echo -e "${YELLOW}Preflight failed (${HARNESS_PRECHECK_CODE}); aborting remaining test items to avoid non-actionable failures.${NC}"
 else
-  if [[ "$CAMERA_SMOKE" -eq 1 ]]; then
-    check_uptime_continuity "before camera_smoke"
-    run_camera_smoke_test
-    check_uptime_continuity "after camera_smoke"
-  fi
-
   check_uptime_continuity "before rad_short"
   run_rad_short_test
   check_uptime_continuity "after rad_short"
@@ -1060,7 +1000,6 @@ fi
   echo "- Qualification items: \`metrics_endpoint\`, \`rad_short\`, \`soak_display\`, \`soak_core\`, \`soak_transition\`"
   echo "- Soak latency gate: \`mode=$SOAK_LATENCY_GATE_MODE\`"
   echo "- Display drive defaults: \`display_interval_s=$SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS min_display_updates_delta=$SOAK_MIN_DISPLAY_UPDATES_DELTA\`"
-  echo "- Camera smoke: \`enabled=$CAMERA_SMOKE\` (manual only; not qualification)"
   echo "- Transition qualification: \`enabled=$SOAK_ENABLE_TRANSITION_QUAL flap_cycles=$SOAK_TRANSITION_FLAP_CYCLES interval_s=$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS min_proxy_off_transitions=$SOAK_TRANSITION_MIN_PROXY_ADV_OFF_TRANSITIONS max_proxy_recovery_ms=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS max_samples_to_stable=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE\`"
   echo "- RAD short default gates: \`scenario=$RAD_SCENARIO_ID duration_scale_pct=$RAD_DURATION_SCALE_PCT timeout_s=$RESOLVED_RAD_TIMEOUT_SECONDS rx_delta>=$RAD_MIN_RX_DELTA parse_success_delta>=$RAD_MIN_PARSE_SUCCESS_DELTA display_updates_delta>=$RAD_MIN_DISPLAY_UPDATES_DELTA parse_fail_delta==0\`"
   echo ""
