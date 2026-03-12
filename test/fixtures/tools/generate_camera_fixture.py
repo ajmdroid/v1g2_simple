@@ -6,7 +6,7 @@ at a known coordinate
 near Denver, CO.  Used to validate the firmware camera reader contract.
 
 Usage:
-    python scripts/generate_camera_fixture.py [output]
+    python3 test/fixtures/tools/generate_camera_fixture.py [output]
 
 Default output: test/fixtures/camera_types_road_map.bin
 """
@@ -14,6 +14,9 @@ Default output: test/fixtures/camera_types_road_map.bin
 import struct
 import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_OUTPUT = ROOT / "test" / "fixtures" / "camera_types_road_map.bin"
 
 MAGIC = b"RMAP"
 FORMAT_VERSION = 2
@@ -28,7 +31,7 @@ def to_e5(deg):
 
 
 def main():
-    output = sys.argv[1] if len(sys.argv) > 1 else "test/fixtures/camera_types_road_map.bin"
+    output = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_OUTPUT
 
     # --- Fixture data ---
     # A short road segment on I-25 near Denver
@@ -103,7 +106,7 @@ def main():
     struct.pack_into("<II", hdr, 56, cam_grid_offset, cam_count)
 
     # --- Write ---
-    Path(output).parent.mkdir(parents=True, exist_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
     with open(output, "wb") as f:
         f.write(hdr)
         f.write(road_grid)
@@ -111,7 +114,13 @@ def main():
         f.write(cam_grid)
         f.write(cam_data)
 
-    print(f"  Wrote {output} ({file_size} bytes)")
+    display_path = output
+    try:
+        display_path = output.relative_to(ROOT)
+    except ValueError:
+        pass
+
+    print(f"  Wrote {display_path} ({file_size} bytes)")
     print(f"  Segments: 1, Points: {len(pts_e5)}")
     print(f"  Cameras:  {cam_count} (alpr={CAM_TYPE_ALPR})")
 

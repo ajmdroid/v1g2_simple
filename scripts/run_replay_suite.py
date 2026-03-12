@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -66,7 +67,7 @@ def run_replay_test(fixtures: list[Path]) -> tuple[int, list[dict]]:
     result = subprocess.run(
         ["pio", "test", "-e", "native-replay", "-f", "test_drive_replay"],
         cwd=ROOT,
-        env={**__import__("os").environ, "REPLAY_FIXTURES": env_fixtures},
+        env={**os.environ, "REPLAY_FIXTURES": env_fixtures},
     )
 
     results = []
@@ -77,6 +78,15 @@ def run_replay_test(fixtures: list[Path]) -> tuple[int, list[dict]]:
         })
 
     return result.returncode, results
+
+
+def verify_fixtures(fixtures: list[Path]) -> int:
+    if not fixtures:
+        return 0
+
+    cmd = [sys.executable, str(ROOT / "scripts" / "verify_replay_fixture.py"), *map(str, fixtures)]
+    result = subprocess.run(cmd, cwd=ROOT, check=False)
+    return result.returncode
 
 
 def emit_summary(results: list[dict], lane: str) -> None:
@@ -105,6 +115,11 @@ def main() -> int:
     args = parser.parse_args()
 
     fixtures = discover_fixtures(args.lane)
+    verify_exit_code = verify_fixtures(fixtures)
+    if verify_exit_code != 0:
+        print("[replay] Fixture validation failed.")
+        return 2
+
     exit_code, results = run_replay_test(fixtures)
 
     if args.lane == "pre-release":

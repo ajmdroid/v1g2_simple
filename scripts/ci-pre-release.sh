@@ -42,6 +42,12 @@ echo "Pre-Release Validation Gate"
 echo "SHA: ${GIT_SHA}"
 echo "============================================"
 
+if [[ "${WORKSPACE_CLEANED:-0}" != "1" ]]; then
+  section "Workspace Cleanup"
+  run_step "Safe cleanup" python3 scripts/clean_workspace.py --safe --apply
+  export WORKSPACE_CLEANED=1
+fi
+
 # ── Nightly gate (includes PR gate) ──────────────────────────────────
 section "Nightly Gate (ci-nightly.sh)"
 run_step "Full nightly gate" ./scripts/ci-nightly.sh

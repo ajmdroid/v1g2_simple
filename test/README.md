@@ -95,6 +95,26 @@ Each run writes machine-readable reports to:
 - `.artifacts/test_reports/functional_<timestamp>/native.xml`
 - `.artifacts/test_reports/functional_<timestamp>/native.log`
 
+## Replay Fixture Intake
+
+Use the replay fixture tools when promoting a raw capture into the tracked replay corpus:
+
+```bash
+# Sanitize a raw capture into a tracked replay fixture directory
+python3 scripts/sanitize_replay_capture.py \
+  --raw-dir /path/to/raw_capture \
+  --out-dir test/fixtures/replay/my_scenario \
+  --scenario-id my_scenario \
+  --owner lockout \
+  --lane pr
+
+# Validate the resulting fixture before replay execution
+python3 scripts/verify_replay_fixture.py test/fixtures/replay/my_scenario
+
+# Regenerate the synthetic ALPR road-map fixture used by test_road_map_reader
+python3 test/fixtures/tools/generate_camera_fixture.py
+```
+
 ## Test Structure
 
 ```

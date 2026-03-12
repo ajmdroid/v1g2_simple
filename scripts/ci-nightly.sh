@@ -39,6 +39,12 @@ echo "============================================"
 echo "Nightly Validation Gate"
 echo "============================================"
 
+if [[ "${WORKSPACE_CLEANED:-0}" != "1" ]]; then
+  section "Workspace Cleanup"
+  run_step "Safe cleanup" python3 scripts/clean_workspace.py --safe --apply
+  export WORKSPACE_CLEANED=1
+fi
+
 # ── PR gate (authoritative code gate runs first) ─────────────────────
 section "PR Gate (ci-test.sh)"
 run_step "Full PR gate" ./scripts/ci-test.sh

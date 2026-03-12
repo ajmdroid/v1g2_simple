@@ -179,6 +179,19 @@ First build downloads ~500MB of toolchain — this takes 5-15 minutes. Subsequen
 ./build.sh --clean --all   # Clean build
 ```
 
+**Workspace cleanup vs build cleanup:**
+```bash
+./build.sh --clean                 # Only rebuild artifacts managed by build.sh
+python3 scripts/clean_workspace.py --safe
+python3 scripts/clean_workspace.py --safe --apply
+python3 scripts/clean_workspace.py --deep --apply
+```
+
+Use `clean_workspace.py --safe --apply` to remove generated validation outputs,
+old mutation workspaces, release leftovers, and other local clutter without
+touching tracked source. Use `--deep` only when you also want to drop heavier
+caches like `.pio/`, `interface/node_modules/`, `.scratch/`, and `data/`.
+
 **8. Factory reset (Windows):**
 ```bash
 "$HOME/.platformio/penv/Scripts/python.exe" "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" --port COM4 erase_flash

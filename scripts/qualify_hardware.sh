@@ -15,6 +15,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+if [[ "${WORKSPACE_CLEANED:-0}" != "1" ]]; then
+  echo "==> cleanup_workspace"
+  python3 scripts/clean_workspace.py --safe --apply
+  echo "[pass] cleanup_workspace"
+  export WORKSPACE_CLEANED=1
+fi
+
 ENV_NAME="waveshare-349"
 METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.35.5/api/debug/metrics}"
 HTTP_TIMEOUT_SECONDS="${REAL_FW_HTTP_TIMEOUT_SECONDS:-5}"

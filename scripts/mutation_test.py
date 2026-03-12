@@ -8,6 +8,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,14 @@ IGNORE_PATTERNS = shutil.ignore_patterns(
     "dist",
     "coverage",
     "__pycache__",
+    ".scratch",
+    "bench_testing",
+    "r8",
+    ".road_map_cache",
+    "release",
+    "data",
+    "compile_commands.json",
+    "road_map.bin",
 )
 
 
@@ -36,6 +45,11 @@ def parse_args() -> argparse.Namespace:
         "--catalog",
         default=str(CATALOG_PATH),
         help=f"mutation catalog JSON (default: {CATALOG_PATH})",
+    )
+    parser.add_argument(
+        "--keep-workspace",
+        action="store_true",
+        help="retain the isolated mutated workspace under the report directory",
     )
     return parser.parse_args()
 
@@ -115,6 +129,16 @@ def run_targeted_tests(workspace: Path, tests: list[str], log_path: Path) -> int
     return result.returncode
 
 
+def prepare_workspace(report_dir: Path, keep_workspace: bool) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
+    if keep_workspace:
+        workspace = report_dir / "workspace"
+        return workspace, None
+
+    temp_dir = tempfile.TemporaryDirectory(prefix="v1g2_mutation_")
+    workspace = Path(temp_dir.name) / "workspace"
+    return workspace, temp_dir
+
+
 def main() -> int:
     args = parse_args()
     mode = "critical"
@@ -133,78 +157,83 @@ def main() -> int:
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     report_dir = ARTIFACT_ROOT / f"mutation_{timestamp}"
-    workspace = report_dir / "workspace"
     logs_dir = report_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
+    workspace, temp_dir = prepare_workspace(report_dir, args.keep_workspace)
 
     print(f"[mutation] mode={mode} catalog={catalog_path}")
     print(f"[mutation] preparing isolated workspace: {workspace}")
     try:
-        copy_workspace(workspace)
-    except Exception as exc:
-        print(f"[mutation] ERROR: failed to copy workspace: {exc}", file=sys.stderr)
-        return 2
-
-    results: list[dict[str, Any]] = []
-    survivors = 0
-
-    for index, mutation in enumerate(mutations, start=1):
-        mutation_id = str(mutation["id"])
-        tests = list(mutation["tests"])
-        log_path = logs_dir / f"{mutation_id}.log"
-
-        print(
-            f"[mutation] ({index}/{len(mutations)}) {mutation_id} "
-            f"{mutation['module']}: {mutation['description']}"
-        )
         try:
-            apply_mutation(workspace, mutation)
-            exit_code = run_targeted_tests(workspace, tests, log_path)
+            copy_workspace(workspace)
         except Exception as exc:
-            print(f"[mutation] ERROR: {mutation_id} failed to execute: {exc}", file=sys.stderr)
+            print(f"[mutation] ERROR: failed to copy workspace: {exc}", file=sys.stderr)
             return 2
-        finally:
-            restore_target(workspace, mutation)
 
-        killed = exit_code != 0
-        if not killed:
-            survivors += 1
+        results: list[dict[str, Any]] = []
+        survivors = 0
 
-        status = "KILLED" if killed else "SURVIVED"
+        for index, mutation in enumerate(mutations, start=1):
+            mutation_id = str(mutation["id"])
+            tests = list(mutation["tests"])
+            log_path = logs_dir / f"{mutation_id}.log"
+
+            print(
+                f"[mutation] ({index}/{len(mutations)}) {mutation_id} "
+                f"{mutation['module']}: {mutation['description']}"
+            )
+            try:
+                apply_mutation(workspace, mutation)
+                exit_code = run_targeted_tests(workspace, tests, log_path)
+            except Exception as exc:
+                print(f"[mutation] ERROR: {mutation_id} failed to execute: {exc}", file=sys.stderr)
+                return 2
+            finally:
+                restore_target(workspace, mutation)
+
+            killed = exit_code != 0
+            if not killed:
+                survivors += 1
+
+            status = "KILLED" if killed else "SURVIVED"
+            print(
+                f"[mutation]   {status} by {', '.join(tests)} "
+                f"(log: {log_path.relative_to(ROOT)})"
+            )
+            results.append(
+                {
+                    "id": mutation_id,
+                    "module": mutation["module"],
+                    "description": mutation["description"],
+                    "impact": mutation["impact"],
+                    "tests": tests,
+                    "status": status,
+                    "exit_code": exit_code,
+                    "log": str(log_path.relative_to(ROOT)),
+                }
+            )
+
+        summary = {
+            "mode": mode,
+            "catalog": str(catalog_path),
+            "workspace": str(workspace) if args.keep_workspace else None,
+            "workspace_retained": args.keep_workspace,
+            "report_dir": str(report_dir),
+            "all_killed": survivors == 0,
+            "killed": len(results) - survivors,
+            "survived": survivors,
+            "results": results,
+        }
+        (report_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
         print(
-            f"[mutation]   {status} by {', '.join(tests)} "
-            f"(log: {log_path.relative_to(ROOT)})"
+            f"[mutation] summary: killed={summary['killed']} "
+            f"survived={summary['survived']} report={report_dir.relative_to(ROOT)}"
         )
-        results.append(
-            {
-                "id": mutation_id,
-                "module": mutation["module"],
-                "description": mutation["description"],
-                "impact": mutation["impact"],
-                "tests": tests,
-                "status": status,
-                "exit_code": exit_code,
-                "log": str(log_path.relative_to(ROOT)),
-            }
-        )
-
-    summary = {
-        "mode": mode,
-        "catalog": str(catalog_path),
-        "workspace": str(workspace),
-        "report_dir": str(report_dir),
-        "all_killed": survivors == 0,
-        "killed": len(results) - survivors,
-        "survived": survivors,
-        "results": results,
-    }
-    (report_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-
-    print(
-        f"[mutation] summary: killed={summary['killed']} "
-        f"survived={summary['survived']} report={report_dir.relative_to(ROOT)}"
-    )
-    return 0 if survivors == 0 else 1
+        return 0 if survivors == 0 else 1
+    finally:
+        if temp_dir is not None:
+            temp_dir.cleanup()
 
 
 if __name__ == "__main__":
