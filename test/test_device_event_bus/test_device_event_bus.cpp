@@ -78,6 +78,7 @@ void test_device_bus_overflow_drops_frame_first() {
     bus.publish(overflow);
 
     TEST_ASSERT_EQUAL_UINT32(1, bus.getDropCount());
+    deviceTestMetricU32("overflow_drop_count", "overflow", bus.getDropCount(), "count");
 
     // First consumed should be the control event (preserved)
     SystemEvent out;
@@ -126,6 +127,7 @@ static void busProducerTask(void* param) {
 
 void test_device_bus_cross_core_no_crash() {
     static constexpr uint32_t PRODUCE_COUNT = 200;
+    const unsigned long startMs = millis();
 
     SemaphoreHandle_t startSem = xSemaphoreCreateBinary();
     TEST_ASSERT_NOT_NULL(startSem);
@@ -171,9 +173,14 @@ void test_device_bus_cross_core_no_crash() {
 
     uint32_t published = bus.getPublishCount();
     uint32_t dropped   = bus.getDropCount();
+    uint32_t durationMs = millis() - startMs;
 
     Serial.printf("  [bus] published=%lu consumed=%lu dropped=%lu\n",
                   (unsigned long)published, (unsigned long)consumed, (unsigned long)dropped);
+    deviceTestMetricU32("cross_core_published_total", "cross_core", published, "count");
+    deviceTestMetricU32("cross_core_consumed_total", "cross_core", consumed, "count");
+    deviceTestMetricU32("cross_core_dropped_total", "cross_core", dropped, "count");
+    deviceTestMetricU32("cross_core_duration_ms", "cross_core", durationMs, "ms");
 
     // All published events should be either consumed or dropped
     TEST_ASSERT_EQUAL_UINT32(published, consumed + dropped);
@@ -204,6 +211,8 @@ void test_device_bus_rapid_publish_consume_stress() {
     // Final drain
     SystemEvent out;
     while (bus.consume(out)) {}
+    deviceTestMetricU32("rapid_publish_total", "rapid_stress", bus.getPublishCount(), "count");
+    deviceTestMetricU32("rapid_drop_total", "rapid_stress", bus.getDropCount(), "count");
 
     TEST_ASSERT_EQUAL_UINT32(0, bus.size());
     TEST_ASSERT_EQUAL_UINT32(ITERATIONS, bus.getPublishCount());
@@ -243,6 +252,7 @@ void test_device_bus_consume_by_type_correctness() {
     // GPS and CONNECTED gone; 10 frame events remain
     TEST_ASSERT_EQUAL_UINT32(10, bus.size());
     TEST_ASSERT_FALSE(bus.consumeByType(SystemEventType::GPS_UPDATED, out));
+    deviceTestMetricU32("consume_by_type_remaining_events", "typed_consume", bus.size(), "count");
 }
 
 // ===========================================================================
@@ -284,6 +294,7 @@ static void dualProducerTask(void* param) {
 
 void test_device_bus_dual_producer_no_corruption() {
     static constexpr uint32_t PER_PRODUCER = 200;
+    const unsigned long startMs = millis();
 
     // COUNTING semaphore: max=2, initial=0 — reliable release for 2 tasks
     SemaphoreHandle_t startSem = xSemaphoreCreateCounting(2, 0);
@@ -321,6 +332,7 @@ void test_device_bus_dual_producer_no_corruption() {
 
     uint32_t published = bus.getPublishCount();
     uint32_t dropped   = bus.getDropCount();
+    uint32_t durationMs = millis() - startMs;
 
     Serial.printf("  [bus] dual-producer: published=%lu dropped=%lu\n",
                   (unsigned long)published, (unsigned long)dropped);
@@ -336,6 +348,10 @@ void test_device_bus_dual_producer_no_corruption() {
         else if (out.type == SystemEventType::GPS_UPDATED)  gpsCount++;
         else otherCount++;
     }
+    deviceTestMetricU32("dual_producer_published_total", "dual_producer", published, "count");
+    deviceTestMetricU32("dual_producer_dropped_total", "dual_producer", dropped, "count");
+    deviceTestMetricU32("dual_producer_other_event_count", "dual_producer", otherCount, "count");
+    deviceTestMetricU32("dual_producer_duration_ms", "dual_producer", durationMs, "ms");
 
     TEST_ASSERT_EQUAL_UINT32(0, otherCount);
     TEST_ASSERT_EQUAL_UINT32(published - dropped, frameCount + gpsCount);

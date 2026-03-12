@@ -39,6 +39,55 @@ static constexpr uint32_t DEVICE_TEST_DONE_MAGIC = 0xBEEFCAFE;
 
 // Survives software reset (esp_restart) but NOT power-cycle / flash-erase.
 static RTC_NOINIT_ATTR uint32_t _deviceTestDoneFlag;
+static const char* _deviceTestSuiteName = "";
+
+static inline const char* deviceTestGitSha() {
+#ifdef GIT_SHA
+    return GIT_SHA;
+#else
+    return "";
+#endif
+}
+
+static inline void deviceTestMetricU32(const char* metric,
+                                       const char* sample,
+                                       uint32_t value,
+                                       const char* unit) {
+    Serial.printf(
+        "{\"schema_version\":1,\"run_id\":\"\",\"git_sha\":\"%s\",\"run_kind\":\"device_suite\","
+        "\"suite_or_profile\":\"%s\",\"metric\":\"%s\",\"sample\":\"%s\",\"value\":%lu,"
+        "\"unit\":\"%s\",\"tags\":{}}\n",
+        deviceTestGitSha(),
+        _deviceTestSuiteName,
+        metric,
+        sample,
+        (unsigned long)value,
+        unit
+    );
+}
+
+static inline void deviceTestMetricI32(const char* metric,
+                                       const char* sample,
+                                       int32_t value,
+                                       const char* unit) {
+    Serial.printf(
+        "{\"schema_version\":1,\"run_id\":\"\",\"git_sha\":\"%s\",\"run_kind\":\"device_suite\","
+        "\"suite_or_profile\":\"%s\",\"metric\":\"%s\",\"sample\":\"%s\",\"value\":%ld,"
+        "\"unit\":\"%s\",\"tags\":{}}\n",
+        deviceTestGitSha(),
+        _deviceTestSuiteName,
+        metric,
+        sample,
+        (long)value,
+        unit
+    );
+}
+
+static inline void deviceTestMetricBool(const char* metric,
+                                        const char* sample,
+                                        bool value) {
+    deviceTestMetricU32(metric, sample, value ? 1U : 0U, "bool");
+}
 
 /**
  * Call at the very start of setup().
@@ -48,6 +97,7 @@ static RTC_NOINIT_ATTR uint32_t _deviceTestDoneFlag;
  *   to open the port, prints a diagnostic banner, returns false.
  */
 static inline bool deviceTestSetup(const char* suiteName) {
+    _deviceTestSuiteName = suiteName;
     // Post-test reboot path — skip tests, keep USB alive
     if (_deviceTestDoneFlag == DEVICE_TEST_DONE_MAGIC) {
         _deviceTestDoneFlag = 0;  // Clear for next firmware upload

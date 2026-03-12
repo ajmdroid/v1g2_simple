@@ -65,6 +65,7 @@ void test_heap_internal_free_is_sane() {
     // ESP32-S3 has ~380 KB internal SRAM total; after framework init expect > 80 KB
     TEST_ASSERT_GREATER_THAN_UINT32(80 * 1024, free);
     Serial.printf("  [heap] internal free: %lu bytes\n", (unsigned long)free);
+    deviceTestMetricU32("baseline_internal_free_bytes", "baseline", free, "bytes");
 }
 
 void test_heap_internal_largest_block_positive() {
@@ -72,6 +73,7 @@ void test_heap_internal_largest_block_positive() {
     // Largest contiguous block should be at least 16 KB for WiFi DMA buffers
     TEST_ASSERT_GREATER_THAN_UINT32(16 * 1024, largest);
     Serial.printf("  [heap] internal largest block: %lu bytes\n", (unsigned long)largest);
+    deviceTestMetricU32("baseline_internal_largest_block_bytes", "baseline", largest, "bytes");
 }
 
 void test_heap_total_free_includes_psram() {
@@ -103,6 +105,8 @@ void test_heap_internal_alloc_free_no_leak() {
     heap_caps_free(ptr);
 
     uint32_t after = internalFree();
+    uint32_t delta = (before > after) ? (before - after) : (after - before);
+    deviceTestMetricU32("internal_alloc_recovery_delta_bytes", "recovery", delta, "bytes");
     // Allow 256-byte tolerance for heap metadata overhead
     TEST_ASSERT_UINT32_WITHIN(256, before, after);
 }
@@ -121,6 +125,8 @@ void test_heap_spiram_alloc_free_no_leak() {
     heap_caps_free(ptr);
 
     uint32_t after = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    uint32_t delta = (before > after) ? (before - after) : (after - before);
+    deviceTestMetricU32("spiram_alloc_recovery_delta_bytes", "recovery", delta, "bytes");
     TEST_ASSERT_UINT32_WITHIN(512, before, after);
 }
 

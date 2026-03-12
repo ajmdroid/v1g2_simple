@@ -228,10 +228,10 @@ if ! grep -q '{' "$OUT_DIR/metrics_precheck.log"; then
 fi
 
 run_step device_tests \
-  env DEVICE_PORT="$DEVICE_PORT_RESOLVED" ./scripts/run_device_tests.sh --full
+  env DEVICE_PORT="$DEVICE_PORT_RESOLVED" DEVICE_BOARD_ID="${BOARD_ID:-unknown}" ./scripts/run_device_tests.sh --full
 
 run_step soak_core \
-  env DEVICE_PORT="$DEVICE_PORT_RESOLVED" ./scripts/run_real_fw_soak.sh \
+  env DEVICE_PORT="$DEVICE_PORT_RESOLVED" DEVICE_BOARD_ID="${BOARD_ID:-unknown}" ./scripts/run_real_fw_soak.sh \
     --duration-seconds 300 \
     --with-fs \
     --metrics-url "$METRICS_URL" \
@@ -240,7 +240,7 @@ run_step soak_core \
     --out-dir "$OUT_DIR/soak_core"
 
 run_step soak_display_preview \
-  env DEVICE_PORT="$DEVICE_PORT_RESOLVED" ./scripts/run_real_fw_soak.sh \
+  env DEVICE_PORT="$DEVICE_PORT_RESOLVED" DEVICE_BOARD_ID="${BOARD_ID:-unknown}" ./scripts/run_real_fw_soak.sh \
     --skip-flash \
     --duration-seconds 300 \
     --metrics-url "$METRICS_URL" \

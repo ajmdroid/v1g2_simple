@@ -120,6 +120,7 @@ MAX_PROXY_ADV_TRANSITION_CHURN_DELTA=0
 MIN_AP_DOWN_TRANSITIONS=0
 MIN_PROXY_ADV_OFF_TRANSITIONS=0
 OUT_DIR=""
+COMPARE_TO=""
 
 is_uint() {
   local value="${1:-}"
@@ -491,6 +492,14 @@ while [[ $# -gt 0 ]]; do
     --allow-inconclusive)
       ALLOW_INCONCLUSIVE=1
       ;;
+    --compare-to)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --compare-to" >&2
+        exit 2
+      fi
+      COMPARE_TO="$2"
+      shift
+      ;;
     --ignore-gps-errors)
       IGNORE_GPS_ERRORS=1
       ;;
@@ -754,8 +763,9 @@ Options:
   --exclude-tail-samples-for-minima N
                         Ignore the last N metrics samples for DMA floor minima
                         (default: 0)
-  --dry-run             Print resolved config/gates and exit
+  --dry-run              Print resolved config/gates and exit
   --allow-inconclusive   Exit 0 even when no telemetry signals were captured
+  --compare-to PATH      Compare this run against a prior manifest.json
   --out-dir PATH         Write artifacts to PATH
   -h, --help             Show this help
 EOF
@@ -771,14 +781,17 @@ done
 
 derive_stress_class() {
   local display_enabled="$1"
-  if [[ "$display_enabled" -eq 1 ]]; then
-    echo "display"
+  local transition_enabled="$2"
+  if [[ "$transition_enabled" -eq 1 ]]; then
+    echo "transition"
+  elif [[ "$display_enabled" -eq 1 ]]; then
+    echo "display_preview"
   else
     echo "core"
   fi
 }
 
-RUN_STRESS_CLASS="$(derive_stress_class "$DISPLAY_DRIVE_ENABLED")"
+RUN_STRESS_CLASS="$(derive_stress_class "$DISPLAY_DRIVE_ENABLED" "$TRANSITION_DRIVE_ENABLED")"
 
 # ------------------------------------------------------------------
 # Profile resolution: apply PERF_SLOS.md hard limits as defaults.
@@ -1207,8 +1220,8 @@ if [[ "$DRY_RUN" -ne 1 ]]; then
   fi
 fi
 
+timestamp="$(date +%Y%m%d_%H%M%S)"
 if [[ -z "$OUT_DIR" ]]; then
-  timestamp="$(date +%Y%m%d_%H%M%S)"
   OUT_DIR="$ROOT_DIR/.artifacts/test_reports/real_fw_soak_$timestamp"
 fi
 mkdir -p "$OUT_DIR"
@@ -1218,12 +1231,24 @@ SERIAL_LOG="$OUT_DIR/serial.log"
 SERIAL_CAPTURE_ERR="$OUT_DIR/serial_capture.stderr"
 METRICS_JSONL="$OUT_DIR/metrics.jsonl"
 PANIC_JSONL="$OUT_DIR/panic.jsonl"
+TREND_METRICS_NDJSON="$OUT_DIR/metrics.ndjson"
+TREND_METRICS_KV="$OUT_DIR/hardware_metrics_kv.txt"
+MANIFEST_JSON="$OUT_DIR/manifest.json"
+TREND_SCORING_JSON="$OUT_DIR/scoring.json"
+TREND_SUMMARY_MD="$OUT_DIR/trend_summary.md"
 SUMMARY_MD="$OUT_DIR/summary.md"
 : > "$RUN_LOG"
 : > "$SERIAL_LOG"
 : > "$SERIAL_CAPTURE_ERR"
 : > "$METRICS_JSONL"
 : > "$PANIC_JSONL"
+: > "$TREND_METRICS_NDJSON"
+: > "$TREND_METRICS_KV"
+
+GIT_SHA_SHORT="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
+GIT_REF_NAME="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+RUN_ID="real_fw_soak_${timestamp}_${GIT_SHA_SHORT}"
+BOARD_ID="${DEVICE_BOARD_ID:-unknown}"
 
 if [[ -n "$BASELINE_PERF_CSV" ]]; then
   BASELINE_PYTHON="$(find_python_for_csv || true)"
@@ -2958,14 +2983,223 @@ fi
   fi
 } > "$SUMMARY_MD"
 
+base_result="$result"
+track_name="${SOAK_PROFILE:-none}"
+cat > "$TREND_METRICS_KV" <<EOF
+metrics_ok_samples=${metrics_ok_samples_parsed}
+rx_packets_delta=${rx_packets_delta}
+parse_successes_delta=${parse_successes_delta}
+parse_failures_delta=${parse_failures_delta}
+queue_drops_delta=${queue_drops_delta}
+perf_drop_delta=${perf_drop_delta}
+event_drop_delta=${event_drop_delta}
+oversize_drops_delta=${oversize_drops_delta}
+display_updates_delta=${display_updates_delta}
+display_skips_delta=${display_skips_delta}
+reconnects_delta=${reconnects_delta}
+disconnects_delta=${disconnects_delta}
+gps_obs_drops_delta=${gps_obs_drops_delta}
+flush_max_peak_us=${flush_max_peak}
+loop_max_peak_us=${loop_max_peak}
+wifi_max_peak_us=${wifi_peak_gate_value}
+ble_drain_max_peak_us=${ble_drain_max_peak}
+sd_max_peak_us=${sd_max_peak}
+fs_max_peak_us=${fs_max_peak}
+queue_high_water_peak=${queue_high_water_peak}
+wifi_connect_deferred_delta=${wifi_connect_deferred_delta}
+dma_free_min_bytes=${dma_free_min_parsed}
+dma_largest_min_bytes=${dma_largest_min_parsed}
+ble_process_max_peak_us=${ble_process_max_peak}
+disp_pipe_max_peak_us=${disp_pipe_max_peak}
+ble_mutex_timeout_delta=${ble_mutex_timeout_delta}
+wifi_p95_us=${wifi_robust_p95}
+disp_pipe_p95_us=${disp_pipe_p95}
+dma_fragmentation_pct_p95=${dma_fragmentation_pct_p95}
+samples_to_stable=${samples_to_stable}
+time_to_stable_ms=${time_to_stable_ms}
+EOF
+
+trend_metric_count="$(python3 - "$TREND_METRICS_KV" "$TREND_METRICS_NDJSON" "$RUN_ID" "$GIT_SHA_SHORT" "$track_name" "$RUN_STRESS_CLASS" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+kv_path = Path(sys.argv[1])
+out_path = Path(sys.argv[2])
+run_id = sys.argv[3]
+git_sha = sys.argv[4]
+track_name = sys.argv[5]
+stress_class = sys.argv[6]
+
+units = {
+    "metrics_ok_samples": "count",
+    "rx_packets_delta": "count",
+    "parse_successes_delta": "count",
+    "parse_failures_delta": "count",
+    "queue_drops_delta": "count",
+    "perf_drop_delta": "count",
+    "event_drop_delta": "count",
+    "oversize_drops_delta": "count",
+    "display_updates_delta": "count",
+    "display_skips_delta": "count",
+    "reconnects_delta": "count",
+    "disconnects_delta": "count",
+    "gps_obs_drops_delta": "count",
+    "flush_max_peak_us": "us",
+    "loop_max_peak_us": "us",
+    "wifi_max_peak_us": "us",
+    "ble_drain_max_peak_us": "us",
+    "sd_max_peak_us": "us",
+    "fs_max_peak_us": "us",
+    "queue_high_water_peak": "count",
+    "wifi_connect_deferred_delta": "count",
+    "dma_free_min_bytes": "bytes",
+    "dma_largest_min_bytes": "bytes",
+    "ble_process_max_peak_us": "us",
+    "disp_pipe_max_peak_us": "us",
+    "ble_mutex_timeout_delta": "count",
+    "wifi_p95_us": "us",
+    "disp_pipe_p95_us": "us",
+    "dma_fragmentation_pct_p95": "percent",
+    "samples_to_stable": "count",
+    "time_to_stable_ms": "ms",
+}
+
+count = 0
+with kv_path.open("r", encoding="utf-8") as handle, out_path.open("w", encoding="utf-8") as out_handle:
+    for raw in handle:
+        line = raw.strip()
+        if not line or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key not in units or value == "":
+            continue
+        try:
+            numeric = float(value)
+        except ValueError:
+            continue
+        record = {
+            "schema_version": 1,
+            "run_id": run_id,
+            "git_sha": git_sha,
+            "run_kind": "real_fw_soak",
+            "suite_or_profile": track_name,
+            "metric": key,
+            "sample": "value",
+            "value": numeric,
+            "unit": units[key],
+            "tags": {"stress_class": stress_class},
+        }
+        out_handle.write(json.dumps(record, sort_keys=True))
+        out_handle.write("\n")
+        count += 1
+
+print(count)
+PY
+)"
+
+python3 - "$MANIFEST_JSON" "$RUN_ID" "$GIT_SHA_SHORT" "$GIT_REF_NAME" "$BOARD_ID" "$ENV_NAME" "$track_name" "$RUN_STRESS_CLASS" "$base_result" "$trend_metric_count" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+run_id = sys.argv[2]
+git_sha = sys.argv[3]
+git_ref = sys.argv[4]
+board_id = sys.argv[5]
+env_name = sys.argv[6]
+track_name = sys.argv[7]
+stress_class = sys.argv[8]
+base_result = sys.argv[9]
+metric_count = int(sys.argv[10])
+
+payload = {
+    "schema_version": 1,
+    "run_id": run_id,
+    "timestamp_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+    "git_sha": git_sha,
+    "git_ref": git_ref,
+    "run_kind": "real_fw_soak",
+    "board_id": board_id,
+    "env": env_name,
+    "lane": "real-fw-soak",
+    "suite_or_profile": track_name,
+    "stress_class": stress_class,
+    "result": base_result,
+    "base_result": base_result,
+    "metrics_file": "metrics.ndjson",
+    "scoring_file": "scoring.json",
+    "tracks": [track_name] if metric_count > 0 and track_name else [],
+}
+manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
+
+trend_scorer_exit=0
+trend_compare_args=()
+if [[ -n "$COMPARE_TO" ]]; then
+  trend_compare_args=(--compare-to "$COMPARE_TO")
+fi
+
+set +e
+python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+  "$MANIFEST_JSON" \
+  --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+  "${trend_compare_args[@]}" \
+  --json > "$TREND_SCORING_JSON"
+trend_scorer_exit=$?
+set -e
+
+if [[ "$trend_scorer_exit" -le 2 ]]; then
+  set +e
+  python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+    "$MANIFEST_JSON" \
+    --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+    "${trend_compare_args[@]}" > "$TREND_SUMMARY_MD"
+  set -e
+
+  python3 - "$MANIFEST_JSON" "$TREND_SCORING_JSON" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+scoring_path = Path(sys.argv[2])
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+scoring = json.loads(scoring_path.read_text(encoding="utf-8"))
+manifest["result"] = scoring["result"]
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+PY
+
+  {
+    echo ""
+    echo "## Trend Comparison"
+    echo ""
+    cat "$TREND_SUMMARY_MD"
+  } >> "$SUMMARY_MD"
+else
+  cat >> "$SUMMARY_MD" <<EOF
+
+## Trend Comparison
+
+- Result: **ERROR**
+- Structured trend scoring failed before a comparison summary could be generated.
+EOF
+fi
+
 echo "==> Real firmware soak complete"
 echo "    result: $result"
 echo "    summary: $SUMMARY_MD"
 echo "    serial log: $SERIAL_LOG"
+echo "    manifest: $MANIFEST_JSON"
 
 if [[ "$result" == "FAIL" ]]; then
   exit 1
 fi
 if [[ "$result" == "INCONCLUSIVE" && "$ALLOW_INCONCLUSIVE" -ne 1 ]]; then
   exit 2
+fi
+if [[ "$trend_scorer_exit" -ge 1 ]]; then
+  exit 1
 fi

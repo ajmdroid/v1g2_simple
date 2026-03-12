@@ -86,6 +86,8 @@ void test_coex_baseline_heap_snapshot() {
     Serial.printf("  [coex] baseline internal free: %lu, largest: %lu\n",
                   (unsigned long)baselineInternalFree,
                   (unsigned long)baselineInternalLargest);
+    deviceTestMetricU32("baseline_internal_free_bytes", "baseline", baselineInternalFree, "bytes");
+    deviceTestMetricU32("baseline_internal_largest_block_bytes", "baseline", baselineInternalLargest, "bytes");
 
     TEST_ASSERT_GREATER_THAN_UINT32(WIFI_MIN_FREE_DMA, baselineInternalFree);
     TEST_ASSERT_GREATER_THAN_UINT32(WIFI_MIN_LARGEST_BLOCK, baselineInternalLargest);
@@ -109,6 +111,7 @@ void test_coex_wifi_ap_start_heap_cost() {
                   (unsigned long)heapCost,
                   (unsigned long)beforeFree,
                   (unsigned long)duringFree);
+    deviceTestMetricU32("wifi_ap_heap_cost_bytes", "ap_active", heapCost, "bytes");
 
     // WiFi typically costs 40-80 KB of internal SRAM
     TEST_ASSERT_GREATER_THAN_UINT32(20 * 1024, heapCost);
@@ -132,9 +135,11 @@ void test_coex_wifi_stop_heap_recovery() {
     delay(1000);
 
     uint32_t afterStop = internalFree();
+    uint32_t recoveryDelta = (beforeWifi > afterStop) ? (beforeWifi - afterStop) : (afterStop - beforeWifi);
 
     Serial.printf("  [coex] WiFi recovery: before=%lu after=%lu\n",
                   (unsigned long)beforeWifi, (unsigned long)afterStop);
+    deviceTestMetricU32("wifi_stop_recovery_delta_bytes", "recovery", recoveryDelta, "bytes");
 
     // Should recover within 8 KB of pre-WiFi state
     TEST_ASSERT_UINT32_WITHIN(8 * 1024, beforeWifi, afterStop);
@@ -148,6 +153,8 @@ void test_coex_dma_gate_passes_at_boot() {
     // Reuse baseline captured by first test (no WiFi started between them)
     bool canStart = (baselineInternalFree >= WIFI_MIN_FREE_DMA)
                  && (baselineInternalLargest >= WIFI_MIN_LARGEST_BLOCK);
+    deviceTestMetricI32("dma_free_margin_bytes", "baseline", (int32_t)baselineInternalFree - (int32_t)WIFI_MIN_FREE_DMA, "bytes");
+    deviceTestMetricI32("dma_largest_margin_bytes", "baseline", (int32_t)baselineInternalLargest - (int32_t)WIFI_MIN_LARGEST_BLOCK, "bytes");
     TEST_ASSERT_TRUE_MESSAGE(canStart,
         "DMA gate should pass at boot — insufficient internal SRAM");
 }
@@ -171,6 +178,8 @@ void test_coex_dma_gate_under_pressure() {
                   (unsigned long)pressured_free,
                   (unsigned long)pressured_largest,
                   canStart);
+    deviceTestMetricU32("pressured_free_bytes", "pressure", pressured_free, "bytes");
+    deviceTestMetricU32("pressured_largest_block_bytes", "pressure", pressured_largest, "bytes");
 
     // Free BEFORE asserting — ensures cleanup even on assertion failure
     heap_caps_free(pressure);
@@ -207,6 +216,7 @@ void test_coex_ble_tx_power_setting() {
 
     Serial.printf("  [coex] BLE TX power baseline: adv=%d scan=%d default=%d dBm\n",
                   advPower, scanPower, defaultPower);
+    deviceTestMetricI32("ble_tx_power_dbm", "baseline", defaultPower, "dbm");
 
     TEST_ASSERT_EQUAL_INT(BLE_TARGET_TX_POWER_DBM, advPower);
     TEST_ASSERT_EQUAL_INT(BLE_TARGET_TX_POWER_DBM, scanPower);
@@ -226,6 +236,7 @@ void test_coex_ble_tx_power_persists_with_wifi_ap_active() {
 
     Serial.printf("  [coex] BLE TX power with WiFi AP active: adv=%d scan=%d default=%d dBm\n",
                   advPower, scanPower, defaultPower);
+    deviceTestMetricI32("ble_tx_power_with_wifi_dbm", "wifi_ap", defaultPower, "dbm");
 
     TEST_ASSERT_EQUAL_INT(BLE_TARGET_TX_POWER_DBM, advPower);
     TEST_ASSERT_EQUAL_INT(BLE_TARGET_TX_POWER_DBM, scanPower);
@@ -249,10 +260,12 @@ void test_coex_wifi_repeated_start_stop_no_leak() {
     }
 
     uint32_t after = internalFree();
+    uint32_t leakBytes = (baseline > after) ? (baseline - after) : (after - baseline);
 
     Serial.printf("  [coex] WiFi 3x cycle: baseline=%lu after=%lu delta=%ld\n",
                   (unsigned long)baseline, (unsigned long)after,
                   (long)after - (long)baseline);
+    deviceTestMetricU32("wifi_cycle_leak_bytes", "cycle_3x", leakBytes, "bytes");
 
     TEST_ASSERT_UINT32_WITHIN(12 * 1024, baseline, after);
 }

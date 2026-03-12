@@ -91,54 +91,11 @@ mkdir -p "$OUT_DIR"
 SOAK_LOG="$OUT_DIR/soak.log"
 CSV_PATH="$OUT_DIR/cycles.csv"
 SUMMARY_MD="$OUT_DIR/summary.md"
-RESET_REASON_RAW="$OUT_DIR/reset_reasons_raw.txt"
+CYCLE_JSONL="$OUT_DIR/cycles.jsonl"
 
 : > "$SOAK_LOG"
-: > "$RESET_REASON_RAW"
-printf "cycle,start_utc,end_utc,duration_s,status,exit_code,failed_suite,report_dir,min_free_heap,wdt_or_panic_count,reset_line_count,event_bus_published,event_bus_consumed,event_bus_dropped,event_bus_dual_published,event_bus_dual_dropped\n" > "$CSV_PATH"
-
-extract_min_free_heap() {
-  local log_path="$1"
-  grep -oE 'free_heap=[0-9]+' "$log_path" \
-    | awk -F= 'NR == 1 || $2 < min { min = $2 } END { if (NR > 0) print min }'
-}
-
-extract_wdt_or_panic_count() {
-  local log_path="$1"
-  grep -Eic 'task watchdog|task_wdt|Guru Meditation|panic|abort\(' "$log_path" || true
-}
-
-extract_reset_line_count() {
-  local log_path="$1"
-  grep -c 'rst:0x' "$log_path" || true
-}
-
-extract_event_bus_main_totals() {
-  local log_path="$1"
-  awk '
-    /\[bus\] published=[0-9]+ consumed=[0-9]+ dropped=[0-9]+/ {
-      for (i = 1; i <= NF; i++) {
-        if ($i ~ /^published=/) { split($i, a, "="); pub += a[2] + 0; }
-        if ($i ~ /^consumed=/)  { split($i, a, "="); con += a[2] + 0; }
-        if ($i ~ /^dropped=/)   { split($i, a, "="); drp += a[2] + 0; }
-      }
-    }
-    END { printf "%d %d %d\n", pub + 0, con + 0, drp + 0; }
-  ' "$log_path"
-}
-
-extract_event_bus_dual_totals() {
-  local log_path="$1"
-  awk '
-    /\[bus\] dual-producer: published=[0-9]+ dropped=[0-9]+/ {
-      for (i = 1; i <= NF; i++) {
-        if ($i ~ /^published=/) { split($i, a, "="); pub += a[2] + 0; }
-        if ($i ~ /^dropped=/)   { split($i, a, "="); drp += a[2] + 0; }
-      }
-    }
-    END { printf "%d %d\n", pub + 0, drp + 0; }
-  ' "$log_path"
-}
+: > "$CYCLE_JSONL"
+printf "cycle,start_utc,end_utc,duration_s,command_status,base_status,failed_suite,report_dir,manifest_path,scoring_path,scoring_result,comparison_kind,metrics_scored,hard_failures,advisory_failures,info_regressions,missing_required,missing_optional\n" > "$CSV_PATH"
 
 SOAK_START_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 SOAK_START_EPOCH="$(date +%s)"
@@ -147,15 +104,7 @@ pass_cycles=0
 fail_cycles=0
 completed_cycles=0
 total_duration_s=0
-total_wdt_or_panic=0
-total_reset_lines=0
-total_event_pub=0
-total_event_con=0
-total_event_drop=0
-total_event_dual_pub=0
-total_event_dual_drop=0
-global_min_heap=""
-global_min_heap_cycle=""
+previous_manifest=""
 
 echo "==> Starting device soak run"
 echo "    cycles: $CYCLES"
@@ -170,8 +119,13 @@ for cycle in $(seq 1 "$CYCLES"); do
 
   echo "==> [cycle $cycle/$CYCLES] starting at $cycle_start_utc"
 
+  compare_args=()
+  if [[ -n "$previous_manifest" ]]; then
+    compare_args=(--compare-to "$previous_manifest")
+  fi
+
   set +e
-  ./scripts/run_device_tests.sh "${RUN_ARGS[@]}" 2>&1 | tee "$cycle_log"
+  ./scripts/run_device_tests.sh "${RUN_ARGS[@]}" "${compare_args[@]}" 2>&1 | tee "$cycle_log"
   cmd_status=${PIPESTATUS[0]}
   set -e
 
@@ -185,34 +139,14 @@ for cycle in $(seq 1 "$CYCLES"); do
 
   report_dir="$(awk -F'Reports written to: ' '/Reports written to:/ { path=$2 } END { print path }' "$cycle_log" | xargs)"
   failed_suite="$(awk -F'Device test run stopped at: ' '/Device test run stopped at:/ { suite=$2 } END { print suite }' "$cycle_log" | xargs)"
-
-  metrics_log="$cycle_log"
-  if [[ -n "$report_dir" && -f "$report_dir/device.log" ]]; then
-    metrics_log="$report_dir/device.log"
+  manifest_path=""
+  scoring_path=""
+  if [[ -n "$report_dir" && -f "$report_dir/manifest.json" ]]; then
+    manifest_path="$report_dir/manifest.json"
   fi
-
-  min_free_heap="$(extract_min_free_heap "$metrics_log")"
-  wdt_or_panic_count="$(extract_wdt_or_panic_count "$metrics_log")"
-  reset_line_count="$(extract_reset_line_count "$metrics_log")"
-  read -r event_pub event_con event_drop <<<"$(extract_event_bus_main_totals "$metrics_log")"
-  read -r event_dual_pub event_dual_drop <<<"$(extract_event_bus_dual_totals "$metrics_log")"
-
-  if [[ -n "$min_free_heap" ]]; then
-    if [[ -z "$global_min_heap" || "$min_free_heap" -lt "$global_min_heap" ]]; then
-      global_min_heap="$min_free_heap"
-      global_min_heap_cycle="$cycle"
-    fi
+  if [[ -n "$report_dir" && -f "$report_dir/scoring.json" ]]; then
+    scoring_path="$report_dir/scoring.json"
   fi
-
-  total_wdt_or_panic=$((total_wdt_or_panic + wdt_or_panic_count))
-  total_reset_lines=$((total_reset_lines + reset_line_count))
-  total_event_pub=$((total_event_pub + event_pub))
-  total_event_con=$((total_event_con + event_con))
-  total_event_drop=$((total_event_drop + event_drop))
-  total_event_dual_pub=$((total_event_dual_pub + event_dual_pub))
-  total_event_dual_drop=$((total_event_dual_drop + event_dual_drop))
-
-  grep -oE 'rst:0x[0-9a-fA-F]+' "$metrics_log" >> "$RESET_REASON_RAW" || true
 
   status_word="PASS"
   if [[ "$cmd_status" -eq 0 ]]; then
@@ -222,26 +156,111 @@ for cycle in $(seq 1 "$CYCLES"); do
     fail_cycles=$((fail_cycles + 1))
   fi
 
-  printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-    "$cycle" \
-    "$cycle_start_utc" \
-    "$cycle_end_utc" \
-    "$cycle_duration_s" \
-    "$status_word" \
-    "$cmd_status" \
-    "$failed_suite" \
-    "$report_dir" \
-    "$min_free_heap" \
-    "$wdt_or_panic_count" \
-    "$reset_line_count" \
-    "$event_pub" \
-    "$event_con" \
-    "$event_drop" \
-    "$event_dual_pub" \
-    "$event_dual_drop" >> "$CSV_PATH"
+  cycle_summary_json="$OUT_DIR/cycle_${cycle}.json"
+  python3 - "$cycle_summary_json" "$cycle" "$cycle_start_utc" "$cycle_end_utc" "$cycle_duration_s" "$cmd_status" "$status_word" "$failed_suite" "$report_dir" "$manifest_path" "$scoring_path" <<'PY'
+import json
+import sys
+from pathlib import Path
 
-  echo "==> [cycle $cycle/$CYCLES] $status_word exit=$cmd_status duration=${cycle_duration_s}s min_heap=${min_free_heap:-n/a} wdt_or_panic=$wdt_or_panic_count"
+out_path = Path(sys.argv[1])
+cycle = int(sys.argv[2])
+start_utc = sys.argv[3]
+end_utc = sys.argv[4]
+duration_s = int(sys.argv[5])
+command_status = int(sys.argv[6])
+base_status = sys.argv[7]
+failed_suite = sys.argv[8]
+report_dir = sys.argv[9]
+manifest_path = Path(sys.argv[10]) if sys.argv[10] else None
+scoring_path = Path(sys.argv[11]) if sys.argv[11] else None
+
+payload = {
+    "cycle": cycle,
+    "start_utc": start_utc,
+    "end_utc": end_utc,
+    "duration_s": duration_s,
+    "command_status": command_status,
+    "base_status": base_status,
+    "failed_suite": failed_suite,
+    "report_dir": report_dir,
+    "manifest_path": str(manifest_path) if manifest_path else "",
+    "scoring_path": str(scoring_path) if scoring_path else "",
+    "scoring_result": "",
+    "comparison_kind": "",
+    "metrics_scored": 0,
+    "hard_failures": 0,
+    "advisory_failures": 0,
+    "info_regressions": 0,
+    "missing_required": 0,
+    "missing_optional": 0,
+}
+
+if scoring_path and scoring_path.exists():
+    scoring = json.loads(scoring_path.read_text(encoding="utf-8"))
+    summary = scoring.get("summary", {})
+    payload["scoring_result"] = scoring.get("result", "")
+    payload["comparison_kind"] = scoring.get("comparison_kind", "")
+    payload["metrics_scored"] = int(summary.get("metrics_scored", 0))
+    payload["hard_failures"] = int(summary.get("hard_failures", 0))
+    payload["advisory_failures"] = int(summary.get("advisory_failures", 0))
+    payload["info_regressions"] = int(summary.get("info_regressions", 0))
+    payload["missing_required"] = int(summary.get("missing_required", 0))
+    payload["missing_optional"] = int(summary.get("missing_optional", 0))
+
+out_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
+  cycle_summary="$(cat "$cycle_summary_json")"
+  printf "%s\n" "$cycle_summary" >> "$CYCLE_JSONL"
+
+  cycle_fields="$(python3 - "$cycle_summary_json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(
+    "\t".join(
+        str(payload[key]) for key in [
+            "cycle",
+            "start_utc",
+            "end_utc",
+            "duration_s",
+            "command_status",
+            "base_status",
+            "failed_suite",
+            "report_dir",
+            "manifest_path",
+            "scoring_path",
+            "scoring_result",
+            "comparison_kind",
+            "metrics_scored",
+            "hard_failures",
+            "advisory_failures",
+            "info_regressions",
+            "missing_required",
+            "missing_optional",
+        ]
+    )
+)
+PY
+)"
+  printf "%s\n" "$cycle_fields" | tr '\t' ',' >> "$CSV_PATH"
+  read -r cycle_scoring_result cycle_comparison_kind <<<"$(python3 - "$cycle_summary_json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print((payload["scoring_result"] or "n/a") + " " + (payload["comparison_kind"] or "n/a"))
+PY
+)"
+
+  echo "==> [cycle $cycle/$CYCLES] $status_word exit=$cmd_status duration=${cycle_duration_s}s scoring=${cycle_scoring_result} compare=${cycle_comparison_kind}"
   echo ""
+
+  if [[ -n "$manifest_path" ]]; then
+    previous_manifest="$manifest_path"
+  fi
 
   if [[ "$cmd_status" -ne 0 && "$STOP_ON_FAIL" -eq 1 ]]; then
     echo "Stopping soak early due to --stop-on-fail." >&2
@@ -256,52 +275,167 @@ SOAK_ELAPSED_S=$((SOAK_END_EPOCH - SOAK_START_EPOCH))
 failure_rate_pct="$(awk -v total="$completed_cycles" -v failed="$fail_cycles" 'BEGIN { if (total == 0) printf "0.00"; else printf "%.2f", (failed * 100.0) / total }')"
 pass_rate_pct="$(awk -v total="$completed_cycles" -v passed="$pass_cycles" 'BEGIN { if (total == 0) printf "0.00"; else printf "%.2f", (passed * 100.0) / total }')"
 
-{
-  echo "# Device Soak Summary"
-  echo ""
-  echo "- Start (UTC): $SOAK_START_UTC"
-  echo "- End (UTC): $SOAK_END_UTC"
-  echo "- Requested cycles: $CYCLES"
-  echo "- Completed cycles: $completed_cycles"
-  echo "- Passed cycles: $pass_cycles ($pass_rate_pct%)"
-  echo "- Failed cycles: $fail_cycles ($failure_rate_pct%)"
-  echo "- Total runtime (wall): ${SOAK_ELAPSED_S}s"
-  echo "- Aggregate cycle runtime: ${total_duration_s}s"
-  echo "- Watchdog/panic signature count: $total_wdt_or_panic"
-  echo "- Reset-line count: $total_reset_lines"
-  if [[ -n "$global_min_heap" ]]; then
-    echo "- Lowest observed free heap: $global_min_heap (cycle $global_min_heap_cycle)"
-  else
-    echo "- Lowest observed free heap: n/a"
-  fi
-  echo "- Event bus totals: published=$total_event_pub consumed=$total_event_con dropped=$total_event_drop"
-  echo "- Event bus dual-producer totals: published=$total_event_dual_pub dropped=$total_event_dual_drop"
-  echo ""
-  echo "## Failed Cycles"
-  echo ""
-  if [[ "$fail_cycles" -eq 0 ]]; then
-    echo "None."
-  else
-    echo "| Cycle | Exit | Failed Suite | Report Dir |"
-    echo "|------:|-----:|--------------|------------|"
-    awk -F, 'NR > 1 && $5 == "FAIL" { printf "| %s | %s | %s | %s |\n", $1, $6, ($7 == "" ? "-" : $7), ($8 == "" ? "-" : $8) }' "$CSV_PATH"
-  fi
-  echo ""
-  echo "## Reset Reasons"
-  echo ""
-  if [[ ! -s "$RESET_REASON_RAW" ]]; then
-    echo "No reset lines captured."
-  else
-    echo "| Reason | Count |"
-    echo "|--------|------:|"
-    sort "$RESET_REASON_RAW" | uniq -c | sort -nr | awk '{ printf "| `%s` | %s |\n", $2, $1 }'
-  fi
-  echo ""
-  echo "## Artifacts"
-  echo ""
-  echo "- Cycle CSV: \`$CSV_PATH\`"
-  echo "- Soak log: \`$SOAK_LOG\`"
-} > "$SUMMARY_MD"
+python3 - "$CYCLE_JSONL" "$SUMMARY_MD" "$SOAK_START_UTC" "$SOAK_END_UTC" "$CYCLES" "$completed_cycles" "$pass_cycles" "$pass_rate_pct" "$fail_cycles" "$failure_rate_pct" "$SOAK_ELAPSED_S" "$total_duration_s" "$CSV_PATH" "$SOAK_LOG" <<'PY'
+import json
+import math
+import statistics
+import sys
+from collections import Counter, defaultdict
+from pathlib import Path
+
+cycle_jsonl = Path(sys.argv[1])
+summary_path = Path(sys.argv[2])
+start_utc = sys.argv[3]
+end_utc = sys.argv[4]
+requested_cycles = int(sys.argv[5])
+completed_cycles = int(sys.argv[6])
+pass_cycles = int(sys.argv[7])
+pass_rate_pct = sys.argv[8]
+fail_cycles = int(sys.argv[9])
+failure_rate_pct = sys.argv[10]
+soak_elapsed_s = int(sys.argv[11])
+total_duration_s = int(sys.argv[12])
+csv_path = sys.argv[13]
+soak_log = sys.argv[14]
+
+cycles = []
+with cycle_jsonl.open("r", encoding="utf-8") as handle:
+    for raw in handle:
+        line = raw.strip()
+        if line:
+            cycles.append(json.loads(line))
+
+score_counts = Counter(c["scoring_result"] or "n/a" for c in cycles)
+metric_values = defaultdict(list)
+delta_rows = []
+failed_cycles = []
+
+for cycle in cycles:
+    if cycle["command_status"] != 0:
+        failed_cycles.append(cycle)
+    scoring_path = Path(cycle["scoring_path"]) if cycle.get("scoring_path") else None
+    if not scoring_path or not scoring_path.exists():
+        continue
+    scoring = json.loads(scoring_path.read_text(encoding="utf-8"))
+    for metric in scoring.get("metrics", []):
+        key = f"{metric['suite_or_profile']}::{metric['metric']}"
+        current = metric.get("current_value")
+        if isinstance(current, (int, float)):
+            metric_values[key].append(float(current))
+        delta_pct = metric.get("delta_pct")
+        delta_abs = metric.get("delta_abs")
+        if delta_pct is not None or delta_abs is not None:
+            score = abs(delta_pct) if isinstance(delta_pct, (int, float)) else abs(delta_abs or 0.0)
+            delta_rows.append(
+                (
+                    score,
+                    cycle["cycle"],
+                    metric["suite_or_profile"],
+                    metric["metric"],
+                    metric["current_value"],
+                    metric["baseline_value"],
+                    metric["delta_abs"],
+                    metric["delta_pct"],
+                    metric["classification"],
+                )
+            )
+
+variation_rows = []
+for key, values in metric_values.items():
+    if not values:
+        continue
+    mean = statistics.fmean(values)
+    span = max(values) - min(values)
+    stdev = statistics.pstdev(values) if len(values) > 1 else 0.0
+    variation_rows.append((span, stdev, key, min(values), max(values), mean, len(values)))
+
+variation_rows.sort(reverse=True)
+delta_rows.sort(reverse=True)
+
+lines = [
+    "# Device Soak Summary",
+    "",
+    f"- Start (UTC): {start_utc}",
+    f"- End (UTC): {end_utc}",
+    f"- Requested cycles: {requested_cycles}",
+    f"- Completed cycles: {completed_cycles}",
+    f"- Passed cycles: {pass_cycles} ({pass_rate_pct}%)",
+    f"- Failed cycles: {fail_cycles} ({failure_rate_pct}%)",
+    f"- Total runtime (wall): {soak_elapsed_s}s",
+    f"- Aggregate cycle runtime: {total_duration_s}s",
+    "",
+    "## Structured Results",
+    "",
+    "| Result | Count |",
+    "|--------|------:|",
+]
+for key, count in sorted(score_counts.items()):
+    lines.append(f"| `{key}` | {count} |")
+
+lines.extend(["", "## Failed Cycles", ""])
+if not failed_cycles:
+    lines.append("None.")
+else:
+    lines.extend(
+        [
+            "| Cycle | Exit | Failed Suite | Report Dir |",
+            "|------:|-----:|--------------|------------|",
+        ]
+    )
+    for cycle in failed_cycles:
+        lines.append(
+            f"| {cycle['cycle']} | {cycle['command_status']} | "
+            f"{cycle.get('failed_suite') or '-'} | {cycle.get('report_dir') or '-'} |"
+        )
+
+lines.extend(["", "## Highest Run-to-Run Variation", ""])
+if not variation_rows:
+    lines.append("No metric variation data available.")
+else:
+    lines.extend(
+        [
+            "| Track Metric | Samples | Min | Max | Span | Mean | Stdev |",
+            "|--------------|--------:|----:|----:|-----:|-----:|------:|",
+        ]
+    )
+    for span, stdev, key, min_v, max_v, mean, samples in variation_rows[:12]:
+        lines.append(
+            f"| `{key}` | {samples} | {min_v:.3f} | {max_v:.3f} | {span:.3f} | {mean:.3f} | {stdev:.3f} |"
+        )
+
+lines.extend(["", "## Worst Deltas Vs Prior Cycle", ""])
+if not delta_rows:
+    lines.append("No baseline deltas available.")
+else:
+    lines.extend(
+        [
+            "| Cycle | Track | Metric | Current | Baseline | Delta | Delta % | Classification |",
+            "|------:|-------|--------|--------:|---------:|------:|--------:|----------------|",
+        ]
+    )
+    for _score, cycle_num, track, metric, current, baseline, delta_abs, delta_pct, classification in delta_rows[:12]:
+        pct_text = "n/a" if delta_pct is None else f"{delta_pct:.3f}%"
+        abs_text = "n/a" if delta_abs is None else f"{delta_abs:.3f}"
+        lines.append(
+            f"| {cycle_num} | `{track}` | `{metric}` | "
+            f"{current if current is not None else 'n/a'} | "
+            f"{baseline if baseline is not None else 'n/a'} | "
+            f"{abs_text} | {pct_text} | {classification} |"
+        )
+
+lines.extend(
+    [
+        "",
+        "## Artifacts",
+        "",
+        f"- Cycle CSV: `{csv_path}`",
+        f"- Cycle JSONL: `{cycle_jsonl}`",
+        f"- Soak log: `{soak_log}`",
+    ]
+)
+
+summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
 
 echo "==> Soak complete"
 echo "    completed: $completed_cycles / $CYCLES"

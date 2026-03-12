@@ -114,6 +114,8 @@ void test_boot_internal_sram_baseline() {
 
     Serial.printf("  [boot] Internal SRAM: free=%lu largest=%lu\n",
                   (unsigned long)free, (unsigned long)largest);
+    deviceTestMetricU32("internal_free_bytes", "baseline", free, "bytes");
+    deviceTestMetricU32("internal_largest_block_bytes", "baseline", largest, "bytes");
 
     // After framework init + test overhead, expect > 100 KB free
     TEST_ASSERT_GREATER_THAN_UINT32(100 * 1024, free);
@@ -126,6 +128,7 @@ void test_boot_psram_detected() {
     uint32_t size = ESP.getPsramSize();
 
     Serial.printf("  [boot] PSRAM: found=%d size=%lu\n", found, (unsigned long)size);
+    deviceTestMetricU32("psram_size_bytes", "baseline", size, "bytes");
 
     TEST_ASSERT_TRUE_MESSAGE(found, "PSRAM not detected — board misconfigured?");
     TEST_ASSERT_GREATER_THAN_UINT32(4 * 1024 * 1024, size);  // At least 4 MB
@@ -161,6 +164,7 @@ void test_boot_sketch_has_space() {
 
     Serial.printf("  [boot] Sketch: used=%lu free=%lu\n",
                   (unsigned long)sketchSize, (unsigned long)freeSketch);
+    deviceTestMetricU32("free_sketch_bytes", "baseline", freeSketch, "bytes");
 
     // Should have more than 1 MB free (16 MB flash, ~2 MB firmware)
     TEST_ASSERT_GREATER_THAN_UINT32(1 * 1024 * 1024, freeSketch);
@@ -194,8 +198,10 @@ void test_boot_serial_functional() {
 
 void test_boot_main_task_stack_not_exhausted() {
     UBaseType_t highWater = uxTaskGetStackHighWaterMark(NULL);
+    uint32_t highWaterBytes = (uint32_t)(highWater * sizeof(StackType_t));
     Serial.printf("  [boot] Main task stack high water: %lu bytes remaining\n",
-                  (unsigned long)highWater * sizeof(StackType_t));
+                  (unsigned long)highWaterBytes);
+    deviceTestMetricU32("main_stack_high_water_bytes", "baseline", highWaterBytes, "bytes");
 
     // Should have at least 1 KB of stack remaining
     TEST_ASSERT_GREATER_THAN((UBaseType_t)256, highWater);

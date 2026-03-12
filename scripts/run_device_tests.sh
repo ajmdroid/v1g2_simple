@@ -16,6 +16,7 @@ cd "$ROOT_DIR"
 MODE="device"
 RUN_STRESS=0
 SUITE_COOLDOWN_SECONDS="${DEVICE_SUITE_COOLDOWN_SECONDS:-5}"
+COMPARE_TO=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -36,8 +37,16 @@ while [[ $# -gt 0 ]]; do
       SUITE_COOLDOWN_SECONDS="$2"
       shift
       ;;
+    --compare-to)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --compare-to" >&2
+        exit 2
+      fi
+      COMPARE_TO="$2"
+      shift
+      ;;
     -h|--help)
-      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N]"
+      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N] [--compare-to PATH]"
       echo ""
       echo "Modes:"
       echo "  (default)  Run all device-only test suites (safe set)"
@@ -47,6 +56,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --stress   Include stress suites (can destabilize fragile hardware)"
       echo "  --cooldown-seconds N"
       echo "             Wait N seconds between suites (default: ${DEVICE_SUITE_COOLDOWN_SECONDS:-5})"
+      echo "  --compare-to PATH"
+      echo "             Compare this run against a prior manifest.json"
       echo ""
       echo "Environment:"
       echo "  DEVICE_SUITE_COOLDOWN_SECONDS"
@@ -54,7 +65,7 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N]" >&2
+      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N] [--compare-to PATH]" >&2
       echo "" >&2
       echo "Unknown option: $1" >&2
       exit 2
@@ -181,7 +192,24 @@ timestamp="$(date +%Y%m%d_%H%M%S)"
 OUT_DIR="$ROOT_DIR/.artifacts/test_reports/device_$timestamp"
 mkdir -p "$OUT_DIR"
 MAIN_LOG="$OUT_DIR/device.log"
+METRICS_NDJSON="$OUT_DIR/metrics.ndjson"
+MANIFEST_JSON="$OUT_DIR/manifest.json"
+SCORING_JSON="$OUT_DIR/scoring.json"
+SUMMARY_MD="$OUT_DIR/summary.md"
+SUITE_INDEX_TSV="$OUT_DIR/suite_index.tsv"
 : > "$MAIN_LOG"
+: > "$METRICS_NDJSON"
+printf "suite\tstatus\tjson\txml\tlog\tmetric_count\n" > "$SUITE_INDEX_TSV"
+
+GIT_SHA="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
+GIT_REF="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+RUN_ID="device_${timestamp}_${GIT_SHA}"
+BOARD_ID="${DEVICE_BOARD_ID:-unknown}"
+LANE="device-tests"
+STRESS_CLASS="core"
+if [[ "$RUN_STRESS" -eq 1 ]]; then
+  STRESS_CLASS="stress"
+fi
 
 # ─── Define suite groups ─────────────────────────────────────────────
 
@@ -298,6 +326,121 @@ if failure_count > 0 or error_count > 0:
 PY
 }
 
+extract_suite_metrics() {
+  local suite="$1"
+  local suite_log="$2"
+  local metric_count
+
+  if ! metric_count="$(python3 "$ROOT_DIR/tools/extract_device_metrics.py" \
+      "$suite_log" "$METRICS_NDJSON" \
+      --run-id "$RUN_ID" \
+      --git-sha "$GIT_SHA" \
+      --suite "$suite" 2>>"$MAIN_LOG")"; then
+    echo "Failed to extract structured metrics from suite '$suite'." >&2
+    return 1
+  fi
+
+  echo "${metric_count:-0}"
+}
+
+write_manifest() {
+  local base_result="$1"
+  python3 - "$MANIFEST_JSON" "$SUITE_INDEX_TSV" "$RUN_ID" "$GIT_SHA" "$GIT_REF" "$BOARD_ID" "$STRESS_CLASS" "$base_result" <<'PY'
+import csv
+import json
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+index_path = Path(sys.argv[2])
+run_id = sys.argv[3]
+git_sha = sys.argv[4]
+git_ref = sys.argv[5]
+board_id = sys.argv[6]
+stress_class = sys.argv[7]
+base_result = sys.argv[8]
+
+suite_rows = []
+tracks = []
+with index_path.open("r", encoding="utf-8") as handle:
+    reader = csv.DictReader(handle, delimiter="\t")
+    for row in reader:
+        suite_rows.append(row)
+        if row.get("suite"):
+            tracks.append(row["suite"])
+
+payload = {
+    "schema_version": 1,
+    "run_id": run_id,
+    "timestamp_utc": __import__("datetime").datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+    "git_sha": git_sha,
+    "git_ref": git_ref,
+    "run_kind": "device_suite",
+    "board_id": board_id,
+    "env": "device",
+    "lane": "device-tests",
+    "suite_or_profile": "device_suite_collection",
+    "stress_class": stress_class,
+    "result": base_result,
+    "base_result": base_result,
+    "metrics_file": "metrics.ndjson",
+    "scoring_file": "scoring.json",
+    "tracks": tracks,
+    "suite_results": suite_rows,
+}
+
+manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
+}
+
+score_manifest() {
+  local scorer_status=0
+  local compare_args=()
+  if [[ -n "$COMPARE_TO" ]]; then
+    compare_args+=(--compare-to "$COMPARE_TO")
+  fi
+
+  set +e
+  python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+    "$MANIFEST_JSON" \
+    --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+    "${compare_args[@]}" \
+    --json > "$SCORING_JSON"
+  scorer_status=$?
+  set -e
+
+  if [[ "$scorer_status" -le 2 ]]; then
+    set +e
+    python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+      "$MANIFEST_JSON" \
+      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+      "${compare_args[@]}" > "$SUMMARY_MD"
+    set -e
+
+    python3 - "$MANIFEST_JSON" "$SCORING_JSON" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+scoring_path = Path(sys.argv[2])
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+scoring = json.loads(scoring_path.read_text(encoding="utf-8"))
+manifest["result"] = scoring["result"]
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+PY
+  else
+    cat > "$SUMMARY_MD" <<EOF
+# Hardware Run Score
+
+- Result: **ERROR**
+- Scoring failed before a comparison summary could be generated.
+EOF
+  fi
+
+  return "$scorer_status"
+}
+
 # ─── Run tests ────────────────────────────────────────────────────────
 
 run_suite() {
@@ -348,6 +491,8 @@ run_suite() {
   local suite_json="$OUT_DIR/${suite}.json"
   local suite_xml="$OUT_DIR/${suite}.xml"
   local suite_log="$OUT_DIR/${suite}.log"
+  local suite_status="PASS"
+  local metric_count="0"
 
   set +e
   pio test -e device -f "$suite" \
@@ -359,14 +504,21 @@ run_suite() {
   set -e
 
   cat "$suite_log" >> "$MAIN_LOG"
+  metric_count="$(extract_suite_metrics "$suite" "$suite_log")" || return 1
 
   if [[ $cmd_status -ne 0 ]]; then
+    suite_status="FAIL"
+    printf "%s\t%s\t%s\t%s\t%s\t%s\n" \
+      "$suite" "$suite_status" "$suite_json" "$suite_xml" "$suite_log" "$metric_count" >> "$SUITE_INDEX_TSV"
     echo "" >&2
     echo "Suite '$suite' failed (exit $cmd_status)." >&2
     echo "Last 40 log lines:" >&2
     tail -n 40 "$suite_log" >&2 || true
     return "$cmd_status"
   fi
+
+  printf "%s\t%s\t%s\t%s\t%s\t%s\n" \
+    "$suite" "$suite_status" "$suite_json" "$suite_xml" "$suite_log" "$metric_count" >> "$SUITE_INDEX_TSV"
 
   summarize_json "$suite_json"
 }
@@ -383,13 +535,31 @@ for suite in "${SUITES[@]}"; do
   suite_index=$((suite_index + 1))
 done
 
+base_result="PASS"
+if [[ -n "$failed_suite" ]]; then
+  base_result="FAIL"
+fi
+write_manifest "$base_result"
+scorer_exit=0
+if ! score_manifest; then
+  scorer_exit=$?
+fi
+
 if [[ -n "$failed_suite" ]]; then
   echo "" >&2
   echo "Device test run stopped at: $failed_suite" >&2
   echo "Reports written to: $OUT_DIR"
+  echo "Manifest: $MANIFEST_JSON"
+  echo "Summary: $SUMMARY_MD"
   exit 1
 fi
 
 echo ""
 echo "All requested device suites passed."
 echo "Reports written to: $OUT_DIR"
+echo "Manifest: $MANIFEST_JSON"
+echo "Summary: $SUMMARY_MD"
+
+if [[ "$scorer_exit" -ge 2 ]]; then
+  exit 1
+fi

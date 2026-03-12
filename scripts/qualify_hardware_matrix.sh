@@ -76,7 +76,7 @@ for b in inv['boards']:
 " 2>/dev/null || echo "")
   if [ -n "$RADIO_PORT" ] && [ -e "$RADIO_PORT" ]; then
     run_board radio "Radio board device tests" \
-      env DEVICE_PORT="$RADIO_PORT" ./scripts/run_device_tests.sh --full
+      env DEVICE_PORT="$RADIO_PORT" DEVICE_BOARD_ID="radio" ./scripts/run_device_tests.sh --full
   else
     echo -e "${YELLOW}[skip] Radio board not connected at expected port${NC}"
   fi
@@ -96,7 +96,7 @@ for b in inv['boards']:
 " 2>/dev/null || echo "")
   if [ -n "$STRESS_PORT" ] && [ -e "$STRESS_PORT" ]; then
     run_board stress "Stress board soak (20 cycles)" \
-      env DEVICE_PORT="$STRESS_PORT" ./scripts/run_device_soak.sh --cycles 20 --cooldown-seconds 6
+      env DEVICE_PORT="$STRESS_PORT" DEVICE_BOARD_ID="stress" ./scripts/run_device_soak.sh --cycles 20 --cooldown-seconds 6
   else
     echo -e "${YELLOW}[skip] Stress board not connected at expected port${NC}"
   fi
