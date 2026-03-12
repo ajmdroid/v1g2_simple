@@ -1,0 +1,7 @@
+{
+  "scenario_id": "corrupt_packet_rejection",
+  "source_capture_id": "placeholder",
+  "owner": "parser",
+  "lane": "pr",
+  "sanitization_version": 1
+}

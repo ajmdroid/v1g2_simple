@@ -1,0 +1,33 @@
+{
+  "catalog_version": 1,
+  "description": "Extended nightly mutation catalog. Includes all critical mutations plus expanded coverage.",
+  "tier_thresholds": {
+    "tier_0_kill_rate": 0.90,
+    "overall_kill_rate": 0.85
+  },
+  "tier_0_modules": [
+    "packet_parser",
+    "battery_manager",
+    "lockout_index",
+    "gps_lockout_safety",
+    "camera_alert",
+    "volume_fade",
+    "wifi_boot_policy",
+    "lockout_pre_quiet"
+  ],
+  "modes": {
+    "full": [
+      "critical-001",
+      "critical-002",
+      "critical-003",
+      "critical-004",
+      "critical-005",
+      "critical-006",
+      "critical-007",
+      "critical-008",
+      "critical-009",
+      "critical-010"
+    ]
+  },
+  "_comment": "Add nightly-only mutations here as the catalog grows. Each entry follows the same schema as critical_mutations.json."
+}

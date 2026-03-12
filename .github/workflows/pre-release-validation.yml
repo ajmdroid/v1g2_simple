@@ -1,0 +1,53 @@
+name: Pre-Release Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: 'Git SHA to validate (default: HEAD)'
+        required: false
+
+jobs:
+  validate:
+    name: Pre-Release Validation Gate
+    runs-on: self-hosted
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_sha || github.sha }}
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: interface/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade platformio
+          pio --version
+          cd interface && npm ci
+
+      - name: Run pre-release validation
+        run: ./scripts/ci-pre-release.sh
+
+      - name: Upload pre-release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pre-release-validation-${{ github.sha }}
+          path: |
+            .artifacts/test_reports/pre_release/
+            .artifacts/test_reports/nightly/
+            .artifacts/test_reports/ci-test/
+          if-no-files-found: ignore

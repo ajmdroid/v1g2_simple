@@ -1,0 +1,20 @@
+{
+  "budgets": {
+    "ci-test": {
+      "description": "Local PR gate (ci-test.sh)",
+      "max_seconds": 480
+    },
+    "build-yml": {
+      "description": "GitHub Actions PR job (build.yml)",
+      "max_seconds": 720
+    },
+    "nightly": {
+      "description": "Nightly validation (ci-nightly.sh)",
+      "max_seconds": 3600
+    },
+    "pre-release": {
+      "description": "Pre-release validation (ci-pre-release.sh)",
+      "max_seconds": 5400
+    }
+  }
+}

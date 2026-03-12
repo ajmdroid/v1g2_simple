@@ -1,0 +1,60 @@
+name: Nightly Validation
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # Daily at 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  nightly:
+    name: Nightly Validation Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: interface/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ runner.os }}-pio-nightly-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-nightly-
+            ${{ runner.os }}-pio-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade platformio
+          pio --version
+          cd interface && npm ci
+
+      - name: Run nightly validation
+        run: ./scripts/ci-nightly.sh
+
+      - name: Upload nightly artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-validation-${{ github.sha }}
+          path: |
+            .artifacts/test_reports/nightly/
+            .artifacts/test_reports/ci-test/
+          if-no-files-found: ignore

@@ -15,11 +15,15 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  validate_release:
+    runs-on: self-hosted
     concurrency:
-      group: release-${{ github.ref }}
+      group: release-validate-${{ github.ref }}
       cancel-in-progress: false
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
 
     steps:
       - name: Check if version bump commit
@@ -64,18 +68,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Cache PlatformIO
-        if: steps.check.outputs.should_release == 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.platformio
-            .pio
-          key: ${{ runner.os }}-pio-release-${{ hashFiles('platformio.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-pio-release-
-            ${{ runner.os }}-pio-
-
       - name: Install dependencies
         if: steps.check.outputs.should_release == 'true'
         run: |
@@ -83,9 +75,24 @@ jobs:
           pio --version
           cd interface && npm ci
 
-      - name: ✅ Run authoritative repo gate
+      - name: Run pre-release validation
         if: steps.check.outputs.should_release == 'true'
-        run: ./scripts/ci-test.sh
+        run: ./scripts/ci-pre-release.sh
+
+      - name: Verify manifest status
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          MANIFEST=".artifacts/test_reports/pre_release/validation_manifest.json"
+          if [ ! -f "$MANIFEST" ]; then
+            echo "::error::Validation manifest not found"
+            exit 1
+          fi
+          STATUS=$(python3 -c "import json; print(json.load(open('$MANIFEST'))['status'])")
+          if [ "$STATUS" != "PASS" ]; then
+            echo "::error::Validation manifest status is $STATUS, not PASS"
+            exit 1
+          fi
+          echo "Manifest status: PASS"
 
       - name: Get version from config.h
         if: steps.check.outputs.should_release == 'true'
@@ -97,47 +104,103 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
 
-      - name: Guard against tag collision
+      - name: Upload validation artifacts
         if: steps.check.outputs.should_release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-validation-${{ github.sha }}
+          path: .artifacts/test_reports/
+
+  publish_release:
+    needs: validate_release
+    if: needs.validate_release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-publish-${{ github.ref }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: interface/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
         run: |
-          if git rev-parse "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
-            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Bump FIRMWARE_VERSION in config.h before merging."
+          pip install platformio esptool
+          pio --version
+          cd interface && npm ci
+
+      - name: Download validation artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-validation-${{ github.sha }}
+          path: .artifacts/test_reports/
+
+      - name: Verify manifest from same run
+        run: |
+          MANIFEST=".artifacts/test_reports/pre_release/validation_manifest.json"
+          if [ ! -f "$MANIFEST" ]; then
+            echo "::error::Validation manifest artifact not found"
+            exit 1
+          fi
+          MANIFEST_SHA=$(python3 -c "import json; print(json.load(open('$MANIFEST'))['git_sha'])")
+          if [ "$MANIFEST_SHA" != "${{ github.sha }}" ]; then
+            echo "::error::Manifest SHA ($MANIFEST_SHA) does not match release SHA (${{ github.sha }})"
+            exit 1
+          fi
+          STATUS=$(python3 -c "import json; print(json.load(open('$MANIFEST'))['status'])")
+          if [ "$STATUS" != "PASS" ]; then
+            echo "::error::Manifest status is $STATUS"
+            exit 1
+          fi
+
+      - name: Guard against tag collision
+        run: |
+          if git rev-parse "${{ needs.validate_release.outputs.tag }}" >/dev/null 2>&1; then
+            echo "::error::Tag ${{ needs.validate_release.outputs.tag }} already exists. Bump FIRMWARE_VERSION in config.h before merging."
             exit 1
           fi
 
       - name: Update other version files
-        if: steps.check.outputs.should_release == 'true'
         run: |
-          sed -i 's/"version": ".*"/"version": "${{ steps.version.outputs.tag }}"/' docs/install/manifest.json
-          sed -i 's/^\*\*Version:\*\* .*/**Version:** ${{ steps.version.outputs.version }}/' docs/MANUAL.md
+          sed -i 's/"version": ".*"/"version": "${{ needs.validate_release.outputs.tag }}"/' docs/install/manifest.json
+          sed -i 's/^\*\*Version:\*\* .*/**Version:** ${{ needs.validate_release.outputs.version }}/' docs/MANUAL.md
 
       - name: Build web interface
-        if: steps.check.outputs.should_release == 'true'
         run: |
           cd interface
           npm run build
           npm run deploy
 
       - name: Check packaged web assets
-        if: steps.check.outputs.should_release == 'true'
         run: |
           python3 scripts/check_web_asset_budget.py
           python3 scripts/check_audio_asset_manifest.py
 
       - name: Stage manifest-tracked audio files
-        if: steps.check.outputs.should_release == 'true'
         run: node interface/scripts/stage-audio.js
 
       - name: Build firmware
-        if: steps.check.outputs.should_release == 'true'
         run: pio run -e waveshare-349 -j 1
 
       - name: Build filesystem
-        if: steps.check.outputs.should_release == 'true'
         run: pio run -e waveshare-349 -t buildfs -j 1
 
       - name: Create merged firmware
-        if: steps.check.outputs.should_release == 'true'
         run: |
           mkdir -p release
           cp .pio/build/waveshare-349/bootloader.bin release/
@@ -160,17 +223,15 @@ jobs:
           cp docs/install/manifest.json release/
 
       - name: Create tag
-        if: steps.check.outputs.should_release == 'true'
         run: |
-          git tag ${{ steps.version.outputs.tag }}
-          git push origin ${{ steps.version.outputs.tag }}
+          git tag ${{ needs.validate_release.outputs.tag }}
+          git push origin ${{ needs.validate_release.outputs.tag }}
 
       - name: Create GitHub Release
-        if: steps.check.outputs.should_release == 'true'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.tag }}
+          tag_name: ${{ needs.validate_release.outputs.tag }}
+          name: ${{ needs.validate_release.outputs.tag }}
           generate_release_notes: true
           files: |
             release/merged-firmware.bin
@@ -180,13 +241,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Prepare web installer files
-        if: steps.check.outputs.should_release == 'true'
         run: |
           cp release/*.bin docs/install/
           cp release/manifest.json docs/install/
 
       - name: Deploy to GitHub Pages
-        if: steps.check.outputs.should_release == 'true'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -194,11 +253,10 @@ jobs:
           destination_dir: install
 
       - name: Summary
-        if: steps.check.outputs.should_release == 'true'
         run: |
           echo "## 🚀 Release Complete!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.validate_release.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ Authoritative repo gate passed" >> $GITHUB_STEP_SUMMARY
           echo "✅ Tag created (immutable)" >> $GITHUB_STEP_SUMMARY

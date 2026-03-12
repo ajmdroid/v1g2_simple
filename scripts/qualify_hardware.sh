@@ -19,6 +19,7 @@ ENV_NAME="waveshare-349"
 METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.35.5/api/debug/metrics}"
 HTTP_TIMEOUT_SECONDS="${REAL_FW_HTTP_TIMEOUT_SECONDS:-5}"
 DEVICE_PORT_OVERRIDE="${DEVICE_PORT:-}"
+BOARD_ID=""
 
 timestamp="$(date +%Y%m%d_%H%M%S)"
 OUT_DIR="$ROOT_DIR/.artifacts/test_reports/qualification_${timestamp}"
@@ -29,6 +30,7 @@ usage() {
 Usage: ./scripts/qualify_hardware.sh [options]
 
 Options:
+  --board-id ID           Resolve port/metrics from test/device/board_inventory.json
   --metrics-url URL       Metrics endpoint to require (default: env or 192.168.35.5)
   --port PATH             Fixed serial port (default: DEVICE_PORT or auto-detect)
   --env NAME              PlatformIO environment (default: waveshare-349)
@@ -41,6 +43,10 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --board-id)
+      BOARD_ID="$2"
+      shift
+      ;;
     --metrics-url)
       METRICS_URL="$2"
       shift
@@ -144,6 +150,39 @@ run_step() {
 if ! command -v pio >/dev/null 2>&1; then
   echo "PlatformIO (pio) is required but not found in PATH." >&2
   exit 1
+fi
+
+# Resolve board-id from inventory if specified
+if [[ -n "$BOARD_ID" ]]; then
+  INVENTORY="$ROOT_DIR/test/device/board_inventory.json"
+  if [[ ! -f "$INVENTORY" ]]; then
+    echo "Board inventory not found: $INVENTORY" >&2
+    exit 2
+  fi
+  BOARD_INFO="$(python3 -c "
+import json, sys
+with open('$INVENTORY') as f:
+    inv = json.load(f)
+for b in inv['boards']:
+    if b['board_id'] == '$BOARD_ID':
+        print(b['device_path'])
+        print(b['metrics_url'])
+        sys.exit(0)
+print('', file=sys.stderr)
+sys.exit(1)
+" 2>/dev/null)" || {
+    echo "Board '$BOARD_ID' not found in inventory." >&2
+    exit 2
+  }
+  BOARD_PORT="$(echo "$BOARD_INFO" | head -n1)"
+  BOARD_METRICS="$(echo "$BOARD_INFO" | tail -n1)"
+  if [[ -z "$DEVICE_PORT_OVERRIDE" ]]; then
+    DEVICE_PORT_OVERRIDE="$BOARD_PORT"
+  fi
+  if [[ "$METRICS_URL" == "http://192.168.35.5/api/debug/metrics" ]]; then
+    METRICS_URL="$BOARD_METRICS"
+  fi
+  echo "board_id=${BOARD_ID}" | tee -a "$SUMMARY_LOG"
 fi
 
 DEVICE_PORT_RESOLVED="$DEVICE_PORT_OVERRIDE"

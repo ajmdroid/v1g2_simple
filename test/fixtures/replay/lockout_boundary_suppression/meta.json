@@ -1,0 +1,7 @@
+{
+  "scenario_id": "lockout_boundary_suppression",
+  "source_capture_id": "placeholder",
+  "owner": "lockout",
+  "lane": "pr",
+  "sanitization_version": 1
+}

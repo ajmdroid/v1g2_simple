@@ -81,6 +81,16 @@ run_step "Flash package truth report" python3 scripts/report_flash_package_size.
   --max-firmware-bytes 5570560 \
   --expect-littlefs-bytes 2424832
 
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+echo ""
+echo -e "${GREEN}All gates passed in ${ELAPSED}s${NC}"
+
+# Emit timing artifact for budget checker
+TIMING_DIR="$ROOT_DIR/.artifacts/test_reports/ci-test"
+mkdir -p "$TIMING_DIR"
+echo "{\"elapsed_seconds\": ${ELAPSED}, \"lane\": \"ci-test\"}" > "$TIMING_DIR/timing.json"
+
 section "Size Report"
 echo "waveshare-349:"
 pio run -e waveshare-349 -t size -j 1 2>/dev/null | grep -E "(RAM|Flash|used|bytes)"
