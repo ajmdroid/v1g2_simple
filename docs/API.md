@@ -617,6 +617,66 @@ Get the live ALPR camera runtime status.
 
 ---
 
+## OBD
+
+### GET /api/obd/status
+
+Get OBD-II adapter connection status and speed data.
+
+**Response**
+
+```json
+{
+  "enabled": true,
+  "connected": true,
+  "speedValid": true,
+  "speedMph": 37.3,
+  "speedAgeMs": 412,
+  "rssi": -52,
+  "scanInProgress": false,
+  "savedAddressValid": true,
+  "connectAttempts": 1,
+  "pollCount": 842,
+  "pollErrors": 0,
+  "consecutiveErrors": 0,
+  "state": 7
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Whether OBD is enabled in settings |
+| `connected` | boolean | BLE connection to adapter is active |
+| `speedValid` | boolean | Current speed reading is fresh and valid |
+| `speedMph` | float | Vehicle speed in mph (0 when invalid) |
+| `speedAgeMs` | integer | Age of last speed sample in milliseconds |
+| `rssi` | integer | BLE signal strength in dBm |
+| `scanInProgress` | boolean | BLE scan is currently running |
+| `savedAddressValid` | boolean | A paired adapter address is saved |
+| `state` | integer | State machine state (0=Idle, 1=WaitBoot, 2=Scanning, 4=Connecting, 5=Discovering, 6=ATInit, 7=Polling, 8=ErrorBackoff, 9=Disconnected) |
+
+### POST /api/obd/scan
+
+Trigger a BLE scan for OBDLink adapters. The scan runs for 5 seconds and auto-connects to the first matching device above the RSSI threshold.
+
+**Response**
+
+```json
+{ "ok": true }
+```
+
+### POST /api/obd/forget
+
+Clear the saved OBD adapter address and disconnect. The adapter will need to be re-scanned to reconnect.
+
+**Response**
+
+```json
+{ "ok": true }
+```
+
+---
+
 ## WiFi Client
 
 ### GET /api/wifi/status

@@ -382,7 +382,10 @@ V1 Gen2 (BLE)
 | **Lockout stack** | Capture/observe/store/enforce/learn lockout state with best-effort persistence |
 | **LockoutApiService + LockoutOrchestrationModule** | Lockout REST API + zone CRUD + pre-quiet controller |
 | **PowerModule** | Battery monitoring, power button, sleep |
-| **SpeedSourceSelector** | Runtime speed source arbitration (GPS-only policy) |
+| **SpeedSourceSelector** | Runtime speed source arbitration (GPS + OBD policy) |
+| **ObdRuntimeModule** | OBD-II BLE adapter connection state machine (scan/connect/poll) |
+| **ObdBleClient** | NimBLE client for OBDLink CX adapter communication |
+| **ObdApiService** | OBD REST API endpoints (status, scan, forget) |
 | **SystemEventBus** | Thread-safe bounded ring buffer for cross-module event coordination |
 | **ParsedFrameEventModule** | Collects parsed-frame signal from BLE queue for display orchestration |
 | **PeriodicMaintenanceModule** | Rate-limited perf reporting, time saves, lockout learner ticks, persistence |
@@ -1264,6 +1267,19 @@ been removed from this page.
 
 **Source:** [interface/src/routes/cameras/+page.svelte](interface/src/routes/cameras/+page.svelte)
 
+### OBD Settings (within `/settings`)
+
+Controls:
+- **Enable OBD:** Master toggle — when enabled, V1-Simple scans for and connects to an OBDLink CX adapter via BLE
+- **Min RSSI:** Minimum BLE signal strength for scan results (default: −80 dBm)
+- **Status Display:** Shows current OBD connection state, speed reading, RSSI, poll count, and error counts (polls every 2 seconds)
+- **Scan Now:** Triggers a 5-second BLE scan for nearby OBDLink devices
+- **Forget Device:** Clears the saved OBD adapter address and disconnects
+
+When OBD is enabled and connected, the speed source selector prefers OBD speed over GPS speed for lockout mute/unmute decisions.
+
+**Source:** [interface/src/lib/features/settings/SettingsObdCard.svelte](interface/src/lib/features/settings/SettingsObdCard.svelte)
+
 ### Auto-Push Page (`/autopush`)
 
 Controls:
@@ -1520,6 +1536,7 @@ Connect at 115200 baud. Key prefixes:
 | `[SetupMode]` | wifi_manager.cpp + wifi_routes.cpp |
 | `[Settings]` | settings.cpp + settings_nvs.cpp + settings_backup.cpp |
 | `[AutoPush]` | modules/auto_push/auto_push_module.cpp |
+| `[OBD]` | modules/obd/obd_runtime_module.cpp |
 | `[Touch]` | touch_handler.cpp |
 
 ### Connection Issues
@@ -1570,6 +1587,28 @@ Connect at 115200 baud. Key prefixes:
 
 **Speed doesn't match speedometer:**
 - Vehicle speedometers typically read 2-5% high — this is normal
+
+### OBD Issues
+
+**OBD scan finds no devices:**
+1. Ensure OBDLink CX is plugged into the vehicle's OBD-II port and the ignition is on
+2. Move V1-Simple closer — BLE range is limited; try lowering Min RSSI threshold
+3. Confirm the adapter is an OBDLink CX (STN2120 chip) — other OBD adapters are not supported
+
+**OBD connects but shows no speed:**
+1. The vehicle must be running — PID 0x0D returns 0 km/h when stationary
+2. Check serial for `[OBD]` log lines showing AT init or poll errors
+3. Some vehicles respond slowly — wait 5-10 seconds after connection
+
+**OBD disconnects frequently:**
+1. Check adapter power — a loose OBD-II port connector can drop BLE
+2. Reduce distance between V1-Simple and the OBD adapter
+3. After 5 consecutive poll errors the module enters a 60-second backoff before reconnecting
+
+**OBD speed not used for lockout muting:**
+1. Verify OBD is enabled in Settings and the status shows "POLLING"
+2. Speed readings older than 3 seconds are considered stale and ignored
+3. The speed source selector prefers OBD over GPS — if OBD speed is valid, it will be used
 
 ### Auto-Lockout Issues
 
