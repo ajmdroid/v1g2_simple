@@ -38,7 +38,7 @@ cd v1g2_simple
 The script auto-detects your OS. First build takes 2-5 minutes to download libraries.
 
 For manual PlatformIO command variants and OS-specific troubleshooting:
-- Windows setup: [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md)
+- Windows setup: [docs/MANUAL.md — Windows Setup](docs/MANUAL.md#windows-setup)
 - Full command reference: [docs/MANUAL.md](docs/MANUAL.md)
 
 ---
@@ -202,12 +202,9 @@ performance, factory reset), see [docs/MANUAL.md Section J](docs/MANUAL.md#j-tro
 ## Documentation
 
 - **Authority Map:** [docs/README.md](docs/README.md)
-- **Full Manual:** [docs/MANUAL.md](docs/MANUAL.md) — architecture, BLE protocol, display, troubleshooting, developer guide
+- **Full Manual:** [docs/MANUAL.md](docs/MANUAL.md) — architecture, BLE protocol, display, troubleshooting, testing policy, developer guide
 - **API Reference:** [docs/API.md](docs/API.md)
-- **Testing Policy:** [docs/TESTING.md](docs/TESTING.md)
-- **Hardware Qualification:** [docs/HARDWARE_QUALIFICATION.md](docs/HARDWARE_QUALIFICATION.md)
 - **Perf SLOs:** [docs/PERF_SLOS.md](docs/PERF_SLOS.md)
-- **Windows Setup:** [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md)
 
 ---
 

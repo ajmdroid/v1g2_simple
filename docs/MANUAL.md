@@ -1,11 +1,13 @@
 # V1 Gen2 Simple Display - Technical Manual
 
-> ⚠️ **Documentation is a constant work in progress.** For authority and current testing policy, start with `docs/README.md` and `docs/TESTING.md`.
+> This is the single authoritative and reference document for the project.
+> For perf thresholds see `PERF_SLOS.md`. For the full REST API see `API.md`.
+> For the GPS road-map binary format see `ROAD_MAP_FORMAT.md`.
 
 
 **Version:** 4.0.0-dev  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
-**Last Updated:** February 2026
+**Last Updated:** March 2026
 
 ---
 
@@ -24,7 +26,7 @@ Current train (`v4.0.0-dev`) highlights:
 
 ## Table of Contents
 
-1. [Quick Start](#a-quick-start)
+1. [Quick Start](#a-quick-start) (includes Windows setup)
 2. [Overview](#b-overview)
 3. [System Architecture](#c-system-architecture)
 4. [Boot Flow](#d-boot-flow)
@@ -38,9 +40,9 @@ Current train (`v4.0.0-dev`) highlights:
 12. [Troubleshooting](#j-troubleshooting)
 13. [Developer Guide](#k-developer-guide)
 14. [Reference](#l-reference)
-15. [Known Limitations](#known-limitations--todos)
-16. [Known Issues / Risks](#known-issues--risks)
-17. [Pre-Merge Checklist](#pre-merge-checklist)
+15. [Testing & Validation](#m-testing--validation) (authoritative)
+16. [Known Limitations](#known-limitations--todos)
+17. [Known Issues / Risks](#known-issues--risks)
 
 ---
 
@@ -78,7 +80,7 @@ cd v1g2_simple
 # - Opens serial monitor
 ```
 
-**Windows users:** See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed setup instructions.
+**Windows users:** See the [Windows Setup](#windows-setup) subsection below for detailed instructions.
 
 **Alternative (manual steps):**
 ```bash
@@ -101,6 +103,89 @@ pio device monitor -b 115200
 4. Connect to WiFi AP: **V1-Simple** / password: **setupv1g2**
 5. Browse to `http://192.168.35.5`
 6. Web UI should load (SvelteKit-based interface)
+
+### Windows Setup
+
+Complete Windows-specific walkthrough for building and flashing.
+
+**Prerequisites:**
+- Waveshare ESP32-S3-Touch-LCD-3.49 + USB-C data cable
+- Windows PC with administrator rights
+
+**1. Install required software:**
+
+1. **Git for Windows** (with Git Bash + Unix tools): https://git-scm.com/download/win
+   - Enable: "Open Git Bash here", "Associate .sh files with Bash", Git LFS
+   - Line endings: "Checkout Windows-style, commit Unix-style"
+   - Terminal: MinTTY (MSYS2 default)
+   - Verify: `git --version && bash --version && gzip --version`
+
+2. **Node.js 18+**: https://nodejs.org/ — accept defaults, do NOT check "install necessary tools"
+   - **Restart your computer** after install (PATH changes need it)
+   - Verify: `node -v && npm -v`
+   - If `node: command not found`: add `C:\Program Files\nodejs` to System PATH manually
+
+3. **VS Code**: https://code.visualstudio.com/
+
+4. **PlatformIO IDE extension**: VS Code → Extensions → "PlatformIO IDE" → Install
+   - Wait 5-10 min for background toolchain download before proceeding
+
+**2. Clone and build:**
+
+```bash
+git clone https://github.com/ajmdroid/v1g2_simple
+cd v1g2_simple
+code .
+```
+
+Install web UI deps (one-time):
+```bash
+cd interface && npm install && cd ..
+```
+
+**3. Configure PlatformIO terminal to use Git Bash:**
+1. Click dropdown (⌄) next to `+` in terminal panel → "Select Default Profile" → "Git Bash"
+2. Close all open terminals
+3. Open PlatformIO CLI terminal (`Ctrl+Shift+P` → "PlatformIO: New Terminal")
+
+**4. Connect device:**
+- Plug in via USB-C. Check Device Manager → Ports for `USB Serial Device (COMx)`.
+- If no COM port: try different cable, or install [Espressif USB driver](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/get-started/establish-serial-connection.html).
+- List devices: `pio device list`
+
+**5. Build and flash:**
+```bash
+./build.sh --all                    # Auto-detects Windows
+./build.sh --all --upload-port COM6 # If multiple USB devices connected
+```
+
+First build downloads ~500MB of toolchain — this takes 5-15 minutes. Subsequent builds: 30-60 seconds.
+
+**6. Common Windows pitfalls:**
+
+| Problem | Fix |
+|---------|-----|
+| `./build.sh: command not found` | Use Git Bash, not PowerShell/CMD |
+| `gzip` not found | Reinstall Git for Windows with default components |
+| `pio: command not found` | Open PlatformIO terminal from VS Code |
+| `npm: command not found` | Restart PC after Node.js install |
+| No COM port | Try different USB cable; install Espressif driver |
+| Build hangs downloading | First build fetches deps; wait and retry |
+
+**7. Re-run after changes:**
+```bash
+./build.sh -u -m           # Firmware-only change
+./build.sh -f -m           # Web UI change only
+./build.sh --clean --all   # Clean build
+```
+
+**8. Factory reset (Windows):**
+```bash
+"$HOME/.platformio/penv/Scripts/python.exe" "$HOME/.platformio/packages/tool-esptoolpy/esptool.py" --port COM4 erase_flash
+./build.sh --all
+```
+
+All platforms use the single `waveshare-349` environment. `build.sh` auto-detects Windows for PlatformIO path resolution only.
 
 **Source:** [platformio.ini](platformio.ini#L1-L50), [build.sh](build.sh#L1-L30), [interface/scripts/deploy.js](interface/scripts/deploy.js#L1-L30)
 
@@ -1367,7 +1452,7 @@ board_build.filesystem = littlefs
 ```
 
 **Windows users:** Use the same `waveshare-349` environment — no separate Windows env is needed.
-See [WINDOWS_SETUP.md](WINDOWS_SETUP.md) for detailed Windows instructions.
+See [Section A: Windows Setup](#windows-setup) for detailed Windows instructions.
 
 **Source:** [platformio.ini](platformio.ini#L1-L80)
 
@@ -1831,6 +1916,121 @@ struct DisplayState {
 | 4-5 | — | Reserved |
 
 **Source:** [src/v1_profiles.h](src/v1_profiles.h#L10-L90)
+
+---
+
+## M. Testing & Validation
+
+> Status: authoritative
+> Last validated against scripts: March 12, 2026
+
+This section is the testing and validation policy authority for the repo.
+
+### Evidence Lanes
+
+| Lane | Script / Workflow | Budget | Purpose |
+|------|-------------------|--------|---------|
+| PR | `./scripts/ci-test.sh` | <= 8 min local / <= 12 min CI | Fast merge-safety gate |
+| Nightly | `./scripts/ci-nightly.sh` | <= 60 min | Replay, sanitizer, expanded mutation, soak |
+| Pre-release | `./scripts/ci-pre-release.sh` | <= 90 min | Full evidence + hardware qualification |
+| Trend | `.github/workflows/stability-trend.yml` | N/A | Non-blocking stability analytics |
+
+### Code Gate (PR Lane)
+
+```bash
+./scripts/ci-test.sh
+```
+
+The trusted local/code gate. It runs:
+
+- semantic/unit/integration tests
+- the tracked critical mutation catalog
+- 4 golden captured-log replay scenarios
+- deterministic perf scorer regression tests
+- compatibility guards
+- docs hygiene checks
+- frontend/build verification
+
+### Nightly Gate
+
+```bash
+./scripts/ci-nightly.sh
+```
+
+Runs the PR gate plus:
+- full replay corpus
+- sanitizer lane (ASan + UBSan) for parser, replay, lockout, camera, volume_fade
+- expanded mutation catalog with tier thresholds
+- device soak (if hardware available)
+
+### Pre-release Gate
+
+```bash
+./scripts/ci-pre-release.sh
+```
+
+Runs the nightly gate plus:
+- hardware qualification on the release board
+- replay with perf evidence extraction
+- validation manifest generation
+
+### Hardware Qualification
+
+```bash
+./scripts/qualify_hardware.sh
+./scripts/qualify_hardware.sh --board-id release
+./scripts/qualify_hardware_matrix.sh
+```
+
+Single-board or multi-board hardware qualification.
+
+`qualify_hardware.sh` runs this fixed sequence:
+
+1. Build the real firmware image and LittleFS image.
+2. Flash the real firmware image and filesystem image to the connected board.
+3. Verify the device serial port is available.
+4. Verify the metrics endpoint is reachable.
+5. Run `./scripts/run_device_tests.sh --full`.
+6. Run a `300s` real-firmware telemetry soak with `--profile drive_wifi_ap`.
+7. Run a `300s` display-preview telemetry soak with forced preview driving.
+8. Fail qualification on any non-zero result, including `INCONCLUSIVE`.
+
+**Prerequisites:** ESP32-S3 connected over USB, setup AP enabled so `http://192.168.35.5/api/debug/metrics` is reachable.
+
+Artifacts: `.artifacts/test_reports/qualification_<timestamp>/`
+
+### Authoritative Scoring
+
+Use `tools/score_perf_csv.py` as the only authoritative perf scorer:
+
+```bash
+python3 tools/score_perf_csv.py /path/to/perf.csv --profile drive_wifi_ap --session longest-connected
+python3 tools/score_perf_csv.py /path/to/perf.csv --profile drive_wifi_off --session 1
+```
+
+See [PERF_SLOS.md](PERF_SLOS.md) for the numeric thresholds.
+
+`tools/scorecard.py` remains available as a debug/analysis utility, but it is
+not release authority.
+
+### Non-Authoritative Tools
+
+These tools still exist, but they are exploratory/manual only:
+
+- `./scripts/device-test.sh`
+- `./scripts/run_real_fw_soak.sh`
+- `tools/scorecard.py` — stability trend analysis (nightly only, non-blocking)
+
+### Known Validation Gaps
+
+- No trusted bench camera-overlap coverage through the real camera runtime path
+- Replay fixtures are Phase 1 scaffolds — real captured data needed
+- No trusted transition stress gate
+
+### Validation Rules
+
+- Reduced but truthful coverage is better than broad fake coverage.
+- If a hardware script is exploratory, document it as exploratory.
 
 ---
 

@@ -1,25 +1,20 @@
 # Documentation Map
 
-This file is the documentation index for the repo. It is not itself a testing
-or release policy document.
+This file is the documentation index for the repo.
 
 ## Authoritative
 
-- `TESTING.md`: current code-gate and evidence model.
-- `HARDWARE_QUALIFICATION.md`: current trusted single-board hardware qualification path.
-- `PERF_SLOS.md`: current perf thresholds and scoring rules.
+- `MANUAL.md`: single comprehensive reference and authority. Section M (Testing &
+  Validation) defines all code gates, evidence lanes, and hardware qualification.
+- `PERF_SLOS.md`: perf thresholds and scoring rules (machine-readable).
 
 ## Reference
 
-- `MANUAL.md`: comprehensive technical reference — architecture, BLE protocol,
-  display, audio, storage, troubleshooting, developer guide, and API quick reference.
 - `API.md`: full HTTP REST API reference with request/response schemas.
 - `ROAD_MAP_FORMAT.md`: GPS road-map binary format specification.
-- `WINDOWS_SETUP.md`: Windows-specific setup and troubleshooting.
 
 ## Rules
 
-- Release/testing authority comes from the Authoritative set only.
-- Reference docs may lag implementation details and must not be treated as policy.
-- Each topic has ONE home. Architecture and troubleshooting live in MANUAL.md.
+- MANUAL.md Section M is the testing/release authority.
+- Each topic has ONE home inside MANUAL.md.
 - Historical material should be recovered from git history, not the active docs tree.
