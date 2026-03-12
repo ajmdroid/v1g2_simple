@@ -131,6 +131,7 @@ PIO_ARGS="-e $PIO_ENV"
 if [ -n "$UPLOAD_PORT" ]; then
     PIO_ARGS="$PIO_ARGS --upload-port $UPLOAD_PORT"
 fi
+PIO_RUN_ARGS="$PIO_ARGS -j 1"
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║         V1G2 Simple Complete Build Script         ║${NC}"
@@ -218,7 +219,7 @@ fi
 
 # Step 3: Build firmware
 echo -e "${YELLOW}🔧 Building firmware (env: $PIO_ENV)...${NC}"
-"$PIO_CMD" run $PIO_ARGS
+"$PIO_CMD" run $PIO_RUN_ARGS
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Firmware build failed!${NC}"
@@ -229,7 +230,7 @@ echo -e "${GREEN}✅ Firmware built successfully${NC}"
 
 # Show build size
 echo -e "${BLUE}📊 Build size:${NC}"
-"$PIO_CMD" run $PIO_ARGS -t size | grep -E "RAM:|Flash:" || true
+"$PIO_CMD" run $PIO_RUN_ARGS -t size | grep -E "RAM:|Flash:" || true
 echo ""
 
 # Step 4: Run tests if requested (requires gcc/g++ on host)
@@ -250,7 +251,7 @@ if [ "$RUN_TESTS" = true ]; then
     
     # Also check firmware compilation (catches platform-specific issues)
     echo -e "${YELLOW}🔍 Checking firmware compilation...${NC}"
-    "$PIO_CMD" run $PIO_ARGS --target buildprog
+    "$PIO_CMD" run $PIO_RUN_ARGS --target buildprog
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Firmware compilation check failed!${NC}"
@@ -270,7 +271,7 @@ if [ "$UPLOAD_FS" = true ]; then
     echo -e "${YELLOW}   If profile storage ever fell back to LittleFS, those profiles will be erased.${NC}"
     echo -e "${YELLOW}   Confirm SD is mounted in boot logs before relying on profile persistence.${NC}"
     echo -e "${YELLOW}📤 Uploading filesystem (LittleFS)...${NC}"
-    "$PIO_CMD" run $PIO_ARGS -t uploadfs
+    "$PIO_CMD" run $PIO_RUN_ARGS -t uploadfs
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Filesystem upload failed!${NC}"
@@ -284,7 +285,7 @@ fi
 # Step 6: Upload firmware if requested
 if [ "$UPLOAD_FW" = true ]; then
     echo -e "${YELLOW}📤 Uploading firmware...${NC}"
-    "$PIO_CMD" run $PIO_ARGS -t upload
+    "$PIO_CMD" run $PIO_RUN_ARGS -t upload
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}❌ Firmware upload failed!${NC}"

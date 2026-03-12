@@ -304,15 +304,11 @@ void V1Display::showBootSplash() {
     TFT_CALL(fillScreen)(PALETTE_BG); // Clear screen to prevent artifacts
     drawBaseFrame();
 
-    // Draw the V1 Simple logo at 1:1 (image is pre-sized to 640x172)
-    // Use row-level bulk blit on Arduino_GFX to reduce draw call overhead.
+    // Draw the lossless RLE-compressed V1 Simple logo row-by-row.
     const unsigned long logoStartMs = millis();
     uint16_t rowBuffer[V1SIMPLE_LOGO_WIDTH];
     for (int sy = 0; sy < V1SIMPLE_LOGO_HEIGHT; sy++) {
-        const int rowOffset = sy * V1SIMPLE_LOGO_WIDTH;
-        for (int sx = 0; sx < V1SIMPLE_LOGO_WIDTH; sx++) {
-            rowBuffer[sx] = pgm_read_word(&v1simple_logo_rgb565[rowOffset + sx]);
-        }
+        decodeV1SimpleLogoRow(static_cast<uint16_t>(sy), rowBuffer);
         TFT_CALL(draw16bitRGBBitmap)(0, sy, rowBuffer, V1SIMPLE_LOGO_WIDTH, 1);
     }
     const unsigned long logoMs = millis() - logoStartMs;

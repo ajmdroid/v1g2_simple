@@ -121,51 +121,20 @@ echo -e "${GREEN}✅ Firmware static analysis passed${NC}"
 
 # Step 4: Build firmware
 echo -e "${YELLOW}🏗️  Building firmware (waveshare-349)...${NC}"
-pio run -e waveshare-349
+pio run -e waveshare-349 -j 1
 echo -e "${GREEN}✅ Firmware built${NC}"
 
-# Step 4a: Enforce firmware size budget
-echo -e "${YELLOW}📏 Checking firmware size budget...${NC}"
-MAX_SIZE=5570560
-ACTUAL_SIZE=$(wc -c < .pio/build/waveshare-349/firmware.bin | tr -d ' ')
-PCT=$(( ACTUAL_SIZE * 100 / 6553600 ))
-echo "Firmware size: ${ACTUAL_SIZE} bytes (${PCT}% of partition, budget: ${MAX_SIZE} bytes)"
-if [ "$ACTUAL_SIZE" -gt "$MAX_SIZE" ]; then
-  echo -e "${RED}❌ Firmware size exceeds budget${NC}"
-  exit 1
-fi
-echo -e "${GREEN}✅ Firmware within size budget${NC}"
-
-# Step 4b: Build filesystem image
+# Step 4a: Build filesystem image
 echo -e "${YELLOW}💾 Building LittleFS image...${NC}"
-pio run -e waveshare-349 -t buildfs
+pio run -e waveshare-349 -t buildfs -j 1
 echo -e "${GREEN}✅ LittleFS image built${NC}"
 
-# Step 4c: Check LittleFS size against storage partition
-echo -e "${YELLOW}📏 Checking LittleFS size budget...${NC}"
-python3 - <<'PY'
-import csv
-from pathlib import Path
-
-partition_size = None
-with Path("partitions_v1.csv").open(newline="", encoding="utf-8") as fh:
-    for row in csv.reader(fh):
-        if not row or row[0].strip().startswith("#"):
-            continue
-        if row[0].strip() == "storage":
-            partition_size = int(row[4].strip(), 0)
-            break
-
-if partition_size is None:
-    raise SystemExit("storage partition not found in partitions_v1.csv")
-
-littlefs = Path(".pio/build/waveshare-349/littlefs.bin")
-actual_size = littlefs.stat().st_size
-print(f"LittleFS size: {actual_size} bytes / {partition_size} byte partition")
-if actual_size > partition_size:
-    raise SystemExit("LittleFS image exceeds storage partition size")
-PY
-echo -e "${GREEN}✅ LittleFS image fits storage partition${NC}"
+# Step 4b: Flash package truth report
+echo -e "${YELLOW}📏 Checking flash package truth...${NC}"
+python3 scripts/report_flash_package_size.py \
+  --max-firmware-bytes 5570560 \
+  --expect-littlefs-bytes 2424832
+echo -e "${GREEN}✅ Flash package truth report complete${NC}"
 
 # Step 5: Size report
 echo ""
@@ -174,7 +143,7 @@ echo "║               Build Size Report                    ║"
 echo "╚════════════════════════════════════════════════════╝"
 echo ""
 echo "waveshare-349:"
-pio run -e waveshare-349 -t size 2>/dev/null | grep -E "(RAM|Flash|used|bytes)"
+pio run -e waveshare-349 -t size -j 1 2>/dev/null | grep -E "(RAM|Flash|used|bytes)"
 
 # Calculate elapsed time
 END_TIME=$(date +%s)
