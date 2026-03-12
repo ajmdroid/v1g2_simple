@@ -6,6 +6,7 @@
 	import SettingsAutoPowerOffCard from '$lib/features/settings/SettingsAutoPowerOffCard.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import SettingsBackupCard from '$lib/features/settings/SettingsBackupCard.svelte';
+	import SettingsObdCard from '$lib/features/settings/SettingsObdCard.svelte';
 		import SettingsWifiModal from '$lib/features/settings/SettingsWifiModal.svelte';
 		import {
 			formatAgeMs,
@@ -330,6 +331,8 @@
 			formData.append('proxy_name', settings.proxy_name);
 			formData.append('autoPowerOffMinutes', settings.autoPowerOffMinutes);
 			formData.append('apTimeoutMinutes', settings.apTimeoutMinutes);
+			formData.append('obdEnabled', settings.obdEnabled);
+			formData.append('obdMinRssi', settings.obdMinRssi);
 			
 			const res = await postSettingsForm(formData);
 			
@@ -619,6 +622,8 @@
 		</div>
 		
 			<SettingsAutoPowerOffCard {settings} />
+
+		<SettingsObdCard {settings} />
 		
 		<!-- Save Button -->
 		<button 
