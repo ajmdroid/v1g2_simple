@@ -74,5 +74,6 @@ bench_testing/
 
 # Local research docs (not tracked)
 docs/Cam_PLAN.md
+docs/ROAD_MAP_FORMAT.md
 docs/TEST_FAILURE_POINTS.md
 .github/instructions/
