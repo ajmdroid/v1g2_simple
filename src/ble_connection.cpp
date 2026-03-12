@@ -217,7 +217,7 @@ bool V1BLEClient::connectToServer() {
     
     // Guard 3: Check exponential backoff
     unsigned long now = millis();
-    if (consecutiveConnectFailures > 0 && now < nextConnectAllowedMs) {
+    if (consecutiveConnectFailures > 0 && static_cast<int32_t>(now - nextConnectAllowedMs) < 0) {
         {
             SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: backoff check
             shouldConnect = false;

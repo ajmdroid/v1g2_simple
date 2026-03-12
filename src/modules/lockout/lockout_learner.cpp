@@ -217,11 +217,12 @@ void LockoutLearner::process(uint32_t nowMs, int64_t epochMs, int32_t tzOffsetMi
                 // Runs on every observation (not just counted hits) so that
                 // approach heading is captured while still at highway speed,
                 // before the vehicle decelerates near the emitter.
-                if (obs.courseValid && std::isfinite(obs.courseDeg)) {
+                if (obs.courseValid && std::isfinite(obs.courseDeg) &&
+                    c.headingSampleCount < 255) {
                     const float rad = obs.courseDeg * 0.017453292f;
                     c.headingSinSum += static_cast<int16_t>(sinf(rad) * 100.0f);
                     c.headingCosSum += static_cast<int16_t>(cosf(rad) * 100.0f);
-                    if (c.headingSampleCount < 255) ++c.headingSampleCount;
+                    ++c.headingSampleCount;
                     dirty_ = true;
                 }
 

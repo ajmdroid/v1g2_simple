@@ -165,7 +165,7 @@ void V1BLEClient::process() {
 
     // Handle deferred proxy advertising start (non-blocking replacement for delay(1500))
     if (!proxyNoClientTimeoutLatched &&
-        proxyAdvertisingStartMs != 0 && millis() >= proxyAdvertisingStartMs) {
+        proxyAdvertisingStartMs != 0 && static_cast<int32_t>(millis() - proxyAdvertisingStartMs) >= 0) {
         const uint8_t startReason = proxyAdvertisingStartReasonCode;
         proxyAdvertisingStartMs = 0;  // Clear pending flag
         proxyAdvertisingStartReasonCode =
@@ -204,7 +204,7 @@ void V1BLEClient::process() {
                     proxyAdvertisingRetryAtMs = nowMs + PROXY_ADVERTISING_RETRY_MS;
                     Serial.println("[BLE] Proxy idle window elapsed; pausing advertising");
                 }
-            } else if (proxyAdvertisingRetryAtMs != 0 && nowMs >= proxyAdvertisingRetryAtMs) {
+            } else if (proxyAdvertisingRetryAtMs != 0 && static_cast<int32_t>(nowMs - proxyAdvertisingRetryAtMs) >= 0) {
                 proxyAdvertisingRetryAtMs = 0;
                 proxyAdvertisingStartMs = nowMs + 200;
                 proxyAdvertisingStartReasonCode =
@@ -234,7 +234,7 @@ void V1BLEClient::process() {
             }
 
             // Not connected - start scanning (with backoff check)
-            if (consecutiveConnectFailures > 0 && now < nextConnectAllowedMs) {
+            if (consecutiveConnectFailures > 0 && static_cast<int32_t>(now - nextConnectAllowedMs) < 0) {
                 // Still in backoff - don't scan yet
                 return;
             }
@@ -326,7 +326,7 @@ void V1BLEClient::process() {
         }
 
         case BLEState::CONNECTING: {
-            if (nextConnectAllowedMs != 0 && now < nextConnectAllowedMs) {
+            if (nextConnectAllowedMs != 0 && static_cast<int32_t>(now - nextConnectAllowedMs) < 0) {
                 break;
             }
 
@@ -387,7 +387,7 @@ void V1BLEClient::process() {
 
         case BLEState::BACKOFF: {
             // Waiting for backoff period to expire
-            if (now >= nextConnectAllowedMs) {
+            if (static_cast<int32_t>(now - nextConnectAllowedMs) >= 0) {
                 setBLEState(BLEState::DISCONNECTED, "backoff expired");
             }
             break;
