@@ -647,6 +647,8 @@ if [[ "$RUN_CORE" -eq 1 ]]; then
       --metrics-url "$METRICS_URL"
       --require-metrics
       --profile drive_wifi_ap
+      --max-ap-transition-churn-delta 1
+      --max-proxy-adv-transition-churn-delta 1
       --out-dir "$CORE_DIR"
     )
     if [[ -n "$PREVIOUS_CORE_MANIFEST" ]]; then
@@ -687,6 +689,8 @@ if [[ "$RUN_DISPLAY" -eq 1 ]]; then
       --require-metrics
       --profile drive_wifi_ap
       --drive-display-preview
+      --max-ap-transition-churn-delta 1
+      --max-proxy-adv-transition-churn-delta 1
       --out-dir "$DISPLAY_DIR"
     )
     if [[ -n "$PREVIOUS_DISPLAY_MANIFEST" ]]; then

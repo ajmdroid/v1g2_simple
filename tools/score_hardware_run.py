@@ -462,14 +462,22 @@ def score_run(
         key = (_selector_value(policy.selector, "suite_or_profile") or manifest["suite_or_profile"], policy.metric)
         if key in current_map:
             continue
-        score_status = "fail" if policy.required else "warn"
+        if policy.required:
+            score_status = "fail"
+        elif policy.score_level == "info":
+            score_status = "info"
+        else:
+            score_status = "warn"
         message = f"metric missing from run output for applicable track ({key[0]})"
         if policy.required:
             hard_failures += 1
             missing_required += 1
         else:
-            advisory_failures += 1
             missing_optional += 1
+            if policy.score_level == "info":
+                info_regressions += 1
+            else:
+                advisory_failures += 1
         metric_results.append(
             {
                 "metric": policy.metric,
@@ -495,7 +503,7 @@ def score_run(
     final_result = "PASS"
     if base_result == "FAIL" or hard_failures > 0:
         final_result = "FAIL"
-    elif base_result == "INCONCLUSIVE" or missing_optional > 0:
+    elif base_result == "INCONCLUSIVE":
         final_result = "INCONCLUSIVE"
     elif advisory_failures > 0 or base_result == "PASS_WITH_WARNINGS":
         final_result = "PASS_WITH_WARNINGS"

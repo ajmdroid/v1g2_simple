@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -35,7 +36,11 @@ def parse_args() -> argparse.Namespace:
 def load_json(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(f"[WARN] Invalid JSON in {path}: {exc}", file=sys.stderr)
+        return None
     if not isinstance(payload, dict):
         raise RuntimeError(f"Expected object in {path}")
     return payload

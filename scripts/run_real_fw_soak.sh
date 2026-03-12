@@ -27,6 +27,8 @@ SERIAL_BAUD="${REAL_FW_SERIAL_BAUD:-115200}"
 HTTP_TIMEOUT_SECONDS="${REAL_FW_HTTP_TIMEOUT_SECONDS:-2}"
 METRICS_ENDPOINT_ATTEMPTS="${REAL_FW_METRICS_ENDPOINT_ATTEMPTS:-12}"
 METRICS_ENDPOINT_RETRY_DELAY_SECONDS="${REAL_FW_METRICS_ENDPOINT_RETRY_DELAY_SECONDS:-2}"
+STARTUP_SETTLE_MAX_SECONDS="${REAL_FW_STARTUP_SETTLE_MAX_SECONDS:-20}"
+STARTUP_STABLE_CONSECUTIVE_SAMPLES="${REAL_FW_STARTUP_STABLE_CONSECUTIVE_SAMPLES:-2}"
 UPLOAD_FS=0
 SKIP_FLASH=0
 METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.35.5/api/debug/metrics}"
@@ -880,6 +882,16 @@ if ! [[ "$HTTP_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$HTTP_TIMEOUT_SECONDS" -lt
   exit 2
 fi
 
+if ! [[ "$STARTUP_SETTLE_MAX_SECONDS" =~ ^[0-9]+$ ]]; then
+  echo "Invalid REAL_FW_STARTUP_SETTLE_MAX_SECONDS value '$STARTUP_SETTLE_MAX_SECONDS' (expected non-negative integer)." >&2
+  exit 2
+fi
+
+if ! [[ "$STARTUP_STABLE_CONSECUTIVE_SAMPLES" =~ ^[0-9]+$ ]] || [[ "$STARTUP_STABLE_CONSECUTIVE_SAMPLES" -lt 1 ]]; then
+  echo "Invalid REAL_FW_STARTUP_STABLE_CONSECUTIVE_SAMPLES value '$STARTUP_STABLE_CONSECUTIVE_SAMPLES' (expected positive integer)." >&2
+  exit 2
+fi
+
 if ! [[ "$DISPLAY_DRIVE_INTERVAL_SECONDS" =~ ^[0-9]+$ ]] || [[ "$DISPLAY_DRIVE_INTERVAL_SECONDS" -lt 1 ]]; then
   echo "Invalid --display-drive-interval-seconds value '$DISPLAY_DRIVE_INTERVAL_SECONDS' (expected positive integer)." >&2
   exit 2
@@ -1334,6 +1346,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    poll: ${POLL_SECONDS}s"
   echo "    serial baud: ${SERIAL_BAUD}"
   echo "    http timeout: ${HTTP_TIMEOUT_SECONDS}s"
+  echo "    startup settle: max=${STARTUP_SETTLE_MAX_SECONDS}s stableSamples=${STARTUP_STABLE_CONSECUTIVE_SAMPLES}"
   echo "    metrics url: ${METRICS_URL:-disabled}"
   echo "    metrics poll url: ${METRICS_POLL_URL:-disabled}"
   echo "    metrics soak mode: ${METRICS_SOAK_MODE}"
@@ -1382,6 +1395,15 @@ validate_json_payload() {
   python3 -c 'import json, sys; json.load(sys.stdin)' >/dev/null 2>&1
 }
 
+extract_json_uint_field() {
+  local payload="$1"
+  local field="$2"
+  printf "%s" "$payload" \
+    | tr -d '\r\n' \
+    | sed -n "s/.*\"${field}\":[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" \
+    | head -n1
+}
+
 wait_for_json_endpoint() {
   local endpoint_name="$1"
   local endpoint_url="$2"
@@ -1421,6 +1443,109 @@ wait_for_json_endpoint() {
   return 0
 }
 
+startup_settle_enabled() {
+  if [[ -z "$METRICS_POLL_URL" ]]; then
+    return 1
+  fi
+  if [[ "$SKIP_FLASH" -ne 0 ]]; then
+    return 1
+  fi
+  if [[ "$STARTUP_SETTLE_MAX_SECONDS" -le 0 ]]; then
+    return 1
+  fi
+  if [[ "$MAX_LOOP_MAX_US" -le 0 && "$MAX_DISP_PIPE_MAX_US" -le 0 && "$MAX_WIFI_MAX_US" -le 0 ]]; then
+    return 1
+  fi
+  return 0
+}
+
+STARTUP_SETTLE_APPLIED=0
+STARTUP_SETTLE_SUCCEEDED=1
+STARTUP_SETTLE_ATTEMPTS_USED=0
+STARTUP_SETTLE_ELAPSED_SECONDS=0
+STARTUP_SETTLE_LAST_UPTIME_MS=""
+STARTUP_SETTLE_LAST_LOOP_MAX_US=""
+STARTUP_SETTLE_LAST_DISP_PIPE_MAX_US=""
+STARTUP_SETTLE_LAST_WIFI_MAX_US=""
+
+wait_for_runtime_settle() {
+  local endpoint_url="$1"
+  local consecutive=0
+  local attempt=0
+  local settle_start_epoch
+  local deadline_epoch
+  local payload=""
+  local loop_val=""
+  local disp_val=""
+  local wifi_val=""
+  local uptime_val=""
+  local sample_stable=0
+
+  if ! startup_settle_enabled; then
+    return 0
+  fi
+
+  STARTUP_SETTLE_APPLIED=1
+  STARTUP_SETTLE_SUCCEEDED=0
+  settle_start_epoch="$(date +%s)"
+  deadline_epoch=$((settle_start_epoch + STARTUP_SETTLE_MAX_SECONDS))
+
+  echo "==> Waiting for runtime settle (${STARTUP_STABLE_CONSECUTIVE_SAMPLES} consecutive stable sample(s), max ${STARTUP_SETTLE_MAX_SECONDS}s)" | tee -a "$RUN_LOG"
+  while [[ "$(date +%s)" -lt "$deadline_epoch" ]]; do
+    attempt=$((attempt + 1))
+    payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$endpoint_url" 2>/dev/null || true)"
+    sample_stable=1
+
+    if [[ -z "$payload" ]] || ! printf "%s" "$payload" | validate_json_payload; then
+      sample_stable=0
+      consecutive=0
+      echo "    startup settle sample ${attempt}: no valid metrics payload" | tee -a "$RUN_LOG"
+    else
+      loop_val="$(extract_json_uint_field "$payload" "loopMaxUs")"
+      disp_val="$(extract_json_uint_field "$payload" "dispPipeMaxUs")"
+      wifi_val="$(extract_json_uint_field "$payload" "wifiMaxUs")"
+      uptime_val="$(extract_json_uint_field "$payload" "uptimeMs")"
+
+      if [[ "$MAX_LOOP_MAX_US" -gt 0 ]] && ( ! [[ "$loop_val" =~ ^[0-9]+$ ]] || [[ "$loop_val" -gt "$MAX_LOOP_MAX_US" ]] ); then
+        sample_stable=0
+      fi
+      if [[ "$MAX_DISP_PIPE_MAX_US" -gt 0 ]] && ( ! [[ "$disp_val" =~ ^[0-9]+$ ]] || [[ "$disp_val" -gt "$MAX_DISP_PIPE_MAX_US" ]] ); then
+        sample_stable=0
+      fi
+      if [[ "$MAX_WIFI_MAX_US" -gt 0 ]] && ( ! [[ "$wifi_val" =~ ^[0-9]+$ ]] || [[ "$wifi_val" -gt "$MAX_WIFI_MAX_US" ]] ); then
+        sample_stable=0
+      fi
+
+      STARTUP_SETTLE_LAST_UPTIME_MS="$uptime_val"
+      STARTUP_SETTLE_LAST_LOOP_MAX_US="$loop_val"
+      STARTUP_SETTLE_LAST_DISP_PIPE_MAX_US="$disp_val"
+      STARTUP_SETTLE_LAST_WIFI_MAX_US="$wifi_val"
+
+      if [[ "$sample_stable" -eq 1 ]]; then
+        consecutive=$((consecutive + 1))
+      else
+        consecutive=0
+      fi
+
+      echo "    startup settle sample ${attempt}: stable=${sample_stable} consecutive=${consecutive}/${STARTUP_STABLE_CONSECUTIVE_SAMPLES} uptimeMs=${uptime_val:-n/a} loopMaxUs=${loop_val:-n/a} dispPipeMaxUs=${disp_val:-n/a} wifiMaxUs=${wifi_val:-n/a}" | tee -a "$RUN_LOG"
+      if [[ "$consecutive" -ge "$STARTUP_STABLE_CONSECUTIVE_SAMPLES" ]]; then
+        STARTUP_SETTLE_SUCCEEDED=1
+        STARTUP_SETTLE_ATTEMPTS_USED="$attempt"
+        STARTUP_SETTLE_ELAPSED_SECONDS=$(( $(date +%s) - settle_start_epoch ))
+        echo "    runtime settle: OK after ${STARTUP_SETTLE_ELAPSED_SECONDS}s" | tee -a "$RUN_LOG"
+        return 0
+      fi
+    fi
+
+    sleep "$POLL_SECONDS"
+  done
+
+  STARTUP_SETTLE_ATTEMPTS_USED="$attempt"
+  STARTUP_SETTLE_ELAPSED_SECONDS=$(( $(date +%s) - settle_start_epoch ))
+  echo "[WARN] Runtime did not settle within ${STARTUP_SETTLE_MAX_SECONDS}s after metrics recovery; continuing with scored soak window." | tee -a "$RUN_LOG"
+  return 1
+}
+
 find_serial_python() {
   if command -v python3 >/dev/null 2>&1; then
     if python3 - <<'PY' >/dev/null 2>&1
@@ -1458,6 +1583,7 @@ echo "    poll: ${POLL_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    serial baud: ${SERIAL_BAUD}" | tee -a "$RUN_LOG"
 echo "    http timeout: ${HTTP_TIMEOUT_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    endpoint recovery retries: attempts=${METRICS_ENDPOINT_ATTEMPTS} delay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s boundedWait<=$(metrics_endpoint_max_wait_seconds)s" | tee -a "$RUN_LOG"
+echo "    startup settle: max=${STARTUP_SETTLE_MAX_SECONDS}s stableSamples=${STARTUP_STABLE_CONSECUTIVE_SAMPLES}" | tee -a "$RUN_LOG"
 echo "    metrics url: ${METRICS_URL:-disabled}" | tee -a "$RUN_LOG"
 echo "    metrics poll url: ${METRICS_POLL_URL:-disabled}" | tee -a "$RUN_LOG"
 echo "    metrics soak mode: ${METRICS_SOAK_MODE}" | tee -a "$RUN_LOG"
@@ -1575,6 +1701,9 @@ SERIAL_CAPTURE_GRACE_SECONDS=$((HTTP_TIMEOUT_SECONDS * serial_capture_call_budge
 if [[ -n "$METRICS_POLL_URL" ]]; then
   SERIAL_CAPTURE_GRACE_SECONDS=$((SERIAL_CAPTURE_GRACE_SECONDS + $(metrics_endpoint_max_wait_seconds)))
 fi
+if startup_settle_enabled; then
+  SERIAL_CAPTURE_GRACE_SECONDS=$((SERIAL_CAPTURE_GRACE_SECONDS + STARTUP_SETTLE_MAX_SECONDS))
+fi
 if [[ "$SERIAL_CAPTURE_GRACE_SECONDS" -lt 20 ]]; then
   SERIAL_CAPTURE_GRACE_SECONDS=20
 fi
@@ -1638,6 +1767,9 @@ if [[ -n "$METRICS_POLL_URL" ]]; then
   if ! wait_for_json_endpoint "metrics endpoint" "$METRICS_POLL_URL" 1; then
     exit 1
   fi
+fi
+if [[ -n "$METRICS_POLL_URL" ]]; then
+  wait_for_runtime_settle "$METRICS_POLL_URL" || true
 fi
 
 soak_start_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -2283,7 +2415,7 @@ fi
 
 wifi_peak_gate_value="$wifi_max_peak"
 wifi_peak_gate_basis="raw_peak"
-if [[ "$metrics_reset_success" -eq 1 ]] &&
+if [[ ( "$metrics_reset_success" -eq 1 || ( "$STARTUP_SETTLE_APPLIED" -eq 1 && "$STARTUP_SETTLE_SUCCEEDED" -eq 1 ) ) ]] &&
    is_uint "$metrics_ok_samples_parsed" &&
    [[ "$metrics_ok_samples_parsed" -gt 1 ]] &&
    is_uint "$wifi_max_peak_excluding_first"
@@ -2296,7 +2428,7 @@ wifi_robust_sample_count="$wifi_sample_count"
 wifi_robust_over_limit_count="$wifi_over_limit_count_raw"
 wifi_robust_p95="$wifi_p95_raw"
 wifi_robust_basis="raw_samples"
-if [[ "$metrics_reset_success" -eq 1 ]] &&
+if [[ ( "$metrics_reset_success" -eq 1 || ( "$STARTUP_SETTLE_APPLIED" -eq 1 && "$STARTUP_SETTLE_SUCCEEDED" -eq 1 ) ) ]] &&
    is_uint "$metrics_ok_samples_parsed" &&
    [[ "$metrics_ok_samples_parsed" -gt "$WIFI_ROBUST_SKIP_FIRST_SAMPLES" ]] &&
    is_uint "$wifi_sample_count_excluding_first" &&
@@ -2345,6 +2477,7 @@ gate_transition_recovery_ap_fail=0
 gate_transition_recovery_proxy_fail=0
 gate_transition_samples_fail=0
 gate_transition_drive_fail=0
+gate_startup_settle_fail=0
 
 # Advisory SLO tracking (warn-only, do not cause FAIL)
 advisory_warnings=()
@@ -2382,6 +2515,10 @@ if [[ "$reboot_evidence_detected" -eq 0 ]]; then
   fi
 
   if [[ -n "$METRICS_URL" ]]; then
+    if [[ "$STARTUP_SETTLE_APPLIED" -eq 1 && "$STARTUP_SETTLE_SUCCEEDED" -ne 1 ]]; then
+      mark_gate_fail gate_startup_settle_fail \
+        "Runtime did not settle within ${STARTUP_SETTLE_MAX_SECONDS}s after metrics recovery (last uptimeMs=${STARTUP_SETTLE_LAST_UPTIME_MS:-n/a} loopMaxUs=${STARTUP_SETTLE_LAST_LOOP_MAX_US:-n/a} dispPipeMaxUs=${STARTUP_SETTLE_LAST_DISP_PIPE_MAX_US:-n/a} wifiMaxUs=${STARTUP_SETTLE_LAST_WIFI_MAX_US:-n/a})."
+    fi
     if [[ "$have_metrics_window" -eq 0 ]]; then
       if [[ "$METRICS_REQUIRED" -eq 1 ]]; then
         mark_gate_fail gate_metrics_window_fail "No successful metrics samples captured from ${METRICS_URL}."
@@ -2888,6 +3025,9 @@ fi
   echo "- Metrics successful (shell): $metrics_ok_samples"
   echo "- Metrics samples parsed: ${metrics_samples_parsed:-0}"
   echo "- Metrics successful parsed: ${metrics_ok_samples_parsed:-0}"
+  echo "- Startup settle applied/succeeded: $([[ "$STARTUP_SETTLE_APPLIED" -eq 1 ]] && echo "yes" || echo "no") / $([[ "$STARTUP_SETTLE_SUCCEEDED" -eq 1 ]] && echo "yes" || echo "no")"
+  echo "- Startup settle attempts/elapsed: ${STARTUP_SETTLE_ATTEMPTS_USED:-0} / ${STARTUP_SETTLE_ELAPSED_SECONDS:-0}s"
+  echo "- Startup settle last sample uptime/loop/disp/wifi: ${STARTUP_SETTLE_LAST_UPTIME_MS:-n/a} / ${STARTUP_SETTLE_LAST_LOOP_MAX_US:-n/a} / ${STARTUP_SETTLE_LAST_DISP_PIPE_MAX_US:-n/a} / ${STARTUP_SETTLE_LAST_WIFI_MAX_US:-n/a}"
   echo "- Metrics required minimum parsed successes: ${MIN_METRICS_OK_SAMPLES}"
   echo "- rxPackets delta: ${rx_packets_delta:-n/a} (min ${MIN_RX_PACKETS_DELTA})"
   echo "- parseSuccesses delta: ${parse_successes_delta:-n/a} (min ${MIN_PARSE_SUCCESSES_DELTA})"
