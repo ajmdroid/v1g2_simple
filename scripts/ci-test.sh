@@ -1,162 +1,95 @@
 #!/bin/bash
 # Authoritative repo gate used locally and by GitHub workflows.
-# Run this before pushing to catch the same failures CI enforces.
 
-set -e  # Exit on any error
+set -euo pipefail
 
-echo "╔════════════════════════════════════════════════════╗"
-echo "║           Local CI Build Test                      ║"
-echo "╚════════════════════════════════════════════════════╝"
-echo ""
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-cd "$(dirname "$0")/.."
-ROOT_DIR=$(pwd)
-
-# Track timing
 START_TIME=$(date +%s)
 
-# Step 0: API contract guard
-echo -e "${YELLOW}🔒 Checking WiFi API contracts...${NC}"
-python3 scripts/check_wifi_api_contract.py
-echo -e "${GREEN}✅ WiFi API contracts match${NC}"
+section() {
+  echo ""
+  echo -e "${BLUE}== $1 ==${NC}"
+}
 
-# Step 0b: BLE hot-path contract guard
-echo -e "${YELLOW}🔒 Checking BLE hot-path contract...${NC}"
-python3 scripts/check_ble_hot_path_contract.py
-echo -e "${GREEN}✅ BLE hot-path contract matches${NC}"
+run_step() {
+  local label="$1"
+  shift
+  echo -e "${YELLOW}[run] ${label}${NC}"
+  "$@"
+  echo -e "${GREEN}[pass] ${label}${NC}"
+}
 
-# Step 0b1: BLE deletion safety contract guard
-echo -e "${YELLOW}🔒 Checking BLE deletion contract...${NC}"
-python3 scripts/check_ble_deletion_contract.py
-echo -e "${GREEN}✅ BLE deletion contract matches${NC}"
+echo "============================================"
+echo "Authoritative Local CI Gate"
+echo "============================================"
 
-# Step 0c: Perf CSV column contract guard
-echo -e "${YELLOW}🔒 Checking perf CSV column contract...${NC}"
-python3 scripts/check_perf_csv_column_contract.py
-echo -e "${GREEN}✅ Perf CSV column contract matches${NC}"
+section "Semantic Gates"
+run_step "Bug pattern scanner" python3 scripts/check_bug_patterns.py
+run_step "BLE deletion semantic guard" python3 scripts/check_ble_deletion_contract.py
+run_step "Frontend HTTP resilience semantic guard" python3 scripts/check_frontend_http_resilience_contract.py
+run_step "BLE hot-path semantic guard" python3 scripts/check_ble_hot_path_semantic_guard.py
+run_step "Display flush semantic guard" python3 scripts/check_display_flush_semantic_guard.py
+run_step "SD lock semantic guard" python3 scripts/check_sd_lock_semantic_guard.py
+run_step "Main loop semantic guard" python3 scripts/check_main_loop_semantic_guard.py
+run_step "Native unit tests" python3 scripts/run_native_tests_serial.py
+run_step "Functional scenarios" ./scripts/run_functional_tests.sh
 
-# Step 0c1: Perf SLO doc/json contract guard
-echo -e "${YELLOW}🔒 Checking perf SLO contract...${NC}"
-python3 scripts/check_perf_slo_contract.py
-echo -e "${GREEN}✅ Perf SLO contract matches${NC}"
+section "Critical Mutation Gate"
+run_step "Tracked critical mutation catalog" ./scripts/mutation_test.sh --critical
 
-# Step 0d: Display flush discipline contract guard
-echo -e "${YELLOW}🔒 Checking display flush discipline contract...${NC}"
-python3 scripts/check_display_flush_discipline_contract.py
-echo -e "${GREEN}✅ Display flush discipline contract matches${NC}"
+section "Perf Scoring Gate"
+run_step "Deterministic perf scorer regression tests" python3 scripts/test_perf_scoring.py
 
-# Step 0e: SD lock discipline contract guard
-echo -e "${YELLOW}🔒 Checking SD lock discipline contract...${NC}"
-python3 scripts/check_sd_lock_discipline_contract.py
-echo -e "${GREEN}✅ SD lock discipline contract matches${NC}"
+section "Compatibility Guards"
+run_step "WiFi API contracts" python3 scripts/check_wifi_api_contract.py
+run_step "BLE hot-path snapshot contract" python3 scripts/check_ble_hot_path_contract.py
+run_step "Perf CSV column contract" python3 scripts/check_perf_csv_column_contract.py
+run_step "Display flush discipline contract" python3 scripts/check_display_flush_discipline_contract.py
+run_step "SD lock discipline contract" python3 scripts/check_sd_lock_discipline_contract.py
+run_step "Main loop call-order contract" python3 scripts/check_main_loop_call_order_contract.py
+run_step "Extern/global usage contract" python3 scripts/check_extern_usage_contract.py
 
-# Step 0f: Main loop call order contract guard
-echo -e "${YELLOW}🔒 Checking main loop call-order contract...${NC}"
-python3 scripts/check_main_loop_call_order_contract.py
-echo -e "${GREEN}✅ Main loop call-order contract matches${NC}"
+section "Docs Hygiene"
+run_step "Perf SLO doc/json contract" python3 scripts/check_perf_slo_contract.py
 
-# Step 0g: Extern/global usage contract guard
-echo -e "${YELLOW}🔒 Checking extern/global usage contract...${NC}"
-python3 scripts/check_extern_usage_contract.py
-echo -e "${GREEN}✅ Extern/global usage contract matches${NC}"
-
-# Step 0h: Bug pattern scanner
-echo -e "${YELLOW}🔒 Checking bug pattern scanner...${NC}"
-python3 scripts/check_bug_patterns.py
-echo -e "${GREEN}✅ Bug pattern scanner passed${NC}"
-
-# Step 0i: Native unit tests
-echo -e "${YELLOW}🧪 Running native unit tests...${NC}"
-python3 scripts/run_native_tests_serial.py
-echo -e "${GREEN}✅ Native unit tests passed${NC}"
-
-# Step 0j: Frontend HTTP resilience contract guard
-echo -e "${YELLOW}🔒 Checking frontend HTTP resilience contract...${NC}"
-python3 scripts/check_frontend_http_resilience_contract.py
-echo -e "${GREEN}✅ Frontend HTTP resilience contract matches${NC}"
-
-# Step 1: Install frontend dependencies
-echo -e "${YELLOW}📦 Installing frontend dependencies...${NC}"
+section "Frontend"
 cd interface
-npm ci --silent 2>/dev/null || npm install --silent
-echo -e "${GREEN}✅ Frontend dependencies installed${NC}"
-
-# Step 1b: Frontend lint/type checks
-echo -e "${YELLOW}🔎 Running frontend lint/type checks...${NC}"
-npm run lint
-echo -e "${GREEN}✅ Frontend lint/type checks passed${NC}"
-
-# Step 1c: Frontend unit tests + coverage
-echo -e "${YELLOW}🧪 Running frontend unit tests with coverage...${NC}"
-npm run test:coverage
-echo -e "${GREEN}✅ Frontend unit tests and coverage passed${NC}"
-
-# Step 1d: Build web interface
-echo -e "${YELLOW}📦 Building web interface...${NC}"
-npm run build
-echo -e "${GREEN}✅ Web interface built${NC}"
-
-# Step 2: Deploy to data folder
-echo -e "${YELLOW}📁 Deploying to data/ folder...${NC}"
-npm run deploy
-echo -e "${GREEN}✅ Web files deployed${NC}"
-
+run_step "Frontend dependencies" bash -lc "npm ci --silent 2>/dev/null || npm install --silent"
+run_step "Frontend lint/type checks" npm run lint
+run_step "Frontend unit tests with coverage" npm run test:coverage
+run_step "Frontend build" npm run build
+run_step "Frontend deploy" npm run deploy
 cd "$ROOT_DIR"
 
-# Step 2b: Web packaging guardrails
-echo -e "${YELLOW}🔒 Checking web asset guardrails...${NC}"
-python3 scripts/check_web_asset_budget.py
-echo -e "${GREEN}✅ Web asset guardrails pass${NC}"
+section "Frontend Packaging"
+run_step "Web asset guardrails" python3 scripts/check_web_asset_budget.py
+run_step "Audio manifest guardrail" python3 scripts/check_audio_asset_manifest.py
 
-# Step 2c: Audio manifest guardrail
-echo -e "${YELLOW}🔒 Checking deployed audio manifest...${NC}"
-python3 scripts/check_audio_asset_manifest.py
-echo -e "${GREEN}✅ Deployed audio manifest matches${NC}"
-
-# Step 3: Firmware static analysis
-echo -e "${YELLOW}🔎 Running firmware static analysis...${NC}"
-./scripts/pio-check.sh
-echo -e "${GREEN}✅ Firmware static analysis passed${NC}"
-
-# Step 4: Build firmware
-echo -e "${YELLOW}🏗️  Building firmware (waveshare-349)...${NC}"
-pio run -e waveshare-349 -j 1
-echo -e "${GREEN}✅ Firmware built${NC}"
-
-# Step 4a: Build filesystem image
-echo -e "${YELLOW}💾 Building LittleFS image...${NC}"
-pio run -e waveshare-349 -t buildfs -j 1
-echo -e "${GREEN}✅ LittleFS image built${NC}"
-
-# Step 4b: Flash package truth report
-echo -e "${YELLOW}📏 Checking flash package truth...${NC}"
-python3 scripts/report_flash_package_size.py \
+section "Firmware Build"
+run_step "Firmware static analysis" ./scripts/pio-check.sh
+run_step "Firmware build" pio run -e waveshare-349 -j 1
+run_step "LittleFS image build" pio run -e waveshare-349 -t buildfs -j 1
+run_step "Flash package truth report" python3 scripts/report_flash_package_size.py \
   --max-firmware-bytes 5570560 \
   --expect-littlefs-bytes 2424832
-echo -e "${GREEN}✅ Flash package truth report complete${NC}"
 
-# Step 5: Size report
-echo ""
-echo "╔════════════════════════════════════════════════════╗"
-echo "║               Build Size Report                    ║"
-echo "╚════════════════════════════════════════════════════╝"
-echo ""
+section "Size Report"
 echo "waveshare-349:"
 pio run -e waveshare-349 -t size -j 1 2>/dev/null | grep -E "(RAM|Flash|used|bytes)"
 
-# Calculate elapsed time
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
 
 echo ""
-echo "╔════════════════════════════════════════════════════╗"
-echo -e "║  ${GREEN}✅ All CI checks passed!${NC}                         ║"
-echo "║  Elapsed time: ${ELAPSED}s                               ║"
-echo "║  Safe to push to GitHub                            ║"
-echo "╚════════════════════════════════════════════════════╝"
+echo "============================================"
+echo -e "${GREEN}All CI checks passed${NC}"
+echo "Elapsed: ${ELAPSED}s"
+echo "============================================"

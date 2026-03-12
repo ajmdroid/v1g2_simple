@@ -1,0 +1,143 @@
+{
+  "catalog_version": 1,
+  "modes": {
+    "critical": [
+      {
+        "id": "critical-001",
+        "module": "lockout_index",
+        "description": "<= -> < radius check",
+        "impact": "Boundary alerts slip through lockout zones",
+        "file": "src/modules/lockout/lockout_index.cpp",
+        "search": "    // Squared-distance check with cos(lat)-scaled longitude.\n    // Scale dLon to equivalent latitude distance units before squaring.\n    const int64_t dLat64 = static_cast<int64_t>(dLat);\n    const int64_t dLonScaled = static_cast<int64_t>(lroundf(static_cast<float>(dLon) * cosLatClamped));\n    const int64_t r64    = static_cast<int64_t>(radius);\n    return (dLat64 * dLat64 + dLonScaled * dLonScaled) <= (r64 * r64);\n}",
+        "replace": "    // Squared-distance check with cos(lat)-scaled longitude.\n    // Scale dLon to equivalent latitude distance units before squaring.\n    const int64_t dLat64 = static_cast<int64_t>(dLat);\n    const int64_t dLonScaled = static_cast<int64_t>(lroundf(static_cast<float>(dLon) * cosLatClamped));\n    const int64_t r64    = static_cast<int64_t>(radius);\n    return (dLat64 * dLat64 + dLonScaled * dLonScaled) < (r64 * r64);\n}",
+        "tests": [
+          "test_lockout_index",
+          "test_lockout_area_safety",
+          "test_drive_scenario"
+        ]
+      },
+      {
+        "id": "critical-002",
+        "module": "battery_manager",
+        "description": "- EMPTY -> + EMPTY percentage math",
+        "impact": "Battery percentage becomes nonsensical and masks low-battery shutdown risk",
+        "file": "include/battery_math.h",
+        "search": "    return static_cast<uint8_t>(\n        (static_cast<uint32_t>(voltageMV - kEmptyMv) * 100U) / (kFullMv - kEmptyMv));",
+        "replace": "    return static_cast<uint8_t>(\n        (static_cast<uint32_t>(voltageMV + kEmptyMv) * 100U) / (kFullMv - kEmptyMv));",
+        "tests": [
+          "test_battery_manager"
+        ]
+      },
+      {
+        "id": "critical-003",
+        "module": "packet_parser",
+        "description": "min length 8 -> 6 in validatePacket",
+        "impact": "Corrupt BLE frames pass validation for payload-bearing packets",
+        "file": "src/packet_parser.cpp",
+        "search": "bool PacketParser::validatePacket(const uint8_t* data, size_t length) {\n    if (length < 8) {\n        return false;\n    }\n",
+        "replace": "bool PacketParser::validatePacket(const uint8_t* data, size_t length) {\n    if (length < 6) {\n        return false;\n    }\n",
+        "tests": [
+          "test_packet_parser"
+        ]
+      },
+      {
+        "id": "critical-004",
+        "module": "lockout_learner",
+        "description": ">= -> > promotion threshold",
+        "impact": "Learner requires one extra hit before promotion",
+        "file": "src/modules/lockout/lockout_learner.cpp",
+        "search": "                if (c.hitCount >= promotionHits_) {\n                    promoteCandidate(static_cast<size_t>(idx), epochMs);\n                }\n",
+        "replace": "                if (c.hitCount > promotionHits_) {\n                    promoteCandidate(static_cast<size_t>(idx), epochMs);\n                }\n",
+        "tests": [
+          "test_lockout_learner"
+        ]
+      },
+      {
+        "id": "critical-005",
+        "module": "wifi_boot_policy",
+        "description": ">= -> > BLE settle boundary",
+        "impact": "WiFi auto-start slips one loop past the settle threshold",
+        "file": "src/modules/wifi/wifi_boot_policy.h",
+        "search": "    bool bleSettled = bleConnected && (msSinceV1Connect >= settleMs);\n",
+        "replace": "    bool bleSettled = bleConnected && (msSinceV1Connect > settleMs);\n",
+        "tests": [
+          "test_wifi_boot_policy"
+        ]
+      },
+      {
+        "id": "critical-006",
+        "module": "lockout_index",
+        "description": "> 0 -> >= 0 confidence decrement",
+        "impact": "Zero-confidence lockouts underflow to 255 and become permanent",
+        "file": "src/modules/lockout/lockout_index.cpp",
+        "search": "    if (e.confidence > 0) {\n        --e.confidence;\n    }\n",
+        "replace": "    if (e.confidence >= 0) {\n        --e.confidence;\n    }\n",
+        "tests": [
+          "test_lockout_index",
+          "test_lockout_area_safety",
+          "test_drive_scenario"
+        ]
+      },
+      {
+        "id": "critical-007",
+        "module": "camera_alert",
+        "description": "<= -> < forward distance boundary",
+        "impact": "Perpendicular intersection cameras enter the forward corridor",
+        "file": "src/modules/camera_alert/camera_alert_module.cpp",
+        "search": "    if (forwardDistance <= 0.0f) {\n        return false;\n    }\n",
+        "replace": "    if (forwardDistance < 0.0f) {\n        return false;\n    }\n",
+        "tests": [
+          "test_camera_alert_module"
+        ]
+      },
+      {
+        "id": "critical-008",
+        "module": "volume_fade",
+        "description": ">= -> > fade delay boundary",
+        "impact": "Fade-down command fires one poll late",
+        "file": "src/modules/volume_fade/volume_fade_module.cpp",
+        "search": "    if (!commandSent && (now - alertStartMs) >= fadeDelayMs) {\n",
+        "replace": "    if (!commandSent && (now - alertStartMs) > fadeDelayMs) {\n",
+        "tests": [
+          "test_volume_fade"
+        ]
+      },
+      {
+        "id": "critical-009",
+        "module": "gps_lockout_safety",
+        "description": "> -> >= guard threshold",
+        "impact": "Core guard trips one drop too early",
+        "file": "src/modules/gps/gps_lockout_safety.cpp",
+        "search": "    if (queueDrops > maxQueueDrops) {\n        status.tripped = true;\n        status.reason = \"queueDrops\";\n        return status;\n    }\n",
+        "replace": "    if (queueDrops >= maxQueueDrops) {\n        status.tripped = true;\n        status.reason = \"queueDrops\";\n        return status;\n    }\n",
+        "tests": [
+          "test_gps_lockout_safety"
+        ]
+      },
+      {
+        "id": "critical-010",
+        "module": "lockout_pre_quiet",
+        "description": "entry debounce 100 -> 0",
+        "impact": "GPS noise causes immediate pre-quiet volume drops",
+        "file": "src/modules/lockout/lockout_pre_quiet_controller.cpp",
+        "search": "static constexpr uint32_t ENTRY_DEBOUNCE_MS = 100;\n",
+        "replace": "static constexpr uint32_t ENTRY_DEBOUNCE_MS = 0;\n",
+        "tests": [
+          "test_lockout_pre_quiet"
+        ]
+      }
+    ],
+    "full": [
+      "critical-001",
+      "critical-002",
+      "critical-003",
+      "critical-004",
+      "critical-005",
+      "critical-006",
+      "critical-007",
+      "critical-008",
+      "critical-009",
+      "critical-010"
+    ]
+  }
+}

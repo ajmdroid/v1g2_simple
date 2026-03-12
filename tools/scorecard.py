@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-V1G2 Simple Stability Scorecard
+V1G2 Simple Stability Scorecard (debug utility)
 
 Evaluates NDJSON debug logs against the Base Stable standard defined in
 this file's threshold constants.
+
+This tool is retained for exploratory analysis only. The authoritative perf
+gate is `tools/score_perf_csv.py` plus the thresholds in
+`tools/perf_slo_thresholds.json`.
 
 Usage:
     python tools/scorecard.py test/fixtures/debug_base_stable.log
