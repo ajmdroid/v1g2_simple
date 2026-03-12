@@ -66,12 +66,17 @@ echo -e "${YELLOW}🔒 Checking extern/global usage contract...${NC}"
 python3 scripts/check_extern_usage_contract.py
 echo -e "${GREEN}✅ Extern/global usage contract matches${NC}"
 
-# Step 0h: Native unit tests
+# Step 0h: Bug pattern scanner
+echo -e "${YELLOW}🔒 Checking bug pattern scanner...${NC}"
+python3 scripts/check_bug_patterns.py
+echo -e "${GREEN}✅ Bug pattern scanner passed${NC}"
+
+# Step 0i: Native unit tests
 echo -e "${YELLOW}🧪 Running native unit tests...${NC}"
 python3 scripts/run_native_tests_serial.py
 echo -e "${GREEN}✅ Native unit tests passed${NC}"
 
-# Step 0i: Frontend HTTP resilience contract guard
+# Step 0j: Frontend HTTP resilience contract guard
 echo -e "${YELLOW}🔒 Checking frontend HTTP resilience contract...${NC}"
 python3 scripts/check_frontend_http_resilience_contract.py
 echo -e "${GREEN}✅ Frontend HTTP resilience contract matches${NC}"

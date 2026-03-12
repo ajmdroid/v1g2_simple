@@ -32,7 +32,7 @@ ConnectionRuntimeSnapshot ConnectionRuntimeModule::process(unsigned long nowMs,
     snapshot.bootSplashHoldActive = bootSplashHoldActive;
     snapshot.initialScanningScreenShown = initialScanningScreenShown;
 
-    if (snapshot.bootSplashHoldActive && nowMs >= bootSplashHoldUntilMs) {
+    if (snapshot.bootSplashHoldActive && static_cast<int32_t>(nowMs - bootSplashHoldUntilMs) >= 0) {
         snapshot.bootSplashHoldActive = false;
         if (!connectedNow) {
             snapshot.requestShowInitialScanning = true;

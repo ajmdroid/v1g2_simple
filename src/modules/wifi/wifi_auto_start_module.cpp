@@ -22,7 +22,7 @@ bool WifiAutoStartModule::process(unsigned long nowMs,
     // `nowMs` is captured near loop start; V1 connect callback can stamp a slightly
     // newer `v1ConnectedAtMs` later in the same loop. Saturate to avoid underflow.
     const uint32_t msSinceV1 =
-        (v1ConnectedAtMs > 0 && nowMs >= v1ConnectedAtMs)
+        (v1ConnectedAtMs > 0 && static_cast<int32_t>(nowMs - v1ConnectedAtMs) >= 0)
             ? static_cast<uint32_t>(nowMs - v1ConnectedAtMs)
             : 0;
 

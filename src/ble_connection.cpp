@@ -598,7 +598,7 @@ void V1BLEClient::processSubscribing() {
 
 // Process SUBSCRIBE_YIELD state - wait briefly then resume subscribing
 void V1BLEClient::processSubscribeYield() {
-    if (millis() >= subscribeYieldUntilMs) {
+    if (static_cast<int32_t>(millis() - subscribeYieldUntilMs) >= 0) {
         setBLEState(BLEState::SUBSCRIBING, "resuming subscribe");
     }
 }
