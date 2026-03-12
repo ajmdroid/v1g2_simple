@@ -53,6 +53,12 @@ public:
 
     void onDeviceFound(const char* name, const char* address, int rssi);
 
+    /// Called by ObdClientCallback when BLE connection drops.
+    void onBleDisconnect();
+
+    /// Called by BLE notify callback when data arrives from OBD adapter.
+    void onBleData(const uint8_t* data, size_t len);
+
 #ifdef UNIT_TEST
     void injectSpeedForTest(float speedMph, uint32_t timestampMs);
     ObdConnectionState getState() const { return state_; }
@@ -90,6 +96,17 @@ private:
     uint32_t totalBytesReceived_ = 0;
     uint32_t lastPollMs_ = 0;
     uint32_t lastRssiMs_ = 0;
+
+    // AT init tracking
+    uint8_t atInitIndex_ = 0;
+    uint32_t atInitSentMs_ = 0;
+
+    // BLE data buffer
+    static constexpr size_t BLE_BUF_LEN = 64;
+    char bleBuf_[BLE_BUF_LEN] = {};
+    size_t bleBufLen_ = 0;
+    bool bleDataReady_ = false;
+    bool bleDisconnected_ = false;
 };
 
 extern ObdRuntimeModule obdRuntimeModule;
