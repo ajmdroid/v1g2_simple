@@ -195,9 +195,12 @@ void CameraAlertModule::begin(RoadMapReader* roadMap, SettingsManager* settings)
     settings_ = settings;
 }
 
+static int cameraProcessCalls = 0;
+
 void CameraAlertModule::process(uint32_t nowMs, const CameraAlertContext& /*ctx*/) {
     hasPolled_ = true;
     lastPollMs_ = nowMs;
+    cameraProcessCalls++;
 }
 
 void CameraAlertModule::resetEncounter() {
@@ -356,10 +359,12 @@ void setUp() {
     voice = VoiceModule{};
     gpsRuntime = GpsRuntimeModule{};
     cameraModule = CameraAlertModule{};
+    module = DisplayPipelineModule{};
     displayMode = DisplayMode::IDLE;
     settingsManager = SettingsManager{};
     perfCounters.reset();
     perfExtended.reset();
+    cameraProcessCalls = 0;
     beginModule();
 }
 
@@ -427,10 +432,96 @@ void test_restore_current_owner_shows_scanning_when_ble_is_disconnected() {
     TEST_ASSERT_FALSE(module.isCameraAlertActive());
 }
 
+// --- Camera tracking under live radar alerts ---
+
+static AlertData makeKAlert(uint16_t freq = 24148) {
+    AlertData a{};
+    a.isValid = true;
+    a.isPriority = true;
+    a.band = BAND_K;
+    a.frequency = freq;
+    a.direction = DIR_FRONT;
+    a.frontStrength = 5;
+    return a;
+}
+
+void test_camera_process_called_while_radar_active() {
+    // Set up a live radar alert
+    parser.setAlerts({makeKAlert()});
+
+    mockMillis = 1000;
+    mockMicros = 1000 * 1000UL;
+    cameraProcessCalls = 0;
+    module.handleParsed(1000, false);
+
+    // Camera process should still be called even with radar active
+    TEST_ASSERT_GREATER_THAN(0, cameraProcessCalls);
+    // But camera should NOT own the display
+    TEST_ASSERT_FALSE(module.isCameraAlertActive());
+    TEST_ASSERT_EQUAL(0, display.updateCameraAlertCalls);
+}
+
+void test_camera_no_display_while_radar_active() {
+    // Make camera module think it has an active display payload
+    cameraModule.setDisplayPayloadForTest(CameraAlertDisplayPayload{true, 5000});
+
+    // Set up live radar
+    parser.setAlerts({makeKAlert()});
+
+    mockMillis = 1000;
+    mockMicros = 1000 * 1000UL;
+    module.handleParsed(1000, false);
+
+    // Camera should not render even though it has an active payload
+    TEST_ASSERT_FALSE(module.isCameraAlertActive());
+    TEST_ASSERT_EQUAL(0, display.updateCameraAlertCalls);
+    TEST_ASSERT_EQUAL(DisplayMode::LIVE, displayMode);
+}
+
+void test_camera_resumes_after_radar_clears() {
+    // Make camera module think it has an active display payload
+    cameraModule.setDisplayPayloadForTest(CameraAlertDisplayPayload{true, 5000});
+
+    // First: radar active — camera should not render
+    parser.setAlerts({makeKAlert()});
+    mockMillis = 1000;
+    mockMicros = 1000 * 1000UL;
+    module.handleParsed(1000, false);
+    TEST_ASSERT_FALSE(module.isCameraAlertActive());
+    TEST_ASSERT_EQUAL(0, display.updateCameraAlertCalls);
+
+    // Now: radar clears — camera should render
+    parser.setAlerts({});
+    mockMillis = 1050;
+    mockMicros = 1050 * 1000UL;
+    module.handleParsed(1050, false);
+    TEST_ASSERT_TRUE(module.isCameraAlertActive());
+    TEST_ASSERT_EQUAL(1, display.updateCameraAlertCalls);
+    TEST_ASSERT_EQUAL(DisplayMode::IDLE, displayMode);
+}
+
+void test_radar_display_unchanged_with_camera_fix() {
+    // Radar-only scenario should behave exactly as before
+    parser.setAlerts({makeKAlert()});
+
+    mockMillis = 1000;
+    mockMicros = 1000 * 1000UL;
+    module.handleParsed(1000, false);
+
+    TEST_ASSERT_EQUAL(DisplayMode::LIVE, displayMode);
+    TEST_ASSERT_EQUAL(1, display.updateCalls);
+    TEST_ASSERT_EQUAL(0, display.updateCameraAlertCalls);
+    TEST_ASSERT_FALSE(module.isCameraAlertActive());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_debug_camera_override_throttles_duplicate_frames_until_state_changes);
     RUN_TEST(test_restore_current_owner_returns_to_resting_view_after_debug_override_clears);
     RUN_TEST(test_restore_current_owner_shows_scanning_when_ble_is_disconnected);
+    RUN_TEST(test_camera_process_called_while_radar_active);
+    RUN_TEST(test_camera_no_display_while_radar_active);
+    RUN_TEST(test_camera_resumes_after_radar_clears);
+    RUN_TEST(test_radar_display_unchanged_with_camera_fix);
     return UNITY_END();
 }

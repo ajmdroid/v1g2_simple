@@ -64,6 +64,11 @@ private:
 
     uint32_t lastPollMs_ = 0;
     bool hasPolled_ = false;
+
+#ifdef UNIT_TEST
+public:
+    void setDisplayPayloadForTest(const CameraAlertDisplayPayload& p) { displayPayload_ = p; }
+#endif
 };
 
 extern CameraAlertModule cameraAlertModule;

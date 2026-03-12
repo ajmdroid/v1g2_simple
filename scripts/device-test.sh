@@ -718,15 +718,12 @@ run_camera_radar_overlap_test() {
   local run_log="$OUT_DIR/${test_name}.log"
   local item_out_dir="$OUT_DIR/${test_name}_artifacts"
   mkdir -p "$item_out_dir"
-  local cmd=(python3 "./scripts/camera_radar_device_stress.py"
+  local cmd=(python3 "./scripts/camera_radar_overlap_bench.py"
     --metrics-url "$METRICS_URL"
     --http-timeout-seconds "$HTTP_TIMEOUT_SECONDS"
     --out-dir "$item_out_dir"
     --scenario-id "$RAD_SCENARIO_ID"
-    --duration-scale-pct "$RAD_DURATION_SCALE_PCT"
-    --mode both
-    --flap-cycles "$SOAK_TRANSITION_FLAP_CYCLES"
-    --flap-interval-seconds "$SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS")
+    --duration-scale-pct "$RAD_DURATION_SCALE_PCT")
   local cmd_text
   cmd_text="$(shell_join "${cmd[@]}")"
 
@@ -759,17 +756,17 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
 
 phases = {phase.get("phase"): phase for phase in data.get("phases", [])}
 parts = []
-for name in ("overlap", "flap"):
+for name in ("camera_only", "camera_radar_overlap"):
     phase = phases.get(name)
     if not phase:
         continue
-    metrics = phase.get("metrics", {})
-    parts.append(f"{name}={phase.get('result', 'unknown')}")
-    parts.append(f"{name}_camPeak={metrics.get('camera_correlated_disp_pipe_peak_us', 'n/a')}")
-    parts.append(f"{name}_camSamples={metrics.get('camera_correlated_disp_pipe_sample_count', 'n/a')}")
-    parts.append(f"{name}_dispPeak={metrics.get('dispPipeMaxUs_peak', 'n/a')}")
-    parts.append(f"{name}_parseFail={metrics.get('parseFailures_delta', 'n/a')}")
-    parts.append(f"{name}_qDrop={metrics.get('queueDrops_delta', 'n/a')}")
+    parts.append(f"{name}={'PASS' if phase.get('saw_display_active') else 'FAIL'}")
+    parts.append(f"{name}_step={phase.get('display_active_step', 'n/a')}/{phase.get('total_steps', 'n/a')}")
+m = data.get("metrics", {})
+parts.append(f"dispPeak={m.get('dispPipeMaxUs', 'n/a')}")
+parts.append(f"camFrames={m.get('cameraDisplayFrames_delta', 'n/a')}")
+parts.append(f"parseFail={m.get('parseFailures_delta', 'n/a')}")
+parts.append(f"qDrop={m.get('queueDrops_delta', 'n/a')}")
 print(" ".join(parts))
 PY
 )"
@@ -999,7 +996,7 @@ echo "  camera smoke: enabled=$CAMERA_SMOKE (manual only; host/browser dependent
 echo "  display drive: displayInterval=${SOAK_DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=$SOAK_MIN_DISPLAY_UPDATES_DELTA"
 echo "  transition qual: enabled=$SOAK_ENABLE_TRANSITION_QUAL flapCycles=$SOAK_TRANSITION_FLAP_CYCLES interval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s maxRecoveryMs=$SOAK_TRANSITION_MAX_PROXY_RECOVERY_MS maxSamples=$SOAK_TRANSITION_MAX_SAMPLES_TO_STABLE"
 echo "  RAD scenario: $RAD_SCENARIO_ID scalePct=$RAD_DURATION_SCALE_PCT timeout=${RESOLVED_RAD_TIMEOUT_SECONDS}s (rx>=$RAD_MIN_RX_DELTA parse>=$RAD_MIN_PARSE_SUCCESS_DELTA display>=$RAD_MIN_DISPLAY_UPDATES_DELTA parseFail==0)"
-echo "  camera+radar stress: enabled=$CAMERA_RADAR_STRESS (synthetic/manual only) mode=both flapCycles=$SOAK_TRANSITION_FLAP_CYCLES flapInterval=${SOAK_TRANSITION_DRIVE_INTERVAL_SECONDS}s"
+echo "  camera+radar overlap: enabled=$CAMERA_RADAR_STRESS (real pipeline bench; requires road_map.bin on SD)"
 echo "  out dir: $OUT_DIR"
 echo ""
 

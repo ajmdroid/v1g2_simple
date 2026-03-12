@@ -280,9 +280,10 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         }
     }
 
-    if (!hasAlerts) {
-        processCameraState(nowMs);
-    }
+    // Camera tracking runs every frame regardless of radar state so encounters
+    // continue progressing in the background.  Display ownership is unchanged:
+    // live radar alerts still own screen/audio when hasAlerts is true.
+    processCameraState(nowMs);
 
     if (nowMs - lastDisplayDraw < DISPLAY_DRAW_MIN_MS) {
         PERF_INC(displaySkips);
