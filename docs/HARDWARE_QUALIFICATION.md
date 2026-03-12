@@ -42,6 +42,5 @@ If the metrics precheck fails, qualification stops immediately instead of report
 
 These scripts still exist for debugging and exploration, but they are not the release gate by themselves:
 
-- `./scripts/device-test.sh`
+- `./scripts/device-test.sh` — manual hardware triage
 - `./scripts/run_real_fw_soak.sh`
-- `./scripts/iron-gate.sh`

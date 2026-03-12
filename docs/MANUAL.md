@@ -1444,6 +1444,21 @@ Enable verbose logging by checking serial output for:
 
 ## K. Developer Guide
 
+### Operational Invariants
+
+- **BLE client lifecycle:** Never delete NimBLE clients at runtime. Reuse or
+  disconnect the existing client instead.
+- **Display threading:** Display updates must stay on the main loop. BLE
+  callbacks may queue work, but they must not touch display SPI paths directly.
+- **Battery latch timing:** `batteryManager.begin()` must run immediately after
+  early boot setup so battery-powered starts do not drop the latch.
+- **Radio contention:** WiFi and BLE share one radio. BLE scan duty cycle is
+  tuned for ESP32-S3 discovery reliability, so WiFi work must stay non-blocking
+  and coexistence-aware.
+- **Logging conventions:** Use stable uppercase subsystem prefixes such as
+  `[BLE]`, `[WIFI]`, and `[PERF]`; keep hot-path logs gated, and leave
+  actionable failures visible.
+
 ### Repository Structure
 
 ```

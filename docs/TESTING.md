@@ -3,17 +3,16 @@
 > Status: active
 > Last validated against scripts: March 12, 2026
 
-This file documents the current release-evidence model.
-For the full subsystem-to-evidence map, see [VALIDATION_MATRIX.md](VALIDATION_MATRIX.md).
+This file is the current testing and validation policy authority for the repo.
 
 ## Evidence Lanes
 
-| Lane | Script | Purpose |
-|------|--------|---------|
-| PR | `./scripts/ci-test.sh` | Fast merge-safety gate |
-| Nightly | `./scripts/ci-nightly.sh` | Replay, sanitizer, expanded mutation, soak |
-| Pre-release | `./scripts/ci-pre-release.sh` | Full evidence + hardware qualification |
-| Trend | `.github/workflows/stability-trend.yml` | Non-blocking stability analytics |
+| Lane | Script / Workflow | Budget | Purpose |
+|------|-------------------|--------|---------|
+| PR | `./scripts/ci-test.sh` | <= 8 min local / <= 12 min CI | Fast merge-safety gate |
+| Nightly | `./scripts/ci-nightly.sh` | <= 60 min | Replay, sanitizer, expanded mutation, soak |
+| Pre-release | `./scripts/ci-pre-release.sh` | <= 90 min | Full evidence + hardware qualification |
+| Trend | `.github/workflows/stability-trend.yml` | N/A | Non-blocking stability analytics |
 
 ## Authoritative Gates
 
@@ -89,7 +88,6 @@ These tools still exist, but they are exploratory/manual only when run directly:
 
 - `./scripts/device-test.sh`
 - `./scripts/run_real_fw_soak.sh`
-- `./scripts/iron-gate.sh`
 - `tools/scorecard.py` — stability trend analysis (nightly only, non-blocking)
 
 ## Known Gaps
@@ -102,4 +100,4 @@ These tools still exist, but they are exploratory/manual only when run directly:
 
 - Reduced but truthful coverage is better than broad fake coverage.
 - If a hardware script is exploratory, document it as exploratory.
-- Do not treat reference docs as release authority; use [README.md](/Users/ajmedford/v1g2_simple/docs/README.md) for the authority map.
+- Do not treat reference docs as release authority; use [README.md](/Users/ajmedford/v1g2_simple/docs/README.md) as the doc index only.

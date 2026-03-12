@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI/CD**: Build runs unit tests before firmware compilation; firmware size budget, static analysis, and interface lint gates added.
 - **Input Validation**: Added proxy_name length limit (32 chars).
 - **API**: Added `isDefaultPassword` flag to `/api/settings` response.
-- **Docs**: Full documentation audit — ARCHITECTURE.md, DEVELOPER.md, API.md aligned to code.
+- **Docs**: Full documentation audit — ARCHITECTURE.md, MANUAL.md, API.md aligned to code.
 
 ### Fixed
 - WiFi STA config recovery when NVS keys are missing (SD secret fallback).
