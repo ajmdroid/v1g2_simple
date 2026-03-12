@@ -17,6 +17,7 @@ MODE="device"
 RUN_STRESS=0
 SUITE_COOLDOWN_SECONDS="${DEVICE_SUITE_COOLDOWN_SECONDS:-5}"
 COMPARE_TO=""
+OUT_DIR_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,8 +46,16 @@ while [[ $# -gt 0 ]]; do
       COMPARE_TO="$2"
       shift
       ;;
+    --out-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --out-dir" >&2
+        exit 2
+      fi
+      OUT_DIR_OVERRIDE="$2"
+      shift
+      ;;
     -h|--help)
-      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N] [--compare-to PATH]"
+      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N] [--compare-to PATH] [--out-dir PATH]"
       echo ""
       echo "Modes:"
       echo "  (default)  Run all device-only test suites (safe set)"
@@ -58,6 +67,8 @@ while [[ $# -gt 0 ]]; do
       echo "             Wait N seconds between suites (default: ${DEVICE_SUITE_COOLDOWN_SECONDS:-5})"
       echo "  --compare-to PATH"
       echo "             Compare this run against a prior manifest.json"
+      echo "  --out-dir PATH"
+      echo "             Write all run artifacts to PATH"
       echo ""
       echo "Environment:"
       echo "  DEVICE_SUITE_COOLDOWN_SECONDS"
@@ -65,7 +76,7 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N] [--compare-to PATH]" >&2
+      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N] [--compare-to PATH] [--out-dir PATH]" >&2
       echo "" >&2
       echo "Unknown option: $1" >&2
       exit 2
@@ -189,7 +200,10 @@ else
 fi
 
 timestamp="$(date +%Y%m%d_%H%M%S)"
-OUT_DIR="$ROOT_DIR/.artifacts/test_reports/device_$timestamp"
+OUT_DIR="$OUT_DIR_OVERRIDE"
+if [[ -z "$OUT_DIR" ]]; then
+  OUT_DIR="$ROOT_DIR/.artifacts/test_reports/device_$timestamp"
+fi
 mkdir -p "$OUT_DIR"
 MAIN_LOG="$OUT_DIR/device.log"
 METRICS_NDJSON="$OUT_DIR/metrics.ndjson"
