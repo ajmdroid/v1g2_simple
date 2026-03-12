@@ -1,6 +1,6 @@
 # V1 Simple Unit Tests
 
-Enterprise-grade test suite for critical components.
+Test suites for repo semantics, integration scenarios, and device validation.
 
 ## Running Tests
 
@@ -128,12 +128,13 @@ test/
 
 ## Current Baseline
 
+Suite counts change frequently. Treat the commands below as authoritative, not
+historical totals.
+
 | Metric | Native | Device |
 |--------|--------|--------|
-| Test suites | 76 | 9 (device-only) |
-| Test cases | 960 | ~90 |
-| Result | ✅ 960 passed | Compile-verified |
 | Command | `pio test -e native` | `./scripts/run_device_tests.sh` |
+| Authoritative gate | `./scripts/ci-test.sh` | `./scripts/qualify_hardware.sh` |
 
 ## Display Torture Test Categories
 

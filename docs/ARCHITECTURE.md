@@ -1,5 +1,8 @@
 # v1g2_simple Architecture Plan
 
+> Status: reference
+> Authority: use `docs/README.md` for document authority and `docs/TESTING.md` for release/testing policy.
+
 ## Problem Statement
 Current codebase has **poor change locality**:
 - Adding a settings field requires changes in 5+ places across 3 files
@@ -27,8 +30,8 @@ An earlier full subsystem-rewrite proposal existed here; it is now historical an
 not the active architecture. The implementation moved to incremental module
 migration under `src/modules/` to reduce risk while preserving behavior.
 
-Use the structure and responsibilities in the "Current Approach: Incremental
-Module Migration" section below as the source of truth.
+Use this file as architecture background and module-ownership reference, not as
+the release/testing authority.
 
 ## Migration Strategy (Updated January 2026)
 
@@ -36,10 +39,10 @@ We're taking a more incremental approach than originally planned - extracting st
 
 ### Current Approach: Incremental Module Migration
 
-**Structure (February 25, 2026):**
+**Structure snapshot (February 25, 2026):**
 ```
 src/
-├── main.cpp                         (~1420 lines - orchestration + module wiring)
+├── main.cpp                         orchestration + module wiring
 ├── main_boot.cpp                    Boot-time helpers (reset reason, NVS health, panic breadcrumbs)
 ├── main_loop_phases.cpp             (~190 lines) Loop phase router functions extracted from loop()
 ├── main_persist.cpp                 Periodic lockout/learner save state machines
@@ -193,12 +196,10 @@ Migration history is tracked via module commits and [CHANGELOG.md](../CHANGELOG.
 - Change risk: HIGH (adjacent code interactions)
 
 ### After (February 25, 2026):
-- main.cpp: ~1420 lines (orchestration + module wiring)
-- main_boot.cpp: ~248 lines, main_loop_phases.cpp: ~190 lines, main_persist.cpp: ~445 lines
-- 15 module directories, 141 module files in src/modules/
-- 5 additional extracted core-service files (ble_runtime, packet_parser_alerts, settings_restore, main_loop_phases)
-- 76 native test suites, 960 test cases
-- 8 CI contract scripts
+- main.cpp reduced to orchestration + wiring duties
+- core boot/loop/persist helpers extracted from monolithic main
+- module ownership consolidated under `src/modules/`
+- CI now separates semantic gates, compatibility guards, and docs hygiene
 - State consolidated in owning modules
 - Change risk: LOW (isolated modules)
 

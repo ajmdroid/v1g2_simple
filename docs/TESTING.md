@@ -3,35 +3,53 @@
 > Status: active
 > Last validated against scripts: March 12, 2026
 
-This file documents only the tests the repo currently treats as real.
+This file documents the current release-evidence model.
 
-## What Is Real Today
+## Authoritative Gates
 
-### Local repo gate
+### Code gate
 
 ```bash
 ./scripts/ci-test.sh
 ```
 
-This is the trusted local/code gate. It runs repo contracts, native tests,
-frontend checks, and firmware build checks.
+This is the trusted local/code gate. It explicitly runs:
 
-### Drive log scoring
+- semantic/unit/integration tests
+- the tracked critical mutation catalog
+- deterministic perf scorer regression tests
+- compatibility guards
+- docs hygiene checks
+- frontend/build verification
+
+### Hardware gate
 
 ```bash
-python3 tools/score_perf_csv.py /path/to/perf.csv --profile drive_wifi_ap
-python3 tools/score_perf_csv.py /path/to/perf.csv --profile drive_wifi_off
+./scripts/qualify_hardware.sh
+```
+
+This is the trusted single-board hardware qualification command.
+
+## Authoritative Scoring
+
+Use `tools/score_perf_csv.py` as the only authoritative perf scorer.
+
+When a capture has multiple sessions, pass an explicit session selector for reproducibility:
+
+```bash
+python3 tools/score_perf_csv.py /path/to/perf.csv --profile drive_wifi_ap --session longest-connected
+python3 tools/score_perf_csv.py /path/to/perf.csv --profile drive_wifi_off --session 1
 ```
 
 See [PERF_SLOS.md](/Users/ajmedford/v1g2_simple/docs/PERF_SLOS.md) for the
 numeric thresholds.
 
-## What Is Not Real Today
+`tools/scorecard.py` remains available as a debug/analysis utility, but it is
+not release authority.
 
-There is no trusted hardware qualification command in this repo today.
+## Non-Authoritative Tools
 
-These tools still exist, but they are exploratory/manual only and are not
-release evidence:
+These tools still exist, but they are exploratory/manual only when run directly:
 
 - `./scripts/device-test.sh`
 - `./scripts/run_real_fw_soak.sh`
@@ -39,7 +57,6 @@ release evidence:
 
 ## Known Gaps
 
-- No trusted bench qualification path
 - No trusted bench camera-overlap coverage through the real camera runtime path
 - No trusted transition stress gate
 
@@ -47,4 +64,4 @@ release evidence:
 
 - Reduced but truthful coverage is better than broad fake coverage.
 - If a hardware script is exploratory, document it as exploratory.
-- Do not claim bench qualification until a real, repeatable hardware gate exists.
+- Do not treat reference docs as release authority; use [README.md](/Users/ajmedford/v1g2_simple/docs/README.md) for the authority map.

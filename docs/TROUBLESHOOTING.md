@@ -196,7 +196,7 @@ Quick solutions for common issues with the V1-Simple device.
 2. **Close unused pages**: Each page polls for updates
 3. **Check distance**: Poor WiFi signal causes slow response
 4. **Limit live diagnostics**: Disable `/dev` auto-refresh metrics when not actively debugging
-5. **Score perf CSV**: Run `python3 tools/score_perf_csv.py <perf_csv> --profile drive_wifi_off` and compare to `docs/PERF_SLOS.md`
+5. **Score perf CSV**: Run `python3 tools/score_perf_csv.py <perf_csv> --profile drive_wifi_off --session longest-connected` and compare to `docs/PERF_SLOS.md`
 
 ### Device restarting/crashing
 

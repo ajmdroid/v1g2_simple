@@ -65,25 +65,25 @@ These do not fail the run by themselves but should be monitored for regression.
 Use:
 
 ```bash
-python tools/score_perf_csv.py /Volumes/SDCARD/perf/perf_boot_1.csv --profile drive_wifi_off
+python tools/score_perf_csv.py /Volumes/SDCARD/perf/perf_boot_1.csv --profile drive_wifi_off --session longest-connected
 ```
 
 Explicit threshold file override:
 
 ```bash
-python tools/score_perf_csv.py /Volumes/SDCARD/perf/perf_boot_1.csv --profile drive_wifi_off --slo-file tools/perf_slo_thresholds.json
+python tools/score_perf_csv.py /Volumes/SDCARD/perf/perf_boot_1.csv --profile drive_wifi_off --session longest-connected --slo-file tools/perf_slo_thresholds.json
 ```
 
 JSON output:
 
 ```bash
-python tools/score_perf_csv.py /Volumes/SDCARD/perf/perf_boot_1.csv --profile drive_wifi_off --json
+python tools/score_perf_csv.py /Volumes/SDCARD/perf/perf_boot_1.csv --profile drive_wifi_off --session longest-connected --json
 ```
 
 Week-over-week trend comparison:
 
 ```bash
-python tools/compare_perf_csv.py /Volumes/SDCARD/perf/perf_boot_old.csv /Volumes/SDCARD/perf/perf_boot_new.csv --profile drive_wifi_off
+python tools/compare_perf_csv.py /Volumes/SDCARD/perf/perf_boot_old.csv /Volumes/SDCARD/perf/perf_boot_new.csv --profile drive_wifi_off --session longest-connected
 ```
 
 Exit codes:
@@ -98,5 +98,7 @@ Exit codes:
 - SLOs are intentionally defined against fields already present in the perf CSV schema so scoring is deterministic.
 - If thresholds change, update `tools/perf_slo_thresholds.json` and `docs/PERF_SLOS.md` in the same change.
 - Run `python3 scripts/check_perf_slo_contract.py` after any threshold/doc edits.
+- Release evidence should use an explicit `--session` selector for multi-session captures.
 - `wifiMax_us` soak gating excludes the first 2 API samples (TCP cold-start overhead on ESP32 SoftAP).
-- **Bench note:** `scripts/run_real_fw_soak.sh` remains available for manual exploratory analysis, but it is not a trusted qualification contract today.
+- `tools/scorecard.py` is a debug/analysis utility, not the authoritative scorer.
+- **Bench note:** `./scripts/qualify_hardware.sh` is the trusted hardware gate. `run_real_fw_soak.sh` remains an exploratory lower-level tool when run directly.

@@ -219,6 +219,10 @@ Speed and location sources:
 
 ## Documentation
 
+- **Authority Map:** [docs/README.md](docs/README.md)
+- **Testing Contract:** [docs/TESTING.md](docs/TESTING.md)
+- **Hardware Qualification:** [docs/HARDWARE_QUALIFICATION.md](docs/HARDWARE_QUALIFICATION.md)
+- **Perf SLOs:** [docs/PERF_SLOS.md](docs/PERF_SLOS.md)
 - **Full Manual:** [docs/MANUAL.md](docs/MANUAL.md)
 - **Windows Setup:** [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md)
 

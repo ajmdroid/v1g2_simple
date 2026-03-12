@@ -1,6 +1,6 @@
 # V1 Gen2 Simple Display - Technical Manual
 
-> ⚠️ **Documentation is a constant work in progress.** For the most accurate information, view the source code directly.
+> ⚠️ **Documentation is a constant work in progress.** For authority and current testing policy, start with `docs/README.md` and `docs/TESTING.md`.
 
 
 **Version:** 4.0.0-dev  
@@ -1531,7 +1531,7 @@ npm run deploy                            # Copy build/ to data/
 Automated unit tests run via PlatformIO's Unity framework:
 
 ```bash
-pio test -e native          # Run all native unit tests (76 suites, 960 tests)
+pio test -e native          # Run all native unit tests
 ```
 
 Manual testing procedure:

@@ -1,5 +1,9 @@
 # V1-Simple: Senior Engineer Takeover Report
 
+> Status: archived
+> This is a point-in-time snapshot. Do not use it as current testing, release, or architecture authority.
+> Current authority lives in `docs/README.md`, `docs/TESTING.md`, `docs/HARDWARE_QUALIFICATION.md`, and `docs/PERF_SLOS.md`.
+
 > **Date:** March 11, 2026 (updated — original draft March 7)
 > **Codebase:** ESP32-S3 touchscreen display for Valentine One Gen2 radar detector
 > **Version:** 4.0.0-dev (1,807 commits, 1,371 ahead of `main`)
