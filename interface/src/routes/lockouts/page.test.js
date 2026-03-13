@@ -12,6 +12,17 @@ function installDefaultFetch(overrides = []) {
 				method: 'GET',
 				match: '/api/gps/status',
 				respond: jsonResponse({
+					enabled: true,
+					runtimeEnabled: true,
+					mode: 'drive',
+					hasFix: true,
+					satellites: 7,
+					speedMph: 32,
+					hdop: 0.9,
+					locationValid: true,
+					moduleDetected: true,
+					detectionTimedOut: false,
+					parserActive: true,
 					lockout: {
 						modeRaw: 0,
 						coreGuardEnabled: true,
@@ -75,25 +86,99 @@ function installDefaultFetch(overrides = []) {
 	);
 }
 
+function countCalls(fetchMock, url) {
+	return fetchMock.mock.calls.filter(([requestUrl]) => requestUrl === url).length;
+}
+
+function countPrefixCalls(fetchMock, urlPrefix) {
+	return fetchMock.mock.calls.filter(([requestUrl]) => String(requestUrl).startsWith(urlPrefix)).length;
+}
+
 describe('lockouts route page', () => {
 	beforeEach(() => {
 		global.confirm = vi.fn(() => true);
 	});
 
 	afterEach(() => {
+		vi.useRealTimers();
 		vi.restoreAllMocks();
 	});
 
-	it('loads lockout status/events/zones on mount', async () => {
+	it('loads lockout data and shared gps state on mount without duplicating the gps fetch', async () => {
 		const fetchMock = installDefaultFetch();
 		const { unmount } = render(Page);
 
 		await screen.findByText('Lockouts');
+		await screen.findByText('32 mph');
 		await waitFor(() => {
-			expect(fetchMock.mock.calls.some(([url]) => url === '/api/gps/status')).toBe(true);
-			expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/lockouts/events'))).toBe(true);
-			expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/lockouts/zones'))).toBe(true);
+			expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
+			expect(countPrefixCalls(fetchMock, '/api/lockouts/events')).toBe(1);
+			expect(countPrefixCalls(fetchMock, '/api/lockouts/zones')).toBe(1);
 		});
+
+		unmount();
+	});
+
+	it('does not overwrite dirty lockout config when shared gps polling refreshes', async () => {
+		vi.useFakeTimers();
+		let gpsCallCount = 0;
+		const fetchMock = installDefaultFetch([
+			{
+				method: 'GET',
+				match: '/api/gps/status',
+				respond: () => {
+					gpsCallCount += 1;
+					return jsonResponse({
+						enabled: true,
+						runtimeEnabled: true,
+						mode: 'drive',
+						hasFix: true,
+						satellites: gpsCallCount >= 2 ? 10 : 7,
+						speedMph: 32,
+						hdop: 0.9,
+						locationValid: true,
+						moduleDetected: true,
+						detectionTimedOut: false,
+						parserActive: true,
+						lockout: {
+							modeRaw: 0,
+							coreGuardEnabled: true,
+							maxQueueDrops: 0,
+							maxPerfDrops: 0,
+							maxEventBusDrops: 0,
+							learnerPromotionHits: 3,
+							learnerRadiusE5: 45,
+							learnerFreqToleranceMHz: 8,
+							learnerLearnIntervalHours: 12,
+							learnerUnlearnIntervalHours: 0,
+							learnerUnlearnCount: 0,
+							manualDemotionMissCount: 12,
+							kaLearningEnabled: false,
+							kLearningEnabled: true,
+							xLearningEnabled: false,
+							preQuiet: false,
+							preQuietBufferE5: 0,
+							maxHdopX10: 20,
+							minLearnerSpeedMph: 2
+						}
+					});
+				}
+			}
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('32 mph');
+		await fireEvent.click(screen.getByRole('checkbox', { name: /unlock advanced writes/i }));
+		const modeSelect = screen.getByLabelText('Mode');
+		await fireEvent.change(modeSelect, { target: { value: '3' } });
+		expect(modeSelect).toHaveValue('3');
+
+		await vi.advanceTimersByTimeAsync(2500);
+
+		await waitFor(() => {
+			expect(countCalls(fetchMock, '/api/gps/status')).toBe(2);
+		});
+		expect(modeSelect).toHaveValue('3');
 
 		unmount();
 	});
@@ -187,5 +272,19 @@ describe('lockouts route page', () => {
 
 		await screen.findByText('Dropped 2 legacy manual lockout entries during migration.');
 		unmount();
+	});
+
+	it('stops shared gps polling when the page unmounts', async () => {
+		vi.useFakeTimers();
+		const fetchMock = installDefaultFetch();
+		const { unmount } = render(Page);
+
+		await screen.findByText('32 mph');
+		expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
+
+		unmount();
+		await vi.advanceTimersByTimeAsync(7500);
+
+		expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
 	});
 });

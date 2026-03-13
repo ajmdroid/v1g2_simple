@@ -1,6 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
-	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
+	import { fetchWithTimeout } from '$lib/utils/poll';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	import LockoutKaWarningModal from '$lib/components/LockoutKaWarningModal.svelte';
@@ -43,11 +43,15 @@
 		saveLockoutConfigRequest,
 		saveZoneEditorRequest
 	} from '$lib/features/lockouts/lockoutRequests';
+	import {
+		fetchRuntimeGpsStatus,
+		retainRuntimeStatus,
+		runtimeGpsStatus
+	} from '$lib/stores/runtimeStatus.svelte.js';
 
 	let loading = $state(true);
 	let message = $state(null);
 	let migrationNotice = $state(null);
-	let gpsStatusFetchInFlight = false;
 	let lockoutFetchInFlight = false;
 	let lockoutZonesFetchInFlight = false;
 	let lockoutLoading = $state(false);
@@ -67,43 +71,6 @@
 	let importingZones = $state(false);
 	let clearingAllZones = $state(false);
 	let importFileInput = $state(null);
-
-	const statusPoll = createPoll(async () => {
-		await fetchGpsStatus();
-	}, STATUS_POLL_INTERVAL_MS);
-
-	let gpsStatus = $state({
-		enabled: false,
-		runtimeEnabled: false,
-		mode: 'scaffold',
-		hasFix: false,
-		satellites: 0,
-		speedMph: null,
-		moduleDetected: false,
-		detectionTimedOut: false,
-		parserActive: false,
-		lockout: {
-			mode: 'off',
-			modeRaw: 0,
-			coreGuardEnabled: true,
-			maxQueueDrops: 0,
-			maxPerfDrops: 0,
-			maxEventBusDrops: 0,
-			learnerPromotionHits: LEARNER_PROMOTION_HITS_DEFAULT,
-			learnerRadiusE5: LEARNER_RADIUS_E5_DEFAULT,
-			learnerFreqToleranceMHz: LEARNER_FREQ_TOLERANCE_MHZ_DEFAULT,
-			learnerLearnIntervalHours: 0,
-			learnerUnlearnIntervalHours: 0,
-			learnerUnlearnCount: LEARNER_UNLEARN_COUNT_DEFAULT,
-			manualDemotionMissCount: 0,
-			kaLearningEnabled: false,
-			kLearningEnabled: true,
-			xLearningEnabled: true,
-			coreGuardTripped: false,
-			coreGuardReason: '',
-			enforceAllowed: false
-		}
-	});
 
 	let lockoutEvents = $state([]);
 	let lockoutStats = $state({
@@ -163,11 +130,18 @@
 	let pendingLockoutZones = $state([]);
 	let zoneEditor = $state(resetZoneEditorState());
 
-	onMount(async () => {
-		await refreshAll();
-		statusPoll.start();
+	onMount(() => {
+		const releaseRuntimeStatus = retainRuntimeStatus({
+			gpsPollIntervalMs: STATUS_POLL_INTERVAL_MS
+		});
+		const unsubscribeGpsStatus = runtimeGpsStatus.subscribe((status) => {
+			applyLockoutStatus(status);
+		});
+		void refreshAll();
+
 		return () => {
-			statusPoll.stop();
+			unsubscribeGpsStatus();
+			releaseRuntimeStatus();
 		};
 	});
 
@@ -242,7 +216,7 @@
 	}
 
 	function lockoutConfigMatchesBackend() {
-		return lockoutConfigMatchesRuntime(lockoutConfig, gpsStatus?.lockout);
+		return lockoutConfigMatchesRuntime(lockoutConfig, $runtimeGpsStatus?.lockout);
 	}
 
 	function stageLearnerPreset(preset) {
@@ -277,24 +251,8 @@
 	}
 
 	async function refreshAll() {
-		await Promise.all([fetchGpsStatus(), fetchLockoutEvents(), fetchLockoutZones()]);
+		await Promise.all([fetchRuntimeGpsStatus(), fetchLockoutEvents(), fetchLockoutZones()]);
 		loading = false;
-	}
-
-	async function fetchGpsStatus() {
-		if (gpsStatusFetchInFlight) return;
-		gpsStatusFetchInFlight = true;
-		try {
-			const res = await fetchWithTimeout('/api/gps/status');
-			if (!res.ok) return;
-			const data = await res.json();
-			gpsStatus = { ...gpsStatus, ...data };
-			applyLockoutStatus(data);
-		} catch (e) {
-			// Polling should fail silently.
-		} finally {
-			gpsStatusFetchInFlight = false;
-		}
 	}
 
 	async function fetchLockoutEvents(options = {}) {
@@ -418,7 +376,7 @@
 			lockoutConfig.minLearnerSpeedMph = result.normalized.minLearnerSpeedMph;
 			lockoutConfigDirty = false;
 			setMsg('success', 'Lockout runtime settings updated');
-			await Promise.all([fetchGpsStatus(), fetchLockoutZones({ silent: true })]);
+			await Promise.all([fetchRuntimeGpsStatus(), fetchLockoutZones({ silent: true })]);
 		} catch (e) {
 			setMsg(
 				'error',
@@ -587,7 +545,7 @@
 
 	<LockoutSafetyGateCard bind:advancedUnlocked />
 
-	<LockoutGpsQualityCard {gpsStatus} {lockoutConfig} />
+	<LockoutGpsQualityCard gpsStatus={$runtimeGpsStatus} {lockoutConfig} />
 
 	<LockoutModeCard
 		{advancedUnlocked}
@@ -595,7 +553,7 @@
 		{lockoutConfigDirty}
 		backendSynced={lockoutConfigMatchesBackend()}
 		{savingLockoutConfig}
-		reloadStatus={fetchGpsStatus}
+		reloadStatus={fetchRuntimeGpsStatus}
 		saveConfig={saveLockoutConfig}
 		markDirty={markLockoutDirty}
 	/>
