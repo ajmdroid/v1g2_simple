@@ -664,7 +664,7 @@ bool V1BLEClient::executeSubscribeStep() {
                 Serial.println("[BLE] FAIL subscribe B2CE");
                 return false;
             }
-            subscribeStep = SubscribeStep::WRITE_DISPLAY_CCCD;
+            subscribeStep = SubscribeStep::GET_DISPLAY_LONG;
             return false;
         }
         
@@ -698,7 +698,7 @@ bool V1BLEClient::executeSubscribeStep() {
         case SubscribeStep::SUBSCRIBE_LONG: {
             NimBLERemoteCharacteristic* pDisplayLong = pRemoteService->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
             if (pDisplayLong && pDisplayLong->subscribe(true, notifyCallback, true)) {
-                subscribeStep = SubscribeStep::WRITE_LONG_CCCD;
+                subscribeStep = SubscribeStep::REQUEST_ALERT_DATA;
             } else {
                 subscribeStep = SubscribeStep::REQUEST_ALERT_DATA;
             }
