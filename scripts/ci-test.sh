@@ -55,6 +55,7 @@ run_step "Single hardware test script regression tests" python3 scripts/test_har
 
 section "Compatibility Guards"
 run_step "WiFi API contracts" python3 scripts/check_wifi_api_contract.py
+run_step "Reorder warning contract" python3 scripts/check_reorder_warning_contract.py
 run_step "BLE hot-path snapshot contract" python3 scripts/check_ble_hot_path_contract.py
 run_step "Perf CSV column contract" python3 scripts/check_perf_csv_column_contract.py
 run_step "Display flush discipline contract" python3 scripts/check_display_flush_discipline_contract.py
