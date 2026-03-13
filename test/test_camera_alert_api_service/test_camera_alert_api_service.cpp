@@ -72,6 +72,56 @@ std::vector<uint8_t> buildSingleAlprMap() {
 	return buffer;
 }
 
+std::vector<uint8_t> buildMixedCameraMap() {
+	const uint32_t gridIndexOffset = sizeof(RoadMapHeader);
+	const uint32_t gridSize = sizeof(RoadMapGridEntry);
+	const uint32_t segDataOffset = gridIndexOffset + gridSize;
+	const uint32_t cameraIndexOffset = segDataOffset;
+	const uint32_t cameraDataOffset = cameraIndexOffset + gridSize;
+	const uint32_t fileSize = cameraDataOffset + (2 * sizeof(CameraRecord));
+
+	RoadMapHeader header{};
+	memcpy(header.magic, "RMAP", 4);
+	header.version = 2;
+	header.roadClassCount = 1;
+	header.minLatE5 = BASE_LAT_E5 - 1000;
+	header.maxLatE5 = BASE_LAT_E5 + 1000;
+	header.minLonE5 = BASE_LON_E5 - 1000;
+	header.maxLonE5 = BASE_LON_E5 + 1000;
+	header.gridRows = 1;
+	header.gridCols = 1;
+	header.cellSizeE5 = 5000;
+	header.gridIndexOffset = gridIndexOffset;
+	header.segDataOffset = segDataOffset;
+	header.fileSize = fileSize;
+	header.cameraIndexOffset = cameraIndexOffset;
+	header.cameraCount = 2;
+
+	RoadMapGridEntry roadGrid{};
+	RoadMapGridEntry cameraGrid{};
+	cameraGrid.segCount = 2;
+
+	CameraRecord cameras[2]{};
+	cameras[0].latE5 = BASE_LAT_E5;
+	cameras[0].lonE5 = BASE_LON_E5;
+	cameras[0].bearing = 0xFFFF;
+	cameras[0].flags = 2;
+	cameras[0].speedMph = 35;
+
+	cameras[1].latE5 = BASE_LAT_E5 + 50;
+	cameras[1].lonE5 = BASE_LON_E5;
+	cameras[1].bearing = 0xFFFF;
+	cameras[1].flags = static_cast<uint8_t>(CameraType::ALPR);
+	cameras[1].speedMph = 35;
+
+	std::vector<uint8_t> buffer(fileSize, 0);
+	memcpy(buffer.data(), &header, sizeof(header));
+	memcpy(buffer.data() + gridIndexOffset, &roadGrid, sizeof(roadGrid));
+	memcpy(buffer.data() + cameraIndexOffset, &cameraGrid, sizeof(cameraGrid));
+	memcpy(buffer.data() + cameraDataOffset, cameras, sizeof(cameras));
+	return buffer;
+}
+
 }  // namespace
 
 void setUp() {
@@ -187,9 +237,30 @@ void test_status_returns_camera_count_and_distance_without_type() {
 	TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
 	TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
 	TEST_ASSERT_TRUE(responseContains(server, "\"cameraCount\":1"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"alprCameraCount\":1"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"unsupportedCameraCount\":0"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"mixedCameraMap\":false"));
 	TEST_ASSERT_TRUE(responseContains(server, "\"displayActive\":true"));
 	TEST_ASSERT_TRUE(responseContains(server, "\"distanceCm\":18750"));
 	TEST_ASSERT_FALSE(responseContains(server, "\"type\""));
+}
+
+void test_status_reports_mixed_map_counts() {
+	WebServer server(80);
+	RoadMapReader roadMapReader;
+	CameraAlertModule module;
+	const std::vector<uint8_t> mapData = buildMixedCameraMap();
+
+	TEST_ASSERT_TRUE(
+		roadMapReader.loadFromBuffer(const_cast<uint8_t*>(mapData.data()), static_cast<uint32_t>(mapData.size())));
+
+	CameraAlertApiService::handleApiStatus(server, module, roadMapReader, []() {});
+
+	TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+	TEST_ASSERT_TRUE(responseContains(server, "\"cameraCount\":2"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"alprCameraCount\":1"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"unsupportedCameraCount\":1"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"mixedCameraMap\":true"));
 }
 
 void test_status_nulls_distance_when_inactive() {
@@ -205,6 +276,9 @@ void test_status_nulls_distance_when_inactive() {
 
 	TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
 	TEST_ASSERT_TRUE(responseContains(server, "\"cameraCount\":0"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"alprCameraCount\":0"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"unsupportedCameraCount\":0"));
+	TEST_ASSERT_TRUE(responseContains(server, "\"mixedCameraMap\":false"));
 	TEST_ASSERT_TRUE(responseContains(server, "\"displayActive\":false"));
 	TEST_ASSERT_TRUE(responseContains(server, "\"distanceCm\":null"));
 }
@@ -216,6 +290,7 @@ int main() {
 	RUN_TEST(test_settings_post_rejects_removed_legacy_args);
 	RUN_TEST(test_settings_post_rejects_invalid_numeric_token);
 	RUN_TEST(test_status_returns_camera_count_and_distance_without_type);
+	RUN_TEST(test_status_reports_mixed_map_counts);
 	RUN_TEST(test_status_nulls_distance_when_inactive);
 	return UNITY_END();
 }

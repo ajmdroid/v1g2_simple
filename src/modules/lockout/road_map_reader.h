@@ -107,15 +107,26 @@ public:
 
     /// Find the nearest camera overlay point within searchRadiusE5.
     /// Camera flags are carried through exactly as stored in the map builder's
-    /// camera overlay contract.
+    /// camera overlay contract. When requiredFlags is non-zero, only camera
+    /// records whose flags exactly match are considered.
     /// Pure PSRAM pointer math — no SD I/O, no DMA, no locks.
     /// If searchRadiusE5 == 0, defaults to ~1 km (~900 E5).
     /// Returns result.valid == true if a camera was found.
     CameraResult nearestCamera(int32_t latE5, int32_t lonE5,
-                               uint16_t searchRadiusE5 = 0) const;
+                               uint16_t searchRadiusE5 = 0,
+                               uint8_t requiredFlags = 0) const;
 
     /// Number of cameras loaded (0 if no camera section).
     uint32_t cameraCount() const;
+
+    /// Number of ALPR camera records loaded.
+    uint32_t alprCameraCount() const { return alprCameraCount_; }
+
+    /// Number of non-ALPR camera records loaded from the map.
+    uint32_t unsupportedCameraCount() const { return unsupportedCameraCount_; }
+
+    /// True when the loaded camera map contains legacy non-ALPR records.
+    bool hasUnsupportedCameraTypes() const { return unsupportedCameraCount_ > 0; }
 
     /// Load from a caller-supplied buffer (no SD, no PSRAM alloc).
     /// Buffer must outlive this object. Returns true on success.
@@ -139,6 +150,8 @@ private:
     // Camera section pointers (null if no cameras in file)
     const RoadMapGridEntry* camGridIndex_ = nullptr;
     const CameraRecord*     camData_      = nullptr;
+    uint32_t                alprCameraCount_ = 0;
+    uint32_t                unsupportedCameraCount_ = 0;
 
     // Internal: point-to-segment distance in metres, with cos(lat) correction.
     // Applies cosLat scaling to longitude deltas so the projection is

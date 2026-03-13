@@ -156,6 +156,9 @@ void sendStatus(WebServer& server,
 
     JsonDocument doc;
     doc["cameraCount"] = roadMapReader.cameraCount();
+    doc["alprCameraCount"] = roadMapReader.alprCameraCount();
+    doc["unsupportedCameraCount"] = roadMapReader.unsupportedCameraCount();
+    doc["mixedCameraMap"] = roadMapReader.hasUnsupportedCameraTypes();
     doc["displayActive"] = cameraAlertModule.isDisplayActive();
 
     if (payload.active && payload.distanceCm != CAMERA_DISTANCE_INVALID_CM) {

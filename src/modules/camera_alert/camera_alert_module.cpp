@@ -255,7 +255,11 @@ void CameraAlertModule::process(uint32_t nowMs, const CameraAlertContext& ctx) {
 
     const uint32_t rangeCm = clampCameraAlertRangeCmValue(static_cast<int>(settings.cameraAlertRangeCm));
     const uint16_t searchRadiusE5 = searchRadiusE5FromRangeCm(rangeCm);
-    const CameraResult result = roadMap_->nearestCamera(ctx.latE5, ctx.lonE5, searchRadiusE5);
+    const CameraResult result = roadMap_->nearestCamera(
+        ctx.latE5,
+        ctx.lonE5,
+        searchRadiusE5,
+        static_cast<uint8_t>(CameraType::ALPR));
     if (!result.valid || result.distanceCm == CAMERA_DISTANCE_INVALID_CM || result.distanceCm > rangeCm) {
         deactivateDisplay();
         expireEncounterIfNeeded(nowMs);

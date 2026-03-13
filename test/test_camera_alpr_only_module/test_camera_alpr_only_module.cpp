@@ -173,6 +173,24 @@ void test_non_alpr_flag_is_rejected() {
 	TEST_ASSERT_FALSE(module.displayPayload().active);
 }
 
+void test_farther_alpr_is_not_shadowed_by_nearer_legacy_camera() {
+	const TestCameraSpec legacyCamera{
+		offsetLatE5(BASE_LAT_E5, 170.0f), BASE_LON_E5, 0, 2, 45};
+	const TestCameraSpec alprCamera{
+		offsetLatE5(BASE_LAT_E5, 220.0f), BASE_LON_E5, 0, static_cast<uint8_t>(CameraType::ALPR), 45};
+	std::vector<uint8_t> mapData = buildCameraMap({legacyCamera, alprCamera});
+	RoadMapReader reader;
+	SettingsManager settings;
+	TEST_ASSERT_TRUE(reader.loadFromBuffer(mapData.data(), static_cast<uint32_t>(mapData.size())));
+	CameraAlertModule module = makeModule(reader, settings);
+
+	processAt(module, 500, makeContext(offsetLatE5(BASE_LAT_E5, -160.0f), BASE_LON_E5));
+	processAt(module, 1000, makeContext(offsetLatE5(BASE_LAT_E5, -110.0f), BASE_LON_E5));
+	processAt(module, 1500, makeContext(offsetLatE5(BASE_LAT_E5, -60.0f), BASE_LON_E5));
+
+	TEST_ASSERT_TRUE(module.displayPayload().active);
+}
+
 void test_clear_on_disable_gps_loss_and_low_speed() {
 	const TestCameraSpec camera{
 		offsetLatE5(BASE_LAT_E5, 200.0f), BASE_LON_E5, 0, static_cast<uint8_t>(CameraType::ALPR), 45};
@@ -214,6 +232,7 @@ int main() {
 	RUN_TEST(test_alpr_encounter_activates_after_confirmation);
 	RUN_TEST(test_single_range_gate_rejects_out_of_range_camera);
 	RUN_TEST(test_non_alpr_flag_is_rejected);
+	RUN_TEST(test_farther_alpr_is_not_shadowed_by_nearer_legacy_camera);
 	RUN_TEST(test_clear_on_disable_gps_loss_and_low_speed);
 	return UNITY_END();
 }

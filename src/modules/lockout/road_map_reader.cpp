@@ -30,6 +30,7 @@ RoadMapReader roadMapReader;
 static constexpr const char* ROAD_MAP_PATH = "/road_map.bin";
 static constexpr uint32_t MAX_FILE_SIZE = 8 * 1024 * 1024;  // 8 MB sanity cap
 static constexpr uint32_t MIN_FILE_SIZE = 64;                // Header alone
+static constexpr uint8_t ALPR_CAMERA_FLAG = 4;
 
 void RoadMapReader::clearState(bool releaseOwnedData) {
     if (releaseOwnedData && ownsData_ && data_) {
@@ -45,6 +46,8 @@ void RoadMapReader::clearState(bool releaseOwnedData) {
     segData_ = nullptr;
     camGridIndex_ = nullptr;
     camData_ = nullptr;
+    alprCameraCount_ = 0;
+    unsupportedCameraCount_ = 0;
 }
 
 bool RoadMapReader::bindBuffer(uint8_t* buf, uint32_t size, bool takeOwnership,
@@ -86,6 +89,18 @@ bool RoadMapReader::bindBuffer(uint8_t* buf, uint32_t size, bool takeOwnership,
         }
     }
 
+    uint32_t alprCameraCount = 0;
+    uint32_t unsupportedCameraCount = 0;
+    if (camData && hdr->cameraCount > 0) {
+        for (uint32_t i = 0; i < hdr->cameraCount; ++i) {
+            if (camData[i].flags == ALPR_CAMERA_FLAG) {
+                ++alprCameraCount;
+            } else {
+                ++unsupportedCameraCount;
+            }
+        }
+    }
+
     uint16_t defaultSnapRadiusE5 = 135;
     if (hdr->toleranceCm > 0) {
         const float tolMetres = static_cast<float>(hdr->toleranceCm) / 100.0f;
@@ -105,6 +120,8 @@ bool RoadMapReader::bindBuffer(uint8_t* buf, uint32_t size, bool takeOwnership,
     segData_ = buf + hdr->segDataOffset;
     camGridIndex_ = camGridIndex;
     camData_ = camData;
+    alprCameraCount_ = alprCameraCount;
+    unsupportedCameraCount_ = unsupportedCameraCount;
     return true;
 }
 
@@ -181,16 +198,22 @@ void RoadMapReader::begin() {
     }
 
     Serial.printf("[RoadMap] Loaded %lu bytes into PSRAM in %lu ms "
-                  "(segs=%lu pts=%lu cams=%lu grid=%ux%u cell=%.2f° snapR=%uE5)\n",
+                  "(segs=%lu pts=%lu cams=%lu alpr=%lu unsupported=%lu grid=%ux%u cell=%.2f° snapR=%uE5)\n",
                   static_cast<unsigned long>(fSize),
                   static_cast<unsigned long>(readMs),
                   static_cast<unsigned long>(header_->totalSegments),
                   static_cast<unsigned long>(header_->totalPoints),
                   static_cast<unsigned long>(header_->cameraCount),
+                  static_cast<unsigned long>(alprCameraCount_),
+                  static_cast<unsigned long>(unsupportedCameraCount_),
                   static_cast<unsigned>(header_->gridRows),
                   static_cast<unsigned>(header_->gridCols),
                   static_cast<float>(header_->cellSizeE5) / 100000.0f,
                   static_cast<unsigned>(defaultSnapRadiusE5_));
+    if (unsupportedCameraCount_ > 0) {
+        Serial.printf("[RoadMap] Mixed camera map detected: %lu non-ALPR records loaded into ALPR-only runtime\n",
+                      static_cast<unsigned long>(unsupportedCameraCount_));
+    }
 #endif  // UNIT_TEST
 }
 
@@ -426,7 +449,8 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
 // ---------------------------------------------------------------------------
 
 CameraResult RoadMapReader::nearestCamera(int32_t latE5, int32_t lonE5,
-                                           uint16_t searchRadiusE5) const {
+                                          uint16_t searchRadiusE5,
+                                          uint8_t requiredFlags) const {
     CameraResult result;
     if (!data_ || !header_ || !camGridIndex_ || !camData_) {
         return result;
@@ -479,6 +503,9 @@ CameraResult RoadMapReader::nearestCamera(int32_t latE5, int32_t lonE5,
 
             for (uint16_t i = 0; i < cell.segCount; ++i) {
                 const CameraRecord& cam = cams[i];
+                if (requiredFlags != 0 && cam.flags != requiredFlags) {
+                    continue;
+                }
                 const float dLat = static_cast<float>(cam.latE5 - latE5) * E5_TO_METRES;
                 const float dLon = static_cast<float>(cam.lonE5 - lonE5) * E5_TO_METRES * cosLat;
                 const float dist = sqrtf(dLat * dLat + dLon * dLon);

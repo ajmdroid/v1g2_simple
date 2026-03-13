@@ -52,6 +52,9 @@ void test_camera_count_is_1() {
 	RoadMapReader reader;
 	reader.loadFromBuffer(fixtureData, fixtureSize);
 	TEST_ASSERT_EQUAL_UINT32(1, reader.cameraCount());
+	TEST_ASSERT_EQUAL_UINT32(1, reader.alprCameraCount());
+	TEST_ASSERT_EQUAL_UINT32(0, reader.unsupportedCameraCount());
+	TEST_ASSERT_FALSE(reader.hasUnsupportedCameraTypes());
 }
 
 void test_segment_count_is_1() {
@@ -68,6 +71,18 @@ void test_nearest_camera_type_alpr() {
 	TEST_ASSERT_EQUAL_UINT8(4, r.flags);
 	TEST_ASSERT_EQUAL_UINT8(30, r.speedMph);
 	TEST_ASSERT_EQUAL_UINT16(0xFFFF, r.bearing);
+}
+
+void test_nearest_camera_can_filter_by_exact_flags() {
+	RoadMapReader reader;
+	reader.loadFromBuffer(fixtureData, fixtureSize);
+
+	CameraResult alpr = reader.nearestCamera(CAM_LAT, CAM_LON, 900, 4);
+	TEST_ASSERT_TRUE_MESSAGE(alpr.valid, "filtered ALPR camera not found");
+	TEST_ASSERT_EQUAL_UINT8(4, alpr.flags);
+
+	CameraResult speed = reader.nearestCamera(CAM_LAT, CAM_LON, 900, 1);
+	TEST_ASSERT_FALSE_MESSAGE(speed.valid, "unexpected non-ALPR camera match");
 }
 
 void test_no_camera_outside_grid() {
@@ -144,6 +159,7 @@ int main() {
 	RUN_TEST(test_camera_count_is_1);
 	RUN_TEST(test_segment_count_is_1);
 	RUN_TEST(test_nearest_camera_type_alpr);
+	RUN_TEST(test_nearest_camera_can_filter_by_exact_flags);
 	RUN_TEST(test_no_camera_outside_grid);
 	RUN_TEST(test_camera_distance_exceeds_legacy_uint16_cap);
 	RUN_TEST(test_loadFromBuffer_rejects_bad_magic);
