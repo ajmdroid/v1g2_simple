@@ -36,7 +36,7 @@ void handleApiScan(WebServer& server,
                    const std::function<bool()>& checkRateLimit,
                    const std::function<void()>& markUiActivity) {
     if (markUiActivity) markUiActivity();
-    if (checkRateLimit && checkRateLimit()) return;
+    if (checkRateLimit && !checkRateLimit()) return;
     obdRuntime.startScan();
     JsonDocument doc;
     doc["ok"] = true;
@@ -49,7 +49,7 @@ void handleApiForget(WebServer& server,
                      const std::function<bool()>& checkRateLimit,
                      const std::function<void()>& markUiActivity) {
     if (markUiActivity) markUiActivity();
-    if (checkRateLimit && checkRateLimit()) return;
+    if (checkRateLimit && !checkRateLimit()) return;
     obdRuntime.forgetDevice();
     V1Settings& settings = settingsManager.mutableSettings();
     settings.obdSavedAddress = "";
@@ -65,7 +65,7 @@ void handleApiConfig(WebServer& server,
                      const std::function<bool()>& checkRateLimit,
                      const std::function<void()>& markUiActivity) {
     if (markUiActivity) markUiActivity();
-    if (checkRateLimit && checkRateLimit()) return;
+    if (checkRateLimit && !checkRateLimit()) return;
 
     if (!server.hasArg("plain") || server.arg("plain").length() == 0) {
         JsonDocument errDoc;
