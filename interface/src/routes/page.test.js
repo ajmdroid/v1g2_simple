@@ -111,4 +111,57 @@ describe('dashboard route page', () => {
 
 		unmount();
 	});
+
+	it('shows a shared status api error when /api/status returns 500', async () => {
+		const fetchMock = installDefaultFetch([
+			{
+				method: 'GET',
+				match: '/api/status',
+				respond: jsonResponse({ error: 'nope' }, 500)
+			}
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('API error');
+		expect(countCalls(fetchMock, '/api/status')).toBeGreaterThanOrEqual(1);
+
+		unmount();
+	});
+
+	it('shows a shared status connection error when /api/status throws', async () => {
+		const fetchMock = installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/status',
+					respond: () => {
+						throw new Error('network down');
+					}
+				},
+				{
+					method: 'GET',
+					match: '/api/gps/status',
+					respond: jsonResponse({
+						enabled: true,
+						runtimeEnabled: true,
+						mode: 'drive',
+						hasFix: true,
+						stableHasFix: true,
+						satellites: 9,
+						stableSatellites: 9,
+						hdop: 0.8,
+						moduleDetected: true,
+						detectionTimedOut: false
+					})
+				}
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Connection lost');
+		expect(countCalls(fetchMock, '/api/status')).toBeGreaterThanOrEqual(1);
+
+		unmount();
+	});
 });
