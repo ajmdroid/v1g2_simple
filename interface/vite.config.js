@@ -18,20 +18,11 @@ export default defineConfig({
 			reporter: ['text-summary', 'lcov', 'html'],
 			reportsDirectory: './coverage',
 			all: true,
-			include: [
-				'src/lib/utils/colors.js',
-				'src/lib/utils/lockout.js',
-				'src/lib/components/ToggleSetting.svelte',
-				'src/routes/lockouts/+page.svelte',
-				'src/routes/settings/+page.svelte',
-				'src/routes/profiles/+page.svelte',
-				'src/routes/cameras/+page.svelte',
-				'src/routes/audio/+page.svelte',
-				'src/routes/colors/+page.svelte',
-				'src/lib/features/lockouts/LockoutsPage.svelte',
-				'src/lib/features/settings/SettingsPage.svelte',
-				'src/lib/features/profiles/ProfilesPage.svelte',
-				'src/lib/features/cameras/CamerasPage.svelte'
+			include: ['src/**/*.{js,ts,svelte}'],
+			exclude: [
+				'src/**/*.test.{js,ts}',
+				'src/**/*.spec.{js,ts}',
+				'src/test/**'
 			],
 			thresholds: {
 				lines: 60,
