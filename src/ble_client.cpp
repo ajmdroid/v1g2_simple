@@ -384,6 +384,8 @@ void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
 
 // Full cleanup of BLE connection state - call before retry or after failures
 void V1BLEClient::cleanupConnection() {
+    const unsigned long now = millis();
+
     // 1. Unsubscribe from notifications if subscribed
     if (pDisplayDataChar && pDisplayDataChar->canNotify()) {
         pDisplayDataChar->unsubscribe();
@@ -392,7 +394,10 @@ void V1BLEClient::cleanupConnection() {
     // 2. Disconnect if connected
     if (pClient && pClient->isConnected()) {
         pClient->disconnect();
-        vTaskDelay(pdMS_TO_TICKS(300));  // Allow disconnect to fully complete
+        // Let the onDisconnect callback finish cleanup before any reconnect attempt.
+        if (static_cast<int32_t>((now + 300) - nextConnectAllowedMs) > 0) {
+            nextConnectAllowedMs = now + 300;
+        }
     }
     
     // 3. Clear characteristic references (they become invalid after disconnect)
@@ -427,6 +432,7 @@ void V1BLEClient::cleanupConnection() {
 // Reuses existing client to avoid NimBLE slot leak (max 3 slots)
 void V1BLEClient::hardResetBLEClient() {
     Serial.println("[BLE] Hard reset...");
+    const unsigned long now = millis();
     
     // Full cleanup first
     cleanupConnection();
@@ -435,7 +441,9 @@ void V1BLEClient::hardResetBLEClient() {
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (pScan && pScan->isScanning()) {
         pScan->stop();
-        vTaskDelay(pdMS_TO_TICKS(200));
+        if (static_cast<int32_t>((now + 200) - nextConnectAllowedMs) > 0) {
+            nextConnectAllowedMs = now + 200;
+        }
     }
     
     // Reuse existing client (don't destroy - NimBLE has fixed 3-slot array,
@@ -460,7 +468,7 @@ void V1BLEClient::hardResetBLEClient() {
     
     // Reset failure counter after hard reset
     consecutiveConnectFailures = 0;
-    nextConnectAllowedMs = millis() + 2000;
+    nextConnectAllowedMs = now + 2000;
     
     setBLEState(BLEState::DISCONNECTED, "hard reset complete");
 }
