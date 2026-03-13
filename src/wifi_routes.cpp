@@ -588,7 +588,14 @@ void WiFiManager::setupWebServer() {
         ObdApiService::handleApiForget(server, obdRuntimeModule, settingsManager, rateLimitCallback, markUiActivityCallback);
     });
     server.on("/api/obd/config", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiConfig(server, obdRuntimeModule, settingsManager, rateLimitCallback, markUiActivityCallback);
+        ObdApiService::handleApiConfig(server,
+                                      obdRuntimeModule,
+                                      settingsManager,
+                                      [](bool enabled) {
+                                          speedSourceSelector.setObdEnabled(enabled);
+                                      },
+                                      rateLimitCallback,
+                                      markUiActivityCallback);
     });
     
     // Note: onNotFound is set earlier to handle LittleFS static files

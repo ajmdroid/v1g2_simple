@@ -29,6 +29,8 @@ void ObdRuntimeModule::begin(bool enabled, const char* savedAddress, int8_t minR
     consecutiveErrors_ = 0;
     totalBytesReceived_ = 0;
     lastPollMs_ = 0;
+    pollResponsePending_ = false;
+    pollBackoffApplied_ = false;
     lastRssiMs_ = 0;
     speedValid_ = false;
     speedMph_ = 0.0f;
@@ -38,11 +40,25 @@ void ObdRuntimeModule::begin(bool enabled, const char* savedAddress, int8_t minR
     bootReadyMs_ = 0;
     atInitIndex_ = 0;
     atInitSentMs_ = 0;
-    bleBufLen_ = 0;
-    bleDataReady_ = false;
+    stateEntryPending_ = false;
+    clearBleResponseState();
     bleDisconnected_ = false;
 
-#ifndef UNIT_TEST
+#ifdef UNIT_TEST
+    testStartScanResult_ = true;
+    testConnectResult_ = true;
+    testBleConnected_ = false;
+    testDiscoverResult_ = true;
+    testSubscribeResult_ = true;
+    testWriteResult_ = true;
+    testRssi_ = 0;
+    testStartScanCalls_ = 0;
+    testConnectCalls_ = 0;
+    testDiscoverCalls_ = 0;
+    testDisconnectCalls_ = 0;
+    testWriteCalls_ = 0;
+    testLastCommand_[0] = '\0';
+#else
     obdBleClient.init(this);
 #endif
 
@@ -52,45 +68,195 @@ void ObdRuntimeModule::begin(bool enabled, const char* savedAddress, int8_t minR
         return;
     }
 
-    if (savedAddress_[0] != '\0') {
-        state_ = ObdConnectionState::WAIT_BOOT;
-    } else {
-        state_ = ObdConnectionState::IDLE;
-    }
+    state_ = (savedAddress_[0] != '\0') ? ObdConnectionState::WAIT_BOOT : ObdConnectionState::IDLE;
     stateEnteredMs_ = 0;
 }
 
 void ObdRuntimeModule::transitionTo(ObdConnectionState newState, uint32_t nowMs) {
     state_ = newState;
     stateEnteredMs_ = nowMs;
+    stateEntryPending_ = true;
+}
+
+void ObdRuntimeModule::clearBleResponseState() {
+    bleBufLen_ = 0;
+    bleBuf_[0] = '\0';
+    bleDataReady_ = false;
+    pollResponsePending_ = false;
+}
+
+void ObdRuntimeModule::setSavedAddressFromBuffer(const char* address) {
+    savedAddress_[0] = '\0';
+    if (address != nullptr && address[0] != '\0') {
+        strncpy(savedAddress_, address, ADDR_BUF_LEN - 1);
+        savedAddress_[ADDR_BUF_LEN - 1] = '\0';
+    }
+}
+
+void ObdRuntimeModule::handleConnectFailure(uint32_t nowMs) {
+    clearBleResponseState();
+    bleDisconnected_ = false;
+    pollBackoffApplied_ = false;
+    atInitIndex_ = 0;
+    atInitSentMs_ = 0;
+    connectAttempts_++;
+    if (connectAttempts_ >= obd::MAX_DIRECT_CONNECT_FAILURES) {
+        savedAddress_[0] = '\0';
+        connectAttempts_ = 0;
+        transitionTo(ObdConnectionState::IDLE, nowMs);
+        return;
+    }
+    transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
+}
+
+void ObdRuntimeModule::handlePollingError(uint32_t nowMs, bool disconnectBleNow) {
+    pollErrors_++;
+    consecutiveErrors_++;
+    clearBleResponseState();
+    if (consecutiveErrors_ >= obd::ERRORS_BEFORE_DISCONNECT) {
+        if (disconnectBleNow) {
+            disconnectBle();
+        }
+        transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
+    }
+}
+
+bool ObdRuntimeModule::startBleScan() {
+#ifndef UNIT_TEST
+    return obdBleClient.startScan(minRssi_);
+#else
+    testStartScanCalls_++;
+    return testStartScanResult_;
+#endif
+}
+
+bool ObdRuntimeModule::connectBle(uint32_t timeoutMs) {
+#ifndef UNIT_TEST
+    return obdBleClient.connect(savedAddress_, timeoutMs);
+#else
+    (void)timeoutMs;
+    testConnectCalls_++;
+    return testConnectResult_;
+#endif
+}
+
+bool ObdRuntimeModule::isBleConnected() const {
+#ifndef UNIT_TEST
+    return obdBleClient.isConnected();
+#else
+    return testBleConnected_;
+#endif
+}
+
+bool ObdRuntimeModule::discoverBleServices() {
+#ifndef UNIT_TEST
+    return obdBleClient.discoverServices();
+#else
+    testDiscoverCalls_++;
+    return testDiscoverResult_;
+#endif
+}
+
+bool ObdRuntimeModule::subscribeBleNotifications() {
+#ifndef UNIT_TEST
+    return obdBleClient.subscribeNotify([](const uint8_t* data, size_t len) {
+        obdRuntimeModule.onBleData(data, len);
+    });
+#else
+    return testSubscribeResult_;
+#endif
+}
+
+bool ObdRuntimeModule::writeBleCommand(const char* cmd) {
+#ifndef UNIT_TEST
+    return obdBleClient.writeCommand(cmd);
+#else
+    testWriteCalls_++;
+    if (cmd != nullptr) {
+        strncpy(testLastCommand_, cmd, sizeof(testLastCommand_) - 1);
+        testLastCommand_[sizeof(testLastCommand_) - 1] = '\0';
+    } else {
+        testLastCommand_[0] = '\0';
+    }
+    return testWriteResult_;
+#endif
+}
+
+void ObdRuntimeModule::disconnectBle() {
+#ifndef UNIT_TEST
+    obdBleClient.disconnect();
+#else
+    testDisconnectCalls_++;
+    testBleConnected_ = false;
+#endif
+}
+
+void ObdRuntimeModule::stopBleScan() {
+#ifndef UNIT_TEST
+    obdBleClient.stopScan();
+#endif
+}
+
+int8_t ObdRuntimeModule::readBleRssi(uint32_t nowMs) {
+#ifndef UNIT_TEST
+    return obdBleClient.getRssi(nowMs);
+#else
+    (void)nowMs;
+    return testRssi_;
+#endif
 }
 
 void ObdRuntimeModule::setEnabled(bool enabled) {
     if (enabled_ == enabled) return;
     enabled_ = enabled;
+
     if (!enabled_) {
-        transitionTo(ObdConnectionState::IDLE, 0);
+        stopBleScan();
+        disconnectBle();
+        scanRequested_ = false;
+        pendingDeviceFound_ = false;
+        pendingAddress_[0] = '\0';
+        clearBleResponseState();
+        bleDisconnected_ = false;
+        pollBackoffApplied_ = false;
         speedValid_ = false;
+        transitionTo(ObdConnectionState::IDLE, 0);
+        stateEntryPending_ = false;
+        return;
     }
+
+    speedValid_ = false;
+    connectAttempts_ = 0;
+    pollBackoffApplied_ = false;
+    clearBleResponseState();
+    bleDisconnected_ = false;
+    state_ = (savedAddress_[0] != '\0') ? ObdConnectionState::WAIT_BOOT : ObdConnectionState::IDLE;
+    stateEnteredMs_ = 0;
+    stateEntryPending_ = false;
+}
+
+void ObdRuntimeModule::setMinRssi(int8_t minRssi) {
+    if (minRssi < -90) minRssi = -90;
+    if (minRssi > -40) minRssi = -40;
+    minRssi_ = minRssi;
 }
 
 void ObdRuntimeModule::update(uint32_t nowMs, bool bootReady, bool v1Connected, bool bleScanIdle) {
     if (!enabled_) return;
 
-    // Track when boot became ready
     if (bootReady && bootReadyMs_ == 0) {
         bootReadyMs_ = nowMs;
         if (bootReadyMs_ == 0) bootReadyMs_ = 1;
     }
 
+    const bool justEntered = stateEntryPending_;
+    stateEntryPending_ = false;
+
     switch (state_) {
         case ObdConnectionState::IDLE: {
-            // Waiting for web UI scan trigger
             if (scanRequested_ && bleScanIdle) {
+                if (!startBleScan()) break;
                 scanRequested_ = false;
-#ifndef UNIT_TEST
-                if (!obdBleClient.startScan(minRssi_)) break;
-#endif
                 transitionTo(ObdConnectionState::SCANNING, nowMs);
             }
             break;
@@ -99,8 +265,7 @@ void ObdRuntimeModule::update(uint32_t nowMs, bool bootReady, bool v1Connected, 
         case ObdConnectionState::WAIT_BOOT: {
             if (!bootReady) break;
 
-            // Wait for V1 to connect or post-boot dwell
-            uint32_t elapsed = nowMs - bootReadyMs_;
+            const uint32_t elapsed = nowMs - bootReadyMs_;
             if (v1Connected || elapsed >= obd::POST_BOOT_DWELL_MS) {
                 transitionTo(ObdConnectionState::CONNECTING, nowMs);
             }
@@ -108,19 +273,15 @@ void ObdRuntimeModule::update(uint32_t nowMs, bool bootReady, bool v1Connected, 
         }
 
         case ObdConnectionState::SCANNING: {
-            // Scan is in progress (driven externally by BLE scan callback).
-            // Check for timeout.
-            uint32_t elapsed = nowMs - stateEnteredMs_;
+            const uint32_t elapsed = nowMs - stateEnteredMs_;
             if (elapsed >= obd::SCAN_DURATION_MS) {
-                // Scan timed out with no device found
                 transitionTo(ObdConnectionState::IDLE, nowMs);
                 break;
             }
-            // Check for device found during scan
             if (pendingDeviceFound_) {
                 pendingDeviceFound_ = false;
-                strncpy(savedAddress_, pendingAddress_, ADDR_BUF_LEN - 1);
-                savedAddress_[ADDR_BUF_LEN - 1] = '\0';
+                setSavedAddressFromBuffer(pendingAddress_);
+                rssi_ = pendingRssi_;
                 connectAttempts_ = 0;
                 transitionTo(ObdConnectionState::CONNECTING, nowMs);
             }
@@ -128,44 +289,26 @@ void ObdRuntimeModule::update(uint32_t nowMs, bool bootReady, bool v1Connected, 
         }
 
         case ObdConnectionState::CONNECTING: {
-            // Handle async disconnect signal
             if (bleDisconnected_) {
-                bleDisconnected_ = false;
-                connectAttempts_++;
-                if (connectAttempts_ >= obd::MAX_DIRECT_CONNECT_FAILURES) {
-                    savedAddress_[0] = '\0';
-                    connectAttempts_ = 0;
-                    transitionTo(ObdConnectionState::IDLE, nowMs);
-                } else {
-                    transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
-                }
+                handleConnectFailure(nowMs);
                 break;
             }
-#ifndef UNIT_TEST
-            // Initiate connection on state entry
-            if (nowMs == stateEnteredMs_) {
-                obdBleClient.connect(savedAddress_, obd::CONNECT_TIMEOUT_MS);
+
+            if (justEntered && !connectBle(obd::CONNECT_TIMEOUT_MS)) {
+                handleConnectFailure(nowMs);
+                break;
             }
-            // Check if connection succeeded
-            if (obdBleClient.isConnected()) {
+
+            if (isBleConnected()) {
                 connectAttempts_ = 0;
                 transitionTo(ObdConnectionState::DISCOVERING, nowMs);
                 break;
             }
-#endif
-            uint32_t elapsed = nowMs - stateEnteredMs_;
+
+            const uint32_t elapsed = nowMs - stateEnteredMs_;
             if (elapsed >= obd::CONNECT_TIMEOUT_MS) {
-                connectAttempts_++;
-#ifndef UNIT_TEST
-                obdBleClient.disconnect();
-#endif
-                if (connectAttempts_ >= obd::MAX_DIRECT_CONNECT_FAILURES) {
-                    savedAddress_[0] = '\0';
-                    connectAttempts_ = 0;
-                    transitionTo(ObdConnectionState::IDLE, nowMs);
-                } else {
-                    transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
-                }
+                disconnectBle();
+                handleConnectFailure(nowMs);
             }
             break;
         }
@@ -176,26 +319,23 @@ void ObdRuntimeModule::update(uint32_t nowMs, bool bootReady, bool v1Connected, 
                 transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
                 break;
             }
-#ifndef UNIT_TEST
-            if (nowMs == stateEnteredMs_) {
-                if (obdBleClient.discoverServices()) {
-                    // Subscribe to notifications for response data
-                    obdBleClient.subscribeNotify([](const uint8_t* data, size_t len) {
-                        obdRuntimeModule.onBleData(data, len);
-                    });
-                    atInitIndex_ = 0;
-                    atInitSentMs_ = 0;
-                    transitionTo(ObdConnectionState::AT_INIT, nowMs);
+
+            if (justEntered && discoverBleServices()) {
+                if (!subscribeBleNotifications()) {
+                    disconnectBle();
+                    transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
                     break;
                 }
+                atInitIndex_ = 0;
+                atInitSentMs_ = 0;
+                transitionTo(ObdConnectionState::AT_INIT, nowMs);
+                break;
             }
-#endif
-            uint32_t elapsed = nowMs - stateEnteredMs_;
+
+            const uint32_t elapsed = nowMs - stateEnteredMs_;
             if (elapsed >= obd::CONNECT_TIMEOUT_MS) {
                 connectAttempts_++;
-#ifndef UNIT_TEST
-                obdBleClient.disconnect();
-#endif
+                disconnectBle();
                 transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
             }
             break;
@@ -207,38 +347,39 @@ void ObdRuntimeModule::update(uint32_t nowMs, bool bootReady, bool v1Connected, 
                 transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
                 break;
             }
-#ifndef UNIT_TEST
-            // Send AT init commands one at a time, waiting for response
+
             if (atInitIndex_ < obd::AT_INIT_COMMAND_COUNT) {
                 if (atInitSentMs_ == 0) {
-                    // Send next command
-                    obdBleClient.writeCommand(obd::AT_INIT_COMMANDS[atInitIndex_]);
-                    atInitSentMs_ = nowMs;
+                    if (writeBleCommand(obd::AT_INIT_COMMANDS[atInitIndex_])) {
+                        atInitSentMs_ = nowMs;
+                    } else {
+                        disconnectBle();
+                        transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
+                        break;
+                    }
                 } else if (bleDataReady_) {
-                    // Got response, move to next command
-                    bleDataReady_ = false;
-                    bleBufLen_ = 0;
+                    clearBleResponseState();
                     atInitIndex_++;
                     atInitSentMs_ = 0;
                 } else if (nowMs - atInitSentMs_ >= obd::AT_INIT_RESPONSE_TIMEOUT_MS) {
-                    // Timeout on this command — skip and try next
                     atInitIndex_++;
                     atInitSentMs_ = 0;
                 }
             }
+
             if (atInitIndex_ >= obd::AT_INIT_COMMAND_COUNT) {
                 consecutiveErrors_ = 0;
+                pollBackoffApplied_ = false;
                 lastPollMs_ = 0;
+                clearBleResponseState();
                 transitionTo(ObdConnectionState::POLLING, nowMs);
                 break;
             }
-#endif
-            uint32_t elapsed = nowMs - stateEnteredMs_;
+
+            const uint32_t elapsed = nowMs - stateEnteredMs_;
             if (elapsed >= obd::AT_INIT_RESPONSE_TIMEOUT_MS * obd::AT_INIT_COMMAND_COUNT) {
                 consecutiveErrors_++;
-#ifndef UNIT_TEST
-                obdBleClient.disconnect();
-#endif
+                disconnectBle();
                 transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
             }
             break;
@@ -248,58 +389,68 @@ void ObdRuntimeModule::update(uint32_t nowMs, bool bootReady, bool v1Connected, 
             if (bleDisconnected_) {
                 bleDisconnected_ = false;
                 speedValid_ = false;
+                clearBleResponseState();
                 transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
                 break;
             }
 
-            // Check for error backoff threshold.
-            if (consecutiveErrors_ >= obd::MAX_CONSECUTIVE_ERRORS) {
+            if (consecutiveErrors_ >= obd::ERRORS_BEFORE_DISCONNECT) {
+                disconnectBle();
+                transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
+                break;
+            }
+
+            if (consecutiveErrors_ >= obd::MAX_CONSECUTIVE_ERRORS && !pollBackoffApplied_) {
+                pollBackoffApplied_ = true;
                 transitionTo(ObdConnectionState::ERROR_BACKOFF, nowMs);
                 break;
             }
 
-#ifndef UNIT_TEST
-            // Process incoming BLE data
             if (bleDataReady_) {
                 bleDataReady_ = false;
                 totalBytesReceived_ += bleBufLen_;
                 Elm327ParseResult result = parseElm327Response(bleBuf_, bleBufLen_);
                 bleBufLen_ = 0;
+                bleBuf_[0] = '\0';
+                pollResponsePending_ = false;
 
                 if (result.valid) {
-                    float kmh = decodeSpeedKmh(result);
+                    const float kmh = decodeSpeedKmh(result);
                     if (kmh >= 0.0f) {
                         speedMph_ = kmhToMph(kmh);
                         speedSampleTsMs_ = nowMs;
                         speedValid_ = true;
                         consecutiveErrors_ = 0;
+                        pollBackoffApplied_ = false;
                     }
                     pollCount_++;
-                } else if (result.noData) {
-                    pollErrors_++;
-                    consecutiveErrors_++;
-                } else if (result.error) {
-                    pollErrors_++;
-                    consecutiveErrors_++;
-                } else if (!result.busInit) {
-                    pollErrors_++;
-                    consecutiveErrors_++;
+                } else if (result.noData || result.error || !result.busInit) {
+                    handlePollingError(nowMs, true);
+                    break;
                 }
             }
 
-            // Send poll command at interval
-            if (lastPollMs_ == 0 || (nowMs - lastPollMs_) >= obd::POLL_INTERVAL_MS) {
-                obdBleClient.writeCommand(obd::SPEED_POLL_CMD);
-                lastPollMs_ = nowMs;
+            if (pollResponsePending_ && (nowMs - lastPollMs_) >= obd::POLL_TIMEOUT_MS) {
+                handlePollingError(nowMs, true);
+                break;
             }
 
-            // Update cached RSSI
-            rssi_ = obdBleClient.getRssi(nowMs);
-#endif
+            if (!pollResponsePending_ &&
+                (lastPollMs_ == 0 || (nowMs - lastPollMs_) >= obd::POLL_INTERVAL_MS)) {
+                clearBleResponseState();
+                if (writeBleCommand(obd::SPEED_POLL_CMD)) {
+                    lastPollMs_ = nowMs;
+                    pollResponsePending_ = true;
+                } else {
+                    handlePollingError(nowMs, true);
+                    break;
+                }
+            }
 
-            // Speed staleness check
+            rssi_ = readBleRssi(nowMs);
+
             if (speedValid_) {
-                uint32_t age = nowMs - speedSampleTsMs_;
+                const uint32_t age = nowMs - speedSampleTsMs_;
                 if (age > obd::SPEED_MAX_AGE_MS) {
                     speedValid_ = false;
                 }
@@ -308,10 +459,18 @@ void ObdRuntimeModule::update(uint32_t nowMs, bool bootReady, bool v1Connected, 
         }
 
         case ObdConnectionState::ERROR_BACKOFF: {
-            uint32_t elapsed = nowMs - stateEnteredMs_;
+            if (bleDisconnected_) {
+                bleDisconnected_ = false;
+                speedValid_ = false;
+                clearBleResponseState();
+                transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
+                break;
+            }
+
+            const uint32_t elapsed = nowMs - stateEnteredMs_;
             if (elapsed >= obd::ERROR_PAUSE_MS) {
-                consecutiveErrors_ = 0;
                 if (consecutiveErrors_ >= obd::ERRORS_BEFORE_DISCONNECT) {
+                    disconnectBle();
                     transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
                 } else {
                     transitionTo(ObdConnectionState::POLLING, nowMs);
@@ -322,13 +481,11 @@ void ObdRuntimeModule::update(uint32_t nowMs, bool bootReady, bool v1Connected, 
 
         case ObdConnectionState::DISCONNECTED: {
             speedValid_ = false;
-#ifndef UNIT_TEST
-            // Ensure BLE client is disconnected
-            if (nowMs == stateEnteredMs_) {
-                obdBleClient.disconnect();
+            if (justEntered) {
+                clearBleResponseState();
+                disconnectBle();
             }
-#endif
-            uint32_t elapsed = nowMs - stateEnteredMs_;
+            const uint32_t elapsed = nowMs - stateEnteredMs_;
             if (elapsed >= obd::RECONNECT_BACKOFF_MS) {
                 if (savedAddress_[0] != '\0') {
                     transitionTo(ObdConnectionState::CONNECTING, nowMs);
@@ -345,7 +502,9 @@ ObdRuntimeStatus ObdRuntimeModule::snapshot(uint32_t nowMs) const {
     ObdRuntimeStatus status;
     status.enabled = enabled_;
     status.state = state_;
-    status.connected = (state_ == ObdConnectionState::POLLING ||
+    status.connected = (state_ == ObdConnectionState::DISCOVERING ||
+                        state_ == ObdConnectionState::AT_INIT ||
+                        state_ == ObdConnectionState::POLLING ||
                         state_ == ObdConnectionState::ERROR_BACKOFF);
     status.speedValid = speedValid_;
     status.speedMph = speedMph_;
@@ -364,7 +523,7 @@ ObdRuntimeStatus ObdRuntimeModule::snapshot(uint32_t nowMs) const {
 
 bool ObdRuntimeModule::getFreshSpeed(uint32_t nowMs, float& speedMphOut, uint32_t& tsMsOut) const {
     if (!speedValid_) return false;
-    uint32_t age = nowMs - speedSampleTsMs_;
+    const uint32_t age = nowMs - speedSampleTsMs_;
     if (age > obd::SPEED_MAX_AGE_MS) return false;
     speedMphOut = speedMph_;
     tsMsOut = speedSampleTsMs_;
@@ -378,16 +537,26 @@ void ObdRuntimeModule::startScan() {
 }
 
 void ObdRuntimeModule::forgetDevice() {
-    savedAddress_[0] = '\0';
+    stopBleScan();
+    disconnectBle();
+    setSavedAddressFromBuffer("");
+    pendingAddress_[0] = '\0';
+    pendingDeviceFound_ = false;
+    scanRequested_ = false;
     connectAttempts_ = 0;
+    pollBackoffApplied_ = false;
     speedValid_ = false;
+    clearBleResponseState();
+    bleDisconnected_ = false;
     if (state_ != ObdConnectionState::IDLE) {
         transitionTo(ObdConnectionState::IDLE, 0);
+        stateEntryPending_ = false;
     }
 }
 
 void ObdRuntimeModule::onDeviceFound(const char* name, const char* address, int rssi) {
     (void)name;
+    if (address == nullptr || address[0] == '\0') return;
     if (rssi < minRssi_) return;
     if (state_ != ObdConnectionState::SCANNING) return;
 
@@ -403,14 +572,13 @@ void ObdRuntimeModule::onBleDisconnect() {
 
 void ObdRuntimeModule::onBleData(const uint8_t* data, size_t len) {
     if (!data || len == 0) return;
-    // Append to buffer (handle fragmented BLE responses)
-    size_t space = BLE_BUF_LEN - 1 - bleBufLen_;
-    size_t toCopy = (len < space) ? len : space;
+
+    const size_t space = BLE_BUF_LEN - 1 - bleBufLen_;
+    const size_t toCopy = (len < space) ? len : space;
     memcpy(bleBuf_ + bleBufLen_, data, toCopy);
     bleBufLen_ += toCopy;
     bleBuf_[bleBufLen_] = '\0';
 
-    // Check for ELM327 prompt ">" indicating complete response
     if (memchr(bleBuf_, '>', bleBufLen_) != nullptr) {
         bleDataReady_ = true;
     }
@@ -422,5 +590,14 @@ void ObdRuntimeModule::injectSpeedForTest(float speedMph, uint32_t timestampMs) 
     speedSampleTsMs_ = timestampMs;
     speedValid_ = true;
     consecutiveErrors_ = 0;
+    pollBackoffApplied_ = false;
+}
+
+void ObdRuntimeModule::forceStateForTest(ObdConnectionState state, uint32_t enteredMs) {
+    state_ = state;
+    stateEnteredMs_ = enteredMs;
+    stateEntryPending_ = false;
+    clearBleResponseState();
+    bleDisconnected_ = false;
 }
 #endif

@@ -62,6 +62,7 @@ void handleApiForget(WebServer& server,
 void handleApiConfig(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
                      SettingsManager& settingsManager,
+                     const std::function<void(bool)>& setSpeedSourceObdEnabled,
                      const std::function<bool()>& checkRateLimit,
                      const std::function<void()>& markUiActivity) {
     if (markUiActivity) markUiActivity();
@@ -74,8 +75,9 @@ void handleApiConfig(WebServer& server,
         return;
     }
 
+    const String requestBody = server.arg("plain");
     JsonDocument body;
-    DeserializationError err = deserializeJson(body, server.arg("plain"));
+    DeserializationError err = deserializeJson(body, requestBody);
     if (err) {
         JsonDocument errDoc;
         WifiApiResponse::setErrorAndMessage(errDoc, "Invalid JSON");
@@ -90,12 +92,16 @@ void handleApiConfig(WebServer& server,
         bool enabled = body["enabled"].as<bool>();
         settings.obdEnabled = enabled;
         obdRuntime.setEnabled(enabled);
+        if (setSpeedSourceObdEnabled) {
+            setSpeedSourceObdEnabled(enabled);
+        }
         changed = true;
     }
     if (!body["minRssi"].isNull()) {
         int rssi = body["minRssi"].as<int>();
         rssi = std::max(-90, std::min(rssi, -40));
         settings.obdMinRssi = static_cast<int8_t>(rssi);
+        obdRuntime.setMinRssi(settings.obdMinRssi);
         changed = true;
     }
 

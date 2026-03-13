@@ -105,6 +105,9 @@ struct V1Settings {
     
     // Misc flags retained for compatibility
     bool gpsEnabled = true;
+    bool obdEnabled = false;
+    String obdSavedAddress = "";
+    int8_t obdMinRssi = -80;
     LockoutRuntimeMode gpsLockoutMode = LOCKOUT_RUNTIME_OFF;
     bool gpsLockoutPreQuiet = false;
     uint16_t gpsLockoutPreQuietBufferE5 = 0;

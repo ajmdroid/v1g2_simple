@@ -207,6 +207,9 @@ void handleApiSettingsSave(WebServer& server,
         int rssi = server.arg("obdMinRssi").toInt();
         rssi = std::max(-90, std::min(rssi, -40));
         mutableSettings.obdMinRssi = static_cast<int8_t>(rssi);
+        if (runtime.setObdRuntimeMinRssi) {
+            runtime.setObdRuntimeMinRssi(mutableSettings.obdMinRssi);
+        }
     }
 
     // Display style setting

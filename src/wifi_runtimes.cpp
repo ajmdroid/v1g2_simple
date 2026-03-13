@@ -319,6 +319,9 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
         [](bool enabled) {
             obdRuntimeModule.setEnabled(enabled);
         },
+        [](int8_t minRssi) {
+            obdRuntimeModule.setMinRssi(minRssi);
+        },
         [](bool enabled) {
             speedSourceSelector.setObdEnabled(enabled);
         },

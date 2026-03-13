@@ -754,6 +754,16 @@ static void configureRuntimeSensorModules() {
         settingsManager.get().obdMinRssi);
 }
 
+static void syncObdSavedAddressSetting() {
+    const char* runtimeAddress = obdRuntimeModule.getSavedAddress();
+    if (settingsManager.get().obdSavedAddress == runtimeAddress) {
+        return;
+    }
+
+    settingsManager.mutableSettings().obdSavedAddress = runtimeAddress;
+    settingsManager.save();
+}
+
 static void configureRuntimeCoreModules() {
     configureRuntimeSensorModules();
 }
@@ -1089,6 +1099,7 @@ void loop() {
         obdRuntimeModule.update(now, bootReady, bleConnectedNow, !bleClient.isScanning());
         perfRecordObdUs(micros() - obdStartUs);
     }
+    syncObdSavedAddressSetting();
 
     auto runWifiManagerProcess = []() { wifiManager.process(); };
     const LoopWifiPhaseValues loopWifiValues = processLoopWifiPhase(

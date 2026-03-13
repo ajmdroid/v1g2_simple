@@ -47,6 +47,15 @@ struct FakeRuntime {
     int setLockoutKaLearningEnabledCalls = 0;
     bool lastLockoutKaLearningEnabled = false;
 
+    int setObdRuntimeEnabledCalls = 0;
+    bool lastObdRuntimeEnabled = false;
+
+    int setObdRuntimeMinRssiCalls = 0;
+    int8_t lastObdRuntimeMinRssi = 0;
+
+    int setSpeedSourceObdEnabledCalls = 0;
+    bool lastSpeedSourceObdEnabled = false;
+
     int saveCalls = 0;
 };
 
@@ -92,8 +101,18 @@ static WifiSettingsApiService::Runtime makeRuntime(FakeRuntime& rt) {
         },
         [](bool) {},  // setLockoutKLearningEnabled
         [](bool) {},  // setLockoutXLearningEnabled
-        [](bool) {},  // setObdRuntimeEnabled
-        [](bool) {},  // setSpeedSourceObdEnabled
+        [&rt](bool enabled) {
+            rt.setObdRuntimeEnabledCalls++;
+            rt.lastObdRuntimeEnabled = enabled;
+        },
+        [&rt](int8_t minRssi) {
+            rt.setObdRuntimeMinRssiCalls++;
+            rt.lastObdRuntimeMinRssi = minRssi;
+        },
+        [&rt](bool enabled) {
+            rt.setSpeedSourceObdEnabledCalls++;
+            rt.lastSpeedSourceObdEnabled = enabled;
+        },
         [&rt]() {
             rt.saveCalls++;
         },
@@ -261,6 +280,29 @@ void test_settings_save_updates_development_toggles() {
     TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
 }
 
+void test_settings_save_updates_obd_runtime_dependencies() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("obdEnabled", "true");
+    server.setArg("obdMinRssi", "-55");
+
+    WifiSettingsApiService::handleApiSettingsSave(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(rt.settings.obdEnabled);
+    TEST_ASSERT_EQUAL_INT8(-55, rt.settings.obdMinRssi);
+    TEST_ASSERT_EQUAL_INT(1, rt.setObdRuntimeEnabledCalls);
+    TEST_ASSERT_TRUE(rt.lastObdRuntimeEnabled);
+    TEST_ASSERT_EQUAL_INT(1, rt.setObdRuntimeMinRssiCalls);
+    TEST_ASSERT_EQUAL_INT8(-55, rt.lastObdRuntimeMinRssi);
+    TEST_ASSERT_EQUAL_INT(1, rt.setSpeedSourceObdEnabledCalls);
+    TEST_ASSERT_TRUE(rt.lastSpeedSourceObdEnabled);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_settings_get_serializes_expected_payload);
@@ -271,5 +313,6 @@ int main() {
     RUN_TEST(test_settings_save_updates_runtime_dependencies);
     RUN_TEST(test_settings_save_updates_brightness_and_display_style);
     RUN_TEST(test_settings_save_updates_development_toggles);
+    RUN_TEST(test_settings_save_updates_obd_runtime_dependencies);
     return UNITY_END();
 }

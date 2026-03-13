@@ -158,6 +158,21 @@ void test_scan_finds_device_transitions_to_connecting() {
     TEST_ASSERT_TRUE(status.savedAddressValid);
 }
 
+void test_scan_request_retries_when_start_scan_fails_once() {
+    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.setTestStartScanResult(false);
+
+    obdRuntimeModule.startScan();
+    obdRuntimeModule.update(1000, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getStartScanCallCountForTest());
+
+    obdRuntimeModule.setTestStartScanResult(true);
+    obdRuntimeModule.update(2000, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::SCANNING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(2, obdRuntimeModule.getStartScanCallCountForTest());
+}
+
 // ── RSSI gate ─────────────────────────────────────────────────────
 
 void test_rssi_gate_rejects_weak_signal() {
@@ -257,6 +272,33 @@ void test_three_connect_failures_clears_saved_address() {
     TEST_ASSERT_EQUAL_UINT8(0, status.connectAttempts);
 }
 
+void test_connect_entry_action_runs_on_next_tick() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+
+    obdRuntimeModule.update(5000, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(0, obdRuntimeModule.getConnectCallCountForTest());
+
+    obdRuntimeModule.update(5001, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getConnectCallCountForTest());
+}
+
+void test_discover_entry_action_runs_on_next_tick() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+
+    obdRuntimeModule.update(5000, true, true, true);
+    obdRuntimeModule.setTestBleConnected(true);
+    obdRuntimeModule.update(5001, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getConnectCallCountForTest());
+
+    obdRuntimeModule.setTestDiscoverResult(false);
+    obdRuntimeModule.update(5002, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDiscoverCallCountForTest());
+}
+
 // ── Speed data ────────────────────────────────────────────────────
 
 void test_inject_speed_is_fresh() {
@@ -325,6 +367,17 @@ void test_forget_device_clears_address_and_goes_idle() {
     TEST_ASSERT_FALSE(status.savedAddressValid);
 }
 
+void test_forget_device_disconnects_active_client() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 1000);
+    obdRuntimeModule.setTestBleConnected(true);
+
+    obdRuntimeModule.forgetDevice();
+
+    TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDisconnectCallCountForTest());
+}
+
 // ── setEnabled() ──────────────────────────────────────────────────
 
 void test_disable_during_operation_goes_idle() {
@@ -343,20 +396,58 @@ void test_enable_same_state_is_noop() {
     TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
 }
 
+void test_reenable_with_saved_address_restores_wait_boot() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.setEnabled(false);
+    obdRuntimeModule.setEnabled(true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::WAIT_BOOT, obdRuntimeModule.getState());
+}
+
+void test_set_min_rssi_applies_immediately() {
+    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.setMinRssi(-60);
+
+    obdRuntimeModule.startScan();
+    obdRuntimeModule.update(1000, true, true, true);
+    obdRuntimeModule.onDeviceFound("OBDLink CX", "A4:C1:38:00:11:22", -70);
+    obdRuntimeModule.update(2000, true, true, true);
+
+    TEST_ASSERT_EQUAL(ObdConnectionState::SCANNING, obdRuntimeModule.getState());
+}
+
 // ── Error backoff ─────────────────────────────────────────────────
+
+void test_poll_timeout_counts_as_error() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
+
+    obdRuntimeModule.update(100, true, true, true);
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getWriteCallCountForTest());
+    TEST_ASSERT_EQUAL_STRING("010D\r", obdRuntimeModule.getLastCommandForTest());
+
+    obdRuntimeModule.update(600, true, true, true);
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(600);
+    TEST_ASSERT_EQUAL_UINT32(1, status.pollErrors);
+    TEST_ASSERT_EQUAL_UINT32(1, status.consecutiveErrors);
+    TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
+}
 
 void test_error_backoff_returns_to_polling() {
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::ERROR_BACKOFF, 1000);
+    obdRuntimeModule.setConsecutiveErrorsForTest(5);
 
-    // Simulate reaching POLLING state and inject errors
-    // Force state to POLLING via test helper
-    obdRuntimeModule.injectSpeedForTest(50.0f, 1000);
+    obdRuntimeModule.update(6001, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
+}
 
-    // The consecutiveErrors check happens in POLLING state,
-    // but since we can't easily get to POLLING without BLE,
-    // we verify snapshot reports correct data
-    ObdRuntimeStatus status = obdRuntimeModule.snapshot(2000);
-    TEST_ASSERT_EQUAL_UINT32(0, status.consecutiveErrors);
+void test_error_backoff_disconnects_after_ten_errors() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::ERROR_BACKOFF, 1000);
+    obdRuntimeModule.setConsecutiveErrorsForTest(10);
+
+    obdRuntimeModule.update(6001, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
 }
 
 // ── Disconnected reconnect backoff ────────────────────────────────
@@ -433,6 +524,7 @@ int main() {
     RUN_TEST(test_start_scan_disabled_does_nothing);
     RUN_TEST(test_scan_timeout_returns_to_idle);
     RUN_TEST(test_scan_finds_device_transitions_to_connecting);
+    RUN_TEST(test_scan_request_retries_when_start_scan_fails_once);
 
     // RSSI gate
     RUN_TEST(test_rssi_gate_rejects_weak_signal);
@@ -443,6 +535,8 @@ int main() {
     // Connect timeout & retry
     RUN_TEST(test_connect_timeout_increments_attempts);
     RUN_TEST(test_three_connect_failures_clears_saved_address);
+    RUN_TEST(test_connect_entry_action_runs_on_next_tick);
+    RUN_TEST(test_discover_entry_action_runs_on_next_tick);
 
     // Speed data
     RUN_TEST(test_inject_speed_is_fresh);
@@ -453,13 +547,18 @@ int main() {
 
     // forgetDevice
     RUN_TEST(test_forget_device_clears_address_and_goes_idle);
+    RUN_TEST(test_forget_device_disconnects_active_client);
 
     // setEnabled
     RUN_TEST(test_disable_during_operation_goes_idle);
     RUN_TEST(test_enable_same_state_is_noop);
+    RUN_TEST(test_reenable_with_saved_address_restores_wait_boot);
+    RUN_TEST(test_set_min_rssi_applies_immediately);
 
     // Error handling
+    RUN_TEST(test_poll_timeout_counts_as_error);
     RUN_TEST(test_error_backoff_returns_to_polling);
+    RUN_TEST(test_error_backoff_disconnects_after_ten_errors);
 
     // Disconnected reconnect
     RUN_TEST(test_disconnected_reconnects_after_backoff);

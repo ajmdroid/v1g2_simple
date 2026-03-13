@@ -24,11 +24,15 @@ void ObdScanCallback::onResult(const NimBLEAdvertisedDevice* device) {
     // Must have a name
     if (!device->haveName()) return;
 
-    // Match name prefix "OBDLink"
+    // Match the configured OBDLink prefix.
     const std::string name = device->getName();
-    if (name.size() < 7 || strncmp(name.c_str(), "OBDLink", 7) != 0) return;
+    if (name.size() < obd::DEVICE_NAME_PREFIX_LEN ||
+        strncmp(name.c_str(), obd::DEVICE_NAME_PREFIX, obd::DEVICE_NAME_PREFIX_LEN) != 0) {
+        return;
+    }
 
     int rssi = device->getRSSI();
+    if (rssi < minRssi_) return;
 
     // Signal the runtime module (ISR-safe: sets flag + copies address)
     parent_->onDeviceFound(
