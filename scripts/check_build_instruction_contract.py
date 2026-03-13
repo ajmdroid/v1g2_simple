@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate local AI instructions stay aligned with build.sh usage."""
+"""Validate tracked build docs stay aligned with build.sh usage."""
 
 from __future__ import annotations
 
@@ -9,32 +9,27 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-INSTRUCTIONS_PATH = ROOT / ".github" / "instructions" / "v1_simple.instructions.md"
+DOC_PATHS = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
 
 
 def main() -> int:
-    if not INSTRUCTIONS_PATH.exists():
-        print(f"[contract] build-instructions: missing file {INSTRUCTIONS_PATH}")
-        return 1
-
-    text = INSTRUCTIONS_PATH.read_text(encoding="utf-8")
     errors: list[str] = []
+    usage_pattern = re.compile(r"\./build\.sh\b[^\n]*\s-n(\s|$)")
 
-    if re.search(r"\./build\.sh\b[^\n]*\s-n(\s|$)", text):
-        errors.append("instructions still mention unsupported build.sh -n flag")
-
-    commit_rule = "commit after every change, with a clear message describing the change."
-    commit_rule_count = text.lower().count(commit_rule)
-    if commit_rule_count > 1:
-        errors.append(f"duplicate commit rule appears {commit_rule_count} times")
+    for path in DOC_PATHS:
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8")
+        if usage_pattern.search(text):
+            errors.append(f"{path.relative_to(ROOT)} mentions unsupported build.sh -n flag")
 
     if errors:
-        print("[contract] build-instructions mismatch:")
+        print("[contract] build-docs mismatch:")
         for error in errors:
             print(f"  - {error}")
         return 1
 
-    print("[contract] build-instructions match supported build.sh usage")
+    print("[contract] tracked build docs match supported build.sh usage")
     return 0
 
 
