@@ -7,6 +7,7 @@
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	import SettingsObdCard from '$lib/features/settings/SettingsObdCard.svelte';
 	import {
+		runtimeGpsError,
 		fetchRuntimeGpsStatus,
 		retainRuntimeStatus,
 		runtimeGpsStatus
@@ -71,6 +72,7 @@
 	</PageHeader>
 
 	<StatusAlert {message} />
+	<StatusAlert message={$runtimeGpsError ? { type: 'error', text: $runtimeGpsError } : null} />
 
 	<div class="surface-card">
 		<div class="card-body gap-3">

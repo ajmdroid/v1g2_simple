@@ -47,6 +47,7 @@ export const runtimeStatus = writable(createDefaultStatus());
 export const runtimeStatusError = writable(null);
 export const runtimeStatusLoading = writable(true);
 export const runtimeGpsStatus = writable(createDefaultGpsStatus());
+export const runtimeGpsError = writable(null);
 export const runtimeGpsLoading = writable(true);
 
 let statusFetchInFlight = false;
@@ -67,6 +68,7 @@ function resetRuntimeState() {
 	runtimeStatusError.set(null);
 	runtimeStatusLoading.set(true);
 	runtimeGpsStatus.set(createDefaultGpsStatus());
+	runtimeGpsError.set(null);
 	runtimeGpsLoading.set(true);
 	statusFetchInFlight = false;
 	gpsFetchInFlight = false;
@@ -166,12 +168,18 @@ export async function fetchRuntimeGpsStatus() {
 	try {
 		const gpsRes = await fetchWithTimeout('/api/gps/status');
 		if (fetchVersion !== stateVersion || !hasActiveGpsConsumers()) return;
-		if (!gpsRes.ok) return;
+		if (!gpsRes.ok) {
+			runtimeGpsError.set('GPS status unavailable');
+			return;
+		}
 
 		const gpsData = await gpsRes.json();
 		runtimeGpsStatus.update((current) => ({ ...current, ...gpsData }));
+		runtimeGpsError.set(null);
 	} catch (e) {
-		// Shared GPS polling should fail silently; consuming pages still render the last known state.
+		if (fetchVersion === stateVersion && hasActiveGpsConsumers()) {
+			runtimeGpsError.set('GPS connection lost');
+		}
 	} finally {
 		if (fetchVersion === stateVersion && hasActiveGpsConsumers()) {
 			runtimeGpsLoading.set(false);

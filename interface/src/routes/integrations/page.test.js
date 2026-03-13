@@ -58,6 +58,63 @@ function installDefaultFetch() {
 	);
 }
 
+function installGpsRecoveryFetch() {
+	let gpsEnabled = true;
+	let gpsRequestCount = 0;
+
+	return installFetchMock(
+		[
+			{
+				method: 'GET',
+				match: '/api/gps/status',
+				respond: () => {
+					gpsRequestCount += 1;
+					if (gpsRequestCount === 1) {
+						return jsonResponse({ error: 'gps unavailable' }, 503);
+					}
+
+					return jsonResponse({
+						enabled: gpsEnabled,
+						runtimeEnabled: gpsEnabled,
+						mode: 'drive',
+						hasFix: true,
+						stableHasFix: true,
+						satellites: 7,
+						stableSatellites: 7,
+						sampleAgeMs: 1900,
+						moduleDetected: true,
+						detectionTimedOut: false,
+						parserActive: true
+					});
+				}
+			},
+			{
+				method: 'POST',
+				match: '/api/gps/config',
+				respond: async ({ init }) => {
+					const body = JSON.parse(init.body);
+					gpsEnabled = body.enabled === true;
+					return jsonResponse({ success: true });
+				}
+			},
+			{
+				method: 'GET',
+				match: '/api/settings',
+				respond: jsonResponse({ obdEnabled: false })
+			},
+			{
+				method: 'GET',
+				match: '/api/obd/status',
+				respond: jsonResponse({ enabled: false, connected: false, pollCount: 0, pollErrors: 0 })
+			},
+			{ method: 'POST', match: '/api/obd/config', respond: jsonResponse({ success: true }) },
+			{ method: 'POST', match: '/api/obd/scan', respond: jsonResponse({ success: true }) },
+			{ method: 'POST', match: '/api/obd/forget', respond: jsonResponse({ success: true }) }
+		],
+		jsonResponse({})
+	);
+}
+
 describe('integrations route page', () => {
 	afterEach(() => {
 		vi.useRealTimers();
@@ -99,6 +156,57 @@ describe('integrations route page', () => {
 			)
 		).toBe(true);
 		expect(countCalls(fetchMock, '/api/gps/status')).toBe(3);
+
+		unmount();
+	});
+
+	it('shows a shared gps polling error when gps status fails on mount', async () => {
+		const fetchMock = installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/gps/status',
+					respond: jsonResponse({ error: 'gps unavailable' }, 503)
+				},
+				{
+					method: 'GET',
+					match: '/api/settings',
+					respond: jsonResponse({ obdEnabled: false })
+				},
+				{
+					method: 'GET',
+					match: '/api/obd/status',
+					respond: jsonResponse({ enabled: false, connected: false, pollCount: 0, pollErrors: 0 })
+				},
+				{ method: 'POST', match: '/api/obd/config', respond: jsonResponse({ success: true }) },
+				{ method: 'POST', match: '/api/obd/scan', respond: jsonResponse({ success: true }) },
+				{ method: 'POST', match: '/api/obd/forget', respond: jsonResponse({ success: true }) }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await screen.findByText('GPS status unavailable');
+		expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
+
+		unmount();
+	});
+
+	it('clears the shared gps polling error after the next successful poll', async () => {
+		vi.useFakeTimers();
+		const fetchMock = installGpsRecoveryFetch();
+		const { unmount } = render(Page);
+
+		await screen.findByText('GPS status unavailable');
+		expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
+
+		await vi.advanceTimersByTimeAsync(2500);
+
+		await screen.findByText('drive');
+		await waitFor(() => {
+			expect(screen.queryByText('GPS status unavailable')).not.toBeInTheDocument();
+		});
+		expect(countCalls(fetchMock, '/api/gps/status')).toBe(2);
 
 		unmount();
 	});

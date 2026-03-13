@@ -92,4 +92,23 @@ describe('dashboard route page', () => {
 
 		unmount();
 	});
+
+	it('does not show a gps error banner on dashboard when gps polling fails', async () => {
+		const fetchMock = installDefaultFetch([
+			{
+				method: 'GET',
+				match: '/api/gps/status',
+				respond: jsonResponse({ error: 'gps unavailable' }, 503)
+			}
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Connected');
+		await waitFor(() => {
+			expect(screen.queryByText('GPS status unavailable')).not.toBeInTheDocument();
+			expect(countCalls(fetchMock, '/api/gps/status')).toBeGreaterThanOrEqual(1);
+		});
+
+		unmount();
+	});
 });
