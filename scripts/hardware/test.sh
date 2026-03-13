@@ -417,7 +417,9 @@ PY
 
 # ── Uptime continuity tracking ───────────────────────────────────────
 suite_last_uptime_ms=""
-suite_reboot_count=0
+suite_uptime_drop_count=0
+suite_suspicious_uptime_drop_count=0
+suite_flash_boundary_advisory_count=0
 UPTIME_LOG=""
 
 poll_uptime_ms() {
@@ -484,6 +486,7 @@ wait_for_metrics_endpoint_recovery() {
 
 check_uptime_continuity() {
   local context="$1"
+  local allow_flash_reset_advisory="${2:-0}"
   if [[ "$NEEDS_LIVE_BOARD" -eq 0 || -z "$METRICS_URL" ]]; then
     return
   fi
@@ -493,8 +496,15 @@ check_uptime_continuity() {
     return
   fi
   if [[ -n "$suite_last_uptime_ms" && "$current_uptime" -lt "$suite_last_uptime_ms" ]]; then
-    suite_reboot_count=$((suite_reboot_count + 1))
-    local msg="[reboot] uptimeMs dropped from ${suite_last_uptime_ms} to ${current_uptime} (${context})"
+    suite_uptime_drop_count=$((suite_uptime_drop_count + 1))
+    local msg=""
+    if [[ "$allow_flash_reset_advisory" -eq 1 && "$suite_uptime_drop_count" -eq 1 ]]; then
+      suite_flash_boundary_advisory_count=$((suite_flash_boundary_advisory_count + 1))
+      msg="[advisory] uptimeMs dropped from ${suite_last_uptime_ms} to ${current_uptime} (${context}; expected flash/reset boundary)"
+    else
+      suite_suspicious_uptime_drop_count=$((suite_suspicious_uptime_drop_count + 1))
+      msg="[reboot] uptimeMs dropped from ${suite_last_uptime_ms} to ${current_uptime} (${context})"
+    fi
     echo "$msg" | tee -a "$RUN_LOG"
     if [[ -n "$UPTIME_LOG" ]]; then
       echo "$msg" >> "$UPTIME_LOG"
@@ -671,7 +681,7 @@ if [[ "$RUN_DEVICE" -eq 1 ]]; then
   fi
   run_step "device_tests" "${device_args[@]}" || device_exit=$?
   render_step_views "$DEVICE_DIR"
-  check_uptime_continuity "after_device_tests"
+  check_uptime_continuity "after_device_tests" 1
 fi
 
 if [[ "$RUN_CORE" -eq 1 ]]; then
@@ -727,7 +737,7 @@ if [[ "$RUN_CORE" -eq 1 ]]; then
     fi
     run_step "core_soak" "${core_args[@]}" || core_exit=$?
     render_step_views "$CORE_DIR"
-    check_uptime_continuity "after_core_soak"
+    check_uptime_continuity "after_core_soak" 1
   fi
 fi
 
@@ -816,8 +826,12 @@ echo "Warning policy: $( [[ "$STRICT_WARNINGS" == "1" ]] && echo blocking || ech
 if [[ "$rad_exit" -ne 0 ]]; then
   echo "RAD scenario: FAIL (exit=$rad_exit)"
 fi
-if [[ "$suite_reboot_count" -gt 0 ]]; then
-  echo "Uptime continuity: ${suite_reboot_count} reboot(s) detected (see $UPTIME_LOG)"
+if [[ "$suite_uptime_drop_count" -gt 0 ]]; then
+  if [[ "$suite_suspicious_uptime_drop_count" -gt 0 ]]; then
+    echo "Uptime continuity: ${suite_uptime_drop_count} drop(s) detected, ${suite_suspicious_uptime_drop_count} suspicious (see $UPTIME_LOG)"
+  else
+    echo "Uptime continuity: ${suite_uptime_drop_count} advisory drop(s) detected at flashing step boundary (see $UPTIME_LOG)"
+  fi
 fi
 echo "Latest artifacts: $BOARD_ARTIFACT_ROOT/latest"
 echo "Readable summary: $COMPARISON_TXT"
