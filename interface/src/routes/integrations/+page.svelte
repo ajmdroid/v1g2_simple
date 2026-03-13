@@ -5,6 +5,7 @@
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
+	import SettingsObdCard from '$lib/features/settings/SettingsObdCard.svelte';
 
 	let loading = $state(true);
 	let message = $state(null);
@@ -156,4 +157,6 @@
 			</div>
 		</div>
 	</div>
+
+	<SettingsObdCard />
 </div>

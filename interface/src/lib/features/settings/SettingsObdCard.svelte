@@ -4,35 +4,76 @@
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
 
-	let { settings } = $props();
-
 	const STATE_NAMES = ['Idle', 'WaitBoot', 'Scanning', '', 'Connecting', 'Discovering', 'ATInit', 'Polling', 'ErrorBackoff', 'Disconnected'];
 
 	let obdStatus = $state(null);
 	let obdMessage = $state(null);
+	let enabled = $state(false);
+	let minRssi = $state(-80);
+	let saving = $state(false);
 	let scanning = $state(false);
 	let forgetting = $state(false);
 	let statusFetchInFlight = false;
+	let loaded = $state(false);
 
 	const statusPoll = createPoll(async () => {
 		await fetchObdStatus();
 	}, 2000);
 
-	onMount(() => {
-		if (settings.obdEnabled) statusPoll.start();
+	onMount(async () => {
+		await fetchObdStatus();
+		if (obdStatus) {
+			enabled = obdStatus.enabled;
+		}
+		// Fetch current settings for minRssi
+		try {
+			const res = await fetchWithTimeout('/api/settings');
+			if (res.ok) {
+				const data = await res.json();
+				if (typeof data.obdMinRssi === 'number') minRssi = data.obdMinRssi;
+				if (typeof data.obdEnabled === 'boolean') enabled = data.obdEnabled;
+			}
+		} catch (_) {}
+		loaded = true;
+		if (enabled) statusPoll.start();
 	});
 
 	onDestroy(() => {
 		statusPoll.stop();
 	});
 
-	function handleToggle() {
-		if (settings.obdEnabled) {
+	async function saveConfig(fields) {
+		saving = true;
+		obdMessage = null;
+		try {
+			const res = await fetchWithTimeout('/api/obd/config', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(fields)
+			});
+			if (!res.ok) {
+				obdMessage = { type: 'error', text: 'Failed to save OBD setting.' };
+			}
+		} catch (_) {
+			obdMessage = { type: 'error', text: 'Connection error.' };
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function handleToggle() {
+		await saveConfig({ enabled });
+		if (enabled) {
 			statusPoll.start();
+			await fetchObdStatus();
 		} else {
 			statusPoll.stop();
 			obdStatus = null;
 		}
+	}
+
+	async function handleMinRssiChange() {
+		await saveConfig({ minRssi });
 	}
 
 	async function fetchObdStatus() {
@@ -41,7 +82,7 @@
 		try {
 			const res = await fetchWithTimeout('/api/obd/status');
 			if (res.ok) obdStatus = await res.json();
-		} catch (e) {
+		} catch (_) {
 			// Silently ignore — poll will retry
 		} finally {
 			statusFetchInFlight = false;
@@ -58,7 +99,7 @@
 			} else {
 				obdMessage = { type: 'error', text: 'Failed to start scan.' };
 			}
-		} catch (e) {
+		} catch (_) {
 			obdMessage = { type: 'error', text: 'Connection error.' };
 		} finally {
 			scanning = false;
@@ -76,7 +117,7 @@
 			} else {
 				obdMessage = { type: 'error', text: 'Failed to forget device.' };
 			}
-		} catch (e) {
+		} catch (_) {
 			obdMessage = { type: 'error', text: 'Connection error.' };
 		} finally {
 			forgetting = false;
@@ -92,12 +133,13 @@
 	<div class="card-body space-y-4">
 		<CardSectionHead title="OBD-II Speed Source" subtitle="Connect an OBDLink CX for vehicle speed data." />
 
+		{#if loaded}
 		<label class="label cursor-pointer">
 			<span class="label-text">Enable OBD</span>
-			<input type="checkbox" class="toggle toggle-primary" bind:checked={settings.obdEnabled} onchange={handleToggle} />
+			<input type="checkbox" class="toggle toggle-primary" bind:checked={enabled} onchange={handleToggle} disabled={saving} />
 		</label>
 
-		{#if settings.obdEnabled}
+		{#if enabled}
 			<div class="form-control">
 				<label class="label" for="obd-min-rssi">
 					<span class="label-text">Min RSSI (dBm)</span>
@@ -106,10 +148,11 @@
 					id="obd-min-rssi"
 					type="number"
 					class="input input-bordered w-24"
-					bind:value={settings.obdMinRssi}
+					bind:value={minRssi}
 					min="-90"
 					max="-40"
 					placeholder="-80"
+					onchange={handleMinRssiChange}
 				/>
 			</div>
 
@@ -144,6 +187,7 @@
 					Forget Device
 				</button>
 			</div>
+		{/if}
 		{/if}
 	</div>
 </div>

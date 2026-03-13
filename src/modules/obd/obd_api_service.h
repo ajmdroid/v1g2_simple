@@ -24,4 +24,10 @@ void handleApiForget(WebServer& server,
                      const std::function<bool()>& checkRateLimit,
                      const std::function<void()>& markUiActivity);
 
+void handleApiConfig(WebServer& server,
+                     ObdRuntimeModule& obdRuntime,
+                     SettingsManager& settingsManager,
+                     const std::function<bool()>& checkRateLimit,
+                     const std::function<void()>& markUiActivity);
+
 }  // namespace ObdApiService
