@@ -2,6 +2,9 @@
 #include <cstring>
 #include <vector>
 
+#include "../mocks/mock_heap_caps_state.h"
+#include "../mocks/esp_heap_caps.h"
+#include "../../src/modules/wifi/wifi_json_document.h"
 #include "../../src/modules/wifi/wifi_client_api_service.h"
 #include "../../src/modules/wifi/wifi_client_api_service.cpp"  // Pull implementation for UNIT_TEST.
 
@@ -19,6 +22,7 @@ static bool responseContains(const WebServer& server, const char* needle) {
 void setUp() {
     mockMillis = 1000;
     mockMicros = 1000000;
+    mock_reset_heap_caps();
 }
 
 void tearDown() {}
@@ -181,6 +185,29 @@ void test_handle_status_disconnected_omits_connected_fields() {
     TEST_ASSERT_FALSE(responseContains(server, "\"ip\""));
 }
 
+void test_handle_status_repeated_requests_release_wifi_json_allocations() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.enabled = true;
+    rt.savedSsid = "SavedNet";
+    rt.stateName = "connected";
+    rt.connected = true;
+    rt.connectedNetwork.ssid = "LiveNet";
+    rt.connectedNetwork.ip = "192.168.4.10";
+    rt.connectedNetwork.rssi = -55;
+
+    mock_reset_heap_caps_tracking();
+
+    for (int i = 0; i < 5; ++i) {
+        WifiClientApiService::handleApiStatus(server, makeRuntime(rt), nullptr);
+    }
+
+    TEST_ASSERT_GREATER_THAN_UINT32(0u, g_mock_heap_caps_malloc_calls);
+    TEST_ASSERT_EQUAL_UINT32(WifiJson::kPsramCaps, g_mock_heap_caps_last_malloc_caps);
+    TEST_ASSERT_GREATER_THAN_UINT32(0u, g_mock_heap_caps_free_calls);
+    TEST_ASSERT_EQUAL_UINT32(0u, g_mock_heap_caps_outstanding_allocations);
+}
+
 void test_handle_scan_completed_includes_networks() {
     WebServer server(80);
     FakeRuntime rt;
@@ -215,12 +242,17 @@ void test_handle_enable_rejects_non_boolean_enabled() {
     FakeRuntime rt;
     server.setArg("plain", "{\"enabled\":\"true\"}");
 
+    mock_reset_heap_caps_tracking();
+
     WifiClientApiService::handleApiEnable(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing enabled field\""));
     TEST_ASSERT_EQUAL_INT(0, rt.setEnabledCalls);
+    TEST_ASSERT_GREATER_THAN_UINT32(0u, g_mock_heap_caps_malloc_calls);
+    TEST_ASSERT_EQUAL_UINT32(WifiJson::kPsramCaps, g_mock_heap_caps_last_malloc_caps);
+    TEST_ASSERT_EQUAL_UINT32(0u, g_mock_heap_caps_outstanding_allocations);
 }
 
 void test_handle_enable_accepts_boolean_enabled() {
@@ -329,12 +361,17 @@ void test_handle_connect_parse_error_returns_400() {
     FakeRuntime rt;
     server.setArg("plain", "{bad");
 
+    mock_reset_heap_caps_tracking();
+
     WifiClientApiService::handleApiConnect(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"Invalid JSON\""));
     TEST_ASSERT_EQUAL_INT(0, rt.connectCalls);
+    TEST_ASSERT_GREATER_THAN_UINT32(0u, g_mock_heap_caps_malloc_calls);
+    TEST_ASSERT_EQUAL_UINT32(WifiJson::kPsramCaps, g_mock_heap_caps_last_malloc_caps);
+    TEST_ASSERT_EQUAL_UINT32(0u, g_mock_heap_caps_outstanding_allocations);
 }
 
 void test_handle_connect_starts_connection() {
@@ -552,6 +589,7 @@ int main() {
     RUN_TEST(test_handle_connect_valid_payload_returns_200);
     RUN_TEST(test_handle_status_connected_includes_network_fields);
     RUN_TEST(test_handle_status_disconnected_omits_connected_fields);
+    RUN_TEST(test_handle_status_repeated_requests_release_wifi_json_allocations);
     RUN_TEST(test_handle_scan_completed_includes_networks);
     RUN_TEST(test_handle_enable_rejects_non_boolean_enabled);
     RUN_TEST(test_handle_enable_accepts_boolean_enabled);

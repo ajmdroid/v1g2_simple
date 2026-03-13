@@ -36,11 +36,45 @@ inline void* heap_caps_malloc(size_t size, uint32_t caps) {
         g_mock_heap_caps_fail_malloc = false;
         return nullptr;
     }
-    return std::malloc(size);
+    void* ptr = std::malloc(size);
+    if (ptr != nullptr) {
+        g_mock_heap_caps_outstanding_allocations++;
+    }
+    return ptr;
+}
+
+inline void* heap_caps_realloc(void* ptr, size_t size, uint32_t caps) {
+    g_mock_heap_caps_realloc_calls++;
+    g_mock_heap_caps_last_realloc_size = size;
+    g_mock_heap_caps_last_realloc_caps = caps;
+    if (g_mock_heap_caps_realloc_calls <= 32u) {
+        const uint32_t bit = 1u << (g_mock_heap_caps_realloc_calls - 1u);
+        if ((g_mock_heap_caps_fail_call_mask & bit) != 0u) {
+            return nullptr;
+        }
+    }
+    if (g_mock_heap_caps_fail_on_call != 0u &&
+        g_mock_heap_caps_realloc_calls == g_mock_heap_caps_fail_on_call) {
+        g_mock_heap_caps_fail_on_call = 0u;
+        return nullptr;
+    }
+    if (g_mock_heap_caps_fail_realloc) {
+        g_mock_heap_caps_fail_realloc = false;
+        return nullptr;
+    }
+
+    void* resized = std::realloc(ptr, size);
+    if (ptr == nullptr && resized != nullptr) {
+        g_mock_heap_caps_outstanding_allocations++;
+    }
+    return resized;
 }
 
 inline void heap_caps_free(void* ptr) {
     g_mock_heap_caps_free_calls++;
+    if (ptr != nullptr && g_mock_heap_caps_outstanding_allocations > 0u) {
+        g_mock_heap_caps_outstanding_allocations--;
+    }
     std::free(ptr);
 }
 
