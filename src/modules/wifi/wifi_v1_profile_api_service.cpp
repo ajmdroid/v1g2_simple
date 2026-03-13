@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <cstring>
 #include "wifi_api_response.h"
+#include "wifi_json_document.h"
 
 namespace WifiV1ProfileApiService {
 
@@ -13,7 +14,7 @@ void handleApiProfilesList(WebServer& server, const Runtime& runtime) {
     }
     Serial.printf("[V1Profiles] Listing %d profiles\n", profileNames.size());
 
-    JsonDocument doc;
+    WifiJson::Document doc;
     JsonArray array = doc["profiles"].to<JsonArray>();
 
     for (const String& name : profileNames) {
@@ -63,7 +64,7 @@ void handleApiProfileSave(WebServer& server,
     }
     Serial.printf("[V1Settings] Save request body: %s\n", body.c_str());
 
-    JsonDocument doc;
+    WifiJson::Document doc;
     DeserializationError err = deserializeJson(doc, body.c_str());
 
     if (err) {
@@ -132,7 +133,7 @@ void handleApiProfileDelete(WebServer& server,
         server.send(400, "application/json", "{\"error\":\"Payload too large\"}");
         return;
     }
-    JsonDocument doc;
+    WifiJson::Document doc;
     DeserializationError err = deserializeJson(doc, body.c_str());
     if (err) {
         server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
@@ -161,7 +162,7 @@ void handleApiProfileDelete(WebServer& server,
 }
 
 void handleApiCurrentSettings(WebServer& server, const Runtime& runtime) {
-    JsonDocument doc;
+    WifiJson::Document doc;
     doc["connected"] = runtime.v1Connected ? runtime.v1Connected() : false;
 
     if (!runtime.hasCurrentSettings || !runtime.hasCurrentSettings()) {
@@ -173,7 +174,7 @@ void handleApiCurrentSettings(WebServer& server, const Runtime& runtime) {
     doc["available"] = true;
     // Parse existing settings JSON and embed it
     if (runtime.currentSettingsJson) {
-        JsonDocument settingsDoc;
+        WifiJson::Document settingsDoc;
         String settingsJson = runtime.currentSettingsJson();
         deserializeJson(settingsDoc, settingsJson.c_str());
         doc["settings"] = settingsDoc;
@@ -226,7 +227,7 @@ void handleApiSettingsPush(WebServer& server,
         return;
     }
 
-    JsonDocument doc;
+    WifiJson::Document doc;
     DeserializationError err = deserializeJson(doc, body.c_str());
     if (err) {
         server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");

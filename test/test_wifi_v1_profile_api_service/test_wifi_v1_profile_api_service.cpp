@@ -2,6 +2,9 @@
 #include <cstring>
 #include <vector>
 
+#include "../mocks/mock_heap_caps_state.h"
+#include "../mocks/esp_heap_caps.h"
+#include "../../src/modules/wifi/wifi_json_document.h"
 #include "../../src/modules/wifi/wifi_v1_profile_api_service.h"
 #include "../../src/modules/wifi/wifi_v1_profile_api_service.cpp"  // Pull implementation for UNIT_TEST.
 
@@ -14,6 +17,12 @@ unsigned long mockMicros = 0;
 
 static bool responseContains(const WebServer& server, const char* needle) {
     return std::strstr(server.lastBody.c_str(), needle) != nullptr;
+}
+
+static void assertWifiJsonAllocationsReleased() {
+    TEST_ASSERT_GREATER_THAN_UINT32(0u, g_mock_heap_caps_malloc_calls);
+    TEST_ASSERT_EQUAL_UINT32(WifiJson::kPsramCaps, g_mock_heap_caps_last_malloc_caps);
+    TEST_ASSERT_EQUAL_UINT32(0u, g_mock_heap_caps_outstanding_allocations);
 }
 
 struct StoredProfile {
@@ -35,19 +44,30 @@ struct FakeRuntime {
     bool hasCurrent = false;
     String currentSettingsJson = "{}";
     bool connected = false;
+    bool requestUserBytesResult = false;
+    bool writeUserBytesResult = false;
+    bool loadProfileSettingsResult = false;
+    bool storedProfileDisplayOn = true;
+    uint8_t storedProfileBytes[6] = {0};
 
     int listCalls = 0;
     int loadSummaryCalls = 0;
     int loadJsonCalls = 0;
+    int loadProfileSettingsCalls = 0;
     int parseSettingsCalls = 0;
     int saveCalls = 0;
     int deleteCalls = 0;
     int backupCalls = 0;
+    int requestUserBytesCalls = 0;
+    int writeUserBytesCalls = 0;
+    int setDisplayOnCalls = 0;
 
     String lastSaveName;
     String lastSaveDescription;
     bool lastSaveDisplayOn = true;
     uint8_t lastSaveBytes[6] = {0};
+    bool lastSetDisplayOn = true;
+    uint8_t lastWrittenBytes[6] = {0};
 };
 
 static bool fakeLoadSummary(FakeRuntime& rt, const String& name, WifiV1ProfileApiService::ProfileSummary& out) {
@@ -86,7 +106,15 @@ static WifiV1ProfileApiService::Runtime makeRuntime(FakeRuntime& rt) {
         [&rt](const String& name, String& profileJson) {
             return fakeLoadJson(rt, name, profileJson);
         },
-        [](const String&, uint8_t[6], bool&) { return false; },
+        [&rt](const String&, uint8_t outBytes[6], bool& displayOn) {
+            rt.loadProfileSettingsCalls++;
+            if (!rt.loadProfileSettingsResult) {
+                return false;
+            }
+            memcpy(outBytes, rt.storedProfileBytes, sizeof(rt.storedProfileBytes));
+            displayOn = rt.storedProfileDisplayOn;
+            return true;
+        },
         [&rt](const JsonObject& settingsObj, uint8_t outBytes[6]) {
             rt.parseSettingsCalls++;
             if (!rt.parseSettingsOk) {
@@ -118,9 +146,19 @@ static WifiV1ProfileApiService::Runtime makeRuntime(FakeRuntime& rt) {
             rt.deleteCalls++;
             return rt.deleteResult;
         },
-        []() { return false; },
-        [](const uint8_t[6]) { return false; },
-        [](bool) {},
+        [&rt]() {
+            rt.requestUserBytesCalls++;
+            return rt.requestUserBytesResult;
+        },
+        [&rt](const uint8_t inBytes[6]) {
+            rt.writeUserBytesCalls++;
+            memcpy(rt.lastWrittenBytes, inBytes, sizeof(rt.lastWrittenBytes));
+            return rt.writeUserBytesResult;
+        },
+        [&rt](bool displayOn) {
+            rt.setDisplayOnCalls++;
+            rt.lastSetDisplayOn = displayOn;
+        },
         [&rt]() { return rt.hasCurrent; },
         [&rt]() { return rt.currentSettingsJson; },
         [&rt]() { return rt.connected; },
@@ -131,6 +169,7 @@ static WifiV1ProfileApiService::Runtime makeRuntime(FakeRuntime& rt) {
 void setUp() {
     mockMillis = 1000;
     mockMicros = 1000000;
+    mock_reset_heap_caps();
 }
 
 void tearDown() {}
@@ -141,6 +180,7 @@ void test_profiles_list_includes_loaded_profiles() {
     rt.listNames = {"A", "B"};
     rt.storedProfiles.push_back({"A", "desc-a", true, "{\"name\":\"A\"}"});
 
+    mock_reset_heap_caps_tracking();
     WifiV1ProfileApiService::handleApiProfilesList(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
@@ -148,6 +188,7 @@ void test_profiles_list_includes_loaded_profiles() {
     TEST_ASSERT_FALSE(responseContains(server, "\"name\":\"B\""));
     TEST_ASSERT_EQUAL_INT(1, rt.listCalls);
     TEST_ASSERT_EQUAL_INT(2, rt.loadSummaryCalls);
+    assertWifiJsonAllocationsReleased();
 }
 
 void test_profile_get_missing_name_returns_400() {
@@ -233,6 +274,7 @@ void test_profile_save_success_calls_save_and_backup() {
     FakeRuntime rt;
     server.setArg("plain", "{\"name\":\"RoadTrip\",\"description\":\"desc\",\"displayOn\":false,\"settings\":{\"byte0\":7}}");
 
+    mock_reset_heap_caps_tracking();
     WifiV1ProfileApiService::handleApiProfileSave(
         server,
         makeRuntime(rt),
@@ -246,6 +288,7 @@ void test_profile_save_success_calls_save_and_backup() {
     TEST_ASSERT_EQUAL_STRING("desc", rt.lastSaveDescription.c_str());
     TEST_ASSERT_FALSE(rt.lastSaveDisplayOn);
     TEST_ASSERT_EQUAL_UINT8(7, rt.lastSaveBytes[0]);
+    assertWifiJsonAllocationsReleased();
 }
 
 void test_profile_save_failure_returns_500_with_error() {
@@ -271,6 +314,7 @@ void test_profile_delete_success_calls_backup() {
     rt.deleteResult = true;
     server.setArg("plain", "{\"name\":\"RoadTrip\"}");
 
+    mock_reset_heap_caps_tracking();
     WifiV1ProfileApiService::handleApiProfileDelete(
         server,
         makeRuntime(rt),
@@ -280,6 +324,7 @@ void test_profile_delete_success_calls_backup() {
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
     TEST_ASSERT_EQUAL_INT(1, rt.deleteCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.backupCalls);
+    assertWifiJsonAllocationsReleased();
 }
 
 void test_profile_delete_not_found_returns_404() {
@@ -318,6 +363,7 @@ void test_current_settings_available_embeds_settings_json() {
     rt.hasCurrent = true;
     rt.currentSettingsJson = "{\"xBand\":true,\"bytes\":[1,2,3,4,5,6]}";
 
+    mock_reset_heap_caps_tracking();
     WifiV1ProfileApiService::handleApiCurrentSettings(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
@@ -325,6 +371,31 @@ void test_current_settings_available_embeds_settings_json() {
     TEST_ASSERT_TRUE(responseContains(server, "\"available\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"settings\":{\"xBand\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"bytes\":[1,2,3,4,5,6]"));
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(2u, g_mock_heap_caps_malloc_calls);
+    assertWifiJsonAllocationsReleased();
+}
+
+void test_api_settings_push_raw_bytes_success_uses_wifi_json_allocator() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.connected = true;
+    rt.writeUserBytesResult = true;
+    server.setArg("plain", "{\"bytes\":[1,2,3,4,5,6],\"displayOn\":false}");
+
+    mock_reset_heap_caps_tracking();
+    WifiV1ProfileApiService::handleApiSettingsPush(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_EQUAL_INT(1, rt.writeUserBytesCalls);
+    TEST_ASSERT_EQUAL_UINT8(1, rt.lastWrittenBytes[0]);
+    TEST_ASSERT_EQUAL_UINT8(6, rt.lastWrittenBytes[5]);
+    TEST_ASSERT_EQUAL_INT(1, rt.setDisplayOnCalls);
+    TEST_ASSERT_FALSE(rt.lastSetDisplayOn);
+    assertWifiJsonAllocationsReleased();
 }
 
 void test_api_settings_pull_rate_limited_short_circuits() {
@@ -368,6 +439,7 @@ int main() {
     RUN_TEST(test_current_settings_unavailable);
     RUN_TEST(test_current_settings_available_embeds_settings_json);
     RUN_TEST(test_api_settings_pull_rate_limited_short_circuits);
+    RUN_TEST(test_api_settings_push_raw_bytes_success_uses_wifi_json_allocator);
     RUN_TEST(test_api_settings_push_rate_limited_short_circuits);
     return UNITY_END();
 }
