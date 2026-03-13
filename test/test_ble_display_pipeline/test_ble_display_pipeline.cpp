@@ -142,10 +142,72 @@ void test_ble_queue_coalesces_parsed_events_per_process_cycle() {
     TEST_ASSERT_TRUE(bleQueue.consumeParsedFlag());
 }
 
+void test_ble_queue_resyncs_after_corrupt_prefix_in_single_notify() {
+    const std::vector<uint8_t> payload = {
+        109, 0x00, 0x07, 0x34, 0x34, 0x00, 0x00, 0x52
+    };
+    const std::vector<uint8_t> packet = makePacket(PACKET_ID_DISPLAY_DATA, payload);
+    std::vector<uint8_t> bytes = {0x00, 0x55, 0x99, 0xAB};
+    bytes.insert(bytes.end(), packet.begin(), packet.end());
+
+    mockMillis = 4321;
+    mockMicros = 4321 * 1000UL;
+    bleQueue.onNotify(bytes.data(), bytes.size(), 0xB2CE);
+    bleQueue.process();
+
+    const DisplayState& state = parser.getDisplayState();
+    TEST_ASSERT_EQUAL_UINT8(BAND_K, state.activeBands);
+    TEST_ASSERT_EQUAL_UINT8(DIR_FRONT, state.arrows);
+    TEST_ASSERT_EQUAL_UINT8(3, state.signalBars);
+    TEST_ASSERT_TRUE(bleQueue.consumeParsedFlag());
+    TEST_ASSERT_EQUAL_UINT32(4321, bleQueue.getLastParsedTimestamp());
+    TEST_ASSERT_EQUAL(1, power.onV1DataReceivedCalls);
+
+    SystemEvent event{};
+    TEST_ASSERT_TRUE(eventBus.consumeByType(SystemEventType::BLE_FRAME_PARSED, event));
+    TEST_ASSERT_FALSE(eventBus.consumeByType(SystemEventType::BLE_FRAME_PARSED, event));
+    TEST_ASSERT_EQUAL_UINT32(4321, event.tsMs);
+    TEST_ASSERT_EQUAL_UINT16(PACKET_ID_DISPLAY_DATA, event.detail);
+}
+
+void test_ble_queue_recovers_after_buffer_without_start_marker() {
+    const std::vector<uint8_t> payload = {
+        0x3F, 0x00, 0x01, 0x02, 0x02, 0x00, 0x00, 0x41
+    };
+    const std::vector<uint8_t> packet = makePacket(PACKET_ID_DISPLAY_DATA, payload);
+    const std::vector<uint8_t> garbage = {0x01, 0x02, 0x03, 0x04, 0x05};
+
+    mockMillis = 1500;
+    mockMicros = 1500 * 1000UL;
+    bleQueue.onNotify(garbage.data(), garbage.size(), 0xB2CE);
+    bleQueue.process();
+
+    SystemEvent event{};
+    TEST_ASSERT_FALSE(bleQueue.consumeParsedFlag());
+    TEST_ASSERT_FALSE(eventBus.consumeByType(SystemEventType::BLE_FRAME_PARSED, event));
+    TEST_ASSERT_EQUAL_UINT32(0, bleQueue.getLastParsedTimestamp());
+    TEST_ASSERT_EQUAL(0, power.onV1DataReceivedCalls);
+
+    mockMillis = 2600;
+    mockMicros = 2600 * 1000UL;
+    bleQueue.onNotify(packet.data(), packet.size(), 0xB2CE);
+    bleQueue.process();
+
+    TEST_ASSERT_TRUE(bleQueue.consumeParsedFlag());
+    TEST_ASSERT_EQUAL_UINT32(2600, bleQueue.getLastParsedTimestamp());
+    TEST_ASSERT_EQUAL(1, power.onV1DataReceivedCalls);
+    TEST_ASSERT_TRUE(eventBus.consumeByType(SystemEventType::BLE_FRAME_PARSED, event));
+    TEST_ASSERT_FALSE(eventBus.consumeByType(SystemEventType::BLE_FRAME_PARSED, event));
+    TEST_ASSERT_EQUAL_UINT32(2600, event.tsMs);
+    TEST_ASSERT_EQUAL_UINT16(PACKET_ID_DISPLAY_DATA, event.detail);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_ble_queue_parses_display_packet_into_display_state);
     RUN_TEST(test_ble_queue_publishes_parsed_event_to_bus);
     RUN_TEST(test_ble_queue_coalesces_parsed_events_per_process_cycle);
+    RUN_TEST(test_ble_queue_resyncs_after_corrupt_prefix_in_single_notify);
+    RUN_TEST(test_ble_queue_recovers_after_buffer_without_start_marker);
     return UNITY_END();
 }

@@ -276,17 +276,17 @@ void BleQueueModule::process() {
         availableBytes = rxBuffer.size() - rxReadPos;
         if (availableBytes == 0) break;
 
-        auto dataBegin = rxBuffer.begin() + rxReadPos;
-        auto startIt = (rxBuffer[rxReadPos] == ESP_PACKET_START)
+        const uint8_t* dataBegin = rxBuffer.data() + rxReadPos;
+        const uint8_t* startPtr = (rxBuffer[rxReadPos] == ESP_PACKET_START)
             ? dataBegin
-            : std::find(dataBegin, rxBuffer.end(), ESP_PACKET_START);
-        if (startIt == rxBuffer.end()) {
+            : static_cast<const uint8_t*>(memchr(dataBegin, ESP_PACKET_START, availableBytes));
+        if (startPtr == nullptr) {
             rxBuffer.clear();
             rxReadPos = 0;
             break;
         }
-        if (startIt != dataBegin) {
-            rxReadPos = static_cast<size_t>(startIt - rxBuffer.begin());
+        if (startPtr != dataBegin) {
+            rxReadPos = static_cast<size_t>(startPtr - rxBuffer.data());
             continue;
         }
         if (availableBytes < MIN_HEADER_SIZE) {
