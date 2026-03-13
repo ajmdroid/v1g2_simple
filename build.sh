@@ -15,6 +15,51 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+RESET_SKIP_REASON=""
+
+reset_device_via_rts() {
+    local port="$1"
+
+    if [ -z "$port" ]; then
+        RESET_SKIP_REASON="no serial port available for post-upload reset"
+        return 1
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        RESET_SKIP_REASON="python3 not found; skipping post-upload reset"
+        return 1
+    fi
+
+    if ! python3 - <<'PY' >/dev/null 2>&1
+import importlib.util
+import sys
+
+raise SystemExit(0 if importlib.util.find_spec("serial") else 1)
+PY
+    then
+        RESET_SKIP_REASON="pyserial not installed for python3; skipping post-upload reset"
+        return 1
+    fi
+
+    if ! python3 - "$port" <<'PY' >/dev/null 2>&1
+import serial
+import sys
+
+port = sys.argv[1]
+ser = serial.Serial(port, 115200)
+ser.setRTS(True)
+ser.setRTS(False)
+ser.close()
+PY
+    then
+        RESET_SKIP_REASON="failed to toggle RTS on $port"
+        return 1
+    fi
+
+    RESET_SKIP_REASON=""
+    return 0
+}
+
 # Detect Windows and set PIO command accordingly
 # Check multiple indicators: OSTYPE, WINDIR, OS env var, or /c/ path exists
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || \
@@ -161,23 +206,11 @@ if [ "$SKIP_WEB" = false ]; then
     
     cd interface
     npm run build
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}❌ Web build failed!${NC}"
-        exit 1
-    fi
-    
     echo -e "${GREEN}✅ Web interface built${NC}"
     
     # Deploy to data/
     echo -e "${YELLOW}📁 Deploying to data/ folder...${NC}"
     npm run deploy
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}❌ Web deploy failed!${NC}"
-        exit 1
-    fi
-    
     cd ..
     echo -e "${GREEN}✅ Web files deployed to data/${NC}"
     
@@ -220,12 +253,6 @@ fi
 # Step 3: Build firmware
 echo -e "${YELLOW}🔧 Building firmware (env: $PIO_ENV)...${NC}"
 "$PIO_CMD" run $PIO_RUN_ARGS
-
-if [ $? -ne 0 ]; then
-    echo -e "${RED}❌ Firmware build failed!${NC}"
-    exit 1
-fi
-
 echo -e "${GREEN}✅ Firmware built successfully${NC}"
 
 # Show build size
@@ -237,31 +264,12 @@ echo ""
 if [ "$RUN_TESTS" = true ]; then
     echo -e "${YELLOW}🧪 Running unit tests...${NC}"
     "$PIO_CMD" test -e native
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}❌ Tests failed!${NC}"
-        echo -e "${YELLOW}💡 Tip: Install gcc/g++ if tests fail to compile${NC}"
-        if [ "$UPLOAD_FS" = true ] || [ "$UPLOAD_FW" = true ]; then
-            echo -e "${RED}   Aborting upload due to test failure.${NC}"
-            exit 1
-        fi
-    else
-        echo -e "${GREEN}✅ All tests passed${NC}"
-    fi
+    echo -e "${GREEN}✅ All tests passed${NC}"
     
     # Also check firmware compilation (catches platform-specific issues)
     echo -e "${YELLOW}🔍 Checking firmware compilation...${NC}"
     "$PIO_CMD" run $PIO_RUN_ARGS --target buildprog
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}❌ Firmware compilation check failed!${NC}"
-        if [ "$UPLOAD_FS" = true ] || [ "$UPLOAD_FW" = true ]; then
-            echo -e "${RED}   Aborting upload due to compilation failure.${NC}"
-            exit 1
-        fi
-    else
-        echo -e "${GREEN}✅ Firmware compiles without errors${NC}"
-    fi
+    echo -e "${GREEN}✅ Firmware compiles without errors${NC}"
     echo ""
 fi
 
@@ -272,12 +280,6 @@ if [ "$UPLOAD_FS" = true ]; then
     echo -e "${YELLOW}   Confirm SD is mounted in boot logs before relying on profile persistence.${NC}"
     echo -e "${YELLOW}📤 Uploading filesystem (LittleFS)...${NC}"
     "$PIO_CMD" run $PIO_RUN_ARGS -t uploadfs
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}❌ Filesystem upload failed!${NC}"
-        exit 1
-    fi
-    
     echo -e "${GREEN}✅ Filesystem uploaded${NC}"
     echo ""
 fi
@@ -286,28 +288,21 @@ fi
 if [ "$UPLOAD_FW" = true ]; then
     echo -e "${YELLOW}📤 Uploading firmware...${NC}"
     "$PIO_CMD" run $PIO_RUN_ARGS -t upload
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}❌ Firmware upload failed!${NC}"
-        exit 1
-    fi
-    
     echo -e "${GREEN}✅ Firmware uploaded${NC}"
     
     # Extra reset after upload to ensure clean BLE state
     echo -e "${YELLOW}🔄 Resetting device for clean start...${NC}"
     sleep 1
-    # Use esptool to hard reset via RTS
-    if [ -n "$UPLOAD_PORT" ]; then
-        python3 -c "import serial; s=serial.Serial('$UPLOAD_PORT', 115200); s.setRTS(True); s.setRTS(False); s.close()" 2>/dev/null || true
-    else
+    RESET_PORT="$UPLOAD_PORT"
+    if [ -z "$RESET_PORT" ]; then
         # Auto-detect port like PlatformIO does
-        PORT=$(ls /dev/cu.usbmodem* 2>/dev/null | head -1)
-        if [ -n "$PORT" ]; then
-            python3 -c "import serial; s=serial.Serial('$PORT', 115200); s.setRTS(True); s.setRTS(False); s.close()" 2>/dev/null || true
-        fi
+        RESET_PORT=$(ls /dev/cu.usbmodem* 2>/dev/null | head -1)
     fi
-    echo -e "${GREEN}✅ Device reset${NC}"
+    if reset_device_via_rts "$RESET_PORT"; then
+        echo -e "${GREEN}✅ Device reset${NC}"
+    else
+        echo -e "${YELLOW}⚠️  ${RESET_SKIP_REASON}${NC}"
+    fi
     echo ""
 fi
 

@@ -77,4 +77,6 @@ docs/Cam_PLAN.md
 docs/OBD_MODULE_PLAN.md
 docs/ROAD_MAP_FORMAT.md
 docs/TEST_FAILURE_POINTS.md
-.github/instructions/
+.github/instructions/*
+!.github/instructions/
+!.github/instructions/v1_simple.instructions.md
