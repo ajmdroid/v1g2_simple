@@ -90,6 +90,7 @@ private:
     bool lastDebugCameraRenderedBogeyDot_ = false;
     uint32_t lastDebugCameraRenderMs_ = 0;
     bool debugCameraFrameValid_ = false;
+    bool cameraVoiceAnnounced_ = false;
     static constexpr uint32_t DEBUG_CAMERA_REDRAW_MIN_MS = 1000;
 
     void recordDisplayTiming(const char* label, unsigned long startUs, unsigned long endUs);

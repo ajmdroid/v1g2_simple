@@ -42,6 +42,7 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     lastDebugCameraRenderedBogeyDot_ = false;
     lastDebugCameraRenderMs_ = 0;
     debugCameraFrameValid_ = false;
+    cameraVoiceAnnounced_ = false;
     PERF_SET(cameraDisplayActive, 0);
     PERF_SET(cameraDebugOverrideActive, 0);
 }
@@ -189,6 +190,19 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
         PERF_SET(cameraDisplayActive, 1);
         PERF_INC(cameraDisplayFrames);
         perfRecordCameraDisplayUs(endUs - startUs);
+        const bool cameraVoiceAllowed =
+            settings &&
+            ble &&
+            settings->get().voiceAlertMode != VOICE_MODE_DISABLED &&
+            (!settings->get().muteVoiceIfVolZero || state.mainVolume != 0) &&
+            !ble->isProxyClientConnected();
+        if (cameraVoiceAllowed && !cameraVoiceAnnounced_) {
+            const CameraAlertVoiceResult voiceResult =
+                play_camera_alert_voice(CameraType::ALPR, AlertDirection::AHEAD);
+            if (voiceResult != CameraAlertVoiceResult::BUSY) {
+                cameraVoiceAnnounced_ = true;
+            }
+        }
         cameraAlertActive_ = true;
         lastRenderedOwner_ = RenderOwner::Camera;
         return;
@@ -284,6 +298,9 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
     // continue progressing in the background.  Display ownership is unchanged:
     // live radar alerts still own screen/audio when hasAlerts is true.
     processCameraState(nowMs);
+    if (!cameraModule || !cameraModule->isDisplayActive()) {
+        cameraVoiceAnnounced_ = false;
+    }
 
     if (nowMs - lastDisplayDraw < DISPLAY_DRAW_MIN_MS) {
         PERF_INC(displaySkips);

@@ -318,6 +318,18 @@ void play_threat_escalation(AlertBand /*band*/,
                             uint8_t /*behind*/,
                             uint8_t /*side*/) {}
 void play_band_only(AlertBand /*band*/) {}
+static int cameraAlertVoiceCalls = 0;
+static CameraType lastCameraAlertVoiceType = CameraType::INVALID;
+static AlertDirection lastCameraAlertVoiceDirection = AlertDirection::AHEAD;
+static CameraAlertVoiceResult nextCameraAlertVoiceResult = CameraAlertVoiceResult::STARTED;
+CameraAlertVoiceResult play_camera_alert_voice(CameraType type, AlertDirection direction) {
+    lastCameraAlertVoiceType = type;
+    lastCameraAlertVoiceDirection = direction;
+    if (nextCameraAlertVoiceResult == CameraAlertVoiceResult::STARTED) {
+        cameraAlertVoiceCalls++;
+    }
+    return nextCameraAlertVoiceResult;
+}
 void audio_init_sd() {}
 void audio_init_buffers() {}
 void audio_process_amp_timeout() {}
@@ -365,6 +377,10 @@ void setUp() {
     perfCounters.reset();
     perfExtended.reset();
     cameraProcessCalls = 0;
+    cameraAlertVoiceCalls = 0;
+    lastCameraAlertVoiceType = CameraType::INVALID;
+    lastCameraAlertVoiceDirection = AlertDirection::AHEAD;
+    nextCameraAlertVoiceResult = CameraAlertVoiceResult::STARTED;
     beginModule();
 }
 
@@ -459,6 +475,7 @@ void test_camera_process_called_while_radar_active() {
     // But camera should NOT own the display
     TEST_ASSERT_FALSE(module.isCameraAlertActive());
     TEST_ASSERT_EQUAL(0, display.updateCameraAlertCalls);
+    TEST_ASSERT_EQUAL(0, cameraAlertVoiceCalls);
 }
 
 void test_camera_no_display_while_radar_active() {
@@ -476,6 +493,7 @@ void test_camera_no_display_while_radar_active() {
     TEST_ASSERT_FALSE(module.isCameraAlertActive());
     TEST_ASSERT_EQUAL(0, display.updateCameraAlertCalls);
     TEST_ASSERT_EQUAL(DisplayMode::LIVE, displayMode);
+    TEST_ASSERT_EQUAL(0, cameraAlertVoiceCalls);
 }
 
 void test_camera_resumes_after_radar_clears() {
@@ -489,6 +507,7 @@ void test_camera_resumes_after_radar_clears() {
     module.handleParsed(1000, false);
     TEST_ASSERT_FALSE(module.isCameraAlertActive());
     TEST_ASSERT_EQUAL(0, display.updateCameraAlertCalls);
+    TEST_ASSERT_EQUAL(0, cameraAlertVoiceCalls);
 
     // Now: radar clears — camera should render
     parser.setAlerts({});
@@ -498,6 +517,9 @@ void test_camera_resumes_after_radar_clears() {
     TEST_ASSERT_TRUE(module.isCameraAlertActive());
     TEST_ASSERT_EQUAL(1, display.updateCameraAlertCalls);
     TEST_ASSERT_EQUAL(DisplayMode::IDLE, displayMode);
+    TEST_ASSERT_EQUAL(1, cameraAlertVoiceCalls);
+    TEST_ASSERT_EQUAL(static_cast<int>(CameraType::ALPR), static_cast<int>(lastCameraAlertVoiceType));
+    TEST_ASSERT_EQUAL(static_cast<int>(AlertDirection::AHEAD), static_cast<int>(lastCameraAlertVoiceDirection));
 }
 
 void test_radar_display_unchanged_with_camera_fix() {
@@ -512,6 +534,62 @@ void test_radar_display_unchanged_with_camera_fix() {
     TEST_ASSERT_EQUAL(1, display.updateCalls);
     TEST_ASSERT_EQUAL(0, display.updateCameraAlertCalls);
     TEST_ASSERT_FALSE(module.isCameraAlertActive());
+    TEST_ASSERT_EQUAL(0, cameraAlertVoiceCalls);
+}
+
+void test_camera_voice_announced_once_per_active_payload() {
+    cameraModule.setDisplayPayloadForTest(CameraAlertDisplayPayload{true, 5000});
+
+    mockMillis = 1000;
+    mockMicros = 1000 * 1000UL;
+    module.handleParsed(1000, false);
+    TEST_ASSERT_EQUAL(1, display.updateCameraAlertCalls);
+    TEST_ASSERT_EQUAL(1, cameraAlertVoiceCalls);
+
+    mockMillis = 1030;
+    mockMicros = 1030 * 1000UL;
+    module.handleParsed(1030, false);
+    TEST_ASSERT_EQUAL(2, display.updateCameraAlertCalls);
+    TEST_ASSERT_EQUAL(1, cameraAlertVoiceCalls);
+}
+
+void test_camera_voice_retries_after_busy_audio_path() {
+    cameraModule.setDisplayPayloadForTest(CameraAlertDisplayPayload{true, 5000});
+    nextCameraAlertVoiceResult = CameraAlertVoiceResult::BUSY;
+
+    mockMillis = 1000;
+    mockMicros = 1000 * 1000UL;
+    module.handleParsed(1000, false);
+    TEST_ASSERT_EQUAL(1, display.updateCameraAlertCalls);
+    TEST_ASSERT_EQUAL(0, cameraAlertVoiceCalls);
+
+    nextCameraAlertVoiceResult = CameraAlertVoiceResult::STARTED;
+    mockMillis = 1030;
+    mockMicros = 1030 * 1000UL;
+    module.handleParsed(1030, false);
+    TEST_ASSERT_EQUAL(2, display.updateCameraAlertCalls);
+    TEST_ASSERT_EQUAL(1, cameraAlertVoiceCalls);
+}
+
+void test_camera_voice_resets_after_payload_clears() {
+    cameraModule.setDisplayPayloadForTest(CameraAlertDisplayPayload{true, 5000});
+
+    mockMillis = 1000;
+    mockMicros = 1000 * 1000UL;
+    module.handleParsed(1000, false);
+    TEST_ASSERT_EQUAL(1, cameraAlertVoiceCalls);
+
+    cameraModule.setDisplayPayloadForTest(CameraAlertDisplayPayload{false, 0});
+    mockMillis = 1030;
+    mockMicros = 1030 * 1000UL;
+    module.handleParsed(1030, false);
+    TEST_ASSERT_EQUAL(1, cameraAlertVoiceCalls);
+
+    cameraModule.setDisplayPayloadForTest(CameraAlertDisplayPayload{true, 4500});
+    mockMillis = 1060;
+    mockMicros = 1060 * 1000UL;
+    module.handleParsed(1060, false);
+    TEST_ASSERT_EQUAL(2, cameraAlertVoiceCalls);
 }
 
 int main() {
@@ -523,5 +601,8 @@ int main() {
     RUN_TEST(test_camera_no_display_while_radar_active);
     RUN_TEST(test_camera_resumes_after_radar_clears);
     RUN_TEST(test_radar_display_unchanged_with_camera_fix);
+    RUN_TEST(test_camera_voice_announced_once_per_active_payload);
+    RUN_TEST(test_camera_voice_retries_after_busy_audio_path);
+    RUN_TEST(test_camera_voice_resets_after_payload_clears);
     return UNITY_END();
 }

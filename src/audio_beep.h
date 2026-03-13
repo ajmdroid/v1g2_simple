@@ -20,6 +20,12 @@ enum class AlertDirection : uint8_t {
     SIDE = 2
 };
 
+enum class CameraAlertVoiceResult : uint8_t {
+    STARTED = 0,
+    BUSY,
+    UNAVAILABLE
+};
+
 // Set audio volume (0-100%)
 void audio_set_volume(uint8_t volumePercent);
 
@@ -61,6 +67,12 @@ void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection dir
 
 // Play band-only announcement (e.g., "Ka", "K", "X", "Laser")
 void play_band_only(AlertBand band);
+
+// Play camera alert announcement from SD clips (for ALPR: "A. L. P. R. ahead").
+// Returns BUSY when another clip is already playing so the caller can retry later.
+CameraAlertVoiceResult play_camera_alert_voice(
+    CameraType type,
+    AlertDirection direction = AlertDirection::AHEAD);
 
 // Initialize SD audio (call after storage manager is ready)
 void audio_init_sd();

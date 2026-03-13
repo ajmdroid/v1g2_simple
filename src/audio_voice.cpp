@@ -393,6 +393,50 @@ void play_band_only(AlertBand band) {
     start_sd_audio_task(params);
 }
 
+CameraAlertVoiceResult play_camera_alert_voice(CameraType type, AlertDirection direction) {
+    AUDIO_LOGF("[AUDIO] play_camera_alert_voice() type=%d dir=%d\n", (int)type, (int)direction);
+
+    if (audio_playing.load()) {
+        AUDIO_LOGLN("[AUDIO] Already playing, skipping camera alert");
+        PERF_INC(audioPlayBusy);
+        return CameraAlertVoiceResult::BUSY;
+    }
+
+    if (!sd_audio_ready) {
+        AUDIO_LOGLN("[AUDIO] SD audio not ready, skipping camera alert");
+        return CameraAlertVoiceResult::UNAVAILABLE;
+    }
+
+    SDAudioTaskParams params;
+    params.numClips = 0;
+
+    const char* cameraFile = nullptr;
+    switch (type) {
+        case CameraType::ALPR:
+            cameraFile = "cam_alpr.mul";
+            break;
+        case CameraType::INVALID:
+        default:
+            return CameraAlertVoiceResult::UNAVAILABLE;
+    }
+
+    snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, cameraFile);
+
+    const char* dirFile = nullptr;
+    switch (direction) {
+        case AlertDirection::AHEAD:  dirFile = "dir_ahead.mul"; break;
+        case AlertDirection::BEHIND: dirFile = "dir_behind.mul"; break;
+        case AlertDirection::SIDE:   dirFile = "dir_side.mul"; break;
+    }
+    if (dirFile) {
+        snprintf(params.filePaths[params.numClips++], 48, "%s/%s", AUDIO_PATH, dirFile);
+    }
+
+    return start_sd_audio_task(params)
+        ? CameraAlertVoiceResult::STARTED
+        : CameraAlertVoiceResult::BUSY;
+}
+
 // Play direction-only announcement (used when same alert changes direction)
 // Says "ahead", "behind", or "side", optionally with bogey count if > 1
 void play_direction_only(AlertDirection direction, uint8_t bogeyCount) {

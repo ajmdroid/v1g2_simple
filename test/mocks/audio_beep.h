@@ -16,6 +16,12 @@ enum class AlertDirection : uint8_t {
     SIDE = 2
 };
 
+enum class CameraAlertVoiceResult : uint8_t {
+    STARTED = 0,
+    BUSY,
+    UNAVAILABLE
+};
+
 void audio_set_volume(uint8_t volumePercent);
 void play_test_voice();
 void play_vol0_beep();
@@ -27,6 +33,9 @@ void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t 
 void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection direction,
                             uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);
 void play_band_only(AlertBand band);
+CameraAlertVoiceResult play_camera_alert_voice(
+    CameraType type,
+    AlertDirection direction = AlertDirection::AHEAD);
 void audio_init_sd();
 void audio_init_buffers();
 void audio_process_amp_timeout();
