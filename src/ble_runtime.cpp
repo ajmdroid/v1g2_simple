@@ -13,6 +13,8 @@
 #include "../include/config.h"
 #include "../include/ble_internals.h"
 
+extern int backupBondsToSD();
+
 void V1BLEClient::process() {
     // Handle deferred BLE callback updates without blocking in callbacks
     if (pendingConnectStateUpdate) {
@@ -30,6 +32,7 @@ void V1BLEClient::process() {
             connected = false;
             connectInProgress = false;
             connectStartMs = 0;
+            connectedFollowupStep = ConnectedFollowupStep::NONE;
             proxyClientConnected = false;
             pRemoteService = nullptr;
             pDisplayDataChar = nullptr;
@@ -137,6 +140,9 @@ void V1BLEClient::process() {
         if (processPhoneCommandQueue() == 0) {
             break;
         }
+    }
+    if (connectedFollowupStep != ConnectedFollowupStep::NONE && isConnected()) {
+        processConnectedFollowup();
     }
 
     // Enforce boot-lifetime proxy no-client timeout.
@@ -391,6 +397,50 @@ void V1BLEClient::process() {
                 setBLEState(BLEState::DISCONNECTED, "backoff expired");
             }
             break;
+        }
+    }
+}
+
+void V1BLEClient::processConnectedFollowup() {
+    switch (connectedFollowupStep) {
+        case ConnectedFollowupStep::NONE:
+            return;
+        case ConnectedFollowupStep::REQUEST_ALERT_DATA:
+            if (!requestAlertData()) {
+                Serial.println("[BLE] Failed to request alert data (non-critical)");
+            }
+            connectedFollowupStep = ConnectedFollowupStep::REQUEST_VERSION;
+            return;
+        case ConnectedFollowupStep::REQUEST_VERSION:
+            if (!requestVersion()) {
+                Serial.println("[BLE] Failed to request version (non-critical)");
+            }
+            connectedFollowupStep = ConnectedFollowupStep::NOTIFY_CALLBACK;
+            return;
+        case ConnectedFollowupStep::NOTIFY_CALLBACK:
+            if (connectCallback) {
+                connectCallback();
+            }
+            connectedFollowupStep = ConnectedFollowupStep::SCHEDULE_PROXY_ADVERTISING;
+            return;
+        case ConnectedFollowupStep::SCHEDULE_PROXY_ADVERTISING:
+            if (proxyEnabled && proxyServerInitialized) {
+                proxyAdvertisingStartMs = millis() + PROXY_STABILIZE_MS;
+                proxyAdvertisingStartReasonCode =
+                    static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartConnected);
+            }
+            connectedFollowupStep = ConnectedFollowupStep::BACKUP_BONDS;
+            return;
+        case ConnectedFollowupStep::BACKUP_BONDS: {
+            const uint8_t currentBondCount = static_cast<uint8_t>(NimBLEDevice::getNumBonds());
+            if (lastBondBackupCount != currentBondCount) {
+                const int backed = backupBondsToSD();
+                if (backed >= 0) {
+                    lastBondBackupCount = currentBondCount;
+                }
+            }
+            connectedFollowupStep = ConnectedFollowupStep::NONE;
+            return;
         }
     }
 }

@@ -58,6 +58,10 @@ inline const char* bleStateToString(BLEState state) {
     }
 }
 
+inline uint8_t bleStateToCode(BLEState state) {
+    return static_cast<uint8_t>(state);
+}
+
 // sendCommand result codes for proper retry semantics
 enum class SendResult {
     SENT,       // Command successfully sent
@@ -84,6 +88,21 @@ struct ProxyMetrics {
 
 class V1BLEClient {
 public:
+    enum class SubscribeStepCode : uint8_t {
+        GET_SERVICE = 0,
+        GET_DISPLAY_CHAR = 1,
+        GET_COMMAND_CHAR = 2,
+        GET_COMMAND_LONG = 3,
+        SUBSCRIBE_DISPLAY = 4,
+        WRITE_DISPLAY_CCCD = 5,
+        GET_DISPLAY_LONG = 6,
+        SUBSCRIBE_LONG = 7,
+        WRITE_LONG_CCCD = 8,
+        REQUEST_ALERT_DATA = 9,
+        REQUEST_VERSION = 10,
+        COMPLETE = 11,
+    };
+
     V1BLEClient();
     ~V1BLEClient();
     
@@ -190,6 +209,14 @@ public:
     
     // Get current BLE state (for diagnostics)
     BLEState getBLEState() const { return bleState; }
+    uint8_t getBLEStateCode() const { return bleStateToCode(bleState); }
+    bool isConnectInProgress() const { return connectInProgress; }
+    bool isAsyncConnectPending() const { return asyncConnectPending.load(std::memory_order_relaxed); }
+    bool hasPendingDisconnectCleanup() const {
+        return pendingDisconnectCleanup.load(std::memory_order_relaxed);
+    }
+    uint8_t getSubscribeStepCode() const { return static_cast<uint8_t>(subscribeStep); }
+    const char* getSubscribeStepName() const;
     
     // Get the connected V1's BLE address
     NimBLEAddress getConnectedAddress() const;
@@ -394,18 +421,28 @@ private:
         REQUEST_VERSION,       // Send version request
         COMPLETE               // All steps done
     };
+    enum class ConnectedFollowupStep {
+        NONE,
+        REQUEST_ALERT_DATA,
+        REQUEST_VERSION,
+        NOTIFY_CALLBACK,
+        SCHEDULE_PROXY_ADVERTISING,
+        BACKUP_BONDS,
+    };
     SubscribeStep subscribeStep = SubscribeStep::GET_SERVICE;
+    ConnectedFollowupStep connectedFollowupStep = ConnectedFollowupStep::NONE;
     uint32_t subscribeStepStartUs = 0;    // When current step started
     uint32_t subscribeYieldUntilMs = 0;   // When to resume from SUBSCRIBE_YIELD
     static constexpr uint32_t SUBSCRIBE_STEP_BUDGET_US = 50000;  // 50ms per step max
     static constexpr uint32_t SUBSCRIBE_YIELD_MS = 5;            // 5ms yield between steps
-    
+
     // Async connect step functions
     bool startAsyncConnect();         // Initiate async connect
     void processConnectingWait();     // Handle CONNECTING_WAIT state
     void processDiscovering();        // Handle DISCOVERING state  
     void processSubscribing();        // Handle SUBSCRIBING state (step machine)
     void processSubscribeYield();     // Handle SUBSCRIBE_YIELD state
+    void processConnectedFollowup();  // Spread post-connect work across loop turns
     bool executeSubscribeStep();      // Execute one subscribe step, return true if done
     
     // Called from connectToServer() after successful sync connect

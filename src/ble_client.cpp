@@ -306,6 +306,37 @@ V1BLEClient::~V1BLEClient() {
     releaseProxyQueues();
 }
 
+const char* V1BLEClient::getSubscribeStepName() const {
+    switch (subscribeStep) {
+        case SubscribeStep::GET_SERVICE:
+            return "GET_SERVICE";
+        case SubscribeStep::GET_DISPLAY_CHAR:
+            return "GET_DISPLAY_CHAR";
+        case SubscribeStep::GET_COMMAND_CHAR:
+            return "GET_COMMAND_CHAR";
+        case SubscribeStep::GET_COMMAND_LONG:
+            return "GET_COMMAND_LONG";
+        case SubscribeStep::SUBSCRIBE_DISPLAY:
+            return "SUBSCRIBE_DISPLAY";
+        case SubscribeStep::WRITE_DISPLAY_CCCD:
+            return "WRITE_DISPLAY_CCCD";
+        case SubscribeStep::GET_DISPLAY_LONG:
+            return "GET_DISPLAY_LONG";
+        case SubscribeStep::SUBSCRIBE_LONG:
+            return "SUBSCRIBE_LONG";
+        case SubscribeStep::WRITE_LONG_CCCD:
+            return "WRITE_LONG_CCCD";
+        case SubscribeStep::REQUEST_ALERT_DATA:
+            return "REQUEST_ALERT_DATA";
+        case SubscribeStep::REQUEST_VERSION:
+            return "REQUEST_VERSION";
+        case SubscribeStep::COMPLETE:
+            return "COMPLETE";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 // ==================== BLE State Machine ====================
 
 void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
@@ -389,6 +420,7 @@ void V1BLEClient::cleanupConnection() {
     phoneCmdPendingClear = true;
     
     connectInProgress = false;
+    connectedFollowupStep = ConnectedFollowupStep::NONE;
 }
 
 // Hard reset of BLE client stack - use after repeated failures

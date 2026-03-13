@@ -168,6 +168,7 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
             instancePtr->connected = false;
             instancePtr->connectInProgress = false;  // Clear connection guard
             instancePtr->connectStartMs = 0;  // Clear async connect timer
+            instancePtr->connectedFollowupStep = ConnectedFollowupStep::NONE;
             // Clear proxy client connection state too - can't proxy without V1 connection
             instancePtr->proxyClientConnected = false;
             // Do NOT clear pClient - we reuse it to prevent memory leaks
@@ -574,20 +575,16 @@ void V1BLEClient::processSubscribing() {
     
     if (done) {
         // All steps complete - success!
+        {
+            SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: subscribe complete
+            connected = true;
+        }
+        connectedFollowupStep = ConnectedFollowupStep::REQUEST_ALERT_DATA;
         perfRecordBleSubscribeUs(micros() - connectPhaseStartUs);
         connectInProgress = false;
         connectStartMs = 0;
         setBLEState(BLEState::CONNECTED, "subscribe complete");
         Serial.println("[BLE] OK");
-
-        // Keep SD bond backup fresh after successful connection
-        const uint8_t currentBondCount = static_cast<uint8_t>(NimBLEDevice::getNumBonds());
-        if (lastBondBackupCount != currentBondCount) {
-            const int backed = backupBondsToSD();
-            if (backed >= 0) {
-                lastBondBackupCount = currentBondCount;
-            }
-        }
         return;
     }
     
@@ -719,36 +716,11 @@ bool V1BLEClient::executeSubscribeStep() {
         }
         
         case SubscribeStep::REQUEST_ALERT_DATA: {
-            // Mark as connected before sending requests
-            {
-                SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: subscribe complete
-                connected = true;
-            }
-            
-            if (!requestAlertData()) {
-                Serial.println("[BLE] Failed to request alert data (non-critical)");
-            }
             subscribeStep = SubscribeStep::REQUEST_VERSION;
             return false;
         }
         
         case SubscribeStep::REQUEST_VERSION: {
-            if (!requestVersion()) {
-                Serial.println("[BLE] Failed to request version (non-critical)");
-            }
-            
-            // Notify user callback
-            if (connectCallback) {
-                connectCallback();
-            }
-            
-            // Schedule proxy advertising
-            if (proxyEnabled && proxyServerInitialized) {
-                proxyAdvertisingStartMs = millis() + PROXY_STABILIZE_MS;
-                proxyAdvertisingStartReasonCode =
-                    static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartConnected);
-            }
-            
             subscribeStep = SubscribeStep::COMPLETE;
             return true;  // All done!
         }
