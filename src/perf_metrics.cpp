@@ -8,6 +8,7 @@
 #include "time_service.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_observation_log.h"
+#include "modules/system/system_event_bus.h"
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
@@ -16,6 +17,7 @@
 // Global instances
 PerfCounters perfCounters;
 PerfExtendedMetrics perfExtended;
+extern SystemEventBus systemEventBus;
 
 #if PERF_METRICS
 PerfLatency perfLatency;
@@ -187,6 +189,8 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
 
     snapshot.rx = perfCounters.rxPackets.load(std::memory_order_relaxed);
     snapshot.qDrop = perfCounters.queueDrops.load(std::memory_order_relaxed);
+    snapshot.perfDrop = perfCounters.perfDrop.load(std::memory_order_relaxed);
+    snapshot.eventBusDrops = systemEventBus.getDropCount();
     snapshot.parseOk = perfCounters.parseSuccesses.load(std::memory_order_relaxed);
     snapshot.parseFail = perfCounters.parseFailures.load(std::memory_order_relaxed);
     snapshot.disc = perfCounters.disconnects.load(std::memory_order_relaxed);
@@ -279,6 +283,9 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.audioTaskFail = perfCounters.audioTaskFail.load(std::memory_order_relaxed);
     snapshot.sigObsQueueDrops = perfCounters.sigObsQueueDrops.load(std::memory_order_relaxed);
     snapshot.sigObsWriteFail = perfCounters.sigObsWriteFail.load(std::memory_order_relaxed);
+    snapshot.freeDmaMin = (perfExtended.minFreeDma == UINT32_MAX) ? freeDma : perfExtended.minFreeDma;
+    snapshot.largestDmaMin =
+        (perfExtended.minLargestDma == UINT32_MAX) ? largestDma : perfExtended.minLargestDma;
 
     // Keep the lock only around windowed maxima read+reset and shared
     // timeline/fade counters that are mutated under this same mux.

@@ -327,7 +327,7 @@ def final_of(rows: List[Dict[str, int]], field: str) -> float:
 
 
 def duration_s(rows: List[Dict[str, int]]) -> float:
-    millis = rows[-1]["millis"]
+    millis = rows[-1]["millis"] - rows[0]["millis"]
     return max(0.001, millis / 1000.0)
 
 

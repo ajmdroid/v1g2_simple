@@ -49,6 +49,10 @@ def write_manifest(
     scoring_file: str = "scoring.json",
     base_result: str | None = None,
     tracks: list[str] | None = None,
+    unsupported_metrics: list[str] | None = None,
+    source_type: str | None = None,
+    source_schema: int | None = None,
+    coverage_status: str | None = None,
 ) -> None:
     payload = {
         "schema_version": 1,
@@ -70,6 +74,14 @@ def write_manifest(
         payload["base_result"] = base_result
     if tracks is not None:
         payload["tracks"] = tracks
+    if unsupported_metrics is not None:
+        payload["unsupported_metrics"] = unsupported_metrics
+    if source_type is not None:
+        payload["source_type"] = source_type
+    if source_schema is not None:
+        payload["source_schema"] = source_schema
+    if coverage_status is not None:
+        payload["coverage_status"] = coverage_status
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
@@ -267,7 +279,7 @@ def test_selector_and_track_matching(tmpdir: Path) -> None:
     assert_true(result["comparison_kind"] == "no_baseline", "board mismatch must skip baseline comparison")
 
 
-def test_inconclusive_optional_metric_gap_with_custom_catalog(tmpdir: Path) -> None:
+def test_optional_metric_gap_warns_but_is_not_inconclusive(tmpdir: Path) -> None:
     case_dir = tmpdir / "inconclusive"
     case_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = case_dir / "metrics.ndjson"
@@ -349,7 +361,99 @@ def test_inconclusive_optional_metric_gap_with_custom_catalog(tmpdir: Path) -> N
     )
 
     result = score_hardware_run.score_run(manifest_path, catalog_path)
-    assert_true(result["result"] == "INCONCLUSIVE", "missing optional metrics should surface as inconclusive")
+    assert_true(result["result"] == "PASS_WITH_WARNINGS", "missing optional advisory metrics should warn, not become inconclusive")
+
+
+def test_unsupported_metrics_do_not_fail_run(tmpdir: Path) -> None:
+    case_dir = tmpdir / "unsupported_metrics"
+    case_dir.mkdir(parents=True, exist_ok=True)
+    metrics_path = case_dir / "metrics.ndjson"
+    manifest_path = case_dir / "manifest.json"
+    catalog_path = case_dir / "catalog.json"
+
+    write_metrics(
+        metrics_path,
+        [
+            {
+                "schema_version": 1,
+                "run_id": "custom-run",
+                "git_sha": "abc1234",
+                "run_kind": "custom_kind",
+                "suite_or_profile": "track-a",
+                "metric": "required_metric",
+                "sample": "value",
+                "value": 10,
+                "unit": "count",
+                "tags": {},
+            }
+        ],
+    )
+    write_manifest(
+        manifest_path,
+        run_id="custom-run",
+        git_sha="abc1234",
+        git_ref="main",
+        run_kind="custom_kind",
+        board_id="release",
+        env="custom",
+        lane="custom",
+        suite_or_profile="track-a",
+        stress_class="core",
+        result="PASS",
+        metrics_file="metrics.ndjson",
+        base_result="PASS",
+        tracks=["track-a"],
+        unsupported_metrics=["required_unsupported"],
+        source_type="perf_csv",
+        source_schema=12,
+        coverage_status="partial_legacy_import",
+    )
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "metrics": [
+                    {
+                        "metric": "required_metric",
+                        "run_kind": "custom_kind",
+                        "selector": {"suite_or_profile": "track-a"},
+                        "unit": "count",
+                        "aggregation": "last",
+                        "direction": "higher_better",
+                        "score_level": "hard",
+                        "required": True,
+                        "absolute_min": 1,
+                        "absolute_max": None,
+                        "regress_abs": None,
+                        "regress_pct": None,
+                    },
+                    {
+                        "metric": "required_unsupported",
+                        "run_kind": "custom_kind",
+                        "selector": {"suite_or_profile": "track-a"},
+                        "unit": "count",
+                        "aggregation": "last",
+                        "direction": "lower_better",
+                        "score_level": "hard",
+                        "required": True,
+                        "absolute_min": 0,
+                        "absolute_max": 0,
+                        "regress_abs": None,
+                        "regress_pct": None,
+                    },
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = score_hardware_run.score_run(manifest_path, catalog_path)
+    assert_true(result["result"] == "NO_BASELINE", f"unsupported required metrics must not fail the run: {result}")
+    unsupported = [metric for metric in result["metrics"] if metric["classification"] == "unsupported"]
+    assert_true(len(unsupported) == 1, f"expected one unsupported metric: {result}")
+    assert_true(result["summary"]["unsupported_metrics"] == 1, f"summary should count unsupported metrics: {result}")
 
 
 def test_uncataloged_metric_rejected(tmpdir: Path) -> None:
@@ -499,7 +603,8 @@ def main() -> int:
         tmpdir = Path(tmp)
         test_no_baseline_and_run_variance_commit_regression(tmpdir)
         test_selector_and_track_matching(tmpdir)
-        test_inconclusive_optional_metric_gap_with_custom_catalog(tmpdir)
+        test_optional_metric_gap_warns_but_is_not_inconclusive(tmpdir)
+        test_unsupported_metrics_do_not_fail_run(tmpdir)
         test_uncataloged_metric_rejected(tmpdir)
         test_extract_device_metrics_smoke(tmpdir)
     print("hardware run scoring tests passed")

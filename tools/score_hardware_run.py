@@ -216,6 +216,13 @@ def _policy_applies_to_track(policy: MetricPolicy, manifest: dict[str, Any], exe
     return selector_suite in executed_tracks
 
 
+def _unsupported_metric_names(manifest: dict[str, Any]) -> set[str]:
+    raw = manifest.get("unsupported_metrics") or []
+    if not isinstance(raw, list):
+        raise RuntimeError("Manifest field 'unsupported_metrics' must be a list when present")
+    return {str(item) for item in raw if str(item)}
+
+
 def _percentile(values: list[float], pct: float) -> Optional[float]:
     if not values:
         return None
@@ -383,6 +390,7 @@ def score_run(
     baseline_manifest: Optional[dict[str, Any]] = None
     baseline_map: dict[tuple[str, str], MetricAggregate] = {}
     comparison_kind = "no_baseline"
+    unsupported_metric_names = _unsupported_metric_names(manifest)
     if baseline_manifest_path is not None and baseline_manifest_path.exists():
         candidate = load_manifest(baseline_manifest_path)
         if _track_key(candidate) == _track_key(manifest):
@@ -397,6 +405,7 @@ def score_run(
     info_regressions = 0
     missing_required = 0
     missing_optional = 0
+    unsupported_count = 0
 
     for key in sorted(current_map):
         current = current_map[key]
@@ -462,6 +471,36 @@ def score_run(
         key = (_selector_value(policy.selector, "suite_or_profile") or manifest["suite_or_profile"], policy.metric)
         if key in current_map:
             continue
+        if policy.metric in unsupported_metric_names:
+            unsupported_count += 1
+            source_type = str(manifest.get("source_type", "unknown"))
+            source_schema = manifest.get("source_schema")
+            coverage_status = str(manifest.get("coverage_status", "") or "")
+            source_detail = f"{source_type} schema={source_schema}" if source_schema is not None else source_type
+            message = f"metric unsupported by source ({source_detail})"
+            if coverage_status:
+                message += f"; coverage={coverage_status}"
+            metric_results.append(
+                {
+                    "metric": policy.metric,
+                    "run_kind": policy.run_kind,
+                    "suite_or_profile": key[0],
+                    "unit": policy.unit,
+                    "score_level": policy.score_level,
+                    "required": policy.required,
+                    "current_value": None,
+                    "baseline_value": None,
+                    "delta_abs": None,
+                    "delta_pct": None,
+                    "sample_count": 0,
+                    "classification": "unsupported",
+                    "absolute_state": "unsupported",
+                    "regression_state": "unsupported",
+                    "score_status": "unsupported",
+                    "messages": [message],
+                }
+            )
+            continue
         if policy.required:
             score_status = "fail"
         elif policy.score_level == "info":
@@ -524,6 +563,10 @@ def score_run(
             "suite_or_profile": manifest["suite_or_profile"],
             "stress_class": manifest["stress_class"],
             "base_result": base_result,
+            "source_type": manifest.get("source_type", ""),
+            "source_schema": manifest.get("source_schema"),
+            "coverage_status": manifest.get("coverage_status", ""),
+            "selected_segment": manifest.get("selected_segment"),
         },
         "baseline_manifest": None if baseline_manifest is None else {
             "path": str(baseline_manifest_path),
@@ -540,11 +583,17 @@ def score_run(
             "info_regressions": info_regressions,
             "missing_required": missing_required,
             "missing_optional": missing_optional,
+            "unsupported_metrics": unsupported_count,
         },
+        "unsupported_metrics": sorted(unsupported_metric_names),
         "metrics": sorted(
             metric_results,
             key=lambda item: (
-                0 if item["score_status"] == "fail" else 1 if item["score_status"] == "warn" else 2,
+                0 if item["score_status"] == "fail"
+                else 1 if item["score_status"] == "warn"
+                else 2 if item["score_status"] == "info"
+                else 3 if item["score_status"] == "unsupported"
+                else 4,
                 str(item["suite_or_profile"]),
                 str(item["metric"]),
             ),
@@ -568,6 +617,14 @@ def render_human(result: dict[str, Any]) -> str:
         f"- Git: `{manifest['git_sha']}` ({manifest['git_ref']})",
         f"- Comparison: `{result['comparison_kind']}`",
     ]
+    if manifest.get("source_type"):
+        lines.append(f"- Source type: `{manifest['source_type']}`")
+    if manifest.get("source_schema") is not None:
+        lines.append(f"- Source schema: `{manifest['source_schema']}`")
+    if manifest.get("coverage_status"):
+        lines.append(f"- Coverage status: `{manifest['coverage_status']}`")
+    if manifest.get("selected_segment"):
+        lines.append(f"- Selected segment: `{manifest['selected_segment']}`")
     if baseline:
         lines.append(f"- Baseline git: `{baseline['git_sha']}` ({baseline['git_ref']})")
 
@@ -583,6 +640,7 @@ def render_human(result: dict[str, Any]) -> str:
             f"- Info regressions: {summary['info_regressions']}",
             f"- Missing required: {summary['missing_required']}",
             f"- Missing optional: {summary['missing_optional']}",
+            f"- Unsupported metrics: {summary.get('unsupported_metrics', 0)}",
             "",
             "## Metrics",
             "",

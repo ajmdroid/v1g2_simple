@@ -49,6 +49,7 @@ run_step "Tracked critical mutation catalog" ./scripts/mutation_test.sh --critic
 section "Perf Scoring Gate"
 run_step "Deterministic perf scorer regression tests" python3 scripts/test_perf_scoring.py
 run_step "Hardware manifest scoring regression tests" python3 scripts/test_hardware_run_scoring.py
+run_step "Perf CSV import regression tests" python3 scripts/test_perf_csv_import.py
 run_step "Single hardware test script regression tests" python3 scripts/test_hardware_test_script.py
 
 section "Compatibility Guards"

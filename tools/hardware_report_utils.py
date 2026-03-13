@@ -96,14 +96,20 @@ def write_comparison_text(scoring: dict[str, Any], out_path: Path) -> None:
         f"result: {scoring.get('result', '')}",
         f"comparison: {scoring.get('comparison_kind', '')}",
         f"baseline_git: {baseline.get('git_sha', 'n/a')}",
+        f"source_type: {manifest.get('source_type', '') or 'n/a'}",
+        f"source_schema: {manifest.get('source_schema', 'n/a')}",
+        f"coverage_status: {manifest.get('coverage_status', '') or 'n/a'}",
         f"metrics_scored: {summary.get('metrics_scored', 0)}",
         f"hard_failures: {summary.get('hard_failures', 0)}",
         f"advisory_failures: {summary.get('advisory_failures', 0)}",
         f"info_regressions: {summary.get('info_regressions', 0)}",
+        f"unsupported_metrics: {summary.get('unsupported_metrics', 0)}",
         "",
         fmt_row(["STATUS", "TRACK", "METRIC", "CURRENT", "PREVIOUS", "DELTA", "DELTA%", "CLASS"]),
         fmt_row(["-" * widths[0], "-" * widths[1], "-" * widths[2], "-" * widths[3], "-" * widths[4], "-" * widths[5], "-" * widths[6], "-" * widths[7]]),
     ]
+    if manifest.get("selected_segment"):
+        lines.insert(8, f"selected_segment: {manifest.get('selected_segment')}")
     lines.extend(fmt_row(row) for row in rows)
     lines.append("")
 

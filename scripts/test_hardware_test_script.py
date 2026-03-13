@@ -389,6 +389,96 @@ def write_serial_log(path: Path, *, reset_count: int = 0, panic_signature_count:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+HEADER_COLUMNS = [
+    line.strip()
+    for line in (ROOT / "test" / "contracts" / "perf_csv_column_contract.txt").read_text(encoding="utf-8").splitlines()
+    if line.strip() and not line.startswith("#")
+]
+LEGACY_HEADER_COLUMNS = HEADER_COLUMNS[:-4]
+
+
+def _base_csv_row(millis: int, *, header_columns: list[str], connected: bool = True, drive_like: bool = False) -> dict[str, int]:
+    row = {column: 0 for column in header_columns}
+    row.update(
+        {
+            "millis": millis,
+            "timeValid": 1,
+            "timeSource": 1,
+            "loopMax_us": 100000,
+            "bleDrainMax_us": 4000,
+            "bleProcessMax_us": 40000,
+            "dispPipeMax_us": 30000,
+            "flushMax_us": 40000,
+            "sdMax_us": 20000,
+            "fsMax_us": 20000,
+            "queueHighWater": 5,
+            "freeDma": 30000,
+            "largestDma": 18000,
+            "dmaLargestMin": 15000,
+            "dmaFreeMin": 30000,
+            "wifiMax_us": 500,
+            "rx": 0,
+            "parseOK": 0,
+            "gpsHasFix": 0,
+            "gpsLocationValid": 0,
+            "gpsSpeedMph_x10": 0,
+        }
+    )
+    if "freeDmaMin" in row:
+        row["freeDmaMin"] = 26000
+    if "largestDmaMin" in row:
+        row["largestDmaMin"] = 15000
+    if "perfDrop" in row:
+        row["perfDrop"] = 0
+    if "eventBusDrops" in row:
+        row["eventBusDrops"] = 0
+    if connected:
+        row["rx"] = 120
+        row["parseOK"] = 120
+    if drive_like:
+        row["gpsHasFix"] = 1
+        row["gpsLocationValid"] = 1
+        row["gpsSpeedMph_x10"] = 250
+    return row
+
+
+def write_perf_csv(
+    path: Path,
+    *,
+    duration_ms: int = 60000,
+    rows: int = 5,
+    header_columns: list[str] | None = None,
+    sessions: list[dict[str, object]] | None = None,
+    leading_rows: list[dict[str, int]] | None = None,
+) -> None:
+    fieldnames = header_columns or HEADER_COLUMNS
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        if leading_rows:
+            for row in leading_rows:
+                writer.writerow({key: row.get(key, 0) for key in fieldnames})
+        if sessions is None:
+            sessions = [
+                {
+                    "meta": f"#session_start,seq=1,bootId=1,uptime_ms={duration_ms},token=TEST0001,schema={13 if fieldnames == HEADER_COLUMNS else 12}",
+                    "rows": [],
+                }
+            ]
+            for i in range(rows):
+                frac = i / max(rows - 1, 1)
+                row = _base_csv_row(int(frac * duration_ms), header_columns=fieldnames, connected=True, drive_like=True)
+                row["rx"] = 120 + i * 40
+                row["parseOK"] = 120 + i * 40
+                row["displayUpdates"] = i * 10
+                sessions[0]["rows"].append(row)
+
+        for session in sessions:
+            writer.writeheader()
+            handle.write(f"{session['meta']}\n")
+            for row in session["rows"]:
+                writer.writerow({key: row.get(key, 0) for key in fieldnames})
+
+
 def run_test_script(env_overrides: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.update(env_overrides)
@@ -661,6 +751,133 @@ def main() -> int:
         crash_comparison = (crash_latest / "core_soak" / "comparison.txt").read_text(encoding="utf-8")
         assert_true("Reboot evidence detected: yes" in crash_comparison, "crash comparison should note reboot evidence")
         assert_true("serial_panic_signatures=1" in crash_comparison, "crash comparison missing serial panic detail")
+
+        # --- Perf CSV parse via --parse-drive-log ---
+        csv_artifact_root = temp_root / "csv_artifacts"
+        csv_input = temp_root / "perf_boot_test.csv"
+        write_perf_csv(csv_input)
+
+        parsed_csv = run_test_script(
+            {
+                **common_env,
+                "HARDWARE_TEST_ARTIFACT_ROOT": str(csv_artifact_root),
+            },
+            "--core",
+            "--parse-drive-log",
+            str(csv_input),
+        )
+        # exit 0 or 1 (PASS/PASS_WITH_WARNINGS) depending on missing metrics — not exit 3 (error)
+        assert_true(parsed_csv.returncode != 3, f"CSV parse errored: {parsed_csv.stdout}\n{parsed_csv.stderr}")
+        csv_latest = csv_artifact_root / "release" / "latest"
+        csv_result = json.loads((csv_latest / "result.json").read_text(encoding="utf-8"))
+        assert_true([step["name"] for step in csv_result["steps"]] == ["core_soak"], f"CSV steps wrong: {csv_result}")
+        csv_scoring = json.loads((csv_latest / "core_soak" / "scoring.json").read_text(encoding="utf-8"))
+        csv_metric_names = {m["metric"] for m in csv_scoring["metrics"]}
+        assert_true("loop_max_peak_us" in csv_metric_names, "CSV scoring missing loop_max_peak_us")
+        assert_true("wifi_p95_us" in csv_metric_names, "CSV scoring missing wifi_p95_us")
+        assert_true("dma_fragmentation_pct_p95" in csv_metric_names, "CSV scoring missing dma_fragmentation_pct_p95")
+        csv_manifest = json.loads((csv_latest / "core_soak" / "manifest.json").read_text(encoding="utf-8"))
+        assert_true(csv_manifest["source_type"] == "perf_csv", f"wrong source type: {csv_manifest}")
+        assert_true(csv_manifest["selected_segment"]["session_index"] == 1, f"wrong selected segment: {csv_manifest}")
+        assert_true((csv_latest / "core_soak" / "segments.json").exists(), "segments.json missing")
+        assert_true((csv_latest / "core_soak" / "csv_scorecard.json").exists(), "csv_scorecard.json missing")
+        csv_comparison = (csv_latest / "core_soak" / "comparison.txt").read_text(encoding="utf-8")
+        assert_true("Complementary CSV Scorecard" in csv_comparison, "CSV comparison missing scorecard section")
+        assert_true("selected_segment:" in csv_comparison, "CSV comparison missing selected segment")
+
+        # --- Legacy perf CSV should surface partial coverage, not fake missing failures ---
+        legacy_artifact_root = temp_root / "legacy_csv_artifacts"
+        legacy_csv = temp_root / "perf_boot_legacy.csv"
+        write_perf_csv(legacy_csv, header_columns=LEGACY_HEADER_COLUMNS)
+        parsed_legacy = run_test_script(
+            {
+                **common_env,
+                "HARDWARE_TEST_ARTIFACT_ROOT": str(legacy_artifact_root),
+            },
+            "--core",
+            "--parse-drive-log",
+            str(legacy_csv),
+        )
+        assert_true(parsed_legacy.returncode != 3, f"legacy CSV parse errored: {parsed_legacy.stdout}\n{parsed_legacy.stderr}")
+        legacy_latest = legacy_artifact_root / "release" / "latest"
+        legacy_manifest = json.loads((legacy_latest / "core_soak" / "manifest.json").read_text(encoding="utf-8"))
+        assert_true(legacy_manifest["coverage_status"] == "partial_legacy_import", f"wrong legacy coverage: {legacy_manifest}")
+        legacy_scoring = json.loads((legacy_latest / "core_soak" / "scoring.json").read_text(encoding="utf-8"))
+        legacy_unsupported = {m["metric"] for m in legacy_scoring["metrics"] if m["classification"] == "unsupported"}
+        assert_true("perf_drop_delta" in legacy_unsupported, "legacy scoring should mark perf_drop_delta unsupported")
+        assert_true("event_drop_delta" in legacy_unsupported, "legacy scoring should mark event_drop_delta unsupported")
+
+        # --- Multi-session perf CSV should support list + auto + explicit segment selection ---
+        multi_csv = temp_root / "perf_boot_multi.csv"
+        session_one_rows = []
+        for i in range(5):
+            frac = i / 4
+            row = _base_csv_row(int(frac * 120000), header_columns=HEADER_COLUMNS, connected=True, drive_like=False)
+            row["rx"] = 200 + i * 40
+            row["parseOK"] = 200 + i * 40
+            session_one_rows.append(row)
+        session_two_rows = []
+        for i in range(5):
+            frac = i / 4
+            row = _base_csv_row(int(frac * 60000), header_columns=HEADER_COLUMNS, connected=True, drive_like=True)
+            row["rx"] = 50 + i * 30
+            row["parseOK"] = 50 + i * 30
+            row["displayUpdates"] = i * 5
+            session_two_rows.append(row)
+        write_perf_csv(
+            multi_csv,
+            sessions=[
+                {
+                    "meta": "#session_start,seq=1,bootId=1,uptime_ms=120000,token=NODRIVE1,schema=13",
+                    "rows": session_one_rows,
+                },
+                {
+                    "meta": "#session_start,seq=2,bootId=1,uptime_ms=60000,token=DRIVE002,schema=13",
+                    "rows": session_two_rows,
+                },
+            ],
+        )
+
+        listed_segments = run_test_script(
+            common_env,
+            "--list-segments",
+            "--parse-drive-log",
+            str(multi_csv),
+        )
+        assert_true(listed_segments.returncode == 0, f"list-segments failed: {listed_segments.stdout}\n{listed_segments.stderr}")
+        assert_true("DRIVE002" in listed_segments.stdout, f"list-segments missing drive session: {listed_segments.stdout}")
+
+        auto_segment_root = temp_root / "auto_segment_artifacts"
+        auto_segment = run_test_script(
+            {
+                **common_env,
+                "HARDWARE_TEST_ARTIFACT_ROOT": str(auto_segment_root),
+            },
+            "--core",
+            "--parse-drive-log",
+            str(multi_csv),
+        )
+        assert_true(auto_segment.returncode != 3, f"auto segment parse failed: {auto_segment.stdout}\n{auto_segment.stderr}")
+        auto_latest = auto_segment_root / "release" / "latest"
+        auto_manifest = json.loads((auto_latest / "core_soak" / "manifest.json").read_text(encoding="utf-8"))
+        assert_true(auto_manifest["selected_segment"]["session_index"] == 2, f"auto selector chose wrong segment: {auto_manifest}")
+
+        explicit_segment_root = temp_root / "explicit_segment_artifacts"
+        explicit_segment = run_test_script(
+            {
+                **common_env,
+                "HARDWARE_TEST_ARTIFACT_ROOT": str(explicit_segment_root),
+            },
+            "--core",
+            "--segment",
+            "1",
+            "--parse-drive-log",
+            str(multi_csv),
+        )
+        assert_true(explicit_segment.returncode != 3, f"explicit segment parse failed: {explicit_segment.stdout}\n{explicit_segment.stderr}")
+        explicit_latest = explicit_segment_root / "release" / "latest"
+        explicit_manifest = json.loads((explicit_latest / "core_soak" / "manifest.json").read_text(encoding="utf-8"))
+        assert_true(explicit_manifest["selected_segment"]["session_index"] == 1, f"explicit selector chose wrong segment: {explicit_manifest}")
 
     print("hardware test script regression tests: PASS")
     return 0

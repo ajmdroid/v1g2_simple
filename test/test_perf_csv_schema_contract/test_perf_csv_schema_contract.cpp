@@ -25,7 +25,7 @@ void test_perf_csv_schema_version_matches_alpr_only_header() {
     TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_sd_logger.cpp");
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 12;"));
+        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 13;"));
 }
 
 void test_perf_csv_header_drops_camera_voice_columns() {
@@ -39,9 +39,17 @@ void test_perf_csv_header_drops_camera_voice_columns() {
         source.find("obdStaleCount\\n\";")); 
 }
 
+void test_perf_csv_header_appends_drive_gate_columns() {
+    const std::string source = readTextFile("src/perf_sd_logger.cpp");
+
+    TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_sd_logger.cpp");
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, source.find("perfDrop,eventBusDrops,freeDmaMin,largestDmaMin\\n\";"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_perf_csv_schema_version_matches_alpr_only_header);
     RUN_TEST(test_perf_csv_header_drops_camera_voice_columns);
+    RUN_TEST(test_perf_csv_header_appends_drive_gate_columns);
     return UNITY_END();
 }

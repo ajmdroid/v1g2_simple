@@ -9,6 +9,7 @@ INVENTORY_PATH="${HARDWARE_TEST_INVENTORY:-$ROOT_DIR/test/device/board_inventory
 DEVICE_TESTS_SCRIPT="${HARDWARE_TEST_DEVICE_TESTS_SCRIPT:-$ROOT_DIR/scripts/run_device_tests.sh}"
 REAL_SOAK_SCRIPT="${HARDWARE_TEST_REAL_SOAK_SCRIPT:-$ROOT_DIR/scripts/run_real_fw_soak.sh}"
 IMPORT_DRIVE_LOG_SCRIPT="${HARDWARE_TEST_IMPORT_DRIVE_LOG_SCRIPT:-$ROOT_DIR/tools/import_drive_log.py}"
+IMPORT_PERF_CSV_SCRIPT="${HARDWARE_TEST_IMPORT_PERF_CSV_SCRIPT:-$ROOT_DIR/tools/import_perf_csv.py}"
 ASSEMBLE_RESULT_SCRIPT="${HARDWARE_TEST_ASSEMBLE_RESULT_SCRIPT:-$ROOT_DIR/tools/assemble_hardware_test_result.py}"
 ARTIFACT_ROOT="${HARDWARE_TEST_ARTIFACT_ROOT:-$ROOT_DIR/.artifacts/hardware/test}"
 SOAK_DURATION_SECONDS="${HARDWARE_TEST_SOAK_DURATION_SECONDS:-300}"
@@ -28,6 +29,8 @@ RUN_DEVICE=0
 RUN_CORE=0
 RUN_DISPLAY=0
 PARSE_DRIVE_LOG=""
+SEGMENT_SELECTOR="auto"
+LIST_SEGMENTS=0
 
 usage() {
   cat <<'EOF'
@@ -39,9 +42,13 @@ Options:
   -c, --core                Run only the core soak step
   -p, --display             Run only the display-preview soak step
   --parse-drive-log PATH    Parse a saved soak directory, metrics.jsonl, panic.jsonl,
-                            or serial.log instead of running a live soak step. If
-                            no soak step is selected, the script infers core/display
-                            from the input manifest and otherwise defaults to core.
+                            serial.log, or perf CSV (.csv) instead of running a
+                            live soak step. If no soak step is selected, the script
+                            infers core/display from the input manifest and
+                            otherwise defaults to core.
+  --segment VALUE           Drive segment selector for perf CSV imports:
+                            auto (default), last, longest-connected, or 1-based index
+  --list-segments           List discovered perf CSV segments and exit
   --board-id ID             Board id from test/device/board_inventory.json
                             (default: release)
   --duration-seconds N      Soak duration for live soak steps (default: 300)
@@ -58,6 +65,8 @@ Examples:
   ./scripts/hardware/test.sh --device --parse-drive-log /path/to/metrics.jsonl
   ./scripts/hardware/test.sh --core --parse-drive-log /path/to/serial.log
   ./scripts/hardware/test.sh --parse-drive-log /path/to/real_fw_soak_run
+  ./scripts/hardware/test.sh --list-segments --parse-drive-log /path/to/perf_boot_1.csv
+  ./scripts/hardware/test.sh --core --parse-drive-log /path/to/perf_boot_1.csv
 EOF
 }
 
@@ -88,6 +97,17 @@ while [[ $# -gt 0 ]]; do
       fi
       PARSE_DRIVE_LOG="$2"
       shift
+      ;;
+    --segment)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --segment" >&2
+        exit 2
+      fi
+      SEGMENT_SELECTOR="$2"
+      shift
+      ;;
+    --list-segments)
+      LIST_SEGMENTS=1
       ;;
     --board-id)
       if [[ $# -lt 2 ]]; then
@@ -132,6 +152,32 @@ done
 if ! [[ "$SOAK_DURATION_SECONDS" =~ ^[0-9]+$ ]] || [[ "$SOAK_DURATION_SECONDS" -lt 1 ]]; then
   echo "Invalid --duration-seconds value '$SOAK_DURATION_SECONDS' (expected positive integer)." >&2
   exit 2
+fi
+
+if [[ "$LIST_SEGMENTS" -eq 1 ]]; then
+  if [[ -z "$PARSE_DRIVE_LOG" ]]; then
+    echo "--list-segments requires --parse-drive-log PATH." >&2
+    exit 2
+  fi
+  if [[ "$PARSE_DRIVE_LOG" != *.csv ]]; then
+    echo "--list-segments only supports perf CSV inputs." >&2
+    exit 2
+  fi
+fi
+
+if [[ "$SEGMENT_SELECTOR" != "auto" && -z "$PARSE_DRIVE_LOG" ]]; then
+  echo "--segment requires --parse-drive-log PATH." >&2
+  exit 2
+fi
+
+if [[ "$SEGMENT_SELECTOR" != "auto" && "$PARSE_DRIVE_LOG" != *.csv ]]; then
+  echo "--segment only supports perf CSV inputs." >&2
+  exit 2
+fi
+
+if [[ "$LIST_SEGMENTS" -eq 1 ]]; then
+  python3 "$IMPORT_PERF_CSV_SCRIPT" --input "$PARSE_DRIVE_LOG" --list-segments --segment "$SEGMENT_SELECTOR"
+  exit $?
 fi
 
 infer_parse_step() {
@@ -221,9 +267,18 @@ if [[ ( "$NEEDS_LIVE_CORE" -eq 1 || "$NEEDS_LIVE_DISPLAY" -eq 1 ) && ! -x "$REAL
   echo "Missing executable: $REAL_SOAK_SCRIPT" >&2
   exit 2
 fi
-if [[ -n "$PARSE_DRIVE_LOG" && ! -f "$IMPORT_DRIVE_LOG_SCRIPT" ]]; then
-  echo "Missing import helper: $IMPORT_DRIVE_LOG_SCRIPT" >&2
-  exit 2
+if [[ -n "$PARSE_DRIVE_LOG" ]]; then
+  if [[ "$PARSE_DRIVE_LOG" == *.csv ]]; then
+    if [[ ! -f "$IMPORT_PERF_CSV_SCRIPT" ]]; then
+      echo "Missing import helper: $IMPORT_PERF_CSV_SCRIPT" >&2
+      exit 2
+    fi
+  else
+    if [[ ! -f "$IMPORT_DRIVE_LOG_SCRIPT" ]]; then
+      echo "Missing import helper: $IMPORT_DRIVE_LOG_SCRIPT" >&2
+      exit 2
+    fi
+  fi
 fi
 if [[ ! -f "$ASSEMBLE_RESULT_SCRIPT" ]]; then
   echo "Missing assemble helper: $ASSEMBLE_RESULT_SCRIPT" >&2
@@ -621,17 +676,33 @@ fi
 
 if [[ "$RUN_CORE" -eq 1 ]]; then
   if [[ "$PARSE_STEP" == "core_soak" ]]; then
-    core_args=(
-      python3
-      "$IMPORT_DRIVE_LOG_SCRIPT"
-      --input "$PARSE_DRIVE_LOG"
-      --out-dir "$CORE_DIR"
-      --board-id "$BOARD_ID"
-      --git-sha "$GIT_SHA"
-      --git-ref "$GIT_REF"
-      --stress-class core
-      --lane hardware-test-parse
-    )
+    if [[ "$PARSE_DRIVE_LOG" == *.csv ]]; then
+      core_args=(
+        python3
+        "$IMPORT_PERF_CSV_SCRIPT"
+        --input "$PARSE_DRIVE_LOG"
+        --out-dir "$CORE_DIR"
+        --board-id "$BOARD_ID"
+        --git-sha "$GIT_SHA"
+        --git-ref "$GIT_REF"
+        --profile drive_wifi_ap
+        --segment "$SEGMENT_SELECTOR"
+        --stress-class core
+        --lane hardware-test-parse
+      )
+    else
+      core_args=(
+        python3
+        "$IMPORT_DRIVE_LOG_SCRIPT"
+        --input "$PARSE_DRIVE_LOG"
+        --out-dir "$CORE_DIR"
+        --board-id "$BOARD_ID"
+        --git-sha "$GIT_SHA"
+        --git-ref "$GIT_REF"
+        --stress-class core
+        --lane hardware-test-parse
+      )
+    fi
     if [[ -n "$PREVIOUS_CORE_MANIFEST" ]]; then
       core_args+=(--compare-to "$PREVIOUS_CORE_MANIFEST")
     fi
@@ -662,17 +733,33 @@ fi
 
 if [[ "$RUN_DISPLAY" -eq 1 ]]; then
   if [[ "$PARSE_STEP" == "display_soak" ]]; then
-    display_args=(
-      python3
-      "$IMPORT_DRIVE_LOG_SCRIPT"
-      --input "$PARSE_DRIVE_LOG"
-      --out-dir "$DISPLAY_DIR"
-      --board-id "$BOARD_ID"
-      --git-sha "$GIT_SHA"
-      --git-ref "$GIT_REF"
-      --stress-class display_preview
-      --lane hardware-test-parse
-    )
+    if [[ "$PARSE_DRIVE_LOG" == *.csv ]]; then
+      display_args=(
+        python3
+        "$IMPORT_PERF_CSV_SCRIPT"
+        --input "$PARSE_DRIVE_LOG"
+        --out-dir "$DISPLAY_DIR"
+        --board-id "$BOARD_ID"
+        --git-sha "$GIT_SHA"
+        --git-ref "$GIT_REF"
+        --profile drive_wifi_ap
+        --segment "$SEGMENT_SELECTOR"
+        --stress-class display_preview
+        --lane hardware-test-parse
+      )
+    else
+      display_args=(
+        python3
+        "$IMPORT_DRIVE_LOG_SCRIPT"
+        --input "$PARSE_DRIVE_LOG"
+        --out-dir "$DISPLAY_DIR"
+        --board-id "$BOARD_ID"
+        --git-sha "$GIT_SHA"
+        --git-ref "$GIT_REF"
+        --stress-class display_preview
+        --lane hardware-test-parse
+      )
+    fi
     if [[ -n "$PREVIOUS_DISPLAY_MANIFEST" ]]; then
       display_args+=(--compare-to "$PREVIOUS_DISPLAY_MANIFEST")
     fi
