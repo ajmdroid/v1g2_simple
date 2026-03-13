@@ -351,8 +351,6 @@ struct V1Settings {
     String obdSavedAddress;      // Saved OBDLink CX BLE address for auto-reconnect
     int8_t obdMinRssi;           // Minimum RSSI for scan acceptance (dBm)
     
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wreorder"
     // Default constructor with sensible defaults
     V1Settings() : 
         enableWifi(true),
@@ -474,7 +472,6 @@ struct V1Settings {
         obdEnabled(false),       // OBD disabled by default
         obdSavedAddress(""),     // No saved device
         obdMinRssi(-80) {}       // Default -80 dBm minimum RSSI
-#pragma GCC diagnostic pop
 };
 
 class SettingsManager {
