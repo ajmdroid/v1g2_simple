@@ -4,6 +4,7 @@
 // Hardware init and shared state live in audio_beep.cpp via audio_internals.h.
 
 #include "audio_internals.h"
+#include "audio_task_utils.h"
 #include "camera_alert_types.h"
 #include "storage_manager.h"
 #include <Arduino.h>
@@ -130,7 +131,7 @@ static void sd_audio_playback_task(void* pvParameters) {
     
     if (!i2s_initialized) {
         Serial.println("[AUDIO] ERROR: I2S init failed!");
-        audio_playing = false;
+        audioResetTaskState(audio_playing, audioTaskHandle);
         vTaskDelete(NULL);
         return;
     }
@@ -154,7 +155,7 @@ static void sd_audio_playback_task(void* pvParameters) {
     if (!audioFS) {
         Serial.println("[AUDIO] ERROR: audioFS is null!");
         // Don't disable amp here - let timeout handle it
-        audio_playing = false;
+        audioResetTaskState(audio_playing, audioTaskHandle);
         vTaskDelete(NULL);
         return;
     }
@@ -162,10 +163,11 @@ static void sd_audio_playback_task(void* pvParameters) {
     // Play each clip in sequence using pre-allocated PSRAM buffers
     if (!g_stereoChunkBuffer || !g_mulawChunkBuffer) {
         Serial.println("[AUDIO] ERROR: PSRAM buffers not allocated!");
-        audio_playing = false;
+        audioResetTaskState(audio_playing, audioTaskHandle);
         vTaskDelete(NULL);
         return;
     }
+    bool writeAborted = false;
     for (int i = 0; i < g_sdAudioTaskParams.numClips; i++) {
         File audioFile = audioFS->open(g_sdAudioTaskParams.filePaths[i], "r");
         if (!audioFile) {
@@ -186,22 +188,42 @@ static void sd_audio_playback_task(void* pvParameters) {
             }
             
             size_t bytes_written = 0;
-            i2s_channel_write(i2s_tx_chan, g_stereoChunkBuffer, bytesRead * 2 * sizeof(int16_t), &bytes_written, portMAX_DELAY);
+            const AudioWriteResult writeResult = audioWriteWithTimeout([&](TickType_t timeoutTicks) {
+                return i2s_channel_write(i2s_tx_chan,
+                                         g_stereoChunkBuffer,
+                                         bytesRead * 2 * sizeof(int16_t),
+                                         &bytes_written,
+                                         timeoutTicks);
+            });
+            if (writeResult.status != AudioWriteStatus::Ok) {
+                AUDIO_LOGF("[AUDIO] i2s_channel_write %s: %d\n",
+                           writeResult.status == AudioWriteStatus::Timeout ? "timed out" : "failed",
+                           writeResult.error);
+                writeAborted = true;
+                break;
+            }
         }
         
         audioFile.close();
+        if (writeAborted) {
+            break;
+        }
     }
     
-    // Brief delay for DMA buffer to flush
-    vTaskDelay(pdMS_TO_TICKS(30));  // Reduced from 50ms
-    
-    // Don't disable amp immediately - keep it warm for faster subsequent plays
-    // Record when we finished so timeout can disable it later
-    amp_last_used_ms = millis();
-    // Amp stays on - will be disabled by audio_process_timeout() after AMP_WARM_TIMEOUT_MS
-    
-    audio_playing = false;
-    audioTaskHandle = NULL;
+    if (writeAborted) {
+        set_speaker_amp(false);
+        amp_is_warm = false;
+    } else {
+        // Brief delay for DMA buffer to flush
+        vTaskDelay(pdMS_TO_TICKS(30));  // Reduced from 50ms
+
+        // Don't disable amp immediately - keep it warm for faster subsequent plays
+        // Record when we finished so timeout can disable it later
+        amp_last_used_ms = millis();
+        // Amp stays on - will be disabled by audio_process_timeout() after AMP_WARM_TIMEOUT_MS
+    }
+
+    audioResetTaskState(audio_playing, audioTaskHandle);
     vTaskDelete(NULL);
 }
 

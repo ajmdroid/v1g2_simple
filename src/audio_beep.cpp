@@ -8,6 +8,7 @@
 // ES8311 address: 0x18
 
 #include "audio_internals.h"
+#include "audio_task_utils.h"
 #include "battery_manager.h"  // For tca9554Wire (shared I2C bus)
 #include <Arduino.h>
 #include <Wire.h>
@@ -442,7 +443,7 @@ static void audio_playback_task(void* pvParameters) {
 
     if (!g_stereoChunkBuffer) {
         Serial.println("[AUDIO] ERROR: PSRAM buffers not allocated!");
-        audio_playing = false;
+        audioResetTaskState(audio_playing, audioTaskHandle);
         vTaskDeleteWithCaps(NULL);
         return;
     }
@@ -455,7 +456,7 @@ static void audio_playback_task(void* pvParameters) {
     
     if (!i2s_initialized) {
         Serial.println("[AUDIO] ERROR: I2S init failed!");
-        audio_playing = false;
+        audioResetTaskState(audio_playing, audioTaskHandle);
         vTaskDelete(NULL);
         return;
     }
@@ -484,12 +485,18 @@ static void audio_playback_task(void* pvParameters) {
         }
         
         size_t bytes_written = 0;
-        esp_err_t err = i2s_channel_write(i2s_tx_chan, g_stereoChunkBuffer, 
-                                          chunk_samples * 2 * sizeof(int16_t), 
-                                          &bytes_written, portMAX_DELAY);
-        
-        if (err != ESP_OK) {
-            AUDIO_LOGF("[AUDIO] i2s_channel_write failed: %d\\n", err);
+        const AudioWriteResult writeResult = audioWriteWithTimeout([&](TickType_t timeoutTicks) {
+            return i2s_channel_write(i2s_tx_chan,
+                                     g_stereoChunkBuffer,
+                                     chunk_samples * 2 * sizeof(int16_t),
+                                     &bytes_written,
+                                     timeoutTicks);
+        });
+
+        if (writeResult.status != AudioWriteStatus::Ok) {
+            AUDIO_LOGF("[AUDIO] i2s_channel_write %s: %d\\n",
+                       writeResult.status == AudioWriteStatus::Timeout ? "timed out" : "failed",
+                       writeResult.error);
             break;
         }
         
@@ -501,9 +508,7 @@ static void audio_playback_task(void* pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(duration_ms > 0 ? 100 : 50));
     
     set_speaker_amp(false);
-    audio_playing = false;
-    
-    audioTaskHandle = NULL;
+    audioResetTaskState(audio_playing, audioTaskHandle);
     // Self-delete: IDF recommends external deletion, but this fire-and-forget
     // task has no external owner.  Deferred cleanup (prvTaskDeleteWithCapsTask)
     // handles the stack free safely.
