@@ -22,6 +22,7 @@ static constexpr const char* PERF_CSV_HEADER =
 static constexpr UBaseType_t PERF_SD_QUEUE_DEPTH = 16;      // Halved from 32 to reclaim ~7 KiB internal SRAM
 static constexpr uint32_t PERF_SD_WRITER_STACK_SIZE = 8192;  // SD file ops need generous stack
 static constexpr UBaseType_t PERF_SD_WRITER_PRIORITY = 1;
+static constexpr TickType_t PERF_SD_QUEUE_RECEIVE_TIMEOUT_TICKS = pdMS_TO_TICKS(1000);
 
 static uint16_t countCsvColumns(const char* text, size_t len) {
     if (!text || len == 0) {
@@ -169,10 +170,17 @@ void PerfSdLogger::writerTaskEntry(void* param) {
     self->writerTaskLoop();
 }
 
+bool PerfSdLogger::receiveSnapshot(PerfSdSnapshot& snapshot, TickType_t timeoutTicks) {
+    if (!queue) {
+        return false;
+    }
+    return xQueueReceive(queue, &snapshot, timeoutTicks) == pdTRUE;
+}
+
 void PerfSdLogger::writerTaskLoop() {
     while (true) {
         PerfSdSnapshot snapshot{};
-        if (xQueueReceive(queue, &snapshot, portMAX_DELAY) != pdTRUE) {
+        if (!receiveSnapshot(snapshot, PERF_SD_QUEUE_RECEIVE_TIMEOUT_TICKS)) {
             continue;
         }
         appendSnapshotLine(snapshot);

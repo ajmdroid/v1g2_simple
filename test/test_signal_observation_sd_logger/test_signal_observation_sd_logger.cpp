@@ -58,11 +58,55 @@ void createSizedFile(const std::filesystem::path& path, size_t size) {
 
 void setUp() {
     mock_reset_heap_caps();
+    mock_reset_queue_create_state();
+    mock_reset_task_create_state();
     fs::mock_reset_fs_rename_state();
     perfCounters.reset();
 }
 
 void tearDown() {}
+
+void test_receive_observation_times_out_when_queue_empty() {
+    SignalObservationSdLogger logger;
+
+    logger.begin(true);
+
+    SignalObservation observation{};
+    TEST_ASSERT_FALSE(logger.receiveObservationForTest(observation, pdMS_TO_TICKS(1000)));
+}
+
+void test_receive_observation_dequeues_enqueued_item() {
+    SignalObservationSdLogger logger;
+    logger.begin(true);
+
+    SignalObservation expected{};
+    expected.tsMs = 4242;
+    expected.bandRaw = 7;
+    expected.strength = 3;
+    expected.frequencyMHz = 250;
+    expected.hasFix = true;
+    expected.fixAgeMs = 33;
+    expected.locationValid = true;
+    expected.latitudeE5 = 4040000;
+    expected.longitudeE5 = -7399000;
+    expected.satellites = 9;
+    expected.hdopX10 = 12;
+    TEST_ASSERT_TRUE(logger.enqueue(expected));
+
+    SignalObservation actual{};
+    TEST_ASSERT_TRUE(logger.receiveObservationForTest(actual, pdMS_TO_TICKS(1000)));
+    TEST_ASSERT_EQUAL_UINT32(expected.tsMs, actual.tsMs);
+    TEST_ASSERT_EQUAL_UINT8(expected.bandRaw, actual.bandRaw);
+    TEST_ASSERT_EQUAL_UINT16(expected.frequencyMHz, actual.frequencyMHz);
+    TEST_ASSERT_EQUAL_UINT8(expected.strength, actual.strength);
+    TEST_ASSERT_EQUAL(expected.hasFix, actual.hasFix);
+    TEST_ASSERT_EQUAL_UINT32(expected.fixAgeMs, actual.fixAgeMs);
+    TEST_ASSERT_EQUAL_UINT8(expected.satellites, actual.satellites);
+    TEST_ASSERT_EQUAL_UINT16(expected.hdopX10, actual.hdopX10);
+    TEST_ASSERT_EQUAL(expected.locationValid, actual.locationValid);
+    TEST_ASSERT_EQUAL_INT32(expected.latitudeE5, actual.latitudeE5);
+    TEST_ASSERT_EQUAL_INT32(expected.longitudeE5, actual.longitudeE5);
+}
 
 void test_rotate_if_needed_keeps_live_file_when_rename_fails() {
     SignalObservationSdLogger logger;
@@ -84,6 +128,8 @@ void test_rotate_if_needed_keeps_live_file_when_rename_fails() {
 
 int main() {
     UNITY_BEGIN();
+    RUN_TEST(test_receive_observation_times_out_when_queue_empty);
+    RUN_TEST(test_receive_observation_dequeues_enqueued_item);
     RUN_TEST(test_rotate_if_needed_keeps_live_file_when_rename_fails);
     return UNITY_END();
 }

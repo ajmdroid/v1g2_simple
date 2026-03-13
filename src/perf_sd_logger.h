@@ -186,6 +186,7 @@ public:
 private:
     static void writerTaskEntry(void* param);
     void writerTaskLoop();
+    bool receiveSnapshot(PerfSdSnapshot& snapshot, TickType_t timeoutTicks);
     bool ensurePerfDir(fs::FS& fs);
     bool ensureCsvHeaderAndSessionMarker(File& f);
     bool writeSessionMarker(File& f);
@@ -205,6 +206,13 @@ private:
     uint32_t sessionStartMs = 0;
     uint32_t bootId = 0;
     char csvPathBuf[64] = {0};
+
+#ifdef UNIT_TEST
+public:
+    bool receiveSnapshotForTest(PerfSdSnapshot& snapshot, TickType_t timeoutTicks) {
+        return receiveSnapshot(snapshot, timeoutTicks);
+    }
+#endif
 };
 
 extern PerfSdLogger perfSdLogger;

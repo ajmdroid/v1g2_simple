@@ -42,6 +42,7 @@ private:
 
     static void writerTaskEntry(void* param);
     void writerTaskLoop();
+    bool receiveObservation(SignalObservation& observation, TickType_t timeoutTicks);
     bool appendObservation(const SignalObservation& observation);
     bool ensureLockoutDir(fs::FS& fs);
     bool ensureCsvHeader(File& file);
@@ -75,6 +76,9 @@ private:
 
 #ifdef UNIT_TEST
 public:
+    bool receiveObservationForTest(SignalObservation& observation, TickType_t timeoutTicks) {
+        return receiveObservation(observation, timeoutTicks);
+    }
     bool rotateIfNeededForTest(fs::FS& fs) { return rotateIfNeeded(fs); }
 #endif
 };

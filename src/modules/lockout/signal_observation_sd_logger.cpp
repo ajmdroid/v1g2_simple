@@ -15,6 +15,7 @@ constexpr const char* LOCKOUT_CSV_HEADER =
 constexpr UBaseType_t LOCKOUT_SD_QUEUE_DEPTH = 64;
 constexpr uint32_t LOCKOUT_SD_WRITER_STACK_SIZE = 6144;
 constexpr UBaseType_t LOCKOUT_SD_WRITER_PRIORITY = 1;
+constexpr TickType_t LOCKOUT_SD_QUEUE_RECEIVE_TIMEOUT_TICKS = pdMS_TO_TICKS(1000);
 constexpr uint32_t LOCKOUT_SD_DEDUPE_MIN_REPEAT_MS = 15000;
 constexpr uint16_t LOCKOUT_SD_FREQ_TOL_MHZ = 5;
 constexpr uint8_t LOCKOUT_SD_STRENGTH_TOL = 1;
@@ -121,10 +122,18 @@ void SignalObservationSdLogger::writerTaskEntry(void* param) {
     self->writerTaskLoop();
 }
 
+bool SignalObservationSdLogger::receiveObservation(SignalObservation& observation,
+                                                   TickType_t timeoutTicks) {
+    if (!queue_) {
+        return false;
+    }
+    return xQueueReceive(queue_, &observation, timeoutTicks) == pdTRUE;
+}
+
 void SignalObservationSdLogger::writerTaskLoop() {
     while (true) {
         SignalObservation observation{};
-        if (xQueueReceive(queue_, &observation, portMAX_DELAY) != pdTRUE) {
+        if (!receiveObservation(observation, LOCKOUT_SD_QUEUE_RECEIVE_TIMEOUT_TICKS)) {
             continue;
         }
         (void)appendObservation(observation);
