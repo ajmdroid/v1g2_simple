@@ -6,6 +6,18 @@
 #include "../../src/modules/debug/debug_metrics_payload.cpp"
 #include "../support/wrappers/debug_api_service_wrappers.cpp"  // Pull wrappers for UNIT_TEST.
 
+// ── Stubs for symbols introduced by debug_metrics_payload.cpp ──
+V1BLEClient::V1BLEClient() {}
+V1BLEClient::~V1BLEClient() {}
+bool V1BLEClient::isProxyAdvertising() const { return false; }
+const char* V1BLEClient::getSubscribeStepName() const { return "STUB"; }
+void V1BLEClient::releaseProxyQueues() {}
+V1BLEClient bleClient;
+WifiAutoStartModule wifiAutoStartModule;
+const char* wifiAutoStartGateName(WifiAutoStartGate) { return "stub"; }
+uint32_t perfGetProxyAdvertisingLastTransitionReason() { return 0; }
+const char* perfProxyAdvertisingTransitionReasonName(uint32_t) { return "stub"; }
+
 #ifndef ARDUINO
 SerialClass Serial;
 #endif

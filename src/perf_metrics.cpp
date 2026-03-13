@@ -3,9 +3,11 @@
  */
 
 #include "perf_metrics.h"
+#include "ble_client.h"
 #include "perf_sd_logger.h"
 #include "storage_manager.h"
 #include "time_service.h"
+#include "../include/main_globals.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_observation_log.h"
 #include "modules/system/system_event_bus.h"
@@ -286,6 +288,15 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.freeDmaMin = (perfExtended.minFreeDma == UINT32_MAX) ? freeDma : perfExtended.minFreeDma;
     snapshot.largestDmaMin =
         (perfExtended.minLargestDma == UINT32_MAX) ? largestDma : perfExtended.minLargestDma;
+    snapshot.bleState = bleClient.getBLEStateCode();
+    snapshot.subscribeStep = bleClient.getSubscribeStepCode();
+    snapshot.connectInProgress = bleClient.isConnectInProgress() ? 1 : 0;
+    snapshot.asyncConnectPending = bleClient.isAsyncConnectPending() ? 1 : 0;
+    snapshot.pendingDisconnectCleanup = bleClient.hasPendingDisconnectCleanup() ? 1 : 0;
+    snapshot.proxyAdvertising = bleClient.isProxyAdvertising() ? 1 : 0;
+    snapshot.proxyAdvertisingLastTransitionReason =
+        static_cast<uint8_t>(perfGetProxyAdvertisingLastTransitionReason());
+    snapshot.wifiPriorityMode = bleClient.isWifiPriority() ? 1 : 0;
 
     // Keep the lock only around windowed maxima read+reset and shared
     // timeline/fade counters that are mutated under this same mux.

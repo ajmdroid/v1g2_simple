@@ -26,6 +26,7 @@ class LoopPowerTouchModule;
 class LoopTailModule;
 class PeriodicMaintenanceModule;
 class WifiRuntimeModule;
+class WifiAutoStartModule;
 
 // Core subsystems
 class V1BLEClient;
@@ -59,6 +60,7 @@ extern LoopDisplayModule loopDisplayModule;
 extern LoopPostDisplayModule loopPostDisplayModule;
 extern LoopRuntimeSnapshotModule loopRuntimeSnapshotModule;
 extern WifiRuntimeModule wifiRuntimeModule;
+extern WifiAutoStartModule wifiAutoStartModule;
 extern PeriodicMaintenanceModule periodicMaintenanceModule;
 extern LoopTailModule loopTailModule;
 extern LoopPowerTouchModule loopPowerTouchModule;

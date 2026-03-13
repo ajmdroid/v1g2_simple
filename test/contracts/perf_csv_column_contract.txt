@@ -139,3 +139,11 @@ perfDrop
 eventBusDrops
 freeDmaMin
 largestDmaMin
+bleState
+subscribeStep
+connectInProgress
+asyncConnectPending
+pendingDisconnectCleanup
+proxyAdvertising
+proxyAdvertisingLastTransitionReason
+wifiPriorityMode

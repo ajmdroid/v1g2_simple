@@ -160,6 +160,14 @@ struct PerfSdSnapshot {
     uint32_t eventBusDrops;                // System event-bus drops since session start
     uint32_t freeDmaMin;                   // Min cached internal 8-bit heap free bytes since session start
     uint32_t largestDmaMin;                // Min cached internal 8-bit largest block since session start
+    uint8_t bleState;                      // BLE runtime state code
+    uint8_t subscribeStep;                 // BLE subscribe-step machine code
+    uint8_t connectInProgress;             // BLE connect attempt active
+    uint8_t asyncConnectPending;           // BLE async connect callback pending
+    uint8_t pendingDisconnectCleanup;      // BLE deferred disconnect cleanup pending
+    uint8_t proxyAdvertising;              // Proxy advertising currently active
+    uint8_t proxyAdvertisingLastTransitionReason; // PerfProxyAdvertisingTransitionReason code
+    uint8_t wifiPriorityMode;              // BLE WiFi-priority suppression active
 };
 
 class PerfSdLogger {

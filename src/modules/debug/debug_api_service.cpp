@@ -181,6 +181,8 @@ static void sendMetrics(WebServer& server) {
     doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
     doc["audioTaskFail"] = perfCounters.audioTaskFail.load();
     appendCameraMetricsPayload(doc);
+    appendBleRuntimeMetricsPayload(doc);
+    appendWifiAutoStartMetricsPayload(doc);
     doc["reconnects"] = perfCounters.reconnects.load();
     doc["disconnects"] = perfCounters.disconnects.load();
     doc["connectionDispatchRuns"] = perfCounters.connectionDispatchRuns.load();
@@ -481,6 +483,8 @@ static void sendMetricsSoak(WebServer& server) {
     doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
     doc["audioTaskFail"] = perfCounters.audioTaskFail.load();
     appendCameraMetricsPayload(doc);
+    appendBleRuntimeMetricsPayload(doc);
+    appendWifiAutoStartMetricsPayload(doc);
     doc["reconnects"] = perfCounters.reconnects.load();
     doc["disconnects"] = perfCounters.disconnects.load();
     doc["connectionDispatchRuns"] = perfCounters.connectionDispatchRuns.load();
