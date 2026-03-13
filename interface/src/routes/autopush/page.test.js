@@ -4,9 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installFetchMock, jsonResponse } from '../../test/fetch-mock.js';
 import Page from './+page.svelte';
 
-function installDefaultFetch() {
+function installDefaultFetch(overrides = []) {
 	return installFetchMock(
 		[
+			...overrides,
 			{
 				method: 'GET',
 				match: '/api/autopush/slots',
@@ -83,6 +84,40 @@ describe('autopush route page', () => {
 		expect(await screen.findByLabelText('Profile')).toBeInTheDocument();
 		expect(screen.getByText('Alert persistence (seconds)')).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument();
+
+		unmount();
+	});
+
+	it('keeps the slot editor open when saving a slot fails', async () => {
+		installDefaultFetch([
+			{ method: 'POST', match: '/api/autopush/slot', respond: jsonResponse({ error: 'bad save' }, 500) }
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Highway');
+		await fireEvent.click(screen.getAllByRole('button', { name: /^edit$/i })[0]);
+		await fireEvent.click(await screen.findByRole('button', { name: /^save$/i }));
+
+		await screen.findByText('Failed to save');
+		expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument();
+		expect(screen.getByLabelText('Profile')).toBeInTheDocument();
+
+		unmount();
+	});
+
+	it('keeps the previous active slot when activation fails', async () => {
+		installDefaultFetch([
+			{ method: 'POST', match: '/api/autopush/activate', respond: jsonResponse({ error: 'bad activate' }, 500) }
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Highway');
+		await fireEvent.click(screen.getAllByRole('button', { name: /^activate$/i })[0]);
+
+		await screen.findByText('Failed to activate');
+		expect(screen.getByText('Highway')).toBeInTheDocument();
+		expect(screen.getAllByText('Active')).toHaveLength(1);
+		expect(screen.getAllByRole('button', { name: /^activate$/i })).toHaveLength(2);
 
 		unmount();
 	});
