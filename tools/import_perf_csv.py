@@ -26,7 +26,8 @@ DEFAULT_HEADER_COLUMNS = [
     for line in (ROOT / "test" / "contracts" / "perf_csv_column_contract.txt").read_text(encoding="utf-8").splitlines()
     if line.strip() and not line.startswith("#")
 ]
-CURRENT_PERF_CSV_SCHEMA = 13
+CURRENT_PERF_CSV_SCHEMA = 14
+MIN_DROP_COUNTER_SCHEMA = 13
 ALWAYS_UNSUPPORTED_METRICS = {"samples_to_stable", "time_to_stable_ms"}
 LEGACY_UNSUPPORTED_METRICS = {"perf_drop_delta", "event_drop_delta"}
 PEAK_COLUMNS = {
@@ -93,6 +94,54 @@ METRIC_UNITS = {
     "disp_pipe_p95_us": "us",
     "dma_fragmentation_pct_p95": "pct",
 }
+TOP_ROW_FIELDS = (
+    "disc",
+    "reconn",
+    "rx",
+    "parseOK",
+    "displayUpdates",
+    "gpsSpeedMph_x10",
+)
+ATTRIBUTION_COLUMNS = (
+    "bleState",
+    "subscribeStep",
+    "connectInProgress",
+    "asyncConnectPending",
+    "pendingDisconnectCleanup",
+    "proxyAdvertising",
+    "proxyAdvertisingLastTransitionReason",
+    "wifiPriorityMode",
+)
+BOUNDARY_EVENT_WINDOW_ROWS = 2
+MIN_BOUNDARY_PADDING_ROWS = 3
+BLE_STATE_NAMES = {
+    0: "DISCONNECTED",
+    1: "SCANNING",
+    2: "SCAN_STOPPING",
+    3: "CONNECTING",
+    4: "CONNECTING_WAIT",
+    5: "DISCOVERING",
+    6: "SUBSCRIBING",
+    7: "SUBSCRIBE_YIELD",
+    8: "CONNECTED",
+    9: "BACKOFF",
+}
+SUBSCRIBE_STEP_NAMES = {
+    0: "GET_SERVICE",
+    1: "GET_DISPLAY_CHAR",
+    2: "GET_COMMAND_CHAR",
+    3: "GET_COMMAND_LONG",
+    4: "SUBSCRIBE_DISPLAY",
+    5: "WRITE_DISPLAY_CCCD",
+    6: "GET_DISPLAY_LONG",
+    7: "SUBSCRIBE_LONG",
+    8: "WRITE_LONG_CCCD",
+    9: "REQUEST_ALERT_DATA",
+    10: "REQUEST_VERSION",
+    11: "COMPLETE",
+}
+CONNECT_PHASE_STATES = {"SCANNING", "SCAN_STOPPING", "CONNECTING", "CONNECTING_WAIT", "DISCOVERING", "SUBSCRIBING", "SUBSCRIBE_YIELD"}
+DISCONNECT_PHASE_STATES = {"DISCONNECTED", "BACKOFF"}
 
 
 @dataclass(frozen=True)
@@ -127,6 +176,31 @@ class SessionSummary:
         }
 
 
+def _decode_ble_state(code: Any) -> str:
+    try:
+        return BLE_STATE_NAMES.get(int(code), f"UNKNOWN_{int(code)}")
+    except (TypeError, ValueError):
+        return "UNKNOWN"
+
+
+def _decode_subscribe_step(code: Any) -> str:
+    try:
+        return SUBSCRIBE_STEP_NAMES.get(int(code), f"UNKNOWN_{int(code)}")
+    except (TypeError, ValueError):
+        return "UNKNOWN"
+
+
+def _segment_position(row_index: int, row_count: int) -> str:
+    if row_count <= 0:
+        return "unknown"
+    threshold = max(3, int(math.ceil(row_count * 0.1)))
+    if row_index <= threshold:
+        return "start"
+    if row_index > max(0, row_count - threshold):
+        return "end"
+    return "mid-drive"
+
+
 def _percentile(values: list[float], pct: float) -> Optional[float]:
     if not values:
         return None
@@ -140,6 +214,16 @@ def _percentile(values: list[float], pct: float) -> Optional[float]:
         return float(ordered[lo])
     frac = rank - lo
     return float(ordered[lo] + (ordered[hi] - ordered[lo]) * frac)
+
+
+def peak_limit_map(profile: str) -> dict[str, float]:
+    config = score_perf_csv.load_threshold_config(SLO_FILE)
+    checks = config.hard_common + config.hard_profile.get(profile, [])
+    limits: dict[str, float] = {}
+    for metric, _source, op, limit in checks:
+        if op == "<=":
+            limits[metric] = float(limit)
+    return limits
 
 
 def parse_args() -> argparse.Namespace:
@@ -393,6 +477,253 @@ def _peak_diagnostic(rows: list[dict[str, int]], column: str) -> Optional[dict[s
     }
 
 
+def _build_row_summary(row: dict[str, int], row_index: int, column: str) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "row_index": row_index,
+        "millis": int(row.get("millis", 0)),
+        "value": float(int(row.get(column, 0))),
+    }
+    for field in TOP_ROW_FIELDS:
+        if field in row:
+            summary[field] = int(row.get(field, 0))
+    if "bleState" in row:
+        summary["bleState"] = _decode_ble_state(row.get("bleState", 0))
+        summary["bleStateCode"] = int(row.get("bleState", 0))
+    if "subscribeStep" in row:
+        summary["subscribeStep"] = _decode_subscribe_step(row.get("subscribeStep", 0))
+        summary["subscribeStepCode"] = int(row.get("subscribeStep", 0))
+    if "proxyAdvertisingLastTransitionReason" in row:
+        summary["proxyAdvertisingLastTransitionReasonCode"] = int(row.get("proxyAdvertisingLastTransitionReason", 0))
+    for field in ("connectInProgress", "asyncConnectPending", "pendingDisconnectCleanup", "proxyAdvertising", "wifiPriorityMode"):
+        if field in row:
+            summary[field] = bool(int(row.get(field, 0)))
+    return summary
+
+
+def _longest_exceed_run(rows: list[dict[str, int]], column: str, limit: float) -> int:
+    longest = 0
+    current = 0
+    for row in rows:
+        if int(row.get(column, 0)) > limit:
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+    return longest
+
+
+def _boundary_padding_rows(row_count: int) -> int:
+    if row_count <= 0:
+        return 0
+    return min(row_count, max(MIN_BOUNDARY_PADDING_ROWS, int(math.ceil(row_count * 0.05))))
+
+
+def _counter_delta_indexes(rows: list[dict[str, int]], column: str) -> set[int]:
+    indexes: set[int] = set()
+    if not rows or not _has_column(rows, column):
+        return indexes
+    previous = int(rows[0].get(column, 0))
+    for index in range(1, len(rows)):
+        current = int(rows[index].get(column, 0))
+        if current > previous:
+            start = max(0, index - BOUNDARY_EVENT_WINDOW_ROWS)
+            end = min(len(rows), index + BOUNDARY_EVENT_WINDOW_ROWS + 1)
+            indexes.update(range(start, end))
+        previous = current
+    return indexes
+
+
+def _row_is_explicit_boundary(row: dict[str, int]) -> bool:
+    ble_state = _decode_ble_state(row.get("bleState", 0)) if "bleState" in row else ""
+    if ble_state in CONNECT_PHASE_STATES or ble_state in DISCONNECT_PHASE_STATES:
+        return True
+    if int(row.get("connectInProgress", 0)) == 1:
+        return True
+    if int(row.get("asyncConnectPending", 0)) == 1:
+        return True
+    if int(row.get("pendingDisconnectCleanup", 0)) == 1:
+        return True
+    return False
+
+
+def _boundary_row_indexes(rows: list[dict[str, int]]) -> set[int]:
+    indexes: set[int] = set()
+    if not rows:
+        return indexes
+    padding = _boundary_padding_rows(len(rows))
+    indexes.update(range(min(padding, len(rows))))
+    indexes.update(range(max(0, len(rows) - padding), len(rows)))
+    for index, row in enumerate(rows):
+        if _row_is_explicit_boundary(row):
+            indexes.add(index)
+    indexes.update(_counter_delta_indexes(rows, "disc"))
+    indexes.update(_counter_delta_indexes(rows, "reconn"))
+    return indexes
+
+
+def _rows_from_indexes(rows: list[dict[str, int]], indexes: set[int], *, include: bool) -> list[dict[str, int]]:
+    if include:
+        return [row for index, row in enumerate(rows) if index in indexes]
+    return [row for index, row in enumerate(rows) if index not in indexes]
+
+
+def _subset_peak_diagnostic(rows: list[dict[str, int]], column: str, limit: float) -> Optional[dict[str, Any]]:
+    if not rows or not _has_column(rows, column):
+        return None
+    peak_index, peak_row = max(enumerate(rows), key=lambda item: int(item[1].get(column, 0)))
+    exceed_count = sum(1 for row in rows if int(row.get(column, 0)) > limit)
+    longest_exceed_run = _longest_exceed_run(rows, column, limit)
+    classification = (
+        "sustained"
+        if longest_exceed_run > 3 or (len(rows) > 0 and exceed_count > (len(rows) * 0.05))
+        else ("spike" if exceed_count > 0 else "clean")
+    )
+    return {
+        "value": float(int(peak_row.get(column, 0))),
+        "row_index": peak_index + 1,
+        "millis": int(peak_row.get("millis", 0)),
+        "exceed_count": exceed_count,
+        "longest_exceed_run": longest_exceed_run,
+        "classification": classification,
+    }
+
+
+def build_peak_partition_analysis(
+    rows: list[dict[str, int]],
+    peak_diagnostics: dict[str, dict[str, Any]],
+    profile: str,
+) -> dict[str, Any]:
+    boundary_indexes = _boundary_row_indexes(rows)
+    boundary_rows = _rows_from_indexes(rows, boundary_indexes, include=True)
+    steady_rows = _rows_from_indexes(rows, boundary_indexes, include=False)
+    limits = peak_limit_map(profile)
+
+    metrics: dict[str, Any] = {}
+    for metric_name, column in PEAK_COLUMNS.items():
+        if metric_name not in peak_diagnostics:
+            continue
+        limit = limits.get(column)
+        if limit is None:
+            continue
+        boundary_peak = _subset_peak_diagnostic(boundary_rows, column, limit)
+        steady_peak = _subset_peak_diagnostic(steady_rows, column, limit)
+        diagnosis = "clean"
+        if steady_peak and steady_peak["exceed_count"] > 0:
+            diagnosis = "steady_state"
+        elif boundary_peak and boundary_peak["exceed_count"] > 0:
+            diagnosis = "boundary_only"
+        metrics[metric_name] = {
+            "limit": limit,
+            "diagnosis": diagnosis,
+            "boundary_peak": boundary_peak,
+            "steady_state_peak": steady_peak,
+        }
+
+    return {
+        "boundary_row_count": len(boundary_rows),
+        "steady_state_row_count": len(steady_rows),
+        "boundary_row_indexes": [index + 1 for index in sorted(boundary_indexes)],
+        "metrics": metrics,
+    }
+
+
+def _peak_phase_bucket(summary: dict[str, Any], segment_position: str, classification: str) -> str:
+    ble_state = summary.get("bleState", "")
+    if summary.get("pendingDisconnectCleanup"):
+        return "boundary spike during disconnect/cleanup/proxy transition"
+    if ble_state in CONNECT_PHASE_STATES:
+        return "boundary spike during connect/discovery/subscribe"
+    if ble_state in DISCONNECT_PHASE_STATES:
+        return "boundary spike during disconnect/cleanup/proxy transition"
+    if summary.get("connectInProgress") or summary.get("asyncConnectPending"):
+        return "boundary spike during connect/discovery/subscribe"
+    if summary.get("proxyAdvertising") or summary.get("wifiPriorityMode"):
+        return "boundary spike during disconnect/cleanup/proxy transition"
+    if segment_position == "start":
+        return "boundary spike during connect/discovery/subscribe"
+    if segment_position == "end":
+        return "boundary spike during disconnect/cleanup/proxy transition"
+    if classification == "sustained":
+        return "sustained steady-state BLE runtime issue"
+    return "unknown, requiring deeper instrumentation"
+
+
+def _augment_peak_diagnostics(
+    rows: list[dict[str, int]],
+    peak_diagnostics: dict[str, dict[str, Any]],
+    profile: str,
+) -> dict[str, dict[str, Any]]:
+    limits = peak_limit_map(profile)
+    enriched: dict[str, dict[str, Any]] = {}
+    for metric_name, diagnostic in peak_diagnostics.items():
+        column = diagnostic["column"]
+        limit = limits.get(column)
+        enriched_metric = dict(diagnostic)
+        if limit is None:
+            enriched_metric["limit"] = None
+            enriched_metric["exceed_count"] = 0
+            enriched_metric["longest_exceed_run"] = 0
+            enriched_metric["classification"] = "unknown"
+            enriched_metric["segment_position"] = _segment_position(int(diagnostic["row_index"]), len(rows))
+            enriched_metric["top_5_rows"] = [
+                _build_row_summary(rows[int(diagnostic["row_index"]) - 1], int(diagnostic["row_index"]), column)
+            ]
+            enriched_metric["likely_phase_bucket"] = _peak_phase_bucket(
+                enriched_metric["top_5_rows"][0],
+                enriched_metric["segment_position"],
+                enriched_metric["classification"],
+            )
+            enriched[metric_name] = enriched_metric
+            continue
+
+        exceed_rows = [
+            (index + 1, row)
+            for index, row in enumerate(rows)
+            if int(row.get(column, 0)) > limit
+        ]
+        top_rows = sorted(
+            [(_build_row_summary(row, row_index, column)) for row_index, row in exceed_rows],
+            key=lambda item: (item["value"], item["row_index"]),
+            reverse=True,
+        )[:5]
+        exceed_count = len(exceed_rows)
+        longest_exceed_run = _longest_exceed_run(rows, column, limit)
+        classification = (
+            "sustained"
+            if longest_exceed_run > 3 or (len(rows) > 0 and exceed_count > (len(rows) * 0.05))
+            else "spike"
+        )
+        segment_position = _segment_position(int(diagnostic["row_index"]), len(rows))
+        wrapper_symptom_of = None
+        if metric_name == "loop_max_peak_us" and "ble_process_max_peak_us" in peak_diagnostics:
+            ble_diag = peak_diagnostics["ble_process_max_peak_us"]
+            if (int(ble_diag["row_index"]) == int(diagnostic["row_index"]) and
+                    int(ble_diag["millis"]) == int(diagnostic["millis"])):
+                loop_value = float(diagnostic["value"])
+                ble_value = float(ble_diag["value"])
+                if ble_value > 0 and (loop_value - ble_value) <= max(50000.0, ble_value * 0.2):
+                    wrapper_symptom_of = "ble_process_max_peak_us"
+        if not top_rows:
+            top_rows = [
+                _build_row_summary(rows[int(diagnostic["row_index"]) - 1], int(diagnostic["row_index"]), column)
+            ]
+        enriched_metric.update(
+            {
+                "limit": limit,
+                "exceed_count": exceed_count,
+                "longest_exceed_run": longest_exceed_run,
+                "classification": classification,
+                "segment_position": segment_position,
+                "top_5_rows": top_rows,
+                "likely_phase_bucket": _peak_phase_bucket(top_rows[0], segment_position, classification),
+            }
+        )
+        if wrapper_symptom_of:
+            enriched_metric["wrapper_symptom_of"] = wrapper_symptom_of
+        enriched[metric_name] = enriched_metric
+    return enriched
+
+
 def extract_metrics(
     rows: list[dict[str, int]],
     source_schema: int,
@@ -405,7 +736,7 @@ def extract_metrics(
     }
     unsupported_metrics = set(ALWAYS_UNSUPPORTED_METRICS)
     columns = set(rows[0].keys())
-    if source_schema < CURRENT_PERF_CSV_SCHEMA or not {"perfDrop", "eventBusDrops"} <= columns:
+    if source_schema < MIN_DROP_COUNTER_SCHEMA or not {"perfDrop", "eventBusDrops"} <= columns:
         unsupported_metrics.update(LEGACY_UNSUPPORTED_METRICS)
 
     for metric_name, column in DELTA_COLUMNS.items():
@@ -586,6 +917,7 @@ def append_import_sections(
     unsupported_metrics: list[str],
     selected_segment: dict[str, Any],
     peak_diagnostics: dict[str, dict[str, Any]],
+    partition_analysis: dict[str, Any],
     csv_scorecard: dict[str, Any],
     panic_summary: dict[str, Any],
 ) -> None:
@@ -611,9 +943,67 @@ def append_import_sections(
     if peak_diagnostics:
         for metric_name in sorted(peak_diagnostics):
             peak = peak_diagnostics[metric_name]
+            rendered_value = int(round(peak["value"])) if abs(peak["value"] - round(peak["value"])) < 1e-9 else peak["value"]
             lines.append(
-                f"- `{metric_name}`: value={int(round(peak['value'])) if abs(peak['value'] - round(peak['value'])) < 1e-9 else peak['value']}, row={peak['row_index']}, millis={peak['millis']}"
+                f"- `{metric_name}`: value={rendered_value}, row={peak['row_index']}, millis={peak['millis']}, "
+                f"classification={peak.get('classification', 'unknown')}, exceed_count={peak.get('exceed_count', 0)}, "
+                f"longest_exceed_run={peak.get('longest_exceed_run', 0)}, segment_position={peak.get('segment_position', 'unknown')}"
             )
+            if peak.get("wrapper_symptom_of"):
+                lines.append(f"  wrapper_symptom_of={peak['wrapper_symptom_of']}")
+            if peak.get("likely_phase_bucket"):
+                lines.append(f"  likely_phase_bucket={peak['likely_phase_bucket']}")
+            for top_row in peak.get("top_5_rows", [])[:3]:
+                detail_fields = [
+                    f"row={top_row['row_index']}",
+                    f"millis={top_row['millis']}",
+                    f"value={int(round(top_row['value'])) if abs(top_row['value'] - round(top_row['value'])) < 1e-9 else top_row['value']}",
+                ]
+                for field in TOP_ROW_FIELDS:
+                    if field in top_row:
+                        detail_fields.append(f"{field}={top_row[field]}")
+                if "bleState" in top_row:
+                    detail_fields.append(f"bleState={top_row['bleState']}")
+                if "subscribeStep" in top_row:
+                    detail_fields.append(f"subscribeStep={top_row['subscribeStep']}")
+                for field in (
+                    "connectInProgress",
+                    "asyncConnectPending",
+                    "pendingDisconnectCleanup",
+                    "proxyAdvertising",
+                    "wifiPriorityMode",
+                ):
+                    if field in top_row:
+                        detail_fields.append(f"{field}={'yes' if top_row[field] else 'no'}")
+                lines.append(f"  top_row: {', '.join(detail_fields)}")
+    else:
+        lines.append("- none")
+    lines.extend(
+        [
+            "",
+            "## Boundary vs Steady-State",
+            "",
+            f"- Boundary rows: {partition_analysis.get('boundary_row_count', 0)}",
+            f"- Steady-state rows: {partition_analysis.get('steady_state_row_count', 0)}",
+        ]
+    )
+    partition_metrics = partition_analysis.get("metrics", {})
+    if partition_metrics:
+        for metric_name in sorted(partition_metrics):
+            partition = partition_metrics[metric_name]
+            lines.append(
+                f"- `{metric_name}`: diagnosis={partition.get('diagnosis', 'unknown')}, limit={int(partition['limit']) if abs(partition['limit'] - round(partition['limit'])) < 1e-9 else partition['limit']}"
+            )
+            for label, payload in (("boundary_peak", partition.get("boundary_peak")), ("steady_state_peak", partition.get("steady_state_peak"))):
+                if not payload:
+                    lines.append(f"  {label}: none")
+                    continue
+                rendered_value = int(round(payload["value"])) if abs(payload["value"] - round(payload["value"])) < 1e-9 else payload["value"]
+                lines.append(
+                    f"  {label}: value={rendered_value}, row={payload['row_index']}, millis={payload['millis']}, "
+                    f"classification={payload['classification']}, exceed_count={payload['exceed_count']}, "
+                    f"longest_exceed_run={payload['longest_exceed_run']}"
+                )
     else:
         lines.append("- none")
     lines.extend(
@@ -686,6 +1076,8 @@ def main() -> int:
     if not metrics:
         print("ERROR: no metrics extracted from CSV", file=sys.stderr)
         return 3
+    peak_diagnostics = _augment_peak_diagnostics(rows, peak_diagnostics, profile)
+    partition_analysis = build_peak_partition_analysis(rows, peak_diagnostics, profile)
 
     metrics_ndjson = out_dir / "metrics.ndjson"
     write_metrics_ndjson(metrics_ndjson, run_id, git_sha, suite_or_profile, metrics)
@@ -719,6 +1111,7 @@ def main() -> int:
         "unsupported_metrics": unsupported_metrics,
         "selected_segment": selected_segment_payload,
         "peaks": peak_diagnostics,
+        "latency_partitions": partition_analysis,
         "panic": {
             key: value
             for key, value in panic_summary.items()
@@ -783,6 +1176,7 @@ def main() -> int:
         unsupported_metrics=unsupported_metrics,
         selected_segment=selected_segment_payload,
         peak_diagnostics=peak_diagnostics,
+        partition_analysis=partition_analysis,
         csv_scorecard=csv_scorecard,
         panic_summary=panic_summary,
     )
@@ -805,6 +1199,22 @@ def main() -> int:
         f"CSV SLO scorecard:      {csv_scorecard['result']} "
         f"(hard={csv_scorecard['hard_failures']}, advisory={csv_scorecard['advisory_warnings']})"
     )
+    boundary_only = sorted(
+        metric_name
+        for metric_name, payload in partition_analysis.get("metrics", {}).items()
+        if payload.get("diagnosis") == "boundary_only"
+    )
+    steady_state = sorted(
+        metric_name
+        for metric_name, payload in partition_analysis.get("metrics", {}).items()
+        if payload.get("diagnosis") == "steady_state"
+    )
+    if boundary_only or steady_state:
+        print(
+            "Latency split: "
+            f"boundary_only={','.join(boundary_only) if boundary_only else 'none'} "
+            f"steady_state={','.join(steady_state) if steady_state else 'none'}"
+        )
     print(f"Artifacts: {out_dir}")
 
     result = str(scored["result"])

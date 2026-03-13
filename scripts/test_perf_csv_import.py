@@ -22,7 +22,8 @@ HEADER_COLUMNS = [
     for line in (ROOT / "test" / "contracts" / "perf_csv_column_contract.txt").read_text(encoding="utf-8").splitlines()
     if line.strip() and not line.startswith("#")
 ]
-LEGACY_HEADER_COLUMNS = HEADER_COLUMNS[:-4]
+SCHEMA13_HEADER_COLUMNS = HEADER_COLUMNS[:-8]
+LEGACY_HEADER_COLUMNS = HEADER_COLUMNS[:-12]
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -80,6 +81,10 @@ def base_row(millis: int, *, connected: bool, header_columns: list[str]) -> dict
     if connected:
         row["rx"] = 100
         row["parseOK"] = 100
+        if "bleState" in row:
+            row["bleState"] = 8
+        if "subscribeStep" in row:
+            row["subscribeStep"] = 11
     return row
 
 
@@ -220,13 +225,13 @@ def test_schema13_import_supports_drop_metrics(tmpdir: Path) -> None:
     out_dir = tmpdir / "schema13_out"
     write_capture(
         csv_path,
-        header_columns=HEADER_COLUMNS,
+        header_columns=SCHEMA13_HEADER_COLUMNS,
         sessions=[
             make_session(
                 seq=1,
                 token="SCHEMA013",
                 schema=13,
-                header_columns=HEADER_COLUMNS,
+                header_columns=SCHEMA13_HEADER_COLUMNS,
                 duration_ms=60000,
                 connected=True,
                 drive_like=True,
@@ -245,6 +250,7 @@ def test_schema13_import_supports_drop_metrics(tmpdir: Path) -> None:
     assert_true("perf_drop_delta" not in set(manifest["unsupported_metrics"]), "schema13 perf_drop_delta should not be unsupported")
     diagnostics = json.loads((out_dir / "import_diagnostics.json").read_text(encoding="utf-8"))
     assert_true("loop_max_peak_us" in diagnostics["peaks"], "peak diagnostics missing loop_max_peak_us")
+    assert_true(diagnostics["coverage_status"] == "full_runtime_gates", f"diagnostics coverage mismatch: {diagnostics}")
 
 
 def test_segment_selection_and_listing(tmpdir: Path) -> None:
@@ -300,6 +306,98 @@ def test_segment_selection_and_listing(tmpdir: Path) -> None:
     assert_true(explicit_manifest["selected_segment"]["session_index"] == 1, f"explicit selector chose wrong segment: {explicit_manifest}")
 
 
+def test_peak_diagnostics_classify_spike_and_attribute_phase(tmpdir: Path) -> None:
+    csv_path = tmpdir / "spike.csv"
+    out_dir = tmpdir / "spike_out"
+    session = make_session(
+        seq=1,
+        token="SPIKE001",
+        schema=14,
+        header_columns=HEADER_COLUMNS,
+        duration_ms=120000,
+        connected=True,
+        drive_like=True,
+        row_count=40,
+    )
+    rows = session["rows"]
+    assert isinstance(rows, list)
+    spike_row = rows[0]
+    assert isinstance(spike_row, dict)
+    spike_row["loopMax_us"] = 430000
+    spike_row["bleProcessMax_us"] = 400000
+    spike_row["bleState"] = 6
+    spike_row["subscribeStep"] = 4
+    spike_row["connectInProgress"] = 1
+    spike_row["asyncConnectPending"] = 0
+    spike_row["pendingDisconnectCleanup"] = 0
+    spike_row["proxyAdvertising"] = 0
+    spike_row["wifiPriorityMode"] = 0
+    write_capture(csv_path, header_columns=HEADER_COLUMNS, sessions=[session])
+
+    result = run_import(csv_path, out_dir)
+    assert_true(result.returncode == 2, f"expected failing spike import, got rc={result.returncode} stderr={result.stderr}")
+    diagnostics = json.loads((out_dir / "import_diagnostics.json").read_text(encoding="utf-8"))
+    loop_diag = diagnostics["peaks"]["loop_max_peak_us"]
+    ble_diag = diagnostics["peaks"]["ble_process_max_peak_us"]
+    partition = diagnostics["latency_partitions"]["metrics"]
+    assert_true(loop_diag["classification"] == "spike", f"loop classification wrong: {loop_diag}")
+    assert_true(loop_diag["exceed_count"] == 1, f"loop exceed_count wrong: {loop_diag}")
+    assert_true(loop_diag["longest_exceed_run"] == 1, f"loop exceed run wrong: {loop_diag}")
+    assert_true(loop_diag["segment_position"] == "start", f"loop segment position wrong: {loop_diag}")
+    assert_true(loop_diag["likely_phase_bucket"] == "boundary spike during connect/discovery/subscribe", f"loop phase bucket wrong: {loop_diag}")
+    assert_true(loop_diag["wrapper_symptom_of"] == "ble_process_max_peak_us", f"wrapper attribution missing: {loop_diag}")
+    assert_true(loop_diag["top_5_rows"][0]["bleState"] == "SUBSCRIBING", f"bleState missing from top row: {loop_diag}")
+    assert_true(loop_diag["top_5_rows"][0]["subscribeStep"] == "SUBSCRIBE_DISPLAY", f"subscribeStep missing from top row: {loop_diag}")
+    assert_true(ble_diag["classification"] == "spike", f"ble classification wrong: {ble_diag}")
+    assert_true(partition["loop_max_peak_us"]["diagnosis"] == "boundary_only", f"loop partition diagnosis wrong: {partition}")
+    assert_true(partition["ble_process_max_peak_us"]["diagnosis"] == "boundary_only", f"ble partition diagnosis wrong: {partition}")
+    assert_true(partition["loop_max_peak_us"]["steady_state_peak"]["classification"] == "clean", f"steady-state split should be clean: {partition}")
+    comparison = (out_dir / "comparison.txt").read_text(encoding="utf-8")
+    assert_true("classification=spike" in comparison, "comparison should show spike classification")
+    assert_true("likely_phase_bucket=boundary spike during connect/discovery/subscribe" in comparison, "comparison should show phase bucket")
+    assert_true("top_row:" in comparison, "comparison should show top rows")
+    assert_true("## Boundary vs Steady-State" in comparison, "comparison should show latency split section")
+    assert_true("diagnosis=boundary_only" in comparison, "comparison should show boundary-only diagnosis")
+
+
+def test_peak_diagnostics_classify_sustained_runs(tmpdir: Path) -> None:
+    csv_path = tmpdir / "sustained.csv"
+    out_dir = tmpdir / "sustained_out"
+    session = make_session(
+        seq=1,
+        token="SUSTAIN1",
+        schema=14,
+        header_columns=HEADER_COLUMNS,
+        duration_ms=120000,
+        connected=True,
+        drive_like=True,
+        row_count=20,
+    )
+    rows = session["rows"]
+    assert isinstance(rows, list)
+    for idx in range(4, 9):
+        row = rows[idx]
+        assert isinstance(row, dict)
+        row["bleProcessMax_us"] = 390000
+        row["loopMax_us"] = 420000
+        row["bleState"] = 8
+        row["subscribeStep"] = 11
+    write_capture(csv_path, header_columns=HEADER_COLUMNS, sessions=[session])
+
+    result = run_import(csv_path, out_dir)
+    assert_true(result.returncode == 2, f"expected failing sustained import, got rc={result.returncode} stderr={result.stderr}")
+    diagnostics = json.loads((out_dir / "import_diagnostics.json").read_text(encoding="utf-8"))
+    loop_diag = diagnostics["peaks"]["loop_max_peak_us"]
+    partition = diagnostics["latency_partitions"]["metrics"]
+    assert_true(loop_diag["classification"] == "sustained", f"loop classification wrong: {loop_diag}")
+    assert_true(loop_diag["exceed_count"] == 5, f"loop exceed_count wrong: {loop_diag}")
+    assert_true(loop_diag["longest_exceed_run"] == 5, f"loop exceed run wrong: {loop_diag}")
+    assert_true(loop_diag["likely_phase_bucket"] == "sustained steady-state BLE runtime issue", f"loop phase bucket wrong: {loop_diag}")
+    assert_true(len(loop_diag["top_5_rows"]) >= 5, f"top_5_rows missing sustained rows: {loop_diag}")
+    assert_true(partition["loop_max_peak_us"]["diagnosis"] == "steady_state", f"loop partition diagnosis wrong: {partition}")
+    assert_true(partition["loop_max_peak_us"]["steady_state_peak"]["classification"] == "sustained", f"steady-state partition should be sustained: {partition}")
+
+
 def test_leading_rows_form_implicit_segment(tmpdir: Path) -> None:
     csv_path = tmpdir / "leading_rows.csv"
     out_dir = tmpdir / "leading_rows_out"
@@ -334,6 +432,8 @@ def main() -> int:
         test_legacy_import_reports_partial_coverage(tmpdir)
         test_schema13_import_supports_drop_metrics(tmpdir)
         test_segment_selection_and_listing(tmpdir)
+        test_peak_diagnostics_classify_spike_and_attribute_phase(tmpdir)
+        test_peak_diagnostics_classify_sustained_runs(tmpdir)
         test_leading_rows_form_implicit_segment(tmpdir)
 
     print("[perf-csv-import] integration tests passed")
