@@ -1,80 +1,41 @@
 <script>
 	import { onMount } from 'svelte';
-	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
+	import { fetchWithTimeout } from '$lib/utils/poll';
 	import { formatFrequencyMhz } from '$lib/utils/format';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	import SettingsObdCard from '$lib/features/settings/SettingsObdCard.svelte';
+	import {
+		fetchRuntimeGpsStatus,
+		retainRuntimeStatus,
+		runtimeGpsStatus
+	} from '$lib/stores/runtimeStatus.svelte.js';
 
-	let loading = $state(true);
 	let message = $state(null);
-	let gpsStatusFetchInFlight = false;
 	let savingGpsEnabled = $state(false);
 
-	const STATUS_POLL_INTERVAL_MS = 2500;
+	const GPS_POLL_INTERVAL_MS = 2500;
 
-	const statusPoll = createPoll(async () => {
-		await fetchGpsStatus();
-	}, STATUS_POLL_INTERVAL_MS);
-
-	let gpsStatus = $state({
-		enabled: false,
-		runtimeEnabled: false,
-		mode: 'scaffold',
-		hasFix: false,
-		stableHasFix: false,
-		satellites: 0,
-		stableSatellites: 0,
-		sampleAgeMs: null,
-		stableFixAgeMs: null,
-		moduleDetected: false,
-		detectionTimedOut: false,
-		parserActive: false
-	});
-
-	onMount(async () => {
-		await fetchGpsStatus();
-		loading = false;
-		statusPoll.start();
-
-		return () => {
-			statusPoll.stop();
-		};
-	});
+	onMount(() => retainRuntimeStatus({ gpsPollIntervalMs: GPS_POLL_INTERVAL_MS }));
 
 	function setMsg(type, text) {
 		message = { type, text };
 	}
 
 	function gpsHasFixStable() {
-		return (typeof gpsStatus.stableHasFix === 'boolean') ? gpsStatus.stableHasFix : !!gpsStatus.hasFix;
+		return (typeof $runtimeGpsStatus.stableHasFix === 'boolean') ? $runtimeGpsStatus.stableHasFix : !!$runtimeGpsStatus.hasFix;
 	}
 
 	function gpsSatellitesStable() {
-		if (typeof gpsStatus.stableSatellites === 'number') return gpsStatus.stableSatellites;
-		return gpsStatus.satellites || 0;
-	}
-
-	async function fetchGpsStatus() {
-		if (gpsStatusFetchInFlight) return;
-		gpsStatusFetchInFlight = true;
-		try {
-			const res = await fetchWithTimeout('/api/gps/status');
-			if (!res.ok) return;
-			const data = await res.json();
-			gpsStatus = { ...gpsStatus, ...data };
-		} catch (e) {
-			// Polling should fail silently.
-		} finally {
-			gpsStatusFetchInFlight = false;
-		}
+		if (typeof $runtimeGpsStatus.stableSatellites === 'number') return $runtimeGpsStatus.stableSatellites;
+		return $runtimeGpsStatus.satellites || 0;
 	}
 
 	async function toggleGpsEnabled(enabled) {
 		if (savingGpsEnabled) return;
-		const previous = !!gpsStatus.enabled;
-		gpsStatus = { ...gpsStatus, enabled };
+		const previous = !!$runtimeGpsStatus.enabled;
+		runtimeGpsStatus.update((current) => ({ ...current, enabled }));
 		savingGpsEnabled = true;
 
 		try {
@@ -86,14 +47,14 @@
 			const data = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				setMsg('error', data.message || 'Failed to update GPS setting');
-				gpsStatus = { ...gpsStatus, enabled: previous };
+				runtimeGpsStatus.update((current) => ({ ...current, enabled: previous }));
 				return;
 			}
 
 			setMsg('success', `GPS ${enabled ? 'enabled' : 'disabled'}`);
-			await fetchGpsStatus();
+			await fetchRuntimeGpsStatus();
 		} catch (e) {
-			gpsStatus = { ...gpsStatus, enabled: previous };
+			runtimeGpsStatus.update((current) => ({ ...current, enabled: previous }));
 			setMsg('error', 'Failed to update GPS setting');
 		} finally {
 			savingGpsEnabled = false;
@@ -122,7 +83,7 @@
 					<input
 						type="checkbox"
 						class="toggle toggle-primary"
-						checked={!!gpsStatus.enabled}
+						checked={!!$runtimeGpsStatus.enabled}
 						onchange={(e) => toggleGpsEnabled(e.currentTarget.checked)}
 						disabled={savingGpsEnabled}
 					/>
@@ -132,26 +93,26 @@
 			<div class="surface-stats">
 				<div class="stat py-3 px-4">
 					<div class="stat-title">Mode</div>
-					<div class="stat-value text-base">{gpsStatus.mode || 'scaffold'}</div>
-					<div class="stat-desc">{gpsStatus.runtimeEnabled ? 'runtime active' : 'runtime idle'}</div>
+					<div class="stat-value text-base">{$runtimeGpsStatus.mode || 'scaffold'}</div>
+					<div class="stat-desc">{$runtimeGpsStatus.runtimeEnabled ? 'runtime active' : 'runtime idle'}</div>
 				</div>
 					<div class="stat py-3 px-4">
 						<div class="stat-title">Fix</div>
 						<div class="stat-value text-base">{gpsHasFixStable() ? 'Yes' : 'No'}</div>
-						<div class="stat-desc">{gpsStatus.moduleDetected ? 'module detected' : 'waiting for module'}</div>
+						<div class="stat-desc">{$runtimeGpsStatus.moduleDetected ? 'module detected' : 'waiting for module'}</div>
 					</div>
 					<div class="stat py-3 px-4">
 						<div class="stat-title">Satellites</div>
 						<div class="stat-value text-base">{gpsSatellitesStable()}</div>
-						<div class="stat-desc">{gpsStatus.parserActive ? 'parser active' : 'parser idle'}</div>
+						<div class="stat-desc">{$runtimeGpsStatus.parserActive ? 'parser active' : 'parser idle'}</div>
 					</div>
 				<div class="stat py-3 px-4">
 					<div class="stat-title">Sample Age</div>
 					<div class="stat-value text-base">
-						{typeof gpsStatus.sampleAgeMs === 'number' ? `${Math.round(gpsStatus.sampleAgeMs / 1000)}s` : '—'}
+						{typeof $runtimeGpsStatus.sampleAgeMs === 'number' ? `${Math.round($runtimeGpsStatus.sampleAgeMs / 1000)}s` : '—'}
 						</div>
 						<div class="stat-desc">
-							{gpsStatus.detectionTimedOut ? 'module timeout' : gpsHasFixStable() ? 'latest fix sample' : 'waiting for fix'}
+							{$runtimeGpsStatus.detectionTimedOut ? 'module timeout' : gpsHasFixStable() ? 'latest fix sample' : 'waiting for fix'}
 						</div>
 					</div>
 			</div>

@@ -1,0 +1,105 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { installFetchMock, jsonResponse } from '../../test/fetch-mock.js';
+import Page from './+page.svelte';
+
+function countCalls(fetchMock, url) {
+	return fetchMock.mock.calls.filter(([requestUrl]) => requestUrl === url).length;
+}
+
+function installDefaultFetch() {
+	let gpsEnabled = true;
+
+	return installFetchMock(
+		[
+			{
+				method: 'GET',
+				match: '/api/gps/status',
+				respond: () =>
+					jsonResponse({
+						enabled: gpsEnabled,
+						runtimeEnabled: gpsEnabled,
+						mode: 'drive',
+						hasFix: true,
+						stableHasFix: true,
+						satellites: 7,
+						stableSatellites: 7,
+						sampleAgeMs: 1900,
+						moduleDetected: true,
+						detectionTimedOut: false,
+						parserActive: true
+					})
+			},
+			{
+				method: 'POST',
+				match: '/api/gps/config',
+				respond: async ({ init }) => {
+					const body = JSON.parse(init.body);
+					gpsEnabled = body.enabled === true;
+					return jsonResponse({ success: true });
+				}
+			},
+			{
+				method: 'GET',
+				match: '/api/settings',
+				respond: jsonResponse({ obdEnabled: false })
+			},
+			{
+				method: 'GET',
+				match: '/api/obd/status',
+				respond: jsonResponse({ enabled: false, connected: false, pollCount: 0, pollErrors: 0 })
+			},
+			{ method: 'POST', match: '/api/obd/config', respond: jsonResponse({ success: true }) },
+			{ method: 'POST', match: '/api/obd/scan', respond: jsonResponse({ success: true }) },
+			{ method: 'POST', match: '/api/obd/forget', respond: jsonResponse({ success: true }) }
+		],
+		jsonResponse({})
+	);
+}
+
+describe('integrations route page', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	it('loads gps runtime data from the shared runtime module', async () => {
+		const fetchMock = installDefaultFetch();
+		const { unmount } = render(Page);
+
+		await screen.findByText('drive');
+		await screen.findByText('7');
+		await screen.findByText('2s');
+		await waitFor(() => {
+			expect(countCalls(fetchMock, '/api/gps/status')).toBeGreaterThanOrEqual(1);
+		});
+
+		unmount();
+	});
+
+	it('polls gps every 2.5s and refreshes after toggling gps', async () => {
+		vi.useFakeTimers();
+		const fetchMock = installDefaultFetch();
+		const { unmount } = render(Page);
+
+		await Promise.resolve();
+		expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
+
+		await vi.advanceTimersByTimeAsync(2500);
+		expect(countCalls(fetchMock, '/api/gps/status')).toBe(2);
+
+		const toggle = await screen.findByRole('checkbox', { name: /enabled/i });
+		await fireEvent.click(toggle);
+
+		await screen.findByText('GPS disabled');
+		expect(
+			fetchMock.mock.calls.some(
+				([url, init]) => url === '/api/gps/config' && init?.method === 'POST'
+			)
+		).toBe(true);
+		expect(countCalls(fetchMock, '/api/gps/status')).toBe(3);
+
+		unmount();
+	});
+});
