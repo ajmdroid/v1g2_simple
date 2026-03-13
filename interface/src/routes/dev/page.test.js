@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { installFetchMock, jsonResponse } from '../../test/fetch-mock.js';
@@ -20,9 +20,10 @@ function createStorageMock() {
 	};
 }
 
-function installDefaultFetch() {
+function installDefaultFetch(overrides = []) {
 	return installFetchMock(
 		[
+			...overrides,
 			{
 				method: 'GET',
 				match: '/api/settings',
@@ -102,6 +103,56 @@ describe('dev route page', () => {
 		expect(await screen.findByText('BLE Queue (V1 to Display)')).toBeInTheDocument();
 		expect(screen.getByText('Perf CSV Files')).toBeInTheDocument();
 		expect(screen.getByText('active')).toBeInTheDocument();
+
+		unmount();
+	});
+
+	it('keeps the metrics panel usable when metrics fetch fails', async () => {
+		installDefaultFetch([
+			{ method: 'GET', match: '/api/debug/metrics', respond: jsonResponse({ error: 'bad metrics' }, 500) }
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('perf-0001.csv');
+		await fireEvent.click(screen.getByRole('button', { name: /^expand$/i }));
+
+		await waitFor(() => {
+			expect(screen.getByText('Click Refresh or enable Auto to load metrics')).toBeInTheDocument();
+		});
+		expect(screen.queryByText('BLE Queue (V1 to Display)')).not.toBeInTheDocument();
+
+		unmount();
+	});
+
+	it('shows an error when perf files fail to load on mount', async () => {
+		installDefaultFetch([
+			{ method: 'GET', match: '/api/debug/perf-files', respond: jsonResponse({ error: 'bad files' }, 500) }
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Failed to load perf files');
+		expect(screen.getByText('Perf CSV Files')).toBeInTheDocument();
+		expect(screen.queryByText('perf-0001.csv')).not.toBeInTheDocument();
+
+		unmount();
+	});
+
+	it('keeps the perf file listed when delete fails', async () => {
+		installDefaultFetch([
+			{
+				method: 'POST',
+				match: '/api/debug/perf-files/delete',
+				respond: jsonResponse({ error: 'locked' }, 500)
+			}
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('perf-0001.csv');
+		await fireEvent.click(screen.getByRole('checkbox', { name: /i understand the risks/i }));
+		await fireEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+		await screen.findByText('Failed to delete perf-0001.csv: locked');
+		expect(screen.getByText('perf-0001.csv')).toBeInTheDocument();
 
 		unmount();
 	});
