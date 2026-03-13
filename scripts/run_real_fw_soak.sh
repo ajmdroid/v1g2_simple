@@ -27,6 +27,7 @@ SERIAL_BAUD="${REAL_FW_SERIAL_BAUD:-115200}"
 HTTP_TIMEOUT_SECONDS="${REAL_FW_HTTP_TIMEOUT_SECONDS:-2}"
 METRICS_ENDPOINT_ATTEMPTS="${REAL_FW_METRICS_ENDPOINT_ATTEMPTS:-12}"
 METRICS_ENDPOINT_RETRY_DELAY_SECONDS="${REAL_FW_METRICS_ENDPOINT_RETRY_DELAY_SECONDS:-2}"
+STARTUP_SETTLE_MIN_SECONDS="${REAL_FW_STARTUP_SETTLE_MIN_SECONDS:-15}"
 STARTUP_SETTLE_MAX_SECONDS="${REAL_FW_STARTUP_SETTLE_MAX_SECONDS:-20}"
 STARTUP_STABLE_CONSECUTIVE_SAMPLES="${REAL_FW_STARTUP_STABLE_CONSECUTIVE_SAMPLES:-2}"
 UPLOAD_FS=0
@@ -168,6 +169,22 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       HTTP_TIMEOUT_SECONDS="$2"
+      shift
+      ;;
+    --startup-settle-min-seconds)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --startup-settle-min-seconds" >&2
+        exit 2
+      fi
+      STARTUP_SETTLE_MIN_SECONDS="$2"
+      shift
+      ;;
+    --startup-settle-max-seconds)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --startup-settle-max-seconds" >&2
+        exit 2
+      fi
+      STARTUP_SETTLE_MAX_SECONDS="$2"
       shift
       ;;
     --env)
@@ -646,6 +663,12 @@ Options:
   --serial-baud N        Serial capture baud rate (default: 115200)
   --http-timeout-seconds N
                         curl timeout for metrics/drive calls (default: 2)
+  --startup-settle-min-seconds N
+                        Minimum runtime settle floor after metrics recovery
+                        before scoring starts (default: 15)
+  --startup-settle-max-seconds N
+                        Maximum runtime settle wait after metrics recovery
+                        before scoring starts (default: 20)
   --env NAME             PlatformIO env to flash (default: waveshare-349)
   --port PATH            Fixed serial port (default: auto-detect)
   --with-fs              Upload LittleFS image before firmware upload
@@ -882,8 +905,18 @@ if ! [[ "$HTTP_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$HTTP_TIMEOUT_SECONDS" -lt
   exit 2
 fi
 
+if ! [[ "$STARTUP_SETTLE_MIN_SECONDS" =~ ^[0-9]+$ ]]; then
+  echo "Invalid REAL_FW_STARTUP_SETTLE_MIN_SECONDS value '$STARTUP_SETTLE_MIN_SECONDS' (expected non-negative integer)." >&2
+  exit 2
+fi
+
 if ! [[ "$STARTUP_SETTLE_MAX_SECONDS" =~ ^[0-9]+$ ]]; then
   echo "Invalid REAL_FW_STARTUP_SETTLE_MAX_SECONDS value '$STARTUP_SETTLE_MAX_SECONDS' (expected non-negative integer)." >&2
+  exit 2
+fi
+
+if [[ "$STARTUP_SETTLE_MIN_SECONDS" -gt "$STARTUP_SETTLE_MAX_SECONDS" ]]; then
+  echo "Invalid startup settle window: min ${STARTUP_SETTLE_MIN_SECONDS}s is greater than max ${STARTUP_SETTLE_MAX_SECONDS}s." >&2
   exit 2
 fi
 
@@ -1346,7 +1379,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    poll: ${POLL_SECONDS}s"
   echo "    serial baud: ${SERIAL_BAUD}"
   echo "    http timeout: ${HTTP_TIMEOUT_SECONDS}s"
-  echo "    startup settle: max=${STARTUP_SETTLE_MAX_SECONDS}s stableSamples=${STARTUP_STABLE_CONSECUTIVE_SAMPLES}"
+  echo "    startup settle: min=${STARTUP_SETTLE_MIN_SECONDS}s max=${STARTUP_SETTLE_MAX_SECONDS}s stableSamples=${STARTUP_STABLE_CONSECUTIVE_SAMPLES}"
   echo "    metrics url: ${METRICS_URL:-disabled}"
   echo "    metrics poll url: ${METRICS_POLL_URL:-disabled}"
   echo "    metrics soak mode: ${METRICS_SOAK_MODE}"
@@ -1490,7 +1523,7 @@ wait_for_runtime_settle() {
   settle_start_epoch="$(date +%s)"
   deadline_epoch=$((settle_start_epoch + STARTUP_SETTLE_MAX_SECONDS))
 
-  echo "==> Waiting for runtime settle (${STARTUP_STABLE_CONSECUTIVE_SAMPLES} consecutive stable sample(s), max ${STARTUP_SETTLE_MAX_SECONDS}s)" | tee -a "$RUN_LOG"
+  echo "==> Waiting for runtime settle (${STARTUP_STABLE_CONSECUTIVE_SAMPLES} consecutive stable sample(s), min ${STARTUP_SETTLE_MIN_SECONDS}s, max ${STARTUP_SETTLE_MAX_SECONDS}s)" | tee -a "$RUN_LOG"
   while [[ "$(date +%s)" -lt "$deadline_epoch" ]]; do
     attempt=$((attempt + 1))
     payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$endpoint_url" 2>/dev/null || true)"
@@ -1529,11 +1562,15 @@ wait_for_runtime_settle() {
 
       echo "    startup settle sample ${attempt}: stable=${sample_stable} consecutive=${consecutive}/${STARTUP_STABLE_CONSECUTIVE_SAMPLES} uptimeMs=${uptime_val:-n/a} loopMaxUs=${loop_val:-n/a} dispPipeMaxUs=${disp_val:-n/a} wifiMaxUs=${wifi_val:-n/a}" | tee -a "$RUN_LOG"
       if [[ "$consecutive" -ge "$STARTUP_STABLE_CONSECUTIVE_SAMPLES" ]]; then
-        STARTUP_SETTLE_SUCCEEDED=1
-        STARTUP_SETTLE_ATTEMPTS_USED="$attempt"
         STARTUP_SETTLE_ELAPSED_SECONDS=$(( $(date +%s) - settle_start_epoch ))
-        echo "    runtime settle: OK after ${STARTUP_SETTLE_ELAPSED_SECONDS}s" | tee -a "$RUN_LOG"
-        return 0
+        if [[ "$STARTUP_SETTLE_ELAPSED_SECONDS" -lt "$STARTUP_SETTLE_MIN_SECONDS" ]]; then
+          echo "    runtime settle: stable threshold reached, holding until minimum ${STARTUP_SETTLE_MIN_SECONDS}s floor (${STARTUP_SETTLE_ELAPSED_SECONDS}s elapsed)" | tee -a "$RUN_LOG"
+        else
+          STARTUP_SETTLE_SUCCEEDED=1
+          STARTUP_SETTLE_ATTEMPTS_USED="$attempt"
+          echo "    runtime settle: OK after ${STARTUP_SETTLE_ELAPSED_SECONDS}s" | tee -a "$RUN_LOG"
+          return 0
+        fi
       fi
     fi
 
@@ -1583,7 +1620,7 @@ echo "    poll: ${POLL_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    serial baud: ${SERIAL_BAUD}" | tee -a "$RUN_LOG"
 echo "    http timeout: ${HTTP_TIMEOUT_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    endpoint recovery retries: attempts=${METRICS_ENDPOINT_ATTEMPTS} delay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s boundedWait<=$(metrics_endpoint_max_wait_seconds)s" | tee -a "$RUN_LOG"
-echo "    startup settle: max=${STARTUP_SETTLE_MAX_SECONDS}s stableSamples=${STARTUP_STABLE_CONSECUTIVE_SAMPLES}" | tee -a "$RUN_LOG"
+echo "    startup settle: min=${STARTUP_SETTLE_MIN_SECONDS}s max=${STARTUP_SETTLE_MAX_SECONDS}s stableSamples=${STARTUP_STABLE_CONSECUTIVE_SAMPLES}" | tee -a "$RUN_LOG"
 echo "    metrics url: ${METRICS_URL:-disabled}" | tee -a "$RUN_LOG"
 echo "    metrics poll url: ${METRICS_POLL_URL:-disabled}" | tee -a "$RUN_LOG"
 echo "    metrics soak mode: ${METRICS_SOAK_MODE}" | tee -a "$RUN_LOG"
