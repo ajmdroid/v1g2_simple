@@ -13,6 +13,7 @@
 
 #include "OpenFontRender.h"
 #include <cstring>
+#include <memory>
 
 class Arduino_Canvas;
 
@@ -49,6 +50,7 @@ struct DisplayFontManager {
     /// Load Segment7 + TopCounter fonts, prime the top-counter bounds cache.
     /// Serpentine is deferred until ensureSerpentineLoaded().
     void init(Arduino_Canvas* canvas);
+    void init(const std::unique_ptr<Arduino_Canvas>& canvas) { init(canvas.get()); }
 
     /// Pre-render common frequency glyphs once so first live alert draws
     /// don't stall while OpenFontRender builds glyph caches.
@@ -58,6 +60,9 @@ struct DisplayFontManager {
     /// @param canvas  current display canvas (needed for setDrawer).
     /// @return true when the serpentine renderer is ready to use.
     bool ensureSerpentineLoaded(Arduino_Canvas* canvas);
+    bool ensureSerpentineLoaded(const std::unique_ptr<Arduino_Canvas>& canvas) {
+        return ensureSerpentineLoaded(canvas.get());
+    }
 
     // ----- Top-counter bounds helpers -------------------------------------
 

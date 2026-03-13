@@ -20,6 +20,8 @@
 #ifndef DISPLAY_H
 #define DISPLAY_H
 
+#include <memory>
+
 // Include display driver abstraction (Arduino_GFX only)
 #include "display_driver.h"
 #include "packet_parser.h"
@@ -127,12 +129,11 @@ public:
 
 private:
     enum class ScreenMode { Unknown, Resting, Scanning, Disconnected, Live, Persisted, Camera };
-    void teardownDriverObjects();
 
     // Display driver (Arduino_GFX)
-    Arduino_DataBus* bus = nullptr;
-    Arduino_GFX* gfxPanel = nullptr;
-    Arduino_Canvas* tft = nullptr;  // Canvas for rotation/buffering
+    std::unique_ptr<Arduino_ESP32QSPI> bus;
+    std::unique_ptr<Arduino_AXS15231B> gfxPanel;
+    std::unique_ptr<Arduino_Canvas> tft;  // Canvas for rotation/buffering
 
     DisplayState lastState;
     AlertData lastAlert;

@@ -11,6 +11,7 @@
 // ============================================================================
 
 #include "display_driver.h"  // DISPLAY_USE_ARDUINO_GFX, Arduino_Canvas, etc.
+#include <memory>
 
 
 // Shared datum state (file-scope — set by GFX_setTextDatum, read by GFX_drawString)
@@ -61,3 +62,9 @@ inline void GFX_drawString(Arduino_Canvas* canvas, const char* str, int16_t x, i
     canvas->print(str);
 }
 
+inline void GFX_drawString(const std::unique_ptr<Arduino_Canvas>& canvas,
+                           const char* str,
+                           int16_t x,
+                           int16_t y) {
+    GFX_drawString(canvas.get(), str, x, y);
+}

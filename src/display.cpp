@@ -104,21 +104,7 @@ V1Display::V1Display() {
     lastRestingProfileSlot = -1;
 }
 
-void V1Display::teardownDriverObjects() {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdelete-non-virtual-dtor"
-    delete tft;
-    tft = nullptr;
-    delete gfxPanel;
-    gfxPanel = nullptr;
-    delete bus;
-    bus = nullptr;
-#pragma GCC diagnostic pop
-}
-
-V1Display::~V1Display() {
-    teardownDriverObjects();
-}
+V1Display::~V1Display() = default;
 
 bool V1Display::begin() {
     Serial.printf("[Display] Init %s...\n", DISPLAY_NAME);
@@ -134,7 +120,9 @@ bool V1Display::begin() {
     };
     
     // Ensure restart/re-init paths never leak partially constructed objects.
-    teardownDriverObjects();
+    tft.reset();
+    gfxPanel.reset();
+    bus.reset();
 
     // Arduino_GFX initialization for Waveshare 3.49"
     // Waveshare 3.49" has INVERTED backlight PWM: 0 = full brightness, 255 = off
@@ -152,24 +140,23 @@ bool V1Display::begin() {
     delay(30);
     
     // Create QSPI bus
-    bus = new Arduino_ESP32QSPI(
+    bus.reset(new (std::nothrow) Arduino_ESP32QSPI(
         LCD_CS,    // CS
         LCD_SCLK,  // SCK
         LCD_DATA0, // D0
         LCD_DATA1, // D1
         LCD_DATA2, // D2
         LCD_DATA3  // D3
-    );
+    ));
     if (!bus) {
         Serial.println("[Display] ERROR: Failed to create bus!");
-        teardownDriverObjects();
         return false;
     }
     
     // Create AXS15231B panel - native 172x640 portrait
     // Pass GFX_NOT_DEFINED for RST since we already did manual reset
-    gfxPanel = new Arduino_AXS15231B(
-        bus,               // bus
+    gfxPanel.reset(new (std::nothrow) Arduino_AXS15231B(
+        bus.get(),         // bus
         GFX_NOT_DEFINED,   // RST - we already did manual reset
         0,                 // rotation (0 = no panel rotation)
         false,             // IPS
@@ -181,25 +168,28 @@ bool V1Display::begin() {
         0,                 // row_offset2
         axs15231b_180640_init_operations,   // init operations for this panel type
         sizeof(axs15231b_180640_init_operations)
-    );
+    ));
     if (!gfxPanel) {
         Serial.println("[Display] ERROR: Failed to create panel!");
-        teardownDriverObjects();
+        bus.reset();
         return false;
     }
     
     // Create canvas as 172x640 native with rotation=1 for landscape (90°)
-    tft = new Arduino_Canvas(172, 640, gfxPanel, 0, 0, 1);
+    tft.reset(new (std::nothrow) Arduino_Canvas(172, 640, gfxPanel.get(), 0, 0, 1));
     
     if (!tft) {
         Serial.println("[Display] ERROR: Failed to create canvas!");
-        teardownDriverObjects();
+        gfxPanel.reset();
+        bus.reset();
         return false;
     }
     
     if (!tft->begin()) {
         Serial.println("[Display] ERROR: tft->begin() failed!");
-        teardownDriverObjects();
+        tft.reset();
+        gfxPanel.reset();
+        bus.reset();
         return false;
     }
     
