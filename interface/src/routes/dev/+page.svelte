@@ -28,6 +28,7 @@
 	// Performance metrics state
 	let metricsExpanded = $state(false);
 	let metrics = $state(null);
+	let metricsError = $state(null);
 	let metricsLoading = $state(false);
 	let metricsAutoRefresh = $state(false);
 	const METRICS_REFRESH_INTERVAL_MS = 2000;
@@ -161,8 +162,9 @@
 			const response = await fetchWithTimeout('/api/debug/metrics');
 			if (!response.ok) throw new Error('Failed to load metrics');
 			metrics = await response.json();
+			metricsError = null;
 		} catch (error) {
-			console.error('Failed to load metrics:', error);
+			metricsError = 'Failed to load metrics';
 		} finally {
 			metricsLoading = false;
 		}
@@ -411,6 +413,8 @@
 							<span class="swap-off">Auto (2s)</span>
 						</label>
 						</div>
+
+						<StatusAlert message={metricsError ? { type: 'error', text: metricsError } : null} />
 
 						{#if metrics}
 							<!-- BLE Queue Stats -->

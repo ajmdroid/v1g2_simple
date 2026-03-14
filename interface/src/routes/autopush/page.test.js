@@ -121,4 +121,18 @@ describe('autopush route page', () => {
 
 		unmount();
 	});
+
+	it('shows an error when profiles fail to load', async () => {
+		installDefaultFetch([
+			{ method: 'GET', match: '/api/v1/profiles', respond: jsonResponse({ error: 'bad profiles' }, 500) }
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Failed to load profiles');
+		await screen.findByText('Highway');
+		expect(screen.getByText('Auto-Push Profiles')).toBeInTheDocument();
+		expect(screen.getByText('Active')).toBeInTheDocument();
+
+		unmount();
+	});
 });

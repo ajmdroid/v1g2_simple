@@ -57,6 +57,8 @@
 	let wifiPoll = $state(null);
 	let clientNowMs = $state(Date.now());
 	let wifiStatusFetchInFlight = false;
+	const WIFI_STATUS_ERROR_TEXT = 'Failed to load WiFi status';
+	const WIFI_SCAN_ERROR_TEXT = 'Failed to update WiFi scan';
 	const TIME_TICK_INTERVAL_MS = 1000;
 	const timeTickPoll = createPoll(async () => {
 		clientNowMs = Date.now();
@@ -108,6 +110,12 @@
 		wifiPoll.stop();
 		wifiPoll = null;
 	}
+
+	function clearMessageText(text) {
+		if (message?.text === text) {
+			message = null;
+		}
+	}
 	
 	async function fetchSettings() {
 		try {
@@ -131,9 +139,12 @@
 			if (res.ok) {
 				const data = await res.json();
 				wifiStatus = { ...wifiStatus, ...data };
+				clearMessageText(WIFI_STATUS_ERROR_TEXT);
+			} else {
+				message = { type: 'error', text: WIFI_STATUS_ERROR_TEXT };
 			}
 		} catch (e) {
-			console.error('Failed to fetch WiFi status:', e);
+			message = { type: 'error', text: WIFI_STATUS_ERROR_TEXT };
 		} finally {
 			wifiStatusFetchInFlight = false;
 		}
@@ -199,6 +210,7 @@
 			const res = await fetchWithTimeout('/api/wifi/scan', { method: 'POST' });
 			if (res.ok) {
 				const data = await res.json();
+				clearMessageText(WIFI_SCAN_ERROR_TEXT);
 				if (!data.scanning && data.networks.length > 0) {
 					wifiNetworks = data.networks;
 					wifiScanning = false;
@@ -208,9 +220,11 @@
 					wifiScanning = false;
 					stopWifiPoll();
 				}
+			} else {
+				message = { type: 'error', text: WIFI_SCAN_ERROR_TEXT };
 			}
 		} catch (e) {
-			console.error('Error polling WiFi scan:', e);
+			message = { type: 'error', text: WIFI_SCAN_ERROR_TEXT };
 		}
 		
 		// Also update status

@@ -54,9 +54,11 @@
 			if (res.ok) {
 				const d = await res.json();
 				profiles = d.profiles || [];
+			} else {
+				message = { type: 'error', text: 'Failed to load profiles' };
 			}
 		} catch (e) {
-			console.error('Failed to fetch profiles');
+			message = { type: 'error', text: 'Failed to load profiles' };
 		}
 	}
 	

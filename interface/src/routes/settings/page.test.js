@@ -87,6 +87,60 @@ describe('settings route page', () => {
 		unmount();
 	});
 
+	it('shows WiFi status load errors in the page alert', async () => {
+		installFetchMock(
+			[
+				{ method: 'GET', match: '/api/settings', respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true }) },
+				{ method: 'GET', match: '/api/wifi/status', respond: jsonResponse({ error: 'bad wifi' }, 500) },
+				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Failed to load WiFi status');
+		expect(screen.getByText('Settings')).toBeInTheDocument();
+
+		unmount();
+	});
+
+	it('shows WiFi scan polling errors in the page alert', async () => {
+		vi.useFakeTimers();
+		let scanCalls = 0;
+		installFetchMock(
+			[
+				{ method: 'GET', match: '/api/settings', respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true }) },
+				{
+					method: 'GET',
+					match: '/api/wifi/status',
+					respond: jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' })
+				},
+				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) },
+				{
+					method: 'POST',
+					match: '/api/wifi/scan',
+					respond: () => {
+						scanCalls += 1;
+						if (scanCalls === 1) {
+							return jsonResponse({ scanning: true, networks: [] });
+						}
+						return jsonResponse({ error: 'scan failed' }, 500);
+					}
+				}
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		const scanButton = await screen.findByRole('button', { name: /scan for networks/i });
+		await fireEvent.click(scanButton);
+		await vi.advanceTimersByTimeAsync(1000);
+
+		await screen.findByText('Failed to update WiFi scan');
+
+		unmount();
+	});
+
 	it('shows success message on save success', async () => {
 		const fetchMock = installDefaultFetch([
 			{ method: 'POST', match: '/api/settings', respond: jsonResponse({ success: true }) }

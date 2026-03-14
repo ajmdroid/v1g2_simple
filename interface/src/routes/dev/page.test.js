@@ -119,6 +119,7 @@ describe('dev route page', () => {
 		await waitFor(() => {
 			expect(screen.getByText('Click Refresh or enable Auto to load metrics')).toBeInTheDocument();
 		});
+		expect(screen.getByText('Failed to load metrics')).toBeInTheDocument();
 		expect(screen.queryByText('BLE Queue (V1 to Display)')).not.toBeInTheDocument();
 
 		unmount();
