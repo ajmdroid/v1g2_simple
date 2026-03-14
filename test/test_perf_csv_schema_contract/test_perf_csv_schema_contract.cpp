@@ -19,7 +19,7 @@ std::string readTextFile(const char* path) {
 void setUp() {}
 void tearDown() {}
 
-void test_perf_csv_schema_version_matches_alpr_only_header() {
+void test_perf_csv_schema_version_matches_current_header() {
     const std::string source = readTextFile("src/perf_sd_logger.cpp");
 
     TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_sd_logger.cpp");
@@ -51,7 +51,7 @@ void test_perf_csv_header_appends_drive_gate_columns() {
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_perf_csv_schema_version_matches_alpr_only_header);
+    RUN_TEST(test_perf_csv_schema_version_matches_current_header);
     RUN_TEST(test_perf_csv_header_drops_camera_voice_columns);
     RUN_TEST(test_perf_csv_header_appends_drive_gate_columns);
     return UNITY_END();

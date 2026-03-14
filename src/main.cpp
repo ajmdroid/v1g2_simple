@@ -146,9 +146,6 @@ void cancelDisplayPreview() {
 void cancelColorPreview() {
     cancelDisplayPreview();
 }
-// resetReasonToString() — moved to main_boot.cpp
-// normalizeLegacyLockoutRadiusScale() — moved to main_boot.cpp
-
 static void showInitialScanningScreen() {
     if (initialScanningScreenShown) {
         return;
@@ -158,12 +155,6 @@ static void showInitialScanningScreen() {
     initialScanningScreenShown = true;
     connectionStateCadenceModule.onScanningScreenShown(millis());
 }
-
-// logPanicBreadcrumbs() — moved to main_boot.cpp
-
-// nvsHealthCheck() — moved to main_boot.cpp
-
-// nextBootId() — moved to main_boot.cpp
 
 DisplayMode displayMode = DisplayMode::IDLE;
 
@@ -220,8 +211,6 @@ static WifiOrchestrator& getWifiOrchestrator() {
         [](int slotIndex) { autoPushModule.start(slotIndex); });
     return orchestrator;
 }
-
-// fatalBootError() — moved to main_boot.cpp
 
 static void configureLoopSettingsPrepModule() {
     LoopSettingsPrepModule::Providers loopSettingsPrepProviders;

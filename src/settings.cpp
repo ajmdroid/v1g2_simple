@@ -59,9 +59,6 @@ String sanitizeLastV1AddressValue(const String& raw) {
 }
 
 
-// --- Backup static helpers (isSupportedBackupType through writeBackupAtomically)
-//     moved to settings_backup.cpp ---
-
 // Global instance
 SettingsManager settingsManager;
 
@@ -70,10 +67,6 @@ SettingsManager settingsManager;
 const char XOR_KEY[] = "V1G2-S3cr3t-K3y!";
 const char* OBFUSCATION_HEX_PREFIX = "hex:";
 
-
-// --- NVS persistence helpers (attemptNvsRecovery, XOR crypto chain, WiFi SD secrets,
-//     namespaceHealthScore, getActive/StagingNamespace, writeSettingsToNamespace,
-//     persistSettingsAtomically) moved to settings_nvs.cpp ---
 
 SettingsManager::SettingsManager() {}
 
@@ -103,8 +96,6 @@ void SettingsManager::begin() {
     checkAndRestoreFromSD();
 }
 
-
-// --- checkAndRestoreFromSD moved to settings_backup.cpp ---
 
 void SettingsManager::load() {
     String activeNs = getActiveNamespace();
@@ -356,14 +347,4 @@ void SettingsManager::save() {
     backupToSD();
 }
 
-// --- setWiFiEnabled, setAPCredentials moved to settings_setters.cpp ---
-
-
-// --- WiFi client methods (getWifiClientPassword, setWifiClientEnabled,
-//     setWifiClientCredentials, clearWifiClientCredentials) moved to settings_nvs.cpp ---
-// --- Property setters (setProxyBLE through setLastV1Address), slot getters/setters,
-//     resetToDefaults moved to settings_setters.cpp ---
 // Check if NVS appears to be in default state (likely erased during reflash)
-
-// --- checkNeedsRestore, backupToSD, restoreFromSD, validateProfileReferences
-//     moved to settings_backup.cpp ---

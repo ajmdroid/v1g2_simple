@@ -53,11 +53,7 @@ using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 
 VolumeZeroWarning volZeroWarn;
 
-
-
 // getEffectiveScreenHeight() now lives in display_layout.h
-
-// DISP_PERF_* macros moved to display_update.cpp (Phase 3C/3D)
 
 // DISPLAY_FLUSH() macro — see include/display_flush.h
 #include "../include/display_flush.h"
@@ -79,8 +75,6 @@ V1Display* g_displayInstance = nullptr;
 #include "../include/display_text.h"
 
 using namespace DisplaySegments;
-
-
 
 // TOP_COUNTER_* constants now live in display_layout.h
 using DisplayLayout::TOP_COUNTER_FONT_SIZE;
@@ -247,9 +241,6 @@ void V1Display::setBrightness(uint8_t level) {
     #endif
 }
 
-// showSettingsSliders(), updateSettingsSliders(), getActiveSliderFromTouch(),
-// hideBrightnessSlider() moved to display_sliders.cpp (Phase 3B)
-
 void V1Display::clear() {
     tft->fillScreen(PALETTE_BG);
     DISPLAY_FLUSH();
@@ -291,21 +282,6 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool 
 #endif
 }
 
-// drawBaseFrame(), setLockoutIndicator(), setPreQuietActive(),
-// drawLockoutIndicator(), setGpsSatellites(), drawGpsIndicator()
-// moved to display_indicators.cpp (Phase 2P)
-
-// drawSevenSegmentDigit(), measureSevenSegmentText(), drawSevenSegmentText(),
-// draw14SegmentDigit(), draw14SegmentText(), drawTopCounterClassic(),
-// drawTopCounter() moved to display_top_counter.cpp (Phase 2O)
-
-// drawVolumeIndicator(), drawRssiIndicator() moved to display_status_bar.cpp (Phase 2N)
-
-// drawMuteIcon() moved to display_top_counter.cpp (Phase 2O)
-
-// drawProfileIndicator(), drawBatteryIndicator(), drawBLEProxyIndicator(),
-// drawWiFiIndicator() moved to display_status_bar.cpp (Phase 2N)
-
 void V1Display::flush() {
     DISPLAY_FLUSH();
 }
@@ -334,29 +310,6 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
         gfxPanel->draw16bitRGBBitmap(x, y + row, rowPtr, w, 1);
     }
 }
-
-// markFrequencyDirtyRegion() moved to display_frequency.cpp (Phase 2M)
-
-// showDisconnected(), showResting(), forceNextRedraw(), showScanning(),
-// resetChangeTracking(), showDemo(), showBootSplash(), showShutdown(),
-// showLowBattery() moved to display_screens.cpp (Phase 3A)
-
-// update(DisplayState), refreshFrequencyOnly(), refreshSecondaryAlertCards(),
-// updatePersisted(), update(AlertData, ...) moved to
-// display_update.cpp (Phase 3C/3D)
-
-// drawRestTelemetryCards(), drawSecondaryAlertCards()
-// moved to display_cards.cpp (Phase 2L)
-
-// drawBandBadge(), drawBandIndicators() moved to display_bands.cpp (Phase 2K)
-
-// drawFrequencyClassic(), drawFrequencySerpentine(), drawVolumeZeroWarning(),
-// drawFrequency(), markFrequencyDirtyRegion()
-// moved to display_frequency.cpp (Phase 2M)
-
-// drawDirectionArrow() moved to display_arrow.cpp (Phase 2I)
-
-// drawVerticalSignalBars() moved to display_bands.cpp (Phase 2K)
 
 const char* V1Display::bandToString(Band band) {
     return bandName(band);
