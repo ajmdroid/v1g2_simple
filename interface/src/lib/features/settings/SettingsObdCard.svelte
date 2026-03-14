@@ -33,7 +33,10 @@
 				if (typeof data.obdMinRssi === 'number') minRssi = data.obdMinRssi;
 				if (typeof data.obdEnabled === 'boolean') enabled = data.obdEnabled;
 			}
-		} catch (_) {}
+		} catch (error) {
+			console.error('Failed to load OBD settings', error);
+			obdMessage = { type: 'error', text: 'Failed to load OBD settings.' };
+		}
 		loaded = true;
 		if (enabled) statusPoll.start();
 	});
@@ -82,8 +85,8 @@
 		try {
 			const res = await fetchWithTimeout('/api/obd/status');
 			if (res.ok) obdStatus = await res.json();
-		} catch (_) {
-			// Silently ignore — poll will retry
+		} catch (error) {
+			console.warn('Failed to poll OBD status', error);
 		} finally {
 			statusFetchInFlight = false;
 		}
@@ -139,6 +142,10 @@
 			<input type="checkbox" class="toggle toggle-primary" bind:checked={enabled} onchange={handleToggle} disabled={saving} />
 		</label>
 
+		{#if obdMessage}
+			<StatusAlert message={obdMessage} />
+		{/if}
+
 		{#if enabled}
 			<div class="form-control">
 				<label class="label" for="obd-min-rssi">
@@ -170,10 +177,6 @@
 						<div><strong>Polls:</strong> {obdStatus.pollCount} ({obdStatus.pollErrors} errors)</div>
 					{/if}
 				</div>
-			{/if}
-
-			{#if obdMessage}
-				<StatusAlert message={obdMessage} />
 			{/if}
 
 			<div class="flex gap-2">

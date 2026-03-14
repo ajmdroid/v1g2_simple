@@ -52,7 +52,9 @@
 					tzOffsetMin: new Date().getTimezoneOffset() * -1,
 					source: 'client'
 				})
-			}).catch(() => {});
+			}).catch((error) => {
+				console.warn('Failed to sync client time', error);
+			});
 		}, 300);
 	}
 
@@ -64,8 +66,8 @@
 			const isDefaultPassword = data.isDefaultPassword === true;
 			showPasswordWarning = isDefaultPassword;
 			sessionStorage.setItem(DEFAULT_PASSWORD_CACHE_KEY, isDefaultPassword ? '1' : '0');
-		} catch (e) {
-			// Don't show warning on error.
+		} catch (error) {
+			console.warn('Failed to refresh default password warning', error);
 		}
 	}
 	

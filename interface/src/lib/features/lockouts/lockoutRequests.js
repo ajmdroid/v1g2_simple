@@ -326,7 +326,9 @@ export async function exportLockoutZonesRequest(fetchWithTimeout) {
 		const parsed = JSON.parse(payload);
 		const signatureCount = countLockoutSignatures(parsed);
 		if (signatureCount > 0) zoneCount = ` (${signatureCount} signatures)`;
-	} catch {}
+	} catch (error) {
+		console.warn('Failed to parse exported lockout zones payload', error);
+	}
 
 	return { ok: true, message: `Exported lockout zones${zoneCount}.` };
 }

@@ -210,4 +210,49 @@ describe('integrations route page', () => {
 
 		unmount();
 	});
+
+	it('shows an OBD settings error when the OBD settings fetch fails on mount', async () => {
+		const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/gps/status',
+					respond: jsonResponse({
+						enabled: true,
+						runtimeEnabled: true,
+						mode: 'drive',
+						hasFix: true,
+						stableHasFix: true,
+						satellites: 7,
+						stableSatellites: 7,
+						sampleAgeMs: 1900,
+						moduleDetected: true,
+						detectionTimedOut: false,
+						parserActive: true
+					})
+				},
+				{
+					method: 'GET',
+					match: '/api/settings',
+					respond: () => Promise.reject(new Error('settings unavailable'))
+				},
+				{
+					method: 'GET',
+					match: '/api/obd/status',
+					respond: jsonResponse({ enabled: false, connected: false, pollCount: 0, pollErrors: 0 })
+				},
+				{ method: 'POST', match: '/api/obd/config', respond: jsonResponse({ success: true }) },
+				{ method: 'POST', match: '/api/obd/scan', respond: jsonResponse({ success: true }) },
+				{ method: 'POST', match: '/api/obd/forget', respond: jsonResponse({ success: true }) }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Failed to load OBD settings.');
+		expect(errorSpy).toHaveBeenCalled();
+
+		unmount();
+	});
 });

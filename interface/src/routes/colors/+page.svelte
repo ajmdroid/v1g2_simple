@@ -223,7 +223,9 @@
 			}
 			message = { type: 'success', text: 'Colors saved! Previewing on display...' };
 			setTimeout(() => {
-				fetchWithTimeout('/api/displaycolors/clear', { method: 'POST' }).catch(() => {});
+				fetchWithTimeout('/api/displaycolors/clear', { method: 'POST' }).catch((error) => {
+					console.warn('Failed to clear display color preview', error);
+				});
 			}, 3000);
 		} catch (_) {
 			message = { type: 'error', text: 'Connection error' };
