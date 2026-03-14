@@ -1,8 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { installFetchMock, jsonResponse } from '../../test/fetch-mock.js';
 import Page from './+page.svelte';
+
+function countCalls(fetchMock, url) {
+	return fetchMock.mock.calls.filter(([requestUrl]) => requestUrl === url).length;
+}
 
 function installDefaultFetch(overrides = []) {
 	return installFetchMock(
@@ -23,6 +27,11 @@ function installDefaultFetch(overrides = []) {
 }
 
 describe('settings route page', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
 	it('loads and fetches initial settings/status data', async () => {
 		const fetchMock = installDefaultFetch();
 		const { unmount } = render(Page);
@@ -101,6 +110,74 @@ describe('settings route page', () => {
 		await fireEvent.click(saveButton);
 
 		await screen.findByText('Failed to save settings');
+		unmount();
+	});
+
+	it('syncs time from the phone and refreshes the shared runtime status', async () => {
+		let synced = false;
+		const fetchMock = installFetchMock(
+			[
+				{ method: 'GET', match: '/api/settings', respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true }) },
+				{
+					method: 'GET',
+					match: '/api/wifi/status',
+					respond: jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' })
+				},
+				{
+					method: 'GET',
+					match: '/api/status',
+					respond: () =>
+						jsonResponse(
+							synced
+								? {
+										time: {
+											valid: true,
+											source: 3,
+											confidence: 2,
+											epochMs: 1710000000000,
+											tzOffsetMin: -240,
+											ageMs: 0
+										}
+									}
+								: { time: { valid: false } }
+						)
+				},
+				{
+					method: 'POST',
+					match: '/api/time/set',
+					respond: () => {
+						synced = true;
+						return jsonResponse({
+							ok: true,
+							timeValid: true,
+							timeSource: 3,
+							timeConfidence: 2,
+							epochMs: 1710000000000,
+							tzOffsetMin: -240,
+							ageMs: 0
+						});
+					}
+				},
+				{ method: 'POST', match: '/api/settings', respond: jsonResponse({ success: true }) },
+				{ method: 'POST', match: '/api/wifi/scan', respond: jsonResponse({ scanning: false, networks: [] }) }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await fireEvent.click(await screen.findByRole('button', { name: /sync time from phone/i }));
+
+		await screen.findByText('Time synced from phone.');
+		await waitFor(() => {
+			expect(countCalls(fetchMock, '/api/status')).toBeGreaterThanOrEqual(2);
+		});
+		await waitFor(() => {
+			expect(screen.queryByText(/time not set/i)).toBeNull();
+		});
+		expect(
+			fetchMock.mock.calls.some(([url, init]) => url === '/api/time/set' && init?.method === 'POST')
+		).toBe(true);
+
 		unmount();
 	});
 });

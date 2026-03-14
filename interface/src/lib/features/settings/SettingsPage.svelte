@@ -1,38 +1,43 @@
-	<script>
-		import { onMount } from 'svelte';
+<script>
+	import { onMount } from 'svelte';
 	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
 	import { postSettingsForm } from '$lib/api/settings';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import SettingsAutoPowerOffCard from '$lib/features/settings/SettingsAutoPowerOffCard.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import SettingsBackupCard from '$lib/features/settings/SettingsBackupCard.svelte';
-		import SettingsWifiModal from '$lib/features/settings/SettingsWifiModal.svelte';
-		import {
-			formatAgeMs,
-			formatDeviceDateTime,
-			getTimeConfidenceLabel,
-			getTimeSourceLabel,
-			projectAgeMs,
-			projectEpochMs
-		} from '$lib/features/settings/settingsTime';
-		import StatusAlert from '$lib/components/StatusAlert.svelte';
-	
-    let settings = $state({
-        ap_ssid: '',
-        ap_password: '',
-        proxy_ble: true,
-        proxy_name: 'V1C-LE-S3',
-        autoPowerOffMinutes: 0,
-        apTimeoutMinutes: 0
-    });
-	
+	import SettingsWifiModal from '$lib/features/settings/SettingsWifiModal.svelte';
+	import {
+		formatAgeMs,
+		formatDeviceDateTime,
+		getTimeConfidenceLabel,
+		getTimeSourceLabel,
+		projectAgeMs,
+		projectEpochMs
+	} from '$lib/features/settings/settingsTime';
+	import StatusAlert from '$lib/components/StatusAlert.svelte';
+	import {
+		fetchRuntimeStatus,
+		retainRuntimeStatus,
+		runtimeStatus
+	} from '$lib/stores/runtimeStatus.svelte.js';
+
+	let settings = $state({
+		ap_ssid: '',
+		ap_password: '',
+		proxy_ble: true,
+		proxy_name: 'V1C-LE-S3',
+		autoPowerOffMinutes: 0,
+		apTimeoutMinutes: 0
+	});
+
 	let loading = $state(true);
 	let saving = $state(false);
 	let message = $state(null);
 	let restoreFile = $state(null);
 	let restoring = $state(false);
 	let backingUpNow = $state(false);
-	
+
 	// WiFi client (STA) state
 	let wifiStatus = $state({
 		enabled: false,
@@ -52,12 +57,7 @@
 	let wifiPoll = $state(null);
 	let clientNowMs = $state(Date.now());
 	let wifiStatusFetchInFlight = false;
-	let timeStatusFetchInFlight = false;
-	const TIME_STATUS_POLL_INTERVAL_MS = 7000;
 	const TIME_TICK_INTERVAL_MS = 1000;
-	const timeStatusPoll = createPoll(async () => {
-		await fetchTimeStatus();
-	}, TIME_STATUS_POLL_INTERVAL_MS);
 	const timeTickPoll = createPoll(async () => {
 		clientNowMs = Date.now();
 	}, TIME_TICK_INTERVAL_MS);
@@ -72,19 +72,34 @@
 		sampleClientMs: 0,
 		syncing: false
 	});
-	
+
+	function applyTimeStatus(snapshot, sampleClientMs = Date.now()) {
+		const t = snapshot || {};
+		const syncing = timeStatus.syncing;
+		timeStatus.valid = !!t.valid;
+		timeStatus.source = Number(t.source || 0);
+		timeStatus.confidence = Number(t.confidence || 0);
+		timeStatus.epochMs = Number(t.epochMs || 0);
+		timeStatus.tzOffsetMin = Number(t.tzOffsetMin ?? t.tzOffsetMinutes ?? 0);
+		timeStatus.ageMs = Number(t.ageMs || 0);
+		timeStatus.sampleClientMs = timeStatus.valid ? sampleClientMs : 0;
+		timeStatus.syncing = syncing;
+	}
+
 	onMount(async () => {
+		const releaseRuntimeStatus = retainRuntimeStatus({ needsStatus: true });
+		const unsubscribeRuntimeStatus = runtimeStatus.subscribe((status) => {
+			applyTimeStatus(status?.time);
+		});
 		await fetchSettings();
 		await fetchWifiStatus();
-		await fetchTimeStatus();
-		timeStatusPoll.start();
 		timeTickPoll.start();
-		
-		// Poll WiFi status every 3 seconds when modal is open
+
 		return () => {
 			stopWifiPoll();
-			timeStatusPoll.stop();
 			timeTickPoll.stop();
+			unsubscribeRuntimeStatus();
+			releaseRuntimeStatus();
 		};
 	});
 
@@ -124,30 +139,6 @@
 		}
 	}
 
-	async function fetchTimeStatus() {
-		if (timeStatusFetchInFlight) return;
-		timeStatusFetchInFlight = true;
-		try {
-			const res = await fetchWithTimeout('/api/status');
-			if (res.ok) {
-				const data = await res.json();
-				const t = data?.time || {};
-				const now = Date.now();
-				timeStatus.valid = !!t.valid;
-				timeStatus.source = Number(t.source || 0);
-				timeStatus.confidence = Number(t.confidence || 0);
-				timeStatus.epochMs = Number(t.epochMs || 0);
-				timeStatus.tzOffsetMin = Number(t.tzOffsetMin ?? t.tzOffsetMinutes ?? 0);
-				timeStatus.ageMs = Number(t.ageMs || 0);
-				timeStatus.sampleClientMs = timeStatus.valid ? now : 0;
-			}
-		} catch (e) {
-			console.error('Failed to fetch time status:', e);
-		} finally {
-			timeStatusFetchInFlight = false;
-		}
-	}
-
 	async function syncTimeFromPhone() {
 		timeStatus.syncing = true;
 		try {
@@ -178,7 +169,7 @@
 			message = { type: 'error', text: 'Failed to sync time' };
 		} finally {
 			timeStatus.syncing = false;
-			await fetchTimeStatus();
+			await fetchRuntimeStatus();
 		}
 	}
 	
