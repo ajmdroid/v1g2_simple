@@ -279,6 +279,93 @@ def test_selector_and_track_matching(tmpdir: Path) -> None:
     assert_true(result["comparison_kind"] == "no_baseline", "board mismatch must skip baseline comparison")
 
 
+def test_drive_wifi_ap_loop_peak_is_informational(tmpdir: Path) -> None:
+    case_dir = tmpdir / "wifi_ap_loop_info"
+    case_dir.mkdir(parents=True, exist_ok=True)
+    metrics_path = case_dir / "metrics.ndjson"
+    current_manifest = case_dir / "current.json"
+    baseline_manifest = case_dir / "baseline.json"
+
+    current_records = [
+        soak_metric("drive_wifi_ap", "metrics_ok_samples", 10),
+        soak_metric("drive_wifi_ap", "rx_packets_delta", 120),
+        soak_metric("drive_wifi_ap", "parse_successes_delta", 120),
+        soak_metric("drive_wifi_ap", "parse_failures_delta", 0),
+        soak_metric("drive_wifi_ap", "queue_drops_delta", 0),
+        soak_metric("drive_wifi_ap", "perf_drop_delta", 0),
+        soak_metric("drive_wifi_ap", "event_drop_delta", 0),
+        soak_metric("drive_wifi_ap", "oversize_drops_delta", 0),
+        soak_metric("drive_wifi_ap", "loop_max_peak_us", 220000),
+        soak_metric("drive_wifi_ap", "flush_max_peak_us", 30000),
+        soak_metric("drive_wifi_ap", "wifi_max_peak_us", 3000),
+        soak_metric("drive_wifi_ap", "ble_drain_max_peak_us", 5000),
+        soak_metric("drive_wifi_ap", "sd_max_peak_us", 10000),
+        soak_metric("drive_wifi_ap", "fs_max_peak_us", 10000),
+        soak_metric("drive_wifi_ap", "queue_high_water_peak", 4),
+        soak_metric("drive_wifi_ap", "wifi_connect_deferred_delta", 1),
+        soak_metric("drive_wifi_ap", "dma_free_min_bytes", 25000),
+        soak_metric("drive_wifi_ap", "dma_largest_min_bytes", 14000),
+        soak_metric("drive_wifi_ap", "ble_process_max_peak_us", 40000),
+        soak_metric("drive_wifi_ap", "disp_pipe_max_peak_us", 30000),
+        soak_metric("drive_wifi_ap", "ble_mutex_timeout_delta", 0),
+        soak_metric("drive_wifi_ap", "display_skips_delta", 0),
+        soak_metric("drive_wifi_ap", "reconnects_delta", 0),
+        soak_metric("drive_wifi_ap", "disconnects_delta", 0),
+        soak_metric("drive_wifi_ap", "gps_obs_drops_delta", 0),
+        soak_metric("drive_wifi_ap", "wifi_p95_us", 1800),
+        soak_metric("drive_wifi_ap", "disp_pipe_p95_us", 21000),
+        soak_metric("drive_wifi_ap", "dma_fragmentation_pct_p95", 18),
+    ]
+    baseline_records = [dict(item) for item in current_records]
+    for record in baseline_records:
+        if record["metric"] == "loop_max_peak_us":
+            record["value"] = 180000
+            break
+
+    write_metrics(metrics_path, current_records)
+    baseline_metrics_path = case_dir / "baseline.ndjson"
+    write_metrics(baseline_metrics_path, baseline_records)
+
+    write_manifest(
+        current_manifest,
+        run_id="soak-current",
+        git_sha="abc1234",
+        git_ref="main",
+        run_kind="real_fw_soak",
+        board_id="release",
+        env="waveshare-349",
+        lane="real-fw-soak",
+        suite_or_profile="drive_wifi_ap",
+        stress_class="core",
+        result="PASS",
+        metrics_file="metrics.ndjson",
+        base_result="PASS",
+        tracks=["drive_wifi_ap"],
+    )
+    write_manifest(
+        baseline_manifest,
+        run_id="soak-base",
+        git_sha="base567",
+        git_ref="main",
+        run_kind="real_fw_soak",
+        board_id="release",
+        env="waveshare-349",
+        lane="real-fw-soak",
+        suite_or_profile="drive_wifi_ap",
+        stress_class="core",
+        result="PASS",
+        metrics_file="baseline.ndjson",
+        base_result="PASS",
+        tracks=["drive_wifi_ap"],
+    )
+
+    result = score_hardware_run.score_run(current_manifest, CATALOG_PATH, baseline_manifest)
+    assert_true(result["result"] == "PASS", f"wifi-ap loop peak should not fail run: {result}")
+    loop_metric = next(metric for metric in result["metrics"] if metric["metric"] == "loop_max_peak_us")
+    assert_true(loop_metric["score_level"] == "info", f"wifi-ap loop peak should be info: {loop_metric}")
+    assert_true(loop_metric["score_status"] == "info", f"wifi-ap loop regression should stay informational: {loop_metric}")
+
+
 def test_optional_metric_gap_warns_but_is_not_inconclusive(tmpdir: Path) -> None:
     case_dir = tmpdir / "inconclusive"
     case_dir.mkdir(parents=True, exist_ok=True)
