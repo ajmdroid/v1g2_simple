@@ -103,8 +103,6 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     settings.gpsLockoutMode = LOCKOUT_RUNTIME_ADVISORY;
     settings.gpsLockoutLearnerRadiusE5 = 200;
     settings.gpsLockoutKaLearningEnabled = true;
-    settings.cameraAlertsEnabled = false;
-    settings.cameraAlertRangeCm = 54321;
     settings.turnOffDisplay = true;
     settings.brightness = 123;
     settings.displayStyle = DISPLAY_STYLE_SERPENTINE;
@@ -175,8 +173,6 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_EQUAL_INT(LOCKOUT_RUNTIME_ADVISORY, loaded.gpsLockoutMode);
     TEST_ASSERT_EQUAL_UINT16(200u, loaded.gpsLockoutLearnerRadiusE5);
     TEST_ASSERT_TRUE(loaded.gpsLockoutKaLearningEnabled);
-    TEST_ASSERT_FALSE(loaded.cameraAlertsEnabled);
-    TEST_ASSERT_EQUAL_UINT32(54321u, loaded.cameraAlertRangeCm);
     TEST_ASSERT_TRUE(loaded.turnOffDisplay);
     TEST_ASSERT_EQUAL_UINT8(123, loaded.brightness);
     TEST_ASSERT_EQUAL_INT(DISPLAY_STYLE_SERPENTINE, loaded.displayStyle);
@@ -227,7 +223,8 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_TRUE(backupDoc["wifiClientEnabled"].as<bool>());
     TEST_ASSERT_EQUAL_STRING("GarageNet", backupDoc["wifiClientSSID"].as<const char*>());
     TEST_ASSERT_EQUAL_INT(LOCKOUT_RUNTIME_ADVISORY, backupDoc["gpsLockoutMode"].as<int>());
-    TEST_ASSERT_EQUAL_INT(54321, backupDoc["cameraAlertRangeCm"].as<int>());
+    TEST_ASSERT_TRUE(backupDoc["cameraAlertsEnabled"].isNull());
+    TEST_ASSERT_TRUE(backupDoc["cameraAlertRangeCm"].isNull());
     TEST_ASSERT_EQUAL_INT(123, backupDoc["brightness"].as<int>());
     TEST_ASSERT_EQUAL_INT(VOICE_MODE_FREQ_ONLY, backupDoc["voiceAlertMode"].as<int>());
     TEST_ASSERT_TRUE(backupDoc["autoPushEnabled"].as<bool>());

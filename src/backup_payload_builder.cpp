@@ -75,8 +75,6 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["gpsLockoutXLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
     doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
     doc["gpsLockoutPreQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
-    doc["cameraAlertsEnabled"] = settings.cameraAlertsEnabled;
-    doc["cameraAlertRangeCm"] = settings.cameraAlertRangeCm;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;

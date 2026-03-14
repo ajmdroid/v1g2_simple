@@ -193,12 +193,6 @@ static void handleRestore(WebServer& server) {
         s.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
             doc["gpsLockoutPreQuietBufferE5"].as<int>());
     }
-    if (doc["cameraAlertsEnabled"].is<bool>()) {
-        s.cameraAlertsEnabled = doc["cameraAlertsEnabled"];
-    }
-    if (doc["cameraAlertRangeCm"].is<int>()) {
-        s.cameraAlertRangeCm = clampCameraAlertRangeCmValue(doc["cameraAlertRangeCm"].as<int>());
-    }
     if (doc["lastV1Address"].is<const char*>()) {
         s.lastV1Address = sanitizeLastV1AddressForBackup(doc["lastV1Address"].as<String>());
     }

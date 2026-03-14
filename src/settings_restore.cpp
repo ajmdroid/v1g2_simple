@@ -119,8 +119,6 @@ bool backupAppearsInSyncWithNvs(const JsonDocument& doc, const V1Settings& curre
         backupFieldMatchesBool(doc, "proxyBLE", current.proxyBLE) &&
         backupFieldMatchesString(doc, "proxyName", current.proxyName) &&
         backupFieldMatchesBool(doc, "gpsEnabled", current.gpsEnabled) &&
-        backupFieldMatchesBool(doc, "cameraAlertsEnabled", current.cameraAlertsEnabled) &&
-        backupFieldMatchesInt(doc, "cameraAlertRangeCm", static_cast<int>(current.cameraAlertRangeCm)) &&
         backupFieldMatchesInt(doc, "brightness", current.brightness) &&
         backupFieldMatchesInt(doc, "displayStyle", static_cast<int>(current.displayStyle)) &&
         backupFieldMatchesBool(doc, "autoPushEnabled", current.autoPushEnabled) &&
@@ -558,11 +556,6 @@ bool SettingsManager::restoreFromSD() {
     if (doc["gpsLockoutPreQuietBufferE5"].is<int>()) {
         settings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
             doc["gpsLockoutPreQuietBufferE5"].as<int>());
-    }
-    restoreBool("cameraAlertsEnabled", settings.cameraAlertsEnabled);
-    if (doc["cameraAlertRangeCm"].is<int>()) {
-        settings.cameraAlertRangeCm = clampCameraAlertRangeCmValue(
-            doc["cameraAlertRangeCm"].as<int>());
     }
     if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
     if (doc["autoPowerOffMinutes"].is<int>()) {

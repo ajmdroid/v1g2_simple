@@ -5,13 +5,6 @@
 void setUp(void) {}
 void tearDown(void) {}
 
-void test_camera_setting_defaults_match_alpr_only_contract() {
-	V1Settings settings;
-
-	TEST_ASSERT_TRUE(settings.cameraAlertsEnabled);
-	TEST_ASSERT_EQUAL_UINT32(CAMERA_ALERT_RANGE_CM_DEFAULT, settings.cameraAlertRangeCm);
-}
-
 void test_v1_settings_defaults_cover_current_runtime_shape() {
 	V1Settings settings;
 
@@ -23,7 +16,7 @@ void test_v1_settings_defaults_cover_current_runtime_shape() {
 	TEST_ASSERT_EQUAL_INT(LOCKOUT_RUNTIME_OFF, settings.gpsLockoutMode);
 	TEST_ASSERT_TRUE(settings.gpsLockoutCoreGuardEnabled);
 	TEST_ASSERT_EQUAL_UINT8(LOCKOUT_LEARNER_HITS_DEFAULT, settings.gpsLockoutLearnerPromotionHits);
-	TEST_ASSERT_EQUAL_UINT32(CAMERA_ALERT_RANGE_CM_DEFAULT, settings.cameraAlertRangeCm);
+	TEST_ASSERT_FALSE(settings.cameraAlertsEnabled);
 	TEST_ASSERT_EQUAL_UINT8(200, settings.brightness);
 	TEST_ASSERT_EQUAL_INT(DISPLAY_STYLE_CLASSIC, settings.displayStyle);
 	TEST_ASSERT_EQUAL_INT(VOICE_MODE_BAND_FREQ, settings.voiceAlertMode);
@@ -35,20 +28,6 @@ void test_v1_settings_defaults_cover_current_runtime_shape() {
 	TEST_ASSERT_EQUAL_INT(V1_MODE_UNKNOWN, settings.slot0_default.mode);
 	TEST_ASSERT_FALSE(settings.obdEnabled);
 	TEST_ASSERT_EQUAL_INT8(-80, settings.obdMinRssi);
-}
-
-void test_camera_alert_range_clamps_to_supported_limits() {
-	TEST_ASSERT_EQUAL_UINT32(CAMERA_ALERT_RANGE_CM_MIN, clampCameraAlertRangeCmValue(0));
-	TEST_ASSERT_EQUAL_UINT32(
-		CAMERA_ALERT_RANGE_CM_MIN,
-		clampCameraAlertRangeCmValue(static_cast<int>(CAMERA_ALERT_RANGE_CM_MIN)));
-	TEST_ASSERT_EQUAL_UINT32(
-		CAMERA_ALERT_RANGE_CM_DEFAULT,
-		clampCameraAlertRangeCmValue(static_cast<int>(CAMERA_ALERT_RANGE_CM_DEFAULT)));
-	TEST_ASSERT_EQUAL_UINT32(
-		CAMERA_ALERT_RANGE_CM_MAX,
-		clampCameraAlertRangeCmValue(static_cast<int>(CAMERA_ALERT_RANGE_CM_MAX)));
-	TEST_ASSERT_EQUAL_UINT32(CAMERA_ALERT_RANGE_CM_MAX, clampCameraAlertRangeCmValue(999999));
 }
 
 void test_auto_push_slot_view_maps_mutable_fields_to_selected_slot() {
@@ -93,9 +72,7 @@ void test_auto_push_slot_view_defaults_invalid_slot_to_slot_zero() {
 
 int main() {
 	UNITY_BEGIN();
-	RUN_TEST(test_camera_setting_defaults_match_alpr_only_contract);
 	RUN_TEST(test_v1_settings_defaults_cover_current_runtime_shape);
-	RUN_TEST(test_camera_alert_range_clamps_to_supported_limits);
 	RUN_TEST(test_auto_push_slot_view_maps_mutable_fields_to_selected_slot);
 	RUN_TEST(test_auto_push_slot_view_defaults_invalid_slot_to_slot_zero);
 	return UNITY_END();

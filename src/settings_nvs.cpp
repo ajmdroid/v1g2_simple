@@ -354,8 +354,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("gpsLkPQBuf", settings.gpsLockoutPreQuietBufferE5);
     written += prefs.putUShort("gpsLkHdop", settings.gpsLockoutMaxHdopX10);
     written += prefs.putUChar("gpsLkMinSpd", settings.gpsLockoutMinLearnerSpeedMph);
-    written += prefs.putBool("camEn", settings.cameraAlertsEnabled);
-    written += prefs.putUInt("camRngCm", settings.cameraAlertRangeCm);
     written += prefs.putBool("displayOff", settings.turnOffDisplay);
     written += prefs.putUChar("brightness", settings.brightness);
     written += prefs.putInt("dispStyle", settings.displayStyle);

@@ -62,8 +62,6 @@ void test_builder_aligns_http_and_sd_schema() {
     settings.apSSID = "V1-Test";
     settings.gpsLockoutKLearningEnabled = true;
     settings.gpsLockoutXLearningEnabled = false;
-    settings.cameraAlertsEnabled = false;
-    settings.cameraAlertRangeCm = 54321;
 
     JsonDocument httpDoc;
     JsonDocument sdDoc;
@@ -85,14 +83,14 @@ void test_builder_aligns_http_and_sd_schema() {
     TEST_ASSERT_EQUAL_INT(SD_BACKUP_VERSION, sdDoc["_version"].as<int>());
     TEST_ASSERT_EQUAL_UINT32(4242, httpDoc["_timestamp"].as<uint32_t>());
     TEST_ASSERT_EQUAL_UINT32(4242, httpDoc["timestamp"].as<uint32_t>());
-    TEST_ASSERT_FALSE(httpDoc["cameraAlertsEnabled"].as<bool>());
-    TEST_ASSERT_EQUAL_INT(54321, httpDoc["cameraAlertRangeCm"].as<int>());
     TEST_ASSERT_TRUE(httpDoc["gpsLockoutKLearningEnabled"].as<bool>());
     TEST_ASSERT_FALSE(httpDoc["gpsLockoutXLearningEnabled"].as<bool>());
-    TEST_ASSERT_FALSE(sdDoc["cameraAlertsEnabled"].as<bool>());
-    TEST_ASSERT_EQUAL_INT(54321, sdDoc["cameraAlertRangeCm"].as<int>());
     TEST_ASSERT_TRUE(sdDoc["gpsLockoutKLearningEnabled"].as<bool>());
     TEST_ASSERT_FALSE(sdDoc["gpsLockoutXLearningEnabled"].as<bool>());
+    TEST_ASSERT_TRUE(httpDoc["cameraAlertsEnabled"].isNull());
+    TEST_ASSERT_TRUE(httpDoc["cameraAlertRangeCm"].isNull());
+    TEST_ASSERT_TRUE(sdDoc["cameraAlertsEnabled"].isNull());
+    TEST_ASSERT_TRUE(sdDoc["cameraAlertRangeCm"].isNull());
     TEST_ASSERT_TRUE(httpDoc["cameraAlertNearRangeCm"].isNull());
     TEST_ASSERT_TRUE(httpDoc["cameraTypeBusLane"].isNull());
     TEST_ASSERT_TRUE(httpDoc["colorCameraArrow"].isNull());

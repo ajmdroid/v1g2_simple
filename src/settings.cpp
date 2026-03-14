@@ -205,9 +205,6 @@ void SettingsManager::load() {
         preferences.getUShort("gpsLkHdop", LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT));
     settings.gpsLockoutMinLearnerSpeedMph = clampLockoutGpsMinLearnerSpeedMphValue(
         preferences.getUChar("gpsLkMinSpd", LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT));
-    settings.cameraAlertsEnabled = preferences.getBool("camEn", true);
-    settings.cameraAlertRangeCm = clampCameraAlertRangeCmValue(
-        static_cast<int>(preferences.getUInt("camRngCm", CAMERA_ALERT_RANGE_CM_DEFAULT)));
     settings.turnOffDisplay = preferences.getBool("displayOff", false);
     settings.brightness = std::max<uint8_t>(1, preferences.getUChar("brightness", 200));  // Min 1 to avoid blank screen
     settings.displayStyle = normalizeDisplayStyle(preferences.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));

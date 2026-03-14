@@ -237,9 +237,9 @@ struct V1Settings {
     uint16_t gpsLockoutMaxHdopX10;                    // Max HDOP ×10 for lockout eval/learn (50 = 5.0, 0 = disabled)
     uint8_t gpsLockoutMinLearnerSpeedMph;             // Min speed (mph) for learner ingestion (0 = disabled)
 
-    // Camera alert settings
-    bool cameraAlertsEnabled;      // Enable camera proximity alerts
-    uint32_t cameraAlertRangeCm;   // ALPR alert/search/display range in centimeters
+    // Legacy camera alert settings retained temporarily until runtime removal
+    bool cameraAlertsEnabled;
+    uint32_t cameraAlertRangeCm;
     
     // Display settings
     bool turnOffDisplay;
@@ -405,7 +405,7 @@ struct V1Settings {
         gpsLockoutPreQuietBufferE5(LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT),
         gpsLockoutMaxHdopX10(LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT),
         gpsLockoutMinLearnerSpeedMph(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT),
-        cameraAlertsEnabled(true),
+        cameraAlertsEnabled(false),
         cameraAlertRangeCm(CAMERA_ALERT_RANGE_CM_DEFAULT),
         turnOffDisplay(false),
         brightness(200),

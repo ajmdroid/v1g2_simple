@@ -7,8 +7,6 @@
 #include "perf_metrics.h"
 #include "settings.h"
 #include "storage_manager.h"
-#include "modules/camera_alert/camera_alert_api_service.h"
-#include "modules/camera_alert/camera_alert_module.h"
 #include "modules/gps/gps_api_service.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
@@ -16,7 +14,6 @@
 #include "modules/lockout/lockout_api_service.h"
 #include "modules/lockout/lockout_index.h"
 #include "modules/lockout/lockout_learner.h"
-#include "modules/lockout/road_map_reader.h"
 #include "modules/debug/debug_api_service.h"
 #include "modules/wifi/backup_api_service.h"
 #include "modules/wifi/wifi_client_api_service.h"
@@ -483,26 +480,6 @@ void WiFiManager::setupWebServer() {
             perfCounters,
             systemEventBus,
             rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/cameras/settings", HTTP_GET, [this, markUiActivityCallback]() {
-        CameraAlertApiService::handleApiSettingsGet(
-            server,
-            settingsManager,
-            markUiActivityCallback);
-    });
-    server.on("/api/cameras/settings", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        CameraAlertApiService::handleApiSettingsPost(
-            server,
-            settingsManager,
-            rateLimitCallback,
-            markUiActivityCallback);
-    });
-    server.on("/api/cameras/status", HTTP_GET, [this, markUiActivityCallback]() {
-        CameraAlertApiService::handleApiStatus(
-            server,
-            cameraAlertModule,
-            roadMapReader,
             markUiActivityCallback);
     });
     server.on("/api/lockouts/zones", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
