@@ -474,111 +474,6 @@ class Segment:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Camera data
-# ═══════════════════════════════════════════════════════════════════════════════
-
-CAMERA_RECORD_SIZE = 12  # bytes per camera record
-
-# Legacy camera overlay flags preserved for road_map.bin compatibility.
-CAM_TYPE_ALPR = 4  # ALPR / plate-reader camera
-CAM_VALID_TYPES = {CAM_TYPE_ALPR}
-
-
-class Camera:
-    """A single camera overlay point."""
-    __slots__ = ("lat", "lon", "bearing", "flags", "speed_mph")
-
-    def __init__(self, lat, lon, bearing=-1, flags=0, speed_mph=0):
-        self.lat = lat
-        self.lon = lon
-        self.bearing = bearing      # degrees 0-359, -1 = unknown
-        self.flags = flags          # camera type: 4=ALPR
-        self.speed_mph = speed_mph  # speed limit at camera, 0 = unknown
-
-
-def _load_cameras_from_db(container="v1simple_osm_postgis",
-                          db_user="osm", db_name="osm"):
-    """Load enriched camera data from PostGIS container.
-
-    Queries cameras_enriched for all cameras with lat/lon.
-    Returns list of Camera objects.
-    """
-    import subprocess
-
-    query = (
-        "SELECT "
-        "  (enriched->>'lat')::float, "
-        "  (enriched->>'lon')::float, "
-        "  COALESCE((enriched->>'brg')::int, -1), "
-        "  COALESCE((enriched->>'flg')::int, 0), "
-        "  COALESCE(enriched->>'maxspeed', '') "
-        "FROM cameras_enriched "
-        "WHERE enriched->>'lat' IS NOT NULL"
-    )
-
-    try:
-        result = subprocess.run(
-            ["docker", "exec", container,
-             "psql", "-U", db_user, "-d", db_name,
-             "-t", "-A", "-F", "\t",
-             "-c", query],
-            capture_output=True, text=True, timeout=60
-        )
-    except FileNotFoundError:
-        print("  ERROR: docker not found — skipping cameras", file=sys.stderr)
-        return []
-    except subprocess.TimeoutExpired:
-        print("  ERROR: camera query timed out — skipping cameras",
-              file=sys.stderr)
-        return []
-
-    if result.returncode != 0:
-        print(f"  ERROR: psql failed: {result.stderr.strip()}", file=sys.stderr)
-        return []
-
-    cameras = []
-    skipped = 0
-    for line in result.stdout.strip().split("\n"):
-        if not line.strip():
-            continue
-        parts = line.split("\t")
-        if len(parts) < 5:
-            continue
-        try:
-            flg = int(parts[3])
-            if flg not in CAM_VALID_TYPES:
-                skipped += 1
-                continue
-            cameras.append(Camera(
-                lat=float(parts[0]),
-                lon=float(parts[1]),
-                bearing=int(parts[2]),
-                flags=flg,
-                speed_mph=_parse_maxspeed(parts[4]),
-            ))
-        except (ValueError, IndexError):
-            continue
-
-    if skipped:
-        print(f"  → {skipped} cameras skipped (non-ALPR or unknown type flags)",
-              file=sys.stderr)
-    return cameras
-
-
-def _encode_camera(cam):
-    """Encode one camera to 12 bytes.
-
-    Format: latE5(i32) + lonE5(i32) + bearing(u16) + flags(u8) + speed(u8)
-    """
-    lat_e5 = to_e5(cam.lat)
-    lon_e5 = to_e5(cam.lon)
-    brg = cam.bearing if 0 <= cam.bearing < 360 else 0xFFFF
-    flg = max(0, min(255, cam.flags))
-    spd = max(0, min(254, cam.speed_mph))
-    return struct.pack("<iiHBB", lat_e5, lon_e5, brg, flg, spd)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
 # Parsing
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -845,12 +740,8 @@ def _encode_segment(seg):
     return buf
 
 
-def write_bin(segments, output_path, cell_deg, tolerance_m, cameras=None):
+def write_bin(segments, output_path, cell_deg, tolerance_m):
     """Write the road_map.bin file.
-
-    If cameras is provided, a camera spatial index is appended after the
-    segment data.  The header's reserved bytes at offset 56 store the
-    camera index offset and count so the ESP32 reader can locate them.
 
     Returns a stats dict with file_size, segment/point counts, etc.
     """
@@ -858,13 +749,9 @@ def write_bin(segments, output_path, cell_deg, tolerance_m, cameras=None):
         print("  ERROR: no segments to write!", file=sys.stderr)
         return None
 
-    # Compute bounding box from actual data (with small padding).
-    # Include camera positions so the grid covers them too.
+    # Compute bounding box from actual road data (with small padding).
     all_lats = [p[0] for s in segments for p in s.pts]
     all_lons = [p[1] for s in segments for p in s.pts]
-    if cameras:
-        all_lats.extend(c.lat for c in cameras)
-        all_lons.extend(c.lon for c in cameras)
     min_lat = min(all_lats) - 0.01
     max_lat = max(all_lats) + 0.01
     min_lon = min(all_lons) - 0.01
@@ -909,41 +796,7 @@ def write_bin(segments, output_path, cell_deg, tolerance_m, cameras=None):
                     seg_data += encoded[idx]
                 grid_idx += struct.pack("<IHH", off, len(indices), 0)
 
-    # ── Camera section (optional) ─────────────────────────────────────────
-    camera_index_offset = 0
-    camera_count = 0
-    cam_grid_idx = bytearray()
-    cam_data = bytearray()
-
-    if cameras:
-        camera_count = len(cameras)
-        camera_index_offset = seg_data_offset + len(seg_data)
-
-        # Assign each camera to a grid cell
-        cam_cell_map = {}  # (row, col) → [Camera]
-        for cam in cameras:
-            lat_e5 = to_e5(cam.lat)
-            lon_e5 = to_e5(cam.lon)
-            r = (lat_e5 - min_lat_e5) // cell_e5
-            c = (lon_e5 - min_lon_e5) // cell_e5
-            r = int(max(0, min(r, rows - 1)))
-            c = int(max(0, min(c, cols - 1)))
-            cam_cell_map.setdefault((r, c), []).append(cam)
-
-        # Build camera grid index + camera records
-        for r in range(rows):
-            for c in range(cols):
-                cams = cam_cell_map.get((r, c))
-                if cams is None:
-                    cam_grid_idx += struct.pack("<IHH", 0, 0, 0)
-                else:
-                    off = len(cam_data)
-                    for cam in cams:
-                        cam_data += _encode_camera(cam)
-                    cam_grid_idx += struct.pack("<IHH", off, len(cams), 0)
-
-    file_size = (seg_data_offset + len(seg_data)
-                 + len(cam_grid_idx) + len(cam_data))
+    file_size = seg_data_offset + len(seg_data)
     tolerance_cm = int(round(tolerance_m * 100))
 
     # Road class count (unique classes present)
@@ -963,8 +816,8 @@ def write_bin(segments, output_path, cell_deg, tolerance_m, cameras=None):
                      tolerance_cm, 0)
     struct.pack_into("<III", hdr, 44,
                      grid_index_offset, seg_data_offset, file_size)
-    # Camera section offsets (uses previously-reserved bytes at offset 56)
-    struct.pack_into("<II", hdr, 56, camera_index_offset, camera_count)
+    # Offset 56/60 stays reserved for backward-compatible header layout.
+    struct.pack_into("<II", hdr, 56, 0, 0)
 
     # Write
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -972,9 +825,6 @@ def write_bin(segments, output_path, cell_deg, tolerance_m, cameras=None):
         f.write(hdr)
         f.write(grid_idx)
         f.write(seg_data)
-        if cameras:
-            f.write(cam_grid_idx)
-            f.write(cam_data)
 
     stats = {
         "file_size": file_size,
@@ -987,10 +837,6 @@ def write_bin(segments, output_path, cell_deg, tolerance_m, cameras=None):
         "grid_index_kb": grid_index_size / 1024,
         "seg_data_kb": len(seg_data) / 1024,
     }
-    if cameras:
-        stats["cameras"] = camera_count
-        stats["cam_grid_kb"] = len(cam_grid_idx) / 1024
-        stats["cam_data_kb"] = len(cam_data) / 1024
     return stats
 
 
@@ -1023,7 +869,7 @@ def verify_bin(path):
     total_seg, total_pts = struct.unpack_from("<II", hdr, 32)
     tol_cm, _ = struct.unpack_from("<HH", hdr, 40)
     grid_off, seg_off, file_size = struct.unpack_from("<III", hdr, 44)
-    cam_idx_off, cam_count = struct.unpack_from("<II", hdr, 56)
+    reserved_idx_off, reserved_count = struct.unpack_from("<II", hdr, 56)
 
     actual_size = os.path.getsize(path)
     if actual_size != file_size:
@@ -1031,24 +877,13 @@ def verify_bin(path):
               file=sys.stderr)
         return False
 
-    # Validate camera section bounds if present
-    if cam_count > 0 and cam_idx_off > 0:
-        cam_grid_size = rows * cols * 8
-        cam_data_start = cam_idx_off + cam_grid_size
-        cam_data_end = cam_data_start + cam_count * CAMERA_RECORD_SIZE
-        if cam_data_end > file_size:
-            print(f"  VERIFY FAIL: camera data extends past EOF "
-                  f"({cam_data_end} > {file_size})", file=sys.stderr)
-            return False
-        cam_msg = f", {cam_count:,} cameras"
-    else:
-        cam_msg = ""
-
     print(f"  VERIFY OK: v{version}, {total_seg:,} segs, {total_pts:,} pts"
-          f"{cam_msg}, "
+          f", "
           f"{rows}×{cols} grid, {tol_cm/100:.0f}m tol, "
           f"bbox ({min_lat/1e5:.2f},{min_lon/1e5:.2f})"
           f"→({max_lat/1e5:.2f},{max_lon/1e5:.2f})")
+    if reserved_idx_off != 0 or reserved_count != 0:
+        print("  VERIFY NOTE: legacy reserved header fields at offset 56/60 are non-zero")
     return True
 
 
@@ -1099,12 +934,6 @@ def main():
                     help="Chunk latitude step for Overpass queries (default: 2.0)")
     ap.add_argument("--chunk-lon", type=float, default=5.0,
                     help="Chunk longitude step for Overpass queries (default: 5.0)")
-
-    # ── Camera enrichment ─────────────────────────────────────────────────
-    ap.add_argument("--cameras", action="store_true",
-                    help="Include camera overlay data from PostGIS container")
-    ap.add_argument("--cameras-container", default="v1simple_osm_postgis",
-                    help="Docker container name for PostGIS (default: v1simple_osm_postgis)")
 
     args = ap.parse_args()
 
@@ -1255,25 +1084,10 @@ def main():
         print(f"  → {splits} segments split (now {len(segments):,} segments, "
               f"{final_pts:,} points)")
 
-    # ── Step 5: Load cameras (optional) ──────────────────────────────────
-
-    cameras = None
-    if args.cameras:
-        print(f"\n  Loading cameras from PostGIS "
-              f"({args.cameras_container}) ...")
-        cameras = _load_cameras_from_db(container=args.cameras_container)
-        if cameras:
-            speed_cams = sum(1 for c in cameras if c.speed_mph > 0)
-            print(f"  → {len(cameras):,} cameras loaded "
-                  f"({speed_cams:,} with speed limits)")
-        else:
-            print("  → No cameras loaded (continuing without)")
-
-    # ── Step 6: Write binary ──────────────────────────────────────────────
+    # ── Step 5: Write binary ──────────────────────────────────────────────
 
     print(f"\n  Writing {args.output} ...")
-    stats = write_bin(segments, args.output, args.cell_size, args.tolerance,
-                      cameras=cameras)
+    stats = write_bin(segments, args.output, args.cell_size, args.tolerance)
 
     if stats is None:
         sys.exit(1)
@@ -1292,13 +1106,9 @@ def main():
     speed_known = sum(1 for s in segments if s.speed_mph > 0)
     print(f"  Speed limits: {speed_known:>12,} / {len(segments):,} "
           f"({100*speed_known/max(1,len(segments)):.0f}%)")
-    if "cameras" in stats:
-        print(f"  Cameras:      {stats['cameras']:>12,}")
-        print(f"  Cam grid:     {stats['cam_grid_kb']:>10.1f} KB")
-        print(f"  Cam data:     {stats['cam_data_kb']:>10.1f} KB")
     print("═" * 60)
 
-    # ── Step 7: Verify ────────────────────────────────────────────────────
+    # ── Step 6: Verify ────────────────────────────────────────────────────
 
     if args.verify:
         verify_bin(args.output)

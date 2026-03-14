@@ -52,6 +52,7 @@ run_step "Perf computed metric contract" python3 scripts/check_perf_computed_met
 run_step "Hardware manifest scoring regression tests" python3 scripts/test_hardware_run_scoring.py
 run_step "Perf CSV import regression tests" python3 scripts/test_perf_csv_import.py
 run_step "Single hardware test script regression tests" python3 scripts/test_hardware_test_script.py
+run_step "Road map builder regression tests" python3 scripts/test_build_road_map.py
 
 section "Compatibility Guards"
 run_step "WiFi API contracts" python3 scripts/check_wifi_api_contract.py
