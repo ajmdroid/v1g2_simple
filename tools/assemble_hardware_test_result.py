@@ -63,8 +63,17 @@ def compute_step_result(scoring: dict[str, Any] | None, manifest: dict[str, Any]
     return "FAIL" if exit_code else "ERROR"
 
 
-def overall_result(step_rows: list[dict[str, object]]) -> str:
-    results = [str(item["result"]) for item in step_rows]
+def select_authoritative_steps(enabled_steps: list[str]) -> list[str]:
+    if "device_tests" in enabled_steps:
+        return ["device_tests"]
+    return enabled_steps
+
+
+def overall_result(step_rows: list[dict[str, object]], authoritative_steps: list[str]) -> str:
+    authoritative = set(authoritative_steps)
+    results = [str(item["result"]) for item in step_rows if str(item["name"]) in authoritative]
+    if not results:
+        results = [str(item["result"]) for item in step_rows]
     if any(result in {"FAIL", "ERROR"} for result in results):
         return "FAIL"
     if any(result in {"PASS_WITH_WARNINGS", "INCONCLUSIVE"} for result in results):
@@ -114,7 +123,8 @@ def main() -> int:
             }
         )
 
-    suite_result = overall_result(steps)
+    authoritative_steps = select_authoritative_steps(enabled_steps)
+    suite_result = overall_result(steps, authoritative_steps)
     timestamp_utc = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     payload = {
         "schema_version": 1,
@@ -129,6 +139,7 @@ def main() -> int:
         "run_dir": str(run_dir),
         "previous_run_dir": args.previous_run_dir,
         "enabled_steps": enabled_steps,
+        "authoritative_steps": authoritative_steps,
         "result": suite_result,
         "steps": steps,
     }
@@ -141,6 +152,7 @@ def main() -> int:
         f"git: {args.git_sha} ({args.git_ref})",
         f"run_dir: {run_dir}",
         f"previous_run_dir: {args.previous_run_dir or 'n/a'}",
+        f"authoritative_steps: {','.join(authoritative_steps) or 'n/a'}",
         "",
         "STEP            RESULT              COMPARE             EXIT  READABLE_METRICS",
         "--------------- ------------------- ------------------- ----- ----------------------------------------------",

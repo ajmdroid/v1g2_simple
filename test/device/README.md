@@ -33,10 +33,14 @@ pio test -e device --filter test_device_heap
 ```
 
 `run_real_fw_soak.sh` uses the normal firmware image (not test firmware), but
-it is exploratory/manual only and not release evidence. If it captures no
+it is exploratory/manual only and not release evidence when run directly. If it captures no
 telemetry, it reports `INCONCLUSIVE` (exit code `2`) so you don't mistake
 silence for stability. Add `--drive-display-preview` for display-path stress
 coverage.
+
+The single-entry hardware wrapper may run these soak steps for diagnostics, but
+when `device_tests` is present the overall suite verdict still belongs to the
+device suite.
 
 ## Suites
 

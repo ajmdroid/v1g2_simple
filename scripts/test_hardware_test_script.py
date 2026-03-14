@@ -629,11 +629,11 @@ def main() -> int:
         failing = run_test_script(
             {
                 **common_env,
-                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_RESULT": "FAIL",
                 "FAKE_DEVICE_COMPARE_KIND": "commit_regression",
                 "FAKE_DEVICE_VALUE": "12",
                 "FAKE_DEVICE_BASELINE": "11",
-                "FAKE_CORE_RESULT": "FAIL",
+                "FAKE_CORE_RESULT": "PASS",
                 "FAKE_CORE_COMPARE_KIND": "commit_regression",
                 "FAKE_CORE_VALUE": "22",
                 "FAKE_CORE_BASELINE": "21",
@@ -685,6 +685,42 @@ def main() -> int:
         assert_true(
             recovered_display_compare.startswith(str(second_run_dir / "display_soak")),
             f"unexpected recovered display compare path: {recovered_display_compare}",
+        )
+
+        soak_only_failure = run_test_script(
+            {
+                **common_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "commit_regression",
+                "FAKE_DEVICE_VALUE": "14",
+                "FAKE_DEVICE_BASELINE": "13",
+                "FAKE_CORE_RESULT": "FAIL",
+                "FAKE_CORE_COMPARE_KIND": "commit_regression",
+                "FAKE_CORE_VALUE": "24",
+                "FAKE_CORE_BASELINE": "23",
+                "FAKE_DISPLAY_RESULT": "FAIL",
+                "FAKE_DISPLAY_COMPARE_KIND": "commit_regression",
+                "FAKE_DISPLAY_VALUE": "34",
+                "FAKE_DISPLAY_BASELINE": "33",
+            }
+        )
+        assert_true(
+            soak_only_failure.returncode == 0,
+            f"device-owned suite verdict should ignore soak-only failures: {soak_only_failure.stdout}\n{soak_only_failure.stderr}",
+        )
+
+        soak_only_result = json.loads((latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(soak_only_result["result"] == "PASS", f"unexpected soak-only suite result: {soak_only_result}")
+        assert_true(
+            soak_only_result["authoritative_steps"] == ["device_tests"],
+            f"unexpected authoritative steps: {soak_only_result}",
+        )
+        soak_step_results = {step["name"]: step["result"] for step in soak_only_result["steps"]}
+        assert_true(soak_step_results["device_tests"] == "PASS", f"device step should remain pass: {soak_only_result}")
+        assert_true(soak_step_results["core_soak"] == "FAIL", f"core soak failure should still be recorded: {soak_only_result}")
+        assert_true(
+            soak_step_results["display_soak"] == "FAIL",
+            f"display soak failure should still be recorded: {soak_only_result}",
         )
 
         radio_run_history = read_tsv(radio_root / "run_history.tsv")

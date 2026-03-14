@@ -57,7 +57,7 @@ pio test -e device --filter test_device_heap
 ```
 
 `run_real_fw_soak.sh` exercises the normal app image (not UNIT_TEST firmware),
-but it is exploratory/manual only and not release evidence.
+but it is exploratory/manual only and not release evidence when run directly.
 If you provide `--metrics-url`, enable the setup AP first (default URL assumes
 `http://192.168.35.5`). If no telemetry is captured, the run is marked
 `INCONCLUSIVE` (exit code `2`) instead of reporting a false pass.
@@ -155,6 +155,10 @@ historical totals.
 |--------|--------|--------|
 | Command | `pio test -e native` | `./scripts/run_device_tests.sh` |
 | Authoritative gate | `./scripts/ci-test.sh` | `./scripts/hardware/test.sh --all --strict` |
+
+For hardware runs, `--all` records `core_soak` and `display_soak` as diagnostic
+real-firmware evidence, but the overall suite verdict is owned by
+`device_tests` when that step is present.
 
 ## Display Torture Test Categories
 
