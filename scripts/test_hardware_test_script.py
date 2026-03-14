@@ -607,6 +607,7 @@ def main() -> int:
         assert_true(second.returncode == 0, f"second hardware test failed: {second.stdout}\n{second.stderr}")
 
         second_result = json.loads((latest / "result.json").read_text(encoding="utf-8"))
+        second_run_dir = Path(second_result["run_dir"])
         assert_true(second_result["result"] == "PASS", f"unexpected second result: {second_result}")
         assert_true(second_result["previous_run_dir"] == str(first_run_dir), "suite did not point to previous run dir")
 
@@ -624,6 +625,67 @@ def main() -> int:
 
         metric_history = read_tsv(release_root / "metric_history.tsv")
         assert_true(len(metric_history) == 6, f"expected 6 metric-history rows, saw {len(metric_history)}")
+
+        failing = run_test_script(
+            {
+                **common_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "commit_regression",
+                "FAKE_DEVICE_VALUE": "12",
+                "FAKE_DEVICE_BASELINE": "11",
+                "FAKE_CORE_RESULT": "FAIL",
+                "FAKE_CORE_COMPARE_KIND": "commit_regression",
+                "FAKE_CORE_VALUE": "22",
+                "FAKE_CORE_BASELINE": "21",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "commit_regression",
+                "FAKE_DISPLAY_VALUE": "32",
+                "FAKE_DISPLAY_BASELINE": "31",
+            }
+        )
+        assert_true(failing.returncode == 1, f"failing hardware test should exit 1: {failing.stdout}\n{failing.stderr}")
+
+        recovered = run_test_script(
+            {
+                **common_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "commit_regression",
+                "FAKE_DEVICE_VALUE": "13",
+                "FAKE_DEVICE_BASELINE": "11",
+                "FAKE_CORE_RESULT": "PASS",
+                "FAKE_CORE_COMPARE_KIND": "commit_regression",
+                "FAKE_CORE_VALUE": "23",
+                "FAKE_CORE_BASELINE": "21",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "commit_regression",
+                "FAKE_DISPLAY_VALUE": "33",
+                "FAKE_DISPLAY_BASELINE": "31",
+            }
+        )
+        assert_true(recovered.returncode == 0, f"recovered hardware test failed: {recovered.stdout}\n{recovered.stderr}")
+
+        recovered_result = json.loads((latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(recovered_result["result"] == "PASS", f"unexpected recovered result: {recovered_result}")
+        assert_true(
+            recovered_result["previous_run_dir"] == str(second_run_dir),
+            f"recovered run should skip failed latest baseline: {recovered_result}",
+        )
+
+        recovered_device_compare = (latest / "device_tests" / "received_compare_to.txt").read_text(encoding="utf-8").strip()
+        recovered_core_compare = (latest / "core_soak" / "received_compare_to.txt").read_text(encoding="utf-8").strip()
+        recovered_display_compare = (latest / "display_soak" / "received_compare_to.txt").read_text(encoding="utf-8").strip()
+        assert_true(
+            recovered_device_compare.startswith(str(second_run_dir / "device_tests")),
+            f"unexpected recovered device compare path: {recovered_device_compare}",
+        )
+        assert_true(
+            recovered_core_compare.startswith(str(second_run_dir / "core_soak")),
+            f"unexpected recovered core compare path: {recovered_core_compare}",
+        )
+        assert_true(
+            recovered_display_compare.startswith(str(second_run_dir / "display_soak")),
+            f"unexpected recovered display compare path: {recovered_display_compare}",
+        )
 
         radio_run_history = read_tsv(radio_root / "run_history.tsv")
         assert_true(len(radio_run_history) == 1, f"expected 1 radio run-history row, saw {len(radio_run_history)}")

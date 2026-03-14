@@ -352,7 +352,58 @@ DEVICE_DIR="$RUN_DIR/device_tests"
 CORE_DIR="$RUN_DIR/core_soak"
 DISPLAY_DIR="$RUN_DIR/display_soak"
 
-PREVIOUS_RUN_DIR="$(find "$BOARD_ARTIFACT_ROOT/runs" -mindepth 1 -maxdepth 1 -type d ! -path "$RUN_DIR" | sort | tail -n1 || true)"
+enabled_steps=()
+[[ "$RUN_DEVICE" -eq 1 ]] && enabled_steps+=("device_tests")
+[[ "$RUN_CORE" -eq 1 ]] && enabled_steps+=("core_soak")
+[[ "$RUN_DISPLAY" -eq 1 ]] && enabled_steps+=("display_soak")
+ENABLED_STEPS_CSV="$(IFS=,; echo "${enabled_steps[*]}")"
+
+is_trustworthy_previous_run() {
+  local candidate_dir="$1"
+  python3 - "$candidate_dir" "$ENABLED_STEPS_CSV" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+candidate_dir = Path(sys.argv[1])
+enabled_steps = [item for item in sys.argv[2].split(",") if item]
+result_path = candidate_dir / "result.json"
+if not result_path.is_file():
+    raise SystemExit(1)
+
+payload = json.loads(result_path.read_text(encoding="utf-8"))
+steps = {str(item.get("name")): item for item in payload.get("steps") or []}
+trusted_results = {"PASS", "PASS_WITH_WARNINGS", "NO_BASELINE"}
+
+for step_name in enabled_steps:
+    step = steps.get(step_name)
+    if not isinstance(step, dict):
+        raise SystemExit(1)
+    if str(step.get("result", "")) not in trusted_results:
+        raise SystemExit(1)
+    if str(step.get("comparison_kind", "")) == "no_scoring":
+        raise SystemExit(1)
+    manifest_path = Path(str(step.get("manifest_path", "")))
+    if not manifest_path.is_file():
+        raise SystemExit(1)
+
+raise SystemExit(0)
+PY
+}
+
+find_previous_run_dir() {
+  local candidate_dir=""
+  while IFS= read -r candidate_dir; do
+    [[ -z "$candidate_dir" ]] && continue
+    if is_trustworthy_previous_run "$candidate_dir"; then
+      printf '%s\n' "$candidate_dir"
+      return 0
+    fi
+  done < <(find "$BOARD_ARTIFACT_ROOT/runs" -mindepth 1 -maxdepth 1 -type d ! -path "$RUN_DIR" | sort -r)
+  return 1
+}
+
+PREVIOUS_RUN_DIR="$(find_previous_run_dir || true)"
 PREVIOUS_DEVICE_MANIFEST=""
 PREVIOUS_CORE_MANIFEST=""
 PREVIOUS_DISPLAY_MANIFEST=""
@@ -361,12 +412,6 @@ if [[ -n "$PREVIOUS_RUN_DIR" ]]; then
   [[ -f "$PREVIOUS_RUN_DIR/core_soak/manifest.json" ]] && PREVIOUS_CORE_MANIFEST="$PREVIOUS_RUN_DIR/core_soak/manifest.json"
   [[ -f "$PREVIOUS_RUN_DIR/display_soak/manifest.json" ]] && PREVIOUS_DISPLAY_MANIFEST="$PREVIOUS_RUN_DIR/display_soak/manifest.json"
 fi
-
-enabled_steps=()
-[[ "$RUN_DEVICE" -eq 1 ]] && enabled_steps+=("device_tests")
-[[ "$RUN_CORE" -eq 1 ]] && enabled_steps+=("core_soak")
-[[ "$RUN_DISPLAY" -eq 1 ]] && enabled_steps+=("display_soak")
-ENABLED_STEPS_CSV="$(IFS=,; echo "${enabled_steps[*]}")"
 
 : > "$RUN_LOG"
 
