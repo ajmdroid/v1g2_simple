@@ -44,7 +44,7 @@ describe('profiles route page', () => {
 		unmount();
 	});
 
-	it('keeps route stable when profile load fails', async () => {
+	it('surfaces profile load failures without breaking the route', async () => {
 		installFetchMock(
 			[
 				{ method: 'GET', match: '/api/v1/profiles', respond: () => Promise.reject(new Error('offline')) },
@@ -55,6 +55,7 @@ describe('profiles route page', () => {
 		const { unmount } = render(Page);
 
 		await screen.findByText('V1 Profiles');
+		await screen.findByText('Failed to load profiles');
 		unmount();
 	});
 

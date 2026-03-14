@@ -19,6 +19,13 @@
 	let editingSettings = $state(false);
 	let editedSettings = $state(null);
 	let editDescription = $state('');
+	const PROFILE_LOAD_ERROR_TEXT = 'Failed to load profiles';
+
+	function clearMessageText(text) {
+		if (message?.text === text) {
+			message = null;
+		}
+	}
 
 	onMount(async () => {
 		await fetchProfiles();
@@ -31,9 +38,12 @@
 			if (res.ok) {
 				const data = await res.json();
 				profiles = data.profiles || [];
+				clearMessageText(PROFILE_LOAD_ERROR_TEXT);
+			} else {
+				message = { type: 'error', text: PROFILE_LOAD_ERROR_TEXT };
 			}
 		} catch (e) {
-			console.error('Failed to fetch profiles');
+			message = { type: 'error', text: PROFILE_LOAD_ERROR_TEXT };
 		} finally {
 			loading = false;
 		}
