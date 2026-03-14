@@ -79,51 +79,30 @@ void SettingsManager::setActiveSlot(int slot) {
 void SettingsManager::setSlot(int slotNum, const String& profileName, V1Mode mode) {
     const String safeProfileName = sanitizeProfileNameValue(profileName);
     const V1Mode safeMode = normalizeV1ModeValue(static_cast<int>(mode));
-    switch (slotNum) {
-        case 0:
-            settings.slot0_default.profileName = safeProfileName;
-            settings.slot0_default.mode = safeMode;
-            break;
-        case 1:
-            settings.slot1_highway.profileName = safeProfileName;
-            settings.slot1_highway.mode = safeMode;
-            break;
-        case 2:
-            settings.slot2_comfort.profileName = safeProfileName;
-            settings.slot2_comfort.mode = safeMode;
-            break;
-    }
+    AutoPushSlot& slot = settings.autoPushSlotView(slotNum).config;
+    slot.profileName = safeProfileName;
+    slot.mode = safeMode;
     save();
 }
 
 void SettingsManager::setSlotName(int slotNum, const String& name) {
     String upperName = sanitizeSlotNameValue(name);
-    
-    switch (slotNum) {
-        case 0: settings.slot0Name = upperName; break;
-        case 1: settings.slot1Name = upperName; break;
-        case 2: settings.slot2Name = upperName; break;
-    }
+
+    settings.autoPushSlotView(slotNum).name = upperName;
     save();
 }
 
 void SettingsManager::setSlotColor(int slotNum, uint16_t color) {
-    switch (slotNum) {
-        case 0: settings.slot0Color = color; break;
-        case 1: settings.slot1Color = color; break;
-        case 2: settings.slot2Color = color; break;
-    }
+    settings.autoPushSlotView(slotNum).color = color;
     save();
 }
 
 void SettingsManager::setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVolume) {
     uint8_t safeVolume = clampSlotVolumeValue(volume);
     uint8_t safeMuteVolume = clampSlotVolumeValue(muteVolume);
-    switch (slotNum) {
-        case 0: settings.slot0Volume = safeVolume; settings.slot0MuteVolume = safeMuteVolume; break;
-        case 1: settings.slot1Volume = safeVolume; settings.slot1MuteVolume = safeMuteVolume; break;
-        case 2: settings.slot2Volume = safeVolume; settings.slot2MuteVolume = safeMuteVolume; break;
-    }
+    V1Settings::AutoPushSlotView slot = settings.autoPushSlotView(slotNum);
+    slot.volume = safeVolume;
+    slot.muteVolume = safeMuteVolume;
     save();
 }
 
@@ -297,110 +276,55 @@ void SettingsManager::setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t
 
 
 const AutoPushSlot& SettingsManager::getActiveSlot() const {
-    switch (settings.activeSlot) {
-        case 1: return settings.slot1_highway;
-        case 2: return settings.slot2_comfort;
-        default: return settings.slot0_default;
-    }
+    return settings.autoPushSlotView(settings.activeSlot).config;
 }
 
 const AutoPushSlot& SettingsManager::getSlot(int slotNum) const {
-    switch (slotNum) {
-        case 1: return settings.slot1_highway;
-        case 2: return settings.slot2_comfort;
-        default: return settings.slot0_default;
-    }
+    return settings.autoPushSlotView(slotNum).config;
 }
 
 uint8_t SettingsManager::getSlotVolume(int slotNum) const {
-    switch (slotNum) {
-        case 0: return settings.slot0Volume;
-        case 1: return settings.slot1Volume;
-        case 2: return settings.slot2Volume;
-        default: return 0xFF;
-    }
+    return settings.autoPushSlotView(slotNum).volume;
 }
 
 uint8_t SettingsManager::getSlotMuteVolume(int slotNum) const {
-    switch (slotNum) {
-        case 0: return settings.slot0MuteVolume;
-        case 1: return settings.slot1MuteVolume;
-        case 2: return settings.slot2MuteVolume;
-        default: return 0xFF;
-    }
+    return settings.autoPushSlotView(slotNum).muteVolume;
 }
 
 bool SettingsManager::getSlotDarkMode(int slotNum) const {
-    switch (slotNum) {
-        case 0: return settings.slot0DarkMode;
-        case 1: return settings.slot1DarkMode;
-        case 2: return settings.slot2DarkMode;
-        default: return false;
-    }
+    return settings.autoPushSlotView(slotNum).darkMode;
 }
 
 bool SettingsManager::getSlotMuteToZero(int slotNum) const {
-    switch (slotNum) {
-        case 0: return settings.slot0MuteToZero;
-        case 1: return settings.slot1MuteToZero;
-        case 2: return settings.slot2MuteToZero;
-        default: return false;
-    }
+    return settings.autoPushSlotView(slotNum).muteToZero;
 }
 
 uint8_t SettingsManager::getSlotAlertPersistSec(int slotNum) const {
-    switch (slotNum) {
-        case 0: return settings.slot0AlertPersist;
-        case 1: return settings.slot1AlertPersist;
-        case 2: return settings.slot2AlertPersist;
-        default: return 0;
-    }
+    return settings.autoPushSlotView(slotNum).alertPersist;
 }
 
 void SettingsManager::setSlotDarkMode(int slotNum, bool darkMode) {
-    switch (slotNum) {
-        case 0: settings.slot0DarkMode = darkMode; break;
-        case 1: settings.slot1DarkMode = darkMode; break;
-        case 2: settings.slot2DarkMode = darkMode; break;
-    }
+    settings.autoPushSlotView(slotNum).darkMode = darkMode;
     save();
 }
 
 void SettingsManager::setSlotMuteToZero(int slotNum, bool mz) {
-    switch (slotNum) {
-        case 0: settings.slot0MuteToZero = mz; break;
-        case 1: settings.slot1MuteToZero = mz; break;
-        case 2: settings.slot2MuteToZero = mz; break;
-    }
+    settings.autoPushSlotView(slotNum).muteToZero = mz;
     save();
 }
 
 void SettingsManager::setSlotAlertPersistSec(int slotNum, uint8_t seconds) {
     uint8_t clamped = std::min<uint8_t>(5, seconds);
-    switch (slotNum) {
-        case 0: settings.slot0AlertPersist = clamped; break;
-        case 1: settings.slot1AlertPersist = clamped; break;
-        case 2: settings.slot2AlertPersist = clamped; break;
-        default: return;
-    }
+    settings.autoPushSlotView(slotNum).alertPersist = clamped;
     save();
 }
 
 bool SettingsManager::getSlotPriorityArrowOnly(int slotNum) const {
-    switch (slotNum) {
-        case 0: return settings.slot0PriorityArrow;
-        case 1: return settings.slot1PriorityArrow;
-        case 2: return settings.slot2PriorityArrow;
-        default: return false;
-    }
+    return settings.autoPushSlotView(slotNum).priorityArrow;
 }
 
 void SettingsManager::setSlotPriorityArrowOnly(int slotNum, bool prioArrow) {
-    switch (slotNum) {
-        case 0: settings.slot0PriorityArrow = prioArrow; break;
-        case 1: settings.slot1PriorityArrow = prioArrow; break;
-        case 2: settings.slot2PriorityArrow = prioArrow; break;
-    }
+    settings.autoPushSlotView(slotNum).priorityArrow = prioArrow;
     save();
 }
 

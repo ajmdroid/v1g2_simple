@@ -35,38 +35,19 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
             snapshot.enabled = s.autoPushEnabled;
             snapshot.activeSlot = s.activeSlot;
 
-            snapshot.slots[0].name = s.slot0Name;
-            snapshot.slots[0].profile = s.slot0_default.profileName;
-            snapshot.slots[0].mode = s.slot0_default.mode;
-            snapshot.slots[0].color = s.slot0Color;
-            snapshot.slots[0].volume = s.slot0Volume;
-            snapshot.slots[0].muteVolume = s.slot0MuteVolume;
-            snapshot.slots[0].darkMode = s.slot0DarkMode;
-            snapshot.slots[0].muteToZero = s.slot0MuteToZero;
-            snapshot.slots[0].alertPersist = s.slot0AlertPersist;
-            snapshot.slots[0].priorityArrowOnly = s.slot0PriorityArrow;
-
-            snapshot.slots[1].name = s.slot1Name;
-            snapshot.slots[1].profile = s.slot1_highway.profileName;
-            snapshot.slots[1].mode = s.slot1_highway.mode;
-            snapshot.slots[1].color = s.slot1Color;
-            snapshot.slots[1].volume = s.slot1Volume;
-            snapshot.slots[1].muteVolume = s.slot1MuteVolume;
-            snapshot.slots[1].darkMode = s.slot1DarkMode;
-            snapshot.slots[1].muteToZero = s.slot1MuteToZero;
-            snapshot.slots[1].alertPersist = s.slot1AlertPersist;
-            snapshot.slots[1].priorityArrowOnly = s.slot1PriorityArrow;
-
-            snapshot.slots[2].name = s.slot2Name;
-            snapshot.slots[2].profile = s.slot2_comfort.profileName;
-            snapshot.slots[2].mode = s.slot2_comfort.mode;
-            snapshot.slots[2].color = s.slot2Color;
-            snapshot.slots[2].volume = s.slot2Volume;
-            snapshot.slots[2].muteVolume = s.slot2MuteVolume;
-            snapshot.slots[2].darkMode = s.slot2DarkMode;
-            snapshot.slots[2].muteToZero = s.slot2MuteToZero;
-            snapshot.slots[2].alertPersist = s.slot2AlertPersist;
-            snapshot.slots[2].priorityArrowOnly = s.slot2PriorityArrow;
+            for (int slotIndex = 0; slotIndex < 3; ++slotIndex) {
+                const V1Settings::ConstAutoPushSlotView slot = s.autoPushSlotView(slotIndex);
+                snapshot.slots[slotIndex].name = slot.name;
+                snapshot.slots[slotIndex].profile = slot.config.profileName;
+                snapshot.slots[slotIndex].mode = slot.config.mode;
+                snapshot.slots[slotIndex].color = slot.color;
+                snapshot.slots[slotIndex].volume = slot.volume;
+                snapshot.slots[slotIndex].muteVolume = slot.muteVolume;
+                snapshot.slots[slotIndex].darkMode = slot.darkMode;
+                snapshot.slots[slotIndex].muteToZero = slot.muteToZero;
+                snapshot.slots[slotIndex].alertPersist = slot.alertPersist;
+                snapshot.slots[slotIndex].priorityArrowOnly = slot.priorityArrow;
+            }
         },
         [this](String& json) {
             if (!getPushStatusJson) {
@@ -136,14 +117,7 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
                 }
             } else {
                 const V1Settings& s = settingsManager.get();
-                AutoPushSlot pushSlot;
-
-                switch (request.slot) {
-                    case 0: pushSlot = s.slot0_default; break;
-                    case 1: pushSlot = s.slot1_highway; break;
-                    case 2: pushSlot = s.slot2_comfort; break;
-                    default: break;
-                }
+                const AutoPushSlot& pushSlot = s.autoPushSlotView(request.slot).config;
 
                 profileName = sanitizeProfileNameValue(pushSlot.profileName);
                 mode = normalizeV1ModeValue(static_cast<int>(pushSlot.mode));

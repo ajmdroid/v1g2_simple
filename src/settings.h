@@ -339,6 +339,30 @@ struct V1Settings {
     AutoPushSlot slot0_default;
     AutoPushSlot slot1_highway;
     AutoPushSlot slot2_comfort;
+
+    struct AutoPushSlotView {
+        String& name;
+        uint16_t& color;
+        uint8_t& volume;
+        uint8_t& muteVolume;
+        bool& darkMode;
+        bool& muteToZero;
+        uint8_t& alertPersist;
+        bool& priorityArrow;
+        AutoPushSlot& config;
+    };
+
+    struct ConstAutoPushSlotView {
+        const String& name;
+        const uint16_t& color;
+        const uint8_t& volume;
+        const uint8_t& muteVolume;
+        const bool& darkMode;
+        const bool& muteToZero;
+        const uint8_t& alertPersist;
+        const bool& priorityArrow;
+        const AutoPushSlot& config;
+    };
     
     String lastV1Address;  // Last known V1 BLE address for fast reconnect
     
@@ -472,6 +496,92 @@ struct V1Settings {
         obdEnabled(false),       // OBD disabled by default
         obdSavedAddress(""),     // No saved device
         obdMinRssi(-80) {}       // Default -80 dBm minimum RSSI
+
+    static uint8_t normalizeAutoPushSlotIndex(int slotNum) {
+        return slotNum == 1 ? 1 : (slotNum == 2 ? 2 : 0);
+    }
+
+    AutoPushSlotView autoPushSlotView(int slotNum) {
+        switch (normalizeAutoPushSlotIndex(slotNum)) {
+            case 1:
+                return AutoPushSlotView{
+                    slot1Name,
+                    slot1Color,
+                    slot1Volume,
+                    slot1MuteVolume,
+                    slot1DarkMode,
+                    slot1MuteToZero,
+                    slot1AlertPersist,
+                    slot1PriorityArrow,
+                    slot1_highway,
+                };
+            case 2:
+                return AutoPushSlotView{
+                    slot2Name,
+                    slot2Color,
+                    slot2Volume,
+                    slot2MuteVolume,
+                    slot2DarkMode,
+                    slot2MuteToZero,
+                    slot2AlertPersist,
+                    slot2PriorityArrow,
+                    slot2_comfort,
+                };
+            default:
+                return AutoPushSlotView{
+                    slot0Name,
+                    slot0Color,
+                    slot0Volume,
+                    slot0MuteVolume,
+                    slot0DarkMode,
+                    slot0MuteToZero,
+                    slot0AlertPersist,
+                    slot0PriorityArrow,
+                    slot0_default,
+                };
+        }
+    }
+
+    ConstAutoPushSlotView autoPushSlotView(int slotNum) const {
+        switch (normalizeAutoPushSlotIndex(slotNum)) {
+            case 1:
+                return ConstAutoPushSlotView{
+                    slot1Name,
+                    slot1Color,
+                    slot1Volume,
+                    slot1MuteVolume,
+                    slot1DarkMode,
+                    slot1MuteToZero,
+                    slot1AlertPersist,
+                    slot1PriorityArrow,
+                    slot1_highway,
+                };
+            case 2:
+                return ConstAutoPushSlotView{
+                    slot2Name,
+                    slot2Color,
+                    slot2Volume,
+                    slot2MuteVolume,
+                    slot2DarkMode,
+                    slot2MuteToZero,
+                    slot2AlertPersist,
+                    slot2PriorityArrow,
+                    slot2_comfort,
+                };
+            default:
+                return ConstAutoPushSlotView{
+                    slot0Name,
+                    slot0Color,
+                    slot0Volume,
+                    slot0MuteVolume,
+                    slot0DarkMode,
+                    slot0MuteToZero,
+                    slot0AlertPersist,
+                    slot0PriorityArrow,
+                    slot0_default,
+                };
+        }
+    }
 };
 
 class SettingsManager {
