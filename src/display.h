@@ -25,7 +25,6 @@
 // Include display driver abstraction (Arduino_GFX only)
 #include "display_driver.h"
 #include "packet_parser.h"
-#include "camera_alert_types.h"
 #include "../include/color_themes.h"
 #include "../include/display_layout.h"  // Centralized layout constants
 #include "../include/display_ble_context.h"
@@ -50,7 +49,6 @@ public:
     
     // Persisted alert display (shows last alert in dark grey after V1 clears it)
     void updatePersisted(const AlertData& alert, const DisplayState& state);
-    void updateCameraAlert(const CameraAlertDisplayPayload& payload, const DisplayState& state);
 
     // Check if currently in persisted mode (for color selection)
     bool isPersistedMode() const { return persistedMode; }
@@ -128,7 +126,7 @@ public:
     void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h);  // Partial flush to reduce SPI traffic
 
 private:
-    enum class ScreenMode { Unknown, Resting, Scanning, Disconnected, Live, Persisted, Camera };
+    enum class ScreenMode { Unknown, Resting, Scanning, Disconnected, Live, Persisted };
 
     // Display driver (Arduino_GFX)
     std::unique_ptr<Arduino_ESP32QSPI> bus;

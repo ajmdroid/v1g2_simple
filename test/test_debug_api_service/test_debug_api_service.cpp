@@ -36,8 +36,6 @@ int sendV1ScenarioListCalls = 0;
 int sendV1ScenarioStatusCalls = 0;
 int handleDebugEnableCalls = 0;
 int handleMetricsResetCalls = 0;
-int handleCameraAlertRenderCalls = 0;
-int handleCameraAlertClearCalls = 0;
 int handleV1ScenarioLoadCalls = 0;
 int handleV1ScenarioStartCalls = 0;
 int handleV1ScenarioStopCalls = 0;
@@ -92,16 +90,6 @@ void handleDebugEnable(WebServer& server) {
 void handleMetricsReset(WebServer& server) {
     handleMetricsResetCalls++;
     server.send(200, "application/json", "{\"route\":\"metrics-reset\"}");
-}
-
-void handleCameraAlertRender(WebServer& server) {
-    handleCameraAlertRenderCalls++;
-    server.send(200, "application/json", "{\"route\":\"camera-alert-render\"}");
-}
-
-void handleCameraAlertClear(WebServer& server) {
-    handleCameraAlertClearCalls++;
-    server.send(200, "application/json", "{\"route\":\"camera-alert-clear\"}");
 }
 
 void sendPanic(WebServer& server) {
@@ -161,8 +149,6 @@ void setUp() {
     sendV1ScenarioStatusCalls = 0;
     handleDebugEnableCalls = 0;
     handleMetricsResetCalls = 0;
-    handleCameraAlertRenderCalls = 0;
-    handleCameraAlertClearCalls = 0;
     handleV1ScenarioLoadCalls = 0;
     handleV1ScenarioStartCalls = 0;
     handleV1ScenarioStopCalls = 0;
@@ -279,56 +265,6 @@ void test_handle_api_metrics_reset_delegates_when_allowed() {
     TEST_ASSERT_EQUAL_INT(1, handleMetricsResetCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"metrics-reset\""));
-}
-
-void test_handle_api_camera_alert_render_rate_limited_short_circuits() {
-    WebServer server(80);
-    int rateLimitCalls = 0;
-
-    DebugApiService::handleApiCameraAlertRender(
-        server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return false;
-        });
-
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(0, handleCameraAlertRenderCalls);
-    TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
-}
-
-void test_handle_api_camera_alert_render_delegates_when_allowed() {
-    WebServer server(80);
-    int rateLimitCalls = 0;
-
-    DebugApiService::handleApiCameraAlertRender(
-        server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        });
-
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, handleCameraAlertRenderCalls);
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_TRUE(responseContains(server, "\"camera-alert-render\""));
-}
-
-void test_handle_api_camera_alert_clear_delegates_when_allowed() {
-    WebServer server(80);
-    int rateLimitCalls = 0;
-
-    DebugApiService::handleApiCameraAlertClear(
-        server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        });
-
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, handleCameraAlertClearCalls);
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_TRUE(responseContains(server, "\"camera-alert-clear\""));
 }
 
 void test_handle_api_v1_scenario_load_rate_limited_short_circuits() {
@@ -523,9 +459,6 @@ int main() {
     RUN_TEST(test_handle_api_debug_enable_delegates_when_allowed);
     RUN_TEST(test_handle_api_metrics_reset_rate_limited_short_circuits);
     RUN_TEST(test_handle_api_metrics_reset_delegates_when_allowed);
-    RUN_TEST(test_handle_api_camera_alert_render_rate_limited_short_circuits);
-    RUN_TEST(test_handle_api_camera_alert_render_delegates_when_allowed);
-    RUN_TEST(test_handle_api_camera_alert_clear_delegates_when_allowed);
     RUN_TEST(test_handle_api_v1_scenario_load_rate_limited_short_circuits);
     RUN_TEST(test_handle_api_v1_scenario_load_delegates_when_allowed);
     RUN_TEST(test_handle_api_v1_scenario_start_delegates_when_allowed);

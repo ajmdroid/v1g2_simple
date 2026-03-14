@@ -15,7 +15,6 @@
 #include "../../ble_client.h"
 #include "../../storage_manager.h"
 #include "../../perf_sd_logger.h"
-#include "../display/display_pipeline_module.h"
 #include "../ble/ble_queue_module.h"
 #include "../gps/gps_runtime_module.h"
 #include "../gps/gps_observation_log.h"
@@ -24,7 +23,6 @@
 #include "../lockout/lockout_band_policy.h"
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
-#include "../../../include/camera_alert_types.h"
 #include "../../../include/main_globals.h"
 namespace {
 bool isTruthyArgValue(const String& value) {
@@ -49,15 +47,6 @@ bool parseUint32Arg(const String& token, uint32_t& outValue) {
     }
     outValue = value;
     return true;
-}
-CameraType parseCameraTypeArg(const String& token) {
-    String normalized = token;
-    normalized.trim();
-    normalized.toLowerCase();
-    if (normalized == "alpr") {
-        return CameraType::ALPR;
-    }
-    return CameraType::INVALID;
 }
 struct PanicFileSnapshot {
     bool loaded = false;
@@ -617,75 +606,6 @@ void handleApiMetricsReset(WebServer& server,
                            const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
     handleMetricsReset(server);
-}
-void handleCameraAlertRender(WebServer& server) {
-#ifdef UNIT_TEST
-    server.send(200, "application/json", "{\"success\":true,\"testStub\":true}");
-    return;
-#else
-    static constexpr uint32_t kDebugCameraHoldMsDefault = 5000;
-    static constexpr uint32_t kDebugCameraHoldMsMax = 15000;
-    CameraType type = CameraType::ALPR;
-    if (server.hasArg("type")) {
-        type = parseCameraTypeArg(server.arg("type"));
-        if (type == CameraType::INVALID) {
-            server.send(400, "application/json", "{\"success\":false,\"error\":\"invalid type\"}");
-            return;
-        }
-    }
-    uint32_t distanceCm = 16093;
-    if (server.hasArg("distanceCm") && !parseUint32Arg(server.arg("distanceCm"), distanceCm)) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"invalid distanceCm\"}");
-        return;
-    }
-    if (distanceCm == 0) {
-        distanceCm = 1;
-    }
-    uint32_t holdMs = kDebugCameraHoldMsDefault;
-    if (server.hasArg("holdMs") && !parseUint32Arg(server.arg("holdMs"), holdMs)) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"invalid holdMs\"}");
-        return;
-    }
-    holdMs = std::min(holdMs, kDebugCameraHoldMsMax);
-    CameraAlertDisplayPayload payload{};
-    payload.active = true;
-    payload.distanceCm = distanceCm;
-    if (!displayPipelineModule.debugRenderCameraPayload(millis(), payload, holdMs)) {
-        server.send(500, "application/json", "{\"success\":false,\"error\":\"display unavailable\"}");
-        return;
-    }
-    JsonDocument doc;
-    doc["success"] = true;
-    doc["type"] = cameraTypeApiName(type);
-    doc["distanceCm"] = distanceCm;
-    doc["holdMs"] = holdMs;
-    doc["voiceRequested"] = false;
-    doc["voiceStarted"] = false;
-    sendJsonStream(server, doc);
-#endif
-}
-void handleApiCameraAlertRender(WebServer& server,
-                                const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    handleCameraAlertRender(server);
-}
-void handleCameraAlertClear(WebServer& server) {
-#ifdef UNIT_TEST
-    server.send(200, "application/json", "{\"success\":true,\"testStub\":true}");
-#else
-    displayPipelineModule.clearDebugCameraOverride();
-    displayPipelineModule.restoreCurrentOwner(millis());
-    JsonDocument doc;
-    doc["success"] = true;
-    doc["debugOverrideCleared"] = true;
-    doc["restored"] = true;
-    sendJsonStream(server, doc);
-#endif
-}
-void handleApiCameraAlertClear(WebServer& server,
-                               const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    handleCameraAlertClear(server);
 }
 void handleProxyAdvertisingControl(WebServer& server) {
     JsonDocument body;

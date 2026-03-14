@@ -1,15 +1,5 @@
 #include "display_pipeline_module.h"
 #include "perf_metrics.h"  // perfRecordDisplayRenderUs
-#include "modules/camera_alert/camera_alert_module.h"
-#include "modules/gps/gps_runtime_module.h"
-
-#include <math.h>
-
-namespace {
-bool cameraPayloadEqual(const CameraAlertDisplayPayload& a, const CameraAlertDisplayPayload& b) {
-    return a.active == b.active && a.distanceCm == b.distanceCm;
-}
-}  // namespace
 
 void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
                                   V1Display* displayPtr,
@@ -18,9 +8,7 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
                                   V1BLEClient* bleClient,
                                   AlertPersistenceModule* alertPersistenceModule,
                                   VolumeFadeModule* volumeFadeModule,
-                                  VoiceModule* voiceModule,
-                                  GpsRuntimeModule* gpsModulePtr,
-                                  CameraAlertModule* cameraModulePtr) {
+                                  VoiceModule* voiceModule) {
     displayMode = displayModePtr;
     display = displayPtr;
     parser = parserPtr;
@@ -29,20 +17,8 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     alertPersistence = alertPersistenceModule;
     volumeFade = volumeFadeModule;
     voice = voiceModule;
-    gpsModule = gpsModulePtr;
-    cameraModule = cameraModulePtr;
-    cameraAlertActive_ = false;
     lastPersistenceSlot = -1;
     lastRenderedOwner_ = RenderOwner::Unknown;
-    debugCameraOverrideEnabled_ = false;
-    debugCameraOverrideUntilMs_ = 0;
-    debugCameraPayload_ = CameraAlertDisplayPayload{};
-    lastDebugCameraRenderedPayload_ = CameraAlertDisplayPayload{};
-    lastDebugCameraRenderedBogeyChar_ = 0;
-    lastDebugCameraRenderedBogeyDot_ = false;
-    lastDebugCameraRenderMs_ = 0;
-    debugCameraFrameValid_ = false;
-    cameraVoiceAnnounced_ = false;
     PERF_SET(cameraDisplayActive, 0);
     PERF_SET(cameraDebugOverrideActive, 0);
 }
@@ -50,55 +26,10 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
 // Track lastAlertGapRecoverMs locally since it was removed from header
 static unsigned long lastAlertGapRecoverMs = 0;
 
-void DisplayPipelineModule::processCameraState(uint32_t nowMs) {
-    if (!cameraModule || !gpsModule) {
-        return;
-    }
-
-    const GpsRuntimeStatus gpsStatus = gpsModule->snapshot(nowMs);
-    CameraAlertContext ctx;
-    ctx.gpsValid = gpsStatus.locationValid;
-    if (gpsStatus.locationValid) {
-        ctx.latE5 = static_cast<int32_t>(lroundf(gpsStatus.latitudeDeg * 100000.0f));
-        ctx.lonE5 = static_cast<int32_t>(lroundf(gpsStatus.longitudeDeg * 100000.0f));
-    }
-    ctx.speedMph = gpsStatus.speedMph;
-    ctx.courseValid = gpsStatus.courseValid;
-    ctx.courseDeg = gpsStatus.courseDeg;
-    ctx.courseAgeMs = gpsStatus.courseAgeMs;
-    cameraModule->process(nowMs, ctx);
-}
-
-bool DisplayPipelineModule::debugCameraOverrideActiveAt(uint32_t nowMs) const {
-    if (!debugCameraOverrideEnabled_ || !debugCameraPayload_.active) {
-        return false;
-    }
-
-    return static_cast<int32_t>(nowMs - debugCameraOverrideUntilMs_) < 0;
-}
-
-bool DisplayPipelineModule::isCameraAlertActive() const {
-    if (debugCameraOverrideEnabled_) {
-        return debugCameraOverrideActiveAt(millis());
-    }
-    return cameraAlertActive_;
-}
-
-void DisplayPipelineModule::clearDebugCameraOverride() {
-    debugCameraOverrideEnabled_ = false;
-    debugCameraOverrideUntilMs_ = 0;
-    debugCameraPayload_ = CameraAlertDisplayPayload{};
-    debugCameraFrameValid_ = false;
-    PERF_SET(cameraDebugOverrideActive, 0);
-}
-
 void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
                                             const DisplayState& state,
                                             bool forceRedraw) {
-    if (debugCameraOverrideEnabled_ && !debugCameraOverrideActiveAt(nowMs)) {
-        clearDebugCameraOverride();
-    }
-    PERF_SET(cameraDebugOverrideActive, debugCameraOverrideActiveAt(nowMs) ? 1U : 0U);
+    PERF_SET(cameraDebugOverrideActive, 0);
     PERF_SET(cameraDisplayActive, 0);
 
     const V1Settings& s = settings->get();
@@ -123,7 +54,6 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
             const unsigned long endUs = micros();
             recordDisplayTiming("display.persisted", startUs, endUs);
             recordPerfTiming("display.persisted", startUs, endUs);
-            cameraAlertActive_ = false;
             lastRenderedOwner_ = RenderOwner::Persisted;
             return;
         }
@@ -132,80 +62,6 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
         alertPersistence->clearPersistence();
     } else {
         alertPersistence->clearPersistence();
-    }
-
-    if (debugCameraOverrideActiveAt(nowMs)) {
-        const bool ownerChanged = lastRenderedOwner_ != RenderOwner::Camera;
-        const bool payloadChanged =
-            !debugCameraFrameValid_ ||
-            !cameraPayloadEqual(debugCameraPayload_, lastDebugCameraRenderedPayload_);
-        const bool statusStripChanged =
-            !debugCameraFrameValid_ ||
-            state.bogeyCounterChar != lastDebugCameraRenderedBogeyChar_ ||
-            state.bogeyCounterDot != lastDebugCameraRenderedBogeyDot_;
-        const bool refreshDue =
-            !debugCameraFrameValid_ ||
-            static_cast<uint32_t>(nowMs - lastDebugCameraRenderMs_) >= DEBUG_CAMERA_REDRAW_MIN_MS;
-        const bool shouldRender = forceRedraw || ownerChanged || payloadChanged || statusStripChanged || refreshDue;
-
-        if (!shouldRender) {
-            PERF_SET(cameraDebugOverrideActive, 1);
-            cameraAlertActive_ = true;
-            lastRenderedOwner_ = RenderOwner::Camera;
-            return;
-        }
-
-        if (forceRedraw || ownerChanged) {
-            display->forceNextRedraw();
-        }
-
-        const unsigned long startUs = micros();
-        display->updateCameraAlert(debugCameraPayload_, state);
-        const unsigned long endUs = micros();
-        recordDisplayTiming("display.camera.debug", startUs, endUs);
-        recordPerfTiming("display.camera.debug", startUs, endUs);
-        PERF_SET(cameraDebugOverrideActive, 1);
-        PERF_INC(cameraDebugDisplayFrames);
-        perfRecordCameraDebugDisplayUs(endUs - startUs);
-        lastDebugCameraRenderedPayload_ = debugCameraPayload_;
-        lastDebugCameraRenderedBogeyChar_ = state.bogeyCounterChar;
-        lastDebugCameraRenderedBogeyDot_ = state.bogeyCounterDot;
-        lastDebugCameraRenderMs_ = nowMs;
-        debugCameraFrameValid_ = true;
-        cameraAlertActive_ = true;
-        lastRenderedOwner_ = RenderOwner::Camera;
-        return;
-    }
-
-    if (cameraModule && cameraModule->isDisplayActive()) {
-        if (forceRedraw || lastRenderedOwner_ != RenderOwner::Camera) {
-            display->forceNextRedraw();
-        }
-
-        const unsigned long startUs = micros();
-        display->updateCameraAlert(cameraModule->displayPayload(), state);
-        const unsigned long endUs = micros();
-        recordDisplayTiming("display.camera", startUs, endUs);
-        recordPerfTiming("display.camera", startUs, endUs);
-        PERF_SET(cameraDisplayActive, 1);
-        PERF_INC(cameraDisplayFrames);
-        perfRecordCameraDisplayUs(endUs - startUs);
-        const bool cameraVoiceAllowed =
-            settings &&
-            ble &&
-            settings->get().voiceAlertMode != VOICE_MODE_DISABLED &&
-            (!settings->get().muteVoiceIfVolZero || state.mainVolume != 0) &&
-            !ble->isProxyClientConnected();
-        if (cameraVoiceAllowed && !cameraVoiceAnnounced_) {
-            const CameraAlertVoiceResult voiceResult =
-                play_camera_alert_voice(CameraType::ALPR, AlertDirection::AHEAD);
-            if (voiceResult != CameraAlertVoiceResult::BUSY) {
-                cameraVoiceAnnounced_ = true;
-            }
-        }
-        cameraAlertActive_ = true;
-        lastRenderedOwner_ = RenderOwner::Camera;
-        return;
     }
 
     if (forceRedraw || lastRenderedOwner_ != RenderOwner::Resting) {
@@ -217,19 +73,17 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
     const unsigned long endUs = micros();
     recordDisplayTiming("display.resting", startUs, endUs);
     recordPerfTiming("display.resting", startUs, endUs);
-    cameraAlertActive_ = false;
     lastRenderedOwner_ = RenderOwner::Resting;
 }
 
 void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppressed) {
     if (!display || !parser || !settings || !ble || !alertPersistence ||
         !volumeFade || !voice || !displayMode) {
-        cameraAlertActive_ = false;
         return;
     }
 
     DisplayState state = parser->getDisplayState();
-    bool hasAlerts = parser->hasAlerts();
+    const bool hasAlerts = parser->hasAlerts();
     AlertData priority;
     const bool hasRenderablePriority =
         hasAlerts && parser->getRenderablePriorityAlert(priority);
@@ -246,7 +100,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
     const V1Settings& settingsRef = settings->get();
 
     if (!hasAlerts && state.activeBands != BAND_NONE) {
-        unsigned long gapNow = nowMs;
+        const unsigned long gapNow = nowMs;
         if (gapNow - lastAlertGapRecoverMs > 50) {
             // Preserve partially assembled alert rows; parser freshness/timeout
             // guards handle stale data without discarding in-progress tables.
@@ -255,7 +109,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         }
     }
 
-    unsigned long muteNow = nowMs;
+    const unsigned long muteNow = nowMs;
     if (state.muted != debouncedMuteState) {
         if (muteNow - lastMuteChangeMs > MUTE_DEBOUNCE_MS) {
             debouncedMuteState = state.muted;
@@ -265,8 +119,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         }
     }
 
-    // Volume fade runs every frame — not gated by display draw throttle.
-    // BLE restore commands must not be delayed by 25ms draw timing.
+    // Volume fade runs every frame, not only when the display redraws.
     {
         VolumeFadeContext fadeCtx;
         if (hasAlerts) {
@@ -284,7 +137,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         }
         fadeCtx.now = nowMs;
 
-        VolumeFadeAction fadeAction = volumeFade->process(fadeCtx);
+        const VolumeFadeAction fadeAction = volumeFade->process(fadeCtx);
         if (fadeAction.hasAction()) {
             if (fadeAction.type == VolumeFadeAction::Type::FADE_DOWN) {
                 ble->setVolume(fadeAction.targetVolume, fadeAction.targetMuteVolume);
@@ -294,34 +147,19 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         }
     }
 
-    // Camera tracking runs every frame regardless of radar state so encounters
-    // continue progressing in the background.  Display ownership is unchanged:
-    // live radar alerts still own screen/audio when hasAlerts is true.
-    processCameraState(nowMs);
-    if (!cameraModule || !cameraModule->isDisplayActive()) {
-        cameraVoiceAnnounced_ = false;
-    }
-
     if (nowMs - lastDisplayDraw < DISPLAY_DRAW_MIN_MS) {
         PERF_INC(displaySkips);
         return;
     }
     lastDisplayDraw = nowMs;
 
-    const V1Settings& alertSettings = settingsRef;
-
     if (hasAlerts) {
-        int alertCount = parser->getAlertCount();
+        const int alertCount = parser->getAlertCount();
         const auto& currentAlerts = parser->getAllAlerts();
 
-        // Live V1 alerts own the screen/audio path.
-        // Keep camera activity metrics aligned with effective owner so stress
-        // correlation logic does not attribute live-alert render cost to camera.
         PERF_SET(cameraDebugOverrideActive, 0);
         PERF_SET(cameraDisplayActive, 0);
-
         *displayMode = DisplayMode::LIVE;
-        cameraAlertActive_ = false;
 
         VoiceContext voiceCtx;
         voiceCtx.alerts = currentAlerts.data();
@@ -333,26 +171,23 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         voiceCtx.isSuppressed = prioritySuppressed;
         voiceCtx.now = nowMs;
 
-        VoiceAction voiceAction = voice->process(voiceCtx);
+        const VoiceAction voiceAction = voice->process(voiceCtx);
 
-        // Draw display FIRST (before audio) to eliminate perceived lag
-        // User sees the alert card immediately, then hears the announcement
-        unsigned long startUs = micros();
+        const unsigned long startUs = micros();
         if (hasRenderablePriority) {
             display->update(priority, currentAlerts.data(), alertCount, state);
         } else {
             display->update(state);
         }
-        unsigned long endUs = micros();
+        const unsigned long endUs = micros();
         recordDisplayTiming("display.update(alerts)", startUs, endUs);
         recordPerfTiming("display.update(alerts)", startUs, endUs);
 
-        // Play audio AFTER display update completes
         if (voiceAction.hasAction()) {
             switch (voiceAction.type) {
                 case VoiceAction::Type::ANNOUNCE_PRIORITY:
                     play_frequency_voice(voiceAction.band, voiceAction.freq, voiceAction.dir,
-                                         alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled,
+                                         settingsRef.voiceAlertMode, settingsRef.voiceDirectionEnabled,
                                          voiceAction.bogeyCount);
                     break;
                 case VoiceAction::Type::ANNOUNCE_DIRECTION:
@@ -360,7 +195,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
                     break;
                 case VoiceAction::Type::ANNOUNCE_SECONDARY:
                     play_frequency_voice(voiceAction.band, voiceAction.freq, voiceAction.dir,
-                                         alertSettings.voiceAlertMode, alertSettings.voiceDirectionEnabled, 1);
+                                         settingsRef.voiceAlertMode, settingsRef.voiceDirectionEnabled, 1);
                     break;
                 case VoiceAction::Type::ANNOUNCE_ESCALATION:
                     play_threat_escalation(voiceAction.band, voiceAction.freq, voiceAction.dir,
@@ -377,19 +212,17 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
             alertPersistence->setPersistedAlert(priority);
         }
         lastRenderedOwner_ = RenderOwner::Live;
-
-    } else {
-        *displayMode = DisplayMode::IDLE;
-
-        voice->clearAllState();
-        renderIdleOwner(nowMs, state, false);
+        return;
     }
+
+    *displayMode = DisplayMode::IDLE;
+    voice->clearAllState();
+    renderIdleOwner(nowMs, state, false);
 }
 
 void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
     if (!display || !parser || !settings || !ble || !alertPersistence ||
         !volumeFade || !voice || !displayMode) {
-        cameraAlertActive_ = false;
         return;
     }
 
@@ -400,7 +233,6 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
         PERF_SET(cameraDebugOverrideActive, 0);
         display->showScanning();
         *displayMode = DisplayMode::IDLE;
-        cameraAlertActive_ = false;
         lastRenderedOwner_ = RenderOwner::Scanning;
         return;
     }
@@ -415,7 +247,6 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
         *displayMode = DisplayMode::LIVE;
         PERF_SET(cameraDisplayActive, 0);
         PERF_SET(cameraDebugOverrideActive, 0);
-        cameraAlertActive_ = false;
         if (hasRenderablePriority) {
             const auto& alerts = parser->getAllAlerts();
             display->update(priority, alerts.data(), parser->getAlertCount(), state);
@@ -427,42 +258,16 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
     }
 
     *displayMode = DisplayMode::IDLE;
-    processCameraState(nowMs);
     renderIdleOwner(nowMs, state, true);
 }
 
-bool DisplayPipelineModule::debugRenderCameraPayload(uint32_t nowMs,
-                                                     const CameraAlertDisplayPayload& payload,
-                                                     uint32_t holdMs) {
-    if (!display || !parser || !settings || !displayMode || !payload.active) {
-        return false;
-    }
-
-    if (holdMs > 0) {
-        debugCameraPayload_ = payload;
-        debugCameraOverrideUntilMs_ = nowMs + holdMs;
-        debugCameraOverrideEnabled_ = true;
-        debugCameraFrameValid_ = false;
-        PERF_SET(cameraDebugOverrideActive, 1);
-    } else {
-        clearDebugCameraOverride();
-    }
-    *displayMode = DisplayMode::IDLE;
-    cameraAlertActive_ = holdMs > 0;
-    if (holdMs > 0) {
-        lastRenderedOwner_ = RenderOwner::Unknown;
-    }
-    lastDisplayDraw = nowMs;
-    return true;
-}
-
 void DisplayPipelineModule::recordDisplayTiming(const char* label, unsigned long startUs, unsigned long endUs) {
-    unsigned long dur = endUs - startUs;
+    const unsigned long dur = endUs - startUs;
     displayLatencySum += dur;
     displayLatencyCount++;
     if (dur > displayLatencyMax) displayLatencyMax = dur;
 
-    unsigned long nowMs = millis();
+    const unsigned long nowMs = millis();
 
     if ((nowMs - displayLatencyLastLog) > DISPLAY_LOG_INTERVAL_MS && displayLatencyCount > 0) {
         displayLatencySum = 0;
@@ -473,17 +278,17 @@ void DisplayPipelineModule::recordDisplayTiming(const char* label, unsigned long
 }
 
 void DisplayPipelineModule::recordPerfTiming(const char* label, unsigned long startUs, unsigned long endUs) {
-    unsigned long dur = endUs - startUs;
-    
-    // Always record to perf metrics for scorecard attribution
+    const unsigned long dur = endUs - startUs;
+
+    // Always record to perf metrics for scorecard attribution.
     perfRecordDisplayRenderUs(dur);
     PERF_INC(displayUpdates);
-    
+
     if (!PERF_TIMING_LOGS) return;
     perfTimingAccum += dur;
     perfTimingCount++;
     if (dur > perfTimingMax) perfTimingMax = dur;
-    unsigned long nowMs = millis();
+    const unsigned long nowMs = millis();
     if (nowMs - perfLastReport > 5000) {
         Serial.printf("[PERF] %s: avg=%luus max=%luus (n=%lu)\n",
                       label,

@@ -220,7 +220,7 @@ void test_pipeline_draw_resets_frequency_timer_for_same_tick() {
     TEST_ASSERT_EQUAL(0, display.refreshFrequencyOnlyCalls);
 }
 
-void test_lightweight_refresh_skips_frequency_clear_when_camera_active() {
+void test_lightweight_refresh_clears_frequency_when_idle() {
     ble.setConnected(true);
     preview.setRunning(false);
     parser.reset();
@@ -230,12 +230,13 @@ void test_lightweight_refresh_skips_frequency_clear_when_camera_active() {
     ctx.bootSplashHoldActive = false;
     ctx.overloadLateThisLoop = false;
     ctx.pipelineRanThisLoop = false;
-    ctx.cameraAlertActive = true;
 
     const auto result = module.processLightweightRefresh(ctx);
 
     TEST_ASSERT_FALSE(result.signalPriorityActive);
-    TEST_ASSERT_EQUAL(0, display.refreshFrequencyOnlyCalls);
+    TEST_ASSERT_EQUAL(1, display.refreshFrequencyOnlyCalls);
+    TEST_ASSERT_EQUAL(0u, display.lastFrequencyMHz);
+    TEST_ASSERT_EQUAL(BAND_NONE, display.lastFrequencyBand);
 }
 
 int main() {
@@ -248,6 +249,6 @@ int main() {
     RUN_TEST(test_lightweight_refresh_updates_frequency_and_cards);
     RUN_TEST(test_lightweight_refresh_falls_back_from_invalid_priority);
     RUN_TEST(test_pipeline_draw_resets_frequency_timer_for_same_tick);
-    RUN_TEST(test_lightweight_refresh_skips_frequency_clear_when_camera_active);
+    RUN_TEST(test_lightweight_refresh_clears_frequency_when_idle);
     return UNITY_END();
 }

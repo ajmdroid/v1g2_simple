@@ -2,7 +2,7 @@
  * Update methods — extracted from display.cpp (Phase 3C/3D)
  *
  * Contains update(DisplayState), update(AlertData, ...), refreshFrequencyOnly,
- * refreshSecondaryAlertCards, updatePersisted, updateCameraAlert.
+ * refreshSecondaryAlertCards, updatePersisted.
  */
 
 #include "display.h"
@@ -173,7 +173,6 @@ void V1Display::update(const DisplayState& state) {
     
     // Check if transitioning from a non-resting visual mode.
     bool leavingLiveMode = (currentScreen == ScreenMode::Live);
-    bool leavingCameraMode = (currentScreen == ScreenMode::Camera);
     
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
@@ -181,7 +180,6 @@ void V1Display::update(const DisplayState& state) {
         flashJustExpired ||
         wasPersistedMode ||  // Force full redraw when leaving persisted mode
         leavingLiveMode ||   // Force full redraw when alerts end (clear cards/frequency)
-        leavingCameraMode || // Force full redraw when camera owner releases frequency zone
         restingDebouncedBands != lastRestingDebouncedBands ||
         effectiveMuted != lastState.muted;
     
@@ -431,86 +429,6 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     drawSecondaryAlertCards(nullptr, 0, emptyPriority, true);
 
     DISPLAY_FLUSH();
-}
-
-void V1Display::updateCameraAlert(const CameraAlertDisplayPayload& payload,
-                                  const DisplayState& state) {
-    persistedMode = false;
-
-    if (!payload.active) {
-        update(state);
-        return;
-    }
-
-    const bool enteringCamera = (currentScreen != ScreenMode::Camera);
-    if (enteringCamera) {
-        perfRecordDisplayScreenTransition(
-            static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
-            PerfDisplayScreen::Camera,
-            millis());
-    }
-    currentScreen = ScreenMode::Camera;
-
-    static uint8_t lastMainVol = 0xFF;
-    static uint8_t lastMuteVol = 0xFF;
-    static uint8_t lastBogeyByte = 0;
-    const unsigned long now = millis();
-    const bool fullRedraw = enteringCamera;
-
-    if (fullRedraw) {
-        dirty.multiAlert = true;
-        multiAlertMode = false;
-        wasInMultiAlertMode = false;
-
-        drawBaseFrame();
-
-        drawStatusStrip(state, state.bogeyCounterChar, false, state.bogeyCounterDot);
-        drawBandIndicators(0, false);
-        drawCameraLabel("ALPR", 0x780F);
-        drawVerticalSignalBars(0, 0, BAND_NONE, false);
-        drawDirectionArrow(DIR_FRONT, false, 0, 0x780F);
-        drawMuteIcon(false);
-        drawLockoutIndicator();
-        drawGpsIndicator();
-        drawProfileIndicator(currentProfileSlot);
-
-        AlertData emptyPriority;
-        drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
-
-        DISPLAY_FLUSH();
-        markRssiRefreshed(now);
-    } else {
-        // Camera payload/owner are unchanged; keep camera mode cheap by updating
-        // only dynamic strip/indicator elements instead of full-screen redraws.
-        bool flushLeftStrip = false;
-        bool flushRightStrip = false;
-        const bool volumeChanged =
-            (state.mainVolume != lastMainVol) || (state.muteVolume != lastMuteVol);
-        const bool rssiNeedsUpdate = shouldRefreshRssi(now);
-        const bool bogeyCounterChanged = (state.bogeyCounterByte != lastBogeyByte);
-        updateStatusStripIncremental(state,
-                                     state.bogeyCounterChar,
-                                     false,
-                                     state.bogeyCounterDot,
-                                     volumeChanged,
-                                     rssiNeedsUpdate,
-                                     bogeyCounterChanged,
-                                     lastMainVol,
-                                     lastMuteVol,
-                                     lastBogeyByte,
-                                     now,
-                                     flushLeftStrip,
-                                     flushRightStrip);
-        drawLockoutIndicator();
-        drawGpsIndicator();
-        drawProfileIndicator(currentProfileSlot);
-        DISPLAY_FLUSH();
-    }
-
-    lastMainVol = state.mainVolume;
-    lastMuteVol = state.muteVolume;
-    lastBogeyByte = state.bogeyCounterByte;
-    lastState = state;
 }
 
 // Multi-alert update: draws priority alert with secondary alert cards below

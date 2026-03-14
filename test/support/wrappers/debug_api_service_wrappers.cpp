@@ -9,8 +9,6 @@ void sendV1ScenarioList(WebServer& server);
 void sendV1ScenarioStatus(WebServer& server);
 void handleDebugEnable(WebServer& server);
 void handleMetricsReset(WebServer& server);
-void handleCameraAlertRender(WebServer& server);
-void handleCameraAlertClear(WebServer& server);
 void handleV1ScenarioLoad(WebServer& server);
 void handleV1ScenarioStart(WebServer& server);
 void handleV1ScenarioStop(WebServer& server);
@@ -44,18 +42,6 @@ void handleApiMetricsReset(WebServer& server,
                            const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
     handleMetricsReset(server);
-}
-
-void handleApiCameraAlertRender(WebServer& server,
-                                const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    handleCameraAlertRender(server);
-}
-
-void handleApiCameraAlertClear(WebServer& server,
-                               const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
-    handleCameraAlertClear(server);
 }
 
 void handleApiV1ScenarioLoad(WebServer& server,

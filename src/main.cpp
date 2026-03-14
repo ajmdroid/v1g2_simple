@@ -621,9 +621,6 @@ static void configureLoopDisplayModule() {
     loopDisplayProviders.recordNotifyToDisplayMs = [](void*, uint32_t elapsedMs) {
         perfRecordNotifyToDisplayMs(elapsedMs);
     };
-    loopDisplayProviders.isCameraActive =
-        ProviderCallbackBindings::member<DisplayPipelineModule, &DisplayPipelineModule::isCameraAlertActive>;
-    loopDisplayProviders.cameraActiveContext = &displayPipelineModule;
     loopDisplayModule.begin(loopDisplayProviders);
 }
 
@@ -648,7 +645,6 @@ static void configureAlertAudioDisplayPipeline() {
     alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager);
     voiceModule.begin(&settingsManager, &bleClient);
     volumeFadeModule.begin(&settingsManager);
-    cameraAlertModule.begin(&roadMapReader, &settingsManager);
     displayPipelineModule.begin(&displayMode,
                                 &display,
                                 &parser,
@@ -656,9 +652,7 @@ static void configureAlertAudioDisplayPipeline() {
                                 &bleClient,
                                 &alertPersistenceModule,
                                 &volumeFadeModule,
-                                &voiceModule,
-                                &gpsRuntimeModule,
-                                &cameraAlertModule);
+                                &voiceModule);
 }
 
 static void configureSystemLoopCoreModules() {

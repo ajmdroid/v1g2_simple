@@ -40,8 +40,6 @@ public:
 
         void (*runDisplayPipeline)(void* ctx, uint32_t nowMs, bool lockoutPrioritySuppressed) = nullptr;
         void* displayPipelineContext = nullptr;
-        bool (*isCameraActive)(void* ctx) = nullptr;
-        void* cameraActiveContext = nullptr;
 
         uint32_t (*timestampUs)(void* ctx) = nullptr;
         void* timestampContext = nullptr;

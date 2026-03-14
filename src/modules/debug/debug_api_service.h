@@ -30,14 +30,6 @@ void handleApiMetricsReset(WebServer& server,
 void handleApiProxyAdvertisingControl(WebServer& server,
                                       const std::function<bool()>& checkRateLimit);
 
-/// POST /api/debug/camera-alert/render handler with route-level rate limiting.
-void handleApiCameraAlertRender(WebServer& server,
-                                const std::function<bool()>& checkRateLimit);
-
-/// POST /api/debug/camera-alert/clear handler with route-level rate limiting.
-void handleApiCameraAlertClear(WebServer& server,
-                               const std::function<bool()>& checkRateLimit);
-
 /// POST /api/debug/v1-scenario/load handler with route-level rate limiting.
 void handleApiV1ScenarioLoad(WebServer& server,
                              const std::function<bool()>& checkRateLimit);

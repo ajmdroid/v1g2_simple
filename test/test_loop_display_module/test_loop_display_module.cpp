@@ -43,7 +43,6 @@ static bool lastPipelineSuppressed = false;
 static uint32_t lockoutElapsedUs = 0;
 static uint32_t dispPipeElapsedUs = 0;
 static uint32_t notifyElapsedMs = 0;
-static bool cameraActive = false;
 
 static int collectCalls = 0;
 static int parsedCalls = 0;
@@ -82,7 +81,6 @@ static void resetState() {
     lockoutElapsedUs = 0;
     dispPipeElapsedUs = 0;
     notifyElapsedMs = 0;
-    cameraActive = false;
     collectCalls = 0;
     parsedCalls = 0;
     refreshCalls = 0;
@@ -155,10 +153,6 @@ static void recordDispPipeUs(void*, uint32_t elapsedUs) {
 static void recordNotifyToDisplayMs(void*, uint32_t elapsedMs) {
     notifyElapsedMs = elapsedMs;
     noteCall(CALL_NOTIFY_PERF);
-}
-
-static bool isCameraActive(void*) {
-    return cameraActive;
 }
 
 static LoopDisplayModule::Providers makeDefaultProviders() {
@@ -334,26 +328,6 @@ void test_empty_providers_is_safe_noop() {
     TEST_ASSERT_EQUAL(0, providerPipelineCalls);
 }
 
-void test_camera_owner_state_is_propagated_to_refresh_context() {
-    LoopDisplayModule::Providers providers = makeDefaultProviders();
-    providers.isCameraActive = isCameraActive;
-    module.begin(providers);
-
-    displayNowMs = 2600;
-    cameraActive = true;
-    parsedSignal = ParsedFrameSignal{true, 2500};
-    parsedResult = DisplayOrchestrationParsedResult{false, false, true};
-
-    LoopDisplayContext ctx;
-    ctx.nowMs = 2600;
-    ctx.runDisplayPipeline = runRuntimePipeline;
-
-    module.process(ctx);
-
-    TEST_ASSERT_TRUE(lastRefreshCtx.pipelineRanThisLoop);
-    TEST_ASSERT_TRUE(lastRefreshCtx.cameraAlertActive);
-}
-
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_process_full_pipeline_with_runtime_callback_and_perf_records);
@@ -362,6 +336,5 @@ int main() {
     RUN_TEST(test_notify_to_display_skips_for_zero_or_future_timestamp);
     RUN_TEST(test_wrap_safe_perf_elapsed_for_lockout_and_pipeline);
     RUN_TEST(test_empty_providers_is_safe_noop);
-    RUN_TEST(test_camera_owner_state_is_propagated_to_refresh_context);
     return UNITY_END();
 }
