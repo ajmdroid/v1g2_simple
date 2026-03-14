@@ -70,7 +70,6 @@
 #include "modules/voice/voice_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/display/display_restore_module.h"
-#include "modules/camera_alert/camera_alert_module.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/lockout/signal_capture_module.h"

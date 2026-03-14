@@ -30,7 +30,6 @@ RoadMapReader roadMapReader;
 static constexpr const char* ROAD_MAP_PATH = "/road_map.bin";
 static constexpr uint32_t MAX_FILE_SIZE = 8 * 1024 * 1024;  // 8 MB sanity cap
 static constexpr uint32_t MIN_FILE_SIZE = 64;                // Header alone
-static constexpr uint8_t ALPR_CAMERA_FLAG = 4;
 
 void RoadMapReader::clearState(bool releaseOwnedData) {
     if (releaseOwnedData && ownsData_ && data_) {
@@ -44,14 +43,9 @@ void RoadMapReader::clearState(bool releaseOwnedData) {
     header_ = nullptr;
     gridIndex_ = nullptr;
     segData_ = nullptr;
-    camGridIndex_ = nullptr;
-    camData_ = nullptr;
-    alprCameraCount_ = 0;
-    unsupportedCameraCount_ = 0;
 }
 
-bool RoadMapReader::bindBuffer(uint8_t* buf, uint32_t size, bool takeOwnership,
-                               bool logCameraBoundsWarning) {
+bool RoadMapReader::bindBuffer(uint8_t* buf, uint32_t size, bool takeOwnership) {
     if (!buf || size < MIN_FILE_SIZE) {
         clearState(true);
         return false;
@@ -72,35 +66,6 @@ bool RoadMapReader::bindBuffer(uint8_t* buf, uint32_t size, bool takeOwnership,
         return false;
     }
 
-    const RoadMapGridEntry* camGridIndex = nullptr;
-    const CameraRecord* camData = nullptr;
-    if (hdr->cameraIndexOffset > 0 && hdr->cameraCount > 0) {
-        const uint32_t camGridSize = static_cast<uint32_t>(hdr->gridRows) *
-                                     hdr->gridCols * sizeof(RoadMapGridEntry);
-        const uint32_t camDataOffset = hdr->cameraIndexOffset + camGridSize;
-        const uint32_t camDataEnd = camDataOffset +
-                                    hdr->cameraCount * sizeof(CameraRecord);
-        if (camDataEnd <= size) {
-            camGridIndex = reinterpret_cast<const RoadMapGridEntry*>(
-                buf + hdr->cameraIndexOffset);
-            camData = reinterpret_cast<const CameraRecord*>(buf + camDataOffset);
-        } else if (logCameraBoundsWarning) {
-            Serial.println("[RoadMap] Camera section extends past EOF — skipping cameras");
-        }
-    }
-
-    uint32_t alprCameraCount = 0;
-    uint32_t unsupportedCameraCount = 0;
-    if (camData && hdr->cameraCount > 0) {
-        for (uint32_t i = 0; i < hdr->cameraCount; ++i) {
-            if (camData[i].flags == ALPR_CAMERA_FLAG) {
-                ++alprCameraCount;
-            } else {
-                ++unsupportedCameraCount;
-            }
-        }
-    }
-
     uint16_t defaultSnapRadiusE5 = 135;
     if (hdr->toleranceCm > 0) {
         const float tolMetres = static_cast<float>(hdr->toleranceCm) / 100.0f;
@@ -118,10 +83,6 @@ bool RoadMapReader::bindBuffer(uint8_t* buf, uint32_t size, bool takeOwnership,
     header_ = hdr;
     gridIndex_ = reinterpret_cast<const RoadMapGridEntry*>(buf + hdr->gridIndexOffset);
     segData_ = buf + hdr->segDataOffset;
-    camGridIndex_ = camGridIndex;
-    camData_ = camData;
-    alprCameraCount_ = alprCameraCount;
-    unsupportedCameraCount_ = unsupportedCameraCount;
     return true;
 }
 
@@ -191,29 +152,22 @@ void RoadMapReader::begin() {
         return;
     }
 
-    if (!bindBuffer(buf, fSize, true, true)) {
+    if (!bindBuffer(buf, fSize, true)) {
         Serial.println("[RoadMap] Invalid road_map.bin header/layout");
         free(buf);
         return;
     }
 
     Serial.printf("[RoadMap] Loaded %lu bytes into PSRAM in %lu ms "
-                  "(segs=%lu pts=%lu cams=%lu alpr=%lu unsupported=%lu grid=%ux%u cell=%.2f° snapR=%uE5)\n",
+                  "(segs=%lu pts=%lu grid=%ux%u cell=%.2f° snapR=%uE5)\n",
                   static_cast<unsigned long>(fSize),
                   static_cast<unsigned long>(readMs),
                   static_cast<unsigned long>(header_->totalSegments),
                   static_cast<unsigned long>(header_->totalPoints),
-                  static_cast<unsigned long>(header_->cameraCount),
-                  static_cast<unsigned long>(alprCameraCount_),
-                  static_cast<unsigned long>(unsupportedCameraCount_),
                   static_cast<unsigned>(header_->gridRows),
                   static_cast<unsigned>(header_->gridCols),
                   static_cast<float>(header_->cellSizeE5) / 100000.0f,
                   static_cast<unsigned>(defaultSnapRadiusE5_));
-    if (unsupportedCameraCount_ > 0) {
-        Serial.printf("[RoadMap] Mixed camera map detected: %lu non-ALPR records loaded into ALPR-only runtime\n",
-                      static_cast<unsigned long>(unsupportedCameraCount_));
-    }
 #endif  // UNIT_TEST
 }
 
@@ -221,12 +175,8 @@ uint32_t RoadMapReader::segmentCount() const {
     return header_ ? header_->totalSegments : 0;
 }
 
-uint32_t RoadMapReader::cameraCount() const {
-    return header_ ? header_->cameraCount : 0;
-}
-
 bool RoadMapReader::loadFromBuffer(uint8_t* buf, uint32_t size) {
-    return bindBuffer(buf, size, false, false);
+    return bindBuffer(buf, size, false);
 }
 
 // ---------------------------------------------------------------------------
@@ -439,93 +389,6 @@ RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
         const float distCm = bestDistM * 100.0f;
         result.distanceCm = (distCm > 65534.0f) ? 0xFFFE
                             : static_cast<uint16_t>(distCm);
-    }
-
-    return result;
-}
-
-// ---------------------------------------------------------------------------
-// nearestCamera — spatial query over camera grid, pure PSRAM pointer math
-// ---------------------------------------------------------------------------
-
-CameraResult RoadMapReader::nearestCamera(int32_t latE5, int32_t lonE5,
-                                          uint16_t searchRadiusE5,
-                                          uint8_t requiredFlags) const {
-    CameraResult result;
-    if (!data_ || !header_ || !camGridIndex_ || !camData_) {
-        return result;
-    }
-
-    // Default search radius: ~1 km ≈ 900 E5
-    if (searchRadiusE5 == 0) {
-        searchRadiusE5 = 900;
-    }
-
-    const RoadMapHeader& h = *header_;
-
-    // Bounds check (with one cell margin).
-    if (latE5 < h.minLatE5 - h.cellSizeE5 || latE5 > h.maxLatE5 + h.cellSizeE5 ||
-        lonE5 < h.minLonE5 - h.cellSizeE5 || lonE5 > h.maxLonE5 + h.cellSizeE5) {
-        return result;
-    }
-
-    // cos(lat) for longitude correction.
-    const float latRad = static_cast<float>(latE5) / 100000.0f * (3.14159265f / 180.0f);
-    const float cosLat = cosf(latRad);
-    static constexpr float E5_TO_METRES = 1.11f;
-
-    const float searchRadiusM = static_cast<float>(searchRadiusE5) * E5_TO_METRES;
-
-    // Grid cell for query point.
-    const int centerRow = (latE5 - h.minLatE5) / h.cellSizeE5;
-    const int centerCol = (lonE5 - h.minLonE5) / h.cellSizeE5;
-
-    float bestDistM = searchRadiusM;
-    const CameraRecord* bestCam = nullptr;
-
-    // Search 3×3 neighbourhood.
-    for (int dr = -1; dr <= 1; ++dr) {
-        const int row = centerRow + dr;
-        if (row < 0 || row >= static_cast<int>(h.gridRows)) continue;
-
-        for (int dc = -1; dc <= 1; ++dc) {
-            const int col = centerCol + dc;
-            if (col < 0 || col >= static_cast<int>(h.gridCols)) continue;
-
-            const uint32_t cellIdx = static_cast<uint32_t>(row) * h.gridCols
-                                     + static_cast<uint32_t>(col);
-            const RoadMapGridEntry& cell = camGridIndex_[cellIdx];
-            if (cell.segCount == 0) continue;  // segCount re-used as camCount
-
-            // Camera records for this cell.
-            const CameraRecord* cams = reinterpret_cast<const CameraRecord*>(
-                reinterpret_cast<const uint8_t*>(camData_) + cell.dataOffset);
-
-            for (uint16_t i = 0; i < cell.segCount; ++i) {
-                const CameraRecord& cam = cams[i];
-                if (requiredFlags != 0 && cam.flags != requiredFlags) {
-                    continue;
-                }
-                const float dLat = static_cast<float>(cam.latE5 - latE5) * E5_TO_METRES;
-                const float dLon = static_cast<float>(cam.lonE5 - lonE5) * E5_TO_METRES * cosLat;
-                const float dist = sqrtf(dLat * dLat + dLon * dLon);
-                if (dist < bestDistM) {
-                    bestDistM = dist;
-                    bestCam = &cam;
-                }
-            }
-        }
-    }
-
-    if (bestCam) {
-        result.valid = true;
-        result.latE5 = bestCam->latE5;
-        result.lonE5 = bestCam->lonE5;
-        result.bearing = bestCam->bearing;
-        result.flags = bestCam->flags;
-        result.speedMph = bestCam->speedMph;
-        const float distCm = bestDistM * 100.0f;
-        result.distanceCm = static_cast<uint32_t>(distCm);
     }
 
     return result;

@@ -36,16 +36,6 @@ void SettingsManager::setGpsEnabled(bool enabled) {
     save();
 }
 
-void SettingsManager::setCameraAlertsEnabled(bool enabled) {
-    settings.cameraAlertsEnabled = enabled;
-    save();
-}
-
-void SettingsManager::setCameraAlertRangeCm(uint32_t rangeCm) {
-    settings.cameraAlertRangeCm = clampCameraAlertRangeCmValue(static_cast<int>(rangeCm));
-    save();
-}
-
 void SettingsManager::setAutoPowerOffMinutes(uint8_t minutes) {
     settings.autoPowerOffMinutes = clampU8(minutes, 0, 60);
     save();

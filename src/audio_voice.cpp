@@ -5,7 +5,6 @@
 
 #include "audio_internals.h"
 #include "audio_task_utils.h"
-#include "camera_alert_types.h"
 #include "storage_manager.h"
 #include <Arduino.h>
 #include <LittleFS.h>

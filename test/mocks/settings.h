@@ -47,20 +47,6 @@ inline const char* lockoutRuntimeModeName(LockoutRuntimeMode mode) {
 // GPS quality gate constants (must match real settings.h)
 static constexpr uint8_t  LOCKOUT_GPS_MIN_SATELLITES = 4;
 static constexpr uint32_t LOCKOUT_GPS_COURSE_MAX_AGE_MS = 5000;
-static constexpr uint32_t CAMERA_ALERT_RANGE_CM_MIN = 16093;
-static constexpr uint32_t CAMERA_ALERT_RANGE_CM_MAX = 160934;
-static constexpr uint32_t CAMERA_ALERT_RANGE_CM_DEFAULT = 128748;
-
-inline uint32_t clampCameraAlertRangeCmValue(int rawRangeCm) {
-    if (rawRangeCm < static_cast<int>(CAMERA_ALERT_RANGE_CM_MIN)) {
-        return CAMERA_ALERT_RANGE_CM_MIN;
-    }
-    if (rawRangeCm > static_cast<int>(CAMERA_ALERT_RANGE_CM_MAX)) {
-        return CAMERA_ALERT_RANGE_CM_MAX;
-    }
-    return static_cast<uint32_t>(rawRangeCm);
-}
-
 // Minimal display font enum (for compatibility with older tests)
 enum FontStyle : uint8_t {
     FONT_STYLE_CLASSIC = 0,
@@ -125,9 +111,6 @@ struct V1Settings {
     bool bleProxyEnabled = true;
     uint8_t activeSlot = 0;
 
-    // Camera alerts
-    bool cameraAlertsEnabled = true;
-    uint32_t cameraAlertRangeCm = CAMERA_ALERT_RANGE_CM_DEFAULT;
 };
 
 // Backwards compatibility alias used by some legacy tests

@@ -5,7 +5,6 @@
     "band_laser.mul",
     "band_x.mul",
     "bogeys.mul",
-    "cam_alpr.mul",
     "dir_ahead.mul",
     "dir_behind.mul",
     "dir_side.mul"

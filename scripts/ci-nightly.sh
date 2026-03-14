@@ -59,7 +59,6 @@ SANITIZER_SUITES=(
   test_packet_parser
   test_drive_replay
   test_lockout_index
-  test_camera_alert_module
   test_volume_fade
 )
 for suite in "${SANITIZER_SUITES[@]}"; do

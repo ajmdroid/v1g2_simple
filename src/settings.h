@@ -129,11 +129,6 @@ static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MAX = 20;          /
 // Fail-open: stale course → directional entries don't match → alert plays.
 static constexpr uint32_t LOCKOUT_GPS_COURSE_MAX_AGE_MS = 5000;                // 5 seconds
 
-// Camera alert range is stored in centimeters end-to-end.
-static constexpr uint32_t CAMERA_ALERT_RANGE_CM_MIN = 16093;                   // 0.1 mi
-static constexpr uint32_t CAMERA_ALERT_RANGE_CM_MAX = 160934;                  // 1.0 mi
-static constexpr uint32_t CAMERA_ALERT_RANGE_CM_DEFAULT = 128748;              // 0.8 mi
-
 inline uint16_t clampLockoutPreQuietBufferE5Value(int rawBuffer) {
     return static_cast<uint16_t>(std::max(0,
                                           std::min(rawBuffer, static_cast<int>(LOCKOUT_PRE_QUIET_BUFFER_E5_MAX))));
@@ -147,12 +142,6 @@ inline uint16_t clampLockoutGpsMaxHdopX10Value(int rawHdopX10) {
 inline uint8_t clampLockoutGpsMinLearnerSpeedMphValue(int rawSpeed) {
     return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MIN),
                                          std::min(rawSpeed, static_cast<int>(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MAX))));
-}
-
-inline uint32_t clampCameraAlertRangeCmValue(int rawRangeCm) {
-    return static_cast<uint32_t>(
-        std::max(static_cast<int>(CAMERA_ALERT_RANGE_CM_MIN),
-                 std::min(rawRangeCm, static_cast<int>(CAMERA_ALERT_RANGE_CM_MAX))));
 }
 
 inline uint8_t clampLockoutLearnerHitsValue(int rawHits) {
@@ -237,10 +226,6 @@ struct V1Settings {
     uint16_t gpsLockoutMaxHdopX10;                    // Max HDOP ×10 for lockout eval/learn (50 = 5.0, 0 = disabled)
     uint8_t gpsLockoutMinLearnerSpeedMph;             // Min speed (mph) for learner ingestion (0 = disabled)
 
-    // Legacy camera alert settings retained temporarily until runtime removal
-    bool cameraAlertsEnabled;
-    uint32_t cameraAlertRangeCm;
-    
     // Display settings
     bool turnOffDisplay;
     uint8_t brightness;
@@ -405,8 +390,6 @@ struct V1Settings {
         gpsLockoutPreQuietBufferE5(LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT),
         gpsLockoutMaxHdopX10(LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT),
         gpsLockoutMinLearnerSpeedMph(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT),
-        cameraAlertsEnabled(false),
-        cameraAlertRangeCm(CAMERA_ALERT_RANGE_CM_DEFAULT),
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment
@@ -603,8 +586,6 @@ public:
     void setProxyBLE(bool enabled);
     void setProxyName(const String& name);
     void setGpsEnabled(bool enabled);
-    void setCameraAlertsEnabled(bool enabled);
-    void setCameraAlertRangeCm(uint32_t rangeCm);
     void setAutoPowerOffMinutes(uint8_t minutes);
     void setApTimeoutMinutes(uint8_t minutes);
     uint8_t getApTimeoutMinutes() const { return settings.apTimeoutMinutes; }

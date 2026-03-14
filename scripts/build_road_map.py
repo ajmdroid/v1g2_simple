@@ -479,7 +479,7 @@ class Segment:
 
 CAMERA_RECORD_SIZE = 12  # bytes per camera record
 
-# Camera type flags — must match firmware CameraType enum in camera_alert_types.h
+# Legacy camera overlay flags preserved for road_map.bin compatibility.
 CAM_TYPE_ALPR = 4  # ALPR / plate-reader camera
 CAM_VALID_TYPES = {CAM_TYPE_ALPR}
 

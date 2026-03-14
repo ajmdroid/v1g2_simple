@@ -79,18 +79,6 @@
         ]
       },
       {
-        "id": "critical-007",
-        "module": "camera_alert",
-        "description": "<= -> < forward distance boundary",
-        "impact": "Perpendicular intersection cameras enter the forward corridor",
-        "file": "src/modules/camera_alert/camera_alert_module.cpp",
-        "search": "    if (forwardDistance <= 0.0f) {\n        return false;\n    }\n",
-        "replace": "    if (forwardDistance < 0.0f) {\n        return false;\n    }\n",
-        "tests": [
-          "test_camera_alert_module"
-        ]
-      },
-      {
         "id": "critical-008",
         "module": "volume_fade",
         "description": ">= -> > fade delay boundary",
@@ -134,7 +122,6 @@
       "critical-004",
       "critical-005",
       "critical-006",
-      "critical-007",
       "critical-008",
       "critical-009",
       "critical-010"

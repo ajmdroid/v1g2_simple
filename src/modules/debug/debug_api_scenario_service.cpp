@@ -25,8 +25,6 @@
 #include "../lockout/lockout_band_policy.h"
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
-#include "../../../include/camera_alert_types.h"
-
 #include "../../../include/main_globals.h"
 namespace {
 
@@ -55,16 +53,6 @@ bool parseUint32Arg(const String& token, uint32_t& outValue) {
 
     outValue = value;
     return true;
-}
-
-CameraType parseCameraTypeArg(const String& token) {
-    String normalized = token;
-    normalized.trim();
-    normalized.toLowerCase();
-    if (normalized == "alpr") {
-        return CameraType::ALPR;
-    }
-    return CameraType::INVALID;
 }
 
 struct PanicFileSnapshot {

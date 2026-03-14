@@ -1,7 +1,0 @@
-{
-  "scenario_id": "camera_forward_corridor",
-  "source_capture_id": "placeholder",
-  "owner": "camera",
-  "lane": "pr",
-  "sanitization_version": 1
-}

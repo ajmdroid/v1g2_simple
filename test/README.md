@@ -111,8 +111,6 @@ python3 scripts/sanitize_replay_capture.py \
 # Validate the resulting fixture before replay execution
 python3 scripts/verify_replay_fixture.py test/fixtures/replay/my_scenario
 
-# Regenerate the synthetic ALPR road-map fixture used by test_road_map_reader
-python3 test/fixtures/tools/generate_camera_fixture.py
 ```
 
 ## Test Structure

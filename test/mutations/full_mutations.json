@@ -10,7 +10,6 @@
     "battery_manager",
     "lockout_index",
     "gps_lockout_safety",
-    "camera_alert",
     "volume_fade",
     "wifi_boot_policy",
     "lockout_pre_quiet"

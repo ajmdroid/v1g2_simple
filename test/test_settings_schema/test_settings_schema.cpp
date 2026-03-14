@@ -16,7 +16,6 @@ void test_v1_settings_defaults_cover_current_runtime_shape() {
 	TEST_ASSERT_EQUAL_INT(LOCKOUT_RUNTIME_OFF, settings.gpsLockoutMode);
 	TEST_ASSERT_TRUE(settings.gpsLockoutCoreGuardEnabled);
 	TEST_ASSERT_EQUAL_UINT8(LOCKOUT_LEARNER_HITS_DEFAULT, settings.gpsLockoutLearnerPromotionHits);
-	TEST_ASSERT_FALSE(settings.cameraAlertsEnabled);
 	TEST_ASSERT_EQUAL_UINT8(200, settings.brightness);
 	TEST_ASSERT_EQUAL_INT(DISPLAY_STYLE_CLASSIC, settings.displayStyle);
 	TEST_ASSERT_EQUAL_INT(VOICE_MODE_BAND_FREQ, settings.voiceAlertMode);
