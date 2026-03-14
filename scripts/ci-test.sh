@@ -68,6 +68,7 @@ run_step "Extern/global usage contract" python3 scripts/check_extern_usage_contr
 section "Docs Hygiene"
 run_step "Perf SLO doc/json contract" python3 scripts/check_perf_slo_contract.py
 run_step "Build instruction contract" python3 scripts/check_build_instruction_contract.py
+run_step "Retired camera docs contract" python3 scripts/check_camera_docs_contract.py
 
 section "Frontend"
 cd interface

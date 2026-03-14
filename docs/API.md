@@ -17,7 +17,6 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 - [Display Colors](#display-colors)
 - [Lockouts](#lockouts)
 - [GPS](#gps)
-- [Cameras](#cameras)
 - [WiFi Client](#wifi-client)
 - [Debug](#debug)
 
