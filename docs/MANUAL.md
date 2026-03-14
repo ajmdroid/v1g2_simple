@@ -1996,7 +1996,7 @@ The trusted local/code gate. It runs:
 
 Runs the PR gate plus:
 - full replay corpus
-- sanitizer lane (ASan + UBSan) for parser, replay, lockout, camera, volume_fade
+- sanitizer lane (ASan + UBSan) for parser, replay, lockout, volume_fade
 - expanded mutation catalog with tier thresholds
 - device soak (if hardware available)
 
@@ -2069,7 +2069,6 @@ These tools still exist, but they are exploratory/manual only:
 
 ### Known Validation Gaps
 
-- No trusted bench camera-overlap coverage through the real camera runtime path
 - Replay fixtures are Phase 1 scaffolds — real captured data needed
 - No trusted transition stress gate
 
