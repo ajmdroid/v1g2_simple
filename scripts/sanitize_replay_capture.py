@@ -90,7 +90,7 @@ def main() -> int:
     parser.add_argument("--scenario-id", required=True)
     parser.add_argument("--source-capture-id", default="unknown")
     parser.add_argument("--owner", required=True,
-                        help="Owning subsystem (e.g. lockout, camera, parser)")
+                        help="Owning subsystem (e.g. lockout, replay, parser)")
     parser.add_argument("--lane", required=True, choices=["pr", "nightly"])
     args = parser.parse_args()
 

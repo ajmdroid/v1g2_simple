@@ -243,9 +243,6 @@ static int restoreBondsFromSD() {
     }
     return restored;
 }
-
-// calcV1Checksum moved to ble_commands.cpp
-
 // Task to restart advertising after delay
 // Pattern derived from v1g2-t4s3 reference implementation for NimBLE 2.x dual-role stability
 // Only restarts if no client is connected
@@ -707,8 +704,3 @@ void V1BLEClient::onDataReceived(DataCallback callback) {
 void V1BLEClient::onV1Connected(ConnectionCallback callback) {
     connectCallback = callback;
 }
-
-// Connection state machine, callbacks, and notify moved to ble_connection.cpp
-// Command methods moved to ble_commands.cpp
-
-// Proxy server methods moved to ble_proxy.cpp

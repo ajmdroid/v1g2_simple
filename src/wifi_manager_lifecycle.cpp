@@ -470,12 +470,6 @@ void WiFiManager::setupAP() {
     WIFI_LOG("[SetupMode] AP IP: %s\n", WiFi.softAPIP().toString().c_str());
 }
 
-
-// --- make*Runtime() factory methods moved to wifi_runtimes.cpp ---
-
-
-// --- setupWebServer() moved to wifi_routes.cpp ---
-
 void WiFiManager::checkAutoTimeout() {
     uint8_t timeoutMins = settingsManager.getApTimeoutMinutes();
     if (timeoutMins == 0) return;  // Disabled (always on)
@@ -730,12 +724,6 @@ void WiFiManager::process() {
 
     finalizeProcessTiming();
 }
-
-// --- getAPIPAddress, getIPAddress, getConnectedSSID, startWifiScan,
-//     getScannedNetworks, connectToNetwork, disconnectFromNetwork,
-//     processWifiClientConnectPhase, processPendingPushNow,
-//     checkWifiClientStatus moved to wifi_client.cpp ---
-
 // ==================== API Endpoints ====================
 
 void WiFiManager::handleNotFound() {
