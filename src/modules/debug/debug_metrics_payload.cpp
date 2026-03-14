@@ -7,16 +7,6 @@
 
 namespace DebugApiService {
 
-void appendCameraMetricsPayload(JsonDocument& doc) {
-    doc["cameraDisplayActive"] = perfCounters.cameraDisplayActive.load();
-    doc["cameraDebugOverrideActive"] = perfCounters.cameraDebugOverrideActive.load();
-    doc["cameraDisplayFrames"] = perfCounters.cameraDisplayFrames.load();
-    doc["cameraDebugDisplayFrames"] = perfCounters.cameraDebugDisplayFrames.load();
-    doc["cameraDisplayMaxUs"] = perfExtended.cameraDisplayMaxUs;
-    doc["cameraDebugDisplayMaxUs"] = perfExtended.cameraDebugDisplayMaxUs;
-    doc["cameraProcessMaxUs"] = perfExtended.cameraProcessMaxUs;
-}
-
 void appendBleRuntimeMetricsPayload(JsonDocument& doc) {
     const BLEState bleState = bleClient.getBLEState();
     doc["bleState"] = bleStateToString(bleState);

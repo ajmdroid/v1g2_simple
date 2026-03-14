@@ -146,13 +146,6 @@ struct PerfSdSnapshot {
     uint32_t parserRowsKuRaw;              // Alert rows containing Ku raw bit (0x10)
     uint32_t displayLiveInvalidPrioritySkips; // Live display invalid-priority early returns
     uint32_t displayLiveFallbackToUsable;  // Live display fallback-to-usable selections
-    uint32_t cameraDisplayActive;          // Real camera display active marker (1/0)
-    uint32_t cameraDebugOverrideActive;    // Debug camera override active marker (1/0)
-    uint32_t cameraDisplayFrames;          // Frames drawn by real camera display path
-    uint32_t cameraDebugDisplayFrames;     // Frames drawn by debug camera display path
-    uint32_t cameraDisplayMaxUs;           // Window max real camera display duration
-    uint32_t cameraDebugDisplayMaxUs;      // Window max debug camera display duration
-    uint32_t cameraProcessMaxUs;           // Window max CameraAlertModule::process() duration
     uint32_t obdMaxUs;                     // Window max obdRuntimeModule.update() duration
     uint32_t obdPollErrors;                // OBD poll errors this window
     uint32_t obdStaleCount;                // OBD stale speed readings this window

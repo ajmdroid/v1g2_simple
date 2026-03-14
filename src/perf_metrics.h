@@ -107,10 +107,6 @@ struct PerfCounters {
     // Display
     std::atomic<uint32_t> displayUpdates{0};   // Frames drawn
     std::atomic<uint32_t> displaySkips{0};     // Updates skipped (throttled)
-    std::atomic<uint32_t> cameraDisplayActive{0}; // Real camera display path active marker (1/0)
-    std::atomic<uint32_t> cameraDebugOverrideActive{0}; // Debug camera override active marker (1/0)
-    std::atomic<uint32_t> cameraDisplayFrames{0}; // Frames drawn by real camera display path
-    std::atomic<uint32_t> cameraDebugDisplayFrames{0}; // Frames drawn by debug camera display override
 
     // Mutex contention monitoring (should stay low/zero in normal operation)
     std::atomic<uint32_t> bleMutexSkip{0};        // HOT path try-lock skips
@@ -238,10 +234,6 @@ struct PerfCounters {
         bleScanDwellMaxMs.store(0, std::memory_order_relaxed);
         displayUpdates.store(0, std::memory_order_relaxed);
         displaySkips.store(0, std::memory_order_relaxed);
-        cameraDisplayActive.store(0, std::memory_order_relaxed);
-        cameraDebugOverrideActive.store(0, std::memory_order_relaxed);
-        cameraDisplayFrames.store(0, std::memory_order_relaxed);
-        cameraDebugDisplayFrames.store(0, std::memory_order_relaxed);
         bleMutexSkip.store(0, std::memory_order_relaxed);
         bleMutexTimeout.store(0, std::memory_order_relaxed);
         cmdPaceNotYet.store(0, std::memory_order_relaxed);
@@ -422,9 +414,6 @@ struct PerfExtendedMetrics {
     uint32_t bleProcessMaxUs = 0;     // bleClient.process() total duration
     uint32_t dispPipeMaxUs = 0;       // displayPipelineModule.handleParsed() duration
     uint32_t touchMaxUs = 0;          // touchUiModule.process() duration
-    uint32_t cameraDisplayMaxUs = 0;  // Real camera display update duration
-    uint32_t cameraDebugDisplayMaxUs = 0; // Debug camera display update duration
-    uint32_t cameraProcessMaxUs = 0;  // CameraAlertModule::process() duration
     uint32_t obdMaxUs = 0;              // obdRuntimeModule.update() duration
     uint32_t gpsMaxUs = 0;             // gpsRuntimeModule.update() duration
     uint32_t lockoutMaxUs = 0;         // lockoutEnforcer.process() + signalCapture duration
@@ -474,9 +463,6 @@ struct PerfExtendedMetrics {
         bleProcessMaxUs = 0;
         dispPipeMaxUs = 0;
         touchMaxUs = 0;
-        cameraDisplayMaxUs = 0;
-        cameraDebugDisplayMaxUs = 0;
-        cameraProcessMaxUs = 0;
         obdMaxUs = 0;
         gpsMaxUs = 0;
         lockoutMaxUs = 0;
@@ -526,9 +512,6 @@ void perfRecordBleSubscribeUs(uint32_t us);
 void perfRecordBleProcessUs(uint32_t us);
 void perfRecordDispPipeUs(uint32_t us);
 void perfRecordTouchUs(uint32_t us);
-void perfRecordCameraDisplayUs(uint32_t us);
-void perfRecordCameraDebugDisplayUs(uint32_t us);
-void perfRecordCameraProcessUs(uint32_t us);
 void perfRecordGpsUs(uint32_t us);
 void perfRecordLockoutUs(uint32_t us);
 void perfRecordLockoutSaveUs(uint32_t us);
@@ -552,9 +535,6 @@ uint32_t perfGetFlushMaxUs();
 uint32_t perfGetBleDrainMaxUs();
 uint32_t perfGetBleProcessMaxUs();
 uint32_t perfGetDispPipeMaxUs();
-uint32_t perfGetCameraDisplayMaxUs();
-uint32_t perfGetCameraDebugDisplayMaxUs();
-uint32_t perfGetCameraProcessMaxUs();
 void perfRecordObdUs(uint32_t us);
 uint32_t perfGetPrevWindowLoopMaxUs();
 uint32_t perfGetPrevWindowWifiMaxUs();

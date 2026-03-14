@@ -125,13 +125,6 @@ parserRowsBandNone
 parserRowsKuRaw
 displayLiveInvalidPrioritySkips
 displayLiveFallbackToUsable
-cameraDisplayActive
-cameraDebugOverrideActive
-cameraDisplayFrames
-cameraDebugDisplayFrames
-cameraDisplayMaxUs
-cameraDebugDisplayMaxUs
-cameraProcessMaxUs
 obdMax_us
 obdPollErrors
 obdStaleCount

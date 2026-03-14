@@ -4,8 +4,6 @@
 
 namespace DebugApiService {
 
-// Appends the camera attribution fields shared by normal and soak metrics.
-void appendCameraMetricsPayload(JsonDocument& doc);
 void appendBleRuntimeMetricsPayload(JsonDocument& doc);
 void appendWifiAutoStartMetricsPayload(JsonDocument& doc);
 

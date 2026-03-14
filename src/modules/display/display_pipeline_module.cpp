@@ -19,8 +19,6 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     voice = voiceModule;
     lastPersistenceSlot = -1;
     lastRenderedOwner_ = RenderOwner::Unknown;
-    PERF_SET(cameraDisplayActive, 0);
-    PERF_SET(cameraDebugOverrideActive, 0);
 }
 
 // Track lastAlertGapRecoverMs locally since it was removed from header
@@ -29,9 +27,6 @@ static unsigned long lastAlertGapRecoverMs = 0;
 void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
                                             const DisplayState& state,
                                             bool forceRedraw) {
-    PERF_SET(cameraDebugOverrideActive, 0);
-    PERF_SET(cameraDisplayActive, 0);
-
     const V1Settings& s = settings->get();
     const uint8_t persistSec = settings->getSlotAlertPersistSec(s.activeSlot);
 
@@ -157,8 +152,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         const int alertCount = parser->getAlertCount();
         const auto& currentAlerts = parser->getAllAlerts();
 
-        PERF_SET(cameraDebugOverrideActive, 0);
-        PERF_SET(cameraDisplayActive, 0);
         *displayMode = DisplayMode::LIVE;
 
         VoiceContext voiceCtx;
@@ -229,8 +222,6 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
     display->forceNextRedraw();
 
     if (!ble->isConnected()) {
-        PERF_SET(cameraDisplayActive, 0);
-        PERF_SET(cameraDebugOverrideActive, 0);
         display->showScanning();
         *displayMode = DisplayMode::IDLE;
         lastRenderedOwner_ = RenderOwner::Scanning;
@@ -245,8 +236,6 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
 
     if (hasAlerts) {
         *displayMode = DisplayMode::LIVE;
-        PERF_SET(cameraDisplayActive, 0);
-        PERF_SET(cameraDebugOverrideActive, 0);
         if (hasRenderablePriority) {
             const auto& alerts = parser->getAllAlerts();
             display->update(priority, alerts.data(), parser->getAlertCount(), state);

@@ -1,20 +1,11 @@
 #include "camera_alert_module.h"
 
 #include "../lockout/road_map_reader.h"
-#include "../../perf_metrics.h"
 #include "../../settings.h"
 
 #include <math.h>
 
 namespace {
-
-struct CameraProcessPerfScope {
-    unsigned long startUs = 0;
-
-    ~CameraProcessPerfScope() {
-        perfRecordCameraProcessUs(micros() - startUs);
-    }
-};
 
 constexpr uint32_t CAMERA_POLL_INTERVAL_MS = 500;
 constexpr uint32_t ENCOUNTER_EXPIRE_MS = 10000;
@@ -233,7 +224,6 @@ void CameraAlertModule::expireEncounterIfNeeded(uint32_t nowMs) {
 }
 
 void CameraAlertModule::process(uint32_t nowMs, const CameraAlertContext& ctx) {
-    CameraProcessPerfScope perfScope{micros()};
     if (hasPolled_ && (nowMs - lastPollMs_) < CAMERA_POLL_INTERVAL_MS) {
         return;
     }

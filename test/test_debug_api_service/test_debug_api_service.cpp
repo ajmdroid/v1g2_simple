@@ -47,32 +47,6 @@ bool responseContains(const WebServer& server, const char* needle) {
     return std::strstr(server.lastBody.c_str(), needle) != nullptr;
 }
 
-void assertCameraMetricsPayload(const JsonDocument& doc,
-                                uint32_t cameraDisplayActive,
-                                uint32_t cameraDebugOverrideActive,
-                                uint32_t cameraDisplayFrames,
-                                uint32_t cameraDebugDisplayFrames,
-                                uint32_t cameraDisplayMaxUs,
-                                uint32_t cameraDebugDisplayMaxUs,
-                                uint32_t cameraProcessMaxUs) {
-    TEST_ASSERT_FALSE(doc["cameraDisplayActive"].isNull());
-    TEST_ASSERT_FALSE(doc["cameraDebugOverrideActive"].isNull());
-    TEST_ASSERT_FALSE(doc["cameraDisplayFrames"].isNull());
-    TEST_ASSERT_FALSE(doc["cameraDebugDisplayFrames"].isNull());
-    TEST_ASSERT_FALSE(doc["cameraDisplayMaxUs"].isNull());
-    TEST_ASSERT_FALSE(doc["cameraDebugDisplayMaxUs"].isNull());
-    TEST_ASSERT_FALSE(doc["cameraProcessMaxUs"].isNull());
-    TEST_ASSERT_TRUE(doc["cameraVoiceQueued"].isNull());
-    TEST_ASSERT_TRUE(doc["cameraVoiceStarted"].isNull());
-    TEST_ASSERT_EQUAL_UINT32(cameraDisplayActive, doc["cameraDisplayActive"].as<uint32_t>());
-    TEST_ASSERT_EQUAL_UINT32(cameraDebugOverrideActive, doc["cameraDebugOverrideActive"].as<uint32_t>());
-    TEST_ASSERT_EQUAL_UINT32(cameraDisplayFrames, doc["cameraDisplayFrames"].as<uint32_t>());
-    TEST_ASSERT_EQUAL_UINT32(cameraDebugDisplayFrames, doc["cameraDebugDisplayFrames"].as<uint32_t>());
-    TEST_ASSERT_EQUAL_UINT32(cameraDisplayMaxUs, doc["cameraDisplayMaxUs"].as<uint32_t>());
-    TEST_ASSERT_EQUAL_UINT32(cameraDebugDisplayMaxUs, doc["cameraDebugDisplayMaxUs"].as<uint32_t>());
-    TEST_ASSERT_EQUAL_UINT32(cameraProcessMaxUs, doc["cameraProcessMaxUs"].as<uint32_t>());
-}
-
 }  // namespace
 
 namespace DebugApiService {
@@ -413,42 +387,6 @@ void test_handle_api_perf_files_delete_delegates_when_allowed() {
     TEST_ASSERT_TRUE(responseContains(server, "\"perf-delete\""));
 }
 
-void test_append_camera_metrics_payload_for_normal_metrics_shape() {
-    perfCounters.cameraDisplayActive = 1;
-    perfCounters.cameraDebugOverrideActive = 0;
-    perfCounters.cameraDisplayFrames = 12;
-    perfCounters.cameraDebugDisplayFrames = 3;
-    perfExtended.cameraDisplayMaxUs = 60123;
-    perfExtended.cameraDebugDisplayMaxUs = 32100;
-    perfExtended.cameraProcessMaxUs = 7654;
-
-    JsonDocument doc;
-    doc["rxPackets"] = 10;
-    doc["displayUpdates"] = 20;
-
-    DebugApiService::appendCameraMetricsPayload(doc);
-
-    assertCameraMetricsPayload(doc, 1, 0, 12, 3, 60123, 32100, 7654);
-}
-
-void test_append_camera_metrics_payload_for_soak_metrics_shape() {
-    perfCounters.cameraDisplayActive = 0;
-    perfCounters.cameraDebugOverrideActive = 1;
-    perfCounters.cameraDisplayFrames = 7;
-    perfCounters.cameraDebugDisplayFrames = 19;
-    perfExtended.cameraDisplayMaxUs = 44000;
-    perfExtended.cameraDebugDisplayMaxUs = 55000;
-    perfExtended.cameraProcessMaxUs = 9876;
-
-    JsonDocument doc;
-    doc["queueDrops"] = 0;
-    doc["dispPipeMaxUs"] = 4321;
-
-    DebugApiService::appendCameraMetricsPayload(doc);
-
-    assertCameraMetricsPayload(doc, 0, 1, 7, 19, 44000, 55000, 9876);
-}
-
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_handle_api_metrics_delegates);
@@ -467,7 +405,5 @@ int main() {
     RUN_TEST(test_handle_api_perf_files_list_delegates_when_allowed);
     RUN_TEST(test_handle_api_perf_files_download_delegates_when_allowed);
     RUN_TEST(test_handle_api_perf_files_delete_delegates_when_allowed);
-    RUN_TEST(test_append_camera_metrics_payload_for_normal_metrics_shape);
-    RUN_TEST(test_append_camera_metrics_payload_for_soak_metrics_shape);
     return UNITY_END();
 }
