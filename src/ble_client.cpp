@@ -18,6 +18,7 @@
  */
 
 #include "ble_client.h"
+#include "ble_fresh_flash_policy.h"
 #include "settings.h"
 #include "perf_metrics.h"
 #include "storage_manager.h"
@@ -505,9 +506,8 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     // BUT: backup bonds to SD first so they can be restored below.
     {
         Preferences blePrefs;
-        blePrefs.begin("ble_state", false);  // Read-write mode
-        String storedVersion = blePrefs.getString("fwVersion", "");
-        if (storedVersion != FIRMWARE_VERSION) {
+        blePrefs.begin(BleFreshFlashPolicy::kNamespace, false);  // Read-write mode
+        if (BleFreshFlashPolicy::hasFirmwareVersionMismatch(blePrefs, FIRMWARE_VERSION)) {
             Serial.printf(" fresh-flash detected...");
             // NimBLE must be initialized before bond APIs work
             NimBLEDevice::init("");
@@ -521,7 +521,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
             NimBLEDevice::deleteAllBonds();
             NimBLEDevice::deinit(true);  // true = clear all BLE state
             vTaskDelay(pdMS_TO_TICKS(100));  // Let BLE stack settle
-            blePrefs.putString("fwVersion", FIRMWARE_VERSION);
+            BleFreshFlashPolicy::storeFirmwareVersion(blePrefs, FIRMWARE_VERSION);
             freshFlashBoot = true;
         }
         blePrefs.end();
