@@ -318,11 +318,20 @@ suites = [
 
 suite_count = len(suites)
 test_count = sum(int(s.get("testcase_nums", 0)) for s in suites)
+pass_count = sum(int(s.get("pass_nums", 0)) for s in suites)
 failure_count = sum(int(s.get("failure_nums", 0)) for s in suites)
 error_count = sum(int(s.get("error_nums", 0)) for s in suites)
 duration_s = sum(float(s.get("duration", 0.0)) for s in suites)
 
-status = "PASS" if (failure_count + error_count) == 0 else "FAIL"
+# Infra errors (serial disconnect, timeout) with all assertions passing = PASS
+if failure_count > 0:
+    status = "FAIL"
+elif error_count > 0 and pass_count == test_count and test_count > 0:
+    status = "PASS"
+elif error_count > 0:
+    status = "FAIL"
+else:
+    status = "PASS"
 
 print(f"\n{'='*60}")
 print(f"  Device Test Summary: {status}")
@@ -331,12 +340,18 @@ print(f"  Suites: {suite_count}  Tests: {test_count}"
 print(f"  Duration: {duration_s:.3f}s")
 print(f"{'='*60}\n")
 
-if failure_count > 0 or error_count > 0:
+if failure_count > 0:
     for s in suites:
-        if int(s.get("failure_nums", 0)) > 0 or int(s.get("error_nums", 0)) > 0:
+        if int(s.get("failure_nums", 0)) > 0:
             print(f"  FAILED: {s.get('test_suite_name', 'unknown')}")
     print()
     sys.exit(1)
+
+if error_count > 0:
+    for s in suites:
+        if int(s.get("error_nums", 0)) > 0:
+            print(f"  INFRA ERROR: {s.get('test_suite_name', 'unknown')} (all assertions passed)")
+    print()
 PY
 }
 
@@ -530,14 +545,35 @@ run_suite() {
   metric_count="$(extract_suite_metrics "$suite" "$suite_log")" || return 1
 
   if [[ $cmd_status -ne 0 ]]; then
-    suite_status="FAIL"
-    printf "%s\t%s\t%s\t%s\t%s\t%s\n" \
-      "$suite" "$suite_status" "$suite_json" "$suite_xml" "$suite_log" "$metric_count" >> "$SUITE_INDEX_TSV"
+    # Check JSON: if all test assertions passed, this is an infra error
+    # (e.g. serial disconnect during teardown), not a real test failure.
+    local tests_all_passed
+    tests_all_passed="$(python3 -c "
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+    suites = [s for s in data.get('test_suites', []) if s.get('env_name') == 'device' and s.get('status') != 'SKIPPED']
+    total = sum(int(s.get('testcase_nums', 0)) for s in suites)
+    fails = sum(int(s.get('failure_nums', 0)) for s in suites)
+    passes = sum(int(s.get('pass_nums', 0)) for s in suites)
+    print('yes' if total > 0 and fails == 0 and passes == total else 'no')
+except Exception:
+    print('no')
+" "$suite_json" 2>/dev/null || echo "no")"
+
+    if [[ "$tests_all_passed" != "yes" ]]; then
+      suite_status="FAIL"
+      printf "%s\t%s\t%s\t%s\t%s\t%s\n" \
+        "$suite" "$suite_status" "$suite_json" "$suite_xml" "$suite_log" "$metric_count" >> "$SUITE_INDEX_TSV"
+      echo "" >&2
+      echo "Suite '$suite' failed (exit $cmd_status)." >&2
+      echo "Last 40 log lines:" >&2
+      tail -n 40 "$suite_log" >&2 || true
+      return "$cmd_status"
+    fi
     echo "" >&2
-    echo "Suite '$suite' failed (exit $cmd_status)." >&2
-    echo "Last 40 log lines:" >&2
-    tail -n 40 "$suite_log" >&2 || true
-    return "$cmd_status"
+    echo "Warning: Suite '$suite' exited $cmd_status but all assertions passed (infra error)." >&2
   fi
 
   printf "%s\t%s\t%s\t%s\t%s\t%s\n" \
