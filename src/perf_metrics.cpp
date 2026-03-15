@@ -701,10 +701,6 @@ const char* perfProxyAdvertisingTransitionReasonName(uint32_t reasonCode) {
 
 #if PERF_METRICS && PERF_MONITORING
 bool perfMetricsCheckReport() {
-    if (!perfSdLogger.isEnabled()) {
-        return false;
-    }
-    
     uint32_t now = millis();
     constexpr uint32_t STABILITY_REPORT_INTERVAL_MS = 5000;
     if (perfLastReportMs == 0) {
@@ -716,9 +712,14 @@ bool perfMetricsCheckReport() {
     }
     perfLastReportMs = now;
 
+    // Always capture the snapshot to cycle windowed maxima (prev-window
+    // store + reset).  Without this, API-polled metrics like wifiMaxUs
+    // accumulate as max-ever instead of per-window when SD is absent.
     PerfSdSnapshot snapshot{};
     captureSdSnapshot(snapshot);
-    perfSdLogger.enqueue(snapshot);
+    if (perfSdLogger.isEnabled()) {
+        perfSdLogger.enqueue(snapshot);
+    }
     return true;
 }
 #else
