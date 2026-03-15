@@ -1,6 +1,7 @@
 #include "debug_api_service.h"
 #include "debug_metrics_payload.h"
 #include "debug_perf_files_service.h"
+#include "debug_soak_metrics_cache.h"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <cmath>
@@ -99,6 +100,8 @@ constexpr uint8_t kBogeyOne = 6;
 constexpr uint8_t kBogeyJunk = 30;
 constexpr uint8_t kBogeyPhoto = 115;
 constexpr uint8_t kBogeyLaser = 73;
+constexpr uint32_t kSoakMetricsCacheTtlMs = 250;
+DebugApiService::SoakMetricsJsonCache gSoakMetricsCache;
 bool parseRequestBody(WebServer& server, JsonDocument& body, bool& hasBody) {
     hasBody = false;
     if (!server.hasArg("plain")) {
@@ -453,10 +456,9 @@ static void sendMetrics(WebServer& server) {
                                    !lockoutGuard.tripped;
     sendJsonStream(server, doc);
 }
-static void sendMetricsSoak(WebServer& server) {
+static void buildMetricsSoakDoc(JsonDocument& doc) {
     // Soak mode trims heavyweight diagnostic blocks (GPS/speed snapshots)
     // while preserving all fields consumed by soak_parse_metrics.py.
-    JsonDocument doc;
     doc["rxPackets"] = perfCounters.rxPackets.load();
     doc["parseSuccesses"] = perfCounters.parseSuccesses.load();
     doc["parseFailures"] = perfCounters.parseFailures.load();
@@ -571,7 +573,18 @@ static void sendMetricsSoak(WebServer& server) {
         systemEventBus.getDropCount());
     JsonObject lockoutObj = doc["lockout"].to<JsonObject>();
     lockoutObj["coreGuardTripped"] = lockoutGuard.tripped;
-    sendJsonStream(server, doc);
+}
+static void sendMetricsSoak(WebServer& server) {
+    DebugApiService::sendCachedSoakMetrics(
+        server,
+        gSoakMetricsCache,
+        kSoakMetricsCacheTtlMs,
+        [](JsonDocument& doc) {
+            buildMetricsSoakDoc(doc);
+        },
+        []() {
+            return static_cast<uint32_t>(millis());
+        });
 }
 void handleApiMetrics(WebServer& server) {
     if (server.hasArg("soak") && isTruthyArgValue(server.arg("soak"))) {
@@ -598,6 +611,7 @@ void handleMetricsReset(WebServer& server) {
     perfMetricsReset();
     systemEventBus.resetStats();
     bleClient.resetProxyMetrics();
+    DebugApiService::invalidateSoakMetricsCache(gSoakMetricsCache);
     server.send(200, "application/json", "{\"success\":true,\"metricsReset\":true}");
 }
 void handleApiMetricsReset(WebServer& server,
