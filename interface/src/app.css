@@ -113,10 +113,6 @@ html {
 		@apply text-xs text-warning;
 	}
 
-	.copy-meta {
-		@apply text-xs text-base-content/65;
-	}
-
 	.copy-muted {
 		@apply text-sm text-base-content/60;
 	}
@@ -289,11 +285,6 @@ html {
 
 	.surface-subsection.tight {
 		@apply space-y-2;
-	}
-
-	.surface-divider {
-		@apply mt-3 border-t pt-3;
-		border-top-color: oklch(var(--bc) / calc(var(--app-border-alpha) * 1.05));
 	}
 
 	.surface-table-wrap {
