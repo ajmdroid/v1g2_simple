@@ -249,8 +249,8 @@
       "direction": "target",
       "score_level": "hard",
       "required": true,
-      "absolute_min": 15,
-      "absolute_max": 15,
+      "absolute_min": 9,
+      "absolute_max": 9,
       "regress_abs": null,
       "regress_pct": null
     },
@@ -263,8 +263,8 @@
       "direction": "target",
       "score_level": "hard",
       "required": true,
-      "absolute_min": 15,
-      "absolute_max": 15,
+      "absolute_min": 9,
+      "absolute_max": 9,
       "regress_abs": null,
       "regress_pct": null
     },
