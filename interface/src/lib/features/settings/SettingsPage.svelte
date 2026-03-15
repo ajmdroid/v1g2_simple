@@ -7,14 +7,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import SettingsBackupCard from '$lib/features/settings/SettingsBackupCard.svelte';
 	import * as settingsLazyComponents from '$lib/features/settings/settingsLazyComponents.js';
-	import {
-		formatAgeMs,
-		formatDeviceDateTime,
-		getTimeConfidenceLabel,
-		getTimeSourceLabel,
-		projectAgeMs,
-		projectEpochMs
-	} from '$lib/features/settings/settingsTime';
+	import SettingsTimeCard from '$lib/features/settings/SettingsTimeCard.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	import {
 		fetchRuntimeStatus,
@@ -530,31 +523,11 @@
 			</div>
 		</div>
 
-		<!-- Device Time -->
-		<div class="surface-card">
-			<div class="card-body space-y-3">
-				<CardSectionHead title="Device Time" subtitle="Manual phone sync only. No background NTP." />
-				<div class="copy-subtle space-y-1">
-					<div><strong>timeValid:</strong> {timeStatus.valid ? 1 : 0}</div>
-					<div><strong>timeSource:</strong> {timeStatus.source} ({getTimeSourceLabel(timeStatus.source)})</div>
-					<div><strong>timeConfidence:</strong> {timeStatus.confidence} ({getTimeConfidenceLabel(timeStatus.confidence)})</div>
-					{#if timeStatus.valid}
-						<div><strong>deviceTime:</strong> <span class="font-mono">{formatDeviceDateTime(timeStatus, clientNowMs)}</span></div>
-						<div><strong>timeAge:</strong> {formatAgeMs(projectAgeMs(timeStatus, clientNowMs))}</div>
-						<div><strong>epochMs (projected):</strong> <span class="font-mono">{projectEpochMs(timeStatus, clientNowMs)}</span></div>
-						<div><strong>tzOffsetMin:</strong> {timeStatus.tzOffsetMin}</div>
-					{:else}
-						<div class="copy-warning"><strong>status:</strong> time not set</div>
-					{/if}
-				</div>
-				<button class="btn btn-primary btn-sm w-fit" onclick={syncTimeFromPhone} disabled={timeStatus.syncing}>
-					{#if timeStatus.syncing}
-						<span class="loading loading-spinner loading-sm"></span>
-					{/if}
-					Sync Time from Phone
-				</button>
-			</div>
-		</div>
+		<SettingsTimeCard
+			{timeStatus}
+			{clientNowMs}
+			onsync={syncTimeFromPhone}
+		/>
 		
 		<!-- WiFi Client (Connect to Network) -->
 		<div class="surface-card">

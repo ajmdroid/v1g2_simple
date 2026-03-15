@@ -282,4 +282,28 @@ describe('settings route page', () => {
 
 		unmount();
 	});
+
+	it('shows an error when time sync fails', async () => {
+		installFetchMock(
+			[
+				{ method: 'GET', match: '/api/settings', respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true }) },
+				{
+					method: 'GET',
+					match: '/api/wifi/status',
+					respond: jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' })
+				},
+				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) },
+				{ method: 'POST', match: '/api/time/set', respond: jsonResponse({ error: 'bad time' }, 500) },
+				{ method: 'POST', match: '/api/settings', respond: jsonResponse({ success: true }) },
+				{ method: 'POST', match: '/api/wifi/scan', respond: jsonResponse({ scanning: false, networks: [] }) }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await fireEvent.click(await screen.findByRole('button', { name: /sync time from phone/i }));
+
+		await screen.findByText('bad time');
+		unmount();
+	});
 });
