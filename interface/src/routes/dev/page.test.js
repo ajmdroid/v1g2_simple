@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import * as devLazyComponents from '$lib/features/dev/devLazyComponents.js';
 import { installFetchMock, jsonResponse } from '../../test/fetch-mock.js';
 import Page from './+page.svelte';
 
@@ -74,6 +75,16 @@ function installDefaultFetch(overrides = []) {
 	);
 }
 
+function createDeferred() {
+	let resolve;
+	let reject;
+	const promise = new Promise((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
+}
+
 describe('dev route page', () => {
 	beforeEach(() => {
 		const localStorageMock = createStorageMock();
@@ -103,6 +114,56 @@ describe('dev route page', () => {
 		expect(await screen.findByText('BLE Queue (V1 to Display)')).toBeInTheDocument();
 		expect(screen.getByText('Perf CSV Files')).toBeInTheDocument();
 		expect(screen.getByText('active')).toBeInTheDocument();
+
+		unmount();
+	});
+
+	it('lazy-loads the metrics panel on first expand and reuses it after collapse', async () => {
+		const deferred = createDeferred();
+		const metricsPanelLoader = vi
+			.spyOn(devLazyComponents, 'loadDevMetricsPanel')
+			.mockReturnValue(deferred.promise);
+		installDefaultFetch();
+		const { unmount } = render(Page);
+
+		await screen.findByText('perf-0001.csv');
+		expect(metricsPanelLoader).not.toHaveBeenCalled();
+
+		await fireEvent.click(screen.getByRole('button', { name: /^expand$/i }));
+		expect(metricsPanelLoader).toHaveBeenCalledTimes(1);
+		await screen.findByText('Loading metrics panel...');
+
+		deferred.resolve(await import('$lib/features/dev/DevMetricsPanel.svelte'));
+		await screen.findByText('BLE Queue (V1 to Display)');
+
+		await fireEvent.click(screen.getByRole('button', { name: /^collapse$/i }));
+		await waitFor(() => {
+			expect(screen.queryByText('BLE Queue (V1 to Display)')).toBeNull();
+		});
+
+		await fireEvent.click(screen.getByRole('button', { name: /^expand$/i }));
+		await screen.findByText('BLE Queue (V1 to Display)');
+		expect(metricsPanelLoader).toHaveBeenCalledTimes(1);
+
+		unmount();
+	});
+
+	it('keeps metrics auto refresh working after the panel is lazy-loaded', async () => {
+		vi.useFakeTimers();
+		const fetchMock = installDefaultFetch();
+		const { unmount } = render(Page);
+
+		await screen.findByText('perf-0001.csv');
+		await fireEvent.click(screen.getByRole('button', { name: /^expand$/i }));
+		await screen.findByText('BLE Queue (V1 to Display)');
+
+		await fireEvent.click(screen.getByText('Auto (2s)'));
+		await vi.advanceTimersByTimeAsync(2000);
+
+		await waitFor(() => {
+			const metricsCalls = fetchMock.mock.calls.filter(([url]) => url === '/api/debug/metrics');
+			expect(metricsCalls.length).toBeGreaterThanOrEqual(2);
+		});
 
 		unmount();
 	});

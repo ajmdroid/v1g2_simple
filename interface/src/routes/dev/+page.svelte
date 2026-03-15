@@ -2,6 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
+	import * as devLazyComponents from '$lib/features/dev/devLazyComponents.js';
 	import DevPerfFilesPanel from '$lib/features/dev/DevPerfFilesPanel.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
@@ -31,6 +32,8 @@
 	let metricsError = $state(null);
 	let metricsLoading = $state(false);
 	let metricsAutoRefresh = $state(false);
+	let DevMetricsPanelComponent = $state(null);
+	let devMetricsPanelLoading = $state(false);
 	const METRICS_REFRESH_INTERVAL_MS = 2000;
 
 	// Perf CSV file management
@@ -189,10 +192,28 @@
 		metricsPoll.stop();
 	}
 
-	function formatLatency(us) {
-		if (!us) return '-';
-		if (us < 1000) return `${us}µs`;
-		return `${(us / 1000).toFixed(1)}ms`;
+	async function ensureDevMetricsPanelLoaded() {
+		if (DevMetricsPanelComponent || devMetricsPanelLoading) return;
+		devMetricsPanelLoading = true;
+		try {
+			const mod = await devLazyComponents.loadDevMetricsPanel();
+			DevMetricsPanelComponent = mod.default;
+		} catch (error) {
+			console.error('Failed to load metrics panel:', error);
+			setMessage('error', 'Failed to load metrics panel');
+			metricsExpanded = false;
+		} finally {
+			devMetricsPanelLoading = false;
+		}
+	}
+
+	function toggleMetricsExpanded() {
+		metricsExpanded = !metricsExpanded;
+		if (!metricsExpanded) return;
+		void ensureDevMetricsPanelLoaded();
+		if (!metrics) {
+			void loadMetrics();
+		}
 	}
 
 	async function loadPerfFiles() {
@@ -386,148 +407,29 @@
 				<CardSectionHead title="Performance Metrics">
 					<button 
 						class="btn btn-sm btn-ghost"
-						onclick={() => { metricsExpanded = !metricsExpanded; if (metricsExpanded && !metrics) loadMetrics(); }}
+						onclick={toggleMetricsExpanded}
 					>
 						{metricsExpanded ? 'Collapse' : 'Expand'}
 					</button>
 				</CardSectionHead>
 				
 				{#if metricsExpanded}
-					<div class="space-y-4 mt-2">
-						<!-- Controls -->
-						<div class="flex gap-2">
-							<button 
-								class="btn btn-sm btn-outline flex-1"
-								onclick={loadMetrics}
-								disabled={metricsLoading}
-							>
-							{#if metricsLoading}
-								<span class="loading loading-spinner loading-xs"></span>
-							{:else}
-								Refresh
-							{/if}
-						</button>
-						<label class="btn btn-sm swap flex-1" class:btn-primary={metricsAutoRefresh} class:btn-outline={!metricsAutoRefresh}>
-							<input type="checkbox" checked={metricsAutoRefresh} onchange={toggleMetricsAutoRefresh} />
-							<span class="swap-on">Stop Auto</span>
-							<span class="swap-off">Auto (2s)</span>
-						</label>
+					{#if DevMetricsPanelComponent}
+						<DevMetricsPanelComponent
+							{acknowledged}
+							{metrics}
+							{metricsError}
+							{metricsLoading}
+							{metricsAutoRefresh}
+							onrefresh={loadMetrics}
+							ontoggleautorefresh={toggleMetricsAutoRefresh}
+						/>
+					{:else if devMetricsPanelLoading}
+						<div class="state-loading stack mt-2">
+							<span class="loading loading-spinner loading-md"></span>
+							<p class="copy-muted">Loading metrics panel...</p>
 						</div>
-
-						<StatusAlert message={metricsError ? { type: 'error', text: metricsError } : null} />
-
-						{#if metrics}
-							<!-- BLE Queue Stats -->
-							<div class="surface-panel">
-								<h3 class="copy-subheading mb-2">BLE Queue (V1 to Display)</h3>
-								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-									<div class="flex justify-between">
-										<span class="copy-caption">RX Packets:</span>
-										<span class="font-mono">{metrics.rxPackets?.toLocaleString() || 0}</span>
-									</div>
-									<div class="flex justify-between">
-										<span class="copy-caption">Parse OK:</span>
-										<span class="font-mono">{metrics.parseSuccesses?.toLocaleString() || 0}</span>
-									</div>
-									<div class="flex justify-between">
-										<span class="copy-caption">Queue Drops:</span>
-										<span class="font-mono" class:text-error={metrics.queueDrops > 0}>{metrics.queueDrops || 0}</span>
-									</div>
-									<div class="flex justify-between">
-										<span class="copy-caption">Queue High-Water:</span>
-										<span class="font-mono">{metrics.queueHighWater || 0}/64</span>
-									</div>
-								</div>
-							</div>
-
-							<!-- Display Stats -->
-							<div class="surface-panel">
-								<h3 class="copy-subheading mb-2">Display</h3>
-								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-									<div class="flex justify-between">
-										<span class="copy-caption">Updates:</span>
-										<span class="font-mono">{metrics.displayUpdates?.toLocaleString() || 0}</span>
-									</div>
-									<div class="flex justify-between">
-										<span class="copy-caption">Skipped:</span>
-										<span class="font-mono">{metrics.displaySkips || 0}</span>
-									</div>
-								</div>
-							</div>
-
-							<!-- Latency Stats (when PERF_METRICS enabled) -->
-							{#if metrics.monitoringEnabled}
-								<div class="surface-panel">
-									<h3 class="copy-subheading mb-2">BLE to Flush Latency</h3>
-									<div class="grid grid-cols-3 gap-x-4 gap-y-1 text-xs">
-										<div class="flex justify-between">
-											<span class="copy-caption">Min:</span>
-											<span class="font-mono">{formatLatency(metrics.latencyMinUs)}</span>
-										</div>
-										<div class="flex justify-between">
-											<span class="copy-caption">Avg:</span>
-											<span class="font-mono">{formatLatency(metrics.latencyAvgUs)}</span>
-										</div>
-										<div class="flex justify-between">
-											<span class="copy-caption">Max:</span>
-											<span class="font-mono" class:text-warning={metrics.latencyMaxUs > 100000}>{formatLatency(metrics.latencyMaxUs)}</span>
-										</div>
-									</div>
-									<div class="copy-micro mt-1">
-										Samples: {metrics.latencySamples?.toLocaleString() || 0} (1 in 8 packets)
-									</div>
-								</div>
-							{/if}
-
-							<!-- Proxy Stats -->
-							{#if metrics.proxy}
-								<div class="surface-panel">
-									<h3 class="copy-subheading mb-2">V1 Proxy (to companion app)</h3>
-									<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-										<div class="flex justify-between">
-											<span class="copy-caption">Connected:</span>
-											<span class="font-mono" class:text-success={metrics.proxy.connected}>{metrics.proxy.connected ? 'Yes' : 'No'}</span>
-										</div>
-										<div class="flex justify-between">
-											<span class="copy-caption">Packets Sent:</span>
-											<span class="font-mono">{metrics.proxy.sendCount?.toLocaleString() || 0}</span>
-										</div>
-										<div class="flex justify-between">
-											<span class="copy-caption">Drops:</span>
-											<span class="font-mono" class:text-error={metrics.proxy.dropCount > 0}>{metrics.proxy.dropCount || 0}</span>
-										</div>
-										<div class="flex justify-between">
-											<span class="copy-caption">Errors:</span>
-											<span class="font-mono" class:text-error={metrics.proxy.errorCount > 0}>{metrics.proxy.errorCount || 0}</span>
-										</div>
-									</div>
-								</div>
-							{/if}
-
-							<!-- Connection Stats -->
-							<div class="surface-panel">
-								<h3 class="copy-subheading mb-2">Connection</h3>
-								<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-									<div class="flex justify-between">
-										<span class="copy-caption">Reconnects:</span>
-										<span class="font-mono">{metrics.reconnects || 0}</span>
-									</div>
-									<div class="flex justify-between">
-										<span class="copy-caption">Disconnects:</span>
-										<span class="font-mono">{metrics.disconnects || 0}</span>
-									</div>
-								</div>
-							</div>
-						{:else if metricsLoading}
-							<div class="state-loading inline">
-								<span class="loading loading-spinner loading-sm"></span>
-							</div>
-						{:else}
-							<div class="text-center copy-muted py-4">
-								Click Refresh or enable Auto to load metrics
-							</div>
-						{/if}
-					</div>
+					{/if}
 				{/if}
 			</div>
 		</div>
