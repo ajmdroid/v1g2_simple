@@ -484,6 +484,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     
     proxyEnabled = enableProxy;
     proxyName_ = proxyName ? proxyName : "V1C-LE-S3";
+    bool needsFreshFlashBondReset = false;
     
     // Create mutexes for thread-safe BLE operations (only once)
     if (!bleMutex) {
@@ -501,30 +502,16 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         return false;
     }
     
-    // Fresh-flash detection: clear BLE bonds if firmware version changed
-    // Stale bonding info in NVS can cause connection issues after OTA/flash
-    // BUT: backup bonds to SD first so they can be restored below.
+    // Fresh-flash detection: stage BLE bond reset if firmware version changed.
+    // The actual delete happens only after the normal NimBLE init path so the
+    // stack is brought up once per boot.
     {
         Preferences blePrefs;
-        blePrefs.begin(BleFreshFlashPolicy::kNamespace, false);  // Read-write mode
-        if (BleFreshFlashPolicy::hasFirmwareVersionMismatch(blePrefs, FIRMWARE_VERSION)) {
-            Serial.printf(" fresh-flash detected...");
-            // NimBLE must be initialized before bond APIs work
-            NimBLEDevice::init("");
-
-            // Backup existing bonds to SD BEFORE deleting them
-            const int backed = backupBondsToSD();
-            if (backed > 0) {
-                Serial.printf(" backed up %d bond(s)...", backed);
-            }
-
-            NimBLEDevice::deleteAllBonds();
-            NimBLEDevice::deinit(true);  // true = clear all BLE state
-            vTaskDelay(pdMS_TO_TICKS(100));  // Let BLE stack settle
-            BleFreshFlashPolicy::storeFirmwareVersion(blePrefs, FIRMWARE_VERSION);
-            freshFlashBoot = true;
+        if (blePrefs.begin(BleFreshFlashPolicy::kNamespace, false)) {  // Read-write mode
+            needsFreshFlashBondReset =
+                BleFreshFlashPolicy::hasFirmwareVersionMismatch(blePrefs, FIRMWARE_VERSION);
+            blePrefs.end();
         }
-        blePrefs.end();
     }
     
     // BLE initialization pattern for NimBLE dual-role stability:
@@ -553,6 +540,24 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         // 9 dBm is a supported ESP32-S3 step.
         NimBLEDevice::setPower(BLE_TX_POWER_DBM);
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
+    }
+
+    if (needsFreshFlashBondReset) {
+        Preferences blePrefs;
+        if (blePrefs.begin(BleFreshFlashPolicy::kNamespace, false)) {
+            Serial.printf(" fresh-flash detected...");
+            const BleFreshFlashPolicy::BondResetResult resetResult =
+                BleFreshFlashPolicy::resetBondsForFirmwareVersion(
+                    blePrefs,
+                    FIRMWARE_VERSION,
+                    backupBondsToSD,
+                    []() { NimBLEDevice::deleteAllBonds(); });
+            if (resetResult.backedUpBondCount > 0) {
+                Serial.printf(" backed up %d bond(s)...", resetResult.backedUpBondCount);
+            }
+            freshFlashBoot = true;
+            blePrefs.end();
+        }
     }
 
     // Restore bonds from SD backup if NVS was cleared (fresh-flash or NVS corruption)

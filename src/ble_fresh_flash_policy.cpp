@@ -23,4 +23,20 @@ bool storeFirmwareVersion(Preferences& prefs, const char* currentVersion) {
     return readStoredFirmwareVersion(prefs) == normalizedVersion(currentVersion);
 }
 
+BondResetResult resetBondsForFirmwareVersion(Preferences& prefs,
+                                             const char* currentVersion,
+                                             BackupBondsFn backupBonds,
+                                             ClearBondsFn clearBonds) {
+    BondResetResult result;
+    if (backupBonds) {
+        result.backedUpBondCount = backupBonds();
+    }
+    if (clearBonds) {
+        clearBonds();
+        result.clearedBonds = true;
+    }
+    result.recordedVersion = storeFirmwareVersion(prefs, currentVersion);
+    return result;
+}
+
 }  // namespace BleFreshFlashPolicy
