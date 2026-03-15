@@ -54,9 +54,9 @@ extern "C" {
 static constexpr const char* BLE_BOND_BACKUP_PATH = "/v1simple_ble_bonds.bin";
 static constexpr uint8_t BLE_BOND_MAGIC[4] = { 'B', 'L', 'B', 0x01 };
 static constexpr size_t MAX_BOND_ENTRIES = 8;  // Generous limit
-// ESP32-S3 + NimBLE-Arduino supports discrete BLE power steps here; use 15 dBm
-// explicitly rather than an in-between value that would be rounded by the stack.
-static constexpr int8_t BLE_TX_POWER_DBM = 15;
+// Use a standard BLE TX power step instead of the previous max-power 15 dBm
+// setting so BLE is less aggressive during WiFi coexistence.
+static constexpr int8_t BLE_TX_POWER_DBM = 9;
 
 struct BondBackupHeader {
     uint8_t magic[4];
@@ -538,7 +538,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         NimBLEDevice::init("V1 Proxy");
         NimBLEDevice::setDeviceName(proxyName_.c_str());
         // NimBLE-Arduino expects dBm here, not esp_power_level_t enum indices.
-        // 15 dBm is a supported ESP32-S3 step.
+        // 9 dBm is a supported ESP32-S3 step.
         NimBLEDevice::setPower(BLE_TX_POWER_DBM);
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
         
@@ -550,7 +550,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     } else {
         NimBLEDevice::init("V1Display");
         // NimBLE-Arduino expects dBm here, not esp_power_level_t enum indices.
-        // 15 dBm is a supported ESP32-S3 step.
+        // 9 dBm is a supported ESP32-S3 step.
         NimBLEDevice::setPower(BLE_TX_POWER_DBM);
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
     }
