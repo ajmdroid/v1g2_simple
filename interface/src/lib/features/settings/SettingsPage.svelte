@@ -6,7 +6,7 @@
 	import SettingsAutoPowerOffCard from '$lib/features/settings/SettingsAutoPowerOffCard.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import SettingsBackupCard from '$lib/features/settings/SettingsBackupCard.svelte';
-	import SettingsWifiModal from '$lib/features/settings/SettingsWifiModal.svelte';
+	import * as settingsLazyComponents from '$lib/features/settings/settingsLazyComponents.js';
 	import {
 		formatAgeMs,
 		formatDeviceDateTime,
@@ -57,6 +57,8 @@
 	let wifiPoll = $state(null);
 	let clientNowMs = $state(Date.now());
 	let wifiStatusFetchInFlight = false;
+	let SettingsWifiModalComponent = $state(null);
+	let wifiModalLoading = $state(false);
 	const WIFI_STATUS_ERROR_TEXT = 'Failed to load WiFi status';
 	const WIFI_SCAN_ERROR_TEXT = 'Failed to update WiFi scan';
 	const TIME_TICK_INTERVAL_MS = 1000;
@@ -188,6 +190,7 @@
 		wifiScanning = true;
 		wifiNetworks = [];
 		showWifiModal = true;
+		void ensureWifiModalLoaded();
 		
 		// Start polling for scan results
 		stopWifiPoll();
@@ -321,6 +324,20 @@
 		selectedNetwork = null;
 		wifiPassword = '';
 		stopWifiPoll();
+	}
+
+	async function ensureWifiModalLoaded() {
+		if (SettingsWifiModalComponent || wifiModalLoading) return;
+		wifiModalLoading = true;
+		try {
+			const module = await settingsLazyComponents.loadSettingsWifiModal();
+			SettingsWifiModalComponent = module.default;
+		} catch (error) {
+			closeWifiModal();
+			message = { type: 'error', text: 'Failed to load WiFi modal' };
+		} finally {
+			wifiModalLoading = false;
+		}
 	}
 
 	async function saveSettings() {
@@ -587,18 +604,31 @@
 			</div>
 		</div>
 		
-			<SettingsWifiModal
-				open={showWifiModal}
-				{wifiScanning}
-				{wifiNetworks}
-				bind:selectedNetwork
-				bind:wifiPassword
-				{wifiConnecting}
-				onstartWifiScan={startWifiScan}
-				onselectNetwork={selectNetwork}
-				onconnectToNetwork={connectToNetwork}
-				oncloseWifiModal={closeWifiModal}
-			/>
+			{#if showWifiModal}
+				{#if SettingsWifiModalComponent}
+					<SettingsWifiModalComponent
+						open={showWifiModal}
+						{wifiScanning}
+						{wifiNetworks}
+						bind:selectedNetwork
+						bind:wifiPassword
+						{wifiConnecting}
+						onstartWifiScan={startWifiScan}
+						onselectNetwork={selectNetwork}
+						onconnectToNetwork={connectToNetwork}
+						oncloseWifiModal={closeWifiModal}
+					/>
+				{:else if wifiModalLoading}
+					<div class="modal modal-open">
+						<div class="modal-box surface-modal max-w-md">
+							<div class="state-loading stack">
+								<span class="loading loading-spinner loading-md"></span>
+								<p class="copy-muted">Loading WiFi modal...</p>
+							</div>
+						</div>
+					</div>
+				{/if}
+			{/if}
 		
 		<!-- BLE Proxy -->
 		<div class="surface-card">

@@ -1,11 +1,22 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import * as settingsLazyComponents from '$lib/features/settings/settingsLazyComponents.js';
 import { installFetchMock, jsonResponse } from '../../test/fetch-mock.js';
 import Page from './+page.svelte';
 
 function countCalls(fetchMock, url) {
 	return fetchMock.mock.calls.filter(([requestUrl]) => requestUrl === url).length;
+}
+
+function createDeferred() {
+	let resolve;
+	let reject;
+	const promise = new Promise((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
 }
 
 function installDefaultFetch(overrides = []) {
@@ -84,6 +95,43 @@ describe('settings route page', () => {
 		await waitFor(() => {
 			expect(screen.queryByText('Select WiFi Network')).toBeNull();
 		});
+		unmount();
+	});
+
+	it('lazy-loads the WiFi modal on first open and reuses it after closing', async () => {
+		const deferred = createDeferred();
+		const wifiModalLoader = vi
+			.spyOn(settingsLazyComponents, 'loadSettingsWifiModal')
+			.mockReturnValue(deferred.promise);
+		installDefaultFetch([
+			{
+				method: 'POST',
+				match: '/api/wifi/scan',
+				respond: jsonResponse({
+					scanning: false,
+					networks: [{ ssid: 'BenchAP', secure: true, rssi: -42 }]
+				})
+			}
+		]);
+		const { unmount } = render(Page);
+
+		expect(wifiModalLoader).not.toHaveBeenCalled();
+		await fireEvent.click(await screen.findByRole('button', { name: /scan for networks/i }));
+
+		expect(wifiModalLoader).toHaveBeenCalledTimes(1);
+		await screen.findByText('Loading WiFi modal...');
+
+		deferred.resolve(await import('$lib/features/settings/SettingsWifiModal.svelte'));
+		await screen.findByText('Select WiFi Network');
+		await fireEvent.click(screen.getByRole('button', { name: /^Close$/i }));
+		await waitFor(() => {
+			expect(screen.queryByText('Select WiFi Network')).toBeNull();
+		});
+
+		await fireEvent.click(screen.getByRole('button', { name: /scan for networks/i }));
+		await screen.findByText('Select WiFi Network');
+		expect(wifiModalLoader).toHaveBeenCalledTimes(1);
+
 		unmount();
 	});
 
