@@ -145,9 +145,10 @@ inline bool hitsV1BleHardResetThreshold(uint8_t consecutiveFailures) {
 // freed but internal bookkeeping is not updated, leading to use-after-free.
 //
 // BANNED:      NimBLEDevice::deleteClient()  — NEVER call this.
-// RESTRICTED:  NimBLEDevice::deleteAllBonds() / deinit() — allowed ONLY
-//              in src/ble_client.cpp during fresh-flash boot (before the
-//              BLE stack is live and no clients exist).
+// RESTRICTED:  NimBLEDevice::deleteAllBonds() — allowed ONLY in
+//              src/ble_client.cpp during fresh-flash recovery.
+// BANNED:      NimBLEDevice::deinit() — tearing the stack down mid-boot or
+//              at runtime destabilizes the fixed-client NimBLE internals.
 //
 // Enforced by: scripts/check_ble_deletion_contract.py (CI gate)
 // =================================================================

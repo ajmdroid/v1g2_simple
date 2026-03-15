@@ -7,8 +7,7 @@ Enforced invariants:
    internal array).
 2) NimBLEDevice::deleteAllBonds() is allowed ONLY in src/ble_client.cpp
    inside the fresh-flash boot path (bleInitializeHardware).
-3) NimBLEDevice::deinit() is allowed ONLY in src/ble_client.cpp
-   inside the fresh-flash boot path (bleInitializeHardware).
+3) NimBLEDevice::deinit() must NEVER appear in production source.
 
 This contract is a CI gate — any violation fails the build.
 """
@@ -23,15 +22,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIRS = (ROOT / "src", ROOT / "include")
 SOURCE_SUFFIXES = {".h", ".hpp", ".c", ".cc", ".cpp"}
 
-# Authorized exception: only this file may call deleteAllBonds/deinit
+# Authorized exception: only this file may call deleteAllBonds
 AUTHORIZED_FILE = "src/ble_client.cpp"
 
 # Patterns to check
 BANNED_ALWAYS = re.compile(r"\bNimBLEDevice\s*::\s*deleteClient\s*\(")
-RESTRICTED_CALLS = (
-    re.compile(r"\bNimBLEDevice\s*::\s*deleteAllBonds\s*\("),
-    re.compile(r"\bNimBLEDevice\s*::\s*deinit\s*\("),
-)
+RESTRICTED_CALL = re.compile(r"\bNimBLEDevice\s*::\s*deleteAllBonds\s*\(")
+BANNED_DEINIT = re.compile(r"\bNimBLEDevice\s*::\s*deinit\s*\(")
 COMMENT_RE = re.compile(r"//.*$|/\*.*?\*/", re.MULTILINE | re.DOTALL)
 
 
@@ -62,15 +59,21 @@ def main() -> int:
                 f"causes heap corruption at runtime"
             )
 
-        # deleteAllBonds/deinit restricted to authorized file only
+        for match in BANNED_DEINIT.finditer(stripped):
+            line_no = text[:match.start()].count("\n") + 1
+            violations.append(
+                f"  BANNED: {relative}:{line_no} — NimBLEDevice::deinit() "
+                f"tears down the BLE stack unsafely"
+            )
+
+        # deleteAllBonds restricted to authorized file only
         if relative != AUTHORIZED_FILE:
-            for pattern in RESTRICTED_CALLS:
-                for match in pattern.finditer(stripped):
-                    line_no = text[:match.start()].count("\n") + 1
-                    violations.append(
-                        f"  RESTRICTED: {relative}:{line_no} — {match.group(0).strip()} "
-                        f"only allowed in {AUTHORIZED_FILE}"
-                    )
+            for match in RESTRICTED_CALL.finditer(stripped):
+                line_no = text[:match.start()].count("\n") + 1
+                violations.append(
+                    f"  RESTRICTED: {relative}:{line_no} — {match.group(0).strip()} "
+                    f"only allowed in {AUTHORIZED_FILE}"
+                )
 
     if violations:
         print(f"[contract] BLE deletion contract FAILED ({len(violations)} violation(s)):")
