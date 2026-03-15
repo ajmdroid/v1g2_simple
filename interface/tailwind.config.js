@@ -21,8 +21,7 @@ export default {
 					'warning': '#ffcc00',
 					'error': '#ff4444'
 				}
-			},
-			'light'
+			}
 		],
 		darkTheme: 'v1dark'
 	}
