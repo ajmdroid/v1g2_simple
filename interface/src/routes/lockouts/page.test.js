@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import * as lockoutModalLoaders from '$lib/features/lockouts/lockoutModalLoaders.js';
 import { installFetchMock, jsonResponse } from '../../test/fetch-mock.js';
 import Page from './+page.svelte';
 
@@ -92,6 +93,16 @@ function countCalls(fetchMock, url) {
 
 function countPrefixCalls(fetchMock, urlPrefix) {
 	return fetchMock.mock.calls.filter(([requestUrl]) => String(requestUrl).startsWith(urlPrefix)).length;
+}
+
+function createDeferred() {
+	let resolve;
+	let reject;
+	const promise = new Promise((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
 }
 
 describe('lockouts route page', () => {
@@ -201,6 +212,49 @@ describe('lockouts route page', () => {
 		await fireEvent.click(screen.getByRole('checkbox', { name: /unlock advanced writes/i }));
 		expect(screen.queryByRole('button', { name: /new manual zone/i })).toBeNull();
 		expect(screen.queryByText('Create Manual Lockout Zone')).toBeNull();
+		unmount();
+	});
+
+	it('does not preload the lockout zone editor modal on mount', async () => {
+		const zoneLoader = vi.spyOn(lockoutModalLoaders, 'loadLockoutZoneEditorModal');
+		installDefaultFetch();
+		const { unmount } = render(Page);
+
+		await screen.findByText('Lockouts');
+		expect(zoneLoader).not.toHaveBeenCalled();
+
+		unmount();
+	});
+
+	it('lazy-loads the Ka warning modal on first open and reuses it after closing', async () => {
+		const deferred = createDeferred();
+		const kaLoader = vi
+			.spyOn(lockoutModalLoaders, 'loadLockoutKaWarningModal')
+			.mockReturnValue(deferred.promise);
+		installDefaultFetch();
+		const { unmount } = render(Page);
+
+		await screen.findByText('Lockouts');
+		await fireEvent.click(screen.getByRole('checkbox', { name: /unlock advanced writes/i }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: /ka band learning/i }));
+
+		expect(kaLoader).toHaveBeenCalledTimes(1);
+		await screen.findByText('Loading Ka warning...');
+
+		deferred.resolve(await import('$lib/components/LockoutKaWarningModal.svelte'));
+		await screen.findByText('Ka Lockout Learning Warning');
+
+		await fireEvent.click(screen.getByRole('button', { name: /cancel \(recommended\)/i }));
+		await waitFor(() => {
+			expect(screen.queryByText('Ka Lockout Learning Warning')).toBeNull();
+		});
+
+		const kaToggle = screen.getByRole('checkbox', { name: /ka band learning/i });
+		kaToggle.checked = true;
+		await fireEvent.change(kaToggle);
+		await screen.findByText('Ka Lockout Learning Warning');
+		expect(kaLoader).toHaveBeenCalledTimes(1);
+
 		unmount();
 	});
 

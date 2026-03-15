@@ -3,14 +3,13 @@
 	import { fetchWithTimeout } from '$lib/utils/poll';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
-	import LockoutKaWarningModal from '$lib/components/LockoutKaWarningModal.svelte';
-	import LockoutZoneEditorModal from '$lib/components/LockoutZoneEditorModal.svelte';
 	import LockoutGpsQualityCard from '$lib/components/lockouts/LockoutGpsQualityCard.svelte';
 	import LockoutLearningRulesCard from '$lib/components/lockouts/LockoutLearningRulesCard.svelte';
 	import LockoutModeCard from '$lib/components/lockouts/LockoutModeCard.svelte';
 	import LockoutObservationsCard from '$lib/components/lockouts/LockoutObservationsCard.svelte';
 	import LockoutSafetyGateCard from '$lib/components/lockouts/LockoutSafetyGateCard.svelte';
 	import LockoutZonesCard from '$lib/components/lockouts/LockoutZonesCard.svelte';
+	import * as lockoutModalLoaders from '$lib/features/lockouts/lockoutModalLoaders.js';
 	import {
 		STATUS_POLL_INTERVAL_MS,
 		LOCKOUT_EVENTS_LIMIT,
@@ -71,6 +70,10 @@
 	let importingZones = $state(false);
 	let clearingAllZones = $state(false);
 	let importFileInput = $state(null);
+	let ZoneEditorModalComponent = $state(null);
+	let zoneEditorModalLoading = $state(false);
+	let KaWarningModalComponent = $state(null);
+	let kaWarningModalLoading = $state(false);
 
 	let lockoutEvents = $state([]);
 	let lockoutStats = $state({
@@ -183,6 +186,7 @@
 			setMsg('error', 'Unlock advanced writes before creating manual lockout zones.');
 			return;
 		}
+		void ensureZoneEditorModalLoaded();
 		zoneEditorSlot = null;
 		zoneEditor = resetZoneEditorState();
 		zoneEditorOpen = true;
@@ -195,6 +199,7 @@
 		}
 		const nextEditor = buildZoneEditorFromZone(zone);
 		if (!nextEditor) return;
+		void ensureZoneEditorModalLoaded();
 		zoneEditorSlot = nextEditor.slot;
 		zoneEditor = nextEditor.editor;
 		zoneEditorOpen = true;
@@ -210,6 +215,7 @@
 			setMsg('error', nextEditor.error);
 			return;
 		}
+		void ensureZoneEditorModalLoaded();
 		zoneEditorSlot = null;
 		zoneEditor = nextEditor.editor;
 		zoneEditorOpen = true;
@@ -237,6 +243,7 @@
 		if (lockoutConfig.kaLearningEnabled) {
 			return;
 		}
+		void ensureKaWarningModalLoaded();
 		showKaWarningModal = true;
 	}
 
@@ -248,6 +255,34 @@
 		lockoutConfig.kaLearningEnabled = true;
 		showKaWarningModal = false;
 		markLockoutDirty();
+	}
+
+	async function ensureZoneEditorModalLoaded() {
+		if (ZoneEditorModalComponent || zoneEditorModalLoading) return;
+		zoneEditorModalLoading = true;
+		try {
+			const module = await lockoutModalLoaders.loadLockoutZoneEditorModal();
+			ZoneEditorModalComponent = module.default;
+		} catch (error) {
+			zoneEditorOpen = false;
+			setMsg('error', 'Failed to load lockout zone editor');
+		} finally {
+			zoneEditorModalLoading = false;
+		}
+	}
+
+	async function ensureKaWarningModalLoaded() {
+		if (KaWarningModalComponent || kaWarningModalLoading) return;
+		kaWarningModalLoading = true;
+		try {
+			const module = await lockoutModalLoaders.loadLockoutKaWarningModal();
+			KaWarningModalComponent = module.default;
+		} catch (error) {
+			showKaWarningModal = false;
+			setMsg('error', 'Failed to load Ka warning');
+		} finally {
+			kaWarningModalLoading = false;
+		}
 	}
 
 	async function refreshAll() {
@@ -602,14 +637,44 @@
 		{openZoneFromObservation}
 	/>
 
-	<LockoutZoneEditorModal
-		open={zoneEditorOpen}
-		zoneSlot={zoneEditorSlot}
-		bind:editor={zoneEditor}
-		saving={zoneEditorSaving}
-		onclose={closeZoneEditor}
-		onsave={saveZoneEditor}
-	/>
+	{#if zoneEditorOpen}
+		{#if ZoneEditorModalComponent}
+			<ZoneEditorModalComponent
+				open={zoneEditorOpen}
+				zoneSlot={zoneEditorSlot}
+				bind:editor={zoneEditor}
+				saving={zoneEditorSaving}
+				onclose={closeZoneEditor}
+				onsave={saveZoneEditor}
+			/>
+		{:else if zoneEditorModalLoading}
+			<div class="modal modal-open">
+				<div class="modal-box surface-modal max-w-md">
+					<div class="state-loading stack">
+						<span class="loading loading-spinner loading-md"></span>
+						<p class="copy-muted">Loading lockout zone editor...</p>
+					</div>
+				</div>
+			</div>
+		{/if}
+	{/if}
 
-	<LockoutKaWarningModal show={showKaWarningModal} oncancel={cancelKaLearningEnable} onconfirm={confirmKaLearningEnable} />
+	{#if showKaWarningModal}
+		{#if KaWarningModalComponent}
+			<KaWarningModalComponent
+				show={showKaWarningModal}
+				oncancel={cancelKaLearningEnable}
+				onconfirm={confirmKaLearningEnable}
+			/>
+		{:else if kaWarningModalLoading}
+			<div class="modal modal-open">
+				<div class="modal-box surface-modal max-w-md">
+					<div class="state-loading stack">
+						<span class="loading loading-spinner loading-md"></span>
+						<p class="copy-muted">Loading Ka warning...</p>
+					</div>
+				</div>
+			</div>
+		{/if}
+	{/if}
 </div>
