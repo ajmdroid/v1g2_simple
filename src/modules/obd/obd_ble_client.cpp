@@ -9,6 +9,16 @@
 
 #include <cstring>
 
+// NimBLE's BLE controller resolves ALL scanned addresses against stored IRKs
+// (resolving list populated from V1 bonds). A 24-bit AES hash false-positive
+// can replace the OBDLink CX address with a zeroed identity address. Disable
+// controller-level address resolution during OBD scans and re-enable afterward.
+// ble_hs_pvcy_set_resolve_enabled is compiled when BLE_HOST_BASED_PRIVACY==0
+// (ESP32-S3 with controller-based privacy).
+extern "C" {
+    int ble_hs_pvcy_set_resolve_enabled(int enable);
+}
+
 namespace {
 
 const NimBLEUUID kCxServiceUuid("FFF0");
@@ -43,12 +53,26 @@ void ObdScanCallback::onResult(const NimBLEAdvertisedDevice* device) {
         return;
     }
 
-    parent_->onDeviceFound(name.c_str(), device->getAddress().toString().c_str(), rssi,
-                            device->getAddress().getType());
+    const NimBLEAddress& addr = device->getAddress();
+    if (addr.isNull()) {
+        return;  // Identity resolution produced a null address — skip
+    }
+
+    // NimBLE may return identity types (PUBLIC_ID=2, RANDOM_ID=3) when it
+    // resolves an RPA via a stored IRK.  The connect API only accepts
+    // PUBLIC(0) or RANDOM(1), so strip the identity bit.
+    uint8_t addrType = addr.getType();
+    if (addrType >= 2) {
+        addrType = addrType & 0x01;  // PUBLIC_ID→PUBLIC, RANDOM_ID→RANDOM
+    }
+
+    parent_->onDeviceFound(name.c_str(), addr.toString().c_str(), rssi, addrType);
     NimBLEDevice::getScan()->stop();
 }
 
-void ObdScanCallback::onScanEnd(const NimBLEScanResults& /*results*/, int /*reason*/) {}
+void ObdScanCallback::onScanEnd(const NimBLEScanResults& /*results*/, int /*reason*/) {
+    ble_hs_pvcy_set_resolve_enabled(1);
+}
 
 void ObdClientCallback::configure(ObdRuntimeModule* parent) {
     parent_ = parent;
@@ -82,6 +106,8 @@ bool ObdBleClient::startScan(int8_t minRssi) {
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (pScan->isScanning()) return false;
 
+    ble_hs_pvcy_set_resolve_enabled(0);
+
     scanCallback_.configure(&obdRuntimeModule, minRssi);
     pScan->setScanCallbacks(&scanCallback_);
     pScan->setActiveScan(true);
@@ -98,6 +124,7 @@ void ObdBleClient::stopScan() {
     if (pScan->isScanning()) {
         pScan->stop();
     }
+    ble_hs_pvcy_set_resolve_enabled(1);
 }
 
 bool ObdBleClient::connect(const char* address, uint8_t addrType, uint32_t timeoutMs, bool preferCachedAttributes) {
