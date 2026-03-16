@@ -37,9 +37,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.platformio
-            .pio
-          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini', '.github/workflows/build.yml') }}
           restore-keys: |
             ${{ runner.os }}-pio-
 
@@ -50,7 +51,15 @@ jobs:
           cd interface && npm ci
 
       - name: ✅ Run authoritative repo gate
-        run: ./scripts/ci-test.sh
+        run: ./scripts/ci-test.sh 2>&1 | tee ci-test.log
+
+      - name: 📤 Upload CI log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-test-log-${{ github.sha }}
+          path: ci-test.log
+          retention-days: 30
 
       - name: 📦 Prepare artifacts
         run: |
