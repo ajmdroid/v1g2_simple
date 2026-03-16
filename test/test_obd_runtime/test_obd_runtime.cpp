@@ -8,6 +8,10 @@ static void resetRuntime() {
     obdRuntimeModule = ObdRuntimeModule();
 }
 
+static void feedBleResponse(const char* response) {
+    obdRuntimeModule.onBleData(reinterpret_cast<const uint8_t*>(response), strlen(response));
+}
+
 void setUp() {
     resetRuntime();
 }
@@ -251,23 +255,23 @@ void test_three_connect_failures_clears_saved_address() {
     obdRuntimeModule.update(10001, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
 
-    // Wait for reconnect backoff (60s)
-    obdRuntimeModule.update(70002, true, true, true);
+    // Wait for fast reconnect backoff
+    obdRuntimeModule.update(15002, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
 
     // Fail 2
-    obdRuntimeModule.update(75003, true, true, true);
+    obdRuntimeModule.update(20003, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
 
-    // Wait for reconnect backoff
-    obdRuntimeModule.update(135004, true, true, true);
+    // Wait for fast reconnect backoff
+    obdRuntimeModule.update(25004, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
 
     // Fail 3 — should clear saved address and go to IDLE
-    obdRuntimeModule.update(140005, true, true, true);
+    obdRuntimeModule.update(30005, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
 
-    ObdRuntimeStatus status = obdRuntimeModule.snapshot(140005);
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(30005);
     TEST_ASSERT_FALSE(status.savedAddressValid);
     TEST_ASSERT_EQUAL_UINT8(0, status.connectAttempts);
 }
@@ -295,7 +299,7 @@ void test_discover_entry_action_runs_on_next_tick() {
 
     obdRuntimeModule.setTestDiscoverResult(false);
     obdRuntimeModule.update(5002, true, true, true);
-    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDiscoverCallCountForTest());
 }
 
@@ -432,6 +436,57 @@ void test_poll_timeout_counts_as_error() {
     TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
 }
 
+void test_cached_profile_polls_before_background_vin_lookup() {
+    obdRuntimeModule.begin(true,
+                           "A4:C1:38:00:11:22",
+                           -80,
+                           "1FTW1ET7DFA",
+                           static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
+    obdRuntimeModule.injectSpeedForTest(45.0f, 0);
+
+    obdRuntimeModule.update(100, true, true, true);
+    TEST_ASSERT_EQUAL_STRING("010D\r", obdRuntimeModule.getLastCommandForTest());
+
+    feedBleResponse("41 0D 28\r\n>");
+    obdRuntimeModule.update(150, true, true, true);
+    obdRuntimeModule.update(200, true, true, true);
+
+    TEST_ASSERT_EQUAL(ObdCommandKind::EOT_POLL, obdRuntimeModule.getActiveCommandKindForTest());
+    TEST_ASSERT_EQUAL_STRING("22F45C\r", obdRuntimeModule.getLastCommandForTest());
+    TEST_ASSERT_EQUAL(ObdEotProfileId::FORD_22F45C,
+                      obdRuntimeModule.getActiveEotProfileForTest());
+}
+
+void test_vin_response_sets_family_and_starts_standard_eot_probe() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
+    obdRuntimeModule.injectSpeedForTest(45.0f, 0);
+
+    obdRuntimeModule.update(100, true, true, true);
+    feedBleResponse("41 0D 28\r\n>");
+    obdRuntimeModule.update(150, true, true, true);
+    obdRuntimeModule.update(200, true, true, true);
+    TEST_ASSERT_EQUAL_STRING("0902\r", obdRuntimeModule.getLastCommandForTest());
+
+    feedBleResponse(
+        "0902\r\n"
+        "0: 49 02 01 31 46 54\r\n"
+        "1: 57 31 45 54 37 44\r\n"
+        "2: 46 41 31 32 33 34\r\n"
+        "3: 35 36\r\n"
+        ">");
+    obdRuntimeModule.update(250, true, true, true);
+
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(250);
+    TEST_ASSERT_TRUE(status.vinDetected);
+    TEST_ASSERT_EQUAL(ObdVehicleFamily::FORD, status.vehicleFamily);
+
+    obdRuntimeModule.update(400, true, true, true);
+    TEST_ASSERT_EQUAL(ObdCommandKind::EOT_PROBE, obdRuntimeModule.getActiveCommandKindForTest());
+    TEST_ASSERT_EQUAL_STRING("015C\r", obdRuntimeModule.getLastCommandForTest());
+}
+
 void test_error_backoff_returns_to_polling() {
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::ERROR_BACKOFF, 1000);
@@ -464,11 +519,11 @@ void test_disconnected_reconnects_after_backoff() {
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
 
     // Before backoff — still DISCONNECTED
-    obdRuntimeModule.update(69000, true, true, true);
+    obdRuntimeModule.update(14000, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
 
-    // After backoff (60s) — back to CONNECTING
-    obdRuntimeModule.update(70002, true, true, true);
+    // After fast reconnect backoff — back to CONNECTING
+    obdRuntimeModule.update(15002, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
 }
 
@@ -487,18 +542,18 @@ void test_disconnected_no_saved_addr_goes_idle() {
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
 
     // Backoff, reconnect, fail 2
-    obdRuntimeModule.update(67002, true, true, true);
+    obdRuntimeModule.update(12002, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
-    obdRuntimeModule.update(72003, true, true, true);
+    obdRuntimeModule.update(17003, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
 
     // Backoff, reconnect, fail 3 → clears address → IDLE
-    obdRuntimeModule.update(132004, true, true, true);
+    obdRuntimeModule.update(22004, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
-    obdRuntimeModule.update(137005, true, true, true);
+    obdRuntimeModule.update(27005, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
 
-    ObdRuntimeStatus status = obdRuntimeModule.snapshot(137005);
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(27005);
     TEST_ASSERT_FALSE(status.savedAddressValid);
 }
 
@@ -557,6 +612,8 @@ int main() {
 
     // Error handling
     RUN_TEST(test_poll_timeout_counts_as_error);
+    RUN_TEST(test_cached_profile_polls_before_background_vin_lookup);
+    RUN_TEST(test_vin_response_sets_family_and_starts_standard_eot_probe);
     RUN_TEST(test_error_backoff_returns_to_polling);
     RUN_TEST(test_error_backoff_disconnects_after_ten_errors);
 

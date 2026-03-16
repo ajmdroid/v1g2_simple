@@ -8,6 +8,7 @@
 #include "perf_metrics.h"
 #include "time_service.h"
 #include <FS.h>
+#include <cstdarg>
 #include <ctime>
 #include <cstring>
 #include <esp_system.h>
@@ -15,9 +16,9 @@
 namespace {
 static constexpr const char* PERF_DIR_PATH = "/perf";
 static constexpr const char* PERF_CSV_PATH_FALLBACK = "/perf/perf.csv";
-static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 15;
+static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 16;
 static constexpr const char* PERF_CSV_HEADER =
-    "millis,timeValid,timeSource,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap,dmaFreeMin,dmaLargestMin,bleProcessMax_us,touchMax_us,gpsMax_us,lockoutMax_us,wifiMax_us,uiToScan,uiToRest,uiScanToRest,uiFastScanExit,uiLastScanDwellMs,uiMinScanDwellMs,fadeDown,fadeRestore,fadeSkipEqual,fadeSkipNoBaseline,fadeSkipNotFaded,fadeLastDecision,fadeLastCurrentVol,fadeLastOriginalVol,fadeLastDecisionMs,bleScanStartMs,bleTargetFoundMs,bleConnectStartMs,bleConnectedMs,bleFirstRxMs,alertPersistStarts,alertPersistExpires,alertPersistClears,autoPushStarts,autoPushCompletes,autoPushNoProfile,autoPushProfileLoadFail,autoPushProfileWriteFail,autoPushBusyRetries,autoPushModeFail,autoPushVolumeFail,autoPushDisconnectAbort,voiceAnnouncePriority,voiceAnnounceDirection,voiceAnnounceSecondary,voiceAnnounceEscalation,voiceDirectionThrottled,powerAutoPowerArmed,powerAutoPowerTimerStart,powerAutoPowerTimerCancel,powerAutoPowerTimerExpire,powerCriticalWarn,powerCriticalShutdown,cmdBleBusy,gpsEnabled,gpsHasFix,gpsLocationValid,gpsSatellites,gpsParserActive,gpsModuleDetected,gpsDetectionTimedOut,gpsSpeedMph_x10,gpsHdop_x10,gpsSampleAgeMs,gpsObsDrops,gpsObsSize,gpsObsPublished,rxBytes,oversizeDrops,queueHighWater,bleMutexSkip,bleMutexTimeout,cmdPaceNotYet,bleDiscTaskCreateFail,displayUpdates,displaySkips,wifiConnectDeferred,pushNowRetries,pushNowFailures,audioPlayCount,audioPlayBusy,audioTaskFail,sigObsQueueDrops,sigObsWriteFail,minLargestBlock,fsMax_us,sdMax_us,flushMax_us,bleConnectMax_us,bleDiscoveryMax_us,bleSubscribeMax_us,dispPipeMax_us,lockoutSaveMax_us,learnerSaveMax_us,timeSaveMax_us,perfReportMax_us,prioritySelectDisplayIndex,prioritySelectRowFlag,prioritySelectFirstUsable,prioritySelectFirstEntry,prioritySelectAmbiguousIndex,prioritySelectUnusableIndex,prioritySelectInvalidChosen,alertTablePublishes,alertTablePublishes3Bogey,alertTableRowReplacements,alertTableAssemblyTimeouts,parserRowsBandNone,parserRowsKuRaw,displayLiveInvalidPrioritySkips,displayLiveFallbackToUsable,obdMax_us,obdPollErrors,obdStaleCount,perfDrop,eventBusDrops,freeDmaMin,largestDmaMin,bleState,subscribeStep,connectInProgress,asyncConnectPending,pendingDisconnectCleanup,proxyAdvertising,proxyAdvertisingLastTransitionReason,wifiPriorityMode\n";
+    "millis,timeValid,timeSource,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap,dmaFreeMin,dmaLargestMin,bleProcessMax_us,touchMax_us,gpsMax_us,lockoutMax_us,wifiMax_us,uiToScan,uiToRest,uiScanToRest,uiFastScanExit,uiLastScanDwellMs,uiMinScanDwellMs,fadeDown,fadeRestore,fadeSkipEqual,fadeSkipNoBaseline,fadeSkipNotFaded,fadeLastDecision,fadeLastCurrentVol,fadeLastOriginalVol,fadeLastDecisionMs,bleScanStartMs,bleTargetFoundMs,bleConnectStartMs,bleConnectedMs,bleFirstRxMs,alertPersistStarts,alertPersistExpires,alertPersistClears,autoPushStarts,autoPushCompletes,autoPushNoProfile,autoPushProfileLoadFail,autoPushProfileWriteFail,autoPushBusyRetries,autoPushModeFail,autoPushVolumeFail,autoPushDisconnectAbort,voiceAnnouncePriority,voiceAnnounceDirection,voiceAnnounceSecondary,voiceAnnounceEscalation,voiceDirectionThrottled,powerAutoPowerArmed,powerAutoPowerTimerStart,powerAutoPowerTimerCancel,powerAutoPowerTimerExpire,powerCriticalWarn,powerCriticalShutdown,cmdBleBusy,gpsEnabled,gpsHasFix,gpsLocationValid,gpsSatellites,gpsParserActive,gpsModuleDetected,gpsDetectionTimedOut,gpsSpeedMph_x10,gpsHdop_x10,gpsSampleAgeMs,gpsObsDrops,gpsObsSize,gpsObsPublished,rxBytes,oversizeDrops,queueHighWater,bleMutexSkip,bleMutexTimeout,cmdPaceNotYet,bleDiscTaskCreateFail,displayUpdates,displaySkips,wifiConnectDeferred,pushNowRetries,pushNowFailures,audioPlayCount,audioPlayBusy,audioTaskFail,sigObsQueueDrops,sigObsWriteFail,minLargestBlock,fsMax_us,sdMax_us,flushMax_us,bleConnectMax_us,bleDiscoveryMax_us,bleSubscribeMax_us,dispPipeMax_us,lockoutSaveMax_us,learnerSaveMax_us,timeSaveMax_us,perfReportMax_us,prioritySelectDisplayIndex,prioritySelectRowFlag,prioritySelectFirstUsable,prioritySelectFirstEntry,prioritySelectAmbiguousIndex,prioritySelectUnusableIndex,prioritySelectInvalidChosen,alertTablePublishes,alertTablePublishes3Bogey,alertTableRowReplacements,alertTableAssemblyTimeouts,parserRowsBandNone,parserRowsKuRaw,displayLiveInvalidPrioritySkips,displayLiveFallbackToUsable,obdMax_us,obdPollErrors,obdStaleCount,obdVinDetected,obdVehicleFamily,obdEotValid,obdEotC_x10,obdEotAgeMs,obdEotProfileId,obdEotProbeFailures,perfDrop,eventBusDrops,freeDmaMin,largestDmaMin,bleState,subscribeStep,connectInProgress,asyncConnectPending,pendingDisconnectCleanup,proxyAdvertising,proxyAdvertisingLastTransitionReason,wifiPriorityMode\n";
 
 static constexpr UBaseType_t PERF_SD_QUEUE_DEPTH = 16;      // Halved from 32 to reclaim ~7 KiB internal SRAM
 static constexpr uint32_t PERF_SD_WRITER_STACK_SIZE = 8192;  // SD file ops need generous stack
@@ -77,6 +78,44 @@ static void buildPerfCsvPath(uint32_t bootId, char* out, size_t outLen) {
     }
 
     snprintf(out, outLen, "/perf/perf_boot_%lu.csv", static_cast<unsigned long>(bootId));
+}
+
+static bool appendCsvFormat(char* buffer, size_t bufferLen, size_t& offset, const char* fmt, ...) {
+    if (!buffer || offset >= bufferLen) {
+        return false;
+    }
+
+    va_list args;
+    va_start(args, fmt);
+    const int written = vsnprintf(buffer + offset, bufferLen - offset, fmt, args);
+    va_end(args);
+
+    if (written <= 0 || static_cast<size_t>(written) >= (bufferLen - offset)) {
+        return false;
+    }
+
+    offset += static_cast<size_t>(written);
+    return true;
+}
+
+static bool appendCsvUInt32(char* buffer, size_t bufferLen, size_t& offset, uint32_t value) {
+    return appendCsvFormat(buffer, bufferLen, offset, "%lu,", static_cast<unsigned long>(value));
+}
+
+static bool appendCsvUInt8(char* buffer, size_t bufferLen, size_t& offset, uint8_t value) {
+    return appendCsvFormat(buffer, bufferLen, offset, "%u,", static_cast<unsigned int>(value));
+}
+
+static bool appendCsvInt32(char* buffer, size_t bufferLen, size_t& offset, int32_t value) {
+    return appendCsvFormat(buffer, bufferLen, offset, "%ld,", static_cast<long>(value));
+}
+
+static bool appendCsvInt16(char* buffer, size_t bufferLen, size_t& offset, int16_t value) {
+    return appendCsvFormat(buffer, bufferLen, offset, "%d,", static_cast<int>(value));
+}
+
+static bool appendCsvUInt8Last(char* buffer, size_t bufferLen, size_t& offset, uint8_t value) {
+    return appendCsvFormat(buffer, bufferLen, offset, "%u\n", static_cast<unsigned int>(value));
 }
 }  // namespace
 
@@ -288,156 +327,161 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
     }
 
     char line[3200];
-    int n = snprintf(
-        line,
-        sizeof(line),
-        "%lu,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%u,%u,%u,%ld,%u,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%u,%u,%u,%u,%u,%u\n",
-        static_cast<unsigned long>(snapshot.millisTs),
-        static_cast<unsigned int>(snapshot.timeValid),
-        static_cast<unsigned int>(snapshot.timeSource),
-        static_cast<unsigned long>(snapshot.rx),
-        static_cast<unsigned long>(snapshot.qDrop),
-        static_cast<unsigned long>(snapshot.parseOk),
-        static_cast<unsigned long>(snapshot.parseFail),
-        static_cast<unsigned long>(snapshot.disc),
-        static_cast<unsigned long>(snapshot.reconn),
-        static_cast<unsigned long>(snapshot.loopMaxUs),
-        static_cast<unsigned long>(snapshot.bleDrainMaxUs),
-        static_cast<unsigned long>(snapshot.dispMaxUs),
-        static_cast<unsigned long>(snapshot.freeHeap),
-        static_cast<unsigned long>(snapshot.freeDma),
-        static_cast<unsigned long>(snapshot.largestDma),
-        static_cast<unsigned long>(snapshot.freeDmaCap),
-        static_cast<unsigned long>(snapshot.largestDmaCap),
-        static_cast<unsigned long>(snapshot.dmaFreeMin),
-        static_cast<unsigned long>(snapshot.dmaLargestMin),
-        static_cast<unsigned long>(snapshot.bleProcessMaxUs),
-        static_cast<unsigned long>(snapshot.touchMaxUs),
-        static_cast<unsigned long>(snapshot.gpsMaxUs),
-        static_cast<unsigned long>(snapshot.lockoutMaxUs),
-        static_cast<unsigned long>(snapshot.wifiMaxUs),
-        static_cast<unsigned long>(snapshot.uiToScanCount),
-        static_cast<unsigned long>(snapshot.uiToRestCount),
-        static_cast<unsigned long>(snapshot.uiScanToRestCount),
-        static_cast<unsigned long>(snapshot.uiFastScanExitCount),
-        static_cast<unsigned long>(snapshot.uiLastScanDwellMs),
-        static_cast<unsigned long>(snapshot.uiMinScanDwellMs),
-        static_cast<unsigned long>(snapshot.fadeDownCount),
-        static_cast<unsigned long>(snapshot.fadeRestoreCount),
-        static_cast<unsigned long>(snapshot.fadeSkipEqualCount),
-        static_cast<unsigned long>(snapshot.fadeSkipNoBaselineCount),
-        static_cast<unsigned long>(snapshot.fadeSkipNotFadedCount),
-        static_cast<unsigned int>(snapshot.fadeLastDecision),
-        static_cast<unsigned int>(snapshot.fadeLastCurrentVol),
-        static_cast<unsigned int>(snapshot.fadeLastOriginalVol),
-        static_cast<unsigned long>(snapshot.fadeLastDecisionMs),
-        static_cast<unsigned long>(snapshot.bleScanStartMs),
-        static_cast<unsigned long>(snapshot.bleTargetFoundMs),
-        static_cast<unsigned long>(snapshot.bleConnectStartMs),
-        static_cast<unsigned long>(snapshot.bleConnectedMs),
-        static_cast<unsigned long>(snapshot.bleFirstRxMs),
-        static_cast<unsigned long>(snapshot.alertPersistStarts),
-        static_cast<unsigned long>(snapshot.alertPersistExpires),
-        static_cast<unsigned long>(snapshot.alertPersistClears),
-        static_cast<unsigned long>(snapshot.autoPushStarts),
-        static_cast<unsigned long>(snapshot.autoPushCompletes),
-        static_cast<unsigned long>(snapshot.autoPushNoProfile),
-        static_cast<unsigned long>(snapshot.autoPushProfileLoadFail),
-        static_cast<unsigned long>(snapshot.autoPushProfileWriteFail),
-        static_cast<unsigned long>(snapshot.autoPushBusyRetries),
-        static_cast<unsigned long>(snapshot.autoPushModeFail),
-        static_cast<unsigned long>(snapshot.autoPushVolumeFail),
-        static_cast<unsigned long>(snapshot.autoPushDisconnectAbort),
-        static_cast<unsigned long>(snapshot.voiceAnnouncePriority),
-        static_cast<unsigned long>(snapshot.voiceAnnounceDirection),
-        static_cast<unsigned long>(snapshot.voiceAnnounceSecondary),
-        static_cast<unsigned long>(snapshot.voiceAnnounceEscalation),
-        static_cast<unsigned long>(snapshot.voiceDirectionThrottled),
-        static_cast<unsigned long>(snapshot.powerAutoPowerArmed),
-        static_cast<unsigned long>(snapshot.powerAutoPowerTimerStart),
-        static_cast<unsigned long>(snapshot.powerAutoPowerTimerCancel),
-        static_cast<unsigned long>(snapshot.powerAutoPowerTimerExpire),
-        static_cast<unsigned long>(snapshot.powerCriticalWarn),
-        static_cast<unsigned long>(snapshot.powerCriticalShutdown),
-        static_cast<unsigned long>(snapshot.cmdBleBusy),
-        static_cast<unsigned int>(snapshot.gpsEnabled),
-        static_cast<unsigned int>(snapshot.gpsHasFix),
-        static_cast<unsigned int>(snapshot.gpsLocationValid),
-        static_cast<unsigned int>(snapshot.gpsSatellites),
-        static_cast<unsigned int>(snapshot.gpsParserActive),
-        static_cast<unsigned int>(snapshot.gpsModuleDetected),
-        static_cast<unsigned int>(snapshot.gpsDetectionTimedOut),
-        static_cast<long>(snapshot.gpsSpeedMphX10),
-        static_cast<unsigned int>(snapshot.gpsHdopX10),
-        static_cast<unsigned long>(snapshot.gpsSampleAgeMs),
-        static_cast<unsigned long>(snapshot.gpsObsDrops),
-        static_cast<unsigned long>(snapshot.gpsObsSize),
-        static_cast<unsigned long>(snapshot.gpsObsPublished),
-        static_cast<unsigned long>(snapshot.rxBytes),
-        static_cast<unsigned long>(snapshot.oversizeDrops),
-        static_cast<unsigned long>(snapshot.queueHighWater),
-        static_cast<unsigned long>(snapshot.bleMutexSkip),
-        static_cast<unsigned long>(snapshot.bleMutexTimeout),
-        static_cast<unsigned long>(snapshot.cmdPaceNotYet),
-        static_cast<unsigned long>(snapshot.bleDiscTaskCreateFail),
-        static_cast<unsigned long>(snapshot.displayUpdates),
-        static_cast<unsigned long>(snapshot.displaySkips),
-        static_cast<unsigned long>(snapshot.wifiConnectDeferred),
-        static_cast<unsigned long>(snapshot.pushNowRetries),
-        static_cast<unsigned long>(snapshot.pushNowFailures),
-        static_cast<unsigned long>(snapshot.audioPlayCount),
-        static_cast<unsigned long>(snapshot.audioPlayBusy),
-        static_cast<unsigned long>(snapshot.audioTaskFail),
-        static_cast<unsigned long>(snapshot.sigObsQueueDrops),
-        static_cast<unsigned long>(snapshot.sigObsWriteFail),
-        static_cast<unsigned long>(snapshot.minLargestBlock),
-        static_cast<unsigned long>(snapshot.fsMaxUs),
-        static_cast<unsigned long>(snapshot.sdMaxUs),
-        static_cast<unsigned long>(snapshot.flushMaxUs),
-        static_cast<unsigned long>(snapshot.bleConnectMaxUs),
-        static_cast<unsigned long>(snapshot.bleDiscoveryMaxUs),
-        static_cast<unsigned long>(snapshot.bleSubscribeMaxUs),
-        static_cast<unsigned long>(snapshot.dispPipeMaxUs),
-        static_cast<unsigned long>(snapshot.lockoutSaveMaxUs),
-        static_cast<unsigned long>(snapshot.learnerSaveMaxUs),
-        static_cast<unsigned long>(snapshot.timeSaveMaxUs),
-        static_cast<unsigned long>(snapshot.perfReportMaxUs),
-        static_cast<unsigned long>(snapshot.prioritySelectDisplayIndex),
-        static_cast<unsigned long>(snapshot.prioritySelectRowFlag),
-        static_cast<unsigned long>(snapshot.prioritySelectFirstUsable),
-        static_cast<unsigned long>(snapshot.prioritySelectFirstEntry),
-        static_cast<unsigned long>(snapshot.prioritySelectAmbiguousIndex),
-        static_cast<unsigned long>(snapshot.prioritySelectUnusableIndex),
-        static_cast<unsigned long>(snapshot.prioritySelectInvalidChosen),
-        static_cast<unsigned long>(snapshot.alertTablePublishes),
-        static_cast<unsigned long>(snapshot.alertTablePublishes3Bogey),
-        static_cast<unsigned long>(snapshot.alertTableRowReplacements),
-        static_cast<unsigned long>(snapshot.alertTableAssemblyTimeouts),
-        static_cast<unsigned long>(snapshot.parserRowsBandNone),
-        static_cast<unsigned long>(snapshot.parserRowsKuRaw),
-        static_cast<unsigned long>(snapshot.displayLiveInvalidPrioritySkips),
-        static_cast<unsigned long>(snapshot.displayLiveFallbackToUsable),
-        static_cast<unsigned long>(snapshot.obdMaxUs),
-        static_cast<unsigned long>(snapshot.obdPollErrors),
-        static_cast<unsigned long>(snapshot.obdStaleCount),
-        static_cast<unsigned long>(snapshot.perfDrop),
-        static_cast<unsigned long>(snapshot.eventBusDrops),
-        static_cast<unsigned long>(snapshot.freeDmaMin),
-        static_cast<unsigned long>(snapshot.largestDmaMin),
-        static_cast<unsigned int>(snapshot.bleState),
-        static_cast<unsigned int>(snapshot.subscribeStep),
-        static_cast<unsigned int>(snapshot.connectInProgress),
-        static_cast<unsigned int>(snapshot.asyncConnectPending),
-        static_cast<unsigned int>(snapshot.pendingDisconnectCleanup),
-        static_cast<unsigned int>(snapshot.proxyAdvertising),
-        static_cast<unsigned int>(snapshot.proxyAdvertisingLastTransitionReason),
-        static_cast<unsigned int>(snapshot.wifiPriorityMode));
+    size_t offset = 0;
+    const bool ok =
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.millisTs) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.timeValid) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.timeSource) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.rx) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.qDrop) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.parseOk) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.parseFail) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.disc) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.reconn) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.loopMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleDrainMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.dispMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.freeHeap) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.freeDma) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.largestDma) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.freeDmaCap) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.largestDmaCap) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.dmaFreeMin) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.dmaLargestMin) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleProcessMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.touchMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.gpsMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.lockoutMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.wifiMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.uiToScanCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.uiToRestCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.uiScanToRestCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.uiFastScanExitCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.uiLastScanDwellMs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.uiMinScanDwellMs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.fadeDownCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.fadeRestoreCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.fadeSkipEqualCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.fadeSkipNoBaselineCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.fadeSkipNotFadedCount) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.fadeLastDecision) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.fadeLastCurrentVol) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.fadeLastOriginalVol) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.fadeLastDecisionMs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleScanStartMs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleTargetFoundMs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleConnectStartMs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleConnectedMs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleFirstRxMs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.alertPersistStarts) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.alertPersistExpires) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.alertPersistClears) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.autoPushStarts) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.autoPushCompletes) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.autoPushNoProfile) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.autoPushProfileLoadFail) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.autoPushProfileWriteFail) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.autoPushBusyRetries) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.autoPushModeFail) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.autoPushVolumeFail) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.autoPushDisconnectAbort) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.voiceAnnouncePriority) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.voiceAnnounceDirection) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.voiceAnnounceSecondary) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.voiceAnnounceEscalation) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.voiceDirectionThrottled) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.powerAutoPowerArmed) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.powerAutoPowerTimerStart) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.powerAutoPowerTimerCancel) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.powerAutoPowerTimerExpire) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.powerCriticalWarn) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.powerCriticalShutdown) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.cmdBleBusy) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.gpsEnabled) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.gpsHasFix) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.gpsLocationValid) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.gpsSatellites) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.gpsParserActive) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.gpsModuleDetected) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.gpsDetectionTimedOut) &&
+        appendCsvInt32(line, sizeof(line), offset, snapshot.gpsSpeedMphX10) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.gpsHdopX10) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.gpsSampleAgeMs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.gpsObsDrops) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.gpsObsSize) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.gpsObsPublished) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.rxBytes) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.oversizeDrops) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.queueHighWater) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleMutexSkip) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleMutexTimeout) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.cmdPaceNotYet) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleDiscTaskCreateFail) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayUpdates) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displaySkips) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.wifiConnectDeferred) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.pushNowRetries) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.pushNowFailures) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.audioPlayCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.audioPlayBusy) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.audioTaskFail) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.sigObsQueueDrops) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.sigObsWriteFail) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.minLargestBlock) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.fsMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.sdMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.flushMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleConnectMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleDiscoveryMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.bleSubscribeMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.dispPipeMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.lockoutSaveMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.learnerSaveMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.timeSaveMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.perfReportMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.prioritySelectDisplayIndex) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.prioritySelectRowFlag) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.prioritySelectFirstUsable) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.prioritySelectFirstEntry) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.prioritySelectAmbiguousIndex) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.prioritySelectUnusableIndex) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.prioritySelectInvalidChosen) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.alertTablePublishes) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.alertTablePublishes3Bogey) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.alertTableRowReplacements) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.alertTableAssemblyTimeouts) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.parserRowsBandNone) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.parserRowsKuRaw) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayLiveInvalidPrioritySkips) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayLiveFallbackToUsable) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.obdMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.obdPollErrors) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.obdStaleCount) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.obdVinDetected) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.obdVehicleFamily) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.obdEotValid) &&
+        appendCsvInt16(line, sizeof(line), offset, snapshot.obdEotC_x10) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.obdEotAgeMs) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.obdEotProfileId) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.obdEotProbeFailures) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.perfDrop) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.eventBusDrops) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.freeDmaMin) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.largestDmaMin) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.bleState) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.subscribeStep) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.connectInProgress) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.asyncConnectPending) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.pendingDisconnectCleanup) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.proxyAdvertising) &&
+        appendCsvUInt8(line, sizeof(line), offset, snapshot.proxyAdvertisingLastTransitionReason) &&
+        appendCsvUInt8Last(line, sizeof(line), offset, snapshot.wifiPriorityMode);
 
-    if (n <= 0 || n >= static_cast<int>(sizeof(line))) {
+    if (!ok) {
         f.close();
         return false;
     }
-    size_t lineLen = static_cast<size_t>(n);
+    const size_t lineLen = offset;
     const uint16_t expectedColumns = expectedPerfCsvColumns();
     const uint16_t lineColumns = countCsvColumns(line, lineLen);
     if (expectedColumns == 0 || lineColumns != expectedColumns) {

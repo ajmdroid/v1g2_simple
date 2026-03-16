@@ -10,6 +10,7 @@
 #include "lockout_pre_quiet_controller.h"
 #include "../gps/gps_lockout_safety.h"
 #include "../gps/gps_runtime_module.h"
+#include "../speed/speed_source_selector.h"
 #include "../volume_fade/volume_fade_module.h"
 #include "../system/system_event_bus.h"
 #include "../../packet_parser.h"
@@ -50,11 +51,13 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
         bool enableSignalTrace) {
 
     LockoutOrchestrationResult result;
+    const SpeedSelection selectedSpeed = speedSourceSelector.selectedSpeed();
 
     sigCapture_->capturePriorityObservation(
         nowMs,
         *parser_,
         gpsStatus,
+        selectedSpeed,
         enableSignalTrace);
 
     if (!proxyClientConnected) {

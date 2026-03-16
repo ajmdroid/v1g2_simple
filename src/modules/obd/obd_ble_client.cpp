@@ -9,9 +9,21 @@
 
 #include <cstring>
 
-ObdBleClient obdBleClient;
+namespace {
 
-// ── ObdScanCallback ───────────────────────────────────────────────
+const NimBLEUUID kCxServiceUuid("FFF0");
+const NimBLEUUID kCxNotifyUuid("FFF1");
+const NimBLEUUID kCxWriteUuid("FFF2");
+const NimBLEUUID kDeviceInfoServiceUuid("180A");
+const NimBLEUUID kModelNumberUuid("2A24");
+
+bool stringEquals(const std::string& lhs, const char* rhs) {
+    return rhs != nullptr && lhs == rhs;
+}
+
+}  // namespace
+
+ObdBleClient obdBleClient;
 
 void ObdScanCallback::configure(ObdRuntimeModule* parent, int8_t minRssi) {
     parent_ = parent;
@@ -19,39 +31,34 @@ void ObdScanCallback::configure(ObdRuntimeModule* parent, int8_t minRssi) {
 }
 
 void ObdScanCallback::onResult(const NimBLEAdvertisedDevice* device) {
-    if (!device || !parent_) return;
+    if (!device || !parent_ || !device->haveName()) return;
 
-    // Must have a name
-    if (!device->haveName()) return;
-
-    // Match the configured OBDLink prefix.
     const std::string name = device->getName();
-    if (name.size() < obd::DEVICE_NAME_PREFIX_LEN ||
-        strncmp(name.c_str(), obd::DEVICE_NAME_PREFIX, obd::DEVICE_NAME_PREFIX_LEN) != 0) {
+    if (!stringEquals(name, obd::DEVICE_NAME_CX)) {
         return;
     }
 
-    int rssi = device->getRSSI();
-    if (rssi < minRssi_) return;
+    const int rssi = device->getRSSI();
+    if (rssi < minRssi_) {
+        return;
+    }
 
-    // Signal the runtime module (ISR-safe: sets flag + copies address)
-    parent_->onDeviceFound(
-        name.c_str(),
-        device->getAddress().toString().c_str(),
-        rssi);
-
-    // Stop scan early — we found our device
+    parent_->onDeviceFound(name.c_str(), device->getAddress().toString().c_str(), rssi);
     NimBLEDevice::getScan()->stop();
 }
 
-void ObdScanCallback::onScanEnd(const NimBLEScanResults& /*results*/, int /*reason*/) {
-    // No action needed — runtime module handles scan timeout via elapsed time
-}
-
-// ── ObdClientCallback ─────────────────────────────────────────────
+void ObdScanCallback::onScanEnd(const NimBLEScanResults& /*results*/, int /*reason*/) {}
 
 void ObdClientCallback::configure(ObdRuntimeModule* parent) {
     parent_ = parent;
+}
+
+void ObdClientCallback::onConnect(NimBLEClient* /*client*/) {}
+
+void ObdClientCallback::onConnectFail(NimBLEClient* /*client*/, int /*reason*/) {
+    if (parent_) {
+        parent_->onBleDisconnect();
+    }
 }
 
 void ObdClientCallback::onDisconnect(NimBLEClient* /*client*/, int /*reason*/) {
@@ -60,21 +67,19 @@ void ObdClientCallback::onDisconnect(NimBLEClient* /*client*/, int /*reason*/) {
     }
 }
 
-// ── ObdBleClient ──────────────────────────────────────────────────
-
 void ObdBleClient::init(ObdRuntimeModule* parent) {
-    if (pClient_ != nullptr) return;  // Already initialized
+    if (pClient_ != nullptr) return;
 
     pClient_ = NimBLEDevice::createClient();
     clientCallback_.configure(parent);
     pClient_->setClientCallbacks(&clientCallback_);
-    pClient_->setConnectionParams(12, 12, 0, 400);  // 15ms interval, 400 supervision TO
-    pClient_->setConnectTimeout(obd::CONNECT_TIMEOUT_MS / 1000);  // seconds
+    pClient_->setConnectionParams(12, 12, 0, 400);
+    pClient_->setConnectTimeout(obd::CONNECT_TIMEOUT_MS / 1000);
 }
 
 bool ObdBleClient::startScan(int8_t minRssi) {
     NimBLEScan* pScan = NimBLEDevice::getScan();
-    if (pScan->isScanning()) return false;  // V1 or another scan active
+    if (pScan->isScanning()) return false;
 
     scanCallback_.configure(&obdRuntimeModule, minRssi);
     pScan->setScanCallbacks(&scanCallback_);
@@ -94,19 +99,34 @@ void ObdBleClient::stopScan() {
     }
 }
 
-bool ObdBleClient::connect(const char* address, uint32_t timeoutMs) {
+bool ObdBleClient::connect(const char* address, uint32_t timeoutMs, bool preferCachedAttributes) {
     if (!pClient_ || !address || address[0] == '\0') return false;
     if (pClient_->isConnected()) return true;
 
     NimBLEAddress addr{std::string(address), BLE_ADDR_PUBLIC};
     pClient_->setConnectTimeout(timeoutMs / 1000);
-    return pClient_->connect(addr);
+    connectPending_ = true;
+    const bool ok = pClient_->connect(addr, !preferCachedAttributes, true, true);
+    if (!ok) {
+        connectPending_ = false;
+    }
+    return ok;
 }
 
 void ObdBleClient::disconnect() {
-    if (pClient_ && pClient_->isConnected()) {
+    connectPending_ = false;
+    if (!pClient_) {
+        pTxChar_ = nullptr;
+        pRxChar_ = nullptr;
+        return;
+    }
+
+    if (!pClient_->isConnected()) {
+        pClient_->cancelConnect();
+    } else {
         pClient_->disconnect();
     }
+
     pTxChar_ = nullptr;
     pRxChar_ = nullptr;
 }
@@ -115,47 +135,66 @@ bool ObdBleClient::isConnected() const {
     return pClient_ && pClient_->isConnected();
 }
 
+bool ObdBleClient::validateCxModel() const {
+    if (!pClient_ || !pClient_->isConnected()) return false;
+
+    NimBLERemoteService* deviceInfo = pClient_->getService(kDeviceInfoServiceUuid);
+    if (!deviceInfo) {
+        return true;
+    }
+
+    NimBLEAttValue modelValue = deviceInfo->getValue(kModelNumberUuid);
+    if (modelValue.length() == 0) {
+        return true;
+    }
+
+    const std::string model = static_cast<std::string>(modelValue);
+    return model == obd::DEVICE_NAME_CX;
+}
+
 bool ObdBleClient::discoverServices() {
     if (!pClient_ || !pClient_->isConnected()) return false;
 
-    // OBDLink CX uses SPP-over-GATT. Common service UUIDs: FFF0, FFE0
-    // Try to discover all services and find TX/RX characteristics
-    const auto& services = pClient_->getServices(true);
-    if (services.empty()) return false;
-
-    pTxChar_ = nullptr;
-    pRxChar_ = nullptr;
-
-    for (auto* svc : services) {
-        const auto& chars = svc->getCharacteristics(true);
-        for (auto* chr : chars) {
-            if (chr->canNotify()) {
-                pTxChar_ = chr;
-            }
-            if (chr->canWrite() || chr->canWriteNoResponse()) {
-                pRxChar_ = chr;
-            }
-        }
-        if (pTxChar_ && pRxChar_) break;
+    connectPending_ = false;
+    if (!validateCxModel()) {
+        return false;
     }
 
-    return (pTxChar_ != nullptr && pRxChar_ != nullptr);
+    NimBLERemoteService* svc = pClient_->getService(kCxServiceUuid);
+    if (!svc) return false;
+
+    pTxChar_ = svc->getCharacteristic(kCxNotifyUuid);
+    pRxChar_ = svc->getCharacteristic(kCxWriteUuid);
+    if (!pTxChar_ || !pRxChar_) {
+        pTxChar_ = nullptr;
+        pRxChar_ = nullptr;
+        return false;
+    }
+
+    if (!pTxChar_->canNotify() || !(pRxChar_->canWrite() || pRxChar_->canWriteNoResponse())) {
+        pTxChar_ = nullptr;
+        pRxChar_ = nullptr;
+        return false;
+    }
+
+    return true;
 }
 
 bool ObdBleClient::writeCommand(const char* cmd) {
-    if (!pRxChar_ || !pClient_ || !pClient_->isConnected()) return false;
-    return pRxChar_->writeValue(reinterpret_cast<const uint8_t*>(cmd),
-                                strlen(cmd), false);
+    if (!pRxChar_ || !pClient_ || !pClient_->isConnected() || !cmd) return false;
+    return pRxChar_->writeValue(reinterpret_cast<const uint8_t*>(cmd), strlen(cmd), true);
 }
 
 bool ObdBleClient::subscribeNotify(void (*callback)(const uint8_t* data, size_t len)) {
     if (!pTxChar_) return false;
-    return pTxChar_->subscribe(true, [callback](NimBLERemoteCharacteristic* /*chr*/,
-                                                 uint8_t* data, size_t length, bool /*isNotify*/) {
-        if (callback && data && length > 0) {
-            callback(data, length);
-        }
-    });
+    return pTxChar_->subscribe(
+        true,
+        [callback](NimBLERemoteCharacteristic* /*chr*/, uint8_t* data, size_t length, bool /*isNotify*/) {
+            if (callback && data && length > 0) {
+                callback(data, length);
+            }
+        },
+        true);
 }
 
 int8_t ObdBleClient::getRssi(uint32_t nowMs) {

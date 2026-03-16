@@ -149,6 +149,13 @@ struct PerfSdSnapshot {
     uint32_t obdMaxUs;                     // Window max obdRuntimeModule.update() duration
     uint32_t obdPollErrors;                // OBD poll errors this window
     uint32_t obdStaleCount;                // OBD stale speed readings this window
+    uint8_t obdVinDetected;                // VIN resolved this session
+    uint8_t obdVehicleFamily;              // ObdVehicleFamily code
+    uint8_t obdEotValid;                   // EOT sample valid/fresh
+    int16_t obdEotC_x10;                   // EOT Celsius * 10
+    uint32_t obdEotAgeMs;                  // EOT sample age
+    uint8_t obdEotProfileId;               // ObdEotProfileId code
+    uint32_t obdEotProbeFailures;          // OEM profile probe failures
     uint32_t perfDrop;                     // Perf snapshot drops since session start
     uint32_t eventBusDrops;                // System event-bus drops since session start
     uint32_t freeDmaMin;                   // Min cached internal 8-bit heap free bytes since session start

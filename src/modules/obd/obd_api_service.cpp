@@ -9,6 +9,35 @@
 
 namespace ObdApiService {
 
+namespace {
+
+const char* vehicleFamilyName(ObdVehicleFamily family) {
+    switch (family) {
+        case ObdVehicleFamily::FORD: return "ford";
+        case ObdVehicleFamily::FCA: return "fca";
+        case ObdVehicleFamily::VW_AUDI_PORSCHE: return "vw";
+        case ObdVehicleFamily::UNKNOWN:
+        default:
+            return "unknown";
+    }
+}
+
+const char* commandKindName(ObdCommandKind kind) {
+    switch (kind) {
+        case ObdCommandKind::AT_INIT: return "at_init";
+        case ObdCommandKind::SANITY: return "sanity";
+        case ObdCommandKind::SPEED: return "speed";
+        case ObdCommandKind::VIN: return "vin";
+        case ObdCommandKind::EOT_PROBE: return "eot_probe";
+        case ObdCommandKind::EOT_POLL: return "eot_poll";
+        case ObdCommandKind::NONE:
+        default:
+            return "none";
+    }
+}
+
+}  // namespace
+
 void handleApiStatus(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
                      const std::function<void()>& markUiActivity) {
@@ -24,9 +53,34 @@ void handleApiStatus(WebServer& server,
     doc["scanInProgress"] = status.scanInProgress;
     doc["savedAddressValid"] = status.savedAddressValid;
     doc["connectAttempts"] = status.connectAttempts;
+    doc["connectSuccesses"] = status.connectSuccesses;
+    doc["connectFailures"] = status.connectFailures;
+    doc["initRetries"] = status.initRetries;
     doc["pollCount"] = status.pollCount;
     doc["pollErrors"] = status.pollErrors;
+    doc["staleSpeedCount"] = status.staleSpeedCount;
     doc["consecutiveErrors"] = status.consecutiveErrors;
+    doc["bufferOverflows"] = status.bufferOverflows;
+    doc["commandInFlight"] = commandKindName(status.commandInFlight);
+    doc["commandInFlightRaw"] = static_cast<int>(status.commandInFlight);
+    doc["lastConnectStartMs"] = status.lastConnectStartMs;
+    doc["lastConnectSuccessMs"] = status.lastConnectSuccessMs;
+    doc["lastFailureMs"] = status.lastFailureMs;
+    doc["lastFailureRaw"] = static_cast<int>(status.lastFailure);
+    doc["vinDetected"] = status.vinDetected;
+    doc["vin"] = status.vinDetected ? status.vin : "";
+    doc["vehicleFamily"] = vehicleFamilyName(status.vehicleFamily);
+    doc["vehicleFamilyRaw"] = static_cast<int>(status.vehicleFamily);
+    doc["eotValid"] = status.eotValid;
+    doc["eotC_x10"] = status.eotValid ? status.eotC_x10 : 0;
+    if (status.eotValid) {
+        doc["eotAgeMs"] = status.eotAgeMs;
+    } else {
+        doc["eotAgeMs"] = nullptr;
+    }
+    doc["eotProfileId"] = static_cast<int>(status.eotProfileId);
+    doc["eotProbeFailures"] = status.eotProbeFailures;
+    doc["cachedProfileActive"] = status.cachedProfileActive;
     doc["state"] = static_cast<int>(status.state);
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
@@ -53,6 +107,8 @@ void handleApiForget(WebServer& server,
     obdRuntime.forgetDevice();
     V1Settings& settings = settingsManager.mutableSettings();
     settings.obdSavedAddress = "";
+    settings.obdCachedVinPrefix11 = "";
+    settings.obdCachedEotProfileId = 0;
     settingsManager.save();
     JsonDocument doc;
     doc["ok"] = true;

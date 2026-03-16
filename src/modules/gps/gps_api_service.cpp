@@ -28,7 +28,7 @@ void sendStatus(WebServer& server,
                 SystemEventBus& systemEventBus) {
     const uint32_t nowMs = millis();
     const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
-    const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
+    const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot();
 
     JsonDocument doc;
     doc["enabled"] = settingsManager.get().gpsEnabled;

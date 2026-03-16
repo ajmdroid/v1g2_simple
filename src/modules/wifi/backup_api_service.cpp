@@ -283,6 +283,12 @@ static void handleRestore(WebServer& server) {
         int rssi = doc["obdMinRssi"].as<int>();
         s.obdMinRssi = static_cast<int8_t>(std::max(-90, std::min(rssi, -40)));
     }
+    if (doc["obdCachedVinPrefix11"].is<const char*>()) {
+        s.obdCachedVinPrefix11 = doc["obdCachedVinPrefix11"].as<String>();
+    }
+    if (doc["obdCachedEotProfileId"].is<int>()) {
+        s.obdCachedEotProfileId = static_cast<uint8_t>(std::max(0, std::min(doc["obdCachedEotProfileId"].as<int>(), 255)));
+    }
 
     // Voice settings
     if (doc["voiceAlertMode"].is<int>()) {

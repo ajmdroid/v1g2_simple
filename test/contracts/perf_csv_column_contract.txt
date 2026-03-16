@@ -128,6 +128,13 @@ displayLiveFallbackToUsable
 obdMax_us
 obdPollErrors
 obdStaleCount
+obdVinDetected
+obdVehicleFamily
+obdEotValid
+obdEotC_x10
+obdEotAgeMs
+obdEotProfileId
+obdEotProbeFailures
 perfDrop
 eventBusDrops
 freeDmaMin

@@ -119,6 +119,18 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
                                                      const PacketParser& parser,
                                                      const GpsRuntimeStatus& gpsStatus,
                                                      bool captureUnsupportedBandsToSd) {
+    capturePriorityObservation(nowMs,
+                               parser,
+                               gpsStatus,
+                               SpeedSelection{},
+                               captureUnsupportedBandsToSd);
+}
+
+void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
+                                                     const PacketParser& parser,
+                                                     const GpsRuntimeStatus& gpsStatus,
+                                                     const SpeedSelection& selectedSpeed,
+                                                     bool captureUnsupportedBandsToSd) {
     if (!parser.hasAlerts()) {
         return;
     }
@@ -156,7 +168,13 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
         observation.fixAgeMs = gpsStatus.fixAgeMs;
         observation.satellites = gpsStatus.satellites;
         observation.hdopX10 = hdopToX10(gpsStatus.hdop);
-        observation.speedMph = gpsStatus.speedMph;
+        if (selectedSpeed.valid) {
+            observation.speedMph = selectedSpeed.speedMph;
+            observation.speedSourceRaw = static_cast<uint8_t>(selectedSpeed.source);
+        } else {
+            observation.speedMph = gpsStatus.speedMph;
+            observation.speedSourceRaw = static_cast<uint8_t>(SpeedSource::GPS);
+        }
         observation.courseValid = gpsStatus.courseValid;
         observation.courseDeg = gpsStatus.courseDeg;
         observation.locationValid = locationValid;

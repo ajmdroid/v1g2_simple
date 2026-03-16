@@ -94,6 +94,8 @@ struct V1Settings {
     bool obdEnabled = false;
     String obdSavedAddress = "";
     int8_t obdMinRssi = -80;
+    String obdCachedVinPrefix11 = "";
+    uint8_t obdCachedEotProfileId = 0;
     LockoutRuntimeMode gpsLockoutMode = LOCKOUT_RUNTIME_OFF;
     bool gpsLockoutPreQuiet = false;
     uint16_t gpsLockoutPreQuietBufferE5 = 0;

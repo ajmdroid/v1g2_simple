@@ -27,6 +27,8 @@ void test_v1_settings_defaults_cover_current_runtime_shape() {
 	TEST_ASSERT_EQUAL_INT(V1_MODE_UNKNOWN, settings.slot0_default.mode);
 	TEST_ASSERT_FALSE(settings.obdEnabled);
 	TEST_ASSERT_EQUAL_INT8(-80, settings.obdMinRssi);
+	TEST_ASSERT_EQUAL_STRING("", settings.obdCachedVinPrefix11.c_str());
+	TEST_ASSERT_EQUAL_UINT8(0, settings.obdCachedEotProfileId);
 }
 
 void test_auto_push_slot_view_maps_mutable_fields_to_selected_slot() {

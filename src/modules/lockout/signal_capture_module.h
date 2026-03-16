@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "signal_observation_log.h"
+#include "../speed/speed_source_selector.h"
 
 class PacketParser;
 struct GpsRuntimeStatus;
@@ -15,6 +16,11 @@ public:
     void capturePriorityObservation(uint32_t nowMs,
                                     const PacketParser& parser,
                                     const GpsRuntimeStatus& gpsStatus,
+                                    bool captureUnsupportedBandsToSd = false);
+    void capturePriorityObservation(uint32_t nowMs,
+                                    const PacketParser& parser,
+                                    const GpsRuntimeStatus& gpsStatus,
+                                    const SpeedSelection& selectedSpeed,
                                     bool captureUnsupportedBandsToSd = false);
 
 private:

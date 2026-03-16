@@ -325,6 +325,8 @@ void SettingsManager::load() {
     settings.obdSavedAddress = preferences.getString("obdAddr", "");
     settings.obdMinRssi = static_cast<int8_t>(
         preferences.getChar("obdMinRssi", -80));
+    settings.obdCachedVinPrefix11 = preferences.getString("obdVin11", "");
+    settings.obdCachedEotProfileId = preferences.getUChar("obdEotPid", 0);
 
     preferences.end();
     

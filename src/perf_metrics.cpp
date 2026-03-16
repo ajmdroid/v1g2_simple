@@ -10,6 +10,7 @@
 #include "../include/main_globals.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_observation_log.h"
+#include "modules/obd/obd_runtime_module.h"
 #include "modules/system/system_event_bus.h"
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
@@ -179,6 +180,7 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     uint32_t largestDmaCap = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
     GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
     GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
+    ObdRuntimeStatus obdStatus = obdRuntimeModule.snapshot(nowMs);
 
     snapshot.millisTs = nowMs;
     snapshot.timeValid = timeService.timeValid() ? 1 : 0;
@@ -310,8 +312,15 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.bleProcessMaxUs = perfExtended.bleProcessMaxUs;
     snapshot.touchMaxUs = perfExtended.touchMaxUs;
     snapshot.obdMaxUs = perfExtended.obdMaxUs;
-    snapshot.obdPollErrors = 0;
-    snapshot.obdStaleCount = 0;
+    snapshot.obdPollErrors = obdStatus.pollErrors;
+    snapshot.obdStaleCount = obdStatus.staleSpeedCount;
+    snapshot.obdVinDetected = obdStatus.vinDetected ? 1 : 0;
+    snapshot.obdVehicleFamily = static_cast<uint8_t>(obdStatus.vehicleFamily);
+    snapshot.obdEotValid = obdStatus.eotValid ? 1 : 0;
+    snapshot.obdEotC_x10 = obdStatus.eotValid ? obdStatus.eotC_x10 : 0;
+    snapshot.obdEotAgeMs = obdStatus.eotValid ? obdStatus.eotAgeMs : UINT32_MAX;
+    snapshot.obdEotProfileId = static_cast<uint8_t>(obdStatus.eotProfileId);
+    snapshot.obdEotProbeFailures = obdStatus.eotProbeFailures;
     snapshot.gpsMaxUs = perfExtended.gpsMaxUs;
     snapshot.lockoutMaxUs = perfExtended.lockoutMaxUs;
     snapshot.wifiMaxUs = perfExtended.wifiMaxUs;

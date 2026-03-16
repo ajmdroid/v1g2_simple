@@ -639,7 +639,7 @@ void handleConfig(WebServer& server,
 
     const uint32_t nowMs = millis();
     const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
-    const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
+    const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot();
     const V1Settings& settings = settingsManager.get();
     const GpsLockoutCoreGuardStatus lockoutGuard = gpsLockoutEvaluateCoreGuard(
         settings.gpsLockoutCoreGuardEnabled,

@@ -19,6 +19,7 @@ SettingsManager settingsManager;
 #include "../../src/modules/gps/gps_runtime_module.h"
 #include "../../src/modules/lockout/lockout_index.h"
 #include "../../src/modules/lockout/signal_capture_module.h"
+#include "../../src/modules/speed/speed_source_selector.h"
 #include "../../src/modules/volume_fade/volume_fade_module.h"
 #include "../../src/time_service.h"
 #include "../../src/modules/lockout/lockout_runtime_mute_controller.cpp"
@@ -106,10 +107,12 @@ void SignalCaptureModule::reset() {
 void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
                                                      const PacketParser& parser,
                                                      const GpsRuntimeStatus& gpsStatus,
+                                                     const SpeedSelection& selectedSpeed,
                                                      bool captureUnsupportedBandsToSd) {
     (void)nowMs;
     (void)parser;
     (void)gpsStatus;
+    (void)selectedSpeed;
     (void)captureUnsupportedBandsToSd;
     g_captureCalls++;
 }
@@ -157,6 +160,7 @@ static SystemEventBus eventBus;
 static PerfCounters perfCounterState;
 static TimeService timeSvc;
 static GpsRuntimeStatus gps;
+SpeedSourceSelector speedSourceSelector;
 
 static void setOverrideCondition(bool active) {
     if (active) {

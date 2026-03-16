@@ -25,7 +25,7 @@ void test_perf_csv_schema_version_matches_current_header() {
     TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_sd_logger.cpp");
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 15;"));
+        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 16;"));
 }
 
 void test_perf_csv_header_drops_camera_voice_columns() {
@@ -36,7 +36,7 @@ void test_perf_csv_header_drops_camera_voice_columns() {
     TEST_ASSERT_EQUAL(std::string::npos, source.find("cameraVoiceStarted"));
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("displayLiveFallbackToUsable,obdMax_us,obdPollErrors,obdStaleCount,perfDrop,eventBusDrops"));
+        source.find("displayLiveFallbackToUsable,obdMax_us,obdPollErrors,obdStaleCount,obdVinDetected,obdVehicleFamily,obdEotValid,obdEotC_x10,obdEotAgeMs,obdEotProfileId,obdEotProbeFailures,perfDrop,eventBusDrops"));
 }
 
 void test_perf_csv_header_appends_drive_gate_columns() {

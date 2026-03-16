@@ -83,6 +83,8 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["obdEnabled"] = settings.obdEnabled;
     doc["obdSavedAddress"] = settings.obdSavedAddress;
     doc["obdMinRssi"] = settings.obdMinRssi;
+    doc["obdCachedVinPrefix11"] = settings.obdCachedVinPrefix11;
+    doc["obdCachedEotProfileId"] = settings.obdCachedEotProfileId;
 
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;

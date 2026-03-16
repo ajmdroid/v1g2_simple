@@ -15,69 +15,83 @@ void SpeedSourceSelector::begin(bool gpsEnabled, bool obdEnabled) {
     gpsSelections_ = 0;
     obdSelections_ = 0;
     noSourceSelections_ = 0;
+    cachedStatus_ = SpeedSelectorStatus{};
+    cachedStatus_.gpsEnabled = gpsEnabled_;
+    cachedStatus_.obdEnabled = obdEnabled_;
+    selectedSpeed_ = SpeedSelection{};
 }
 
 void SpeedSourceSelector::setGpsEnabled(bool enabled) {
     gpsEnabled_ = enabled;
+    cachedStatus_.gpsEnabled = enabled;
 }
 
 void SpeedSourceSelector::setObdEnabled(bool enabled) {
     obdEnabled_ = enabled;
+    cachedStatus_.obdEnabled = enabled;
 }
 
-SpeedSelectorStatus SpeedSourceSelector::snapshot(uint32_t nowMs) const {
+SpeedSelectorStatus SpeedSourceSelector::buildStatus(uint32_t nowMs) const {
     SpeedSelectorStatus status;
     status.gpsEnabled = gpsEnabled_;
     status.obdEnabled = obdEnabled_;
 
-    // Poll GPS
     float gpsSpeed = 0.0f;
     uint32_t gpsTs = 0;
-    bool gpsFresh = false;
-    if (gpsEnabled_) {
-        gpsFresh = gpsRuntimeModule.getFreshSpeed(nowMs, gpsSpeed, gpsTs);
-        if (gpsFresh && gpsSpeed <= MAX_VALID_SPEED_MPH) {
-            status.gpsFresh = true;
-            status.gpsSpeedMph = gpsSpeed;
-            status.gpsAgeMs = nowMs - gpsTs;
-        }
+    if (gpsEnabled_ && gpsRuntimeModule.getFreshSpeed(nowMs, gpsSpeed, gpsTs) &&
+        gpsSpeed <= MAX_VALID_SPEED_MPH) {
+        status.gpsFresh = true;
+        status.gpsSpeedMph = gpsSpeed;
+        status.gpsAgeMs = nowMs - gpsTs;
     }
 
-    // Poll OBD
     float obdSpeed = 0.0f;
     uint32_t obdTs = 0;
-    bool obdFresh = false;
-    if (obdEnabled_) {
-        obdFresh = obdRuntimeModule.getFreshSpeed(nowMs, obdSpeed, obdTs);
-        if (obdFresh && obdSpeed <= MAX_VALID_SPEED_MPH) {
-            status.obdFresh = true;
-            status.obdSpeedMph = obdSpeed;
-            status.obdAgeMs = nowMs - obdTs;
-        }
+    if (obdEnabled_ && obdRuntimeModule.getFreshSpeed(nowMs, obdSpeed, obdTs) &&
+        obdSpeed <= MAX_VALID_SPEED_MPH) {
+        status.obdFresh = true;
+        status.obdSpeedMph = obdSpeed;
+        status.obdAgeMs = nowMs - obdTs;
     }
 
-    // Select best source: prefer OBD when both fresh (faster update rate)
-    SpeedSource picked = SpeedSource::NONE;
-    if (status.obdFresh && status.gpsFresh) {
-        picked = SpeedSource::OBD;  // OBD preferred: 2 Hz vs GPS 1 Hz
-    } else if (status.obdFresh) {
-        picked = SpeedSource::OBD;
-    } else if (status.gpsFresh) {
-        picked = SpeedSource::GPS;
-    }
-
-    if (picked == SpeedSource::OBD) {
+    if (status.obdFresh) {
         status.selectedSource = SpeedSource::OBD;
         status.selectedSpeedMph = status.obdSpeedMph;
         status.selectedAgeMs = status.obdAgeMs;
-        obdSelections_++;
-    } else if (picked == SpeedSource::GPS) {
+    } else if (status.gpsFresh) {
         status.selectedSource = SpeedSource::GPS;
         status.selectedSpeedMph = status.gpsSpeedMph;
         status.selectedAgeMs = status.gpsAgeMs;
+    }
+
+    status.sourceSwitches = sourceSwitches_;
+    status.gpsSelections = gpsSelections_;
+    status.obdSelections = obdSelections_;
+    status.noSourceSelections = noSourceSelections_;
+    return status;
+}
+
+void SpeedSourceSelector::update(uint32_t nowMs) {
+    SpeedSelectorStatus next = buildStatus(nowMs);
+    const SpeedSource picked = next.selectedSource;
+
+    if (picked == SpeedSource::OBD) {
+        obdSelections_++;
+        selectedSpeed_.source = SpeedSource::OBD;
+        selectedSpeed_.speedMph = next.selectedSpeedMph;
+        selectedSpeed_.timestampMs = nowMs - next.selectedAgeMs;
+        selectedSpeed_.ageMs = next.selectedAgeMs;
+        selectedSpeed_.valid = true;
+    } else if (picked == SpeedSource::GPS) {
         gpsSelections_++;
+        selectedSpeed_.source = SpeedSource::GPS;
+        selectedSpeed_.speedMph = next.selectedSpeedMph;
+        selectedSpeed_.timestampMs = nowMs - next.selectedAgeMs;
+        selectedSpeed_.ageMs = next.selectedAgeMs;
+        selectedSpeed_.valid = true;
     } else {
         noSourceSelections_++;
+        selectedSpeed_ = SpeedSelection{};
     }
 
     if (picked != lastSource_ && lastSource_ != SpeedSource::NONE) {
@@ -85,12 +99,20 @@ SpeedSelectorStatus SpeedSourceSelector::snapshot(uint32_t nowMs) const {
     }
     lastSource_ = picked;
 
-    status.sourceSwitches = sourceSwitches_;
-    status.gpsSelections = gpsSelections_;
-    status.obdSelections = obdSelections_;
-    status.noSourceSelections = noSourceSelections_;
+    next.sourceSwitches = sourceSwitches_;
+    next.gpsSelections = gpsSelections_;
+    next.obdSelections = obdSelections_;
+    next.noSourceSelections = noSourceSelections_;
+    cachedStatus_ = next;
+}
 
-    return status;
+SpeedSelectorStatus SpeedSourceSelector::snapshot() const {
+    return cachedStatus_;
+}
+
+SpeedSelectorStatus SpeedSourceSelector::snapshot(uint32_t nowMs) {
+    update(nowMs);
+    return cachedStatus_;
 }
 
 const char* SpeedSourceSelector::sourceName(SpeedSource source) {

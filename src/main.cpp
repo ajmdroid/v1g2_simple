@@ -697,16 +697,35 @@ static void configureRuntimeSensorModules() {
     obdRuntimeModule.begin(
         settingsManager.get().obdEnabled,
         settingsManager.get().obdSavedAddress.c_str(),
-        settingsManager.get().obdMinRssi);
+        settingsManager.get().obdMinRssi,
+        settingsManager.get().obdCachedVinPrefix11.c_str(),
+        settingsManager.get().obdCachedEotProfileId);
 }
 
-static void syncObdSavedAddressSetting() {
+static void syncObdSettings() {
     const char* runtimeAddress = obdRuntimeModule.getSavedAddress();
-    if (settingsManager.get().obdSavedAddress == runtimeAddress) {
+    const char* cachedVinPrefix11 = obdRuntimeModule.getCachedVinPrefix11();
+    const uint8_t cachedEotProfileId = obdRuntimeModule.getCachedEotProfileId();
+    V1Settings& settings = settingsManager.mutableSettings();
+    bool changed = false;
+
+    if (settings.obdSavedAddress != runtimeAddress) {
+        settings.obdSavedAddress = runtimeAddress;
+        changed = true;
+    }
+    if (settings.obdCachedVinPrefix11 != cachedVinPrefix11) {
+        settings.obdCachedVinPrefix11 = cachedVinPrefix11;
+        changed = true;
+    }
+    if (settings.obdCachedEotProfileId != cachedEotProfileId) {
+        settings.obdCachedEotProfileId = cachedEotProfileId;
+        changed = true;
+    }
+
+    if (!changed) {
         return;
     }
 
-    settingsManager.mutableSettings().obdSavedAddress = runtimeAddress;
     settingsManager.save();
 }
 
@@ -1045,7 +1064,8 @@ void loop() {
         obdRuntimeModule.update(now, bootReady, bleConnectedNow, !bleClient.isScanning());
         perfRecordObdUs(micros() - obdStartUs);
     }
-    syncObdSavedAddressSetting();
+    speedSourceSelector.update(now);
+    syncObdSettings();
 
     auto runWifiManagerProcess = []() { wifiManager.process(); };
     const LoopWifiPhaseValues loopWifiValues = processLoopWifiPhase(

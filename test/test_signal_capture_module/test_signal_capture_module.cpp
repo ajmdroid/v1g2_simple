@@ -90,6 +90,29 @@ void test_first_alert_publishes_and_enqueues() {
     TEST_ASSERT_TRUE(out[0].hasFix);
     TEST_ASSERT_EQUAL_UINT32(250, out[0].fixAgeMs);
     TEST_ASSERT_TRUE(out[0].locationValid);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SpeedSource::GPS), out[0].speedSourceRaw);
+}
+
+void test_selected_speed_overrides_raw_gps_speed_for_observations() {
+    PacketParser parser;
+    parser.setAlerts({AlertData::create(BAND_K, DIR_FRONT, 3, 5, 24148, true, true)});
+    GpsRuntimeStatus gps = makeGps();
+    gps.speedMph = 12.0f;
+
+    SpeedSelection selectedSpeed;
+    selectedSpeed.source = SpeedSource::OBD;
+    selectedSpeed.speedMph = 47.5f;
+    selectedSpeed.timestampMs = 950;
+    selectedSpeed.ageMs = 50;
+    selectedSpeed.valid = true;
+
+    signalCaptureModule.capturePriorityObservation(1000, parser, gps, selectedSpeed);
+
+    SignalObservation out[1] = {};
+    const size_t copied = signalObservationLog.copyRecent(out, 1);
+    TEST_ASSERT_EQUAL_UINT32(1, static_cast<uint32_t>(copied));
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 47.5f, out[0].speedMph);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SpeedSource::OBD), out[0].speedSourceRaw);
 }
 
 void test_same_bucket_within_repeat_window_suppressed() {
@@ -245,6 +268,7 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_no_alerts_no_publish);
     RUN_TEST(test_first_alert_publishes_and_enqueues);
+    RUN_TEST(test_selected_speed_overrides_raw_gps_speed_for_observations);
     RUN_TEST(test_same_bucket_within_repeat_window_suppressed);
     RUN_TEST(test_same_bucket_after_repeat_window_publishes);
     RUN_TEST(test_different_bucket_publishes_immediately);

@@ -27,6 +27,8 @@ private:
 class ObdClientCallback : public NimBLEClientCallbacks {
 public:
     void configure(ObdRuntimeModule* parent);
+    void onConnect(NimBLEClient* client) override;
+    void onConnectFail(NimBLEClient* client, int reason) override;
     void onDisconnect(NimBLEClient* client, int reason) override;
 
 private:
@@ -47,13 +49,14 @@ public:
 
     /// Connect to OBD adapter at the given address. Non-blocking start, but
     /// the actual connection completes asynchronously.
-    bool connect(const char* address, uint32_t timeoutMs);
+    bool connect(const char* address, uint32_t timeoutMs, bool preferCachedAttributes);
 
     /// Disconnect gracefully.
     void disconnect();
 
     /// True if GATT client is connected.
     bool isConnected() const;
+    bool isConnectPending() const { return connectPending_; }
 
     /// Discover SPP-over-GATT service and TX/RX characteristics.
     /// Returns true if both characteristics found.
@@ -72,6 +75,8 @@ public:
     bool isInitialized() const { return pClient_ != nullptr; }
 
 private:
+    bool validateCxModel() const;
+
     NimBLEClient* pClient_ = nullptr;
     NimBLERemoteCharacteristic* pTxChar_ = nullptr;  // notify (device → host)
     NimBLERemoteCharacteristic* pRxChar_ = nullptr;  // write  (host → device)
@@ -81,6 +86,7 @@ private:
 
     int8_t cachedRssi_ = 0;
     uint32_t lastRssiQueryMs_ = 0;
+    bool connectPending_ = false;
     static constexpr uint32_t RSSI_QUERY_INTERVAL_MS = 2000;
 };
 

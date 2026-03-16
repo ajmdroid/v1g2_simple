@@ -347,7 +347,7 @@ static void sendMetrics(WebServer& server) {
     gpsLogObj["size"] = static_cast<uint32_t>(gpsLogStats.size);
     gpsLogObj["capacity"] = static_cast<uint32_t>(GpsObservationLog::kCapacity);
     doc["gpsObsDrops"] = gpsLogStats.drops;
-    const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot(nowMs);
+    const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot();
     JsonObject speedObj = doc["speedSource"].to<JsonObject>();
     speedObj["gpsEnabled"] = speedStatus.gpsEnabled;
     speedObj["selected"] = SpeedSourceSelector::sourceName(speedStatus.selectedSource);

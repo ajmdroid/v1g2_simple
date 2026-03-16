@@ -163,6 +163,8 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     settings.obdEnabled = true;
     settings.obdSavedAddress = "11:22:33:44:55:66";
     settings.obdMinRssi = -65;
+    settings.obdCachedVinPrefix11 = "1FTFW1ET7D";
+    settings.obdCachedEotProfileId = 3;
 
     original.save();
 
@@ -173,6 +175,8 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_TRUE(mock_preferences::namespaceHasKey(activeNs.c_str(), "apSSID"));
     TEST_ASSERT_TRUE(mock_preferences::namespaceHasKey(activeNs.c_str(), "voiceMode"));
     TEST_ASSERT_TRUE(mock_preferences::namespaceHasKey(activeNs.c_str(), "obdMinRssi"));
+    TEST_ASSERT_TRUE(mock_preferences::namespaceHasKey(activeNs.c_str(), "obdVin11"));
+    TEST_ASSERT_TRUE(mock_preferences::namespaceHasKey(activeNs.c_str(), "obdEotPid"));
     TEST_ASSERT_TRUE(
         mock_preferences::getString(activeNs.c_str(), "apPassword", "").startsWith(OBFUSCATION_HEX_PREFIX));
 
@@ -232,6 +236,8 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_TRUE(loaded.obdEnabled);
     TEST_ASSERT_EQUAL_STRING("11:22:33:44:55:66", loaded.obdSavedAddress.c_str());
     TEST_ASSERT_EQUAL_INT8(-65, loaded.obdMinRssi);
+    TEST_ASSERT_EQUAL_STRING("1FTFW1ET7D", loaded.obdCachedVinPrefix11.c_str());
+    TEST_ASSERT_EQUAL_UINT8(3, loaded.obdCachedEotProfileId);
 
     JsonDocument backupDoc;
     TEST_ASSERT_TRUE(loadJsonFile(fs, SETTINGS_BACKUP_PATH, backupDoc));
@@ -249,6 +255,8 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_TRUE(backupDoc["autoPushEnabled"].as<bool>());
     TEST_ASSERT_EQUAL_STRING("Quiet", backupDoc["slot2ProfileName"].as<const char*>());
     TEST_ASSERT_EQUAL_INT(-65, backupDoc["obdMinRssi"].as<int>());
+    TEST_ASSERT_EQUAL_STRING("1FTFW1ET7D", backupDoc["obdCachedVinPrefix11"].as<const char*>());
+    TEST_ASSERT_EQUAL_INT(3, backupDoc["obdCachedEotProfileId"].as<int>());
 }
 
 void test_serialized_backup_payload_matches_builder_and_writes_same_json() {

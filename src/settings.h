@@ -359,6 +359,8 @@ struct V1Settings {
     bool obdEnabled;             // Enable OBD module
     String obdSavedAddress;      // Saved OBDLink CX BLE address for auto-reconnect
     int8_t obdMinRssi;           // Minimum RSSI for scan acceptance (dBm)
+    String obdCachedVinPrefix11; // Last VIN prefix matched to cached EOT profile
+    uint8_t obdCachedEotProfileId; // Cached EOT profile id for same-vehicle fast start
     
     // Default constructor with sensible defaults
     V1Settings() : 
@@ -478,7 +480,9 @@ struct V1Settings {
         apTimeoutMinutes(0),     // Default: always on (0=unlimited)
         obdEnabled(false),       // OBD disabled by default
         obdSavedAddress(""),     // No saved device
-        obdMinRssi(-80) {}       // Default -80 dBm minimum RSSI
+        obdMinRssi(-80),         // Default -80 dBm minimum RSSI
+        obdCachedVinPrefix11(""),
+        obdCachedEotProfileId(0) {}
 
     static uint8_t normalizeAutoPushSlotIndex(int slotNum) {
         return slotNum == 1 ? 1 : (slotNum == 2 ? 2 : 0);

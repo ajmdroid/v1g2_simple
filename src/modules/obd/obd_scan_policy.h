@@ -6,12 +6,12 @@ namespace obd {
 
 // ── Scan parameters (web-UI-triggered only) ─────────────────────
 static constexpr uint32_t SCAN_DURATION_MS = 5000;
-static constexpr const char* DEVICE_NAME_PREFIX = "OBDLink";
-static constexpr size_t DEVICE_NAME_PREFIX_LEN = 7;
+static constexpr const char* DEVICE_NAME_CX = "OBDLink CX";
 
 // ── Direct-connect (saved address) ──────────────────────────────
 static constexpr uint32_t CONNECT_TIMEOUT_MS = 5000;
-static constexpr uint32_t RECONNECT_BACKOFF_MS = 60000;
+static constexpr uint32_t RECONNECT_BACKOFF_MS = 5000;
+static constexpr uint32_t RECONNECT_BACKOFF_HARD_MS = 60000;
 static constexpr uint8_t MAX_DIRECT_CONNECT_FAILURES = 3;
 
 // ── Boot dwell (V1 gets priority) ───────────────────────────────
@@ -19,12 +19,19 @@ static constexpr uint32_t POST_BOOT_DWELL_MS = 10000;
 
 // ── Speed polling ───────────────────────────────────────────────
 static constexpr uint32_t POLL_INTERVAL_MS = 500;
-static constexpr uint32_t POLL_INTERVAL_SLOW_MS = 750;
-static constexpr uint32_t POLL_TIMEOUT_MS = 400;
+static constexpr uint32_t POLL_TIMEOUT_MS = 200;
 static constexpr uint32_t SPEED_MAX_AGE_MS = 3000;
 static constexpr uint8_t MAX_CONSECUTIVE_ERRORS = 5;
 static constexpr uint32_t ERROR_PAUSE_MS = 5000;
 static constexpr uint8_t ERRORS_BEFORE_DISCONNECT = 10;
+static constexpr uint32_t AUX_INTERVAL_MS = 2000;
+static constexpr uint32_t AUX_WINDOW_MIN_MS = 200;
+static constexpr uint32_t AUX_COMMAND_TIMEOUT_MS = 180;
+static constexpr uint32_t VIN_COMMAND_TIMEOUT_MS = 250;
+static constexpr uint32_t EOT_STALE_MS = 10000;
+static constexpr uint8_t BUFFER_OVERFLOWS_BEFORE_DISCONNECT = 2;
+static constexpr uint8_t EOT_INVALID_STREAK_CLEAR_CACHE = 3;
+static constexpr uint8_t EOT_CACHE_PERSIST_SAMPLES = 3;
 
 // ── RSSI ────────────────────────────────────────────────────────
 static constexpr int8_t DEFAULT_MIN_RSSI = -80;
@@ -33,19 +40,37 @@ static constexpr int8_t DEFAULT_MIN_RSSI = -80;
 static constexpr uint32_t RSSI_REFRESH_INTERVAL_MS = 2000;
 
 // ── AT init sequence ────────────────────────────────────────────
-static constexpr const char* AT_INIT_COMMANDS[] = {
+static constexpr const char* COLD_INIT_COMMANDS[] = {
     "ATZ\r",
     "ATE0\r",
     "ATL0\r",
     "ATS0\r",
+    "ATAL\r",
     "ATH0\r",
     "ATSP0\r",
     "ATAT1\r",
+    "0100\r",
 };
-static constexpr size_t AT_INIT_COMMAND_COUNT = sizeof(AT_INIT_COMMANDS) / sizeof(AT_INIT_COMMANDS[0]);
+static constexpr size_t COLD_INIT_COMMAND_COUNT =
+    sizeof(COLD_INIT_COMMANDS) / sizeof(COLD_INIT_COMMANDS[0]);
+
+static constexpr const char* WARM_INIT_COMMANDS[] = {
+    "ATE0\r",
+    "ATL0\r",
+    "ATS0\r",
+    "ATAL\r",
+    "ATH0\r",
+    "ATSP0\r",
+    "ATAT1\r",
+    "0100\r",
+};
+static constexpr size_t WARM_INIT_COMMAND_COUNT =
+    sizeof(WARM_INIT_COMMANDS) / sizeof(WARM_INIT_COMMANDS[0]);
 static constexpr uint32_t AT_INIT_RESPONSE_TIMEOUT_MS = 2000;
+static constexpr uint8_t AT_INIT_RETRIES = 1;
 
 // ── Speed poll command ──────────────────────────────────────────
 static constexpr const char* SPEED_POLL_CMD = "010D\r";
+static constexpr const char* VIN_POLL_CMD = "0902\r";
 
 }  // namespace obd

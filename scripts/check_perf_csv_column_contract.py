@@ -3,7 +3,7 @@
 
 Enforced invariants:
 1) PERF_CSV_HEADER column order matches expected snapshot.
-2) PERF_CSV_HEADER column count equals snprintf() format field count.
+2) PERF_CSV_HEADER column count equals the serialized field count in appendSnapshotLine().
 3) expectedPerfCsvColumns() derives from PERF_CSV_HEADER.
 
 Use --update to rewrite expected snapshot.
@@ -34,6 +34,7 @@ SNPRINTF_FORMAT_RE = re.compile(
     r"int\s+n\s*=\s*snprintf\s*\(\s*line\s*,\s*sizeof\s*\(\s*line\s*\)\s*,\s*((?:\"(?:\\.|[^\"\\])*\"\s*)+)\s*,",
     re.DOTALL,
 )
+APPEND_CALL_RE = re.compile(r"\bappendCsv(?:UInt32|UInt8|Int32|Int16|UInt8Last)\s*\(")
 
 
 def read_text(path: Path) -> str:
@@ -92,7 +93,7 @@ def find_matching_brace(masked_source: str, open_brace_index: int) -> int:
 
 
 def extract_function_body(source: str, masked_source: str, func_name: str) -> str:
-    sig_re = re.compile(rf"\b{re.escape(func_name)}\s*\(\s*\)\s*\{{")
+    sig_re = re.compile(rf"\b{re.escape(func_name)}\s*\([^)]*\)\s*\{{")
     match = sig_re.search(masked_source)
     if not match:
         return ""
@@ -153,14 +154,20 @@ def main() -> int:
     header_line = header_text.splitlines()[0] if header_text else ""
     columns = [col.strip() for col in header_line.split(",") if col.strip()]
 
-    format_match = SNPRINTF_FORMAT_RE.search(source)
-    if not format_match:
-        print("[contract] perf-csv-column: snprintf format literal not found")
-        return 1
-    format_text = decode_c_string_blob(format_match.group(1))
-
     header_count = len(columns)
-    format_count = count_format_fields(format_text)
+    formatter_count = 0
+
+    append_body = extract_function_body(source, masked_source, "PerfSdLogger::appendSnapshotLine")
+    if append_body:
+        formatter_count = len(APPEND_CALL_RE.findall(append_body))
+
+    if formatter_count == 0:
+        format_match = SNPRINTF_FORMAT_RE.search(source)
+        if not format_match:
+            print("[contract] perf-csv-column: serialized field format not found")
+            return 1
+        format_text = decode_c_string_blob(format_match.group(1))
+        formatter_count = count_format_fields(format_text)
 
     expected_fn_body = extract_function_body(
         source,
@@ -189,10 +196,10 @@ def main() -> int:
         print_diff(expected_columns, columns)
         ok = False
 
-    if header_count != format_count:
+    if header_count != formatter_count:
         print(
             "[contract] perf-csv-column count mismatch: "
-            f"header_columns={header_count} snprintf_fields={format_count}"
+            f"header_columns={header_count} serialized_fields={formatter_count}"
         )
         ok = False
 
@@ -209,7 +216,7 @@ def main() -> int:
 
     print(
         "[contract] perf-csv-column contract matches "
-        f"({header_count} columns, {format_count} snprintf fields)"
+        f"({header_count} columns, {formatter_count} serialized fields)"
     )
     return 0
 

@@ -12,6 +12,8 @@ struct SpeedSelection {
     SpeedSource source = SpeedSource::NONE;
     float speedMph = 0.0f;
     uint32_t timestampMs = 0;
+    uint32_t ageMs = UINT32_MAX;
+    bool valid = false;
 };
 
 struct SpeedSelectorStatus {
@@ -42,20 +44,27 @@ public:
     void begin(bool gpsEnabled, bool obdEnabled = false);
     void setGpsEnabled(bool enabled);
     void setObdEnabled(bool enabled);
+    void update(uint32_t nowMs);
 
-    SpeedSelectorStatus snapshot(uint32_t nowMs) const;
+    SpeedSelectorStatus snapshot() const;
+    SpeedSelectorStatus snapshot(uint32_t nowMs);
+    SpeedSelection selectedSpeed() const { return selectedSpeed_; }
 
     static const char* sourceName(SpeedSource source);
 
 private:
+    SpeedSelectorStatus buildStatus(uint32_t nowMs) const;
+
     bool gpsEnabled_ = false;
     bool obdEnabled_ = false;
 
-    mutable SpeedSource lastSource_ = SpeedSource::NONE;
-    mutable uint32_t sourceSwitches_ = 0;
-    mutable uint32_t gpsSelections_ = 0;
-    mutable uint32_t obdSelections_ = 0;
-    mutable uint32_t noSourceSelections_ = 0;
+    SpeedSource lastSource_ = SpeedSource::NONE;
+    uint32_t sourceSwitches_ = 0;
+    uint32_t gpsSelections_ = 0;
+    uint32_t obdSelections_ = 0;
+    uint32_t noSourceSelections_ = 0;
+    SpeedSelectorStatus cachedStatus_ = {};
+    SpeedSelection selectedSpeed_ = {};
 };
 
 extern SpeedSourceSelector speedSourceSelector;
