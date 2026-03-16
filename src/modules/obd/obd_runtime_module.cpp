@@ -810,7 +810,7 @@ bool ObdRuntimeModule::isEotFresh(uint32_t nowMs) const {
 }
 
 bool ObdRuntimeModule::speedDue(uint32_t nowMs) const {
-    return nextSpeedDueMs_ == 0 || nowMs >= nextSpeedDueMs_;
+    return nextSpeedDueMs_ == 0 || static_cast<int32_t>(nowMs - nextSpeedDueMs_) >= 0;
 }
 
 bool ObdRuntimeModule::auxWindowOpen(uint32_t nowMs) const {
@@ -979,23 +979,23 @@ bool ObdRuntimeModule::sendNextPollingCommand(uint32_t nowMs) {
 
     if (activeEotProfileId_ != ObdEotProfileId::NONE &&
         activeEotProfileFromCache_ &&
-        nowMs >= nextEotPollMs_ &&
+        static_cast<int32_t>(nowMs - nextEotPollMs_) >= 0 &&
         startEotPollCommand(nowMs)) {
         return true;
     }
 
-    if (!vinDetected_ && nowMs >= nextVinAttemptMs_ && startVinCommand(nowMs)) {
+    if (!vinDetected_ && static_cast<int32_t>(nowMs - nextVinAttemptMs_) >= 0 && startVinCommand(nowMs)) {
         return true;
     }
 
     if (activeEotProfileId_ == ObdEotProfileId::NONE) {
-        if (nowMs >= nextEotProbeMs_ && startEotProbeCommand(nowMs)) {
+        if (static_cast<int32_t>(nowMs - nextEotProbeMs_) >= 0 && startEotProbeCommand(nowMs)) {
             return true;
         }
         return false;
     }
 
-    if (nowMs >= nextEotPollMs_ && startEotPollCommand(nowMs)) {
+    if (static_cast<int32_t>(nowMs - nextEotPollMs_) >= 0 && startEotPollCommand(nowMs)) {
         return true;
     }
 
