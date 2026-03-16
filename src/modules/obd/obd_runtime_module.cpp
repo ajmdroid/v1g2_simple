@@ -1236,10 +1236,25 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                 transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
                 break;
             }
-            if (justEntered) {
+            // Post-connect settle: the DA14531 BLE 4.2 modem inside the
+            // OBDLink CX needs time after GAP connection before it is ready
+            // for GATT operations.  Without this delay, service discovery
+            // or CCCD subscribe triggers an immediate disconnect.
+            if ((nowMs - stateEnteredMs_) < obd::POST_CONNECT_SETTLE_MS) {
+                break;
+            }
+            {
                 if (!discoverBleServices()) {
                     disconnectBle();
                     handleConnectFailure(nowMs, ObdFailureReason::DISCOVERY);
+                    break;
+                }
+                if (bleDisconnected_) {
+#ifndef UNIT_TEST
+                    Serial.printf("[OBD] lost connection after discovery (ble reason=%d)\n", bleDisconnectReason_);
+#endif
+                    bleDisconnected_ = false;
+                    transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
                     break;
                 }
                 if (!subscribeBleNotifications()) {

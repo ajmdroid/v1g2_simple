@@ -298,7 +298,8 @@ void test_discover_entry_action_runs_on_next_tick() {
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getConnectCallCountForTest());
 
     obdRuntimeModule.setTestDiscoverResult(false);
-    obdRuntimeModule.update(5002, true, true, true);
+    // POST_CONNECT_SETTLE_MS (500ms) must elapse before GATT operations begin
+    obdRuntimeModule.update(5502, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDiscoverCallCountForTest());
 }
