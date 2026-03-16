@@ -54,6 +54,22 @@ bool loadBestBackupDocument(fs::FS* fs, JsonDocument& outDoc,
 bool parseBoolVariant(const JsonVariantConst& value, bool& out);
 bool writeBackupAtomically(fs::FS* fs, const JsonDocument& doc);
 
+struct SerializedSettingsBackupPayload {
+    char* data = nullptr;
+    size_t capacity = 0;
+    size_t length = 0;
+    bool inPsram = false;
+    uint32_t snapshotMs = 0;
+    int profilesBackedUp = 0;
+};
+
+bool buildSerializedSdBackupPayload(SerializedSettingsBackupPayload& payload,
+                                    const V1Settings& settings,
+                                    const V1ProfileManager& profileManager,
+                                    uint32_t snapshotMs);
+void releaseSerializedSettingsBackupPayload(SerializedSettingsBackupPayload& payload);
+bool writeBackupAtomically(fs::FS* fs, const SerializedSettingsBackupPayload& payload);
+
 // NVS helpers
 bool   attemptNvsRecovery(const char* activeNs);
 int    namespaceHealthScore(const char* ns);

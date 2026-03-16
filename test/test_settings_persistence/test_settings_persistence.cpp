@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <filesystem>
+#include <string>
 
 #include <ArduinoJson.h>
 
@@ -69,6 +70,20 @@ bool loadJsonFile(fs::FS& fs, const char* path, JsonDocument& doc) {
     const DeserializationError err = deserializeJson(doc, file);
     file.close();
     return !err;
+}
+
+std::string readFileToString(fs::FS& fs, const char* path) {
+    File file = fs.open(path, FILE_READ);
+    if (!file) {
+        return {};
+    }
+
+    std::string output;
+    while (file.available()) {
+        output.push_back(static_cast<char>(file.read()));
+    }
+    file.close();
+    return output;
 }
 
 }  // namespace
@@ -232,8 +247,52 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_EQUAL_INT(-65, backupDoc["obdMinRssi"].as<int>());
 }
 
+void test_serialized_backup_payload_matches_builder_and_writes_same_json() {
+    fs::FS fs(g_tempRoot);
+    storageManager.setFilesystem(&fs, true);
+    TEST_ASSERT_TRUE(v1ProfileManager.begin(&fs));
+
+    SettingsManager manager;
+    V1Settings& settings = manager.mutableSettings();
+    settings.apSSID = "PayloadTest";
+    settings.brightness = 77;
+    settings.proxyBLE = false;
+
+    V1Profile profile("Road");
+    profile.description = "Serialized";
+    ProfileSaveResult saveResult = v1ProfileManager.saveProfile(profile);
+    TEST_ASSERT_TRUE(saveResult.success);
+
+    JsonDocument expectedDoc;
+    const BackupPayloadBuilder::BuildResult buildResult =
+        BackupPayloadBuilder::buildBackupDocument(expectedDoc,
+                                                  settings,
+                                                  v1ProfileManager,
+                                                  BackupPayloadBuilder::BackupTransport::SdBackup,
+                                                  4321);
+
+    SerializedSettingsBackupPayload payload;
+    TEST_ASSERT_TRUE(buildSerializedSdBackupPayload(payload, settings, v1ProfileManager, 4321));
+    TEST_ASSERT_EQUAL_UINT32(4321u, payload.snapshotMs);
+    TEST_ASSERT_EQUAL_INT(buildResult.profilesBackedUp, payload.profilesBackedUp);
+    TEST_ASSERT_NOT_NULL(payload.data);
+    TEST_ASSERT_TRUE(payload.length > 0);
+
+    std::string expected;
+    serializeJson(expectedDoc, expected);
+    TEST_ASSERT_EQUAL_UINT(expected.size(), payload.length);
+    TEST_ASSERT_EQUAL_MEMORY(expected.data(), payload.data, payload.length);
+
+    TEST_ASSERT_TRUE(writeBackupAtomically(&fs, payload));
+    TEST_ASSERT_EQUAL_STRING(expected.c_str(), readFileToString(fs, SETTINGS_BACKUP_PATH).c_str());
+
+    releaseSerializedSettingsBackupPayload(payload);
+    TEST_ASSERT_NULL(payload.data);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_save_load_and_backup_round_trip_current_shape_fields);
+    RUN_TEST(test_serialized_backup_payload_matches_builder_and_writes_same_json);
     return UNITY_END();
 }

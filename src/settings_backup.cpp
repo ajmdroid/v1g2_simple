@@ -5,7 +5,95 @@
 #include "settings_internals.h"
 #include "backup_payload_builder.h"
 
+#include <esp_heap_caps.h>
+
 // --- Backup file static helpers ---
+
+namespace {
+
+constexpr size_t SETTINGS_BACKUP_PAYLOAD_GROWTH_QUANTUM = 256u;
+
+size_t roundUpSettingsBackupPayloadCapacity(size_t required) {
+    return ((required + SETTINGS_BACKUP_PAYLOAD_GROWTH_QUANTUM - 1u) /
+            SETTINGS_BACKUP_PAYLOAD_GROWTH_QUANTUM) *
+           SETTINGS_BACKUP_PAYLOAD_GROWTH_QUANTUM;
+}
+
+bool writeSerializedBackupAtomically(fs::FS* fs, const char* data, size_t length) {
+    if (!fs || !data || length == 0) {
+        return false;
+    }
+
+    if (fs->exists(SETTINGS_BACKUP_TMP_PATH)) {
+        fs->remove(SETTINGS_BACKUP_TMP_PATH);
+    }
+
+    File tmp = fs->open(SETTINGS_BACKUP_TMP_PATH, FILE_WRITE);
+    if (!tmp) {
+        Serial.println("[Settings] Failed to create temp SD backup file");
+        return false;
+    }
+
+    const size_t written = tmp.write(reinterpret_cast<const uint8_t*>(data), length);
+    tmp.flush();
+    tmp.close();
+
+    if (written != length) {
+        Serial.println("[Settings] Failed to write temp SD backup");
+        fs->remove(SETTINGS_BACKUP_TMP_PATH);
+        return false;
+    }
+
+    JsonDocument verifyTmp;
+    if (!parseBackupFile(fs, SETTINGS_BACKUP_TMP_PATH, verifyTmp, true)) {
+        Serial.println("[Settings] Temp SD backup failed validation");
+        fs->remove(SETTINGS_BACKUP_TMP_PATH);
+        return false;
+    }
+
+    if (fs->exists(SETTINGS_BACKUP_PREV_PATH)) {
+        fs->remove(SETTINGS_BACKUP_PREV_PATH);
+    }
+
+    bool rotatedPrimary = false;
+    if (fs->exists(SETTINGS_BACKUP_PATH)) {
+        if (fs->rename(SETTINGS_BACKUP_PATH, SETTINGS_BACKUP_PREV_PATH)) {
+            rotatedPrimary = true;
+        } else {
+            Serial.println("[Settings] ERROR: Failed to rotate primary backup; keeping existing file");
+            fs->remove(SETTINGS_BACKUP_TMP_PATH);
+            return false;
+        }
+    }
+
+    if (!fs->rename(SETTINGS_BACKUP_TMP_PATH, SETTINGS_BACKUP_PATH)) {
+        Serial.println("[Settings] ERROR: Failed to promote temp backup to primary");
+        fs->remove(SETTINGS_BACKUP_TMP_PATH);
+
+        if (rotatedPrimary && fs->exists(SETTINGS_BACKUP_PREV_PATH) && !fs->exists(SETTINGS_BACKUP_PATH)) {
+            if (!fs->rename(SETTINGS_BACKUP_PREV_PATH, SETTINGS_BACKUP_PATH)) {
+                Serial.println("[Settings] CRITICAL: Failed to rollback previous backup");
+            }
+        }
+        return false;
+    }
+
+    JsonDocument verifyPrimary;
+    if (!parseBackupFile(fs, SETTINGS_BACKUP_PATH, verifyPrimary, true)) {
+        Serial.println("[Settings] ERROR: Promoted backup failed validation");
+        fs->remove(SETTINGS_BACKUP_PATH);
+        if (fs->exists(SETTINGS_BACKUP_PREV_PATH) && !fs->exists(SETTINGS_BACKUP_PATH)) {
+            if (!fs->rename(SETTINGS_BACKUP_PREV_PATH, SETTINGS_BACKUP_PATH)) {
+                Serial.println("[Settings] CRITICAL: Failed to restore previous backup after validation failure");
+            }
+        }
+        return false;
+    }
+
+    return true;
+}
+
+}  // namespace
 
 bool isSupportedBackupType(const JsonDocument& doc) {
     if (!doc["_type"].is<const char*>()) {
@@ -105,75 +193,90 @@ bool writeBackupAtomically(fs::FS* fs, const JsonDocument& doc) {
         return false;
     }
 
-    if (fs->exists(SETTINGS_BACKUP_TMP_PATH)) {
-        fs->remove(SETTINGS_BACKUP_TMP_PATH);
-    }
-
-    File tmp = fs->open(SETTINGS_BACKUP_TMP_PATH, FILE_WRITE);
-    if (!tmp) {
-        Serial.println("[Settings] Failed to create temp SD backup file");
+    const size_t required = measureJson(doc) + 1u;
+    char* jsonData = static_cast<char*>(malloc(required));
+    if (!jsonData) {
+        Serial.println("[Settings] Failed to allocate temp serialization buffer");
         return false;
     }
 
-    const size_t written = serializeJson(doc, tmp);
-    tmp.flush();
-    tmp.close();
+    const size_t length = serializeJson(doc, jsonData, required);
+    if (length == 0 || length >= required) {
+        free(jsonData);
+        Serial.println("[Settings] Failed to serialize SD backup");
+        return false;
+    }
+    jsonData[length] = '\0';
 
-    if (written == 0) {
-        Serial.println("[Settings] Failed to write temp SD backup");
-        fs->remove(SETTINGS_BACKUP_TMP_PATH);
+    const bool ok = writeSerializedBackupAtomically(fs, jsonData, length);
+    free(jsonData);
+    return ok;
+}
+
+bool buildSerializedSdBackupPayload(SerializedSettingsBackupPayload& payload,
+                                    const V1Settings& settings,
+                                    const V1ProfileManager& profileManager,
+                                    uint32_t snapshotMs) {
+    releaseSerializedSettingsBackupPayload(payload);
+
+    JsonDocument doc;
+    const BackupPayloadBuilder::BuildResult buildResult =
+        BackupPayloadBuilder::buildBackupDocument(
+            doc,
+            settings,
+            profileManager,
+            BackupPayloadBuilder::BackupTransport::SdBackup,
+            snapshotMs);
+
+    const size_t required = measureJson(doc) + 1u;
+    const size_t capacity = roundUpSettingsBackupPayloadCapacity(required);
+    char* data = static_cast<char*>(
+        heap_caps_malloc(capacity, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
+    bool inPsram = true;
+
+    if (data == nullptr) {
+        data = static_cast<char*>(
+            heap_caps_malloc(capacity, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL));
+        inPsram = false;
+    }
+
+    if (data == nullptr) {
+        Serial.printf("[Settings] Failed to allocate serialized backup buffer (%lu bytes)\n",
+                      static_cast<unsigned long>(capacity));
         return false;
     }
 
-    // Parse-check temp backup before promotion.
-    JsonDocument verifyTmp;
-    if (!parseBackupFile(fs, SETTINGS_BACKUP_TMP_PATH, verifyTmp, true)) {
-        Serial.println("[Settings] Temp SD backup failed validation");
-        fs->remove(SETTINGS_BACKUP_TMP_PATH);
+    const size_t length = serializeJson(doc, data, capacity);
+    if (length == 0 || length >= capacity) {
+        heap_caps_free(data);
+        Serial.println("[Settings] Failed to serialize SD backup payload");
         return false;
     }
+    data[length] = '\0';
 
-    if (fs->exists(SETTINGS_BACKUP_PREV_PATH)) {
-        fs->remove(SETTINGS_BACKUP_PREV_PATH);
-    }
-
-    bool rotatedPrimary = false;
-    if (fs->exists(SETTINGS_BACKUP_PATH)) {
-        if (fs->rename(SETTINGS_BACKUP_PATH, SETTINGS_BACKUP_PREV_PATH)) {
-            rotatedPrimary = true;
-        } else {
-            Serial.println("[Settings] ERROR: Failed to rotate primary backup; keeping existing file");
-            fs->remove(SETTINGS_BACKUP_TMP_PATH);
-            return false;
-        }
-    }
-
-    if (!fs->rename(SETTINGS_BACKUP_TMP_PATH, SETTINGS_BACKUP_PATH)) {
-        Serial.println("[Settings] ERROR: Failed to promote temp backup to primary");
-        fs->remove(SETTINGS_BACKUP_TMP_PATH);
-
-        if (rotatedPrimary && fs->exists(SETTINGS_BACKUP_PREV_PATH) && !fs->exists(SETTINGS_BACKUP_PATH)) {
-            if (!fs->rename(SETTINGS_BACKUP_PREV_PATH, SETTINGS_BACKUP_PATH)) {
-                Serial.println("[Settings] CRITICAL: Failed to rollback previous backup");
-            }
-        }
-        return false;
-    }
-
-    // Final parse-check on promoted backup.
-    JsonDocument verifyPrimary;
-    if (!parseBackupFile(fs, SETTINGS_BACKUP_PATH, verifyPrimary, true)) {
-        Serial.println("[Settings] ERROR: Promoted backup failed validation");
-        fs->remove(SETTINGS_BACKUP_PATH);
-        if (fs->exists(SETTINGS_BACKUP_PREV_PATH) && !fs->exists(SETTINGS_BACKUP_PATH)) {
-            if (!fs->rename(SETTINGS_BACKUP_PREV_PATH, SETTINGS_BACKUP_PATH)) {
-                Serial.println("[Settings] CRITICAL: Failed to restore previous backup after validation failure");
-            }
-        }
-        return false;
-    }
-
+    payload.data = data;
+    payload.capacity = capacity;
+    payload.length = length;
+    payload.inPsram = inPsram;
+    payload.snapshotMs = snapshotMs;
+    payload.profilesBackedUp = buildResult.profilesBackedUp;
     return true;
+}
+
+void releaseSerializedSettingsBackupPayload(SerializedSettingsBackupPayload& payload) {
+    if (payload.data != nullptr) {
+        heap_caps_free(payload.data);
+    }
+    payload.data = nullptr;
+    payload.capacity = 0;
+    payload.length = 0;
+    payload.inPsram = false;
+    payload.snapshotMs = 0;
+    payload.profilesBackedUp = 0;
+}
+
+bool writeBackupAtomically(fs::FS* fs, const SerializedSettingsBackupPayload& payload) {
+    return writeSerializedBackupAtomically(fs, payload.data, payload.length);
 }
 
 // --- Member methods: SD backup write path ---
@@ -199,23 +302,23 @@ bool SettingsManager::backupToSD() {
     
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return false;
-    
-    JsonDocument doc;
-    const BackupPayloadBuilder::BuildResult buildResult =
-        BackupPayloadBuilder::buildBackupDocument(
-            doc,
-            settings,
-            v1ProfileManager,
-            BackupPayloadBuilder::BackupTransport::SdBackup,
-            millis());
-    
-    if (!writeBackupAtomically(fs, doc)) {
+
+    SerializedSettingsBackupPayload payload;
+    if (!buildSerializedSdBackupPayload(payload, settings, v1ProfileManager, millis())) {
+        return false;
+    }
+
+    const bool ok = writeBackupAtomically(fs, payload);
+    const int profilesBackedUp = payload.profilesBackedUp;
+    releaseSerializedSettingsBackupPayload(payload);
+
+    if (!ok) {
         Serial.println("[Settings] ERROR: Failed to commit SD backup atomically");
         return false;
     }
-    
+
     Serial.printf("[Settings] Full backup saved to SD card (%d profiles)\n",
-                  buildResult.profilesBackedUp);
+                  profilesBackedUp);
     Serial.printf("[Settings] Backed up: slot0Mode=%d, slot1Mode=%d, slot2Mode=%d\n",
                   settings.slot0_default.mode, settings.slot1_highway.mode, settings.slot2_comfort.mode);
     return true;
