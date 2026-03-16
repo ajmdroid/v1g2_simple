@@ -11,14 +11,16 @@
 
 	let {
 		timeStatus,
-		clientNowMs,
-		onsync
+		clientNowMs
 	} = $props();
 </script>
 
 <div class="surface-card">
 	<div class="card-body space-y-3">
-		<CardSectionHead title="Device Time" subtitle="Manual phone sync only. No background NTP." />
+		<CardSectionHead
+			title="Device Time"
+			subtitle="Read-only runtime clock snapshot. Time is sourced by device services, not the browser."
+		/>
 		<div class="copy-subtle space-y-1">
 			<div><strong>timeValid:</strong> {timeStatus.valid ? 1 : 0}</div>
 			<div><strong>timeSource:</strong> {timeStatus.source} ({getTimeSourceLabel(timeStatus.source)})</div>
@@ -32,11 +34,5 @@
 				<div class="copy-warning"><strong>status:</strong> time not set</div>
 			{/if}
 		</div>
-		<button class="btn btn-primary btn-sm w-fit" onclick={onsync} disabled={timeStatus.syncing}>
-			{#if timeStatus.syncing}
-				<span class="loading loading-spinner loading-sm"></span>
-			{/if}
-			Sync Time from Phone
-		</button>
 	</div>
 </div>

@@ -84,19 +84,6 @@ Health check endpoint.
 
 ## System Utilities
 
-### POST /api/time/set
-
-**Currently disabled** — always returns HTTP 409. GPS provides the authoritative time source.
-
-**Response (409):**
-```json
-{
-  "ok": false,
-  "success": false,
-  "error": "Time set disabled; GPS is authoritative"
-}
-```
-
 ### POST /api/profile/push
 
 Queue profile push to connected V1 using active slot/profile state.

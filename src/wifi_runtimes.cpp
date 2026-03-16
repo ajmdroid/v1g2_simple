@@ -20,7 +20,6 @@
 #include "modules/wifi/wifi_display_colors_api_service.h"
 #include "modules/wifi/wifi_settings_api_service.h"
 #include "modules/wifi/wifi_status_api_service.h"
-#include "modules/wifi/wifi_time_api_service.h"
 #include "modules/wifi/wifi_client_api_service.h"
 #include "modules/wifi/wifi_v1_profile_api_service.h"
 #include "modules/wifi/wifi_v1_devices_api_service.h"
@@ -148,21 +147,6 @@ WifiAudioApiService::Runtime WiFiManager::makeAudioRuntime() {
         [this]() {
             settingsManager.saveDeferredBackup();
         },
-    };
-}
-
-WifiTimeApiService::TimeRuntime WiFiManager::makeTimeRuntime() {
-    return WifiTimeApiService::TimeRuntime{
-        [this]() { return timeService.timeValid(); },
-        [this]() { return timeService.nowEpochMsOr0(); },
-        [this]() { return timeService.tzOffsetMinutes(); },
-        [this]() { return timeService.timeSource(); },
-        [this](int64_t epochMs, int32_t tzOffsetMin, uint8_t source) {
-            timeService.setEpochBaseMs(epochMs, tzOffsetMin, static_cast<TimeService::Source>(source));
-        },
-        [this]() { return timeService.timeConfidence(); },
-        [this]() { return timeService.nowMonoMs(); },
-        [this]() { return timeService.epochAgeMsOr0(); },
     };
 }
 

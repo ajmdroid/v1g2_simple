@@ -54,7 +54,6 @@ LOCAL_HANDLER_ROUTE_KEYS: Tuple[str, ...] = (
     "HTTP_GET /api/settings",
     "HTTP_POST /api/settings",
     "HTTP_POST /api/profile/push",
-    "HTTP_POST /api/time/set",
     "HTTP_GET /api/v1/profiles",
     "HTTP_GET /api/v1/profile",
     "HTTP_POST /api/v1/profile",

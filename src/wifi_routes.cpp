@@ -23,7 +23,6 @@
 #include "modules/wifi/wifi_portal_api_service.h"
 #include "modules/wifi/wifi_settings_api_service.h"
 #include "modules/wifi/wifi_status_api_service.h"
-#include "modules/wifi/wifi_time_api_service.h"
 #include "modules/wifi/wifi_autopush_api_service.h"
 #include "modules/wifi/wifi_v1_profile_api_service.h"
 #include "modules/wifi/wifi_v1_devices_api_service.h"
@@ -33,7 +32,6 @@
 #include "modules/speed/speed_source_selector.h"
 #include "modules/obd/obd_api_service.h"
 #include "modules/obd/obd_runtime_module.h"
-#include "time_service.h"
 #include "battery_manager.h"
 #include <LittleFS.h>
 
@@ -100,9 +98,6 @@ void WiFiManager::setupWebServer() {
     
     auto rateLimitCallback = [this]() { return checkRateLimit(); };
     auto markUiActivityCallback = [this]() { markUiActivity(); };
-    auto invalidateStatusCacheCallback = [this]() {
-        WifiStatusApiService::invalidateStatusJsonCache(cachedStatusJson, lastStatusJsonTime);
-    };
     // New API endpoints (PHASE A)
     server.on("/api/status", HTTP_GET, [this, rateLimitCallback]() {
         WifiStatusApiService::handleApiStatus(
@@ -120,14 +115,6 @@ void WiFiManager::setupWebServer() {
             bleClient.isConnected(),
             requestProfilePush,
             rateLimitCallback); 
-    });
-    server.on("/api/time/set", HTTP_POST, [this, rateLimitCallback, invalidateStatusCacheCallback]() {
-        WifiTimeApiService::handleApiTimeSet(
-            server,
-            makeTimeRuntime(),
-            TimeService::SOURCE_CLIENT_AP,
-            invalidateStatusCacheCallback,
-            rateLimitCallback);
     });
     
     // Legacy status endpoint

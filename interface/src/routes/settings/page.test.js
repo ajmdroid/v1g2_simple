@@ -215,9 +215,8 @@ describe('settings route page', () => {
 		unmount();
 	});
 
-	it('syncs time from the phone and refreshes the shared runtime status', async () => {
-		let synced = false;
-		const fetchMock = installFetchMock(
+	it('shows the runtime time snapshot without manual sync controls', async () => {
+		installFetchMock(
 			[
 				{ method: 'GET', match: '/api/settings', respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true }) },
 				{
@@ -228,82 +227,27 @@ describe('settings route page', () => {
 				{
 					method: 'GET',
 					match: '/api/status',
-					respond: () =>
-						jsonResponse(
-							synced
-								? {
-										time: {
-											valid: true,
-											source: 3,
-											confidence: 2,
-											epochMs: 1710000000000,
-											tzOffsetMin: -240,
-											ageMs: 0
-										}
-									}
-								: { time: { valid: false } }
-						)
-				},
-				{
-					method: 'POST',
-					match: '/api/time/set',
-					respond: () => {
-						synced = true;
-						return jsonResponse({
-							ok: true,
-							timeValid: true,
-							timeSource: 3,
-							timeConfidence: 2,
+					respond: jsonResponse({
+						time: {
+							valid: true,
+							source: 2,
+							confidence: 2,
 							epochMs: 1710000000000,
 							tzOffsetMin: -240,
 							ageMs: 0
-						});
-					}
-				},
-				{ method: 'POST', match: '/api/settings', respond: jsonResponse({ success: true }) },
-				{ method: 'POST', match: '/api/wifi/scan', respond: jsonResponse({ scanning: false, networks: [] }) }
+						}
+					})
+				}
 			],
 			jsonResponse({})
 		);
 		const { unmount } = render(Page);
 
-		await fireEvent.click(await screen.findByRole('button', { name: /sync time from phone/i }));
+		await screen.findByText('Device Time');
+		await screen.findByText('Read-only runtime clock snapshot. Time is sourced by device services, not the browser.');
+		expect(screen.queryByRole('button', { name: /sync time from phone/i })).toBeNull();
+		await screen.findByText(/2024-03-09 12:00:00 \(UTC-04:00\)/i);
 
-		await screen.findByText('Time synced from phone.');
-		await waitFor(() => {
-			expect(countCalls(fetchMock, '/api/status')).toBeGreaterThanOrEqual(2);
-		});
-		await waitFor(() => {
-			expect(screen.queryByText(/time not set/i)).toBeNull();
-		});
-		expect(
-			fetchMock.mock.calls.some(([url, init]) => url === '/api/time/set' && init?.method === 'POST')
-		).toBe(true);
-
-		unmount();
-	});
-
-	it('shows an error when time sync fails', async () => {
-		installFetchMock(
-			[
-				{ method: 'GET', match: '/api/settings', respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true }) },
-				{
-					method: 'GET',
-					match: '/api/wifi/status',
-					respond: jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' })
-				},
-				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) },
-				{ method: 'POST', match: '/api/time/set', respond: jsonResponse({ error: 'bad time' }, 500) },
-				{ method: 'POST', match: '/api/settings', respond: jsonResponse({ success: true }) },
-				{ method: 'POST', match: '/api/wifi/scan', respond: jsonResponse({ scanning: false, networks: [] }) }
-			],
-			jsonResponse({})
-		);
-		const { unmount } = render(Page);
-
-		await fireEvent.click(await screen.findByRole('button', { name: /sync time from phone/i }));
-
-		await screen.findByText('bad time');
 		unmount();
 	});
 });

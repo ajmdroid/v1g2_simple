@@ -12,8 +12,6 @@
 	const DEFAULT_PASSWORD_DISMISSED_KEY = 'passwordWarningDismissed';
 	const DEFAULT_PASSWORD_DISMISSED_PERSIST_KEY = 'v1simple:passwordWarningDismissedPersist';
 	const PASSWORD_WARNING_EVENT = 'v1simple-password-warning-dismissed-change';
-	const TIME_SYNC_CACHE_KEY = 'v1simple:lastTimeSyncMs';
-	const TIME_SYNC_MIN_INTERVAL_MS = 10 * 60 * 1000;
 	const navLinks = [
 		{ href: '/', label: 'Dashboard' },
 		{ href: '/autopush', label: 'Auto-Push' },
@@ -35,28 +33,6 @@
 		setTimeout(callback, fallbackDelayMs);
 	}
 
-	function scheduleClientTimeSync() {
-		const now = Date.now();
-		const lastSyncMs = Number(sessionStorage.getItem(TIME_SYNC_CACHE_KEY) || '0');
-		if (Number.isFinite(lastSyncMs) && lastSyncMs > 0 && now - lastSyncMs < TIME_SYNC_MIN_INTERVAL_MS) {
-			return;
-		}
-		sessionStorage.setItem(TIME_SYNC_CACHE_KEY, String(now));
-		runWhenIdle(() => {
-			fetchWithTimeout('/api/time/set', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					unixMs: Date.now(),
-					tzOffsetMin: new Date().getTimezoneOffset() * -1,
-					source: 'client'
-				})
-			}).catch((error) => {
-				console.warn('Failed to sync client time', error);
-			});
-		}, 300);
-	}
-
 	async function refreshDefaultPasswordWarning() {
 		try {
 			const res = await fetchWithTimeout('/api/settings');
@@ -72,8 +48,6 @@
 	
 	// Check if using default password on mount
 	onMount(() => {
-		scheduleClientTimeSync();
-
 		const handlePasswordWarningPreferenceChange = (event) => {
 			const dismissed = event?.detail?.dismissed === true;
 			warningDismissed = dismissed;

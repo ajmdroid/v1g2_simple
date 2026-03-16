@@ -10,7 +10,6 @@
 	import SettingsTimeCard from '$lib/features/settings/SettingsTimeCard.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	import {
-		fetchRuntimeStatus,
 		retainRuntimeStatus,
 		runtimeStatus
 	} from '$lib/stores/runtimeStatus.svelte.js';
@@ -66,13 +65,11 @@
 		epochMs: 0,
 		tzOffsetMin: 0,
 		ageMs: 0,
-		sampleClientMs: 0,
-		syncing: false
+		sampleClientMs: 0
 	});
 
 	function applyTimeStatus(snapshot, sampleClientMs = Date.now()) {
 		const t = snapshot || {};
-		const syncing = timeStatus.syncing;
 		timeStatus.valid = !!t.valid;
 		timeStatus.source = Number(t.source || 0);
 		timeStatus.confidence = Number(t.confidence || 0);
@@ -80,7 +77,6 @@
 		timeStatus.tzOffsetMin = Number(t.tzOffsetMin ?? t.tzOffsetMinutes ?? 0);
 		timeStatus.ageMs = Number(t.ageMs || 0);
 		timeStatus.sampleClientMs = timeStatus.valid ? sampleClientMs : 0;
-		timeStatus.syncing = syncing;
 	}
 
 	onMount(async () => {
@@ -145,40 +141,6 @@
 		}
 	}
 
-	async function syncTimeFromPhone() {
-		timeStatus.syncing = true;
-		try {
-			const res = await fetchWithTimeout('/api/time/set', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					unixMs: Date.now(),
-					tzOffsetMin: new Date().getTimezoneOffset() * -1,
-					source: 'client'
-				})
-			});
-			const data = await res.json().catch(() => ({}));
-			if (res.ok && (data.ok || data.success)) {
-				const now = Date.now();
-				timeStatus.valid = !!data.timeValid;
-				timeStatus.source = Number(data.timeSource || 0);
-				timeStatus.confidence = Number(data.timeConfidence || 0);
-				timeStatus.epochMs = Number(data.epochMs || 0);
-				timeStatus.tzOffsetMin = Number(data.tzOffsetMin ?? data.tzOffsetMinutes ?? 0);
-				timeStatus.ageMs = Number(data.ageMs ?? data.epochAgeMs ?? 0);
-				timeStatus.sampleClientMs = timeStatus.valid ? now : 0;
-				message = { type: 'success', text: 'Time synced from phone.' };
-			} else {
-				message = { type: 'error', text: data.error || 'Failed to sync time' };
-			}
-		} catch (e) {
-			message = { type: 'error', text: 'Failed to sync time' };
-		} finally {
-			timeStatus.syncing = false;
-			await fetchRuntimeStatus();
-		}
-	}
-	
 	async function startWifiScan() {
 		wifiScanning = true;
 		wifiNetworks = [];
@@ -526,7 +488,6 @@
 		<SettingsTimeCard
 			{timeStatus}
 			{clientNowMs}
-			onsync={syncTimeFromPhone}
 		/>
 		
 		<!-- WiFi Client (Connect to Network) -->
