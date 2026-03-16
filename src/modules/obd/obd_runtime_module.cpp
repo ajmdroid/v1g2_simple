@@ -1032,6 +1032,9 @@ bool ObdRuntimeModule::sendNextPollingCommand(uint32_t nowMs) {
 
 void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
     if (bleDisconnected_) {
+#ifndef UNIT_TEST
+        Serial.printf("[OBD] lost connection during AT init (ble reason=%d)\n", bleDisconnectReason_);
+#endif
         bleDisconnected_ = false;
         transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
         return;
@@ -1086,6 +1089,9 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
 
 void ObdRuntimeModule::updatePolling(uint32_t nowMs) {
     if (bleDisconnected_) {
+#ifndef UNIT_TEST
+        Serial.printf("[OBD] lost connection during polling (ble reason=%d)\n", bleDisconnectReason_);
+#endif
         bleDisconnected_ = false;
         clearSpeedState();
         clearBleResponseState();
@@ -1223,6 +1229,9 @@ void ObdRuntimeModule::update(uint32_t nowMs,
 
         case ObdConnectionState::DISCOVERING:
             if (bleDisconnected_) {
+#ifndef UNIT_TEST
+                Serial.printf("[OBD] lost connection during discovery (ble reason=%d)\n", bleDisconnectReason_);
+#endif
                 bleDisconnected_ = false;
                 transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
                 break;
