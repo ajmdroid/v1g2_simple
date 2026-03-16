@@ -7,7 +7,28 @@
 
 class WebServer {
 public:
-    explicit WebServer(int /*port*/ = 80) {}
+    class MockClient {
+    public:
+        explicit MockClient(WebServer* server = nullptr) : server_(server) {}
+
+        bool connected() const { return connected_; }
+
+        void setConnected(bool connected) { connected_ = connected; }
+
+        size_t write(const uint8_t* data, size_t length) {
+            if (!server_ || !data || length == 0) {
+                return 0;
+            }
+            server_->lastBody.write(data, length);
+            return length;
+        }
+
+    private:
+        WebServer* server_ = nullptr;
+        bool connected_ = true;
+    };
+
+    explicit WebServer(int /*port*/ = 80) : client_(this) {}
 
     bool hasArg(const String& name) const {
         return args_.find(name.c_str()) != args_.end();
@@ -55,6 +76,13 @@ public:
         responseHeaders_[name.c_str()] = value.c_str();
     }
 
+    void setContentLength(size_t length) {
+        lastContentLength = length;
+    }
+
+    MockClient& client() { return client_; }
+    const MockClient& client() const { return client_; }
+
     String sentHeader(const String& name) const {
         auto it = responseHeaders_.find(name.c_str());
         if (it == responseHeaders_.end()) {
@@ -77,10 +105,12 @@ public:
     int lastStatusCode = 0;
     String lastContentType;
     String lastBody;
+    size_t lastContentLength = 0;
     int sendCount = 0;
 
 private:
     std::unordered_map<std::string, std::string> args_;
     std::unordered_map<std::string, std::string> requestHeaders_;
     std::unordered_map<std::string, std::string> responseHeaders_;
+    MockClient client_;
 };

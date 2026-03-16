@@ -39,6 +39,7 @@ public:
 
     char operator[](size_t index) const { return data_[index]; }
     char& operator[](size_t index) { return data_[index]; }
+    char charAt(size_t index) const { return index < data_.size() ? data_[index] : '\0'; }
 
     String& operator+=(const String& other) { data_ += other.data_; return *this; }
     String& operator+=(const char* s) { if(s) data_ += s; return *this; }
@@ -51,6 +52,10 @@ public:
     bool operator==(const char* s) const { return data_ == (s ? s : ""); }
     bool operator!=(const String& other) const { return data_ != other.data_; }
     bool operator!=(const char* s) const { return !(*this == s); }
+    bool operator<(const String& other) const { return data_ < other.data_; }
+    bool operator>(const String& other) const { return data_ > other.data_; }
+    bool operator<=(const String& other) const { return data_ <= other.data_; }
+    bool operator>=(const String& other) const { return data_ >= other.data_; }
 
     void toLowerCase() {
         std::transform(data_.begin(),
@@ -83,6 +88,17 @@ public:
 
     int lastIndexOf(char needle) const {
         const std::size_t pos = data_.find_last_of(needle);
+        return pos == std::string::npos ? -1 : static_cast<int>(pos);
+    }
+
+    int indexOf(char needle) const {
+        const std::size_t pos = data_.find(needle);
+        return pos == std::string::npos ? -1 : static_cast<int>(pos);
+    }
+
+    int indexOf(const char* needle) const {
+        const std::string query = needle ? needle : "";
+        const std::size_t pos = data_.find(query);
         return pos == std::string::npos ? -1 : static_cast<int>(pos);
     }
 
@@ -218,6 +234,7 @@ inline unsigned long millis() { return mockMillis; }
 inline unsigned long micros() { return mockMicros; }
 inline void delay(unsigned long) {}
 inline void delayMicroseconds(unsigned int) {}
+inline void yield() {}
 
 // GPIO stubs
 #define INPUT 0

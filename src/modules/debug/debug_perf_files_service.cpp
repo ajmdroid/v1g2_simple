@@ -170,7 +170,7 @@ void sendPerfFilesList(WebServer& server) {
     }
 
     if (!isPerfFileCacheFresh()) {
-        StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
+        StorageManager::SDTryLock lock(storageManager.getSDMutex());
         if (!lock) {
             doc["success"] = false;
             doc["error"] = lock.isDmaStarved() ? "Low DMA heap; perf file listing deferred" : "SD busy";
@@ -268,7 +268,13 @@ void handlePerfFileDownload(WebServer& server) {
         return;
     }
 
-    StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
+    if (perfSdLogger.isEnabled()) {
+        server.send(503, "application/json",
+                    "{\"success\":false,\"error\":\"Perf logging active; download unavailable\"}");
+        return;
+    }
+
+    StorageManager::SDTryLock lock(storageManager.getSDMutex());
     if (!lock) {
         if (lock.isDmaStarved()) {
             server.send(503, "application/json", "{\"success\":false,\"error\":\"Low DMA heap; try again\"}");
@@ -290,14 +296,6 @@ void handlePerfFileDownload(WebServer& server) {
         return;
     }
 
-    size_t fileSize = f.size();
-    server.sendHeader("Content-Type", "text/csv");
-    String contentDisposition = String("attachment; filename=\"") + requestedName + "\"";
-    server.sendHeader("Content-Disposition", contentDisposition);
-    server.sendHeader("Cache-Control", "no-cache");
-    server.setContentLength(fileSize);
-    server.send(200, "text/csv", "");
-
     static constexpr size_t CHUNK_SIZE = 4096;
     // File-download buffer in PSRAM — saves 4 KiB internal .bss.
     // VFS reads use an internal bounce buffer; lwIP copies for TX.
@@ -313,9 +311,17 @@ void handlePerfFileDownload(WebServer& server) {
         return;
     }
 
+    size_t fileSize = f.size();
+    server.sendHeader("Content-Type", "text/csv");
+    String contentDisposition = String("attachment; filename=\"") + requestedName + "\"";
+    server.sendHeader("Content-Disposition", contentDisposition);
+    server.sendHeader("Cache-Control", "no-cache");
+    server.setContentLength(fileSize);
+    server.send(200, "text/csv", "");
+
     size_t totalSent = 0;
     while (f.available() && server.client().connected()) {
-        size_t toRead = min(CHUNK_SIZE, static_cast<size_t>(f.available()));
+        size_t toRead = std::min(CHUNK_SIZE, static_cast<size_t>(f.available()));
         size_t bytesRead = f.read(buffer, toRead);
         if (bytesRead > 0) {
             server.client().write(buffer, bytesRead);
@@ -348,7 +354,7 @@ void handlePerfFileDelete(WebServer& server) {
         return;
     }
 
-    StorageManager::SDLockBlocking lock(storageManager.getSDMutex());
+    StorageManager::SDTryLock lock(storageManager.getSDMutex());
     if (!lock) {
         if (lock.isDmaStarved()) {
             server.send(503, "application/json", "{\"success\":false,\"error\":\"Low DMA heap; try again\"}");
