@@ -16,12 +16,9 @@
 #include "../include/wifi_rate_limiter.h"
 #include "settings.h"
 #include "modules/wifi/backup_snapshot_cache.h"
+#include "modules/wifi/wifi_autopush_api_service.h"
 #include "modules/wifi/wifi_status_api_service.h"
 #include <functional>
-
-namespace WifiAutoPushApiService {
-struct Runtime;
-}
 
 namespace WifiDisplayColorsApiService {
 struct Runtime;
@@ -149,6 +146,13 @@ public:
     
     // Callback for push executor status (auto-push)
     void setPushStatusCallback(std::function<String()> callback) { getPushStatusJson = callback; }
+
+    // Callback for manual push-now requests routed through the shared executor.
+    void setPushNowCallback(
+        std::function<WifiAutoPushApiService::PushNowQueueResult(
+            const WifiAutoPushApiService::PushNowRequest&)> callback) {
+        queuePushNow = callback;
+    }
     
     // Callback for V1 connection state (used to defer WiFi client operations)
     void setV1ConnectedCallback(std::function<bool()> callback) { isV1Connected = callback; }
@@ -259,38 +263,15 @@ private:
     std::function<bool()> requestProfilePush;
     std::function<fs::FS*()> getFilesystem;
     std::function<String()> getPushStatusJson;
+    std::function<WifiAutoPushApiService::PushNowQueueResult(
+        const WifiAutoPushApiService::PushNowRequest&)> queuePushNow;
     std::function<bool()> isV1Connected;  // Returns true when V1 is connected (defer WiFi ops until then)
-
-    enum class PushNowStep : uint8_t {
-        IDLE = 0,
-        WRITE_PROFILE,
-        SET_DISPLAY,
-        SET_MODE,
-        SET_VOLUME,
-    };
-
-    struct PushNowState {
-        PushNowStep step = PushNowStep::IDLE;
-        unsigned long nextAtMs = 0;
-        uint8_t retries = 0;
-        int slot = 0;
-        uint8_t profileBytes[6] = {0};
-        bool displayOn = true;
-        bool applyMode = false;
-        V1Mode mode = V1_MODE_UNKNOWN;
-        bool applyVolume = false;
-        uint8_t mainVol = 0xFF;
-        uint8_t muteVol = 0xFF;
-    } pushNowState;
-    static constexpr uint8_t PUSH_NOW_MAX_RETRIES = 8;
-    static constexpr unsigned long PUSH_NOW_RETRY_DELAY_MS = 30;
     
     // Setup functions
     void setupAP();
     void setupWebServer();
     void checkAutoTimeout();
     void processWifiClientConnectPhase();
-    void processPendingPushNow();
     void processStopSetupModePhase();
     void finalizeStopSetupMode();
     bool stopSetupModeImmediate(bool emergencyLowDma);

@@ -1,14 +1,11 @@
 /**
- * WiFi Client — STA connection, scan, reconnect, push-now state machine.
+ * WiFi Client — STA connection, scan, and reconnect lifecycle.
  * Extracted from wifi_manager.cpp for maintainability.
  */
 
 #include "wifi_manager_internals.h"
 #include "perf_metrics.h"
 #include "settings.h"
-#include "settings_sanitize.h"
-#include "v1_profiles.h"
-#include "display.h"
 #include <algorithm>
 #include <map>
 #include <vector>
@@ -201,88 +198,6 @@ void WiFiManager::processWifiClientConnectPhase() {
         case WifiConnectPhase::IDLE:
         default:
             break;
-    }
-}
-
-void WiFiManager::processPendingPushNow() {
-    if (pushNowState.step == PushNowStep::IDLE) {
-        return;
-    }
-
-    if (!bleClient.isConnected()) {
-        Serial.println("[PushNow] Aborted: V1 disconnected");
-        pushNowState.step = PushNowStep::IDLE;
-        return;
-    }
-
-    unsigned long now = millis();
-    if (now < pushNowState.nextAtMs) {
-        return;
-    }
-
-    auto scheduleRetry = [&](const char* op) {
-        if (pushNowState.retries < PUSH_NOW_MAX_RETRIES) {
-            pushNowState.retries++;
-            PERF_INC(pushNowRetries);
-            pushNowState.nextAtMs = now + PUSH_NOW_RETRY_DELAY_MS;
-            Serial.printf("[PushNow] %s deferred, retry %u/%u\n",
-                          op,
-                          static_cast<unsigned int>(pushNowState.retries),
-                          static_cast<unsigned int>(PUSH_NOW_MAX_RETRIES));
-            return;
-        }
-        Serial.printf("[PushNow] ERROR: %s failed after %u retries\n",
-                      op,
-                      static_cast<unsigned int>(PUSH_NOW_MAX_RETRIES));
-        PERF_INC(pushNowFailures);
-        pushNowState.step = PushNowStep::IDLE;
-    };
-
-    switch (pushNowState.step) {
-        case PushNowStep::WRITE_PROFILE:
-            if (bleClient.writeUserBytes(pushNowState.profileBytes)) {
-                bleClient.startUserBytesVerification(pushNowState.profileBytes);
-                bleClient.requestUserBytes();
-                pushNowState.step = PushNowStep::SET_DISPLAY;
-                pushNowState.retries = 0;
-                pushNowState.nextAtMs = now + PUSH_NOW_RETRY_DELAY_MS;
-                return;
-            }
-            scheduleRetry("writeUserBytes");
-            return;
-
-        case PushNowStep::SET_DISPLAY:
-            if (bleClient.setDisplayOn(pushNowState.displayOn)) {
-                pushNowState.step = PushNowStep::SET_MODE;
-                pushNowState.retries = 0;
-                pushNowState.nextAtMs = now + PUSH_NOW_RETRY_DELAY_MS;
-                return;
-            }
-            scheduleRetry("setDisplayOn");
-            return;
-
-        case PushNowStep::SET_MODE:
-            if (!pushNowState.applyMode || bleClient.setMode(static_cast<uint8_t>(pushNowState.mode))) {
-                pushNowState.step = PushNowStep::SET_VOLUME;
-                pushNowState.retries = 0;
-                pushNowState.nextAtMs = now + PUSH_NOW_RETRY_DELAY_MS;
-                return;
-            }
-            scheduleRetry("setMode");
-            return;
-
-        case PushNowStep::SET_VOLUME:
-            if (!pushNowState.applyVolume || bleClient.setVolume(pushNowState.mainVol, pushNowState.muteVol)) {
-                Serial.println("[PushNow] Complete");
-                pushNowState.step = PushNowStep::IDLE;
-                return;
-            }
-            scheduleRetry("setVolume");
-            return;
-
-        case PushNowStep::IDLE:
-        default:
-            return;
     }
 }
 

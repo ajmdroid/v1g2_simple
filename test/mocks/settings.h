@@ -55,6 +55,18 @@ enum FontStyle : uint8_t {
     FONT_STYLE_SERPENTINE = 3
 };
 
+enum V1Mode : uint8_t {
+    V1_MODE_UNKNOWN = 0x00,
+    V1_MODE_ALL_BOGEYS = 0x01,
+    V1_MODE_LOGIC = 0x02,
+    V1_MODE_ADVANCED_LOGIC = 0x03
+};
+
+struct AutoPushSlot {
+    String profileName;
+    V1Mode mode = V1_MODE_UNKNOWN;
+};
+
 // Mocked settings structure (superset of fields used in modules/tests)
 struct V1Settings {
     // Display
@@ -113,6 +125,7 @@ struct V1Settings {
     uint8_t gpsLockoutMinLearnerSpeedMph = 5;
     bool bleProxyEnabled = true;
     uint8_t activeSlot = 0;
+    bool autoPushEnabled = false;
 
 };
 
@@ -128,6 +141,11 @@ public:
     int backupToSDCalls = 0;
     int requestDeferredBackupCalls = 0;
     uint8_t slotAlertPersistSec[3] = {0, 0, 0};
+    AutoPushSlot slotConfigs[3];
+    uint8_t slotVolumes[3] = {0xFF, 0xFF, 0xFF};
+    uint8_t slotMuteVolumes[3] = {0xFF, 0xFF, 0xFF};
+    bool slotDarkModes[3] = {false, false, false};
+    bool slotMuteToZero[3] = {false, false, false};
     bool backupToSDResult = true;
     
     void load() {}
@@ -140,6 +158,43 @@ public:
     }
     void requestDeferredBackupFromCurrentState() { ++requestDeferredBackupCalls; }
     void setLastV1Address(const char*) {}
+    void setActiveSlot(int slot) { settings.activeSlot = static_cast<uint8_t>(slot); }
+    void setAutoPushEnabled(bool enabled) { settings.autoPushEnabled = enabled; }
+    void setSlot(int slotNum, const String& profile, V1Mode mode) {
+        if (slotNum < 0 || slotNum > 2) return;
+        slotConfigs[slotNum].profileName = profile;
+        slotConfigs[slotNum].mode = mode;
+    }
+    const AutoPushSlot& getSlot(int slotNum) const {
+        static AutoPushSlot fallback;
+        if (slotNum < 0 || slotNum > 2) return fallback;
+        return slotConfigs[slotNum];
+    }
+    uint8_t getSlotVolume(int slotNum) const {
+        return (slotNum >= 0 && slotNum < 3) ? slotVolumes[slotNum] : 0xFF;
+    }
+    uint8_t getSlotMuteVolume(int slotNum) const {
+        return (slotNum >= 0 && slotNum < 3) ? slotMuteVolumes[slotNum] : 0xFF;
+    }
+    bool getSlotDarkMode(int slotNum) const {
+        return (slotNum >= 0 && slotNum < 3) ? slotDarkModes[slotNum] : false;
+    }
+    bool getSlotMuteToZero(int slotNum) const {
+        return (slotNum >= 0 && slotNum < 3) ? slotMuteToZero[slotNum] : false;
+    }
+    void setSlotVolumes(int slotNum, uint8_t volume, uint8_t muteVolume) {
+        if (slotNum < 0 || slotNum > 2) return;
+        slotVolumes[slotNum] = volume;
+        slotMuteVolumes[slotNum] = muteVolume;
+    }
+    void setSlotDarkMode(int slotNum, bool darkMode) {
+        if (slotNum < 0 || slotNum > 2) return;
+        slotDarkModes[slotNum] = darkMode;
+    }
+    void setSlotMuteToZero(int slotNum, bool enabled) {
+        if (slotNum < 0 || slotNum > 2) return;
+        slotMuteToZero[slotNum] = enabled;
+    }
     
     const V1Settings& get() const { return settings; }
     V1Settings& getMutable() { return settings; }

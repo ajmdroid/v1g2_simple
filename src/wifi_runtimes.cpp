@@ -99,73 +99,10 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
             settingsManager.setAutoPushEnabled(enabled);
         },
         [this](const WifiAutoPushApiService::PushNowRequest& request) {
-            if (!bleClient.isConnected()) {
-                return WifiAutoPushApiService::PushNowQueueResult::V1_NOT_CONNECTED;
-            }
-
-            if (pushNowState.step != PushNowStep::IDLE) {
-                return WifiAutoPushApiService::PushNowQueueResult::ALREADY_IN_PROGRESS;
-            }
-
-            String profileName;
-            V1Mode mode = V1_MODE_UNKNOWN;
-
-            if (request.hasProfileOverride) {
-                profileName = sanitizeProfileNameValue(request.profileName);
-                if (request.hasModeOverride) {
-                    mode = normalizeV1ModeValue(request.mode);
-                }
-            } else {
-                const V1Settings& s = settingsManager.get();
-                const AutoPushSlot& pushSlot = s.autoPushSlotView(request.slot).config;
-
-                profileName = sanitizeProfileNameValue(pushSlot.profileName);
-                mode = normalizeV1ModeValue(static_cast<int>(pushSlot.mode));
-            }
-
-            if (profileName.length() == 0) {
-                return WifiAutoPushApiService::PushNowQueueResult::NO_PROFILE_CONFIGURED;
-            }
-
-            V1Profile profile;
-            if (!v1ProfileManager.loadProfile(profileName, profile)) {
+            if (!queuePushNow) {
                 return WifiAutoPushApiService::PushNowQueueResult::PROFILE_LOAD_FAILED;
             }
-
-            bool slotDarkMode = settingsManager.getSlotDarkMode(request.slot);
-            uint8_t mainVol = settingsManager.getSlotVolume(request.slot);
-            uint8_t muteVol = settingsManager.getSlotMuteVolume(request.slot);
-
-            Serial.printf("[PushNow] Slot %d volumes - main: %d, mute: %d\n",
-                          request.slot,
-                          mainVol,
-                          muteVol);
-
-            settingsManager.setActiveSlot(request.slot);
-            display.drawProfileIndicator(request.slot);
-
-            pushNowState.slot = request.slot;
-            memcpy(pushNowState.profileBytes,
-                   profile.settings.bytes,
-                   sizeof(pushNowState.profileBytes));
-            pushNowState.displayOn = !slotDarkMode;  // Dark mode=true => display off
-            pushNowState.applyMode = (mode != V1_MODE_UNKNOWN);
-            pushNowState.mode = mode;
-            pushNowState.applyVolume = (mainVol != 0xFF && muteVol != 0xFF);
-            pushNowState.mainVol = mainVol;
-            pushNowState.muteVol = muteVol;
-            pushNowState.retries = 0;
-            pushNowState.step = PushNowStep::WRITE_PROFILE;
-            pushNowState.nextAtMs = millis();
-
-            Serial.printf("[PushNow] Queued slot=%d profile='%s' mode=%d displayOn=%d volume=%s\n",
-                          request.slot,
-                          profileName.c_str(),
-                          static_cast<int>(mode),
-                          pushNowState.displayOn ? 1 : 0,
-                          pushNowState.applyVolume ? "set" : "skip");
-
-            return WifiAutoPushApiService::PushNowQueueResult::QUEUED;
+            return queuePushNow(request);
         },
     };
 }

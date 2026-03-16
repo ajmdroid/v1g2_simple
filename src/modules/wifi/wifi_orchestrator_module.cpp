@@ -1,5 +1,8 @@
 #include "wifi_orchestrator_module.h"
+
 #include <esp_heap_caps.h>
+
+#include "settings_sanitize.h"
 
 WifiOrchestrator::WifiOrchestrator(WiFiManager& wifiManager,
                                    V1BLEClient& bleClient,
@@ -120,6 +123,35 @@ void WifiOrchestrator::configureCallbacks() {
     // Auto-push executor status
     wifiManager.setPushStatusCallback([this]() {
         return autoPushModule.getStatusJson();
+    });
+
+    wifiManager.setPushNowCallback([this](const WifiAutoPushApiService::PushNowRequest& request) {
+        AutoPushModule::PushNowRequest pushRequest;
+        pushRequest.slotIndex = request.slot;
+        pushRequest.activateSlot = true;
+        pushRequest.hasProfileOverride = request.hasProfileOverride;
+        pushRequest.hasModeOverride = request.hasModeOverride;
+
+        if (request.hasProfileOverride) {
+            pushRequest.profileName = sanitizeProfileNameValue(request.profileName);
+        }
+        if (request.hasModeOverride) {
+            pushRequest.mode = normalizeV1ModeValue(request.mode);
+        }
+
+        switch (autoPushModule.queuePushNow(pushRequest)) {
+            case AutoPushModule::QueueResult::QUEUED:
+                return WifiAutoPushApiService::PushNowQueueResult::QUEUED;
+            case AutoPushModule::QueueResult::V1_NOT_CONNECTED:
+                return WifiAutoPushApiService::PushNowQueueResult::V1_NOT_CONNECTED;
+            case AutoPushModule::QueueResult::ALREADY_IN_PROGRESS:
+                return WifiAutoPushApiService::PushNowQueueResult::ALREADY_IN_PROGRESS;
+            case AutoPushModule::QueueResult::NO_PROFILE_CONFIGURED:
+                return WifiAutoPushApiService::PushNowQueueResult::NO_PROFILE_CONFIGURED;
+            case AutoPushModule::QueueResult::PROFILE_LOAD_FAILED:
+            default:
+                return WifiAutoPushApiService::PushNowQueueResult::PROFILE_LOAD_FAILED;
+        }
     });
 
     // V1 connection state (used to defer WiFi client operations until V1 is connected)

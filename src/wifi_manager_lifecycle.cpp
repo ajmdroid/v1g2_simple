@@ -700,7 +700,6 @@ void WiFiManager::process() {
         (now - lastMaintenanceFastMs) >= WIFI_MAINTENANCE_FAST_MS) {
         const uint32_t maintenanceStartUs = PERF_TIMESTAMP_US();
         processWifiClientConnectPhase();
-        processPendingPushNow();
         lastMaintenanceFastMs = now;
         PERF_MAX(wifiMaintenanceMaxUs, PERF_TIMESTAMP_US() - maintenanceStartUs);
     }

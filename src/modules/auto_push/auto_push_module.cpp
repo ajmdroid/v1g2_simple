@@ -1,17 +1,46 @@
 #include "auto_push_module.h"
+
 #include "perf_metrics.h"
 
 #define AUTO_PUSH_LOGF(...) do { } while (0)
 #define AUTO_PUSH_LOGLN(msg) do { } while (0)
 
+namespace {
+
+const char* slotNameForIndex(int slotIndex) {
+    static const char* kSlotNames[] = {"Default", "Highway", "Passenger Comfort"};
+    return kSlotNames[std::max(0, std::min(2, slotIndex))];
+}
+
+}  // namespace
+
 void AutoPushModule::begin(SettingsManager* settingsMgr,
-               V1ProfileManager* profileMgr,
-               V1BLEClient* ble,
-               V1Display* disp) {
+                           V1ProfileManager* profileMgr,
+                           V1BLEClient* ble,
+                           V1Display* disp) {
     settings = settingsMgr;
     profiles = profileMgr;
     bleClient = ble;
     display = disp;
+}
+
+void AutoPushModule::armState(int slotIndex,
+                              const AutoPushSlot& slot,
+                              bool profileLoaded,
+                              const V1Profile& profile,
+                              bool isPushNow) {
+    state = State{};
+    state.slotIndex = slotIndex;
+    state.slot = slot;
+    state.profile = profileLoaded ? profile : V1Profile{};
+    state.profileLoaded = profileLoaded;
+    state.step = Step::WaitReady;
+    state.nextStepAtMs = millis() + 100;
+    state.isPushNow = isPushNow;
+
+    if (display) {
+        display->drawProfileIndicator(slotIndex);
+    }
 }
 
 void AutoPushModule::start(int slotIndex) {
@@ -20,28 +49,57 @@ void AutoPushModule::start(int slotIndex) {
     }
     PERF_INC(autoPushStarts);
 
-    static const char* slotNames[] = {"Default", "Highway", "Passenger Comfort"};
-    int clampedIndex = std::max(0, std::min(2, slotIndex));
-    state.slotIndex = clampedIndex;
-    state.slot = settings->getSlot(clampedIndex);
-    state.profileLoaded = false;
-    state.profile = V1Profile();
-    state.step = Step::WaitReady;
-    state.nextStepAtMs = millis() + 100;  // Brief settle time (was 500ms - too slow)
-    state.profileWriteRetries = 0;
+    const int clampedIndex = std::max(0, std::min(2, slotIndex));
+    armState(clampedIndex, settings->getSlot(clampedIndex), false, V1Profile{}, false);
     AUTO_PUSH_LOGF("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n",
-                   slotNames[clampedIndex], clampedIndex);
+                   slotNameForIndex(clampedIndex),
+                   clampedIndex);
+}
 
-    // Show the profile indicator when auto-push begins
-    display->drawProfileIndicator(clampedIndex);
+AutoPushModule::QueueResult AutoPushModule::queuePushNow(const PushNowRequest& request) {
+    if (!settings || !profiles || !bleClient || !display) {
+        return QueueResult::PROFILE_LOAD_FAILED;
+    }
+    if (!bleClient->isConnected()) {
+        return QueueResult::V1_NOT_CONNECTED;
+    }
+    if (isActive()) {
+        return QueueResult::ALREADY_IN_PROGRESS;
+    }
+
+    const int clampedIndex = std::max(0, std::min(2, request.slotIndex));
+    AutoPushSlot slot = settings->getSlot(clampedIndex);
+    if (request.hasProfileOverride) {
+        slot.profileName = request.profileName;
+        slot.mode = request.hasModeOverride ? request.mode : V1_MODE_UNKNOWN;
+    } else if (request.hasModeOverride) {
+        slot.mode = request.mode;
+    }
+
+    if (slot.profileName.length() == 0) {
+        return QueueResult::NO_PROFILE_CONFIGURED;
+    }
+
+    V1Profile profile;
+    if (!profiles->loadProfile(slot.profileName, profile)) {
+        return QueueResult::PROFILE_LOAD_FAILED;
+    }
+
+    if (request.activateSlot) {
+        settings->setActiveSlot(clampedIndex);
+    }
+    armState(clampedIndex, slot, true, profile, true);
+    AUTO_PUSH_LOGF("[PushNow] Queued slot=%d profile='%s' mode=%d\n",
+                   clampedIndex,
+                   slot.profileName.c_str(),
+                   static_cast<int>(slot.mode));
+    return QueueResult::QUEUED;
 }
 
 void AutoPushModule::applySlotMuteToZero(V1UserSettings& userSettings, bool slotMuteToZero) {
     if (slotMuteToZero) {
-        // MZ enabled: clear bit 4 (inverted logic)
         userSettings.bytes[0] &= ~0x10;
     } else {
-        // MZ disabled: set bit 4
         userSettings.bytes[0] |= 0x10;
     }
 }
@@ -52,15 +110,40 @@ void AutoPushModule::process() {
     }
 
     if (!bleClient || !bleClient->isConnected()) {
-        PERF_INC(autoPushDisconnectAbort);
-        state.step = Step::Idle;
+        if (!state.isPushNow) {
+            PERF_INC(autoPushDisconnectAbort);
+        }
+        state = State{};
         return;
     }
 
-    unsigned long now = millis();
+    const unsigned long now = millis();
     if (now < state.nextStepAtMs) {
         return;
     }
+
+    auto schedulePushNowRetry = [&](const char* op) -> bool {
+        if (!state.isPushNow) {
+            return false;
+        }
+        if (state.commandRetries < kMaxPushNowCommandRetries) {
+            state.commandRetries++;
+            PERF_INC(pushNowRetries);
+            state.nextStepAtMs = now + 30;
+            AUTO_PUSH_LOGF("[PushNow] %s deferred, retry %u/%u\n",
+                           op,
+                           state.commandRetries,
+                           kMaxPushNowCommandRetries);
+            return true;
+        }
+
+        PERF_INC(pushNowFailures);
+        AUTO_PUSH_LOGF("[PushNow] ERROR: %s failed after %u retries\n",
+                       op,
+                       kMaxPushNowCommandRetries);
+        state = State{};
+        return true;
+    };
 
     switch (state.step) {
         case Step::WaitReady:
@@ -70,95 +153,100 @@ void AutoPushModule::process() {
 
         case Step::Profile: {
             const AutoPushSlot& slot = state.slot;
-            if (slot.profileName.length() > 0) {
-                AUTO_PUSH_LOGF("[AutoPush] Loading profile: %s\n", slot.profileName.c_str());
-                V1Profile profile;
-                if (profiles && profiles->loadProfile(slot.profileName, profile)) {
-                    state.profile = profile;
-                    state.profileLoaded = true;
-
-                    bool slotMuteToZero = settings->getSlotMuteToZero(state.slotIndex);
-                    AUTO_PUSH_LOGF("[AutoPush] Slot %d MZ setting: %s\n",
-                                   state.slotIndex, slotMuteToZero ? "ON" : "OFF");
-                    AUTO_PUSH_LOGF("[AutoPush] Profile byte0 before: 0x%02X\n", profile.settings.bytes[0]);
-
-                    V1UserSettings modifiedSettings = profile.settings;
-                    applySlotMuteToZero(modifiedSettings, slotMuteToZero);
-                    AUTO_PUSH_LOGF("[AutoPush] Modified byte0: 0x%02X (bit4=%d means MZ=%s)\n",
-                                   modifiedSettings.bytes[0],
-                                   (modifiedSettings.bytes[0] & 0x10) ? 1 : 0,
-                                   (modifiedSettings.bytes[0] & 0x10) ? "OFF" : "ON");
-
-                    if (bleClient->writeUserBytes(modifiedSettings.bytes)) {
-                        AUTO_PUSH_LOGF("[AutoPush] Profile settings pushed (MZ=%s)\n",
-                                       slotMuteToZero ? "ON" : "OFF");
-                        bleClient->startUserBytesVerification(modifiedSettings.bytes);
-                        state.step = Step::ProfileReadback;
-                        state.nextStepAtMs = now + 30;  // Fast step (V1 processes writes quickly)
-                        return;
+            if (!state.profileLoaded) {
+                if (slot.profileName.length() > 0) {
+                    AUTO_PUSH_LOGF("[AutoPush] Loading profile: %s\n", slot.profileName.c_str());
+                    V1Profile profile;
+                    if (profiles && profiles->loadProfile(slot.profileName, profile)) {
+                        state.profile = profile;
+                        state.profileLoaded = true;
                     } else {
-                        if (state.profileWriteRetries < kMaxProfileWriteRetries) {
-                            state.profileWriteRetries++;
-                            PERF_INC(autoPushBusyRetries);
-                            AUTO_PUSH_LOGF("[AutoPush] Write busy, retrying (%u/%u)\n",
-                                           state.profileWriteRetries, kMaxProfileWriteRetries);
-                            state.step = Step::Profile;
-                            state.nextStepAtMs = now + 30;  // Fast retry
-                            return;
+                        if (!state.isPushNow) {
+                            PERF_INC(autoPushProfileLoadFail);
                         }
-                        PERF_INC(autoPushProfileWriteFail);
-                        AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to push profile settings");
+                        AUTO_PUSH_LOGF("[AutoPush] ERROR: Failed to load profile '%s'\n",
+                                       slot.profileName.c_str());
                     }
                 } else {
-                    PERF_INC(autoPushProfileLoadFail);
-                    AUTO_PUSH_LOGF("[AutoPush] ERROR: Failed to load profile '%s'\n", slot.profileName.c_str());
-                    state.profileLoaded = false;
+                    if (!state.isPushNow) {
+                        PERF_INC(autoPushNoProfile);
+                    }
+                    AUTO_PUSH_LOGLN("[AutoPush] No profile configured for active slot");
                 }
-            } else {
-                PERF_INC(autoPushNoProfile);
-                AUTO_PUSH_LOGLN("[AutoPush] No profile configured for active slot");
-                state.profileLoaded = false;
             }
 
+            if (state.profileLoaded) {
+                const bool slotMuteToZero = settings->getSlotMuteToZero(state.slotIndex);
+                V1UserSettings modifiedSettings = state.profile.settings;
+                applySlotMuteToZero(modifiedSettings, slotMuteToZero);
+
+                if (bleClient->writeUserBytes(modifiedSettings.bytes)) {
+                    bleClient->startUserBytesVerification(modifiedSettings.bytes);
+                    state.profileWriteRetries = 0;
+                    state.commandRetries = 0;
+                    state.step = Step::ProfileReadback;
+                    state.nextStepAtMs = now + 30;
+                    return;
+                }
+
+                if (!state.isPushNow) {
+                    PERF_INC(autoPushBusyRetries);
+                }
+                if (schedulePushNowRetry("writeUserBytes")) {
+                    return;
+                }
+
+                if (state.profileWriteRetries < kMaxProfileWriteRetries) {
+                    state.profileWriteRetries++;
+                    AUTO_PUSH_LOGF("[AutoPush] Write busy, retrying (%u/%u)\n",
+                                   state.profileWriteRetries,
+                                   kMaxProfileWriteRetries);
+                    state.step = Step::Profile;
+                    state.nextStepAtMs = now + 30;
+                    return;
+                }
+
+                PERF_INC(autoPushProfileWriteFail);
+                AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to push profile settings");
+            }
+
+            state.commandRetries = 0;
             state.step = Step::Display;
-            state.nextStepAtMs = now + 30;  // Fast step
+            state.nextStepAtMs = now + 30;
             return;
         }
 
         case Step::ProfileReadback:
             bleClient->requestUserBytes();
-            AUTO_PUSH_LOGLN("[AutoPush] Requested user bytes read-back for verification");
+            state.commandRetries = 0;
             state.step = Step::Display;
-            state.nextStepAtMs = now + 30;  // Fast step
+            state.nextStepAtMs = now + 30;
             return;
 
         case Step::Display: {
-            bool slotDarkMode = settings->getSlotDarkMode(state.slotIndex);
-            bool displayOn = !slotDarkMode;
-            bleClient->setDisplayOn(displayOn);
-            AUTO_PUSH_LOGF("[AutoPush] Display set to: %s (darkMode=%s)\n",
-                           displayOn ? "ON" : "OFF", slotDarkMode ? "true" : "false");
+            const bool displayOn = !settings->getSlotDarkMode(state.slotIndex);
+            if (!bleClient->setDisplayOn(displayOn) && schedulePushNowRetry("setDisplayOn")) {
+                return;
+            }
+            state.commandRetries = 0;
             state.step = Step::Mode;
             state.nextStepAtMs = now + (state.slot.mode != V1_MODE_UNKNOWN ? 30 : 0);
             return;
         }
 
         case Step::Mode: {
-            if (state.slot.mode != V1_MODE_UNKNOWN) {
-                const char* modeName = "Unknown";
-                if (state.slot.mode == V1_MODE_ALL_BOGEYS) modeName = "All Bogeys";
-                else if (state.slot.mode == V1_MODE_LOGIC) modeName = "Logic";
-                else if (state.slot.mode == V1_MODE_ADVANCED_LOGIC) modeName = "Advanced Logic";
-
-                if (bleClient->setMode(static_cast<uint8_t>(state.slot.mode))) {
-                    AUTO_PUSH_LOGF("[AutoPush] Mode set to: %s\n", modeName);
-                } else {
+            if (state.slot.mode != V1_MODE_UNKNOWN &&
+                !bleClient->setMode(static_cast<uint8_t>(state.slot.mode))) {
+                if (schedulePushNowRetry("setMode")) {
+                    return;
+                }
+                if (!state.isPushNow) {
                     PERF_INC(autoPushModeFail);
-                    AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to set mode");
                 }
             }
 
-            bool volumeChangeNeeded =
+            state.commandRetries = 0;
+            const bool volumeChangeNeeded =
                 (settings->getSlotVolume(state.slotIndex) != 0xFF ||
                  settings->getSlotMuteVolume(state.slotIndex) != 0xFF);
             state.step = Step::Volume;
@@ -167,26 +255,28 @@ void AutoPushModule::process() {
         }
 
         case Step::Volume: {
-            uint8_t mainVol = settings->getSlotVolume(state.slotIndex);
-            uint8_t muteVol = settings->getSlotMuteVolume(state.slotIndex);
-            if (mainVol != 0xFF || muteVol != 0xFF) {
-                if (bleClient->setVolume(mainVol, muteVol)) {
-                    AUTO_PUSH_LOGF("[AutoPush] Volume set - main: %d, muted: %d\n", mainVol, muteVol);
-                } else {
+            const uint8_t mainVol = settings->getSlotVolume(state.slotIndex);
+            const uint8_t muteVol = settings->getSlotMuteVolume(state.slotIndex);
+            if ((mainVol != 0xFF || muteVol != 0xFF) &&
+                !bleClient->setVolume(mainVol, muteVol)) {
+                if (schedulePushNowRetry("setVolume")) {
+                    return;
+                }
+                if (!state.isPushNow) {
                     PERF_INC(autoPushVolumeFail);
-                    AUTO_PUSH_LOGLN("[AutoPush] ERROR: Failed to set volume");
                 }
             }
 
-            PERF_INC(autoPushCompletes);
-            AUTO_PUSH_LOGLN("[AutoPush] Complete");
-            state.step = Step::Idle;
-            state.nextStepAtMs = 0;
+            if (!state.isPushNow) {
+                PERF_INC(autoPushCompletes);
+            }
+            state = State{};
             return;
         }
 
+        case Step::Idle:
         default:
-            state.step = Step::Idle;
+            state = State{};
             return;
     }
 }
@@ -207,7 +297,8 @@ String AutoPushModule::getStatusJson() const {
     const char* profileName = hasProfile ? state.slot.profileName.c_str() : "";
 
     char buf[192];
-    snprintf(buf, sizeof(buf),
+    snprintf(buf,
+             sizeof(buf),
              "{\"active\":%s,\"slot\":%d,\"step\":\"%s\",\"profileLoaded\":%s,\"profileConfigured\":%s,\"profileName\":\"%s\"}",
              state.step == Step::Idle ? "false" : "true",
              state.slotIndex,
