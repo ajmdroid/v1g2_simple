@@ -240,6 +240,10 @@ bool ObdBleClient::subscribeNotify(void (*callback)(const uint8_t* data, size_t 
         Serial.println("[OBD] subscribeNotify: connection lost before subscribe");
         return false;
     }
+    // response=false: use ATT Write Command (no response) for the CCCD
+    // descriptor.  The DA14531 BLE 4.2 modem on the OBDLink CX fails
+    // write-with-response on the 0x2902 descriptor, causing subscribe to
+    // return false and the connection to drop.
     const bool ok = pTxChar_->subscribe(
         true,
         [callback](NimBLERemoteCharacteristic* /*chr*/, uint8_t* data, size_t length, bool /*isNotify*/) {
@@ -247,7 +251,7 @@ bool ObdBleClient::subscribeNotify(void (*callback)(const uint8_t* data, size_t 
                 callback(data, length);
             }
         },
-        true);
+        false);
     if (!ok) {
         Serial.println("[OBD] subscribeNotify: subscribe failed");
     }
