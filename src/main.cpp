@@ -697,6 +697,7 @@ static void configureRuntimeSensorModules() {
     obdRuntimeModule.begin(
         settingsManager.get().obdEnabled,
         settingsManager.get().obdSavedAddress.c_str(),
+        settingsManager.get().obdSavedAddrType,
         settingsManager.get().obdMinRssi,
         settingsManager.get().obdCachedVinPrefix11.c_str(),
         settingsManager.get().obdCachedEotProfileId);
@@ -711,6 +712,11 @@ static void syncObdSettings() {
 
     if (settings.obdSavedAddress != runtimeAddress) {
         settings.obdSavedAddress = runtimeAddress;
+        changed = true;
+    }
+    const uint8_t runtimeAddrType = obdRuntimeModule.getSavedAddrType();
+    if (settings.obdSavedAddrType != runtimeAddrType) {
+        settings.obdSavedAddrType = runtimeAddrType;
         changed = true;
     }
     if (settings.obdCachedVinPrefix11 != cachedVinPrefix11) {

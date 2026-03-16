@@ -107,6 +107,7 @@ void handleApiForget(WebServer& server,
     obdRuntime.forgetDevice();
     V1Settings& settings = settingsManager.mutableSettings();
     settings.obdSavedAddress = "";
+    settings.obdSavedAddrType = 0;
     settings.obdCachedVinPrefix11 = "";
     settings.obdCachedEotProfileId = 0;
     settingsManager.save();

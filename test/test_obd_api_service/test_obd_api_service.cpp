@@ -36,7 +36,7 @@ void test_config_updates_runtime_settings_and_speed_source_callback() {
     bool speedSourceEnabled = false;
     int speedSourceCallbackCalls = 0;
 
-    obdRuntimeModule.begin(false, "", -80);
+    obdRuntimeModule.begin(false, "", 0, -80);
     server.setArg("plain", "{\"enabled\":true,\"minRssi\":-55}");
 
     ObdApiService::handleApiConfig(server,
@@ -69,7 +69,7 @@ void test_forget_clears_saved_address_and_persists_setting() {
     WebServer server(80);
     SettingsManager settingsManager;
     settingsManager.settings.obdSavedAddress = "A4:C1:38:00:11:22";
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
     ObdApiService::handleApiForget(server,
                                    obdRuntimeModule,
@@ -90,7 +90,7 @@ void test_forget_clears_saved_address_and_persists_setting() {
 void test_config_rejects_missing_json_body() {
     WebServer server(80);
     SettingsManager settingsManager;
-    obdRuntimeModule.begin(false, "", -80);
+    obdRuntimeModule.begin(false, "", 0, -80);
 
     ObdApiService::handleApiConfig(server,
                                    obdRuntimeModule,

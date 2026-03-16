@@ -279,6 +279,9 @@ static void handleRestore(WebServer& server) {
     // OBD settings
     if (doc["obdEnabled"].is<bool>()) s.obdEnabled = doc["obdEnabled"];
     if (doc["obdSavedAddress"].is<const char*>()) s.obdSavedAddress = doc["obdSavedAddress"].as<String>();
+    if (doc["obdSavedAddrType"].is<int>()) {
+        s.obdSavedAddrType = static_cast<uint8_t>(std::max(0, std::min(doc["obdSavedAddrType"].as<int>(), 1)));
+    }
     if (doc["obdMinRssi"].is<int>()) {
         int rssi = doc["obdMinRssi"].as<int>();
         s.obdMinRssi = static_cast<int8_t>(std::max(-90, std::min(rssi, -40)));

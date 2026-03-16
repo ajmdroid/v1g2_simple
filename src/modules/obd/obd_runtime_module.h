@@ -104,6 +104,7 @@ class ObdRuntimeModule {
 public:
     void begin(bool enabled,
                const char* savedAddress,
+               uint8_t savedAddrType,
                int8_t minRssi,
                const char* cachedVinPrefix11 = nullptr,
                uint8_t cachedEotProfileId = 0);
@@ -118,6 +119,7 @@ public:
 
     int8_t getConnectionRssi() const { return rssi_; }
     const char* getSavedAddress() const { return savedAddress_; }
+    uint8_t getSavedAddrType() const { return savedAddrType_; }
     const char* getCachedVinPrefix11() const { return cachedVinPrefix11_; }
     uint8_t getCachedEotProfileId() const { return static_cast<uint8_t>(cachedEotProfileId_); }
 

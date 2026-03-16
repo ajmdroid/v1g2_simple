@@ -157,6 +157,7 @@ void ObdRuntimeModule::resetForBegin() {
 
 void ObdRuntimeModule::begin(bool enabled,
                              const char* savedAddress,
+                             uint8_t savedAddrType,
                              int8_t minRssi,
                              const char* cachedVinPrefix11,
                              uint8_t cachedEotProfileId) {
@@ -165,6 +166,7 @@ void ObdRuntimeModule::begin(bool enabled,
     setMinRssi(minRssi);
 
     setSavedAddressFromBuffer(savedAddress);
+    savedAddrType_ = savedAddrType;
     setCachedProfile(cachedVinPrefix11, static_cast<ObdEotProfileId>(cachedEotProfileId));
 
 #ifndef UNIT_TEST
@@ -177,10 +179,34 @@ void ObdRuntimeModule::begin(bool enabled,
 
     if (savedAddress_[0] != '\0') {
         state_ = ObdConnectionState::WAIT_BOOT;
+#ifndef UNIT_TEST
+        Serial.printf("[OBD] begin addr=%s addrType=%u -> WAIT_BOOT\n",
+                      savedAddress_, savedAddrType_);
+#endif
     }
 }
 
+namespace {
+const char* obdStateName(ObdConnectionState s) {
+    switch (s) {
+        case ObdConnectionState::IDLE:          return "IDLE";
+        case ObdConnectionState::WAIT_BOOT:     return "WAIT_BOOT";
+        case ObdConnectionState::SCANNING:      return "SCANNING";
+        case ObdConnectionState::CONNECTING:    return "CONNECTING";
+        case ObdConnectionState::DISCOVERING:   return "DISCOVERING";
+        case ObdConnectionState::AT_INIT:       return "AT_INIT";
+        case ObdConnectionState::POLLING:       return "POLLING";
+        case ObdConnectionState::ERROR_BACKOFF: return "ERROR_BACKOFF";
+        case ObdConnectionState::DISCONNECTED:  return "DISCONNECTED";
+        default:                                return "?";
+    }
+}
+}  // namespace
+
 void ObdRuntimeModule::transitionTo(ObdConnectionState newState, uint32_t nowMs) {
+#ifndef UNIT_TEST
+    Serial.printf("[OBD] %s -> %s\n", obdStateName(state_), obdStateName(newState));
+#endif
     state_ = newState;
     stateEnteredMs_ = nowMs;
     stateEntryPending_ = true;

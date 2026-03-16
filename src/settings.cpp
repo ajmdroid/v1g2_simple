@@ -323,6 +323,7 @@ void SettingsManager::load() {
     // OBD settings
     settings.obdEnabled = preferences.getBool("obdEn", false);
     settings.obdSavedAddress = preferences.getString("obdAddr", "");
+    settings.obdSavedAddrType = preferences.getUChar("obdAddrT", 0);
     settings.obdMinRssi = static_cast<int8_t>(
         preferences.getChar("obdMinRssi", -80));
     settings.obdCachedVinPrefix11 = preferences.getString("obdVin11", "");

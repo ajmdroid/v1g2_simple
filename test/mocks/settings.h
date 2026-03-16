@@ -93,6 +93,7 @@ struct V1Settings {
     bool gpsEnabled = true;
     bool obdEnabled = false;
     String obdSavedAddress = "";
+    uint8_t obdSavedAddrType = 0;
     int8_t obdMinRssi = -80;
     String obdCachedVinPrefix11 = "";
     uint8_t obdCachedEotProfileId = 0;

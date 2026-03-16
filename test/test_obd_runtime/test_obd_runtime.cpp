@@ -21,24 +21,24 @@ void tearDown() {}
 // ── begin() state transitions ─────────────────────────────────────
 
 void test_begin_disabled_stays_idle() {
-    obdRuntimeModule.begin(false, "", -80);
+    obdRuntimeModule.begin(false, "", 0, -80);
     TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
     TEST_ASSERT_FALSE(obdRuntimeModule.isEnabled());
 }
 
 void test_begin_enabled_no_saved_addr_goes_idle() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
     TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
     TEST_ASSERT_TRUE(obdRuntimeModule.isEnabled());
 }
 
 void test_begin_enabled_no_saved_addr_null_goes_idle() {
-    obdRuntimeModule.begin(true, nullptr, -80);
+    obdRuntimeModule.begin(true, nullptr, 0, -80);
     TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
 }
 
 void test_begin_enabled_with_saved_addr_goes_wait_boot() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     TEST_ASSERT_EQUAL(ObdConnectionState::WAIT_BOOT, obdRuntimeModule.getState());
     ObdRuntimeStatus status = obdRuntimeModule.snapshot(0);
     TEST_ASSERT_TRUE(status.savedAddressValid);
@@ -47,7 +47,7 @@ void test_begin_enabled_with_saved_addr_goes_wait_boot() {
 // ── Boot defer tests ──────────────────────────────────────────────
 
 void test_wait_boot_stays_until_boot_ready() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
     // Boot not ready — should stay in WAIT_BOOT
     obdRuntimeModule.update(1000, false, false, true);
@@ -58,7 +58,7 @@ void test_wait_boot_stays_until_boot_ready() {
 }
 
 void test_wait_boot_transitions_when_v1_connected() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
     // Boot ready, V1 connected → should transition to CONNECTING
     obdRuntimeModule.update(5000, true, true, true);
@@ -66,7 +66,7 @@ void test_wait_boot_transitions_when_v1_connected() {
 }
 
 void test_wait_boot_transitions_after_dwell_without_v1() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
     // Boot ready at 5000ms
     obdRuntimeModule.update(5000, true, false, true);
@@ -82,7 +82,7 @@ void test_wait_boot_transitions_after_dwell_without_v1() {
 }
 
 void test_idle_no_scan_at_boot_without_saved_addr() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
 
     // Even with boot ready and everything clear — no scan, stays IDLE
     obdRuntimeModule.update(5000, true, true, true);
@@ -93,7 +93,7 @@ void test_idle_no_scan_at_boot_without_saved_addr() {
 }
 
 void test_disabled_module_never_transitions() {
-    obdRuntimeModule.begin(false, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(false, "A4:C1:38:00:11:22", 0, -80);
 
     obdRuntimeModule.update(5000, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
@@ -102,7 +102,7 @@ void test_disabled_module_never_transitions() {
 // ── Web UI scan trigger ───────────────────────────────────────────
 
 void test_start_scan_from_idle() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
 
     obdRuntimeModule.startScan();
     obdRuntimeModule.update(1000, true, true, true);
@@ -113,7 +113,7 @@ void test_start_scan_from_idle() {
 }
 
 void test_start_scan_waits_for_ble_scan_idle() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
 
     obdRuntimeModule.startScan();
     // V1 is scanning (bleScanIdle=false) — OBD should wait
@@ -126,14 +126,14 @@ void test_start_scan_waits_for_ble_scan_idle() {
 }
 
 void test_start_scan_disabled_does_nothing() {
-    obdRuntimeModule.begin(false, "", -80);
+    obdRuntimeModule.begin(false, "", 0, -80);
     obdRuntimeModule.startScan();
     obdRuntimeModule.update(1000, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
 }
 
 void test_scan_timeout_returns_to_idle() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
 
     obdRuntimeModule.startScan();
     obdRuntimeModule.update(1000, true, true, true);
@@ -145,7 +145,7 @@ void test_scan_timeout_returns_to_idle() {
 }
 
 void test_scan_finds_device_transitions_to_connecting() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
 
     obdRuntimeModule.startScan();
     obdRuntimeModule.update(1000, true, true, true);
@@ -163,7 +163,7 @@ void test_scan_finds_device_transitions_to_connecting() {
 }
 
 void test_scan_request_retries_when_start_scan_fails_once() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
     obdRuntimeModule.setTestStartScanResult(false);
 
     obdRuntimeModule.startScan();
@@ -180,7 +180,7 @@ void test_scan_request_retries_when_start_scan_fails_once() {
 // ── RSSI gate ─────────────────────────────────────────────────────
 
 void test_rssi_gate_rejects_weak_signal() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
 
     obdRuntimeModule.startScan();
     obdRuntimeModule.update(1000, true, true, true);
@@ -194,7 +194,7 @@ void test_rssi_gate_rejects_weak_signal() {
 }
 
 void test_rssi_gate_accepts_strong_signal() {
-    obdRuntimeModule.begin(true, "", -60);
+    obdRuntimeModule.begin(true, "", 0, -60);
 
     obdRuntimeModule.startScan();
     obdRuntimeModule.update(1000, true, true, true);
@@ -207,7 +207,7 @@ void test_rssi_gate_accepts_strong_signal() {
 }
 
 void test_rssi_gate_rejects_at_boundary() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
 
     obdRuntimeModule.startScan();
     obdRuntimeModule.update(1000, true, true, true);
@@ -220,7 +220,7 @@ void test_rssi_gate_rejects_at_boundary() {
 }
 
 void test_device_found_outside_scanning_ignored() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
     // In IDLE, not scanning
     obdRuntimeModule.onDeviceFound("OBDLink CX", "A4:C1:38:00:11:22", -50);
     obdRuntimeModule.update(1000, true, true, true);
@@ -230,7 +230,7 @@ void test_device_found_outside_scanning_ignored() {
 // ── Connect timeout & retry ───────────────────────────────────────
 
 void test_connect_timeout_increments_attempts() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
     // Get past boot wait
     obdRuntimeModule.update(5000, true, true, true);
@@ -245,7 +245,7 @@ void test_connect_timeout_increments_attempts() {
 }
 
 void test_three_connect_failures_clears_saved_address() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
     // Get past boot wait
     obdRuntimeModule.update(5000, true, true, true);
@@ -277,7 +277,7 @@ void test_three_connect_failures_clears_saved_address() {
 }
 
 void test_connect_entry_action_runs_on_next_tick() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
     obdRuntimeModule.update(5000, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
@@ -289,7 +289,7 @@ void test_connect_entry_action_runs_on_next_tick() {
 }
 
 void test_discover_entry_action_runs_on_next_tick() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
     obdRuntimeModule.update(5000, true, true, true);
     obdRuntimeModule.setTestBleConnected(true);
@@ -306,7 +306,7 @@ void test_discover_entry_action_runs_on_next_tick() {
 // ── Speed data ────────────────────────────────────────────────────
 
 void test_inject_speed_is_fresh() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.injectSpeedForTest(37.3f, 1000);
 
     float speed = 0.0f;
@@ -317,7 +317,7 @@ void test_inject_speed_is_fresh() {
 }
 
 void test_speed_goes_stale() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.injectSpeedForTest(37.3f, 1000);
 
     float speed = 0.0f;
@@ -327,7 +327,7 @@ void test_speed_goes_stale() {
 }
 
 void test_speed_boundary_fresh() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.injectSpeedForTest(50.0f, 1000);
 
     float speed = 0.0f;
@@ -337,7 +337,7 @@ void test_speed_boundary_fresh() {
 }
 
 void test_snapshot_speed_age() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.injectSpeedForTest(60.0f, 1000);
 
     ObdRuntimeStatus status = obdRuntimeModule.snapshot(2500);
@@ -347,7 +347,7 @@ void test_snapshot_speed_age() {
 }
 
 void test_no_speed_when_disabled() {
-    obdRuntimeModule.begin(false, "", -80);
+    obdRuntimeModule.begin(false, "", 0, -80);
     float speed = 0.0f;
     uint32_t ts = 0;
     TEST_ASSERT_FALSE(obdRuntimeModule.getFreshSpeed(1000, speed, ts));
@@ -360,7 +360,7 @@ void test_no_speed_when_disabled() {
 // ── forgetDevice() ────────────────────────────────────────────────
 
 void test_forget_device_clears_address_and_goes_idle() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.update(5000, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
 
@@ -372,7 +372,7 @@ void test_forget_device_clears_address_and_goes_idle() {
 }
 
 void test_forget_device_disconnects_active_client() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 1000);
     obdRuntimeModule.setTestBleConnected(true);
 
@@ -385,7 +385,7 @@ void test_forget_device_disconnects_active_client() {
 // ── setEnabled() ──────────────────────────────────────────────────
 
 void test_disable_during_operation_goes_idle() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.update(5000, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
 
@@ -395,20 +395,20 @@ void test_disable_during_operation_goes_idle() {
 }
 
 void test_enable_same_state_is_noop() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
     obdRuntimeModule.setEnabled(true);
     TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
 }
 
 void test_reenable_with_saved_address_restores_wait_boot() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.setEnabled(false);
     obdRuntimeModule.setEnabled(true);
     TEST_ASSERT_EQUAL(ObdConnectionState::WAIT_BOOT, obdRuntimeModule.getState());
 }
 
 void test_set_min_rssi_applies_immediately() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
     obdRuntimeModule.setMinRssi(-60);
 
     obdRuntimeModule.startScan();
@@ -422,7 +422,7 @@ void test_set_min_rssi_applies_immediately() {
 // ── Error backoff ─────────────────────────────────────────────────
 
 void test_poll_timeout_counts_as_error() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
 
     obdRuntimeModule.update(100, true, true, true);
@@ -439,6 +439,7 @@ void test_poll_timeout_counts_as_error() {
 void test_cached_profile_polls_before_background_vin_lookup() {
     obdRuntimeModule.begin(true,
                            "A4:C1:38:00:11:22",
+                           0,
                            -80,
                            "1FTW1ET7DFA",
                            static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
@@ -459,7 +460,7 @@ void test_cached_profile_polls_before_background_vin_lookup() {
 }
 
 void test_vin_response_sets_family_and_starts_standard_eot_probe() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
     obdRuntimeModule.injectSpeedForTest(45.0f, 0);
 
@@ -488,7 +489,7 @@ void test_vin_response_sets_family_and_starts_standard_eot_probe() {
 }
 
 void test_error_backoff_returns_to_polling() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::ERROR_BACKOFF, 1000);
     obdRuntimeModule.setConsecutiveErrorsForTest(5);
 
@@ -497,7 +498,7 @@ void test_error_backoff_returns_to_polling() {
 }
 
 void test_error_backoff_disconnects_after_ten_errors() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::ERROR_BACKOFF, 1000);
     obdRuntimeModule.setConsecutiveErrorsForTest(10);
 
@@ -508,7 +509,7 @@ void test_error_backoff_disconnects_after_ten_errors() {
 // ── Disconnected reconnect backoff ────────────────────────────────
 
 void test_disconnected_reconnects_after_backoff() {
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", -80);
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
     // Boot ready, V1 connected → CONNECTING
     obdRuntimeModule.update(5000, true, true, true);
@@ -528,7 +529,7 @@ void test_disconnected_reconnects_after_backoff() {
 }
 
 void test_disconnected_no_saved_addr_goes_idle() {
-    obdRuntimeModule.begin(true, "", -80);
+    obdRuntimeModule.begin(true, "", 0, -80);
 
     // Trigger scan, find device, connect, then fail 3 times
     obdRuntimeModule.startScan();

@@ -82,6 +82,7 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     // OBD settings
     doc["obdEnabled"] = settings.obdEnabled;
     doc["obdSavedAddress"] = settings.obdSavedAddress;
+    doc["obdSavedAddrType"] = settings.obdSavedAddrType;
     doc["obdMinRssi"] = settings.obdMinRssi;
     doc["obdCachedVinPrefix11"] = settings.obdCachedVinPrefix11;
     doc["obdCachedEotProfileId"] = settings.obdCachedEotProfileId;
