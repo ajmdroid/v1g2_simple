@@ -136,7 +136,10 @@ bool ObdBleClient::connect(const char* address, uint8_t addrType, uint32_t timeo
     connectPending_ = true;
     Serial.printf("[OBD] connect addr=%s type=%u timeout=%lums cached=%d\n",
                   address, addrType, timeoutMs, preferCachedAttributes);
-    const bool ok = pClient_->connect(addr, !preferCachedAttributes, true, true);
+    // exchangeMTU=false: the global MTU is 517 (set for V1 BLE 5.x) which can
+    // race with GATT discovery on the BLE 4.2 OBDLink CX.  OBD responses are
+    // ~10 bytes so the default 23-byte ATT MTU is sufficient.
+    const bool ok = pClient_->connect(addr, !preferCachedAttributes, true, false);
     if (!ok) {
         Serial.println("[OBD] connect() returned false");
         connectPending_ = false;
@@ -184,30 +187,42 @@ bool ObdBleClient::validateCxModel() const {
 }
 
 bool ObdBleClient::discoverServices() {
-    if (!pClient_ || !pClient_->isConnected()) return false;
+    if (!pClient_ || !pClient_->isConnected()) {
+        Serial.println("[OBD] discoverServices: not connected");
+        return false;
+    }
 
     connectPending_ = false;
     if (!validateCxModel()) {
+        Serial.println("[OBD] discoverServices: validateCxModel failed");
         return false;
     }
 
     NimBLERemoteService* svc = pClient_->getService(kCxServiceUuid);
-    if (!svc) return false;
+    if (!svc) {
+        Serial.println("[OBD] discoverServices: FFF0 service not found");
+        return false;
+    }
 
     pTxChar_ = svc->getCharacteristic(kCxNotifyUuid);
     pRxChar_ = svc->getCharacteristic(kCxWriteUuid);
     if (!pTxChar_ || !pRxChar_) {
+        Serial.printf("[OBD] discoverServices: char missing tx=%d rx=%d\n",
+                      pTxChar_ != nullptr, pRxChar_ != nullptr);
         pTxChar_ = nullptr;
         pRxChar_ = nullptr;
         return false;
     }
 
     if (!pTxChar_->canNotify() || !(pRxChar_->canWrite() || pRxChar_->canWriteNoResponse())) {
+        Serial.printf("[OBD] discoverServices: capability mismatch notify=%d write=%d writeNR=%d\n",
+                      pTxChar_->canNotify(), pRxChar_->canWrite(), pRxChar_->canWriteNoResponse());
         pTxChar_ = nullptr;
         pRxChar_ = nullptr;
         return false;
     }
 
+    Serial.println("[OBD] discoverServices: OK");
     return true;
 }
 
