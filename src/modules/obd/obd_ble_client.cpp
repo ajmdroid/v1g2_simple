@@ -56,15 +56,15 @@ void ObdClientCallback::configure(ObdRuntimeModule* parent) {
 
 void ObdClientCallback::onConnect(NimBLEClient* /*client*/) {}
 
-void ObdClientCallback::onConnectFail(NimBLEClient* /*client*/, int /*reason*/) {
+void ObdClientCallback::onConnectFail(NimBLEClient* /*client*/, int reason) {
     if (parent_) {
-        parent_->onBleDisconnect();
+        parent_->onBleDisconnect(reason);
     }
 }
 
-void ObdClientCallback::onDisconnect(NimBLEClient* /*client*/, int /*reason*/) {
+void ObdClientCallback::onDisconnect(NimBLEClient* /*client*/, int reason) {
     if (parent_) {
-        parent_->onBleDisconnect();
+        parent_->onBleDisconnect(reason);
     }
 }
 
@@ -107,8 +107,11 @@ bool ObdBleClient::connect(const char* address, uint8_t addrType, uint32_t timeo
     NimBLEAddress addr{std::string(address), addrType};
     pClient_->setConnectTimeout(timeoutMs / 1000);
     connectPending_ = true;
+    Serial.printf("[OBD] connect addr=%s type=%u timeout=%lus cached=%d\n",
+                  address, addrType, timeoutMs / 1000, preferCachedAttributes);
     const bool ok = pClient_->connect(addr, !preferCachedAttributes, true, true);
     if (!ok) {
+        Serial.println("[OBD] connect() returned false");
         connectPending_ = false;
     }
     return ok;

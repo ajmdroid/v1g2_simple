@@ -127,7 +127,7 @@ public:
     void forgetDevice();
 
     void onDeviceFound(const char* name, const char* address, int rssi, uint8_t addrType = 0);
-    void onBleDisconnect();
+    void onBleDisconnect(int reason = 0);
     void onBleData(const uint8_t* data, size_t len);
 
 #ifdef UNIT_TEST
@@ -327,6 +327,7 @@ private:
     size_t bleBufLen_ = 0;
     bool bleDataReady_ = false;
     bool bleDisconnected_ = false;
+    int bleDisconnectReason_ = 0;
     bool bleOverflowed_ = false;
 
 #ifdef UNIT_TEST

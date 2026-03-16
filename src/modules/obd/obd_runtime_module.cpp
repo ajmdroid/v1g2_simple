@@ -1193,6 +1193,9 @@ void ObdRuntimeModule::update(uint32_t nowMs,
 
         case ObdConnectionState::CONNECTING:
             if (bleDisconnected_) {
+#ifndef UNIT_TEST
+                Serial.printf("[OBD] connect failed (ble reason=%d)\n", bleDisconnectReason_);
+#endif
                 bleDisconnected_ = false;
                 handleConnectFailure(nowMs, ObdFailureReason::CONNECT_START);
                 break;
@@ -1374,8 +1377,9 @@ void ObdRuntimeModule::onDeviceFound(const char* name, const char* address, int 
     pendingDeviceFound_ = true;
 }
 
-void ObdRuntimeModule::onBleDisconnect() {
+void ObdRuntimeModule::onBleDisconnect(int reason) {
     bleDisconnected_ = true;
+    bleDisconnectReason_ = reason;
 }
 
 void ObdRuntimeModule::onBleData(const uint8_t* data, size_t len) {
