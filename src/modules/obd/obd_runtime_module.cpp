@@ -1261,11 +1261,13 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
         if (nowMs - activeCommand_.sentMs >= activeCommand_.timeoutMs) {
             const int cmdLen = static_cast<int>(commandDisplayLen(activeCommand_.tx));
 #ifndef UNIT_TEST
-            Serial.printf("[OBD] AT init response timed out cmd=%.*s writeMode=%s rxBytes=%u securityReady=%d enc=%d bond=%d auth=%d lastBleError=%d (%s) disconnectReason=%d (%s)\n",
+            Serial.printf("[OBD] AT init response timed out cmd=%.*s writeMode=%s rxBytes=%u raw=[%.*s] securityReady=%d enc=%d bond=%d auth=%d lastBleError=%d (%s) disconnectReason=%d (%s)\n",
                           cmdLen,
                           activeCommand_.tx,
                           activeCommand_.writeWithResponse ? "with_response" : "no_response",
                           static_cast<unsigned>(bleBufLen_),
+                          static_cast<int>(bleBufLen_),
+                          bleBuf_,
                           isBleSecurityReady(),
                           isBleEncrypted(),
                           isBleBonded(),
@@ -1382,10 +1384,18 @@ void ObdRuntimeModule::updatePolling(uint32_t nowMs) {
         } else if (nowMs - activeCommand_.sentMs >= activeCommand_.timeoutMs) {
             const ObdCommandKind timedOutKind = activeCommand_.kind;
             const ObdEotProfileId timedOutProfile = activeCommand_.profileId;
+#ifndef UNIT_TEST
+            if (timedOutKind == ObdCommandKind::SPEED && bleBufLen_ > 0) {
+                Serial.printf("[OBD] speed timeout rxBytes=%u raw=[%.*s]\n",
+                              static_cast<unsigned>(bleBufLen_),
+                              static_cast<int>(bleBufLen_),
+                              bleBuf_);
+            }
+#endif
             clearBleResponseState();
             completeActiveCommand();
             if (timedOutKind == ObdCommandKind::SPEED) {
-                handlePollingError(nowMs, true, ObdFailureReason::COMMAND_TIMEOUT);
+                handlePollingError(nowMs, false, ObdFailureReason::COMMAND_TIMEOUT);
                 return;
             }
             if (timedOutKind == ObdCommandKind::EOT_PROBE) {

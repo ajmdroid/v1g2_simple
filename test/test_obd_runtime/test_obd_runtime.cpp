@@ -579,8 +579,9 @@ void test_poll_timeout_counts_as_error() {
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getWriteCallCountForTest());
     TEST_ASSERT_EQUAL_STRING("010D\r", obdRuntimeModule.getLastCommandForTest());
 
-    obdRuntimeModule.update(600, true, true, true);
-    ObdRuntimeStatus status = obdRuntimeModule.snapshot(600);
+    // POLL_TIMEOUT_MS is 1000, so timeout fires at 100+1000=1100
+    obdRuntimeModule.update(1200, true, true, true);
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(1200);
     TEST_ASSERT_EQUAL_UINT32(1, status.pollErrors);
     TEST_ASSERT_EQUAL_UINT32(1, status.consecutiveErrors);
     TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
