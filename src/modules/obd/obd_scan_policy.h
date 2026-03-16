@@ -56,7 +56,6 @@ static constexpr const char* COLD_INIT_COMMANDS[] = {
     "ATH0\r",
     "ATSP0\r",
     "ATAT1\r",
-    "0100\r",
 };
 static constexpr size_t COLD_INIT_COMMAND_COUNT =
     sizeof(COLD_INIT_COMMANDS) / sizeof(COLD_INIT_COMMANDS[0]);
@@ -69,7 +68,6 @@ static constexpr const char* WARM_INIT_COMMANDS[] = {
     "ATH0\r",
     "ATSP0\r",
     "ATAT1\r",
-    "0100\r",
 };
 static constexpr size_t WARM_INIT_COMMAND_COUNT =
     sizeof(WARM_INIT_COMMANDS) / sizeof(WARM_INIT_COMMANDS[0]);
