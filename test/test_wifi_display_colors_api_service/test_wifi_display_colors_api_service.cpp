@@ -179,7 +179,7 @@ void test_save_updates_settings_and_calls_side_effects() {
     TEST_ASSERT_EQUAL_INT(1, rt.setAudioVolumeCalls);
     TEST_ASSERT_EQUAL_UINT8(71, rt.lastAudioVolume);
     TEST_ASSERT_EQUAL_INT(1, rt.saveSettingsCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.showDisplayDemoCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.showDisplayDemoCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);
     TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);
 }
@@ -255,7 +255,7 @@ void test_reset_restores_defaults_and_triggers_preview() {
     TEST_ASSERT_EQUAL_UINT16(0x07FF, rt.settings.colorGps);
     TEST_ASSERT_FALSE(rt.settings.freqUseBandColor);
     TEST_ASSERT_EQUAL_INT(1, rt.saveSettingsCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.showDisplayDemoCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.showDisplayDemoCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);
     TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);
 }
@@ -287,7 +287,7 @@ void test_api_preview_delegates_when_allowed() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"active\":true"));
-    TEST_ASSERT_EQUAL_INT(1, rt.showDisplayDemoCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.showDisplayDemoCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);
 }
 
@@ -317,7 +317,7 @@ void test_preview_starts_when_not_running() {
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"active\":true"));
     TEST_ASSERT_EQUAL_INT(0, rt.cancelColorPreviewCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.showDisplayDemoCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.showDisplayDemoCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);
     TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);
 }

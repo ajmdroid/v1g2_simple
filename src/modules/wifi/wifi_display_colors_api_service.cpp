@@ -176,9 +176,6 @@ void handleApiSave(WebServer& server,
     // Trigger immediate display preview to show new colors (skip if requested)
     if (!server.hasArg("skipPreview") ||
         (server.arg("skipPreview") != "true" && server.arg("skipPreview") != "1")) {
-        if (runtime.showDisplayDemo) {
-            runtime.showDisplayDemo();
-        }
         if (runtime.requestColorPreviewHoldMs) {
             runtime.requestColorPreviewHoldMs(5500);  // Hold ~5.5s and cycle bands during preview.
         }
@@ -235,9 +232,6 @@ void handleApiReset(WebServer& server,
     }
 
     // Trigger immediate display preview to show reset colors.
-    if (runtime.showDisplayDemo) {
-        runtime.showDisplayDemo();
-    }
     if (runtime.requestColorPreviewHoldMs) {
         runtime.requestColorPreviewHoldMs(5500);
     }
@@ -260,9 +254,9 @@ static void handlePreviewImpl(WebServer& server, const Runtime& runtime) {
     }
 
     Serial.println("[HTTP] POST /api/displaycolors/preview - starting");
-    if (runtime.showDisplayDemo) {
-        runtime.showDisplayDemo();
-    }
+    // Do NOT call showDisplayDemo() here — it performs 3 blocking SPI flushes
+    // (~120ms) inside handleClient(), inflating wifiMaxUs.  The preview module
+    // renders the first frame on the very next main-loop display phase.
     if (runtime.requestColorPreviewHoldMs) {
         runtime.requestColorPreviewHoldMs(5500);
     }
