@@ -98,7 +98,10 @@ void ObdBleClient::init(ObdRuntimeModule* parent) {
     pClient_ = NimBLEDevice::createClient();
     clientCallback_.configure(parent);
     pClient_->setClientCallbacks(&clientCallback_);
-    pClient_->setConnectionParams(12, 12, 0, 400);
+    // min=12 (15ms), max=40 (50ms): give the BLE 4.2 OBDLink CX room to
+    // negotiate a comfortable interval.  Fixed min==max==12 caused connection
+    // parameter update rejections when the CX requested a wider interval.
+    pClient_->setConnectionParams(12, 40, 0, 400);
     pClient_->setConnectTimeout(obd::CONNECT_TIMEOUT_MS);
 }
 
@@ -193,10 +196,10 @@ bool ObdBleClient::discoverServices() {
     }
 
     connectPending_ = false;
-    if (!validateCxModel()) {
-        Serial.println("[OBD] discoverServices: validateCxModel failed");
-        return false;
-    }
+    // Skip validateCxModel(): the CX was already identified by BLE
+    // advertisement name during scan.  Removing the 180A service
+    // discovery + 2A24 characteristic read eliminates 1-2 GATT round
+    // trips, reducing the setup window where the CX can disconnect.
 
     NimBLERemoteService* svc = pClient_->getService(kCxServiceUuid);
     if (!svc) {
@@ -233,7 +236,11 @@ bool ObdBleClient::writeCommand(const char* cmd) {
 
 bool ObdBleClient::subscribeNotify(void (*callback)(const uint8_t* data, size_t len)) {
     if (!pTxChar_) return false;
-    return pTxChar_->subscribe(
+    if (!pClient_ || !pClient_->isConnected()) {
+        Serial.println("[OBD] subscribeNotify: connection lost before subscribe");
+        return false;
+    }
+    const bool ok = pTxChar_->subscribe(
         true,
         [callback](NimBLERemoteCharacteristic* /*chr*/, uint8_t* data, size_t length, bool /*isNotify*/) {
             if (callback && data && length > 0) {
@@ -241,6 +248,10 @@ bool ObdBleClient::subscribeNotify(void (*callback)(const uint8_t* data, size_t 
             }
         },
         true);
+    if (!ok) {
+        Serial.println("[OBD] subscribeNotify: subscribe failed");
+    }
+    return ok;
 }
 
 int8_t ObdBleClient::getRssi(uint32_t nowMs) {
