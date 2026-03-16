@@ -35,6 +35,7 @@
 // NimBLE low-level store API for bond backup/restore
 extern "C" {
 #include "nimble/nimble/host/include/host/ble_store.h"
+#include "nimble/nimble/host/include/host/ble_sm.h"
 }
 
 // =========================================================================
@@ -156,6 +157,10 @@ int backupBondsToSD() {
     }
 
     return writeBondBackupSnapshot(*sdFs, ourSecs, peerSecs);
+}
+
+int refreshBleBondBackup() {
+    return backupBondsToSD();
 }
 
 int V1BLEClient::tryBackupBondsToSD() {
@@ -572,6 +577,14 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         NimBLEDevice::setPower(BLE_TX_POWER_DBM);
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
     }
+
+    // OBDLink CX requires encrypted communication and benefits from bond
+    // restore on reconnect. Keep pairing compatibility high by using
+    // no-input/no-output legacy-capable bonding with ENC+ID key exchange.
+    NimBLEDevice::setSecurityAuth(true, false, false);
+    NimBLEDevice::setSecurityIOCap(BLE_SM_IO_CAP_NO_IO);
+    NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
+    NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
 
     if (needsFreshFlashBondReset) {
         Preferences blePrefs;

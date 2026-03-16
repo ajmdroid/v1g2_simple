@@ -17,6 +17,7 @@
 // (ESP32-S3 with controller-based privacy).
 extern "C" {
     int ble_hs_pvcy_set_resolve_enabled(int enable);
+    #include "nimble/nimble/host/include/host/ble_hs.h"
 }
 
 namespace {
@@ -74,21 +75,114 @@ void ObdScanCallback::onScanEnd(const NimBLEScanResults& /*results*/, int /*reas
     ble_hs_pvcy_set_resolve_enabled(1);
 }
 
-void ObdClientCallback::configure(ObdRuntimeModule* parent) {
+void ObdClientCallback::configure(ObdBleClient* owner, ObdRuntimeModule* parent) {
+    owner_ = owner;
     parent_ = parent;
 }
 
-void ObdClientCallback::onConnect(NimBLEClient* /*client*/) {}
+void ObdClientCallback::onConnect(NimBLEClient* /*client*/) {
+    if (owner_) {
+        owner_->handleConnected();
+    }
+}
 
 void ObdClientCallback::onConnectFail(NimBLEClient* /*client*/, int reason) {
+    if (owner_) {
+        owner_->handleDisconnected(reason);
+    }
     if (parent_) {
         parent_->onBleDisconnect(reason);
     }
 }
 
 void ObdClientCallback::onDisconnect(NimBLEClient* /*client*/, int reason) {
+    if (owner_) {
+        owner_->handleDisconnected(reason);
+    }
     if (parent_) {
         parent_->onBleDisconnect(reason);
+    }
+}
+
+void ObdClientCallback::onAuthenticationComplete(NimBLEConnInfo& connInfo) {
+    if (owner_) {
+        owner_->handleAuthenticationComplete(connInfo);
+    }
+}
+
+void ObdClientCallback::onIdentity(NimBLEConnInfo& connInfo) {
+    if (owner_) {
+        owner_->handleIdentityResolved(connInfo);
+    }
+}
+
+void ObdBleClient::clearLinkState(bool clearErrors) {
+    connectPending_ = false;
+    securityPending_ = false;
+    securityReady_ = false;
+    encrypted_ = false;
+    bonded_ = false;
+    authenticated_ = false;
+    pTxChar_ = nullptr;
+    pRxChar_ = nullptr;
+    if (clearErrors) {
+        lastBleError_ = 0;
+        lastSecurityError_ = 0;
+    }
+}
+
+void ObdBleClient::syncSecurityStateFromConnInfo() {
+    if (!pClient_ || !pClient_->isConnected()) {
+        return;
+    }
+
+    NimBLEConnInfo info = pClient_->getConnInfo();
+    encrypted_ = info.isEncrypted();
+    bonded_ = info.isBonded();
+    authenticated_ = info.isAuthenticated();
+    if (encrypted_) {
+        securityReady_ = true;
+        securityPending_ = false;
+        lastSecurityError_ = 0;
+    }
+}
+
+void ObdBleClient::handleConnected() {
+    connectPending_ = false;
+    lastBleError_ = 0;
+    securityPending_ = false;
+    securityReady_ = false;
+    encrypted_ = false;
+    bonded_ = false;
+    authenticated_ = false;
+    syncSecurityStateFromConnInfo();
+}
+
+void ObdBleClient::handleDisconnected(int reason) {
+    lastBleError_ = reason;
+    if (securityPending_ && !securityReady_ && lastSecurityError_ == 0) {
+        lastSecurityError_ = reason;
+    }
+    clearLinkState(false);
+}
+
+void ObdBleClient::handleAuthenticationComplete(const NimBLEConnInfo& connInfo) {
+    encrypted_ = connInfo.isEncrypted();
+    bonded_ = connInfo.isBonded();
+    authenticated_ = connInfo.isAuthenticated();
+    securityPending_ = false;
+    securityReady_ = encrypted_;
+    lastBleError_ = encrypted_ ? 0 : lastBleError_;
+    lastSecurityError_ = encrypted_ ? 0 : lastBleError_;
+}
+
+void ObdBleClient::handleIdentityResolved(const NimBLEConnInfo& connInfo) {
+    bonded_ = connInfo.isBonded();
+    authenticated_ = connInfo.isAuthenticated();
+    encrypted_ = connInfo.isEncrypted();
+    if (encrypted_) {
+        securityReady_ = true;
+        securityPending_ = false;
     }
 }
 
@@ -96,7 +190,7 @@ void ObdBleClient::init(ObdRuntimeModule* parent) {
     if (pClient_ != nullptr) return;
 
     pClient_ = NimBLEDevice::createClient();
-    clientCallback_.configure(parent);
+    clientCallback_.configure(this, parent);
     pClient_->setClientCallbacks(&clientCallback_);
     // min=12 (15ms), max=40 (50ms): give the BLE 4.2 OBDLink CX room to
     // negotiate a comfortable interval.  Fixed min==max==12 caused connection
@@ -134,6 +228,8 @@ bool ObdBleClient::connect(const char* address, uint8_t addrType, uint32_t timeo
     if (!pClient_ || !address || address[0] == '\0') return false;
     if (pClient_->isConnected()) return true;
 
+    clearLinkState(true);
+
     NimBLEAddress addr{std::string(address), addrType};
     pClient_->setConnectTimeout(timeoutMs);
     connectPending_ = true;
@@ -145,16 +241,15 @@ bool ObdBleClient::connect(const char* address, uint8_t addrType, uint32_t timeo
     const bool ok = pClient_->connect(addr, !preferCachedAttributes, true, false);
     if (!ok) {
         Serial.println("[OBD] connect() returned false");
+        lastBleError_ = pClient_->getLastError();
         connectPending_ = false;
     }
     return ok;
 }
 
 void ObdBleClient::disconnect() {
-    connectPending_ = false;
     if (!pClient_) {
-        pTxChar_ = nullptr;
-        pRxChar_ = nullptr;
+        clearLinkState(false);
         return;
     }
 
@@ -164,12 +259,91 @@ void ObdBleClient::disconnect() {
         pClient_->disconnect();
     }
 
-    pTxChar_ = nullptr;
-    pRxChar_ = nullptr;
+    clearLinkState(false);
 }
 
 bool ObdBleClient::isConnected() const {
     return pClient_ && pClient_->isConnected();
+}
+
+bool ObdBleClient::beginSecurity() {
+    if (!pClient_ || !pClient_->isConnected()) {
+        lastSecurityError_ = BLE_HS_ENOTCONN;
+        return false;
+    }
+
+    syncSecurityStateFromConnInfo();
+    if (securityReady_) {
+        return true;
+    }
+    if (securityPending_) {
+        return true;
+    }
+
+    lastSecurityError_ = 0;
+    const bool ok = pClient_->secureConnection(true);
+    if (!ok) {
+        lastSecurityError_ = pClient_->getLastError();
+        lastBleError_ = lastSecurityError_;
+        securityPending_ = false;
+        return false;
+    }
+
+    securityPending_ = true;
+    return true;
+}
+
+bool ObdBleClient::isSecurityReady() const {
+    if (pClient_ && pClient_->isConnected()) {
+        const_cast<ObdBleClient*>(this)->syncSecurityStateFromConnInfo();
+    }
+    return securityReady_;
+}
+
+bool ObdBleClient::isEncrypted() const {
+    if (pClient_ && pClient_->isConnected()) {
+        const_cast<ObdBleClient*>(this)->syncSecurityStateFromConnInfo();
+    }
+    return encrypted_;
+}
+
+bool ObdBleClient::isBonded() const {
+    if (pClient_ && pClient_->isConnected()) {
+        const_cast<ObdBleClient*>(this)->syncSecurityStateFromConnInfo();
+    }
+    return bonded_;
+}
+
+bool ObdBleClient::isAuthenticated() const {
+    if (pClient_ && pClient_->isConnected()) {
+        const_cast<ObdBleClient*>(this)->syncSecurityStateFromConnInfo();
+    }
+    return authenticated_;
+}
+
+bool ObdBleClient::deleteBond(const char* address, uint8_t addrType) {
+    if (!address || address[0] == '\0') {
+        return false;
+    }
+
+    NimBLEAddress addr{std::string(address), addrType};
+    if (!NimBLEDevice::isBonded(addr) && pClient_ && pClient_->isConnected()) {
+        const NimBLEConnInfo info = pClient_->getConnInfo();
+        const NimBLEAddress idAddr = info.getIdAddress();
+        if (!idAddr.isNull() && NimBLEDevice::isBonded(idAddr)) {
+            addr = idAddr;
+        }
+    }
+
+    if (!NimBLEDevice::isBonded(addr)) {
+        return false;
+    }
+
+    const bool deleted = NimBLEDevice::deleteBond(addr);
+    if (deleted && pClient_ && pClient_->isConnected() && pClient_->getPeerAddress() == addr) {
+        clearLinkState(false);
+    }
+    return deleted;
 }
 
 bool ObdBleClient::validateCxModel() const {
@@ -195,6 +369,7 @@ bool ObdBleClient::discoverServices() {
         return false;
     }
 
+    syncSecurityStateFromConnInfo();
     connectPending_ = false;
     // Skip validateCxModel(): the CX was already identified by BLE
     // advertisement name during scan.  Removing the 180A service
@@ -204,6 +379,7 @@ bool ObdBleClient::discoverServices() {
     NimBLERemoteService* svc = pClient_->getService(kCxServiceUuid);
     if (!svc) {
         Serial.println("[OBD] discoverServices: FFF0 service not found");
+        lastBleError_ = pClient_->getLastError();
         return false;
     }
 
@@ -212,6 +388,7 @@ bool ObdBleClient::discoverServices() {
     if (!pTxChar_ || !pRxChar_) {
         Serial.printf("[OBD] discoverServices: char missing tx=%d rx=%d\n",
                       pTxChar_ != nullptr, pRxChar_ != nullptr);
+        lastBleError_ = pClient_->getLastError();
         pTxChar_ = nullptr;
         pRxChar_ = nullptr;
         return false;
@@ -220,6 +397,7 @@ bool ObdBleClient::discoverServices() {
     if (!pTxChar_->canNotify() || !(pRxChar_->canWrite() || pRxChar_->canWriteNoResponse())) {
         Serial.printf("[OBD] discoverServices: capability mismatch notify=%d write=%d writeNR=%d\n",
                       pTxChar_->canNotify(), pRxChar_->canWrite(), pRxChar_->canWriteNoResponse());
+        lastBleError_ = pClient_->getLastError();
         pTxChar_ = nullptr;
         pRxChar_ = nullptr;
         return false;
@@ -231,7 +409,10 @@ bool ObdBleClient::discoverServices() {
 
 bool ObdBleClient::writeCommand(const char* cmd) {
     if (!pRxChar_ || !pClient_ || !pClient_->isConnected() || !cmd) return false;
-    return pRxChar_->writeValue(reinterpret_cast<const uint8_t*>(cmd), strlen(cmd), true);
+    syncSecurityStateFromConnInfo();
+    const bool ok = pRxChar_->writeValue(reinterpret_cast<const uint8_t*>(cmd), strlen(cmd), true);
+    lastBleError_ = ok ? 0 : pClient_->getLastError();
+    return ok;
 }
 
 bool ObdBleClient::subscribeNotify(void (*callback)(const uint8_t* data, size_t len)) {
@@ -240,22 +421,41 @@ bool ObdBleClient::subscribeNotify(void (*callback)(const uint8_t* data, size_t 
         Serial.println("[OBD] subscribeNotify: connection lost before subscribe");
         return false;
     }
-    // response=false: use ATT Write Command (no response) for the CCCD
-    // descriptor.  The DA14531 BLE 4.2 modem on the OBDLink CX fails
-    // write-with-response on the 0x2902 descriptor, causing subscribe to
-    // return false and the connection to drop.
-    const bool ok = pTxChar_->subscribe(
+    syncSecurityStateFromConnInfo();
+
+    const auto subscribeWithMode = [&](bool response) {
+        return pTxChar_->subscribe(
         true,
         [callback](NimBLERemoteCharacteristic* /*chr*/, uint8_t* data, size_t length, bool /*isNotify*/) {
             if (callback && data && length > 0) {
                 callback(data, length);
             }
         },
-        false);
-    if (!ok) {
-        Serial.println("[OBD] subscribeNotify: subscribe failed");
+        response);
+    };
+
+    if (subscribeWithMode(true)) {
+        lastBleError_ = 0;
+        return true;
     }
-    return ok;
+
+    lastBleError_ = pClient_->getLastError();
+    Serial.printf("[OBD] subscribeNotify: write-with-response failed rc=%d, retrying no-response\n",
+                  lastBleError_);
+
+    if (!pClient_->isConnected()) {
+        return false;
+    }
+
+    if (subscribeWithMode(false)) {
+        lastBleError_ = 0;
+        Serial.println("[OBD] subscribeNotify: no-response fallback succeeded");
+        return true;
+    }
+
+    lastBleError_ = pClient_->getLastError();
+    Serial.println("[OBD] subscribeNotify: subscribe failed");
+    return false;
 }
 
 int8_t ObdBleClient::getRssi(uint32_t nowMs) {

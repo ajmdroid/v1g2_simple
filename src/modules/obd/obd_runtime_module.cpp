@@ -4,7 +4,14 @@
 #include "obd_scan_policy.h"
 
 #ifndef UNIT_TEST
+#include "ble_client.h"
 #include "obd_ble_client.h"
+
+extern "C" {
+#include "nimble/nimble/host/include/host/ble_att.h"
+#include "nimble/nimble/host/include/host/ble_hs.h"
+#include "nimble/nimble/include/nimble/ble.h"
+}
 #endif
 
 #include <algorithm>
@@ -124,10 +131,13 @@ void ObdRuntimeModule::resetForBegin() {
     lastRssiMs_ = 0;
     bufferOverflowCount_ = 0;
     initRetries_ = 0;
+    consecutiveSpeedSamples_ = 0;
+    securityRepairs_ = 0;
     lastConnectStartMs_ = 0;
     lastConnectSuccessMs_ = 0;
     lastFailureMs_ = 0;
     lastFailure_ = ObdFailureReason::NONE;
+    repairedBondAddress_[0] = '\0';
 
     clearBleResponseState();
     bleDisconnected_ = false;
@@ -145,12 +155,22 @@ void ObdRuntimeModule::resetForBegin() {
     testDiscoverResult_ = true;
     testSubscribeResult_ = true;
     testWriteResult_ = true;
+    testBeginSecurityResult_ = true;
+    testSecurityReady_ = true;
+    testSecurityEncrypted_ = true;
+    testSecurityBonded_ = true;
+    testSecurityAuthenticated_ = true;
     testRssi_ = 0;
+    testLastBleError_ = 0;
+    testLastSecurityError_ = 0;
     testStartScanCalls_ = 0;
     testConnectCalls_ = 0;
     testDiscoverCalls_ = 0;
     testDisconnectCalls_ = 0;
     testWriteCalls_ = 0;
+    testBeginSecurityCalls_ = 0;
+    testDeleteBondCalls_ = 0;
+    testRefreshBondBackupCalls_ = 0;
     testLastCommand_[0] = '\0';
 #endif
 }
@@ -193,6 +213,7 @@ const char* obdStateName(ObdConnectionState s) {
         case ObdConnectionState::WAIT_BOOT:     return "WAIT_BOOT";
         case ObdConnectionState::SCANNING:      return "SCANNING";
         case ObdConnectionState::CONNECTING:    return "CONNECTING";
+        case ObdConnectionState::SECURING:      return "SECURING";
         case ObdConnectionState::DISCOVERING:   return "DISCOVERING";
         case ObdConnectionState::AT_INIT:       return "AT_INIT";
         case ObdConnectionState::POLLING:       return "POLLING";
@@ -223,6 +244,7 @@ void ObdRuntimeModule::clearSpeedState() {
     speedMph_ = 0.0f;
     speedSampleTsMs_ = 0;
     speedValid_ = false;
+    consecutiveSpeedSamples_ = 0;
 }
 
 void ObdRuntimeModule::clearEotState(bool clearProfile) {
@@ -297,6 +319,7 @@ void ObdRuntimeModule::handlePollingError(uint32_t nowMs,
     markFailure(reason, nowMs);
     pollErrors_++;
     consecutiveErrors_++;
+    consecutiveSpeedSamples_ = 0;
     clearBleResponseState();
     resetCommandState();
     if (disconnectBleNow) {
@@ -364,6 +387,63 @@ bool ObdRuntimeModule::isBleConnected() const {
 #endif
 }
 
+bool ObdRuntimeModule::beginBleSecurity() {
+#ifndef UNIT_TEST
+    return obdBleClient.beginSecurity();
+#else
+    testBeginSecurityCalls_++;
+    return testBeginSecurityResult_;
+#endif
+}
+
+bool ObdRuntimeModule::isBleSecurityReady() const {
+#ifndef UNIT_TEST
+    return obdBleClient.isSecurityReady();
+#else
+    return testSecurityReady_;
+#endif
+}
+
+bool ObdRuntimeModule::isBleEncrypted() const {
+#ifndef UNIT_TEST
+    return obdBleClient.isEncrypted();
+#else
+    return testSecurityEncrypted_;
+#endif
+}
+
+bool ObdRuntimeModule::isBleBonded() const {
+#ifndef UNIT_TEST
+    return obdBleClient.isBonded();
+#else
+    return testSecurityBonded_;
+#endif
+}
+
+bool ObdRuntimeModule::isBleAuthenticated() const {
+#ifndef UNIT_TEST
+    return obdBleClient.isAuthenticated();
+#else
+    return testSecurityAuthenticated_;
+#endif
+}
+
+int ObdRuntimeModule::getBleLastError() const {
+#ifndef UNIT_TEST
+    return obdBleClient.getLastBleError();
+#else
+    return testLastBleError_;
+#endif
+}
+
+int ObdRuntimeModule::getBleSecurityFailure() const {
+#ifndef UNIT_TEST
+    return obdBleClient.getLastSecurityError();
+#else
+    return testLastSecurityError_;
+#endif
+}
+
 bool ObdRuntimeModule::discoverBleServices() {
 #ifndef UNIT_TEST
     return obdBleClient.discoverServices();
@@ -390,6 +470,23 @@ bool ObdRuntimeModule::writeBleCommand(const char* cmd) {
     testWriteCalls_++;
     copyString(testLastCommand_, sizeof(testLastCommand_), cmd);
     return testWriteResult_;
+#endif
+}
+
+bool ObdRuntimeModule::deleteBleBond() {
+#ifndef UNIT_TEST
+    return obdBleClient.deleteBond(savedAddress_, savedAddrType_);
+#else
+    testDeleteBondCalls_++;
+    return true;
+#endif
+}
+
+void ObdRuntimeModule::refreshBleBondBackup() {
+#ifndef UNIT_TEST
+    ::refreshBleBondBackup();
+#else
+    testRefreshBondBackupCalls_++;
 #endif
 }
 
@@ -586,6 +683,7 @@ bool ObdRuntimeModule::handleSpeedResponse(uint32_t nowMs) {
     speedMph_ = kmhToMph(kmh);
     speedSampleTsMs_ = nowMs;
     speedValid_ = true;
+    consecutiveSpeedSamples_++;
     consecutiveErrors_ = 0;
     pollCount_++;
     nextSpeedDueMs_ = nowMs + obd::POLL_INTERVAL_MS;
@@ -837,6 +935,12 @@ bool ObdRuntimeModule::isEotFresh(uint32_t nowMs) const {
            (nowMs - eotSampleTsMs_) <= obd::EOT_STALE_MS;
 }
 
+bool ObdRuntimeModule::isCoreSpeedReady(uint32_t nowMs) const {
+    return state_ == ObdConnectionState::POLLING &&
+           consecutiveSpeedSamples_ >= obd::CORE_READY_MIN_SPEED_SAMPLES &&
+           (nowMs - stateEnteredMs_) >= obd::CORE_READY_MIN_CONNECTED_MS;
+}
+
 bool ObdRuntimeModule::speedDue(uint32_t nowMs) const {
     return nextSpeedDueMs_ == 0 || static_cast<int32_t>(nowMs - nextSpeedDueMs_) >= 0;
 }
@@ -1001,6 +1105,10 @@ bool ObdRuntimeModule::sendNextPollingCommand(uint32_t nowMs) {
         return false;
     }
 
+    if (!isCoreSpeedReady(nowMs)) {
+        return false;
+    }
+
     if (activeEotProfileId_ == ObdEotProfileId::NONE && cachedEotProfileId_ != ObdEotProfileId::NONE) {
         selectInitialCachedProfile();
     }
@@ -1030,10 +1138,66 @@ bool ObdRuntimeModule::sendNextPollingCommand(uint32_t nowMs) {
     return false;
 }
 
+void ObdRuntimeModule::updateSecuring(uint32_t nowMs) {
+    if (bleDisconnected_) {
+#ifndef UNIT_TEST
+        Serial.printf("[OBD] lost connection during securing (ble reason=%d %s)\n",
+                      bleDisconnectReason_,
+                      bleReasonName(bleDisconnectReason_));
+#endif
+        bleDisconnected_ = false;
+        if (autoHealBondIfAllowed(nowMs, "securing_disconnect")) {
+            return;
+        }
+        handleConnectFailure(nowMs, ObdFailureReason::SECURITY_TIMEOUT);
+        return;
+    }
+
+    if ((nowMs - stateEnteredMs_) < obd::POST_CONNECT_SETTLE_MS) {
+        return;
+    }
+
+    if (isBleSecurityReady() || isBleEncrypted()) {
+        transitionTo(ObdConnectionState::DISCOVERING, nowMs);
+        return;
+    }
+
+    if (!beginBleSecurity()) {
+#ifndef UNIT_TEST
+        Serial.printf("[OBD] secureConnection start failed rc=%d (%s)\n",
+                      getBleSecurityFailure(),
+                      bleReasonName(getBleSecurityFailure()));
+#endif
+        if (autoHealBondIfAllowed(nowMs, "securing_start")) {
+            return;
+        }
+        disconnectBle();
+        handleConnectFailure(nowMs, ObdFailureReason::SECURITY_START);
+        return;
+    }
+
+    if ((nowMs - stateEnteredMs_) >= (obd::POST_CONNECT_SETTLE_MS + obd::SECURITY_TIMEOUT_MS)) {
+#ifndef UNIT_TEST
+        Serial.printf("[OBD] securing timed out bleError=%d (%s) securityError=%d (%s)\n",
+                      getBleLastError(),
+                      bleReasonName(getBleLastError()),
+                      getBleSecurityFailure(),
+                      bleReasonName(getBleSecurityFailure()));
+#endif
+        if (autoHealBondIfAllowed(nowMs, "securing_timeout")) {
+            return;
+        }
+        disconnectBle();
+        handleConnectFailure(nowMs, ObdFailureReason::SECURITY_TIMEOUT);
+    }
+}
+
 void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
     if (bleDisconnected_) {
 #ifndef UNIT_TEST
-        Serial.printf("[OBD] lost connection during AT init (ble reason=%d)\n", bleDisconnectReason_);
+        Serial.printf("[OBD] lost connection during AT init (ble reason=%d %s)\n",
+                      bleDisconnectReason_,
+                      bleReasonName(bleDisconnectReason_));
 #endif
         bleDisconnected_ = false;
         transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
@@ -1082,6 +1246,21 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
                       obd::AT_INIT_RETRIES,
                       ObdEotProfileId::NONE,
                       nowMs)) {
+#ifndef UNIT_TEST
+        Serial.printf("[OBD] AT init write failed cmd=%s rc=%d (%s) securityReady=%d enc=%d bond=%d auth=%d bleReason=%d (%s)\n",
+                      command,
+                      getBleLastError(),
+                      bleReasonName(getBleLastError()),
+                      isBleSecurityReady(),
+                      isBleEncrypted(),
+                      isBleBonded(),
+                      isBleAuthenticated(),
+                      bleDisconnectReason_,
+                      bleReasonName(bleDisconnectReason_));
+#endif
+        if (initIndex_ == 0 && autoHealBondIfAllowed(nowMs, "at_init_write")) {
+            return;
+        }
         disconnectBle();
         handleConnectFailure(nowMs, ObdFailureReason::WRITE);
     }
@@ -1090,7 +1269,9 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
 void ObdRuntimeModule::updatePolling(uint32_t nowMs) {
     if (bleDisconnected_) {
 #ifndef UNIT_TEST
-        Serial.printf("[OBD] lost connection during polling (ble reason=%d)\n", bleDisconnectReason_);
+        Serial.printf("[OBD] lost connection during polling (ble reason=%d %s)\n",
+                      bleDisconnectReason_,
+                      bleReasonName(bleDisconnectReason_));
 #endif
         bleDisconnected_ = false;
         clearSpeedState();
@@ -1200,7 +1381,9 @@ void ObdRuntimeModule::update(uint32_t nowMs,
         case ObdConnectionState::CONNECTING:
             if (bleDisconnected_) {
 #ifndef UNIT_TEST
-                Serial.printf("[OBD] connect failed (ble reason=%d)\n", bleDisconnectReason_);
+                Serial.printf("[OBD] connect failed (ble reason=%d %s)\n",
+                              bleDisconnectReason_,
+                              bleReasonName(bleDisconnectReason_));
 #endif
                 bleDisconnected_ = false;
                 handleConnectFailure(nowMs, ObdFailureReason::CONNECT_START);
@@ -1218,7 +1401,7 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                 connectAttempts_ = 0;
                 connectSuccesses_++;
                 lastConnectSuccessMs_ = nowMs;
-                transitionTo(ObdConnectionState::DISCOVERING, nowMs);
+                transitionTo(ObdConnectionState::SECURING, nowMs);
                 break;
             }
             if ((nowMs - stateEnteredMs_) >= obd::CONNECT_TIMEOUT_MS) {
@@ -1227,20 +1410,19 @@ void ObdRuntimeModule::update(uint32_t nowMs,
             }
             break;
 
+        case ObdConnectionState::SECURING:
+            updateSecuring(nowMs);
+            break;
+
         case ObdConnectionState::DISCOVERING:
             if (bleDisconnected_) {
 #ifndef UNIT_TEST
-                Serial.printf("[OBD] lost connection during discovery (ble reason=%d)\n", bleDisconnectReason_);
+                Serial.printf("[OBD] lost connection during discovery (ble reason=%d %s)\n",
+                              bleDisconnectReason_,
+                              bleReasonName(bleDisconnectReason_));
 #endif
                 bleDisconnected_ = false;
                 transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
-                break;
-            }
-            // Post-connect settle: the DA14531 BLE 4.2 modem inside the
-            // OBDLink CX needs time after GAP connection before it is ready
-            // for GATT operations.  Without this delay, service discovery
-            // or CCCD subscribe triggers an immediate disconnect.
-            if ((nowMs - stateEnteredMs_) < obd::POST_CONNECT_SETTLE_MS) {
                 break;
             }
             {
@@ -1251,7 +1433,9 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                 }
                 if (bleDisconnected_) {
 #ifndef UNIT_TEST
-                    Serial.printf("[OBD] lost connection after discovery (ble reason=%d)\n", bleDisconnectReason_);
+                    Serial.printf("[OBD] lost connection after discovery (ble reason=%d %s)\n",
+                                  bleDisconnectReason_,
+                                  bleReasonName(bleDisconnectReason_));
 #endif
                     bleDisconnected_ = false;
                     transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
@@ -1316,10 +1500,14 @@ ObdRuntimeStatus ObdRuntimeModule::snapshot(uint32_t nowMs) const {
     status.enabled = enabled_;
     status.state = state_;
     status.connected = isBleConnected() ||
+                       state_ == ObdConnectionState::SECURING ||
                        state_ == ObdConnectionState::DISCOVERING ||
                        state_ == ObdConnectionState::AT_INIT ||
                        state_ == ObdConnectionState::POLLING ||
                        state_ == ObdConnectionState::ERROR_BACKOFF;
+    status.securityReady = isBleSecurityReady();
+    status.encrypted = isBleEncrypted();
+    status.bonded = isBleBonded();
     status.speedValid = isSpeedFresh(nowMs);
     status.speedMph = speedMph_;
     status.speedSampleTsMs = speedSampleTsMs_;
@@ -1337,6 +1525,7 @@ ObdRuntimeStatus ObdRuntimeModule::snapshot(uint32_t nowMs) const {
     status.connectAttempts = connectAttempts_;
     status.connectSuccesses = connectSuccesses_;
     status.connectFailures = connectFailures_;
+    status.securityRepairs = securityRepairs_;
     status.scanInProgress = (state_ == ObdConnectionState::SCANNING);
     status.savedAddressValid = savedAddress_[0] != '\0';
     status.initRetries = initRetries_;
@@ -1349,6 +1538,8 @@ ObdRuntimeStatus ObdRuntimeModule::snapshot(uint32_t nowMs) const {
     status.lastConnectStartMs = lastConnectStartMs_;
     status.lastConnectSuccessMs = lastConnectSuccessMs_;
     status.lastFailureMs = lastFailureMs_;
+    status.lastBleError = getBleLastError();
+    status.lastSecurityError = getBleSecurityFailure();
     status.lastFailure = lastFailure_;
     status.commandInFlight = activeCommand_.active ? activeCommand_.kind : ObdCommandKind::NONE;
     return status;
@@ -1446,6 +1637,81 @@ const char* ObdRuntimeModule::commandKindName(ObdCommandKind kind) {
         default:
             return "none";
     }
+}
+
+const char* ObdRuntimeModule::bleReasonName(int reason) {
+    switch (reason) {
+        case 0:
+            return "none";
+        case 520:
+            return "supervision_timeout";
+#ifndef UNIT_TEST
+        case BLE_HS_HCI_ERR(BLE_ERR_PINKEY_MISSING):
+            return "pinkey_missing";
+        case BLE_HS_HCI_ERR(BLE_ERR_AUTH_FAIL):
+            return "auth_fail";
+        case BLE_HS_HCI_ERR(BLE_ERR_NO_PAIRING):
+            return "no_pairing";
+#endif
+        default:
+            return "unknown";
+    }
+}
+
+bool ObdRuntimeModule::isSecurityBleError(int error) {
+#ifndef UNIT_TEST
+    switch (error) {
+        case BLE_HS_ATT_ERR(BLE_ATT_ERR_INSUFFICIENT_AUTHEN):
+        case BLE_HS_ATT_ERR(BLE_ATT_ERR_INSUFFICIENT_AUTHOR):
+        case BLE_HS_ATT_ERR(BLE_ATT_ERR_INSUFFICIENT_ENC):
+        case BLE_HS_ATT_ERR(BLE_ATT_ERR_INSUFFICIENT_KEY_SZ):
+        case BLE_HS_HCI_ERR(BLE_ERR_PINKEY_MISSING):
+        case BLE_HS_HCI_ERR(BLE_ERR_AUTH_FAIL):
+        case BLE_HS_HCI_ERR(BLE_ERR_NO_PAIRING):
+        case BLE_HS_HCI_ERR(BLE_ERR_INSUFFICIENT_SEC):
+            return true;
+        default:
+            return false;
+    }
+#else
+    return error != 0;
+#endif
+}
+
+bool ObdRuntimeModule::canAutoHealBond() const {
+    return savedAddress_[0] != '\0' && strcmp(repairedBondAddress_, savedAddress_) != 0;
+}
+
+bool ObdRuntimeModule::autoHealBondIfAllowed(uint32_t nowMs, const char* context) {
+    if (!canAutoHealBond()) {
+        return false;
+    }
+
+    if (!deleteBleBond()) {
+        return false;
+    }
+
+#ifndef UNIT_TEST
+    Serial.printf("[OBD] auto-heal bond during %s addr=%s lastBleError=%d (%s) lastSecurityError=%d (%s)\n",
+                  context ? context : "unknown",
+                  savedAddress_,
+                  getBleLastError(),
+                  bleReasonName(getBleLastError()),
+                  getBleSecurityFailure(),
+                  bleReasonName(getBleSecurityFailure()));
+#endif
+
+    disconnectBle();
+    clearBleResponseState();
+    resetCommandState();
+    bleDisconnected_ = false;
+    preferWarmReconnect_ = false;
+    warmInitPreferred_ = false;
+    copyString(repairedBondAddress_, sizeof(repairedBondAddress_), savedAddress_);
+    securityRepairs_++;
+    refreshBleBondBackup();
+    transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
+    return true;
 }
 
 #ifdef UNIT_TEST

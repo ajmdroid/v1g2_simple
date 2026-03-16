@@ -294,14 +294,103 @@ void test_discover_entry_action_runs_on_next_tick() {
     obdRuntimeModule.update(5000, true, true, true);
     obdRuntimeModule.setTestBleConnected(true);
     obdRuntimeModule.update(5001, true, true, true);
-    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdConnectionState::SECURING, obdRuntimeModule.getState());
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getConnectCallCountForTest());
 
     obdRuntimeModule.setTestDiscoverResult(false);
-    // POST_CONNECT_SETTLE_MS (500ms) must elapse before GATT operations begin
+    // POST_CONNECT_SETTLE_MS (500ms) must elapse before security / GATT work begins.
+    obdRuntimeModule.update(5501, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
     obdRuntimeModule.update(5502, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDiscoverCallCountForTest());
+}
+
+void test_connect_enters_securing_before_discovery() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+
+    obdRuntimeModule.update(5000, true, true, true);
+    obdRuntimeModule.setTestBleConnected(true);
+    obdRuntimeModule.update(5001, true, true, true);
+
+    TEST_ASSERT_EQUAL(ObdConnectionState::SECURING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(0, obdRuntimeModule.getDiscoverCallCountForTest());
+}
+
+void test_discovery_waits_for_security_ready() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.setTestSecurityReady(false);
+    obdRuntimeModule.setTestSecurityEncrypted(false);
+    obdRuntimeModule.setTestSecurityBonded(false);
+
+    obdRuntimeModule.update(5000, true, true, true);
+    obdRuntimeModule.setTestBleConnected(true);
+    obdRuntimeModule.update(5001, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::SECURING, obdRuntimeModule.getState());
+
+    obdRuntimeModule.update(5501, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::SECURING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getBeginSecurityCallCountForTest());
+    TEST_ASSERT_EQUAL_UINT32(0, obdRuntimeModule.getDiscoverCallCountForTest());
+
+    obdRuntimeModule.setTestSecurityReady(true);
+    obdRuntimeModule.setTestSecurityEncrypted(true);
+    obdRuntimeModule.setTestSecurityBonded(true);
+    obdRuntimeModule.update(5502, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
+}
+
+void test_security_timeout_auto_heals_bond_once() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::SECURING, 0);
+    obdRuntimeModule.setTestBleConnected(true);
+    obdRuntimeModule.setTestSecurityReady(false);
+    obdRuntimeModule.setTestSecurityEncrypted(false);
+    obdRuntimeModule.setTestSecurityBonded(false);
+
+    obdRuntimeModule.update(4000, true, true, true);
+
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDeleteBondCallCountForTest());
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getRefreshBondBackupCallCountForTest());
+
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(4000);
+    TEST_ASSERT_EQUAL_UINT32(1, status.securityRepairs);
+}
+
+void test_security_timeout_does_not_repair_same_bond_twice() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::SECURING, 0);
+    obdRuntimeModule.setTestBleConnected(true);
+    obdRuntimeModule.setTestSecurityReady(false);
+    obdRuntimeModule.setTestSecurityEncrypted(false);
+    obdRuntimeModule.setTestSecurityBonded(false);
+
+    obdRuntimeModule.update(4000, true, true, true);
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDeleteBondCallCountForTest());
+
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::SECURING, 0);
+    obdRuntimeModule.setTestBleConnected(true);
+    obdRuntimeModule.update(4001, true, true, true);
+
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDeleteBondCallCountForTest());
+}
+
+void test_first_at_init_write_failure_auto_heals_bond() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::AT_INIT, 0);
+    obdRuntimeModule.setTestBleConnected(true);
+    obdRuntimeModule.setTestSecurityReady(true);
+    obdRuntimeModule.setTestSecurityEncrypted(true);
+    obdRuntimeModule.setTestSecurityBonded(true);
+    obdRuntimeModule.setTestWriteResult(false);
+    obdRuntimeModule.setTestLastBleError(1);
+
+    obdRuntimeModule.update(100, true, true, true);
+
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDeleteBondCallCountForTest());
 }
 
 // ── Speed data ────────────────────────────────────────────────────
@@ -445,14 +534,15 @@ void test_cached_profile_polls_before_background_vin_lookup() {
                            "1FTW1ET7DFA",
                            static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
     obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
-    obdRuntimeModule.injectSpeedForTest(45.0f, 0);
+    obdRuntimeModule.injectSpeedForTest(45.0f, 5900);
+    obdRuntimeModule.setConsecutiveSpeedSamplesForTest(3);
 
-    obdRuntimeModule.update(100, true, true, true);
+    obdRuntimeModule.update(6000, true, true, true);
     TEST_ASSERT_EQUAL_STRING("010D\r", obdRuntimeModule.getLastCommandForTest());
 
     feedBleResponse("41 0D 28\r\n>");
-    obdRuntimeModule.update(150, true, true, true);
-    obdRuntimeModule.update(200, true, true, true);
+    obdRuntimeModule.update(6050, true, true, true);
+    obdRuntimeModule.update(6100, true, true, true);
 
     TEST_ASSERT_EQUAL(ObdCommandKind::EOT_POLL, obdRuntimeModule.getActiveCommandKindForTest());
     TEST_ASSERT_EQUAL_STRING("22F45C\r", obdRuntimeModule.getLastCommandForTest());
@@ -463,12 +553,13 @@ void test_cached_profile_polls_before_background_vin_lookup() {
 void test_vin_response_sets_family_and_starts_standard_eot_probe() {
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
-    obdRuntimeModule.injectSpeedForTest(45.0f, 0);
+    obdRuntimeModule.injectSpeedForTest(45.0f, 5900);
+    obdRuntimeModule.setConsecutiveSpeedSamplesForTest(3);
 
-    obdRuntimeModule.update(100, true, true, true);
+    obdRuntimeModule.update(6000, true, true, true);
     feedBleResponse("41 0D 28\r\n>");
-    obdRuntimeModule.update(150, true, true, true);
-    obdRuntimeModule.update(200, true, true, true);
+    obdRuntimeModule.update(6050, true, true, true);
+    obdRuntimeModule.update(6100, true, true, true);
     TEST_ASSERT_EQUAL_STRING("0902\r", obdRuntimeModule.getLastCommandForTest());
 
     feedBleResponse(
@@ -478,13 +569,13 @@ void test_vin_response_sets_family_and_starts_standard_eot_probe() {
         "2: 46 41 31 32 33 34\r\n"
         "3: 35 36\r\n"
         ">");
-    obdRuntimeModule.update(250, true, true, true);
+    obdRuntimeModule.update(6150, true, true, true);
 
-    ObdRuntimeStatus status = obdRuntimeModule.snapshot(250);
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(6150);
     TEST_ASSERT_TRUE(status.vinDetected);
     TEST_ASSERT_EQUAL(ObdVehicleFamily::FORD, status.vehicleFamily);
 
-    obdRuntimeModule.update(400, true, true, true);
+    obdRuntimeModule.update(6200, true, true, true);
     TEST_ASSERT_EQUAL(ObdCommandKind::EOT_PROBE, obdRuntimeModule.getActiveCommandKindForTest());
     TEST_ASSERT_EQUAL_STRING("015C\r", obdRuntimeModule.getLastCommandForTest());
 }
@@ -594,6 +685,11 @@ int main() {
     RUN_TEST(test_three_connect_failures_clears_saved_address);
     RUN_TEST(test_connect_entry_action_runs_on_next_tick);
     RUN_TEST(test_discover_entry_action_runs_on_next_tick);
+    RUN_TEST(test_connect_enters_securing_before_discovery);
+    RUN_TEST(test_discovery_waits_for_security_ready);
+    RUN_TEST(test_security_timeout_auto_heals_bond_once);
+    RUN_TEST(test_security_timeout_does_not_repair_same_bond_twice);
+    RUN_TEST(test_first_at_init_write_failure_auto_heals_bond);
 
     // Speed data
     RUN_TEST(test_inject_speed_is_fresh);

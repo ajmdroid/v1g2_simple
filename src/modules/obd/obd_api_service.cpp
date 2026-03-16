@@ -46,6 +46,9 @@ void handleApiStatus(WebServer& server,
     JsonDocument doc;
     doc["enabled"] = status.enabled;
     doc["connected"] = status.connected;
+    doc["securityReady"] = status.securityReady;
+    doc["encrypted"] = status.encrypted;
+    doc["bonded"] = status.bonded;
     doc["speedValid"] = status.speedValid;
     doc["speedMph"] = status.speedMph;
     doc["speedAgeMs"] = status.speedAgeMs;
@@ -55,6 +58,7 @@ void handleApiStatus(WebServer& server,
     doc["connectAttempts"] = status.connectAttempts;
     doc["connectSuccesses"] = status.connectSuccesses;
     doc["connectFailures"] = status.connectFailures;
+    doc["securityRepairs"] = status.securityRepairs;
     doc["initRetries"] = status.initRetries;
     doc["pollCount"] = status.pollCount;
     doc["pollErrors"] = status.pollErrors;
@@ -66,6 +70,8 @@ void handleApiStatus(WebServer& server,
     doc["lastConnectStartMs"] = status.lastConnectStartMs;
     doc["lastConnectSuccessMs"] = status.lastConnectSuccessMs;
     doc["lastFailureMs"] = status.lastFailureMs;
+    doc["lastBleError"] = status.lastBleError;
+    doc["lastSecurityError"] = status.lastSecurityError;
     doc["lastFailureRaw"] = static_cast<int>(status.lastFailure);
     doc["vinDetected"] = status.vinDetected;
     doc["vin"] = status.vinDetected ? status.vin : "";

@@ -16,6 +16,7 @@ static constexpr uint8_t MAX_DIRECT_CONNECT_FAILURES = 3;
 
 // ── Post-connect settle (DA14531 BLE 4.2 needs time before GATT) ─
 static constexpr uint32_t POST_CONNECT_SETTLE_MS = 500;
+static constexpr uint32_t SECURITY_TIMEOUT_MS = 3000;
 
 // ── Boot dwell (V1 gets priority) ───────────────────────────────
 static constexpr uint32_t POST_BOOT_DWELL_MS = 10000;
@@ -35,6 +36,8 @@ static constexpr uint32_t EOT_STALE_MS = 10000;
 static constexpr uint8_t BUFFER_OVERFLOWS_BEFORE_DISCONNECT = 2;
 static constexpr uint8_t EOT_INVALID_STREAK_CLEAR_CACHE = 3;
 static constexpr uint8_t EOT_CACHE_PERSIST_SAMPLES = 3;
+static constexpr uint8_t CORE_READY_MIN_SPEED_SAMPLES = 3;
+static constexpr uint32_t CORE_READY_MIN_CONNECTED_MS = 5000;
 
 // ── RSSI ────────────────────────────────────────────────────────
 static constexpr int8_t DEFAULT_MIN_RSSI = -80;

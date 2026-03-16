@@ -530,4 +530,8 @@ private:
     bool setupCharacteristics();
 };
 
+// Refresh the shared NimBLE bond backup snapshot after an external module
+// adds or deletes bond records.
+int refreshBleBondBackup();
+
 #endif // BLE_CLIENT_H

@@ -26,12 +26,15 @@ private:
 /// OBD client disconnect callback — signals runtime module on disconnect.
 class ObdClientCallback : public NimBLEClientCallbacks {
 public:
-    void configure(ObdRuntimeModule* parent);
+    void configure(class ObdBleClient* owner, ObdRuntimeModule* parent);
     void onConnect(NimBLEClient* client) override;
     void onConnectFail(NimBLEClient* client, int reason) override;
     void onDisconnect(NimBLEClient* client, int reason) override;
+    void onAuthenticationComplete(NimBLEConnInfo& connInfo) override;
+    void onIdentity(NimBLEConnInfo& connInfo) override;
 
 private:
+    class ObdBleClient* owner_ = nullptr;
     ObdRuntimeModule* parent_ = nullptr;
 };
 
@@ -57,6 +60,14 @@ public:
     /// True if GATT client is connected.
     bool isConnected() const;
     bool isConnectPending() const { return connectPending_; }
+    bool beginSecurity();
+    bool isSecurityReady() const;
+    bool isEncrypted() const;
+    bool isBonded() const;
+    bool isAuthenticated() const;
+    int getLastBleError() const { return lastBleError_; }
+    int getLastSecurityError() const { return lastSecurityError_; }
+    bool deleteBond(const char* address, uint8_t addrType);
 
     /// Discover SPP-over-GATT service and TX/RX characteristics.
     /// Returns true if both characteristics found.
@@ -75,7 +86,15 @@ public:
     bool isInitialized() const { return pClient_ != nullptr; }
 
 private:
+    friend class ObdClientCallback;
+
     bool validateCxModel() const;
+    void syncSecurityStateFromConnInfo();
+    void handleConnected();
+    void handleDisconnected(int reason);
+    void handleAuthenticationComplete(const NimBLEConnInfo& connInfo);
+    void handleIdentityResolved(const NimBLEConnInfo& connInfo);
+    void clearLinkState(bool clearErrors);
 
     NimBLEClient* pClient_ = nullptr;
     NimBLERemoteCharacteristic* pTxChar_ = nullptr;  // notify (device → host)
@@ -87,6 +106,13 @@ private:
     int8_t cachedRssi_ = 0;
     uint32_t lastRssiQueryMs_ = 0;
     bool connectPending_ = false;
+    bool securityPending_ = false;
+    bool securityReady_ = false;
+    bool encrypted_ = false;
+    bool bonded_ = false;
+    bool authenticated_ = false;
+    int lastBleError_ = 0;
+    int lastSecurityError_ = 0;
     static constexpr uint32_t RSSI_QUERY_INTERVAL_MS = 2000;
 };
 
