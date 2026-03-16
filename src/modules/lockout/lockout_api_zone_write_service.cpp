@@ -1,6 +1,7 @@
 #include "lockout_api_service.h"
 
 #include <ArduinoJson.h>
+#include <algorithm>
 #include <cstring>
 #include <cmath>
 #include "json_stream_response.h"
@@ -10,6 +11,7 @@
 #include "lockout_learner.h"
 #include "lockout_store.h"
 #include "lockout_band_policy.h"
+#include "lockout_signature_utils.h"
 #include "signal_observation_log.h"
 #include "signal_observation_sd_logger.h"
 #include "../../settings.h"
@@ -41,7 +43,11 @@ bool parseDirectionModeArg(const JsonVariantConst& value, uint8_t& outMode) {
         return true;
     }
     if (value.is<const char*>()) {
-        String token = value.as<String>();
+        const char* rawToken = value.as<const char*>();
+        if (!rawToken) {
+            return false;
+        }
+        String token(rawToken);
         token.toLowerCase();
         token.trim();
         if (token == "all") {
@@ -67,12 +73,12 @@ bool parseBoolArg(const JsonObjectConst& body, const char* key, bool& outValue) 
     return true;
 }
 
-bool parseFloatArg(const JsonObjectConst& body, const char* key, float& outValue) {
+bool parseFloatArg(const JsonObjectConst& body, const char* key, double& outValue) {
     if (body[key].isNull()) return false;
     if (!body[key].is<float>() && !body[key].is<double>() && !body[key].is<int>()) {
         return false;
     }
-    outValue = body[key].as<float>();
+    outValue = body[key].as<double>();
     return true;
 }
 
@@ -83,14 +89,43 @@ bool parseIntArg(const JsonObjectConst& body, const char* key, int& outValue) {
     return true;
 }
 
-int32_t degreesToE5(float degrees) {
-    return static_cast<int32_t>(lroundf(degrees * 100000.0f));
+int32_t degreesToE5(double degrees) {
+    return static_cast<int32_t>(lround(degrees * 100000.0));
 }
 
 uint16_t clampHeadingTol(int raw) {
     if (raw < 0) return 0;
     if (raw > 90) return 90;
     return static_cast<uint16_t>(raw);
+}
+
+bool structurallyEquivalent(const LockoutEntry& lhs, const LockoutEntry& rhs) {
+    return lhs.latE5 == rhs.latE5 &&
+           lhs.lonE5 == rhs.lonE5 &&
+           lhs.radiusE5 == rhs.radiusE5 &&
+           lhs.bandMask == rhs.bandMask &&
+           lhs.freqMHz == rhs.freqMHz &&
+           lhs.directionMode == rhs.directionMode &&
+           lhs.headingDeg == rhs.headingDeg &&
+           lhs.headingTolDeg == rhs.headingTolDeg;
+}
+
+int findDuplicateZoneSlot(const LockoutIndex& lockoutIndex,
+                          const LockoutEntry& candidate,
+                          int ignoreSlot = -1) {
+    for (size_t i = 0; i < lockoutIndex.capacity(); ++i) {
+        if (static_cast<int>(i) == ignoreSlot) {
+            continue;
+        }
+        const LockoutEntry* existing = lockoutIndex.at(i);
+        if (!existing || !existing->isActive()) {
+            continue;
+        }
+        if (structurallyEquivalent(*existing, candidate)) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
 }
 
 bool parseZoneBody(const JsonObjectConst& body,
@@ -101,8 +136,8 @@ bool parseZoneBody(const JsonObjectConst& body,
     bool hasLongitude = false;
     bool hasBandMask = false;
 
-    float latitudeDeg = 0.0f;
-    float longitudeDeg = 0.0f;
+    double latitudeDeg = 0.0;
+    double longitudeDeg = 0.0;
     int bandMaskRaw = 0;
 
     if (parseFloatArg(body, "latitude", latitudeDeg) || parseFloatArg(body, "lat", latitudeDeg)) {
@@ -131,8 +166,8 @@ bool parseZoneBody(const JsonObjectConst& body,
 
     if (hasLatitude && hasLongitude) {
         if (!std::isfinite(latitudeDeg) || !std::isfinite(longitudeDeg) ||
-            latitudeDeg < -90.0f || latitudeDeg > 90.0f ||
-            longitudeDeg < -180.0f || longitudeDeg > 180.0f) {
+            latitudeDeg < -90.0 || latitudeDeg > 90.0 ||
+            longitudeDeg < -180.0 || longitudeDeg > 180.0) {
             errorMessage = "latitude/longitude out of range";
             return false;
         }
@@ -240,7 +275,8 @@ bool parseRequestJson(WebServer& server, JsonDocument& body) {
     if (!server.hasArg("plain") || server.arg("plain").length() == 0) {
         return false;
     }
-    const DeserializationError error = deserializeJson(body, server.arg("plain"));
+    const String payload = server.arg("plain");
+    const DeserializationError error = deserializeJson(body, payload.c_str());
     return !error;
 }
 
@@ -292,7 +328,8 @@ void handleZoneDelete(WebServer& server,
     int slot = -1;
     if (server.hasArg("plain") && server.arg("plain").length() > 0) {
         JsonDocument body;
-        const DeserializationError error = deserializeJson(body, server.arg("plain"));
+        const String payload = server.arg("plain");
+        const DeserializationError error = deserializeJson(body, payload.c_str());
         if (error) {
             server.send(400, "application/json",
                         "{\"success\":false,\"message\":\"Invalid JSON\"}");
@@ -339,19 +376,153 @@ void handleZoneDelete(WebServer& server,
 void handleZoneCreate(WebServer& server,
                       LockoutIndex& lockoutIndex,
                       LockoutStore& lockoutStore) {
-    (void)lockoutIndex;
-    (void)lockoutStore;
-    server.send(410, "application/json",
-                "{\"success\":false,\"message\":\"manual lockout creation has been removed\"}");
+    JsonDocument body;
+    if (!parseRequestJson(server, body)) {
+        server.send(400, "application/json",
+                    "{\"success\":false,\"message\":\"Invalid JSON\"}");
+        return;
+    }
+
+    LockoutEntry entry;
+    String errorMessage;
+    if (!parseZoneBody(body.as<JsonObjectConst>(), entry, false, errorMessage)) {
+        JsonDocument responseDoc;
+        responseDoc["success"] = false;
+        responseDoc["message"] = errorMessage;
+        sendJsonStream(server, responseDoc, 400);
+        return;
+    }
+    if (entry.freqMHz == 0) {
+        server.send(400, "application/json",
+                    "{\"success\":false,\"message\":\"frequencyMHz is required\"}");
+        return;
+    }
+
+    entry.setActive(true);
+    entry.setManual(true);
+    entry.setLearned(false);
+    if (entry.freqWindowMinMHz == 0) {
+        entry.freqWindowMinMHz = entry.freqMHz;
+    }
+    if (entry.freqWindowMaxMHz == 0) {
+        entry.freqWindowMaxMHz = entry.freqMHz;
+    }
+
+    const int duplicateSlot = findDuplicateZoneSlot(lockoutIndex, entry);
+    if (duplicateSlot >= 0) {
+        JsonDocument responseDoc;
+        responseDoc["success"] = false;
+        responseDoc["message"] = "matching lockout zone already exists";
+        responseDoc["slot"] = duplicateSlot;
+        sendJsonStream(server, responseDoc, 409);
+        return;
+    }
+
+    const int slot = lockoutIndex.add(entry);
+    if (slot < 0) {
+        server.send(409, "application/json",
+                    "{\"success\":false,\"message\":\"no free lockout slots available\"}");
+        return;
+    }
+
+    lockoutStore.markDirty();
+    const LockoutEntry* stored = lockoutIndex.at(static_cast<size_t>(slot));
+    if (!stored) {
+        server.send(500, "application/json",
+                    "{\"success\":false,\"message\":\"created zone missing from index\"}");
+        return;
+    }
+
+    JsonDocument responseDoc;
+    responseDoc["success"] = true;
+    appendZoneSummary(responseDoc, slot, *stored);
+    responseDoc["activeCount"] = static_cast<uint32_t>(lockoutIndex.activeCount());
+    sendJsonStream(server, responseDoc);
 }
 
 void handleZoneUpdate(WebServer& server,
                       LockoutIndex& lockoutIndex,
                       LockoutStore& lockoutStore) {
-    (void)lockoutIndex;
-    (void)lockoutStore;
-    server.send(410, "application/json",
-                "{\"success\":false,\"message\":\"manual lockout updates have been removed\"}");
+    JsonDocument body;
+    if (!parseRequestJson(server, body)) {
+        server.send(400, "application/json",
+                    "{\"success\":false,\"message\":\"Invalid JSON\"}");
+        return;
+    }
+    if (!body["slot"].is<int>()) {
+        server.send(400, "application/json",
+                    "{\"success\":false,\"message\":\"slot is required\"}");
+        return;
+    }
+
+    const int slot = body["slot"].as<int>();
+    if (slot < 0 || slot >= static_cast<int>(lockoutIndex.capacity())) {
+        server.send(400, "application/json",
+                    "{\"success\":false,\"message\":\"slot out of range\"}");
+        return;
+    }
+
+    LockoutEntry* entry = lockoutIndex.mutableAt(static_cast<size_t>(slot));
+    if (!entry || !entry->isActive()) {
+        server.send(404, "application/json",
+                    "{\"success\":false,\"message\":\"zone not found\"}");
+        return;
+    }
+
+    LockoutEntry updated = *entry;
+    const bool wasManual = updated.isManual();
+    const bool wasLearned = updated.isLearned();
+    const bool hasFrequencyOverride =
+        !body["frequencyMHz"].isNull() || !body["freq"].isNull();
+    String errorMessage;
+    if (!parseZoneBody(body.as<JsonObjectConst>(), updated, true, errorMessage)) {
+        JsonDocument responseDoc;
+        responseDoc["success"] = false;
+        responseDoc["message"] = errorMessage;
+        sendJsonStream(server, responseDoc, 400);
+        return;
+    }
+    if (updated.freqMHz == 0) {
+        server.send(400, "application/json",
+                    "{\"success\":false,\"message\":\"frequencyMHz is required\"}");
+        return;
+    }
+
+    updated.setActive(true);
+    updated.setManual(wasManual);
+    updated.setLearned(wasLearned);
+    if (hasFrequencyOverride) {
+        updated.freqWindowMinMHz = updated.freqMHz;
+        updated.freqWindowMaxMHz = updated.freqMHz;
+    }
+    if (updated.freqWindowMinMHz == 0) {
+        updated.freqWindowMinMHz = updated.freqMHz;
+    }
+    if (updated.freqWindowMaxMHz == 0) {
+        updated.freqWindowMaxMHz = updated.freqMHz;
+    }
+    if (updated.freqWindowMinMHz > updated.freqWindowMaxMHz) {
+        std::swap(updated.freqWindowMinMHz, updated.freqWindowMaxMHz);
+    }
+
+    const int duplicateSlot = findDuplicateZoneSlot(lockoutIndex, updated, slot);
+    if (duplicateSlot >= 0) {
+        JsonDocument responseDoc;
+        responseDoc["success"] = false;
+        responseDoc["message"] = "matching lockout zone already exists";
+        responseDoc["slot"] = duplicateSlot;
+        sendJsonStream(server, responseDoc, 409);
+        return;
+    }
+
+    *entry = updated;
+    lockoutStore.markDirty();
+
+    JsonDocument responseDoc;
+    responseDoc["success"] = true;
+    appendZoneSummary(responseDoc, slot, *entry);
+    responseDoc["activeCount"] = static_cast<uint32_t>(lockoutIndex.activeCount());
+    sendJsonStream(server, responseDoc);
 }
 
 void sendZoneExport(WebServer& server,

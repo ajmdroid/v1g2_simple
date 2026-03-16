@@ -63,7 +63,6 @@ int LockoutIndex::add(const LockoutEntry& entry) {
     if (sanitized.bandMask == 0) {
         return -1;
     }
-    sanitized.setManual(false);
     if (sanitized.areaId == 0) {
         sanitized.areaId = nextAreaId();
     }
@@ -96,7 +95,6 @@ int LockoutIndex::addOrUpdate(const LockoutEntry& entry) {
     if (sanitized.bandMask == 0) {
         return -1;
     }
-    sanitized.setManual(false);
     if (sanitized.areaId == 0) {
         sanitized.areaId = nextAreaId();
     }

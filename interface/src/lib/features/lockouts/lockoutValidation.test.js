@@ -113,6 +113,21 @@ describe('lockoutValidation', () => {
 			buildZoneEditorPayload({
 				latitude: '35.1',
 				longitude: '-80.8',
+				radiusFt: radiusE5ToFeet(45),
+				bandMask: 0x04,
+				frequencyMHz: '',
+				frequencyToleranceMHz: 10,
+				confidence: 100,
+				directionMode: 'all',
+				headingDeg: '',
+				headingToleranceDeg: 45
+			})
+		).toEqual({ error: 'Frequency must be a positive MHz value.' });
+
+		expect(
+			buildZoneEditorPayload({
+				latitude: '35.1',
+				longitude: '-80.8',
 				radiusFt: 'bad',
 				bandMask: 'bad',
 				frequencyMHz: '34700.4',

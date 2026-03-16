@@ -539,13 +539,38 @@ Delete a learned zone by slot index.
 
 Create a new lockout zone manually.
 
-**Request (JSON body):** Zone definition with lat, lon, radius, band fields.
+**Request (JSON body):**
+```json
+{
+  "latitude": 35.10000,
+  "longitude": -80.80000,
+  "radiusE5": 135,
+  "bandMask": 4,
+  "frequencyMHz": 24100,
+  "frequencyToleranceMHz": 10,
+  "confidence": 100,
+  "directionMode": "all",
+  "headingDeg": null,
+  "headingToleranceDeg": 45
+}
+```
+
+**Notes:**
+- `latitude`, `longitude`, `bandMask`, and `frequencyMHz` are required.
+- Successful creates are stored as active manual zones (`manual=true`, `learned=false`).
+- The endpoint rejects duplicate zone signatures with `409` and includes the conflicting `slot`.
 
 ### POST /api/lockouts/zones/update
 
 Update an existing lockout zone by slot index.
 
-**Request (JSON body):** Slot index and updated zone fields.
+**Request (JSON body):** Slot index plus any updated zone fields.
+
+**Notes:**
+- `slot` is required.
+- The resulting zone must still have a valid `frequencyMHz`.
+- Existing `manual`/`learned` flags are preserved on update.
+- Updates that would duplicate another active zone are rejected with `409` and include the conflicting `slot`.
 
 ### GET /api/lockouts/zones/export
 

@@ -615,9 +615,19 @@ void test_addOrUpdate_merges_flags() {
     e2.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
     int slot = idx.addOrUpdate(e2);
 
-    // Manual flag is stripped by add/addOrUpdate — only ACTIVE|LEARNED survives.
-    uint8_t expected = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED;
+    uint8_t expected =
+        LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_LEARNED | LockoutEntry::FLAG_MANUAL;
     TEST_ASSERT_EQUAL(expected, idx.at(slot)->flags);
+}
+
+void test_add_preserves_manual_flag() {
+    LockoutEntry e = makeKBandEntry(1012345, -2054321);
+    e.flags = LockoutEntry::FLAG_ACTIVE | LockoutEntry::FLAG_MANUAL;
+
+    int slot = idx.add(e);
+
+    TEST_ASSERT_GREATER_OR_EQUAL(0, slot);
+    TEST_ASSERT_TRUE(idx.at(slot)->isManual());
 }
 
 void test_addOrUpdate_no_duplicate() {
@@ -832,6 +842,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_addOrUpdate_keeps_earliest_firstSeen);
     RUN_TEST(test_addOrUpdate_keeps_latest_lastSeen);
     RUN_TEST(test_addOrUpdate_merges_flags);
+    RUN_TEST(test_add_preserves_manual_flag);
     RUN_TEST(test_addOrUpdate_no_duplicate);
     RUN_TEST(test_addOrUpdate_resets_miss_tracking_on_merge);
 

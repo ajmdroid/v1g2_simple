@@ -220,9 +220,10 @@ export function buildZoneEditorPayload(zoneEditor) {
 	};
 
 	const frequencyMHz = Number(zoneEditor.frequencyMHz);
-	if (Number.isFinite(frequencyMHz) && frequencyMHz > 0) {
-		payload.frequencyMHz = clampInt(frequencyMHz, 1, 65535, 0);
+	if (!Number.isFinite(frequencyMHz) || frequencyMHz <= 0) {
+		return { error: 'Frequency must be a positive MHz value.' };
 	}
+	payload.frequencyMHz = clampInt(frequencyMHz, 1, 65535, 0);
 
 	if (directionMode === 'all') {
 		payload.headingDeg = null;

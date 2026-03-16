@@ -134,7 +134,7 @@ describe('lockoutRequests', () => {
 				longitude: '-80.8',
 				radiusFt: radiusE5ToFeet(45),
 				bandMask: 0x04,
-				frequencyMHz: '',
+				frequencyMHz: '24100',
 				frequencyToleranceMHz: 10,
 				confidence: 100,
 				directionMode: 'all',
@@ -150,7 +150,7 @@ describe('lockoutRequests', () => {
 				longitude: '-80.8',
 				radiusFt: radiusE5ToFeet(45),
 				bandMask: 0x04,
-				frequencyMHz: '',
+				frequencyMHz: '24100',
 				frequencyToleranceMHz: 10,
 				confidence: 100,
 				directionMode: 'all',
@@ -165,6 +165,30 @@ describe('lockoutRequests', () => {
 		expect(JSON.parse(fetchWithTimeout.mock.calls[1][1].body)).toMatchObject({ slot: 12 });
 		expect(createResult).toEqual({ ok: true, message: 'Created lockout zone 8' });
 		expect(updateResult).toEqual({ ok: true, message: 'Updated lockout zone 12' });
+	});
+
+	it('rejects missing zone frequency before making a network call', async () => {
+		const fetchWithTimeout = vi.fn();
+
+		const result = await saveZoneEditorRequest(
+			fetchWithTimeout,
+			{
+				latitude: '35.1',
+				longitude: '-80.8',
+				radiusFt: radiusE5ToFeet(45),
+				bandMask: 0x04,
+				frequencyMHz: '',
+				frequencyToleranceMHz: 10,
+				confidence: 100,
+				directionMode: 'all',
+				headingDeg: '',
+				headingToleranceDeg: 45
+			},
+			null
+		);
+
+		expect(result).toEqual({ ok: false, error: 'Frequency must be a positive MHz value.' });
+		expect(fetchWithTimeout).not.toHaveBeenCalled();
 	});
 
 	it('rejects invalid delete requests before making a network call', async () => {
