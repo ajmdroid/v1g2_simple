@@ -83,11 +83,12 @@ void TapGestureModule::process(unsigned long nowMs) {
 
             if (!hasActiveAlert && tapCount >= PROFILE_CHANGE_TAP_COUNT) {
                 performProfileCycle();
+                tapCount = 0;
             } else if (hasActiveAlert) {
                 Serial.printf("Processing %d tap(s) as mute toggle\n", tapCount);
                 performMuteToggle("deferred tap");
+                tapCount = 0;
             }
-            tapCount = 0;
         }
     }
 }

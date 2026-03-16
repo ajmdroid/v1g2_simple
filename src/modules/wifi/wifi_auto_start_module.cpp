@@ -26,6 +26,8 @@ const char* wifiAutoStartGateName(WifiAutoStartGate gate) {
             return "waiting_dma";
         case WifiAutoStartGate::Starting:
             return "starting";
+        case WifiAutoStartGate::StartFailed:
+            return "start_failed";
         case WifiAutoStartGate::Unknown:
         default:
             return "unknown";
@@ -39,7 +41,8 @@ WifiAutoStartDecisionSnapshot WifiAutoStartModule::buildDecisionSnapshot(unsigne
                                                                         bool bleConnected,
                                                                         bool canStartDma,
                                                                         bool wifiAutoStartDone,
-                                                                        bool startTriggered) const {
+                                                                        bool startTriggered,
+                                                                        bool startSucceeded) const {
     WifiAutoStartDecisionSnapshot snapshot;
     snapshot.nowMs = nowMs;
     snapshot.v1ConnectedAtMs = v1ConnectedAtMs;
@@ -51,6 +54,7 @@ WifiAutoStartDecisionSnapshot WifiAutoStartModule::buildDecisionSnapshot(unsigne
     snapshot.canStartDma = canStartDma;
     snapshot.wifiAutoStartDone = wifiAutoStartDone;
     snapshot.startTriggered = startTriggered;
+    snapshot.startSucceeded = startSucceeded;
 
     snapshot.msSinceV1Connect =
         (v1ConnectedAtMs > 0 && static_cast<int32_t>(nowMs - v1ConnectedAtMs) >= 0)
@@ -59,7 +63,9 @@ WifiAutoStartDecisionSnapshot WifiAutoStartModule::buildDecisionSnapshot(unsigne
     snapshot.bleSettled = bleConnected && (snapshot.msSinceV1Connect >= WIFI_SETTLE_MS);
     snapshot.bootTimeoutReached = nowMs >= WIFI_BOOT_TIMEOUT_MS;
 
-    if (startTriggered) {
+    if (startTriggered && !startSucceeded) {
+        snapshot.gate = WifiAutoStartGate::StartFailed;
+    } else if (startTriggered) {
         snapshot.gate = WifiAutoStartGate::Starting;
     } else if (wifiAutoStartDone) {
         snapshot.gate = WifiAutoStartGate::AlreadyDone;
@@ -76,7 +82,8 @@ WifiAutoStartDecisionSnapshot WifiAutoStartModule::buildDecisionSnapshot(unsigne
         snapshot.gate = WifiAutoStartGate::Starting;
     }
 
-    snapshot.shouldAutoStart = (snapshot.gate == WifiAutoStartGate::Starting);
+    snapshot.shouldAutoStart =
+        (snapshot.gate == WifiAutoStartGate::Starting || snapshot.gate == WifiAutoStartGate::StartFailed);
     return snapshot;
 }
 
@@ -119,7 +126,7 @@ bool WifiAutoStartModule::process(unsigned long nowMs,
                                   bool bleConnected,
                                   bool canStartDma,
                                   bool& wifiAutoStartDone,
-                                  const std::function<void()>& startWifi,
+                                  const std::function<bool()>& startWifi,
                                   const std::function<void()>& markAutoStarted) {
     lastDecision_ = buildDecisionSnapshot(nowMs,
                                           v1ConnectedAtMs,
@@ -128,6 +135,7 @@ bool WifiAutoStartModule::process(unsigned long nowMs,
                                           bleConnected,
                                           canStartDma,
                                           wifiAutoStartDone,
+                                          false,
                                           false);
     logDecisionIfChanged(lastDecision_);
 
@@ -149,13 +157,28 @@ bool WifiAutoStartModule::process(unsigned long nowMs,
                                           bleConnected,
                                           canStartDma,
                                           wifiAutoStartDone,
-                                          true);
+                                          true,
+                                          false);
     logDecisionIfChanged(lastDecision_);
 
     SerialLog.printf("[WiFi] Deferred auto-start at %lu ms (v1Connect=%lu ms ago)\n",
                      nowMs, static_cast<unsigned long>(lastDecision_.msSinceV1Connect));
+    bool startSucceeded = true;
     if (startWifi) {
-        startWifi();
+        startSucceeded = startWifi();
+    }
+    if (!startSucceeded) {
+        lastDecision_ = buildDecisionSnapshot(nowMs,
+                                              v1ConnectedAtMs,
+                                              enableWifi,
+                                              enableWifiAtBoot,
+                                              bleConnected,
+                                              canStartDma,
+                                              wifiAutoStartDone,
+                                              true,
+                                              false);
+        logDecisionIfChanged(lastDecision_);
+        return false;
     }
     if (markAutoStarted) {
         markAutoStarted();
@@ -168,6 +191,7 @@ bool WifiAutoStartModule::process(unsigned long nowMs,
                                           bleConnected,
                                           canStartDma,
                                           wifiAutoStartDone,
+                                          true,
                                           true);
     logDecisionIfChanged(lastDecision_);
     return true;

@@ -206,6 +206,12 @@ void test_parseRmcDateTime_rejects_bad_date() {
     int64_t epochMs = 0;
     // Month 13 is invalid
     TEST_ASSERT_FALSE(GpsRuntimeModule::parseRmcDateTime("120000", "011324", epochMs));
+    // April 31 is invalid
+    TEST_ASSERT_FALSE(GpsRuntimeModule::parseRmcDateTime("120000", "310424", epochMs));
+    // February 29 is invalid on non-leap years
+    TEST_ASSERT_FALSE(GpsRuntimeModule::parseRmcDateTime("120000", "290225", epochMs));
+    // February 29 is valid on leap years
+    TEST_ASSERT_TRUE(GpsRuntimeModule::parseRmcDateTime("120000", "290224", epochMs));
     // Empty fields
     TEST_ASSERT_FALSE(GpsRuntimeModule::parseRmcDateTime("", "010124", epochMs));
     TEST_ASSERT_FALSE(GpsRuntimeModule::parseRmcDateTime("120000", "", epochMs));

@@ -91,12 +91,46 @@ void test_alert_history_recycle_evicts_oldest_after_wraparound() {
     TEST_ASSERT_TRUE_MESSAGE(foundNew, "New alert should be in history after wraparound recycle");
 }
 
+void test_clear_all_state_allows_immediate_reannounce_after_all_clear() {
+    settingsManager.settings.muteVoiceIfVolZero = false;
+
+    AlertData alerts[1];
+    alerts[0].band = BAND_KA;
+    alerts[0].direction = DIR_FRONT;
+    alerts[0].frontStrength = 6;
+    alerts[0].rearStrength = 0;
+    alerts[0].frequency = 35500;
+    alerts[0].isValid = true;
+    alerts[0].isPriority = true;
+
+    VoiceContext firstCtx;
+    firstCtx.alerts = alerts;
+    firstCtx.alertCount = 1;
+    firstCtx.priority = &alerts[0];
+    firstCtx.mainVolume = 5;
+    firstCtx.now = 100000;
+
+    const VoiceAction firstAction = voiceModule.process(firstCtx);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(VoiceAction::Type::ANNOUNCE_PRIORITY),
+                          static_cast<int>(firstAction.type));
+
+    voiceModule.clearAllState();
+
+    VoiceContext secondCtx = firstCtx;
+    secondCtx.now = 101000;
+
+    const VoiceAction secondAction = voiceModule.process(secondCtx);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(VoiceAction::Type::ANNOUNCE_PRIORITY),
+                          static_cast<int>(secondAction.type));
+}
+
 void runAllTests() {
     RUN_TEST(test_speed_sample_valid_within_ttl);
     RUN_TEST(test_speed_sample_expires_after_ttl);
     RUN_TEST(test_invalid_sample_preserves_previous_cache);
     RUN_TEST(test_clear_speed_sample_invalidates_cache);
     RUN_TEST(test_alert_history_recycle_evicts_oldest_after_wraparound);
+    RUN_TEST(test_clear_all_state_allows_immediate_reannounce_after_all_clear);
 }
 
 #ifdef ARDUINO

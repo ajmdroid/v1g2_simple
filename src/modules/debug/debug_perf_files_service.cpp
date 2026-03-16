@@ -354,6 +354,12 @@ void handlePerfFileDelete(WebServer& server) {
         return;
     }
 
+    if (perfSdLogger.isEnabled()) {
+        server.send(503, "application/json",
+                    "{\"success\":false,\"error\":\"Perf logging active; delete unavailable\"}");
+        return;
+    }
+
     StorageManager::SDTryLock lock(storageManager.getSDMutex());
     if (!lock) {
         if (lock.isDmaStarved()) {

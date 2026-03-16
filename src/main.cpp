@@ -249,9 +249,6 @@ static void configureLoopPostDisplayModule() {
     loopPostDisplayProviders.runAutoPush =
         ProviderCallbackBindings::member<AutoPushModule, &AutoPushModule::process>;
     loopPostDisplayProviders.autoPushContext = &autoPushModule;
-    loopPostDisplayProviders.timestampUs = [](void*) -> uint32_t {
-        return PERF_TIMESTAMP_US();
-    };
     loopPostDisplayProviders.readDispatchNowMs = [](void*) -> uint32_t {
         return millis();
     };
@@ -284,7 +281,7 @@ static void configureWifiRuntimeModule() {
                 bleConnected,
                 canStartDma,
                 wifiAutoStartDone,
-                [] { getWifiOrchestrator().startWifi(); },
+                [] { return getWifiOrchestrator().startWifi(); },
                 [] { wifiManager.markAutoStarted(); });
         };
     wifiRuntimeProviders.wifiAutoStartContext = &wifiAutoStartModule;
@@ -622,7 +619,7 @@ void configureTouchUiModule() {
     TouchUiModule::Callbacks touchCbs{
         .isWifiSetupActive = [] { return wifiManager.isWifiServiceActive(); },
         .stopWifiSetup = [] { wifiManager.stopSetupMode(true); },
-        .startWifi = [] { getWifiOrchestrator().startWifi(); },
+        .startWifi = [] { (void)getWifiOrchestrator().startWifi(); },
         .drawWifiIndicator = [] { display.drawWiFiIndicator(); },
         .restoreDisplay = [] {
             if (bootSplashHoldActive) {
@@ -1049,22 +1046,7 @@ void loop() {
     const bool skipLateNonCoreThisLoop = loopIngestValues.skipLateNonCoreThisLoop;
     const bool overloadLateThisLoop = loopIngestValues.overloadLateThisLoop;
 
-    // No overload guard: handleParsed's internal 25ms throttle gates expensive draws;
-    // fade/debounce/gap-recovery remain microsecond-cheap and must run every frame.
-    auto runDisplayPipeline = [](uint32_t nowMs, bool lockoutPrioritySuppressed) {
-        displayPipelineModule.handleParsed(nowMs, lockoutPrioritySuppressed);
-    };
-
-    const LoopDisplayPreWifiPhaseValues loopDisplayPreWifiValues = processLoopDisplayPreWifiPhase(
-        now,
-        bootSplashHoldActive,
-        overloadLateThisLoop,
-        loopSettingsPrepValues.enableSignalTraceLogging,
-        skipLateNonCoreThisLoop,
-        runDisplayPipeline);
-    const bool loopSignalPriorityActive = loopDisplayPreWifiValues.loopSignalPriorityActive;
-
-    // OBD runtime update — between DisplayPreWifi and WiFi phases.
+    // Refresh speed inputs before display/lockout so the current loop sees the latest OBD/GPS state.
     {
         const uint32_t obdStartUs = micros();
         obdRuntimeModule.update(now, bootReady, bleConnectedNow, !bleClient.isScanning());
@@ -1072,6 +1054,19 @@ void loop() {
     }
     speedSourceSelector.update(now);
     syncObdSettings();
+
+    // No overload guard: handleParsed's internal 25ms throttle gates expensive draws;
+    // fade/debounce/gap-recovery remain microsecond-cheap and must run every frame.
+    auto runDisplayPipeline = [](uint32_t nowMs, bool lockoutPrioritySuppressed) {
+        displayPipelineModule.handleParsed(nowMs, lockoutPrioritySuppressed);
+    };
+
+    processLoopDisplayPreWifiPhase(
+        now,
+        bootSplashHoldActive,
+        overloadLateThisLoop,
+        loopSettingsPrepValues.enableSignalTraceLogging,
+        runDisplayPipeline);
 
     auto runWifiManagerProcess = []() { wifiManager.process(); };
     const LoopWifiPhaseValues loopWifiValues = processLoopWifiPhase(
@@ -1090,7 +1085,6 @@ void loop() {
 
     const LoopFinalizePhaseValues loopFinalizeValues = processLoopFinalizePhase(
         now,
-        loopSettingsPrepValues,
         bootSplashHoldActive,
         loopRuntimeSnapshotValues.displayPreviewRunning,
         bleBackpressure,

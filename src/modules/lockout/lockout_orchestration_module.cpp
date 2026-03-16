@@ -51,7 +51,14 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
         bool enableSignalTrace) {
 
     LockoutOrchestrationResult result;
+    if (!ble_ || !parser_ || !settings_ || !display_ || !enforcer_ ||
+        !index_ || !sigCapture_ || !volFade_ || !eventBus_ || !perfCounters_) {
+        return result;
+    }
+
     const SpeedSelection selectedSpeed = speedSourceSelector.selectedSpeed();
+    const int64_t nowEpochMs = timeSvc_ ? timeSvc_->nowEpochMsOr0() : 0;
+    const int32_t tzOffsetMinutes = timeSvc_ ? timeSvc_->tzOffsetMinutes() : 0;
 
     sigCapture_->capturePriorityObservation(
         nowMs,
@@ -62,8 +69,8 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
 
     if (!proxyClientConnected) {
         enforcer_->process(nowMs,
-                           timeSvc_->nowEpochMsOr0(),
-                           timeSvc_ ? timeSvc_->tzOffsetMinutes() : 0,
+                           nowEpochMs,
+                           tzOffsetMinutes,
                            *parser_,
                            gpsStatus);
 

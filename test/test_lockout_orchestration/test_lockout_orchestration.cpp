@@ -36,6 +36,8 @@ static size_t g_fakeNearbyCount = 0;
 static uint32_t g_captureCalls = 0;
 static uint32_t g_baselineHintCalls = 0;
 static int64_t g_fakeEpochMs = 0;
+static int64_t g_lastEnforcerEpochMs = -1;
+static int32_t g_lastEnforcerTzOffsetMinutes = -1;
 
 void LockoutEnforcer::begin(const SettingsManager* settings,
                             LockoutIndex* index,
@@ -57,6 +59,8 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
     (void)tzOffsetMinutes;
     (void)parser;
     (void)gpsStatus;
+    g_lastEnforcerEpochMs = epochMs;
+    g_lastEnforcerTzOffsetMinutes = tzOffsetMinutes;
     lastResult_ = g_fakeEnforcerResult;
     return lastResult_;
 }
@@ -195,6 +199,8 @@ void setUp() {
     g_captureCalls = 0;
     g_baselineHintCalls = 0;
     g_fakeEpochMs = 0;
+    g_lastEnforcerEpochMs = -1;
+    g_lastEnforcerTzOffsetMinutes = -1;
 
     gps = GpsRuntimeStatus{};
     gps.locationValid = false;
@@ -275,6 +281,26 @@ void test_proxy_connected_path_resets_retry_state() {
     TEST_ASSERT_FALSE(ble.lastMuteValue);
 }
 
+void test_null_time_service_falls_back_to_zero_epoch_and_offset() {
+    module.begin(&ble,
+                 &parser,
+                 &settings,
+                 &display,
+                 &enforcer,
+                 &lockoutIndexInst,
+                 &sigCapture,
+                 &volFade,
+                 &eventBus,
+                 &perfCounterState,
+                 nullptr);
+
+    runOnce(1000);
+
+    TEST_ASSERT_EQUAL_INT64(0, g_lastEnforcerEpochMs);
+    TEST_ASSERT_EQUAL_INT32(0, g_lastEnforcerTzOffsetMinutes);
+    TEST_ASSERT_EQUAL_UINT32(1, g_captureCalls);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_override_unmute_sends_on_first_eligible_frame);
@@ -282,5 +308,6 @@ int main() {
     RUN_TEST(test_override_unmute_caps_at_15_attempts);
     RUN_TEST(test_override_unmute_resets_and_rearms_after_condition_clears);
     RUN_TEST(test_proxy_connected_path_resets_retry_state);
+    RUN_TEST(test_null_time_service_falls_back_to_zero_epoch_and_offset);
     return UNITY_END();
 }

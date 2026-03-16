@@ -104,12 +104,28 @@ void test_config_rejects_missing_json_body() {
     TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
 }
 
+void test_scan_rejects_when_obd_is_disabled() {
+    WebServer server(80);
+    obdRuntimeModule.begin(false, "", 0, -80);
+
+    ObdApiService::handleApiScan(server,
+                                 obdRuntimeModule,
+                                 []() { return true; },
+                                 []() {});
+
+    TEST_ASSERT_EQUAL_INT(409, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"ok\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"OBD is disabled\""));
+    TEST_ASSERT_FALSE(obdRuntimeModule.snapshot(mockMillis).scanInProgress);
+}
+
 int main() {
     UNITY_BEGIN();
 
     RUN_TEST(test_config_updates_runtime_settings_and_speed_source_callback);
     RUN_TEST(test_forget_clears_saved_address_and_persists_setting);
     RUN_TEST(test_config_rejects_missing_json_body);
+    RUN_TEST(test_scan_rejects_when_obd_is_disabled);
 
     return UNITY_END();
 }

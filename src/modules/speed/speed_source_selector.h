@@ -46,8 +46,11 @@ public:
     void setObdEnabled(bool enabled);
     void update(uint32_t nowMs);
 
+    // Producers call update(nowMs) once per loop to commit state.
+    // Consumers read snapshot() for the committed state or snapshotAt(nowMs)
+    // for a pure point-in-time view that does not mutate counters/state.
     SpeedSelectorStatus snapshot() const;
-    SpeedSelectorStatus snapshot(uint32_t nowMs);
+    SpeedSelectorStatus snapshotAt(uint32_t nowMs) const;
     SpeedSelection selectedSpeed() const { return selectedSpeed_; }
 
     static const char* sourceName(SpeedSource source);

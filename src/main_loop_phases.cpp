@@ -76,12 +76,11 @@ LoopIngestPhaseValues processLoopIngestPhase(
     return values;
 }
 
-LoopDisplayPreWifiPhaseValues processLoopDisplayPreWifiPhase(
+void processLoopDisplayPreWifiPhase(
     const unsigned long nowMs,
     const bool bootSplashHoldActive,
     const bool overloadLateThisLoop,
     const bool enableSignalTraceLogging,
-    const bool skipLateNonCoreThisLoop,
     void (*runDisplayPipeline)(uint32_t nowMs, bool lockoutPrioritySuppressed)) {
 
     LoopDisplayContext loopDisplayCtx;
@@ -91,20 +90,13 @@ LoopDisplayPreWifiPhaseValues processLoopDisplayPreWifiPhase(
     loopDisplayCtx.enableSignalTraceLogging = enableSignalTraceLogging;
     loopDisplayCtx.runDisplayPipeline = runDisplayPipeline;
     const LoopDisplayResult loopDisplayResult = loopDisplayModule.process(loopDisplayCtx);
-    const bool loopSignalPriorityActive = loopDisplayResult.signalPriorityActive;
+    (void)loopDisplayResult;
 
     LoopPostDisplayContext loopPostDisplayPreWifiCtx;
     loopPostDisplayPreWifiCtx.enableAutoPush = true;
     loopPostDisplayPreWifiCtx.runSpeedAndDispatch = false;
     loopPostDisplayPreWifiCtx.nowMs = nowMs;
-    loopPostDisplayPreWifiCtx.skipLateNonCoreThisLoop = skipLateNonCoreThisLoop;
-    loopPostDisplayPreWifiCtx.overloadLateThisLoop = overloadLateThisLoop;
-    loopPostDisplayPreWifiCtx.loopSignalPriorityActive = loopSignalPriorityActive;
     loopPostDisplayModule.process(loopPostDisplayPreWifiCtx);
-
-    LoopDisplayPreWifiPhaseValues values;
-    values.loopSignalPriorityActive = loopSignalPriorityActive;
-    return values;
 }
 
 LoopWifiPhaseValues processLoopWifiPhase(
@@ -142,7 +134,6 @@ LoopWifiPhaseValues processLoopWifiPhase(
 
 LoopFinalizePhaseValues processLoopFinalizePhase(
     const unsigned long nowMs,
-    const LoopSettingsPrepValues& loopSettingsPrepValues,
     const bool bootSplashHoldActive,
     const bool displayPreviewRunning,
     const bool bleBackpressure,

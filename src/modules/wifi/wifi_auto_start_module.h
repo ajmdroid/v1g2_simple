@@ -14,6 +14,7 @@ enum class WifiAutoStartGate : uint8_t {
     WaitingBootTimeout = 5,
     WaitingDma = 6,
     Starting = 7,
+    StartFailed = 8,
 };
 
 const char* wifiAutoStartGateName(WifiAutoStartGate gate);
@@ -33,6 +34,7 @@ struct WifiAutoStartDecisionSnapshot {
     bool bootTimeoutReached = false;
     bool shouldAutoStart = false;
     bool startTriggered = false;
+    bool startSucceeded = false;
     WifiAutoStartGate gate = WifiAutoStartGate::Unknown;
 };
 
@@ -46,7 +48,7 @@ public:
                  bool bleConnected,
                  bool canStartDma,
                  bool& wifiAutoStartDone,
-                 const std::function<void()>& startWifi,
+                 const std::function<bool()>& startWifi,
                  const std::function<void()>& markAutoStarted);
 
     const WifiAutoStartDecisionSnapshot& getLastDecision() const { return lastDecision_; }
@@ -59,7 +61,8 @@ private:
                                                         bool bleConnected,
                                                         bool canStartDma,
                                                         bool wifiAutoStartDone,
-                                                        bool startTriggered) const;
+                                                        bool startTriggered,
+                                                        bool startSucceeded) const;
     void logDecisionIfChanged(const WifiAutoStartDecisionSnapshot& snapshot);
 
     WifiAutoStartDecisionSnapshot lastDecision_{};

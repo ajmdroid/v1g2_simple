@@ -110,9 +110,8 @@ SpeedSelectorStatus SpeedSourceSelector::snapshot() const {
     return cachedStatus_;
 }
 
-SpeedSelectorStatus SpeedSourceSelector::snapshot(uint32_t nowMs) {
-    update(nowMs);
-    return cachedStatus_;
+SpeedSelectorStatus SpeedSourceSelector::snapshotAt(uint32_t nowMs) const {
+    return buildStatus(nowMs);
 }
 
 const char* SpeedSourceSelector::sourceName(SpeedSource source) {

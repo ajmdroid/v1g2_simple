@@ -423,6 +423,25 @@ void test_handle_enable_true_with_saved_credentials_starts_connect() {
     TEST_ASSERT_EQUAL_INT(0, rt.setStateDisconnectedCalls);
 }
 
+void test_handle_enable_true_with_saved_credentials_returns_500_when_connect_fails() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.savedSsid = "HomeNet";
+    rt.savedPassword = "pw123";
+    rt.connectReturn = false;
+    server.setArg("plain", "{\"enabled\":true}");
+
+    WifiClientApiService::handleApiEnable(server, makeRuntime(rt), nullptr, nullptr);
+
+    TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"Failed to start connection\""));
+    TEST_ASSERT_EQUAL_INT(1, rt.setEnabledCalls);
+    TEST_ASSERT_TRUE(rt.lastSetEnabled);
+    TEST_ASSERT_EQUAL_INT(1, rt.connectCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.setStateDisconnectedCalls);
+}
+
 void test_handle_enable_true_without_saved_credentials_sets_disconnected_state() {
     WebServer server(80);
     FakeRuntime rt;
@@ -602,6 +621,7 @@ int main() {
     RUN_TEST(test_handle_connect_starts_connection);
     RUN_TEST(test_handle_forget_clears_credentials_and_disables_sta);
     RUN_TEST(test_handle_enable_true_with_saved_credentials_starts_connect);
+    RUN_TEST(test_handle_enable_true_with_saved_credentials_returns_500_when_connect_fails);
     RUN_TEST(test_handle_enable_true_without_saved_credentials_sets_disconnected_state);
     RUN_TEST(test_handle_enable_false_disables_sta_mode);
     RUN_TEST(test_handle_api_status_marks_ui_activity_and_delegates);

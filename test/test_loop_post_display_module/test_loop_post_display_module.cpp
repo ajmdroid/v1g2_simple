@@ -1,6 +1,4 @@
 #include <unity.h>
-#include <initializer_list>
-
 #include "../mocks/Arduino.h"
 
 #ifndef ARDUINO
@@ -21,10 +19,6 @@ enum CallId {
 static int callLog[32];
 static size_t callLogCount = 0;
 
-static uint32_t perfTsSequence[8];
-static size_t perfTsCount = 0;
-static size_t perfTsIndex = 0;
-
 static uint32_t providerDispatchNowMs = 0;
 static bool providerBleConnected = false;
 
@@ -44,8 +38,6 @@ static void noteCall(int id) {
 
 static void resetState() {
     callLogCount = 0;
-    perfTsCount = 0;
-    perfTsIndex = 0;
 
     providerDispatchNowMs = 0;
     providerBleConnected = false;
@@ -57,25 +49,6 @@ static void resetState() {
 
     providerAutoPushCalls = 0;
     providerDispatchCalls = 0;
-}
-
-static void setPerfTsSequence(std::initializer_list<uint32_t> values) {
-    perfTsCount = values.size();
-    perfTsIndex = 0;
-    size_t i = 0;
-    for (uint32_t value : values) {
-        perfTsSequence[i++] = value;
-    }
-}
-
-static uint32_t nextPerfTs(void*) {
-    if (perfTsCount == 0) {
-        return 0;
-    }
-    if (perfTsIndex >= perfTsCount) {
-        return perfTsSequence[perfTsCount - 1];
-    }
-    return perfTsSequence[perfTsIndex++];
 }
 
 static void runRuntimeAutoPush() {
@@ -110,7 +83,6 @@ static void runProviderDispatch(void*, const ConnectionStateDispatchContext& dis
 
 static LoopPostDisplayModule::Providers makeDefaultProviders() {
     LoopPostDisplayModule::Providers providers;
-    providers.timestampUs = nextPerfTs;
     providers.readDispatchNowMs = readDispatchNowMs;
     providers.readBleConnectedNow = readBleConnectedNow;
     return providers;
@@ -128,13 +100,9 @@ void test_process_runtime_callbacks_with_perf_and_dispatch_outputs() {
 
     providerDispatchNowMs = 2222;
     providerBleConnected = true;
-    setPerfTsSequence({100, 135});
 
     LoopPostDisplayContext ctx;
     ctx.nowMs = 1500;
-    ctx.skipLateNonCoreThisLoop = true;
-    ctx.overloadLateThisLoop = true;
-    ctx.loopSignalPriorityActive = true;
     ctx.displayUpdateIntervalMs = 60;
     ctx.scanScreenDwellMs = 333;
     ctx.bootSplashHoldActive = false;
@@ -171,12 +139,8 @@ void test_process_provider_fallback_path_and_ctx_dispatch_fallback() {
     providers.readBleConnectedNow = nullptr;
     module.begin(providers);
 
-    setPerfTsSequence({500, 545});
     LoopPostDisplayContext ctx;
     ctx.nowMs = 900;
-    ctx.skipLateNonCoreThisLoop = false;
-    ctx.overloadLateThisLoop = true;
-    ctx.loopSignalPriorityActive = false;
     ctx.displayUpdateIntervalMs = 50;
     ctx.scanScreenDwellMs = 77;
     ctx.bootSplashHoldActive = true;
@@ -215,14 +179,10 @@ void test_auto_push_only_skips_speed_and_dispatch() {
     LoopPostDisplayModule::Providers providers = makeDefaultProviders();
     module.begin(providers);
 
-    setPerfTsSequence({1000, 1012});
     LoopPostDisplayContext ctx;
     ctx.enableAutoPush = true;
     ctx.runSpeedAndDispatch = false;
     ctx.nowMs = 4321;
-    ctx.skipLateNonCoreThisLoop = true;
-    ctx.overloadLateThisLoop = false;
-    ctx.loopSignalPriorityActive = true;
     ctx.bleConnectedNow = true;
     ctx.runAutoPush = runRuntimeAutoPush;
     ctx.runConnectionStateDispatch = runRuntimeDispatch;

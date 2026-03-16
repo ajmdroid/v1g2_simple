@@ -239,6 +239,25 @@ void test_lightweight_refresh_clears_frequency_when_idle() {
     TEST_ASSERT_EQUAL(BAND_NONE, display.lastFrequencyBand);
 }
 
+void test_lightweight_refresh_does_not_touch_frequency_while_preview_running() {
+    ble.setConnected(true);
+    preview.setRunning(true);
+    parser.setAlerts({
+        AlertData::create(BAND_KA, DIR_FRONT, 6, 0, 35500, true, true)
+    });
+
+    DisplayOrchestrationRefreshContext ctx;
+    ctx.nowMs = 500;
+    ctx.bootSplashHoldActive = false;
+    ctx.overloadLateThisLoop = false;
+    ctx.pipelineRanThisLoop = false;
+
+    module.processLightweightRefresh(ctx);
+
+    TEST_ASSERT_EQUAL(0, display.refreshFrequencyOnlyCalls);
+    TEST_ASSERT_EQUAL(0, display.refreshSecondaryAlertCardsCalls);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_process_early_updates_ble_context_and_proxy_status);
@@ -250,5 +269,6 @@ int main() {
     RUN_TEST(test_lightweight_refresh_falls_back_from_invalid_priority);
     RUN_TEST(test_pipeline_draw_resets_frequency_timer_for_same_tick);
     RUN_TEST(test_lightweight_refresh_clears_frequency_when_idle);
+    RUN_TEST(test_lightweight_refresh_does_not_touch_frequency_while_preview_running);
     return UNITY_END();
 }

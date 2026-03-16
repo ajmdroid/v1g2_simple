@@ -16,8 +16,8 @@ WifiOrchestrator::WifiOrchestrator(WiFiManager& wifiManager,
       autoPushModule(autoPushModule),
       profilePushFn(std::move(profilePushFn)) {}
 
-void WifiOrchestrator::startWifi() {
-    if (wifiManager.isSetupModeActive()) return;
+bool WifiOrchestrator::startWifi() {
+    if (wifiManager.isSetupModeActive()) return true;
 
     // Always ensure callbacks are bound exactly once, even if WiFi was started elsewhere
     if (!callbacksConfigured) {
@@ -27,7 +27,7 @@ void WifiOrchestrator::startWifi() {
 
     // Skip if WiFi already up to keep begin()/TX power idempotent
     if (WiFi.getMode() != WIFI_OFF || WiFi.isConnected()) {
-        return;
+        return true;
     }
 
     // Reset failure counter so user can retry after "gave up" state
@@ -47,7 +47,7 @@ void WifiOrchestrator::startWifi() {
                           (unsigned long)freeInternal,
                           (unsigned long)largestInternal);
         }
-        return;
+        return false;
     }
 
     Serial.println("[WiFi] Starting WiFi (manual start)...");
@@ -55,7 +55,7 @@ void WifiOrchestrator::startWifi() {
         Serial.printf("[WiFi] begin() failed (freeInternal=%lu largestInternal=%lu)\n",
                       (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
                       (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-        return;
+        return false;
     }
 
     // Reduce WiFi TX power to minimize interference with BLE
@@ -64,6 +64,7 @@ void WifiOrchestrator::startWifi() {
     Serial.println("[WiFi] TX power 5dBm (low RF for BLE coex)");
 
     Serial.println("[WiFi] Initialized");
+    return true;
 }
 
 void WifiOrchestrator::configureCallbacks() {

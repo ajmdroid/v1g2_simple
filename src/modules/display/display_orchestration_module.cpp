@@ -125,6 +125,7 @@ DisplayOrchestrationRefreshResult DisplayOrchestrationModule::processLightweight
     const unsigned long freqUiMaxMs = previewRunning ? FREQ_UI_PREVIEW_MAX_MS : FREQ_UI_MAX_MS;
     if (!ctx.bootSplashHoldActive &&
         ble->isConnected() &&
+        !previewRunning &&
         (ctx.nowMs - lastFreqUiMs) >= freqUiMaxMs) {
         const DisplayState& state = parser->getDisplayState();
         const bool isPhotoRadar =

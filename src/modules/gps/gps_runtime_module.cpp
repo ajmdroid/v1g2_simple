@@ -18,6 +18,24 @@ bool elapsedExceeded(uint32_t nowMs, uint32_t startMs, uint32_t thresholdMs) {
     }
     return static_cast<uint32_t>(nowMs - startMs) > thresholdMs;
 }
+
+bool isLeapYear(int year) {
+    return ((year % 4) == 0 && (year % 100) != 0) || ((year % 400) == 0);
+}
+
+int daysInMonth(int year, int month) {
+    static constexpr int kDaysPerMonth[] = {
+        31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+    };
+
+    if (month < 1 || month > 12) {
+        return 0;
+    }
+    if (month == 2 && isLeapYear(year)) {
+        return 29;
+    }
+    return kDaysPerMonth[month - 1];
+}
 }  // namespace
 
 void GpsRuntimeModule::begin(bool enabled) {
@@ -524,6 +542,9 @@ bool GpsRuntimeModule::parseRmcDateTime(const char* timeField,
         return false;
     }
     const int year = 2000 + yy;
+    if (dd > daysInMonth(year, mo)) {
+        return false;
+    }
 
     // Civil days from epoch (Howard Hinnant algorithm).
     int y = year;

@@ -119,6 +119,11 @@ static void sendEnableResult(WebServer& server, bool enabled) {
     server.send(200, "application/json", "{\"success\":true,\"message\":\"WiFi client disabled\"}");
 }
 
+static void sendEnableConnectFailed(WebServer& server) {
+    server.send(500, "application/json",
+                "{\"success\":false,\"message\":\"Failed to start connection\"}");
+}
+
 static void sendDisconnected(WebServer& server) {
     server.send(200, "application/json", "{\"success\":true,\"message\":\"Disconnected\"}");
 }
@@ -256,7 +261,11 @@ static void handleEnableImpl(WebServer& server, const Runtime& runtime) {
         runtime.setWifiClientEnabled(true);
 
         if (savedSsid.length() > 0) {
-            runtime.connectToNetwork(savedSsid, runtime.getSavedPassword());
+            if (!runtime.connectToNetwork(savedSsid, runtime.getSavedPassword())) {
+                runtime.setStateDisconnected();
+                sendEnableConnectFailed(server);
+                return;
+            }
         } else {
             runtime.setStateDisconnected();
         }

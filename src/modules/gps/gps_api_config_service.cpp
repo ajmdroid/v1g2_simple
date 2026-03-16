@@ -469,6 +469,7 @@ void handleConfig(WebServer& server,
                                 hasLearnerFreqToleranceMHz || hasLearnerLearnIntervalHours ||
                                 hasLearnerUnlearnIntervalHours || hasLearnerUnlearnCount ||
                                 hasManualDemotionMissCount || hasKaLearningEnabled ||
+                                hasKLearningEnabled || hasXLearningEnabled ||
                                 hasPreQuiet || hasPreQuietBufferE5 ||
                                 hasMaxHdopX10 || hasMinLearnerSpeedMph;
         if (!hasLockoutUpdate) {
@@ -672,6 +673,8 @@ void handleConfig(WebServer& server,
     response["lockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
     response["lockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
     response["lockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
+    response["lockoutKLearningEnabled"] = settings.gpsLockoutKLearningEnabled;
+    response["lockoutXLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
     response["lockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
     response["lockoutMaxHdopX10"] = settings.gpsLockoutMaxHdopX10;
     response["lockoutMinLearnerSpeedMph"] = settings.gpsLockoutMinLearnerSpeedMph;
@@ -686,6 +689,8 @@ void handleConfig(WebServer& server,
     response["gpsLockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
     response["gpsLockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
     response["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
+    response["gpsLockoutKLearningEnabled"] = settings.gpsLockoutKLearningEnabled;
+    response["gpsLockoutXLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
     response["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
     response["lockoutCoreGuardTripped"] = lockoutGuard.tripped;
     response["lockoutCoreGuardReason"] = lockoutGuard.reason;

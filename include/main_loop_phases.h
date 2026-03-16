@@ -34,10 +34,6 @@ struct LoopIngestPhaseValues {
     bool overloadLateThisLoop = false;
 };
 
-struct LoopDisplayPreWifiPhaseValues {
-    bool loopSignalPriorityActive = false;
-};
-
 struct LoopWifiPhaseValues {
     LoopRuntimeSnapshotValues loopRuntimeSnapshotValues;
     bool wifiAutoStartDone = false;
@@ -66,12 +62,15 @@ LoopIngestPhaseValues processLoopIngestPhase(
     void (*runBleProcess)(),
     void (*runBleDrain)());
 
-LoopDisplayPreWifiPhaseValues processLoopDisplayPreWifiPhase(
+// Loop ownership contract:
+// - Ingest phase mutates BLE/GPS runtime and returns the settings snapshot.
+// - loop() owns the OBD runtime refresh and speed selection update.
+// - Display/Wi-Fi/finalize phases consume snapshots and run only their owned side effects.
+void processLoopDisplayPreWifiPhase(
     unsigned long nowMs,
     bool bootSplashHoldActive,
     bool overloadLateThisLoop,
     bool enableSignalTraceLogging,
-    bool skipLateNonCoreThisLoop,
     void (*runDisplayPipeline)(uint32_t nowMs, bool lockoutPrioritySuppressed));
 
 LoopWifiPhaseValues processLoopWifiPhase(
@@ -86,7 +85,6 @@ LoopWifiPhaseValues processLoopWifiPhase(
 
 LoopFinalizePhaseValues processLoopFinalizePhase(
     unsigned long nowMs,
-    const LoopSettingsPrepValues& loopSettingsPrepValues,
     bool bootSplashHoldActive,
     bool displayPreviewRunning,
     bool bleBackpressure,

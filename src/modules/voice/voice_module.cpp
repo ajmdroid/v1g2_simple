@@ -539,6 +539,7 @@ void VoiceModule::resetLastAnnounced() {
     lastVoiceAlertDirection = DIR_NONE;
     lastVoiceAlertFrequency = 0xFFFF;
     lastVoiceAlertBogeyCount = 0;
+    lastVoiceAlertTime = 0;
 }
 
 // ============================================================================

@@ -48,6 +48,15 @@ static void resetAll() {
 void setUp() { resetAll(); }
 void tearDown() {}
 
+static SpeedSelectorStatus snapshotAt(uint32_t nowMs) {
+    return speedSourceSelector.snapshotAt(nowMs);
+}
+
+static SpeedSelectorStatus updateAndSnapshot(uint32_t nowMs) {
+    speedSourceSelector.update(nowMs);
+    return speedSourceSelector.snapshot();
+}
+
 // ── Enum value tests ──────────────────────────────────────────────
 
 void test_obd_enum_value_is_3() {
@@ -70,7 +79,7 @@ void test_source_name_none() {
 
 void test_no_sources_enabled_selects_none() {
     speedSourceSelector.begin(false, false);
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s.selectedSource);
     TEST_ASSERT_FALSE(s.gpsFresh);
     TEST_ASSERT_FALSE(s.obdFresh);
@@ -78,14 +87,14 @@ void test_no_sources_enabled_selects_none() {
 
 void test_gps_enabled_no_data_selects_none() {
     speedSourceSelector.begin(true, false);
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s.selectedSource);
     TEST_ASSERT_FALSE(s.gpsFresh);
 }
 
 void test_obd_enabled_no_data_selects_none() {
     speedSourceSelector.begin(false, true);
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s.selectedSource);
     TEST_ASSERT_FALSE(s.obdFresh);
 }
@@ -98,7 +107,7 @@ void test_gps_only_fresh_selects_gps() {
     gpsRuntimeModule.freshSpeedMph = 65.0f;
     gpsRuntimeModule.freshTsMs = 900;
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::GPS, s.selectedSource);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 65.0f, s.selectedSpeedMph);
     TEST_ASSERT_EQUAL(100, s.selectedAgeMs);
@@ -112,7 +121,7 @@ void test_gps_disabled_not_polled() {
     gpsRuntimeModule.freshSpeedMph = 65.0f;
     gpsRuntimeModule.freshTsMs = 900;
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s.selectedSource);
     TEST_ASSERT_FALSE(s.gpsFresh);
 }
@@ -125,7 +134,7 @@ void test_obd_only_fresh_selects_obd() {
     obdRuntimeModule.freshSpeedMph = 72.0f;
     obdRuntimeModule.freshTsMs = 950;
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::OBD, s.selectedSource);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 72.0f, s.selectedSpeedMph);
     TEST_ASSERT_EQUAL(50, s.selectedAgeMs);
@@ -139,7 +148,7 @@ void test_obd_disabled_not_polled() {
     obdRuntimeModule.freshSpeedMph = 72.0f;
     obdRuntimeModule.freshTsMs = 950;
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s.selectedSource);
     TEST_ASSERT_FALSE(s.obdFresh);
 }
@@ -156,7 +165,7 @@ void test_both_fresh_prefers_obd() {
     obdRuntimeModule.freshSpeedMph = 62.0f;
     obdRuntimeModule.freshTsMs = 900;
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::OBD, s.selectedSource);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 62.0f, s.selectedSpeedMph);
     TEST_ASSERT_TRUE(s.gpsFresh);
@@ -171,7 +180,7 @@ void test_obd_stale_falls_back_to_gps() {
 
     obdRuntimeModule.freshResult = false;  // stale
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::GPS, s.selectedSource);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 60.0f, s.selectedSpeedMph);
     TEST_ASSERT_TRUE(s.gpsFresh);
@@ -186,7 +195,7 @@ void test_gps_stale_uses_obd() {
     obdRuntimeModule.freshSpeedMph = 55.0f;
     obdRuntimeModule.freshTsMs = 950;
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::OBD, s.selectedSource);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 55.0f, s.selectedSpeedMph);
 }
@@ -196,7 +205,7 @@ void test_both_stale_selects_none() {
     gpsRuntimeModule.freshResult = false;
     obdRuntimeModule.freshResult = false;
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s.selectedSource);
 }
 
@@ -208,7 +217,7 @@ void test_gps_over_max_speed_rejected() {
     gpsRuntimeModule.freshSpeedMph = 260.0f;  // > 250
     gpsRuntimeModule.freshTsMs = 900;
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s.selectedSource);
     TEST_ASSERT_FALSE(s.gpsFresh);
 }
@@ -219,7 +228,7 @@ void test_obd_over_max_speed_rejected() {
     obdRuntimeModule.freshSpeedMph = 260.0f;  // > 250
     obdRuntimeModule.freshTsMs = 900;
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s.selectedSource);
     TEST_ASSERT_FALSE(s.obdFresh);
 }
@@ -230,7 +239,7 @@ void test_speed_at_max_is_valid() {
     obdRuntimeModule.freshSpeedMph = 250.0f;  // == MAX
     obdRuntimeModule.freshTsMs = 900;
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::OBD, s.selectedSource);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 250.0f, s.selectedSpeedMph);
 }
@@ -243,7 +252,7 @@ void test_obd_zero_speed_is_valid() {
     obdRuntimeModule.freshSpeedMph = 0.0f;
     obdRuntimeModule.freshTsMs = 900;
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::OBD, s.selectedSource);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, s.selectedSpeedMph);
 }
@@ -258,7 +267,7 @@ void test_source_switch_counter_increments() {
     gpsRuntimeModule.freshSpeedMph = 60.0f;
     gpsRuntimeModule.freshTsMs = 900;
     obdRuntimeModule.freshResult = false;
-    auto s1 = speedSourceSelector.snapshot(1000);
+    auto s1 = updateAndSnapshot(1000);
     TEST_ASSERT_EQUAL(SpeedSource::GPS, s1.selectedSource);
     TEST_ASSERT_EQUAL(0, s1.sourceSwitches);  // first selection, no switch
 
@@ -266,12 +275,12 @@ void test_source_switch_counter_increments() {
     obdRuntimeModule.freshResult = true;
     obdRuntimeModule.freshSpeedMph = 62.0f;
     obdRuntimeModule.freshTsMs = 1400;
-    auto s2 = speedSourceSelector.snapshot(1500);
+    auto s2 = updateAndSnapshot(1500);
     TEST_ASSERT_EQUAL(SpeedSource::OBD, s2.selectedSource);
     TEST_ASSERT_EQUAL(1, s2.sourceSwitches);  // GPS→OBD
 
     // Third: still OBD, no switch
-    auto s3 = speedSourceSelector.snapshot(2000);
+    auto s3 = updateAndSnapshot(2000);
     TEST_ASSERT_EQUAL(SpeedSource::OBD, s3.selectedSource);
     TEST_ASSERT_EQUAL(1, s3.sourceSwitches);  // no change
 }
@@ -280,7 +289,7 @@ void test_no_switch_from_none_to_source() {
     speedSourceSelector.begin(true, true);
 
     // Start with NONE
-    auto s1 = speedSourceSelector.snapshot(1000);
+    auto s1 = updateAndSnapshot(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s1.selectedSource);
     TEST_ASSERT_EQUAL(0, s1.sourceSwitches);
 
@@ -288,12 +297,34 @@ void test_no_switch_from_none_to_source() {
     gpsRuntimeModule.freshResult = true;
     gpsRuntimeModule.freshSpeedMph = 60.0f;
     gpsRuntimeModule.freshTsMs = 1400;
-    auto s2 = speedSourceSelector.snapshot(1500);
+    auto s2 = updateAndSnapshot(1500);
     TEST_ASSERT_EQUAL(SpeedSource::GPS, s2.selectedSource);
     TEST_ASSERT_EQUAL(0, s2.sourceSwitches);
 }
 
 // ── Selection counters ────────────────────────────────────────────
+
+void test_snapshot_at_is_pure_and_update_commits_state() {
+    speedSourceSelector.begin(true, false);
+    gpsRuntimeModule.freshResult = true;
+    gpsRuntimeModule.freshSpeedMph = 60.0f;
+    gpsRuntimeModule.freshTsMs = 900;
+
+    const SpeedSelectorStatus preview = snapshotAt(1000);
+    TEST_ASSERT_EQUAL(SpeedSource::GPS, preview.selectedSource);
+    TEST_ASSERT_EQUAL(0u, preview.gpsSelections);
+    TEST_ASSERT_FALSE(speedSourceSelector.selectedSpeed().valid);
+
+    const SpeedSelectorStatus cachedBeforeUpdate = speedSourceSelector.snapshot();
+    TEST_ASSERT_EQUAL(SpeedSource::NONE, cachedBeforeUpdate.selectedSource);
+    TEST_ASSERT_EQUAL(0u, cachedBeforeUpdate.gpsSelections);
+
+    const SpeedSelectorStatus committed = updateAndSnapshot(1000);
+    TEST_ASSERT_EQUAL(SpeedSource::GPS, committed.selectedSource);
+    TEST_ASSERT_EQUAL(1u, committed.gpsSelections);
+    TEST_ASSERT_TRUE(speedSourceSelector.selectedSpeed().valid);
+    TEST_ASSERT_EQUAL(SpeedSource::GPS, speedSourceSelector.selectedSpeed().source);
+}
 
 void test_selection_counters() {
     speedSourceSelector.begin(true, true);
@@ -302,18 +333,18 @@ void test_selection_counters() {
     gpsRuntimeModule.freshResult = true;
     gpsRuntimeModule.freshSpeedMph = 60.0f;
     gpsRuntimeModule.freshTsMs = 900;
-    speedSourceSelector.snapshot(1000);
+    speedSourceSelector.update(1000);
 
     // OBD selection
     obdRuntimeModule.freshResult = true;
     obdRuntimeModule.freshSpeedMph = 62.0f;
     obdRuntimeModule.freshTsMs = 1400;
-    speedSourceSelector.snapshot(1500);
+    speedSourceSelector.update(1500);
 
     // No source
     gpsRuntimeModule.freshResult = false;
     obdRuntimeModule.freshResult = false;
-    auto s = speedSourceSelector.snapshot(2000);
+    auto s = updateAndSnapshot(2000);
 
     TEST_ASSERT_EQUAL(1, s.gpsSelections);
     TEST_ASSERT_EQUAL(1, s.obdSelections);
@@ -328,11 +359,11 @@ void test_set_obd_enabled_activates_obd() {
     obdRuntimeModule.freshSpeedMph = 55.0f;
     obdRuntimeModule.freshTsMs = 900;
 
-    auto s1 = speedSourceSelector.snapshot(1000);
+    auto s1 = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s1.selectedSource);
 
     speedSourceSelector.setObdEnabled(true);
-    auto s2 = speedSourceSelector.snapshot(1000);
+    auto s2 = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::OBD, s2.selectedSource);
 }
 
@@ -342,11 +373,11 @@ void test_set_gps_enabled_activates_gps() {
     gpsRuntimeModule.freshSpeedMph = 60.0f;
     gpsRuntimeModule.freshTsMs = 900;
 
-    auto s1 = speedSourceSelector.snapshot(1000);
+    auto s1 = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s1.selectedSource);
 
     speedSourceSelector.setGpsEnabled(true);
-    auto s2 = speedSourceSelector.snapshot(1000);
+    auto s2 = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::GPS, s2.selectedSource);
 }
 
@@ -354,7 +385,7 @@ void test_set_gps_enabled_activates_gps() {
 
 void test_status_reports_enabled_flags() {
     speedSourceSelector.begin(true, true);
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_TRUE(s.gpsEnabled);
     TEST_ASSERT_TRUE(s.obdEnabled);
 }
@@ -369,7 +400,7 @@ void test_age_calculation() {
     obdRuntimeModule.freshSpeedMph = 62.0f;
     obdRuntimeModule.freshTsMs = 800;
 
-    auto s = speedSourceSelector.snapshot(1000);
+    auto s = snapshotAt(1000);
     TEST_ASSERT_EQUAL(300, s.gpsAgeMs);
     TEST_ASSERT_EQUAL(200, s.obdAgeMs);
     TEST_ASSERT_EQUAL(200, s.selectedAgeMs);  // OBD selected
@@ -412,6 +443,7 @@ int main(int /*argc*/, char** /*argv*/) {
     // Source switching
     RUN_TEST(test_source_switch_counter_increments);
     RUN_TEST(test_no_switch_from_none_to_source);
+    RUN_TEST(test_snapshot_at_is_pure_and_update_commits_state);
     RUN_TEST(test_selection_counters);
 
     // Enable/disable

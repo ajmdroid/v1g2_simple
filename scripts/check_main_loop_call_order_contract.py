@@ -29,11 +29,11 @@ LOOP_START_RE = re.compile(r"\bvoid\s+loop\s*\(\s*\)\s*\{")
 ORDERED_CALLS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
     ("bleClient.process", re.compile(r"\bbleClient\s*\.\s*process\s*\(")),
     ("bleQueueModule.process", re.compile(r"\bbleQueueModule\s*\.\s*process\s*\(")),
+    ("obdRuntimeModule.update", re.compile(r"\bobdRuntimeModule\s*\.\s*update\s*\(")),
     (
         "displayPipelineModule.handleParsed",
         re.compile(r"\bdisplayPipelineModule\s*\.\s*handleParsed\s*\("),
     ),
-    ("obdRuntimeModule.update", re.compile(r"\bobdRuntimeModule\s*\.\s*update\s*\(")),
     ("wifiManager.process", re.compile(r"\bwifiManager\s*\.\s*process\s*\(")),
 )
 

@@ -44,7 +44,10 @@ void test_noop_when_feature_disabled() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] { startCalls++; },
+                                        [] {
+                                            startCalls++;
+                                            return true;
+                                        },
                                         [] { markCalls++; });
 
     TEST_ASSERT_FALSE(started);
@@ -65,7 +68,10 @@ void test_noop_when_already_done() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] { startCalls++; },
+                                        [] {
+                                            startCalls++;
+                                            return true;
+                                        },
                                         [] { markCalls++; });
 
     TEST_ASSERT_FALSE(started);
@@ -84,7 +90,10 @@ void test_noop_before_ble_settle_and_timeout() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] { startCalls++; },
+                                        [] {
+                                            startCalls++;
+                                            return true;
+                                        },
                                         [] { markCalls++; });
 
     TEST_ASSERT_FALSE(started);
@@ -104,7 +113,10 @@ void test_starts_after_ble_settle() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] { startCalls++; },
+                                        [] {
+                                            startCalls++;
+                                            return true;
+                                        },
                                         [] { markCalls++; });
 
     TEST_ASSERT_TRUE(started);
@@ -123,7 +135,10 @@ void test_starts_on_boot_timeout_without_ble() {
                                         false,
                                         true,
                                         wifiAutoStartDone,
-                                        [] { startCalls++; },
+                                        [] {
+                                            startCalls++;
+                                            return true;
+                                        },
                                         [] { markCalls++; });
 
     TEST_ASSERT_TRUE(started);
@@ -142,7 +157,10 @@ void test_noop_when_dma_not_available() {
                                         true,
                                         false,
                                         wifiAutoStartDone,
-                                        [] { startCalls++; },
+                                        [] {
+                                            startCalls++;
+                                            return true;
+                                        },
                                         [] { markCalls++; });
 
     TEST_ASSERT_FALSE(started);
@@ -162,7 +180,10 @@ void test_v1_timestamp_ahead_of_now_saturates_elapsed() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] { startCalls++; },
+                                        [] {
+                                            startCalls++;
+                                            return true;
+                                        },
                                         [] { markCalls++; });
 
     TEST_ASSERT_FALSE(started);
@@ -181,7 +202,10 @@ void test_noop_when_wifi_master_disabled() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] { startCalls++; },
+                                        [] {
+                                            startCalls++;
+                                            return true;
+                                        },
                                         [] { markCalls++; });
 
     TEST_ASSERT_FALSE(started);
@@ -200,7 +224,10 @@ void test_waits_for_boot_timeout_without_ble_connection() {
                                         false,
                                         true,
                                         wifiAutoStartDone,
-                                        [] { startCalls++; },
+                                        [] {
+                                            startCalls++;
+                                            return true;
+                                        },
                                         [] { markCalls++; });
 
     TEST_ASSERT_FALSE(started);
@@ -210,6 +237,30 @@ void test_waits_for_boot_timeout_without_ble_connection() {
     assertGate(WifiAutoStartGate::WaitingBootTimeout, false, false);
     TEST_ASSERT_FALSE(module.getLastDecision().bleConnected);
     TEST_ASSERT_FALSE(module.getLastDecision().bootTimeoutReached);
+}
+
+void test_failed_start_does_not_mark_auto_start_done() {
+    const bool started = module.process(5000,
+                                        1000,
+                                        true,
+                                        true,
+                                        true,
+                                        true,
+                                        wifiAutoStartDone,
+                                        [] {
+                                            startCalls++;
+                                            return false;
+                                        },
+                                        [] { markCalls++; });
+
+    TEST_ASSERT_FALSE(started);
+    TEST_ASSERT_FALSE(wifiAutoStartDone);
+    TEST_ASSERT_EQUAL_INT(1, startCalls);
+    TEST_ASSERT_EQUAL_INT(0, markCalls);
+    TEST_ASSERT_TRUE(module.getLastDecision().startTriggered);
+    TEST_ASSERT_FALSE(module.getLastDecision().startSucceeded);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(WifiAutoStartGate::StartFailed),
+                            static_cast<uint8_t>(module.getLastDecision().gate));
 }
 
 int main() {
@@ -223,5 +274,6 @@ int main() {
     RUN_TEST(test_v1_timestamp_ahead_of_now_saturates_elapsed);
     RUN_TEST(test_noop_when_wifi_master_disabled);
     RUN_TEST(test_waits_for_boot_timeout_without_ble_connection);
+    RUN_TEST(test_failed_start_does_not_mark_auto_start_done);
     return UNITY_END();
 }

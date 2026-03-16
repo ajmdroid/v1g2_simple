@@ -97,6 +97,13 @@ void handleApiScan(WebServer& server,
                    const std::function<void()>& markUiActivity) {
     if (markUiActivity) markUiActivity();
     if (checkRateLimit && !checkRateLimit()) return;
+    if (!obdRuntime.isEnabled()) {
+        JsonDocument doc;
+        doc["ok"] = false;
+        doc["message"] = "OBD is disabled";
+        WifiApiResponse::sendJsonDocument(server, 409, doc);
+        return;
+    }
     obdRuntime.startScan();
     JsonDocument doc;
     doc["ok"] = true;
