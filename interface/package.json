@@ -10,6 +10,7 @@
     "build": "vite build && bash ../tools/compress_web_assets.sh",
     "preview": "vite preview",
     "deploy": "node scripts/deploy.js",
+    "prepare": "svelte-kit sync",
     "lint": "svelte-check",
     "test:unit": "vitest run",
     "test:coverage": "vitest run --coverage"
