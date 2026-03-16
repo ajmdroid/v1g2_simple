@@ -690,6 +690,18 @@ void ObdRuntimeModule::handleAtInitResponse(uint32_t nowMs) {
         return;
     }
 
+    // 0100 (supported PIDs) fails when the vehicle isn't running. Main
+    // explicitly treats this as non-fatal: "vehicle might just be off".
+    // Skip and proceed to polling so AT commands still work for voltage, etc.
+    if (activeCommand_.kind == ObdCommandKind::SANITY) {
+#ifndef UNIT_TEST
+        Serial.println("[OBD] sanity 0100 failed (vehicle may be off) - skipping");
+#endif
+        completeActiveCommand();
+        initIndex_++;
+        return;
+    }
+
     if (retryActiveCommand(nowMs)) {
         return;
     }
@@ -1263,6 +1275,17 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
                           bleDisconnectReason_,
                           bleReasonName(bleDisconnectReason_));
 #endif
+            // 0100 (sanity) times out when vehicle isn't running - non-fatal.
+            if (activeCommand_.kind == ObdCommandKind::SANITY) {
+#ifndef UNIT_TEST
+                Serial.printf("[OBD] sanity 0100 timed out rxBytes=%u (vehicle may be off) - skipping\n",
+                              static_cast<unsigned>(bleBufLen_));
+#endif
+                clearBleResponseState();
+                completeActiveCommand();
+                initIndex_++;
+                return;
+            }
             if (bleBufLen_ == 0 && retryActiveCommandWithAlternateWriteMode(nowMs)) {
 #ifndef UNIT_TEST
                 Serial.printf("[OBD] AT init retrying cmd=%.*s with alternate write mode=%s after empty timeout\n",
