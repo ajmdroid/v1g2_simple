@@ -4,8 +4,6 @@
 
 #include <algorithm>
 
-#include "../gps/gps_lockout_safety.h"
-#include "../../../include/clamp_utils.h"
 #include "wifi_api_response.h"
 
 namespace WifiDisplayColorsApiService {
@@ -88,68 +86,6 @@ void handleApiSave(WebServer& server,
     if (server.hasArg("hideVolumeIndicator")) s.hideVolumeIndicator = argBool("hideVolumeIndicator", s.hideVolumeIndicator);
     if (server.hasArg("hideRssiIndicator")) s.hideRssiIndicator = argBool("hideRssiIndicator", s.hideRssiIndicator);
 
-    // Development/runtime toggles
-    if (server.hasArg("enableWifiAtBoot")) s.enableWifiAtBoot = argBool("enableWifiAtBoot", s.enableWifiAtBoot);
-    if (server.hasArg("enableSignalTraceLogging")) {
-        s.enableSignalTraceLogging = argBool("enableSignalTraceLogging", s.enableSignalTraceLogging);
-    }
-    if (server.hasArg("gpsEnabled")) {
-        s.gpsEnabled = argBool("gpsEnabled", s.gpsEnabled);
-        if (runtime.setGpsRuntimeEnabled) {
-            runtime.setGpsRuntimeEnabled(s.gpsEnabled);
-        }
-        if (runtime.setSpeedSourceGpsEnabled) {
-            runtime.setSpeedSourceGpsEnabled(s.gpsEnabled);
-        }
-    }
-    if (server.hasArg("gpsLockoutMode")) {
-        s.gpsLockoutMode = gpsLockoutParseRuntimeModeArg(server.arg("gpsLockoutMode"), s.gpsLockoutMode);
-    }
-    if (server.hasArg("gpsLockoutCoreGuardEnabled")) {
-        s.gpsLockoutCoreGuardEnabled =
-            argBool("gpsLockoutCoreGuardEnabled", s.gpsLockoutCoreGuardEnabled);
-    }
-    if (server.hasArg("gpsLockoutMaxQueueDrops")) {
-        s.gpsLockoutMaxQueueDrops =
-            clamp_utils::clampU16Value(server.arg("gpsLockoutMaxQueueDrops").toInt(), 0, 65535);
-    }
-    if (server.hasArg("gpsLockoutMaxPerfDrops")) {
-        s.gpsLockoutMaxPerfDrops =
-            clamp_utils::clampU16Value(server.arg("gpsLockoutMaxPerfDrops").toInt(), 0, 65535);
-    }
-    if (server.hasArg("gpsLockoutMaxEventBusDrops")) {
-        s.gpsLockoutMaxEventBusDrops =
-            clamp_utils::clampU16Value(server.arg("gpsLockoutMaxEventBusDrops").toInt(), 0, 65535);
-    }
-
-    // Voice settings
-    if (server.hasArg("voiceAlertMode")) {
-        int mode = server.arg("voiceAlertMode").toInt();
-        mode = std::max(0, std::min(mode, 3));
-        s.voiceAlertMode = static_cast<VoiceAlertMode>(mode);
-    }
-    if (server.hasArg("voiceDirectionEnabled")) s.voiceDirectionEnabled = argBool("voiceDirectionEnabled", s.voiceDirectionEnabled);
-    if (server.hasArg("announceBogeyCount")) s.announceBogeyCount = argBool("announceBogeyCount", s.announceBogeyCount);
-    if (server.hasArg("muteVoiceIfVolZero")) s.muteVoiceIfVolZero = argBool("muteVoiceIfVolZero", s.muteVoiceIfVolZero);
-
-    // Secondary alerts
-    if (server.hasArg("announceSecondaryAlerts")) s.announceSecondaryAlerts = argBool("announceSecondaryAlerts", s.announceSecondaryAlerts);
-    if (server.hasArg("secondaryLaser")) s.secondaryLaser = argBool("secondaryLaser", s.secondaryLaser);
-    if (server.hasArg("secondaryKa")) s.secondaryKa = argBool("secondaryKa", s.secondaryKa);
-    if (server.hasArg("secondaryK")) s.secondaryK = argBool("secondaryK", s.secondaryK);
-    if (server.hasArg("secondaryX")) s.secondaryX = argBool("secondaryX", s.secondaryX);
-
-    // Volume fade
-    if (server.hasArg("alertVolumeFadeEnabled")) s.alertVolumeFadeEnabled = argBool("alertVolumeFadeEnabled", s.alertVolumeFadeEnabled);
-    if (server.hasArg("alertVolumeFadeDelaySec")) {
-        int val = server.arg("alertVolumeFadeDelaySec").toInt();
-        s.alertVolumeFadeDelaySec = static_cast<uint8_t>(std::max(1, std::min(val, 10)));
-    }
-    if (server.hasArg("alertVolumeFadeVolume")) {
-        int val = server.arg("alertVolumeFadeVolume").toInt();
-        s.alertVolumeFadeVolume = static_cast<uint8_t>(std::max(0, std::min(val, 9)));
-    }
-
     // Misc sliders
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
@@ -157,14 +93,6 @@ void handleApiSave(WebServer& server,
         s.brightness = static_cast<uint8_t>(brightness);
         if (runtime.setDisplayBrightness) {
             runtime.setDisplayBrightness(static_cast<uint8_t>(brightness));
-        }
-    }
-    if (server.hasArg("voiceVolume")) {
-        int volume = server.arg("voiceVolume").toInt();
-        volume = std::max(0, std::min(volume, 100));
-        s.voiceVolume = static_cast<uint8_t>(volume);
-        if (runtime.setAudioVolume) {
-            runtime.setAudioVolume(static_cast<uint8_t>(volume));
         }
     }
 
@@ -331,30 +259,7 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["hideBleIcon"] = s.hideBleIcon;
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
-    doc["enableWifiAtBoot"] = s.enableWifiAtBoot;
-    doc["enableSignalTraceLogging"] = s.enableSignalTraceLogging;
-    doc["voiceAlertMode"] = static_cast<int>(s.voiceAlertMode);
-    doc["voiceDirectionEnabled"] = s.voiceDirectionEnabled;
-    doc["announceBogeyCount"] = s.announceBogeyCount;
-    doc["muteVoiceIfVolZero"] = s.muteVoiceIfVolZero;
     doc["brightness"] = s.brightness;
-    doc["voiceVolume"] = s.voiceVolume;
-    doc["announceSecondaryAlerts"] = s.announceSecondaryAlerts;
-    doc["secondaryLaser"] = s.secondaryLaser;
-    doc["secondaryKa"] = s.secondaryKa;
-    doc["secondaryK"] = s.secondaryK;
-    doc["secondaryX"] = s.secondaryX;
-    doc["alertVolumeFadeEnabled"] = s.alertVolumeFadeEnabled;
-    doc["alertVolumeFadeDelaySec"] = s.alertVolumeFadeDelaySec;
-    doc["alertVolumeFadeVolume"] = s.alertVolumeFadeVolume;
-    doc["gpsEnabled"] = s.gpsEnabled;
-    doc["gpsLockoutMode"] = static_cast<int>(s.gpsLockoutMode);
-    doc["gpsLockoutModeName"] = lockoutRuntimeModeName(s.gpsLockoutMode);
-    doc["gpsLockoutCoreGuardEnabled"] = s.gpsLockoutCoreGuardEnabled;
-    doc["gpsLockoutMaxQueueDrops"] = s.gpsLockoutMaxQueueDrops;
-    doc["gpsLockoutMaxPerfDrops"] = s.gpsLockoutMaxPerfDrops;
-    doc["gpsLockoutMaxEventBusDrops"] = s.gpsLockoutMaxEventBusDrops;
-    doc["gpsLockoutKaLearningEnabled"] = s.gpsLockoutKaLearningEnabled;
 
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }

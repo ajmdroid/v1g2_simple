@@ -16,6 +16,7 @@
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/lockout/lockout_band_policy.h"
 #include "modules/wifi/wifi_autopush_api_service.h"
+#include "modules/wifi/wifi_audio_api_service.h"
 #include "modules/wifi/wifi_display_colors_api_service.h"
 #include "modules/wifi/wifi_settings_api_service.h"
 #include "modules/wifi/wifi_status_api_service.h"
@@ -115,20 +116,8 @@ WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
         [this]() -> V1Settings& {
             return settingsManager.mutableSettings();
         },
-        [this](bool enabled) {
-            gpsRuntimeModule.setEnabled(enabled);
-        },
-        [this](bool enabled) {
-            speedSourceSelector.setGpsEnabled(enabled);
-        },
         [this](uint8_t brightness) {
             display.setBrightness(brightness);
-        },
-        [](uint8_t volume) {
-            audio_set_volume(volume);
-        },
-        [this]() {
-            display.showDemo();
         },
         [](uint32_t durationMs) {
             requestColorPreviewHold(durationMs);
@@ -138,6 +127,23 @@ WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
         },
         []() {
             cancelColorPreview();
+        },
+        [this]() {
+            settingsManager.saveDeferredBackup();
+        },
+    };
+}
+
+WifiAudioApiService::Runtime WiFiManager::makeAudioRuntime() {
+    return WifiAudioApiService::Runtime{
+        [this]() -> const V1Settings& {
+            return settingsManager.get();
+        },
+        [this]() -> V1Settings& {
+            return settingsManager.mutableSettings();
+        },
+        [](uint8_t volume) {
+            audio_set_volume(volume);
         },
         [this]() {
             settingsManager.saveDeferredBackup();

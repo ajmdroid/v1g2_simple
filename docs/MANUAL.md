@@ -1013,7 +1013,7 @@ Voice alerts can be enabled/disabled at `/audio`:
 - **Enable Voice Alerts:** Master toggle
 - **Mute Voice at Volume 0:** Skip announcements when V1 volume is 0
 
-**API:** `POST /api/displaycolors` with `voiceAlertsEnabled=true|false`
+**API:** `POST /api/audio/settings` with `voiceAlertMode=0|1|2|3`
 
 ### Volume Fade (V1 Alert Volume Reduction)
 
@@ -1686,6 +1686,8 @@ For the full API reference with request/response schemas and examples, see [API.
 | GET | `/api/v1/profiles` | List saved profiles |
 | POST | `/api/v1/push` | Push profile to V1 |
 | GET | `/api/autopush/slots` | Get slot configurations |
+| GET | `/api/audio/settings` | Get current audio settings |
+| POST | `/api/audio/settings` | Save audio settings |
 | GET | `/api/displaycolors` | Get current colors |
 | GET | `/api/debug/metrics` | Performance metrics |
 | GET | `/ping` | Health check |

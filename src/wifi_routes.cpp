@@ -16,6 +16,7 @@
 #include "modules/lockout/lockout_learner.h"
 #include "modules/debug/debug_api_service.h"
 #include "modules/wifi/backup_api_service.h"
+#include "modules/wifi/wifi_audio_api_service.h"
 #include "modules/wifi/wifi_client_api_service.h"
 #include "modules/wifi/wifi_control_api_service.h"
 #include "modules/wifi/wifi_display_colors_api_service.h"
@@ -281,7 +282,7 @@ void WiFiManager::setupWebServer() {
         WifiAutoPushApiService::handleApiStatus(server, makeAutoPushRuntime());
     });
     
-    // Display Colors routes
+    // Display settings routes
     server.on("/displaycolors", HTTP_GET, [this]() { 
         WifiPortalApiService::handleApiRedirectToRoot(server);
     });
@@ -310,6 +311,17 @@ void WiFiManager::setupWebServer() {
         WifiDisplayColorsApiService::handleApiClear(
             server,
             makeDisplayColorsRuntime(),
+            rateLimitCallback);
+    });
+
+    // Audio settings routes
+    server.on("/api/audio/settings", HTTP_GET, [this]() {
+        WifiAudioApiService::handleApiGet(server, makeAudioRuntime());
+    });
+    server.on("/api/audio/settings", HTTP_POST, [this, rateLimitCallback]() {
+        WifiAudioApiService::handleApiSave(
+            server,
+            makeAudioRuntime(),
             rateLimitCallback);
     });
     

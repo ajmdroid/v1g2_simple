@@ -14,6 +14,7 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 - [Settings](#settings)
 - [V1 Profiles](#v1-profiles)
 - [Auto-Push](#auto-push)
+- [Audio Settings](#audio-settings)
 - [Display Colors](#display-colors)
 - [Lockouts](#lockouts)
 - [GPS](#gps)
@@ -419,29 +420,49 @@ Get auto-push status and last push info.
 
 ---
 
+## Audio Settings
+
+### GET /api/audio/settings
+
+Get current audio and voice-alert configuration.
+
+**Response:** JSON with `voiceAlertMode`, `voiceDirectionEnabled`, `announceBogeyCount`,
+`muteVoiceIfVolZero`, `voiceVolume`, secondary-alert toggles, and volume-fade settings.
+
+### POST /api/audio/settings
+
+Save audio and voice-alert configuration.
+
+**Request (form data):** Audio-related fields only, including `voiceAlertMode`,
+`voiceDirectionEnabled`, `announceBogeyCount`, `muteVoiceIfVolZero`, `voiceVolume`,
+`announceSecondaryAlerts`, `secondaryLaser`, `secondaryKa`, `secondaryK`, `secondaryX`,
+`alertVolumeFadeEnabled`, `alertVolumeFadeDelaySec`, and `alertVolumeFadeVolume`.
+
+---
+
 ## Display Colors
 
 ### GET /api/displaycolors
 
 Get current display color configuration.
 
-**Response:** JSON with RGB565 integer color values and display toggle settings.
+**Response:** JSON with RGB565 integer color values, display visibility toggles, and brightness.
 
 Key color fields: `bogey`, `freq`, `arrowFront`, `arrowSide`, `arrowRear`, `bandL`, `bandKa`, `bandK`, `bandX`, `bandPhoto`, `wifiIcon`, `wifiConnected`, `bleConnected`, `bleDisconnected`, `bar1`..`bar6`, `muted`, `persisted`, `volumeMain`, `volumeMute`, `rssiV1`, `rssiProxy`, `lockout`, `gps`.
 
-Also includes boolean display toggles and voice/fade/GPS settings.
+Also includes boolean display toggles plus `brightness`.
 
 ### POST /api/displaycolors
 
 Save display color configuration.
 
-**Request (form data):** RGB565 integer color values and display settings.
+**Request (form data):** RGB565 integer color values, display visibility toggles, and brightness.
 
 ```
 bogey=63488&freq=65535&arrowFront=2016&arrowSide=65504&arrowRear=63488
 ```
 
-Accepts the same color and toggle field names returned by GET.
+Accepts the same display-owned field names returned by GET.
 
 ### POST /api/displaycolors/reset
 
@@ -627,6 +648,19 @@ Clear the saved OBD adapter address and disconnect. The adapter will need to be 
 ```json
 { "ok": true }
 ```
+
+### POST /api/obd/config
+
+Update OBD runtime configuration.
+
+**Request (JSON or form):**
+- `enabled`: `true|false`
+- `minRssi`: integer RSSI threshold from `-90` to `-40`
+
+**Behavior**
+
+- Persists the enabled state and minimum RSSI threshold.
+- Updates the live OBD runtime and OBD speed-source gating immediately.
 
 ---
 

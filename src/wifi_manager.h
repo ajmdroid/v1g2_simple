@@ -24,6 +24,10 @@ namespace WifiDisplayColorsApiService {
 struct Runtime;
 }
 
+namespace WifiAudioApiService {
+struct Runtime;
+}
+
 namespace WifiTimeApiService {
 struct TimeRuntime;
 }
@@ -277,6 +281,7 @@ private:
     bool stopSetupModeImmediate(bool emergencyLowDma);
     WifiAutoPushApiService::Runtime makeAutoPushRuntime();
     WifiDisplayColorsApiService::Runtime makeDisplayColorsRuntime();
+    WifiAudioApiService::Runtime makeAudioRuntime();
     WifiTimeApiService::TimeRuntime makeTimeRuntime();
     WifiStatusApiService::StatusRuntime makeStatusRuntime();
     WifiSettingsApiService::Runtime makeSettingsRuntime();

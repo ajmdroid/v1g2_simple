@@ -1,5 +1,6 @@
 <script>
 	import { onDestroy, onMount } from 'svelte';
+	import { postSettingsForm } from '$lib/api/settings';
 	import { createPoll, fetchWithTimeout } from '$lib/utils/poll';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import * as devLazyComponents from '$lib/features/dev/devLazyComponents.js';
@@ -121,16 +122,11 @@
 		clearMessage();
 
 		try {
-			const params = new URLSearchParams();
-			params.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
-			params.append('enableSignalTraceLogging', settings.enableSignalTraceLogging.toString());
-			params.append('skipPreview', 'true');
+			const formData = new FormData();
+			formData.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
+			formData.append('enableSignalTraceLogging', settings.enableSignalTraceLogging.toString());
 
-			const response = await fetchWithTimeout('/api/displaycolors', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-				body: params
-			});
+			const response = await postSettingsForm(formData);
 
 			if (response.ok) {
 				setMessage('success', 'Settings saved!');

@@ -10,7 +10,7 @@ function installDefaultFetch(overrides = []) {
 			...overrides,
 			{
 				method: 'GET',
-				match: '/api/displaycolors',
+				match: '/api/audio/settings',
 				respond: jsonResponse({
 					voiceAlertMode: 3,
 					voiceDirectionEnabled: true,
@@ -27,7 +27,7 @@ function installDefaultFetch(overrides = []) {
 					alertVolumeFadeVolume: 2
 				})
 			},
-			{ method: 'POST', match: '/api/displaycolors', respond: jsonResponse({ success: true }) }
+			{ method: 'POST', match: '/api/audio/settings', respond: jsonResponse({ success: true }) }
 		],
 		jsonResponse({})
 	);
@@ -38,13 +38,13 @@ describe('audio route page', () => {
 		vi.restoreAllMocks();
 	});
 
-	it('loads audio settings from the display colors API', async () => {
+	it('loads audio settings from the dedicated audio API', async () => {
 		const fetchMock = installDefaultFetch();
 		const { unmount } = render(Page);
 
 		await screen.findByRole('button', { name: /save audio settings/i });
 		await waitFor(() => {
-			expect(fetchMock.mock.calls.some(([url]) => url === '/api/displaycolors')).toBe(true);
+			expect(fetchMock.mock.calls.some(([url]) => url === '/api/audio/settings')).toBe(true);
 		});
 		expect(screen.getByText(/Ka 34\.712 ahead 2 bogeys/)).toBeInTheDocument();
 		expect(screen.getByText('72%')).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe('audio route page', () => {
 
 	it('shows load error when the settings request fails', async () => {
 		installFetchMock(
-			[{ method: 'GET', match: '/api/displaycolors', respond: () => Promise.reject(new Error('offline')) }],
+			[{ method: 'GET', match: '/api/audio/settings', respond: () => Promise.reject(new Error('offline')) }],
 			jsonResponse({})
 		);
 		const { unmount } = render(Page);
@@ -67,7 +67,7 @@ describe('audio route page', () => {
 		installDefaultFetch([
 			{
 				method: 'GET',
-				match: '/api/displaycolors',
+				match: '/api/audio/settings',
 				respond: jsonResponse({
 					voiceAlertMode: 0,
 					voiceDirectionEnabled: true,
@@ -98,7 +98,7 @@ describe('audio route page', () => {
 
 		await screen.findByText('Audio settings saved!');
 		const postCall = fetchMock.mock.calls.find(
-			([url, init]) => url === '/api/displaycolors' && init?.method === 'POST'
+			([url, init]) => url === '/api/audio/settings' && init?.method === 'POST'
 		);
 		expect(postCall).toBeTruthy();
 		const [, init] = postCall;
@@ -112,7 +112,7 @@ describe('audio route page', () => {
 
 	it('shows an error message when save fails', async () => {
 		installDefaultFetch([
-			{ method: 'POST', match: '/api/displaycolors', respond: jsonResponse({ success: false }, 500) }
+			{ method: 'POST', match: '/api/audio/settings', respond: jsonResponse({ success: false }, 500) }
 		]);
 		const { unmount } = render(Page);
 

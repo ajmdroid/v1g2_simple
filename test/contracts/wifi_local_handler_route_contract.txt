@@ -1,14 +1,18 @@
 # WiFi API local-handler route contract (remaining non-ApiService route families)
 
+route=HTTP_GET /api/audio/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiAudioApiService::handleApiGet
 route=HTTP_GET /api/autopush/slots rate_limit=0 ui_activity=0 handlers= delegates=WifiAutoPushApiService::handleApiSlots
 route=HTTP_GET /api/autopush/status rate_limit=0 ui_activity=0 handlers= delegates=WifiAutoPushApiService::handleApiStatus
 route=HTTP_GET /api/displaycolors rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiGet
+route=HTTP_GET /api/obd/status rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiStatus
 route=HTTP_GET /api/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiSettingsApiService::handleApiSettingsGet
 route=HTTP_GET /api/status rate_limit=0 ui_activity=0 handlers= delegates=WifiStatusApiService::handleApiStatus
 route=HTTP_GET /api/v1/current rate_limit=0 ui_activity=0 handlers= delegates=WifiV1ProfileApiService::handleApiCurrentSettings
+route=HTTP_GET /api/v1/devices rate_limit=0 ui_activity=0 handlers= delegates=WifiV1DevicesApiService::handleApiDevicesList
 route=HTTP_GET /api/v1/profile rate_limit=0 ui_activity=0 handlers= delegates=WifiV1ProfileApiService::handleApiProfileGet
 route=HTTP_GET /api/v1/profiles rate_limit=0 ui_activity=0 handlers= delegates=WifiV1ProfileApiService::handleApiProfilesList
 route=HTTP_GET /api/wifi/status rate_limit=0 ui_activity=1 handlers= delegates=WifiClientApiService::handleApiStatus
+route=HTTP_POST /api/audio/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiAudioApiService::handleApiSave
 route=HTTP_POST /api/autopush/activate rate_limit=0 ui_activity=0 handlers= delegates=WifiAutoPushApiService::handleApiActivate
 route=HTTP_POST /api/autopush/push rate_limit=0 ui_activity=0 handlers= delegates=WifiAutoPushApiService::handleApiPushNow
 route=HTTP_POST /api/autopush/slot rate_limit=0 ui_activity=0 handlers= delegates=WifiAutoPushApiService::handleApiSlotSave
@@ -16,9 +20,15 @@ route=HTTP_POST /api/displaycolors rate_limit=0 ui_activity=0 handlers= delegate
 route=HTTP_POST /api/displaycolors/clear rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiClear
 route=HTTP_POST /api/displaycolors/preview rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiPreview
 route=HTTP_POST /api/displaycolors/reset rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiReset
+route=HTTP_POST /api/obd/config rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiConfig
+route=HTTP_POST /api/obd/forget rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiForget
+route=HTTP_POST /api/obd/scan rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiScan
 route=HTTP_POST /api/profile/push rate_limit=0 ui_activity=0 handlers= delegates=WifiControlApiService::handleApiProfilePush
 route=HTTP_POST /api/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiSettingsApiService::handleApiSettingsSave
 route=HTTP_POST /api/time/set rate_limit=0 ui_activity=0 handlers= delegates=WifiTimeApiService::handleApiTimeSet
+route=HTTP_POST /api/v1/devices/delete rate_limit=0 ui_activity=0 handlers= delegates=WifiV1DevicesApiService::handleApiDeviceDelete
+route=HTTP_POST /api/v1/devices/name rate_limit=0 ui_activity=0 handlers= delegates=WifiV1DevicesApiService::handleApiDeviceNameSave
+route=HTTP_POST /api/v1/devices/profile rate_limit=0 ui_activity=0 handlers= delegates=WifiV1DevicesApiService::handleApiDeviceProfileSave
 route=HTTP_POST /api/v1/profile rate_limit=0 ui_activity=0 handlers= delegates=WifiV1ProfileApiService::handleApiProfileSave
 route=HTTP_POST /api/v1/profile/delete rate_limit=0 ui_activity=0 handlers= delegates=WifiV1ProfileApiService::handleApiProfileDelete
 route=HTTP_POST /api/v1/pull rate_limit=0 ui_activity=0 handlers= delegates=WifiV1ProfileApiService::handleApiSettingsPull

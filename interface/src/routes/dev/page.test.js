@@ -68,7 +68,7 @@ function installDefaultFetch(overrides = []) {
 					disconnects: 0
 				})
 			},
-			{ method: 'POST', match: '/api/displaycolors', respond: jsonResponse({ success: true }) },
+			{ method: 'POST', match: '/api/settings', respond: jsonResponse({ success: true }) },
 			{ method: 'POST', match: '/api/debug/perf-files/delete', respond: jsonResponse({ success: true }) }
 		],
 		jsonResponse({})

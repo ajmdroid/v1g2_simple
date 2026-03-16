@@ -42,16 +42,10 @@
 	async function fetchSettings() {
 		loading = true;
 		try {
-			const res = await fetchWithTimeout('/api/displaycolors');
+			const res = await fetchWithTimeout('/api/audio/settings');
 			if (res.ok) {
 				const data = await res.json();
-				// Support both old and new API format
-				if (data.voiceAlertMode !== undefined) {
-					settings.voiceAlertMode = data.voiceAlertMode;
-				} else if (data.voiceAlertsEnabled !== undefined) {
-					// Migrate old setting
-					settings.voiceAlertMode = data.voiceAlertsEnabled ? 3 : 0;
-				}
+				settings.voiceAlertMode = data.voiceAlertMode ?? 3;
 				settings.voiceDirectionEnabled = data.voiceDirectionEnabled ?? true;
 				settings.announceBogeyCount = data.announceBogeyCount ?? true;
 				settings.muteVoiceIfVolZero = data.muteVoiceIfVolZero ?? false;
@@ -96,7 +90,7 @@
 			params.append('alertVolumeFadeDelaySec', settings.alertVolumeFadeDelaySec);
 			params.append('alertVolumeFadeVolume', settings.alertVolumeFadeVolume);
 			
-			const res = await fetchWithTimeout('/api/displaycolors', {
+			const res = await fetchWithTimeout('/api/audio/settings', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 				body: params
