@@ -383,8 +383,8 @@ static void handleRestore(WebServer& server) {
         }
     }
     
-    // Save to flash
-    settingsManager.save();
+    // Persist to NVS immediately and defer the SD backup rewrite.
+    settingsManager.saveDeferredBackup();
 
     gpsRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
     speedSourceSelector.setGpsEnabled(settingsManager.get().gpsEnabled);

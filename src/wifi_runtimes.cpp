@@ -203,7 +203,7 @@ WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
             cancelColorPreview();
         },
         [this]() {
-            settingsManager.save();
+            settingsManager.saveDeferredBackup();
         },
     };
 }
@@ -300,7 +300,7 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
             speedSourceSelector.setObdEnabled(enabled);
         },
         [this]() {
-            settingsManager.save();
+            settingsManager.saveDeferredBackup();
         },
     };
 }
@@ -412,7 +412,7 @@ WifiV1ProfileApiService::Runtime WiFiManager::makeV1ProfileRuntime() {
         []() { return v1ProfileManager.hasCurrentSettings(); },
         []() { return v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings()); },
         []() { return bleClient.isConnected(); },
-        [this]() { settingsManager.backupToSD(); },
+        [this]() { settingsManager.requestDeferredBackupFromCurrentState(); },
     };
 }
 

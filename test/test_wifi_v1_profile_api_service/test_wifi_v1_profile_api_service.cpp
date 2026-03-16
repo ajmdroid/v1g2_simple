@@ -57,7 +57,7 @@ struct FakeRuntime {
     int parseSettingsCalls = 0;
     int saveCalls = 0;
     int deleteCalls = 0;
-    int backupCalls = 0;
+    int requestDeferredBackupCalls = 0;
     int requestUserBytesCalls = 0;
     int writeUserBytesCalls = 0;
     int setDisplayOnCalls = 0;
@@ -162,7 +162,7 @@ static WifiV1ProfileApiService::Runtime makeRuntime(FakeRuntime& rt) {
         [&rt]() { return rt.hasCurrent; },
         [&rt]() { return rt.currentSettingsJson; },
         [&rt]() { return rt.connected; },
-        [&rt]() { rt.backupCalls++; },
+        [&rt]() { rt.requestDeferredBackupCalls++; },
     };
 }
 
@@ -283,7 +283,7 @@ void test_profile_save_success_calls_save_and_backup() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
     TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.backupCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.requestDeferredBackupCalls);
     TEST_ASSERT_EQUAL_STRING("RoadTrip", rt.lastSaveName.c_str());
     TEST_ASSERT_EQUAL_STRING("desc", rt.lastSaveDescription.c_str());
     TEST_ASSERT_FALSE(rt.lastSaveDisplayOn);
@@ -305,7 +305,7 @@ void test_profile_save_failure_returns_500_with_error() {
 
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"disk full\""));
-    TEST_ASSERT_EQUAL_INT(0, rt.backupCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.requestDeferredBackupCalls);
 }
 
 void test_profile_delete_success_calls_backup() {
@@ -323,7 +323,7 @@ void test_profile_delete_success_calls_backup() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
     TEST_ASSERT_EQUAL_INT(1, rt.deleteCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.backupCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.requestDeferredBackupCalls);
     assertWifiJsonAllocationsReleased();
 }
 
@@ -340,7 +340,7 @@ void test_profile_delete_not_found_returns_404() {
 
     TEST_ASSERT_EQUAL_INT(404, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Profile not found\""));
-    TEST_ASSERT_EQUAL_INT(0, rt.backupCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.requestDeferredBackupCalls);
 }
 
 void test_current_settings_unavailable() {

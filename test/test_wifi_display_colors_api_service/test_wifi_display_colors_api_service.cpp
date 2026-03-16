@@ -40,7 +40,7 @@ struct FakeRuntime {
     uint32_t lastPreviewHoldMs = 0;
     bool isColorPreviewRunning = false;
     int cancelColorPreviewCalls = 0;
-    int saveSettingsCalls = 0;
+    int saveDeferredBackupCalls = 0;
 };
 
 static WifiDisplayColorsApiService::Runtime makeRuntime(FakeRuntime& rt) {
@@ -81,7 +81,7 @@ static WifiDisplayColorsApiService::Runtime makeRuntime(FakeRuntime& rt) {
             rt.cancelColorPreviewCalls++;
         },
         [&rt]() {
-            rt.saveSettingsCalls++;
+            rt.saveDeferredBackupCalls++;
         },
     };
 }
@@ -136,7 +136,7 @@ void test_save_rate_limited_short_circuits() {
         []() { return false; });
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
-    TEST_ASSERT_EQUAL_INT(0, rt.saveSettingsCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.saveDeferredBackupCalls);
     TEST_ASSERT_EQUAL_INT(0, rt.setDisplayBrightnessCalls);
 }
 
@@ -178,7 +178,7 @@ void test_save_updates_settings_and_calls_side_effects() {
     TEST_ASSERT_EQUAL_UINT8(111, rt.lastDisplayBrightness);
     TEST_ASSERT_EQUAL_INT(1, rt.setAudioVolumeCalls);
     TEST_ASSERT_EQUAL_UINT8(71, rt.lastAudioVolume);
-    TEST_ASSERT_EQUAL_INT(1, rt.saveSettingsCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
     TEST_ASSERT_EQUAL_INT(0, rt.showDisplayDemoCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);
     TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);
@@ -198,7 +198,7 @@ void test_save_skip_preview_does_not_trigger_demo() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.showDisplayDemoCalls);
     TEST_ASSERT_EQUAL_INT(0, rt.requestColorPreviewHoldCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.saveSettingsCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
 }
 
 void test_save_clamps_numeric_ranges() {
@@ -233,7 +233,7 @@ void test_reset_rate_limited_short_circuits() {
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_UINT16(123, rt.settings.colorBogey);
-    TEST_ASSERT_EQUAL_INT(0, rt.saveSettingsCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.saveDeferredBackupCalls);
 }
 
 void test_reset_restores_defaults_and_triggers_preview() {
@@ -254,7 +254,7 @@ void test_reset_restores_defaults_and_triggers_preview() {
     TEST_ASSERT_EQUAL_UINT16(0x07E0, rt.settings.colorLockout);
     TEST_ASSERT_EQUAL_UINT16(0x07FF, rt.settings.colorGps);
     TEST_ASSERT_FALSE(rt.settings.freqUseBandColor);
-    TEST_ASSERT_EQUAL_INT(1, rt.saveSettingsCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
     TEST_ASSERT_EQUAL_INT(0, rt.showDisplayDemoCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);
     TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);

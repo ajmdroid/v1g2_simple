@@ -56,7 +56,7 @@ struct FakeRuntime {
     int setSpeedSourceObdEnabledCalls = 0;
     bool lastSpeedSourceObdEnabled = false;
 
-    int saveCalls = 0;
+    int saveDeferredBackupCalls = 0;
 };
 
 static WifiSettingsApiService::Runtime makeRuntime(FakeRuntime& rt) {
@@ -114,7 +114,7 @@ static WifiSettingsApiService::Runtime makeRuntime(FakeRuntime& rt) {
             rt.lastSpeedSourceObdEnabled = enabled;
         },
         [&rt]() {
-            rt.saveCalls++;
+            rt.saveDeferredBackupCalls++;
         },
     };
 }
@@ -174,7 +174,7 @@ void test_settings_save_rate_limited_short_circuits() {
         []() { return false; });
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
-    TEST_ASSERT_EQUAL_INT(0, rt.saveCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.saveDeferredBackupCalls);
     TEST_ASSERT_EQUAL_INT(0, rt.updateBrightnessCalls);
 }
 
@@ -192,7 +192,7 @@ void test_settings_save_rejects_invalid_ap_credentials() {
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "AP SSID required and password must be at least 8 characters"));
     TEST_ASSERT_EQUAL_INT(0, rt.updateApCredentialsCalls);
-    TEST_ASSERT_EQUAL_INT(0, rt.saveCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.saveDeferredBackupCalls);
 }
 
 void test_settings_save_uses_existing_password_placeholder() {
@@ -211,7 +211,7 @@ void test_settings_save_uses_existing_password_placeholder() {
     TEST_ASSERT_EQUAL_INT(1, rt.updateApCredentialsCalls);
     TEST_ASSERT_EQUAL_STRING("RenamedAP", rt.lastApSsid.c_str());
     TEST_ASSERT_EQUAL_STRING("existing123", rt.lastApPassword.c_str());
-    TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
 }
 
 void test_settings_save_updates_runtime_dependencies() {
@@ -237,7 +237,7 @@ void test_settings_save_updates_runtime_dependencies() {
     TEST_ASSERT_EQUAL_INT(static_cast<int>(LOCKOUT_RUNTIME_ENFORCE),
                           static_cast<int>(rt.settings.gpsLockoutMode));
     TEST_ASSERT_EQUAL_UINT16(65535, rt.settings.gpsLockoutMaxQueueDrops);
-    TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
 }
 
 void test_settings_save_updates_brightness_and_display_style() {
@@ -258,7 +258,7 @@ void test_settings_save_updates_brightness_and_display_style() {
     TEST_ASSERT_EQUAL_INT(static_cast<int>(DISPLAY_STYLE_SERPENTINE),
                           static_cast<int>(rt.lastDisplayStyle));
     TEST_ASSERT_EQUAL_INT(1, rt.forceDisplayRedrawCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
 }
 
 void test_settings_save_updates_development_toggles() {
@@ -277,7 +277,7 @@ void test_settings_save_updates_development_toggles() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(rt.settings.enableWifiAtBoot);
     TEST_ASSERT_FALSE(rt.settings.enableSignalTraceLogging);
-    TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
 }
 
 void test_settings_save_updates_obd_runtime_dependencies() {
@@ -300,7 +300,7 @@ void test_settings_save_updates_obd_runtime_dependencies() {
     TEST_ASSERT_EQUAL_INT8(-55, rt.lastObdRuntimeMinRssi);
     TEST_ASSERT_EQUAL_INT(1, rt.setSpeedSourceObdEnabledCalls);
     TEST_ASSERT_TRUE(rt.lastSpeedSourceObdEnabled);
-    TEST_ASSERT_EQUAL_INT(1, rt.saveCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
 }
 
 int main() {

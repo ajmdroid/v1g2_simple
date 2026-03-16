@@ -173,6 +173,29 @@ void test_repeated_requests_coalesce_to_latest_snapshot() {
     TEST_ASSERT_EQUAL_STRING("NewValue", backupDoc["apSSID"].as<const char*>());
 }
 
+void test_repeated_save_deferred_backup_calls_coalesce_to_latest_snapshot() {
+    fs::FS fs(g_tempRoot);
+    storageManager.setFilesystem(&fs, true);
+    TEST_ASSERT_TRUE(v1ProfileManager.begin(&fs));
+
+    SettingsManager manager;
+    manager.mutableSettings().apSSID = "FirstValue";
+    manager.saveDeferredBackup();
+    manager.mutableSettings().apSSID = "FinalValue";
+    manager.saveDeferredBackup();
+
+    TEST_ASSERT_TRUE(deferredSettingsBackupPendingForTest());
+    TEST_ASSERT_EQUAL_UINT32(3u, manager.backupRevision());
+
+    manager.serviceDeferredBackup(1000);
+    TEST_ASSERT_EQUAL_UINT(1u, deferredSettingsBackupQueueDepthForTest());
+    TEST_ASSERT_TRUE(runDeferredSettingsBackupWriterOnceForTest());
+
+    JsonDocument backupDoc;
+    TEST_ASSERT_TRUE(loadJsonFile(fs, SETTINGS_BACKUP_PATH, backupDoc));
+    TEST_ASSERT_EQUAL_STRING("FinalValue", backupDoc["apSSID"].as<const char*>());
+}
+
 void test_service_deferred_backup_keeps_pending_when_writer_setup_fails() {
     fs::FS fs(g_tempRoot);
     storageManager.setFilesystem(&fs, true);
@@ -225,6 +248,7 @@ int main() {
     RUN_TEST(test_save_deferred_backup_persists_nvs_and_writes_snapshot_via_writer);
     RUN_TEST(test_service_deferred_backup_retries_after_sd_trylock_busy);
     RUN_TEST(test_repeated_requests_coalesce_to_latest_snapshot);
+    RUN_TEST(test_repeated_save_deferred_backup_calls_coalesce_to_latest_snapshot);
     RUN_TEST(test_service_deferred_backup_keeps_pending_when_writer_setup_fails);
     RUN_TEST(test_writer_failure_requeues_backup_request_for_rebuild);
     return UNITY_END();

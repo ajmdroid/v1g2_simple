@@ -121,17 +121,21 @@ class SettingsManager {
 public:
     V1Settings settings;
     int saveCalls = 0;
+    int saveDeferredBackupCalls = 0;
     int backupToSDCalls = 0;
+    int requestDeferredBackupCalls = 0;
     uint8_t slotAlertPersistSec[3] = {0, 0, 0};
     bool backupToSDResult = true;
     
     void load() {}
     void save() { ++saveCalls; }
+    void saveDeferredBackup() { ++saveDeferredBackupCalls; }
     void setDefaults() {}
     bool backupToSD() {
         ++backupToSDCalls;
         return backupToSDResult;
     }
+    void requestDeferredBackupFromCurrentState() { ++requestDeferredBackupCalls; }
     
     const V1Settings& get() const { return settings; }
     V1Settings& getMutable() { return settings; }
