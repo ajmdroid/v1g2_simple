@@ -78,10 +78,10 @@
 					</select>
 				</label>
 				<label class="form-control">
-					<span class="label-text-field">Frequency (MHz, optional)</span>
+					<span class="label-text-field">Frequency (MHz)</span>
 					<input
 						type="number"
-						min="0"
+						min="1"
 						max="65535"
 						class="input input-bordered input-sm"
 						value={editor.frequencyMHz}

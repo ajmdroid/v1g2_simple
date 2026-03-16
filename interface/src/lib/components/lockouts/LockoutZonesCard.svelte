@@ -28,6 +28,8 @@
 		refreshZones,
 		clearAllZones,
 		handleImportFileSelected,
+		openZoneCreateEditor,
+		openZoneEditEditor,
 		deleteZone,
 		deletingZoneSlot = null
 	} = $props();
@@ -41,9 +43,16 @@
 	<div class="card-body gap-3">
 		<CardSectionHead
 			title="Lockout Zones"
-			subtitle="Active learned lockouts and pending candidates. Manual create/update has been removed."
+			subtitle="Active manual/learned lockouts and pending candidates."
 		>
 			<div class="flex flex-wrap gap-2">
+				<button
+					class="btn btn-primary btn-sm"
+					onclick={openZoneCreateEditor}
+					disabled={!advancedUnlocked || zoneEditorSaving || importingZones || clearingAllZones}
+				>
+					New Manual Zone
+				</button>
 				<button
 					class="btn btn-outline btn-sm"
 					onclick={promptLockoutImport}
@@ -143,12 +152,21 @@
 												{#if zone.learned}
 													<div class="badge badge-info badge-outline badge-xs">learned</div>
 												{/if}
-												{#if !zone.learned}
+												{#if zone.manual}
+													<div class="badge badge-accent badge-outline badge-xs">manual</div>
+												{:else if !zone.learned}
 													<div class="badge badge-ghost badge-xs">active</div>
 												{/if}
 											</div>
 										</td>
 										<td class="text-xs">
+											<button
+												class="btn btn-xs btn-outline"
+												onclick={() => openZoneEditEditor(zone)}
+												disabled={!advancedUnlocked || deletingZoneSlot === zone.slot}
+											>
+												Edit
+											</button>
 											<button
 												class="btn btn-xs btn-error btn-outline"
 												onclick={() => deleteZone(zone)}

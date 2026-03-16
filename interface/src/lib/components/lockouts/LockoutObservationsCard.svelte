@@ -21,6 +21,7 @@
 		advancedUnlocked,
 		zoneEditorSaving,
 		refreshEvents,
+		openZoneFromObservation
 	} = $props();
 
 	function formatRoundedFrequencyMhz(mhz) {
@@ -32,14 +33,16 @@
 	<div class="card-body gap-3">
 		<CardSectionHead
 			title="Signal Observations"
-			subtitle="Recent signals seen during driving. These observations feed the area learner; manual lockout writes are disabled."
+			subtitle="Recent signals seen during driving. These observations feed the area learner and can seed manual lockout zones."
 		>
-			<button class="btn btn-outline btn-sm" onclick={refreshEvents} disabled={lockoutLoading}>
-				{#if lockoutLoading}
-					<span class="loading loading-spinner loading-xs"></span>
-				{/if}
-				Refresh
-			</button>
+			<div class="flex flex-wrap gap-2">
+				<button class="btn btn-outline btn-sm" onclick={refreshEvents} disabled={lockoutLoading}>
+					{#if lockoutLoading}
+						<span class="loading loading-spinner loading-xs"></span>
+					{/if}
+					Refresh
+				</button>
+			</div>
 		</CardSectionHead>
 
 		{#if lockoutError}
@@ -85,6 +88,7 @@
 					<thead>
 						<tr>
 							<th>Seen (boot)</th>
+							<th>Controls</th>
 							<th>Band</th>
 							<th>Frequency</th>
 							<th>Strength</th>
@@ -98,6 +102,15 @@
 						{#each lockoutEvents as event}
 							<tr>
 								<td class="font-mono text-xs">{formatBootTime(event.tsMs)}</td>
+								<td class="text-xs">
+									<button
+										class="btn btn-xs btn-outline"
+										onclick={() => openZoneFromObservation(event)}
+										disabled={!advancedUnlocked || zoneEditorSaving || !event.locationValid}
+									>
+										Create Zone
+									</button>
+								</td>
 								<td>{event.band || 'UNK'}</td>
 								<td>{formatRoundedFrequencyMhz(event.frequencyMHz)}</td>
 								<td>{typeof event.strength === 'number' ? event.strength : '—'}</td>

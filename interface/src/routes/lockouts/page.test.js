@@ -204,14 +204,37 @@ describe('lockouts route page', () => {
 		unmount();
 	});
 
-	it('does not expose manual zone creation after safety gate unlock', async () => {
+	it('exposes manual zone creation after safety gate unlock and lazy-loads the editor on first open', async () => {
+		const deferred = createDeferred();
+		const zoneLoader = vi
+			.spyOn(lockoutModalLoaders, 'loadLockoutZoneEditorModal')
+			.mockReturnValue(deferred.promise);
 		installDefaultFetch();
 		const { unmount } = render(Page);
 
 		await screen.findByText('Lockouts');
 		await fireEvent.click(screen.getByRole('checkbox', { name: /unlock advanced writes/i }));
-		expect(screen.queryByRole('button', { name: /new manual zone/i })).toBeNull();
-		expect(screen.queryByText('Create Manual Lockout Zone')).toBeNull();
+
+		const createButton = screen.getByRole('button', { name: /new manual zone/i });
+		expect(createButton).toBeEnabled();
+
+		await fireEvent.click(createButton);
+
+		expect(zoneLoader).toHaveBeenCalledTimes(1);
+		await screen.findByText('Loading lockout zone editor...');
+
+		deferred.resolve(await import('$lib/components/LockoutZoneEditorModal.svelte'));
+		await screen.findByText('Create Manual Lockout Zone');
+
+		await fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+		await waitFor(() => {
+			expect(screen.queryByText('Create Manual Lockout Zone')).toBeNull();
+		});
+
+		await fireEvent.click(createButton);
+		await screen.findByText('Create Manual Lockout Zone');
+		expect(zoneLoader).toHaveBeenCalledTimes(1);
+
 		unmount();
 	});
 
@@ -222,6 +245,59 @@ describe('lockouts route page', () => {
 
 		await screen.findByText('Lockouts');
 		expect(zoneLoader).not.toHaveBeenCalled();
+
+		unmount();
+	});
+
+	it('creates a manual zone from an observation and refreshes zones', async () => {
+		const fetchMock = installDefaultFetch([
+			{
+				method: 'GET',
+				match: '/api/lockouts/events',
+				respond: jsonResponse({
+					events: [
+						{
+							tsMs: 1200,
+							band: 'K',
+							frequencyMHz: 24124,
+							strength: 5,
+							fixAgeMs: 350,
+							satellites: 7,
+							hdop: 0.9,
+							locationValid: true,
+							latitude: 35.12345,
+							longitude: -80.54321
+						}
+					],
+					published: 1,
+					drops: 0,
+					size: 1,
+					capacity: 200,
+					sd: { enabled: false }
+				})
+			},
+			{
+				method: 'POST',
+				match: '/api/lockouts/zones/create',
+				respond: jsonResponse({ success: true, slot: 4 })
+			}
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Lockouts');
+		await fireEvent.click(screen.getByRole('checkbox', { name: /unlock advanced writes/i }));
+		const createFromObservationButton = await screen.findByRole('button', { name: /create zone/i });
+		await fireEvent.click(createFromObservationButton);
+		await screen.findByText('Create Manual Lockout Zone');
+		await fireEvent.click(screen.getByRole('button', { name: /save zone/i }));
+
+		await screen.findByText('Created lockout zone 4');
+		expect(
+			fetchMock.mock.calls.some(
+				([url, init]) => url === '/api/lockouts/zones/create' && init?.method === 'POST'
+			)
+		).toBe(true);
+		expect(countPrefixCalls(fetchMock, '/api/lockouts/zones')).toBeGreaterThanOrEqual(2);
 
 		unmount();
 	});
