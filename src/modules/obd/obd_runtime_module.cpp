@@ -1237,6 +1237,13 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                 resetCommandState();
                 disconnectBle();
             }
+            if (scanRequested_ && bleScanIdle) {
+                if (startBleScan()) {
+                    scanRequested_ = false;
+                    transitionTo(ObdConnectionState::SCANNING, nowMs);
+                    break;
+                }
+            }
             if ((nowMs - stateEnteredMs_) >= obd::RECONNECT_BACKOFF_MS) {
                 if (savedAddress_[0] != '\0') {
                     transitionTo(ObdConnectionState::CONNECTING, nowMs);
