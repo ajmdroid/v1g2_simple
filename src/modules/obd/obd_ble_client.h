@@ -74,7 +74,7 @@ public:
     bool discoverServices();
 
     /// Write an AT/OBD command string to the RX characteristic (host→device).
-    bool writeCommand(const char* cmd);
+    bool writeCommand(const char* cmd, bool withResponse);
 
     /// Subscribe to TX notify (device→host). Callback receives response data.
     bool subscribeNotify(void (*callback)(const uint8_t* data, size_t len));

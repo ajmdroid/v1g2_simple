@@ -158,6 +158,7 @@ public:
     uint32_t getDeleteBondCallCountForTest() const { return testDeleteBondCalls_; }
     uint32_t getRefreshBondBackupCallCountForTest() const { return testRefreshBondBackupCalls_; }
     const char* getLastCommandForTest() const { return testLastCommand_; }
+    bool getLastWriteWithResponseForTest() const { return testLastWriteWithResponse_; }
     void setTestStartScanResult(bool result) { testStartScanResult_ = result; }
     void setTestConnectResult(bool result) { testConnectResult_ = result; }
     void setTestBleConnected(bool connected) { testBleConnected_ = connected; }
@@ -200,6 +201,8 @@ private:
         uint8_t retriesRemaining = 0;
         uint32_t sentMs = 0;
         ObdEotProfileId profileId = ObdEotProfileId::NONE;
+        bool writeWithResponse = true;
+        bool alternateWriteModeTried = false;
     };
 
     void resetForBegin();
@@ -232,7 +235,7 @@ private:
     int getBleSecurityFailure() const;
     bool discoverBleServices();
     bool subscribeBleNotifications();
-    bool writeBleCommand(const char* cmd);
+    bool writeBleCommand(const char* cmd, bool withResponse);
     bool deleteBleBond();
     void refreshBleBondBackup();
     void disconnectBle();
@@ -251,6 +254,7 @@ private:
                       ObdEotProfileId profileId,
                       uint32_t nowMs);
     bool retryActiveCommand(uint32_t nowMs);
+    bool retryActiveCommandWithAlternateWriteMode(uint32_t nowMs);
     void completeActiveCommand();
     void handleAtInitResponse(uint32_t nowMs);
     void handlePollingResponse(uint32_t nowMs);
@@ -333,6 +337,7 @@ private:
     bool preferWarmReconnect_ = false;
     bool warmInitPreferred_ = false;
     bool coldInitFallbackUsed_ = false;
+    bool preferWriteWithResponse_ = true;
 
     uint8_t connectAttempts_ = 0;
     uint32_t connectSuccesses_ = 0;
@@ -392,6 +397,7 @@ private:
     uint32_t testDeleteBondCalls_ = 0;
     uint32_t testRefreshBondBackupCalls_ = 0;
     char testLastCommand_[CMD_BUF_LEN] = {};
+    bool testLastWriteWithResponse_ = true;
 #endif
 };
 

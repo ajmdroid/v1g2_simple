@@ -48,7 +48,7 @@ static constexpr uint32_t RSSI_REFRESH_INTERVAL_MS = 2000;
 
 // ── AT init sequence ────────────────────────────────────────────
 static constexpr const char* COLD_INIT_COMMANDS[] = {
-    "ATI\r",
+    "ATZ\r",
     "ATE0\r",
     "ATL0\r",
     "ATS0\r",

@@ -371,10 +371,12 @@ bool ObdBleClient::discoverServices() {
 
     syncSecurityStateFromConnInfo();
     connectPending_ = false;
-    // Skip validateCxModel(): the CX was already identified by BLE
-    // advertisement name during scan.  Removing the 180A service
-    // discovery + 2A24 characteristic read eliminates 1-2 GATT round
-    // trips, reducing the setup window where the CX can disconnect.
+    // Force a full GATT attribute refresh before accessing services.
+    // Main's working flow calls discoverAttributes() explicitly — without it,
+    // NimBLE may use stale/missing attribute handles and silently fail.
+    if (!pClient_->discoverAttributes()) {
+        Serial.println("[OBD] discoverAttributes failed (continuing anyway)");
+    }
 
     NimBLERemoteService* svc = pClient_->getService(kCxServiceUuid);
     if (!svc) {
@@ -407,10 +409,10 @@ bool ObdBleClient::discoverServices() {
     return true;
 }
 
-bool ObdBleClient::writeCommand(const char* cmd) {
+bool ObdBleClient::writeCommand(const char* cmd, bool withResponse) {
     if (!pRxChar_ || !pClient_ || !pClient_->isConnected() || !cmd) return false;
     syncSecurityStateFromConnInfo();
-    const bool ok = pRxChar_->writeValue(reinterpret_cast<const uint8_t*>(cmd), strlen(cmd), true);
+    const bool ok = pRxChar_->writeValue(reinterpret_cast<const uint8_t*>(cmd), strlen(cmd), withResponse);
     lastBleError_ = ok ? 0 : pClient_->getLastError();
     return ok;
 }
@@ -423,40 +425,24 @@ bool ObdBleClient::subscribeNotify(void (*callback)(const uint8_t* data, size_t 
     }
     syncSecurityStateFromConnInfo();
 
-    const auto subscribeWithMode = [&](bool response) {
-        return pTxChar_->subscribe(
+    // Main's working flow: simple subscribe(true, callback) — two args,
+    // defaults to CCCD write-no-response.  The DA14531 rejects
+    // write-with-response for CCCD, and trying it first can leave the GATT
+    // state machine confused, so match main exactly.
+    const bool ok = pTxChar_->subscribe(
         true,
         [callback](NimBLERemoteCharacteristic* /*chr*/, uint8_t* data, size_t length, bool /*isNotify*/) {
             if (callback && data && length > 0) {
                 callback(data, length);
             }
-        },
-        response);
-    };
-
-    if (subscribeWithMode(false)) {
-        lastBleError_ = 0;
-        Serial.println("[OBD] subscribeNotify: no-response subscribe succeeded");
-        return true;
+        });
+    lastBleError_ = ok ? 0 : pClient_->getLastError();
+    if (ok) {
+        Serial.println("[OBD] subscribeNotify: OK");
+    } else {
+        Serial.printf("[OBD] subscribeNotify: failed rc=%d\n", lastBleError_);
     }
-
-    lastBleError_ = pClient_->getLastError();
-    Serial.printf("[OBD] subscribeNotify: no-response subscribe failed rc=%d, retrying write-with-response\n",
-                  lastBleError_);
-
-    if (!pClient_->isConnected()) {
-        return false;
-    }
-
-    if (subscribeWithMode(true)) {
-        lastBleError_ = 0;
-        Serial.println("[OBD] subscribeNotify: write-with-response fallback succeeded");
-        return true;
-    }
-
-    lastBleError_ = pClient_->getLastError();
-    Serial.println("[OBD] subscribeNotify: subscribe failed");
-    return false;
+    return ok;
 }
 
 int8_t ObdBleClient::getRssi(uint32_t nowMs) {

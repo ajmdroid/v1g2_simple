@@ -294,30 +294,37 @@ void test_discover_entry_action_runs_on_next_tick() {
     obdRuntimeModule.update(5000, true, true, true);
     obdRuntimeModule.setTestBleConnected(true);
     obdRuntimeModule.update(5001, true, true, true);
-    TEST_ASSERT_EQUAL(ObdConnectionState::SECURING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getConnectCallCountForTest());
 
     obdRuntimeModule.setTestDiscoverResult(false);
-    // POST_CONNECT_SETTLE_MS (500ms) must elapse before security / GATT work begins.
+    // POST_CONNECT_SETTLE_MS (500ms) must elapse before GATT work begins.
     obdRuntimeModule.update(5501, true, true, true);
-    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
-    obdRuntimeModule.update(5502, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDiscoverCallCountForTest());
 }
 
-void test_connect_enters_securing_before_discovery() {
+void test_connect_enters_discovering_with_settle_delay() {
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
     obdRuntimeModule.update(5000, true, true, true);
     obdRuntimeModule.setTestBleConnected(true);
     obdRuntimeModule.update(5001, true, true, true);
 
-    TEST_ASSERT_EQUAL(ObdConnectionState::SECURING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
     TEST_ASSERT_EQUAL_UINT32(0, obdRuntimeModule.getDiscoverCallCountForTest());
+
+    // Before settle delay: no GATT operations yet
+    obdRuntimeModule.update(5001 + obd::POST_CONNECT_SETTLE_MS - 1, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_UINT32(0, obdRuntimeModule.getDiscoverCallCountForTest());
+
+    // After settle delay: discovery runs
+    obdRuntimeModule.update(5001 + obd::POST_CONNECT_SETTLE_MS, true, true, true);
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDiscoverCallCountForTest());
 }
 
-void test_discovery_waits_for_security_ready() {
+void test_discovery_waits_for_post_connect_settle() {
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.setTestSecurityReady(false);
     obdRuntimeModule.setTestSecurityEncrypted(false);
@@ -326,21 +333,20 @@ void test_discovery_waits_for_security_ready() {
     obdRuntimeModule.update(5000, true, true, true);
     obdRuntimeModule.setTestBleConnected(true);
     obdRuntimeModule.update(5001, true, true, true);
-    TEST_ASSERT_EQUAL(ObdConnectionState::SECURING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
 
-    obdRuntimeModule.update(5501, true, true, true);
-    TEST_ASSERT_EQUAL(ObdConnectionState::SECURING, obdRuntimeModule.getState());
-    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getBeginSecurityCallCountForTest());
+    // Before POST_CONNECT_SETTLE_MS: no discovery yet
+    obdRuntimeModule.update(5001 + obd::POST_CONNECT_SETTLE_MS - 1, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
     TEST_ASSERT_EQUAL_UINT32(0, obdRuntimeModule.getDiscoverCallCountForTest());
 
-    obdRuntimeModule.setTestSecurityReady(true);
-    obdRuntimeModule.setTestSecurityEncrypted(true);
-    obdRuntimeModule.setTestSecurityBonded(true);
-    obdRuntimeModule.update(5502, true, true, true);
-    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
+    // After POST_CONNECT_SETTLE_MS: discovery runs
+    obdRuntimeModule.update(5001 + obd::POST_CONNECT_SETTLE_MS, true, true, true);
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDiscoverCallCountForTest());
 }
 
 void test_security_timeout_auto_heals_bond_once() {
+    // SECURING state still exists and can be force-entered for bond repair testing
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::SECURING, 0);
     obdRuntimeModule.setTestBleConnected(true);
@@ -377,7 +383,7 @@ void test_security_timeout_does_not_repair_same_bond_twice() {
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDeleteBondCallCountForTest());
 }
 
-void test_at_init_waits_for_subscribe_settle_and_uses_ati_banner() {
+void test_at_init_waits_for_subscribe_settle_and_uses_atz_reset() {
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::AT_INIT, 0);
     obdRuntimeModule.setTestBleConnected(true);
@@ -390,7 +396,45 @@ void test_at_init_waits_for_subscribe_settle_and_uses_ati_banner() {
 
     obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS, true, true, true);
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getWriteCallCountForTest());
-    TEST_ASSERT_EQUAL_STRING("ATI\r", obdRuntimeModule.getLastCommandForTest());
+    TEST_ASSERT_EQUAL_STRING("ATZ\r", obdRuntimeModule.getLastCommandForTest());
+}
+
+void test_at_init_empty_timeout_switches_to_no_response_and_keeps_mode() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::AT_INIT, 0);
+    obdRuntimeModule.setTestBleConnected(true);
+    obdRuntimeModule.setTestSecurityReady(true);
+    obdRuntimeModule.setTestSecurityEncrypted(true);
+    obdRuntimeModule.setTestSecurityBonded(true);
+
+    // Default is now no-response (matching main)
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS, true, true, true);
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getWriteCallCountForTest());
+    TEST_ASSERT_FALSE(obdRuntimeModule.getLastWriteWithResponseForTest());
+    TEST_ASSERT_EQUAL_STRING("ATZ\r", obdRuntimeModule.getLastCommandForTest());
+
+    // Empty timeout alternates to with-response
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS + obd::AT_INIT_RESPONSE_TIMEOUT_MS,
+                            true,
+                            true,
+                            true);
+    TEST_ASSERT_EQUAL_UINT32(2, obdRuntimeModule.getWriteCallCountForTest());
+    TEST_ASSERT_TRUE(obdRuntimeModule.getLastWriteWithResponseForTest());
+    TEST_ASSERT_EQUAL_STRING("ATZ\r", obdRuntimeModule.getLastCommandForTest());
+
+    feedBleResponse("OBDLink CX\r\n>");
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS + obd::AT_INIT_RESPONSE_TIMEOUT_MS + 1,
+                            true,
+                            true,
+                            true);
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS + obd::AT_INIT_RESPONSE_TIMEOUT_MS + 2,
+                            true,
+                            true,
+                            true);
+
+    TEST_ASSERT_EQUAL_UINT32(3, obdRuntimeModule.getWriteCallCountForTest());
+    TEST_ASSERT_TRUE(obdRuntimeModule.getLastWriteWithResponseForTest());
+    TEST_ASSERT_EQUAL_STRING("ATE0\r", obdRuntimeModule.getLastCommandForTest());
 }
 
 void test_first_at_init_write_failure_auto_heals_bond() {
@@ -701,11 +745,12 @@ int main() {
     RUN_TEST(test_three_connect_failures_clears_saved_address);
     RUN_TEST(test_connect_entry_action_runs_on_next_tick);
     RUN_TEST(test_discover_entry_action_runs_on_next_tick);
-    RUN_TEST(test_connect_enters_securing_before_discovery);
-    RUN_TEST(test_discovery_waits_for_security_ready);
+    RUN_TEST(test_connect_enters_discovering_with_settle_delay);
+    RUN_TEST(test_discovery_waits_for_post_connect_settle);
     RUN_TEST(test_security_timeout_auto_heals_bond_once);
     RUN_TEST(test_security_timeout_does_not_repair_same_bond_twice);
-    RUN_TEST(test_at_init_waits_for_subscribe_settle_and_uses_ati_banner);
+    RUN_TEST(test_at_init_waits_for_subscribe_settle_and_uses_atz_reset);
+    RUN_TEST(test_at_init_empty_timeout_switches_to_no_response_and_keeps_mode);
     RUN_TEST(test_first_at_init_write_failure_auto_heals_bond);
 
     // Speed data

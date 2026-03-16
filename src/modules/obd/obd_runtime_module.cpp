@@ -97,6 +97,15 @@ void copyString(char* dest, size_t destLen, const char* src) {
     dest[destLen - 1] = '\0';
 }
 
+size_t commandDisplayLen(const char* command) {
+    if (!command) return 0;
+    size_t len = strlen(command);
+    while (len > 0 && (command[len - 1] == '\r' || command[len - 1] == '\n')) {
+        --len;
+    }
+    return len;
+}
+
 }  // namespace
 
 ObdRuntimeModule obdRuntimeModule;
@@ -116,6 +125,7 @@ void ObdRuntimeModule::resetForBegin() {
     preferWarmReconnect_ = false;
     warmInitPreferred_ = false;
     coldInitFallbackUsed_ = false;
+    preferWriteWithResponse_ = false;
 
     savedAddress_[0] = '\0';
     pendingAddress_[0] = '\0';
@@ -173,6 +183,7 @@ void ObdRuntimeModule::resetForBegin() {
     testDeleteBondCalls_ = 0;
     testRefreshBondBackupCalls_ = 0;
     testLastCommand_[0] = '\0';
+    testLastWriteWithResponse_ = true;
 #endif
 }
 
@@ -464,12 +475,13 @@ bool ObdRuntimeModule::subscribeBleNotifications() {
 #endif
 }
 
-bool ObdRuntimeModule::writeBleCommand(const char* cmd) {
+bool ObdRuntimeModule::writeBleCommand(const char* cmd, bool withResponse) {
 #ifndef UNIT_TEST
-    return obdBleClient.writeCommand(cmd);
+    return obdBleClient.writeCommand(cmd, withResponse);
 #else
     testWriteCalls_++;
     copyString(testLastCommand_, sizeof(testLastCommand_), cmd);
+    testLastWriteWithResponse_ = withResponse;
     return testWriteResult_;
 #endif
 }
@@ -597,9 +609,11 @@ bool ObdRuntimeModule::startCommand(ObdCommandKind kind,
     activeCommand_.timeoutMs = timeoutMs;
     activeCommand_.retriesRemaining = retries;
     activeCommand_.profileId = profileId;
+    activeCommand_.writeWithResponse = preferWriteWithResponse_;
+    activeCommand_.alternateWriteModeTried = false;
     copyString(activeCommand_.tx, sizeof(activeCommand_.tx), tx);
 
-    if (!writeBleCommand(activeCommand_.tx)) {
+    if (!writeBleCommand(activeCommand_.tx, activeCommand_.writeWithResponse)) {
         resetCommandState();
         return false;
     }
@@ -616,7 +630,26 @@ bool ObdRuntimeModule::retryActiveCommand(uint32_t nowMs) {
     activeCommand_.retriesRemaining--;
     initRetries_++;
     clearBleResponseState();
-    if (!writeBleCommand(activeCommand_.tx)) {
+    if (!writeBleCommand(activeCommand_.tx, activeCommand_.writeWithResponse)) {
+        return false;
+    }
+    activeCommand_.sentMs = nowMs;
+    return true;
+}
+
+bool ObdRuntimeModule::retryActiveCommandWithAlternateWriteMode(uint32_t nowMs) {
+    if (!activeCommand_.active ||
+        activeCommand_.retriesRemaining == 0 ||
+        activeCommand_.alternateWriteModeTried) {
+        return false;
+    }
+
+    activeCommand_.retriesRemaining--;
+    activeCommand_.alternateWriteModeTried = true;
+    activeCommand_.writeWithResponse = !activeCommand_.writeWithResponse;
+    initRetries_++;
+    clearBleResponseState();
+    if (!writeBleCommand(activeCommand_.tx, activeCommand_.writeWithResponse)) {
         return false;
     }
     activeCommand_.sentMs = nowMs;
@@ -651,6 +684,7 @@ void ObdRuntimeModule::handleAtInitResponse(uint32_t nowMs) {
     clearBleResponseState();
 
     if (valid) {
+        preferWriteWithResponse_ = activeCommand_.writeWithResponse;
         completeActiveCommand();
         initIndex_++;
         return;
@@ -869,6 +903,7 @@ void ObdRuntimeModule::handlePollingResponse(uint32_t nowMs) {
     totalBytesReceived_ += bleBufLen_;
     clearBleResponseState();
     const ObdEotProfileId completedProfile = activeCommand_.profileId;
+    const bool completedWriteWithResponse = activeCommand_.writeWithResponse;
     completeActiveCommand();
 
     if (kind == ObdCommandKind::VIN) {
@@ -882,6 +917,7 @@ void ObdRuntimeModule::handlePollingResponse(uint32_t nowMs) {
     }
 
     if (handled) {
+        preferWriteWithResponse_ = completedWriteWithResponse;
         if (activeEotProfileFromCache_ &&
             cachedProfileInvalidStreak_ >= obd::EOT_INVALID_STREAK_CLEAR_CACHE &&
             completedProfile == activeEotProfileId_) {
@@ -1211,9 +1247,13 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
             return;
         }
         if (nowMs - activeCommand_.sentMs >= activeCommand_.timeoutMs) {
+            const int cmdLen = static_cast<int>(commandDisplayLen(activeCommand_.tx));
 #ifndef UNIT_TEST
-            Serial.printf("[OBD] AT init response timed out cmd=%s securityReady=%d enc=%d bond=%d auth=%d lastBleError=%d (%s) disconnectReason=%d (%s)\n",
+            Serial.printf("[OBD] AT init response timed out cmd=%.*s writeMode=%s rxBytes=%u securityReady=%d enc=%d bond=%d auth=%d lastBleError=%d (%s) disconnectReason=%d (%s)\n",
+                          cmdLen,
                           activeCommand_.tx,
+                          activeCommand_.writeWithResponse ? "with_response" : "no_response",
+                          static_cast<unsigned>(bleBufLen_),
                           isBleSecurityReady(),
                           isBleEncrypted(),
                           isBleBonded(),
@@ -1223,6 +1263,15 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
                           bleDisconnectReason_,
                           bleReasonName(bleDisconnectReason_));
 #endif
+            if (bleBufLen_ == 0 && retryActiveCommandWithAlternateWriteMode(nowMs)) {
+#ifndef UNIT_TEST
+                Serial.printf("[OBD] AT init retrying cmd=%.*s with alternate write mode=%s after empty timeout\n",
+                              cmdLen,
+                              activeCommand_.tx,
+                              activeCommand_.writeWithResponse ? "with_response" : "no_response");
+#endif
+                return;
+            }
             if (retryActiveCommand(nowMs)) {
                 return;
             }
@@ -1264,8 +1313,11 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
                       ObdEotProfileId::NONE,
                       nowMs)) {
 #ifndef UNIT_TEST
-        Serial.printf("[OBD] AT init write failed cmd=%s rc=%d (%s) securityReady=%d enc=%d bond=%d auth=%d bleReason=%d (%s)\n",
+        const int cmdLen = static_cast<int>(commandDisplayLen(command));
+        Serial.printf("[OBD] AT init write failed cmd=%.*s writeMode=%s rc=%d (%s) securityReady=%d enc=%d bond=%d auth=%d bleReason=%d (%s)\n",
+                      cmdLen,
                       command,
+                      preferWriteWithResponse_ ? "with_response" : "no_response",
                       getBleLastError(),
                       bleReasonName(getBleLastError()),
                       isBleSecurityReady(),
@@ -1419,7 +1471,7 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                 connectAttempts_ = 0;
                 connectSuccesses_++;
                 lastConnectSuccessMs_ = nowMs;
-                transitionTo(ObdConnectionState::SECURING, nowMs);
+                transitionTo(ObdConnectionState::DISCOVERING, nowMs);
                 break;
             }
             if ((nowMs - stateEnteredMs_) >= obd::CONNECT_TIMEOUT_MS) {
@@ -1441,6 +1493,10 @@ void ObdRuntimeModule::update(uint32_t nowMs,
 #endif
                 bleDisconnected_ = false;
                 transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
+                break;
+            }
+            // DA14531 BLE 4.2 needs time after connect before GATT ops
+            if ((nowMs - stateEnteredMs_) < obd::POST_CONNECT_SETTLE_MS) {
                 break;
             }
             {
