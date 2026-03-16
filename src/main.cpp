@@ -494,6 +494,9 @@ static void configurePeriodicMaintenanceModule() {
     periodicMaintenanceProviders.recordTimeSaveUs = [](void*, uint32_t elapsedUs) {
         perfRecordTimeSaveUs(elapsedUs);
     };
+    periodicMaintenanceProviders.runDeferredSettingsBackup =
+        ProviderCallbackBindings::member<SettingsManager, &SettingsManager::serviceDeferredBackup>;
+    periodicMaintenanceProviders.deferredSettingsBackupContext = &settingsManager;
     periodicMaintenanceProviders.nowEpochMsOr0 =
         ProviderCallbackBindings::member<TimeService, &TimeService::nowEpochMsOr0>;
     periodicMaintenanceProviders.epochContext = &timeService;

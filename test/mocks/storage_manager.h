@@ -47,6 +47,20 @@ public:
     static inline std::atomic<uint32_t> sdTryLockFailCount{0};
     static inline std::atomic<uint32_t> sdDmaStarvationCount{0};
 
+    struct MockSdLockState {
+        uint32_t blockingAcquireCalls;
+        uint32_t tryAcquireCalls;
+        uint32_t failNextTryLockCount;
+        bool failNextBlockingLock;
+    };
+
+    static inline MockSdLockState mockSdLockState{0, 0, 0, false};
+
+    static void resetMockSdLockState() {
+        mockSdLockState = MockSdLockState{0, 0, 0, false};
+        sdTryLockFailCount.store(0);
+    }
+
     static bool hasDmaHeapForSD() { return true; }
     static uint32_t getCachedFreeDma() { return 65536; }
     static uint32_t getCachedLargestDma() { return 65536; }
@@ -56,10 +70,51 @@ public:
     public:
         explicit SDLockBlocking(SemaphoreHandle_t mutex, bool /*checkDmaHeap*/ = true)
             : mutex_(mutex), acquired_(false) {
+            StorageManager::mockSdLockState.blockingAcquireCalls++;
+            if (StorageManager::mockSdLockState.failNextBlockingLock) {
+                StorageManager::mockSdLockState.failNextBlockingLock = false;
+                acquired_ = false;
+                return;
+            }
             acquired_ = !mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) == pdTRUE;
         }
 
         ~SDLockBlocking() { release(); }
+
+        bool acquired() const { return acquired_; }
+        bool isDmaStarved() const { return false; }
+        operator bool() const { return acquired_; }
+
+        void release() {
+            if (acquired_ && mutex_) {
+                xSemaphoreGive(mutex_);
+                acquired_ = false;
+            }
+        }
+
+    private:
+        SemaphoreHandle_t mutex_ = nullptr;
+        bool acquired_ = false;
+    };
+
+    class SDTryLock {
+    public:
+        explicit SDTryLock(SemaphoreHandle_t mutex, bool /*checkDmaHeap*/ = true)
+            : mutex_(mutex), acquired_(false) {
+            StorageManager::mockSdLockState.tryAcquireCalls++;
+            if (StorageManager::mockSdLockState.failNextTryLockCount > 0) {
+                StorageManager::mockSdLockState.failNextTryLockCount--;
+                StorageManager::sdTryLockFailCount.fetch_add(1);
+                acquired_ = false;
+                return;
+            }
+            acquired_ = !mutex_ || xSemaphoreTake(mutex_, 0) == pdTRUE;
+            if (!acquired_) {
+                StorageManager::sdTryLockFailCount.fetch_add(1);
+            }
+        }
+
+        ~SDTryLock() { release(); }
 
         bool acquired() const { return acquired_; }
         bool isDmaStarved() const { return false; }

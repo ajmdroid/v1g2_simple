@@ -70,6 +70,13 @@ bool buildSerializedSdBackupPayload(SerializedSettingsBackupPayload& payload,
 void releaseSerializedSettingsBackupPayload(SerializedSettingsBackupPayload& payload);
 bool writeBackupAtomically(fs::FS* fs, const SerializedSettingsBackupPayload& payload);
 
+#ifdef UNIT_TEST
+void resetDeferredSettingsBackupStateForTest();
+bool runDeferredSettingsBackupWriterOnceForTest();
+size_t deferredSettingsBackupQueueDepthForTest();
+bool deferredSettingsBackupPendingForTest();
+#endif
+
 // NVS helpers
 bool   attemptNvsRecovery(const char* activeNs);
 int    namespaceHealthScore(const char* ns);

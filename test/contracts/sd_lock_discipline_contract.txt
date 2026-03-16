@@ -7,5 +7,7 @@ file=src/modules/debug/debug_perf_files_service.cpp class=SDLockBlocking count=3
 file=src/modules/lockout/signal_observation_sd_logger.cpp class=SDLockBlocking count=1
 file=src/perf_sd_logger.cpp class=SDLockBlocking count=1
 file=src/settings_backup.cpp class=SDLockBlocking count=1
+file=src/settings_deferred_backup.cpp class=SDTryLock count=1
+file=src/settings_deferred_backup.cpp class=SDLockBlocking count=1
 file=src/settings_nvs.cpp class=SDLockBlocking count=3
 file=src/settings_restore.cpp class=SDLockBlocking count=1

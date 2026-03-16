@@ -33,9 +33,11 @@ inline bool canConvertFromJson(JsonVariantConst src, const ::String&) {
 
 #include "../../src/v1_profiles.cpp"
 #include "../../src/backup_payload_builder.cpp"
+#include "../../src/psram_freertos_alloc.cpp"
 #include "../../src/settings.cpp"
 #include "../../src/settings_nvs.cpp"
 #include "../../src/settings_backup.cpp"
+#include "../../src/settings_deferred_backup.cpp"
 #include "../../src/settings_restore.cpp"
 
 namespace {
@@ -52,8 +54,10 @@ void resetRuntimeState() {
     mock_preferences::reset();
     mock_nvs::reset();
     storageManager.reset();
+    StorageManager::resetMockSdLockState();
     v1ProfileManager = V1ProfileManager();
     settingsManager = SettingsManager();
+    resetDeferredSettingsBackupStateForTest();
     mockMillis = 1000;
     mockMicros = 1000000;
 }

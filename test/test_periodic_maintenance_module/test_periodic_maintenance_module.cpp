@@ -16,9 +16,10 @@ static PeriodicMaintenanceModule module;
 enum CallId {
     CALL_PERF = 1,
     CALL_TIME_SAVE = 2,
-    CALL_LEARNER = 3,
-    CALL_LOCKOUT_SAVE = 4,
-    CALL_PENDING_SAVE = 5,
+    CALL_DEFERRED_SETTINGS_BACKUP = 3,
+    CALL_LEARNER = 4,
+    CALL_LOCKOUT_SAVE = 5,
+    CALL_PENDING_SAVE = 6,
 };
 
 static int callLog[16];
@@ -33,6 +34,7 @@ static uint32_t timeElapsedUs = 0;
 static int perfRecordCalls = 0;
 static int timeRecordCalls = 0;
 static uint32_t timeSaveNowMs = 0;
+static uint32_t deferredSettingsBackupNowMs = 0;
 static int64_t epochNowMs = 0;
 static int64_t learnerEpochMs = -1;
 static uint32_t learnerNowMs = 0;
@@ -83,6 +85,11 @@ static void recordTimeSaveUs(void*, uint32_t elapsedUs) {
     timeElapsedUs = elapsedUs;
 }
 
+static void runDeferredSettingsBackup(void*, uint32_t nowMs) {
+    noteCall(CALL_DEFERRED_SETTINGS_BACKUP);
+    deferredSettingsBackupNowMs = nowMs;
+}
+
 static int64_t nowEpochMsOr0(void*) {
     return epochNowMs;
 }
@@ -112,6 +119,7 @@ static void resetState() {
     perfRecordCalls = 0;
     timeRecordCalls = 0;
     timeSaveNowMs = 0;
+    deferredSettingsBackupNowMs = 0;
     epochNowMs = 0;
     learnerEpochMs = -1;
     learnerNowMs = 0;
@@ -132,6 +140,7 @@ void test_process_runs_full_bundle_in_order_with_timing_records() {
     providers.recordPerfReportUs = recordPerfReportUs;
     providers.runTimeSave = runTimeSave;
     providers.recordTimeSaveUs = recordTimeSaveUs;
+    providers.runDeferredSettingsBackup = runDeferredSettingsBackup;
     providers.nowEpochMsOr0 = nowEpochMsOr0;
     providers.runLockoutLearner = runLockoutLearner;
     providers.runLockoutStoreSave = runLockoutStoreSave;
@@ -142,12 +151,13 @@ void test_process_runs_full_bundle_in_order_with_timing_records() {
     epochNowMs = 456789;
     module.process(5000);
 
-    TEST_ASSERT_EQUAL(5, callLogCount);
+    TEST_ASSERT_EQUAL(6, callLogCount);
     TEST_ASSERT_EQUAL(CALL_PERF, callLog[0]);
     TEST_ASSERT_EQUAL(CALL_TIME_SAVE, callLog[1]);
-    TEST_ASSERT_EQUAL(CALL_LEARNER, callLog[2]);
-    TEST_ASSERT_EQUAL(CALL_LOCKOUT_SAVE, callLog[3]);
-    TEST_ASSERT_EQUAL(CALL_PENDING_SAVE, callLog[4]);
+    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_BACKUP, callLog[2]);
+    TEST_ASSERT_EQUAL(CALL_LEARNER, callLog[3]);
+    TEST_ASSERT_EQUAL(CALL_LOCKOUT_SAVE, callLog[4]);
+    TEST_ASSERT_EQUAL(CALL_PENDING_SAVE, callLog[5]);
 
     TEST_ASSERT_EQUAL(1, perfRecordCalls);
     TEST_ASSERT_EQUAL(30u, perfElapsedUs);
@@ -155,6 +165,7 @@ void test_process_runs_full_bundle_in_order_with_timing_records() {
     TEST_ASSERT_EQUAL(45u, timeElapsedUs);
 
     TEST_ASSERT_EQUAL(5000u, timeSaveNowMs);
+    TEST_ASSERT_EQUAL(5000u, deferredSettingsBackupNowMs);
     TEST_ASSERT_EQUAL(5000u, learnerNowMs);
     TEST_ASSERT_EQUAL_INT64(456789, learnerEpochMs);
     TEST_ASSERT_EQUAL(5000u, lockoutSaveNowMs);
@@ -165,6 +176,7 @@ void test_process_defaults_epoch_to_zero_when_provider_missing() {
     PeriodicMaintenanceModule::Providers providers;
     providers.runPerfReport = runPerfReport;
     providers.runTimeSave = runTimeSave;
+    providers.runDeferredSettingsBackup = runDeferredSettingsBackup;
     providers.runLockoutLearner = runLockoutLearner;
     providers.runLockoutStoreSave = runLockoutStoreSave;
     providers.runLearnerPendingSave = runLearnerPendingSave;
@@ -172,12 +184,13 @@ void test_process_defaults_epoch_to_zero_when_provider_missing() {
 
     module.process(1200);
 
-    TEST_ASSERT_EQUAL(5, callLogCount);
+    TEST_ASSERT_EQUAL(6, callLogCount);
     TEST_ASSERT_EQUAL(CALL_PERF, callLog[0]);
     TEST_ASSERT_EQUAL(CALL_TIME_SAVE, callLog[1]);
-    TEST_ASSERT_EQUAL(CALL_LEARNER, callLog[2]);
-    TEST_ASSERT_EQUAL(CALL_LOCKOUT_SAVE, callLog[3]);
-    TEST_ASSERT_EQUAL(CALL_PENDING_SAVE, callLog[4]);
+    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_BACKUP, callLog[2]);
+    TEST_ASSERT_EQUAL(CALL_LEARNER, callLog[3]);
+    TEST_ASSERT_EQUAL(CALL_LOCKOUT_SAVE, callLog[4]);
+    TEST_ASSERT_EQUAL(CALL_PENDING_SAVE, callLog[5]);
 
     TEST_ASSERT_EQUAL(0, perfRecordCalls);
     TEST_ASSERT_EQUAL(0, timeRecordCalls);

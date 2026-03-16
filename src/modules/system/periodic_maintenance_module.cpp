@@ -35,6 +35,10 @@ void PeriodicMaintenanceModule::process(uint32_t nowMs) {
         }
     }
 
+    if (providers.runDeferredSettingsBackup) {
+        providers.runDeferredSettingsBackup(providers.deferredSettingsBackupContext, nowMs);
+    }
+
     int64_t epochMs = 0;
     if (providers.nowEpochMsOr0) {
         epochMs = providers.nowEpochMsOr0(providers.epochContext);

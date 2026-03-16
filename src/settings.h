@@ -656,7 +656,8 @@ public:
     
     // Save all settings to flash
     void save();
-    
+    void saveDeferredBackup();
+
     // Load settings from flash (public for testing)
     void load();
     
@@ -670,6 +671,8 @@ public:
     
     // SD card backup/restore for display settings
     bool backupToSD();
+    void requestDeferredBackupFromCurrentState();
+    void serviceDeferredBackup(uint32_t nowMs);
     bool restoreFromSD();
     bool checkAndRestoreFromSD();  // Call after storage is mounted to retry restore
     
