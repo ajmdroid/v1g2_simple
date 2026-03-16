@@ -17,6 +17,7 @@ static constexpr uint8_t MAX_DIRECT_CONNECT_FAILURES = 3;
 // ── Post-connect settle (DA14531 BLE 4.2 needs time before GATT) ─
 static constexpr uint32_t POST_CONNECT_SETTLE_MS = 500;
 static constexpr uint32_t SECURITY_TIMEOUT_MS = 3000;
+static constexpr uint32_t POST_SUBSCRIBE_SETTLE_MS = 150;
 
 // ── Boot dwell (V1 gets priority) ───────────────────────────────
 static constexpr uint32_t POST_BOOT_DWELL_MS = 10000;
@@ -47,7 +48,7 @@ static constexpr uint32_t RSSI_REFRESH_INTERVAL_MS = 2000;
 
 // ── AT init sequence ────────────────────────────────────────────
 static constexpr const char* COLD_INIT_COMMANDS[] = {
-    "ATZ\r",
+    "ATI\r",
     "ATE0\r",
     "ATL0\r",
     "ATS0\r",

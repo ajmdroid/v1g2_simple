@@ -137,6 +137,7 @@ void ObdRuntimeModule::resetForBegin() {
     lastConnectSuccessMs_ = 0;
     lastFailureMs_ = 0;
     lastFailure_ = ObdFailureReason::NONE;
+    bleDisconnectReason_ = 0;
     repairedBondAddress_[0] = '\0';
 
     clearBleResponseState();
@@ -563,7 +564,7 @@ bool ObdRuntimeModule::validateAtResponse(const char* command,
     if (strncmp(command, "0100", 4) == 0) {
         return validateSimpleResponse(0x41, 0x00, 0x0000, response, len);
     }
-    if (strncmp(command, "ATZ", 3) == 0) {
+    if (strncmp(command, "ATZ", 3) == 0 || strncmp(command, "ATI", 3) == 0) {
         return stringContainsCI(response, "OBDLINK") ||
                stringContainsCI(response, "STN") ||
                stringContainsCI(response, "ELM327");
@@ -1210,6 +1211,18 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
             return;
         }
         if (nowMs - activeCommand_.sentMs >= activeCommand_.timeoutMs) {
+#ifndef UNIT_TEST
+            Serial.printf("[OBD] AT init response timed out cmd=%s securityReady=%d enc=%d bond=%d auth=%d lastBleError=%d (%s) disconnectReason=%d (%s)\n",
+                          activeCommand_.tx,
+                          isBleSecurityReady(),
+                          isBleEncrypted(),
+                          isBleBonded(),
+                          isBleAuthenticated(),
+                          getBleLastError(),
+                          bleReasonName(getBleLastError()),
+                          bleDisconnectReason_,
+                          bleReasonName(bleDisconnectReason_));
+#endif
             if (retryActiveCommand(nowMs)) {
                 return;
             }
@@ -1221,6 +1234,10 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
             disconnectBle();
             handleConnectFailure(nowMs, ObdFailureReason::INIT_TIMEOUT);
         }
+        return;
+    }
+
+    if ((nowMs - stateEnteredMs_) < obd::POST_SUBSCRIBE_SETTLE_MS) {
         return;
     }
 
@@ -1390,6 +1407,7 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                 break;
             }
             if (justEntered) {
+                bleDisconnectReason_ = 0;
                 lastConnectStartMs_ = nowMs;
                 const bool preferCachedAttributes = preferWarmReconnect_ && savedAddress_[0] != '\0';
                 if (!connectBle(obd::CONNECT_TIMEOUT_MS, preferCachedAttributes)) {
@@ -1645,6 +1663,8 @@ const char* ObdRuntimeModule::bleReasonName(int reason) {
             return "none";
         case 520:
             return "supervision_timeout";
+        case 534:
+            return "local_host_terminated";
 #ifndef UNIT_TEST
         case BLE_HS_HCI_ERR(BLE_ERR_PINKEY_MISSING):
             return "pinkey_missing";

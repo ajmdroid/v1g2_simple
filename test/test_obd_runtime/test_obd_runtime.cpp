@@ -377,6 +377,22 @@ void test_security_timeout_does_not_repair_same_bond_twice() {
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDeleteBondCallCountForTest());
 }
 
+void test_at_init_waits_for_subscribe_settle_and_uses_ati_banner() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::AT_INIT, 0);
+    obdRuntimeModule.setTestBleConnected(true);
+    obdRuntimeModule.setTestSecurityReady(true);
+    obdRuntimeModule.setTestSecurityEncrypted(true);
+    obdRuntimeModule.setTestSecurityBonded(true);
+
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS - 1, true, true, true);
+    TEST_ASSERT_EQUAL_UINT32(0, obdRuntimeModule.getWriteCallCountForTest());
+
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS, true, true, true);
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getWriteCallCountForTest());
+    TEST_ASSERT_EQUAL_STRING("ATI\r", obdRuntimeModule.getLastCommandForTest());
+}
+
 void test_first_at_init_write_failure_auto_heals_bond() {
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::AT_INIT, 0);
@@ -387,7 +403,7 @@ void test_first_at_init_write_failure_auto_heals_bond() {
     obdRuntimeModule.setTestWriteResult(false);
     obdRuntimeModule.setTestLastBleError(1);
 
-    obdRuntimeModule.update(100, true, true, true);
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS, true, true, true);
 
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDeleteBondCallCountForTest());
@@ -689,6 +705,7 @@ int main() {
     RUN_TEST(test_discovery_waits_for_security_ready);
     RUN_TEST(test_security_timeout_auto_heals_bond_once);
     RUN_TEST(test_security_timeout_does_not_repair_same_bond_twice);
+    RUN_TEST(test_at_init_waits_for_subscribe_settle_and_uses_ati_banner);
     RUN_TEST(test_first_at_init_write_failure_auto_heals_bond);
 
     // Speed data

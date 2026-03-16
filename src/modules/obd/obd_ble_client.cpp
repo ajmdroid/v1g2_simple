@@ -434,22 +434,23 @@ bool ObdBleClient::subscribeNotify(void (*callback)(const uint8_t* data, size_t 
         response);
     };
 
-    if (subscribeWithMode(true)) {
+    if (subscribeWithMode(false)) {
         lastBleError_ = 0;
+        Serial.println("[OBD] subscribeNotify: no-response subscribe succeeded");
         return true;
     }
 
     lastBleError_ = pClient_->getLastError();
-    Serial.printf("[OBD] subscribeNotify: write-with-response failed rc=%d, retrying no-response\n",
+    Serial.printf("[OBD] subscribeNotify: no-response subscribe failed rc=%d, retrying write-with-response\n",
                   lastBleError_);
 
     if (!pClient_->isConnected()) {
         return false;
     }
 
-    if (subscribeWithMode(false)) {
+    if (subscribeWithMode(true)) {
         lastBleError_ = 0;
-        Serial.println("[OBD] subscribeNotify: no-response fallback succeeded");
+        Serial.println("[OBD] subscribeNotify: write-with-response fallback succeeded");
         return true;
     }
 
