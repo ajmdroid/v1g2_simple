@@ -124,7 +124,7 @@ public:
     void startScan();
     void forgetDevice();
 
-    void onDeviceFound(const char* name, const char* address, int rssi);
+    void onDeviceFound(const char* name, const char* address, int rssi, uint8_t addrType = 0);
     void onBleDisconnect();
     void onBleData(const uint8_t* data, size_t len);
 
@@ -289,6 +289,8 @@ private:
     int8_t minRssi_ = -80;
     int8_t rssi_ = 0;
     int8_t pendingRssi_ = 0;
+    uint8_t pendingAddrType_ = 0;
+    uint8_t savedAddrType_ = 0;
     bool pendingDeviceFound_ = false;
     bool scanRequested_ = false;
     bool preferWarmReconnect_ = false;

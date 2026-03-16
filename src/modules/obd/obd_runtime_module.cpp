@@ -102,6 +102,8 @@ void ObdRuntimeModule::resetForBegin() {
     minRssi_ = obd::DEFAULT_MIN_RSSI;
     rssi_ = 0;
     pendingRssi_ = 0;
+    pendingAddrType_ = 0;
+    savedAddrType_ = 0;
     pendingDeviceFound_ = false;
     scanRequested_ = false;
     preferWarmReconnect_ = false;
@@ -319,7 +321,7 @@ bool ObdRuntimeModule::startBleScan() {
 
 bool ObdRuntimeModule::connectBle(uint32_t timeoutMs, bool preferCachedAttributes) {
 #ifndef UNIT_TEST
-    return obdBleClient.connect(savedAddress_, timeoutMs, preferCachedAttributes);
+    return obdBleClient.connect(savedAddress_, savedAddrType_, timeoutMs, preferCachedAttributes);
 #else
     (void)timeoutMs;
     (void)preferCachedAttributes;
@@ -1150,6 +1152,7 @@ void ObdRuntimeModule::update(uint32_t nowMs,
             if (pendingDeviceFound_) {
                 pendingDeviceFound_ = false;
                 setSavedAddressFromBuffer(pendingAddress_);
+                savedAddrType_ = pendingAddrType_;
                 rssi_ = pendingRssi_;
                 connectAttempts_ = 0;
                 preferWarmReconnect_ = false;
@@ -1331,7 +1334,7 @@ void ObdRuntimeModule::forgetDevice() {
     stateEntryPending_ = false;
 }
 
-void ObdRuntimeModule::onDeviceFound(const char* name, const char* address, int rssi) {
+void ObdRuntimeModule::onDeviceFound(const char* name, const char* address, int rssi, uint8_t addrType) {
     if (!address || address[0] == '\0' || rssi < minRssi_ || state_ != ObdConnectionState::SCANNING) {
         return;
     }
@@ -1341,6 +1344,7 @@ void ObdRuntimeModule::onDeviceFound(const char* name, const char* address, int 
 
     copyString(pendingAddress_, sizeof(pendingAddress_), address);
     pendingRssi_ = static_cast<int8_t>(rssi);
+    pendingAddrType_ = addrType;
     pendingDeviceFound_ = true;
 }
 

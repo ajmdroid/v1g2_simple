@@ -49,7 +49,7 @@ public:
 
     /// Connect to OBD adapter at the given address. Non-blocking start, but
     /// the actual connection completes asynchronously.
-    bool connect(const char* address, uint32_t timeoutMs, bool preferCachedAttributes);
+    bool connect(const char* address, uint8_t addrType, uint32_t timeoutMs, bool preferCachedAttributes);
 
     /// Disconnect gracefully.
     void disconnect();

@@ -43,7 +43,8 @@ void ObdScanCallback::onResult(const NimBLEAdvertisedDevice* device) {
         return;
     }
 
-    parent_->onDeviceFound(name.c_str(), device->getAddress().toString().c_str(), rssi);
+    parent_->onDeviceFound(name.c_str(), device->getAddress().toString().c_str(), rssi,
+                            device->getAddress().getType());
     NimBLEDevice::getScan()->stop();
 }
 
@@ -99,11 +100,11 @@ void ObdBleClient::stopScan() {
     }
 }
 
-bool ObdBleClient::connect(const char* address, uint32_t timeoutMs, bool preferCachedAttributes) {
+bool ObdBleClient::connect(const char* address, uint8_t addrType, uint32_t timeoutMs, bool preferCachedAttributes) {
     if (!pClient_ || !address || address[0] == '\0') return false;
     if (pClient_->isConnected()) return true;
 
-    NimBLEAddress addr{std::string(address), BLE_ADDR_PUBLIC};
+    NimBLEAddress addr{std::string(address), addrType};
     pClient_->setConnectTimeout(timeoutMs / 1000);
     connectPending_ = true;
     const bool ok = pClient_->connect(addr, !preferCachedAttributes, true, true);
