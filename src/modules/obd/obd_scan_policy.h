@@ -25,6 +25,7 @@ static constexpr uint32_t POST_BOOT_DWELL_MS = 10000;
 // ── Speed polling ───────────────────────────────────────────────
 static constexpr uint32_t POLL_INTERVAL_MS = 500;
 static constexpr uint32_t POLL_TIMEOUT_MS = 1000;
+static constexpr uint32_t SEARCH_EXTENDED_TIMEOUT_MS = 10000;
 static constexpr uint32_t SPEED_MAX_AGE_MS = 3000;
 static constexpr uint8_t MAX_CONSECUTIVE_ERRORS = 5;
 static constexpr uint32_t ERROR_PAUSE_MS = 5000;

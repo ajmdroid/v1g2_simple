@@ -942,10 +942,10 @@ void ObdRuntimeModule::handlePollingResponse(uint32_t nowMs) {
 
     if (kind == ObdCommandKind::SPEED) {
         if (bufferOverflowCount_ >= obd::BUFFER_OVERFLOWS_BEFORE_DISCONNECT) {
-            handlePollingError(nowMs, true, ObdFailureReason::BUFFER_OVERFLOW);
+            handlePollingError(nowMs, false, ObdFailureReason::BUFFER_OVERFLOW);
         } else {
-            handlePollingError(nowMs, true, bleOverflowed_ ? ObdFailureReason::BUFFER_OVERFLOW
-                                                           : ObdFailureReason::COMMAND_RESPONSE);
+            handlePollingError(nowMs, false, bleOverflowed_ ? ObdFailureReason::BUFFER_OVERFLOW
+                                                            : ObdFailureReason::COMMAND_RESPONSE);
         }
         return;
     }
@@ -1013,7 +1013,7 @@ bool ObdRuntimeModule::startSpeedCommand(uint32_t nowMs) {
                       0,
                       ObdEotProfileId::NONE,
                       nowMs)) {
-        handlePollingError(nowMs, true, ObdFailureReason::WRITE);
+        handlePollingError(nowMs, false, ObdFailureReason::WRITE);
         return false;
     }
     nextSpeedDueMs_ = nowMs + obd::POLL_INTERVAL_MS;
@@ -1382,6 +1382,14 @@ void ObdRuntimeModule::updatePolling(uint32_t nowMs) {
                 return;
             }
         } else if (nowMs - activeCommand_.sentMs >= activeCommand_.timeoutMs) {
+            // CX sends "SEARCHING..." while probing OBD protocols (up to ~10s).
+            // Extend timeout so we don't retry mid-search and collide.
+            if (activeCommand_.kind == ObdCommandKind::SPEED &&
+                bleBufLen_ >= 9 &&
+                strstr(bleBuf_, "SEARCHING") != nullptr &&
+                (nowMs - activeCommand_.sentMs) < obd::SEARCH_EXTENDED_TIMEOUT_MS) {
+                return;
+            }
             const ObdCommandKind timedOutKind = activeCommand_.kind;
             const ObdEotProfileId timedOutProfile = activeCommand_.profileId;
 #ifndef UNIT_TEST

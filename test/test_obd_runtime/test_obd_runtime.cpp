@@ -587,6 +587,32 @@ void test_poll_timeout_counts_as_error() {
     TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
 }
 
+void test_searching_extends_speed_timeout() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
+
+    // Send speed command at t=100
+    obdRuntimeModule.update(100, true, true, true);
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getWriteCallCountForTest());
+
+    // CX replies with "SEARCHING...\r" (no ">", so data not ready)
+    feedBleResponse("SEARCHING...\r");
+
+    // Normal timeout (1100ms) should NOT fire because SEARCHING extends it
+    obdRuntimeModule.update(1200, true, true, true);
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(1200);
+    TEST_ASSERT_EQUAL_UINT32(0, status.pollErrors);
+    TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
+    // Should still be waiting for the same command — no new write
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getWriteCallCountForTest());
+
+    // After extended timeout (10000ms) it should finally time out
+    obdRuntimeModule.update(10200, true, true, true);
+    status = obdRuntimeModule.snapshot(10200);
+    TEST_ASSERT_EQUAL_UINT32(1, status.pollErrors);
+    TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
+}
+
 void test_cached_profile_polls_before_background_vin_lookup() {
     obdRuntimeModule.begin(true,
                            "A4:C1:38:00:11:22",
@@ -773,6 +799,7 @@ int main() {
 
     // Error handling
     RUN_TEST(test_poll_timeout_counts_as_error);
+    RUN_TEST(test_searching_extends_speed_timeout);
     RUN_TEST(test_cached_profile_polls_before_background_vin_lookup);
     RUN_TEST(test_vin_response_sets_family_and_starts_standard_eot_probe);
     RUN_TEST(test_error_backoff_returns_to_polling);
