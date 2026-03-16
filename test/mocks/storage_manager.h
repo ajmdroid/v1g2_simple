@@ -44,6 +44,27 @@ public:
     fs::FS* getLittleFS() const { return littlefsReady_ ? littlefs_ : nullptr; }
     SemaphoreHandle_t getSDMutex() const { return sdMutex_; }
 
+    static bool promoteTempFileWithRollback(fs::FS& fs, const char* tempPath, const char* livePath) {
+        if (!tempPath || !livePath) {
+            return false;
+        }
+        const String backupPath = String(livePath) + ".bak";
+        const bool hadLive = fs.exists(livePath);
+        if (hadLive && !fs.rename(livePath, backupPath.c_str())) {
+            return false;
+        }
+        if (!fs.rename(tempPath, livePath)) {
+            if (hadLive) {
+                fs.rename(backupPath.c_str(), livePath);
+            }
+            return false;
+        }
+        if (hadLive) {
+            fs.remove(backupPath.c_str());
+        }
+        return true;
+    }
+
     static inline std::atomic<uint32_t> sdTryLockFailCount{0};
     static inline std::atomic<uint32_t> sdDmaStarvationCount{0};
 

@@ -200,6 +200,9 @@ public:
     
     // Process BLE events (call in loop)
     void process();
+
+    // Retry deferred bond backup work outside the ingest phase.
+    void serviceDeferredBondBackup(uint32_t nowMs);
     
     // Restart scanning for V1
     void startScanning();
@@ -404,6 +407,10 @@ private:
     // Tracks the bond-count snapshot that has already been persisted to SD.
     // 0xFF means unknown/uninitialized.
     uint8_t lastBondBackupCount = 0xFF;
+    bool pendingBondBackup = false;
+    uint8_t pendingBondBackupCount = 0xFF;
+    uint32_t pendingBondBackupRetryAtMs = 0;
+    static constexpr uint32_t DEFERRED_BOND_BACKUP_RETRY_MS = 1000;
     
     // Non-blocking subscribe step machine
     // Each step does one BLE operation then yields to loop()
@@ -443,6 +450,7 @@ private:
     void processSubscribing();        // Handle SUBSCRIBING state (step machine)
     void processSubscribeYield();     // Handle SUBSCRIBE_YIELD state
     void processConnectedFollowup();  // Spread post-connect work across loop turns
+    int tryBackupBondsToSD();         // Non-blocking bond backup for deferred maintenance
     bool executeSubscribeStep();      // Execute one subscribe step, return true if done
     
     // Called from connectToServer() after successful sync connect

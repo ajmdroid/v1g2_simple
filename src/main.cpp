@@ -497,6 +497,9 @@ static void configurePeriodicMaintenanceModule() {
     periodicMaintenanceProviders.runDeferredSettingsBackup =
         ProviderCallbackBindings::member<SettingsManager, &SettingsManager::serviceDeferredBackup>;
     periodicMaintenanceProviders.deferredSettingsBackupContext = &settingsManager;
+    periodicMaintenanceProviders.runDeferredBleBondBackup =
+        ProviderCallbackBindings::member<V1BLEClient, &V1BLEClient::serviceDeferredBondBackup>;
+    periodicMaintenanceProviders.deferredBleBondBackupContext = &bleClient;
     periodicMaintenanceProviders.nowEpochMsOr0 =
         ProviderCallbackBindings::member<TimeService, &TimeService::nowEpochMsOr0>;
     periodicMaintenanceProviders.epochContext = &timeService;

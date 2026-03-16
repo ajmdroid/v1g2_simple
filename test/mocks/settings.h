@@ -136,6 +136,7 @@ public:
         return backupToSDResult;
     }
     void requestDeferredBackupFromCurrentState() { ++requestDeferredBackupCalls; }
+    void setLastV1Address(const char*) {}
     
     const V1Settings& get() const { return settings; }
     V1Settings& getMutable() { return settings; }

@@ -81,36 +81,17 @@ static int bondCollectCallback(int obj_type, union ble_store_value* val, void* c
     return 0;  // 0 = continue iterating
 }
 
-// Backup all bond keys to SD card. Safe to call anytime after NimBLEDevice::init().
-// Returns number of bonds backed up, or -1 on error.
-int backupBondsToSD() {
-    if (!storageManager.isReady() || !storageManager.isSDCard()) {
-        return -1;
-    }
-
-    // Collect bond data from NimBLE store
-    BondCollector ourSecs = {};
-    BondCollector peerSecs = {};
+static int collectBondEntries(BondCollector& ourSecs, BondCollector& peerSecs) {
     ble_store_iterate(BLE_STORE_OBJ_TYPE_OUR_SEC, bondCollectCallback, &ourSecs);
     ble_store_iterate(BLE_STORE_OBJ_TYPE_PEER_SEC, bondCollectCallback, &peerSecs);
+    return static_cast<int>(ourSecs.count + peerSecs.count);
+}
 
-    if (ourSecs.count == 0 && peerSecs.count == 0) {
-        return 0;  // Nothing to backup
-    }
-
-    StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
-    if (!sdLock) {
-        return -1;
-    }
-
-    fs::FS* sdFs = storageManager.getFilesystem();
-    if (!sdFs) {
-        return -1;
-    }
-
-    // Write to .tmp first, then rename (atomic pattern)
+static int writeBondBackupSnapshot(fs::FS& sdFs,
+                                   const BondCollector& ourSecs,
+                                   const BondCollector& peerSecs) {
     const String tmpPath = String(BLE_BOND_BACKUP_PATH) + ".tmp";
-    File f = sdFs->open(tmpPath.c_str(), "w");
+    File f = sdFs.open(tmpPath.c_str(), "w");
     if (!f) {
         Serial.println("[BLE] WARN: Failed to open bond backup tmp file");
         return -1;
@@ -135,20 +116,70 @@ int backupBondsToSD() {
     f.close();
 
     if (!ok) {
-        sdFs->remove(tmpPath.c_str());
+        sdFs.remove(tmpPath.c_str());
         Serial.println("[BLE] WARN: Bond backup write incomplete");
         return -1;
     }
 
-    if (!StorageManager::promoteTempFileWithRollback(*sdFs, tmpPath.c_str(), BLE_BOND_BACKUP_PATH)) {
+    if (!StorageManager::promoteTempFileWithRollback(sdFs, tmpPath.c_str(), BLE_BOND_BACKUP_PATH)) {
         Serial.println("[BLE] WARN: Bond backup rename failed");
         return -1;
     }
 
-    const int total = (int)(ourSecs.count + peerSecs.count);
+    const int total = static_cast<int>(ourSecs.count + peerSecs.count);
     Serial.printf("[BLE] Backed up %d bond(s) to SD (%u our, %u peer)\n",
                   total, (unsigned)ourSecs.count, (unsigned)peerSecs.count);
     return total;
+}
+
+// Backup all bond keys to SD card. Safe to call anytime after NimBLEDevice::init().
+// Returns number of bonds backed up, or -1 on error.
+int backupBondsToSD() {
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        return -1;
+    }
+
+    BondCollector ourSecs = {};
+    BondCollector peerSecs = {};
+    if (collectBondEntries(ourSecs, peerSecs) == 0) {
+        return 0;  // Nothing to backup
+    }
+
+    StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
+    if (!sdLock) {
+        return -1;
+    }
+
+    fs::FS* sdFs = storageManager.getFilesystem();
+    if (!sdFs) {
+        return -1;
+    }
+
+    return writeBondBackupSnapshot(*sdFs, ourSecs, peerSecs);
+}
+
+int V1BLEClient::tryBackupBondsToSD() {
+    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+        return -1;
+    }
+
+    BondCollector ourSecs = {};
+    BondCollector peerSecs = {};
+    if (collectBondEntries(ourSecs, peerSecs) == 0) {
+        return 0;
+    }
+
+    StorageManager::SDTryLock sdLock(storageManager.getSDMutex());
+    if (!sdLock) {
+        return -1;
+    }
+
+    fs::FS* sdFs = storageManager.getFilesystem();
+    if (!sdFs) {
+        return -1;
+    }
+
+    return writeBondBackupSnapshot(*sdFs, ourSecs, peerSecs);
 }
 
 // Restore bond keys from SD card. Must be called after NimBLEDevice::init()

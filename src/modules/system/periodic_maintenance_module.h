@@ -22,6 +22,9 @@ public:
         void (*runDeferredSettingsBackup)(void* ctx, uint32_t nowMs) = nullptr;
         void* deferredSettingsBackupContext = nullptr;
 
+        void (*runDeferredBleBondBackup)(void* ctx, uint32_t nowMs) = nullptr;
+        void* deferredBleBondBackupContext = nullptr;
+
         int64_t (*nowEpochMsOr0)(void* ctx) = nullptr;
         void* epochContext = nullptr;
         void (*runLockoutLearner)(void* ctx, uint32_t nowMs, int64_t epochMs) = nullptr;

@@ -27,6 +27,7 @@ struct MockNimBLEState {
     uint32_t createServiceCalls = 0;
     uint32_t createCharacteristicCalls = 0;
     bool advertising = false;
+    uint8_t bondCount = 0;
 };
 
 inline MockNimBLEState g_mock_nimble_state{};
@@ -238,7 +239,7 @@ public:
         return true;
     }
     static void stopAdvertising() { g_mock_nimble_state.advertising = false; }
-    static uint8_t getNumBonds() { return 0; }
+    static uint8_t getNumBonds() { return g_mock_nimble_state.bondCount; }
     static void deleteAllBonds() {}
     static bool isBonded(const NimBLEAddress&) { return false; }
     static void deleteBond(const NimBLEAddress&) {}
