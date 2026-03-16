@@ -9,6 +9,10 @@ class SettingsManager;
 
 namespace ObdApiService {
 
+void handleApiConfigGet(WebServer& server,
+                        SettingsManager& settingsManager,
+                        const std::function<void()>& markUiActivity);
+
 void handleApiStatus(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
                      const std::function<void()>& markUiActivity);

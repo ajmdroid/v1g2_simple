@@ -38,6 +38,17 @@ const char* commandKindName(ObdCommandKind kind) {
 
 }  // namespace
 
+void handleApiConfigGet(WebServer& server,
+                        SettingsManager& settingsManager,
+                        const std::function<void()>& markUiActivity) {
+    if (markUiActivity) markUiActivity();
+    const V1Settings& settings = settingsManager.get();
+    JsonDocument doc;
+    doc["enabled"] = settings.obdEnabled;
+    doc["minRssi"] = settings.obdMinRssi;
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
+}
+
 void handleApiStatus(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
                      const std::function<void()>& markUiActivity) {

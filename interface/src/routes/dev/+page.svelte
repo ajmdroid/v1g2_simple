@@ -100,7 +100,7 @@
 
 	async function loadSettings() {
 		try {
-			const response = await fetchWithTimeout('/api/settings');
+			const response = await fetchWithTimeout('/api/device/settings');
 			const data = await response.json();
 			settings.enableWifiAtBoot = data.enableWifiAtBoot || false;
 			settings.enableSignalTraceLogging = data.enableSignalTraceLogging ?? true;
@@ -126,7 +126,7 @@
 			formData.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
 			formData.append('enableSignalTraceLogging', settings.enableSignalTraceLogging.toString());
 
-			const response = await postSettingsForm(formData);
+			const response = await postSettingsForm(formData, '/api/device/settings');
 
 			if (response.ok) {
 				setMessage('success', 'Settings saved!');

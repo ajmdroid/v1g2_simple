@@ -30,6 +30,19 @@ void setUp() {
 
 void tearDown() {}
 
+void test_config_get_returns_persisted_settings() {
+    WebServer server(80);
+    SettingsManager settingsManager;
+    settingsManager.settings.obdEnabled = true;
+    settingsManager.settings.obdMinRssi = -62;
+
+    ObdApiService::handleApiConfigGet(server, settingsManager, []() {});
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"enabled\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"minRssi\":-62"));
+}
+
 void test_config_updates_runtime_settings_and_speed_source_callback() {
     WebServer server(80);
     SettingsManager settingsManager;
@@ -122,6 +135,7 @@ void test_scan_rejects_when_obd_is_disabled() {
 int main() {
     UNITY_BEGIN();
 
+    RUN_TEST(test_config_get_returns_persisted_settings);
     RUN_TEST(test_config_updates_runtime_settings_and_speed_source_callback);
     RUN_TEST(test_forget_clears_saved_address_and_persists_setting);
     RUN_TEST(test_config_rejects_missing_json_body);

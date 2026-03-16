@@ -110,7 +110,7 @@
 	
 	async function fetchSettings() {
 		try {
-			const res = await fetchWithTimeout('/api/settings');
+			const res = await fetchWithTimeout('/api/device/settings');
 			if (res.ok) {
 				const data = await res.json();
 				settings = { ...settings, ...data };
@@ -309,7 +309,7 @@
 			formData.append('apTimeoutMinutes', settings.apTimeoutMinutes);
 
 			
-			const res = await postSettingsForm(formData);
+			const res = await postSettingsForm(formData, '/api/device/settings');
 			
 			if (res.ok) {
 				message = { type: 'success', text: 'Settings saved! WiFi will restart.' };

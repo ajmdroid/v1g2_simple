@@ -100,9 +100,9 @@ Queue profile push to connected V1 using active slot/profile state.
 
 ## Settings
 
-### GET /api/settings
+### GET /api/device/settings
 
-Get all device settings.
+Get device-owned settings for the Settings and Development pages.
 
 **Response:**
 ```json
@@ -112,15 +112,6 @@ Get all device settings.
   "isDefaultPassword": true,
   "proxy_ble": false,
   "proxy_name": "",
-  "gpsEnabled": false,
-  "gpsLockoutMode": 3,
-  "gpsLockoutModeName": "enforce",
-  "gpsLockoutCoreGuardEnabled": true,
-  "gpsLockoutMaxQueueDrops": 0,
-  "gpsLockoutMaxPerfDrops": 0,
-  "gpsLockoutMaxEventBusDrops": 0,
-  "gpsLockoutKaLearningEnabled": false,
-  "displayStyle": 0,
   "autoPowerOffMinutes": 0,
   "apTimeoutMinutes": 0,
   "enableWifiAtBoot": false,
@@ -135,32 +126,55 @@ Get all device settings.
 | `isDefaultPassword` | boolean | - | `true` if using factory default password |
 | `proxy_ble` | boolean | - | Enable BLE proxy mode |
 | `proxy_name` | string | 0-32 chars | Custom device name for proxy |
-| `gpsEnabled` | boolean | - | Enable GPS runtime |
-| `gpsLockoutMode` | int | 0-3 | Lockout runtime mode (`off`,`shadow`,`advisory`,`enforce`) |
-| `gpsLockoutCoreGuardEnabled` | boolean | - | Enable lockout core safety guard |
-| `gpsLockoutMaxQueueDrops` | int | 0-65535 | Queue-drop threshold for core guard |
-| `gpsLockoutMaxPerfDrops` | int | 0-65535 | Perf-drop threshold for core guard |
-| `gpsLockoutMaxEventBusDrops` | int | 0-65535 | Event-bus-drop threshold for core guard |
-| `gpsLockoutKaLearningEnabled` | boolean | - | Allow Ka learning in lockout learner |
-| `gpsLockoutPreQuiet` | boolean | - | Pre-drop to muted volume in lockout zones |
-| `displayStyle` | int | 0 or 3 | Display theme (0=Classic, 3=Serpentine). Values 1/2 are normalized to 0 at runtime. |
 | `autoPowerOffMinutes` | int | 0-60 | Auto power off after V1 disconnect (0=disabled) |
 | `apTimeoutMinutes` | int | 0,5-60 | AP auto-off after inactivity (0=always on) |
 | `enableWifiAtBoot` | boolean | - | Boot with AP enabled instead of BOOT long-press |
 | `enableSignalTraceLogging` | boolean | - | Log all active V1 alert bands to lockout CSV for diagnostics (best-effort) |
 
-### POST /api/settings
+### POST /api/device/settings
 
-Update device settings. Send only fields you want to change.
+Update device-owned settings. Send only fields you want to change.
 
 **Request (form data):**
 ```
-ap_ssid=MyV1&ap_password=newpassword123&gpsEnabled=true&gpsLockoutMode=3
+ap_ssid=MyV1&ap_password=newpassword123&proxy_ble=true&autoPowerOffMinutes=15
 ```
 
 **Response:**
 ```json
 {"success": true}
+```
+
+### GET /api/settings
+
+Get GPS/lockout and display settings that still flow through the shared settings surface.
+
+**Response:**
+```json
+{
+  "gpsEnabled": false,
+  "gpsLockoutMode": 3,
+  "gpsLockoutModeName": "enforce",
+  "gpsLockoutCoreGuardEnabled": true,
+  "gpsLockoutMaxQueueDrops": 0,
+  "gpsLockoutMaxPerfDrops": 0,
+  "gpsLockoutMaxEventBusDrops": 0,
+  "gpsLockoutKaLearningEnabled": false,
+  "gpsLockoutKLearningEnabled": true,
+  "gpsLockoutXLearningEnabled": false,
+  "gpsLockoutPreQuiet": false,
+  "gpsLockoutPreQuietBufferE5": 0,
+  "displayStyle": 0
+}
+```
+
+### POST /api/settings
+
+Update GPS/lockout and display settings. Send only fields you want to change.
+
+**Request (form data):**
+```
+gpsEnabled=true&gpsLockoutMode=3&displayStyle=3
 ```
 
 ### GET /api/settings/backup
@@ -604,6 +618,19 @@ Update GPS/lockout runtime config and optional scaffold samples.
 ---
 
 ## OBD
+
+### GET /api/obd/config
+
+Get persisted OBD configuration.
+
+**Response**
+
+```json
+{
+  "enabled": true,
+  "minRssi": -80
+}
+```
 
 ### GET /api/obd/status
 

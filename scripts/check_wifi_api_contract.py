@@ -51,8 +51,10 @@ POLICY_CALLBACK_PREFIXES = (
 )
 LOCAL_HANDLER_ROUTE_KEYS: Tuple[str, ...] = (
     "HTTP_GET /api/status",
+    "HTTP_GET /api/device/settings",
     "HTTP_GET /api/settings",
     "HTTP_POST /api/settings",
+    "HTTP_POST /api/device/settings",
     "HTTP_POST /api/profile/push",
     "HTTP_GET /api/v1/profiles",
     "HTTP_GET /api/v1/profile",
@@ -72,6 +74,7 @@ LOCAL_HANDLER_ROUTE_KEYS: Tuple[str, ...] = (
     "HTTP_GET /api/autopush/status",
     "HTTP_GET /api/audio/settings",
     "HTTP_GET /api/displaycolors",
+    "HTTP_GET /api/obd/config",
     "HTTP_POST /api/audio/settings",
     "HTTP_POST /api/displaycolors",
     "HTTP_POST /api/displaycolors/reset",

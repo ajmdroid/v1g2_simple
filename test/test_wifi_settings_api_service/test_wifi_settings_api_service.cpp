@@ -126,21 +126,19 @@ void setUp() {
 
 void tearDown() {}
 
-void test_settings_get_serializes_expected_payload() {
+void test_device_settings_get_serializes_expected_payload() {
     WebServer server(80);
     FakeRuntime rt;
     rt.settings.apSSID = "V1-Test";
     rt.settings.apPassword = "custom-pass";
     rt.settings.proxyBLE = false;
     rt.settings.proxyName = "Proxy-Test";
-    rt.settings.gpsEnabled = true;
-    rt.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ADVISORY;
     rt.settings.autoPowerOffMinutes = 12;
     rt.settings.apTimeoutMinutes = 25;
     rt.settings.enableWifiAtBoot = true;
     rt.settings.enableSignalTraceLogging = false;
 
-    WifiSettingsApiService::handleApiSettingsGet(server, makeRuntime(rt));
+    WifiSettingsApiService::handleApiDeviceSettingsGet(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ap_ssid\":\"V1-Test\""));
@@ -148,9 +146,43 @@ void test_settings_get_serializes_expected_payload() {
     TEST_ASSERT_TRUE(responseContains(server, "\"isDefaultPassword\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"proxy_ble\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"proxy_name\":\"Proxy-Test\""));
-    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutModeName\":\"advisory\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"autoPowerOffMinutes\":12"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"apTimeoutMinutes\":25"));
     TEST_ASSERT_TRUE(responseContains(server, "\"enableWifiAtBoot\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"enableSignalTraceLogging\":false"));
+}
+
+void test_settings_get_serializes_expected_payload() {
+    WebServer server(80);
+    FakeRuntime rt;
+    rt.settings.gpsEnabled = true;
+    rt.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ADVISORY;
+    rt.settings.gpsLockoutCoreGuardEnabled = false;
+    rt.settings.gpsLockoutMaxQueueDrops = 22;
+    rt.settings.gpsLockoutMaxPerfDrops = 33;
+    rt.settings.gpsLockoutMaxEventBusDrops = 44;
+    rt.settings.gpsLockoutKaLearningEnabled = true;
+    rt.settings.gpsLockoutKLearningEnabled = true;
+    rt.settings.gpsLockoutXLearningEnabled = false;
+    rt.settings.gpsLockoutPreQuiet = true;
+    rt.settings.gpsLockoutPreQuietBufferE5 = 18;
+    rt.settings.displayStyle = DISPLAY_STYLE_SERPENTINE;
+
+    WifiSettingsApiService::handleApiSettingsGet(server, makeRuntime(rt));
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"gpsEnabled\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutModeName\":\"advisory\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutCoreGuardEnabled\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutMaxQueueDrops\":22"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutMaxPerfDrops\":33"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutMaxEventBusDrops\":44"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutKaLearningEnabled\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutKLearningEnabled\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutXLearningEnabled\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutPreQuiet\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutPreQuietBufferE5\":18"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"displayStyle\":3"));
 }
 
 void test_settings_get_returns_500_without_runtime() {
@@ -178,13 +210,13 @@ void test_settings_save_rate_limited_short_circuits() {
     TEST_ASSERT_EQUAL_INT(0, rt.updateBrightnessCalls);
 }
 
-void test_settings_save_rejects_invalid_ap_credentials() {
+void test_device_settings_save_rejects_invalid_ap_credentials() {
     WebServer server(80);
     FakeRuntime rt;
     server.setArg("ap_ssid", "MyAP");
     server.setArg("ap_password", "short");
 
-    WifiSettingsApiService::handleApiSettingsSave(
+    WifiSettingsApiService::handleApiDeviceSettingsSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -195,14 +227,14 @@ void test_settings_save_rejects_invalid_ap_credentials() {
     TEST_ASSERT_EQUAL_INT(0, rt.saveDeferredBackupCalls);
 }
 
-void test_settings_save_uses_existing_password_placeholder() {
+void test_device_settings_save_uses_existing_password_placeholder() {
     WebServer server(80);
     FakeRuntime rt;
     rt.settings.apPassword = "existing123";
     server.setArg("ap_ssid", "RenamedAP");
     server.setArg("ap_password", "********");
 
-    WifiSettingsApiService::handleApiSettingsSave(
+    WifiSettingsApiService::handleApiDeviceSettingsSave(
         server,
         makeRuntime(rt),
         []() { return true; });
@@ -211,6 +243,31 @@ void test_settings_save_uses_existing_password_placeholder() {
     TEST_ASSERT_EQUAL_INT(1, rt.updateApCredentialsCalls);
     TEST_ASSERT_EQUAL_STRING("RenamedAP", rt.lastApSsid.c_str());
     TEST_ASSERT_EQUAL_STRING("existing123", rt.lastApPassword.c_str());
+    TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
+}
+
+void test_device_settings_save_updates_device_toggles() {
+    WebServer server(80);
+    FakeRuntime rt;
+    server.setArg("proxy_ble", "0");
+    server.setArg("proxy_name", "Garage Unit");
+    server.setArg("autoPowerOffMinutes", "19");
+    server.setArg("apTimeoutMinutes", "14");
+    server.setArg("enableWifiAtBoot", "true");
+    server.setArg("enableSignalTraceLogging", "false");
+
+    WifiSettingsApiService::handleApiDeviceSettingsSave(
+        server,
+        makeRuntime(rt),
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_FALSE(rt.settings.proxyBLE);
+    TEST_ASSERT_EQUAL_STRING("Garage Unit", rt.settings.proxyName.c_str());
+    TEST_ASSERT_EQUAL_UINT8(19, rt.settings.autoPowerOffMinutes);
+    TEST_ASSERT_EQUAL_UINT8(14, rt.settings.apTimeoutMinutes);
+    TEST_ASSERT_TRUE(rt.settings.enableWifiAtBoot);
+    TEST_ASSERT_FALSE(rt.settings.enableSignalTraceLogging);
     TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
 }
 
@@ -261,58 +318,16 @@ void test_settings_save_updates_brightness_and_display_style() {
     TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
 }
 
-void test_settings_save_updates_development_toggles() {
-    WebServer server(80);
-    FakeRuntime rt;
-    rt.settings.enableWifiAtBoot = false;
-    rt.settings.enableSignalTraceLogging = true;
-    server.setArg("enableWifiAtBoot", "true");
-    server.setArg("enableSignalTraceLogging", "false");
-
-    WifiSettingsApiService::handleApiSettingsSave(
-        server,
-        makeRuntime(rt),
-        []() { return true; });
-
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_TRUE(rt.settings.enableWifiAtBoot);
-    TEST_ASSERT_FALSE(rt.settings.enableSignalTraceLogging);
-    TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
-}
-
-void test_settings_save_updates_obd_runtime_dependencies() {
-    WebServer server(80);
-    FakeRuntime rt;
-    server.setArg("obdEnabled", "true");
-    server.setArg("obdMinRssi", "-55");
-
-    WifiSettingsApiService::handleApiSettingsSave(
-        server,
-        makeRuntime(rt),
-        []() { return true; });
-
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_TRUE(rt.settings.obdEnabled);
-    TEST_ASSERT_EQUAL_INT8(-55, rt.settings.obdMinRssi);
-    TEST_ASSERT_EQUAL_INT(1, rt.setObdRuntimeEnabledCalls);
-    TEST_ASSERT_TRUE(rt.lastObdRuntimeEnabled);
-    TEST_ASSERT_EQUAL_INT(1, rt.setObdRuntimeMinRssiCalls);
-    TEST_ASSERT_EQUAL_INT8(-55, rt.lastObdRuntimeMinRssi);
-    TEST_ASSERT_EQUAL_INT(1, rt.setSpeedSourceObdEnabledCalls);
-    TEST_ASSERT_TRUE(rt.lastSpeedSourceObdEnabled);
-    TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
-}
-
 int main() {
     UNITY_BEGIN();
+    RUN_TEST(test_device_settings_get_serializes_expected_payload);
     RUN_TEST(test_settings_get_serializes_expected_payload);
     RUN_TEST(test_settings_get_returns_500_without_runtime);
     RUN_TEST(test_settings_save_rate_limited_short_circuits);
-    RUN_TEST(test_settings_save_rejects_invalid_ap_credentials);
-    RUN_TEST(test_settings_save_uses_existing_password_placeholder);
+    RUN_TEST(test_device_settings_save_rejects_invalid_ap_credentials);
+    RUN_TEST(test_device_settings_save_uses_existing_password_placeholder);
+    RUN_TEST(test_device_settings_save_updates_device_toggles);
     RUN_TEST(test_settings_save_updates_runtime_dependencies);
     RUN_TEST(test_settings_save_updates_brightness_and_display_style);
-    RUN_TEST(test_settings_save_updates_development_toggles);
-    RUN_TEST(test_settings_save_updates_obd_runtime_dependencies);
     return UNITY_END();
 }

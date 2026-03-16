@@ -11,9 +11,21 @@
 
 namespace WifiSettingsApiService {
 
-void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
+namespace {
+
+bool argIsTrue(const String& value) {
+    return value == "true" || value == "1";
+}
+
+void sendSettingsUnavailable(WebServer& server) {
+    server.send(500, "application/json", "{\"error\":\"Settings unavailable\"}");
+}
+
+}  // namespace
+
+void handleApiDeviceSettingsGet(WebServer& server, const Runtime& runtime) {
     if (!runtime.getSettings) {
-        server.send(500, "application/json", "{\"error\":\"Settings unavailable\"}");
+        sendSettingsUnavailable(server);
         return;
     }
 
@@ -22,9 +34,26 @@ void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
     JsonDocument doc;
     doc["ap_ssid"] = settings.apSSID;
     doc["ap_password"] = "********";  // Don't send actual password
-    doc["isDefaultPassword"] = (settings.apPassword == "setupv1g2");  // Security warning flag
+    doc["isDefaultPassword"] = (settings.apPassword == "setupv1g2");
     doc["proxy_ble"] = settings.proxyBLE;
     doc["proxy_name"] = settings.proxyName;
+    doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
+    doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
+    doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
+    doc["enableSignalTraceLogging"] = settings.enableSignalTraceLogging;
+
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
+}
+
+void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
+    if (!runtime.getSettings) {
+        sendSettingsUnavailable(server);
+        return;
+    }
+
+    const V1Settings& settings = runtime.getSettings();
+
+    JsonDocument doc;
     doc["gpsEnabled"] = settings.gpsEnabled;
     doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
     doc["gpsLockoutModeName"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
@@ -33,34 +62,24 @@ void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
     doc["gpsLockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
     doc["gpsLockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
     doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
+    doc["gpsLockoutKLearningEnabled"] = settings.gpsLockoutKLearningEnabled;
+    doc["gpsLockoutXLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
     doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
     doc["gpsLockoutPreQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
-    doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
-    doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
-
-    // Development settings
-    doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
-    doc["enableSignalTraceLogging"] = settings.enableSignalTraceLogging;
-
-    // OBD settings
-    doc["obdEnabled"] = settings.obdEnabled;
-    doc["obdMinRssi"] = settings.obdMinRssi;
 
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
-void handleApiSettingsSave(WebServer& server,
-                           const Runtime& runtime,
-                           const std::function<bool()>& checkRateLimit) {
+void handleApiDeviceSettingsSave(WebServer& server,
+                                 const Runtime& runtime,
+                                 const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
     if (!runtime.getMutableSettings) {
-        server.send(500, "application/json", "{\"error\":\"Settings unavailable\"}");
+        sendSettingsUnavailable(server);
         return;
     }
-
-    Serial.println("=== handleSettingsSave() called ===");
 
     V1Settings& mutableSettings = runtime.getMutableSettings();
     const V1Settings& currentSettings = mutableSettings;
@@ -87,6 +106,54 @@ void handleApiSettingsSave(WebServer& server,
         }
     }
 
+    if (server.hasArg("proxy_ble")) {
+        bool proxyEnabled = argIsTrue(server.arg("proxy_ble"));
+        mutableSettings.proxyBLE = proxyEnabled;
+    }
+    if (server.hasArg("proxy_name")) {
+        mutableSettings.proxyName = sanitizeProxyNameValue(server.arg("proxy_name"));
+    }
+    if (server.hasArg("autoPowerOffMinutes")) {
+        int minutes = server.arg("autoPowerOffMinutes").toInt();
+        minutes = std::max(0, std::min(minutes, 60));
+        mutableSettings.autoPowerOffMinutes = static_cast<uint8_t>(minutes);
+    }
+    if (server.hasArg("apTimeoutMinutes")) {
+        int minutes = server.arg("apTimeoutMinutes").toInt();
+        if (minutes != 0) {
+            minutes = std::max(5, std::min(minutes, 60));
+        }
+        mutableSettings.apTimeoutMinutes = static_cast<uint8_t>(minutes);
+    }
+    if (server.hasArg("enableWifiAtBoot")) {
+        mutableSettings.enableWifiAtBoot = argIsTrue(server.arg("enableWifiAtBoot"));
+    }
+    if (server.hasArg("enableSignalTraceLogging")) {
+        mutableSettings.enableSignalTraceLogging =
+            argIsTrue(server.arg("enableSignalTraceLogging"));
+    }
+
+    if (runtime.save) {
+        runtime.save();
+    }
+
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+void handleApiSettingsSave(WebServer& server,
+                           const Runtime& runtime,
+                           const std::function<bool()>& checkRateLimit) {
+    if (checkRateLimit && !checkRateLimit()) return;
+
+    if (!runtime.getMutableSettings) {
+        sendSettingsUnavailable(server);
+        return;
+    }
+
+    Serial.println("=== handleSettingsSave() called ===");
+
+    V1Settings& mutableSettings = runtime.getMutableSettings();
+
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
         brightness = std::max(0, std::min(brightness, 255));
@@ -97,17 +164,8 @@ void handleApiSettingsSave(WebServer& server,
         }
     }
 
-    // BLE proxy settings
-    if (server.hasArg("proxy_ble")) {
-        bool proxyEnabled = server.arg("proxy_ble") == "true" || server.arg("proxy_ble") == "1";
-        mutableSettings.proxyBLE = proxyEnabled;
-    }
-    if (server.hasArg("proxy_name")) {
-        mutableSettings.proxyName = sanitizeProxyNameValue(server.arg("proxy_name"));
-    }
     if (server.hasArg("gpsEnabled")) {
-        mutableSettings.gpsEnabled =
-            (server.arg("gpsEnabled") == "true" || server.arg("gpsEnabled") == "1");
+        mutableSettings.gpsEnabled = argIsTrue(server.arg("gpsEnabled"));
         if (runtime.setGpsRuntimeEnabled) {
             runtime.setGpsRuntimeEnabled(mutableSettings.gpsEnabled);
         }
@@ -138,78 +196,31 @@ void handleApiSettingsSave(WebServer& server,
     }
     if (server.hasArg("gpsLockoutKaLearningEnabled")) {
         mutableSettings.gpsLockoutKaLearningEnabled =
-            (server.arg("gpsLockoutKaLearningEnabled") == "true" ||
-             server.arg("gpsLockoutKaLearningEnabled") == "1");
+            argIsTrue(server.arg("gpsLockoutKaLearningEnabled"));
         if (runtime.setLockoutKaLearningEnabled) {
             runtime.setLockoutKaLearningEnabled(mutableSettings.gpsLockoutKaLearningEnabled);
         }
     }
     if (server.hasArg("gpsLockoutKLearningEnabled")) {
         mutableSettings.gpsLockoutKLearningEnabled =
-            (server.arg("gpsLockoutKLearningEnabled") == "true" ||
-             server.arg("gpsLockoutKLearningEnabled") == "1");
+            argIsTrue(server.arg("gpsLockoutKLearningEnabled"));
         if (runtime.setLockoutKLearningEnabled) {
             runtime.setLockoutKLearningEnabled(mutableSettings.gpsLockoutKLearningEnabled);
         }
     }
     if (server.hasArg("gpsLockoutXLearningEnabled")) {
         mutableSettings.gpsLockoutXLearningEnabled =
-            (server.arg("gpsLockoutXLearningEnabled") == "true" ||
-             server.arg("gpsLockoutXLearningEnabled") == "1");
+            argIsTrue(server.arg("gpsLockoutXLearningEnabled"));
         if (runtime.setLockoutXLearningEnabled) {
             runtime.setLockoutXLearningEnabled(mutableSettings.gpsLockoutXLearningEnabled);
         }
     }
     if (server.hasArg("gpsLockoutPreQuiet")) {
-        mutableSettings.gpsLockoutPreQuiet =
-            (server.arg("gpsLockoutPreQuiet") == "true" ||
-             server.arg("gpsLockoutPreQuiet") == "1");
+        mutableSettings.gpsLockoutPreQuiet = argIsTrue(server.arg("gpsLockoutPreQuiet"));
     }
     if (server.hasArg("gpsLockoutPreQuietBufferE5")) {
         mutableSettings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
             server.arg("gpsLockoutPreQuietBufferE5").toInt());
-    }
-    if (server.hasArg("autoPowerOffMinutes")) {
-        int minutes = server.arg("autoPowerOffMinutes").toInt();
-        minutes = std::max(0, std::min(minutes, 60));  // Clamp 0-60 minutes
-        mutableSettings.autoPowerOffMinutes = static_cast<uint8_t>(minutes);
-    }
-    if (server.hasArg("apTimeoutMinutes")) {
-        int minutes = server.arg("apTimeoutMinutes").toInt();
-        // Clamp: 0=always on, or 5-60 minutes
-        if (minutes != 0) {
-            minutes = std::max(5, std::min(minutes, 60));
-        }
-        mutableSettings.apTimeoutMinutes = static_cast<uint8_t>(minutes);
-    }
-    if (server.hasArg("enableWifiAtBoot")) {
-        mutableSettings.enableWifiAtBoot =
-            (server.arg("enableWifiAtBoot") == "true" || server.arg("enableWifiAtBoot") == "1");
-    }
-    if (server.hasArg("enableSignalTraceLogging")) {
-        mutableSettings.enableSignalTraceLogging =
-            (server.arg("enableSignalTraceLogging") == "true" ||
-             server.arg("enableSignalTraceLogging") == "1");
-    }
-
-    // OBD settings
-    if (server.hasArg("obdEnabled")) {
-        mutableSettings.obdEnabled =
-            (server.arg("obdEnabled") == "true" || server.arg("obdEnabled") == "1");
-        if (runtime.setObdRuntimeEnabled) {
-            runtime.setObdRuntimeEnabled(mutableSettings.obdEnabled);
-        }
-        if (runtime.setSpeedSourceObdEnabled) {
-            runtime.setSpeedSourceObdEnabled(mutableSettings.obdEnabled);
-        }
-    }
-    if (server.hasArg("obdMinRssi")) {
-        int rssi = server.arg("obdMinRssi").toInt();
-        rssi = std::max(-90, std::min(rssi, -40));
-        mutableSettings.obdMinRssi = static_cast<int8_t>(rssi);
-        if (runtime.setObdRuntimeMinRssi) {
-            runtime.setObdRuntimeMinRssi(mutableSettings.obdMinRssi);
-        }
     }
 
     // Display style setting

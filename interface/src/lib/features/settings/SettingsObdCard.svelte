@@ -27,11 +27,11 @@
 		}
 		// Fetch current settings for minRssi
 		try {
-			const res = await fetchWithTimeout('/api/settings');
+			const res = await fetchWithTimeout('/api/obd/config');
 			if (res.ok) {
 				const data = await res.json();
-				if (typeof data.obdMinRssi === 'number') minRssi = data.obdMinRssi;
-				if (typeof data.obdEnabled === 'boolean') enabled = data.obdEnabled;
+				if (typeof data.minRssi === 'number') minRssi = data.minRssi;
+				if (typeof data.enabled === 'boolean') enabled = data.enabled;
 			}
 		} catch (error) {
 			console.error('Failed to load OBD settings', error);

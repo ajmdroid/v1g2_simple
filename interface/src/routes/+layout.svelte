@@ -35,7 +35,7 @@
 
 	async function refreshDefaultPasswordWarning() {
 		try {
-			const res = await fetchWithTimeout('/api/settings');
+			const res = await fetchWithTimeout('/api/device/settings');
 			if (!res.ok) return;
 			const data = await res.json();
 			const isDefaultPassword = data.isDefaultPassword === true;

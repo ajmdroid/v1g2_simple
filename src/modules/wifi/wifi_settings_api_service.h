@@ -28,6 +28,12 @@ struct Runtime {
     std::function<void()> save;
 };
 
+void handleApiDeviceSettingsGet(WebServer& server, const Runtime& runtime);
+
+void handleApiDeviceSettingsSave(WebServer& server,
+                                 const Runtime& runtime,
+                                 const std::function<bool()>& checkRateLimit);
+
 void handleApiSettingsGet(WebServer& server, const Runtime& runtime);
 
 void handleApiSettingsSave(WebServer& server,

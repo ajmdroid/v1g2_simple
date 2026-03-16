@@ -42,8 +42,8 @@ function installDefaultFetch() {
 			},
 			{
 				method: 'GET',
-				match: '/api/settings',
-				respond: jsonResponse({ obdEnabled: false })
+				match: '/api/obd/config',
+				respond: jsonResponse({ enabled: false, minRssi: -80 })
 			},
 			{
 				method: 'GET',
@@ -99,8 +99,8 @@ function installGpsRecoveryFetch() {
 			},
 			{
 				method: 'GET',
-				match: '/api/settings',
-				respond: jsonResponse({ obdEnabled: false })
+				match: '/api/obd/config',
+				respond: jsonResponse({ enabled: false, minRssi: -80 })
 			},
 			{
 				method: 'GET',
@@ -170,8 +170,8 @@ describe('integrations route page', () => {
 				},
 				{
 					method: 'GET',
-					match: '/api/settings',
-					respond: jsonResponse({ obdEnabled: false })
+					match: '/api/obd/config',
+					respond: jsonResponse({ enabled: false, minRssi: -80 })
 				},
 				{
 					method: 'GET',
@@ -234,7 +234,7 @@ describe('integrations route page', () => {
 				},
 				{
 					method: 'GET',
-					match: '/api/settings',
+					match: '/api/obd/config',
 					respond: () => Promise.reject(new Error('settings unavailable'))
 				},
 				{

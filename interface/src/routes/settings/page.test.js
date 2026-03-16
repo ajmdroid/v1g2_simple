@@ -23,14 +23,18 @@ function installDefaultFetch(overrides = []) {
 	return installFetchMock(
 		[
 			...overrides,
-			{ method: 'GET', match: '/api/settings', respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true }) },
+			{
+				method: 'GET',
+				match: '/api/device/settings',
+				respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true })
+			},
 			{
 				method: 'GET',
 				match: '/api/wifi/status',
 				respond: jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' })
 			},
 			{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) },
-			{ method: 'POST', match: '/api/settings', respond: jsonResponse({ success: true }) },
+			{ method: 'POST', match: '/api/device/settings', respond: jsonResponse({ success: true }) },
 			{ method: 'POST', match: '/api/wifi/scan', respond: jsonResponse({ scanning: false, networks: [] }) },
 		],
 		jsonResponse({})
@@ -49,7 +53,7 @@ describe('settings route page', () => {
 
 		await screen.findByText('Settings');
 		await waitFor(() => {
-			expect(fetchMock.mock.calls.some(([url]) => url === '/api/settings')).toBe(true);
+			expect(fetchMock.mock.calls.some(([url]) => url === '/api/device/settings')).toBe(true);
 			expect(fetchMock.mock.calls.some(([url]) => url === '/api/wifi/status')).toBe(true);
 			expect(fetchMock.mock.calls.some(([url]) => url === '/api/status')).toBe(true);
 		});
@@ -60,7 +64,11 @@ describe('settings route page', () => {
 	it('shows load error when settings endpoint fails', async () => {
 		installFetchMock(
 			[
-				{ method: 'GET', match: '/api/settings', respond: () => Promise.reject(new Error('boom')) },
+				{
+					method: 'GET',
+					match: '/api/device/settings',
+					respond: () => Promise.reject(new Error('boom'))
+				},
 				{ method: 'GET', match: '/api/wifi/status', respond: jsonResponse({ enabled: false, state: 'disabled' }) },
 				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) }
 			],
@@ -138,7 +146,11 @@ describe('settings route page', () => {
 	it('shows WiFi status load errors in the page alert', async () => {
 		installFetchMock(
 			[
-				{ method: 'GET', match: '/api/settings', respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true }) },
+				{
+					method: 'GET',
+					match: '/api/device/settings',
+					respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true })
+				},
 				{ method: 'GET', match: '/api/wifi/status', respond: jsonResponse({ error: 'bad wifi' }, 500) },
 				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) }
 			],
@@ -157,7 +169,11 @@ describe('settings route page', () => {
 		let scanCalls = 0;
 		installFetchMock(
 			[
-				{ method: 'GET', match: '/api/settings', respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true }) },
+				{
+					method: 'GET',
+					match: '/api/device/settings',
+					respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true })
+				},
 				{
 					method: 'GET',
 					match: '/api/wifi/status',
@@ -191,20 +207,22 @@ describe('settings route page', () => {
 
 	it('shows success message on save success', async () => {
 		const fetchMock = installDefaultFetch([
-			{ method: 'POST', match: '/api/settings', respond: jsonResponse({ success: true }) }
+			{ method: 'POST', match: '/api/device/settings', respond: jsonResponse({ success: true }) }
 		]);
 		const { unmount } = render(Page);
 
 		const saveButton = await screen.findByRole('button', { name: /save settings/i });
 		await fireEvent.click(saveButton);
 		await screen.findByText('Settings saved! WiFi will restart.');
-		expect(fetchMock.mock.calls.some(([url, init]) => url === '/api/settings' && init?.method === 'POST')).toBe(true);
+		expect(
+			fetchMock.mock.calls.some(([url, init]) => url === '/api/device/settings' && init?.method === 'POST')
+		).toBe(true);
 		unmount();
 	});
 
 	it('shows API error message on save failure', async () => {
 		installDefaultFetch([
-			{ method: 'POST', match: '/api/settings', respond: jsonResponse({ success: false }, 500) }
+			{ method: 'POST', match: '/api/device/settings', respond: jsonResponse({ success: false }, 500) }
 		]);
 		const { unmount } = render(Page);
 
@@ -218,7 +236,11 @@ describe('settings route page', () => {
 	it('shows the runtime time snapshot without manual sync controls', async () => {
 		installFetchMock(
 			[
-				{ method: 'GET', match: '/api/settings', respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true }) },
+				{
+					method: 'GET',
+					match: '/api/device/settings',
+					respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true })
+				},
 				{
 					method: 'GET',
 					match: '/api/wifi/status',
