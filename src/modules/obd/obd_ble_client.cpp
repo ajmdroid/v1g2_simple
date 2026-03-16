@@ -89,7 +89,7 @@ bool ObdBleClient::startScan(int8_t minRssi) {
     pScan->setMaxResults(0);
     pScan->setDuplicateFilter(false);
 
-    return pScan->start(obd::SCAN_DURATION_MS / 1000, false, false);
+    return pScan->start(obd::SCAN_DURATION_MS, false, false);
 }
 
 void ObdBleClient::stopScan() {
