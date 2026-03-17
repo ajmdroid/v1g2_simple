@@ -1519,7 +1519,10 @@ wait_for_json_endpoint() {
   helper_exit=$?
   set -e
 
-  readarray -t endpoint_wait_fields < <(read_endpoint_wait_fields "$wait_result_path")
+  local endpoint_wait_fields=()
+  while IFS= read -r line; do
+    endpoint_wait_fields+=("$line")
+  done < <(read_endpoint_wait_fields "$wait_result_path")
   local ok="${endpoint_wait_fields[0]:-False}"
   local attempts="${endpoint_wait_fields[1]:-0}"
   local elapsed_seconds="${endpoint_wait_fields[2]:-0}"
@@ -3547,7 +3550,10 @@ if [[ -n "$trend_error_detail" ]]; then
 fi
 python3 "$ROOT_DIR/tools/finalize_real_fw_soak_result.py" "${finalize_args[@]}" > "$FINAL_RESULT_JSON"
 
-readarray -t final_result_fields < <(read_finalize_result_fields "$FINAL_RESULT_JSON")
+final_result_fields=()
+while IFS= read -r line; do
+  final_result_fields+=("$line")
+done < <(read_finalize_result_fields "$FINAL_RESULT_JSON")
 final_result="${final_result_fields[0]:-ERROR}"
 runtime_result="${final_result_fields[1]:-$runtime_result}"
 trend_status="${final_result_fields[2]:-error}"
