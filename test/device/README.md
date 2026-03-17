@@ -40,7 +40,8 @@ coverage.
 
 The single-entry hardware wrapper may run these soak steps for diagnostics, but
 when `device_tests` is present the overall suite verdict still belongs to the
-device suite.
+device suite by default. Use `--strict-soaks` if you want `core_soak` and
+`display_soak` to become authoritative too.
 
 ## Suites
 

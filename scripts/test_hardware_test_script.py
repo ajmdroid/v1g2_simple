@@ -718,12 +718,171 @@ def main() -> int:
             soak_only_result["authoritative_steps"] == ["device_tests"],
             f"unexpected authoritative steps: {soak_only_result}",
         )
+        assert_true(
+            soak_only_result["diagnostic_failures"] == [
+                {"name": "core_soak", "result": "FAIL"},
+                {"name": "display_soak", "result": "FAIL"},
+            ],
+            f"unexpected diagnostic failures: {soak_only_result}",
+        )
+        assert_true(
+            soak_only_result["diagnostic_warnings"] == [],
+            f"unexpected diagnostic warnings: {soak_only_result}",
+        )
+        assert_true(
+            "diagnostic failures: core_soak FAIL, display_soak FAIL" in soak_only_result["rollup_summary"],
+            f"unexpected rollup summary: {soak_only_result}",
+        )
         soak_step_results = {step["name"]: step["result"] for step in soak_only_result["steps"]}
         assert_true(soak_step_results["device_tests"] == "PASS", f"device step should remain pass: {soak_only_result}")
         assert_true(soak_step_results["core_soak"] == "FAIL", f"core soak failure should still be recorded: {soak_only_result}")
         assert_true(
             soak_step_results["display_soak"] == "FAIL",
             f"display soak failure should still be recorded: {soak_only_result}",
+        )
+
+        soak_only_warning = run_test_script(
+            {
+                **common_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "commit_regression",
+                "FAKE_DEVICE_VALUE": "16",
+                "FAKE_DEVICE_BASELINE": "15",
+                "FAKE_CORE_RESULT": "PASS_WITH_WARNINGS",
+                "FAKE_CORE_COMPARE_KIND": "run_variance",
+                "FAKE_CORE_VALUE": "26",
+                "FAKE_CORE_BASELINE": "25",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "commit_regression",
+                "FAKE_DISPLAY_VALUE": "36",
+                "FAKE_DISPLAY_BASELINE": "35",
+            }
+        )
+        assert_true(
+            soak_only_warning.returncode == 0,
+            f"default suite should keep soak warnings diagnostic: {soak_only_warning.stdout}\n{soak_only_warning.stderr}",
+        )
+        soak_warning_result = json.loads((latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(soak_warning_result["result"] == "PASS", f"unexpected soak-warning suite result: {soak_warning_result}")
+        assert_true(
+            soak_warning_result["diagnostic_warnings"] == [{"name": "core_soak", "result": "PASS_WITH_WARNINGS"}],
+            f"unexpected diagnostic warnings: {soak_warning_result}",
+        )
+        assert_true(
+            "diagnostic warnings: core_soak PASS_WITH_WARNINGS" in soak_warning_result["rollup_summary"],
+            f"unexpected soak warning summary: {soak_warning_result}",
+        )
+
+        soak_warning_strict = run_test_script(
+            {
+                **common_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "commit_regression",
+                "FAKE_DEVICE_VALUE": "16",
+                "FAKE_DEVICE_BASELINE": "15",
+                "FAKE_CORE_RESULT": "PASS_WITH_WARNINGS",
+                "FAKE_CORE_COMPARE_KIND": "run_variance",
+                "FAKE_CORE_VALUE": "26",
+                "FAKE_CORE_BASELINE": "25",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "commit_regression",
+                "FAKE_DISPLAY_VALUE": "36",
+                "FAKE_DISPLAY_BASELINE": "35",
+            },
+            "--strict",
+        )
+        assert_true(
+            soak_warning_strict.returncode == 0,
+            f"--strict alone should not promote non-authoritative soak warnings: {soak_warning_strict.stdout}\n{soak_warning_strict.stderr}",
+        )
+
+        strict_soaks_fail = run_test_script(
+            {
+                **common_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "commit_regression",
+                "FAKE_DEVICE_VALUE": "17",
+                "FAKE_DEVICE_BASELINE": "16",
+                "FAKE_CORE_RESULT": "FAIL",
+                "FAKE_CORE_COMPARE_KIND": "commit_regression",
+                "FAKE_CORE_VALUE": "27",
+                "FAKE_CORE_BASELINE": "26",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "commit_regression",
+                "FAKE_DISPLAY_VALUE": "37",
+                "FAKE_DISPLAY_BASELINE": "36",
+            },
+            "--strict-soaks",
+        )
+        assert_true(
+            strict_soaks_fail.returncode == 1,
+            f"--strict-soaks should make soak failures authoritative: {strict_soaks_fail.stdout}\n{strict_soaks_fail.stderr}",
+        )
+        strict_soaks_fail_result = json.loads((latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(strict_soaks_fail_result["result"] == "FAIL", f"unexpected strict-soaks fail result: {strict_soaks_fail_result}")
+        assert_true(
+            strict_soaks_fail_result["authoritative_steps"] == ["device_tests", "core_soak", "display_soak"],
+            f"unexpected strict-soaks authority: {strict_soaks_fail_result}",
+        )
+        assert_true(
+            strict_soaks_fail_result["diagnostic_failures"] == [],
+            f"strict-soaks run should not report authoritative failures as diagnostics: {strict_soaks_fail_result}",
+        )
+
+        strict_soaks_warning = run_test_script(
+            {
+                **common_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "commit_regression",
+                "FAKE_DEVICE_VALUE": "18",
+                "FAKE_DEVICE_BASELINE": "17",
+                "FAKE_CORE_RESULT": "PASS_WITH_WARNINGS",
+                "FAKE_CORE_COMPARE_KIND": "run_variance",
+                "FAKE_CORE_VALUE": "28",
+                "FAKE_CORE_BASELINE": "27",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "commit_regression",
+                "FAKE_DISPLAY_VALUE": "38",
+                "FAKE_DISPLAY_BASELINE": "37",
+            },
+            "--strict-soaks",
+        )
+        assert_true(
+            strict_soaks_warning.returncode == 0,
+            f"--strict-soaks without --strict should allow warning exit 0: {strict_soaks_warning.stdout}\n{strict_soaks_warning.stderr}",
+        )
+        strict_soaks_warning_result = json.loads((latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(
+            strict_soaks_warning_result["result"] == "PASS_WITH_WARNINGS",
+            f"unexpected strict-soaks warning result: {strict_soaks_warning_result}",
+        )
+        assert_true(
+            strict_soaks_warning_result["diagnostic_warnings"] == [],
+            f"authoritative warnings should not be diagnostic: {strict_soaks_warning_result}",
+        )
+
+        strict_soaks_warning_blocking = run_test_script(
+            {
+                **common_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "commit_regression",
+                "FAKE_DEVICE_VALUE": "18",
+                "FAKE_DEVICE_BASELINE": "17",
+                "FAKE_CORE_RESULT": "PASS_WITH_WARNINGS",
+                "FAKE_CORE_COMPARE_KIND": "run_variance",
+                "FAKE_CORE_VALUE": "28",
+                "FAKE_CORE_BASELINE": "27",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "commit_regression",
+                "FAKE_DISPLAY_VALUE": "38",
+                "FAKE_DISPLAY_BASELINE": "37",
+            },
+            "--strict-soaks",
+            "--strict",
+        )
+        assert_true(
+            strict_soaks_warning_blocking.returncode == 1,
+            f"--strict-soaks plus --strict should fail warning-only suite: {strict_soaks_warning_blocking.stdout}\n{strict_soaks_warning_blocking.stderr}",
         )
 
         soak_exit_mismatch = run_test_script(

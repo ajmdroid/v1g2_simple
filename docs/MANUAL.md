@@ -2040,8 +2040,10 @@ Single-board or multi-board hardware qualification.
 
 Uptime continuity is checked between steps to detect unexpected reboots.
 
-`--strict` treats `PASS_WITH_WARNINGS` as a failing exit. Per-board artifact
-isolation stores runs under `<artifact-root>/<board-id>/runs/<timestamp>_<sha>/`.
+`--strict` treats authoritative `PASS_WITH_WARNINGS` results as a failing exit.
+`--strict-soaks` makes `core_soak` / `display_soak` authoritative instead of
+diagnostic-only. Per-board artifact isolation stores runs under
+`<artifact-root>/<board-id>/runs/<timestamp>_<sha>/`.
 
 **Prerequisites:** ESP32-S3 connected over USB, setup AP enabled so `http://192.168.35.5/api/debug/metrics` is reachable.
 

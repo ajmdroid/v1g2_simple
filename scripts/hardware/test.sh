@@ -15,6 +15,7 @@ ASSEMBLE_RESULT_SCRIPT="${HARDWARE_TEST_ASSEMBLE_RESULT_SCRIPT:-$ROOT_DIR/tools/
 ARTIFACT_ROOT="${HARDWARE_TEST_ARTIFACT_ROOT:-$ROOT_DIR/.artifacts/hardware/test}"
 SOAK_DURATION_SECONDS="${HARDWARE_TEST_SOAK_DURATION_SECONDS:-300}"
 STRICT_WARNINGS="${HARDWARE_TEST_STRICT_WARNINGS:-0}"
+STRICT_SOAKS="${HARDWARE_TEST_STRICT_SOAKS:-0}"
 HTTP_TIMEOUT_SECONDS="${HARDWARE_TEST_HTTP_TIMEOUT_SECONDS:-5}"
 METRICS_ENDPOINT_ATTEMPTS="${HARDWARE_TEST_METRICS_ENDPOINT_ATTEMPTS:-6}"
 METRICS_ENDPOINT_RETRY_DELAY_SECONDS="${HARDWARE_TEST_METRICS_ENDPOINT_RETRY_DELAY_SECONDS:-2}"
@@ -56,6 +57,7 @@ Options:
   --artifact-root PATH      Base output root (default: .artifacts/hardware/test);
                             runs are stored under <artifact-root>/<board-id>/
   --strict                  Treat PASS_WITH_WARNINGS as a failing exit
+  --strict-soaks            Make soak steps authoritative for the suite result
   -h, --help                Show this help
 
 Examples:
@@ -63,6 +65,7 @@ Examples:
   ${SELF_NAME} --core
   ${SELF_NAME} --display
   ${SELF_NAME} --all --board-id release --strict
+  ${SELF_NAME} --all --board-id release --strict-soaks --strict
   ${SELF_NAME} --device --parse-drive-log /path/to/metrics.jsonl
   ${SELF_NAME} --core --parse-drive-log /path/to/serial.log
   ${SELF_NAME} --parse-drive-log /path/to/real_fw_soak_run
@@ -136,6 +139,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --strict)
       STRICT_WARNINGS=1
+      ;;
+    --strict-soaks)
+      STRICT_SOAKS=1
       ;;
     --help|-h)
       usage
@@ -845,29 +851,39 @@ if [[ "$RUN_DISPLAY" -eq 1 ]]; then
   fi
 fi
 
-python3 "$ASSEMBLE_RESULT_SCRIPT" \
-  --run-dir "$RUN_DIR" \
-  --result-json "$RESULT_JSON" \
-  --comparison-txt "$COMPARISON_TXT" \
-  --run-history-tsv "$RUN_HISTORY_TSV" \
-  --metric-history-tsv "$METRIC_HISTORY_TSV" \
-  --warning-policy "$( [[ "$STRICT_WARNINGS" == "1" ]] && echo blocking || echo non_blocking )" \
-  --board-id "$BOARD_ID" \
-  --device-port "$DEVICE_PORT" \
-  --metrics-url "$METRICS_URL" \
-  --git-sha "$GIT_SHA" \
-  --git-ref "$GIT_REF" \
-  --previous-run-dir "$PREVIOUS_RUN_DIR" \
-  --enabled-steps "$ENABLED_STEPS_CSV" \
-  --device-exit "$device_exit" \
-  --core-exit "$core_exit" \
+assemble_args=(
+  python3 "$ASSEMBLE_RESULT_SCRIPT"
+  --run-dir "$RUN_DIR"
+  --result-json "$RESULT_JSON"
+  --comparison-txt "$COMPARISON_TXT"
+  --run-history-tsv "$RUN_HISTORY_TSV"
+  --metric-history-tsv "$METRIC_HISTORY_TSV"
+  --warning-policy "$( [[ "$STRICT_WARNINGS" == "1" ]] && echo blocking || echo non_blocking )"
+  --board-id "$BOARD_ID"
+  --device-port "$DEVICE_PORT"
+  --metrics-url "$METRICS_URL"
+  --git-sha "$GIT_SHA"
+  --git-ref "$GIT_REF"
+  --previous-run-dir "$PREVIOUS_RUN_DIR"
+  --enabled-steps "$ENABLED_STEPS_CSV"
+  --device-exit "$device_exit"
+  --core-exit "$core_exit"
   --display-exit "$display_exit"
+)
+if [[ "$STRICT_SOAKS" == "1" ]]; then
+  assemble_args+=(--strict-soaks)
+fi
+"${assemble_args[@]}"
 
 rm -rf "$BOARD_ARTIFACT_ROOT/latest"
 ln -s "runs/$(basename "$RUN_DIR")" "$BOARD_ARTIFACT_ROOT/latest"
 
 suite_result="$(python3 -c 'import json, sys; from pathlib import Path; print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["result"])' "$RESULT_JSON")"
+rollup_summary="$(python3 -c 'import json, sys; from pathlib import Path; print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("rollup_summary", ""))' "$RESULT_JSON")"
 echo "Hardware test result: $suite_result"
+if [[ -n "$rollup_summary" ]]; then
+  echo "$rollup_summary"
+fi
 echo "Warning policy: $( [[ "$STRICT_WARNINGS" == "1" ]] && echo blocking || echo non-blocking )"
 if [[ "$rad_exit" -ne 0 ]]; then
   echo "RAD scenario: FAIL (exit=$rad_exit)"

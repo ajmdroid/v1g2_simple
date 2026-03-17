@@ -30,6 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device-exit", type=int, default=0)
     parser.add_argument("--core-exit", type=int, default=0)
     parser.add_argument("--display-exit", type=int, default=0)
+    parser.add_argument("--strict-soaks", action="store_true")
     return parser.parse_args()
 
 
@@ -72,10 +73,53 @@ def compute_step_result(scoring: dict[str, Any] | None, manifest: dict[str, Any]
     return "ERROR"
 
 
-def select_authoritative_steps(enabled_steps: list[str]) -> list[str]:
+def select_authoritative_steps(enabled_steps: list[str], strict_soaks: bool) -> list[str]:
+    if strict_soaks:
+        return enabled_steps
     if "device_tests" in enabled_steps:
         return ["device_tests"]
     return enabled_steps
+
+
+def classify_diagnostic_steps(
+    step_rows: list[dict[str, object]],
+    authoritative_steps: list[str],
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    authoritative = set(authoritative_steps)
+    diagnostic_failures: list[dict[str, str]] = []
+    diagnostic_warnings: list[dict[str, str]] = []
+    for item in step_rows:
+        name = str(item["name"])
+        if name in authoritative:
+            continue
+        result = str(item["result"])
+        entry = {"name": name, "result": result}
+        if result in {"FAIL", "ERROR"}:
+            diagnostic_failures.append(entry)
+        elif result in {"PASS_WITH_WARNINGS", "INCONCLUSIVE", "NO_BASELINE"}:
+            diagnostic_warnings.append(entry)
+    return diagnostic_failures, diagnostic_warnings
+
+
+def format_step_list(items: list[dict[str, str]]) -> str:
+    if not items:
+        return "none"
+    return ", ".join(f"{item['name']} {item['result']}" for item in items)
+
+
+def build_rollup_summary(
+    suite_result: str,
+    authoritative_steps: list[str],
+    diagnostic_failures: list[dict[str, str]],
+    diagnostic_warnings: list[dict[str, str]],
+) -> str:
+    authority = ",".join(authoritative_steps) or "n/a"
+    parts = [f"Suite {suite_result} ({authority} authoritative)"]
+    if diagnostic_failures:
+        parts.append(f"diagnostic failures: {format_step_list(diagnostic_failures)}")
+    if diagnostic_warnings:
+        parts.append(f"diagnostic warnings: {format_step_list(diagnostic_warnings)}")
+    return "; ".join(parts)
 
 
 def overall_result(step_rows: list[dict[str, object]], authoritative_steps: list[str]) -> str:
@@ -132,8 +176,10 @@ def main() -> int:
             }
         )
 
-    authoritative_steps = select_authoritative_steps(enabled_steps)
+    authoritative_steps = select_authoritative_steps(enabled_steps, args.strict_soaks)
     suite_result = overall_result(steps, authoritative_steps)
+    diagnostic_failures, diagnostic_warnings = classify_diagnostic_steps(steps, authoritative_steps)
+    rollup_summary = build_rollup_summary(suite_result, authoritative_steps, diagnostic_failures, diagnostic_warnings)
     timestamp_utc = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     payload = {
         "schema_version": 1,
@@ -148,8 +194,12 @@ def main() -> int:
         "run_dir": str(run_dir),
         "previous_run_dir": args.previous_run_dir,
         "enabled_steps": enabled_steps,
+        "strict_soaks": args.strict_soaks,
         "authoritative_steps": authoritative_steps,
         "result": suite_result,
+        "diagnostic_failures": diagnostic_failures,
+        "diagnostic_warnings": diagnostic_warnings,
+        "rollup_summary": rollup_summary,
         "steps": steps,
     }
     result_json.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -161,7 +211,11 @@ def main() -> int:
         f"git: {args.git_sha} ({args.git_ref})",
         f"run_dir: {run_dir}",
         f"previous_run_dir: {args.previous_run_dir or 'n/a'}",
+        f"strict_soaks: {'yes' if args.strict_soaks else 'no'}",
         f"authoritative_steps: {','.join(authoritative_steps) or 'n/a'}",
+        f"diagnostic_failures: {format_step_list(diagnostic_failures)}",
+        f"diagnostic_warnings: {format_step_list(diagnostic_warnings)}",
+        f"rollup_summary: {rollup_summary}",
         "",
         "STEP            RESULT              COMPARE             EXIT  READABLE_METRICS",
         "--------------- ------------------- ------------------- ----- ----------------------------------------------",
