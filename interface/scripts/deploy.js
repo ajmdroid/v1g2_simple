@@ -113,4 +113,4 @@ const totalSize = listFiles(dataDir);
 console.log(`\n✅ Total size: ${(totalSize / 1024).toFixed(1)} KB`);
 
 console.log('\n💡 Next steps:');
-console.log('   cd .. && pio run -t buildfs && pio run -t uploadfs');
+console.log('   cd .. && ./build.sh --upload-fs');

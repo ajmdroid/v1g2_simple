@@ -27,18 +27,11 @@ ffmpeg -y -f s16le -ar 22050 -ac 1 -i "$OUTPUT_DIR/bogeys.raw" -f mulaw -ar 2205
 
 echo "Converted to mu-law: $OUTPUT_DIR/mulaw/bogeys.mul"
 
-# Copy to data/audio if it exists
-if [ -d "data/audio" ]; then
-    cp "$OUTPUT_DIR/mulaw/bogeys.mul" "data/audio/"
-    echo "Copied to data/audio/bogeys.mul"
-fi
-
-# Copy to ../data/audio if running from tools/
-if [ -d "../data/audio" ]; then
-    cp "$OUTPUT_DIR/mulaw/bogeys.mul" "../data/audio/"
-    echo "Copied to ../data/audio/bogeys.mul"
-fi
-
 echo ""
 echo "=== Done ==="
 ls -la "$OUTPUT_DIR/mulaw/bogeys.mul"
+echo ""
+echo "Authoritative staging path:"
+echo "  1. Keep generated clips in tools/freq_audio/mulaw/"
+echo "  2. Refresh data/audio through the manifest-backed deploy pipeline"
+echo "     via 'cd interface && npm run deploy && cd ..' or './build.sh --upload-fs'"

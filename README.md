@@ -37,6 +37,9 @@ cd v1g2_simple
 
 The script auto-detects your OS. First build takes 2-5 minutes to download libraries.
 
+Authoritative filesystem upload path: `./build.sh --upload-fs` or `./build.sh --all`.
+Do not use raw `pio ... uploadfs` as the normal workflow; it bypasses the repo's deploy/audio staging path.
+
 For manual PlatformIO command variants and OS-specific troubleshooting:
 - Windows setup: [docs/MANUAL.md — Windows Setup](docs/MANUAL.md#windows-setup)
 - Full command reference: [docs/MANUAL.md](docs/MANUAL.md)

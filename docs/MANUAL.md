@@ -81,18 +81,8 @@ cd v1g2_simple
 
 **Windows users:** See the [Windows Setup](#windows-setup) subsection below for detailed instructions.
 
-**Alternative (manual steps):**
-```bash
-# Build web interface
-cd interface && npm install && npm run build && npm run deploy && cd ..
-
-# Build and upload firmware + filesystem
-pio run -e waveshare-349 -t uploadfs
-pio run -e waveshare-349 -t upload
-
-# Monitor serial output
-pio device monitor -b 115200
-```
+Authoritative filesystem upload path: `./build.sh --upload-fs` or `./build.sh --all`.
+Do not use raw `pio ... uploadfs` as the normal workflow; it bypasses the repo's deploy/audio staging path and can overwrite fallback LittleFS profile storage.
 
 ### Verify Installation
 
@@ -1767,12 +1757,14 @@ of repeating full command blocks.
 ./build.sh --help       # Show all options
 ```
 
-**Manual PlatformIO commands:**
+Authoritative filesystem upload path: `./build.sh --upload-fs` or `./build.sh --all`.
+Do not use raw `pio ... uploadfs` as the default workflow.
+
+**Manual PlatformIO commands (advanced build/debug only):**
 
 ```bash
 pio run -e waveshare-349                  # Build firmware only
 pio run -e waveshare-349 -t upload        # Upload firmware
-pio run -e waveshare-349 -t uploadfs      # Upload web filesystem
 pio device monitor -b 115200              # Serial monitor
 ```
 
