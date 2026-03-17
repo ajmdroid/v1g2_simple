@@ -912,19 +912,26 @@ List SD-backed perf CSV files under `/perf`.
   "storageReady": true,
   "onSdCard": true,
   "path": "/perf",
+  "loggingActive": false,
+  "activeFile": "",
+  "fileOpsBlocked": false,
   "count": 2,
   "files": [
     {
       "name": "perf_boot_9.csv",
       "sizeBytes": 14822,
       "bootId": 9,
-      "active": true
+      "active": true,
+      "downloadAllowed": true,
+      "deleteAllowed": true
     },
     {
       "name": "perf_boot_8.csv",
       "sizeBytes": 9621,
       "bootId": 8,
-      "active": false
+      "active": false,
+      "downloadAllowed": true,
+      "deleteAllowed": true
     }
   ]
 }
@@ -937,11 +944,15 @@ Download one perf CSV file.
 **Query Parameters:**
 - `name` (required): file name returned by `/api/debug/perf-files`
 
+If download is blocked, the JSON error response includes `reasonCode`, `operation`, and `retryable`.
+
 ### POST /api/debug/perf-files/delete
 
 Delete one perf CSV file.
 
 **Request (form data):** `name=perf_boot_8.csv`
+
+If delete is blocked, the JSON error response includes `reasonCode`, `operation`, and `retryable`.
 
 ### POST /api/debug/metrics/reset
 

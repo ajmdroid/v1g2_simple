@@ -11,7 +11,12 @@
 		perfFilesInfo = {
 			storageReady: false,
 			onSdCard: false,
-			path: '/perf'
+			path: '/perf',
+			loggingActive: false,
+			activeFile: '',
+			fileOpsBlocked: false,
+			fileOpsBlockedReason: '',
+			fileOpsBlockedReasonCode: ''
 		},
 		onrefresh,
 		ondownload,
@@ -39,6 +44,13 @@
 			Files under <span class="font-mono">{perfFilesInfo.path}</span>.
 			Download or delete without opening contents.
 		</p>
+
+		{#if perfFilesInfo.fileOpsBlocked}
+			<StatusAlert
+				message={`${perfFilesInfo.fileOpsBlockedReason || 'Protected operation'}: download and delete are temporarily unavailable.`}
+				fallbackType="warning"
+			/>
+		{/if}
 
 		{#if perfFilesLoading}
 			<div class="state-loading inline">
@@ -75,14 +87,16 @@
 										<button
 											class="btn btn-xs btn-outline"
 											onclick={() => ondownload(file.name)}
-											disabled={!acknowledged || perfFileActionBusy === file.name}
+											disabled={!acknowledged || perfFileActionBusy === file.name || file.downloadAllowed === false}
+											title={file.blockedReason || ''}
 										>
 											Download
 										</button>
 										<button
 											class="btn btn-xs btn-outline btn-error"
 											onclick={() => ondelete(file.name)}
-											disabled={!acknowledged || perfFileActionBusy === file.name}
+											disabled={!acknowledged || perfFileActionBusy === file.name || file.deleteAllowed === false}
+											title={file.blockedReason || ''}
 										>
 											{#if perfFileActionBusy === file.name}
 												<span class="loading loading-spinner loading-xs"></span>

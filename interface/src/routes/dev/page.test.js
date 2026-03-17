@@ -40,7 +40,18 @@ function installDefaultFetch(overrides = []) {
 					storageReady: true,
 					onSdCard: true,
 					path: '/perf',
-					files: [{ name: 'perf-0001.csv', sizeBytes: 1536, active: true }]
+					loggingActive: false,
+					activeFile: '',
+					fileOpsBlocked: false,
+					files: [
+						{
+							name: 'perf-0001.csv',
+							sizeBytes: 1536,
+							active: true,
+							downloadAllowed: true,
+							deleteAllowed: true
+						}
+					]
 				})
 			},
 			{
@@ -215,6 +226,44 @@ describe('dev route page', () => {
 
 		await screen.findByText('Failed to delete perf-0001.csv: locked');
 		expect(screen.getByText('perf-0001.csv')).toBeInTheDocument();
+
+		unmount();
+	});
+
+	it('disables protected perf file actions when logging is active', async () => {
+		installDefaultFetch([
+			{
+				method: 'GET',
+				match: '/api/debug/perf-files',
+				respond: jsonResponse({
+					storageReady: true,
+					onSdCard: true,
+					path: '/perf',
+					loggingActive: true,
+					activeFile: 'perf-0001.csv',
+					fileOpsBlocked: true,
+					fileOpsBlockedReason: 'Perf logging active',
+					fileOpsBlockedReasonCode: 'perf_logging_active',
+					files: [
+						{
+							name: 'perf-0001.csv',
+							sizeBytes: 1536,
+							active: true,
+							downloadAllowed: false,
+							deleteAllowed: false,
+							blockedReason: 'Perf logging active',
+							blockedReasonCode: 'perf_logging_active'
+						}
+					]
+				})
+			}
+		]);
+		const { unmount } = render(Page);
+
+		await screen.findByText('perf-0001.csv');
+		expect(screen.getByText(/download and delete are temporarily unavailable/i)).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: /^download$/i })).toBeDisabled();
+		expect(screen.getByRole('button', { name: /^delete$/i })).toBeDisabled();
 
 		unmount();
 	});

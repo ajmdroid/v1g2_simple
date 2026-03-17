@@ -44,7 +44,12 @@
 	let perfFilesInfo = $state({
 		storageReady: false,
 		onSdCard: false,
-		path: '/perf'
+		path: '/perf',
+		loggingActive: false,
+		activeFile: '',
+		fileOpsBlocked: false,
+		fileOpsBlockedReason: '',
+		fileOpsBlockedReasonCode: ''
 	});
 
 	const metricsPoll = createPoll(async () => {
@@ -222,9 +227,22 @@
 			perfFilesInfo.storageReady = data.storageReady ?? false;
 			perfFilesInfo.onSdCard = data.onSdCard ?? false;
 			perfFilesInfo.path = data.path || '/perf';
+			perfFilesInfo.loggingActive = data.loggingActive ?? false;
+			perfFilesInfo.activeFile = data.activeFile || '';
+			perfFilesInfo.fileOpsBlocked = data.fileOpsBlocked ?? false;
+			perfFilesInfo.fileOpsBlockedReason = data.fileOpsBlockedReason || '';
+			perfFilesInfo.fileOpsBlockedReasonCode = data.fileOpsBlockedReasonCode || '';
 		} catch (error) {
 			console.error('Failed to load perf files:', error);
 			perfFiles = [];
+			perfFilesInfo.storageReady = false;
+			perfFilesInfo.onSdCard = false;
+			perfFilesInfo.path = '/perf';
+			perfFilesInfo.loggingActive = false;
+			perfFilesInfo.activeFile = '';
+			perfFilesInfo.fileOpsBlocked = false;
+			perfFilesInfo.fileOpsBlockedReason = '';
+			perfFilesInfo.fileOpsBlockedReasonCode = '';
 			setMessage('error', 'Failed to load perf files');
 		} finally {
 			perfFilesLoading = false;

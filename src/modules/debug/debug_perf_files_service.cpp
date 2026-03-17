@@ -10,6 +10,16 @@
 
 namespace {
 
+constexpr const char* kReasonPerfLoggingActive = "perf_logging_active";
+constexpr const char* kReasonSdUnavailable = "sd_unavailable";
+constexpr const char* kReasonSdBusy = "sd_busy";
+constexpr const char* kReasonLowDma = "low_dma";
+constexpr const char* kReasonMissingFileName = "missing_file_name";
+constexpr const char* kReasonInvalidFileName = "invalid_file_name";
+constexpr const char* kReasonFileNotFound = "file_not_found";
+constexpr const char* kReasonOpenFailed = "open_failed";
+constexpr const char* kReasonDeleteFailed = "delete_failed";
+
 String fileNameFromPath(const String& path) {
     int slash = path.lastIndexOf('/');
     if (slash >= 0) {
@@ -152,6 +162,27 @@ void invalidatePerfFileCache() {
     gPerfFileListCache.rows.clear();
 }
 
+void sendPerfFileError(WebServer& server,
+                       int statusCode,
+                       const char* reasonCode,
+                       const char* errorMessage,
+                       const char* operation = nullptr,
+                       const String& fileName = String(),
+                       bool retryable = false) {
+    JsonDocument doc;
+    doc["success"] = false;
+    doc["error"] = errorMessage;
+    doc["reasonCode"] = reasonCode;
+    doc["retryable"] = retryable;
+    if (operation && operation[0] != '\0') {
+        doc["operation"] = operation;
+    }
+    if (fileName.length() > 0) {
+        doc["name"] = fileName;
+    }
+    sendJsonStream(server, doc, statusCode);
+}
+
 void sendPerfFilesList(WebServer& server) {
     const uint16_t limit = perfFilesLimitFromRequest(server);
     JsonDocument doc;
@@ -160,6 +191,16 @@ void sendPerfFilesList(WebServer& server) {
     doc["onSdCard"] = storageManager.isSDCard();
     doc["path"] = "/perf";
     doc["limit"] = limit;
+    const bool loggingActive = perfSdLogger.isEnabled();
+    const String activePath = String(perfSdLogger.csvPath());
+    const String activeFileName = activePath.length() > 0 ? fileNameFromPath(activePath) : String();
+    doc["loggingActive"] = loggingActive;
+    doc["activeFile"] = activeFileName;
+    doc["fileOpsBlocked"] = loggingActive;
+    if (loggingActive) {
+        doc["fileOpsBlockedReason"] = "Perf logging active";
+        doc["fileOpsBlockedReasonCode"] = kReasonPerfLoggingActive;
+    }
 
     JsonArray filesArr = doc["files"].to<JsonArray>();
 
@@ -232,14 +273,20 @@ void sendPerfFilesList(WebServer& server) {
 
     const size_t countTotal = gPerfFileListCache.rows.size();
     const size_t countReturned = std::min(countTotal, static_cast<size_t>(limit));
-    const String activePath = String(perfSdLogger.csvPath());
     for (size_t i = 0; i < countReturned; ++i) {
         const PerfFileInfo& row = gPerfFileListCache.rows[i];
         JsonObject f = filesArr.add<JsonObject>();
+        const bool isActive = (String("/perf/") + row.name) == activePath;
         f["name"] = row.name;
         f["sizeBytes"] = row.sizeBytes;
         f["bootId"] = row.bootId;
-        f["active"] = (String("/perf/") + row.name) == activePath;
+        f["active"] = isActive;
+        f["downloadAllowed"] = !loggingActive;
+        f["deleteAllowed"] = !loggingActive;
+        if (loggingActive) {
+            f["blockedReason"] = "Perf logging active";
+            f["blockedReasonCode"] = kReasonPerfLoggingActive;
+        }
     }
     doc["count"] = static_cast<uint32_t>(countTotal);
     doc["countReturned"] = static_cast<uint32_t>(countReturned);
@@ -252,47 +299,85 @@ void sendPerfFilesList(WebServer& server) {
 
 void handlePerfFileDownload(WebServer& server) {
     if (!server.hasArg("name")) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing file name\"}");
+        sendPerfFileError(server, 400, kReasonMissingFileName, "Missing file name", "download");
         return;
     }
 
     String requestedName = server.arg("name");
     String path;
     if (!perfFilePathFromName(requestedName, path)) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid file name\"}");
+        sendPerfFileError(server,
+                          400,
+                          kReasonInvalidFileName,
+                          "Invalid file name",
+                          "download",
+                          requestedName);
         return;
     }
 
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
-        server.send(503, "application/json", "{\"success\":false,\"error\":\"SD storage unavailable\"}");
+        sendPerfFileError(server,
+                          503,
+                          kReasonSdUnavailable,
+                          "SD storage unavailable",
+                          "download",
+                          requestedName,
+                          true);
         return;
     }
 
     if (perfSdLogger.isEnabled()) {
-        server.send(503, "application/json",
-                    "{\"success\":false,\"error\":\"Perf logging active; download unavailable\"}");
+        sendPerfFileError(server,
+                          503,
+                          kReasonPerfLoggingActive,
+                          "Perf logging active; download unavailable",
+                          "download",
+                          requestedName,
+                          true);
         return;
     }
 
     StorageManager::SDTryLock lock(storageManager.getSDMutex());
     if (!lock) {
         if (lock.isDmaStarved()) {
-            server.send(503, "application/json", "{\"success\":false,\"error\":\"Low DMA heap; try again\"}");
+            sendPerfFileError(server,
+                              503,
+                              kReasonLowDma,
+                              "Low DMA heap; try again",
+                              "download",
+                              requestedName,
+                              true);
         } else {
-            server.send(503, "application/json", "{\"success\":false,\"error\":\"SD busy\"}");
+            sendPerfFileError(server,
+                              503,
+                              kReasonSdBusy,
+                              "SD busy",
+                              "download",
+                              requestedName,
+                              true);
         }
         return;
     }
 
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs || !fs->exists(path)) {
-        server.send(404, "application/json", "{\"success\":false,\"error\":\"File not found\"}");
+        sendPerfFileError(server,
+                          404,
+                          kReasonFileNotFound,
+                          "File not found",
+                          "download",
+                          requestedName);
         return;
     }
 
     File f = fs->open(path, FILE_READ);
     if (!f) {
-        server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to open file\"}");
+        sendPerfFileError(server,
+                          500,
+                          kReasonOpenFailed,
+                          "Failed to open file",
+                          "download",
+                          requestedName);
         return;
     }
 
@@ -306,8 +391,12 @@ void handlePerfFileDownload(WebServer& server) {
     }
     if (!buffer) {
         f.close();
-        server.send(500, "application/json",
-                    "{\"success\":false,\"error\":\"PSRAM alloc failed\"}");
+        sendPerfFileError(server,
+                          500,
+                          kReasonOpenFailed,
+                          "PSRAM alloc failed",
+                          "download",
+                          requestedName);
         return;
     }
 
@@ -338,41 +427,74 @@ void handlePerfFileDownload(WebServer& server) {
 
 void handlePerfFileDelete(WebServer& server) {
     if (!server.hasArg("name")) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"Missing file name\"}");
+        sendPerfFileError(server, 400, kReasonMissingFileName, "Missing file name", "delete");
         return;
     }
 
     String requestedName = server.arg("name");
     String path;
     if (!perfFilePathFromName(requestedName, path)) {
-        server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid file name\"}");
+        sendPerfFileError(server,
+                          400,
+                          kReasonInvalidFileName,
+                          "Invalid file name",
+                          "delete",
+                          requestedName);
         return;
     }
 
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
-        server.send(503, "application/json", "{\"success\":false,\"error\":\"SD storage unavailable\"}");
+        sendPerfFileError(server,
+                          503,
+                          kReasonSdUnavailable,
+                          "SD storage unavailable",
+                          "delete",
+                          requestedName,
+                          true);
         return;
     }
 
     if (perfSdLogger.isEnabled()) {
-        server.send(503, "application/json",
-                    "{\"success\":false,\"error\":\"Perf logging active; delete unavailable\"}");
+        sendPerfFileError(server,
+                          503,
+                          kReasonPerfLoggingActive,
+                          "Perf logging active; delete unavailable",
+                          "delete",
+                          requestedName,
+                          true);
         return;
     }
 
     StorageManager::SDTryLock lock(storageManager.getSDMutex());
     if (!lock) {
         if (lock.isDmaStarved()) {
-            server.send(503, "application/json", "{\"success\":false,\"error\":\"Low DMA heap; try again\"}");
+            sendPerfFileError(server,
+                              503,
+                              kReasonLowDma,
+                              "Low DMA heap; try again",
+                              "delete",
+                              requestedName,
+                              true);
         } else {
-            server.send(503, "application/json", "{\"success\":false,\"error\":\"SD busy\"}");
+            sendPerfFileError(server,
+                              503,
+                              kReasonSdBusy,
+                              "SD busy",
+                              "delete",
+                              requestedName,
+                              true);
         }
         return;
     }
 
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs || !fs->exists(path)) {
-        server.send(404, "application/json", "{\"success\":false,\"error\":\"File not found\"}");
+        sendPerfFileError(server,
+                          404,
+                          kReasonFileNotFound,
+                          "File not found",
+                          "delete",
+                          requestedName);
         return;
     }
 
@@ -386,6 +508,7 @@ void handlePerfFileDelete(WebServer& server) {
     doc["name"] = requestedName;
     if (!ok) {
         doc["error"] = "Delete failed";
+        doc["reasonCode"] = kReasonDeleteFailed;
     }
 
     sendJsonStream(server, doc, ok ? 200 : 500);
