@@ -41,7 +41,43 @@ Get device status including V1 connection, WiFi, GPS, and alerts.
     "ssid": "HomeNetwork",
     "rssi": -45,
     "sta_enabled": true,
-    "sta_ssid": "HomeNetwork"
+    "sta_ssid": "HomeNetwork",
+    "ap_last_transition_reason_code": 4,
+    "ap_last_transition_reason": "low_dma",
+    "low_dma_cooldown_ms": 12000,
+    "auto_start": {
+      "gate": "waiting_dma",
+      "gateCode": 6,
+      "enableWifi": true,
+      "enableWifiAtBoot": true,
+      "bleConnected": true,
+      "v1ConnectedAtMs": 1739650000000,
+      "msSinceV1Connect": 2500,
+      "settleMs": 3000,
+      "bootTimeoutMs": 30000,
+      "canStartDma": false,
+      "wifiAutoStartDone": false,
+      "bleSettled": false,
+      "bootTimeoutReached": false,
+      "shouldAutoStart": false,
+      "startTriggered": false,
+      "startSucceeded": false
+    }
+  },
+  "lockout": {
+    "mode": "enforce",
+    "modeRaw": 3,
+    "coreGuardEnabled": true,
+    "coreGuardTripped": false,
+    "coreGuardReason": "none",
+    "maxQueueDrops": 10,
+    "maxPerfDrops": 10,
+    "maxEventBusDrops": 10,
+    "queueDrops": 0,
+    "perfDrops": 0,
+    "eventBusDrops": 0,
+    "enforceRequested": true,
+    "enforceAllowed": true
   },
   "device": {
     "uptime": 3600,
@@ -73,6 +109,8 @@ Get device status including V1 connection, WiFi, GPS, and alerts.
   }
 }
 ```
+
+`lockout` surfaces GPS lockout core-guard state so enforcement fail-open decisions are visible in the main status response. `wifi.ap_last_transition_reason*`, `wifi.low_dma_cooldown_ms`, and `wifi.auto_start` expose WiFi safety gating and deferred auto-start state without requiring the debug metrics surface.
 
 ### GET /ping
 

@@ -32,6 +32,7 @@
 #include "wifi_manager.h"
 #include "settings.h"
 #include "settings_runtime_sync.h"
+#include "status_observability_payload.h"
 #include "touch_handler.h"
 #include "v1_profiles.h"
 #include "v1_devices.h"
@@ -117,6 +118,7 @@ static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_MS = 400;
 static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_WAKE_MS = 120;
 static constexpr unsigned long CONNECTION_STATE_PROCESS_MAX_GAP_MS = 1000;
 MainRuntimeState mainRuntimeState;
+static bool wifiStatusObservabilityCallbackConfigured = false;
 
 // Display preview driver (color demos)
 DisplayPreviewModule displayPreviewModule;
@@ -257,6 +259,44 @@ static void configureLoopPostDisplayModule() {
 
 static void configureWifiRuntimeModule() {
     getWifiOrchestrator().ensureCallbacksConfigured();
+    if (!wifiStatusObservabilityCallbackConfigured) {
+        wifiManager.appendStatusCallback([](JsonObject obj) {
+            const V1Settings& settings = settingsManager.get();
+            const GpsLockoutCoreGuardStatus lockoutGuard = gpsLockoutEvaluateCoreGuard(
+                settings.gpsLockoutCoreGuardEnabled,
+                settings.gpsLockoutMaxQueueDrops,
+                settings.gpsLockoutMaxPerfDrops,
+                settings.gpsLockoutMaxEventBusDrops,
+                perfCounters.queueDrops.load(),
+                perfCounters.perfDrop.load(),
+                systemEventBus.getDropCount());
+
+            StatusObservabilityPayload::LockoutStatusSnapshot lockoutStatus;
+            lockoutStatus.mode = lockoutRuntimeModeName(settings.gpsLockoutMode);
+            lockoutStatus.modeRaw = static_cast<uint8_t>(settings.gpsLockoutMode);
+            lockoutStatus.coreGuardEnabled = settings.gpsLockoutCoreGuardEnabled;
+            lockoutStatus.coreGuardTripped = lockoutGuard.tripped;
+            lockoutStatus.coreGuardReason = lockoutGuard.reason;
+            lockoutStatus.maxQueueDrops = settings.gpsLockoutMaxQueueDrops;
+            lockoutStatus.maxPerfDrops = settings.gpsLockoutMaxPerfDrops;
+            lockoutStatus.maxEventBusDrops = settings.gpsLockoutMaxEventBusDrops;
+            lockoutStatus.queueDrops = perfCounters.queueDrops.load();
+            lockoutStatus.perfDrops = perfCounters.perfDrop.load();
+            lockoutStatus.eventBusDrops = systemEventBus.getDropCount();
+            lockoutStatus.enforceRequested = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE);
+            lockoutStatus.enforceAllowed = lockoutStatus.enforceRequested && !lockoutGuard.tripped;
+
+            StatusObservabilityPayload::WifiStatusSnapshot wifiStatus;
+            wifiStatus.apLastTransitionReasonCode = perfGetWifiApLastTransitionReason();
+            wifiStatus.apLastTransitionReason =
+                perfWifiApTransitionReasonName(wifiStatus.apLastTransitionReasonCode);
+            wifiStatus.lowDmaCooldownRemainingMs = wifiManager.lowDmaCooldownRemainingMs();
+            wifiStatus.autoStart = wifiAutoStartModule.getLastDecision();
+
+            StatusObservabilityPayload::appendStatusObservability(obj, lockoutStatus, wifiStatus);
+        });
+        wifiStatusObservabilityCallbackConfigured = true;
+    }
 
     WifiRuntimeModule::Providers wifiRuntimeProviders;
     wifiRuntimeProviders.runWifiAutoStartProcess =

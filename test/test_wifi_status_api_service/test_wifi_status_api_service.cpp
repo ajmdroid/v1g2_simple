@@ -194,6 +194,38 @@ void test_handle_status_merges_legacy_status_and_alert_json() {
     releaseCache(cache, cacheTime);
 }
 
+void test_handle_status_preserves_nested_wifi_merges() {
+    WebServer server(80);
+    FakeStatusRuntime rt;
+    rt.mergeStatus = [](JsonObject obj) {
+        JsonObject wifi = obj["wifi"].as<JsonObject>();
+        wifi["low_dma_cooldown_ms"] = 9000;
+        JsonObject autoStart = wifi["auto_start"].to<JsonObject>();
+        autoStart["gate"] = "waiting_dma";
+        JsonObject lockout = obj["lockout"].to<JsonObject>();
+        lockout["coreGuardTripped"] = true;
+    };
+
+    WifiStatusApiService::StatusJsonCache cache;
+    unsigned long cacheTime = 0;
+    unsigned long now = 2100;
+
+    WifiStatusApiService::handleApiStatus(
+        server,
+        makeRuntime(rt),
+        cache,
+        cacheTime,
+        500,
+        [&now]() { return now; },
+        []() { return true; });
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"low_dma_cooldown_ms\":9000"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"auto_start\":{\"gate\":\"waiting_dma\"}"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"lockout\":{\"coreGuardTripped\":true}"));
+    releaseCache(cache, cacheTime);
+}
+
 void test_handle_status_cache_hit_reuses_cached_payload() {
     WebServer server(80);
     FakeStatusRuntime rt;
@@ -477,6 +509,7 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_handle_status_builds_core_payload);
     RUN_TEST(test_handle_status_merges_legacy_status_and_alert_json);
+    RUN_TEST(test_handle_status_preserves_nested_wifi_merges);
     RUN_TEST(test_handle_status_cache_hit_reuses_cached_payload);
     RUN_TEST(test_handle_status_cache_expiry_rebuilds_payload);
     RUN_TEST(test_handle_status_prefers_psram_cache_allocation);

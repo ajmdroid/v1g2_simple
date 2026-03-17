@@ -89,6 +89,23 @@ public:
         statusCallback = std::move(callback);
     }
 
+    void appendStatusCallback(std::function<void(ArduinoJson::JsonObject)> callback) {
+        ++statusCallbackCalls;
+        if (!callback) {
+            return;
+        }
+        if (!statusCallback) {
+            statusCallback = std::move(callback);
+            return;
+        }
+        auto previous = std::move(statusCallback);
+        statusCallback = [previous = std::move(previous), callback = std::move(callback)](
+                             ArduinoJson::JsonObject obj) {
+            previous(obj);
+            callback(obj);
+        };
+    }
+
     void setAlertCallback(std::function<void(ArduinoJson::JsonObject)> callback) {
         ++alertCallbackCalls;
         alertCallback = std::move(callback);

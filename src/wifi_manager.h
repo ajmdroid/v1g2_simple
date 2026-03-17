@@ -135,6 +135,21 @@ public:
     // Callbacks for alert data (to display on web page)
     void setAlertCallback(std::function<void(JsonObject)> callback) { mergeAlert = callback; }
     void setStatusCallback(std::function<void(JsonObject)> callback) { mergeStatus = callback; }
+    void appendStatusCallback(std::function<void(JsonObject)> callback) {
+        if (!callback) {
+            return;
+        }
+        if (!mergeStatus) {
+            mergeStatus = std::move(callback);
+            return;
+        }
+
+        auto previous = std::move(mergeStatus);
+        mergeStatus = [previous = std::move(previous), callback = std::move(callback)](JsonObject obj) {
+            previous(obj);
+            callback(obj);
+        };
+    }
     
     // Callback for V1 commands (dark mode, mute)
     void setCommandCallback(std::function<bool(const char*, bool)> callback) { sendV1Command = callback; }
