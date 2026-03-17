@@ -18,7 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_ROOT = ROOT / "test"
-BUILD_ROOT = ROOT / ".pio" / "serial_test_builds"
+BUILD_ROOT = ROOT / ".artifacts" / "serial_test_builds"
 
 VALID_ENVS = {"native", "native-replay", "native-sanitized"}
 

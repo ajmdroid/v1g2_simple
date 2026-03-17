@@ -3,12 +3,14 @@
 #include <ArduinoJson.h>
 
 #include "../../settings.h"
+#include "../../settings_runtime_sync.h"
 #include "../../storage_manager.h"
 #include "../../v1_profiles.h"
 #include "../../backup_payload_builder.h"
 #include "../gps/gps_runtime_module.h"
 #include "../gps/gps_lockout_safety.h"
 #include "../lockout/lockout_band_policy.h"
+#include "../lockout/lockout_learner.h"
 #include "../obd/obd_runtime_module.h"
 #include "../speed/speed_source_selector.h"
 #include "json_stream_response.h"
@@ -109,14 +111,12 @@ static void handleRestore(WebServer& server) {
         return;
     }
 
-    gpsRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
-    obdRuntimeModule.setEnabled(settingsManager.get().obdEnabled);
-    obdRuntimeModule.setMinRssi(settingsManager.get().obdMinRssi);
-    speedSourceSelector.syncEnabledInputs(settingsManager.get().gpsEnabled,
-                                         settingsManager.get().obdEnabled);
-    lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
-    lockoutSetKLearningEnabled(settingsManager.get().gpsLockoutKLearningEnabled);
-    lockoutSetXLearningEnabled(settingsManager.get().gpsLockoutXLearningEnabled);
+    const V1Settings& settings = settingsManager.get();
+    SettingsRuntimeSync::syncGpsRuntimeEnabled(settings, gpsRuntimeModule);
+    SettingsRuntimeSync::syncObdRuntimeSettings(settings, obdRuntimeModule);
+    SettingsRuntimeSync::syncSpeedSourceSelectorInputs(settings, speedSourceSelector);
+    SettingsRuntimeSync::syncLockoutBandLearningPolicy(settings);
+    SettingsRuntimeSync::syncLockoutLearnerTuning(settings, lockoutLearner);
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", applyResult.profilesRestored);
     

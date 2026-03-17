@@ -22,6 +22,7 @@
 #include "packet_parser.h"
 #include "perf_sd_logger.h"
 #include "settings.h"
+#include "settings_runtime_sync.h"
 #include "storage_manager.h"
 #include "time_service.h"
 #include "touch_handler.h"
@@ -29,7 +30,6 @@
 #include "v1_profiles.h"
 #include "modules/auto_push/auto_push_module.h"
 #include "modules/alert_persistence/alert_persistence_module.h"
-#include "modules/lockout/lockout_band_policy.h"
 #include "modules/lockout/lockout_boot_storage.h"
 #include "modules/lockout/lockout_index.h"
 #include "modules/lockout/lockout_learner.h"
@@ -185,9 +185,7 @@ void initializeStorageAndProfiles() {
 
 void applyLockoutPolicyAndLoadZonesFromStorage() {
     // Apply persisted Ka lockout policy before loading/sanitizing lockout zones.
-    lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
-    lockoutSetKLearningEnabled(settingsManager.get().gpsLockoutKLearningEnabled);
-    lockoutSetXLearningEnabled(settingsManager.get().gpsLockoutXLearningEnabled);
+    SettingsRuntimeSync::syncLockoutBandLearningPolicy(settingsManager.get());
 
     lockoutStore.begin(&lockoutIndex);
 

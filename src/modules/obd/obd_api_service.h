@@ -6,6 +6,7 @@
 
 class ObdRuntimeModule;
 class SettingsManager;
+class SpeedSourceSelector;
 
 namespace ObdApiService {
 
@@ -31,7 +32,7 @@ void handleApiForget(WebServer& server,
 void handleApiConfig(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
                      SettingsManager& settingsManager,
-                     const std::function<void(bool)>& setSpeedSourceObdEnabled,
+                     SpeedSourceSelector& speedSourceSelector,
                      const std::function<bool()>& checkRateLimit,
                      const std::function<void()>& markUiActivity);
 

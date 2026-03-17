@@ -552,11 +552,7 @@ void WiFiManager::setupWebServer() {
         ObdApiService::handleApiConfig(server,
                                       obdRuntimeModule,
                                       settingsManager,
-                                      [this](bool enabled) {
-                                          speedSourceSelector.syncEnabledInputs(
-                                              settingsManager.get().gpsEnabled,
-                                              enabled);
-                                      },
+                                      speedSourceSelector,
                                       rateLimitCallback,
                                       markUiActivityCallback);
     });

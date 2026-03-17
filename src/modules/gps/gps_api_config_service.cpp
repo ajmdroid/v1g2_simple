@@ -15,6 +15,7 @@
 #include "../../settings.h"
 #include "../../perf_metrics.h"
 #endif
+#include "../../settings_runtime_sync.h"
 #include "../../../include/clamp_utils.h"
 
 namespace GpsApiService {
@@ -593,9 +594,8 @@ void handleConfig(WebServer& server,
 
     if (hasEnabled) {
         settingsManager.setGpsEnabled(enabled);
-        gpsRuntimeModule.setEnabled(enabled);
-        speedSourceSelector.syncEnabledInputs(settingsManager.get().gpsEnabled,
-                                             settingsManager.get().obdEnabled);
+        SettingsRuntimeSync::syncGpsRuntimeEnabled(settingsManager.get(), gpsRuntimeModule);
+        SettingsRuntimeSync::syncSpeedSourceSelectorInputs(settingsManager.get(), speedSourceSelector);
     }
 
     bool lockoutSettingsChanged = false;
@@ -696,22 +696,11 @@ void handleConfig(WebServer& server,
         lockoutSettingsChanged = true;
         learnerTuningChanged = true;
     }
-    if (hasKaLearningEnabled) {
-        lockoutSetKaLearningEnabled(mutableSettings.gpsLockoutKaLearningEnabled);
-    }
-    if (hasKLearningEnabled) {
-        lockoutSetKLearningEnabled(mutableSettings.gpsLockoutKLearningEnabled);
-    }
-    if (hasXLearningEnabled) {
-        lockoutSetXLearningEnabled(mutableSettings.gpsLockoutXLearningEnabled);
+    if (hasKaLearningEnabled || hasKLearningEnabled || hasXLearningEnabled) {
+        SettingsRuntimeSync::syncLockoutBandLearningPolicy(mutableSettings);
     }
     if (learnerTuningChanged) {
-        lockoutLearner.setTuning(mutableSettings.gpsLockoutLearnerPromotionHits,
-                                 mutableSettings.gpsLockoutLearnerRadiusE5,
-                                 mutableSettings.gpsLockoutLearnerFreqToleranceMHz,
-                                 mutableSettings.gpsLockoutLearnerLearnIntervalHours,
-                                 mutableSettings.gpsLockoutMaxHdopX10,
-                                 mutableSettings.gpsLockoutMinLearnerSpeedMph);
+        SettingsRuntimeSync::syncLockoutLearnerTuning(mutableSettings, lockoutLearner);
     }
     if (lockoutSettingsChanged) {
         settingsManager.save();

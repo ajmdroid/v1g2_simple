@@ -4,8 +4,12 @@
 #include <algorithm>
 
 #include "modules/obd/obd_runtime_module.h"
+#ifndef UNIT_TEST
+#include "modules/speed/speed_source_selector.h"
+#endif
 #include "modules/wifi/wifi_api_response.h"
 #include "settings.h"
+#include "settings_runtime_sync.h"
 
 namespace ObdApiService {
 
@@ -154,7 +158,7 @@ void handleApiForget(WebServer& server,
 void handleApiConfig(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
                      SettingsManager& settingsManager,
-                     const std::function<void(bool)>& setSpeedSourceObdEnabled,
+                     SpeedSourceSelector& speedSourceSelector,
                      const std::function<bool()>& checkRateLimit,
                      const std::function<void()>& markUiActivity) {
     if (markUiActivity) markUiActivity();
@@ -179,25 +183,26 @@ void handleApiConfig(WebServer& server,
 
     V1Settings& settings = settingsManager.mutableSettings();
     bool changed = false;
+    bool enabledChanged = false;
 
     if (body["enabled"].is<bool>()) {
         bool enabled = body["enabled"].as<bool>();
         settings.obdEnabled = enabled;
-        obdRuntime.setEnabled(enabled);
-        if (setSpeedSourceObdEnabled) {
-            setSpeedSourceObdEnabled(enabled);
-        }
         changed = true;
+        enabledChanged = true;
     }
     if (!body["minRssi"].isNull()) {
         int rssi = body["minRssi"].as<int>();
         rssi = std::max(-90, std::min(rssi, -40));
         settings.obdMinRssi = static_cast<int8_t>(rssi);
-        obdRuntime.setMinRssi(settings.obdMinRssi);
         changed = true;
     }
 
     if (changed) {
+        SettingsRuntimeSync::syncObdRuntimeSettings(settings, obdRuntime);
+        if (enabledChanged) {
+            SettingsRuntimeSync::syncSpeedSourceSelectorInputs(settings, speedSourceSelector);
+        }
         settingsManager.save();
     }
 

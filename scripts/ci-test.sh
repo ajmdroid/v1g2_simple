@@ -87,6 +87,7 @@ run_step "Audio manifest guardrail" python3 scripts/check_audio_asset_manifest.p
 
 section "Firmware Build"
 run_step "Firmware static analysis" ./scripts/pio-check.sh
+run_step "Firmware clean" pio run -e waveshare-349 -t clean -j 1
 run_step "Firmware build" pio run -e waveshare-349 -j 1
 run_step "LittleFS image build" pio run -e waveshare-349 -t buildfs -j 1
 run_step "Flash package truth report" python3 scripts/report_flash_package_size.py \

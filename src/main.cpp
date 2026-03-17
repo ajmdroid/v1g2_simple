@@ -31,6 +31,7 @@
 #include "display_mode.h"
 #include "wifi_manager.h"
 #include "settings.h"
+#include "settings_runtime_sync.h"
 #include "touch_handler.h"
 #include "v1_profiles.h"
 #include "v1_devices.h"
@@ -78,7 +79,6 @@
 #include "modules/lockout/lockout_enforcer.h"
 #include "modules/lockout/lockout_learner.h"
 #include "modules/lockout/lockout_store.h"
-#include "modules/lockout/lockout_band_policy.h"
 #include "modules/lockout/lockout_runtime_mute_controller.h"
 #include "modules/lockout/lockout_pre_quiet_controller.h"
 #include "modules/lockout/road_map_reader.h"
@@ -750,15 +750,7 @@ static void configureLockoutPipelineModules() {
                                      &signalCaptureModule,
                                      &systemEventBus, &perfCounters, &timeService);
     lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
-    {
-        const V1Settings& settings = settingsManager.get();
-        lockoutLearner.setTuning(settings.gpsLockoutLearnerPromotionHits,
-                                 settings.gpsLockoutLearnerRadiusE5,
-                                 settings.gpsLockoutLearnerFreqToleranceMHz,
-                                 settings.gpsLockoutLearnerLearnIntervalHours,
-                                 settings.gpsLockoutMaxHdopX10,
-                                 settings.gpsLockoutMinLearnerSpeedMph);
-    }
+    SettingsRuntimeSync::syncLockoutLearnerTuning(settingsManager.get(), lockoutLearner);
 }
 
 static void configureRuntimeAndLockoutModules() {

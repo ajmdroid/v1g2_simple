@@ -14,6 +14,19 @@ SerialClass Serial;
 unsigned long mockMillis = 1000;
 unsigned long mockMicros = 1000000;
 
+class SpeedSourceSelector {
+public:
+    void syncEnabledInputs(bool gpsEnabled, bool obdEnabled) {
+        ++syncEnabledInputsCalls;
+        lastGpsEnabled = gpsEnabled;
+        lastObdEnabled = obdEnabled;
+    }
+
+    int syncEnabledInputsCalls = 0;
+    bool lastGpsEnabled = false;
+    bool lastObdEnabled = false;
+};
+
 static bool responseContains(const WebServer& server, const char* needle) {
     return std::strstr(server.lastBody.c_str(), needle) != nullptr;
 }
@@ -43,11 +56,11 @@ void test_config_get_returns_persisted_settings() {
     TEST_ASSERT_TRUE(responseContains(server, "\"minRssi\":-62"));
 }
 
-void test_config_updates_runtime_settings_and_speed_source_callback() {
+void test_config_updates_runtime_settings_and_selector_inputs() {
     WebServer server(80);
     SettingsManager settingsManager;
-    bool speedSourceEnabled = false;
-    int speedSourceCallbackCalls = 0;
+    SpeedSourceSelector speedSourceSelector;
+    settingsManager.settings.gpsEnabled = true;
 
     obdRuntimeModule.begin(false, "", 0, -80);
     server.setArg("plain", "{\"enabled\":true,\"minRssi\":-55}");
@@ -55,10 +68,7 @@ void test_config_updates_runtime_settings_and_speed_source_callback() {
     ObdApiService::handleApiConfig(server,
                                    obdRuntimeModule,
                                    settingsManager,
-                                   [&](bool enabled) {
-                                       speedSourceEnabled = enabled;
-                                       speedSourceCallbackCalls++;
-                                   },
+                                   speedSourceSelector,
                                    []() { return true; },
                                    []() {});
 
@@ -67,8 +77,9 @@ void test_config_updates_runtime_settings_and_speed_source_callback() {
     TEST_ASSERT_TRUE(settingsManager.settings.obdEnabled);
     TEST_ASSERT_EQUAL_INT8(-55, settingsManager.settings.obdMinRssi);
     TEST_ASSERT_TRUE(obdRuntimeModule.isEnabled());
-    TEST_ASSERT_TRUE(speedSourceEnabled);
-    TEST_ASSERT_EQUAL_INT(1, speedSourceCallbackCalls);
+    TEST_ASSERT_EQUAL_INT(1, speedSourceSelector.syncEnabledInputsCalls);
+    TEST_ASSERT_TRUE(speedSourceSelector.lastGpsEnabled);
+    TEST_ASSERT_TRUE(speedSourceSelector.lastObdEnabled);
     TEST_ASSERT_EQUAL_INT(1, settingsManager.saveCalls);
 
     obdRuntimeModule.startScan();
@@ -103,12 +114,13 @@ void test_forget_clears_saved_address_and_persists_setting() {
 void test_config_rejects_missing_json_body() {
     WebServer server(80);
     SettingsManager settingsManager;
+    SpeedSourceSelector speedSourceSelector;
     obdRuntimeModule.begin(false, "", 0, -80);
 
     ObdApiService::handleApiConfig(server,
                                    obdRuntimeModule,
                                    settingsManager,
-                                   [](bool) {},
+                                   speedSourceSelector,
                                    []() { return true; },
                                    []() {});
 
@@ -167,7 +179,7 @@ int main() {
     UNITY_BEGIN();
 
     RUN_TEST(test_config_get_returns_persisted_settings);
-    RUN_TEST(test_config_updates_runtime_settings_and_speed_source_callback);
+    RUN_TEST(test_config_updates_runtime_settings_and_selector_inputs);
     RUN_TEST(test_forget_clears_saved_address_and_persists_setting);
     RUN_TEST(test_config_rejects_missing_json_body);
     RUN_TEST(test_scan_rejects_when_obd_is_disabled);
