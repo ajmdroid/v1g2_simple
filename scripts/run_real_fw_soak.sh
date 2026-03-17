@@ -1282,7 +1282,10 @@ TREND_METRICS_NDJSON="$OUT_DIR/metrics.ndjson"
 TREND_METRICS_KV="$OUT_DIR/hardware_metrics_kv.txt"
 MANIFEST_JSON="$OUT_DIR/manifest.json"
 TREND_SCORING_JSON="$OUT_DIR/scoring.json"
+TREND_SCORING_STDERR="$OUT_DIR/scoring.stderr.log"
 TREND_SUMMARY_MD="$OUT_DIR/trend_summary.md"
+FINAL_RESULT_JSON="$OUT_DIR/final_result.json"
+SUMMARY_BODY_MD="$OUT_DIR/summary_body.md"
 SUMMARY_MD="$OUT_DIR/summary.md"
 : > "$RUN_LOG"
 : > "$SERIAL_LOG"
@@ -1291,6 +1294,7 @@ SUMMARY_MD="$OUT_DIR/summary.md"
 : > "$PANIC_JSONL"
 : > "$TREND_METRICS_NDJSON"
 : > "$TREND_METRICS_KV"
+: > "$TREND_SCORING_STDERR"
 
 GIT_SHA_SHORT="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
 GIT_REF_NAME="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
@@ -1435,6 +1439,22 @@ extract_json_uint_field() {
     | tr -d '\r\n' \
     | sed -n "s/.*\"${field}\":[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" \
     | head -n1
+}
+
+read_finalize_result_fields() {
+  local path="$1"
+  python3 - "$path" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+for field in ("result", "runtime_result", "trend_status", "trend_result", "exit_code", "trend_error"):
+    value = payload.get(field, "")
+    if value is None:
+        value = ""
+    print(value)
+PY
 }
 
 wait_for_json_endpoint() {
@@ -3221,9 +3241,9 @@ fi
   if [[ -n "$BASELINE_GATES_KV_FILE" ]]; then
     echo "- Baseline derived gates KV: \`$BASELINE_GATES_KV_FILE\`"
   fi
-} > "$SUMMARY_MD"
+} > "$SUMMARY_BODY_MD"
 
-base_result="$result"
+runtime_result="$result"
 track_name="${SOAK_PROFILE:-none}"
 cat > "$TREND_METRICS_KV" <<EOF
 metrics_ok_samples=${metrics_ok_samples_parsed}
@@ -3338,7 +3358,7 @@ print(count)
 PY
 )"
 
-python3 - "$MANIFEST_JSON" "$RUN_ID" "$GIT_SHA_SHORT" "$GIT_REF_NAME" "$BOARD_ID" "$ENV_NAME" "$track_name" "$RUN_STRESS_CLASS" "$base_result" "$trend_metric_count" <<'PY'
+python3 - "$MANIFEST_JSON" "$RUN_ID" "$GIT_SHA_SHORT" "$GIT_REF_NAME" "$BOARD_ID" "$ENV_NAME" "$track_name" "$RUN_STRESS_CLASS" "$runtime_result" "$trend_metric_count" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
@@ -3368,7 +3388,9 @@ payload = {
     "suite_or_profile": track_name,
     "stress_class": stress_class,
     "result": base_result,
+    "runtime_result": base_result,
     "base_result": base_result,
+    "trend_status": "pending",
     "metrics_file": "metrics.ndjson",
     "scoring_file": "scoring.json",
     "tracks": [track_name] if metric_count > 0 and track_name else [],
@@ -3377,78 +3399,97 @@ manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 PY
 
 trend_scorer_exit=0
+trend_scoring_skipped=0
+trend_error_detail=""
 
-set +e
-if [[ -n "$COMPARE_TO" ]]; then
-  python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-    "$MANIFEST_JSON" \
-    --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-    --compare-to "$COMPARE_TO" \
-    --json > "$TREND_SCORING_JSON"
+if [[ "$trend_metric_count" -le 0 ]]; then
+  trend_scoring_skipped=1
+  python3 - "$TREND_SCORING_JSON" "$runtime_result" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = {
+    "schema_version": 1,
+    "comparison_kind": "skipped",
+    "result": sys.argv[2],
+    "summary": {
+        "reason": "No trend metrics were emitted for this run.",
+    },
+}
+Path(sys.argv[1]).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
 else
-  python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-    "$MANIFEST_JSON" \
-    --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-    --json > "$TREND_SCORING_JSON"
-fi
-trend_scorer_exit=$?
-set -e
-
-if [[ "$trend_scorer_exit" -le 2 ]]; then
   set +e
   if [[ -n "$COMPARE_TO" ]]; then
     python3 "$ROOT_DIR/tools/score_hardware_run.py" \
       "$MANIFEST_JSON" \
       --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-      --compare-to "$COMPARE_TO" > "$TREND_SUMMARY_MD"
+      --compare-to "$COMPARE_TO" \
+      --json > "$TREND_SCORING_JSON" 2> "$TREND_SCORING_STDERR"
   else
     python3 "$ROOT_DIR/tools/score_hardware_run.py" \
       "$MANIFEST_JSON" \
-      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" > "$TREND_SUMMARY_MD"
+      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+      --json > "$TREND_SCORING_JSON" 2> "$TREND_SCORING_STDERR"
   fi
+  trend_scorer_exit=$?
   set -e
 
-  python3 - "$MANIFEST_JSON" "$TREND_SCORING_JSON" <<'PY'
-import json
-import sys
-from pathlib import Path
+  if [[ "$trend_scorer_exit" -le 2 ]]; then
+    set +e
+    if [[ -n "$COMPARE_TO" ]]; then
+      python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+        "$MANIFEST_JSON" \
+        --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+        --compare-to "$COMPARE_TO" > "$TREND_SUMMARY_MD" 2>> "$TREND_SCORING_STDERR"
+    else
+      python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+        "$MANIFEST_JSON" \
+        --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" > "$TREND_SUMMARY_MD" 2>> "$TREND_SCORING_STDERR"
+    fi
+    set -e
+  fi
 
-manifest_path = Path(sys.argv[1])
-scoring_path = Path(sys.argv[2])
-manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-scoring = json.loads(scoring_path.read_text(encoding="utf-8"))
-manifest["result"] = scoring["result"]
-manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-PY
-
-  {
-    echo ""
-    echo "## Trend Comparison"
-    echo ""
-    cat "$TREND_SUMMARY_MD"
-  } >> "$SUMMARY_MD"
-else
-  cat >> "$SUMMARY_MD" <<EOF
-
-## Trend Comparison
-
-- Result: **ERROR**
-- Structured trend scoring failed before a comparison summary could be generated.
-EOF
+  if [[ "$trend_scorer_exit" -gt 2 ]]; then
+    trend_error_detail="$(tr '\n' ' ' < "$TREND_SCORING_STDERR" | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')"
+    if [[ -z "$trend_error_detail" ]]; then
+      trend_error_detail="Trend scorer exited ${trend_scorer_exit} before producing a usable result."
+    fi
+  fi
 fi
 
+finalize_args=(
+  --manifest "$MANIFEST_JSON"
+  --runtime-result "$runtime_result"
+  --trend-scorer-exit "$trend_scorer_exit"
+  --trend-scoring-json "$TREND_SCORING_JSON"
+  --summary-body "$SUMMARY_BODY_MD"
+  --summary-output "$SUMMARY_MD"
+  --trend-summary "$TREND_SUMMARY_MD"
+)
+if [[ "$trend_scoring_skipped" -eq 1 ]]; then
+  finalize_args+=(--trend-skipped)
+fi
+if [[ "$ALLOW_INCONCLUSIVE" -eq 1 ]]; then
+  finalize_args+=(--allow-inconclusive)
+fi
+if [[ -n "$trend_error_detail" ]]; then
+  finalize_args+=(--trend-error-detail "$trend_error_detail")
+fi
+python3 "$ROOT_DIR/tools/finalize_real_fw_soak_result.py" "${finalize_args[@]}" > "$FINAL_RESULT_JSON"
+
+readarray -t final_result_fields < <(read_finalize_result_fields "$FINAL_RESULT_JSON")
+final_result="${final_result_fields[0]:-ERROR}"
+runtime_result="${final_result_fields[1]:-$runtime_result}"
+trend_status="${final_result_fields[2]:-error}"
+trend_result="${final_result_fields[3]:-}"
+final_exit_code="${final_result_fields[4]:-1}"
+trend_error_detail="${final_result_fields[5]:-$trend_error_detail}"
+
 echo "==> Real firmware soak complete"
-echo "    result: $result"
+echo "    result: $final_result"
 echo "    summary: $SUMMARY_MD"
 echo "    serial log: $SERIAL_LOG"
 echo "    manifest: $MANIFEST_JSON"
-
-if [[ "$result" == "FAIL" ]]; then
-  exit 1
-fi
-if [[ "$result" == "INCONCLUSIVE" && "$ALLOW_INCONCLUSIVE" -ne 1 ]]; then
-  exit 2
-fi
-if [[ "$trend_scorer_exit" -ge 1 ]]; then
-  exit 1
-fi
+exit "$final_exit_code"
