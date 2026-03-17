@@ -109,8 +109,8 @@ void handleApiSave(WebServer& server,
             static_cast<uint8_t>(std::max(0, std::min(fadeVolume, 9)));
     }
 
-    if (runtime.saveSettings) {
-        runtime.saveSettings();
+    if (runtime.persistSettings) {
+        runtime.persistSettings();
     }
 
     server.send(200, "application/json", "{\"success\":true}");

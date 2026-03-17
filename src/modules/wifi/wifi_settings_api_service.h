@@ -22,7 +22,7 @@ struct Runtime {
     std::function<void(bool)> setObdRuntimeEnabled;
     std::function<void(int8_t)> setObdRuntimeMinRssi;
     std::function<void(bool)> setSpeedSourceObdEnabled;
-    std::function<void()> save;
+    std::function<void()> persistSettings;
 };
 
 void handleApiDeviceSettingsGet(WebServer& server, const Runtime& runtime);

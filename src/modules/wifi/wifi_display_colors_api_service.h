@@ -18,7 +18,7 @@ struct Runtime {
     std::function<void(uint32_t)> requestColorPreviewHoldMs;
     std::function<bool()> isColorPreviewRunning;
     std::function<void()> cancelColorPreview;
-    std::function<void()> saveSettings;
+    std::function<void()> persistSettings;
 };
 
 void handleApiGet(WebServer& server, const Runtime& runtime);

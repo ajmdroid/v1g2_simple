@@ -108,8 +108,8 @@ void handleApiSave(WebServer& server,
     }
 
     // Persist all color/visibility changes
-    if (runtime.saveSettings) {
-        runtime.saveSettings();
+    if (runtime.persistSettings) {
+        runtime.persistSettings();
     }
 
     // Trigger immediate display preview to show new colors (skip if requested)
@@ -166,8 +166,8 @@ void handleApiReset(WebServer& server,
     s.colorGps = 0x07FF;
     s.freqUseBandColor = false;
 
-    if (runtime.saveSettings) {
-        runtime.saveSettings();
+    if (runtime.persistSettings) {
+        runtime.persistSettings();
     }
 
     // Trigger immediate display preview to show reset colors.

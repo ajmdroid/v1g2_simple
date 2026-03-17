@@ -107,8 +107,8 @@ void handleApiDeviceSettingsSave(WebServer& server,
             argIsTrue(server.arg("enableSignalTraceLogging"));
     }
 
-    if (runtime.save) {
-        runtime.save();
+    if (runtime.persistSettings) {
+        runtime.persistSettings();
     }
 
     server.send(200, "application/json", "{\"success\":true}");
@@ -189,8 +189,8 @@ void handleApiSettingsSave(WebServer& server,
 
     // All changes are queued in the settingsManager instance. Now, save them all at once.
     Serial.println("--- Calling settingsManager.save() ---");
-    if (runtime.save) {
-        runtime.save();
+    if (runtime.persistSettings) {
+        runtime.persistSettings();
     }
 
     server.send(200, "application/json", "{\"success\":true}");

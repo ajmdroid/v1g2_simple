@@ -133,9 +133,7 @@ WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
         []() {
             cancelColorPreview();
         },
-        [this]() {
-            settingsManager.saveDeferredBackup();
-        },
+        [this]() { settingsManager.saveDeferredBackup(); },
     };
 }
 
@@ -150,9 +148,7 @@ WifiAudioApiService::Runtime WiFiManager::makeAudioRuntime() {
         [](uint8_t volume) {
             audio_set_volume(volume);
         },
-        [this]() {
-            settingsManager.saveDeferredBackup();
-        },
+        [this]() { settingsManager.saveDeferredBackup(); },
     };
 }
 
@@ -223,9 +219,7 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
         [](bool enabled) {
             speedSourceSelector.setObdEnabled(enabled);
         },
-        [this]() {
-            settingsManager.saveDeferredBackup();
-        },
+        [this]() { settingsManager.saveDeferredBackup(); },
     };
 }
 
