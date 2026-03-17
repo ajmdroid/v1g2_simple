@@ -41,6 +41,7 @@ Owns post-display connection-state dispatch cadence, periodic maintenance, and l
 - Speed arbitration/counters: `loop()` in [src/main.cpp](/Users/ajmedford/v1g2_simple/src/main.cpp) via `speedSourceSelector.update(now)`
 - Canonical selected-speed consumption for lockout learning: `LockoutOrchestrationModule` via `speedSourceSelector.selectedSpeed()`
 - Display/lockout refresh: `LoopDisplayModule`
+- Display pipeline throttles and recovery cadence: `DisplayPipelineModule` instance state
 - Parsed-frame BLE volume execution: `DisplayOrchestrationModule`
 - Wi-Fi runtime progression: `WifiRuntimeModule`
 - Connection-state dispatch cadence: `LoopPostDisplayModule`

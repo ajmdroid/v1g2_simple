@@ -270,6 +270,37 @@ void test_restore_current_owner_restores_live_display_when_alerts_present() {
     TEST_ASSERT_EQUAL(1, display.forceNextRedrawCalls);
 }
 
+void test_alert_gap_recovery_throttle_is_instance_owned() {
+    PacketParser parserA;
+    PacketParser parserB;
+    V1BLEClient bleA;
+    V1BLEClient bleB;
+    V1Display displayA;
+    V1Display displayB;
+    AlertPersistenceModule persistenceA;
+    AlertPersistenceModule persistenceB;
+    VoiceModule voiceA;
+    VoiceModule voiceB;
+    DisplayMode modeA = DisplayMode::IDLE;
+    DisplayMode modeB = DisplayMode::IDLE;
+    DisplayPipelineModule moduleA;
+    DisplayPipelineModule moduleB;
+
+    parserA.setActiveBands(BAND_K);
+    parserB.setActiveBands(BAND_K);
+
+    moduleA.begin(&modeA, &displayA, &parserA, &settingsManager, &bleA, &persistenceA, &voiceA);
+    moduleB.begin(&modeB, &displayB, &parserB, &settingsManager, &bleB, &persistenceB, &voiceB);
+
+    mockMillis = 1000;
+    mockMicros = 1000 * 1000UL;
+    moduleA.handleParsed(1000, false);
+    moduleB.handleParsed(1000, false);
+
+    TEST_ASSERT_EQUAL(1, bleA.requestAlertDataCalls);
+    TEST_ASSERT_EQUAL(1, bleB.requestAlertDataCalls);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_handle_parsed_updates_live_display_when_alert_present);
@@ -277,5 +308,6 @@ int main() {
     RUN_TEST(test_handle_parsed_prefers_persisted_alert_when_configured);
     RUN_TEST(test_restore_current_owner_shows_scanning_when_ble_is_disconnected);
     RUN_TEST(test_restore_current_owner_restores_live_display_when_alerts_present);
+    RUN_TEST(test_alert_gap_recovery_throttle_is_instance_owned);
     return UNITY_END();
 }

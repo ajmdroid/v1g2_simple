@@ -53,6 +53,7 @@ private:
     static constexpr unsigned long DISPLAY_DRAW_MIN_MS = 25;
 
     // Alert gap recovery
+    unsigned long lastAlertGapRecoverMs = 0;
     unsigned long displayLatencySum = 0;
     unsigned long displayLatencyCount = 0;
     unsigned long displayLatencyMax = 0;

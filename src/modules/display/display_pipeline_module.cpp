@@ -17,10 +17,8 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     voice = voiceModule;
     lastPersistenceSlot = -1;
     lastRenderedOwner_ = RenderOwner::Unknown;
+    lastAlertGapRecoverMs = 0;
 }
-
-// Track lastAlertGapRecoverMs locally since it was removed from header
-static unsigned long lastAlertGapRecoverMs = 0;
 
 void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
                                             const DisplayState& state,
