@@ -1681,7 +1681,7 @@ For the full API reference with request/response schemas and examples, see [API.
 | GET | `/api/autopush/slots` | Get slot configurations |
 | GET | `/api/audio/settings` | Get current audio settings |
 | POST | `/api/audio/settings` | Save audio settings |
-| GET | `/api/displaycolors` | Get current colors, brightness, and display style |
+| GET | `/api/display/settings` | Get current colors, brightness, and display style |
 | GET | `/api/obd/config` | Get OBD enable/min RSSI config |
 | GET | `/api/debug/metrics` | Performance metrics |
 | GET | `/ping` | Health check |

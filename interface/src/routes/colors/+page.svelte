@@ -18,6 +18,10 @@
 	} from '$lib/utils/colors';
 
 	const SIGNAL_BARS = [1, 2, 3, 4, 5, 6];
+	const DISPLAY_SETTINGS_ENDPOINT = '/api/display/settings';
+	const DISPLAY_SETTINGS_RESET_ENDPOINT = '/api/display/settings/reset';
+	const DISPLAY_PREVIEW_ENDPOINT = '/api/display/preview';
+	const DISPLAY_PREVIEW_CLEAR_ENDPOINT = '/api/display/preview/clear';
 
 	const BAND_FIELDS = [
 		{ key: 'bandL', id: 'bandL-color', label: 'Laser (L)', pickerLabel: 'Laser Band', preview: 'L' },
@@ -160,7 +164,7 @@
 	async function fetchColors() {
 		loading = true;
 		try {
-			const res = await fetchWithTimeout('/api/displaycolors');
+			const res = await fetchWithTimeout(DISPLAY_SETTINGS_ENDPOINT);
 			if (res.ok) {
 				const data = await res.json();
 				colors = normalizeColorPayload(data, colors);
@@ -179,7 +183,7 @@
 			const body = new URLSearchParams();
 			body.set('displayStyle', String(nextStyle));
 			body.set('skipPreview', 'true');
-			const res = await fetchWithTimeout('/api/displaycolors', {
+			const res = await fetchWithTimeout(DISPLAY_SETTINGS_ENDPOINT, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 				body
@@ -206,7 +210,7 @@
 		saving = true;
 		message = null;
 		try {
-			const res = await fetchWithTimeout('/api/displaycolors', {
+			const res = await fetchWithTimeout(DISPLAY_SETTINGS_ENDPOINT, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 				body: buildColorParams(colors)
@@ -217,7 +221,7 @@
 			}
 			message = { type: 'success', text: 'Colors saved! Previewing on display...' };
 			setTimeout(() => {
-				fetchWithTimeout('/api/displaycolors/clear', { method: 'POST' }).catch((error) => {
+				fetchWithTimeout(DISPLAY_PREVIEW_CLEAR_ENDPOINT, { method: 'POST' }).catch((error) => {
 					console.warn('Failed to clear display color preview', error);
 				});
 			}, 3000);
@@ -230,7 +234,7 @@
 
 	async function testColors() {
 		try {
-			await fetchWithTimeout('/api/displaycolors/preview', { method: 'POST' });
+			await fetchWithTimeout(DISPLAY_PREVIEW_ENDPOINT, { method: 'POST' });
 		} catch (_) {
 			// Ignore preview failures.
 		}
@@ -239,7 +243,7 @@
 	async function resetDefaults() {
 		if (!confirm('Reset all colors to defaults?')) return;
 		try {
-			const res = await fetchWithTimeout('/api/displaycolors/reset', { method: 'POST' });
+			const res = await fetchWithTimeout(DISPLAY_SETTINGS_RESET_ENDPOINT, { method: 'POST' });
 			if (!res.ok) {
 				message = { type: 'error', text: 'Failed to reset' };
 				return;

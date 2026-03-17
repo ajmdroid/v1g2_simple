@@ -18,7 +18,7 @@ void handleApiSave(WebServer& server,
         return;
     }
 
-    Serial.println("[HTTP] POST /api/displaycolors");
+    Serial.println("[HTTP] POST /api/display/settings");
 #ifndef UNIT_TEST
     Serial.printf("[HTTP] Args count: %d\n", server.args());
     for (int i = 0; i < server.args(); i++) {
@@ -183,7 +183,7 @@ static void handlePreviewImpl(WebServer& server, const Runtime& runtime) {
         runtime.isColorPreviewRunning && runtime.isColorPreviewRunning();
 
     if (previewRunning) {
-        Serial.println("[HTTP] POST /api/displaycolors/preview - toggling off");
+        Serial.println("[HTTP] POST /api/display/preview - toggling off");
         if (runtime.cancelColorPreview) {
             runtime.cancelColorPreview();
         }
@@ -192,7 +192,7 @@ static void handlePreviewImpl(WebServer& server, const Runtime& runtime) {
         return;
     }
 
-    Serial.println("[HTTP] POST /api/displaycolors/preview - starting");
+    Serial.println("[HTTP] POST /api/display/preview - starting");
     // Do NOT call showDisplayDemo() here — it performs 3 blocking SPI flushes
     // (~120ms) inside handleClient(), inflating wifiMaxUs.  The preview module
     // renders the first frame on the very next main-loop display phase.
@@ -210,7 +210,7 @@ void handleApiPreview(WebServer& server,
 }
 
 static void handleClearImpl(WebServer& server, const Runtime& runtime) {
-    Serial.println("[HTTP] POST /api/displaycolors/clear - cancelling preview");
+    Serial.println("[HTTP] POST /api/display/preview/clear - cancelling preview");
     if (runtime.cancelColorPreview) {
         runtime.cancelColorPreview();
     }

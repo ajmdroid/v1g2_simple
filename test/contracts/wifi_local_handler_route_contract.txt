@@ -4,7 +4,7 @@ route=HTTP_GET /api/audio/settings rate_limit=0 ui_activity=0 handlers= delegate
 route=HTTP_GET /api/autopush/slots rate_limit=0 ui_activity=0 handlers= delegates=WifiAutoPushApiService::handleApiSlots
 route=HTTP_GET /api/autopush/status rate_limit=0 ui_activity=0 handlers= delegates=WifiAutoPushApiService::handleApiStatus
 route=HTTP_GET /api/device/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiSettingsApiService::handleApiDeviceSettingsGet
-route=HTTP_GET /api/displaycolors rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiGet
+route=HTTP_GET /api/display/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiGet
 route=HTTP_GET /api/obd/config rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiConfigGet
 route=HTTP_GET /api/obd/status rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiStatus
 route=HTTP_GET /api/status rate_limit=0 ui_activity=0 handlers= delegates=WifiStatusApiService::handleApiStatus
@@ -18,10 +18,10 @@ route=HTTP_POST /api/autopush/activate rate_limit=0 ui_activity=0 handlers= dele
 route=HTTP_POST /api/autopush/push rate_limit=0 ui_activity=0 handlers= delegates=WifiAutoPushApiService::handleApiPushNow
 route=HTTP_POST /api/autopush/slot rate_limit=0 ui_activity=0 handlers= delegates=WifiAutoPushApiService::handleApiSlotSave
 route=HTTP_POST /api/device/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiSettingsApiService::handleApiDeviceSettingsSave
-route=HTTP_POST /api/displaycolors rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiSave
-route=HTTP_POST /api/displaycolors/clear rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiClear
-route=HTTP_POST /api/displaycolors/preview rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiPreview
-route=HTTP_POST /api/displaycolors/reset rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiReset
+route=HTTP_POST /api/display/preview rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiPreview
+route=HTTP_POST /api/display/preview/clear rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiClear
+route=HTTP_POST /api/display/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiSave
+route=HTTP_POST /api/display/settings/reset rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiReset
 route=HTTP_POST /api/obd/config rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiConfig
 route=HTTP_POST /api/obd/forget rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiForget
 route=HTTP_POST /api/obd/scan rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiScan

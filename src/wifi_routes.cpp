@@ -259,28 +259,28 @@ void WiFiManager::setupWebServer() {
     });
     
     // Display settings routes
-    server.on("/api/displaycolors", HTTP_GET, [this]() {
+    server.on("/api/display/settings", HTTP_GET, [this]() {
         WifiDisplayColorsApiService::handleApiGet(server, makeDisplayColorsRuntime());
     });
-    server.on("/api/displaycolors", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/display/settings", HTTP_POST, [this, rateLimitCallback]() {
         WifiDisplayColorsApiService::handleApiSave(
             server,
             makeDisplayColorsRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/displaycolors/reset", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/display/settings/reset", HTTP_POST, [this, rateLimitCallback]() {
         WifiDisplayColorsApiService::handleApiReset(
             server,
             makeDisplayColorsRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/displaycolors/preview", HTTP_POST, [this, rateLimitCallback]() { 
+    server.on("/api/display/preview", HTTP_POST, [this, rateLimitCallback]() {
         WifiDisplayColorsApiService::handleApiPreview(
             server,
             makeDisplayColorsRuntime(),
             rateLimitCallback);
     });
-    server.on("/api/displaycolors/clear", HTTP_POST, [this, rateLimitCallback]() { 
+    server.on("/api/display/preview/clear", HTTP_POST, [this, rateLimitCallback]() {
         WifiDisplayColorsApiService::handleApiClear(
             server,
             makeDisplayColorsRuntime(),

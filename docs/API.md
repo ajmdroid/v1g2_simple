@@ -485,7 +485,7 @@ Save audio and voice-alert configuration.
 
 ## Display Colors
 
-### GET /api/displaycolors
+### GET /api/display/settings
 
 Get current display color configuration.
 
@@ -495,7 +495,7 @@ Key color fields: `bogey`, `freq`, `arrowFront`, `arrowSide`, `arrowRear`, `band
 
 Also includes boolean display toggles plus `brightness` and `displayStyle`.
 
-### POST /api/displaycolors
+### POST /api/display/settings
 
 Save display color configuration.
 
@@ -507,11 +507,11 @@ bogey=63488&freq=65535&arrowFront=2016&arrowSide=65504&arrowRear=63488
 
 Accepts the same display-owned field names returned by GET.
 
-### POST /api/displaycolors/reset
+### POST /api/display/settings/reset
 
 Reset colors to default theme.
 
-### POST /api/displaycolors/preview
+### POST /api/display/preview
 
 Toggle a 5.5-second color preview demo on the physical display. No request body. If preview is running, it cancels; otherwise it starts.
 
@@ -520,7 +520,7 @@ Toggle a 5.5-second color preview demo on the physical display. No request body.
 {"success": true, "active": true}
 ```
 
-### POST /api/displaycolors/clear
+### POST /api/display/preview/clear
 
 Clear preview and restore saved colors.
 

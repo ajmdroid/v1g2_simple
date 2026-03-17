@@ -5,13 +5,18 @@ import { cloneDefaultColors } from '$lib/utils/colors';
 import { installFetchMock, jsonResponse } from '../../test/fetch-mock.js';
 import Page from './+page.svelte';
 
+const DISPLAY_SETTINGS_ENDPOINT = '/api/display/settings';
+const DISPLAY_SETTINGS_RESET_ENDPOINT = '/api/display/settings/reset';
+const DISPLAY_PREVIEW_ENDPOINT = '/api/display/preview';
+const DISPLAY_PREVIEW_CLEAR_ENDPOINT = '/api/display/preview/clear';
+
 function installDefaultFetch(overrides = []) {
 	return installFetchMock(
 		[
 			...overrides,
 			{
 				method: 'GET',
-				match: '/api/displaycolors',
+				match: DISPLAY_SETTINGS_ENDPOINT,
 				respond: jsonResponse({
 					...cloneDefaultColors(),
 					hideBatteryIcon: false,
@@ -20,10 +25,10 @@ function installDefaultFetch(overrides = []) {
 					displayStyle: 3
 				})
 			},
-			{ method: 'POST', match: '/api/displaycolors', respond: jsonResponse({ success: true }) },
-			{ method: 'POST', match: '/api/displaycolors/preview', respond: jsonResponse({ success: true }) },
-			{ method: 'POST', match: '/api/displaycolors/reset', respond: jsonResponse({ success: true }) },
-			{ method: 'POST', match: '/api/displaycolors/clear', respond: jsonResponse({ success: true }) }
+			{ method: 'POST', match: DISPLAY_SETTINGS_ENDPOINT, respond: jsonResponse({ success: true }) },
+			{ method: 'POST', match: DISPLAY_PREVIEW_ENDPOINT, respond: jsonResponse({ success: true }) },
+			{ method: 'POST', match: DISPLAY_SETTINGS_RESET_ENDPOINT, respond: jsonResponse({ success: true }) },
+			{ method: 'POST', match: DISPLAY_PREVIEW_CLEAR_ENDPOINT, respond: jsonResponse({ success: true }) }
 		],
 		jsonResponse({})
 	);
@@ -45,7 +50,7 @@ describe('colors route page', () => {
 
 		const displayStyleSelect = await screen.findByRole('combobox');
 		await waitFor(() => {
-			expect(fetchMock.mock.calls.some(([url]) => url === '/api/displaycolors')).toBe(true);
+			expect(fetchMock.mock.calls.some(([url]) => url === DISPLAY_SETTINGS_ENDPOINT)).toBe(true);
 		});
 		expect(displayStyleSelect).toHaveValue('3');
 		expect(screen.getByText('48%')).toBeInTheDocument();
@@ -56,7 +61,7 @@ describe('colors route page', () => {
 	it('shows load error when the colors request fails', async () => {
 		installFetchMock(
 			[
-				{ method: 'GET', match: '/api/displaycolors', respond: () => Promise.reject(new Error('offline')) }
+				{ method: 'GET', match: DISPLAY_SETTINGS_ENDPOINT, respond: () => Promise.reject(new Error('offline')) }
 			],
 			jsonResponse({})
 		);
@@ -70,7 +75,7 @@ describe('colors route page', () => {
 		installDefaultFetch([
 			{
 				method: 'GET',
-				match: '/api/displaycolors',
+				match: DISPLAY_SETTINGS_ENDPOINT,
 				respond: jsonResponse({
 					...cloneDefaultColors(),
 					hideBatteryIcon: true,
@@ -96,7 +101,10 @@ describe('colors route page', () => {
 
 		await screen.findByText('Display style updated!');
 		const postCall = fetchMock.mock.calls.find(
-			([url, init]) => url === '/api/displaycolors' && init?.method === 'POST' && init?.body?.get('displayStyle') === '0'
+			([url, init]) =>
+				url === DISPLAY_SETTINGS_ENDPOINT &&
+				init?.method === 'POST' &&
+				init?.body?.get('displayStyle') === '0'
 		);
 		expect(postCall).toBeTruthy();
 		const [, init] = postCall;
@@ -119,7 +127,7 @@ describe('colors route page', () => {
 		await waitFor(() => {
 			expect(
 				fetchMock.mock.calls.some(
-					([url, init]) => url === '/api/displaycolors/clear' && init?.method === 'POST'
+					([url, init]) => url === DISPLAY_PREVIEW_CLEAR_ENDPOINT && init?.method === 'POST'
 				)
 			).toBe(true);
 		});
@@ -137,12 +145,12 @@ describe('colors route page', () => {
 		await screen.findByText('Colors reset to defaults!');
 		expect(
 			fetchMock.mock.calls.some(
-				([url, init]) => url === '/api/displaycolors/preview' && init?.method === 'POST'
+				([url, init]) => url === DISPLAY_PREVIEW_ENDPOINT && init?.method === 'POST'
 			)
 		).toBe(true);
 		expect(
 			fetchMock.mock.calls.some(
-				([url, init]) => url === '/api/displaycolors/reset' && init?.method === 'POST'
+				([url, init]) => url === DISPLAY_SETTINGS_RESET_ENDPOINT && init?.method === 'POST'
 			)
 		).toBe(true);
 

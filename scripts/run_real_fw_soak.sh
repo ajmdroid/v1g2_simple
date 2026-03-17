@@ -1135,10 +1135,10 @@ if [[ -n "$METRICS_URL" ]]; then
   fi
 
   if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_PREVIEW_URL" ]]; then
-    DISPLAY_PREVIEW_URL="${metrics_url_base%/api/debug/metrics}/api/displaycolors/preview"
+    DISPLAY_PREVIEW_URL="${metrics_url_base%/api/debug/metrics}/api/display/preview"
   fi
   if [[ "$DISPLAY_DRIVE_ENABLED" -eq 1 && -z "$DISPLAY_CLEAR_URL" ]]; then
-    DISPLAY_CLEAR_URL="${metrics_url_base%/api/debug/metrics}/api/displaycolors/clear"
+    DISPLAY_CLEAR_URL="${metrics_url_base%/api/debug/metrics}/api/display/preview/clear"
   fi
   if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 && -z "$TRANSITION_CONTROL_URL" ]]; then
     TRANSITION_CONTROL_URL="${metrics_url_base%/api/debug/metrics}/api/debug/proxy-advertising"
