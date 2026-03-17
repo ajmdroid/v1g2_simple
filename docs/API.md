@@ -674,12 +674,12 @@ Get OBD-II adapter connection status and speed data.
 
 ### POST /api/obd/scan
 
-Trigger a BLE scan for OBDLink adapters. The scan runs for 5 seconds and auto-connects to the first matching device above the RSSI threshold.
+Request a BLE scan for OBDLink adapters. The runtime reports whether the request was accepted immediately; the scan itself is asynchronous and auto-connects to the first matching device above the RSSI threshold once the runtime enters scanning.
 
 **Response**
 
 ```json
-{ "ok": true }
+{ "ok": true, "requested": true, "scanInProgress": false, "message": "OBD scan requested" }
 ```
 
 ### POST /api/obd/forget

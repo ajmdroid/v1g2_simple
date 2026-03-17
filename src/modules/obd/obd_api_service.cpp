@@ -115,9 +115,20 @@ void handleApiScan(WebServer& server,
         WifiApiResponse::sendJsonDocument(server, 409, doc);
         return;
     }
-    obdRuntime.startScan();
+    if (!obdRuntime.startScan()) {
+        JsonDocument doc;
+        doc["ok"] = false;
+        doc["message"] = "OBD scan already requested or in progress";
+        WifiApiResponse::sendJsonDocument(server, 409, doc);
+        return;
+    }
+
+    const ObdRuntimeStatus status = obdRuntime.snapshot(millis());
     JsonDocument doc;
     doc["ok"] = true;
+    doc["requested"] = true;
+    doc["scanInProgress"] = status.scanInProgress;
+    doc["message"] = status.scanInProgress ? "OBD scan already running" : "OBD scan requested";
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 

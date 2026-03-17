@@ -132,7 +132,7 @@ public:
     const char* getCachedVinPrefix11() const { return cachedVinPrefix11_; }
     uint8_t getCachedEotProfileId() const { return static_cast<uint8_t>(cachedEotProfileId_); }
 
-    void startScan();
+    bool startScan();
     void forgetDevice();
 
     void onDeviceFound(const char* name, const char* address, int rssi, uint8_t addrType = 0);

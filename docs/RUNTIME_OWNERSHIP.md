@@ -35,6 +35,7 @@ Owns post-display connection-state dispatch cadence, periodic maintenance, and l
 - If a caller needs a non-committing point-in-time view, it must use a pure read helper such as `speedSourceSelector.snapshotAt(nowMs) const`.
 - Read helpers must not increment counters, switch sources, or otherwise mutate runtime state.
 - Phase context structs are data-only loop inputs. Execution hooks are configured once via module `begin(...)` providers rather than injected ad hoc per call.
+- Boot and loop-carried runtime state in `main.cpp` is grouped under `MainRuntimeState` instead of scattered file-static variables.
 
 ## Current explicit owners
 

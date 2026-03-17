@@ -33,6 +33,7 @@ class V1BLEClient;
 class PacketParser;
 class TouchHandler;
 #include "../src/display_mode.h"  // enum class — cannot forward-declare
+#include "main_runtime_state.h"
 class AutoPushModule;
 class TapGestureModule;
 class AlertPersistenceModule;
@@ -78,7 +79,7 @@ extern AlertPersistenceModule alertPersistenceModule;
 extern DisplayMode displayMode;
 extern BleQueueModule bleQueueModule;
 extern SystemEventBus systemEventBus;
-extern unsigned long v1ConnectedAtMs;
+extern MainRuntimeState mainRuntimeState;
 
 #ifndef UNIT_TEST
 extern DisplayPipelineModule displayPipelineModule;

@@ -23,6 +23,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include "main_internals.h"
+#include "main_runtime_state.h"
 #include "main_loop_phases.h"
 #include "ble_client.h"
 #include "packet_parser.h"
@@ -111,18 +112,11 @@ AlertPersistenceModule alertPersistenceModule;
 // Voice Module - handles voice announcement decisions
 VoiceModule voiceModule;
 
-static bool bootReady = false;
-static unsigned long bootReadyDeadlineMs = 0;
-static bool bootSplashHoldActive = false;
-static unsigned long bootSplashHoldUntilMs = 0;
-static bool initialScanningScreenShown = false;
 static constexpr unsigned long BOOT_SPLASH_HOLD_MS = 400;
 static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_MS = 400;
 static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_WAKE_MS = 120;
 static constexpr unsigned long CONNECTION_STATE_PROCESS_MAX_GAP_MS = 1000;
-static unsigned long activeScanScreenDwellMs = MIN_SCAN_SCREEN_DWELL_MS;
-unsigned long v1ConnectedAtMs = 0;
-static bool wifiAutoStartDone = false;
+MainRuntimeState mainRuntimeState;
 
 // Display preview driver (color demos)
 DisplayPreviewModule displayPreviewModule;
@@ -147,12 +141,12 @@ void cancelColorPreview() {
     cancelDisplayPreview();
 }
 static void showInitialScanningScreen() {
-    if (initialScanningScreenShown) {
+    if (mainRuntimeState.initialScanningScreenShown) {
         return;
     }
     display.showScanning();
     display.drawProfileIndicator(settingsManager.get().activeSlot);
-    initialScanningScreenShown = true;
+    mainRuntimeState.initialScanningScreenShown = true;
     connectionStateCadenceModule.onScanningScreenShown(millis());
 }
 
@@ -630,7 +624,7 @@ void configureTouchUiModule() {
         .startWifi = [] { (void)wifiManager.startSetupMode(false); },
         .drawWifiIndicator = [] { display.drawWiFiIndicator(); },
         .restoreDisplay = [] {
-            if (bootSplashHoldActive) {
+            if (mainRuntimeState.bootSplashHoldActive) {
                 return;
             }
             displayPipelineModule.restoreCurrentOwner(millis());
@@ -776,7 +770,7 @@ template <typename StageLogger>
 static void finalizeBootReadyAndBleScan(const unsigned long setupStartMs,
                                         const StageLogger& logBootStage) {
     restorePendingLearnerCandidates();
-    bootReady = true;
+    mainRuntimeState.bootReady = true;
     bleClient.setBootReady(true);
     SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
 
@@ -838,9 +832,9 @@ static esp_reset_reason_t initializeResetReasonAndCadenceState(
     if (resetReason == ESP_RST_DEEPSLEEP) {
         logBootCheckpoint("wake_deepsleep");
     }
-    activeScanScreenDwellMs =
+    mainRuntimeState.activeScanScreenDwellMs =
         (resetReason == ESP_RST_DEEPSLEEP) ? MIN_SCAN_SCREEN_DWELL_WAKE_MS : MIN_SCAN_SCREEN_DWELL_MS;
-    SerialLog.printf("[BootTiming] scan_dwell_target_ms=%lu\n", activeScanScreenDwellMs);
+    SerialLog.printf("[BootTiming] scan_dwell_target_ms=%lu\n", mainRuntimeState.activeScanScreenDwellMs);
     connectionStateCadenceModule.reset();
     wifiProcessCadenceModule.reset();
     return resetReason;
@@ -913,7 +907,7 @@ static void initializePreflightDisplayAndBootUi(esp_reset_reason_t resetReason,
         SerialLog.println("Display initialization failed!");
         fatalBootError("Display init failed", false);
     }
-    bootReadyDeadlineMs = millis() + 5000;
+    mainRuntimeState.bootReadyDeadlineMs = millis() + 5000;
 
     // Brief post-display settle before settings init.
     const unsigned long postDisplaySettleMs = (resetReason == ESP_RST_DEEPSLEEP) ? 2UL : 10UL;
@@ -936,8 +930,8 @@ static void initializePreflightDisplayAndBootUi(esp_reset_reason_t resetReason,
         const unsigned long splashCallStartMs = millis();
         display.showBootSplash();
         SerialLog.printf("[BootTiming] splash_call_ms=%lu\n", millis() - splashCallStartMs);
-        bootSplashHoldActive = true;
-        bootSplashHoldUntilMs = millis() + BOOT_SPLASH_HOLD_MS;
+        mainRuntimeState.bootSplashHoldActive = true;
+        mainRuntimeState.bootSplashHoldUntilMs = millis() + BOOT_SPLASH_HOLD_MS;
     } else {
         logBootCheckpoint("wake_ui_scan_begin");
         const unsigned long wakeUiStartMs = millis();
@@ -1015,18 +1009,17 @@ void loop() {
     unsigned long loopStartUs = micros();
     // Process audio amp timeout (disables amp after 3s of inactivity)
     audio_process_amp_timeout();
-    static unsigned long lastLoopUs = 0;
     unsigned long now = millis();
     const LoopConnectionEarlyPhaseValues loopConnectionEarlyValues = processLoopConnectionEarlyPhase(
         now,
         micros(),
-        lastLoopUs,
-        bootSplashHoldActive,
-        bootSplashHoldUntilMs,
-        initialScanningScreenShown);
+        mainRuntimeState.lastLoopUs,
+        mainRuntimeState.bootSplashHoldActive,
+        mainRuntimeState.bootSplashHoldUntilMs,
+        mainRuntimeState.initialScanningScreenShown);
 
-    bootSplashHoldActive = loopConnectionEarlyValues.bootSplashHoldActive;
-    initialScanningScreenShown = loopConnectionEarlyValues.initialScanningScreenShown;
+    mainRuntimeState.bootSplashHoldActive = loopConnectionEarlyValues.bootSplashHoldActive;
+    mainRuntimeState.initialScanningScreenShown = loopConnectionEarlyValues.initialScanningScreenShown;
 
     bool bleConnectedNow = loopConnectionEarlyValues.bleConnectedNow;
     bool bleBackpressure = loopConnectionEarlyValues.bleBackpressure;
@@ -1040,12 +1033,12 @@ void loop() {
 
     const LoopIngestPhaseValues loopIngestValues = processLoopIngestPhase(
         now,
-        bootReady,
-        bootReadyDeadlineMs,
+        mainRuntimeState.bootReady,
+        mainRuntimeState.bootReadyDeadlineMs,
         skipNonCoreThisLoop,
         overloadThisLoop);
     const LoopSettingsPrepValues& loopSettingsPrepValues = loopIngestValues.loopSettingsPrepValues;
-    bootReady = loopIngestValues.bootReady;
+    mainRuntimeState.bootReady = loopIngestValues.bootReady;
     bleBackpressure = loopIngestValues.bleBackpressure;
     const bool skipLateNonCoreThisLoop = loopIngestValues.skipLateNonCoreThisLoop;
     const bool overloadLateThisLoop = loopIngestValues.overloadLateThisLoop;
@@ -1053,7 +1046,7 @@ void loop() {
     // Refresh speed inputs before display/lockout so the current loop sees the latest OBD/GPS state.
     {
         const uint32_t obdStartUs = micros();
-        obdRuntimeModule.update(now, bootReady, bleConnectedNow, !bleClient.isScanning());
+        obdRuntimeModule.update(now, mainRuntimeState.bootReady, bleConnectedNow, !bleClient.isScanning());
         perfRecordObdUs(micros() - obdStartUs);
     }
     speedSourceSelector.update(now);
@@ -1063,32 +1056,32 @@ void loop() {
     // fade/debounce/gap-recovery remain microsecond-cheap and must run every frame.
     processLoopDisplayPreWifiPhase(
         now,
-        bootSplashHoldActive,
+        mainRuntimeState.bootSplashHoldActive,
         overloadLateThisLoop,
         loopSettingsPrepValues.enableSignalTraceLogging);
 
     const LoopWifiPhaseValues loopWifiValues = processLoopWifiPhase(
         now,
-        v1ConnectedAtMs,
+        mainRuntimeState.v1ConnectedAtMs,
         loopSettingsPrepValues.enableWifi,
         loopSettingsPrepValues.enableWifiAtBoot,
-        wifiAutoStartDone,
+        mainRuntimeState.wifiAutoStartDone,
         skipLateNonCoreThisLoop,
-        bootSplashHoldActive);
+        mainRuntimeState.bootSplashHoldActive);
     const LoopRuntimeSnapshotValues& loopRuntimeSnapshotValues = loopWifiValues.loopRuntimeSnapshotValues;
-    wifiAutoStartDone = loopWifiValues.wifiAutoStartDone;
+    mainRuntimeState.wifiAutoStartDone = loopWifiValues.wifiAutoStartDone;
     
     loopTelemetryModule.process(loopStartUs);
 
     const LoopFinalizePhaseValues loopFinalizeValues = processLoopFinalizePhase(
         now,
-        bootSplashHoldActive,
+        mainRuntimeState.bootSplashHoldActive,
         loopRuntimeSnapshotValues.displayPreviewRunning,
         bleBackpressure,
-        activeScanScreenDwellMs,
+        mainRuntimeState.activeScanScreenDwellMs,
         CONNECTION_STATE_PROCESS_MAX_GAP_MS,
         loopStartUs);
     now = loopFinalizeValues.dispatchNowMs;
     bleConnectedNow = loopFinalizeValues.bleConnectedNow;
-    lastLoopUs = loopFinalizeValues.lastLoopUs;
+    mainRuntimeState.lastLoopUs = loopFinalizeValues.lastLoopUs;
 }

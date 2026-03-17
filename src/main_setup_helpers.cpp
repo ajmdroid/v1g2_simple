@@ -6,6 +6,7 @@
  */
 
 #include "main_internals.h"
+#include "main_globals.h"
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -109,7 +110,7 @@ bool loadPendingLearnerJsonDocument(JsonDocument& outDoc) {
 }  // namespace
 
 void onV1Connected() {
-    v1ConnectedAtMs = millis();
+    mainRuntimeState.v1ConnectedAtMs = millis();
 
     // Start a new perf CSV session so scoring tools can isolate
     // V1-connected data from idle boot noise.

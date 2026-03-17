@@ -132,6 +132,37 @@ void test_scan_rejects_when_obd_is_disabled() {
     TEST_ASSERT_FALSE(obdRuntimeModule.snapshot(mockMillis).scanInProgress);
 }
 
+void test_scan_reports_requested_when_obd_is_enabled() {
+    WebServer server(80);
+    obdRuntimeModule.begin(true, "", 0, -80);
+
+    ObdApiService::handleApiScan(server,
+                                 obdRuntimeModule,
+                                 []() { return true; },
+                                 []() {});
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"ok\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"requested\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"scanInProgress\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"OBD scan requested\""));
+}
+
+void test_scan_rejects_when_request_already_pending() {
+    WebServer server(80);
+    obdRuntimeModule.begin(true, "", 0, -80);
+    TEST_ASSERT_TRUE(obdRuntimeModule.startScan());
+
+    ObdApiService::handleApiScan(server,
+                                 obdRuntimeModule,
+                                 []() { return true; },
+                                 []() {});
+
+    TEST_ASSERT_EQUAL_INT(409, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"ok\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"OBD scan already requested or in progress\""));
+}
+
 int main() {
     UNITY_BEGIN();
 
@@ -140,6 +171,8 @@ int main() {
     RUN_TEST(test_forget_clears_saved_address_and_persists_setting);
     RUN_TEST(test_config_rejects_missing_json_body);
     RUN_TEST(test_scan_rejects_when_obd_is_disabled);
+    RUN_TEST(test_scan_reports_requested_when_obd_is_enabled);
+    RUN_TEST(test_scan_rejects_when_request_already_pending);
 
     return UNITY_END();
 }

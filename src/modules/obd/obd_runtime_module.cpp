@@ -1669,9 +1669,10 @@ bool ObdRuntimeModule::getFreshSpeed(uint32_t nowMs,
     return true;
 }
 
-void ObdRuntimeModule::startScan() {
-    if (!enabled_ || state_ == ObdConnectionState::SCANNING) return;
+bool ObdRuntimeModule::startScan() {
+    if (!enabled_ || state_ == ObdConnectionState::SCANNING || scanRequested_) return false;
     scanRequested_ = true;
+    return true;
 }
 
 void ObdRuntimeModule::forgetDevice() {
