@@ -87,6 +87,7 @@ void test_perf_files_list_returns_rows_when_lock_is_free() {
 
 void test_perf_files_list_marks_file_ops_blocked_while_logging_active() {
     writePerfFile("20260316_020000_perf_7.csv", "ts,val\n1,2\n");
+    writePerfFile("20260316_010000_perf_6.csv", "ts,val\n3,4\n");
     perfSdLogger.enabled = true;
     std::strncpy(perfSdLogger.csvPathBuf,
                  "/perf/20260316_020000_perf_7.csv",
@@ -101,8 +102,10 @@ void test_perf_files_list_marks_file_ops_blocked_while_logging_active() {
     TEST_ASSERT_TRUE(responseContains(server, "\"fileOpsBlockedReasonCode\":\"perf_logging_active\""));
     TEST_ASSERT_TRUE(responseContains(server, "\"activeFile\":\"20260316_020000_perf_7.csv\""));
     TEST_ASSERT_TRUE(responseContains(server, "\"downloadAllowed\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"deleteAllowed\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"deleteAllowed\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"blockedReasonCode\":\"perf_logging_active\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"deleteBlockedReason\":\"Active perf log in use\""));
 }
 
 void test_perf_files_list_returns_503_when_sd_trylock_is_busy() {
@@ -176,11 +179,30 @@ void test_perf_file_delete_returns_503_while_perf_logging_active() {
     DebugPerfFilesService::handleApiPerfFilesDelete(server, []() { return true; }, []() {});
 
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
-    TEST_ASSERT_TRUE(responseContains(server, "Perf logging active"));
+    TEST_ASSERT_TRUE(responseContains(server, "Active perf log in use"));
     TEST_ASSERT_TRUE(responseContains(server, "\"reasonCode\":\"perf_logging_active\""));
     TEST_ASSERT_TRUE(responseContains(server, "\"operation\":\"delete\""));
     TEST_ASSERT_TRUE(g_sdFs.exists("/perf/20260316_020000_perf_7.csv"));
     TEST_ASSERT_EQUAL_UINT32(0, StorageManager::mockSdLockState.tryAcquireCalls);
+}
+
+void test_perf_file_delete_allows_inactive_file_while_perf_logging_active() {
+    writePerfFile("20260316_020000_perf_7.csv", "ts,val\n1,2\n");
+    writePerfFile("20260316_010000_perf_6.csv", "ts,val\n3,4\n");
+    perfSdLogger.enabled = true;
+    std::strncpy(perfSdLogger.csvPathBuf,
+                 "/perf/20260316_020000_perf_7.csv",
+                 sizeof(perfSdLogger.csvPathBuf) - 1);
+
+    WebServer server(80);
+    server.setArg("name", "20260316_010000_perf_6.csv");
+    DebugPerfFilesService::handleApiPerfFilesDelete(server, []() { return true; }, []() {});
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_FALSE(g_sdFs.exists("/perf/20260316_010000_perf_6.csv"));
+    TEST_ASSERT_TRUE(g_sdFs.exists("/perf/20260316_020000_perf_7.csv"));
+    TEST_ASSERT_EQUAL_UINT32(1, StorageManager::mockSdLockState.tryAcquireCalls);
 }
 
 void test_perf_file_delete_removes_file_when_lock_is_free() {
@@ -204,6 +226,7 @@ int main() {
     RUN_TEST(test_perf_file_download_streams_csv_when_idle);
     RUN_TEST(test_perf_file_delete_returns_503_when_sd_trylock_is_busy);
     RUN_TEST(test_perf_file_delete_returns_503_while_perf_logging_active);
+    RUN_TEST(test_perf_file_delete_allows_inactive_file_while_perf_logging_active);
     RUN_TEST(test_perf_file_delete_removes_file_when_lock_is_free);
     return UNITY_END();
 }

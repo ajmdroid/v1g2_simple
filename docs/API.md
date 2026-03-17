@@ -905,6 +905,11 @@ Get last-reset crash snapshot and optional `/panic.txt` content.
 
 List SD-backed perf CSV files under `/perf`.
 
+When perf logging is active, downloads are blocked for all perf CSVs to avoid
+holding the shared SD mutex open during a long file stream. Delete remains
+allowed for inactive files, but the active log file reports `deleteAllowed:
+false`.
+
 **Response (example):**
 ```json
 {

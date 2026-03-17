@@ -47,7 +47,7 @@
 
 		{#if perfFilesInfo.fileOpsBlocked}
 			<StatusAlert
-				message={`${perfFilesInfo.fileOpsBlockedReason || 'Protected operation'}: download and delete are temporarily unavailable.`}
+				message={`${perfFilesInfo.fileOpsBlockedReason || 'Protected operation'}: downloads are temporarily unavailable, and the active file cannot be deleted until logging stops.`}
 				fallbackType="warning"
 			/>
 		{/if}
@@ -96,7 +96,7 @@
 											class="btn btn-xs btn-outline btn-error"
 											onclick={() => ondelete(file.name)}
 											disabled={!acknowledged || perfFileActionBusy === file.name || file.deleteAllowed === false}
-											title={file.blockedReason || ''}
+											title={file.deleteBlockedReason || file.blockedReason || ''}
 										>
 											{#if perfFileActionBusy === file.name}
 												<span class="loading loading-spinner loading-xs"></span>

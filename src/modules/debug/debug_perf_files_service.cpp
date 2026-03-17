@@ -282,10 +282,14 @@ void sendPerfFilesList(WebServer& server) {
         f["bootId"] = row.bootId;
         f["active"] = isActive;
         f["downloadAllowed"] = !loggingActive;
-        f["deleteAllowed"] = !loggingActive;
-        if (loggingActive) {
+        f["deleteAllowed"] = !loggingActive || !isActive;
+        if (loggingActive && !f["downloadAllowed"].as<bool>()) {
             f["blockedReason"] = "Perf logging active";
             f["blockedReasonCode"] = kReasonPerfLoggingActive;
+        }
+        if (loggingActive && isActive && !f["deleteAllowed"].as<bool>()) {
+            f["deleteBlockedReason"] = "Active perf log in use";
+            f["deleteBlockedReasonCode"] = kReasonPerfLoggingActive;
         }
     }
     doc["count"] = static_cast<uint32_t>(countTotal);
@@ -454,11 +458,13 @@ void handlePerfFileDelete(WebServer& server) {
         return;
     }
 
-    if (perfSdLogger.isEnabled()) {
+    const bool loggingActive = perfSdLogger.isEnabled();
+    const String activePath = String(perfSdLogger.csvPath());
+    if (loggingActive && path == activePath) {
         sendPerfFileError(server,
                           503,
                           kReasonPerfLoggingActive,
-                          "Perf logging active; delete unavailable",
+                          "Active perf log in use; delete unavailable",
                           "delete",
                           requestedName,
                           true);

@@ -56,7 +56,7 @@ describe('DevPerfFilesPanel', () => {
 		expect(ondelete).toHaveBeenCalledWith('perf-0001.csv');
 	});
 
-	it('disables perf file actions when the API marks them protected', async () => {
+	it('blocks downloads during logging and only blocks delete on the active file', async () => {
 		const ondelete = vi.fn();
 		const ondownload = vi.fn();
 		renderPanel({
@@ -67,6 +67,15 @@ describe('DevPerfFilesPanel', () => {
 					active: true,
 					downloadAllowed: false,
 					deleteAllowed: false,
+					blockedReason: 'Perf logging active',
+					deleteBlockedReason: 'Active perf log in use'
+				},
+				{
+					name: 'perf-0000.csv',
+					sizeBytes: 1024,
+					active: false,
+					downloadAllowed: false,
+					deleteAllowed: true,
 					blockedReason: 'Perf logging active'
 				}
 			],
@@ -84,9 +93,13 @@ describe('DevPerfFilesPanel', () => {
 			ondownload
 		});
 
-		expect(screen.getByText(/download and delete are temporarily unavailable/i)).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: /^download$/i })).toBeDisabled();
-		expect(screen.getByRole('button', { name: /^delete$/i })).toBeDisabled();
+		expect(screen.getByText(/downloads are temporarily unavailable/i)).toBeInTheDocument();
+		const downloadButtons = screen.getAllByRole('button', { name: /^download$/i });
+		const deleteButtons = screen.getAllByRole('button', { name: /^delete$/i });
+		expect(downloadButtons[0]).toBeDisabled();
+		expect(downloadButtons[1]).toBeDisabled();
+		expect(deleteButtons[0]).toBeDisabled();
+		expect(deleteButtons[1]).not.toBeDisabled();
 		expect(ondelete).not.toHaveBeenCalled();
 		expect(ondownload).not.toHaveBeenCalled();
 	});

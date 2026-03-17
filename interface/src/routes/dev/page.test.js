@@ -252,6 +252,16 @@ describe('dev route page', () => {
 							downloadAllowed: false,
 							deleteAllowed: false,
 							blockedReason: 'Perf logging active',
+							blockedReasonCode: 'perf_logging_active',
+							deleteBlockedReason: 'Active perf log in use'
+						},
+						{
+							name: 'perf-0000.csv',
+							sizeBytes: 1024,
+							active: false,
+							downloadAllowed: false,
+							deleteAllowed: true,
+							blockedReason: 'Perf logging active',
 							blockedReasonCode: 'perf_logging_active'
 						}
 					]
@@ -261,9 +271,14 @@ describe('dev route page', () => {
 		const { unmount } = render(Page);
 
 		await screen.findByText('perf-0001.csv');
-		expect(screen.getByText(/download and delete are temporarily unavailable/i)).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: /^download$/i })).toBeDisabled();
-		expect(screen.getByRole('button', { name: /^delete$/i })).toBeDisabled();
+		await fireEvent.click(screen.getByRole('checkbox', { name: /i understand the risks/i }));
+		expect(screen.getByText(/downloads are temporarily unavailable/i)).toBeInTheDocument();
+		const downloadButtons = screen.getAllByRole('button', { name: /^download$/i });
+		const deleteButtons = screen.getAllByRole('button', { name: /^delete$/i });
+		expect(downloadButtons[0]).toBeDisabled();
+		expect(downloadButtons[1]).toBeDisabled();
+		expect(deleteButtons[0]).toBeDisabled();
+		expect(deleteButtons[1]).not.toBeDisabled();
 
 		unmount();
 	});
