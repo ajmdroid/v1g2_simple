@@ -16,11 +16,10 @@ function installDefaultFetch(overrides = []) {
 					...cloneDefaultColors(),
 					hideBatteryIcon: false,
 					showBatteryPercent: true,
-					brightness: 123
+					brightness: 123,
+					displayStyle: 3
 				})
 			},
-			{ method: 'GET', match: '/api/settings', respond: jsonResponse({ displayStyle: 3 }) },
-			{ method: 'POST', match: '/api/settings', respond: jsonResponse({ success: true }) },
 			{ method: 'POST', match: '/api/displaycolors', respond: jsonResponse({ success: true }) },
 			{ method: 'POST', match: '/api/displaycolors/preview', respond: jsonResponse({ success: true }) },
 			{ method: 'POST', match: '/api/displaycolors/reset', respond: jsonResponse({ success: true }) },
@@ -47,7 +46,6 @@ describe('colors route page', () => {
 		const displayStyleSelect = await screen.findByRole('combobox');
 		await waitFor(() => {
 			expect(fetchMock.mock.calls.some(([url]) => url === '/api/displaycolors')).toBe(true);
-			expect(fetchMock.mock.calls.some(([url]) => url === '/api/settings')).toBe(true);
 		});
 		expect(displayStyleSelect).toHaveValue('3');
 		expect(screen.getByText('48%')).toBeInTheDocument();
@@ -58,8 +56,7 @@ describe('colors route page', () => {
 	it('shows load error when the colors request fails', async () => {
 		installFetchMock(
 			[
-				{ method: 'GET', match: '/api/displaycolors', respond: () => Promise.reject(new Error('offline')) },
-				{ method: 'GET', match: '/api/settings', respond: jsonResponse({ displayStyle: 0 }) }
+				{ method: 'GET', match: '/api/displaycolors', respond: () => Promise.reject(new Error('offline')) }
 			],
 			jsonResponse({})
 		);
@@ -90,7 +87,7 @@ describe('colors route page', () => {
 		unmount();
 	});
 
-	it('saves display style through the settings API', async () => {
+	it('saves display style through the display API', async () => {
 		const fetchMock = installDefaultFetch();
 		const { unmount } = render(Page);
 
@@ -99,11 +96,12 @@ describe('colors route page', () => {
 
 		await screen.findByText('Display style updated!');
 		const postCall = fetchMock.mock.calls.find(
-			([url, init]) => url === '/api/settings' && init?.method === 'POST'
+			([url, init]) => url === '/api/displaycolors' && init?.method === 'POST' && init?.body?.get('displayStyle') === '0'
 		);
 		expect(postCall).toBeTruthy();
 		const [, init] = postCall;
 		expect(init.body.get('displayStyle')).toBe('0');
+		expect(init.body.get('skipPreview')).toBe('true');
 
 		unmount();
 	});

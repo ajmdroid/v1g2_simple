@@ -31,13 +31,6 @@ struct FakeRuntime {
     String lastApSsid;
     String lastApPassword;
 
-    int updateBrightnessCalls = 0;
-    uint8_t lastBrightness = 0;
-
-    int updateDisplayStyleCalls = 0;
-    DisplayStyle lastDisplayStyle = DISPLAY_STYLE_CLASSIC;
-    int forceDisplayRedrawCalls = 0;
-
     int setGpsRuntimeEnabledCalls = 0;
     bool lastGpsRuntimeEnabled = false;
 
@@ -73,19 +66,6 @@ static WifiSettingsApiService::Runtime makeRuntime(FakeRuntime& rt) {
             rt.lastApPassword = password;
             rt.settings.apSSID = ssid;
             rt.settings.apPassword = password;
-        },
-        [&rt](uint8_t brightness) {
-            rt.updateBrightnessCalls++;
-            rt.lastBrightness = brightness;
-            rt.settings.brightness = brightness;
-        },
-        [&rt](DisplayStyle style) {
-            rt.updateDisplayStyleCalls++;
-            rt.lastDisplayStyle = style;
-            rt.settings.displayStyle = style;
-        },
-        [&rt]() {
-            rt.forceDisplayRedrawCalls++;
         },
         [&rt](bool enabled) {
             rt.setGpsRuntimeEnabledCalls++;
@@ -166,7 +146,6 @@ void test_settings_get_serializes_expected_payload() {
     rt.settings.gpsLockoutXLearningEnabled = false;
     rt.settings.gpsLockoutPreQuiet = true;
     rt.settings.gpsLockoutPreQuietBufferE5 = 18;
-    rt.settings.displayStyle = DISPLAY_STYLE_SERPENTINE;
 
     WifiSettingsApiService::handleApiSettingsGet(server, makeRuntime(rt));
 
@@ -182,7 +161,6 @@ void test_settings_get_serializes_expected_payload() {
     TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutXLearningEnabled\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutPreQuiet\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutPreQuietBufferE5\":18"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"displayStyle\":3"));
 }
 
 void test_settings_get_returns_500_without_runtime() {
@@ -198,7 +176,7 @@ void test_settings_get_returns_500_without_runtime() {
 void test_settings_save_rate_limited_short_circuits() {
     WebServer server(80);
     FakeRuntime rt;
-    server.setArg("brightness", "20");
+    server.setArg("gpsEnabled", "true");
 
     WifiSettingsApiService::handleApiSettingsSave(
         server,
@@ -207,7 +185,7 @@ void test_settings_save_rate_limited_short_circuits() {
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.saveDeferredBackupCalls);
-    TEST_ASSERT_EQUAL_INT(0, rt.updateBrightnessCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.setGpsRuntimeEnabledCalls);
 }
 
 void test_device_settings_save_rejects_invalid_ap_credentials() {
@@ -297,9 +275,11 @@ void test_settings_save_updates_runtime_dependencies() {
     TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
 }
 
-void test_settings_save_updates_brightness_and_display_style() {
+void test_settings_save_ignores_display_args() {
     WebServer server(80);
     FakeRuntime rt;
+    rt.settings.brightness = 77;
+    rt.settings.displayStyle = DISPLAY_STYLE_SERPENTINE;
     server.setArg("brightness", "42");
     server.setArg("displayStyle", "3");
 
@@ -309,12 +289,9 @@ void test_settings_save_updates_brightness_and_display_style() {
         []() { return true; });
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_EQUAL_INT(1, rt.updateBrightnessCalls);
-    TEST_ASSERT_EQUAL_UINT8(42, rt.lastBrightness);
-    TEST_ASSERT_EQUAL_INT(1, rt.updateDisplayStyleCalls);
+    TEST_ASSERT_EQUAL_UINT8(77, rt.settings.brightness);
     TEST_ASSERT_EQUAL_INT(static_cast<int>(DISPLAY_STYLE_SERPENTINE),
-                          static_cast<int>(rt.lastDisplayStyle));
-    TEST_ASSERT_EQUAL_INT(1, rt.forceDisplayRedrawCalls);
+                          static_cast<int>(rt.settings.displayStyle));
     TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
 }
 
@@ -328,6 +305,6 @@ int main() {
     RUN_TEST(test_device_settings_save_uses_existing_password_placeholder);
     RUN_TEST(test_device_settings_save_updates_device_toggles);
     RUN_TEST(test_settings_save_updates_runtime_dependencies);
-    RUN_TEST(test_settings_save_updates_brightness_and_display_style);
+    RUN_TEST(test_settings_save_ignores_display_args);
     return UNITY_END();
 }

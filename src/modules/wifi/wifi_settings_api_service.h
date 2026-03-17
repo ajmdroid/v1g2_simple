@@ -14,9 +14,6 @@ struct Runtime {
     std::function<const V1Settings&()> getSettings;
     std::function<V1Settings&()> getMutableSettings;
     std::function<void(const String&, const String&)> updateAPCredentials;
-    std::function<void(uint8_t)> updateBrightness;
-    std::function<void(DisplayStyle)> updateDisplayStyle;
-    std::function<void()> forceDisplayRedraw;
     std::function<void(bool)> setGpsRuntimeEnabled;
     std::function<void(bool)> setSpeedSourceGpsEnabled;
     std::function<void(bool)> setLockoutKaLearningEnabled;

@@ -1682,8 +1682,8 @@ For the full API reference with request/response schemas and examples, see [API.
 | GET | `/api/status` | BLE connection state, V1 info |
 | GET | `/api/device/settings` | AP/proxy/power/dev settings |
 | POST | `/api/device/settings` | Save AP/proxy/power/dev settings |
-| GET | `/api/settings` | GPS/display settings |
-| POST | `/api/settings` | Save GPS/display settings |
+| GET | `/api/settings` | GPS/lockout settings |
+| POST | `/api/settings` | Save GPS/lockout settings |
 | GET | `/api/settings/backup` | Download settings as JSON |
 | POST | `/api/settings/restore` | Restore settings from JSON |
 | GET | `/api/v1/profiles` | List saved profiles |
@@ -1691,7 +1691,7 @@ For the full API reference with request/response schemas and examples, see [API.
 | GET | `/api/autopush/slots` | Get slot configurations |
 | GET | `/api/audio/settings` | Get current audio settings |
 | POST | `/api/audio/settings` | Save audio settings |
-| GET | `/api/displaycolors` | Get current colors |
+| GET | `/api/displaycolors` | Get current colors, brightness, and display style |
 | GET | `/api/obd/config` | Get OBD enable/min RSSI config |
 | GET | `/api/debug/metrics` | Performance metrics |
 | GET | `/ping` | Health check |

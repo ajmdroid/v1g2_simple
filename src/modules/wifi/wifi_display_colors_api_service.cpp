@@ -95,6 +95,17 @@ void handleApiSave(WebServer& server,
             runtime.setDisplayBrightness(static_cast<uint8_t>(brightness));
         }
     }
+    if (server.hasArg("displayStyle")) {
+        DisplayStyle style = normalizeDisplayStyle(server.arg("displayStyle").toInt());
+        if (runtime.updateDisplayStyle) {
+            runtime.updateDisplayStyle(style);
+        } else {
+            s.displayStyle = style;
+        }
+        if (runtime.forceDisplayRedraw) {
+            runtime.forceDisplayRedraw();
+        }
+    }
 
     // Persist all color/visibility changes
     if (runtime.saveSettings) {
@@ -260,6 +271,7 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["hideVolumeIndicator"] = s.hideVolumeIndicator;
     doc["hideRssiIndicator"] = s.hideRssiIndicator;
     doc["brightness"] = s.brightness;
+    doc["displayStyle"] = static_cast<int>(s.displayStyle);
 
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }

@@ -1,7 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
 	import { fetchWithTimeout } from '$lib/utils/poll';
-	import { postSettingsForm } from '$lib/api/settings';
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import ColorControl from '$lib/components/ColorControl.svelte';
 	import ColorPickerModal from '$lib/components/ColorPickerModal.svelte';
@@ -134,7 +133,7 @@
 	let pickerB = $state(0);
 
 	onMount(async () => {
-		await Promise.all([fetchColors(), fetchDisplayStyle()]);
+		await fetchColors();
 	});
 
 	function openPicker(key, label) {
@@ -163,7 +162,9 @@
 		try {
 			const res = await fetchWithTimeout('/api/displaycolors');
 			if (res.ok) {
-				colors = normalizeColorPayload(await res.json(), colors);
+				const data = await res.json();
+				colors = normalizeColorPayload(data, colors);
+				displayStyle = typeof data.displayStyle === 'number' ? data.displayStyle : 0;
 			}
 		} catch (_) {
 			message = { type: 'error', text: 'Failed to load colors' };
@@ -172,24 +173,17 @@
 		}
 	}
 
-	async function fetchDisplayStyle() {
-		try {
-			const res = await fetchWithTimeout('/api/settings');
-			if (res.ok) {
-				const data = await res.json();
-				displayStyle = typeof data.displayStyle === 'number' ? data.displayStyle : 0;
-			}
-		} catch (_) {
-			// Leave the default style when settings are unavailable.
-		}
-	}
-
 	async function saveDisplayStyle(event) {
 		const nextStyle = parseInt(event.currentTarget.value, 10);
 		try {
-			const formData = new FormData();
-			formData.append('displayStyle', nextStyle);
-			const res = await postSettingsForm(formData);
+			const body = new URLSearchParams();
+			body.set('displayStyle', String(nextStyle));
+			body.set('skipPreview', 'true');
+			const res = await fetchWithTimeout('/api/displaycolors', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body
+			});
 			if (!res.ok) {
 				message = { type: 'error', text: 'Failed to save display style' };
 				return;

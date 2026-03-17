@@ -147,7 +147,7 @@ ap_ssid=MyV1&ap_password=newpassword123&proxy_ble=true&autoPowerOffMinutes=15
 
 ### GET /api/settings
 
-Get GPS/lockout and display settings that still flow through the shared settings surface.
+Get GPS/lockout settings that still flow through the shared settings surface.
 
 **Response:**
 ```json
@@ -163,18 +163,17 @@ Get GPS/lockout and display settings that still flow through the shared settings
   "gpsLockoutKLearningEnabled": true,
   "gpsLockoutXLearningEnabled": false,
   "gpsLockoutPreQuiet": false,
-  "gpsLockoutPreQuietBufferE5": 0,
-  "displayStyle": 0
+  "gpsLockoutPreQuietBufferE5": 0
 }
 ```
 
 ### POST /api/settings
 
-Update GPS/lockout and display settings. Send only fields you want to change.
+Update GPS/lockout settings. Send only fields you want to change.
 
 **Request (form data):**
 ```
-gpsEnabled=true&gpsLockoutMode=3&displayStyle=3
+gpsEnabled=true&gpsLockoutMode=3
 ```
 
 ### GET /api/settings/backup
@@ -447,17 +446,17 @@ Save audio and voice-alert configuration.
 
 Get current display color configuration.
 
-**Response:** JSON with RGB565 integer color values, display visibility toggles, and brightness.
+**Response:** JSON with RGB565 integer color values, display visibility toggles, `brightness`, and `displayStyle`.
 
 Key color fields: `bogey`, `freq`, `arrowFront`, `arrowSide`, `arrowRear`, `bandL`, `bandKa`, `bandK`, `bandX`, `bandPhoto`, `wifiIcon`, `wifiConnected`, `bleConnected`, `bleDisconnected`, `bar1`..`bar6`, `muted`, `persisted`, `volumeMain`, `volumeMute`, `rssiV1`, `rssiProxy`, `lockout`, `gps`.
 
-Also includes boolean display toggles plus `brightness`.
+Also includes boolean display toggles plus `brightness` and `displayStyle`.
 
 ### POST /api/displaycolors
 
 Save display color configuration.
 
-**Request (form data):** RGB565 integer color values, display visibility toggles, and brightness.
+**Request (form data):** RGB565 integer color values, display visibility toggles, `brightness`, and `displayStyle`.
 
 ```
 bogey=63488&freq=65535&arrowFront=2016&arrowSide=65504&arrowRear=63488

@@ -20,6 +20,9 @@ struct FakeRuntime {
 
     int setDisplayBrightnessCalls = 0;
     uint8_t lastDisplayBrightness = 0;
+    int updateDisplayStyleCalls = 0;
+    DisplayStyle lastDisplayStyle = DISPLAY_STYLE_CLASSIC;
+    int forceDisplayRedrawCalls = 0;
     int requestColorPreviewHoldCalls = 0;
     uint32_t lastPreviewHoldMs = 0;
     bool isColorPreviewRunning = false;
@@ -38,6 +41,14 @@ static WifiDisplayColorsApiService::Runtime makeRuntime(FakeRuntime& rt) {
         [&rt](uint8_t brightness) {
             rt.setDisplayBrightnessCalls++;
             rt.lastDisplayBrightness = brightness;
+        },
+        [&rt](DisplayStyle style) {
+            rt.updateDisplayStyleCalls++;
+            rt.lastDisplayStyle = style;
+            rt.settings.displayStyle = style;
+        },
+        [&rt]() {
+            rt.forceDisplayRedrawCalls++;
         },
         [&rt](uint32_t holdMs) {
             rt.requestColorPreviewHoldCalls++;
@@ -79,6 +90,7 @@ void test_get_serializes_display_payload_only() {
     rt.settings.colorBandKa = 456;
     rt.settings.hideWifiIcon = true;
     rt.settings.brightness = 67;
+    rt.settings.displayStyle = DISPLAY_STYLE_SERPENTINE;
     rt.settings.voiceVolume = 55;
     rt.settings.enableSignalTraceLogging = false;
     rt.settings.gpsEnabled = true;
@@ -90,6 +102,7 @@ void test_get_serializes_display_payload_only() {
     TEST_ASSERT_TRUE(responseContains(server, "\"bandKa\":456"));
     TEST_ASSERT_TRUE(responseContains(server, "\"hideWifiIcon\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"brightness\":67"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"displayStyle\":3"));
     TEST_ASSERT_FALSE(responseContains(server, "\"voiceVolume\":"));
     TEST_ASSERT_FALSE(responseContains(server, "\"enableSignalTraceLogging\":"));
     TEST_ASSERT_FALSE(responseContains(server, "\"gpsEnabled\":"));
@@ -118,6 +131,7 @@ void test_save_updates_display_settings_and_calls_side_effects() {
     server.setArg("wifiConnected", "987");
     server.setArg("hideWifiIcon", "true");
     server.setArg("brightness", "111");
+    server.setArg("displayStyle", "3");
 
     WifiDisplayColorsApiService::handleApiSave(
         server,
@@ -132,6 +146,10 @@ void test_save_updates_display_settings_and_calls_side_effects() {
     TEST_ASSERT_EQUAL_UINT8(111, rt.settings.brightness);
     TEST_ASSERT_EQUAL_INT(1, rt.setDisplayBrightnessCalls);
     TEST_ASSERT_EQUAL_UINT8(111, rt.lastDisplayBrightness);
+    TEST_ASSERT_EQUAL_INT(1, rt.updateDisplayStyleCalls);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(DISPLAY_STYLE_SERPENTINE),
+                          static_cast<int>(rt.lastDisplayStyle));
+    TEST_ASSERT_EQUAL_INT(1, rt.forceDisplayRedrawCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);
     TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);

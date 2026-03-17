@@ -118,6 +118,12 @@ WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
         [this](uint8_t brightness) {
             display.setBrightness(brightness);
         },
+        [this](DisplayStyle style) {
+            settingsManager.updateDisplayStyle(style);
+        },
+        [this]() {
+            display.forceNextRedraw();
+        },
         [](uint32_t durationMs) {
             requestColorPreviewHold(durationMs);
         },
@@ -192,15 +198,6 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
         },
         [this](const String& ssid, const String& password) {
             settingsManager.updateAPCredentials(ssid, password);
-        },
-        [this](uint8_t brightness) {
-            settingsManager.updateBrightness(brightness);
-        },
-        [this](DisplayStyle style) {
-            settingsManager.updateDisplayStyle(style);
-        },
-        [this]() {
-            display.forceNextRedraw();
         },
         [this](bool enabled) {
             gpsRuntimeModule.setEnabled(enabled);

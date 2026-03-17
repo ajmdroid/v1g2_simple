@@ -66,7 +66,6 @@ void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
     doc["gpsLockoutXLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
     doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
     doc["gpsLockoutPreQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
-    doc["displayStyle"] = static_cast<int>(settings.displayStyle);
 
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
@@ -154,16 +153,6 @@ void handleApiSettingsSave(WebServer& server,
 
     V1Settings& mutableSettings = runtime.getMutableSettings();
 
-    if (server.hasArg("brightness")) {
-        int brightness = server.arg("brightness").toInt();
-        brightness = std::max(0, std::min(brightness, 255));
-        if (runtime.updateBrightness) {
-            runtime.updateBrightness(static_cast<uint8_t>(brightness));
-        } else {
-            mutableSettings.brightness = static_cast<uint8_t>(brightness);
-        }
-    }
-
     if (server.hasArg("gpsEnabled")) {
         mutableSettings.gpsEnabled = argIsTrue(server.arg("gpsEnabled"));
         if (runtime.setGpsRuntimeEnabled) {
@@ -221,19 +210,6 @@ void handleApiSettingsSave(WebServer& server,
     if (server.hasArg("gpsLockoutPreQuietBufferE5")) {
         mutableSettings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
             server.arg("gpsLockoutPreQuietBufferE5").toInt());
-    }
-
-    // Display style setting
-    if (server.hasArg("displayStyle")) {
-        DisplayStyle style = normalizeDisplayStyle(server.arg("displayStyle").toInt());
-        if (runtime.updateDisplayStyle) {
-            runtime.updateDisplayStyle(style);
-        } else {
-            mutableSettings.displayStyle = style;
-        }
-        if (runtime.forceDisplayRedraw) {
-            runtime.forceDisplayRedraw();
-        }
     }
 
     // All changes are queued in the settingsManager instance. Now, save them all at once.
