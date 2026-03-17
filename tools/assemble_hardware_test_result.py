@@ -63,9 +63,12 @@ def compute_step_result(scoring: dict[str, Any] | None, manifest: dict[str, Any]
     elif manifest and manifest.get("result"):
         explicit_result = str(manifest["result"])
 
+    if explicit_result in {"FAIL", "ERROR", "PASS_WITH_WARNINGS", "INCONCLUSIVE", "NO_BASELINE"}:
+        return explicit_result
+
     if exit_code:
-        if explicit_result in {"FAIL", "ERROR"}:
-            return explicit_result
+        if explicit_result == "PASS":
+            return "FAIL"
         return "FAIL"
 
     if explicit_result:

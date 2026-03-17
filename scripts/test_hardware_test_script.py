@@ -885,6 +885,44 @@ def main() -> int:
             f"--strict-soaks plus --strict should fail warning-only suite: {strict_soaks_warning_blocking.stdout}\n{strict_soaks_warning_blocking.stderr}",
         )
 
+        soak_warning_exit = run_test_script(
+            {
+                **common_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "commit_regression",
+                "FAKE_DEVICE_VALUE": "19",
+                "FAKE_DEVICE_BASELINE": "18",
+                "FAKE_CORE_RESULT": "PASS_WITH_WARNINGS",
+                "FAKE_CORE_COMPARE_KIND": "run_variance",
+                "FAKE_CORE_VALUE": "29",
+                "FAKE_CORE_BASELINE": "28",
+                "FAKE_CORE_EXIT": "1",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "commit_regression",
+                "FAKE_DISPLAY_VALUE": "39",
+                "FAKE_DISPLAY_BASELINE": "38",
+            }
+        )
+        assert_true(
+            soak_warning_exit.returncode == 0,
+            f"warning-only soak exit should stay diagnostic: {soak_warning_exit.stdout}\n{soak_warning_exit.stderr}",
+        )
+        soak_warning_exit_result = json.loads((latest / "result.json").read_text(encoding="utf-8"))
+        soak_warning_exit_steps = {step["name"]: step for step in soak_warning_exit_result["steps"]}
+        assert_true(soak_warning_exit_result["result"] == "PASS", f"unexpected suite result: {soak_warning_exit_result}")
+        assert_true(
+            soak_warning_exit_steps["core_soak"]["exit_code"] == 1,
+            f"core soak exit should still be preserved: {soak_warning_exit_result}",
+        )
+        assert_true(
+            soak_warning_exit_steps["core_soak"]["result"] == "PASS_WITH_WARNINGS",
+            f"warning-only soak should preserve PASS_WITH_WARNINGS despite non-zero exit: {soak_warning_exit_result}",
+        )
+        assert_true(
+            soak_warning_exit_result["diagnostic_warnings"] == [{"name": "core_soak", "result": "PASS_WITH_WARNINGS"}],
+            f"warning-only soak should remain a diagnostic warning: {soak_warning_exit_result}",
+        )
+
         soak_exit_mismatch = run_test_script(
             {
                 **common_env,
@@ -892,7 +930,7 @@ def main() -> int:
                 "FAKE_DEVICE_COMPARE_KIND": "commit_regression",
                 "FAKE_DEVICE_VALUE": "15",
                 "FAKE_DEVICE_BASELINE": "14",
-                "FAKE_CORE_RESULT": "PASS_WITH_WARNINGS",
+                "FAKE_CORE_RESULT": "PASS",
                 "FAKE_CORE_COMPARE_KIND": "run_variance",
                 "FAKE_CORE_VALUE": "25",
                 "FAKE_CORE_BASELINE": "24",
@@ -916,7 +954,7 @@ def main() -> int:
         )
         assert_true(
             soak_exit_steps["core_soak"]["result"] == "FAIL",
-            f"non-zero core exit must override manifest/scoring PASS result: {soak_exit_result}",
+            f"non-zero core exit must override an explicit PASS result: {soak_exit_result}",
         )
 
         radio_run_history = read_tsv(radio_root / "run_history.tsv")
