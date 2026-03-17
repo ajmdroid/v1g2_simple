@@ -105,6 +105,9 @@ void test_save_deferred_backup_persists_nvs_and_writes_snapshot_via_writer() {
 
     TEST_ASSERT_EQUAL_UINT32(2u, manager.backupRevision());
     TEST_ASSERT_TRUE(deferredSettingsBackupPendingForTest());
+    TEST_ASSERT_TRUE(manager.deferredBackupPending());
+    TEST_ASSERT_FALSE(manager.deferredBackupRetryScheduled());
+    TEST_ASSERT_EQUAL_UINT32(0u, manager.deferredBackupNextAttemptAtMs());
     TEST_ASSERT_EQUAL_UINT(0u, deferredSettingsBackupQueueDepthForTest());
 
     const String activeNs = activeNamespaceOrEmpty();
@@ -140,15 +143,24 @@ void test_service_deferred_backup_retries_after_sd_trylock_busy() {
     manager.serviceDeferredBackup(1000);
 
     TEST_ASSERT_TRUE(deferredSettingsBackupPendingForTest());
+    TEST_ASSERT_TRUE(manager.deferredBackupPending());
+    TEST_ASSERT_TRUE(manager.deferredBackupRetryScheduled());
+    TEST_ASSERT_EQUAL_UINT32(1250u, manager.deferredBackupNextAttemptAtMs());
     TEST_ASSERT_EQUAL_UINT(0u, deferredSettingsBackupQueueDepthForTest());
     TEST_ASSERT_EQUAL_UINT32(1u, StorageManager::mockSdLockState.tryAcquireCalls);
 
     manager.serviceDeferredBackup(1200);
     TEST_ASSERT_EQUAL_UINT32(1u, StorageManager::mockSdLockState.tryAcquireCalls);
     TEST_ASSERT_TRUE(deferredSettingsBackupPendingForTest());
+    TEST_ASSERT_TRUE(manager.deferredBackupPending());
+    TEST_ASSERT_TRUE(manager.deferredBackupRetryScheduled());
+    TEST_ASSERT_EQUAL_UINT32(1250u, manager.deferredBackupNextAttemptAtMs());
 
     manager.serviceDeferredBackup(1250);
     TEST_ASSERT_FALSE(deferredSettingsBackupPendingForTest());
+    TEST_ASSERT_FALSE(manager.deferredBackupPending());
+    TEST_ASSERT_FALSE(manager.deferredBackupRetryScheduled());
+    TEST_ASSERT_EQUAL_UINT32(0u, manager.deferredBackupNextAttemptAtMs());
     TEST_ASSERT_EQUAL_UINT(1u, deferredSettingsBackupQueueDepthForTest());
     TEST_ASSERT_EQUAL_UINT32(2u, StorageManager::mockSdLockState.tryAcquireCalls);
 }

@@ -145,6 +145,27 @@ bool requestBoolArg(WebServer& server,
     }
     return fallback;
 }
+
+void appendSettingsPersistenceMetrics(JsonDocument& doc, uint32_t nowMs) {
+    JsonObject persistenceObj = doc["settingsPersistence"].to<JsonObject>();
+    persistenceObj["backupRevision"] = settingsManager.backupRevision();
+    persistenceObj["deferredBackupPending"] = settingsManager.deferredBackupPending();
+    persistenceObj["deferredBackupRetryScheduled"] =
+        settingsManager.deferredBackupRetryScheduled();
+    const uint32_t nextAttemptAtMs = settingsManager.deferredBackupNextAttemptAtMs();
+    if (nextAttemptAtMs == 0) {
+        persistenceObj["deferredBackupNextAttemptAtMs"] = nullptr;
+        persistenceObj["deferredBackupDelayMs"] = 0;
+    } else {
+        persistenceObj["deferredBackupNextAttemptAtMs"] = nextAttemptAtMs;
+        persistenceObj["deferredBackupDelayMs"] =
+            (static_cast<int32_t>(nextAttemptAtMs - nowMs) > 0)
+                ? (nextAttemptAtMs - nowMs)
+                : 0;
+    }
+    persistenceObj["perfLoggingEnabled"] = perfSdLogger.isEnabled();
+    persistenceObj["perfLoggingPath"] = perfSdLogger.csvPath();
+}
 }  // anonymous namespace
 namespace DebugApiService {
 static void sendMetrics(WebServer& server) {
@@ -347,6 +368,7 @@ static void sendMetrics(WebServer& server) {
     gpsLogObj["size"] = static_cast<uint32_t>(gpsLogStats.size);
     gpsLogObj["capacity"] = static_cast<uint32_t>(GpsObservationLog::kCapacity);
     doc["gpsObsDrops"] = gpsLogStats.drops;
+    appendSettingsPersistenceMetrics(doc, nowMs);
     const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot();
     JsonObject speedObj = doc["speedSource"].to<JsonObject>();
     speedObj["gpsEnabled"] = speedStatus.gpsEnabled;
@@ -536,6 +558,8 @@ static void buildMetricsSoakDoc(JsonDocument& doc) {
         perfProxyAdvertisingTransitionReasonName(proxyAdvertisingLastReasonCode);
     const GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
     doc["gpsObsDrops"] = gpsLogStats.drops;
+    const uint32_t nowMs = millis();
+    appendSettingsPersistenceMetrics(doc, nowMs);
     doc["heapFree"] = ESP.getFreeHeap();
     doc["heapMinFree"] = perfGetMinFreeHeap();
     doc["heapDma"] = StorageManager::getCachedFreeDma();
@@ -572,7 +596,12 @@ static void buildMetricsSoakDoc(JsonDocument& doc) {
         perfCounters.perfDrop.load(),
         systemEventBus.getDropCount());
     JsonObject lockoutObj = doc["lockout"].to<JsonObject>();
+    lockoutObj["coreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
     lockoutObj["coreGuardTripped"] = lockoutGuard.tripped;
+    lockoutObj["coreGuardReason"] = lockoutGuard.reason;
+    lockoutObj["maxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
+    lockoutObj["maxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
+    lockoutObj["maxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
 }
 static void sendMetricsSoak(WebServer& server) {
     DebugApiService::sendCachedSoakMetrics(

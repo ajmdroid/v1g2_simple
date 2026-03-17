@@ -679,6 +679,9 @@ public:
     bool backupToSD();
     void requestDeferredBackupFromCurrentState();
     void serviceDeferredBackup(uint32_t nowMs);
+    bool deferredBackupPending() const;
+    bool deferredBackupRetryScheduled() const;
+    uint32_t deferredBackupNextAttemptAtMs() const;
     bool restoreFromSD();
     bool checkAndRestoreFromSD();  // Call after storage is mounted to retry restore
     

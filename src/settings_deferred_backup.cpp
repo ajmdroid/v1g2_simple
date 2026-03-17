@@ -190,6 +190,19 @@ void SettingsManager::requestDeferredBackupFromCurrentState() {
     clearDeferredBackupRetry();
 }
 
+bool SettingsManager::deferredBackupPending() const {
+    return gDeferredSettingsBackupState.pendingRequest.load(std::memory_order_relaxed) ||
+           gDeferredSettingsBackupState.writerRetryPending.load(std::memory_order_relaxed);
+}
+
+bool SettingsManager::deferredBackupRetryScheduled() const {
+    return gDeferredSettingsBackupState.nextAttemptAtMs != 0;
+}
+
+uint32_t SettingsManager::deferredBackupNextAttemptAtMs() const {
+    return gDeferredSettingsBackupState.nextAttemptAtMs;
+}
+
 void SettingsManager::serviceDeferredBackup(uint32_t nowMs) {
     if (gDeferredSettingsBackupState.writerRetryPending.exchange(false, std::memory_order_relaxed)) {
         gDeferredSettingsBackupState.pendingRequest.store(true, std::memory_order_relaxed);

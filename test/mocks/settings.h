@@ -157,6 +157,9 @@ public:
         return backupToSDResult;
     }
     void requestDeferredBackupFromCurrentState() { ++requestDeferredBackupCalls; }
+    bool deferredBackupPending() const { return false; }
+    bool deferredBackupRetryScheduled() const { return false; }
+    uint32_t deferredBackupNextAttemptAtMs() const { return 0; }
     void setLastV1Address(const char*) {}
     void setActiveSlot(int slot) { settings.activeSlot = static_cast<uint8_t>(slot); }
     void setAutoPushEnabled(bool enabled) { settings.autoPushEnabled = enabled; }
