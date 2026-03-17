@@ -790,7 +790,7 @@ static void configureLockoutPipelineModules() {
                                      &signalCaptureModule,
                                      &systemEventBus, &perfCounters, &timeService);
     lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
-    SettingsRuntimeSync::syncLockoutLearnerTuning(settingsManager.get(), lockoutLearner);
+    SettingsRuntimeSync::syncGpsLockoutRuntimeSettings(settingsManager.get(), lockoutLearner);
 }
 
 static void configureRuntimeAndLockoutModules() {

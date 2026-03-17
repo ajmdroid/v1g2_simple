@@ -124,6 +124,24 @@ void test_sync_gps_runtime_enabled_uses_persisted_flag() {
     TEST_ASSERT_TRUE(gpsRuntime.lastEnabled);
 }
 
+void test_sync_gps_vehicle_runtime_settings_updates_gps_and_selector() {
+    V1Settings settings;
+    settings.gpsEnabled = true;
+    settings.obdEnabled = false;
+    GpsRuntimeModule gpsRuntime;
+    SpeedSourceSelector speedSourceSelector;
+
+    SettingsRuntimeSync::syncGpsVehicleRuntimeSettings(settings,
+                                                       gpsRuntime,
+                                                       speedSourceSelector);
+
+    TEST_ASSERT_EQUAL_INT(1, gpsRuntime.setEnabledCalls);
+    TEST_ASSERT_TRUE(gpsRuntime.lastEnabled);
+    TEST_ASSERT_EQUAL_INT(1, speedSourceSelector.syncEnabledInputsCalls);
+    TEST_ASSERT_TRUE(speedSourceSelector.lastGpsEnabled);
+    TEST_ASSERT_FALSE(speedSourceSelector.lastObdEnabled);
+}
+
 void test_sync_obd_runtime_settings_applies_enabled_and_min_rssi() {
     V1Settings settings;
     settings.obdEnabled = true;
@@ -136,6 +154,27 @@ void test_sync_obd_runtime_settings_applies_enabled_and_min_rssi() {
     TEST_ASSERT_TRUE(obdRuntime.lastEnabled);
     TEST_ASSERT_EQUAL_INT(1, obdRuntime.setMinRssiCalls);
     TEST_ASSERT_EQUAL_INT8(-55, obdRuntime.lastMinRssi);
+}
+
+void test_sync_obd_vehicle_runtime_settings_updates_obd_and_selector() {
+    V1Settings settings;
+    settings.gpsEnabled = true;
+    settings.obdEnabled = true;
+    settings.obdMinRssi = -63;
+    ObdRuntimeModule obdRuntime;
+    SpeedSourceSelector speedSourceSelector;
+
+    SettingsRuntimeSync::syncObdVehicleRuntimeSettings(settings,
+                                                       obdRuntime,
+                                                       speedSourceSelector);
+
+    TEST_ASSERT_EQUAL_INT(1, obdRuntime.setEnabledCalls);
+    TEST_ASSERT_TRUE(obdRuntime.lastEnabled);
+    TEST_ASSERT_EQUAL_INT(1, obdRuntime.setMinRssiCalls);
+    TEST_ASSERT_EQUAL_INT8(-63, obdRuntime.lastMinRssi);
+    TEST_ASSERT_EQUAL_INT(1, speedSourceSelector.syncEnabledInputsCalls);
+    TEST_ASSERT_TRUE(speedSourceSelector.lastGpsEnabled);
+    TEST_ASSERT_TRUE(speedSourceSelector.lastObdEnabled);
 }
 
 void test_sync_speed_source_selector_inputs_uses_persisted_inputs() {
@@ -167,6 +206,31 @@ void test_sync_lockout_band_learning_policy_applies_all_band_flags() {
     TEST_ASSERT_TRUE(g_lastXEnabled);
 }
 
+void test_sync_vehicle_runtime_inputs_applies_gps_obd_and_selector() {
+    V1Settings settings;
+    settings.gpsEnabled = true;
+    settings.obdEnabled = true;
+    settings.obdMinRssi = -58;
+    GpsRuntimeModule gpsRuntime;
+    ObdRuntimeModule obdRuntime;
+    SpeedSourceSelector speedSourceSelector;
+
+    SettingsRuntimeSync::syncVehicleRuntimeInputs(settings,
+                                                  gpsRuntime,
+                                                  obdRuntime,
+                                                  speedSourceSelector);
+
+    TEST_ASSERT_EQUAL_INT(1, gpsRuntime.setEnabledCalls);
+    TEST_ASSERT_TRUE(gpsRuntime.lastEnabled);
+    TEST_ASSERT_EQUAL_INT(1, obdRuntime.setEnabledCalls);
+    TEST_ASSERT_TRUE(obdRuntime.lastEnabled);
+    TEST_ASSERT_EQUAL_INT(1, obdRuntime.setMinRssiCalls);
+    TEST_ASSERT_EQUAL_INT8(-58, obdRuntime.lastMinRssi);
+    TEST_ASSERT_EQUAL_INT(1, speedSourceSelector.syncEnabledInputsCalls);
+    TEST_ASSERT_TRUE(speedSourceSelector.lastGpsEnabled);
+    TEST_ASSERT_TRUE(speedSourceSelector.lastObdEnabled);
+}
+
 void test_sync_lockout_learner_tuning_applies_all_persisted_fields() {
     V1Settings settings;
     settings.gpsLockoutLearnerPromotionHits = 4;
@@ -188,12 +252,46 @@ void test_sync_lockout_learner_tuning_applies_all_persisted_fields() {
     TEST_ASSERT_EQUAL_UINT8(7, lockoutLearner.lastMinLearnerSpeedMph);
 }
 
+void test_sync_gps_lockout_runtime_settings_applies_band_policy_and_tuning() {
+    V1Settings settings;
+    settings.gpsLockoutKaLearningEnabled = true;
+    settings.gpsLockoutKLearningEnabled = false;
+    settings.gpsLockoutXLearningEnabled = true;
+    settings.gpsLockoutLearnerPromotionHits = 5;
+    settings.gpsLockoutLearnerRadiusE5 = 225;
+    settings.gpsLockoutLearnerFreqToleranceMHz = 10;
+    settings.gpsLockoutLearnerLearnIntervalHours = 12;
+    settings.gpsLockoutMaxHdopX10 = 65;
+    settings.gpsLockoutMinLearnerSpeedMph = 9;
+    LockoutLearner lockoutLearner;
+
+    SettingsRuntimeSync::syncGpsLockoutRuntimeSettings(settings, lockoutLearner);
+
+    TEST_ASSERT_EQUAL_INT(1, g_kaCalls);
+    TEST_ASSERT_EQUAL_INT(1, g_kCalls);
+    TEST_ASSERT_EQUAL_INT(1, g_xCalls);
+    TEST_ASSERT_TRUE(g_lastKaEnabled);
+    TEST_ASSERT_FALSE(g_lastKEnabled);
+    TEST_ASSERT_TRUE(g_lastXEnabled);
+    TEST_ASSERT_EQUAL_INT(1, lockoutLearner.setTuningCalls);
+    TEST_ASSERT_EQUAL_UINT8(5, lockoutLearner.lastPromotionHits);
+    TEST_ASSERT_EQUAL_UINT16(225, lockoutLearner.lastRadiusE5);
+    TEST_ASSERT_EQUAL_UINT16(10, lockoutLearner.lastFreqToleranceMHz);
+    TEST_ASSERT_EQUAL_UINT8(12, lockoutLearner.lastLearnIntervalHours);
+    TEST_ASSERT_EQUAL_UINT16(65, lockoutLearner.lastMaxHdopX10);
+    TEST_ASSERT_EQUAL_UINT8(9, lockoutLearner.lastMinLearnerSpeedMph);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_sync_gps_runtime_enabled_uses_persisted_flag);
+    RUN_TEST(test_sync_gps_vehicle_runtime_settings_updates_gps_and_selector);
     RUN_TEST(test_sync_obd_runtime_settings_applies_enabled_and_min_rssi);
+    RUN_TEST(test_sync_obd_vehicle_runtime_settings_updates_obd_and_selector);
     RUN_TEST(test_sync_speed_source_selector_inputs_uses_persisted_inputs);
     RUN_TEST(test_sync_lockout_band_learning_policy_applies_all_band_flags);
+    RUN_TEST(test_sync_vehicle_runtime_inputs_applies_gps_obd_and_selector);
     RUN_TEST(test_sync_lockout_learner_tuning_applies_all_persisted_fields);
+    RUN_TEST(test_sync_gps_lockout_runtime_settings_applies_band_policy_and_tuning);
     return UNITY_END();
 }

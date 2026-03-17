@@ -39,6 +39,34 @@ inline void syncSpeedSourceSelectorInputs(const V1Settings& settings,
     speedSourceSelector.syncEnabledInputs(settings.gpsEnabled, settings.obdEnabled);
 }
 
+template <typename TGpsRuntimeModule, typename TSpeedSourceSelector>
+inline void syncGpsVehicleRuntimeSettings(const V1Settings& settings,
+                                          TGpsRuntimeModule& gpsRuntimeModule,
+                                          TSpeedSourceSelector& speedSourceSelector) {
+    syncGpsRuntimeEnabled(settings, gpsRuntimeModule);
+    syncSpeedSourceSelectorInputs(settings, speedSourceSelector);
+}
+
+template <typename TObdRuntimeModule, typename TSpeedSourceSelector>
+inline void syncObdVehicleRuntimeSettings(const V1Settings& settings,
+                                          TObdRuntimeModule& obdRuntimeModule,
+                                          TSpeedSourceSelector& speedSourceSelector) {
+    syncObdRuntimeSettings(settings, obdRuntimeModule);
+    syncSpeedSourceSelectorInputs(settings, speedSourceSelector);
+}
+
+template <typename TGpsRuntimeModule,
+          typename TObdRuntimeModule,
+          typename TSpeedSourceSelector>
+inline void syncVehicleRuntimeInputs(const V1Settings& settings,
+                                     TGpsRuntimeModule& gpsRuntimeModule,
+                                     TObdRuntimeModule& obdRuntimeModule,
+                                     TSpeedSourceSelector& speedSourceSelector) {
+    syncGpsRuntimeEnabled(settings, gpsRuntimeModule);
+    syncObdRuntimeSettings(settings, obdRuntimeModule);
+    syncSpeedSourceSelectorInputs(settings, speedSourceSelector);
+}
+
 inline void syncLockoutBandLearningPolicy(const V1Settings& settings) {
     lockoutSetKaLearningEnabled(settings.gpsLockoutKaLearningEnabled);
     lockoutSetKLearningEnabled(settings.gpsLockoutKLearningEnabled);
@@ -54,6 +82,13 @@ inline void syncLockoutLearnerTuning(const V1Settings& settings,
                              settings.gpsLockoutLearnerLearnIntervalHours,
                              settings.gpsLockoutMaxHdopX10,
                              settings.gpsLockoutMinLearnerSpeedMph);
+}
+
+template <typename TLockoutLearner>
+inline void syncGpsLockoutRuntimeSettings(const V1Settings& settings,
+                                          TLockoutLearner& lockoutLearner) {
+    syncLockoutBandLearningPolicy(settings);
+    syncLockoutLearnerTuning(settings, lockoutLearner);
 }
 
 }  // namespace SettingsRuntimeSync

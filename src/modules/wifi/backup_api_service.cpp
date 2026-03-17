@@ -112,11 +112,11 @@ static void handleRestore(WebServer& server) {
     }
 
     const V1Settings& settings = settingsManager.get();
-    SettingsRuntimeSync::syncGpsRuntimeEnabled(settings, gpsRuntimeModule);
-    SettingsRuntimeSync::syncObdRuntimeSettings(settings, obdRuntimeModule);
-    SettingsRuntimeSync::syncSpeedSourceSelectorInputs(settings, speedSourceSelector);
-    SettingsRuntimeSync::syncLockoutBandLearningPolicy(settings);
-    SettingsRuntimeSync::syncLockoutLearnerTuning(settings, lockoutLearner);
+    SettingsRuntimeSync::syncVehicleRuntimeInputs(settings,
+                                                  gpsRuntimeModule,
+                                                  obdRuntimeModule,
+                                                  speedSourceSelector);
+    SettingsRuntimeSync::syncGpsLockoutRuntimeSettings(settings, lockoutLearner);
     
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", applyResult.profilesRestored);
     

@@ -52,6 +52,7 @@ Owns post-display connection-state dispatch cadence, periodic maintenance, and l
 - Wi-Fi runtime progression: `WifiRuntimeModule`
 - Connection-state dispatch cadence: `LoopPostDisplayModule`
 - Domain-specific settings writes: `WifiSettingsApiService::handleApiDeviceSettingsSave()` owns AP/proxy/power/dev writes on `POST /api/device/settings`, while `GpsApiService::handleApiConfig()` owns GPS/lockout writes on `POST /api/gps/config`.
+- Runtime reapply after persisted settings changes: `SettingsRuntimeSync` helper bundles own the shared GPS/OBD/selector and GPS lockout reapply groupings so restore and config writes do not hand-roll divergent apply paths.
 
 Signal and lockout consumers must not derive fallback speed from raw GPS or
 OBD runtime state. If the selector did not publish a committed speed for the

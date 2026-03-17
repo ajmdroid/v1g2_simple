@@ -594,8 +594,9 @@ void handleConfig(WebServer& server,
 
     if (hasEnabled) {
         settingsManager.setGpsEnabled(enabled);
-        SettingsRuntimeSync::syncGpsRuntimeEnabled(settingsManager.get(), gpsRuntimeModule);
-        SettingsRuntimeSync::syncSpeedSourceSelectorInputs(settingsManager.get(), speedSourceSelector);
+        SettingsRuntimeSync::syncGpsVehicleRuntimeSettings(settingsManager.get(),
+                                                           gpsRuntimeModule,
+                                                           speedSourceSelector);
     }
 
     bool lockoutSettingsChanged = false;

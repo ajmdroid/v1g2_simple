@@ -183,13 +183,11 @@ void handleApiConfig(WebServer& server,
 
     V1Settings& settings = settingsManager.mutableSettings();
     bool changed = false;
-    bool enabledChanged = false;
 
     if (body["enabled"].is<bool>()) {
         bool enabled = body["enabled"].as<bool>();
         settings.obdEnabled = enabled;
         changed = true;
-        enabledChanged = true;
     }
     if (!body["minRssi"].isNull()) {
         int rssi = body["minRssi"].as<int>();
@@ -199,10 +197,7 @@ void handleApiConfig(WebServer& server,
     }
 
     if (changed) {
-        SettingsRuntimeSync::syncObdRuntimeSettings(settings, obdRuntime);
-        if (enabledChanged) {
-            SettingsRuntimeSync::syncSpeedSourceSelectorInputs(settings, speedSourceSelector);
-        }
+        SettingsRuntimeSync::syncObdVehicleRuntimeSettings(settings, obdRuntime, speedSourceSelector);
         settingsManager.save();
     }
 
