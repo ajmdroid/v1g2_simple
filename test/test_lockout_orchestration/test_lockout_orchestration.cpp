@@ -20,7 +20,6 @@ SettingsManager settingsManager;
 #include "../../src/modules/lockout/lockout_index.h"
 #include "../../src/modules/lockout/signal_capture_module.h"
 #include "../../src/modules/speed/speed_source_selector.h"
-#include "../../src/modules/volume_fade/volume_fade_module.h"
 #include "../../src/time_service.h"
 #include "../../src/modules/lockout/lockout_runtime_mute_controller.cpp"
 #include "../../src/modules/lockout/lockout_pre_quiet_controller.cpp"
@@ -34,7 +33,6 @@ SettingsManager settingsManager;
 static LockoutEnforcerResult g_fakeEnforcerResult;
 static size_t g_fakeNearbyCount = 0;
 static uint32_t g_captureCalls = 0;
-static uint32_t g_baselineHintCalls = 0;
 static int64_t g_fakeEpochMs = 0;
 static int64_t g_lastEnforcerEpochMs = -1;
 static int32_t g_lastEnforcerTzOffsetMinutes = -1;
@@ -121,26 +119,6 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
     g_captureCalls++;
 }
 
-VolumeFadeModule::VolumeFadeModule() {}
-
-void VolumeFadeModule::begin(SettingsManager* settings) {
-    this->settings = settings;
-}
-
-VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
-    (void)ctx;
-    return VolumeFadeAction{};
-}
-
-void VolumeFadeModule::reset() {}
-
-void VolumeFadeModule::setBaselineHint(uint8_t mainVol, uint8_t muteVol, uint32_t nowMs) {
-    (void)mainVol;
-    (void)muteVol;
-    (void)nowMs;
-    g_baselineHintCalls++;
-}
-
 int64_t TimeService::nowEpochMsOr0() const {
     return g_fakeEpochMs;
 }
@@ -159,7 +137,6 @@ static V1Display display;
 static LockoutEnforcer enforcer;
 static LockoutIndex lockoutIndexInst;
 static SignalCaptureModule sigCapture;
-static VolumeFadeModule volFade;
 static SystemEventBus eventBus;
 static PerfCounters perfCounterState;
 static TimeService timeSvc;
@@ -176,9 +153,9 @@ static void setOverrideCondition(bool active) {
     parser.state.muted = false;
 }
 
-static void runOnce(uint32_t nowMs, bool proxyConnected = false) {
+static LockoutOrchestrationResult runOnce(uint32_t nowMs, bool proxyConnected = false) {
     mockMillis = nowMs;
-    module.process(nowMs, gps, proxyConnected, false);
+    return module.process(nowMs, gps, proxyConnected, false);
 }
 
 void setUp() {
@@ -197,7 +174,6 @@ void setUp() {
     g_fakeEnforcerResult = LockoutEnforcerResult{};
     g_fakeNearbyCount = 0;
     g_captureCalls = 0;
-    g_baselineHintCalls = 0;
     g_fakeEpochMs = 0;
     g_lastEnforcerEpochMs = -1;
     g_lastEnforcerTzOffsetMinutes = -1;
@@ -212,7 +188,6 @@ void setUp() {
                  &enforcer,
                  &lockoutIndexInst,
                  &sigCapture,
-                 &volFade,
                  &eventBus,
                  &perfCounterState,
                  &timeSvc);
@@ -289,7 +264,6 @@ void test_null_time_service_falls_back_to_zero_epoch_and_offset() {
                  &enforcer,
                  &lockoutIndexInst,
                  &sigCapture,
-                 &volFade,
                  &eventBus,
                  &perfCounterState,
                  nullptr);
@@ -301,6 +275,28 @@ void test_null_time_service_falls_back_to_zero_epoch_and_offset() {
     TEST_ASSERT_EQUAL_UINT32(1, g_captureCalls);
 }
 
+void test_pre_quiet_returns_volume_command_without_sending_ble_volume() {
+    settings.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
+    settings.settings.gpsLockoutPreQuiet = true;
+    parser.state.mainVolume = 6;
+    parser.state.muteVolume = 2;
+    g_fakeEnforcerResult.mode = LOCKOUT_RUNTIME_ENFORCE;
+    gps.locationValid = true;
+    gps.latitudeDeg = 40.7128f;
+    gps.longitudeDeg = -74.0060f;
+    g_fakeNearbyCount = 1;
+
+    const LockoutOrchestrationResult first = runOnce(1000);
+    const LockoutOrchestrationResult second = runOnce(1100);
+
+    TEST_ASSERT_FALSE(first.volumeCommand.hasAction());
+    TEST_ASSERT_TRUE(second.volumeCommand.hasAction());
+    TEST_ASSERT_EQUAL(LockoutVolumeCommandType::PreQuietDrop, second.volumeCommand.type);
+    TEST_ASSERT_EQUAL_UINT8(2, second.volumeCommand.volume);
+    TEST_ASSERT_EQUAL_UINT8(2, second.volumeCommand.muteVolume);
+    TEST_ASSERT_EQUAL_INT(0, ble.setVolumeCalls);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_override_unmute_sends_on_first_eligible_frame);
@@ -309,5 +305,6 @@ int main() {
     RUN_TEST(test_override_unmute_resets_and_rearms_after_condition_clears);
     RUN_TEST(test_proxy_connected_path_resets_retry_state);
     RUN_TEST(test_null_time_service_falls_back_to_zero_epoch_and_offset);
+    RUN_TEST(test_pre_quiet_returns_volume_command_without_sending_ble_volume);
     return UNITY_END();
 }

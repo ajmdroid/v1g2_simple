@@ -12,15 +12,31 @@ class V1Display;
 class LockoutEnforcer;
 class LockoutIndex;
 class SignalCaptureModule;
-class VolumeFadeModule;
 class SystemEventBus;
 struct PerfCounters;
 class TimeService;
 struct GpsRuntimeStatus;
 
+enum class LockoutVolumeCommandType : uint8_t {
+    None = 0,
+    PreQuietDrop,
+    PreQuietRestore,
+};
+
+struct LockoutVolumeCommand {
+    LockoutVolumeCommandType type = LockoutVolumeCommandType::None;
+    uint8_t volume = 0;
+    uint8_t muteVolume = 0;
+
+    bool hasAction() const {
+        return type != LockoutVolumeCommandType::None;
+    }
+};
+
 /// Result emitted per process() call for main-loop consumption.
 struct LockoutOrchestrationResult {
     bool prioritySuppressed = false;  // True → suppress voice priority announcements
+    LockoutVolumeCommand volumeCommand{};
 };
 
 /// Orchestrates the full lockout enforcement pipeline:
@@ -39,7 +55,6 @@ public:
                LockoutEnforcer* enforcer,
                LockoutIndex* index,
                SignalCaptureModule* sigCapture,
-               VolumeFadeModule* volFade,
                SystemEventBus* eventBus,
                PerfCounters* perfCounters,
                TimeService* timeSvc);
@@ -74,7 +89,6 @@ private:
     LockoutEnforcer* enforcer_ = nullptr;
     LockoutIndex* index_ = nullptr;
     SignalCaptureModule* sigCapture_ = nullptr;
-    VolumeFadeModule* volFade_ = nullptr;
     SystemEventBus* eventBus_ = nullptr;
     PerfCounters* perfCounters_ = nullptr;
     TimeService* timeSvc_ = nullptr;

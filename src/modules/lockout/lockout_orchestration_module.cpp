@@ -11,7 +11,6 @@
 #include "../gps/gps_lockout_safety.h"
 #include "../gps/gps_runtime_module.h"
 #include "../speed/speed_source_selector.h"
-#include "../volume_fade/volume_fade_module.h"
 #include "../system/system_event_bus.h"
 #include "../../packet_parser.h"
 #include "../../ble_client.h"
@@ -27,7 +26,6 @@ void LockoutOrchestrationModule::begin(V1BLEClient* ble,
                                        LockoutEnforcer* enforcer,
                                        LockoutIndex* index,
                                        SignalCaptureModule* sigCapture,
-                                       VolumeFadeModule* volFade,
                                        SystemEventBus* eventBus,
                                        PerfCounters* perfCounters,
                                        TimeService* timeSvc) {
@@ -38,7 +36,6 @@ void LockoutOrchestrationModule::begin(V1BLEClient* ble,
     enforcer_ = enforcer;
     index_ = index;
     sigCapture_ = sigCapture;
-    volFade_ = volFade;
     eventBus_ = eventBus;
     perfCounters_ = perfCounters;
     timeSvc_ = timeSvc;
@@ -52,7 +49,7 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
 
     LockoutOrchestrationResult result;
     if (!ble_ || !parser_ || !settings_ || !display_ || !enforcer_ ||
-        !index_ || !sigCapture_ || !volFade_ || !eventBus_ || !perfCounters_) {
+        !index_ || !sigCapture_ || !eventBus_ || !perfCounters_) {
         return result;
     }
 
@@ -193,13 +190,13 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
                 preQuietState_,
                 overrideBandActive);
             if (pqDecision.action == PreQuietDecision::DROP_VOLUME) {
-                ble_->setVolume(pqDecision.volume, pqDecision.muteVolume);
-                Serial.println("[Lockout] PRE-QUIET: volume dropped in lockout zone");
+                result.volumeCommand.type = LockoutVolumeCommandType::PreQuietDrop;
+                result.volumeCommand.volume = pqDecision.volume;
+                result.volumeCommand.muteVolume = pqDecision.muteVolume;
             } else if (pqDecision.action == PreQuietDecision::RESTORE_VOLUME) {
-                ble_->setVolume(pqDecision.volume, pqDecision.muteVolume);
-                // Tell VolumeFade the real baseline so it doesn't capture stale echo.
-                volFade_->setBaselineHint(pqDecision.volume, pqDecision.muteVolume, nowMs);
-                Serial.println("[Lockout] PRE-QUIET: volume restored");
+                result.volumeCommand.type = LockoutVolumeCommandType::PreQuietRestore;
+                result.volumeCommand.volume = pqDecision.volume;
+                result.volumeCommand.muteVolume = pqDecision.muteVolume;
             }
             display_->setPreQuietActive(preQuietState_.phase == PreQuietPhase::DROPPED);
         }

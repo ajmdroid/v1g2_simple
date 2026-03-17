@@ -642,7 +642,6 @@ static void configureAlertAudioDisplayPipeline() {
                                 &settingsManager,
                                 &bleClient,
                                 &alertPersistenceModule,
-                                &volumeFadeModule,
                                 &voiceModule);
 }
 
@@ -669,7 +668,8 @@ static void configureSystemLoopCoreModules() {
                                      &parser,
                                      &settingsManager,
                                      &gpsRuntimeModule,
-                                     &lockoutOrchestrationModule);
+                                     &lockoutOrchestrationModule,
+                                     &volumeFadeModule);
 }
 
 static void configureSystemLoopPhaseModules() {
@@ -745,7 +745,7 @@ static void configureLockoutPipelineModules() {
     lockoutEnforcer.begin(&settingsManager, &lockoutIndex, &lockoutStore);
     lockoutOrchestrationModule.begin(&bleClient, &parser, &settingsManager,
                                      &display, &lockoutEnforcer, &lockoutIndex,
-                                     &signalCaptureModule, &volumeFadeModule,
+                                     &signalCaptureModule,
                                      &systemEventBus, &perfCounters, &timeService);
     lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
     {

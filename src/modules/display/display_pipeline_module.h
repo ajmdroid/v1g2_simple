@@ -9,7 +9,6 @@
 #include "settings.h"
 #include "ble_client.h"
 #include "modules/alert_persistence/alert_persistence_module.h"
-#include "modules/volume_fade/volume_fade_module.h"
 #include "modules/voice/voice_module.h"
 
 class DisplayPipelineModule {
@@ -20,7 +19,6 @@ public:
                SettingsManager* settingsMgr,
                V1BLEClient* bleClient,
                AlertPersistenceModule* alertPersistenceModule,
-               VolumeFadeModule* volumeFadeModule,
                VoiceModule* voiceModule);
 
     // Process after a successful parser.parse(); expects parser state already updated.
@@ -43,7 +41,6 @@ private:
     SettingsManager* settings = nullptr;
     V1BLEClient* ble = nullptr;
     AlertPersistenceModule* alertPersistence = nullptr;
-    VolumeFadeModule* volumeFade = nullptr;
     VoiceModule* voice = nullptr;
 
     // Mute debounce

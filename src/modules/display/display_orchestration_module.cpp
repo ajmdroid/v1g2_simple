@@ -6,6 +6,7 @@
 #include "modules/ble/ble_queue_module.h"
 #include "modules/display/display_preview_module.h"
 #include "modules/display/display_restore_module.h"
+#include "modules/volume_fade/volume_fade_module.h"
 #include "packet_parser.h"
 #include "settings.h"
 #include "modules/gps/gps_runtime_module.h"
@@ -20,7 +21,8 @@ void DisplayOrchestrationModule::begin(V1Display* displayPtr,
                                        PacketParser* parserPtr,
                                        SettingsManager* settingsManager,
                                        GpsRuntimeModule* gpsModule,
-                                       LockoutOrchestrationModule* lockoutModule) {
+                                       LockoutOrchestrationModule* lockoutModule,
+                                       VolumeFadeModule* volumeFadeModule) {
     display = displayPtr;
     ble = bleClient;
     bleQueue = bleQueueModule;
@@ -30,6 +32,7 @@ void DisplayOrchestrationModule::begin(V1Display* displayPtr,
     settings = settingsManager;
     gpsRuntime = gpsModule;
     lockout = lockoutModule;
+    volumeFade = volumeFadeModule;
     reset();
 }
 
@@ -37,6 +40,62 @@ void DisplayOrchestrationModule::reset() {
     lastGpsSatUpdateMs = 0;
     lastFreqUiMs = 0;
     lastCardUiMs = 0;
+}
+
+void DisplayOrchestrationModule::executeLockoutVolumeCommand(const LockoutVolumeCommand& command,
+                                                             const uint32_t nowMs) {
+    if (!ble || !command.hasAction()) {
+        return;
+    }
+
+    ble->setVolume(command.volume, command.muteVolume);
+    if (command.type == LockoutVolumeCommandType::PreQuietRestore) {
+        if (volumeFade) {
+            volumeFade->setBaselineHint(command.volume, command.muteVolume, nowMs);
+        }
+        Serial.println("[Lockout] PRE-QUIET: volume restored");
+        return;
+    }
+
+    if (command.type == LockoutVolumeCommandType::PreQuietDrop) {
+        Serial.println("[Lockout] PRE-QUIET: volume dropped in lockout zone");
+    }
+}
+
+void DisplayOrchestrationModule::executeVolumeFade(const uint32_t nowMs,
+                                                   const bool lockoutPrioritySuppressed) {
+    if (!ble || !parser || !volumeFade) {
+        return;
+    }
+
+    const DisplayState state = parser->getDisplayState();
+    const bool hasAlerts = parser->hasAlerts();
+    AlertData priority;
+    const bool hasRenderablePriority =
+        hasAlerts && parser->getRenderablePriorityAlert(priority);
+
+    VolumeFadeContext fadeCtx;
+    fadeCtx.hasAlert = hasAlerts;
+    fadeCtx.currentVolume = state.mainVolume;
+    fadeCtx.currentMuteVolume = state.muteVolume;
+    fadeCtx.now = nowMs;
+    if (hasAlerts) {
+        fadeCtx.alertMuted = state.muted;
+        fadeCtx.alertSuppressed = lockoutPrioritySuppressed;
+        fadeCtx.currentFrequency =
+            hasRenderablePriority ? static_cast<uint16_t>(priority.frequency) : 0;
+    }
+
+    const VolumeFadeAction fadeAction = volumeFade->process(fadeCtx);
+    if (!fadeAction.hasAction()) {
+        return;
+    }
+
+    if (fadeAction.type == VolumeFadeAction::Type::FADE_DOWN) {
+        ble->setVolume(fadeAction.targetVolume, fadeAction.targetMuteVolume);
+    } else if (fadeAction.type == VolumeFadeAction::Type::RESTORE) {
+        ble->setVolume(fadeAction.restoreVolume, fadeAction.restoreMuteVolume);
+    }
 }
 
 void DisplayOrchestrationModule::processEarly(const DisplayOrchestrationEarlyContext& ctx) {
@@ -79,6 +138,7 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
 
         result.lockoutEvaluated = true;
         result.lockoutPrioritySuppressed = lockoutResult.prioritySuppressed;
+        executeLockoutVolumeCommand(lockoutResult.volumeCommand, ctx.nowMs);
 
         if (lastGpsSatUpdateMs == 0 ||
             (ctx.nowMs - lastGpsSatUpdateMs >= GPS_SAT_UPDATE_INTERVAL_MS)) {
@@ -89,6 +149,9 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         }
 
         result.runDisplayPipeline = !preview->isRunning();
+        if (result.runDisplayPipeline) {
+            executeVolumeFade(ctx.nowMs, result.lockoutPrioritySuppressed);
+        }
         return result;
     }
 

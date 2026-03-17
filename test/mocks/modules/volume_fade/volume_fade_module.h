@@ -31,14 +31,22 @@ class VolumeFadeModule {
 public:
     bool tracking = false;
     int processCalls = 0;
+    int setBaselineHintCalls = 0;
     VolumeFadeContext lastContext{};
     VolumeFadeAction nextAction{};
+    uint8_t lastHintVolume = 0;
+    uint8_t lastHintMuteVolume = 0;
+    uint32_t lastHintNowMs = 0;
     
     void reset() {
         tracking = false;
         processCalls = 0;
+        setBaselineHintCalls = 0;
         lastContext = VolumeFadeContext{};
         nextAction = VolumeFadeAction{};
+        lastHintVolume = 0;
+        lastHintMuteVolume = 0;
+        lastHintNowMs = 0;
     }
     
     bool isTracking() const { return tracking; }
@@ -47,5 +55,12 @@ public:
         ++processCalls;
         lastContext = ctx;
         return nextAction;
+    }
+
+    void setBaselineHint(uint8_t mainVol, uint8_t muteVol, uint32_t nowMs) {
+        ++setBaselineHintCalls;
+        lastHintVolume = mainVol;
+        lastHintMuteVolume = muteVol;
+        lastHintNowMs = nowMs;
     }
 };

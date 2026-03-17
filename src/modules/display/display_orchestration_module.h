@@ -12,6 +12,8 @@ class PacketParser;
 class SettingsManager;
 class GpsRuntimeModule;
 class LockoutOrchestrationModule;
+struct LockoutVolumeCommand;
+class VolumeFadeModule;
 
 struct DisplayOrchestrationEarlyContext {
     uint32_t nowMs = 0;
@@ -55,7 +57,8 @@ public:
                PacketParser* parserPtr,
                SettingsManager* settingsManager,
                GpsRuntimeModule* gpsModule,
-               LockoutOrchestrationModule* lockoutModule);
+               LockoutOrchestrationModule* lockoutModule,
+               VolumeFadeModule* volumeFadeModule);
 
     void processEarly(const DisplayOrchestrationEarlyContext& ctx);
     DisplayOrchestrationParsedResult processParsedFrame(const DisplayOrchestrationParsedContext& ctx);
@@ -73,6 +76,7 @@ private:
     SettingsManager* settings = nullptr;
     GpsRuntimeModule* gpsRuntime = nullptr;
     LockoutOrchestrationModule* lockout = nullptr;
+    VolumeFadeModule* volumeFade = nullptr;
 
     uint32_t lastGpsSatUpdateMs = 0;
     unsigned long lastFreqUiMs = 0;
@@ -83,4 +87,7 @@ private:
     static constexpr unsigned long FREQ_UI_MAX_MS = 75;
     static constexpr unsigned long FREQ_UI_PREVIEW_MAX_MS = 250;
     static constexpr unsigned long CARD_UI_MAX_MS = 100;
+
+    void executeLockoutVolumeCommand(const LockoutVolumeCommand& command, uint32_t nowMs);
+    void executeVolumeFade(uint32_t nowMs, bool lockoutPrioritySuppressed);
 };

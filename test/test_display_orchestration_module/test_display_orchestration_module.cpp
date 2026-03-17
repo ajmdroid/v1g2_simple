@@ -10,6 +10,7 @@
 #include "../mocks/settings.h"
 #include "../mocks/modules/gps/gps_runtime_module.h"
 #include "../mocks/modules/lockout/lockout_orchestration_module.h"
+#include "../mocks/modules/volume_fade/volume_fade_module.h"
 
 #ifndef ARDUINO
 SerialClass Serial;
@@ -28,6 +29,7 @@ static DisplayRestoreModule restore;
 static PacketParser parser;
 static GpsRuntimeModule gpsRuntime;
 static LockoutOrchestrationModule lockout;
+static VolumeFadeModule volumeFade;
 static DisplayOrchestrationModule module;
 
 static void beginModule() {
@@ -39,7 +41,8 @@ static void beginModule() {
                  &parser,
                  &settingsManager,
                  &gpsRuntime,
-                 &lockout);
+                 &lockout,
+                 &volumeFade);
 }
 
 void setUp() {
@@ -51,6 +54,7 @@ void setUp() {
     parser.reset();
     gpsRuntime = GpsRuntimeModule{};
     lockout = LockoutOrchestrationModule{};
+    volumeFade.reset();
     settingsManager = SettingsManager{};
     beginModule();
 }
@@ -133,6 +137,56 @@ void test_parsed_frame_skips_pipeline_when_preview_running() {
     const auto result = module.processParsedFrame(ctx);
     TEST_ASSERT_TRUE(result.lockoutEvaluated);
     TEST_ASSERT_FALSE(result.runDisplayPipeline);
+    TEST_ASSERT_EQUAL(0, volumeFade.processCalls);
+}
+
+void test_parsed_frame_executes_lockout_restore_through_single_volume_owner() {
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::PreQuietRestore;
+    lockout.nextResult.volumeCommand.volume = 7;
+    lockout.nextResult.volumeCommand.muteVolume = 2;
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 8100;
+    ctx.parsedReady = true;
+    ctx.bootSplashHoldActive = false;
+
+    module.processParsedFrame(ctx);
+
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(7, ble.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, ble.lastMuteVolume);
+    TEST_ASSERT_EQUAL(1, volumeFade.setBaselineHintCalls);
+    TEST_ASSERT_EQUAL_UINT8(7, volumeFade.lastHintVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, volumeFade.lastHintMuteVolume);
+    TEST_ASSERT_EQUAL_UINT32(8100, volumeFade.lastHintNowMs);
+}
+
+void test_parsed_frame_executes_volume_fade_when_pipeline_runs() {
+    parser.state.mainVolume = 8;
+    parser.state.muteVolume = 2;
+    parser.state.muted = false;
+    parser.setAlerts({
+        AlertData::create(BAND_KA, DIR_FRONT, 6, 0, 35500, true, true)
+    });
+    volumeFade.nextAction.type = VolumeFadeAction::Type::FADE_DOWN;
+    volumeFade.nextAction.targetVolume = 3;
+    volumeFade.nextAction.targetMuteVolume = 1;
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 5200;
+    ctx.parsedReady = true;
+    ctx.bootSplashHoldActive = false;
+
+    module.processParsedFrame(ctx);
+
+    TEST_ASSERT_EQUAL(1, volumeFade.processCalls);
+    TEST_ASSERT_TRUE(volumeFade.lastContext.hasAlert);
+    TEST_ASSERT_EQUAL_UINT8(8, volumeFade.lastContext.currentVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, volumeFade.lastContext.currentMuteVolume);
+    TEST_ASSERT_EQUAL_UINT16(35500u, volumeFade.lastContext.currentFrequency);
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(3, ble.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(1, ble.lastMuteVolume);
 }
 
 void test_stale_lockout_badge_is_cleared_when_disconnected() {
@@ -264,6 +318,8 @@ int main() {
     RUN_TEST(test_process_early_updates_preview_or_restore_path);
     RUN_TEST(test_parsed_frame_sets_status_indicators_and_requests_pipeline);
     RUN_TEST(test_parsed_frame_skips_pipeline_when_preview_running);
+    RUN_TEST(test_parsed_frame_executes_lockout_restore_through_single_volume_owner);
+    RUN_TEST(test_parsed_frame_executes_volume_fade_when_pipeline_runs);
     RUN_TEST(test_stale_lockout_badge_is_cleared_when_disconnected);
     RUN_TEST(test_lightweight_refresh_updates_frequency_and_cards);
     RUN_TEST(test_lightweight_refresh_falls_back_from_invalid_priority);

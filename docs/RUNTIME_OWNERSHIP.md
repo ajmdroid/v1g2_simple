@@ -18,6 +18,7 @@ Owns the OBD runtime refresh and speed selection refresh.
 4. `processLoopDisplayPreWifiPhase(...)`
 Consumes current-loop snapshots and runs display/lockout-side work plus the pre-Wi-Fi auto-push hook.
 This phase does not export mutable phase state back to `loop()`.
+Parsed-frame BLE volume execution for lockout pre-quiet and alert fade lives under this phase via `DisplayOrchestrationModule`.
 
 5. `processLoopWifiPhase(...)`
 Consumes the per-loop settings snapshot and runtime snapshot, then owns Wi-Fi runtime progression for that loop.
@@ -39,6 +40,7 @@ Owns post-display connection-state dispatch cadence, periodic maintenance, and l
 - OBD runtime freshness/state: `loop()` in [src/main.cpp](/Users/ajmedford/v1g2_simple/src/main.cpp)
 - Speed arbitration/counters: `loop()` in [src/main.cpp](/Users/ajmedford/v1g2_simple/src/main.cpp) via `speedSourceSelector.update(now)`
 - Display/lockout refresh: `LoopDisplayModule`
+- Parsed-frame BLE volume execution: `DisplayOrchestrationModule`
 - Wi-Fi runtime progression: `WifiRuntimeModule`
 - Connection-state dispatch cadence: `LoopPostDisplayModule`
 

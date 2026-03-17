@@ -7,7 +7,6 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
                                   SettingsManager* settingsMgr,
                                   V1BLEClient* bleClient,
                                   AlertPersistenceModule* alertPersistenceModule,
-                                  VolumeFadeModule* volumeFadeModule,
                                   VoiceModule* voiceModule) {
     displayMode = displayModePtr;
     display = displayPtr;
@@ -15,7 +14,6 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     settings = settingsMgr;
     ble = bleClient;
     alertPersistence = alertPersistenceModule;
-    volumeFade = volumeFadeModule;
     voice = voiceModule;
     lastPersistenceSlot = -1;
     lastRenderedOwner_ = RenderOwner::Unknown;
@@ -73,7 +71,7 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
 
 void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppressed) {
     if (!display || !parser || !settings || !ble || !alertPersistence ||
-        !volumeFade || !voice || !displayMode) {
+        !voice || !displayMode) {
         return;
     }
 
@@ -111,34 +109,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
             lastMuteChangeMs = muteNow;
         } else {
             state.muted = debouncedMuteState;
-        }
-    }
-
-    // Volume fade runs every frame, not only when the display redraws.
-    {
-        VolumeFadeContext fadeCtx;
-        if (hasAlerts) {
-            fadeCtx.hasAlert = true;
-            fadeCtx.alertMuted = state.muted;
-            fadeCtx.alertSuppressed = prioritySuppressed;
-            fadeCtx.currentVolume = state.mainVolume;
-            fadeCtx.currentMuteVolume = state.muteVolume;
-            fadeCtx.currentFrequency = hasRenderablePriority ? static_cast<uint16_t>(priority.frequency) : 0;
-        } else {
-            fadeCtx.hasAlert = false;
-            fadeCtx.currentVolume = state.mainVolume;
-            fadeCtx.currentMuteVolume = state.muteVolume;
-            fadeCtx.currentFrequency = 0;
-        }
-        fadeCtx.now = nowMs;
-
-        const VolumeFadeAction fadeAction = volumeFade->process(fadeCtx);
-        if (fadeAction.hasAction()) {
-            if (fadeAction.type == VolumeFadeAction::Type::FADE_DOWN) {
-                ble->setVolume(fadeAction.targetVolume, fadeAction.targetMuteVolume);
-            } else if (fadeAction.type == VolumeFadeAction::Type::RESTORE) {
-                ble->setVolume(fadeAction.restoreVolume, fadeAction.restoreMuteVolume);
-            }
         }
     }
 
@@ -215,7 +185,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
 
 void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
     if (!display || !parser || !settings || !ble || !alertPersistence ||
-        !volumeFade || !voice || !displayMode) {
+        !voice || !displayMode) {
         return;
     }
 

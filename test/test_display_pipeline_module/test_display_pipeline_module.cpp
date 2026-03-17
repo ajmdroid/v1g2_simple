@@ -16,7 +16,6 @@ unsigned long mockMicros = 0;
 #include "../../src/audio_beep.h"
 #include "../../src/modules/alert_persistence/alert_persistence_module.h"
 #include "../../src/modules/voice/voice_module.h"
-#include "../../src/modules/volume_fade/volume_fade_module.h"
 #include "../../src/perf_metrics.h"
 
 PerfCounters perfCounters;
@@ -57,52 +56,6 @@ bool AlertPersistenceModule::shouldShowPersisted(unsigned long now, unsigned lon
     return alertPersistenceActive &&
            persistedAlert.isValid &&
            (now - alertClearedTime) < persistMs;
-}
-
-VolumeFadeModule::VolumeFadeModule()
-    : settings(nullptr),
-      alertStartMs(0),
-      originalVolume(0xFF),
-      originalMuteVolume(0),
-      fadeActive(false),
-      commandSent(false),
-      restoreLogEmitted(false),
-      seenCount(0),
-      pendingRestoreVolume(0xFF),
-      pendingRestoreMuteVolume(0),
-      pendingRestoreSetMs(0),
-      lastRestoreAttemptMs(0) {}
-
-void VolumeFadeModule::begin(SettingsManager* settingsRef) {
-    settings = settingsRef;
-}
-
-VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& /*ctx*/) {
-    return VolumeFadeAction{};
-}
-
-void VolumeFadeModule::reset() {
-    settings = nullptr;
-    alertStartMs = 0;
-    originalVolume = 0xFF;
-    originalMuteVolume = 0;
-    fadeActive = false;
-    commandSent = false;
-    restoreLogEmitted = false;
-    seenCount = 0;
-    pendingRestoreVolume = 0xFF;
-    pendingRestoreMuteVolume = 0;
-    pendingRestoreSetMs = 0;
-    lastRestoreAttemptMs = 0;
-    hintBaselineVolume = 0xFF;
-    hintBaselineMuteVolume = 0;
-    hintSetMs = 0;
-}
-
-void VolumeFadeModule::setBaselineHint(uint8_t mainVol, uint8_t muteVol, uint32_t nowMs) {
-    hintBaselineVolume = mainVol;
-    hintBaselineMuteVolume = muteVol;
-    hintSetMs = nowMs;
 }
 
 VoiceModule::VoiceModule() = default;
@@ -217,7 +170,6 @@ static V1Display display;
 static PacketParser parser;
 static V1BLEClient ble;
 static AlertPersistenceModule alertPersistence;
-static VolumeFadeModule volumeFade;
 static VoiceModule voice;
 static DisplayPipelineModule module;
 
@@ -239,7 +191,6 @@ static void beginModule() {
                  &settingsManager,
                  &ble,
                  &alertPersistence,
-                 &volumeFade,
                  &voice);
 }
 
@@ -250,7 +201,6 @@ void setUp() {
     parser.reset();
     ble.reset();
     alertPersistence = AlertPersistenceModule{};
-    volumeFade = VolumeFadeModule{};
     voice = VoiceModule{};
     module = DisplayPipelineModule{};
     displayMode = DisplayMode::IDLE;
