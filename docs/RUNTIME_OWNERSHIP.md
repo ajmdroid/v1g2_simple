@@ -56,7 +56,7 @@ Signal and lockout consumers must not derive fallback speed from raw GPS or
 OBD runtime state. If the selector did not publish a committed speed for the
 current loop, speed is treated as unavailable.
 
-## Frozen duplicate-owner inventory
+## Resolved duplicate-owner consolidations
 
 - Auto-push execution: connect-time selection, tap-triggered slot changes, manual profile pushes, and explicit push-now requests now queue through `AutoPushModule` request APIs before `AutoPushModule::process()` executes them. New requests must not clobber an in-flight push or bypass the shared retry/error path.
 - Alert-time volume transitions: `DisplayOrchestrationModule` is now the sole BLE volume executor. `LockoutOrchestrationModule` and `VolumeFadeModule` only emit explicit decisions for it to arbitrate. A lockout pre-quiet command claims the parsed-frame volume owner slot for that pass, so fade/restore execution cannot issue a competing `setVolume()` in the same alert path.

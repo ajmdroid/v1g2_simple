@@ -67,7 +67,7 @@
       "id": "duplicate_owner_inventory",
       "wave": 4,
       "status": "resolved",
-      "description": "The remaining duplicate-owner consolidation inventory is frozen in this manifest and enforced by CI before Wave 4 deletions land."
+      "description": "Wave 4 duplicate-owner consolidations are recorded in this manifest and enforced by CI; the targeted auto-push, alert-volume, Wi-Fi lifecycle, and speed-arbitration ownership cleanups are now landed and tracked here."
     },
     {
       "id": "phase_context_override_paths",
