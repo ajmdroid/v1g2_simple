@@ -4,7 +4,18 @@
 	import CardSectionHead from '$lib/components/CardSectionHead.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
 
-	const STATE_NAMES = ['Idle', 'WaitBoot', 'Scanning', '', 'Connecting', 'Discovering', 'ATInit', 'Polling', 'ErrorBackoff', 'Disconnected'];
+	const STATE_NAMES = {
+		0: 'Idle',
+		1: 'WaitBoot',
+		2: 'Scanning',
+		4: 'Connecting',
+		5: 'Securing',
+		6: 'Discovering',
+		7: 'ATInit',
+		8: 'Polling',
+		9: 'ErrorBackoff',
+		10: 'Disconnected'
+	};
 
 	let obdStatus = $state(null);
 	let obdMessage = $state(null);
@@ -128,7 +139,7 @@
 	}
 
 	function stateName(s) {
-		return STATE_NAMES[s] || `Unknown(${s})`;
+		return STATE_NAMES[s] ?? `Unknown(${s})`;
 	}
 </script>
 

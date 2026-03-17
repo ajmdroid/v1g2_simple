@@ -255,4 +255,63 @@ describe('integrations route page', () => {
 
 		unmount();
 	});
+
+	it('maps OBD runtime state codes to the correct labels', async () => {
+		installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/gps/status',
+					respond: jsonResponse({
+						enabled: true,
+						runtimeEnabled: true,
+						mode: 'drive',
+						hasFix: true,
+						stableHasFix: true,
+						satellites: 7,
+						stableSatellites: 7,
+						sampleAgeMs: 1900,
+						moduleDetected: true,
+						detectionTimedOut: false,
+						parserActive: true
+					})
+				},
+				{
+					method: 'GET',
+					match: '/api/obd/config',
+					respond: jsonResponse({ enabled: true, minRssi: -80 })
+				},
+				{
+					method: 'GET',
+					match: '/api/obd/status',
+					respond: jsonResponse({
+						enabled: true,
+						connected: true,
+						securityReady: true,
+						encrypted: true,
+						bonded: true,
+						speedValid: true,
+						speedMph: 0,
+						speedAgeMs: 12,
+						rssi: -65,
+						scanInProgress: false,
+						savedAddressValid: true,
+						pollCount: 166,
+						pollErrors: 0,
+						state: 8
+					})
+				},
+				{ method: 'POST', match: '/api/obd/config', respond: jsonResponse({ success: true }) },
+				{ method: 'POST', match: '/api/obd/scan', respond: jsonResponse({ success: true }) },
+				{ method: 'POST', match: '/api/obd/forget', respond: jsonResponse({ success: true }) }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await screen.findByText('Polling');
+		expect(screen.queryByText('ErrorBackoff')).not.toBeInTheDocument();
+
+		unmount();
+	});
 });

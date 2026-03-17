@@ -708,7 +708,7 @@ Get OBD-II adapter connection status and speed data.
 | `rssi` | integer | BLE signal strength in dBm |
 | `scanInProgress` | boolean | BLE scan is currently running |
 | `savedAddressValid` | boolean | A paired adapter address is saved |
-| `state` | integer | State machine state (0=Idle, 1=WaitBoot, 2=Scanning, 4=Connecting, 5=Discovering, 6=ATInit, 7=Polling, 8=ErrorBackoff, 9=Disconnected) |
+| `state` | integer | State machine state (0=Idle, 1=WaitBoot, 2=Scanning, 4=Connecting, 5=Securing, 6=Discovering, 7=ATInit, 8=Polling, 9=ErrorBackoff, 10=Disconnected) |
 
 ### POST /api/obd/scan
 
