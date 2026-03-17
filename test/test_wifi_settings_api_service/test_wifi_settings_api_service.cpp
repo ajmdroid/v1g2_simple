@@ -132,47 +132,6 @@ void test_device_settings_get_serializes_expected_payload() {
     TEST_ASSERT_TRUE(responseContains(server, "\"enableSignalTraceLogging\":false"));
 }
 
-void test_settings_get_serializes_expected_payload() {
-    WebServer server(80);
-    FakeRuntime rt;
-    rt.settings.gpsEnabled = true;
-    rt.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ADVISORY;
-    rt.settings.gpsLockoutCoreGuardEnabled = false;
-    rt.settings.gpsLockoutMaxQueueDrops = 22;
-    rt.settings.gpsLockoutMaxPerfDrops = 33;
-    rt.settings.gpsLockoutMaxEventBusDrops = 44;
-    rt.settings.gpsLockoutKaLearningEnabled = true;
-    rt.settings.gpsLockoutKLearningEnabled = true;
-    rt.settings.gpsLockoutXLearningEnabled = false;
-    rt.settings.gpsLockoutPreQuiet = true;
-    rt.settings.gpsLockoutPreQuietBufferE5 = 18;
-
-    WifiSettingsApiService::handleApiSettingsGet(server, makeRuntime(rt));
-
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_TRUE(responseContains(server, "\"gpsEnabled\":true"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutModeName\":\"advisory\""));
-    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutCoreGuardEnabled\":false"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutMaxQueueDrops\":22"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutMaxPerfDrops\":33"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutMaxEventBusDrops\":44"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutKaLearningEnabled\":true"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutKLearningEnabled\":true"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutXLearningEnabled\":false"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutPreQuiet\":true"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"gpsLockoutPreQuietBufferE5\":18"));
-}
-
-void test_settings_get_returns_500_without_runtime() {
-    WebServer server(80);
-    WifiSettingsApiService::Runtime runtime{};
-
-    WifiSettingsApiService::handleApiSettingsGet(server, runtime);
-
-    TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
-    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Settings unavailable\""));
-}
-
 void test_settings_save_rate_limited_short_circuits() {
     WebServer server(80);
     FakeRuntime rt;
@@ -298,8 +257,6 @@ void test_settings_save_ignores_display_args() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_device_settings_get_serializes_expected_payload);
-    RUN_TEST(test_settings_get_serializes_expected_payload);
-    RUN_TEST(test_settings_get_returns_500_without_runtime);
     RUN_TEST(test_settings_save_rate_limited_short_circuits);
     RUN_TEST(test_device_settings_save_rejects_invalid_ap_credentials);
     RUN_TEST(test_device_settings_save_uses_existing_password_placeholder);

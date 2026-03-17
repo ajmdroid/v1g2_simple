@@ -17,6 +17,92 @@
 #include "../../../include/clamp_utils.h"
 
 namespace GpsApiService {
+
+namespace {
+
+void appendLockoutConfig(JsonDocument& doc, const V1Settings& settings) {
+    JsonObject lockoutObj = doc["lockout"].to<JsonObject>();
+    lockoutObj["mode"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
+    lockoutObj["modeRaw"] = static_cast<int>(settings.gpsLockoutMode);
+    lockoutObj["coreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
+    lockoutObj["maxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
+    lockoutObj["maxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
+    lockoutObj["maxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
+    lockoutObj["learnerPromotionHits"] = settings.gpsLockoutLearnerPromotionHits;
+    lockoutObj["learnerRadiusE5"] = settings.gpsLockoutLearnerRadiusE5;
+    lockoutObj["learnerFreqToleranceMHz"] = settings.gpsLockoutLearnerFreqToleranceMHz;
+    lockoutObj["learnerLearnIntervalHours"] = settings.gpsLockoutLearnerLearnIntervalHours;
+    lockoutObj["learnerUnlearnIntervalHours"] = settings.gpsLockoutLearnerUnlearnIntervalHours;
+    lockoutObj["learnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
+    lockoutObj["manualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
+    lockoutObj["kaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
+    lockoutObj["kLearningEnabled"] = settings.gpsLockoutKLearningEnabled;
+    lockoutObj["xLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
+    lockoutObj["preQuiet"] = settings.gpsLockoutPreQuiet;
+    lockoutObj["preQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
+    lockoutObj["maxHdopX10"] = settings.gpsLockoutMaxHdopX10;
+    lockoutObj["minLearnerSpeedMph"] = settings.gpsLockoutMinLearnerSpeedMph;
+    lockoutObj["minSatellites"] = LOCKOUT_GPS_MIN_SATELLITES;
+
+    doc["gpsEnabled"] = settings.gpsEnabled;
+    doc["lockoutMode"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
+    doc["lockoutModeRaw"] = static_cast<int>(settings.gpsLockoutMode);
+    doc["lockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
+    doc["lockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
+    doc["lockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
+    doc["lockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
+    doc["lockoutLearnerPromotionHits"] = settings.gpsLockoutLearnerPromotionHits;
+    doc["lockoutLearnerRadiusE5"] = settings.gpsLockoutLearnerRadiusE5;
+    doc["lockoutLearnerFreqToleranceMHz"] = settings.gpsLockoutLearnerFreqToleranceMHz;
+    doc["lockoutLearnerLearnIntervalHours"] = settings.gpsLockoutLearnerLearnIntervalHours;
+    doc["lockoutLearnerUnlearnIntervalHours"] = settings.gpsLockoutLearnerUnlearnIntervalHours;
+    doc["lockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
+    doc["lockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
+    doc["lockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
+    doc["lockoutKLearningEnabled"] = settings.gpsLockoutKLearningEnabled;
+    doc["lockoutXLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
+    doc["lockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
+    doc["lockoutPreQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
+    doc["lockoutMaxHdopX10"] = settings.gpsLockoutMaxHdopX10;
+    doc["lockoutMinLearnerSpeedMph"] = settings.gpsLockoutMinLearnerSpeedMph;
+    doc["lockoutMinSatellites"] = LOCKOUT_GPS_MIN_SATELLITES;
+    doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
+    doc["gpsLockoutModeName"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
+    doc["gpsLockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
+    doc["gpsLockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
+    doc["gpsLockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
+    doc["gpsLockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
+    doc["gpsLockoutLearnerPromotionHits"] = settings.gpsLockoutLearnerPromotionHits;
+    doc["gpsLockoutLearnerRadiusE5"] = settings.gpsLockoutLearnerRadiusE5;
+    doc["gpsLockoutLearnerFreqToleranceMHz"] = settings.gpsLockoutLearnerFreqToleranceMHz;
+    doc["gpsLockoutLearnerLearnIntervalHours"] = settings.gpsLockoutLearnerLearnIntervalHours;
+    doc["gpsLockoutLearnerUnlearnIntervalHours"] = settings.gpsLockoutLearnerUnlearnIntervalHours;
+    doc["gpsLockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
+    doc["gpsLockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
+    doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
+    doc["gpsLockoutKLearningEnabled"] = settings.gpsLockoutKLearningEnabled;
+    doc["gpsLockoutXLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
+    doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
+    doc["gpsLockoutPreQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
+    doc["gpsLockoutMaxHdopX10"] = settings.gpsLockoutMaxHdopX10;
+    doc["gpsLockoutMinLearnerSpeedMph"] = settings.gpsLockoutMinLearnerSpeedMph;
+}
+
+void sendConfig(WebServer& server, SettingsManager& settingsManager) {
+    const V1Settings& settings = settingsManager.get();
+
+    JsonDocument response;
+    response["success"] = true;
+    response["enabled"] = settings.gpsEnabled;
+    appendLockoutConfig(response, settings);
+
+    String json;
+    serializeJson(response, json);
+    server.send(200, "application/json", json);
+}
+
+}  // namespace
+
 void handleConfig(WebServer& server,
                   SettingsManager& settingsManager,
                   GpsRuntimeModule& gpsRuntimeModule,
@@ -653,45 +739,13 @@ void handleConfig(WebServer& server,
 
     JsonDocument response;
     response["success"] = true;
-    response["enabled"] = settingsManager.get().gpsEnabled;
+    response["enabled"] = settings.gpsEnabled;
     response["runtimeEnabled"] = gpsStatus.enabled;
     response["sampleValid"] = gpsStatus.sampleValid;
     response["hasFix"] = gpsStatus.hasFix;
     response["injectedSamples"] = gpsStatus.injectedSamples;
     response["speedSource"] = SpeedSourceSelector::sourceName(speedStatus.selectedSource);
-    response["lockoutMode"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
-    response["lockoutModeRaw"] = static_cast<int>(settings.gpsLockoutMode);
-    response["lockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
-    response["lockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
-    response["lockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
-    response["lockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
-    response["lockoutLearnerPromotionHits"] = settings.gpsLockoutLearnerPromotionHits;
-    response["lockoutLearnerRadiusE5"] = settings.gpsLockoutLearnerRadiusE5;
-    response["lockoutLearnerFreqToleranceMHz"] = settings.gpsLockoutLearnerFreqToleranceMHz;
-    response["lockoutLearnerLearnIntervalHours"] = settings.gpsLockoutLearnerLearnIntervalHours;
-    response["lockoutLearnerUnlearnIntervalHours"] = settings.gpsLockoutLearnerUnlearnIntervalHours;
-    response["lockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
-    response["lockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
-    response["lockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
-    response["lockoutKLearningEnabled"] = settings.gpsLockoutKLearningEnabled;
-    response["lockoutXLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
-    response["lockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
-    response["lockoutMaxHdopX10"] = settings.gpsLockoutMaxHdopX10;
-    response["lockoutMinLearnerSpeedMph"] = settings.gpsLockoutMinLearnerSpeedMph;
-    response["lockoutMinSatellites"] = LOCKOUT_GPS_MIN_SATELLITES;
-    response["gpsLockoutMaxHdopX10"] = settings.gpsLockoutMaxHdopX10;
-    response["gpsLockoutMinLearnerSpeedMph"] = settings.gpsLockoutMinLearnerSpeedMph;
-    response["gpsLockoutLearnerPromotionHits"] = settings.gpsLockoutLearnerPromotionHits;
-    response["gpsLockoutLearnerRadiusE5"] = settings.gpsLockoutLearnerRadiusE5;
-    response["gpsLockoutLearnerFreqToleranceMHz"] = settings.gpsLockoutLearnerFreqToleranceMHz;
-    response["gpsLockoutLearnerLearnIntervalHours"] = settings.gpsLockoutLearnerLearnIntervalHours;
-    response["gpsLockoutLearnerUnlearnIntervalHours"] = settings.gpsLockoutLearnerUnlearnIntervalHours;
-    response["gpsLockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
-    response["gpsLockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
-    response["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
-    response["gpsLockoutKLearningEnabled"] = settings.gpsLockoutKLearningEnabled;
-    response["gpsLockoutXLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
-    response["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
+    appendLockoutConfig(response, settings);
     response["lockoutCoreGuardTripped"] = lockoutGuard.tripped;
     response["lockoutCoreGuardReason"] = lockoutGuard.reason;
     response["locationValid"] = gpsStatus.locationValid;
@@ -722,6 +776,15 @@ void handleConfig(WebServer& server,
     String json;
     serializeJson(response, json);
     server.send(200, "application/json", json);
+}
+
+void handleApiConfigGet(WebServer& server,
+                        SettingsManager& settingsManager,
+                        const std::function<void()>& markUiActivity) {
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendConfig(server, settingsManager);
 }
 
 void handleApiConfig(WebServer& server,

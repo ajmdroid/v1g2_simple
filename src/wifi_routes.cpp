@@ -127,9 +127,6 @@ void WiFiManager::setupWebServer() {
             STATUS_CACHE_TTL_MS,
             []() { return millis(); });
     });
-    server.on("/api/settings", HTTP_GET, [this]() {
-        WifiSettingsApiService::handleApiSettingsGet(server, makeSettingsRuntime());
-    });  // JSON settings for new UI
     server.on("/api/settings", HTTP_POST, [this, rateLimitCallback]() {
         WifiSettingsApiService::handleApiSettingsSave(
             server,
@@ -465,6 +462,12 @@ void WiFiManager::setupWebServer() {
             server,
             gpsObservationLog,
             rateLimitCallback,
+            markUiActivityCallback);
+    });
+    server.on("/api/gps/config", HTTP_GET, [this, markUiActivityCallback]() {
+        GpsApiService::handleApiConfigGet(
+            server,
+            settingsManager,
             markUiActivityCallback);
     });
     server.on("/api/gps/config", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {

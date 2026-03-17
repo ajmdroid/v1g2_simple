@@ -7,7 +7,6 @@ route=HTTP_GET /api/device/settings rate_limit=0 ui_activity=0 handlers= delegat
 route=HTTP_GET /api/displaycolors rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiGet
 route=HTTP_GET /api/obd/config rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiConfigGet
 route=HTTP_GET /api/obd/status rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiStatus
-route=HTTP_GET /api/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiSettingsApiService::handleApiSettingsGet
 route=HTTP_GET /api/status rate_limit=0 ui_activity=0 handlers= delegates=WifiStatusApiService::handleApiStatus
 route=HTTP_GET /api/v1/current rate_limit=0 ui_activity=0 handlers= delegates=WifiV1ProfileApiService::handleApiCurrentSettings
 route=HTTP_GET /api/v1/devices rate_limit=0 ui_activity=0 handlers= delegates=WifiV1DevicesApiService::handleApiDevicesList

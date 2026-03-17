@@ -6,6 +6,7 @@ HTTP_GET /api/debug/perf-files
 HTTP_GET /api/debug/perf-files/download
 HTTP_GET /api/debug/v1-scenario/list
 HTTP_GET /api/debug/v1-scenario/status
+HTTP_GET /api/gps/config
 HTTP_GET /api/gps/observations
 HTTP_GET /api/gps/status
 HTTP_GET /api/lockouts/events

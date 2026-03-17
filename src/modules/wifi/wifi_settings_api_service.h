@@ -31,8 +31,6 @@ void handleApiDeviceSettingsSave(WebServer& server,
                                  const Runtime& runtime,
                                  const std::function<bool()>& checkRateLimit);
 
-void handleApiSettingsGet(WebServer& server, const Runtime& runtime);
-
 void handleApiSettingsSave(WebServer& server,
                            const Runtime& runtime,
                            const std::function<bool()>& checkRateLimit);

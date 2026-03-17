@@ -145,31 +145,45 @@ ap_ssid=MyV1&ap_password=newpassword123&proxy_ble=true&autoPowerOffMinutes=15
 {"success": true}
 ```
 
-### GET /api/settings
+### GET /api/gps/config
 
-Get GPS/lockout settings that still flow through the shared settings surface.
+Get persisted GPS/lockout configuration from the GPS-owned settings surface.
 
 **Response:**
 ```json
 {
+  "success": true,
+  "enabled": false,
   "gpsEnabled": false,
-  "gpsLockoutMode": 3,
-  "gpsLockoutModeName": "enforce",
-  "gpsLockoutCoreGuardEnabled": true,
-  "gpsLockoutMaxQueueDrops": 0,
-  "gpsLockoutMaxPerfDrops": 0,
-  "gpsLockoutMaxEventBusDrops": 0,
-  "gpsLockoutKaLearningEnabled": false,
-  "gpsLockoutKLearningEnabled": true,
-  "gpsLockoutXLearningEnabled": false,
-  "gpsLockoutPreQuiet": false,
-  "gpsLockoutPreQuietBufferE5": 0
+  "lockout": {
+    "mode": "enforce",
+    "modeRaw": 3,
+    "coreGuardEnabled": true,
+    "maxQueueDrops": 0,
+    "maxPerfDrops": 0,
+    "maxEventBusDrops": 0,
+    "learnerPromotionHits": 3,
+    "learnerRadiusE5": 45,
+    "learnerFreqToleranceMHz": 8,
+    "learnerLearnIntervalHours": 12,
+    "learnerUnlearnIntervalHours": 0,
+    "learnerUnlearnCount": 0,
+    "manualDemotionMissCount": 12,
+    "kaLearningEnabled": false,
+    "kLearningEnabled": true,
+    "xLearningEnabled": false,
+    "preQuiet": false,
+    "preQuietBufferE5": 0,
+    "maxHdopX10": 20,
+    "minLearnerSpeedMph": 2,
+    "minSatellites": 4
+  }
 }
 ```
 
 ### POST /api/settings
 
-Update GPS/lockout settings. Send only fields you want to change.
+Update GPS/lockout settings through the shared legacy write surface. Send only fields you want to change.
 
 **Request (form data):**
 ```

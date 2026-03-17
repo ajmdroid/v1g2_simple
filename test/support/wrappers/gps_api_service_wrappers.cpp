@@ -52,6 +52,20 @@ void handleApiObservations(WebServer& server,
 #endif
 
 #ifdef UNIT_TEST
+void sendConfig(WebServer& server,
+                SettingsManager& settingsManager);
+
+void handleApiConfigGet(WebServer& server,
+                        SettingsManager& settingsManager,
+                        const std::function<void()>& markUiActivity) {
+    if (markUiActivity) {
+        markUiActivity();
+    }
+    sendConfig(server, settingsManager);
+}
+#endif
+
+#ifdef UNIT_TEST
 void handleConfig(WebServer& server,
                   SettingsManager& settingsManager,
                   GpsRuntimeModule& gpsRuntimeModule,

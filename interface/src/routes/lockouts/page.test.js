@@ -49,6 +49,34 @@ function installDefaultFetch(overrides = []) {
 			},
 			{
 				method: 'GET',
+				match: '/api/gps/config',
+				respond: jsonResponse({
+					enabled: true,
+					lockout: {
+						modeRaw: 0,
+						coreGuardEnabled: true,
+						maxQueueDrops: 0,
+						maxPerfDrops: 0,
+						maxEventBusDrops: 0,
+						learnerPromotionHits: 3,
+						learnerRadiusE5: 45,
+						learnerFreqToleranceMHz: 8,
+						learnerLearnIntervalHours: 12,
+						learnerUnlearnIntervalHours: 0,
+						learnerUnlearnCount: 0,
+						manualDemotionMissCount: 12,
+						kaLearningEnabled: false,
+						kLearningEnabled: true,
+						xLearningEnabled: false,
+						preQuiet: false,
+						preQuietBufferE5: 0,
+						maxHdopX10: 20,
+						minLearnerSpeedMph: 2
+					}
+				})
+			},
+			{
+				method: 'GET',
 				match: '/api/lockouts/events',
 				respond: jsonResponse({
 					events: [],
@@ -123,6 +151,7 @@ describe('lockouts route page', () => {
 		await screen.findByText('32 mph');
 		await waitFor(() => {
 			expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
+			expect(countCalls(fetchMock, '/api/gps/config')).toBe(1);
 			expect(countPrefixCalls(fetchMock, '/api/lockouts/events')).toBe(1);
 			expect(countPrefixCalls(fetchMock, '/api/lockouts/zones')).toBe(1);
 		});
@@ -188,6 +217,7 @@ describe('lockouts route page', () => {
 
 		await waitFor(() => {
 			expect(countCalls(fetchMock, '/api/gps/status')).toBe(2);
+			expect(countCalls(fetchMock, '/api/gps/config')).toBe(1);
 		});
 		expect(modeSelect).toHaveValue('3');
 
@@ -411,10 +441,12 @@ describe('lockouts route page', () => {
 
 		await screen.findByText('32 mph');
 		expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
+		expect(countCalls(fetchMock, '/api/gps/config')).toBe(1);
 
 		unmount();
 		await vi.advanceTimersByTimeAsync(7500);
 
 		expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
+		expect(countCalls(fetchMock, '/api/gps/config')).toBe(1);
 	});
 });

@@ -45,31 +45,6 @@ void handleApiDeviceSettingsGet(WebServer& server, const Runtime& runtime) {
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
-void handleApiSettingsGet(WebServer& server, const Runtime& runtime) {
-    if (!runtime.getSettings) {
-        sendSettingsUnavailable(server);
-        return;
-    }
-
-    const V1Settings& settings = runtime.getSettings();
-
-    JsonDocument doc;
-    doc["gpsEnabled"] = settings.gpsEnabled;
-    doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
-    doc["gpsLockoutModeName"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
-    doc["gpsLockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
-    doc["gpsLockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
-    doc["gpsLockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
-    doc["gpsLockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
-    doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
-    doc["gpsLockoutKLearningEnabled"] = settings.gpsLockoutKLearningEnabled;
-    doc["gpsLockoutXLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
-    doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
-    doc["gpsLockoutPreQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
-
-    WifiApiResponse::sendJsonDocument(server, 200, doc);
-}
-
 void handleApiDeviceSettingsSave(WebServer& server,
                                  const Runtime& runtime,
                                  const std::function<bool()>& checkRateLimit) {

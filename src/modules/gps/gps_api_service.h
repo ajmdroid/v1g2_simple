@@ -31,6 +31,11 @@ void handleApiObservations(WebServer& server,
                            const std::function<bool()>& checkRateLimit,
                            const std::function<void()>& markUiActivity);
 
+/// GET /api/gps/config handler with route-level UI activity callback.
+void handleApiConfigGet(WebServer& server,
+                        SettingsManager& settingsManager,
+                        const std::function<void()>& markUiActivity);
+
 /// POST /api/gps/config handler with route-level policy callbacks.
 void handleApiConfig(WebServer& server,
                      SettingsManager& settingsManager,

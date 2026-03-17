@@ -113,6 +113,7 @@
 		maxHdopX10: GPS_MAX_HDOP_X10_DEFAULT,
 		minLearnerSpeedMph: GPS_MIN_LEARNER_SPEED_MPH_DEFAULT
 	});
+	let lockoutConfigBackend = $state(null);
 	let lockoutZonesStats = $state({
 		activeCount: 0,
 		activeCapacity: 0,
@@ -137,13 +138,9 @@
 		const releaseRuntimeStatus = retainRuntimeStatus({
 			gpsPollIntervalMs: STATUS_POLL_INTERVAL_MS
 		});
-		const unsubscribeGpsStatus = runtimeGpsStatus.subscribe((status) => {
-			applyLockoutStatus(status);
-		});
 		void refreshAll();
 
 		return () => {
-			unsubscribeGpsStatus();
 			releaseRuntimeStatus();
 		};
 	});
@@ -163,10 +160,11 @@
 		migrationNotice = null;
 	}
 
-	function applyLockoutStatus(data) {
+	function applyLockoutConfig(data) {
 		const nextConfig = deriveLockoutConfigFromStatus(data, lockoutConfigInitialized, lockoutConfigDirty);
 		if (!nextConfig) return;
-		lockoutConfig = nextConfig;
+		lockoutConfig = { ...nextConfig };
+		lockoutConfigBackend = { ...nextConfig };
 		lockoutConfigInitialized = true;
 	}
 
@@ -222,7 +220,7 @@
 	}
 
 	function lockoutConfigMatchesBackend() {
-		return lockoutConfigMatchesRuntime(lockoutConfig, $runtimeGpsStatus?.lockout);
+		return lockoutConfigMatchesRuntime(lockoutConfig, lockoutConfigBackend);
 	}
 
 	function stageLearnerPreset(preset) {
@@ -286,8 +284,32 @@
 	}
 
 	async function refreshAll() {
-		await Promise.all([fetchRuntimeGpsStatus(), fetchLockoutEvents(), fetchLockoutZones()]);
+		await Promise.all([
+			fetchRuntimeGpsStatus(),
+			fetchLockoutConfig(),
+			fetchLockoutEvents(),
+			fetchLockoutZones()
+		]);
 		loading = false;
+	}
+
+	async function fetchLockoutConfig(options = {}) {
+		const { silent = false } = options;
+		try {
+			const res = await fetchWithTimeout('/api/gps/config');
+			if (!res.ok) {
+				if (!silent) {
+					setMsg('error', 'Failed to load lockout config');
+				}
+				return;
+			}
+			const data = await res.json();
+			applyLockoutConfig(data);
+		} catch (e) {
+			if (!silent) {
+				setMsg('error', 'Failed to load lockout config');
+			}
+		}
 	}
 
 	async function fetchLockoutEvents(options = {}) {
@@ -411,7 +433,11 @@
 			lockoutConfig.minLearnerSpeedMph = result.normalized.minLearnerSpeedMph;
 			lockoutConfigDirty = false;
 			setMsg('success', 'Lockout runtime settings updated');
-			await Promise.all([fetchRuntimeGpsStatus(), fetchLockoutZones({ silent: true })]);
+			await Promise.all([
+				fetchRuntimeGpsStatus(),
+				fetchLockoutConfig({ silent: true }),
+				fetchLockoutZones({ silent: true })
+			]);
 		} catch (e) {
 			setMsg(
 				'error',

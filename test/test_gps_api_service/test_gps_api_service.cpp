@@ -23,6 +23,7 @@ namespace {
 
 int sendStatusCalls = 0;
 int sendObservationsCalls = 0;
+int sendConfigCalls = 0;
 int handleConfigCalls = 0;
 
 bool responseContains(const WebServer& server, const char* needle) {
@@ -50,6 +51,11 @@ void sendObservations(WebServer& server, GpsObservationLog&) {
     server.send(200, "application/json", "{\"route\":\"gps-observations\"}");
 }
 
+void sendConfig(WebServer& server, SettingsManager&) {
+    sendConfigCalls++;
+    server.send(200, "application/json", "{\"route\":\"gps-config-get\"}");
+}
+
 void handleConfig(WebServer& server,
                   SettingsManager&,
                   GpsRuntimeModule&,
@@ -70,6 +76,7 @@ void setUp() {
 
     sendStatusCalls = 0;
     sendObservationsCalls = 0;
+    sendConfigCalls = 0;
     handleConfigCalls = 0;
 }
 
@@ -179,6 +186,22 @@ void test_handle_api_config_rate_limited_short_circuits() {
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
 
+void test_handle_api_config_get_marks_ui_activity_and_delegates() {
+    WebServer server(80);
+    SettingsManager settings;
+    int uiActivityCalls = 0;
+
+    GpsApiService::handleApiConfigGet(
+        server,
+        settings,
+        [&uiActivityCalls]() { uiActivityCalls++; });
+
+    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, sendConfigCalls);
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"gps-config-get\""));
+}
+
 void test_handle_api_config_delegates_when_allowed() {
     WebServer server(80);
     SettingsManager settings;
@@ -219,6 +242,7 @@ int main() {
     RUN_TEST(test_handle_api_observations_rate_limited_short_circuits);
     RUN_TEST(test_handle_api_observations_delegates_when_allowed);
     RUN_TEST(test_handle_api_config_rate_limited_short_circuits);
+    RUN_TEST(test_handle_api_config_get_marks_ui_activity_and_delegates);
     RUN_TEST(test_handle_api_config_delegates_when_allowed);
     return UNITY_END();
 }
