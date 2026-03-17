@@ -73,6 +73,7 @@ RESULT_VAR="FAKE_${{STEP_UPPER}}_RESULT"
 COMPARE_VAR="FAKE_${{STEP_UPPER}}_COMPARE_KIND"
 VALUE_VAR="FAKE_${{STEP_UPPER}}_VALUE"
 BASELINE_VAR="FAKE_${{STEP_UPPER}}_BASELINE"
+EXIT_VAR="FAKE_${{STEP_UPPER}}_EXIT"
 
 python3 - "$OUT_DIR" "$COMPARE_TO" "$STEP_KIND" "$BOARD_ID" "${{!RESULT_VAR}}" "${{!COMPARE_VAR}}" "${{!VALUE_VAR}}" "${{!BASELINE_VAR:-}}" <<'PY'
 import json
@@ -194,6 +195,8 @@ scoring = {{
 }}
 (out_dir / "scoring.json").write_text(json.dumps(scoring, indent=2) + "\\n", encoding="utf-8")
 PY
+
+exit "${{!EXIT_VAR:-0}}"
 """,
         encoding="utf-8",
     )
@@ -721,6 +724,40 @@ def main() -> int:
         assert_true(
             soak_step_results["display_soak"] == "FAIL",
             f"display soak failure should still be recorded: {soak_only_result}",
+        )
+
+        soak_exit_mismatch = run_test_script(
+            {
+                **common_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "commit_regression",
+                "FAKE_DEVICE_VALUE": "15",
+                "FAKE_DEVICE_BASELINE": "14",
+                "FAKE_CORE_RESULT": "PASS_WITH_WARNINGS",
+                "FAKE_CORE_COMPARE_KIND": "run_variance",
+                "FAKE_CORE_VALUE": "25",
+                "FAKE_CORE_BASELINE": "24",
+                "FAKE_CORE_EXIT": "1",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "commit_regression",
+                "FAKE_DISPLAY_VALUE": "35",
+                "FAKE_DISPLAY_BASELINE": "34",
+            }
+        )
+        assert_true(
+            soak_exit_mismatch.returncode == 0,
+            f"device-owned suite should still pass when only soak exit mismatches: {soak_exit_mismatch.stdout}\n{soak_exit_mismatch.stderr}",
+        )
+        soak_exit_result = json.loads((latest / "result.json").read_text(encoding="utf-8"))
+        soak_exit_steps = {step["name"]: step for step in soak_exit_result["steps"]}
+        assert_true(soak_exit_result["result"] == "PASS", f"unexpected suite result: {soak_exit_result}")
+        assert_true(
+            soak_exit_steps["core_soak"]["exit_code"] == 1,
+            f"core soak exit should be preserved: {soak_exit_result}",
+        )
+        assert_true(
+            soak_exit_steps["core_soak"]["result"] == "FAIL",
+            f"non-zero core exit must override manifest/scoring PASS result: {soak_exit_result}",
         )
 
         radio_run_history = read_tsv(radio_root / "run_history.tsv")

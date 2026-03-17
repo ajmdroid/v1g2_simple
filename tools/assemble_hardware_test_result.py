@@ -56,11 +56,20 @@ def append_tsv_row(path: Path, header: list[str], row: dict[str, object]) -> Non
 
 
 def compute_step_result(scoring: dict[str, Any] | None, manifest: dict[str, Any] | None, exit_code: int) -> str:
+    explicit_result: str | None = None
     if scoring and scoring.get("result"):
-        return str(scoring["result"])
-    if manifest and manifest.get("result"):
-        return str(manifest["result"])
-    return "FAIL" if exit_code else "ERROR"
+        explicit_result = str(scoring["result"])
+    elif manifest and manifest.get("result"):
+        explicit_result = str(manifest["result"])
+
+    if exit_code:
+        if explicit_result in {"FAIL", "ERROR"}:
+            return explicit_result
+        return "FAIL"
+
+    if explicit_result:
+        return explicit_result
+    return "ERROR"
 
 
 def select_authoritative_steps(enabled_steps: list[str]) -> list[str]:
