@@ -38,6 +38,7 @@ inline bool canConvertFromJson(JsonVariantConst src, const ::String&) {
 #include "../../src/settings_nvs.cpp"
 #include "../../src/settings_backup.cpp"
 #include "../../src/settings_deferred_backup.cpp"
+#include "../../src/modules/gps/gps_lockout_safety.cpp"
 #include "../../src/settings_restore.cpp"
 
 namespace {
@@ -259,6 +260,67 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_EQUAL_INT(3, backupDoc["obdCachedEotProfileId"].as<int>());
 }
 
+void test_apply_backup_document_unifies_restore_field_coverage_and_profile_restore() {
+    fs::FS fs(g_tempRoot);
+    storageManager.setFilesystem(&fs, true);
+    TEST_ASSERT_TRUE(v1ProfileManager.begin(&fs));
+
+    SettingsManager manager;
+    manager.mutableSettings().apPassword = "preserved-pass";
+    manager.mutableSettings().gpsLockoutKLearningEnabled = false;
+    manager.mutableSettings().gpsLockoutXLearningEnabled = true;
+
+    JsonDocument doc;
+    doc["_type"] = "v1simple_http_backup";
+    doc["apSSID"] = "RestoredSSID";
+    doc["gpsEnabled"] = true;
+    doc["gpsLockoutKaLearningEnabled"] = true;
+    doc["gpsLockoutKLearningEnabled"] = true;
+    doc["gpsLockoutXLearningEnabled"] = false;
+    doc["brightness"] = 77;
+    doc["voiceVolume"] = 42;
+    doc["obdEnabled"] = true;
+    doc["obdMinRssi"] = -61;
+    doc["slot0ProfileName"] = "Road";
+    doc["slot0Mode"] = static_cast<int>(V1_MODE_LOGIC);
+
+    JsonObject profile = doc["profiles"].to<JsonArray>().add<JsonObject>();
+    profile["name"] = "Road";
+    profile["description"] = "Restored profile";
+    profile["displayOn"] = true;
+    JsonArray bytes = profile["bytes"].to<JsonArray>();
+    for (int i = 0; i < 6; ++i) {
+        bytes.add(static_cast<uint8_t>(i + 1));
+    }
+
+    const SettingsBackupApplyResult applyResult = manager.applyBackupDocument(doc, true);
+
+    TEST_ASSERT_TRUE(applyResult.success);
+    TEST_ASSERT_EQUAL_INT(1, applyResult.profilesRestored);
+    TEST_ASSERT_EQUAL_UINT32(2u, manager.backupRevision());
+    TEST_ASSERT_TRUE(manager.deferredBackupPending());
+
+    const V1Settings& restored = manager.get();
+    TEST_ASSERT_EQUAL_STRING("RestoredSSID", restored.apSSID.c_str());
+    TEST_ASSERT_EQUAL_STRING("preserved-pass", restored.apPassword.c_str());
+    TEST_ASSERT_TRUE(restored.gpsEnabled);
+    TEST_ASSERT_TRUE(restored.gpsLockoutKaLearningEnabled);
+    TEST_ASSERT_TRUE(restored.gpsLockoutKLearningEnabled);
+    TEST_ASSERT_FALSE(restored.gpsLockoutXLearningEnabled);
+    TEST_ASSERT_EQUAL_UINT8(77, restored.brightness);
+    TEST_ASSERT_EQUAL_UINT8(42, restored.voiceVolume);
+    TEST_ASSERT_TRUE(restored.obdEnabled);
+    TEST_ASSERT_EQUAL_INT8(-61, restored.obdMinRssi);
+    TEST_ASSERT_EQUAL_STRING("Road", restored.slot0_default.profileName.c_str());
+    TEST_ASSERT_EQUAL_INT(V1_MODE_LOGIC, restored.slot0_default.mode);
+
+    V1Profile restoredProfile;
+    TEST_ASSERT_TRUE(v1ProfileManager.loadProfile("Road", restoredProfile));
+    TEST_ASSERT_EQUAL_STRING("Restored profile", restoredProfile.description.c_str());
+    TEST_ASSERT_EQUAL_UINT8(1, restoredProfile.settings.bytes[0]);
+    TEST_ASSERT_EQUAL_UINT8(6, restoredProfile.settings.bytes[5]);
+}
+
 void test_serialized_backup_payload_matches_builder_and_writes_same_json() {
     fs::FS fs(g_tempRoot);
     storageManager.setFilesystem(&fs, true);
@@ -305,6 +367,7 @@ void test_serialized_backup_payload_matches_builder_and_writes_same_json() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_save_load_and_backup_round_trip_current_shape_fields);
+    RUN_TEST(test_apply_backup_document_unifies_restore_field_coverage_and_profile_restore);
     RUN_TEST(test_serialized_backup_payload_matches_builder_and_writes_same_json);
     return UNITY_END();
 }

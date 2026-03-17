@@ -21,6 +21,7 @@
 #define SETTINGS_H
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <Preferences.h>
 #include <FS.h>
 #include <algorithm>
@@ -573,6 +574,11 @@ struct V1Settings {
     }
 };
 
+struct SettingsBackupApplyResult {
+    bool success = false;
+    int profilesRestored = 0;
+};
+
 class SettingsManager {
 public:
     SettingsManager();
@@ -682,6 +688,8 @@ public:
     bool deferredBackupPending() const;
     bool deferredBackupRetryScheduled() const;
     uint32_t deferredBackupNextAttemptAtMs() const;
+    SettingsBackupApplyResult applyBackupDocument(const JsonDocument& doc,
+                                                  bool deferBackupRewrite);
     bool restoreFromSD();
     bool checkAndRestoreFromSD();  // Call after storage is mounted to retry restore
     

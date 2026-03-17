@@ -37,6 +37,7 @@ inline bool canConvertFromJson(JsonVariantConst src, const ::String&) {
 #include "../../src/settings_nvs.cpp"
 #include "../../src/settings_backup.cpp"
 #include "../../src/settings_deferred_backup.cpp"
+#include "../../src/modules/gps/gps_lockout_safety.cpp"
 #include "../../src/settings_restore.cpp"
 
 namespace {

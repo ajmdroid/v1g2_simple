@@ -5,6 +5,7 @@
 
 #include "settings_internals.h"
 #include <nvs.h>
+#include "modules/gps/gps_lockout_safety.h"
 
 bool shouldSkipProfileReferenceValidation(size_t availableProfileCount,
                                           bool hasConfiguredSlotReferences) {
@@ -94,6 +95,289 @@ bool parseBoolVariant(const JsonVariantConst& value, bool& out) {
         }
     }
     return false;
+}
+
+SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocument& doc,
+                                                              bool deferBackupRewrite) {
+    SettingsBackupApplyResult result;
+
+    auto restoreBool = [&](const char* key, bool& target) {
+        bool parsed = false;
+        if (parseBoolVariant(doc[key], parsed)) {
+            target = parsed;
+        }
+    };
+
+    // === WiFi/Network Settings ===
+    // AP password is intentionally preserved across backup restores.
+    restoreBool("enableWifi", settings.enableWifi);
+    if (doc["wifiMode"].is<int>()) settings.wifiMode = clampWifiModeValue(doc["wifiMode"].as<int>());
+    if (doc["apSSID"].is<const char*>()) settings.apSSID = sanitizeApSsidValue(doc["apSSID"].as<String>());
+    restoreBool("wifiClientEnabled", settings.wifiClientEnabled);
+    if (doc["wifiClientSSID"].is<const char*>()) {
+        settings.wifiClientSSID = sanitizeWifiClientSsidValue(doc["wifiClientSSID"].as<String>());
+    }
+    if (!settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
+        settings.wifiClientEnabled = true;
+    }
+    settings.wifiMode = settings.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
+    restoreBool("proxyBLE", settings.proxyBLE);
+    if (doc["proxyName"].is<const char*>()) {
+        settings.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
+    }
+    restoreBool("gpsEnabled", settings.gpsEnabled);
+    if (doc["gpsLockoutMode"].is<int>()) {
+        settings.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
+    } else if (doc["gpsLockoutMode"].is<const char*>()) {
+        settings.gpsLockoutMode = gpsLockoutParseRuntimeModeArg(doc["gpsLockoutMode"].as<String>(),
+                                                                settings.gpsLockoutMode);
+    }
+    restoreBool("gpsLockoutCoreGuardEnabled", settings.gpsLockoutCoreGuardEnabled);
+    if (doc["gpsLockoutMaxQueueDrops"].is<int>()) {
+        settings.gpsLockoutMaxQueueDrops = static_cast<uint16_t>(
+            std::max(0, std::min(doc["gpsLockoutMaxQueueDrops"].as<int>(), 65535)));
+    }
+    if (doc["gpsLockoutMaxPerfDrops"].is<int>()) {
+        settings.gpsLockoutMaxPerfDrops = static_cast<uint16_t>(
+            std::max(0, std::min(doc["gpsLockoutMaxPerfDrops"].as<int>(), 65535)));
+    }
+    if (doc["gpsLockoutMaxEventBusDrops"].is<int>()) {
+        settings.gpsLockoutMaxEventBusDrops = static_cast<uint16_t>(
+            std::max(0, std::min(doc["gpsLockoutMaxEventBusDrops"].as<int>(), 65535)));
+    }
+    if (doc["gpsLockoutLearnerPromotionHits"].is<int>()) {
+        settings.gpsLockoutLearnerPromotionHits = clampLockoutLearnerHitsValue(
+            doc["gpsLockoutLearnerPromotionHits"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerRadiusE5"].is<int>()) {
+        settings.gpsLockoutLearnerRadiusE5 = clampLockoutLearnerRadiusE5Value(
+            doc["gpsLockoutLearnerRadiusE5"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerFreqToleranceMHz"].is<int>()) {
+        settings.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
+            doc["gpsLockoutLearnerFreqToleranceMHz"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerLearnIntervalHours"].is<int>()) {
+        settings.gpsLockoutLearnerLearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
+            doc["gpsLockoutLearnerLearnIntervalHours"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerUnlearnIntervalHours"].is<int>()) {
+        settings.gpsLockoutLearnerUnlearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
+            doc["gpsLockoutLearnerUnlearnIntervalHours"].as<int>());
+    }
+    if (doc["gpsLockoutLearnerUnlearnCount"].is<int>()) {
+        settings.gpsLockoutLearnerUnlearnCount = clampLockoutLearnerUnlearnCountValue(
+            doc["gpsLockoutLearnerUnlearnCount"].as<int>());
+    }
+    if (doc["gpsLockoutManualDemotionMissCount"].is<int>()) {
+        settings.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
+            doc["gpsLockoutManualDemotionMissCount"].as<int>());
+    }
+    restoreBool("gpsLockoutKaLearningEnabled", settings.gpsLockoutKaLearningEnabled);
+    restoreBool("gpsLockoutKLearningEnabled", settings.gpsLockoutKLearningEnabled);
+    restoreBool("gpsLockoutXLearningEnabled", settings.gpsLockoutXLearningEnabled);
+    restoreBool("gpsLockoutPreQuiet", settings.gpsLockoutPreQuiet);
+    if (doc["gpsLockoutPreQuietBufferE5"].is<int>()) {
+        settings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
+            doc["gpsLockoutPreQuietBufferE5"].as<int>());
+    }
+    if (doc["lastV1Address"].is<const char*>()) {
+        settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
+    }
+    if (doc["autoPowerOffMinutes"].is<int>()) {
+        settings.autoPowerOffMinutes = clampU8(doc["autoPowerOffMinutes"].as<int>(), 0, 60);
+    }
+    if (doc["apTimeoutMinutes"].is<int>()) {
+        settings.apTimeoutMinutes = clampApTimeoutValue(doc["apTimeoutMinutes"].as<int>());
+    }
+
+    // === Display Settings ===
+    if (doc["brightness"].is<int>()) settings.brightness = clampU8(doc["brightness"].as<int>(), 1, 255);
+    restoreBool("turnOffDisplay", settings.turnOffDisplay);
+    if (doc["displayStyle"].is<int>()) settings.displayStyle = normalizeDisplayStyle(doc["displayStyle"].as<int>());
+
+    // === All Colors ===
+    if (doc["colorBogey"].is<int>()) settings.colorBogey = doc["colorBogey"];
+    if (doc["colorFrequency"].is<int>()) settings.colorFrequency = doc["colorFrequency"];
+    if (doc["colorArrowFront"].is<int>()) settings.colorArrowFront = doc["colorArrowFront"];
+    if (doc["colorArrowSide"].is<int>()) settings.colorArrowSide = doc["colorArrowSide"];
+    if (doc["colorArrowRear"].is<int>()) settings.colorArrowRear = doc["colorArrowRear"];
+    if (doc["colorBandL"].is<int>()) settings.colorBandL = doc["colorBandL"];
+    if (doc["colorBandKa"].is<int>()) settings.colorBandKa = doc["colorBandKa"];
+    if (doc["colorBandK"].is<int>()) settings.colorBandK = doc["colorBandK"];
+    if (doc["colorBandX"].is<int>()) settings.colorBandX = doc["colorBandX"];
+    if (doc["colorBandPhoto"].is<int>()) settings.colorBandPhoto = doc["colorBandPhoto"];
+    if (doc["colorWiFiIcon"].is<int>()) settings.colorWiFiIcon = doc["colorWiFiIcon"];
+    if (doc["colorWiFiConnected"].is<int>()) settings.colorWiFiConnected = doc["colorWiFiConnected"];
+    if (doc["colorBleConnected"].is<int>()) settings.colorBleConnected = doc["colorBleConnected"];
+    if (doc["colorBleDisconnected"].is<int>()) settings.colorBleDisconnected = doc["colorBleDisconnected"];
+    if (doc["colorBar1"].is<int>()) settings.colorBar1 = doc["colorBar1"];
+    if (doc["colorBar2"].is<int>()) settings.colorBar2 = doc["colorBar2"];
+    if (doc["colorBar3"].is<int>()) settings.colorBar3 = doc["colorBar3"];
+    if (doc["colorBar4"].is<int>()) settings.colorBar4 = doc["colorBar4"];
+    if (doc["colorBar5"].is<int>()) settings.colorBar5 = doc["colorBar5"];
+    if (doc["colorBar6"].is<int>()) settings.colorBar6 = doc["colorBar6"];
+    if (doc["colorMuted"].is<int>()) settings.colorMuted = doc["colorMuted"];
+    if (doc["colorPersisted"].is<int>()) settings.colorPersisted = doc["colorPersisted"];
+    if (doc["colorVolumeMain"].is<int>()) settings.colorVolumeMain = doc["colorVolumeMain"];
+    if (doc["colorVolumeMute"].is<int>()) settings.colorVolumeMute = doc["colorVolumeMute"];
+    if (doc["colorRssiV1"].is<int>()) settings.colorRssiV1 = doc["colorRssiV1"];
+    if (doc["colorRssiProxy"].is<int>()) settings.colorRssiProxy = doc["colorRssiProxy"];
+    if (doc["colorLockout"].is<int>()) settings.colorLockout = doc["colorLockout"];
+    if (doc["colorGps"].is<int>()) settings.colorGps = doc["colorGps"];
+    restoreBool("freqUseBandColor", settings.freqUseBandColor);
+
+    // === UI Toggles ===
+    restoreBool("hideWifiIcon", settings.hideWifiIcon);
+    restoreBool("hideProfileIndicator", settings.hideProfileIndicator);
+    restoreBool("hideBatteryIcon", settings.hideBatteryIcon);
+    restoreBool("showBatteryPercent", settings.showBatteryPercent);
+    restoreBool("hideBleIcon", settings.hideBleIcon);
+    restoreBool("hideVolumeIndicator", settings.hideVolumeIndicator);
+    restoreBool("hideRssiIndicator", settings.hideRssiIndicator);
+    restoreBool("enableWifiAtBoot", settings.enableWifiAtBoot);
+    restoreBool("enableSignalTraceLogging", settings.enableSignalTraceLogging);
+
+    // === Voice Settings ===
+    if (doc["voiceAlertMode"].is<int>()) {
+        settings.voiceAlertMode = clampVoiceAlertModeValue(doc["voiceAlertMode"].as<int>());
+    } else {
+        bool legacyVoiceEnabled = false;
+        if (parseBoolVariant(doc["voiceAlertsEnabled"], legacyVoiceEnabled)) {
+            settings.voiceAlertMode = legacyVoiceEnabled ? VOICE_MODE_BAND_FREQ : VOICE_MODE_DISABLED;
+        }
+    }
+    restoreBool("voiceDirectionEnabled", settings.voiceDirectionEnabled);
+    restoreBool("announceBogeyCount", settings.announceBogeyCount);
+    restoreBool("muteVoiceIfVolZero", settings.muteVoiceIfVolZero);
+    if (doc["voiceVolume"].is<int>()) settings.voiceVolume = clampU8(doc["voiceVolume"].as<int>(), 0, 100);
+    restoreBool("announceSecondaryAlerts", settings.announceSecondaryAlerts);
+    restoreBool("secondaryLaser", settings.secondaryLaser);
+    restoreBool("secondaryKa", settings.secondaryKa);
+    restoreBool("secondaryK", settings.secondaryK);
+    restoreBool("secondaryX", settings.secondaryX);
+    restoreBool("alertVolumeFadeEnabled", settings.alertVolumeFadeEnabled);
+    if (doc["alertVolumeFadeDelaySec"].is<int>()) {
+        settings.alertVolumeFadeDelaySec = clampU8(doc["alertVolumeFadeDelaySec"].as<int>(), 1, 10);
+    }
+    if (doc["alertVolumeFadeVolume"].is<int>()) {
+        settings.alertVolumeFadeVolume = clampU8(doc["alertVolumeFadeVolume"].as<int>(), 0, 9);
+    }
+
+    // === Auto-Push Settings ===
+    bool backupAutoPushEnabled = false;
+    if (parseBoolVariant(doc["autoPushEnabled"], backupAutoPushEnabled) && backupAutoPushEnabled) {
+        settings.autoPushEnabled = true;
+    }
+    if (doc["activeSlot"].is<int>()) settings.activeSlot = std::max(0, std::min(doc["activeSlot"].as<int>(), 2));
+
+    if (doc["slot0Name"].is<const char*>()) settings.slot0Name = sanitizeSlotNameValue(doc["slot0Name"].as<String>());
+    if (doc["slot0Color"].is<int>()) settings.slot0Color = doc["slot0Color"];
+    if (doc["slot0Volume"].is<int>()) settings.slot0Volume = clampSlotVolumeValue(doc["slot0Volume"].as<int>());
+    if (doc["slot0MuteVolume"].is<int>()) settings.slot0MuteVolume = clampSlotVolumeValue(doc["slot0MuteVolume"].as<int>());
+    restoreBool("slot0DarkMode", settings.slot0DarkMode);
+    restoreBool("slot0MuteToZero", settings.slot0MuteToZero);
+    if (doc["slot0AlertPersist"].is<int>()) settings.slot0AlertPersist = clampU8(doc["slot0AlertPersist"].as<int>(), 0, 5);
+    restoreBool("slot0PriorityArrow", settings.slot0PriorityArrow);
+    if (doc["slot0ProfileName"].is<const char*>()) settings.slot0_default.profileName = sanitizeProfileNameValue(doc["slot0ProfileName"].as<String>());
+    if (doc["slot0Mode"].is<int>()) settings.slot0_default.mode = normalizeV1ModeValue(doc["slot0Mode"].as<int>());
+
+    if (doc["slot1Name"].is<const char*>()) settings.slot1Name = sanitizeSlotNameValue(doc["slot1Name"].as<String>());
+    if (doc["slot1Color"].is<int>()) settings.slot1Color = doc["slot1Color"];
+    if (doc["slot1Volume"].is<int>()) settings.slot1Volume = clampSlotVolumeValue(doc["slot1Volume"].as<int>());
+    if (doc["slot1MuteVolume"].is<int>()) settings.slot1MuteVolume = clampSlotVolumeValue(doc["slot1MuteVolume"].as<int>());
+    restoreBool("slot1DarkMode", settings.slot1DarkMode);
+    restoreBool("slot1MuteToZero", settings.slot1MuteToZero);
+    if (doc["slot1AlertPersist"].is<int>()) settings.slot1AlertPersist = clampU8(doc["slot1AlertPersist"].as<int>(), 0, 5);
+    restoreBool("slot1PriorityArrow", settings.slot1PriorityArrow);
+    if (doc["slot1ProfileName"].is<const char*>()) settings.slot1_highway.profileName = sanitizeProfileNameValue(doc["slot1ProfileName"].as<String>());
+    if (doc["slot1Mode"].is<int>()) settings.slot1_highway.mode = normalizeV1ModeValue(doc["slot1Mode"].as<int>());
+
+    if (doc["slot2Name"].is<const char*>()) settings.slot2Name = sanitizeSlotNameValue(doc["slot2Name"].as<String>());
+    if (doc["slot2Color"].is<int>()) settings.slot2Color = doc["slot2Color"];
+    if (doc["slot2Volume"].is<int>()) settings.slot2Volume = clampSlotVolumeValue(doc["slot2Volume"].as<int>());
+    if (doc["slot2MuteVolume"].is<int>()) settings.slot2MuteVolume = clampSlotVolumeValue(doc["slot2MuteVolume"].as<int>());
+    restoreBool("slot2DarkMode", settings.slot2DarkMode);
+    restoreBool("slot2MuteToZero", settings.slot2MuteToZero);
+    if (doc["slot2AlertPersist"].is<int>()) settings.slot2AlertPersist = clampU8(doc["slot2AlertPersist"].as<int>(), 0, 5);
+    restoreBool("slot2PriorityArrow", settings.slot2PriorityArrow);
+    if (doc["slot2ProfileName"].is<const char*>()) settings.slot2_comfort.profileName = sanitizeProfileNameValue(doc["slot2ProfileName"].as<String>());
+    if (doc["slot2Mode"].is<int>()) settings.slot2_comfort.mode = normalizeV1ModeValue(doc["slot2Mode"].as<int>());
+
+    // === OBD Settings ===
+    restoreBool("obdEnabled", settings.obdEnabled);
+    if (doc["obdSavedAddress"].is<const char*>()) settings.obdSavedAddress = doc["obdSavedAddress"].as<String>();
+    if (doc["obdSavedAddrType"].is<int>()) {
+        settings.obdSavedAddrType = static_cast<uint8_t>(std::max(0, std::min(doc["obdSavedAddrType"].as<int>(), 1)));
+    }
+    if (doc["obdMinRssi"].is<int>()) {
+        const int rssi = doc["obdMinRssi"].as<int>();
+        settings.obdMinRssi = static_cast<int8_t>(std::max(-90, std::min(rssi, -40)));
+    }
+    if (doc["obdCachedVinPrefix11"].is<const char*>()) {
+        settings.obdCachedVinPrefix11 = doc["obdCachedVinPrefix11"].as<String>();
+    }
+    if (doc["obdCachedEotProfileId"].is<int>()) {
+        settings.obdCachedEotProfileId = static_cast<uint8_t>(
+            std::max(0, std::min(doc["obdCachedEotProfileId"].as<int>(), 255)));
+    }
+
+    int profilesRestored = 0;
+    if (v1ProfileManager.isReady() && doc["profiles"].is<JsonArrayConst>()) {
+        JsonArrayConst profilesArr = doc["profiles"].as<JsonArrayConst>();
+        for (JsonObjectConst p : profilesArr) {
+            if (!p["name"].is<const char*>() || !p["bytes"].is<JsonArrayConst>()) {
+                continue;
+            }
+
+            JsonArrayConst bytes = p["bytes"].as<JsonArrayConst>();
+            if (bytes.size() != 6) {
+                continue;
+            }
+
+            V1Profile profile;
+            profile.name = sanitizeProfileNameValue(p["name"].as<String>());
+            if (profile.name.length() == 0) {
+                continue;
+            }
+            if (p["description"].is<const char*>()) {
+                profile.description = sanitizeProfileDescriptionValue(p["description"].as<String>());
+            }
+            bool profileDisplayOn = false;
+            if (parseBoolVariant(p["displayOn"], profileDisplayOn)) {
+                profile.displayOn = profileDisplayOn;
+            }
+            if (p["mainVolume"].is<int>()) profile.mainVolume = clampSlotVolumeValue(p["mainVolume"].as<int>());
+            if (p["mutedVolume"].is<int>()) profile.mutedVolume = clampSlotVolumeValue(p["mutedVolume"].as<int>());
+
+            for (int i = 0; i < 6; i++) {
+                profile.settings.bytes[i] = bytes[i].as<uint8_t>();
+            }
+
+            ProfileSaveResult saveResult = v1ProfileManager.saveProfile(profile);
+            if (saveResult.success) {
+                profilesRestored++;
+            } else {
+                Serial.printf("[Settings] Failed to restore profile '%s': %s\n",
+                              profile.name.c_str(),
+                              saveResult.error.c_str());
+            }
+        }
+    }
+
+    if (deferBackupRewrite) {
+        saveDeferredBackup();
+    } else {
+        if (!persistSettingsAtomically()) {
+            Serial.println("[Settings] ERROR: Failed to persist restored settings");
+            return result;
+        }
+        bumpBackupRevision();
+    }
+
+    result.success = true;
+    result.profilesRestored = profilesRestored;
+    return result;
 }
 
 bool backupFieldMatchesBool(const JsonDocument& doc, const char* key, bool expected) {
@@ -473,273 +757,16 @@ bool SettingsManager::restoreFromSD() {
                   backupSlot0,
                   backupSlot0Mode);
 
-    auto restoreBool = [&](const char* key, bool& target) {
-        bool parsed = false;
-        if (parseBoolVariant(doc[key], parsed)) {
-            target = parsed;
-        }
-    };
-    
-    // === WiFi/Network Settings ===
-    // Note: AP password NOT restored from SD for security - user must re-enter after restore
-    restoreBool("enableWifi", settings.enableWifi);
-    if (doc["wifiMode"].is<int>()) settings.wifiMode = clampWifiModeValue(doc["wifiMode"].as<int>());
-    if (doc["apSSID"].is<const char*>()) settings.apSSID = sanitizeApSsidValue(doc["apSSID"].as<String>());
-    restoreBool("wifiClientEnabled", settings.wifiClientEnabled);
-    if (doc["wifiClientSSID"].is<const char*>()) settings.wifiClientSSID = sanitizeWifiClientSsidValue(doc["wifiClientSSID"].as<String>());
-    // Self-healing: derive wifiClientEnabled from SSID presence
-    if (!settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
-        settings.wifiClientEnabled = true;
+    const SettingsBackupApplyResult applyResult = applyBackupDocument(doc, false);
+    if (!applyResult.success) {
+        return false;
     }
-    settings.wifiMode = settings.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
-    restoreBool("proxyBLE", settings.proxyBLE);
-    if (doc["proxyName"].is<const char*>()) settings.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
-    restoreBool("gpsEnabled", settings.gpsEnabled);
-    if (doc["gpsLockoutMode"].is<int>()) {
-        settings.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
-    } else if (doc["gpsLockoutMode"].is<const char*>()) {
-        String mode = doc["gpsLockoutMode"].as<String>();
-        mode.toLowerCase();
-        if (mode == "shadow") {
-            settings.gpsLockoutMode = LOCKOUT_RUNTIME_SHADOW;
-        } else if (mode == "advisory") {
-            settings.gpsLockoutMode = LOCKOUT_RUNTIME_ADVISORY;
-        } else if (mode == "enforce") {
-            settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
-        } else {
-            settings.gpsLockoutMode = LOCKOUT_RUNTIME_OFF;
-        }
-    }
-    restoreBool("gpsLockoutCoreGuardEnabled", settings.gpsLockoutCoreGuardEnabled);
-    if (doc["gpsLockoutMaxQueueDrops"].is<int>()) {
-        settings.gpsLockoutMaxQueueDrops = static_cast<uint16_t>(
-            std::max(0, std::min(doc["gpsLockoutMaxQueueDrops"].as<int>(), 65535)));
-    }
-    if (doc["gpsLockoutMaxPerfDrops"].is<int>()) {
-        settings.gpsLockoutMaxPerfDrops = static_cast<uint16_t>(
-            std::max(0, std::min(doc["gpsLockoutMaxPerfDrops"].as<int>(), 65535)));
-    }
-    if (doc["gpsLockoutMaxEventBusDrops"].is<int>()) {
-        settings.gpsLockoutMaxEventBusDrops = static_cast<uint16_t>(
-            std::max(0, std::min(doc["gpsLockoutMaxEventBusDrops"].as<int>(), 65535)));
-    }
-    if (doc["gpsLockoutLearnerPromotionHits"].is<int>()) {
-        settings.gpsLockoutLearnerPromotionHits = clampLockoutLearnerHitsValue(
-            doc["gpsLockoutLearnerPromotionHits"].as<int>());
-    }
-    if (doc["gpsLockoutLearnerRadiusE5"].is<int>()) {
-        settings.gpsLockoutLearnerRadiusE5 = clampLockoutLearnerRadiusE5Value(
-            doc["gpsLockoutLearnerRadiusE5"].as<int>());
-    }
-    if (doc["gpsLockoutLearnerFreqToleranceMHz"].is<int>()) {
-        settings.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
-            doc["gpsLockoutLearnerFreqToleranceMHz"].as<int>());
-    }
-    if (doc["gpsLockoutLearnerLearnIntervalHours"].is<int>()) {
-        settings.gpsLockoutLearnerLearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
-            doc["gpsLockoutLearnerLearnIntervalHours"].as<int>());
-    }
-    if (doc["gpsLockoutLearnerUnlearnIntervalHours"].is<int>()) {
-        settings.gpsLockoutLearnerUnlearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
-            doc["gpsLockoutLearnerUnlearnIntervalHours"].as<int>());
-    }
-    if (doc["gpsLockoutLearnerUnlearnCount"].is<int>()) {
-        settings.gpsLockoutLearnerUnlearnCount = clampLockoutLearnerUnlearnCountValue(
-            doc["gpsLockoutLearnerUnlearnCount"].as<int>());
-    }
-    if (doc["gpsLockoutManualDemotionMissCount"].is<int>()) {
-        settings.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
-            doc["gpsLockoutManualDemotionMissCount"].as<int>());
-    }
-    restoreBool("gpsLockoutKaLearningEnabled", settings.gpsLockoutKaLearningEnabled);
-    restoreBool("gpsLockoutPreQuiet", settings.gpsLockoutPreQuiet);
-    if (doc["gpsLockoutPreQuietBufferE5"].is<int>()) {
-        settings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
-            doc["gpsLockoutPreQuietBufferE5"].as<int>());
-    }
-    if (doc["lastV1Address"].is<const char*>()) settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
-    if (doc["autoPowerOffMinutes"].is<int>()) {
-        settings.autoPowerOffMinutes = clampU8(doc["autoPowerOffMinutes"].as<int>(), 0, 60);
-    }
-    if (doc["apTimeoutMinutes"].is<int>()) {
-        settings.apTimeoutMinutes = clampApTimeoutValue(doc["apTimeoutMinutes"].as<int>());
-    }
-    
-    
-    // === Display Settings ===
-    if (doc["brightness"].is<int>()) settings.brightness = clampU8(doc["brightness"].as<int>(), 1, 255);
-    restoreBool("turnOffDisplay", settings.turnOffDisplay);
-    if (doc["displayStyle"].is<int>()) settings.displayStyle = normalizeDisplayStyle(doc["displayStyle"].as<int>());
-    
-    // === All Colors ===
-    if (doc["colorBogey"].is<int>()) settings.colorBogey = doc["colorBogey"];
-    if (doc["colorFrequency"].is<int>()) settings.colorFrequency = doc["colorFrequency"];
-    if (doc["colorArrowFront"].is<int>()) settings.colorArrowFront = doc["colorArrowFront"];
-    if (doc["colorArrowSide"].is<int>()) settings.colorArrowSide = doc["colorArrowSide"];
-    if (doc["colorArrowRear"].is<int>()) settings.colorArrowRear = doc["colorArrowRear"];
-    if (doc["colorBandL"].is<int>()) settings.colorBandL = doc["colorBandL"];
-    if (doc["colorBandKa"].is<int>()) settings.colorBandKa = doc["colorBandKa"];
-    if (doc["colorBandK"].is<int>()) settings.colorBandK = doc["colorBandK"];
-    if (doc["colorBandX"].is<int>()) settings.colorBandX = doc["colorBandX"];
-    if (doc["colorBandPhoto"].is<int>()) settings.colorBandPhoto = doc["colorBandPhoto"];
-    if (doc["colorWiFiIcon"].is<int>()) settings.colorWiFiIcon = doc["colorWiFiIcon"];
-    if (doc["colorWiFiConnected"].is<int>()) settings.colorWiFiConnected = doc["colorWiFiConnected"];
-    if (doc["colorBleConnected"].is<int>()) settings.colorBleConnected = doc["colorBleConnected"];
-    if (doc["colorBleDisconnected"].is<int>()) settings.colorBleDisconnected = doc["colorBleDisconnected"];
-    if (doc["colorBar1"].is<int>()) settings.colorBar1 = doc["colorBar1"];
-    if (doc["colorBar2"].is<int>()) settings.colorBar2 = doc["colorBar2"];
-    if (doc["colorBar3"].is<int>()) settings.colorBar3 = doc["colorBar3"];
-    if (doc["colorBar4"].is<int>()) settings.colorBar4 = doc["colorBar4"];
-    if (doc["colorBar5"].is<int>()) settings.colorBar5 = doc["colorBar5"];
-    if (doc["colorBar6"].is<int>()) settings.colorBar6 = doc["colorBar6"];
-    if (doc["colorMuted"].is<int>()) settings.colorMuted = doc["colorMuted"];
-    if (doc["colorPersisted"].is<int>()) settings.colorPersisted = doc["colorPersisted"];
-    if (doc["colorVolumeMain"].is<int>()) settings.colorVolumeMain = doc["colorVolumeMain"];
-    if (doc["colorVolumeMute"].is<int>()) settings.colorVolumeMute = doc["colorVolumeMute"];
-    if (doc["colorRssiV1"].is<int>()) settings.colorRssiV1 = doc["colorRssiV1"];
-    if (doc["colorRssiProxy"].is<int>()) settings.colorRssiProxy = doc["colorRssiProxy"];
-    if (doc["colorLockout"].is<int>()) settings.colorLockout = doc["colorLockout"];
-    if (doc["colorGps"].is<int>()) settings.colorGps = doc["colorGps"];
-    restoreBool("freqUseBandColor", settings.freqUseBandColor);
-    
-    // === UI Toggles ===
-    restoreBool("hideWifiIcon", settings.hideWifiIcon);
-    restoreBool("hideProfileIndicator", settings.hideProfileIndicator);
-    restoreBool("hideBatteryIcon", settings.hideBatteryIcon);
-    restoreBool("showBatteryPercent", settings.showBatteryPercent);
-    restoreBool("hideBleIcon", settings.hideBleIcon);
-    restoreBool("hideVolumeIndicator", settings.hideVolumeIndicator);
-    restoreBool("hideRssiIndicator", settings.hideRssiIndicator);
-    restoreBool("enableWifiAtBoot", settings.enableWifiAtBoot);
-    restoreBool("enableSignalTraceLogging", settings.enableSignalTraceLogging);
-    
-    // === Voice Settings ===
-    if (doc["voiceAlertMode"].is<int>()) {
-        settings.voiceAlertMode = clampVoiceAlertModeValue(doc["voiceAlertMode"].as<int>());
-    } else {
-        bool legacyVoiceEnabled = false;
-        if (parseBoolVariant(doc["voiceAlertsEnabled"], legacyVoiceEnabled)) {
-            settings.voiceAlertMode = legacyVoiceEnabled ? VOICE_MODE_BAND_FREQ : VOICE_MODE_DISABLED;
-        }
-    }
-    restoreBool("voiceDirectionEnabled", settings.voiceDirectionEnabled);
-    restoreBool("announceBogeyCount", settings.announceBogeyCount);
-    restoreBool("muteVoiceIfVolZero", settings.muteVoiceIfVolZero);
-    if (doc["voiceVolume"].is<int>()) settings.voiceVolume = clampU8(doc["voiceVolume"].as<int>(), 0, 100);
-    restoreBool("announceSecondaryAlerts", settings.announceSecondaryAlerts);
-    restoreBool("secondaryLaser", settings.secondaryLaser);
-    restoreBool("secondaryKa", settings.secondaryKa);
-    restoreBool("secondaryK", settings.secondaryK);
-    restoreBool("secondaryX", settings.secondaryX);
-    restoreBool("alertVolumeFadeEnabled", settings.alertVolumeFadeEnabled);
-    if (doc["alertVolumeFadeDelaySec"].is<int>()) {
-        settings.alertVolumeFadeDelaySec = clampU8(doc["alertVolumeFadeDelaySec"].as<int>(), 1, 10);
-    }
-    if (doc["alertVolumeFadeVolume"].is<int>()) {
-        settings.alertVolumeFadeVolume = clampU8(doc["alertVolumeFadeVolume"].as<int>(), 0, 9);
-    }
-    
-    // === Auto-Push Settings ===
-    // Only allow backup to enable auto-push (avoid stale backups disabling it)
-    bool backupAutoPushEnabled = false;
-    if (parseBoolVariant(doc["autoPushEnabled"], backupAutoPushEnabled) && backupAutoPushEnabled) {
-        settings.autoPushEnabled = true;
-    }
-    if (doc["activeSlot"].is<int>()) settings.activeSlot = std::max(0, std::min(doc["activeSlot"].as<int>(), 2));
-    
-    // === Slot 0 Full Settings ===
-    if (doc["slot0Name"].is<const char*>()) settings.slot0Name = sanitizeSlotNameValue(doc["slot0Name"].as<String>());
-    if (doc["slot0Color"].is<int>()) settings.slot0Color = doc["slot0Color"];
-    if (doc["slot0Volume"].is<int>()) settings.slot0Volume = clampSlotVolumeValue(doc["slot0Volume"].as<int>());
-    if (doc["slot0MuteVolume"].is<int>()) settings.slot0MuteVolume = clampSlotVolumeValue(doc["slot0MuteVolume"].as<int>());
-    restoreBool("slot0DarkMode", settings.slot0DarkMode);
-    restoreBool("slot0MuteToZero", settings.slot0MuteToZero);
-    if (doc["slot0AlertPersist"].is<int>()) settings.slot0AlertPersist = clampU8(doc["slot0AlertPersist"].as<int>(), 0, 5);
-    restoreBool("slot0PriorityArrow", settings.slot0PriorityArrow);
-    if (doc["slot0ProfileName"].is<const char*>()) settings.slot0_default.profileName = sanitizeProfileNameValue(doc["slot0ProfileName"].as<String>());
-    if (doc["slot0Mode"].is<int>()) settings.slot0_default.mode = normalizeV1ModeValue(doc["slot0Mode"].as<int>());
-    
-    // === Slot 1 Full Settings ===
-    if (doc["slot1Name"].is<const char*>()) settings.slot1Name = sanitizeSlotNameValue(doc["slot1Name"].as<String>());
-    if (doc["slot1Color"].is<int>()) settings.slot1Color = doc["slot1Color"];
-    if (doc["slot1Volume"].is<int>()) settings.slot1Volume = clampSlotVolumeValue(doc["slot1Volume"].as<int>());
-    if (doc["slot1MuteVolume"].is<int>()) settings.slot1MuteVolume = clampSlotVolumeValue(doc["slot1MuteVolume"].as<int>());
-    restoreBool("slot1DarkMode", settings.slot1DarkMode);
-    restoreBool("slot1MuteToZero", settings.slot1MuteToZero);
-    if (doc["slot1AlertPersist"].is<int>()) settings.slot1AlertPersist = clampU8(doc["slot1AlertPersist"].as<int>(), 0, 5);
-    restoreBool("slot1PriorityArrow", settings.slot1PriorityArrow);
-    if (doc["slot1ProfileName"].is<const char*>()) settings.slot1_highway.profileName = sanitizeProfileNameValue(doc["slot1ProfileName"].as<String>());
-    if (doc["slot1Mode"].is<int>()) settings.slot1_highway.mode = normalizeV1ModeValue(doc["slot1Mode"].as<int>());
-    
-    // === Slot 2 Full Settings ===
-    if (doc["slot2Name"].is<const char*>()) settings.slot2Name = sanitizeSlotNameValue(doc["slot2Name"].as<String>());
-    if (doc["slot2Color"].is<int>()) settings.slot2Color = doc["slot2Color"];
-    if (doc["slot2Volume"].is<int>()) settings.slot2Volume = clampSlotVolumeValue(doc["slot2Volume"].as<int>());
-    if (doc["slot2MuteVolume"].is<int>()) settings.slot2MuteVolume = clampSlotVolumeValue(doc["slot2MuteVolume"].as<int>());
-    restoreBool("slot2DarkMode", settings.slot2DarkMode);
-    restoreBool("slot2MuteToZero", settings.slot2MuteToZero);
-    if (doc["slot2AlertPersist"].is<int>()) settings.slot2AlertPersist = clampU8(doc["slot2AlertPersist"].as<int>(), 0, 5);
-    restoreBool("slot2PriorityArrow", settings.slot2PriorityArrow);
-    if (doc["slot2ProfileName"].is<const char*>()) settings.slot2_comfort.profileName = sanitizeProfileNameValue(doc["slot2ProfileName"].as<String>());
-    if (doc["slot2Mode"].is<int>()) settings.slot2_comfort.mode = normalizeV1ModeValue(doc["slot2Mode"].as<int>());
-
-    // Restore V1 profiles if present in backup
-    int profilesRestored = 0;
-    if (v1ProfileManager.isReady() && doc["profiles"].is<JsonArray>()) {
-        JsonArray profilesArr = doc["profiles"].as<JsonArray>();
-        for (JsonObject p : profilesArr) {
-            if (!p["name"].is<const char*>() || !p["bytes"].is<JsonArray>()) {
-                continue;
-            }
-
-            JsonArray bytes = p["bytes"].as<JsonArray>();
-            if (bytes.size() != 6) {
-                continue;
-            }
-
-            V1Profile profile;
-            profile.name = sanitizeProfileNameValue(p["name"].as<String>());
-            if (profile.name.length() == 0) {
-                continue;
-            }
-            if (p["description"].is<const char*>()) {
-                profile.description = sanitizeProfileDescriptionValue(p["description"].as<String>());
-            }
-            bool profileDisplayOn = false;
-            if (parseBoolVariant(p["displayOn"], profileDisplayOn)) {
-                profile.displayOn = profileDisplayOn;
-            }
-            if (p["mainVolume"].is<int>()) profile.mainVolume = clampSlotVolumeValue(p["mainVolume"].as<int>());
-            if (p["mutedVolume"].is<int>()) profile.mutedVolume = clampSlotVolumeValue(p["mutedVolume"].as<int>());
-
-            for (int i = 0; i < 6; i++) {
-                profile.settings.bytes[i] = bytes[i].as<uint8_t>();
-            }
-
-            ProfileSaveResult result = v1ProfileManager.saveProfile(profile);
-            if (result.success) {
-                profilesRestored++;
-            } else {
-                Serial.printf("[Settings] Failed to restore profile '%s': %s\n",
-                              profile.name.c_str(),
-                              result.error.c_str());
-            }
-        }
-    }
-    
-    // Debug: log what modes were restored
     Serial.printf("[Settings] Restored modes from backup: slot0Mode=%d (in json: %s), slot1Mode=%d (in json: %s), slot2Mode=%d (in json: %s)\n",
                   settings.slot0_default.mode, doc["slot0Mode"].is<int>() ? "yes" : "NO",
                   settings.slot1_highway.mode, doc["slot1Mode"].is<int>() ? "yes" : "NO",
                   settings.slot2_comfort.mode, doc["slot2Mode"].is<int>() ? "yes" : "NO");
-    
-    if (!persistSettingsAtomically()) {
-        Serial.println("[Settings] ERROR: Failed to persist restored settings");
-        return false;
-    }
-
-    bumpBackupRevision();
-    Serial.printf("[Settings] ✅ Full restore from SD backup complete (%d profiles)\n", profilesRestored);
+    Serial.printf("[Settings] ✅ Full restore from SD backup complete (%d profiles)\n",
+                  applyResult.profilesRestored);
     return true;
 }
 
