@@ -25,8 +25,8 @@ DURATION_SECONDS=300
 POLL_SECONDS=5
 SERIAL_BAUD="${REAL_FW_SERIAL_BAUD:-115200}"
 HTTP_TIMEOUT_SECONDS="${REAL_FW_HTTP_TIMEOUT_SECONDS:-2}"
-METRICS_ENDPOINT_ATTEMPTS="${REAL_FW_METRICS_ENDPOINT_ATTEMPTS:-12}"
 METRICS_ENDPOINT_RETRY_DELAY_SECONDS="${REAL_FW_METRICS_ENDPOINT_RETRY_DELAY_SECONDS:-2}"
+METRICS_RECOVERY_MAX_WAIT_SECONDS="${REAL_FW_METRICS_RECOVERY_MAX_WAIT_SECONDS:-90}"
 STARTUP_SETTLE_MIN_SECONDS="${REAL_FW_STARTUP_SETTLE_MIN_SECONDS:-15}"
 STARTUP_SETTLE_MAX_SECONDS="${REAL_FW_STARTUP_SETTLE_MAX_SECONDS:-20}"
 STARTUP_STABLE_CONSECUTIVE_SAMPLES="${REAL_FW_STARTUP_STABLE_CONSECUTIVE_SAMPLES:-2}"
@@ -126,6 +126,11 @@ MIN_AP_DOWN_TRANSITIONS=0
 MIN_PROXY_ADV_OFF_TRANSITIONS=0
 OUT_DIR=""
 COMPARE_TO=""
+METRICS_RECOVERY_ATTEMPTS=0
+METRICS_RECOVERY_ELAPSED_SECONDS=0
+METRICS_RECOVERY_BUDGET_SECONDS=0
+METRICS_RECOVERY_URL=""
+METRICS_RECOVERY_REASON="not_attempted"
 
 is_uint() {
   local value="${1:-}"
@@ -169,6 +174,14 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       HTTP_TIMEOUT_SECONDS="$2"
+      shift
+      ;;
+    --metrics-recovery-max-wait-seconds)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --metrics-recovery-max-wait-seconds" >&2
+        exit 2
+      fi
+      METRICS_RECOVERY_MAX_WAIT_SECONDS="$2"
       shift
       ;;
     --startup-settle-min-seconds)
@@ -663,6 +676,9 @@ Options:
   --serial-baud N        Serial capture baud rate (default: 115200)
   --http-timeout-seconds N
                         curl timeout for metrics/drive calls (default: 2)
+  --metrics-recovery-max-wait-seconds N
+                        Maximum time to wait for metrics recovery after flash
+                        before failing the run (default: 90)
   --startup-settle-min-seconds N
                         Minimum runtime settle floor after metrics recovery
                         before scoring starts (default: 15)
@@ -902,6 +918,11 @@ fi
 
 if ! [[ "$HTTP_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$HTTP_TIMEOUT_SECONDS" -lt 1 ]]; then
   echo "Invalid --http-timeout-seconds value '$HTTP_TIMEOUT_SECONDS' (expected positive integer)." >&2
+  exit 2
+fi
+
+if ! [[ "$METRICS_RECOVERY_MAX_WAIT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$METRICS_RECOVERY_MAX_WAIT_SECONDS" -lt 1 ]]; then
+  echo "Invalid --metrics-recovery-max-wait-seconds value '$METRICS_RECOVERY_MAX_WAIT_SECONDS' (expected positive integer)." >&2
   exit 2
 fi
 
@@ -1421,11 +1442,7 @@ run_and_log() {
 }
 
 metrics_endpoint_max_wait_seconds() {
-  local max_wait_seconds=$((METRICS_ENDPOINT_ATTEMPTS * HTTP_TIMEOUT_SECONDS))
-  if [[ "$METRICS_ENDPOINT_ATTEMPTS" -gt 1 ]]; then
-    max_wait_seconds=$((max_wait_seconds + (METRICS_ENDPOINT_ATTEMPTS - 1) * METRICS_ENDPOINT_RETRY_DELAY_SECONDS))
-  fi
-  echo "$max_wait_seconds"
+  echo "$METRICS_RECOVERY_MAX_WAIT_SECONDS"
 }
 
 validate_json_payload() {
@@ -1457,37 +1474,76 @@ for field in ("result", "runtime_result", "trend_status", "trend_result", "exit_
 PY
 }
 
+read_endpoint_wait_fields() {
+  local path="$1"
+  python3 - "$path" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+for field in ("ok", "attempts", "elapsed_seconds", "reason"):
+    value = payload.get(field, "")
+    if value is None:
+        value = ""
+    print(value)
+PY
+}
+
 wait_for_json_endpoint() {
   local endpoint_name="$1"
   local endpoint_url="$2"
   local required="${3:-1}"
-  local attempt=1
-  local payload=""
+  local wait_result_path="$OUT_DIR/endpoint_wait_result.json"
+  local helper_exit=0
   local max_wait_seconds
   max_wait_seconds="$(metrics_endpoint_max_wait_seconds)"
 
   if [[ -z "$endpoint_url" ]]; then
+    METRICS_RECOVERY_URL="disabled"
+    METRICS_RECOVERY_BUDGET_SECONDS=0
+    METRICS_RECOVERY_REASON="metrics polling disabled"
     return 0
   fi
 
-  echo "==> Waiting for ${endpoint_name} recovery (${METRICS_ENDPOINT_ATTEMPTS} attempt(s), retry ${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s, bounded wait <= ${max_wait_seconds}s)" | tee -a "$RUN_LOG"
-  while [[ "$attempt" -le "$METRICS_ENDPOINT_ATTEMPTS" ]]; do
-    payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$endpoint_url" 2>/dev/null || true)"
-    if [[ -n "$payload" ]] && printf "%s" "$payload" | validate_json_payload; then
-      if [[ "$attempt" -eq 1 ]]; then
-        echo "    ${endpoint_name}: OK" | tee -a "$RUN_LOG"
-      else
-        echo "    ${endpoint_name}: OK after retry (${attempt}/${METRICS_ENDPOINT_ATTEMPTS})" | tee -a "$RUN_LOG"
-      fi
-      return 0
-    fi
-    if [[ "$attempt" -lt "$METRICS_ENDPOINT_ATTEMPTS" && "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS" -gt 0 ]]; then
-      sleep "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS"
-    fi
-    attempt=$((attempt + 1))
-  done
+  METRICS_RECOVERY_URL="$endpoint_url"
+  METRICS_RECOVERY_BUDGET_SECONDS="$max_wait_seconds"
+  echo "==> Waiting for ${endpoint_name} recovery (retry ${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s, bounded wait <= ${max_wait_seconds}s, url=${endpoint_url})" | tee -a "$RUN_LOG"
+  set +e
+  python3 "$ROOT_DIR/tools/wait_for_json_endpoint.py" \
+    --endpoint-name "$endpoint_name" \
+    --url "$endpoint_url" \
+    --timeout-seconds "$HTTP_TIMEOUT_SECONDS" \
+    --retry-delay-seconds "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS" \
+    --max-wait-seconds "$max_wait_seconds" > "$wait_result_path"
+  helper_exit=$?
+  set -e
 
-  local reason="Timed out waiting for ${endpoint_name} after ${METRICS_ENDPOINT_ATTEMPTS} attempt(s) (timeout=${HTTP_TIMEOUT_SECONDS}s, retryDelay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s, boundedWait<=${max_wait_seconds}s)."
+  readarray -t endpoint_wait_fields < <(read_endpoint_wait_fields "$wait_result_path")
+  local ok="${endpoint_wait_fields[0]:-False}"
+  local attempts="${endpoint_wait_fields[1]:-0}"
+  local elapsed_seconds="${endpoint_wait_fields[2]:-0}"
+  local reason="${endpoint_wait_fields[3]:-}"
+
+  METRICS_RECOVERY_ATTEMPTS="$attempts"
+  METRICS_RECOVERY_ELAPSED_SECONDS="$elapsed_seconds"
+  if [[ -n "$reason" ]]; then
+    METRICS_RECOVERY_REASON="$reason"
+  fi
+
+  if [[ "$helper_exit" -eq 0 && "$ok" == "True" ]]; then
+    METRICS_RECOVERY_REASON="recovered"
+    if [[ "$attempts" -eq 1 ]]; then
+      echo "    ${endpoint_name}: OK (${elapsed_seconds}s elapsed)" | tee -a "$RUN_LOG"
+    else
+      echo "    ${endpoint_name}: OK after retry (${attempts} attempt(s), ${elapsed_seconds}s elapsed)" | tee -a "$RUN_LOG"
+    fi
+    return 0
+  fi
+
+  if [[ -z "$reason" ]]; then
+    reason="Timed out waiting for ${endpoint_name} within ${max_wait_seconds}s."
+  fi
   if [[ "$required" -eq 1 ]]; then
     echo "$reason" | tee -a "$RUN_LOG" >&2
     return 1
@@ -1639,7 +1695,7 @@ echo "    duration: ${DURATION_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    poll: ${POLL_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    serial baud: ${SERIAL_BAUD}" | tee -a "$RUN_LOG"
 echo "    http timeout: ${HTTP_TIMEOUT_SECONDS}s" | tee -a "$RUN_LOG"
-echo "    endpoint recovery retries: attempts=${METRICS_ENDPOINT_ATTEMPTS} delay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s boundedWait<=$(metrics_endpoint_max_wait_seconds)s" | tee -a "$RUN_LOG"
+echo "    metrics recovery: maxWait=${METRICS_RECOVERY_MAX_WAIT_SECONDS}s retryDelay=${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s" | tee -a "$RUN_LOG"
 echo "    startup settle: min=${STARTUP_SETTLE_MIN_SECONDS}s max=${STARTUP_SETTLE_MAX_SECONDS}s stableSamples=${STARTUP_STABLE_CONSECUTIVE_SAMPLES}" | tee -a "$RUN_LOG"
 echo "    metrics url: ${METRICS_URL:-disabled}" | tee -a "$RUN_LOG"
 echo "    metrics poll url: ${METRICS_POLL_URL:-disabled}" | tee -a "$RUN_LOG"
@@ -1756,7 +1812,7 @@ if [[ "$TRANSITION_DRIVE_ENABLED" -eq 1 ]]; then
 fi
 SERIAL_CAPTURE_GRACE_SECONDS=$((HTTP_TIMEOUT_SECONDS * serial_capture_call_budget + POLL_SECONDS + 15))
 if [[ -n "$METRICS_POLL_URL" ]]; then
-  SERIAL_CAPTURE_GRACE_SECONDS=$((SERIAL_CAPTURE_GRACE_SECONDS + $(metrics_endpoint_max_wait_seconds)))
+  SERIAL_CAPTURE_GRACE_SECONDS=$((SERIAL_CAPTURE_GRACE_SECONDS + METRICS_RECOVERY_MAX_WAIT_SECONDS))
 fi
 if startup_settle_enabled; then
   SERIAL_CAPTURE_GRACE_SECONDS=$((SERIAL_CAPTURE_GRACE_SECONDS + STARTUP_SETTLE_MAX_SECONDS))
@@ -3078,6 +3134,10 @@ fi
   echo "- Metrics pre-reset success: $([[ "$metrics_reset_success" -eq 1 ]] && echo "yes" || echo "no")"
   echo "- Metrics pre-reset HTTP code: ${metrics_reset_http_code:-n/a}"
   echo "- Metrics pre-reset reason: ${metrics_reset_reason}"
+  echo "- Metrics recovery budget/elapsed: ${METRICS_RECOVERY_BUDGET_SECONDS:-0}s / ${METRICS_RECOVERY_ELAPSED_SECONDS:-0}s"
+  echo "- Metrics recovery attempts: ${METRICS_RECOVERY_ATTEMPTS:-0}"
+  echo "- Metrics recovery URL: ${METRICS_RECOVERY_URL:-disabled}"
+  echo "- Metrics recovery status: ${METRICS_RECOVERY_REASON:-n/a}"
   echo "- Metrics samples (shell): $metrics_samples"
   echo "- Metrics successful (shell): $metrics_ok_samples"
   echo "- Metrics samples parsed: ${metrics_samples_parsed:-0}"
@@ -3358,7 +3418,7 @@ print(count)
 PY
 )"
 
-python3 - "$MANIFEST_JSON" "$RUN_ID" "$GIT_SHA_SHORT" "$GIT_REF_NAME" "$BOARD_ID" "$ENV_NAME" "$track_name" "$RUN_STRESS_CLASS" "$runtime_result" "$trend_metric_count" <<'PY'
+python3 - "$MANIFEST_JSON" "$RUN_ID" "$GIT_SHA_SHORT" "$GIT_REF_NAME" "$BOARD_ID" "$ENV_NAME" "$track_name" "$RUN_STRESS_CLASS" "$runtime_result" "$trend_metric_count" "$METRICS_RECOVERY_BUDGET_SECONDS" "$METRICS_RECOVERY_ELAPSED_SECONDS" "$METRICS_RECOVERY_ATTEMPTS" "$METRICS_RECOVERY_URL" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
@@ -3374,6 +3434,10 @@ track_name = sys.argv[7]
 stress_class = sys.argv[8]
 base_result = sys.argv[9]
 metric_count = int(sys.argv[10])
+metrics_recovery_budget_seconds = int(sys.argv[11])
+metrics_recovery_elapsed_seconds = float(sys.argv[12])
+metrics_recovery_attempts = int(sys.argv[13])
+metrics_recovery_url = sys.argv[14]
 
 payload = {
     "schema_version": 1,
@@ -3393,6 +3457,10 @@ payload = {
     "trend_status": "pending",
     "metrics_file": "metrics.ndjson",
     "scoring_file": "scoring.json",
+    "metrics_recovery_budget_seconds": metrics_recovery_budget_seconds,
+    "metrics_recovery_elapsed_seconds": metrics_recovery_elapsed_seconds,
+    "metrics_recovery_attempts": metrics_recovery_attempts,
+    "metrics_recovery_url": metrics_recovery_url,
     "tracks": [track_name] if metric_count > 0 and track_name else [],
 }
 manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

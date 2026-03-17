@@ -149,17 +149,6 @@ bool WifiAutoStartModule::process(unsigned long nowMs,
         return false;
     }
 
-    lastDecision_ = buildDecisionSnapshot(nowMs,
-                                          v1ConnectedAtMs,
-                                          enableWifi,
-                                          enableWifiAtBoot,
-                                          bleConnected,
-                                          canStartDma,
-                                          wifiAutoStartDone,
-                                          true,
-                                          false);
-    logDecisionIfChanged(lastDecision_);
-
     SerialLog.printf("[WiFi] Deferred auto-start at %lu ms (v1Connect=%lu ms ago)\n",
                      nowMs, static_cast<unsigned long>(lastDecision_.msSinceV1Connect));
     bool startSucceeded = true;

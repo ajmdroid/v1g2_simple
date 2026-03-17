@@ -7,11 +7,15 @@ import json
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 ROOT = Path(__file__).resolve().parents[1]
 FINALIZE_SCRIPT = ROOT / "tools" / "finalize_real_fw_soak_result.py"
+WAIT_SCRIPT = ROOT / "tools" / "wait_for_json_endpoint.py"
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -100,6 +104,61 @@ def run_finalize(
         return payload, manifest, summary
 
 
+class DelayedJsonHandler(BaseHTTPRequestHandler):
+    ready_after_seconds = 0.0
+
+    def do_GET(self) -> None:  # noqa: N802
+        elapsed = time.monotonic() - self.server.start_time  # type: ignore[attr-defined]
+        if elapsed >= self.ready_after_seconds:
+            body = json.dumps({"ok": True}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        body = b"warming"
+        self.send_response(503)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A003
+        return
+
+
+def run_wait_helper(*, ready_after_seconds: float, max_wait_seconds: int, retry_delay_seconds: int) -> tuple[int, dict[str, object]]:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), DelayedJsonHandler)
+    server.start_time = time.monotonic()  # type: ignore[attr-defined]
+    DelayedJsonHandler.ready_after_seconds = ready_after_seconds
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cmd = [
+            sys.executable,
+            str(WAIT_SCRIPT),
+            "--endpoint-name",
+            "metrics endpoint",
+            "--url",
+            f"http://127.0.0.1:{server.server_port}/api/debug/metrics",
+            "--timeout-seconds",
+            "1",
+            "--retry-delay-seconds",
+            str(retry_delay_seconds),
+            "--max-wait-seconds",
+            str(max_wait_seconds),
+        ]
+        completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        payload = json.loads(completed.stdout)
+        return completed.returncode, payload
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=1)
+
+
 def main() -> int:
     warning_payload, warning_manifest, warning_summary = run_finalize(
         runtime_result="PASS",
@@ -171,6 +230,25 @@ def main() -> int:
     )
     assert_true(inconclusive_payload["result"] == "INCONCLUSIVE", f"unexpected inconclusive result: {inconclusive_payload}")
     assert_true(inconclusive_payload["exit_code"] == 0, f"allowed inconclusive should exit zero: {inconclusive_payload}")
+
+    late_success_rc, late_success_payload = run_wait_helper(
+        ready_after_seconds=1.2,
+        max_wait_seconds=4,
+        retry_delay_seconds=1,
+    )
+    assert_true(late_success_rc == 0, f"late-success wait helper should succeed: {late_success_payload}")
+    assert_true(late_success_payload["ok"] is True, f"late-success payload should be ok: {late_success_payload}")
+    assert_true(int(late_success_payload["attempts"]) >= 2, f"late-success should take retries: {late_success_payload}")
+    assert_true(float(late_success_payload["elapsed_seconds"]) >= 1.0, f"late-success elapsed too short: {late_success_payload}")
+
+    timeout_rc, timeout_payload = run_wait_helper(
+        ready_after_seconds=10.0,
+        max_wait_seconds=1,
+        retry_delay_seconds=0,
+    )
+    assert_true(timeout_rc == 1, f"timeout wait helper should fail: {timeout_payload}")
+    assert_true(timeout_payload["ok"] is False, f"timeout payload should not be ok: {timeout_payload}")
+    assert_true("Timed out waiting for metrics endpoint" in str(timeout_payload["reason"]), f"timeout reason missing: {timeout_payload}")
 
     return 0
 
