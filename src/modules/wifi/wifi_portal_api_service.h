@@ -20,8 +20,6 @@ void handleApiHotspotDetect(WebServer& server,
 
 void handleApiFwlink(WebServer& server);
 
-void handleApiRedirectToRoot(WebServer& server);
-
 void handleApiNcsiTxt(WebServer& server);
 
 }  // namespace WifiPortalApiService

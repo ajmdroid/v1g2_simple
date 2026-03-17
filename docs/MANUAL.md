@@ -1409,7 +1409,7 @@ When a new slot is selected:
 
 ### Configuration (Web UI)
 
-The `/autopush.html` page allows:
+The `/autopush` page allows:
 - Enable/disable auto-push feature
 - Configure each of the 3 slots:
   - Select profile from saved profiles

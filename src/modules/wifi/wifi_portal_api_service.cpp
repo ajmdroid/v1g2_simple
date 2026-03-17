@@ -45,11 +45,6 @@ void handleApiFwlink(WebServer& server) {
     server.send(302, "text/html", "");
 }
 
-void handleApiRedirectToRoot(WebServer& server) {
-    server.sendHeader("Location", "/", true);
-    server.send(302, "text/plain", "Redirecting to /");
-}
-
 void handleApiNcsiTxt(WebServer& server) {
     Serial.println("[HTTP] GET /ncsi.txt");
     server.send(200, "text/plain", "Microsoft NCSI");

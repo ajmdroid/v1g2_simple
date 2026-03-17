@@ -54,11 +54,6 @@ void WiFiManager::setupWebServer() {
     }
     
     // New UI served from LittleFS
-    // Redirect /ui to root for backward compatibility
-    server.on("/ui", HTTP_GET, [this]() { 
-        WifiPortalApiService::handleApiRedirectToRoot(server);
-    });
-    
     // Serve static assets from _app directory
     server.on("/_app/env.js", HTTP_GET, [this]() { serveLittleFSFile("/_app/env.js", "application/javascript"); });
     server.on("/_app/version.json", HTTP_GET, [this]() { serveLittleFSFile("/_app/version.json", "application/json"); });
@@ -188,9 +183,6 @@ void WiFiManager::setupWebServer() {
     });
     
     // V1 Settings/Profiles routes
-    server.on("/v1settings", HTTP_GET, [this]() { 
-        WifiPortalApiService::handleApiRedirectToRoot(server);
-    });
     server.on("/api/v1/profiles", HTTP_GET, [this]() {
         WifiV1ProfileApiService::handleApiProfilesList(server, makeV1ProfileRuntime());
     });
@@ -247,9 +239,6 @@ void WiFiManager::setupWebServer() {
     });
     
     // Auto-Push routes
-    server.on("/autopush", HTTP_GET, [this]() { 
-        WifiPortalApiService::handleApiRedirectToRoot(server);
-    });
     server.on("/api/autopush/slots", HTTP_GET, [this]() {
         WifiAutoPushApiService::handleApiSlots(server, makeAutoPushRuntime());
     });
@@ -276,9 +265,6 @@ void WiFiManager::setupWebServer() {
     });
     
     // Display settings routes
-    server.on("/displaycolors", HTTP_GET, [this]() { 
-        WifiPortalApiService::handleApiRedirectToRoot(server);
-    });
     server.on("/api/displaycolors", HTTP_GET, [this]() {
         WifiDisplayColorsApiService::handleApiGet(server, makeDisplayColorsRuntime());
     });
