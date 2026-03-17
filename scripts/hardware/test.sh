@@ -3,6 +3,7 @@ set -uo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
+SELF_NAME="${HARDWARE_TEST_SELF_NAME:-./scripts/hardware/test.sh}"
 
 BOARD_ID="${HARDWARE_TEST_BOARD_ID:-release}"
 INVENTORY_PATH="${HARDWARE_TEST_INVENTORY:-$ROOT_DIR/test/device/board_inventory.json}"
@@ -33,8 +34,8 @@ SEGMENT_SELECTOR="auto"
 LIST_SEGMENTS=0
 
 usage() {
-  cat <<'EOF'
-Usage: ./scripts/hardware/test.sh [options]
+  cat <<EOF
+Usage: ${SELF_NAME} [options]
 
 Options:
   -a, --all                 Run the full fixed test suite (default)
@@ -58,15 +59,15 @@ Options:
   -h, --help                Show this help
 
 Examples:
-  ./scripts/hardware/test.sh
-  ./scripts/hardware/test.sh --core
-  ./scripts/hardware/test.sh --display
-  ./scripts/hardware/test.sh --all --board-id release --strict
-  ./scripts/hardware/test.sh --device --parse-drive-log /path/to/metrics.jsonl
-  ./scripts/hardware/test.sh --core --parse-drive-log /path/to/serial.log
-  ./scripts/hardware/test.sh --parse-drive-log /path/to/real_fw_soak_run
-  ./scripts/hardware/test.sh --list-segments --parse-drive-log /path/to/perf_boot_1.csv
-  ./scripts/hardware/test.sh --core --parse-drive-log /path/to/perf_boot_1.csv
+  ${SELF_NAME}
+  ${SELF_NAME} --core
+  ${SELF_NAME} --display
+  ${SELF_NAME} --all --board-id release --strict
+  ${SELF_NAME} --device --parse-drive-log /path/to/metrics.jsonl
+  ${SELF_NAME} --core --parse-drive-log /path/to/serial.log
+  ${SELF_NAME} --parse-drive-log /path/to/real_fw_soak_run
+  ${SELF_NAME} --list-segments --parse-drive-log /path/to/perf_boot_1.csv
+  ${SELF_NAME} --core --parse-drive-log /path/to/perf_boot_1.csv
 EOF
 }
 

@@ -190,9 +190,6 @@ jobs:
           python3 scripts/check_web_asset_budget.py
           python3 scripts/check_audio_asset_manifest.py
 
-      - name: Stage manifest-tracked audio files
-        run: node interface/scripts/stage-audio.js
-
       - name: Build firmware
         run: pio run -e waveshare-349 -j 1
 

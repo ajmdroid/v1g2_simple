@@ -2027,7 +2027,8 @@ Runs the nightly gate plus:
 
 Single-board or multi-board hardware qualification.
 
-`./scripts/hardware/test.sh` is the unified hardware test entry point. With `--all` it runs this fixed sequence:
+`./test.sh` is the root hardware test entry point and delegates to
+`./scripts/hardware/test.sh`. With `--all` it runs this fixed sequence:
 
 1. RAD scenario preflight — verifies BLE parser pipeline is functional.
 2. Device tests — `run_device_tests.sh --full` (heap, PSRAM, FreeRTOS, etc.).

@@ -41,6 +41,12 @@ For manual PlatformIO command variants and OS-specific troubleshooting:
 - Windows setup: [docs/MANUAL.md — Windows Setup](docs/MANUAL.md#windows-setup)
 - Full command reference: [docs/MANUAL.md](docs/MANUAL.md)
 
+Hardware regression runs use the root wrapper:
+
+```bash
+./test.sh --all
+```
+
 ---
 
 ## Button Controls
