@@ -88,6 +88,6 @@ private:
     static constexpr unsigned long FREQ_UI_PREVIEW_MAX_MS = 250;
     static constexpr unsigned long CARD_UI_MAX_MS = 100;
 
-    void executeLockoutVolumeCommand(const LockoutVolumeCommand& command, uint32_t nowMs);
+    bool executeLockoutVolumeCommand(const LockoutVolumeCommand& command, uint32_t nowMs);
     void executeVolumeFade(uint32_t nowMs, bool lockoutPrioritySuppressed);
 };

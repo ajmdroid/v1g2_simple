@@ -351,9 +351,9 @@ void test_selection_counters() {
     TEST_ASSERT_EQUAL(1, s.noSourceSelections);
 }
 
-// ── setObdEnabled / setGpsEnabled ─────────────────────────────────
+// ── Enabled input sync ────────────────────────────────────────────
 
-void test_set_obd_enabled_activates_obd() {
+void test_sync_enabled_inputs_activates_obd() {
     speedSourceSelector.begin(false, false);
     obdRuntimeModule.freshResult = true;
     obdRuntimeModule.freshSpeedMph = 55.0f;
@@ -362,12 +362,14 @@ void test_set_obd_enabled_activates_obd() {
     auto s1 = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s1.selectedSource);
 
-    speedSourceSelector.setObdEnabled(true);
+    speedSourceSelector.syncEnabledInputs(false, true);
     auto s2 = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::OBD, s2.selectedSource);
+    TEST_ASSERT_FALSE(s2.gpsEnabled);
+    TEST_ASSERT_TRUE(s2.obdEnabled);
 }
 
-void test_set_gps_enabled_activates_gps() {
+void test_sync_enabled_inputs_activates_gps() {
     speedSourceSelector.begin(false, false);
     gpsRuntimeModule.freshResult = true;
     gpsRuntimeModule.freshSpeedMph = 60.0f;
@@ -376,9 +378,30 @@ void test_set_gps_enabled_activates_gps() {
     auto s1 = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::NONE, s1.selectedSource);
 
-    speedSourceSelector.setGpsEnabled(true);
+    speedSourceSelector.syncEnabledInputs(true, false);
     auto s2 = snapshotAt(1000);
     TEST_ASSERT_EQUAL(SpeedSource::GPS, s2.selectedSource);
+    TEST_ASSERT_TRUE(s2.gpsEnabled);
+    TEST_ASSERT_FALSE(s2.obdEnabled);
+}
+
+void test_sync_enabled_inputs_replaces_both_source_flags_together() {
+    speedSourceSelector.begin(true, true);
+    gpsRuntimeModule.freshResult = true;
+    gpsRuntimeModule.freshSpeedMph = 60.0f;
+    gpsRuntimeModule.freshTsMs = 900;
+    obdRuntimeModule.freshResult = true;
+    obdRuntimeModule.freshSpeedMph = 55.0f;
+    obdRuntimeModule.freshTsMs = 950;
+
+    auto before = snapshotAt(1000);
+    TEST_ASSERT_EQUAL(SpeedSource::OBD, before.selectedSource);
+
+    speedSourceSelector.syncEnabledInputs(true, false);
+    auto after = snapshotAt(1000);
+    TEST_ASSERT_TRUE(after.gpsEnabled);
+    TEST_ASSERT_FALSE(after.obdEnabled);
+    TEST_ASSERT_EQUAL(SpeedSource::GPS, after.selectedSource);
 }
 
 // ── Status fields ─────────────────────────────────────────────────
@@ -446,9 +469,10 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_snapshot_at_is_pure_and_update_commits_state);
     RUN_TEST(test_selection_counters);
 
-    // Enable/disable
-    RUN_TEST(test_set_obd_enabled_activates_obd);
-    RUN_TEST(test_set_gps_enabled_activates_gps);
+    // Enabled input sync
+    RUN_TEST(test_sync_enabled_inputs_activates_obd);
+    RUN_TEST(test_sync_enabled_inputs_activates_gps);
+    RUN_TEST(test_sync_enabled_inputs_replaces_both_source_flags_together);
 
     // Status fields
     RUN_TEST(test_status_reports_enabled_flags);

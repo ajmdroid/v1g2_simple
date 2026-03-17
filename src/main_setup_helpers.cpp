@@ -145,7 +145,11 @@ void onV1Connected() {
         AUTO_PUSH_LOGF("[AutoPush] Using global activeSlot: %d\n", selection.selectedSlotIndex);
     }
 
-    autoPushModule.start(selection.selectedSlotIndex);
+    const auto queueResult = autoPushModule.queueSlotPush(selection.selectedSlotIndex);
+    if (queueResult != AutoPushModule::QueueResult::QUEUED) {
+        AUTO_PUSH_LOGF("[AutoPush] Skipped queue on connect, result=%d\n",
+                       static_cast<int>(queueResult));
+    }
 }
 
 void initializeStorageAndProfiles() {

@@ -15,7 +15,6 @@ struct WifiRuntimeContext {
     bool skipLateNonCoreThisLoop = false;
     bool displayPreviewRunning = false;
     bool bootSplashHoldActive = false;
-    void (*runWifiManagerProcess)() = nullptr;
 };
 
 struct WifiRuntimeResult {
@@ -47,6 +46,8 @@ public:
         WifiProcessCadenceDecision (*runWifiCadence)(
             void* ctx, const WifiProcessCadenceContext& cadenceCtx) = nullptr;
         void* wifiCadenceContext = nullptr;
+        void (*runWifiManagerProcess)(void* ctx) = nullptr;
+        void* wifiManagerProcessContext = nullptr;
         void (*recordWifiProcessUs)(void* ctx, uint32_t elapsedUs) = nullptr;
         void* wifiProcessPerfContext = nullptr;
 

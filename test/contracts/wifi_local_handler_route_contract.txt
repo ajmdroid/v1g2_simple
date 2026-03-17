@@ -26,7 +26,6 @@ route=HTTP_POST /api/obd/config rate_limit=0 ui_activity=0 handlers= delegates=O
 route=HTTP_POST /api/obd/forget rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiForget
 route=HTTP_POST /api/obd/scan rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiScan
 route=HTTP_POST /api/profile/push rate_limit=0 ui_activity=0 handlers= delegates=WifiControlApiService::handleApiProfilePush
-route=HTTP_POST /api/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiSettingsApiService::handleApiSettingsSave
 route=HTTP_POST /api/v1/devices/delete rate_limit=0 ui_activity=0 handlers= delegates=WifiV1DevicesApiService::handleApiDeviceDelete
 route=HTTP_POST /api/v1/devices/name rate_limit=0 ui_activity=0 handlers= delegates=WifiV1DevicesApiService::handleApiDeviceNameSave
 route=HTTP_POST /api/v1/devices/profile rate_limit=0 ui_activity=0 handlers= delegates=WifiV1DevicesApiService::handleApiDeviceProfileSave

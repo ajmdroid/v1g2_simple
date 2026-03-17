@@ -27,14 +27,15 @@ MASK_RE = re.compile(
 LOOP_START_RE = re.compile(r"\bvoid\s+loop\s*\(\s*\)\s*\{")
 
 ORDERED_CALLS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
-    ("bleClient.process", re.compile(r"\bbleClient\s*\.\s*process\s*\(")),
-    ("bleQueueModule.process", re.compile(r"\bbleQueueModule\s*\.\s*process\s*\(")),
+    ("processLoopConnectionEarlyPhase", re.compile(r"\bprocessLoopConnectionEarlyPhase\s*\(")),
+    ("shouldReturnEarlyFromLoopPowerTouchPhase", re.compile(r"\bshouldReturnEarlyFromLoopPowerTouchPhase\s*\(")),
+    ("processLoopIngestPhase", re.compile(r"\bprocessLoopIngestPhase\s*\(")),
     ("obdRuntimeModule.update", re.compile(r"\bobdRuntimeModule\s*\.\s*update\s*\(")),
-    (
-        "displayPipelineModule.handleParsed",
-        re.compile(r"\bdisplayPipelineModule\s*\.\s*handleParsed\s*\("),
-    ),
-    ("wifiManager.process", re.compile(r"\bwifiManager\s*\.\s*process\s*\(")),
+    ("speedSourceSelector.update", re.compile(r"\bspeedSourceSelector\s*\.\s*update\s*\(")),
+    ("processLoopDisplayPreWifiPhase", re.compile(r"\bprocessLoopDisplayPreWifiPhase\s*\(")),
+    ("processLoopWifiPhase", re.compile(r"\bprocessLoopWifiPhase\s*\(")),
+    ("loopTelemetryModule.process", re.compile(r"\bloopTelemetryModule\s*\.\s*process\s*\(")),
+    ("processLoopFinalizePhase", re.compile(r"\bprocessLoopFinalizePhase\s*\(")),
 )
 
 DELAY_RE = re.compile(r"\bdelay\s*\(")

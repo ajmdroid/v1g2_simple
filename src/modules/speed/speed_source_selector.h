@@ -42,8 +42,7 @@ public:
     static constexpr float MAX_VALID_SPEED_MPH = 250.0f;
 
     void begin(bool gpsEnabled, bool obdEnabled = false);
-    void setGpsEnabled(bool enabled);
-    void setObdEnabled(bool enabled);
+    void syncEnabledInputs(bool gpsEnabled, bool obdEnabled);
     void update(uint32_t nowMs);
 
     // Producers call update(nowMs) once per loop to commit state.

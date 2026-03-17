@@ -12,16 +12,6 @@ struct LoopConnectionEarlyContext {
     bool bootSplashHoldActive = false;
     uint32_t bootSplashHoldUntilMs = 0;
     bool initialScanningScreenShown = false;
-
-    ConnectionRuntimeSnapshot (*runConnectionRuntime)(
-        uint32_t nowMs,
-        uint32_t nowUs,
-        uint32_t lastLoopUs,
-        bool bootSplashHoldActive,
-        uint32_t bootSplashHoldUntilMs,
-        bool initialScanningScreenShown) = nullptr;
-    void (*showInitialScanning)() = nullptr;
-    void (*runDisplayEarly)(const DisplayOrchestrationEarlyContext& displayEarlyCtx) = nullptr;
 };
 
 struct LoopConnectionEarlyResult {

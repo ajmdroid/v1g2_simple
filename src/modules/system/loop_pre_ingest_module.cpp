@@ -12,16 +12,12 @@ LoopPreIngestResult LoopPreIngestModule::process(const LoopPreIngestContext& ctx
         if (!result.bootReady && ctx.nowMs >= ctx.bootReadyDeadlineMs) {
             result.bootReady = true;
             result.bootReadyOpenedByTimeout = true;
-            if (ctx.openBootReadyGate) {
-                ctx.openBootReadyGate(ctx.nowMs);
-            } else if (providers.openBootReadyGate) {
+            if (providers.openBootReadyGate) {
                 providers.openBootReadyGate(providers.bootReadyContext, ctx.nowMs);
             }
         }
 
-        if (ctx.runWifiPriorityApply) {
-            ctx.runWifiPriorityApply(ctx.nowMs);
-        } else if (providers.runWifiPriorityApply) {
+        if (providers.runWifiPriorityApply) {
             providers.runWifiPriorityApply(
                 providers.wifiPriorityContext,
                 ctx.nowMs);
@@ -30,9 +26,7 @@ LoopPreIngestResult LoopPreIngestModule::process(const LoopPreIngestContext& ctx
         result.runBleProcessThisLoop = true;
     }
 
-    if (ctx.runDebugApiProcess) {
-        ctx.runDebugApiProcess(ctx.nowMs);
-    } else if (providers.runDebugApiProcess) {
+    if (providers.runDebugApiProcess) {
         providers.runDebugApiProcess(providers.debugApiContext, ctx.nowMs);
     }
 

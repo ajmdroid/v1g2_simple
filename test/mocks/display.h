@@ -48,6 +48,7 @@ public:
     int drawBatteryIndicatorCalls = 0;
     int drawProfileIndicatorCalls = 0;
     int lastProfileIndicatorSlot = -1;
+    int showLowBatteryCalls = 0;
     int setLockoutMutedCalls = 0;
     bool lastLockoutMutedValue = false;
     int setLockoutIndicatorCalls = 0;
@@ -88,6 +89,7 @@ public:
         drawBatteryIndicatorCalls = 0;
         drawProfileIndicatorCalls = 0;
         lastProfileIndicatorSlot = -1;
+        showLowBatteryCalls = 0;
         setLockoutMutedCalls = 0;
         lastLockoutMutedValue = false;
         setLockoutIndicatorCalls = 0;
@@ -132,6 +134,7 @@ public:
     
     void drawWiFiIndicator() { drawWiFiIndicatorCalls++; }
     void drawBatteryIndicator() { drawBatteryIndicatorCalls++; }
+    void showLowBattery() { showLowBatteryCalls++; }
     void drawProfileIndicator(int slot) {
         drawProfileIndicatorCalls++;
         lastProfileIndicatorSlot = slot;

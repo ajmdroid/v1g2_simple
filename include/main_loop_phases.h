@@ -58,9 +58,7 @@ LoopIngestPhaseValues processLoopIngestPhase(
     bool currentBootReady,
     unsigned long bootReadyDeadlineMs,
     bool skipNonCoreThisLoop,
-    bool overloadThisLoop,
-    void (*runBleProcess)(),
-    void (*runBleDrain)());
+    bool overloadThisLoop);
 
 // Loop ownership contract:
 // - Ingest phase mutates BLE/GPS runtime and returns the settings snapshot.
@@ -70,8 +68,7 @@ void processLoopDisplayPreWifiPhase(
     unsigned long nowMs,
     bool bootSplashHoldActive,
     bool overloadLateThisLoop,
-    bool enableSignalTraceLogging,
-    void (*runDisplayPipeline)(uint32_t nowMs, bool lockoutPrioritySuppressed));
+    bool enableSignalTraceLogging);
 
 LoopWifiPhaseValues processLoopWifiPhase(
     unsigned long nowMs,
@@ -80,8 +77,7 @@ LoopWifiPhaseValues processLoopWifiPhase(
     bool enableWifiAtBoot,
     bool currentWifiAutoStartDone,
     bool skipLateNonCoreThisLoop,
-    bool bootSplashHoldActive,
-    void (*runWifiManagerProcess)());
+    bool bootSplashHoldActive);
 
 LoopFinalizePhaseValues processLoopFinalizePhase(
     unsigned long nowMs,

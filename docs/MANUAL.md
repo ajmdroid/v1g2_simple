@@ -1683,7 +1683,7 @@ For the full API reference with request/response schemas and examples, see [API.
 | GET | `/api/device/settings` | AP/proxy/power/dev settings |
 | POST | `/api/device/settings` | Save AP/proxy/power/dev settings |
 | GET | `/api/gps/config` | GPS/lockout settings |
-| POST | `/api/settings` | Save GPS/lockout settings |
+| POST | `/api/gps/config` | Save GPS/lockout settings |
 | GET | `/api/settings/backup` | Download settings as JSON |
 | POST | `/api/settings/restore` | Restore settings from JSON |
 | GET | `/api/v1/profiles` | List saved profiles |

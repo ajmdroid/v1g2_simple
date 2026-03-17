@@ -10,9 +10,6 @@ struct LoopSettingsPrepValues {
 
 struct LoopSettingsPrepContext {
     uint32_t nowMs = 0;
-
-    void (*runTapGesture)(uint32_t nowMs) = nullptr;
-    LoopSettingsPrepValues (*readSettingsValues)() = nullptr;
 };
 
 // Orchestrates tap-gesture processing and loop settings snapshot reads.

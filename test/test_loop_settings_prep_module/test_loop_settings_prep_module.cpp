@@ -21,12 +21,9 @@ static int callLog[16];
 static size_t callLogCount = 0;
 
 static uint32_t tapNowMs = 0;
-static int runtimeTapCalls = 0;
 static int providerTapCalls = 0;
-static int runtimeSettingsCalls = 0;
 static int providerSettingsCalls = 0;
 
-static LoopSettingsPrepValues runtimeValues;
 static LoopSettingsPrepValues providerValues;
 
 static void noteCall(int id) {
@@ -38,30 +35,15 @@ static void noteCall(int id) {
 static void resetState() {
     callLogCount = 0;
     tapNowMs = 0;
-    runtimeTapCalls = 0;
     providerTapCalls = 0;
-    runtimeSettingsCalls = 0;
     providerSettingsCalls = 0;
-    runtimeValues = LoopSettingsPrepValues{};
     providerValues = LoopSettingsPrepValues{};
-}
-
-static void runRuntimeTap(uint32_t nowMs) {
-    runtimeTapCalls++;
-    tapNowMs = nowMs;
-    noteCall(CALL_TAP);
 }
 
 static void runProviderTap(void*, uint32_t nowMs) {
     providerTapCalls++;
     tapNowMs = nowMs;
     noteCall(CALL_TAP);
-}
-
-static LoopSettingsPrepValues readRuntimeSettings() {
-    runtimeSettingsCalls++;
-    noteCall(CALL_SETTINGS);
-    return runtimeValues;
 }
 
 static LoopSettingsPrepValues readProviderSettings(void*) {
@@ -76,37 +58,7 @@ void setUp() {
 
 void tearDown() {}
 
-void test_runtime_callbacks_path_runs_tap_then_reads_settings() {
-    LoopSettingsPrepModule::Providers providers;
-    module.begin(providers);
-
-    runtimeValues.enableWifiAtBoot = true;
-    runtimeValues.enableSignalTraceLogging = false;
-    runtimeValues.enableWifi = false;
-
-    LoopSettingsPrepContext ctx;
-    ctx.nowMs = 123;
-    ctx.runTapGesture = runRuntimeTap;
-    ctx.readSettingsValues = readRuntimeSettings;
-
-    const LoopSettingsPrepValues result = module.process(ctx);
-
-    TEST_ASSERT_EQUAL(1, runtimeTapCalls);
-    TEST_ASSERT_EQUAL(0, providerTapCalls);
-    TEST_ASSERT_EQUAL(1, runtimeSettingsCalls);
-    TEST_ASSERT_EQUAL(0, providerSettingsCalls);
-    TEST_ASSERT_EQUAL(123u, tapNowMs);
-
-    TEST_ASSERT_TRUE(result.enableWifiAtBoot);
-    TEST_ASSERT_FALSE(result.enableSignalTraceLogging);
-    TEST_ASSERT_FALSE(result.enableWifi);
-
-    TEST_ASSERT_EQUAL(2, callLogCount);
-    TEST_ASSERT_EQUAL(CALL_TAP, callLog[0]);
-    TEST_ASSERT_EQUAL(CALL_SETTINGS, callLog[1]);
-}
-
-void test_provider_fallback_path_runs_tap_then_reads_settings() {
+void test_provider_path_runs_tap_then_reads_settings() {
     LoopSettingsPrepModule::Providers providers;
     providers.runTapGesture = runProviderTap;
     providers.readSettingsValues = readProviderSettings;
@@ -114,70 +66,63 @@ void test_provider_fallback_path_runs_tap_then_reads_settings() {
 
     providerValues.enableWifiAtBoot = true;
     providerValues.enableSignalTraceLogging = true;
-    providerValues.enableWifi = true;
+    providerValues.enableWifi = false;
 
     LoopSettingsPrepContext ctx;
     ctx.nowMs = 456;
 
     const LoopSettingsPrepValues result = module.process(ctx);
 
-    TEST_ASSERT_EQUAL(0, runtimeTapCalls);
     TEST_ASSERT_EQUAL(1, providerTapCalls);
-    TEST_ASSERT_EQUAL(0, runtimeSettingsCalls);
     TEST_ASSERT_EQUAL(1, providerSettingsCalls);
     TEST_ASSERT_EQUAL(456u, tapNowMs);
 
     TEST_ASSERT_TRUE(result.enableWifiAtBoot);
     TEST_ASSERT_TRUE(result.enableSignalTraceLogging);
-    TEST_ASSERT_TRUE(result.enableWifi);
+    TEST_ASSERT_FALSE(result.enableWifi);
 
     TEST_ASSERT_EQUAL(2, callLogCount);
     TEST_ASSERT_EQUAL(CALL_TAP, callLog[0]);
     TEST_ASSERT_EQUAL(CALL_SETTINGS, callLog[1]);
 }
 
-void test_runtime_read_overrides_provider_read() {
+void test_missing_tap_provider_still_reads_settings_snapshot() {
     LoopSettingsPrepModule::Providers providers;
     providers.readSettingsValues = readProviderSettings;
     module.begin(providers);
 
-    runtimeValues.enableWifiAtBoot = false;
-    runtimeValues.enableSignalTraceLogging = true;
-    runtimeValues.enableWifi = false;
+    providerValues.enableWifiAtBoot = false;
+    providerValues.enableSignalTraceLogging = true;
+    providerValues.enableWifi = false;
 
-    LoopSettingsPrepContext ctx;
-    ctx.readSettingsValues = readRuntimeSettings;
+    const LoopSettingsPrepValues result = module.process(LoopSettingsPrepContext{});
 
-    const LoopSettingsPrepValues result = module.process(ctx);
-
-    TEST_ASSERT_EQUAL(1, runtimeSettingsCalls);
-    TEST_ASSERT_EQUAL(0, providerSettingsCalls);
+    TEST_ASSERT_EQUAL(0, providerTapCalls);
+    TEST_ASSERT_EQUAL(1, providerSettingsCalls);
     TEST_ASSERT_FALSE(result.enableWifiAtBoot);
     TEST_ASSERT_TRUE(result.enableSignalTraceLogging);
     TEST_ASSERT_FALSE(result.enableWifi);
+    TEST_ASSERT_EQUAL(1, callLogCount);
+    TEST_ASSERT_EQUAL(CALL_SETTINGS, callLog[0]);
 }
 
 void test_empty_providers_and_context_returns_defaults() {
     LoopSettingsPrepModule::Providers providers;
     module.begin(providers);
 
-    LoopSettingsPrepContext ctx;
-    const LoopSettingsPrepValues result = module.process(ctx);
+    const LoopSettingsPrepValues result = module.process(LoopSettingsPrepContext{});
 
     TEST_ASSERT_TRUE(result.enableWifi);
     TEST_ASSERT_FALSE(result.enableWifiAtBoot);
     TEST_ASSERT_FALSE(result.enableSignalTraceLogging);
-    TEST_ASSERT_EQUAL(0, runtimeTapCalls);
     TEST_ASSERT_EQUAL(0, providerTapCalls);
-    TEST_ASSERT_EQUAL(0, runtimeSettingsCalls);
     TEST_ASSERT_EQUAL(0, providerSettingsCalls);
 }
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_runtime_callbacks_path_runs_tap_then_reads_settings);
-    RUN_TEST(test_provider_fallback_path_runs_tap_then_reads_settings);
-    RUN_TEST(test_runtime_read_overrides_provider_read);
+    RUN_TEST(test_provider_path_runs_tap_then_reads_settings);
+    RUN_TEST(test_missing_tap_provider_still_reads_settings_snapshot);
     RUN_TEST(test_empty_providers_and_context_returns_defaults);
     return UNITY_END();
 }

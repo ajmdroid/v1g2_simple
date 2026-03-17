@@ -37,6 +37,9 @@ public:
                V1BLEClient* ble,
                V1Display* disp);
 
+    // Queue a slot-driven auto-push through the shared executor.
+    QueueResult queueSlotPush(int slotIndex, bool activateSlot = false);
+
     // Kick off auto-push for the given slot index (0-2).
     void start(int slotIndex);
 
@@ -78,6 +81,13 @@ private:
     };
 
     void applySlotMuteToZero(V1UserSettings& settings, bool slotMuteToZero);
+    QueueResult queuePreparedSlot(int slotIndex,
+                                  const AutoPushSlot& slot,
+                                  bool profileLoaded,
+                                  const V1Profile& profile,
+                                  bool isPushNow,
+                                  bool activateSlot,
+                                  bool countAutoPushStart);
     void armState(int slotIndex,
                   const AutoPushSlot& slot,
                   bool profileLoaded,

@@ -16,9 +16,6 @@ struct LoopPostDisplayContext {
     bool displayPreviewRunning = false;
     uint32_t maxProcessGapMs = 0;
     bool bleConnectedNow = false;
-
-    void (*runAutoPush)() = nullptr;
-    void (*runConnectionStateDispatch)(const ConnectionStateDispatchContext& dispatchCtx) = nullptr;
 };
 
 struct LoopPostDisplayResult {

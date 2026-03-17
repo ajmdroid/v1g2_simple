@@ -7,7 +7,7 @@ namespace WifiControlApiService {
 
 static void handleProfilePushImpl(WebServer& server,
                                   bool v1Connected,
-                                  const std::function<bool()>& requestProfilePush,
+                                  const std::function<ProfilePushResult()>& requestProfilePush,
                                   const std::function<bool()>& checkRateLimit) {
     // Preserve existing rate-limit behavior for this route.
     if (checkRateLimit && !checkRateLimit()) return;
@@ -19,24 +19,35 @@ static void handleProfilePushImpl(WebServer& server,
         return;
     }
 
-    bool queued = false;
+    JsonDocument doc;
+    ProfilePushResult result = ProfilePushResult::HANDLER_UNAVAILABLE;
     if (requestProfilePush) {
-        queued = requestProfilePush();
+        result = requestProfilePush();
     }
 
-    JsonDocument doc;
-    doc["ok"] = queued;
-    if (queued) {
-        doc["message"] = "Profile push queued - check display for progress";
-    } else {
-        WifiApiResponse::setErrorAndMessage(doc, "Push handler unavailable");
+    switch (result) {
+        case ProfilePushResult::QUEUED:
+            doc["ok"] = true;
+            doc["message"] = "Profile push queued - check display for progress";
+            WifiApiResponse::sendJsonDocument(server, 200, doc);
+            return;
+        case ProfilePushResult::ALREADY_IN_PROGRESS:
+            doc["ok"] = false;
+            WifiApiResponse::setErrorAndMessage(doc, "Push already in progress");
+            WifiApiResponse::sendJsonDocument(server, 409, doc);
+            return;
+        case ProfilePushResult::HANDLER_UNAVAILABLE:
+        default:
+            doc["ok"] = false;
+            WifiApiResponse::setErrorAndMessage(doc, "Push handler unavailable");
+            WifiApiResponse::sendJsonDocument(server, 500, doc);
+            return;
     }
-    WifiApiResponse::sendJsonDocument(server, queued ? 200 : 500, doc);
 }
 
 void handleApiProfilePush(WebServer& server,
                           bool v1Connected,
-                          const std::function<bool()>& requestProfilePush,
+                          const std::function<ProfilePushResult()>& requestProfilePush,
                           const std::function<bool()>& checkRateLimit) {
     // Preserve existing route behavior: route-level guard + delegate-level guard.
     if (checkRateLimit && !checkRateLimit()) return;

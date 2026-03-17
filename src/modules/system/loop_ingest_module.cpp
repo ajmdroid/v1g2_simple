@@ -7,41 +7,19 @@ void LoopIngestModule::begin(const Providers& hooks) {
 LoopIngestResult LoopIngestModule::process(const LoopIngestContext& ctx) {
     LoopIngestResult result;
 
-    if (ctx.bleProcessEnabled) {
-        if (ctx.runBleProcess) {
-            if (providers.timestampUs && providers.recordBleProcessUs) {
-                const uint32_t startUs = providers.timestampUs(providers.timestampContext);
-                ctx.runBleProcess();
-                providers.recordBleProcessUs(
-                    providers.bleProcessPerfContext,
-                    providers.timestampUs(providers.timestampContext) - startUs);
-            } else {
-                ctx.runBleProcess();
-            }
-        } else if (providers.runBleProcess) {
-            if (providers.timestampUs && providers.recordBleProcessUs) {
-                const uint32_t startUs = providers.timestampUs(providers.timestampContext);
-                providers.runBleProcess(providers.bleProcessContext);
-                providers.recordBleProcessUs(
-                    providers.bleProcessPerfContext,
-                    providers.timestampUs(providers.timestampContext) - startUs);
-            } else {
-                providers.runBleProcess(providers.bleProcessContext);
-            }
+    if (ctx.bleProcessEnabled && providers.runBleProcess) {
+        if (providers.timestampUs && providers.recordBleProcessUs) {
+            const uint32_t startUs = providers.timestampUs(providers.timestampContext);
+            providers.runBleProcess(providers.bleProcessContext);
+            providers.recordBleProcessUs(
+                providers.bleProcessPerfContext,
+                providers.timestampUs(providers.timestampContext) - startUs);
+        } else {
+            providers.runBleProcess(providers.bleProcessContext);
         }
     }
 
-    if (ctx.runBleDrain) {
-        if (providers.timestampUs && providers.recordBleDrainUs) {
-            const uint32_t startUs = providers.timestampUs(providers.timestampContext);
-            ctx.runBleDrain();
-            providers.recordBleDrainUs(
-                providers.bleDrainPerfContext,
-                providers.timestampUs(providers.timestampContext) - startUs);
-        } else {
-            ctx.runBleDrain();
-        }
-    } else if (providers.runBleDrain) {
+    if (providers.runBleDrain) {
         if (providers.timestampUs && providers.recordBleDrainUs) {
             const uint32_t startUs = providers.timestampUs(providers.timestampContext);
             providers.runBleDrain(providers.bleDrainContext);

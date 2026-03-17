@@ -18,10 +18,9 @@ public:
                      PacketParser& parser,
                      SettingsManager& settingsManager,
                      StorageManager& storageManager,
-                     AutoPushModule& autoPushModule,
-                     std::function<void(int)> profilePushFn);
+                     AutoPushModule& autoPushModule);
 
-    bool startWifi(bool autoStarted = false);
+    void ensureCallbacksConfigured();
 
 private:
     void configureCallbacks();
@@ -32,6 +31,5 @@ private:
     SettingsManager& settingsManager;
     StorageManager& storageManager;
     AutoPushModule& autoPushModule;
-    std::function<void(int)> profilePushFn;
     bool callbacksConfigured = false;
 };

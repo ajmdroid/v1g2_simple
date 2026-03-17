@@ -7,23 +7,11 @@ void LoopPowerTouchModule::begin(const Providers& hooks) {
 LoopPowerTouchResult LoopPowerTouchModule::process(const LoopPowerTouchContext& ctx) {
     LoopPowerTouchResult result;
 
-    if (ctx.runPowerProcess) {
-        ctx.runPowerProcess(ctx.nowMs);
-    } else if (providers.runPowerProcess) {
+    if (providers.runPowerProcess) {
         providers.runPowerProcess(providers.powerContext, ctx.nowMs);
     }
 
-    if (ctx.runTouchUiProcess) {
-        if (providers.timestampUs && providers.recordTouchUs) {
-            const uint32_t startUs = providers.timestampUs(providers.timestampContext);
-            result.inSettings = ctx.runTouchUiProcess(ctx.nowMs, ctx.bootButtonPressed);
-            providers.recordTouchUs(
-                providers.touchPerfContext,
-                providers.timestampUs(providers.timestampContext) - startUs);
-        } else {
-            result.inSettings = ctx.runTouchUiProcess(ctx.nowMs, ctx.bootButtonPressed);
-        }
-    } else if (providers.runTouchUiProcess) {
+    if (providers.runTouchUiProcess) {
         if (providers.timestampUs && providers.recordTouchUs) {
             const uint32_t startUs = providers.timestampUs(providers.timestampContext);
             result.inSettings =

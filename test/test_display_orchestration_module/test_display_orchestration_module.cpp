@@ -189,6 +189,33 @@ void test_parsed_frame_executes_volume_fade_when_pipeline_runs() {
     TEST_ASSERT_EQUAL_UINT8(1, ble.lastMuteVolume);
 }
 
+void test_parsed_frame_skips_volume_fade_when_lockout_volume_command_owns_frame() {
+    parser.state.mainVolume = 8;
+    parser.state.muteVolume = 2;
+    parser.state.muted = false;
+    parser.setAlerts({
+        AlertData::create(BAND_KA, DIR_FRONT, 6, 0, 35500, true, true)
+    });
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::PreQuietDrop;
+    lockout.nextResult.volumeCommand.volume = 2;
+    lockout.nextResult.volumeCommand.muteVolume = 0;
+    volumeFade.nextAction.type = VolumeFadeAction::Type::FADE_DOWN;
+    volumeFade.nextAction.targetVolume = 3;
+    volumeFade.nextAction.targetMuteVolume = 1;
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 5400;
+    ctx.parsedReady = true;
+    ctx.bootSplashHoldActive = false;
+
+    module.processParsedFrame(ctx);
+
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(2, ble.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(0, ble.lastMuteVolume);
+    TEST_ASSERT_EQUAL(0, volumeFade.processCalls);
+}
+
 void test_stale_lockout_badge_is_cleared_when_disconnected() {
     ble.setConnected(false);
     bleQueue.setLastParsedTimestamp(1000);
@@ -320,6 +347,7 @@ int main() {
     RUN_TEST(test_parsed_frame_skips_pipeline_when_preview_running);
     RUN_TEST(test_parsed_frame_executes_lockout_restore_through_single_volume_owner);
     RUN_TEST(test_parsed_frame_executes_volume_fade_when_pipeline_runs);
+    RUN_TEST(test_parsed_frame_skips_volume_fade_when_lockout_volume_command_owns_frame);
     RUN_TEST(test_stale_lockout_badge_is_cleared_when_disconnected);
     RUN_TEST(test_lightweight_refresh_updates_frequency_and_cards);
     RUN_TEST(test_lightweight_refresh_falls_back_from_invalid_priority);

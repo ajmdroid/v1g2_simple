@@ -6,23 +6,18 @@ void LoopRuntimeSnapshotModule::begin(const Providers& hooks) {
 
 LoopRuntimeSnapshotValues LoopRuntimeSnapshotModule::process(
     const LoopRuntimeSnapshotContext& ctx) {
+    (void)ctx;
     LoopRuntimeSnapshotValues values;
 
-    if (ctx.readBleConnected) {
-        values.bleConnected = ctx.readBleConnected();
-    } else if (providers.readBleConnected) {
+    if (providers.readBleConnected) {
         values.bleConnected = providers.readBleConnected(providers.bleConnectedContext);
     }
 
-    if (ctx.readCanStartDma) {
-        values.canStartDma = ctx.readCanStartDma();
-    } else if (providers.readCanStartDma) {
+    if (providers.readCanStartDma) {
         values.canStartDma = providers.readCanStartDma(providers.canStartDmaContext);
     }
 
-    if (ctx.readDisplayPreviewRunning) {
-        values.displayPreviewRunning = ctx.readDisplayPreviewRunning();
-    } else if (providers.readDisplayPreviewRunning) {
+    if (providers.readDisplayPreviewRunning) {
         values.displayPreviewRunning =
             providers.readDisplayPreviewRunning(providers.displayPreviewContext);
     }

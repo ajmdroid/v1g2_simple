@@ -5,15 +5,10 @@ void LoopSettingsPrepModule::begin(const Providers& hooks) {
 }
 
 LoopSettingsPrepValues LoopSettingsPrepModule::process(const LoopSettingsPrepContext& ctx) {
-    if (ctx.runTapGesture) {
-        ctx.runTapGesture(ctx.nowMs);
-    } else if (providers.runTapGesture) {
+    if (providers.runTapGesture) {
         providers.runTapGesture(providers.tapGestureContext, ctx.nowMs);
     }
 
-    if (ctx.readSettingsValues) {
-        return ctx.readSettingsValues();
-    }
     if (providers.readSettingsValues) {
         return providers.readSettingsValues(providers.settingsContext);
     }

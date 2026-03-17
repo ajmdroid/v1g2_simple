@@ -6,9 +6,15 @@
 
 namespace WifiControlApiService {
 
+enum class ProfilePushResult : uint8_t {
+    QUEUED = 0,
+    ALREADY_IN_PROGRESS,
+    HANDLER_UNAVAILABLE,
+};
+
 void handleApiProfilePush(WebServer& server,
                           bool v1Connected,
-                          const std::function<bool()>& requestProfilePush,
+                          const std::function<ProfilePushResult()>& requestProfilePush,
                           const std::function<bool()>& checkRateLimit);
 
 void handleApiDarkMode(WebServer& server,

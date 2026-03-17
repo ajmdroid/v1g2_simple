@@ -28,7 +28,7 @@ void test_profile_push_requires_v1_connection() {
     WifiControlApiService::handleApiProfilePush(
         server,
         false,
-        []() { return true; },
+        []() { return WifiControlApiService::ProfilePushResult::QUEUED; },
         nullptr);
 
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
@@ -41,7 +41,7 @@ void test_profile_push_reports_missing_callback() {
     WifiControlApiService::handleApiProfilePush(
         server,
         true,
-        std::function<bool()>(),
+        std::function<WifiControlApiService::ProfilePushResult()>(),
         nullptr);
 
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
@@ -55,7 +55,7 @@ void test_profile_push_reports_queued() {
     WifiControlApiService::handleApiProfilePush(
         server,
         true,
-        []() { return true; },
+        []() { return WifiControlApiService::ProfilePushResult::QUEUED; },
         nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
@@ -72,7 +72,7 @@ void test_profile_push_rate_limited_short_circuits() {
         true,
         [&callbackCalls]() {
             callbackCalls++;
-            return true;
+            return WifiControlApiService::ProfilePushResult::QUEUED;
         },
         []() { return false; });
 
@@ -90,7 +90,7 @@ void test_api_profile_push_rate_limited_short_circuits_on_route_guard() {
         true,
         [&callbackCalls]() {
             callbackCalls++;
-            return true;
+            return WifiControlApiService::ProfilePushResult::QUEUED;
         },
         [&rateLimitCalls]() {
             rateLimitCalls++;
@@ -109,7 +109,7 @@ void test_api_profile_push_preserves_double_rate_limit_behavior() {
     WifiControlApiService::handleApiProfilePush(
         server,
         false,
-        []() { return true; },
+        []() { return WifiControlApiService::ProfilePushResult::QUEUED; },
         [&rateLimitCalls]() {
             rateLimitCalls++;
             return true;
@@ -118,6 +118,20 @@ void test_api_profile_push_preserves_double_rate_limit_behavior() {
     TEST_ASSERT_EQUAL_INT(2, rateLimitCalls);
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"V1 not connected\""));
+}
+
+void test_profile_push_reports_already_in_progress() {
+    WebServer server(80);
+
+    WifiControlApiService::handleApiProfilePush(
+        server,
+        true,
+        []() { return WifiControlApiService::ProfilePushResult::ALREADY_IN_PROGRESS; },
+        nullptr);
+
+    TEST_ASSERT_EQUAL_INT(409, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"ok\":false"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Push already in progress\""));
 }
 
 void test_dark_mode_missing_state_param() {
@@ -230,6 +244,7 @@ int main() {
     RUN_TEST(test_profile_push_rate_limited_short_circuits);
     RUN_TEST(test_api_profile_push_rate_limited_short_circuits_on_route_guard);
     RUN_TEST(test_api_profile_push_preserves_double_rate_limit_behavior);
+    RUN_TEST(test_profile_push_reports_already_in_progress);
     RUN_TEST(test_dark_mode_missing_state_param);
     RUN_TEST(test_dark_mode_inverts_display_command);
     RUN_TEST(test_mute_missing_state_param);

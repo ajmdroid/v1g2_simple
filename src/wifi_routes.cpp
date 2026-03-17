@@ -122,12 +122,6 @@ void WiFiManager::setupWebServer() {
             STATUS_CACHE_TTL_MS,
             []() { return millis(); });
     });
-    server.on("/api/settings", HTTP_POST, [this, rateLimitCallback]() {
-        WifiSettingsApiService::handleApiSettingsSave(
-            server,
-            makeSettingsRuntime(),
-            rateLimitCallback);
-    });  // Consistent API endpoint
     server.on("/api/device/settings", HTTP_GET, [this]() {
         WifiSettingsApiService::handleApiDeviceSettingsGet(server, makeSettingsRuntime());
     });
@@ -558,8 +552,10 @@ void WiFiManager::setupWebServer() {
         ObdApiService::handleApiConfig(server,
                                       obdRuntimeModule,
                                       settingsManager,
-                                      [](bool enabled) {
-                                          speedSourceSelector.setObdEnabled(enabled);
+                                      [this](bool enabled) {
+                                          speedSourceSelector.syncEnabledInputs(
+                                              settingsManager.get().gpsEnabled,
+                                              enabled);
                                       },
                                       rateLimitCallback,
                                       markUiActivityCallback);

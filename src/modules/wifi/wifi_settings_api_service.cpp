@@ -1,12 +1,8 @@
 #include "wifi_settings_api_service.h"
 
-#include <ArduinoJson.h>
-
 #include <algorithm>
 
 #include "../../settings_sanitize.h"
-#include "../gps/gps_lockout_safety.h"
-#include "../../../include/clamp_utils.h"
 #include "wifi_api_response.h"
 
 namespace WifiSettingsApiService {
@@ -113,87 +109,4 @@ void handleApiDeviceSettingsSave(WebServer& server,
 
     server.send(200, "application/json", "{\"success\":true}");
 }
-
-void handleApiSettingsSave(WebServer& server,
-                           const Runtime& runtime,
-                           const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
-
-    if (!runtime.getMutableSettings) {
-        sendSettingsUnavailable(server);
-        return;
-    }
-
-    Serial.println("=== handleSettingsSave() called ===");
-
-    V1Settings& mutableSettings = runtime.getMutableSettings();
-
-    if (server.hasArg("gpsEnabled")) {
-        mutableSettings.gpsEnabled = argIsTrue(server.arg("gpsEnabled"));
-        if (runtime.setGpsRuntimeEnabled) {
-            runtime.setGpsRuntimeEnabled(mutableSettings.gpsEnabled);
-        }
-        if (runtime.setSpeedSourceGpsEnabled) {
-            runtime.setSpeedSourceGpsEnabled(mutableSettings.gpsEnabled);
-        }
-    }
-    if (server.hasArg("gpsLockoutMode")) {
-        mutableSettings.gpsLockoutMode = gpsLockoutParseRuntimeModeArg(server.arg("gpsLockoutMode"),
-                                                                       mutableSettings.gpsLockoutMode);
-    }
-    if (server.hasArg("gpsLockoutCoreGuardEnabled")) {
-        mutableSettings.gpsLockoutCoreGuardEnabled =
-            (server.arg("gpsLockoutCoreGuardEnabled") == "true" ||
-             server.arg("gpsLockoutCoreGuardEnabled") == "1");
-    }
-    if (server.hasArg("gpsLockoutMaxQueueDrops")) {
-        mutableSettings.gpsLockoutMaxQueueDrops =
-            clamp_utils::clampU16Value(server.arg("gpsLockoutMaxQueueDrops").toInt(), 0, 65535);
-    }
-    if (server.hasArg("gpsLockoutMaxPerfDrops")) {
-        mutableSettings.gpsLockoutMaxPerfDrops =
-            clamp_utils::clampU16Value(server.arg("gpsLockoutMaxPerfDrops").toInt(), 0, 65535);
-    }
-    if (server.hasArg("gpsLockoutMaxEventBusDrops")) {
-        mutableSettings.gpsLockoutMaxEventBusDrops =
-            clamp_utils::clampU16Value(server.arg("gpsLockoutMaxEventBusDrops").toInt(), 0, 65535);
-    }
-    if (server.hasArg("gpsLockoutKaLearningEnabled")) {
-        mutableSettings.gpsLockoutKaLearningEnabled =
-            argIsTrue(server.arg("gpsLockoutKaLearningEnabled"));
-        if (runtime.setLockoutKaLearningEnabled) {
-            runtime.setLockoutKaLearningEnabled(mutableSettings.gpsLockoutKaLearningEnabled);
-        }
-    }
-    if (server.hasArg("gpsLockoutKLearningEnabled")) {
-        mutableSettings.gpsLockoutKLearningEnabled =
-            argIsTrue(server.arg("gpsLockoutKLearningEnabled"));
-        if (runtime.setLockoutKLearningEnabled) {
-            runtime.setLockoutKLearningEnabled(mutableSettings.gpsLockoutKLearningEnabled);
-        }
-    }
-    if (server.hasArg("gpsLockoutXLearningEnabled")) {
-        mutableSettings.gpsLockoutXLearningEnabled =
-            argIsTrue(server.arg("gpsLockoutXLearningEnabled"));
-        if (runtime.setLockoutXLearningEnabled) {
-            runtime.setLockoutXLearningEnabled(mutableSettings.gpsLockoutXLearningEnabled);
-        }
-    }
-    if (server.hasArg("gpsLockoutPreQuiet")) {
-        mutableSettings.gpsLockoutPreQuiet = argIsTrue(server.arg("gpsLockoutPreQuiet"));
-    }
-    if (server.hasArg("gpsLockoutPreQuietBufferE5")) {
-        mutableSettings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
-            server.arg("gpsLockoutPreQuietBufferE5").toInt());
-    }
-
-    // All changes are queued in the settingsManager instance. Now, save them all at once.
-    Serial.println("--- Calling settingsManager.save() ---");
-    if (runtime.persistSettings) {
-        runtime.persistSettings();
-    }
-
-    server.send(200, "application/json", "{\"success\":true}");
-}
-
 }  // namespace WifiSettingsApiService

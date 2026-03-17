@@ -14,14 +14,12 @@ unsigned long mockMicros = 0;
 static LoopIngestModule module;
 
 enum CallId {
-    CALL_RUNTIME_BLE_PROCESS = 1,
-    CALL_PROVIDER_BLE_PROCESS = 2,
-    CALL_RECORD_BLE_PROCESS = 3,
-    CALL_RUNTIME_BLE_DRAIN = 4,
-    CALL_PROVIDER_BLE_DRAIN = 5,
-    CALL_RECORD_BLE_DRAIN = 6,
-    CALL_GPS = 7,
-    CALL_RECORD_GPS = 8,
+    CALL_PROVIDER_BLE_PROCESS = 1,
+    CALL_RECORD_BLE_PROCESS = 2,
+    CALL_PROVIDER_BLE_DRAIN = 3,
+    CALL_RECORD_BLE_DRAIN = 4,
+    CALL_GPS = 5,
+    CALL_RECORD_GPS = 6,
 };
 
 static int callLog[32];
@@ -32,9 +30,7 @@ static size_t timestampSequenceCount = 0;
 static size_t timestampSequenceIndex = 0;
 
 static int providerBleProcessCalls = 0;
-static int runtimeBleProcessCalls = 0;
 static int providerBleDrainCalls = 0;
-static int runtimeBleDrainCalls = 0;
 static bool scriptedBackpressure = false;
 
 static int gpsCalls = 0;
@@ -77,11 +73,6 @@ static void providerRunBleProcess(void*) {
     noteCall(CALL_PROVIDER_BLE_PROCESS);
 }
 
-static void runtimeRunBleProcess() {
-    runtimeBleProcessCalls++;
-    noteCall(CALL_RUNTIME_BLE_PROCESS);
-}
-
 static void recordBleProcessUs(void*, uint32_t elapsedUs) {
     recordBleProcessCalls++;
     bleProcessElapsedUs = elapsedUs;
@@ -91,11 +82,6 @@ static void recordBleProcessUs(void*, uint32_t elapsedUs) {
 static void providerRunBleDrain(void*) {
     providerBleDrainCalls++;
     noteCall(CALL_PROVIDER_BLE_DRAIN);
-}
-
-static void runtimeRunBleDrain() {
-    runtimeBleDrainCalls++;
-    noteCall(CALL_RUNTIME_BLE_DRAIN);
 }
 
 static void recordBleDrainUs(void*, uint32_t elapsedUs) {
@@ -138,9 +124,7 @@ static void resetState() {
     timestampSequenceCount = 0;
     timestampSequenceIndex = 0;
     providerBleProcessCalls = 0;
-    runtimeBleProcessCalls = 0;
     providerBleDrainCalls = 0;
-    runtimeBleDrainCalls = 0;
     scriptedBackpressure = false;
     gpsCalls = 0;
     lastGpsNowMs = 0;
@@ -159,29 +143,22 @@ void setUp() {
 
 void tearDown() {}
 
-void test_process_runs_full_pipeline_with_runtime_ble_callbacks_and_perf_records() {
+void test_process_runs_provider_pipeline_and_perf_records() {
     scriptedBackpressure = true;
     setTimestampSequence({100, 130, 200, 260, 400, 430});
 
     LoopIngestContext ctx;
     ctx.nowMs = 5000;
     ctx.bleProcessEnabled = true;
-    ctx.runBleProcess = runtimeRunBleProcess;
-    ctx.runBleDrain = runtimeRunBleDrain;
-    ctx.skipNonCoreThisLoop = false;
-    ctx.overloadThisLoop = false;
 
     const LoopIngestResult result = module.process(ctx);
 
-    TEST_ASSERT_EQUAL(0, providerBleProcessCalls);
-    TEST_ASSERT_EQUAL(1, runtimeBleProcessCalls);
-    TEST_ASSERT_EQUAL(0, providerBleDrainCalls);
-    TEST_ASSERT_EQUAL(1, runtimeBleDrainCalls);
+    TEST_ASSERT_EQUAL(1, providerBleProcessCalls);
+    TEST_ASSERT_EQUAL(1, providerBleDrainCalls);
     TEST_ASSERT_EQUAL(1, recordBleProcessCalls);
     TEST_ASSERT_EQUAL(30u, bleProcessElapsedUs);
     TEST_ASSERT_EQUAL(1, recordBleDrainCalls);
     TEST_ASSERT_EQUAL(60u, bleDrainElapsedUs);
-
     TEST_ASSERT_EQUAL(1, gpsCalls);
     TEST_ASSERT_EQUAL(5000u, lastGpsNowMs);
     TEST_ASSERT_EQUAL(1, recordGpsCalls);
@@ -192,37 +169,12 @@ void test_process_runs_full_pipeline_with_runtime_ble_callbacks_and_perf_records
     TEST_ASSERT_TRUE(result.overloadLateThisLoop);
 
     TEST_ASSERT_EQUAL(6, callLogCount);
-    TEST_ASSERT_EQUAL(CALL_RUNTIME_BLE_PROCESS, callLog[0]);
+    TEST_ASSERT_EQUAL(CALL_PROVIDER_BLE_PROCESS, callLog[0]);
     TEST_ASSERT_EQUAL(CALL_RECORD_BLE_PROCESS, callLog[1]);
-    TEST_ASSERT_EQUAL(CALL_RUNTIME_BLE_DRAIN, callLog[2]);
+    TEST_ASSERT_EQUAL(CALL_PROVIDER_BLE_DRAIN, callLog[2]);
     TEST_ASSERT_EQUAL(CALL_RECORD_BLE_DRAIN, callLog[3]);
     TEST_ASSERT_EQUAL(CALL_GPS, callLog[4]);
     TEST_ASSERT_EQUAL(CALL_RECORD_GPS, callLog[5]);
-}
-
-void test_process_uses_provider_ble_callbacks_when_runtime_callbacks_missing() {
-    scriptedBackpressure = false;
-    setTimestampSequence({10, 20, 30, 40, 50, 65});
-
-    LoopIngestContext ctx;
-    ctx.nowMs = 2500;
-    ctx.bleProcessEnabled = true;
-    ctx.skipNonCoreThisLoop = true;
-    ctx.overloadThisLoop = false;
-
-    const LoopIngestResult result = module.process(ctx);
-
-    TEST_ASSERT_EQUAL(1, providerBleProcessCalls);
-    TEST_ASSERT_EQUAL(0, runtimeBleProcessCalls);
-    TEST_ASSERT_EQUAL(1, providerBleDrainCalls);
-    TEST_ASSERT_EQUAL(0, runtimeBleDrainCalls);
-    TEST_ASSERT_EQUAL(1, recordBleProcessCalls);
-    TEST_ASSERT_EQUAL(10u, bleProcessElapsedUs);
-    TEST_ASSERT_EQUAL(1, recordBleDrainCalls);
-    TEST_ASSERT_EQUAL(10u, bleDrainElapsedUs);
-    TEST_ASSERT_FALSE(result.bleBackpressure);
-    TEST_ASSERT_TRUE(result.skipLateNonCoreThisLoop);
-    TEST_ASSERT_FALSE(result.overloadLateThisLoop);
 }
 
 void test_ble_process_disabled_skips_ble_process_only() {
@@ -231,15 +183,14 @@ void test_ble_process_disabled_skips_ble_process_only() {
     LoopIngestContext ctx;
     ctx.nowMs = 99;
     ctx.bleProcessEnabled = false;
-    ctx.runBleDrain = runtimeRunBleDrain;
 
     module.process(ctx);
 
     TEST_ASSERT_EQUAL(0, providerBleProcessCalls);
-    TEST_ASSERT_EQUAL(0, runtimeBleProcessCalls);
-    TEST_ASSERT_EQUAL(1, runtimeBleDrainCalls);
+    TEST_ASSERT_EQUAL(1, providerBleDrainCalls);
     TEST_ASSERT_EQUAL(0, recordBleProcessCalls);
     TEST_ASSERT_EQUAL(1, recordBleDrainCalls);
+    TEST_ASSERT_EQUAL(1, gpsCalls);
 }
 
 void test_missing_timing_hooks_still_runs_operations() {
@@ -277,8 +228,7 @@ void test_empty_providers_is_safe_and_merges_flags() {
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_process_runs_full_pipeline_with_runtime_ble_callbacks_and_perf_records);
-    RUN_TEST(test_process_uses_provider_ble_callbacks_when_runtime_callbacks_missing);
+    RUN_TEST(test_process_runs_provider_pipeline_and_perf_records);
     RUN_TEST(test_ble_process_disabled_skips_ble_process_only);
     RUN_TEST(test_missing_timing_hooks_still_runs_operations);
     RUN_TEST(test_empty_providers_is_safe_and_merges_flags);

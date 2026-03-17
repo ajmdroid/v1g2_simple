@@ -45,8 +45,81 @@ inline const char* lockoutRuntimeModeName(LockoutRuntimeMode mode) {
 }
 
 // GPS quality gate constants (must match real settings.h)
+static constexpr uint8_t LOCKOUT_LEARNER_HITS_DEFAULT = 3;
+static constexpr uint8_t LOCKOUT_LEARNER_HITS_MIN = 2;
+static constexpr uint8_t LOCKOUT_LEARNER_HITS_MAX = 6;
+static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_DEFAULT = 135;
+static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_MIN = 45;
+static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_MAX = 360;
+static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_DEFAULT = 10;
+static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_MIN = 2;
+static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_MAX = 20;
+static constexpr uint8_t LOCKOUT_LEARNER_LEARN_INTERVAL_HOURS_DEFAULT = 0;
+static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_INTERVAL_HOURS_DEFAULT = 0;
+static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT = 0;
+static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MIN = 0;
+static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MAX = 10;
+static constexpr uint8_t LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT = 0;
+static constexpr uint16_t LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT = 0;
+static constexpr uint16_t LOCKOUT_PRE_QUIET_BUFFER_E5_MAX = 135;
 static constexpr uint8_t  LOCKOUT_GPS_MIN_SATELLITES = 4;
+static constexpr uint16_t LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT = 50;
+static constexpr uint16_t LOCKOUT_GPS_MAX_HDOP_X10_MIN = 10;
+static constexpr uint16_t LOCKOUT_GPS_MAX_HDOP_X10_MAX = 100;
+static constexpr uint8_t LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT = 5;
+static constexpr uint8_t LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MIN = 0;
+static constexpr uint8_t LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MAX = 20;
 static constexpr uint32_t LOCKOUT_GPS_COURSE_MAX_AGE_MS = 5000;
+
+inline uint16_t clampLockoutPreQuietBufferE5Value(int rawBuffer) {
+    return static_cast<uint16_t>(std::max(0,
+                                          std::min(rawBuffer, static_cast<int>(LOCKOUT_PRE_QUIET_BUFFER_E5_MAX))));
+}
+
+inline uint16_t clampLockoutGpsMaxHdopX10Value(int rawHdopX10) {
+    return static_cast<uint16_t>(std::max(static_cast<int>(LOCKOUT_GPS_MAX_HDOP_X10_MIN),
+                                          std::min(rawHdopX10, static_cast<int>(LOCKOUT_GPS_MAX_HDOP_X10_MAX))));
+}
+
+inline uint8_t clampLockoutGpsMinLearnerSpeedMphValue(int rawSpeed) {
+    return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MIN),
+                                         std::min(rawSpeed, static_cast<int>(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MAX))));
+}
+
+inline uint8_t clampLockoutLearnerHitsValue(int rawHits) {
+    return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_HITS_MIN),
+                                         std::min(rawHits, static_cast<int>(LOCKOUT_LEARNER_HITS_MAX))));
+}
+
+inline uint16_t clampLockoutLearnerRadiusE5Value(int rawRadiusE5) {
+    return static_cast<uint16_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_RADIUS_E5_MIN),
+                                          std::min(rawRadiusE5, static_cast<int>(LOCKOUT_LEARNER_RADIUS_E5_MAX))));
+}
+
+inline uint16_t clampLockoutLearnerFreqTolValue(int rawFreqTol) {
+    return static_cast<uint16_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_FREQ_TOL_MIN),
+                                          std::min(rawFreqTol, static_cast<int>(LOCKOUT_LEARNER_FREQ_TOL_MAX))));
+}
+
+inline uint8_t clampLockoutLearnerIntervalHoursValue(int rawHours) {
+    if (rawHours <= 0) return 0;
+    if (rawHours <= 1) return 1;
+    if (rawHours <= 4) return 4;
+    if (rawHours <= 12) return 12;
+    return 24;
+}
+
+inline uint8_t clampLockoutLearnerUnlearnCountValue(int rawCount) {
+    return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_UNLEARN_COUNT_MIN),
+                                         std::min(rawCount, static_cast<int>(LOCKOUT_LEARNER_UNLEARN_COUNT_MAX))));
+}
+
+inline uint8_t clampLockoutManualDemotionMissCountValue(int rawCount) {
+    if (rawCount <= 0) return 0;
+    if (rawCount <= 10) return 10;
+    if (rawCount <= 25) return 25;
+    return 50;
+}
 // Minimal display font enum (for compatibility with older tests)
 enum FontStyle : uint8_t {
     FONT_STYLE_CLASSIC = 0,
@@ -104,6 +177,7 @@ struct V1Settings {
     // Misc flags retained for compatibility
     bool gpsEnabled = true;
     bool obdEnabled = false;
+    uint8_t autoPowerOffMinutes = 10;
     String obdSavedAddress = "";
     uint8_t obdSavedAddrType = 0;
     int8_t obdMinRssi = -80;
@@ -116,11 +190,16 @@ struct V1Settings {
     uint16_t gpsLockoutMaxQueueDrops = 0;
     uint16_t gpsLockoutMaxPerfDrops = 0;
     uint16_t gpsLockoutMaxEventBusDrops = 0;
+    uint8_t gpsLockoutLearnerPromotionHits = LOCKOUT_LEARNER_HITS_DEFAULT;
+    uint16_t gpsLockoutLearnerRadiusE5 = LOCKOUT_LEARNER_RADIUS_E5_DEFAULT;
+    uint16_t gpsLockoutLearnerFreqToleranceMHz = LOCKOUT_LEARNER_FREQ_TOL_DEFAULT;
     uint8_t gpsLockoutLearnerLearnIntervalHours = 0;
     uint8_t gpsLockoutLearnerUnlearnIntervalHours = 0;
     uint8_t gpsLockoutLearnerUnlearnCount = 0;
     uint8_t gpsLockoutManualDemotionMissCount = 0;
     bool gpsLockoutKaLearningEnabled = false;
+    bool gpsLockoutKLearningEnabled = true;
+    bool gpsLockoutXLearningEnabled = true;
     uint16_t gpsLockoutMaxHdopX10 = 50;          // 5.0 HDOP × 10
     uint8_t gpsLockoutMinLearnerSpeedMph = 5;
     bool bleProxyEnabled = true;
@@ -137,6 +216,7 @@ class SettingsManager {
 public:
     V1Settings settings;
     int saveCalls = 0;
+    int setGpsEnabledCalls = 0;
     int saveDeferredBackupCalls = 0;
     int backupToSDCalls = 0;
     int requestDeferredBackupCalls = 0;
@@ -150,6 +230,10 @@ public:
     
     void load() {}
     void save() { ++saveCalls; }
+    void setGpsEnabled(bool enabled) {
+        settings.gpsEnabled = enabled;
+        ++setGpsEnabledCalls;
+    }
     void saveDeferredBackup() { ++saveDeferredBackupCalls; }
     void setDefaults() {}
     bool backupToSD() {

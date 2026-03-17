@@ -7,33 +7,19 @@ WifiOrchestrator::WifiOrchestrator(WiFiManager& wifiManager,
                                    PacketParser& parser,
                                    SettingsManager& settingsManager,
                                    StorageManager& storageManager,
-                                   AutoPushModule& autoPushModule,
-                                   std::function<void(int)> profilePushFn)
+                                   AutoPushModule& autoPushModule)
     : wifiManager(wifiManager),
       bleClient(bleClient),
       parser(parser),
       settingsManager(settingsManager),
       storageManager(storageManager),
-      autoPushModule(autoPushModule),
-      profilePushFn(std::move(profilePushFn)) {}
+      autoPushModule(autoPushModule) {}
 
-bool WifiOrchestrator::startWifi(const bool autoStarted) {
-    if (wifiManager.isSetupModeActive()) return true;
-
-    // Always ensure callbacks are bound exactly once, even if WiFi was started elsewhere
+void WifiOrchestrator::ensureCallbacksConfigured() {
     if (!callbacksConfigured) {
         configureCallbacks();
         callbacksConfigured = true;
     }
-
-    Serial.printf("[WiFi] Starting WiFi (%s start)...\n", autoStarted ? "auto" : "manual");
-    if (!wifiManager.startSetupMode(autoStarted)) {
-        Serial.println("[WiFi] startSetupMode failed");
-        return false;
-    }
-
-    Serial.println("[WiFi] Initialized");
-    return true;
 }
 
 void WifiOrchestrator::configureCallbacks() {
@@ -79,11 +65,17 @@ void WifiOrchestrator::configureCallbacks() {
     // Manual profile push
     wifiManager.setProfilePushCallback([this]() {
         const V1Settings& s = settingsManager.get();
-        if (profilePushFn) {
-            profilePushFn(s.activeSlot);
-            return true;
+        switch (autoPushModule.queueSlotPush(s.activeSlot)) {
+            case AutoPushModule::QueueResult::QUEUED:
+                return WifiControlApiService::ProfilePushResult::QUEUED;
+            case AutoPushModule::QueueResult::ALREADY_IN_PROGRESS:
+                return WifiControlApiService::ProfilePushResult::ALREADY_IN_PROGRESS;
+            case AutoPushModule::QueueResult::V1_NOT_CONNECTED:
+            case AutoPushModule::QueueResult::NO_PROFILE_CONFIGURED:
+            case AutoPushModule::QueueResult::PROFILE_LOAD_FAILED:
+            default:
+                return WifiControlApiService::ProfilePushResult::HANDLER_UNAVAILABLE;
         }
-        return false;
     });
 
     // Auto-push executor status

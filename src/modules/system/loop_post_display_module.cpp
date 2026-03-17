@@ -9,12 +9,8 @@ LoopPostDisplayResult LoopPostDisplayModule::process(const LoopPostDisplayContex
     result.dispatchNowMs = ctx.nowMs;
     result.bleConnectedNow = ctx.bleConnectedNow;
 
-    if (ctx.enableAutoPush) {
-        if (ctx.runAutoPush) {
-            ctx.runAutoPush();
-        } else if (providers.runAutoPush) {
-            providers.runAutoPush(providers.autoPushContext);
-        }
+    if (ctx.enableAutoPush && providers.runAutoPush) {
+        providers.runAutoPush(providers.autoPushContext);
     }
 
     if (ctx.runSpeedAndDispatch) {
@@ -34,9 +30,7 @@ LoopPostDisplayResult LoopPostDisplayModule::process(const LoopPostDisplayContex
         dispatchCtx.displayPreviewRunning = ctx.displayPreviewRunning;
         dispatchCtx.maxProcessGapMs = ctx.maxProcessGapMs;
 
-        if (ctx.runConnectionStateDispatch) {
-            ctx.runConnectionStateDispatch(dispatchCtx);
-        } else if (providers.runConnectionStateDispatch) {
+        if (providers.runConnectionStateDispatch) {
             providers.runConnectionStateDispatch(providers.connectionDispatchContext, dispatchCtx);
         }
 

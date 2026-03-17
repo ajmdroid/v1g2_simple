@@ -130,7 +130,7 @@ static WifiProcessCadenceDecision runWifiCadence(void*, const WifiProcessCadence
     return decision;
 }
 
-static void runWifiManagerProcess() {
+static void runWifiManagerProcess(void*) {
     noteCall(CALL_WIFI_PROCESS);
     wifiProcessCalls++;
 }
@@ -173,6 +173,7 @@ static WifiRuntimeModule::Providers makeDefaultProviders() {
     providers.shouldRunWifiProcessingPolicy = shouldRunWifiProcessingPolicy;
     providers.perfTimestampUs = nextTimestampUs;
     providers.runWifiCadence = runWifiCadence;
+    providers.runWifiManagerProcess = runWifiManagerProcess;
     providers.recordWifiProcessUs = recordWifiProcessUs;
     providers.readWifiServiceActive = readWifiServiceActive;
     providers.readWifiConnected = readWifiConnected;
@@ -244,7 +245,6 @@ void test_process_runs_wifi_path_with_updated_autostart_state_and_perf_recording
     ctx.skipLateNonCoreThisLoop = false;
     ctx.displayPreviewRunning = true;
     ctx.bootSplashHoldActive = false;
-    ctx.runWifiManagerProcess = runWifiManagerProcess;
 
     const WifiRuntimeResult result = module.process(ctx);
 
@@ -298,7 +298,6 @@ void test_skip_non_core_blocks_policy_and_wifi_process_but_keeps_visual_sync() {
     ctx.enableWifiAtBoot = true;
     ctx.wifiAutoStartDone = true;
     ctx.skipLateNonCoreThisLoop = true;
-    ctx.runWifiManagerProcess = runWifiManagerProcess;
 
     const WifiRuntimeResult result = module.process(ctx);
 
@@ -323,7 +322,6 @@ void test_policy_false_skips_cadence_and_wifi_process() {
     ctx.enableWifi = true;
     ctx.enableWifiAtBoot = true;
     ctx.wifiAutoStartDone = true;
-    ctx.runWifiManagerProcess = runWifiManagerProcess;
 
     module.process(ctx);
 
@@ -345,7 +343,6 @@ void test_cadence_false_skips_wifi_process_and_perf_record() {
     ctx.enableWifi = true;
     ctx.enableWifiAtBoot = true;
     ctx.wifiAutoStartDone = true;
-    ctx.runWifiManagerProcess = runWifiManagerProcess;
 
     module.process(ctx);
 

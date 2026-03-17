@@ -11,6 +11,7 @@
 #include "../gps/gps_runtime_module.h"
 #include "../gps/gps_lockout_safety.h"
 #include "../lockout/lockout_band_policy.h"
+#include "../obd/obd_runtime_module.h"
 #include "../speed/speed_source_selector.h"
 #include "../../../include/clamp_utils.h"
 #include "json_stream_response.h"
@@ -396,7 +397,10 @@ static void handleRestore(WebServer& server) {
     settingsManager.saveDeferredBackup();
 
     gpsRuntimeModule.setEnabled(settingsManager.get().gpsEnabled);
-    speedSourceSelector.setGpsEnabled(settingsManager.get().gpsEnabled);
+    obdRuntimeModule.setEnabled(settingsManager.get().obdEnabled);
+    obdRuntimeModule.setMinRssi(settingsManager.get().obdMinRssi);
+    speedSourceSelector.syncEnabledInputs(settingsManager.get().gpsEnabled,
+                                         settingsManager.get().obdEnabled);
     lockoutSetKaLearningEnabled(settingsManager.get().gpsLockoutKaLearningEnabled);
     lockoutSetKLearningEnabled(settingsManager.get().gpsLockoutKLearningEnabled);
     lockoutSetXLearningEnabled(settingsManager.get().gpsLockoutXLearningEnabled);

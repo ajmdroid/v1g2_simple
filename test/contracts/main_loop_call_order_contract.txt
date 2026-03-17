@@ -1,7 +1,11 @@
 # Main loop call-order contract (required relative sequence)
 
-bleClient.process
-bleQueueModule.process
+processLoopConnectionEarlyPhase
+shouldReturnEarlyFromLoopPowerTouchPhase
+processLoopIngestPhase
 obdRuntimeModule.update
-displayPipelineModule.handleParsed
-wifiManager.process
+speedSourceSelector.update
+processLoopDisplayPreWifiPhase
+processLoopWifiPhase
+loopTelemetryModule.process
+processLoopFinalizePhase

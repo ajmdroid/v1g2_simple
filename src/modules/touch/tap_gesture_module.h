@@ -8,8 +8,9 @@
 #include "settings.h"
 #include "ble_client.h"
 #include "packet_parser.h"
-#include "modules/auto_push/auto_push_module.h"
-#include "modules/alert_persistence/alert_persistence_module.h"
+
+class AutoPushModule;
+class AlertPersistenceModule;
 
 class TapGestureModule {
 public:

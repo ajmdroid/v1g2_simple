@@ -4,9 +4,7 @@ void LoopDisplayModule::begin(const Providers& hooks) {
     providers = hooks;
 }
 
-LoopDisplayResult LoopDisplayModule::process(const LoopDisplayContext& ctx) {
-    LoopDisplayResult result;
-
+void LoopDisplayModule::process(const LoopDisplayContext& ctx) {
     const uint32_t displayNowMs =
         providers.readDisplayNowMs ? providers.readDisplayNowMs(providers.displayNowContext) : ctx.nowMs;
 
@@ -46,17 +44,7 @@ LoopDisplayResult LoopDisplayModule::process(const LoopDisplayContext& ctx) {
                 displayNowMs - parsedSignal.parsedTsMs);
         }
 
-        if (ctx.runDisplayPipeline) {
-            if (providers.timestampUs && providers.recordDispPipeUs) {
-                const uint32_t startUs = providers.timestampUs(providers.timestampContext);
-                ctx.runDisplayPipeline(displayNowMs, parsedResult.lockoutPrioritySuppressed);
-                providers.recordDispPipeUs(
-                    providers.dispPipePerfContext,
-                    providers.timestampUs(providers.timestampContext) - startUs);
-            } else {
-                ctx.runDisplayPipeline(displayNowMs, parsedResult.lockoutPrioritySuppressed);
-            }
-        } else if (providers.runDisplayPipeline) {
+        if (providers.runDisplayPipeline) {
             if (providers.timestampUs && providers.recordDispPipeUs) {
                 const uint32_t startUs = providers.timestampUs(providers.timestampContext);
                 providers.runDisplayPipeline(
@@ -82,10 +70,6 @@ LoopDisplayResult LoopDisplayModule::process(const LoopDisplayContext& ctx) {
         refreshCtx.bootSplashHoldActive = ctx.bootSplashHoldActive;
         refreshCtx.overloadLateThisLoop = ctx.overloadLateThisLoop;
         refreshCtx.pipelineRanThisLoop = pipelineRanThisLoop;
-        const auto refreshResult =
-            providers.runLightweightRefresh(providers.lightweightRefreshContext, refreshCtx);
-        result.signalPriorityActive = refreshResult.signalPriorityActive;
+        providers.runLightweightRefresh(providers.lightweightRefreshContext, refreshCtx);
     }
-
-    return result;
 }

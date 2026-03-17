@@ -199,7 +199,7 @@ void onV1Data(const uint8_t* data, size_t length, uint16_t charUUID) {
     bleQueueModule.onNotify(data, length, charUUID);
 }
 
-// WiFi orchestration helper encapsulates WiFi start + callback wiring
+// WiFi orchestration helper owns callback binding only.
 static WifiOrchestrator& getWifiOrchestrator() {
     static WifiOrchestrator orchestrator(
         wifiManager,
@@ -207,8 +207,7 @@ static WifiOrchestrator& getWifiOrchestrator() {
         parser,
         settingsManager,
         storageManager,
-        autoPushModule,
-        [](int slotIndex) { autoPushModule.start(slotIndex); });
+        autoPushModule);
     return orchestrator;
 }
 
@@ -263,6 +262,8 @@ static void configureLoopPostDisplayModule() {
 }
 
 static void configureWifiRuntimeModule() {
+    getWifiOrchestrator().ensureCallbacksConfigured();
+
     WifiRuntimeModule::Providers wifiRuntimeProviders;
     wifiRuntimeProviders.runWifiAutoStartProcess =
         [](void* ctx,
@@ -281,7 +282,7 @@ static void configureWifiRuntimeModule() {
                 bleConnected,
                 canStartDma,
                 wifiAutoStartDone,
-                [](bool autoStarted) { return getWifiOrchestrator().startWifi(autoStarted); });
+                [](bool autoStarted) { return wifiManager.startSetupMode(autoStarted); });
         };
     wifiRuntimeProviders.wifiAutoStartContext = &wifiAutoStartModule;
     wifiRuntimeProviders.shouldRunWifiProcessingPolicy =
@@ -296,6 +297,9 @@ static void configureWifiRuntimeModule() {
     wifiRuntimeProviders.runWifiCadence =
         ProviderCallbackBindings::member<WifiProcessCadenceModule, &WifiProcessCadenceModule::process>;
     wifiRuntimeProviders.wifiCadenceContext = &wifiProcessCadenceModule;
+    wifiRuntimeProviders.runWifiManagerProcess =
+        ProviderCallbackBindings::member<WiFiManager, &WiFiManager::process>;
+    wifiRuntimeProviders.wifiManagerProcessContext = &wifiManager;
     wifiRuntimeProviders.recordWifiProcessUs = [](void*, uint32_t elapsedUs) {
         perfRecordWifiProcessUs(elapsedUs);
     };
@@ -599,6 +603,9 @@ static void configureLoopDisplayModule() {
         ProviderCallbackBindings::member<DisplayOrchestrationModule,
                                          &DisplayOrchestrationModule::processLightweightRefresh>;
     loopDisplayProviders.lightweightRefreshContext = &displayOrchestrationModule;
+    loopDisplayProviders.runDisplayPipeline =
+        ProviderCallbackBindings::member<DisplayPipelineModule, &DisplayPipelineModule::handleParsed>;
+    loopDisplayProviders.displayPipelineContext = &displayPipelineModule;
     loopDisplayProviders.timestampUs = [](void*) -> uint32_t {
         return PERF_TIMESTAMP_US();
     };
@@ -615,10 +622,12 @@ static void configureLoopDisplayModule() {
 }
 
 void configureTouchUiModule() {
+    getWifiOrchestrator().ensureCallbacksConfigured();
+
     TouchUiModule::Callbacks touchCbs{
         .isWifiSetupActive = [] { return wifiManager.isWifiServiceActive(); },
         .stopWifiSetup = [] { wifiManager.stopSetupMode(true); },
-        .startWifi = [] { (void)getWifiOrchestrator().startWifi(); },
+        .startWifi = [] { (void)wifiManager.startSetupMode(false); },
         .drawWifiIndicator = [] { display.drawWiFiIndicator(); },
         .restoreDisplay = [] {
             if (bootSplashHoldActive) {
@@ -1029,16 +1038,12 @@ void loop() {
         return;  // Skip normal loop processing while in settings mode.
     }
 
-    auto runBleProcess = []() { bleClient.process(); };
-    auto runBleDrain = []() { bleQueueModule.process(); };
     const LoopIngestPhaseValues loopIngestValues = processLoopIngestPhase(
         now,
         bootReady,
         bootReadyDeadlineMs,
         skipNonCoreThisLoop,
-        overloadThisLoop,
-        runBleProcess,
-        runBleDrain);
+        overloadThisLoop);
     const LoopSettingsPrepValues& loopSettingsPrepValues = loopIngestValues.loopSettingsPrepValues;
     bootReady = loopIngestValues.bootReady;
     bleBackpressure = loopIngestValues.bleBackpressure;
@@ -1056,18 +1061,12 @@ void loop() {
 
     // No overload guard: handleParsed's internal 25ms throttle gates expensive draws;
     // fade/debounce/gap-recovery remain microsecond-cheap and must run every frame.
-    auto runDisplayPipeline = [](uint32_t nowMs, bool lockoutPrioritySuppressed) {
-        displayPipelineModule.handleParsed(nowMs, lockoutPrioritySuppressed);
-    };
-
     processLoopDisplayPreWifiPhase(
         now,
         bootSplashHoldActive,
         overloadLateThisLoop,
-        loopSettingsPrepValues.enableSignalTraceLogging,
-        runDisplayPipeline);
+        loopSettingsPrepValues.enableSignalTraceLogging);
 
-    auto runWifiManagerProcess = []() { wifiManager.process(); };
     const LoopWifiPhaseValues loopWifiValues = processLoopWifiPhase(
         now,
         v1ConnectedAtMs,
@@ -1075,8 +1074,7 @@ void loop() {
         loopSettingsPrepValues.enableWifiAtBoot,
         wifiAutoStartDone,
         skipLateNonCoreThisLoop,
-        bootSplashHoldActive,
-        runWifiManagerProcess);
+        bootSplashHoldActive);
     const LoopRuntimeSnapshotValues& loopRuntimeSnapshotValues = loopWifiValues.loopRuntimeSnapshotValues;
     wifiAutoStartDone = loopWifiValues.wifiAutoStartDone;
     

@@ -5,8 +5,6 @@
 struct LoopIngestContext {
     uint32_t nowMs = 0;
     bool bleProcessEnabled = false;
-    void (*runBleProcess)() = nullptr;
-    void (*runBleDrain)() = nullptr;
     bool skipNonCoreThisLoop = false;
     bool overloadThisLoop = false;
 };

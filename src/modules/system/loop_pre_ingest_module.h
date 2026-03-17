@@ -7,10 +7,6 @@ struct LoopPreIngestContext {
     bool bootReady = false;
     uint32_t bootReadyDeadlineMs = 0;
     bool replayMode = false;
-
-    void (*openBootReadyGate)(uint32_t nowMs) = nullptr;
-    void (*runWifiPriorityApply)(uint32_t nowMs) = nullptr;
-    void (*runDebugApiProcess)(uint32_t nowMs) = nullptr;
 };
 
 struct LoopPreIngestResult {

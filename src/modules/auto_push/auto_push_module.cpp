@@ -43,14 +43,52 @@ void AutoPushModule::armState(int slotIndex,
     }
 }
 
-void AutoPushModule::start(int slotIndex) {
+AutoPushModule::QueueResult AutoPushModule::queuePreparedSlot(int slotIndex,
+                                                              const AutoPushSlot& slot,
+                                                              bool profileLoaded,
+                                                              const V1Profile& profile,
+                                                              bool isPushNow,
+                                                              bool activateSlot,
+                                                              bool countAutoPushStart) {
     if (!settings || !profiles || !bleClient || !display) {
-        return;
+        return QueueResult::PROFILE_LOAD_FAILED;
     }
-    PERF_INC(autoPushStarts);
+    if (!bleClient->isConnected()) {
+        return QueueResult::V1_NOT_CONNECTED;
+    }
+    if (isActive()) {
+        return QueueResult::ALREADY_IN_PROGRESS;
+    }
 
     const int clampedIndex = std::max(0, std::min(2, slotIndex));
-    armState(clampedIndex, settings->getSlot(clampedIndex), false, V1Profile{}, false);
+    if (activateSlot) {
+        settings->setActiveSlot(clampedIndex);
+    }
+    if (countAutoPushStart) {
+        PERF_INC(autoPushStarts);
+    }
+
+    armState(clampedIndex, slot, profileLoaded, profile, isPushNow);
+    return QueueResult::QUEUED;
+}
+
+AutoPushModule::QueueResult AutoPushModule::queueSlotPush(int slotIndex, bool activateSlot) {
+    if (!settings) {
+        return QueueResult::PROFILE_LOAD_FAILED;
+    }
+
+    const int clampedIndex = std::max(0, std::min(2, slotIndex));
+    const AutoPushSlot slot = settings->getSlot(clampedIndex);
+    return queuePreparedSlot(
+        clampedIndex, slot, false, V1Profile{}, false, activateSlot, true);
+}
+
+void AutoPushModule::start(int slotIndex) {
+    if (queueSlotPush(slotIndex) != QueueResult::QUEUED) {
+        return;
+    }
+
+    const int clampedIndex = std::max(0, std::min(2, slotIndex));
     AUTO_PUSH_LOGF("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n",
                    slotNameForIndex(clampedIndex),
                    clampedIndex);
@@ -85,15 +123,12 @@ AutoPushModule::QueueResult AutoPushModule::queuePushNow(const PushNowRequest& r
         return QueueResult::PROFILE_LOAD_FAILED;
     }
 
-    if (request.activateSlot) {
-        settings->setActiveSlot(clampedIndex);
-    }
-    armState(clampedIndex, slot, true, profile, true);
     AUTO_PUSH_LOGF("[PushNow] Queued slot=%d profile='%s' mode=%d\n",
                    clampedIndex,
                    slot.profileName.c_str(),
                    static_cast<int>(slot.mode));
-    return QueueResult::QUEUED;
+    return queuePreparedSlot(
+        clampedIndex, slot, true, profile, true, request.activateSlot, false);
 }
 
 void AutoPushModule::applySlotMuteToZero(V1UserSettings& userSettings, bool slotMuteToZero) {

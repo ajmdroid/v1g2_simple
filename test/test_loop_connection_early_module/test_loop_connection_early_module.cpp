@@ -32,11 +32,8 @@ static bool runtimeInitialScanningShown = false;
 
 static DisplayOrchestrationEarlyContext lastDisplayEarlyCtx;
 
-static int runtimeCallbackCalls = 0;
 static int providerRuntimeCalls = 0;
-static int runtimeShowCalls = 0;
 static int providerShowCalls = 0;
-static int runtimeDisplayCalls = 0;
 static int providerDisplayCalls = 0;
 
 static bool proxyConnectedValue = false;
@@ -59,32 +56,12 @@ static void resetState() {
     runtimeBootSplashHoldUntilMs = 0;
     runtimeInitialScanningShown = false;
     lastDisplayEarlyCtx = DisplayOrchestrationEarlyContext{};
-    runtimeCallbackCalls = 0;
     providerRuntimeCalls = 0;
-    runtimeShowCalls = 0;
     providerShowCalls = 0;
-    runtimeDisplayCalls = 0;
     providerDisplayCalls = 0;
     proxyConnectedValue = false;
     connectionRssiValue = 0;
     proxyRssiValue = 0;
-}
-
-static ConnectionRuntimeSnapshot runRuntimeCallback(uint32_t nowMs,
-                                                    uint32_t nowUs,
-                                                    uint32_t lastLoopUs,
-                                                    bool bootSplashHoldActive,
-                                                    uint32_t bootSplashHoldUntilMs,
-                                                    bool initialScanningScreenShown) {
-    runtimeCallbackCalls++;
-    runtimeNowMs = nowMs;
-    runtimeNowUs = nowUs;
-    runtimeLastLoopUs = lastLoopUs;
-    runtimeBootSplashHoldActive = bootSplashHoldActive;
-    runtimeBootSplashHoldUntilMs = bootSplashHoldUntilMs;
-    runtimeInitialScanningShown = initialScanningScreenShown;
-    noteCall(CALL_RUNTIME);
-    return snapshotValue;
 }
 
 static ConnectionRuntimeSnapshot runRuntimeProvider(void*,
@@ -105,20 +82,9 @@ static ConnectionRuntimeSnapshot runRuntimeProvider(void*,
     return snapshotValue;
 }
 
-static void runShowCallback() {
-    runtimeShowCalls++;
-    noteCall(CALL_SHOW_SCANNING);
-}
-
 static void runShowProvider(void*) {
     providerShowCalls++;
     noteCall(CALL_SHOW_SCANNING);
-}
-
-static void runDisplayCallback(const DisplayOrchestrationEarlyContext& displayEarlyCtx) {
-    runtimeDisplayCalls++;
-    lastDisplayEarlyCtx = displayEarlyCtx;
-    noteCall(CALL_DISPLAY_EARLY);
 }
 
 static void runDisplayProvider(void*, const DisplayOrchestrationEarlyContext& displayEarlyCtx) {
@@ -145,11 +111,14 @@ void setUp() {
 
 void tearDown() {}
 
-void test_process_runtime_callbacks_path_forwards_snapshot_and_display_context() {
+void test_provider_path_forwards_snapshot_and_display_context() {
     LoopConnectionEarlyModule::Providers providers;
+    providers.runConnectionRuntime = runRuntimeProvider;
+    providers.showInitialScanning = runShowProvider;
     providers.readProxyConnected = readProxyConnected;
     providers.readConnectionRssi = readConnectionRssi;
     providers.readProxyRssi = readProxyRssi;
+    providers.runDisplayEarly = runDisplayProvider;
     module.begin(providers);
 
     snapshotValue.connected = true;
@@ -172,18 +141,12 @@ void test_process_runtime_callbacks_path_forwards_snapshot_and_display_context()
     ctx.bootSplashHoldActive = true;
     ctx.bootSplashHoldUntilMs = 9000;
     ctx.initialScanningScreenShown = false;
-    ctx.runConnectionRuntime = runRuntimeCallback;
-    ctx.showInitialScanning = runShowCallback;
-    ctx.runDisplayEarly = runDisplayCallback;
 
     const LoopConnectionEarlyResult result = module.process(ctx);
 
-    TEST_ASSERT_EQUAL(1, runtimeCallbackCalls);
-    TEST_ASSERT_EQUAL(0, providerRuntimeCalls);
-    TEST_ASSERT_EQUAL(1, runtimeShowCalls);
-    TEST_ASSERT_EQUAL(0, providerShowCalls);
-    TEST_ASSERT_EQUAL(1, runtimeDisplayCalls);
-    TEST_ASSERT_EQUAL(0, providerDisplayCalls);
+    TEST_ASSERT_EQUAL(1, providerRuntimeCalls);
+    TEST_ASSERT_EQUAL(1, providerShowCalls);
+    TEST_ASSERT_EQUAL(1, providerDisplayCalls);
 
     TEST_ASSERT_EQUAL(1234u, runtimeNowMs);
     TEST_ASSERT_EQUAL(4567u, runtimeNowUs);
@@ -215,64 +178,6 @@ void test_process_runtime_callbacks_path_forwards_snapshot_and_display_context()
     TEST_ASSERT_EQUAL(CALL_DISPLAY_EARLY, callLog[2]);
 }
 
-void test_process_provider_fallback_path() {
-    LoopConnectionEarlyModule::Providers providers;
-    providers.runConnectionRuntime = runRuntimeProvider;
-    providers.showInitialScanning = runShowProvider;
-    providers.readProxyConnected = readProxyConnected;
-    providers.readConnectionRssi = readConnectionRssi;
-    providers.readProxyRssi = readProxyRssi;
-    providers.runDisplayEarly = runDisplayProvider;
-    module.begin(providers);
-
-    snapshotValue.connected = false;
-    snapshotValue.receiving = false;
-    snapshotValue.backpressured = false;
-    snapshotValue.skipNonCore = false;
-    snapshotValue.overloaded = false;
-    snapshotValue.bootSplashHoldActive = true;
-    snapshotValue.initialScanningScreenShown = false;
-    snapshotValue.requestShowInitialScanning = false;
-
-    proxyConnectedValue = false;
-    connectionRssiValue = -101;
-    proxyRssiValue = -102;
-
-    LoopConnectionEarlyContext ctx;
-    ctx.nowMs = 222;
-    ctx.nowUs = 333;
-    ctx.lastLoopUs = 444;
-    ctx.bootSplashHoldActive = false;
-    ctx.bootSplashHoldUntilMs = 555;
-    ctx.initialScanningScreenShown = true;
-
-    const LoopConnectionEarlyResult result = module.process(ctx);
-
-    TEST_ASSERT_EQUAL(0, runtimeCallbackCalls);
-    TEST_ASSERT_EQUAL(1, providerRuntimeCalls);
-    TEST_ASSERT_EQUAL(0, runtimeShowCalls);
-    TEST_ASSERT_EQUAL(0, providerShowCalls);
-    TEST_ASSERT_EQUAL(0, runtimeDisplayCalls);
-    TEST_ASSERT_EQUAL(1, providerDisplayCalls);
-
-    TEST_ASSERT_TRUE(result.bootSplashHoldActive);
-    TEST_ASSERT_FALSE(result.initialScanningScreenShown);
-    TEST_ASSERT_FALSE(result.bleConnectedNow);
-    TEST_ASSERT_FALSE(result.bleBackpressure);
-    TEST_ASSERT_FALSE(result.skipNonCoreThisLoop);
-    TEST_ASSERT_FALSE(result.overloadThisLoop);
-    TEST_ASSERT_FALSE(result.bleReceiving);
-
-    TEST_ASSERT_EQUAL(222u, lastDisplayEarlyCtx.nowMs);
-    TEST_ASSERT_TRUE(lastDisplayEarlyCtx.bootSplashHoldActive);
-    TEST_ASSERT_FALSE(lastDisplayEarlyCtx.overloadThisLoop);
-    TEST_ASSERT_FALSE(lastDisplayEarlyCtx.bleContext.v1Connected);
-    TEST_ASSERT_FALSE(lastDisplayEarlyCtx.bleContext.proxyConnected);
-    TEST_ASSERT_EQUAL(-101, lastDisplayEarlyCtx.bleContext.v1Rssi);
-    TEST_ASSERT_EQUAL(-102, lastDisplayEarlyCtx.bleContext.proxyRssi);
-    TEST_ASSERT_FALSE(lastDisplayEarlyCtx.bleReceiving);
-}
-
 void test_request_show_marks_scanning_shown_even_without_handler() {
     LoopConnectionEarlyModule::Providers providers;
     providers.runConnectionRuntime = runRuntimeProvider;
@@ -281,36 +186,18 @@ void test_request_show_marks_scanning_shown_even_without_handler() {
     snapshotValue.requestShowInitialScanning = true;
     snapshotValue.initialScanningScreenShown = false;
 
-    LoopConnectionEarlyContext ctx;
-    const LoopConnectionEarlyResult result = module.process(ctx);
+    const LoopConnectionEarlyResult result = module.process(LoopConnectionEarlyContext{});
 
     TEST_ASSERT_EQUAL(1, providerRuntimeCalls);
-    TEST_ASSERT_EQUAL(0, runtimeShowCalls);
     TEST_ASSERT_EQUAL(0, providerShowCalls);
     TEST_ASSERT_TRUE(result.initialScanningScreenShown);
-}
-
-void test_runtime_display_callback_overrides_provider_display_callback() {
-    LoopConnectionEarlyModule::Providers providers;
-    providers.runConnectionRuntime = runRuntimeProvider;
-    providers.runDisplayEarly = runDisplayProvider;
-    module.begin(providers);
-
-    LoopConnectionEarlyContext ctx;
-    ctx.runDisplayEarly = runDisplayCallback;
-    module.process(ctx);
-
-    TEST_ASSERT_EQUAL(1, providerRuntimeCalls);
-    TEST_ASSERT_EQUAL(1, runtimeDisplayCalls);
-    TEST_ASSERT_EQUAL(0, providerDisplayCalls);
 }
 
 void test_empty_providers_and_context_is_safe() {
     LoopConnectionEarlyModule::Providers providers;
     module.begin(providers);
 
-    LoopConnectionEarlyContext ctx;
-    const LoopConnectionEarlyResult result = module.process(ctx);
+    const LoopConnectionEarlyResult result = module.process(LoopConnectionEarlyContext{});
 
     TEST_ASSERT_FALSE(result.bootSplashHoldActive);
     TEST_ASSERT_FALSE(result.initialScanningScreenShown);
@@ -323,10 +210,8 @@ void test_empty_providers_and_context_is_safe() {
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_process_runtime_callbacks_path_forwards_snapshot_and_display_context);
-    RUN_TEST(test_process_provider_fallback_path);
+    RUN_TEST(test_provider_path_forwards_snapshot_and_display_context);
     RUN_TEST(test_request_show_marks_scanning_shown_even_without_handler);
-    RUN_TEST(test_runtime_display_callback_overrides_provider_display_callback);
     RUN_TEST(test_empty_providers_and_context_is_safe);
     return UNITY_END();
 }

@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <cmath>
 
+#ifndef UNIT_TEST
 #include "gps_runtime_module.h"
 #include "gps_lockout_safety.h"
 #include "gps_observation_log.h"
@@ -11,8 +12,8 @@
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
 #include "../../settings.h"
-#include "../../settings_sanitize.h"
 #include "../../perf_metrics.h"
+#endif
 #include "../../../include/clamp_utils.h"
 #include "json_stream_response.h"
 

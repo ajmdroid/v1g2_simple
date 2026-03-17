@@ -177,10 +177,48 @@ void test_queue_push_now_retries_display_step_and_tracks_push_now_metrics() {
     TEST_ASSERT_EQUAL_UINT32(0, perfCounters.autoPushCompletes.load());
 }
 
+void test_start_while_active_does_not_override_inflight_request() {
+    bleClient.setConnected(true);
+    settingsManager.setSlot(1, "Road", V1_MODE_LOGIC);
+    settingsManager.setSlotVolumes(1, 6, 2);
+    settingsManager.setSlotDarkMode(1, false);
+    settingsManager.setSlotMuteToZero(1, true);
+
+    settingsManager.setSlot(2, "Road", V1_MODE_ADVANCED_LOGIC);
+    settingsManager.setSlotVolumes(2, 3, 1);
+    settingsManager.setSlotDarkMode(2, true);
+    settingsManager.setSlotMuteToZero(2, false);
+
+    profileManager.loadProfileResult = true;
+    profileManager.loadableProfileName = "Road";
+    profileManager.loadableProfile = makeProfile("Road", 0xFF);
+
+    module.start(1);
+    module.start(2);
+
+    TEST_ASSERT_TRUE(module.isActive());
+    TEST_ASSERT_EQUAL_UINT32(1, perfCounters.autoPushStarts.load());
+    TEST_ASSERT_EQUAL_INT(1, display.drawProfileIndicatorCalls);
+    TEST_ASSERT_EQUAL_INT(1, display.lastProfileIndicatorSlot);
+
+    runUntilIdle();
+
+    TEST_ASSERT_FALSE(module.isActive());
+    TEST_ASSERT_EQUAL_STRING("Road", profileManager.lastLoadProfileName.c_str());
+    TEST_ASSERT_EQUAL_INT(1, bleClient.setDisplayOnCalls);
+    TEST_ASSERT_TRUE(bleClient.lastDisplayOnValue);
+    TEST_ASSERT_EQUAL_INT(1, bleClient.setModeCalls);
+    TEST_ASSERT_EQUAL_UINT8(V1_MODE_LOGIC, bleClient.lastModeValue);
+    TEST_ASSERT_EQUAL_INT(1, bleClient.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(6, bleClient.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, bleClient.lastMuteVolume);
+}
+
 void runAllTests() {
     RUN_TEST(test_start_runs_existing_auto_push_path);
     RUN_TEST(test_queue_push_now_with_profile_override_skips_slot_mode_without_override);
     RUN_TEST(test_queue_push_now_retries_display_step_and_tracks_push_now_metrics);
+    RUN_TEST(test_start_while_active_does_not_override_inflight_request);
 }
 
 #ifdef ARDUINO

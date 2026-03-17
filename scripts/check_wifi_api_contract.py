@@ -52,7 +52,6 @@ POLICY_CALLBACK_PREFIXES = (
 LOCAL_HANDLER_ROUTE_KEYS: Tuple[str, ...] = (
     "HTTP_GET /api/status",
     "HTTP_GET /api/device/settings",
-    "HTTP_POST /api/settings",
     "HTTP_POST /api/device/settings",
     "HTTP_POST /api/profile/push",
     "HTTP_GET /api/v1/profiles",

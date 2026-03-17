@@ -9,9 +9,6 @@ struct LoopRuntimeSnapshotValues {
 };
 
 struct LoopRuntimeSnapshotContext {
-    bool (*readBleConnected)() = nullptr;
-    bool (*readCanStartDma)() = nullptr;
-    bool (*readDisplayPreviewRunning)() = nullptr;
 };
 
 // Snapshots loop-local runtime service state once per iteration.

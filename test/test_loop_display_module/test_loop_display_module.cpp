@@ -47,7 +47,6 @@ static uint32_t notifyElapsedMs = 0;
 static int collectCalls = 0;
 static int parsedCalls = 0;
 static int refreshCalls = 0;
-static int runtimePipelineCalls = 0;
 static int providerPipelineCalls = 0;
 
 static void noteCall(int id) {
@@ -84,7 +83,6 @@ static void resetState() {
     collectCalls = 0;
     parsedCalls = 0;
     refreshCalls = 0;
-    runtimePipelineCalls = 0;
     providerPipelineCalls = 0;
 }
 
@@ -114,13 +112,6 @@ static DisplayOrchestrationRefreshResult runRefresh(
     lastRefreshCtx = ctx;
     noteCall(CALL_REFRESH);
     return refreshResult;
-}
-
-static void runRuntimePipeline(uint32_t nowMs, bool lockoutPrioritySuppressed) {
-    runtimePipelineCalls++;
-    lastPipelineNowMs = nowMs;
-    lastPipelineSuppressed = lockoutPrioritySuppressed;
-    noteCall(CALL_PIPELINE);
 }
 
 static void runProviderPipeline(void*, uint32_t nowMs, bool lockoutPrioritySuppressed) {
@@ -161,6 +152,7 @@ static LoopDisplayModule::Providers makeDefaultProviders() {
     providers.collectParsedSignal = collectParsedSignal;
     providers.runParsedFrame = runParsedFrame;
     providers.runLightweightRefresh = runRefresh;
+    providers.runDisplayPipeline = runProviderPipeline;
     providers.timestampUs = nextPerfTs;
     providers.recordLockoutUs = recordLockoutUs;
     providers.recordDispPipeUs = recordDispPipeUs;
@@ -174,9 +166,8 @@ void setUp() {
 
 void tearDown() {}
 
-void test_process_full_pipeline_with_runtime_callback_and_perf_records() {
-    LoopDisplayModule::Providers providers = makeDefaultProviders();
-    module.begin(providers);
+void test_process_full_pipeline_with_provider_pipeline_and_perf_records() {
+    module.begin(makeDefaultProviders());
 
     displayNowMs = 1300;
     parsedSignal = ParsedFrameSignal{true, 1200};
@@ -189,16 +180,13 @@ void test_process_full_pipeline_with_runtime_callback_and_perf_records() {
     ctx.bootSplashHoldActive = false;
     ctx.overloadLateThisLoop = true;
     ctx.enableSignalTraceLogging = true;
-    ctx.runDisplayPipeline = runRuntimePipeline;
 
-    const LoopDisplayResult result = module.process(ctx);
+    module.process(ctx);
 
-    TEST_ASSERT_TRUE(result.signalPriorityActive);
     TEST_ASSERT_EQUAL(1, collectCalls);
     TEST_ASSERT_EQUAL(1, parsedCalls);
     TEST_ASSERT_EQUAL(1, refreshCalls);
-    TEST_ASSERT_EQUAL(1, runtimePipelineCalls);
-    TEST_ASSERT_EQUAL(0, providerPipelineCalls);
+    TEST_ASSERT_EQUAL(1, providerPipelineCalls);
     TEST_ASSERT_EQUAL(55u, lockoutElapsedUs);
     TEST_ASSERT_EQUAL(60u, dispPipeElapsedUs);
     TEST_ASSERT_EQUAL(100u, notifyElapsedMs);
@@ -225,34 +213,8 @@ void test_process_full_pipeline_with_runtime_callback_and_perf_records() {
     TEST_ASSERT_EQUAL(CALL_REFRESH, callLog[6]);
 }
 
-void test_process_uses_provider_pipeline_when_runtime_callback_missing() {
-    LoopDisplayModule::Providers providers = makeDefaultProviders();
-    providers.runDisplayPipeline = runProviderPipeline;
-    module.begin(providers);
-
-    displayNowMs = 2200;
-    parsedSignal = ParsedFrameSignal{true, 2100};
-    parsedResult = DisplayOrchestrationParsedResult{false, false, true};
-    refreshResult.signalPriorityActive = false;
-    setPerfTsSequence({500, 525, 700, 725});
-
-    LoopDisplayContext ctx;
-    ctx.nowMs = 2200;
-    const LoopDisplayResult result = module.process(ctx);
-
-    TEST_ASSERT_FALSE(result.signalPriorityActive);
-    TEST_ASSERT_EQUAL(0, runtimePipelineCalls);
-    TEST_ASSERT_EQUAL(1, providerPipelineCalls);
-    TEST_ASSERT_EQUAL(175u, dispPipeElapsedUs);
-    TEST_ASSERT_EQUAL(100u, notifyElapsedMs);
-    TEST_ASSERT_EQUAL(2200u, lastPipelineNowMs);
-    TEST_ASSERT_FALSE(lastPipelineSuppressed);
-}
-
 void test_process_skips_pipeline_when_parsed_result_disables_pipeline() {
-    LoopDisplayModule::Providers providers = makeDefaultProviders();
-    providers.runDisplayPipeline = runProviderPipeline;
-    module.begin(providers);
+    module.begin(makeDefaultProviders());
 
     displayNowMs = 5000;
     parsedSignal = ParsedFrameSignal{true, 4900};
@@ -263,12 +225,10 @@ void test_process_skips_pipeline_when_parsed_result_disables_pipeline() {
     LoopDisplayContext ctx;
     ctx.nowMs = 5000;
     ctx.overloadLateThisLoop = true;
-    const LoopDisplayResult result = module.process(ctx);
+    module.process(ctx);
 
-    TEST_ASSERT_TRUE(result.signalPriorityActive);
     TEST_ASSERT_EQUAL(1, parsedCalls);
     TEST_ASSERT_EQUAL(1, refreshCalls);
-    TEST_ASSERT_EQUAL(0, runtimePipelineCalls);
     TEST_ASSERT_EQUAL(0, providerPipelineCalls);
     TEST_ASSERT_EQUAL(100u, lockoutElapsedUs);
     TEST_ASSERT_EQUAL(0u, dispPipeElapsedUs);
@@ -277,9 +237,7 @@ void test_process_skips_pipeline_when_parsed_result_disables_pipeline() {
 }
 
 void test_notify_to_display_skips_for_zero_or_future_timestamp() {
-    LoopDisplayModule::Providers providers = makeDefaultProviders();
-    providers.runDisplayPipeline = runProviderPipeline;
-    module.begin(providers);
+    module.begin(makeDefaultProviders());
 
     displayNowMs = 3000;
     parsedSignal = ParsedFrameSignal{true, 0};
@@ -288,7 +246,7 @@ void test_notify_to_display_skips_for_zero_or_future_timestamp() {
     TEST_ASSERT_EQUAL(0u, notifyElapsedMs);
 
     resetState();
-    module.begin(providers);
+    module.begin(makeDefaultProviders());
     displayNowMs = 3000;
     parsedSignal = ParsedFrameSignal{true, 3200};
     parsedResult = DisplayOrchestrationParsedResult{false, false, true};
@@ -297,9 +255,7 @@ void test_notify_to_display_skips_for_zero_or_future_timestamp() {
 }
 
 void test_wrap_safe_perf_elapsed_for_lockout_and_pipeline() {
-    LoopDisplayModule::Providers providers = makeDefaultProviders();
-    providers.runDisplayPipeline = runProviderPipeline;
-    module.begin(providers);
+    module.begin(makeDefaultProviders());
 
     displayNowMs = 1000;
     parsedSignal = ParsedFrameSignal{true, 900};
@@ -316,22 +272,17 @@ void test_empty_providers_is_safe_noop() {
     LoopDisplayModule::Providers providers;
     module.begin(providers);
 
-    LoopDisplayContext ctx;
-    ctx.nowMs = 1234;
-    const LoopDisplayResult result = module.process(ctx);
+    module.process(LoopDisplayContext{});
 
-    TEST_ASSERT_FALSE(result.signalPriorityActive);
     TEST_ASSERT_EQUAL(0, collectCalls);
     TEST_ASSERT_EQUAL(0, parsedCalls);
     TEST_ASSERT_EQUAL(0, refreshCalls);
-    TEST_ASSERT_EQUAL(0, runtimePipelineCalls);
     TEST_ASSERT_EQUAL(0, providerPipelineCalls);
 }
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_process_full_pipeline_with_runtime_callback_and_perf_records);
-    RUN_TEST(test_process_uses_provider_pipeline_when_runtime_callback_missing);
+    RUN_TEST(test_process_full_pipeline_with_provider_pipeline_and_perf_records);
     RUN_TEST(test_process_skips_pipeline_when_parsed_result_disables_pipeline);
     RUN_TEST(test_notify_to_display_skips_for_zero_or_future_timestamp);
     RUN_TEST(test_wrap_safe_perf_elapsed_for_lockout_and_pipeline);

@@ -195,30 +195,6 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
         [this](const String& ssid, const String& password) {
             settingsManager.updateAPCredentials(ssid, password);
         },
-        [this](bool enabled) {
-            gpsRuntimeModule.setEnabled(enabled);
-        },
-        [this](bool enabled) {
-            speedSourceSelector.setGpsEnabled(enabled);
-        },
-        [this](bool enabled) {
-            lockoutSetKaLearningEnabled(enabled);
-        },
-        [this](bool enabled) {
-            lockoutSetKLearningEnabled(enabled);
-        },
-        [this](bool enabled) {
-            lockoutSetXLearningEnabled(enabled);
-        },
-        [](bool enabled) {
-            obdRuntimeModule.setEnabled(enabled);
-        },
-        [](int8_t minRssi) {
-            obdRuntimeModule.setMinRssi(minRssi);
-        },
-        [](bool enabled) {
-            speedSourceSelector.setObdEnabled(enabled);
-        },
         [this]() { settingsManager.saveDeferredBackup(); },
     };
 }

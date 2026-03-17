@@ -6,9 +6,6 @@ struct LoopPowerTouchContext {
     uint32_t nowMs = 0;
     uint32_t loopStartUs = 0;
     bool bootButtonPressed = false;
-
-    void (*runPowerProcess)(uint32_t nowMs) = nullptr;
-    bool (*runTouchUiProcess)(uint32_t nowMs, bool bootButtonPressed) = nullptr;
 };
 
 struct LoopPowerTouchResult {

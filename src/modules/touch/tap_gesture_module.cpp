@@ -1,5 +1,10 @@
 #include "tap_gesture_module.h"
 
+#ifndef UNIT_TEST
+#include "modules/auto_push/auto_push_module.h"
+#include "modules/alert_persistence/alert_persistence_module.h"
+#endif
+
 void TapGestureModule::begin(TouchHandler* touchHandler,
                              SettingsManager* settingsMgr,
                              V1Display* displayPtr,
@@ -60,7 +65,10 @@ void TapGestureModule::process(unsigned long nowMs) {
 
         if (ble->isConnected() && s.autoPushEnabled) {
             Serial.println("Pushing new profile to V1...");
-            autoPush->start(newSlot);
+            const auto queueResult = autoPush->queueSlotPush(newSlot);
+            if (queueResult != AutoPushModule::QueueResult::QUEUED) {
+                Serial.printf("Profile push skipped: %d\n", static_cast<int>(queueResult));
+            }
         }
     };
 

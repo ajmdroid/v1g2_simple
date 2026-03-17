@@ -24,9 +24,6 @@ static bool providerBleConnected = false;
 
 static ConnectionStateDispatchContext lastDispatchCtx;
 
-static int runtimeAutoPushCalls = 0;
-static int runtimeDispatchCalls = 0;
-
 static int providerAutoPushCalls = 0;
 static int providerDispatchCalls = 0;
 
@@ -38,28 +35,11 @@ static void noteCall(int id) {
 
 static void resetState() {
     callLogCount = 0;
-
     providerDispatchNowMs = 0;
     providerBleConnected = false;
-
     lastDispatchCtx = ConnectionStateDispatchContext{};
-
-    runtimeAutoPushCalls = 0;
-    runtimeDispatchCalls = 0;
-
     providerAutoPushCalls = 0;
     providerDispatchCalls = 0;
-}
-
-static void runRuntimeAutoPush() {
-    runtimeAutoPushCalls++;
-    noteCall(CALL_AUTO_PUSH);
-}
-
-static void runRuntimeDispatch(const ConnectionStateDispatchContext& dispatchCtx) {
-    runtimeDispatchCalls++;
-    lastDispatchCtx = dispatchCtx;
-    noteCall(CALL_DISPATCH);
 }
 
 static void runProviderAutoPush(void*) {
@@ -83,8 +63,10 @@ static void runProviderDispatch(void*, const ConnectionStateDispatchContext& dis
 
 static LoopPostDisplayModule::Providers makeDefaultProviders() {
     LoopPostDisplayModule::Providers providers;
+    providers.runAutoPush = runProviderAutoPush;
     providers.readDispatchNowMs = readDispatchNowMs;
     providers.readBleConnectedNow = readBleConnectedNow;
+    providers.runConnectionStateDispatch = runProviderDispatch;
     return providers;
 }
 
@@ -94,9 +76,8 @@ void setUp() {
 
 void tearDown() {}
 
-void test_process_runtime_callbacks_with_perf_and_dispatch_outputs() {
-    LoopPostDisplayModule::Providers providers = makeDefaultProviders();
-    module.begin(providers);
+void test_process_provider_path_updates_outputs_and_dispatch_context() {
+    module.begin(makeDefaultProviders());
 
     providerDispatchNowMs = 2222;
     providerBleConnected = true;
@@ -108,16 +89,13 @@ void test_process_runtime_callbacks_with_perf_and_dispatch_outputs() {
     ctx.bootSplashHoldActive = false;
     ctx.displayPreviewRunning = true;
     ctx.maxProcessGapMs = 1200;
-    ctx.runAutoPush = runRuntimeAutoPush;
-    ctx.runConnectionStateDispatch = runRuntimeDispatch;
 
     const LoopPostDisplayResult result = module.process(ctx);
 
     TEST_ASSERT_EQUAL(2222u, result.dispatchNowMs);
     TEST_ASSERT_TRUE(result.bleConnectedNow);
-    TEST_ASSERT_EQUAL(1, runtimeAutoPushCalls);
-    TEST_ASSERT_EQUAL(1, runtimeDispatchCalls);
-
+    TEST_ASSERT_EQUAL(1, providerAutoPushCalls);
+    TEST_ASSERT_EQUAL(1, providerDispatchCalls);
     TEST_ASSERT_EQUAL(2222u, lastDispatchCtx.nowMs);
     TEST_ASSERT_EQUAL(60u, lastDispatchCtx.displayUpdateIntervalMs);
     TEST_ASSERT_EQUAL(333u, lastDispatchCtx.scanScreenDwellMs);
@@ -131,10 +109,8 @@ void test_process_runtime_callbacks_with_perf_and_dispatch_outputs() {
     TEST_ASSERT_EQUAL(CALL_DISPATCH, callLog[1]);
 }
 
-void test_process_provider_fallback_path_and_ctx_dispatch_fallback() {
+void test_process_ctx_fallbacks_apply_when_read_providers_are_missing() {
     LoopPostDisplayModule::Providers providers = makeDefaultProviders();
-    providers.runAutoPush = runProviderAutoPush;
-    providers.runConnectionStateDispatch = runProviderDispatch;
     providers.readDispatchNowMs = nullptr;
     providers.readBleConnectedNow = nullptr;
     module.begin(providers);
@@ -154,7 +130,6 @@ void test_process_provider_fallback_path_and_ctx_dispatch_fallback() {
     TEST_ASSERT_TRUE(result.bleConnectedNow);
     TEST_ASSERT_EQUAL(1, providerAutoPushCalls);
     TEST_ASSERT_EQUAL(1, providerDispatchCalls);
-
     TEST_ASSERT_EQUAL(900u, lastDispatchCtx.nowMs);
     TEST_ASSERT_TRUE(lastDispatchCtx.bleConnectedNow);
     TEST_ASSERT_TRUE(lastDispatchCtx.bootSplashHoldActive);
@@ -176,21 +151,18 @@ void test_empty_providers_returns_ctx_fallbacks() {
 }
 
 void test_auto_push_only_skips_speed_and_dispatch() {
-    LoopPostDisplayModule::Providers providers = makeDefaultProviders();
-    module.begin(providers);
+    module.begin(makeDefaultProviders());
 
     LoopPostDisplayContext ctx;
     ctx.enableAutoPush = true;
     ctx.runSpeedAndDispatch = false;
     ctx.nowMs = 4321;
     ctx.bleConnectedNow = true;
-    ctx.runAutoPush = runRuntimeAutoPush;
-    ctx.runConnectionStateDispatch = runRuntimeDispatch;
 
     const LoopPostDisplayResult result = module.process(ctx);
 
-    TEST_ASSERT_EQUAL(1, runtimeAutoPushCalls);
-    TEST_ASSERT_EQUAL(0, runtimeDispatchCalls);
+    TEST_ASSERT_EQUAL(1, providerAutoPushCalls);
+    TEST_ASSERT_EQUAL(0, providerDispatchCalls);
     TEST_ASSERT_EQUAL(4321u, result.dispatchNowMs);
     TEST_ASSERT_TRUE(result.bleConnectedNow);
     TEST_ASSERT_EQUAL(1, callLogCount);
@@ -198,11 +170,11 @@ void test_auto_push_only_skips_speed_and_dispatch() {
 }
 
 void test_speed_dispatch_only_skips_auto_push() {
-    LoopPostDisplayModule::Providers providers = makeDefaultProviders();
-    module.begin(providers);
+    module.begin(makeDefaultProviders());
 
     providerDispatchNowMs = 2468;
     providerBleConnected = false;
+
     LoopPostDisplayContext ctx;
     ctx.enableAutoPush = false;
     ctx.runSpeedAndDispatch = true;
@@ -212,13 +184,11 @@ void test_speed_dispatch_only_skips_auto_push() {
     ctx.bootSplashHoldActive = false;
     ctx.displayPreviewRunning = true;
     ctx.maxProcessGapMs = 3210;
-    ctx.runAutoPush = runRuntimeAutoPush;
-    ctx.runConnectionStateDispatch = runRuntimeDispatch;
 
     const LoopPostDisplayResult result = module.process(ctx);
 
-    TEST_ASSERT_EQUAL(0, runtimeAutoPushCalls);
-    TEST_ASSERT_EQUAL(1, runtimeDispatchCalls);
+    TEST_ASSERT_EQUAL(0, providerAutoPushCalls);
+    TEST_ASSERT_EQUAL(1, providerDispatchCalls);
     TEST_ASSERT_EQUAL(2468u, result.dispatchNowMs);
     TEST_ASSERT_FALSE(result.bleConnectedNow);
     TEST_ASSERT_EQUAL(2468u, lastDispatchCtx.nowMs);
@@ -234,8 +204,8 @@ void test_speed_dispatch_only_skips_auto_push() {
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_process_runtime_callbacks_with_perf_and_dispatch_outputs);
-    RUN_TEST(test_process_provider_fallback_path_and_ctx_dispatch_fallback);
+    RUN_TEST(test_process_provider_path_updates_outputs_and_dispatch_context);
+    RUN_TEST(test_process_ctx_fallbacks_apply_when_read_providers_are_missing);
     RUN_TEST(test_empty_providers_returns_ctx_fallbacks);
     RUN_TEST(test_auto_push_only_skips_speed_and_dispatch);
     RUN_TEST(test_speed_dispatch_only_skips_auto_push);

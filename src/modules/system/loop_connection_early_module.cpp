@@ -6,15 +6,7 @@ void LoopConnectionEarlyModule::begin(const Providers& hooks) {
 
 LoopConnectionEarlyResult LoopConnectionEarlyModule::process(const LoopConnectionEarlyContext& ctx) {
     ConnectionRuntimeSnapshot snapshot;
-    if (ctx.runConnectionRuntime) {
-        snapshot = ctx.runConnectionRuntime(
-            ctx.nowMs,
-            ctx.nowUs,
-            ctx.lastLoopUs,
-            ctx.bootSplashHoldActive,
-            ctx.bootSplashHoldUntilMs,
-            ctx.initialScanningScreenShown);
-    } else if (providers.runConnectionRuntime) {
+    if (providers.runConnectionRuntime) {
         snapshot = providers.runConnectionRuntime(
             providers.connectionRuntimeContext,
             ctx.nowMs,
@@ -35,9 +27,7 @@ LoopConnectionEarlyResult LoopConnectionEarlyModule::process(const LoopConnectio
     result.bleReceiving = snapshot.receiving;
 
     if (snapshot.requestShowInitialScanning) {
-        if (ctx.showInitialScanning) {
-            ctx.showInitialScanning();
-        } else if (providers.showInitialScanning) {
+        if (providers.showInitialScanning) {
             providers.showInitialScanning(providers.scanningContext);
         }
         // Preserve single-shot behavior when the request is emitted.
@@ -56,9 +46,7 @@ LoopConnectionEarlyResult LoopConnectionEarlyModule::process(const LoopConnectio
     };
     displayEarlyCtx.bleReceiving = result.bleReceiving;
 
-    if (ctx.runDisplayEarly) {
-        ctx.runDisplayEarly(displayEarlyCtx);
-    } else if (providers.runDisplayEarly) {
+    if (providers.runDisplayEarly) {
         providers.runDisplayEarly(providers.displayEarlyContext, displayEarlyCtx);
     }
 

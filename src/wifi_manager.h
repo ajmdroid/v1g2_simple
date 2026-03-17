@@ -17,6 +17,7 @@
 #include "settings.h"
 #include "modules/wifi/backup_snapshot_cache.h"
 #include "modules/wifi/wifi_autopush_api_service.h"
+#include "modules/wifi/wifi_control_api_service.h"
 #include "modules/wifi/wifi_status_api_service.h"
 #include <functional>
 
@@ -139,7 +140,7 @@ public:
     void setCommandCallback(std::function<bool(const char*, bool)> callback) { sendV1Command = callback; }
     
     // Callback to request a profile push (manual trigger from API)
-    void setProfilePushCallback(std::function<bool()> callback) { requestProfilePush = callback; }
+    void setProfilePushCallback(std::function<WifiControlApiService::ProfilePushResult()> callback) { requestProfilePush = callback; }
     
     // Callback for filesystem access (SD card)
     void setFilesystemCallback(std::function<fs::FS*()> callback) { getFilesystem = callback; }
@@ -257,7 +258,7 @@ private:
     std::function<void(JsonObject)> mergeAlert;
     std::function<void(JsonObject)> mergeStatus;
     std::function<bool(const char*, bool)> sendV1Command;
-    std::function<bool()> requestProfilePush;
+    std::function<WifiControlApiService::ProfilePushResult()> requestProfilePush;
     std::function<fs::FS*()> getFilesystem;
     std::function<String()> getPushStatusJson;
     std::function<WifiAutoPushApiService::PushNowQueueResult(

@@ -40,9 +40,7 @@ LoopIngestPhaseValues processLoopIngestPhase(
     const bool currentBootReady,
     const unsigned long bootReadyDeadlineMs,
     const bool skipNonCoreThisLoop,
-    const bool overloadThisLoop,
-    void (*runBleProcess)(),
-    void (*runBleDrain)()) {
+    const bool overloadThisLoop) {
     LoopSettingsPrepContext loopSettingsPrepCtx;
     loopSettingsPrepCtx.nowMs = nowMs;
     const LoopSettingsPrepValues loopSettingsPrepValues =
@@ -61,8 +59,6 @@ LoopIngestPhaseValues processLoopIngestPhase(
     LoopIngestContext loopIngestCtx;
     loopIngestCtx.nowMs = nowMs;
     loopIngestCtx.bleProcessEnabled = runBleProcessThisLoop;
-    loopIngestCtx.runBleProcess = runBleProcess;
-    loopIngestCtx.runBleDrain = runBleDrain;
     loopIngestCtx.skipNonCoreThisLoop = skipNonCoreThisLoop;
     loopIngestCtx.overloadThisLoop = overloadThisLoop;
     const LoopIngestResult loopIngestResult = loopIngestModule.process(loopIngestCtx);
@@ -80,17 +76,14 @@ void processLoopDisplayPreWifiPhase(
     const unsigned long nowMs,
     const bool bootSplashHoldActive,
     const bool overloadLateThisLoop,
-    const bool enableSignalTraceLogging,
-    void (*runDisplayPipeline)(uint32_t nowMs, bool lockoutPrioritySuppressed)) {
+    const bool enableSignalTraceLogging) {
 
     LoopDisplayContext loopDisplayCtx;
     loopDisplayCtx.nowMs = nowMs;
     loopDisplayCtx.bootSplashHoldActive = bootSplashHoldActive;
     loopDisplayCtx.overloadLateThisLoop = overloadLateThisLoop;
     loopDisplayCtx.enableSignalTraceLogging = enableSignalTraceLogging;
-    loopDisplayCtx.runDisplayPipeline = runDisplayPipeline;
-    const LoopDisplayResult loopDisplayResult = loopDisplayModule.process(loopDisplayCtx);
-    (void)loopDisplayResult;
+    loopDisplayModule.process(loopDisplayCtx);
 
     LoopPostDisplayContext loopPostDisplayPreWifiCtx;
     loopPostDisplayPreWifiCtx.enableAutoPush = true;
@@ -106,8 +99,7 @@ LoopWifiPhaseValues processLoopWifiPhase(
     const bool enableWifiAtBoot,
     const bool currentWifiAutoStartDone,
     const bool skipLateNonCoreThisLoop,
-    const bool bootSplashHoldActive,
-    void (*runWifiManagerProcess)()) {
+    const bool bootSplashHoldActive) {
     LoopRuntimeSnapshotContext loopRuntimeSnapshotCtx;
     const LoopRuntimeSnapshotValues loopRuntimeSnapshotValues =
         loopRuntimeSnapshotModule.process(loopRuntimeSnapshotCtx);
@@ -123,7 +115,6 @@ LoopWifiPhaseValues processLoopWifiPhase(
     wifiRuntimeCtx.skipLateNonCoreThisLoop = skipLateNonCoreThisLoop;
     wifiRuntimeCtx.displayPreviewRunning = loopRuntimeSnapshotValues.displayPreviewRunning;
     wifiRuntimeCtx.bootSplashHoldActive = bootSplashHoldActive;
-    wifiRuntimeCtx.runWifiManagerProcess = runWifiManagerProcess;
     const WifiRuntimeResult wifiRuntimeResult = wifiRuntimeModule.process(wifiRuntimeCtx);
 
     LoopWifiPhaseValues values;

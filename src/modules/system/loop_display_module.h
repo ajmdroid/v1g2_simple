@@ -10,11 +10,6 @@ struct LoopDisplayContext {
     bool bootSplashHoldActive = false;
     bool overloadLateThisLoop = false;
     bool enableSignalTraceLogging = false;
-    void (*runDisplayPipeline)(uint32_t nowMs, bool lockoutPrioritySuppressed) = nullptr;
-};
-
-struct LoopDisplayResult {
-    bool signalPriorityActive = false;
 };
 
 // Orchestrates parsed-frame signal collection, display pipeline dispatch, and
@@ -55,7 +50,7 @@ public:
     };
 
     void begin(const Providers& hooks);
-    LoopDisplayResult process(const LoopDisplayContext& ctx);
+    void process(const LoopDisplayContext& ctx);
 
 private:
     Providers providers{};

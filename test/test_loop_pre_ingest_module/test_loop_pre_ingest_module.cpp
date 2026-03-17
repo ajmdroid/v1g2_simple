@@ -25,9 +25,6 @@ static uint32_t openedAtMs = 0;
 static uint32_t wifiNowMs = 0;
 static uint32_t debugNowMs = 0;
 
-static int runtimeOpenCalls = 0;
-static int runtimeWifiCalls = 0;
-static int runtimeDebugCalls = 0;
 static int providerOpenCalls = 0;
 static int providerWifiCalls = 0;
 static int providerDebugCalls = 0;
@@ -45,30 +42,9 @@ static void resetState() {
     wifiNowMs = 0;
     debugNowMs = 0;
 
-    runtimeOpenCalls = 0;
-    runtimeWifiCalls = 0;
-    runtimeDebugCalls = 0;
     providerOpenCalls = 0;
     providerWifiCalls = 0;
     providerDebugCalls = 0;
-}
-
-static void runtimeOpenBootReady(uint32_t nowMs) {
-    runtimeOpenCalls++;
-    openedAtMs = nowMs;
-    noteCall(CALL_OPEN_BOOT_READY);
-}
-
-static void runtimeWifiPriority(uint32_t nowMs) {
-    runtimeWifiCalls++;
-    wifiNowMs = nowMs;
-    noteCall(CALL_WIFI_PRIORITY);
-}
-
-static void runtimeDebugApi(uint32_t nowMs) {
-    runtimeDebugCalls++;
-    debugNowMs = nowMs;
-    noteCall(CALL_DEBUG_API);
 }
 
 static void providerOpenBootReady(void*, uint32_t nowMs) {
@@ -97,6 +73,9 @@ void tearDown() {}
 
 void test_non_replay_timeout_opens_boot_ready_then_runs_wifi_and_debug() {
     LoopPreIngestModule::Providers providers;
+    providers.openBootReadyGate = providerOpenBootReady;
+    providers.runWifiPriorityApply = providerWifiPriority;
+    providers.runDebugApiProcess = providerDebugApi;
     module.begin(providers);
 
     LoopPreIngestContext ctx;
@@ -104,19 +83,15 @@ void test_non_replay_timeout_opens_boot_ready_then_runs_wifi_and_debug() {
     ctx.bootReady = false;
     ctx.bootReadyDeadlineMs = 4000;
     ctx.replayMode = false;
-    ctx.openBootReadyGate = runtimeOpenBootReady;
-    ctx.runWifiPriorityApply = runtimeWifiPriority;
-    ctx.runDebugApiProcess = runtimeDebugApi;
 
     const LoopPreIngestResult result = module.process(ctx);
 
     TEST_ASSERT_TRUE(result.bootReady);
     TEST_ASSERT_TRUE(result.bootReadyOpenedByTimeout);
     TEST_ASSERT_TRUE(result.runBleProcessThisLoop);
-
-    TEST_ASSERT_EQUAL(1, runtimeOpenCalls);
-    TEST_ASSERT_EQUAL(1, runtimeWifiCalls);
-    TEST_ASSERT_EQUAL(1, runtimeDebugCalls);
+    TEST_ASSERT_EQUAL(1, providerOpenCalls);
+    TEST_ASSERT_EQUAL(1, providerWifiCalls);
+    TEST_ASSERT_EQUAL(1, providerDebugCalls);
     TEST_ASSERT_EQUAL(5000u, openedAtMs);
     TEST_ASSERT_EQUAL(5000u, wifiNowMs);
     TEST_ASSERT_EQUAL(5000u, debugNowMs);
@@ -129,24 +104,23 @@ void test_non_replay_timeout_opens_boot_ready_then_runs_wifi_and_debug() {
 
 void test_non_replay_before_deadline_skips_boot_open_but_runs_wifi_and_debug() {
     LoopPreIngestModule::Providers providers;
+    providers.runWifiPriorityApply = providerWifiPriority;
+    providers.runDebugApiProcess = providerDebugApi;
     module.begin(providers);
 
     LoopPreIngestContext ctx;
     ctx.nowMs = 2999;
     ctx.bootReady = false;
     ctx.bootReadyDeadlineMs = 3000;
-    ctx.openBootReadyGate = runtimeOpenBootReady;
-    ctx.runWifiPriorityApply = runtimeWifiPriority;
-    ctx.runDebugApiProcess = runtimeDebugApi;
 
     const LoopPreIngestResult result = module.process(ctx);
 
     TEST_ASSERT_FALSE(result.bootReady);
     TEST_ASSERT_FALSE(result.bootReadyOpenedByTimeout);
     TEST_ASSERT_TRUE(result.runBleProcessThisLoop);
-    TEST_ASSERT_EQUAL(0, runtimeOpenCalls);
-    TEST_ASSERT_EQUAL(1, runtimeWifiCalls);
-    TEST_ASSERT_EQUAL(1, runtimeDebugCalls);
+    TEST_ASSERT_EQUAL(0, providerOpenCalls);
+    TEST_ASSERT_EQUAL(1, providerWifiCalls);
+    TEST_ASSERT_EQUAL(1, providerDebugCalls);
 
     TEST_ASSERT_EQUAL(2, callLogCount);
     TEST_ASSERT_EQUAL(CALL_WIFI_PRIORITY, callLog[0]);
@@ -155,6 +129,9 @@ void test_non_replay_before_deadline_skips_boot_open_but_runs_wifi_and_debug() {
 
 void test_replay_mode_skips_boot_open_and_wifi_but_keeps_debug() {
     LoopPreIngestModule::Providers providers;
+    providers.openBootReadyGate = providerOpenBootReady;
+    providers.runWifiPriorityApply = providerWifiPriority;
+    providers.runDebugApiProcess = providerDebugApi;
     module.begin(providers);
 
     LoopPreIngestContext ctx;
@@ -162,45 +139,19 @@ void test_replay_mode_skips_boot_open_and_wifi_but_keeps_debug() {
     ctx.bootReady = false;
     ctx.bootReadyDeadlineMs = 1000;
     ctx.replayMode = true;
-    ctx.openBootReadyGate = runtimeOpenBootReady;
-    ctx.runWifiPriorityApply = runtimeWifiPriority;
-    ctx.runDebugApiProcess = runtimeDebugApi;
 
     const LoopPreIngestResult result = module.process(ctx);
 
     TEST_ASSERT_FALSE(result.bootReady);
     TEST_ASSERT_FALSE(result.bootReadyOpenedByTimeout);
     TEST_ASSERT_FALSE(result.runBleProcessThisLoop);
-
-    TEST_ASSERT_EQUAL(0, runtimeOpenCalls);
-    TEST_ASSERT_EQUAL(0, runtimeWifiCalls);
-    TEST_ASSERT_EQUAL(1, runtimeDebugCalls);
+    TEST_ASSERT_EQUAL(0, providerOpenCalls);
+    TEST_ASSERT_EQUAL(0, providerWifiCalls);
+    TEST_ASSERT_EQUAL(1, providerDebugCalls);
     TEST_ASSERT_EQUAL(7000u, debugNowMs);
 
     TEST_ASSERT_EQUAL(1, callLogCount);
     TEST_ASSERT_EQUAL(CALL_DEBUG_API, callLog[0]);
-}
-
-void test_provider_fallback_path_works() {
-    LoopPreIngestModule::Providers providers;
-    providers.openBootReadyGate = providerOpenBootReady;
-    providers.runWifiPriorityApply = providerWifiPriority;
-    providers.runDebugApiProcess = providerDebugApi;
-    module.begin(providers);
-
-    LoopPreIngestContext ctx;
-    ctx.nowMs = 900;
-    ctx.bootReady = false;
-    ctx.bootReadyDeadlineMs = 100;
-
-    const LoopPreIngestResult result = module.process(ctx);
-
-    TEST_ASSERT_TRUE(result.bootReady);
-    TEST_ASSERT_TRUE(result.bootReadyOpenedByTimeout);
-    TEST_ASSERT_TRUE(result.runBleProcessThisLoop);
-    TEST_ASSERT_EQUAL(1, providerOpenCalls);
-    TEST_ASSERT_EQUAL(1, providerWifiCalls);
-    TEST_ASSERT_EQUAL(1, providerDebugCalls);
 }
 
 void test_empty_handlers_is_safe_and_keeps_expected_flags() {
@@ -225,7 +176,6 @@ int main() {
     RUN_TEST(test_non_replay_timeout_opens_boot_ready_then_runs_wifi_and_debug);
     RUN_TEST(test_non_replay_before_deadline_skips_boot_open_but_runs_wifi_and_debug);
     RUN_TEST(test_replay_mode_skips_boot_open_and_wifi_but_keeps_debug);
-    RUN_TEST(test_provider_fallback_path_works);
     RUN_TEST(test_empty_handlers_is_safe_and_keeps_expected_flags);
     return UNITY_END();
 }

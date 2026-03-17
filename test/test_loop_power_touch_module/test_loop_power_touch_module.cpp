@@ -41,8 +41,6 @@ static uint32_t heapLargest = 0;
 static uint32_t dmaFree = 0;
 static uint32_t dmaLargest = 0;
 
-static int runtimePowerCalls = 0;
-static int runtimeTouchCalls = 0;
 static int providerPowerCalls = 0;
 static int providerTouchCalls = 0;
 static int dmaRefreshCalls = 0;
@@ -76,8 +74,6 @@ static void resetState() {
     dmaFree = 0;
     dmaLargest = 0;
 
-    runtimePowerCalls = 0;
-    runtimeTouchCalls = 0;
     providerPowerCalls = 0;
     providerTouchCalls = 0;
     dmaRefreshCalls = 0;
@@ -108,20 +104,6 @@ static uint32_t nextTimestamp(void*) {
 
 static uint32_t microsNow(void*) {
     return microsNowValue;
-}
-
-static void runRuntimePower(uint32_t nowMs) {
-    runtimePowerCalls++;
-    powerNowMs = nowMs;
-    noteCall(CALL_POWER);
-}
-
-static bool runRuntimeTouch(uint32_t nowMs, bool bootButtonPressed) {
-    runtimeTouchCalls++;
-    touchNowMs = nowMs;
-    touchBootPressed = bootButtonPressed;
-    noteCall(CALL_TOUCH);
-    return touchReturnInSettings;
 }
 
 static void runProviderPower(void*, uint32_t nowMs) {
@@ -171,12 +153,12 @@ static uint32_t readCachedLargestDma(void*) {
 
 static void recordHeapStats(
     void*,
-    uint32_t freeHeap,
+    uint32_t freeHeapValue,
     uint32_t largestHeapBlock,
     uint32_t cachedFreeDma,
     uint32_t cachedLargestDma) {
     heapRecordCalls++;
-    heapFree = freeHeap;
+    heapFree = freeHeapValue;
     heapLargest = largestHeapBlock;
     dmaFree = cachedFreeDma;
     dmaLargest = cachedLargestDma;
@@ -189,9 +171,11 @@ void setUp() {
 
 void tearDown() {}
 
-void test_runtime_callbacks_not_in_settings_runs_power_touch_and_perf_only() {
+void test_provider_path_not_in_settings_runs_power_touch_and_perf_only() {
     LoopPowerTouchModule::Providers providers;
     providers.timestampUs = nextTimestamp;
+    providers.runPowerProcess = runProviderPower;
+    providers.runTouchUiProcess = runProviderTouch;
     providers.recordTouchUs = recordTouchUs;
     providers.microsNow = microsNow;
     providers.recordLoopJitterUs = recordLoopJitterUs;
@@ -211,23 +195,17 @@ void test_runtime_callbacks_not_in_settings_runs_power_touch_and_perf_only() {
     ctx.nowMs = 1234;
     ctx.loopStartUs = 8000;
     ctx.bootButtonPressed = true;
-    ctx.runPowerProcess = runRuntimePower;
-    ctx.runTouchUiProcess = runRuntimeTouch;
 
     const LoopPowerTouchResult result = module.process(ctx);
 
     TEST_ASSERT_FALSE(result.inSettings);
     TEST_ASSERT_FALSE(result.shouldReturnEarly);
-
-    TEST_ASSERT_EQUAL(1, runtimePowerCalls);
-    TEST_ASSERT_EQUAL(1, runtimeTouchCalls);
-    TEST_ASSERT_EQUAL(0, providerPowerCalls);
-    TEST_ASSERT_EQUAL(0, providerTouchCalls);
+    TEST_ASSERT_EQUAL(1, providerPowerCalls);
+    TEST_ASSERT_EQUAL(1, providerTouchCalls);
     TEST_ASSERT_EQUAL(1234u, powerNowMs);
     TEST_ASSERT_EQUAL(1234u, touchNowMs);
     TEST_ASSERT_TRUE(touchBootPressed);
     TEST_ASSERT_EQUAL(40u, touchElapsedUs);
-
     TEST_ASSERT_EQUAL(0u, loopJitterUs);
     TEST_ASSERT_EQUAL(0, dmaRefreshCalls);
     TEST_ASSERT_EQUAL(0, heapRecordCalls);
@@ -241,6 +219,8 @@ void test_runtime_callbacks_not_in_settings_runs_power_touch_and_perf_only() {
 void test_in_settings_triggers_early_return_and_records_jitter_dma_heap() {
     LoopPowerTouchModule::Providers providers;
     providers.timestampUs = nextTimestamp;
+    providers.runPowerProcess = runProviderPower;
+    providers.runTouchUiProcess = runProviderTouch;
     providers.microsNow = microsNow;
     providers.recordTouchUs = recordTouchUs;
     providers.recordLoopJitterUs = recordLoopJitterUs;
@@ -264,8 +244,6 @@ void test_in_settings_triggers_early_return_and_records_jitter_dma_heap() {
     ctx.nowMs = 2048;
     ctx.loopStartUs = 10000;
     ctx.bootButtonPressed = false;
-    ctx.runPowerProcess = runRuntimePower;
-    ctx.runTouchUiProcess = runRuntimeTouch;
 
     const LoopPowerTouchResult result = module.process(ctx);
 
@@ -289,7 +267,7 @@ void test_in_settings_triggers_early_return_and_records_jitter_dma_heap() {
     TEST_ASSERT_EQUAL(CALL_HEAP, callLog[5]);
 }
 
-void test_provider_fallback_and_wrap_safe_timing() {
+void test_provider_path_keeps_wrap_safe_timing() {
     LoopPowerTouchModule::Providers providers;
     providers.timestampUs = nextTimestamp;
     providers.microsNow = microsNow;
@@ -316,33 +294,11 @@ void test_provider_fallback_and_wrap_safe_timing() {
     TEST_ASSERT_EQUAL(0x30u, loopJitterUs);
 }
 
-void test_missing_timing_hooks_still_runs_power_and_touch() {
-    LoopPowerTouchModule::Providers providers;
-    module.begin(providers);
-
-    touchReturnInSettings = false;
-
-    LoopPowerTouchContext ctx;
-    ctx.nowMs = 77;
-    ctx.bootButtonPressed = true;
-    ctx.runPowerProcess = runRuntimePower;
-    ctx.runTouchUiProcess = runRuntimeTouch;
-
-    const LoopPowerTouchResult result = module.process(ctx);
-
-    TEST_ASSERT_FALSE(result.inSettings);
-    TEST_ASSERT_FALSE(result.shouldReturnEarly);
-    TEST_ASSERT_EQUAL(1, runtimePowerCalls);
-    TEST_ASSERT_EQUAL(1, runtimeTouchCalls);
-    TEST_ASSERT_EQUAL(0u, touchElapsedUs);
-}
-
 void test_empty_providers_and_context_is_safe() {
     LoopPowerTouchModule::Providers providers;
     module.begin(providers);
 
-    LoopPowerTouchContext ctx;
-    const LoopPowerTouchResult result = module.process(ctx);
+    const LoopPowerTouchResult result = module.process(LoopPowerTouchContext{});
 
     TEST_ASSERT_FALSE(result.inSettings);
     TEST_ASSERT_FALSE(result.shouldReturnEarly);
@@ -350,10 +306,9 @@ void test_empty_providers_and_context_is_safe() {
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_runtime_callbacks_not_in_settings_runs_power_touch_and_perf_only);
+    RUN_TEST(test_provider_path_not_in_settings_runs_power_touch_and_perf_only);
     RUN_TEST(test_in_settings_triggers_early_return_and_records_jitter_dma_heap);
-    RUN_TEST(test_provider_fallback_and_wrap_safe_timing);
-    RUN_TEST(test_missing_timing_hooks_still_runs_power_and_touch);
+    RUN_TEST(test_provider_path_keeps_wrap_safe_timing);
     RUN_TEST(test_empty_providers_and_context_is_safe);
     return UNITY_END();
 }

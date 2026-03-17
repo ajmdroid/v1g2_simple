@@ -181,15 +181,6 @@ Get persisted GPS/lockout configuration from the GPS-owned settings surface.
 }
 ```
 
-### POST /api/settings
-
-Update GPS/lockout settings through the shared legacy write surface. Send only fields you want to change.
-
-**Request (form data):**
-```
-gpsEnabled=true&gpsLockoutMode=3
-```
-
 ### GET /api/settings/backup
 
 Download all settings as JSON file.

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
+#ifndef UNIT_TEST
 #include "gps_runtime_module.h"
 #include "gps_lockout_safety.h"
 #include "gps_observation_log.h"
@@ -12,8 +13,8 @@
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
 #include "../../settings.h"
-#include "../../settings_sanitize.h"
 #include "../../perf_metrics.h"
+#endif
 #include "../../../include/clamp_utils.h"
 
 namespace GpsApiService {
@@ -164,7 +165,8 @@ void handleConfig(WebServer& server,
 
     if (server.hasArg("plain") && server.arg("plain").length() > 0) {
         JsonDocument body;
-        DeserializationError error = deserializeJson(body, server.arg("plain"));
+        const String plainBody = server.arg("plain");
+        DeserializationError error = deserializeJson(body, plainBody);
         if (error) {
             server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JSON\"}");
             return;
@@ -178,13 +180,13 @@ void handleConfig(WebServer& server,
             lockoutMode = clampLockoutRuntimeModeValue(body["lockoutMode"].as<int>());
             hasLockoutMode = true;
         } else if (body["lockoutMode"].is<const char*>()) {
-            lockoutMode = gpsLockoutParseRuntimeModeArg(body["lockoutMode"].as<String>(), lockoutMode);
+            lockoutMode = gpsLockoutParseRuntimeModeArg(String(body["lockoutMode"].as<const char*>()), lockoutMode);
             hasLockoutMode = true;
         } else if (body["gpsLockoutMode"].is<int>()) {
             lockoutMode = clampLockoutRuntimeModeValue(body["gpsLockoutMode"].as<int>());
             hasLockoutMode = true;
         } else if (body["gpsLockoutMode"].is<const char*>()) {
-            lockoutMode = gpsLockoutParseRuntimeModeArg(body["gpsLockoutMode"].as<String>(), lockoutMode);
+            lockoutMode = gpsLockoutParseRuntimeModeArg(String(body["gpsLockoutMode"].as<const char*>()), lockoutMode);
             hasLockoutMode = true;
         }
         if (body["lockoutCoreGuardEnabled"].is<bool>()) {
@@ -592,7 +594,8 @@ void handleConfig(WebServer& server,
     if (hasEnabled) {
         settingsManager.setGpsEnabled(enabled);
         gpsRuntimeModule.setEnabled(enabled);
-        speedSourceSelector.setGpsEnabled(enabled);
+        speedSourceSelector.syncEnabledInputs(settingsManager.get().gpsEnabled,
+                                             settingsManager.get().obdEnabled);
     }
 
     bool lockoutSettingsChanged = false;

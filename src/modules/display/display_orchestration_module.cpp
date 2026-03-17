@@ -42,10 +42,10 @@ void DisplayOrchestrationModule::reset() {
     lastCardUiMs = 0;
 }
 
-void DisplayOrchestrationModule::executeLockoutVolumeCommand(const LockoutVolumeCommand& command,
+bool DisplayOrchestrationModule::executeLockoutVolumeCommand(const LockoutVolumeCommand& command,
                                                              const uint32_t nowMs) {
     if (!ble || !command.hasAction()) {
-        return;
+        return false;
     }
 
     ble->setVolume(command.volume, command.muteVolume);
@@ -54,12 +54,14 @@ void DisplayOrchestrationModule::executeLockoutVolumeCommand(const LockoutVolume
             volumeFade->setBaselineHint(command.volume, command.muteVolume, nowMs);
         }
         Serial.println("[Lockout] PRE-QUIET: volume restored");
-        return;
+        return true;
     }
 
     if (command.type == LockoutVolumeCommandType::PreQuietDrop) {
         Serial.println("[Lockout] PRE-QUIET: volume dropped in lockout zone");
     }
+
+    return true;
 }
 
 void DisplayOrchestrationModule::executeVolumeFade(const uint32_t nowMs,
@@ -138,7 +140,8 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
 
         result.lockoutEvaluated = true;
         result.lockoutPrioritySuppressed = lockoutResult.prioritySuppressed;
-        executeLockoutVolumeCommand(lockoutResult.volumeCommand, ctx.nowMs);
+        const bool lockoutVolumeCommandExecuted =
+            executeLockoutVolumeCommand(lockoutResult.volumeCommand, ctx.nowMs);
 
         if (lastGpsSatUpdateMs == 0 ||
             (ctx.nowMs - lastGpsSatUpdateMs >= GPS_SAT_UPDATE_INTERVAL_MS)) {
@@ -149,7 +152,7 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         }
 
         result.runDisplayPipeline = !preview->isRunning();
-        if (result.runDisplayPipeline) {
+        if (result.runDisplayPipeline && !lockoutVolumeCommandExecuted) {
             executeVolumeFade(ctx.nowMs, result.lockoutPrioritySuppressed);
         }
         return result;

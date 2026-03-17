@@ -24,7 +24,7 @@ WifiRuntimeResult WifiRuntimeModule::process(const WifiRuntimeContext& ctx) {
         providers.shouldRunWifiProcessingPolicy(
             providers.wifiPolicyContext, ctx.enableWifi, ctx.enableWifiAtBoot, result.wifiAutoStartDone) &&
         providers.runWifiCadence &&
-        ctx.runWifiManagerProcess) {
+        providers.runWifiManagerProcess) {
         WifiProcessCadenceContext wifiCadenceCtx;
         if (providers.perfTimestampUs) {
             wifiCadenceCtx.nowProcessUs = providers.perfTimestampUs(providers.perfContext);
@@ -35,12 +35,12 @@ WifiRuntimeResult WifiRuntimeModule::process(const WifiRuntimeContext& ctx) {
         if (wifiCadenceDecision.shouldRunProcess) {
             if (providers.perfTimestampUs && providers.recordWifiProcessUs) {
                 const uint32_t wifiStartUs = providers.perfTimestampUs(providers.perfContext);
-                ctx.runWifiManagerProcess();
+                providers.runWifiManagerProcess(providers.wifiManagerProcessContext);
                 providers.recordWifiProcessUs(
                     providers.wifiProcessPerfContext,
                     providers.perfTimestampUs(providers.perfContext) - wifiStartUs);
             } else {
-                ctx.runWifiManagerProcess();
+                providers.runWifiManagerProcess(providers.wifiManagerProcessContext);
             }
         }
     }

@@ -8,8 +8,7 @@
 SpeedSourceSelector speedSourceSelector;
 
 void SpeedSourceSelector::begin(bool gpsEnabled, bool obdEnabled) {
-    gpsEnabled_ = gpsEnabled;
-    obdEnabled_ = obdEnabled;
+    syncEnabledInputs(gpsEnabled, obdEnabled);
     lastSource_ = SpeedSource::NONE;
     sourceSwitches_ = 0;
     gpsSelections_ = 0;
@@ -21,14 +20,11 @@ void SpeedSourceSelector::begin(bool gpsEnabled, bool obdEnabled) {
     selectedSpeed_ = SpeedSelection{};
 }
 
-void SpeedSourceSelector::setGpsEnabled(bool enabled) {
-    gpsEnabled_ = enabled;
-    cachedStatus_.gpsEnabled = enabled;
-}
-
-void SpeedSourceSelector::setObdEnabled(bool enabled) {
-    obdEnabled_ = enabled;
-    cachedStatus_.obdEnabled = enabled;
+void SpeedSourceSelector::syncEnabledInputs(bool gpsEnabled, bool obdEnabled) {
+    gpsEnabled_ = gpsEnabled;
+    obdEnabled_ = obdEnabled;
+    cachedStatus_.gpsEnabled = gpsEnabled_;
+    cachedStatus_.obdEnabled = obdEnabled_;
 }
 
 SpeedSelectorStatus SpeedSourceSelector::buildStatus(uint32_t nowMs) const {
