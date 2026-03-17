@@ -13,6 +13,8 @@ struct GpsRuntimeStatus;
 class SignalCaptureModule {
 public:
     void reset();
+    // Convenience overload for harnesses that do not supply canonical
+    // selected-speed state. Speed remains unavailable in that path.
     void capturePriorityObservation(uint32_t nowMs,
                                     const PacketParser& parser,
                                     const GpsRuntimeStatus& gpsStatus,

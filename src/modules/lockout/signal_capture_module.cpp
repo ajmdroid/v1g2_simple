@@ -171,9 +171,6 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
         if (selectedSpeed.valid) {
             observation.speedMph = selectedSpeed.speedMph;
             observation.speedSourceRaw = static_cast<uint8_t>(selectedSpeed.source);
-        } else {
-            observation.speedMph = gpsStatus.speedMph;
-            observation.speedSourceRaw = static_cast<uint8_t>(SpeedSource::GPS);
         }
         observation.courseValid = gpsStatus.courseValid;
         observation.courseDeg = gpsStatus.courseDeg;

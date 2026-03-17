@@ -39,10 +39,15 @@ Owns post-display connection-state dispatch cadence, periodic maintenance, and l
 - GPS runtime freshness/state: `LoopIngestModule` via `gpsRuntimeModule.update(nowMs)`
 - OBD runtime freshness/state: `loop()` in [src/main.cpp](/Users/ajmedford/v1g2_simple/src/main.cpp)
 - Speed arbitration/counters: `loop()` in [src/main.cpp](/Users/ajmedford/v1g2_simple/src/main.cpp) via `speedSourceSelector.update(now)`
+- Canonical selected-speed consumption for lockout learning: `LockoutOrchestrationModule` via `speedSourceSelector.selectedSpeed()`
 - Display/lockout refresh: `LoopDisplayModule`
 - Parsed-frame BLE volume execution: `DisplayOrchestrationModule`
 - Wi-Fi runtime progression: `WifiRuntimeModule`
 - Connection-state dispatch cadence: `LoopPostDisplayModule`
+
+Signal and lockout consumers must not derive fallback speed from raw GPS or
+OBD runtime state. If the selector did not publish a committed speed for the
+current loop, speed is treated as unavailable.
 
 ## Anti-drift rule
 
