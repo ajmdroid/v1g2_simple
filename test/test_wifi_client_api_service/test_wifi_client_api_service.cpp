@@ -46,13 +46,10 @@ struct FakeRuntime {
     String lastConnectPassword;
 
     int disconnectCalls = 0;
-    int clearCredentialsCalls = 0;
-    int setEnabledCalls = 0;
-    bool lastSetEnabled = false;
-    String savedPassword;
-    int setStateDisabledCalls = 0;
-    int setStateDisconnectedCalls = 0;
-    int setApModeCalls = 0;
+    int forgetClientCalls = 0;
+    int enableWithSavedNetworkCalls = 0;
+    bool enableWithSavedNetworkReturn = true;
+    int disableClientCalls = 0;
     int startScanCalls = 0;
 };
 
@@ -78,15 +75,12 @@ static WifiClientApiService::Runtime makeRuntime(FakeRuntime& rt) {
             return rt.connectReturn;
         },
         [&rt]() { rt.disconnectCalls++; },
-        [&rt]() { rt.clearCredentialsCalls++; },
-        [&rt](bool enabled) {
-            rt.setEnabledCalls++;
-            rt.lastSetEnabled = enabled;
+        [&rt]() { rt.forgetClientCalls++; },
+        [&rt]() {
+            rt.enableWithSavedNetworkCalls++;
+            return rt.enableWithSavedNetworkReturn;
         },
-        [&rt]() { return rt.savedPassword; },
-        [&rt]() { rt.setStateDisabledCalls++; },
-        [&rt]() { rt.setStateDisconnectedCalls++; },
-        [&rt]() { rt.setApModeCalls++; },
+        [&rt]() { rt.disableClientCalls++; },
     };
 }
 
@@ -249,7 +243,8 @@ void test_handle_enable_rejects_non_boolean_enabled() {
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing enabled field\""));
-    TEST_ASSERT_EQUAL_INT(0, rt.setEnabledCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.enableWithSavedNetworkCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.disableClientCalls);
     TEST_ASSERT_GREATER_THAN_UINT32(0u, g_mock_heap_caps_malloc_calls);
     TEST_ASSERT_EQUAL_UINT32(WifiJson::kPsramCaps, g_mock_heap_caps_last_malloc_caps);
     TEST_ASSERT_EQUAL_UINT32(0u, g_mock_heap_caps_outstanding_allocations);
@@ -266,8 +261,8 @@ void test_handle_enable_accepts_boolean_enabled() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"WiFi client enabled\""));
-    TEST_ASSERT_EQUAL_INT(1, rt.setEnabledCalls);
-    TEST_ASSERT_TRUE(rt.lastSetEnabled);
+    TEST_ASSERT_EQUAL_INT(1, rt.enableWithSavedNetworkCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.disableClientCalls);
 }
 
 void test_handle_enable_missing_field_uses_expected_payload() {
@@ -279,7 +274,8 @@ void test_handle_enable_missing_field_uses_expected_payload() {
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing enabled field\""));
-    TEST_ASSERT_EQUAL_INT(0, rt.setEnabledCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.enableWithSavedNetworkCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.disableClientCalls);
 }
 
 void test_handle_status_connected_uses_runtime_payload() {
@@ -398,37 +394,28 @@ void test_handle_forget_clears_credentials_and_disables_sta() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"WiFi credentials forgotten\""));
-    TEST_ASSERT_EQUAL_INT(1, rt.disconnectCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.clearCredentialsCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.setStateDisabledCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.setApModeCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.disconnectCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.forgetClientCalls);
 }
 
 void test_handle_enable_true_with_saved_credentials_starts_connect() {
     WebServer server(80);
     FakeRuntime rt;
-    rt.savedSsid = "HomeNet";
-    rt.savedPassword = "pw123";
     server.setArg("plain", "{\"enabled\":true}");
 
     WifiClientApiService::handleApiEnable(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"WiFi client enabled\""));
-    TEST_ASSERT_EQUAL_INT(1, rt.setEnabledCalls);
-    TEST_ASSERT_TRUE(rt.lastSetEnabled);
-    TEST_ASSERT_EQUAL_INT(1, rt.connectCalls);
-    TEST_ASSERT_EQUAL_STRING("HomeNet", rt.lastConnectSsid.c_str());
-    TEST_ASSERT_EQUAL_STRING("pw123", rt.lastConnectPassword.c_str());
-    TEST_ASSERT_EQUAL_INT(0, rt.setStateDisconnectedCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.enableWithSavedNetworkCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.connectCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.disableClientCalls);
 }
 
 void test_handle_enable_true_with_saved_credentials_returns_500_when_connect_fails() {
     WebServer server(80);
     FakeRuntime rt;
-    rt.savedSsid = "HomeNet";
-    rt.savedPassword = "pw123";
-    rt.connectReturn = false;
+    rt.enableWithSavedNetworkReturn = false;
     server.setArg("plain", "{\"enabled\":true}");
 
     WifiClientApiService::handleApiEnable(server, makeRuntime(rt), nullptr, nullptr);
@@ -436,26 +423,22 @@ void test_handle_enable_true_with_saved_credentials_returns_500_when_connect_fai
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"Failed to start connection\""));
-    TEST_ASSERT_EQUAL_INT(1, rt.setEnabledCalls);
-    TEST_ASSERT_TRUE(rt.lastSetEnabled);
-    TEST_ASSERT_EQUAL_INT(1, rt.connectCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.setStateDisconnectedCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.enableWithSavedNetworkCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.disableClientCalls);
 }
 
 void test_handle_enable_true_without_saved_credentials_sets_disconnected_state() {
     WebServer server(80);
     FakeRuntime rt;
-    rt.savedSsid = "";
     server.setArg("plain", "{\"enabled\":true}");
 
     WifiClientApiService::handleApiEnable(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"WiFi client enabled\""));
-    TEST_ASSERT_EQUAL_INT(1, rt.setEnabledCalls);
-    TEST_ASSERT_TRUE(rt.lastSetEnabled);
+    TEST_ASSERT_EQUAL_INT(1, rt.enableWithSavedNetworkCalls);
     TEST_ASSERT_EQUAL_INT(0, rt.connectCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.setStateDisconnectedCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.disableClientCalls);
 }
 
 void test_handle_enable_false_disables_sta_mode() {
@@ -467,11 +450,9 @@ void test_handle_enable_false_disables_sta_mode() {
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"WiFi client disabled\""));
-    TEST_ASSERT_EQUAL_INT(1, rt.disconnectCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.setEnabledCalls);
-    TEST_ASSERT_FALSE(rt.lastSetEnabled);
-    TEST_ASSERT_EQUAL_INT(1, rt.setStateDisabledCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.setApModeCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.disconnectCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.enableWithSavedNetworkCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.disableClientCalls);
 }
 
 void test_handle_api_status_marks_ui_activity_and_delegates() {
@@ -573,8 +554,8 @@ void test_handle_api_forget_delegates_when_allowed() {
 
     TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
     TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.disconnectCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.clearCredentialsCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.disconnectCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.forgetClientCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
 }
 
@@ -596,7 +577,7 @@ void test_handle_api_enable_delegates_when_allowed() {
 
     TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
     TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
-    TEST_ASSERT_EQUAL_INT(1, rt.setEnabledCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.disableClientCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
 }
 

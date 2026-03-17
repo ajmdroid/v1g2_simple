@@ -47,12 +47,9 @@ struct Runtime {
 
     std::function<bool(const String&, const String&)> connectToNetwork;
     std::function<void()> disconnectFromNetwork;
-    std::function<void()> clearCredentials;
-    std::function<void(bool)> setWifiClientEnabled;
-    std::function<String()> getSavedPassword;
-    std::function<void()> setStateDisabled;
-    std::function<void()> setStateDisconnected;
-    std::function<void()> setApMode;
+    std::function<void()> forgetClient;
+    std::function<bool()> enableWithSavedNetwork;
+    std::function<void()> disableClient;
 };
 
 void handleApiStatus(WebServer& server,

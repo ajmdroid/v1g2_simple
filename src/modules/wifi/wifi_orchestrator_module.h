@@ -21,7 +21,7 @@ public:
                      AutoPushModule& autoPushModule,
                      std::function<void(int)> profilePushFn);
 
-    bool startWifi();
+    bool startWifi(bool autoStarted = false);
 
 private:
     void configureCallbacks();

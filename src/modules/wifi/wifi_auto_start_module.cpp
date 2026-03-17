@@ -126,8 +126,7 @@ bool WifiAutoStartModule::process(unsigned long nowMs,
                                   bool bleConnected,
                                   bool canStartDma,
                                   bool& wifiAutoStartDone,
-                                  const std::function<bool()>& startWifi,
-                                  const std::function<void()>& markAutoStarted) {
+                                  const std::function<bool(bool autoStarted)>& startWifi) {
     lastDecision_ = buildDecisionSnapshot(nowMs,
                                           v1ConnectedAtMs,
                                           enableWifi,
@@ -165,7 +164,7 @@ bool WifiAutoStartModule::process(unsigned long nowMs,
                      nowMs, static_cast<unsigned long>(lastDecision_.msSinceV1Connect));
     bool startSucceeded = true;
     if (startWifi) {
-        startSucceeded = startWifi();
+        startSucceeded = startWifi(true);
     }
     if (!startSucceeded) {
         lastDecision_ = buildDecisionSnapshot(nowMs,
@@ -179,9 +178,6 @@ bool WifiAutoStartModule::process(unsigned long nowMs,
                                               false);
         logDecisionIfChanged(lastDecision_);
         return false;
-    }
-    if (markAutoStarted) {
-        markAutoStarted();
     }
     wifiAutoStartDone = true;
     lastDecision_ = buildDecisionSnapshot(nowMs,

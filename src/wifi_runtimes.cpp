@@ -263,12 +263,9 @@ WifiClientApiService::Runtime WiFiManager::makeWifiClientRuntime() {
             return connectToNetwork(ssid, password);
         },
         [this]() { disconnectFromNetwork(); },
-        [this]() { settingsManager.clearWifiClientCredentials(); },
-        [this](bool enabled) { settingsManager.setWifiClientEnabled(enabled); },
-        [this]() { return settingsManager.getWifiClientPassword(); },
-        [this]() { wifiClientState = WIFI_CLIENT_DISABLED; },
-        [this]() { wifiClientState = WIFI_CLIENT_DISCONNECTED; },
-        []() { WiFi.mode(WIFI_AP); },
+        [this]() { forgetWifiClient(); },
+        [this]() { return enableWifiClientFromSavedCredentials(); },
+        [this]() { disableWifiClient(); },
     };
 }
 

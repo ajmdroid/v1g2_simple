@@ -281,8 +281,7 @@ static void configureWifiRuntimeModule() {
                 bleConnected,
                 canStartDma,
                 wifiAutoStartDone,
-                [] { return getWifiOrchestrator().startWifi(); },
-                [] { wifiManager.markAutoStarted(); });
+                [](bool autoStarted) { return getWifiOrchestrator().startWifi(autoStarted); });
         };
     wifiRuntimeProviders.wifiAutoStartContext = &wifiAutoStartModule;
     wifiRuntimeProviders.shouldRunWifiProcessingPolicy =

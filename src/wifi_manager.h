@@ -93,7 +93,7 @@ public:
     static constexpr unsigned long WIFI_LOW_DMA_RETRY_COOLDOWN_MS = 30000; // Avoid rapid start/stop thrash
 
     // AP control (AP-only for configuration)
-    bool startSetupMode();      // Start AP for configuration (idempotent)
+    bool startSetupMode(bool autoStarted = false);      // Start or re-enable AP for configuration
     bool stopSetupMode(bool manual = false, const char* reason = nullptr); // Stop AP (manual/timeout/low_dma)
     bool toggleSetupMode(bool manual = false); // Toggle AP state (e.g., via button)
     bool isWifiServiceActive() const { return setupModeState == SETUP_MODE_AP_ON; }
@@ -103,7 +103,7 @@ public:
     void process();
     
     // Legacy compatibility (redirects to Setup Mode)
-    bool begin() { return startSetupMode(); }
+    bool begin() { return startSetupMode(false); }
 
     // Preflight check for setup-mode start admission.
     bool canStartSetupMode(uint32_t* freeInternal = nullptr, uint32_t* largestInternal = nullptr) const;
@@ -157,9 +157,6 @@ public:
     // Callback for V1 connection state (used to defer WiFi client operations)
     void setV1ConnectedCallback(std::function<bool()> callback) { isV1Connected = callback; }
 
-    // Mark this WiFi session as auto-started (shorter no-client grace period)
-    void markAutoStarted() { wasAutoStarted = true; }
-    
     // Web activity tracking (for WiFi priority mode)
     void markUiActivity();  // Call on every HTTP request
     bool isUiActive(unsigned long timeoutMs = 30000) const;  // True if request within timeout
@@ -272,6 +269,9 @@ private:
     void setupWebServer();
     void checkAutoTimeout();
     void processWifiClientConnectPhase();
+    bool enableWifiClientFromSavedCredentials();
+    void disableWifiClient();
+    void forgetWifiClient();
     void processStopSetupModePhase();
     void finalizeStopSetupMode();
     bool stopSetupModeImmediate(bool emergencyLowDma);

@@ -12,13 +12,13 @@ unsigned long mockMicros = 0;
 
 static WifiAutoStartModule module;
 static int startCalls = 0;
-static int markCalls = 0;
 static bool wifiAutoStartDone = false;
+static bool lastStartAutoStarted = false;
 
 static void resetState() {
     startCalls = 0;
-    markCalls = 0;
     wifiAutoStartDone = false;
+    lastStartAutoStarted = false;
 }
 
 static void assertGate(WifiAutoStartGate expectedGate,
@@ -44,16 +44,15 @@ void test_noop_when_feature_disabled() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] {
+                                        [](bool autoStarted) {
                                             startCalls++;
+                                            lastStartAutoStarted = autoStarted;
                                             return true;
-                                        },
-                                        [] { markCalls++; });
+                                        });
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
     TEST_ASSERT_EQUAL_INT(0, startCalls);
-    TEST_ASSERT_EQUAL_INT(0, markCalls);
     assertGate(WifiAutoStartGate::WifiAtBootDisabled, false, false);
     TEST_ASSERT_TRUE(module.getLastDecision().enableWifi);
     TEST_ASSERT_FALSE(module.getLastDecision().enableWifiAtBoot);
@@ -68,16 +67,15 @@ void test_noop_when_already_done() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] {
+                                        [](bool autoStarted) {
                                             startCalls++;
+                                            lastStartAutoStarted = autoStarted;
                                             return true;
-                                        },
-                                        [] { markCalls++; });
+                                        });
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_TRUE(wifiAutoStartDone);
     TEST_ASSERT_EQUAL_INT(0, startCalls);
-    TEST_ASSERT_EQUAL_INT(0, markCalls);
     assertGate(WifiAutoStartGate::AlreadyDone, false, false);
     TEST_ASSERT_TRUE(module.getLastDecision().wifiAutoStartDone);
 }
@@ -90,16 +88,15 @@ void test_noop_before_ble_settle_and_timeout() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] {
+                                        [](bool autoStarted) {
                                             startCalls++;
+                                            lastStartAutoStarted = autoStarted;
                                             return true;
-                                        },
-                                        [] { markCalls++; });
+                                        });
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
     TEST_ASSERT_EQUAL_INT(0, startCalls);
-    TEST_ASSERT_EQUAL_INT(0, markCalls);
     assertGate(WifiAutoStartGate::WaitingBleSettle, false, false);
     TEST_ASSERT_TRUE(module.getLastDecision().bleConnected);
     TEST_ASSERT_FALSE(module.getLastDecision().bootTimeoutReached);
@@ -113,16 +110,16 @@ void test_starts_after_ble_settle() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] {
+                                        [](bool autoStarted) {
                                             startCalls++;
+                                            lastStartAutoStarted = autoStarted;
                                             return true;
-                                        },
-                                        [] { markCalls++; });
+                                        });
 
     TEST_ASSERT_TRUE(started);
     TEST_ASSERT_TRUE(wifiAutoStartDone);
     TEST_ASSERT_EQUAL_INT(1, startCalls);
-    TEST_ASSERT_EQUAL_INT(1, markCalls);
+    TEST_ASSERT_TRUE(lastStartAutoStarted);
     assertGate(WifiAutoStartGate::Starting, true, true);
     TEST_ASSERT_TRUE(module.getLastDecision().bleSettled);
 }
@@ -135,16 +132,16 @@ void test_starts_on_boot_timeout_without_ble() {
                                         false,
                                         true,
                                         wifiAutoStartDone,
-                                        [] {
+                                        [](bool autoStarted) {
                                             startCalls++;
+                                            lastStartAutoStarted = autoStarted;
                                             return true;
-                                        },
-                                        [] { markCalls++; });
+                                        });
 
     TEST_ASSERT_TRUE(started);
     TEST_ASSERT_TRUE(wifiAutoStartDone);
     TEST_ASSERT_EQUAL_INT(1, startCalls);
-    TEST_ASSERT_EQUAL_INT(1, markCalls);
+    TEST_ASSERT_TRUE(lastStartAutoStarted);
     assertGate(WifiAutoStartGate::Starting, true, true);
     TEST_ASSERT_TRUE(module.getLastDecision().bootTimeoutReached);
 }
@@ -157,16 +154,15 @@ void test_noop_when_dma_not_available() {
                                         true,
                                         false,
                                         wifiAutoStartDone,
-                                        [] {
+                                        [](bool autoStarted) {
                                             startCalls++;
+                                            lastStartAutoStarted = autoStarted;
                                             return true;
-                                        },
-                                        [] { markCalls++; });
+                                        });
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
     TEST_ASSERT_EQUAL_INT(0, startCalls);
-    TEST_ASSERT_EQUAL_INT(0, markCalls);
     assertGate(WifiAutoStartGate::WaitingDma, false, false);
     TEST_ASSERT_TRUE(module.getLastDecision().bleSettled);
     TEST_ASSERT_FALSE(module.getLastDecision().canStartDma);
@@ -180,16 +176,15 @@ void test_v1_timestamp_ahead_of_now_saturates_elapsed() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] {
+                                        [](bool autoStarted) {
                                             startCalls++;
+                                            lastStartAutoStarted = autoStarted;
                                             return true;
-                                        },
-                                        [] { markCalls++; });
+                                        });
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
     TEST_ASSERT_EQUAL_INT(0, startCalls);
-    TEST_ASSERT_EQUAL_INT(0, markCalls);
     assertGate(WifiAutoStartGate::WaitingBleSettle, false, false);
     TEST_ASSERT_EQUAL_UINT32(0, module.getLastDecision().msSinceV1Connect);
 }
@@ -202,16 +197,15 @@ void test_noop_when_wifi_master_disabled() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] {
+                                        [](bool autoStarted) {
                                             startCalls++;
+                                            lastStartAutoStarted = autoStarted;
                                             return true;
-                                        },
-                                        [] { markCalls++; });
+                                        });
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
     TEST_ASSERT_EQUAL_INT(0, startCalls);
-    TEST_ASSERT_EQUAL_INT(0, markCalls);
     assertGate(WifiAutoStartGate::WifiDisabled, false, false);
     TEST_ASSERT_FALSE(module.getLastDecision().enableWifi);
 }
@@ -224,16 +218,15 @@ void test_waits_for_boot_timeout_without_ble_connection() {
                                         false,
                                         true,
                                         wifiAutoStartDone,
-                                        [] {
+                                        [](bool autoStarted) {
                                             startCalls++;
+                                            lastStartAutoStarted = autoStarted;
                                             return true;
-                                        },
-                                        [] { markCalls++; });
+                                        });
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
     TEST_ASSERT_EQUAL_INT(0, startCalls);
-    TEST_ASSERT_EQUAL_INT(0, markCalls);
     assertGate(WifiAutoStartGate::WaitingBootTimeout, false, false);
     TEST_ASSERT_FALSE(module.getLastDecision().bleConnected);
     TEST_ASSERT_FALSE(module.getLastDecision().bootTimeoutReached);
@@ -247,16 +240,16 @@ void test_failed_start_does_not_mark_auto_start_done() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [] {
+                                        [](bool autoStarted) {
                                             startCalls++;
+                                            lastStartAutoStarted = autoStarted;
                                             return false;
-                                        },
-                                        [] { markCalls++; });
+                                        });
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
     TEST_ASSERT_EQUAL_INT(1, startCalls);
-    TEST_ASSERT_EQUAL_INT(0, markCalls);
+    TEST_ASSERT_TRUE(lastStartAutoStarted);
     TEST_ASSERT_TRUE(module.getLastDecision().startTriggered);
     TEST_ASSERT_FALSE(module.getLastDecision().startSucceeded);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(WifiAutoStartGate::StartFailed),

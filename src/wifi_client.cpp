@@ -119,6 +119,23 @@ bool WiFiManager::connectToNetwork(const String& ssid,
     return true;
 }
 
+bool WiFiManager::enableWifiClientFromSavedCredentials() {
+    settingsManager.setWifiClientEnabled(true);
+
+    const String savedSsid = settingsManager.get().wifiClientSSID;
+    if (savedSsid.length() == 0) {
+        wifiClientState = WIFI_CLIENT_DISCONNECTED;
+        return true;
+    }
+
+    if (connectToNetwork(savedSsid, settingsManager.getWifiClientPassword())) {
+        return true;
+    }
+
+    wifiClientState = WIFI_CLIENT_DISCONNECTED;
+    return false;
+}
+
 void WiFiManager::disconnectFromNetwork() {
     Serial.println("[WiFiClient] Disconnecting from network");
     wifiConnectPhase = WifiConnectPhase::IDLE;
@@ -129,6 +146,20 @@ void WiFiManager::disconnectFromNetwork() {
     pendingConnectSSID = "";
     pendingConnectPassword = "";
     pendingConnectPersistCredentials = true;
+}
+
+void WiFiManager::disableWifiClient() {
+    disconnectFromNetwork();
+    settingsManager.setWifiClientEnabled(false);
+    wifiClientState = WIFI_CLIENT_DISABLED;
+    WiFi.mode(WIFI_AP);
+}
+
+void WiFiManager::forgetWifiClient() {
+    disconnectFromNetwork();
+    settingsManager.clearWifiClientCredentials();
+    wifiClientState = WIFI_CLIENT_DISABLED;
+    WiFi.mode(WIFI_AP);
 }
 
 void WiFiManager::processWifiClientConnectPhase() {

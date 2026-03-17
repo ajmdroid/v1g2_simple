@@ -48,8 +48,7 @@ public:
                  bool bleConnected,
                  bool canStartDma,
                  bool& wifiAutoStartDone,
-                 const std::function<bool()>& startWifi,
-                 const std::function<void()>& markAutoStarted);
+                 const std::function<bool(bool autoStarted)>& startWifi);
 
     const WifiAutoStartDecisionSnapshot& getLastDecision() const { return lastDecision_; }
 

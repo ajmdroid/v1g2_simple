@@ -1,7 +1,5 @@
 #include "wifi_orchestrator_module.h"
 
-#include <esp_heap_caps.h>
-
 #include "settings_sanitize.h"
 
 WifiOrchestrator::WifiOrchestrator(WiFiManager& wifiManager,
@@ -19,7 +17,7 @@ WifiOrchestrator::WifiOrchestrator(WiFiManager& wifiManager,
       autoPushModule(autoPushModule),
       profilePushFn(std::move(profilePushFn)) {}
 
-bool WifiOrchestrator::startWifi() {
+bool WifiOrchestrator::startWifi(const bool autoStarted) {
     if (wifiManager.isSetupModeActive()) return true;
 
     // Always ensure callbacks are bound exactly once, even if WiFi was started elsewhere
@@ -28,43 +26,11 @@ bool WifiOrchestrator::startWifi() {
         callbacksConfigured = true;
     }
 
-    // Skip if WiFi already up to keep begin()/TX power idempotent
-    if (WiFi.getMode() != WIFI_OFF || WiFi.isConnected()) {
-        return true;
-    }
-
-    // Reset failure counter so user can retry after "gave up" state
-    wifiManager.resetReconnectFailures();
-
-    uint32_t freeInternal = 0;
-    uint32_t largestInternal = 0;
-    const unsigned long cooldownMs = wifiManager.lowDmaCooldownRemainingMs();
-    if (!wifiManager.canStartSetupMode(&freeInternal, &largestInternal)) {
-        if (cooldownMs > 0) {
-            Serial.printf("[WiFi] Start deferred: low_dma cooldown (%lu ms remaining, freeInternal=%lu largestInternal=%lu)\n",
-                          (unsigned long)cooldownMs,
-                          (unsigned long)freeInternal,
-                          (unsigned long)largestInternal);
-        } else {
-            Serial.printf("[WiFi] Start blocked: insufficient internal SRAM (freeInternal=%lu largestInternal=%lu)\n",
-                          (unsigned long)freeInternal,
-                          (unsigned long)largestInternal);
-        }
+    Serial.printf("[WiFi] Starting WiFi (%s start)...\n", autoStarted ? "auto" : "manual");
+    if (!wifiManager.startSetupMode(autoStarted)) {
+        Serial.println("[WiFi] startSetupMode failed");
         return false;
     }
-
-    Serial.println("[WiFi] Starting WiFi (manual start)...");
-    if (!wifiManager.begin()) {
-        Serial.printf("[WiFi] begin() failed (freeInternal=%lu largestInternal=%lu)\n",
-                      (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
-                      (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-        return false;
-    }
-
-    // Reduce WiFi TX power to minimize interference with BLE
-    // 5dBm gives ~2-3m range, sufficient for in-car phone config
-    WiFi.setTxPower(WIFI_POWER_5dBm);
-    Serial.println("[WiFi] TX power 5dBm (low RF for BLE coex)");
 
     Serial.println("[WiFi] Initialized");
     return true;

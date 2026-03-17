@@ -223,27 +223,18 @@ static void handleDisconnectImpl(WebServer& server, const Runtime& runtime) {
 }
 
 static void handleForgetImpl(WebServer& server, const Runtime& runtime) {
-    if (!runtime.disconnectFromNetwork || !runtime.clearCredentials ||
-        !runtime.setStateDisabled || !runtime.setApMode) {
+    if (!runtime.forgetClient) {
         server.send(500, "application/json", "{\"success\":false,\"message\":\"Runtime unavailable\"}");
         return;
     }
 
     Serial.println("[HTTP] POST /api/wifi/forget");
-
-    runtime.disconnectFromNetwork();
-    runtime.clearCredentials();
-    runtime.setStateDisabled();
-    runtime.setApMode();
-
+    runtime.forgetClient();
     sendForgotten(server);
 }
 
 static void handleEnableImpl(WebServer& server, const Runtime& runtime) {
-    if (!runtime.setWifiClientEnabled || !runtime.getSavedSsid ||
-        !runtime.getSavedPassword || !runtime.connectToNetwork ||
-        !runtime.setStateDisconnected || !runtime.disconnectFromNetwork ||
-        !runtime.setStateDisabled || !runtime.setApMode) {
+    if (!runtime.enableWithSavedNetwork || !runtime.disableClient) {
         server.send(500, "application/json", "{\"success\":false,\"message\":\"Runtime unavailable\"}");
         return;
     }
@@ -255,29 +246,16 @@ static void handleEnableImpl(WebServer& server, const Runtime& runtime) {
     }
 
     Serial.printf("[HTTP] POST /api/wifi/enable: %s\n", enable ? "true" : "false");
-
-    const String savedSsid = runtime.getSavedSsid();
     if (enable) {
-        runtime.setWifiClientEnabled(true);
-
-        if (savedSsid.length() > 0) {
-            if (!runtime.connectToNetwork(savedSsid, runtime.getSavedPassword())) {
-                runtime.setStateDisconnected();
-                sendEnableConnectFailed(server);
-                return;
-            }
-        } else {
-            runtime.setStateDisconnected();
+        if (!runtime.enableWithSavedNetwork()) {
+            sendEnableConnectFailed(server);
+            return;
         }
-
         sendEnableResult(server, true);
         return;
     }
 
-    runtime.disconnectFromNetwork();
-    runtime.setWifiClientEnabled(false);
-    runtime.setStateDisabled();
-    runtime.setApMode();
+    runtime.disableClient();
     sendEnableResult(server, false);
 }
 

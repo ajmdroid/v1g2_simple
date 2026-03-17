@@ -104,18 +104,45 @@ bool WiFiManager::canStartSetupMode(uint32_t* freeInternal, uint32_t* largestInt
 // Ensure last client seen timestamp advances when UI is accessed
 // (called on every HTTP request via checkRateLimit/markUiActivity)
 
-bool WiFiManager::startSetupMode() {
+bool WiFiManager::startSetupMode(const bool autoStarted) {
     timeService.begin();  // Ensure persisted/system time is restored before serving UI.
 
-    // Always-on AP; idempotent start
+    const V1Settings& settings = settingsManager.get();
+    const bool apStaMode = shouldUseApSta(settings);
+
     if (setupModeState == SETUP_MODE_AP_ON) {
-        WIFI_LOG("[SetupMode] Already active\n");
+        if (apInterfaceEnabled) {
+            WIFI_LOG("[SetupMode] Already active\n");
+            return true;
+        }
+
+        WIFI_LOG("[SetupMode] Re-enabling AP interface...\n");
+        if (apStaMode) {
+            if (WiFi.getMode() != WIFI_AP_STA) {
+                WiFi.mode(WIFI_AP_STA);
+            }
+        } else if (WiFi.getMode() != WIFI_AP) {
+            WiFi.mode(WIFI_AP);
+            wifiClientState = WIFI_CLIENT_DISABLED;
+        }
+
+        resetReconnectFailures();
+        WiFi.setTxPower(WIFI_POWER_5dBm);
+        setupAP();
+        apInterfaceEnabled = true;
+        lastClientSeenMs = millis();
+        lastAnyClientSeenMs = lastClientSeenMs;
+        lastApStaCountPollMs = 0;
+        cachedApStaCount = 0;
+        wasAutoStarted = autoStarted;
+        perfRecordWifiApTransition(
+            true,
+            static_cast<uint8_t>(PerfWifiApTransitionReason::Startup),
+            millis());
         return true;
     }
 
     WIFI_LOG("[SetupMode] Starting AP (always-on mode)...\n");
-    const V1Settings& settings = settingsManager.get();
-    const bool apStaMode = shouldUseApSta(settings);
     if (!apStaMode) {
         Serial.printf("[SetupMode] STA unavailable for this session (wifiClientEnabled=%s ssidLen=%u)\n",
                       settings.wifiClientEnabled ? "true" : "false",
@@ -170,6 +197,7 @@ bool WiFiManager::startSetupMode() {
     lastTimeoutCheckMs = 0;
     lowDmaSinceMs = 0;
     lowDmaCooldownUntilMs = 0;
+    resetReconnectFailures();
 
     // Check if WiFi client is enabled - use AP+STA mode
     if (apStaMode) {
@@ -180,6 +208,8 @@ bool WiFiManager::startSetupMode() {
         WiFi.mode(WIFI_AP);
         wifiClientState = WIFI_CLIENT_DISABLED;
     }
+    WiFi.setTxPower(WIFI_POWER_5dBm);
+    Serial.println("[WiFi] TX power 5dBm (low RF for BLE coex)");
 
     setupAP();
     setupWebServer();
@@ -191,25 +221,19 @@ bool WiFiManager::startSetupMode() {
     server.begin();
     setupModeState = SETUP_MODE_AP_ON;
     apInterfaceEnabled = true;
+    wasAutoStarted = autoStarted;
     perfRecordWifiApTransition(
         true,
         static_cast<uint8_t>(PerfWifiApTransitionReason::Startup),
         millis());
 
-    // When AP+STA mode is active, connect to the saved STA network directly.
-    // WiFi.mode(WIFI_AP_STA) is already set and setupAP() has configured the AP,
-    // so we can call WiFi.begin() immediately — no need for the deferred phase
-    // machine that connectToNetwork() uses (which adds multi-loop-iteration
-    // latency and mode-switch guards that are redundant here).
+    // Route saved-network rejoin through the same staged STA connect path used
+    // everywhere else so AP/STA transitions have one owner.
     if (apStaMode) {
-        String savedPassword = settingsManager.getWifiClientPassword();
-        Serial.printf("[SetupMode] STA connecting to '%s'\n", settings.wifiClientSSID.c_str());
-        WiFi.setSleep(false);
-        WiFi.setAutoReconnect(true);
-        WiFi.begin(settings.wifiClientSSID.c_str(), savedPassword.c_str());
-        wifiClientState = WIFI_CLIENT_CONNECTING;
-        wifiConnectStartMs = millis();
-        wifiConnectPhase = WifiConnectPhase::IDLE;
+        Serial.printf("[SetupMode] STA connect queued for '%s'\n", settings.wifiClientSSID.c_str());
+        (void)connectToNetwork(settings.wifiClientSSID,
+                               settingsManager.getWifiClientPassword(),
+                               false);
     }
 
     WIFI_LOG("[SetupMode] AP started - connect to SSID shown on display\n");
