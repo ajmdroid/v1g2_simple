@@ -572,6 +572,84 @@ def test_uncataloged_metric_rejected(tmpdir: Path) -> None:
     assert_true(result.returncode == 3, "uncataloged emitted metrics must fail scoring setup")
 
 
+def test_connect_burst_metrics_are_cataloged(tmpdir: Path) -> None:
+    case_dir = tmpdir / "connect_burst_cataloged"
+    case_dir.mkdir(parents=True, exist_ok=True)
+    metrics_path = case_dir / "metrics.ndjson"
+    manifest_path = case_dir / "manifest.json"
+
+    write_metrics(
+        metrics_path,
+        [
+            soak_metric("drive_wifi_ap", "metrics_ok_samples", 10),
+            soak_metric("drive_wifi_ap", "rx_packets_delta", 100),
+            soak_metric("drive_wifi_ap", "parse_successes_delta", 100),
+            soak_metric("drive_wifi_ap", "parse_failures_delta", 0),
+            soak_metric("drive_wifi_ap", "queue_drops_delta", 0),
+            soak_metric("drive_wifi_ap", "perf_drop_delta", 0),
+            soak_metric("drive_wifi_ap", "event_drop_delta", 0),
+            soak_metric("drive_wifi_ap", "oversize_drops_delta", 0),
+            soak_metric("drive_wifi_ap", "flush_max_peak_us", 30000),
+            soak_metric("drive_wifi_ap", "loop_max_peak_us", 70000),
+            soak_metric("drive_wifi_ap", "wifi_max_peak_us", 2500),
+            soak_metric("drive_wifi_ap", "ble_drain_max_peak_us", 5000),
+            soak_metric("drive_wifi_ap", "sd_max_peak_us", 12000),
+            soak_metric("drive_wifi_ap", "fs_max_peak_us", 0),
+            soak_metric("drive_wifi_ap", "queue_high_water_peak", 4),
+            soak_metric("drive_wifi_ap", "wifi_connect_deferred_delta", 0),
+            soak_metric("drive_wifi_ap", "dma_free_min_bytes", 25000),
+            soak_metric("drive_wifi_ap", "dma_largest_min_bytes", 14000),
+            soak_metric("drive_wifi_ap", "ble_process_max_peak_us", 200),
+            soak_metric("drive_wifi_ap", "disp_pipe_max_peak_us", 50000),
+            soak_metric("drive_wifi_ap", "ble_mutex_timeout_delta", 0),
+            soak_metric("drive_wifi_ap", "display_updates_delta", 200),
+            soak_metric("drive_wifi_ap", "display_skips_delta", 0),
+            soak_metric("drive_wifi_ap", "reconnects_delta", 0),
+            soak_metric("drive_wifi_ap", "disconnects_delta", 0),
+            soak_metric("drive_wifi_ap", "gps_obs_drops_delta", 0),
+            soak_metric("drive_wifi_ap", "wifi_p95_us", 1800),
+            soak_metric("drive_wifi_ap", "disp_pipe_p95_us", 35000),
+            soak_metric("drive_wifi_ap", "dma_fragmentation_pct_p95", 18),
+            soak_metric("drive_wifi_ap", "samples_to_stable", 2),
+            soak_metric("drive_wifi_ap", "time_to_stable_ms", 500),
+            soak_metric("drive_wifi_ap", "connect_burst_samples_to_stable", 3),
+            soak_metric("drive_wifi_ap", "connect_burst_time_to_stable_ms", 1200),
+            soak_metric("drive_wifi_ap", "connect_burst_pre_ble_process_peak_us", 150),
+            soak_metric("drive_wifi_ap", "connect_burst_pre_disp_pipe_peak_us", 48000),
+            soak_metric("drive_wifi_ap", "connect_burst_ble_followup_request_alert_peak_us", 0),
+            soak_metric("drive_wifi_ap", "connect_burst_ble_followup_request_version_peak_us", 0),
+            soak_metric("drive_wifi_ap", "connect_burst_ble_connect_stable_callback_peak_us", 0),
+            soak_metric("drive_wifi_ap", "connect_burst_ble_proxy_start_peak_us", 0),
+            soak_metric("drive_wifi_ap", "connect_burst_disp_render_peak_us", 47000),
+            soak_metric("drive_wifi_ap", "connect_burst_display_voice_peak_us", 0),
+            soak_metric("drive_wifi_ap", "connect_burst_display_gap_recover_peak_us", 0),
+        ],
+    )
+
+    write_manifest(
+        manifest_path,
+        run_id="soak-connect-burst",
+        git_sha="abc1234",
+        git_ref="main",
+        run_kind="real_fw_soak",
+        board_id="release",
+        env="waveshare-349",
+        lane="qualification",
+        suite_or_profile="drive_wifi_ap",
+        stress_class="core",
+        result="PASS",
+        metrics_file="metrics.ndjson",
+        base_result="PASS",
+        tracks=["drive_wifi_ap"],
+    )
+
+    result = score_hardware_run.score_run(manifest_path, CATALOG_PATH)
+    assert_true(result["result"] == "NO_BASELINE", f"cataloged connect-burst metrics should score cleanly: {result}")
+    metrics = {item["metric"] for item in result["metrics"]}
+    assert_true("connect_burst_samples_to_stable" in metrics, f"missing connect-burst metric in score output: {result}")
+    assert_true("connect_burst_disp_render_peak_us" in metrics, f"missing render peak metric in score output: {result}")
+
+
 def test_extract_device_metrics_smoke(tmpdir: Path) -> None:
     case_dir = tmpdir / "extract_smoke"
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -693,6 +771,7 @@ def main() -> int:
         test_optional_metric_gap_warns_but_is_not_inconclusive(tmpdir)
         test_unsupported_metrics_do_not_fail_run(tmpdir)
         test_uncataloged_metric_rejected(tmpdir)
+        test_connect_burst_metrics_are_cataloged(tmpdir)
         test_extract_device_metrics_smoke(tmpdir)
     print("hardware run scoring tests passed")
     return 0
