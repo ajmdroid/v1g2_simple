@@ -22,7 +22,8 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
 
 void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
                                             const DisplayState& state,
-                                            bool forceRedraw) {
+                                            bool forceRedraw,
+                                            bool restoreContext) {
     const V1Settings& s = settings->get();
     const uint8_t persistSec = settings->getSlotAlertPersistSec(s.activeSlot);
 
@@ -40,11 +41,14 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
                 display->forceNextRedraw();
             }
 
+            perfSetDisplayRenderScenario(restoreContext ? PerfDisplayRenderScenario::Restore
+                                                        : PerfDisplayRenderScenario::Persisted);
             const unsigned long startUs = micros();
             display->updatePersisted(alertPersistence->getPersistedAlert(), state);
             const unsigned long endUs = micros();
             recordDisplayTiming("display.persisted", startUs, endUs);
             recordPerfTiming("display.persisted", startUs, endUs);
+            perfClearDisplayRenderScenario();
             lastRenderedOwner_ = RenderOwner::Persisted;
             return;
         }
@@ -59,11 +63,14 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
         display->forceNextRedraw();
     }
 
+    perfSetDisplayRenderScenario(restoreContext ? PerfDisplayRenderScenario::Restore
+                                                : PerfDisplayRenderScenario::Resting);
     const unsigned long startUs = micros();
     display->update(state);
     const unsigned long endUs = micros();
     recordDisplayTiming("display.resting", startUs, endUs);
     recordPerfTiming("display.resting", startUs, endUs);
+    perfClearDisplayRenderScenario();
     lastRenderedOwner_ = RenderOwner::Resting;
 }
 
@@ -147,6 +154,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         const VoiceAction voiceAction = voice->process(voiceCtx);
         perfRecordDisplayVoiceUs(micros() - voiceStartUs);
 
+        perfSetDisplayRenderScenario(PerfDisplayRenderScenario::Live);
         const unsigned long startUs = micros();
         if (hasRenderablePriority) {
             display->update(priority, renderAlerts, renderAlertCount, state);
@@ -156,6 +164,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         const unsigned long endUs = micros();
         recordDisplayTiming("display.update(alerts)", startUs, endUs);
         recordPerfTiming("display.update(alerts)", startUs, endUs);
+        perfClearDisplayRenderScenario();
 
         if (voiceAction.hasAction()) {
             switch (voiceAction.type) {
@@ -191,7 +200,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
 
     *displayMode = DisplayMode::IDLE;
     voice->clearAllState();
-    renderIdleOwner(nowMs, state, false);
+    renderIdleOwner(nowMs, state, false, false);
 }
 
 void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
@@ -203,7 +212,9 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
     display->forceNextRedraw();
 
     if (!ble->isConnected()) {
+        perfSetDisplayRenderScenario(PerfDisplayRenderScenario::Restore);
         display->showScanning();
+        perfClearDisplayRenderScenario();
         *displayMode = DisplayMode::IDLE;
         lastRenderedOwner_ = RenderOwner::Scanning;
         return;
@@ -217,18 +228,22 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
 
     if (hasAlerts) {
         *displayMode = DisplayMode::LIVE;
+        perfSetDisplayRenderScenario(PerfDisplayRenderScenario::Restore);
+        const unsigned long startUs = micros();
         if (hasRenderablePriority) {
             const auto& alerts = parser->getAllAlerts();
             display->update(priority, alerts.data(), parser->getAlertCount(), state);
         } else {
             display->update(state);
         }
+        perfRecordDisplayScenarioRenderUs(micros() - startUs);
+        perfClearDisplayRenderScenario();
         lastRenderedOwner_ = RenderOwner::Live;
         return;
     }
 
     *displayMode = DisplayMode::IDLE;
-    renderIdleOwner(nowMs, state, true);
+    renderIdleOwner(nowMs, state, true, true);
 }
 
 void DisplayPipelineModule::recordDisplayTiming(const char* label, unsigned long startUs, unsigned long endUs) {
@@ -252,6 +267,7 @@ void DisplayPipelineModule::recordPerfTiming(const char* label, unsigned long st
 
     // Always record to perf metrics for scorecard attribution.
     perfRecordDisplayRenderUs(dur);
+    perfRecordDisplayScenarioRenderUs(dur);
     PERF_INC(displayUpdates);
 
     if (!PERF_TIMING_LOGS) return;

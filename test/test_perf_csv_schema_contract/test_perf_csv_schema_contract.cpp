@@ -25,7 +25,7 @@ void test_perf_csv_schema_version_matches_current_header() {
     TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_sd_logger.cpp");
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 18;"));
+        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 19;"));
 }
 
 void test_perf_csv_header_drops_camera_voice_columns() {
@@ -56,7 +56,17 @@ void test_perf_csv_header_includes_connect_burst_attribution_columns() {
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
         source.find(
-            "bleFirstRxMs,bleFollowupRequestAlertMax_us,bleFollowupRequestVersionMax_us,bleConnectStableCallbackMax_us,bleProxyStartMax_us,displayVoiceMax_us,displayGapRecoverMax_us,alertPersistStarts"));
+            "bleFirstRxMs,bleFollowupRequestAlertMax_us,bleFollowupRequestVersionMax_us,bleConnectStableCallbackMax_us,bleProxyStartMax_us,displayVoiceMax_us,displayGapRecoverMax_us,displayFullRenderCount"));
+}
+
+void test_perf_csv_header_includes_display_attribution_columns() {
+    const std::string source = readTextFile("src/perf_sd_logger.cpp");
+
+    TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_sd_logger.cpp");
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find(
+            "displayFullFlushCount,displayPartialFlushCount,displayPartialFlushAreaPeakPx,displayPartialFlushAreaTotalPx,displayFlushEquivalentAreaTotalPx,displayFlushMaxAreaPx,displayBaseFrameMax_us,displayStatusStripMax_us,displayFrequencyMax_us,displayBandsBarsMax_us,displayArrowsIconsMax_us,displayCardsMax_us,displayFlushSubphaseMax_us,displayLiveRenderMax_us,displayRestingRenderMax_us,displayPersistedRenderMax_us,displayPreviewRenderMax_us,displayRestoreRenderMax_us,displayPreviewFirstRenderMax_us,displayPreviewSteadyRenderMax_us,alertPersistStarts"));
 }
 
 void test_perf_metrics_exports_render_and_connect_burst_sources() {
@@ -75,6 +85,15 @@ void test_perf_metrics_exports_render_and_connect_burst_sources() {
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
         source.find("snapshot.displayGapRecoverMaxUs = perfExtended.displayGapRecoverMaxUs;"));
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find("snapshot.displayPartialFlushAreaPeakPx = perfExtended.displayPartialFlushAreaPeakPx;"));
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find("snapshot.displayFlushSubphaseMaxUs = perfExtended.displayFlushSubphaseMaxUs;"));
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find("snapshot.displayPreviewFirstRenderMaxUs = perfExtended.displayPreviewFirstRenderMaxUs;"));
 }
 
 int main() {
@@ -83,6 +102,7 @@ int main() {
     RUN_TEST(test_perf_csv_header_drops_camera_voice_columns);
     RUN_TEST(test_perf_csv_header_appends_drive_gate_columns);
     RUN_TEST(test_perf_csv_header_includes_connect_burst_attribution_columns);
+    RUN_TEST(test_perf_csv_header_includes_display_attribution_columns);
     RUN_TEST(test_perf_metrics_exports_render_and_connect_burst_sources);
     return UNITY_END();
 }

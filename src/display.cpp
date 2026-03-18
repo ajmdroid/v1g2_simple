@@ -297,6 +297,7 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
     if (x >= maxW || y >= maxH) return;
     if (x + w > maxW) w = maxW - x;
     if (y + h > maxH) h = maxH - y;
+    const uint32_t areaPx = static_cast<uint32_t>(w) * static_cast<uint32_t>(h);
 
     uint16_t* fb = tft->getFramebuffer();
     if (!fb) {
@@ -304,11 +305,13 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
         return;
     }
 
+    const uint32_t startUs = PERF_TIMESTAMP_US();
     int16_t stride = tft->width();
     for (int16_t row = 0; row < h; ++row) {
         uint16_t* rowPtr = fb + (y + row) * stride + x;
         gfxPanel->draw16bitRGBBitmap(x, y + row, rowPtr, w, 1);
     }
+    perfRecordFlushUs(PERF_TIMESTAMP_US() - startUs, areaPx, false);
 }
 
 const char* V1Display::bandToString(Band band) {

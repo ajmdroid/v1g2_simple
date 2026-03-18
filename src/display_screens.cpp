@@ -40,6 +40,10 @@ void V1Display::showDisconnected() {
 // ============================================================================
 
 void V1Display::showResting(bool forceRedraw) {
+    const PerfDisplayRenderScenario renderScenario = perfGetDisplayRenderScenario();
+    const bool restoreRender = (renderScenario == PerfDisplayRenderScenario::Restore);
+    unsigned long renderStartUs = 0;
+    bool recordRenderTiming = false;
     // Always use multi-alert layout positioning
     dirty.multiAlert = true;
     multiAlertMode = false;
@@ -56,6 +60,10 @@ void V1Display::showResting(bool forceRedraw) {
     bool profileChanged = (profileSlot != lastRestingProfileSlot);
     
     if (forceRedraw || screenChanged || paletteChanged) {
+        perfRecordDisplayRenderPath(restoreRender ? PerfDisplayRenderPath::Restore
+                                                  : PerfDisplayRenderPath::RestingFull);
+        renderStartUs = micros();
+        recordRenderTiming = true;
         // Full redraw when forced, coming from another screen, or after theme change
         TFT_CALL(fillScreen)(PALETTE_BG);
         drawBaseFrame();
@@ -112,6 +120,10 @@ void V1Display::showResting(bool forceRedraw) {
 
     DISPLAY_FLUSH();
     } else if (profileChanged) {
+        perfRecordDisplayRenderPath(restoreRender ? PerfDisplayRenderPath::Restore
+                                                  : PerfDisplayRenderPath::RestingIncremental);
+        renderStartUs = micros();
+        recordRenderTiming = true;
         // Only the profile changed while already resting; redraw just the indicator
         drawProfileIndicator(profileSlot);
         lastRestingProfileSlot = profileSlot;
@@ -127,6 +139,10 @@ void V1Display::showResting(bool forceRedraw) {
 
     // Reset lastState so next update() detects changes from this "resting" state
     lastState = DisplayState();  // All defaults: bands=0, arrows=0, bars=0, hasMode=false, modeChar=0
+
+    if (recordRenderTiming) {
+        perfRecordDisplayScenarioRenderUs(micros() - renderStartUs);
+    }
 }
 
 // ============================================================================
@@ -152,6 +168,12 @@ void V1Display::resetChangeTracking() {
 // ============================================================================
 
 void V1Display::showScanning() {
+    const PerfDisplayRenderScenario renderScenario = perfGetDisplayRenderScenario();
+    const bool restoreRender = (renderScenario == PerfDisplayRenderScenario::Restore);
+    const unsigned long renderStartUs = micros();
+    if (restoreRender) {
+        perfRecordDisplayRenderPath(PerfDisplayRenderPath::Restore);
+    }
     // Always use multi-alert layout positioning
     dirty.multiAlert = true;
     
@@ -261,6 +283,7 @@ void V1Display::showScanning() {
     }
     currentScreen = ScreenMode::Scanning;
     lastRestingProfileSlot = -1;
+    perfRecordDisplayScenarioRenderUs(micros() - renderStartUs);
 }
 
 // ============================================================================

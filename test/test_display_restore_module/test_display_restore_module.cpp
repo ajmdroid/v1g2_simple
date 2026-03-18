@@ -11,8 +11,15 @@ unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
 #endif
 
+#include "../../src/perf_metrics.h"
 #include "../../src/modules/display/display_pipeline_module.h"
 #include "../../src/modules/display/display_preview_module.h"
+
+PerfCounters perfCounters;
+PerfExtendedMetrics perfExtended;
+void perfRecordDisplayScenarioRenderUs(uint32_t /*us*/) {}
+void perfSetDisplayRenderScenario(PerfDisplayRenderScenario /*scenario*/) {}
+void perfClearDisplayRenderScenario() {}
 
 static int g_restoreCurrentOwnerCalls = 0;
 static uint32_t g_lastRestoreNowMs = 0;

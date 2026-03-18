@@ -2439,6 +2439,7 @@ while IFS='=' read -r key value; do
     connect_burst_disp_render_peak) connect_burst_disp_render_peak="$value" ;;
     connect_burst_display_voice_peak) connect_burst_display_voice_peak="$value" ;;
     connect_burst_display_gap_recover_peak) connect_burst_display_gap_recover_peak="$value" ;;
+    connect_burst_display_*_peak|display_*_delta|display_*_peak|display_*_px) printf -v "$key" '%s' "$value" ;;
   esac
 done < "$metrics_kv"
 
@@ -3241,6 +3242,14 @@ fi
   echo "- Connect-burst pre-window bleProcess/dispPipe peaks: ${connect_burst_pre_ble_process_peak:-n/a} / ${connect_burst_pre_disp_pipe_peak:-n/a}"
   echo "- Connect-burst BLE root-cause peaks alert/version/stableCallback/proxyStart: ${connect_burst_ble_followup_request_alert_peak:-n/a} / ${connect_burst_ble_followup_request_version_peak:-n/a} / ${connect_burst_ble_connect_stable_callback_peak:-n/a} / ${connect_burst_ble_proxy_start_peak:-n/a}"
   echo "- Connect-burst display root-cause peaks render/voice/gapRecover: ${connect_burst_disp_render_peak:-n/a} / ${connect_burst_display_voice_peak:-n/a} / ${connect_burst_display_gap_recover_peak:-n/a}"
+  echo "- Connect-burst display subphase peaks base/status/freq/bands/icons/cards/flush: ${connect_burst_display_base_frame_peak:-n/a} / ${connect_burst_display_status_strip_peak:-n/a} / ${connect_burst_display_frequency_peak:-n/a} / ${connect_burst_display_bands_bars_peak:-n/a} / ${connect_burst_display_arrows_icons_peak:-n/a} / ${connect_burst_display_cards_peak:-n/a} / ${connect_burst_display_flush_subphase_peak:-n/a}"
+  echo "- Display render path deltas full/incremental/cards/restingFull/restingIncremental/persisted/preview/restore: ${display_full_render_count_delta:-n/a} / ${display_incremental_render_count_delta:-n/a} / ${display_cards_only_render_count_delta:-n/a} / ${display_resting_full_render_count_delta:-n/a} / ${display_resting_incremental_render_count_delta:-n/a} / ${display_persisted_render_count_delta:-n/a} / ${display_preview_render_count_delta:-n/a} / ${display_restore_render_count_delta:-n/a}"
+  echo "- Display scenario render deltas live/resting/persisted/preview/restore: ${display_live_scenario_render_count_delta:-n/a} / ${display_resting_scenario_render_count_delta:-n/a} / ${display_persisted_scenario_render_count_delta:-n/a} / ${display_preview_scenario_render_count_delta:-n/a} / ${display_restore_scenario_render_count_delta:-n/a}"
+  echo "- Display redraw reason deltas first/enterLive/leaveLive/leavePersisted/force: ${display_redraw_reason_first_run_count_delta:-n/a} / ${display_redraw_reason_enter_live_count_delta:-n/a} / ${display_redraw_reason_leave_live_count_delta:-n/a} / ${display_redraw_reason_leave_persisted_count_delta:-n/a} / ${display_redraw_reason_force_redraw_count_delta:-n/a}"
+  echo "- Display redraw reason deltas freq/bands/arrow/signal/volume/bogey/rssi/flash: ${display_redraw_reason_frequency_change_count_delta:-n/a} / ${display_redraw_reason_band_set_change_count_delta:-n/a} / ${display_redraw_reason_arrow_change_count_delta:-n/a} / ${display_redraw_reason_signal_bar_change_count_delta:-n/a} / ${display_redraw_reason_volume_change_count_delta:-n/a} / ${display_redraw_reason_bogey_counter_change_count_delta:-n/a} / ${display_redraw_reason_rssi_refresh_count_delta:-n/a} / ${display_redraw_reason_flash_tick_count_delta:-n/a}"
+  echo "- Display flush counters/areas full/partial/partialPeak/partialTotal/equivalent/maxArea: ${display_full_flush_count_delta:-n/a} / ${display_partial_flush_count_delta:-n/a} / ${display_partial_flush_area_peak_px:-n/a} / ${display_partial_flush_area_total_px_delta:-n/a} / ${display_flush_equivalent_area_total_px_delta:-n/a} / ${display_flush_max_area_px:-n/a}"
+  echo "- Display subphase peaks base/status/freq/bands/icons/cards/flush: ${display_base_frame_peak:-n/a} / ${display_status_strip_peak:-n/a} / ${display_frequency_peak:-n/a} / ${display_bands_bars_peak:-n/a} / ${display_arrows_icons_peak:-n/a} / ${display_cards_peak:-n/a} / ${display_flush_subphase_peak:-n/a}"
+  echo "- Display scenario render peaks live/resting/persisted/preview/restore/previewFirst/previewSteady: ${display_live_render_peak:-n/a} / ${display_resting_render_peak:-n/a} / ${display_persisted_render_peak:-n/a} / ${display_preview_render_peak:-n/a} / ${display_restore_render_peak:-n/a} / ${display_preview_first_render_peak:-n/a} / ${display_preview_steady_render_peak:-n/a}"
   echo "- Transition churn gates (steady-state): AP down <= ${MAX_AP_TRANSITION_CHURN_DELTA}, proxy on/off <= ${MAX_PROXY_ADV_TRANSITION_CHURN_DELTA}"
   echo "- Transition minimum events gates (active drive): AP down >= ${MIN_AP_DOWN_TRANSITIONS}, proxy off >= ${MIN_PROXY_ADV_OFF_TRANSITIONS}"
   echo "- Peak bleDrainMaxUs: ${ble_drain_max_peak:-n/a} (max gate ${MAX_BLE_DRAIN_MAX_US})"
@@ -3401,6 +3410,31 @@ connect_burst_ble_proxy_start_peak_us=${connect_burst_ble_proxy_start_peak}
 connect_burst_disp_render_peak_us=${connect_burst_disp_render_peak}
 connect_burst_display_voice_peak_us=${connect_burst_display_voice_peak}
 connect_burst_display_gap_recover_peak_us=${connect_burst_display_gap_recover_peak}
+connect_burst_display_base_frame_peak_us=${connect_burst_display_base_frame_peak:-}
+connect_burst_display_status_strip_peak_us=${connect_burst_display_status_strip_peak:-}
+connect_burst_display_frequency_peak_us=${connect_burst_display_frequency_peak:-}
+connect_burst_display_bands_bars_peak_us=${connect_burst_display_bands_bars_peak:-}
+connect_burst_display_arrows_icons_peak_us=${connect_burst_display_arrows_icons_peak:-}
+connect_burst_display_cards_peak_us=${connect_burst_display_cards_peak:-}
+connect_burst_display_flush_subphase_peak_us=${connect_burst_display_flush_subphase_peak:-}
+display_full_flush_count_delta=${display_full_flush_count_delta:-}
+display_partial_flush_count_delta=${display_partial_flush_count_delta:-}
+display_partial_flush_area_peak_px=${display_partial_flush_area_peak_px:-}
+display_flush_max_area_px=${display_flush_max_area_px:-}
+display_base_frame_peak_us=${display_base_frame_peak:-}
+display_status_strip_peak_us=${display_status_strip_peak:-}
+display_frequency_peak_us=${display_frequency_peak:-}
+display_bands_bars_peak_us=${display_bands_bars_peak:-}
+display_arrows_icons_peak_us=${display_arrows_icons_peak:-}
+display_cards_peak_us=${display_cards_peak:-}
+display_flush_subphase_peak_us=${display_flush_subphase_peak:-}
+display_live_render_peak_us=${display_live_render_peak:-}
+display_resting_render_peak_us=${display_resting_render_peak:-}
+display_persisted_render_peak_us=${display_persisted_render_peak:-}
+display_preview_render_peak_us=${display_preview_render_peak:-}
+display_restore_render_peak_us=${display_restore_render_peak:-}
+display_preview_first_render_peak_us=${display_preview_first_render_peak:-}
+display_preview_steady_render_peak_us=${display_preview_steady_render_peak:-}
 EOF
 
 trend_metric_count="$(python3 - "$TREND_METRICS_KV" "$TREND_METRICS_NDJSON" "$RUN_ID" "$GIT_SHA_SHORT" "$track_name" "$RUN_STRESS_CLASS" <<'PY'
@@ -3458,6 +3492,31 @@ units = {
     "connect_burst_disp_render_peak_us": "us",
     "connect_burst_display_voice_peak_us": "us",
     "connect_burst_display_gap_recover_peak_us": "us",
+    "connect_burst_display_base_frame_peak_us": "us",
+    "connect_burst_display_status_strip_peak_us": "us",
+    "connect_burst_display_frequency_peak_us": "us",
+    "connect_burst_display_bands_bars_peak_us": "us",
+    "connect_burst_display_arrows_icons_peak_us": "us",
+    "connect_burst_display_cards_peak_us": "us",
+    "connect_burst_display_flush_subphase_peak_us": "us",
+    "display_full_flush_count_delta": "count",
+    "display_partial_flush_count_delta": "count",
+    "display_partial_flush_area_peak_px": "px",
+    "display_flush_max_area_px": "px",
+    "display_base_frame_peak_us": "us",
+    "display_status_strip_peak_us": "us",
+    "display_frequency_peak_us": "us",
+    "display_bands_bars_peak_us": "us",
+    "display_arrows_icons_peak_us": "us",
+    "display_cards_peak_us": "us",
+    "display_flush_subphase_peak_us": "us",
+    "display_live_render_peak_us": "us",
+    "display_resting_render_peak_us": "us",
+    "display_persisted_render_peak_us": "us",
+    "display_preview_render_peak_us": "us",
+    "display_restore_render_peak_us": "us",
+    "display_preview_first_render_peak_us": "us",
+    "display_preview_steady_render_peak_us": "us",
 }
 
 count = 0

@@ -623,6 +623,14 @@ def test_connect_burst_metrics_are_cataloged(tmpdir: Path) -> None:
             soak_metric("drive_wifi_ap", "connect_burst_disp_render_peak_us", 47000),
             soak_metric("drive_wifi_ap", "connect_burst_display_voice_peak_us", 0),
             soak_metric("drive_wifi_ap", "connect_burst_display_gap_recover_peak_us", 0),
+            soak_metric("drive_wifi_ap", "connect_burst_display_frequency_peak_us", 14000),
+            soak_metric("drive_wifi_ap", "connect_burst_display_flush_subphase_peak_us", 21000),
+            soak_metric("drive_wifi_ap", "display_partial_flush_area_peak_px", 8192),
+            soak_metric("drive_wifi_ap", "display_flush_max_area_px", 153664),
+            soak_metric("drive_wifi_ap", "display_frequency_peak_us", 14000),
+            soak_metric("drive_wifi_ap", "display_flush_subphase_peak_us", 21000),
+            soak_metric("drive_wifi_ap", "display_preview_render_peak_us", 19000),
+            soak_metric("drive_wifi_ap", "display_restore_render_peak_us", 13000),
         ],
     )
 
@@ -648,6 +656,8 @@ def test_connect_burst_metrics_are_cataloged(tmpdir: Path) -> None:
     metrics = {item["metric"] for item in result["metrics"]}
     assert_true("connect_burst_samples_to_stable" in metrics, f"missing connect-burst metric in score output: {result}")
     assert_true("connect_burst_disp_render_peak_us" in metrics, f"missing render peak metric in score output: {result}")
+    assert_true("display_frequency_peak_us" in metrics, f"missing display frequency metric in score output: {result}")
+    assert_true("display_partial_flush_area_peak_px" in metrics, f"missing display area metric in score output: {result}")
 
 
 def test_extract_device_metrics_smoke(tmpdir: Path) -> None:

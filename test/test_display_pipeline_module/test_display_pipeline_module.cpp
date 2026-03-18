@@ -21,8 +21,12 @@ unsigned long mockMicros = 0;
 PerfCounters perfCounters;
 PerfExtendedMetrics perfExtended;
 void perfRecordDisplayRenderUs(uint32_t /*us*/) {}
+void perfRecordDisplayScenarioRenderUs(uint32_t /*us*/) {}
 void perfRecordDisplayVoiceUs(uint32_t /*us*/) {}
 void perfRecordDisplayGapRecoverUs(uint32_t /*us*/) {}
+void perfSetDisplayRenderScenario(PerfDisplayRenderScenario /*scenario*/) {}
+PerfDisplayRenderScenario perfGetDisplayRenderScenario() { return PerfDisplayRenderScenario::None; }
+void perfClearDisplayRenderScenario() {}
 
 AlertPersistenceModule::AlertPersistenceModule() = default;
 

@@ -69,6 +69,52 @@ struct PerfSdSnapshot {
     uint32_t bleProxyStartMaxUs;             // Window max proxy advertising start duration
     uint32_t displayVoiceMaxUs;              // Window max display voice branch duration
     uint32_t displayGapRecoverMaxUs;         // Window max display alert-gap recovery duration
+    uint32_t displayFullRenderCount;         // Session full live renders
+    uint32_t displayIncrementalRenderCount;  // Session incremental live renders
+    uint32_t displayCardsOnlyRenderCount;    // Session cards-only refreshes
+    uint32_t displayRestingFullRenderCount;  // Session full resting renders
+    uint32_t displayRestingIncrementalRenderCount; // Session incremental resting renders
+    uint32_t displayPersistedRenderCount;    // Session persisted renders
+    uint32_t displayPreviewRenderCount;      // Session preview renders
+    uint32_t displayRestoreRenderCount;      // Session restore renders
+    uint32_t displayLiveScenarioRenderCount;      // Session live scenario render count
+    uint32_t displayRestingScenarioRenderCount;   // Session resting scenario render count
+    uint32_t displayPersistedScenarioRenderCount; // Session persisted scenario render count
+    uint32_t displayPreviewScenarioRenderCount;   // Session preview scenario render count
+    uint32_t displayRestoreScenarioRenderCount;   // Session restore scenario render count
+    uint32_t displayRedrawReasonFirstRunCount;    // Full redraw first-run triggers
+    uint32_t displayRedrawReasonEnterLiveCount;   // Full redraw enter-live triggers
+    uint32_t displayRedrawReasonLeaveLiveCount;   // Full redraw leave-live triggers
+    uint32_t displayRedrawReasonLeavePersistedCount; // Full redraw leave-persisted triggers
+    uint32_t displayRedrawReasonForceRedrawCount; // Full redraw force-reset triggers
+    uint32_t displayRedrawReasonFrequencyChangeCount; // Full redraw frequency-change triggers
+    uint32_t displayRedrawReasonBandSetChangeCount; // Full redraw band-set-change triggers
+    uint32_t displayRedrawReasonArrowChangeCount; // Full redraw arrow-change triggers
+    uint32_t displayRedrawReasonSignalBarChangeCount; // Full redraw signal-bar-change triggers
+    uint32_t displayRedrawReasonVolumeChangeCount; // Full redraw volume-change triggers
+    uint32_t displayRedrawReasonBogeyCounterChangeCount; // Full redraw bogey-counter-change triggers
+    uint32_t displayRedrawReasonRssiRefreshCount; // Full redraw RSSI-refresh triggers
+    uint32_t displayRedrawReasonFlashTickCount;   // Full redraw flash-tick triggers
+    uint32_t displayFullFlushCount;         // Session full-screen flushes
+    uint32_t displayPartialFlushCount;      // Session region flushes
+    uint32_t displayPartialFlushAreaPeakPx; // Peak region-flush area
+    uint32_t displayPartialFlushAreaTotalPx; // Total region-flush pixels
+    uint32_t displayFlushEquivalentAreaTotalPx; // Total pixels flushed (full + partial)
+    uint32_t displayFlushMaxAreaPx;         // Area for the flushMaxUs winner
+    uint32_t displayBaseFrameMaxUs;         // Window max base-frame stage
+    uint32_t displayStatusStripMaxUs;       // Window max status-strip stage
+    uint32_t displayFrequencyMaxUs;         // Window max frequency stage
+    uint32_t displayBandsBarsMaxUs;         // Window max bands+bars stage
+    uint32_t displayArrowsIconsMaxUs;       // Window max arrows+icons stage
+    uint32_t displayCardsMaxUs;             // Window max cards stage
+    uint32_t displayFlushSubphaseMaxUs;     // Window max inner render flush stage
+    uint32_t displayLiveRenderMaxUs;        // Window max live render
+    uint32_t displayRestingRenderMaxUs;     // Window max resting render
+    uint32_t displayPersistedRenderMaxUs;   // Window max persisted render
+    uint32_t displayPreviewRenderMaxUs;     // Window max preview render
+    uint32_t displayRestoreRenderMaxUs;     // Window max restore render
+    uint32_t displayPreviewFirstRenderMaxUs; // Window max first preview render
+    uint32_t displayPreviewSteadyRenderMaxUs; // Window max later preview render
     uint32_t alertPersistStarts;  // Persisted-alert sessions started
     uint32_t alertPersistExpires; // Persisted-alert windows expired naturally
     uint32_t alertPersistClears;  // Persisted-alert state cleared explicitly

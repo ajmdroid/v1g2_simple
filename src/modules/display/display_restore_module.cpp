@@ -1,5 +1,6 @@
 #include "display_restore_module.h"
 #include "display_pipeline_module.h"
+#include "perf_metrics.h"
 
 void DisplayRestoreModule::begin(V1Display* disp,
                                  PacketParser* pktParser,
@@ -27,11 +28,15 @@ bool DisplayRestoreModule::process() {
     } else if (display && parser && bleClient) {
         // Defensive fallback for tests or partial wiring; production should use the pipeline.
         display->forceNextRedraw();
+        perfSetDisplayRenderScenario(PerfDisplayRenderScenario::Restore);
+        const unsigned long renderStartUs = micros();
         if (bleClient->isConnected()) {
             display->update(parser->getDisplayState());
         } else {
             display->showScanning();
         }
+        perfRecordDisplayScenarioRenderUs(micros() - renderStartUs);
+        perfClearDisplayRenderScenario();
     }
 
     Serial.println("[Display] Color preview ended - restored display");

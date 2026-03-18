@@ -166,6 +166,71 @@ void appendSettingsPersistenceMetrics(JsonDocument& doc, uint32_t nowMs) {
     persistenceObj["perfLoggingEnabled"] = perfSdLogger.isEnabled();
     persistenceObj["perfLoggingPath"] = perfSdLogger.csvPath();
 }
+
+void appendDisplayAttributionMetrics(JsonDocument& doc) {
+    doc["displayFullRenderCount"] = perfExtended.displayFullRenderCount;
+    doc["displayIncrementalRenderCount"] = perfExtended.displayIncrementalRenderCount;
+    doc["displayCardsOnlyRenderCount"] = perfExtended.displayCardsOnlyRenderCount;
+    doc["displayRestingFullRenderCount"] = perfExtended.displayRestingFullRenderCount;
+    doc["displayRestingIncrementalRenderCount"] =
+        perfExtended.displayRestingIncrementalRenderCount;
+    doc["displayPersistedRenderCount"] = perfExtended.displayPersistedRenderCount;
+    doc["displayPreviewRenderCount"] = perfExtended.displayPreviewRenderCount;
+    doc["displayRestoreRenderCount"] = perfExtended.displayRestoreRenderCount;
+    doc["displayLiveScenarioRenderCount"] = perfExtended.displayLiveScenarioRenderCount;
+    doc["displayRestingScenarioRenderCount"] = perfExtended.displayRestingScenarioRenderCount;
+    doc["displayPersistedScenarioRenderCount"] =
+        perfExtended.displayPersistedScenarioRenderCount;
+    doc["displayPreviewScenarioRenderCount"] = perfExtended.displayPreviewScenarioRenderCount;
+    doc["displayRestoreScenarioRenderCount"] = perfExtended.displayRestoreScenarioRenderCount;
+    doc["displayRedrawReasonFirstRunCount"] =
+        perfExtended.displayRedrawReasonFirstRunCount;
+    doc["displayRedrawReasonEnterLiveCount"] =
+        perfExtended.displayRedrawReasonEnterLiveCount;
+    doc["displayRedrawReasonLeaveLiveCount"] =
+        perfExtended.displayRedrawReasonLeaveLiveCount;
+    doc["displayRedrawReasonLeavePersistedCount"] =
+        perfExtended.displayRedrawReasonLeavePersistedCount;
+    doc["displayRedrawReasonForceRedrawCount"] =
+        perfExtended.displayRedrawReasonForceRedrawCount;
+    doc["displayRedrawReasonFrequencyChangeCount"] =
+        perfExtended.displayRedrawReasonFrequencyChangeCount;
+    doc["displayRedrawReasonBandSetChangeCount"] =
+        perfExtended.displayRedrawReasonBandSetChangeCount;
+    doc["displayRedrawReasonArrowChangeCount"] =
+        perfExtended.displayRedrawReasonArrowChangeCount;
+    doc["displayRedrawReasonSignalBarChangeCount"] =
+        perfExtended.displayRedrawReasonSignalBarChangeCount;
+    doc["displayRedrawReasonVolumeChangeCount"] =
+        perfExtended.displayRedrawReasonVolumeChangeCount;
+    doc["displayRedrawReasonBogeyCounterChangeCount"] =
+        perfExtended.displayRedrawReasonBogeyCounterChangeCount;
+    doc["displayRedrawReasonRssiRefreshCount"] =
+        perfExtended.displayRedrawReasonRssiRefreshCount;
+    doc["displayRedrawReasonFlashTickCount"] =
+        perfExtended.displayRedrawReasonFlashTickCount;
+    doc["displayFullFlushCount"] = perfExtended.displayFullFlushCount;
+    doc["displayPartialFlushCount"] = perfExtended.displayPartialFlushCount;
+    doc["displayPartialFlushAreaPeakPx"] = perfExtended.displayPartialFlushAreaPeakPx;
+    doc["displayPartialFlushAreaTotalPx"] = perfExtended.displayPartialFlushAreaTotalPx;
+    doc["displayFlushEquivalentAreaTotalPx"] =
+        perfExtended.displayFlushEquivalentAreaTotalPx;
+    doc["displayFlushMaxAreaPx"] = perfGetDisplayFlushMaxAreaPx();
+    doc["displayBaseFrameMaxUs"] = perfExtended.displayBaseFrameMaxUs;
+    doc["displayStatusStripMaxUs"] = perfExtended.displayStatusStripMaxUs;
+    doc["displayFrequencyMaxUs"] = perfExtended.displayFrequencyMaxUs;
+    doc["displayBandsBarsMaxUs"] = perfExtended.displayBandsBarsMaxUs;
+    doc["displayArrowsIconsMaxUs"] = perfExtended.displayArrowsIconsMaxUs;
+    doc["displayCardsMaxUs"] = perfExtended.displayCardsMaxUs;
+    doc["displayFlushSubphaseMaxUs"] = perfExtended.displayFlushSubphaseMaxUs;
+    doc["displayLiveRenderMaxUs"] = perfExtended.displayLiveRenderMaxUs;
+    doc["displayRestingRenderMaxUs"] = perfExtended.displayRestingRenderMaxUs;
+    doc["displayPersistedRenderMaxUs"] = perfExtended.displayPersistedRenderMaxUs;
+    doc["displayPreviewRenderMaxUs"] = perfExtended.displayPreviewRenderMaxUs;
+    doc["displayRestoreRenderMaxUs"] = perfExtended.displayRestoreRenderMaxUs;
+    doc["displayPreviewFirstRenderMaxUs"] = perfExtended.displayPreviewFirstRenderMaxUs;
+    doc["displayPreviewSteadyRenderMaxUs"] = perfExtended.displayPreviewSteadyRenderMaxUs;
+}
 }  // anonymous namespace
 namespace DebugApiService {
 static void sendMetrics(WebServer& server) {
@@ -287,6 +352,7 @@ static void sendMetrics(WebServer& server) {
     doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
     doc["displayVoiceMaxUs"] = perfGetDisplayVoiceMaxUs();
     doc["displayGapRecoverMaxUs"] = perfGetDisplayGapRecoverMaxUs();
+    appendDisplayAttributionMetrics(doc);
     doc["obdConnectCallMaxUs"] = perfGetObdConnectCallMaxUs();
     doc["obdSecurityStartCallMaxUs"] = perfGetObdSecurityStartCallMaxUs();
     doc["obdDiscoveryCallMaxUs"] = perfGetObdDiscoveryCallMaxUs();
@@ -559,6 +625,7 @@ static void buildMetricsSoakDoc(JsonDocument& doc) {
     doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
     doc["displayVoiceMaxUs"] = perfGetDisplayVoiceMaxUs();
     doc["displayGapRecoverMaxUs"] = perfGetDisplayGapRecoverMaxUs();
+    appendDisplayAttributionMetrics(doc);
     doc["obdConnectCallMaxUs"] = perfGetObdConnectCallMaxUs();
     doc["obdSecurityStartCallMaxUs"] = perfGetObdSecurityStartCallMaxUs();
     doc["obdDiscoveryCallMaxUs"] = perfGetObdDiscoveryCallMaxUs();

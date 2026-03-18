@@ -110,6 +110,69 @@ def compute_window_peak(records, start_idx, end_idx, key):
     return max(values) if values else None
 
 
+DISPLAY_DELTA_METRICS = (
+    ("displayFullRenderCount", "display_full_render_count_delta"),
+    ("displayIncrementalRenderCount", "display_incremental_render_count_delta"),
+    ("displayCardsOnlyRenderCount", "display_cards_only_render_count_delta"),
+    ("displayRestingFullRenderCount", "display_resting_full_render_count_delta"),
+    ("displayRestingIncrementalRenderCount", "display_resting_incremental_render_count_delta"),
+    ("displayPersistedRenderCount", "display_persisted_render_count_delta"),
+    ("displayPreviewRenderCount", "display_preview_render_count_delta"),
+    ("displayRestoreRenderCount", "display_restore_render_count_delta"),
+    ("displayLiveScenarioRenderCount", "display_live_scenario_render_count_delta"),
+    ("displayRestingScenarioRenderCount", "display_resting_scenario_render_count_delta"),
+    ("displayPersistedScenarioRenderCount", "display_persisted_scenario_render_count_delta"),
+    ("displayPreviewScenarioRenderCount", "display_preview_scenario_render_count_delta"),
+    ("displayRestoreScenarioRenderCount", "display_restore_scenario_render_count_delta"),
+    ("displayRedrawReasonFirstRunCount", "display_redraw_reason_first_run_count_delta"),
+    ("displayRedrawReasonEnterLiveCount", "display_redraw_reason_enter_live_count_delta"),
+    ("displayRedrawReasonLeaveLiveCount", "display_redraw_reason_leave_live_count_delta"),
+    ("displayRedrawReasonLeavePersistedCount", "display_redraw_reason_leave_persisted_count_delta"),
+    ("displayRedrawReasonForceRedrawCount", "display_redraw_reason_force_redraw_count_delta"),
+    ("displayRedrawReasonFrequencyChangeCount", "display_redraw_reason_frequency_change_count_delta"),
+    ("displayRedrawReasonBandSetChangeCount", "display_redraw_reason_band_set_change_count_delta"),
+    ("displayRedrawReasonArrowChangeCount", "display_redraw_reason_arrow_change_count_delta"),
+    ("displayRedrawReasonSignalBarChangeCount", "display_redraw_reason_signal_bar_change_count_delta"),
+    ("displayRedrawReasonVolumeChangeCount", "display_redraw_reason_volume_change_count_delta"),
+    ("displayRedrawReasonBogeyCounterChangeCount", "display_redraw_reason_bogey_counter_change_count_delta"),
+    ("displayRedrawReasonRssiRefreshCount", "display_redraw_reason_rssi_refresh_count_delta"),
+    ("displayRedrawReasonFlashTickCount", "display_redraw_reason_flash_tick_count_delta"),
+    ("displayFullFlushCount", "display_full_flush_count_delta"),
+    ("displayPartialFlushCount", "display_partial_flush_count_delta"),
+    ("displayPartialFlushAreaTotalPx", "display_partial_flush_area_total_px_delta"),
+    ("displayFlushEquivalentAreaTotalPx", "display_flush_equivalent_area_total_px_delta"),
+)
+
+DISPLAY_SAMPLE_FIELDS = (
+    ("display_partial_flush_area_peak_px", "displayPartialFlushAreaPeakPx"),
+    ("display_flush_max_area_px", "displayFlushMaxAreaPx"),
+    ("display_base_frame", "displayBaseFrameMaxUs"),
+    ("display_status_strip", "displayStatusStripMaxUs"),
+    ("display_frequency", "displayFrequencyMaxUs"),
+    ("display_bands_bars", "displayBandsBarsMaxUs"),
+    ("display_arrows_icons", "displayArrowsIconsMaxUs"),
+    ("display_cards", "displayCardsMaxUs"),
+    ("display_flush_subphase", "displayFlushSubphaseMaxUs"),
+    ("display_live_render", "displayLiveRenderMaxUs"),
+    ("display_resting_render", "displayRestingRenderMaxUs"),
+    ("display_persisted_render", "displayPersistedRenderMaxUs"),
+    ("display_preview_render", "displayPreviewRenderMaxUs"),
+    ("display_restore_render", "displayRestoreRenderMaxUs"),
+    ("display_preview_first_render", "displayPreviewFirstRenderMaxUs"),
+    ("display_preview_steady_render", "displayPreviewSteadyRenderMaxUs"),
+)
+
+
+def update_counter_windows(data, first_map, last_map, mappings):
+    for data_key, _output_key in mappings:
+        val = num(data.get(data_key))
+        if val is None:
+            continue
+        if first_map.get(data_key) is None:
+            first_map[data_key] = val
+        last_map[data_key] = val
+
+
 def parse_args(argv):
     parser = argparse.ArgumentParser(description="Parse soak metrics JSONL into key=value fields")
     parser.add_argument("metrics_jsonl", help="Path to metrics.jsonl")
@@ -276,6 +339,8 @@ def main() -> int:
     proxy_adv_last_reason_code = None
     proxy_adv_last_reason = ""
     sample_records = []
+    display_counter_first = {}
+    display_counter_last = {}
     wifi_ap_down_event_indices = []
     proxy_adv_off_event_indices = []
     prev_wifi_ap_down = None
@@ -559,27 +624,35 @@ def main() -> int:
                 if gps_obs_drops is not None:
                     gps_obs_drops_last = gps_obs_drops
 
-                sample_records.append(
-                    {
-                        "epoch": sample_epoch,
-                        "wifi": wifi_val,
-                        "loop": loop_val,
-                        "ble": ble_process_val,
-                        "disp": disp_pipe_val,
-                        "disp_render": num(data.get("dispMaxUs")),
-                        "display_voice": num(data.get("displayVoiceMaxUs")),
-                        "display_gap_recover": num(data.get("displayGapRecoverMaxUs")),
-                        "ble_followup_request_alert": num(data.get("bleFollowupRequestAlertMaxUs")),
-                        "ble_followup_request_version": num(data.get("bleFollowupRequestVersionMaxUs")),
-                        "ble_connect_stable_callback": num(data.get("bleConnectStableCallbackMaxUs")),
-                        "ble_proxy_start": num(data.get("bleProxyStartMaxUs")),
-                        "ble_state": data.get("bleState") if isinstance(data.get("bleState"), str) else None,
-                        "ble_state_code": num(data.get("bleStateCode")),
-                        "subscribe_step": data.get("subscribeStep") if isinstance(data.get("subscribeStep"), str) else None,
-                        "subscribe_step_code": num(data.get("subscribeStepCode")),
-                        "proxy_advertising": proxy_adv_state,
-                    }
+                update_counter_windows(
+                    data,
+                    display_counter_first,
+                    display_counter_last,
+                    DISPLAY_DELTA_METRICS,
                 )
+
+                record = {
+                    "epoch": sample_epoch,
+                    "wifi": wifi_val,
+                    "loop": loop_val,
+                    "ble": ble_process_val,
+                    "disp": disp_pipe_val,
+                    "disp_render": num(data.get("dispMaxUs")),
+                    "display_voice": num(data.get("displayVoiceMaxUs")),
+                    "display_gap_recover": num(data.get("displayGapRecoverMaxUs")),
+                    "ble_followup_request_alert": num(data.get("bleFollowupRequestAlertMaxUs")),
+                    "ble_followup_request_version": num(data.get("bleFollowupRequestVersionMaxUs")),
+                    "ble_connect_stable_callback": num(data.get("bleConnectStableCallbackMaxUs")),
+                    "ble_proxy_start": num(data.get("bleProxyStartMaxUs")),
+                    "ble_state": data.get("bleState") if isinstance(data.get("bleState"), str) else None,
+                    "ble_state_code": num(data.get("bleStateCode")),
+                    "subscribe_step": data.get("subscribeStep") if isinstance(data.get("subscribeStep"), str) else None,
+                    "subscribe_step_code": num(data.get("subscribeStepCode")),
+                    "proxy_advertising": proxy_adv_state,
+                }
+                for record_key, data_key in DISPLAY_SAMPLE_FIELDS:
+                    record[record_key] = num(data.get(data_key))
+                sample_records.append(record)
     except FileNotFoundError:
         pass
 
@@ -837,6 +910,61 @@ def main() -> int:
     connect_burst_display_gap_recover_peak = compute_window_peak(
         sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "display_gap_recover"
     )
+    connect_burst_display_base_frame_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "display_base_frame"
+    )
+    connect_burst_display_status_strip_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "display_status_strip"
+    )
+    connect_burst_display_frequency_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "display_frequency"
+    )
+    connect_burst_display_bands_bars_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "display_bands_bars"
+    )
+    connect_burst_display_arrows_icons_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "display_arrows_icons"
+    )
+    connect_burst_display_cards_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "display_cards"
+    )
+    connect_burst_display_flush_subphase_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "display_flush_subphase"
+    )
+    display_partial_flush_area_peak = compute_window_peak(
+        sample_records, 0, len(sample_records), "display_partial_flush_area_peak_px"
+    )
+    display_flush_max_area_peak = compute_window_peak(
+        sample_records, 0, len(sample_records), "display_flush_max_area_px"
+    )
+    display_base_frame_peak = compute_window_peak(sample_records, 0, len(sample_records), "display_base_frame")
+    display_status_strip_peak = compute_window_peak(sample_records, 0, len(sample_records), "display_status_strip")
+    display_frequency_peak = compute_window_peak(sample_records, 0, len(sample_records), "display_frequency")
+    display_bands_bars_peak = compute_window_peak(sample_records, 0, len(sample_records), "display_bands_bars")
+    display_arrows_icons_peak = compute_window_peak(sample_records, 0, len(sample_records), "display_arrows_icons")
+    display_cards_peak = compute_window_peak(sample_records, 0, len(sample_records), "display_cards")
+    display_flush_subphase_peak = compute_window_peak(
+        sample_records, 0, len(sample_records), "display_flush_subphase"
+    )
+    display_live_render_peak = compute_window_peak(sample_records, 0, len(sample_records), "display_live_render")
+    display_resting_render_peak = compute_window_peak(
+        sample_records, 0, len(sample_records), "display_resting_render"
+    )
+    display_persisted_render_peak = compute_window_peak(
+        sample_records, 0, len(sample_records), "display_persisted_render"
+    )
+    display_preview_render_peak = compute_window_peak(
+        sample_records, 0, len(sample_records), "display_preview_render"
+    )
+    display_restore_render_peak = compute_window_peak(
+        sample_records, 0, len(sample_records), "display_restore_render"
+    )
+    display_preview_first_render_peak = compute_window_peak(
+        sample_records, 0, len(sample_records), "display_preview_first_render"
+    )
+    display_preview_steady_render_peak = compute_window_peak(
+        sample_records, 0, len(sample_records), "display_preview_steady_render"
+    )
 
     emit("samples", samples)
     emit("ok_samples", ok_samples)
@@ -1053,6 +1181,33 @@ def main() -> int:
     emit("connect_burst_disp_render_peak", connect_burst_disp_render_peak)
     emit("connect_burst_display_voice_peak", connect_burst_display_voice_peak)
     emit("connect_burst_display_gap_recover_peak", connect_burst_display_gap_recover_peak)
+    emit("connect_burst_display_base_frame_peak", connect_burst_display_base_frame_peak)
+    emit("connect_burst_display_status_strip_peak", connect_burst_display_status_strip_peak)
+    emit("connect_burst_display_frequency_peak", connect_burst_display_frequency_peak)
+    emit("connect_burst_display_bands_bars_peak", connect_burst_display_bands_bars_peak)
+    emit("connect_burst_display_arrows_icons_peak", connect_burst_display_arrows_icons_peak)
+    emit("connect_burst_display_cards_peak", connect_burst_display_cards_peak)
+    emit("connect_burst_display_flush_subphase_peak", connect_burst_display_flush_subphase_peak)
+    for data_key, output_key in DISPLAY_DELTA_METRICS:
+        first_val = display_counter_first.get(data_key)
+        last_val = display_counter_last.get(data_key)
+        emit(output_key, None if first_val is None or last_val is None else last_val - first_val)
+    emit("display_partial_flush_area_peak_px", display_partial_flush_area_peak)
+    emit("display_flush_max_area_px", display_flush_max_area_peak)
+    emit("display_base_frame_peak", display_base_frame_peak)
+    emit("display_status_strip_peak", display_status_strip_peak)
+    emit("display_frequency_peak", display_frequency_peak)
+    emit("display_bands_bars_peak", display_bands_bars_peak)
+    emit("display_arrows_icons_peak", display_arrows_icons_peak)
+    emit("display_cards_peak", display_cards_peak)
+    emit("display_flush_subphase_peak", display_flush_subphase_peak)
+    emit("display_live_render_peak", display_live_render_peak)
+    emit("display_resting_render_peak", display_resting_render_peak)
+    emit("display_persisted_render_peak", display_persisted_render_peak)
+    emit("display_preview_render_peak", display_preview_render_peak)
+    emit("display_restore_render_peak", display_restore_render_peak)
+    emit("display_preview_first_render_peak", display_preview_first_render_peak)
+    emit("display_preview_steady_render_peak", display_preview_steady_render_peak)
 
     inherited_counter_suspect = 0
     for first_val in (queue_drops_first, perf_drop_first, event_drop_first):

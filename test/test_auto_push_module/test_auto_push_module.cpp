@@ -17,6 +17,7 @@ unsigned long mockMicros = 0;
 PerfCounters perfCounters;
 PerfExtendedMetrics perfExtended;
 void perfRecordDisplayRenderUs(uint32_t /*us*/) {}
+void perfRecordDisplayScenarioRenderUs(uint32_t /*us*/) {}
 
 #include "../../src/modules/auto_push/auto_push_module.cpp"
 

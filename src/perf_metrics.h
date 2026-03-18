@@ -403,6 +403,53 @@ enum class PerfObdSyncCall : uint8_t {
     RssiRead = 6,
 };
 
+enum class PerfDisplayRenderPath : uint8_t {
+    Full = 0,
+    Incremental = 1,
+    CardsOnly = 2,
+    RestingFull = 3,
+    RestingIncremental = 4,
+    Persisted = 5,
+    Preview = 6,
+    Restore = 7,
+};
+
+enum class PerfDisplayRedrawReason : uint8_t {
+    FirstRun = 0,
+    EnterLive = 1,
+    LeaveLive = 2,
+    LeavePersisted = 3,
+    ForceRedraw = 4,
+    FrequencyChange = 5,
+    BandSetChange = 6,
+    ArrowChange = 7,
+    SignalBarChange = 8,
+    VolumeChange = 9,
+    BogeyCounterChange = 10,
+    RssiRefresh = 11,
+    FlashTick = 12,
+};
+
+enum class PerfDisplayRenderScenario : uint8_t {
+    None = 0,
+    Live = 1,
+    Resting = 2,
+    Persisted = 3,
+    PreviewFirstFrame = 4,
+    PreviewSteadyFrame = 5,
+    Restore = 6,
+};
+
+enum class PerfDisplayRenderSubphase : uint8_t {
+    BaseFrame = 0,
+    StatusStrip = 1,
+    Frequency = 2,
+    BandsBars = 3,
+    ArrowsIcons = 4,
+    Cards = 5,
+    Flush = 6,
+};
+
 struct PerfExtendedMetrics {
     PerfHistogramMs notifyToDisplayMs;
     PerfHistogramMs notifyToProxyMs;
@@ -470,6 +517,52 @@ struct PerfExtendedMetrics {
     uint32_t bleProxyStartMaxUs = 0;             // Max proxy advertising start duration
     uint32_t displayVoiceMaxUs = 0;              // Max voice-processing branch duration
     uint32_t displayGapRecoverMaxUs = 0;         // Max alert-gap recovery request duration
+    uint32_t displayFullRenderCount = 0;         // Full live render count
+    uint32_t displayIncrementalRenderCount = 0;  // Incremental live render count
+    uint32_t displayCardsOnlyRenderCount = 0;    // Cards-only refresh count
+    uint32_t displayRestingFullRenderCount = 0;  // Full resting render count
+    uint32_t displayRestingIncrementalRenderCount = 0; // Incremental resting render count
+    uint32_t displayPersistedRenderCount = 0;    // Persisted render count
+    uint32_t displayPreviewRenderCount = 0;      // Preview render count
+    uint32_t displayRestoreRenderCount = 0;      // Restore render count
+    uint32_t displayLiveScenarioRenderCount = 0;      // Scenario-tagged live render count
+    uint32_t displayRestingScenarioRenderCount = 0;   // Scenario-tagged resting render count
+    uint32_t displayPersistedScenarioRenderCount = 0; // Scenario-tagged persisted render count
+    uint32_t displayPreviewScenarioRenderCount = 0;   // Scenario-tagged preview render count
+    uint32_t displayRestoreScenarioRenderCount = 0;   // Scenario-tagged restore render count
+    uint32_t displayRedrawReasonFirstRunCount = 0;
+    uint32_t displayRedrawReasonEnterLiveCount = 0;
+    uint32_t displayRedrawReasonLeaveLiveCount = 0;
+    uint32_t displayRedrawReasonLeavePersistedCount = 0;
+    uint32_t displayRedrawReasonForceRedrawCount = 0;
+    uint32_t displayRedrawReasonFrequencyChangeCount = 0;
+    uint32_t displayRedrawReasonBandSetChangeCount = 0;
+    uint32_t displayRedrawReasonArrowChangeCount = 0;
+    uint32_t displayRedrawReasonSignalBarChangeCount = 0;
+    uint32_t displayRedrawReasonVolumeChangeCount = 0;
+    uint32_t displayRedrawReasonBogeyCounterChangeCount = 0;
+    uint32_t displayRedrawReasonRssiRefreshCount = 0;
+    uint32_t displayRedrawReasonFlashTickCount = 0;
+    uint32_t displayFullFlushCount = 0;          // Full-screen flush count
+    uint32_t displayPartialFlushCount = 0;       // Region flush count
+    uint32_t displayPartialFlushAreaPeakPx = 0;  // Peak partial flush area
+    uint32_t displayPartialFlushAreaTotalPx = 0; // Session total partial-flush pixels
+    uint32_t displayFlushEquivalentAreaTotalPx = 0; // Full + partial flush pixels
+    uint32_t displayFlushMaxAreaPx = 0;          // Area of the flush that set flushMaxUs
+    uint32_t displayBaseFrameMaxUs = 0;          // drawBaseFrame() stage max
+    uint32_t displayStatusStripMaxUs = 0;        // Status strip stage max
+    uint32_t displayFrequencyMaxUs = 0;          // Frequency stage max
+    uint32_t displayBandsBarsMaxUs = 0;          // Bands + bars stage max
+    uint32_t displayArrowsIconsMaxUs = 0;        // Arrows + icons stage max
+    uint32_t displayCardsMaxUs = 0;              // Card-row stage max
+    uint32_t displayFlushSubphaseMaxUs = 0;      // Inner render flush stage max
+    uint32_t displayLiveRenderMaxUs = 0;         // Scenario-tagged live render max
+    uint32_t displayRestingRenderMaxUs = 0;      // Scenario-tagged resting render max
+    uint32_t displayPersistedRenderMaxUs = 0;    // Scenario-tagged persisted render max
+    uint32_t displayPreviewRenderMaxUs = 0;      // Scenario-tagged preview render max
+    uint32_t displayRestoreRenderMaxUs = 0;      // Scenario-tagged restore render max
+    uint32_t displayPreviewFirstRenderMaxUs = 0; // First preview-frame render max
+    uint32_t displayPreviewSteadyRenderMaxUs = 0; // Later preview-frame render max
 
     void reset() {
         notifyToDisplayMs.reset();
@@ -537,6 +630,52 @@ struct PerfExtendedMetrics {
         bleProxyStartMaxUs = 0;
         displayVoiceMaxUs = 0;
         displayGapRecoverMaxUs = 0;
+        displayFullRenderCount = 0;
+        displayIncrementalRenderCount = 0;
+        displayCardsOnlyRenderCount = 0;
+        displayRestingFullRenderCount = 0;
+        displayRestingIncrementalRenderCount = 0;
+        displayPersistedRenderCount = 0;
+        displayPreviewRenderCount = 0;
+        displayRestoreRenderCount = 0;
+        displayLiveScenarioRenderCount = 0;
+        displayRestingScenarioRenderCount = 0;
+        displayPersistedScenarioRenderCount = 0;
+        displayPreviewScenarioRenderCount = 0;
+        displayRestoreScenarioRenderCount = 0;
+        displayRedrawReasonFirstRunCount = 0;
+        displayRedrawReasonEnterLiveCount = 0;
+        displayRedrawReasonLeaveLiveCount = 0;
+        displayRedrawReasonLeavePersistedCount = 0;
+        displayRedrawReasonForceRedrawCount = 0;
+        displayRedrawReasonFrequencyChangeCount = 0;
+        displayRedrawReasonBandSetChangeCount = 0;
+        displayRedrawReasonArrowChangeCount = 0;
+        displayRedrawReasonSignalBarChangeCount = 0;
+        displayRedrawReasonVolumeChangeCount = 0;
+        displayRedrawReasonBogeyCounterChangeCount = 0;
+        displayRedrawReasonRssiRefreshCount = 0;
+        displayRedrawReasonFlashTickCount = 0;
+        displayFullFlushCount = 0;
+        displayPartialFlushCount = 0;
+        displayPartialFlushAreaPeakPx = 0;
+        displayPartialFlushAreaTotalPx = 0;
+        displayFlushEquivalentAreaTotalPx = 0;
+        displayFlushMaxAreaPx = 0;
+        displayBaseFrameMaxUs = 0;
+        displayStatusStripMaxUs = 0;
+        displayFrequencyMaxUs = 0;
+        displayBandsBarsMaxUs = 0;
+        displayArrowsIconsMaxUs = 0;
+        displayCardsMaxUs = 0;
+        displayFlushSubphaseMaxUs = 0;
+        displayLiveRenderMaxUs = 0;
+        displayRestingRenderMaxUs = 0;
+        displayPersistedRenderMaxUs = 0;
+        displayPreviewRenderMaxUs = 0;
+        displayRestoreRenderMaxUs = 0;
+        displayPreviewFirstRenderMaxUs = 0;
+        displayPreviewSteadyRenderMaxUs = 0;
     }
 };
 
@@ -555,8 +694,15 @@ void perfRecordWifiHeapGuardUs(uint32_t us);
 void perfRecordWifiApStaPollUs(uint32_t us);
 void perfRecordFsServeUs(uint32_t us);
 void perfRecordSdFlushUs(uint32_t us);
-void perfRecordFlushUs(uint32_t us);
+void perfRecordFlushUs(uint32_t us, uint32_t areaPx, bool fullFlush);
 void perfRecordDisplayRenderUs(uint32_t us);
+void perfRecordDisplayScenarioRenderUs(uint32_t us);
+void perfRecordDisplayRenderPath(PerfDisplayRenderPath path);
+void perfRecordDisplayRedrawReason(PerfDisplayRedrawReason reason);
+void perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase subphase, uint32_t us);
+void perfSetDisplayRenderScenario(PerfDisplayRenderScenario scenario);
+PerfDisplayRenderScenario perfGetDisplayRenderScenario();
+void perfClearDisplayRenderScenario();
 void perfRecordBleDrainUs(uint32_t us);
 void perfRecordBleConnectUs(uint32_t us);
 void perfRecordBleDiscoveryUs(uint32_t us);
@@ -612,6 +758,7 @@ uint32_t perfGetBleProcessMaxUs();
 uint32_t perfGetDispPipeMaxUs();
 uint32_t perfGetDisplayVoiceMaxUs();
 uint32_t perfGetDisplayGapRecoverMaxUs();
+uint32_t perfGetDisplayFlushMaxAreaPx();
 void perfRecordObdUs(uint32_t us);
 uint32_t perfGetPrevWindowLoopMaxUs();
 uint32_t perfGetPrevWindowWifiMaxUs();

@@ -1,4 +1,5 @@
 #include "display_preview_module.h"
+#include "perf_metrics.h"
 
 DisplayPreviewModule::DisplayPreviewModule() {
     // display set in begin()
@@ -85,7 +86,14 @@ void DisplayPreviewModule::update() {
                 alertCount++;
             }
 
+            perfSetDisplayRenderScenario(
+                (previewStep == 0)
+                    ? PerfDisplayRenderScenario::PreviewFirstFrame
+                    : PerfDisplayRenderScenario::PreviewSteadyFrame);
+            const unsigned long renderStartUs = micros();
             display->update(previewAlert, allAlerts, alertCount, previewState);
+            perfRecordDisplayScenarioRenderUs(micros() - renderStartUs);
+            perfClearDisplayRenderScenario();
             previewStep++;
         }
     }

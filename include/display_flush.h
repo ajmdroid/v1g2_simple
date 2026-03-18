@@ -8,8 +8,9 @@
 #define DISPLAY_FLUSH() do { \
     if (tft) { \
         uint32_t _start = PERF_TIMESTAMP_US(); \
+        uint32_t _areaPx = static_cast<uint32_t>(tft->width()) * static_cast<uint32_t>(tft->height()); \
         tft->flush(); \
-        perfRecordFlushUs(PERF_TIMESTAMP_US() - _start); \
+        perfRecordFlushUs(PERF_TIMESTAMP_US() - _start, _areaPx, true); \
     } \
 } while(0)
 

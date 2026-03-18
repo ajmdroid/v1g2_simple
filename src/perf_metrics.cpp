@@ -38,6 +38,8 @@ static std::atomic<uint32_t> sPrevWindowLoopMaxUs{0};
 static std::atomic<uint32_t> sPrevWindowWifiMaxUs{0};
 static std::atomic<uint32_t> sPrevWindowBleProcessMaxUs{0};
 static std::atomic<uint32_t> sPrevWindowDispPipeMaxUs{0};
+static std::atomic<uint8_t> sDisplayRenderScenario{
+    static_cast<uint8_t>(PerfDisplayRenderScenario::None)};
 
 void perfMetricsInit() {
     perfCounters.reset();
@@ -48,6 +50,8 @@ void perfMetricsInit() {
     sPrevWindowWifiMaxUs.store(0, std::memory_order_relaxed);
     sPrevWindowBleProcessMaxUs.store(0, std::memory_order_relaxed);
     sPrevWindowDispPipeMaxUs.store(0, std::memory_order_relaxed);
+    sDisplayRenderScenario.store(
+        static_cast<uint8_t>(PerfDisplayRenderScenario::None), std::memory_order_relaxed);
 #if PERF_METRICS
     perfLatency.reset();
 #if PERF_MONITORING
@@ -66,6 +70,8 @@ void perfMetricsReset() {
     sPrevWindowWifiMaxUs.store(0, std::memory_order_relaxed);
     sPrevWindowBleProcessMaxUs.store(0, std::memory_order_relaxed);
     sPrevWindowDispPipeMaxUs.store(0, std::memory_order_relaxed);
+    sDisplayRenderScenario.store(
+        static_cast<uint8_t>(PerfDisplayRenderScenario::None), std::memory_order_relaxed);
 #if PERF_METRICS
     perfLatency.reset();
 #endif
@@ -78,6 +84,79 @@ static constexpr uint32_t kLatencyBucketsMs[PerfHistogramMs::kBucketCount] = {
 // Keep aligned with UI scan dwell target so "fast exit" remains actionable.
 static constexpr uint32_t kFastScanExitThresholdMs = 400;
 static portMUX_TYPE sPerfSnapshotMux = portMUX_INITIALIZER_UNLOCKED;
+
+static PerfDisplayRenderScenario currentDisplayRenderScenario() {
+    return static_cast<PerfDisplayRenderScenario>(
+        sDisplayRenderScenario.load(std::memory_order_relaxed));
+}
+
+static void recordDisplayScenarioRenderCount(PerfDisplayRenderScenario scenario) {
+    switch (scenario) {
+        case PerfDisplayRenderScenario::Live:
+            perfExtended.displayLiveScenarioRenderCount++;
+            break;
+        case PerfDisplayRenderScenario::Resting:
+            perfExtended.displayRestingScenarioRenderCount++;
+            break;
+        case PerfDisplayRenderScenario::Persisted:
+            perfExtended.displayPersistedScenarioRenderCount++;
+            break;
+        case PerfDisplayRenderScenario::PreviewFirstFrame:
+        case PerfDisplayRenderScenario::PreviewSteadyFrame:
+            perfExtended.displayPreviewScenarioRenderCount++;
+            break;
+        case PerfDisplayRenderScenario::Restore:
+            perfExtended.displayRestoreScenarioRenderCount++;
+            break;
+        case PerfDisplayRenderScenario::None:
+        default:
+            break;
+    }
+}
+
+static void recordDisplayScenarioRenderMax(PerfDisplayRenderScenario scenario, uint32_t us) {
+    switch (scenario) {
+        case PerfDisplayRenderScenario::Live:
+            if (us > perfExtended.displayLiveRenderMaxUs) {
+                perfExtended.displayLiveRenderMaxUs = us;
+            }
+            break;
+        case PerfDisplayRenderScenario::Resting:
+            if (us > perfExtended.displayRestingRenderMaxUs) {
+                perfExtended.displayRestingRenderMaxUs = us;
+            }
+            break;
+        case PerfDisplayRenderScenario::Persisted:
+            if (us > perfExtended.displayPersistedRenderMaxUs) {
+                perfExtended.displayPersistedRenderMaxUs = us;
+            }
+            break;
+        case PerfDisplayRenderScenario::PreviewFirstFrame:
+            if (us > perfExtended.displayPreviewRenderMaxUs) {
+                perfExtended.displayPreviewRenderMaxUs = us;
+            }
+            if (us > perfExtended.displayPreviewFirstRenderMaxUs) {
+                perfExtended.displayPreviewFirstRenderMaxUs = us;
+            }
+            break;
+        case PerfDisplayRenderScenario::PreviewSteadyFrame:
+            if (us > perfExtended.displayPreviewRenderMaxUs) {
+                perfExtended.displayPreviewRenderMaxUs = us;
+            }
+            if (us > perfExtended.displayPreviewSteadyRenderMaxUs) {
+                perfExtended.displayPreviewSteadyRenderMaxUs = us;
+            }
+            break;
+        case PerfDisplayRenderScenario::Restore:
+            if (us > perfExtended.displayRestoreRenderMaxUs) {
+                perfExtended.displayRestoreRenderMaxUs = us;
+            }
+            break;
+        case PerfDisplayRenderScenario::None:
+        default:
+            break;
+    }
+}
 
 static void addLatencySample(PerfHistogramMs& hist, uint32_t ms) {
     if (ms > hist.maxMs) {
@@ -377,6 +456,66 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.bleProxyStartMaxUs = perfExtended.bleProxyStartMaxUs;
     snapshot.displayVoiceMaxUs = perfExtended.displayVoiceMaxUs;
     snapshot.displayGapRecoverMaxUs = perfExtended.displayGapRecoverMaxUs;
+    snapshot.displayFullRenderCount = perfExtended.displayFullRenderCount;
+    snapshot.displayIncrementalRenderCount = perfExtended.displayIncrementalRenderCount;
+    snapshot.displayCardsOnlyRenderCount = perfExtended.displayCardsOnlyRenderCount;
+    snapshot.displayRestingFullRenderCount = perfExtended.displayRestingFullRenderCount;
+    snapshot.displayRestingIncrementalRenderCount =
+        perfExtended.displayRestingIncrementalRenderCount;
+    snapshot.displayPersistedRenderCount = perfExtended.displayPersistedRenderCount;
+    snapshot.displayPreviewRenderCount = perfExtended.displayPreviewRenderCount;
+    snapshot.displayRestoreRenderCount = perfExtended.displayRestoreRenderCount;
+    snapshot.displayLiveScenarioRenderCount = perfExtended.displayLiveScenarioRenderCount;
+    snapshot.displayRestingScenarioRenderCount = perfExtended.displayRestingScenarioRenderCount;
+    snapshot.displayPersistedScenarioRenderCount =
+        perfExtended.displayPersistedScenarioRenderCount;
+    snapshot.displayPreviewScenarioRenderCount = perfExtended.displayPreviewScenarioRenderCount;
+    snapshot.displayRestoreScenarioRenderCount = perfExtended.displayRestoreScenarioRenderCount;
+    snapshot.displayRedrawReasonFirstRunCount = perfExtended.displayRedrawReasonFirstRunCount;
+    snapshot.displayRedrawReasonEnterLiveCount = perfExtended.displayRedrawReasonEnterLiveCount;
+    snapshot.displayRedrawReasonLeaveLiveCount = perfExtended.displayRedrawReasonLeaveLiveCount;
+    snapshot.displayRedrawReasonLeavePersistedCount =
+        perfExtended.displayRedrawReasonLeavePersistedCount;
+    snapshot.displayRedrawReasonForceRedrawCount =
+        perfExtended.displayRedrawReasonForceRedrawCount;
+    snapshot.displayRedrawReasonFrequencyChangeCount =
+        perfExtended.displayRedrawReasonFrequencyChangeCount;
+    snapshot.displayRedrawReasonBandSetChangeCount =
+        perfExtended.displayRedrawReasonBandSetChangeCount;
+    snapshot.displayRedrawReasonArrowChangeCount =
+        perfExtended.displayRedrawReasonArrowChangeCount;
+    snapshot.displayRedrawReasonSignalBarChangeCount =
+        perfExtended.displayRedrawReasonSignalBarChangeCount;
+    snapshot.displayRedrawReasonVolumeChangeCount =
+        perfExtended.displayRedrawReasonVolumeChangeCount;
+    snapshot.displayRedrawReasonBogeyCounterChangeCount =
+        perfExtended.displayRedrawReasonBogeyCounterChangeCount;
+    snapshot.displayRedrawReasonRssiRefreshCount =
+        perfExtended.displayRedrawReasonRssiRefreshCount;
+    snapshot.displayRedrawReasonFlashTickCount =
+        perfExtended.displayRedrawReasonFlashTickCount;
+    snapshot.displayFullFlushCount = perfExtended.displayFullFlushCount;
+    snapshot.displayPartialFlushCount = perfExtended.displayPartialFlushCount;
+    snapshot.displayPartialFlushAreaPeakPx = perfExtended.displayPartialFlushAreaPeakPx;
+    snapshot.displayPartialFlushAreaTotalPx = perfExtended.displayPartialFlushAreaTotalPx;
+    snapshot.displayFlushEquivalentAreaTotalPx =
+        perfExtended.displayFlushEquivalentAreaTotalPx;
+    snapshot.displayFlushMaxAreaPx = perfExtended.displayFlushMaxAreaPx;
+    snapshot.displayBaseFrameMaxUs = perfExtended.displayBaseFrameMaxUs;
+    snapshot.displayStatusStripMaxUs = perfExtended.displayStatusStripMaxUs;
+    snapshot.displayFrequencyMaxUs = perfExtended.displayFrequencyMaxUs;
+    snapshot.displayBandsBarsMaxUs = perfExtended.displayBandsBarsMaxUs;
+    snapshot.displayArrowsIconsMaxUs = perfExtended.displayArrowsIconsMaxUs;
+    snapshot.displayCardsMaxUs = perfExtended.displayCardsMaxUs;
+    snapshot.displayFlushSubphaseMaxUs = perfExtended.displayFlushSubphaseMaxUs;
+    snapshot.displayLiveRenderMaxUs = perfExtended.displayLiveRenderMaxUs;
+    snapshot.displayRestingRenderMaxUs = perfExtended.displayRestingRenderMaxUs;
+    snapshot.displayPersistedRenderMaxUs = perfExtended.displayPersistedRenderMaxUs;
+    snapshot.displayPreviewRenderMaxUs = perfExtended.displayPreviewRenderMaxUs;
+    snapshot.displayRestoreRenderMaxUs = perfExtended.displayRestoreRenderMaxUs;
+    snapshot.displayPreviewFirstRenderMaxUs = perfExtended.displayPreviewFirstRenderMaxUs;
+    snapshot.displayPreviewSteadyRenderMaxUs =
+        perfExtended.displayPreviewSteadyRenderMaxUs;
 
     // Keep previous window maxima available to low-cost API samples. This helps
     // explain transient strict peaks even when current-window values look calm.
@@ -397,6 +536,22 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     perfExtended.bleProxyStartMaxUs = 0;
     perfExtended.displayVoiceMaxUs = 0;
     perfExtended.displayGapRecoverMaxUs = 0;
+    perfExtended.displayPartialFlushAreaPeakPx = 0;
+    perfExtended.displayFlushMaxAreaPx = 0;
+    perfExtended.displayBaseFrameMaxUs = 0;
+    perfExtended.displayStatusStripMaxUs = 0;
+    perfExtended.displayFrequencyMaxUs = 0;
+    perfExtended.displayBandsBarsMaxUs = 0;
+    perfExtended.displayArrowsIconsMaxUs = 0;
+    perfExtended.displayCardsMaxUs = 0;
+    perfExtended.displayFlushSubphaseMaxUs = 0;
+    perfExtended.displayLiveRenderMaxUs = 0;
+    perfExtended.displayRestingRenderMaxUs = 0;
+    perfExtended.displayPersistedRenderMaxUs = 0;
+    perfExtended.displayPreviewRenderMaxUs = 0;
+    perfExtended.displayRestoreRenderMaxUs = 0;
+    perfExtended.displayPreviewFirstRenderMaxUs = 0;
+    perfExtended.displayPreviewSteadyRenderMaxUs = 0;
     perfExtended.touchMaxUs = 0;
     perfExtended.obdMaxUs = 0;
     perfExtended.obdConnectCallMaxUs = 0;
@@ -512,9 +667,20 @@ void perfRecordSdFlushUs(uint32_t us) {
     }
 }
 
-void perfRecordFlushUs(uint32_t us) {
+void perfRecordFlushUs(uint32_t us, uint32_t areaPx, bool fullFlush) {
     if (us > perfExtended.flushMaxUs) {
         perfExtended.flushMaxUs = us;
+        perfExtended.displayFlushMaxAreaPx = areaPx;
+    }
+    perfExtended.displayFlushEquivalentAreaTotalPx += areaPx;
+    if (fullFlush) {
+        perfExtended.displayFullFlushCount++;
+    } else {
+        perfExtended.displayPartialFlushCount++;
+        perfExtended.displayPartialFlushAreaTotalPx += areaPx;
+        if (areaPx > perfExtended.displayPartialFlushAreaPeakPx) {
+            perfExtended.displayPartialFlushAreaPeakPx = areaPx;
+        }
     }
 }
 
@@ -522,6 +688,143 @@ void perfRecordDisplayRenderUs(uint32_t us) {
     if (us > perfExtended.displayRenderMaxUs) {
         perfExtended.displayRenderMaxUs = us;
     }
+}
+
+void perfRecordDisplayScenarioRenderUs(uint32_t us) {
+    const PerfDisplayRenderScenario scenario = currentDisplayRenderScenario();
+    recordDisplayScenarioRenderCount(scenario);
+    recordDisplayScenarioRenderMax(scenario, us);
+}
+
+void perfRecordDisplayRenderPath(PerfDisplayRenderPath path) {
+    switch (path) {
+        case PerfDisplayRenderPath::Full:
+            perfExtended.displayFullRenderCount++;
+            break;
+        case PerfDisplayRenderPath::Incremental:
+            perfExtended.displayIncrementalRenderCount++;
+            break;
+        case PerfDisplayRenderPath::CardsOnly:
+            perfExtended.displayCardsOnlyRenderCount++;
+            break;
+        case PerfDisplayRenderPath::RestingFull:
+            perfExtended.displayRestingFullRenderCount++;
+            break;
+        case PerfDisplayRenderPath::RestingIncremental:
+            perfExtended.displayRestingIncrementalRenderCount++;
+            break;
+        case PerfDisplayRenderPath::Persisted:
+            perfExtended.displayPersistedRenderCount++;
+            break;
+        case PerfDisplayRenderPath::Preview:
+            perfExtended.displayPreviewRenderCount++;
+            break;
+        case PerfDisplayRenderPath::Restore:
+            perfExtended.displayRestoreRenderCount++;
+            break;
+        default:
+            break;
+    }
+}
+
+void perfRecordDisplayRedrawReason(PerfDisplayRedrawReason reason) {
+    switch (reason) {
+        case PerfDisplayRedrawReason::FirstRun:
+            perfExtended.displayRedrawReasonFirstRunCount++;
+            break;
+        case PerfDisplayRedrawReason::EnterLive:
+            perfExtended.displayRedrawReasonEnterLiveCount++;
+            break;
+        case PerfDisplayRedrawReason::LeaveLive:
+            perfExtended.displayRedrawReasonLeaveLiveCount++;
+            break;
+        case PerfDisplayRedrawReason::LeavePersisted:
+            perfExtended.displayRedrawReasonLeavePersistedCount++;
+            break;
+        case PerfDisplayRedrawReason::ForceRedraw:
+            perfExtended.displayRedrawReasonForceRedrawCount++;
+            break;
+        case PerfDisplayRedrawReason::FrequencyChange:
+            perfExtended.displayRedrawReasonFrequencyChangeCount++;
+            break;
+        case PerfDisplayRedrawReason::BandSetChange:
+            perfExtended.displayRedrawReasonBandSetChangeCount++;
+            break;
+        case PerfDisplayRedrawReason::ArrowChange:
+            perfExtended.displayRedrawReasonArrowChangeCount++;
+            break;
+        case PerfDisplayRedrawReason::SignalBarChange:
+            perfExtended.displayRedrawReasonSignalBarChangeCount++;
+            break;
+        case PerfDisplayRedrawReason::VolumeChange:
+            perfExtended.displayRedrawReasonVolumeChangeCount++;
+            break;
+        case PerfDisplayRedrawReason::BogeyCounterChange:
+            perfExtended.displayRedrawReasonBogeyCounterChangeCount++;
+            break;
+        case PerfDisplayRedrawReason::RssiRefresh:
+            perfExtended.displayRedrawReasonRssiRefreshCount++;
+            break;
+        case PerfDisplayRedrawReason::FlashTick:
+            perfExtended.displayRedrawReasonFlashTickCount++;
+            break;
+        default:
+            break;
+    }
+}
+
+void perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase subphase, uint32_t us) {
+    switch (subphase) {
+        case PerfDisplayRenderSubphase::BaseFrame:
+            if (us > perfExtended.displayBaseFrameMaxUs) {
+                perfExtended.displayBaseFrameMaxUs = us;
+            }
+            break;
+        case PerfDisplayRenderSubphase::StatusStrip:
+            if (us > perfExtended.displayStatusStripMaxUs) {
+                perfExtended.displayStatusStripMaxUs = us;
+            }
+            break;
+        case PerfDisplayRenderSubphase::Frequency:
+            if (us > perfExtended.displayFrequencyMaxUs) {
+                perfExtended.displayFrequencyMaxUs = us;
+            }
+            break;
+        case PerfDisplayRenderSubphase::BandsBars:
+            if (us > perfExtended.displayBandsBarsMaxUs) {
+                perfExtended.displayBandsBarsMaxUs = us;
+            }
+            break;
+        case PerfDisplayRenderSubphase::ArrowsIcons:
+            if (us > perfExtended.displayArrowsIconsMaxUs) {
+                perfExtended.displayArrowsIconsMaxUs = us;
+            }
+            break;
+        case PerfDisplayRenderSubphase::Cards:
+            if (us > perfExtended.displayCardsMaxUs) {
+                perfExtended.displayCardsMaxUs = us;
+            }
+            break;
+        case PerfDisplayRenderSubphase::Flush:
+            if (us > perfExtended.displayFlushSubphaseMaxUs) {
+                perfExtended.displayFlushSubphaseMaxUs = us;
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+void perfSetDisplayRenderScenario(PerfDisplayRenderScenario scenario) {
+    sDisplayRenderScenario.store(static_cast<uint8_t>(scenario), std::memory_order_relaxed);
+}
+
+PerfDisplayRenderScenario perfGetDisplayRenderScenario() {
+    return currentDisplayRenderScenario();
+}
+
+void perfClearDisplayRenderScenario() {
+    perfSetDisplayRenderScenario(PerfDisplayRenderScenario::None);
 }
 
 void perfRecordBleDrainUs(uint32_t us) {
@@ -829,6 +1132,7 @@ uint32_t perfGetBleProcessMaxUs() { return perfExtended.bleProcessMaxUs; }
 uint32_t perfGetDispPipeMaxUs() { return perfExtended.dispPipeMaxUs; }
 uint32_t perfGetDisplayVoiceMaxUs() { return perfExtended.displayVoiceMaxUs; }
 uint32_t perfGetDisplayGapRecoverMaxUs() { return perfExtended.displayGapRecoverMaxUs; }
+uint32_t perfGetDisplayFlushMaxAreaPx() { return perfExtended.displayFlushMaxAreaPx; }
 uint32_t perfGetPrevWindowLoopMaxUs() {
     return sPrevWindowLoopMaxUs.load(std::memory_order_relaxed);
 }
@@ -1024,6 +1328,68 @@ String perfMetricsToJson() {
     doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
     doc["displayVoiceMaxUs"] = perfGetDisplayVoiceMaxUs();
     doc["displayGapRecoverMaxUs"] = perfGetDisplayGapRecoverMaxUs();
+    doc["displayFullRenderCount"] = perfExtended.displayFullRenderCount;
+    doc["displayIncrementalRenderCount"] = perfExtended.displayIncrementalRenderCount;
+    doc["displayCardsOnlyRenderCount"] = perfExtended.displayCardsOnlyRenderCount;
+    doc["displayRestingFullRenderCount"] = perfExtended.displayRestingFullRenderCount;
+    doc["displayRestingIncrementalRenderCount"] =
+        perfExtended.displayRestingIncrementalRenderCount;
+    doc["displayPersistedRenderCount"] = perfExtended.displayPersistedRenderCount;
+    doc["displayPreviewRenderCount"] = perfExtended.displayPreviewRenderCount;
+    doc["displayRestoreRenderCount"] = perfExtended.displayRestoreRenderCount;
+    doc["displayLiveScenarioRenderCount"] = perfExtended.displayLiveScenarioRenderCount;
+    doc["displayRestingScenarioRenderCount"] = perfExtended.displayRestingScenarioRenderCount;
+    doc["displayPersistedScenarioRenderCount"] =
+        perfExtended.displayPersistedScenarioRenderCount;
+    doc["displayPreviewScenarioRenderCount"] = perfExtended.displayPreviewScenarioRenderCount;
+    doc["displayRestoreScenarioRenderCount"] = perfExtended.displayRestoreScenarioRenderCount;
+    doc["displayRedrawReasonFirstRunCount"] =
+        perfExtended.displayRedrawReasonFirstRunCount;
+    doc["displayRedrawReasonEnterLiveCount"] =
+        perfExtended.displayRedrawReasonEnterLiveCount;
+    doc["displayRedrawReasonLeaveLiveCount"] =
+        perfExtended.displayRedrawReasonLeaveLiveCount;
+    doc["displayRedrawReasonLeavePersistedCount"] =
+        perfExtended.displayRedrawReasonLeavePersistedCount;
+    doc["displayRedrawReasonForceRedrawCount"] =
+        perfExtended.displayRedrawReasonForceRedrawCount;
+    doc["displayRedrawReasonFrequencyChangeCount"] =
+        perfExtended.displayRedrawReasonFrequencyChangeCount;
+    doc["displayRedrawReasonBandSetChangeCount"] =
+        perfExtended.displayRedrawReasonBandSetChangeCount;
+    doc["displayRedrawReasonArrowChangeCount"] =
+        perfExtended.displayRedrawReasonArrowChangeCount;
+    doc["displayRedrawReasonSignalBarChangeCount"] =
+        perfExtended.displayRedrawReasonSignalBarChangeCount;
+    doc["displayRedrawReasonVolumeChangeCount"] =
+        perfExtended.displayRedrawReasonVolumeChangeCount;
+    doc["displayRedrawReasonBogeyCounterChangeCount"] =
+        perfExtended.displayRedrawReasonBogeyCounterChangeCount;
+    doc["displayRedrawReasonRssiRefreshCount"] =
+        perfExtended.displayRedrawReasonRssiRefreshCount;
+    doc["displayRedrawReasonFlashTickCount"] =
+        perfExtended.displayRedrawReasonFlashTickCount;
+    doc["displayFullFlushCount"] = perfExtended.displayFullFlushCount;
+    doc["displayPartialFlushCount"] = perfExtended.displayPartialFlushCount;
+    doc["displayPartialFlushAreaPeakPx"] = perfExtended.displayPartialFlushAreaPeakPx;
+    doc["displayPartialFlushAreaTotalPx"] = perfExtended.displayPartialFlushAreaTotalPx;
+    doc["displayFlushEquivalentAreaTotalPx"] =
+        perfExtended.displayFlushEquivalentAreaTotalPx;
+    doc["displayFlushMaxAreaPx"] = perfGetDisplayFlushMaxAreaPx();
+    doc["displayBaseFrameMaxUs"] = perfExtended.displayBaseFrameMaxUs;
+    doc["displayStatusStripMaxUs"] = perfExtended.displayStatusStripMaxUs;
+    doc["displayFrequencyMaxUs"] = perfExtended.displayFrequencyMaxUs;
+    doc["displayBandsBarsMaxUs"] = perfExtended.displayBandsBarsMaxUs;
+    doc["displayArrowsIconsMaxUs"] = perfExtended.displayArrowsIconsMaxUs;
+    doc["displayCardsMaxUs"] = perfExtended.displayCardsMaxUs;
+    doc["displayFlushSubphaseMaxUs"] = perfExtended.displayFlushSubphaseMaxUs;
+    doc["displayLiveRenderMaxUs"] = perfExtended.displayLiveRenderMaxUs;
+    doc["displayRestingRenderMaxUs"] = perfExtended.displayRestingRenderMaxUs;
+    doc["displayPersistedRenderMaxUs"] = perfExtended.displayPersistedRenderMaxUs;
+    doc["displayPreviewRenderMaxUs"] = perfExtended.displayPreviewRenderMaxUs;
+    doc["displayRestoreRenderMaxUs"] = perfExtended.displayRestoreRenderMaxUs;
+    doc["displayPreviewFirstRenderMaxUs"] = perfExtended.displayPreviewFirstRenderMaxUs;
+    doc["displayPreviewSteadyRenderMaxUs"] = perfExtended.displayPreviewSteadyRenderMaxUs;
     doc["audioPlayCount"] = perfCounters.audioPlayCount.load();
     doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
     doc["audioTaskFail"] = perfCounters.audioTaskFail.load();

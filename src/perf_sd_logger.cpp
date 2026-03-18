@@ -16,9 +16,9 @@
 namespace {
 static constexpr const char* PERF_DIR_PATH = "/perf";
 static constexpr const char* PERF_CSV_PATH_FALLBACK = "/perf/perf.csv";
-static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 18;
+static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 19;
 static constexpr const char* PERF_CSV_HEADER =
-    "millis,timeValid,timeSource,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap,dmaFreeMin,dmaLargestMin,bleProcessMax_us,touchMax_us,gpsMax_us,lockoutMax_us,wifiMax_us,uiToScan,uiToRest,uiScanToRest,uiFastScanExit,uiLastScanDwellMs,uiMinScanDwellMs,fadeDown,fadeRestore,fadeSkipEqual,fadeSkipNoBaseline,fadeSkipNotFaded,fadeLastDecision,fadeLastCurrentVol,fadeLastOriginalVol,fadeLastDecisionMs,bleScanStartMs,bleTargetFoundMs,bleConnectStartMs,bleConnectedMs,bleFirstRxMs,bleFollowupRequestAlertMax_us,bleFollowupRequestVersionMax_us,bleConnectStableCallbackMax_us,bleProxyStartMax_us,displayVoiceMax_us,displayGapRecoverMax_us,alertPersistStarts,alertPersistExpires,alertPersistClears,autoPushStarts,autoPushCompletes,autoPushNoProfile,autoPushProfileLoadFail,autoPushProfileWriteFail,autoPushBusyRetries,autoPushModeFail,autoPushVolumeFail,autoPushDisconnectAbort,voiceAnnouncePriority,voiceAnnounceDirection,voiceAnnounceSecondary,voiceAnnounceEscalation,voiceDirectionThrottled,powerAutoPowerArmed,powerAutoPowerTimerStart,powerAutoPowerTimerCancel,powerAutoPowerTimerExpire,powerCriticalWarn,powerCriticalShutdown,cmdBleBusy,gpsEnabled,gpsHasFix,gpsLocationValid,gpsSatellites,gpsParserActive,gpsModuleDetected,gpsDetectionTimedOut,gpsSpeedMph_x10,gpsHdop_x10,gpsSampleAgeMs,gpsObsDrops,gpsObsSize,gpsObsPublished,rxBytes,oversizeDrops,queueHighWater,bleMutexSkip,bleMutexTimeout,cmdPaceNotYet,bleDiscTaskCreateFail,displayUpdates,displaySkips,wifiConnectDeferred,pushNowRetries,pushNowFailures,audioPlayCount,audioPlayBusy,audioTaskFail,sigObsQueueDrops,sigObsWriteFail,minLargestBlock,fsMax_us,sdMax_us,flushMax_us,bleConnectMax_us,bleDiscoveryMax_us,bleSubscribeMax_us,dispPipeMax_us,lockoutSaveMax_us,learnerSaveMax_us,timeSaveMax_us,perfReportMax_us,prioritySelectDisplayIndex,prioritySelectRowFlag,prioritySelectFirstUsable,prioritySelectFirstEntry,prioritySelectAmbiguousIndex,prioritySelectUnusableIndex,prioritySelectInvalidChosen,alertTablePublishes,alertTablePublishes3Bogey,alertTableRowReplacements,alertTableAssemblyTimeouts,parserRowsBandNone,parserRowsKuRaw,displayLiveInvalidPrioritySkips,displayLiveFallbackToUsable,obdMax_us,obdConnectCallMax_us,obdSecurityStartCallMax_us,obdDiscoveryCallMax_us,obdSubscribeCallMax_us,obdWriteCallMax_us,obdRssiCallMax_us,obdPollErrors,obdStaleCount,obdVinDetected,obdVehicleFamily,obdEotValid,obdEotC_x10,obdEotAgeMs,obdEotProfileId,obdEotProbeFailures,perfDrop,eventBusDrops,wifiHandleClientMax_us,wifiMaintenanceMax_us,wifiStatusCheckMax_us,wifiTimeoutCheckMax_us,wifiHeapGuardMax_us,wifiApStaPollMax_us,freeDmaMin,largestDmaMin,bleState,subscribeStep,connectInProgress,asyncConnectPending,pendingDisconnectCleanup,proxyAdvertising,proxyAdvertisingLastTransitionReason,wifiPriorityMode\n";
+    "millis,timeValid,timeSource,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap,dmaFreeMin,dmaLargestMin,bleProcessMax_us,touchMax_us,gpsMax_us,lockoutMax_us,wifiMax_us,uiToScan,uiToRest,uiScanToRest,uiFastScanExit,uiLastScanDwellMs,uiMinScanDwellMs,fadeDown,fadeRestore,fadeSkipEqual,fadeSkipNoBaseline,fadeSkipNotFaded,fadeLastDecision,fadeLastCurrentVol,fadeLastOriginalVol,fadeLastDecisionMs,bleScanStartMs,bleTargetFoundMs,bleConnectStartMs,bleConnectedMs,bleFirstRxMs,bleFollowupRequestAlertMax_us,bleFollowupRequestVersionMax_us,bleConnectStableCallbackMax_us,bleProxyStartMax_us,displayVoiceMax_us,displayGapRecoverMax_us,displayFullRenderCount,displayIncrementalRenderCount,displayCardsOnlyRenderCount,displayRestingFullRenderCount,displayRestingIncrementalRenderCount,displayPersistedRenderCount,displayPreviewRenderCount,displayRestoreRenderCount,displayLiveScenarioRenderCount,displayRestingScenarioRenderCount,displayPersistedScenarioRenderCount,displayPreviewScenarioRenderCount,displayRestoreScenarioRenderCount,displayRedrawReasonFirstRunCount,displayRedrawReasonEnterLiveCount,displayRedrawReasonLeaveLiveCount,displayRedrawReasonLeavePersistedCount,displayRedrawReasonForceRedrawCount,displayRedrawReasonFrequencyChangeCount,displayRedrawReasonBandSetChangeCount,displayRedrawReasonArrowChangeCount,displayRedrawReasonSignalBarChangeCount,displayRedrawReasonVolumeChangeCount,displayRedrawReasonBogeyCounterChangeCount,displayRedrawReasonRssiRefreshCount,displayRedrawReasonFlashTickCount,displayFullFlushCount,displayPartialFlushCount,displayPartialFlushAreaPeakPx,displayPartialFlushAreaTotalPx,displayFlushEquivalentAreaTotalPx,displayFlushMaxAreaPx,displayBaseFrameMax_us,displayStatusStripMax_us,displayFrequencyMax_us,displayBandsBarsMax_us,displayArrowsIconsMax_us,displayCardsMax_us,displayFlushSubphaseMax_us,displayLiveRenderMax_us,displayRestingRenderMax_us,displayPersistedRenderMax_us,displayPreviewRenderMax_us,displayRestoreRenderMax_us,displayPreviewFirstRenderMax_us,displayPreviewSteadyRenderMax_us,alertPersistStarts,alertPersistExpires,alertPersistClears,autoPushStarts,autoPushCompletes,autoPushNoProfile,autoPushProfileLoadFail,autoPushProfileWriteFail,autoPushBusyRetries,autoPushModeFail,autoPushVolumeFail,autoPushDisconnectAbort,voiceAnnouncePriority,voiceAnnounceDirection,voiceAnnounceSecondary,voiceAnnounceEscalation,voiceDirectionThrottled,powerAutoPowerArmed,powerAutoPowerTimerStart,powerAutoPowerTimerCancel,powerAutoPowerTimerExpire,powerCriticalWarn,powerCriticalShutdown,cmdBleBusy,gpsEnabled,gpsHasFix,gpsLocationValid,gpsSatellites,gpsParserActive,gpsModuleDetected,gpsDetectionTimedOut,gpsSpeedMph_x10,gpsHdop_x10,gpsSampleAgeMs,gpsObsDrops,gpsObsSize,gpsObsPublished,rxBytes,oversizeDrops,queueHighWater,bleMutexSkip,bleMutexTimeout,cmdPaceNotYet,bleDiscTaskCreateFail,displayUpdates,displaySkips,wifiConnectDeferred,pushNowRetries,pushNowFailures,audioPlayCount,audioPlayBusy,audioTaskFail,sigObsQueueDrops,sigObsWriteFail,minLargestBlock,fsMax_us,sdMax_us,flushMax_us,bleConnectMax_us,bleDiscoveryMax_us,bleSubscribeMax_us,dispPipeMax_us,lockoutSaveMax_us,learnerSaveMax_us,timeSaveMax_us,perfReportMax_us,prioritySelectDisplayIndex,prioritySelectRowFlag,prioritySelectFirstUsable,prioritySelectFirstEntry,prioritySelectAmbiguousIndex,prioritySelectUnusableIndex,prioritySelectInvalidChosen,alertTablePublishes,alertTablePublishes3Bogey,alertTableRowReplacements,alertTableAssemblyTimeouts,parserRowsBandNone,parserRowsKuRaw,displayLiveInvalidPrioritySkips,displayLiveFallbackToUsable,obdMax_us,obdConnectCallMax_us,obdSecurityStartCallMax_us,obdDiscoveryCallMax_us,obdSubscribeCallMax_us,obdWriteCallMax_us,obdRssiCallMax_us,obdPollErrors,obdStaleCount,obdVinDetected,obdVehicleFamily,obdEotValid,obdEotC_x10,obdEotAgeMs,obdEotProfileId,obdEotProbeFailures,perfDrop,eventBusDrops,wifiHandleClientMax_us,wifiMaintenanceMax_us,wifiStatusCheckMax_us,wifiTimeoutCheckMax_us,wifiHeapGuardMax_us,wifiApStaPollMax_us,freeDmaMin,largestDmaMin,bleState,subscribeStep,connectInProgress,asyncConnectPending,pendingDisconnectCleanup,proxyAdvertising,proxyAdvertisingLastTransitionReason,wifiPriorityMode\n";
 
 static constexpr UBaseType_t PERF_SD_QUEUE_DEPTH = 16;      // Halved from 32 to reclaim ~7 KiB internal SRAM
 static constexpr uint32_t PERF_SD_WRITER_STACK_SIZE = 8192;  // SD file ops need generous stack
@@ -326,7 +326,7 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         return false;
     }
 
-    char line[3200];
+    char line[6144];
     size_t offset = 0;
     const bool ok =
         appendCsvUInt32(line, sizeof(line), offset, snapshot.millisTs) &&
@@ -379,6 +379,52 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         appendCsvUInt32(line, sizeof(line), offset, snapshot.bleProxyStartMaxUs) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.displayVoiceMaxUs) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.displayGapRecoverMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayFullRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayIncrementalRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayCardsOnlyRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRestingFullRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRestingIncrementalRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayPersistedRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayPreviewRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRestoreRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayLiveScenarioRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRestingScenarioRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayPersistedScenarioRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayPreviewScenarioRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRestoreScenarioRenderCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonFirstRunCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonEnterLiveCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonLeaveLiveCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonLeavePersistedCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonForceRedrawCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonFrequencyChangeCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonBandSetChangeCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonArrowChangeCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonSignalBarChangeCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonVolumeChangeCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonBogeyCounterChangeCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonRssiRefreshCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRedrawReasonFlashTickCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayFullFlushCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayPartialFlushCount) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayPartialFlushAreaPeakPx) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayPartialFlushAreaTotalPx) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayFlushEquivalentAreaTotalPx) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayFlushMaxAreaPx) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayBaseFrameMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayStatusStripMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayFrequencyMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayBandsBarsMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayArrowsIconsMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayCardsMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayFlushSubphaseMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayLiveRenderMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRestingRenderMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayPersistedRenderMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayPreviewRenderMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayRestoreRenderMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayPreviewFirstRenderMaxUs) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.displayPreviewSteadyRenderMaxUs) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.alertPersistStarts) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.alertPersistExpires) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.alertPersistClears) &&
