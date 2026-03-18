@@ -595,9 +595,11 @@ static void configureLoopIngestModule() {
     loopIngestProviders.runBleProcess =
         ProviderCallbackBindings::member<V1BLEClient, &V1BLEClient::process>;
     loopIngestProviders.bleProcessContext = &bleClient;
-    loopIngestProviders.recordBleProcessUs = [](void*, uint32_t elapsedUs) {
+    loopIngestProviders.recordBleProcessUs = [](void* ctx, uint32_t elapsedUs) {
         perfRecordBleProcessUs(elapsedUs);
+        static_cast<V1BLEClient*>(ctx)->noteBleProcessDuration(elapsedUs);
     };
+    loopIngestProviders.bleProcessPerfContext = &bleClient;
     loopIngestProviders.runBleDrain =
         ProviderCallbackBindings::member<BleQueueModule, &BleQueueModule::process>;
     loopIngestProviders.bleDrainContext = &bleQueueModule;
@@ -646,9 +648,11 @@ static void configureLoopDisplayModule() {
     loopDisplayProviders.recordLockoutUs = [](void*, uint32_t elapsedUs) {
         perfRecordLockoutUs(elapsedUs);
     };
-    loopDisplayProviders.recordDispPipeUs = [](void*, uint32_t elapsedUs) {
+    loopDisplayProviders.recordDispPipeUs = [](void* ctx, uint32_t elapsedUs) {
         perfRecordDispPipeUs(elapsedUs);
+        static_cast<V1BLEClient*>(ctx)->noteDisplayPipelineDuration(elapsedUs);
     };
+    loopDisplayProviders.dispPipePerfContext = &bleClient;
     loopDisplayProviders.recordNotifyToDisplayMs = [](void*, uint32_t elapsedMs) {
         perfRecordNotifyToDisplayMs(elapsedMs);
     };
@@ -893,6 +897,7 @@ static void initializeBlePreInitAndScan(const CheckpointLogger& logBootCheckpoin
         // Scan starts in setup; connection state-machine work still waits for
         // the boot-ready gate later in setup().
         bleClient.onDataReceived(onV1Data);
+        bleClient.onV1ConnectImmediate(onV1ConnectImmediate);
         bleClient.onV1Connected(onV1Connected);
         logBootCheckpoint("ble_callbacks_registered");
         const V1Settings& bleScanSettings = settingsManager.get();

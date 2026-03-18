@@ -31,6 +31,11 @@ void V1BLEClient::process() {
             connectInProgress = false;
             connectStartMs = 0;
             connectedFollowupStep = ConnectedFollowupStep::NONE;
+            connectCompletedAtMs.store(0, std::memory_order_relaxed);
+            firstRxAfterConnectMs.store(0, std::memory_order_relaxed);
+            lastBleProcessDurationUs.store(0, std::memory_order_relaxed);
+            lastDisplayPipelineDurationUs.store(0, std::memory_order_relaxed);
+            connectBurstStableLoopCount = 0;
             proxyClientConnected = false;
             pRemoteService = nullptr;
             pDisplayDataChar = nullptr;

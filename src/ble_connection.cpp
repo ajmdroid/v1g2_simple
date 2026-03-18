@@ -579,11 +579,18 @@ void V1BLEClient::processSubscribing() {
             SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: subscribe complete
             connected = true;
         }
+        const uint32_t connectedNowMs = millis();
+        connectCompletedAtMs.store(connectedNowMs, std::memory_order_relaxed);
+        firstRxAfterConnectMs.store(0, std::memory_order_relaxed);
+        connectBurstStableLoopCount = 0;
         connectedFollowupStep = ConnectedFollowupStep::REQUEST_ALERT_DATA;
         perfRecordBleSubscribeUs(micros() - connectPhaseStartUs);
         connectInProgress = false;
         connectStartMs = 0;
         setBLEState(BLEState::CONNECTED, "subscribe complete");
+        if (connectImmediateCallback) {
+            connectImmediateCallback();
+        }
         Serial.println("[BLE] OK");
         return;
     }
@@ -792,6 +799,11 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
     // PERFORMANCE: Forward to proxy IMMEDIATELY - zero latency path to app
     // NimBLE handles thread safety for server notifications
     instancePtr->forwardToProxyImmediate(pData, length, routeCharId);
+
+    if (instancePtr->connected.load(std::memory_order_relaxed) &&
+        instancePtr->firstRxAfterConnectMs.load(std::memory_order_relaxed) == 0) {
+        instancePtr->firstRxAfterConnectMs.store(millis(), std::memory_order_relaxed);
+    }
     
     // Call user callback for display processing (queued to main loop for SPI safety)
     if (instancePtr->dataCallback) {

@@ -325,7 +325,8 @@ V1BLEClient::V1BLEClient()
     , phone2v1Queue(nullptr)
     , proxyQueuesInPsram(false)
     , dataCallback(nullptr)
-    , connectCallback(nullptr)
+    , connectImmediateCallback(nullptr)
+    , connectStableCallback(nullptr)
     // connected, shouldConnect - use default member initializers (atomic)
     , hasTargetDevice(false)
     , targetAddress()
@@ -750,6 +751,18 @@ void V1BLEClient::onDataReceived(DataCallback callback) {
     dataCallback = callback;
 }
 
+void V1BLEClient::onV1ConnectImmediate(ConnectionCallback callback) {
+    connectImmediateCallback = callback;
+}
+
 void V1BLEClient::onV1Connected(ConnectionCallback callback) {
-    connectCallback = callback;
+    connectStableCallback = callback;
+}
+
+void V1BLEClient::noteBleProcessDuration(uint32_t us) {
+    lastBleProcessDurationUs.store(us, std::memory_order_relaxed);
+}
+
+void V1BLEClient::noteDisplayPipelineDuration(uint32_t us) {
+    lastDisplayPipelineDurationUs.store(us, std::memory_order_relaxed);
 }

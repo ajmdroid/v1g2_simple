@@ -24,9 +24,19 @@ namespace {
 fs::FS g_sdFs(std::filesystem::temp_directory_path() / "v1g2_ble_deferred_bond_backup");
 int g_tryBackupCalls = 0;
 int g_tryBackupResult = 1;
+int g_requestAlertCalls = 0;
+int g_requestVersionCalls = 0;
+bool g_requestAlertResult = true;
+bool g_requestVersionResult = true;
+int g_stableCallbackCalls = 0;
 uint32_t g_lastAlertFollowupUs = 0;
 uint32_t g_lastVersionFollowupUs = 0;
 uint32_t g_lastStableCallbackUs = 0;
+
+void stableConnectCallback() {
+    ++g_stableCallbackCalls;
+    mockMicros += 31;
+}
 
 }  // namespace
 
@@ -48,7 +58,8 @@ V1BLEClient::V1BLEClient()
     , phone2v1Queue(nullptr)
     , proxyQueuesInPsram(false)
     , dataCallback(nullptr)
-    , connectCallback(nullptr)
+    , connectImmediateCallback(nullptr)
+    , connectStableCallback(nullptr)
     , hasTargetDevice(false)
     , targetAddress()
     , lastScanStart(0)
@@ -62,8 +73,16 @@ V1BLEClient::V1BLEClient()
 
 V1BLEClient::~V1BLEClient() {}
 
-bool V1BLEClient::requestAlertData() { return true; }
-bool V1BLEClient::requestVersion() { return true; }
+bool V1BLEClient::requestAlertData() {
+    ++g_requestAlertCalls;
+    mockMicros += 17;
+    return g_requestAlertResult;
+}
+bool V1BLEClient::requestVersion() {
+    ++g_requestVersionCalls;
+    mockMicros += 19;
+    return g_requestVersionResult;
+}
 bool V1BLEClient::isConnected() { return connected.load(std::memory_order_relaxed); }
 int V1BLEClient::processPhoneCommandQueue() { return 0; }
 void V1BLEClient::setBLEState(BLEState newState, const char*) { bleState = newState; }
@@ -94,6 +113,11 @@ void setUp() {
     mockMicros = 0;
     g_tryBackupCalls = 0;
     g_tryBackupResult = 1;
+    g_requestAlertCalls = 0;
+    g_requestVersionCalls = 0;
+    g_requestAlertResult = true;
+    g_requestVersionResult = true;
+    g_stableCallbackCalls = 0;
     g_lastAlertFollowupUs = 0;
     g_lastVersionFollowupUs = 0;
     g_lastStableCallbackUs = 0;
@@ -173,11 +197,108 @@ void test_service_deferred_bond_backup_success_clears_pending_and_updates_count(
     TEST_ASSERT_EQUAL_UINT32(0, StorageManager::mockSdLockState.blockingAcquireCalls);
 }
 
+void test_alert_request_stays_on_critical_path_before_settle_gate() {
+    V1BLEClient client;
+    client.connected.store(true, std::memory_order_relaxed);
+    client.connectedFollowupStep = V1BLEClient::ConnectedFollowupStep::REQUEST_ALERT_DATA;
+
+    client.processConnectedFollowup();
+
+    TEST_ASSERT_EQUAL(1, g_requestAlertCalls);
+    TEST_ASSERT_TRUE(g_lastAlertFollowupUs > 0);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(V1BLEClient::ConnectedFollowupStep::WAIT_CONNECT_BURST_SETTLE),
+        static_cast<int>(client.connectedFollowupStep));
+}
+
+void test_stable_callback_waits_for_settle_gate_and_proxy_start_follows_callback() {
+    V1BLEClient client;
+    client.connected.store(true, std::memory_order_relaxed);
+    client.proxyEnabled = true;
+    client.proxyServerInitialized = true;
+    client.connectStableCallback = stableConnectCallback;
+    client.connectedFollowupStep = V1BLEClient::ConnectedFollowupStep::WAIT_CONNECT_BURST_SETTLE;
+    client.connectCompletedAtMs.store(1000, std::memory_order_relaxed);
+    client.firstRxAfterConnectMs.store(1100, std::memory_order_relaxed);
+    client.lastBleProcessDurationUs.store(20000, std::memory_order_relaxed);
+    client.lastDisplayPipelineDurationUs.store(40000, std::memory_order_relaxed);
+
+    mockMillis = 1200;
+    client.processConnectedFollowup();
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(V1BLEClient::ConnectedFollowupStep::WAIT_CONNECT_BURST_SETTLE),
+        static_cast<int>(client.connectedFollowupStep));
+    TEST_ASSERT_EQUAL(0, g_stableCallbackCalls);
+    TEST_ASSERT_EQUAL_UINT32(0, client.proxyAdvertisingStartMs);
+
+    client.processConnectedFollowup();
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(V1BLEClient::ConnectedFollowupStep::WAIT_CONNECT_BURST_SETTLE),
+        static_cast<int>(client.connectedFollowupStep));
+
+    client.processConnectedFollowup();
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(V1BLEClient::ConnectedFollowupStep::REQUEST_VERSION),
+        static_cast<int>(client.connectedFollowupStep));
+    TEST_ASSERT_EQUAL(0, g_requestVersionCalls);
+    TEST_ASSERT_EQUAL(0, g_stableCallbackCalls);
+    TEST_ASSERT_EQUAL_UINT32(0, client.proxyAdvertisingStartMs);
+
+    client.processConnectedFollowup();
+    TEST_ASSERT_EQUAL(1, g_requestVersionCalls);
+    TEST_ASSERT_TRUE(g_lastVersionFollowupUs > 0);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(V1BLEClient::ConnectedFollowupStep::NOTIFY_STABLE_CALLBACK),
+        static_cast<int>(client.connectedFollowupStep));
+
+    client.processConnectedFollowup();
+    TEST_ASSERT_EQUAL(1, g_stableCallbackCalls);
+    TEST_ASSERT_TRUE(g_lastStableCallbackUs > 0);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(V1BLEClient::ConnectedFollowupStep::SCHEDULE_PROXY_ADVERTISING),
+        static_cast<int>(client.connectedFollowupStep));
+    TEST_ASSERT_EQUAL_UINT32(0, client.proxyAdvertisingStartMs);
+
+    mockMillis = 1300;
+    client.processConnectedFollowup();
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(V1BLEClient::ConnectedFollowupStep::BACKUP_BONDS),
+        static_cast<int>(client.connectedFollowupStep));
+    TEST_ASSERT_EQUAL_UINT32(
+        1300 + V1BLEClient::PROXY_STABILIZE_MS,
+        client.proxyAdvertisingStartMs);
+}
+
+void test_settle_gate_times_out_without_first_rx() {
+    V1BLEClient client;
+    client.connected.store(true, std::memory_order_relaxed);
+    client.connectedFollowupStep = V1BLEClient::ConnectedFollowupStep::WAIT_CONNECT_BURST_SETTLE;
+    client.connectCompletedAtMs.store(1000, std::memory_order_relaxed);
+    client.firstRxAfterConnectMs.store(0, std::memory_order_relaxed);
+    client.lastBleProcessDurationUs.store(60000, std::memory_order_relaxed);
+    client.lastDisplayPipelineDurationUs.store(70000, std::memory_order_relaxed);
+
+    mockMillis = 3499;
+    client.processConnectedFollowup();
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(V1BLEClient::ConnectedFollowupStep::WAIT_CONNECT_BURST_SETTLE),
+        static_cast<int>(client.connectedFollowupStep));
+
+    mockMillis = 3500;
+    client.processConnectedFollowup();
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(V1BLEClient::ConnectedFollowupStep::REQUEST_VERSION),
+        static_cast<int>(client.connectedFollowupStep));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_followup_backup_step_marks_pending_without_inline_write);
     RUN_TEST(test_followup_backup_step_noops_when_bond_count_is_already_backed_up);
     RUN_TEST(test_service_deferred_bond_backup_retries_after_trylock_busy);
     RUN_TEST(test_service_deferred_bond_backup_success_clears_pending_and_updates_count);
+    RUN_TEST(test_alert_request_stays_on_critical_path_before_settle_gate);
+    RUN_TEST(test_stable_callback_waits_for_settle_gate_and_proxy_start_follows_callback);
+    RUN_TEST(test_settle_gate_times_out_without_first_rx);
     return UNITY_END();
 }

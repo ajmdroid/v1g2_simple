@@ -142,9 +142,16 @@ public:
     
     // Register callback for received data
     void onDataReceived(DataCallback callback);
-    
-    // Register callback for V1 connection
+
+    // Register callback for immediate V1 connect work (critical path only).
+    void onV1ConnectImmediate(ConnectionCallback callback);
+
+    // Register callback for stable V1 connection work after the connect burst settles.
     void onV1Connected(ConnectionCallback callback);
+
+    // Record latest loop timings used by the connect-burst settle gate.
+    void noteBleProcessDuration(uint32_t us);
+    void noteDisplayPipelineDuration(uint32_t us);
     
     // Send command to V1 (e.g., request alert data)
     bool sendCommand(const uint8_t* data, size_t length);
@@ -344,7 +351,8 @@ private:
     ProxyMetrics proxyMetrics;
     
     DataCallback dataCallback;
-    ConnectionCallback connectCallback;
+    ConnectionCallback connectImmediateCallback;
+    ConnectionCallback connectStableCallback;
     std::atomic<bool> connected{false};      // Atomic for thread safety (set from BLE callbacks)
     std::atomic<bool> shouldConnect{false};  // Atomic for thread safety (set from BLE callbacks)
     std::atomic<bool> pendingConnectStateUpdate{false};   // Deferred update from BLE callbacks
@@ -431,8 +439,9 @@ private:
     enum class ConnectedFollowupStep {
         NONE,
         REQUEST_ALERT_DATA,
+        WAIT_CONNECT_BURST_SETTLE,
         REQUEST_VERSION,
-        NOTIFY_CALLBACK,
+        NOTIFY_STABLE_CALLBACK,
         SCHEDULE_PROXY_ADVERTISING,
         BACKUP_BONDS,
     };
@@ -442,6 +451,16 @@ private:
     uint32_t subscribeYieldUntilMs = 0;   // When to resume from SUBSCRIBE_YIELD
     static constexpr uint32_t SUBSCRIBE_STEP_BUDGET_US = 50000;  // 50ms per step max
     static constexpr uint32_t SUBSCRIBE_YIELD_MS = 5;            // 5ms yield between steps
+    static constexpr uint32_t CONNECT_BURST_STABLE_BLE_MAX_US = 25000;
+    static constexpr uint32_t CONNECT_BURST_STABLE_DISP_MAX_US = 50000;
+    static constexpr uint8_t CONNECT_BURST_STABLE_CONSECUTIVE_LOOPS = 3;
+    static constexpr uint32_t CONNECT_BURST_SETTLE_AFTER_FIRST_RX_MS = 1500;
+    static constexpr uint32_t CONNECT_BURST_SETTLE_AFTER_CONNECTED_MS = 2500;
+    std::atomic<uint32_t> connectCompletedAtMs{0};
+    std::atomic<uint32_t> firstRxAfterConnectMs{0};
+    std::atomic<uint32_t> lastBleProcessDurationUs{0};
+    std::atomic<uint32_t> lastDisplayPipelineDurationUs{0};
+    uint8_t connectBurstStableLoopCount = 0;
 
     // Async connect step functions
     bool startAsyncConnect();         // Initiate async connect

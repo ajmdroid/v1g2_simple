@@ -27,6 +27,7 @@ PerfCounters perfCounters;
 PerfExtendedMetrics perfExtended;
 
 void perfRecordNotifyToProxyMs(uint32_t) {}
+void perfRecordBleProxyStartUs(uint32_t) {}
 void perfRecordProxyAdvertisingTransition(bool, uint8_t, uint32_t) {}
 
 portMUX_TYPE pendingAddrMux = portMUX_INITIALIZER_UNLOCKED;
@@ -84,7 +85,8 @@ V1BLEClient::V1BLEClient()
     , phone2v1Queue(nullptr)
     , proxyQueuesInPsram(false)
     , dataCallback(nullptr)
-    , connectCallback(nullptr)
+    , connectImmediateCallback(nullptr)
+    , connectStableCallback(nullptr)
     , hasTargetDevice(false)
     , targetAddress()
     , lastScanStart(0)

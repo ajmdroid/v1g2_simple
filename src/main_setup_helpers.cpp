@@ -109,13 +109,15 @@ bool loadPendingLearnerJsonDocument(JsonDocument& outDoc) {
 
 }  // namespace
 
-void onV1Connected() {
+void onV1ConnectImmediate() {
     mainRuntimeState.v1ConnectedAtMs = millis();
 
     // Start a new perf CSV session so scoring tools can isolate
     // V1-connected data from idle boot noise.
     perfSdLogger.startNewSession();
+}
 
+void onV1Connected() {
     const V1Settings& s = settingsManager.get();
     const V1ConnectedAutoPushSelection selection = resolveV1ConnectedAutoPushSelection(s);
 

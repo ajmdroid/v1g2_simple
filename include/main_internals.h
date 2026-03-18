@@ -35,7 +35,10 @@ void fatalBootError(const char* message, bool displayAvailable);
 
 // ---- Setup orchestration helper declarations (main_setup_helpers.cpp) ----
 
-/// Callback invoked once BLE connection is fully established.
+/// Callback invoked immediately when BLE subscribe completes.
+void onV1ConnectImmediate();
+
+/// Callback invoked once the BLE connect burst has settled.
 void onV1Connected();
 
 /// Mount storage + initialize profile/device stores and restore dependent settings.
