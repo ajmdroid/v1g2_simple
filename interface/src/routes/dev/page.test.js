@@ -112,15 +112,20 @@ describe('dev route page', () => {
 		vi.restoreAllMocks();
 	});
 
-	it('loads development settings, metrics, and perf files', async () => {
-		installDefaultFetch();
-		const { unmount } = render(Page);
+it('loads development settings on mount and defers metrics and perf files until expanded', async () => {
+	const fetchMock = installDefaultFetch();
+	const { unmount } = render(Page);
 
-		await screen.findByText('Development Settings');
-		await screen.findByText('Enable WiFi at Boot');
-		await screen.findByText('perf-0001.csv');
+	await screen.findByText('Development Settings');
+	await screen.findByText('Enable WiFi at Boot');
+	expect(screen.queryByText('perf-0001.csv')).not.toBeInTheDocument();
+	expect(fetchMock.mock.calls.filter(([url]) => url === '/api/debug/perf-files').length).toBe(0);
+	expect(fetchMock.mock.calls.filter(([url]) => url === '/api/debug/metrics').length).toBe(0);
 
-		await fireEvent.click(screen.getByRole('button', { name: /^expand$/i }));
+	await fireEvent.click(screen.getByRole('button', { name: /^show files$/i }));
+	await screen.findByText('perf-0001.csv');
+
+	await fireEvent.click(screen.getByRole('button', { name: /^expand$/i }));
 
 		expect(await screen.findByText('BLE Queue (V1 to Display)')).toBeInTheDocument();
 		expect(screen.getByText('Perf CSV Files')).toBeInTheDocument();
@@ -135,9 +140,9 @@ describe('dev route page', () => {
 			.spyOn(devLazyComponents, 'loadDevMetricsPanel')
 			.mockReturnValue(deferred.promise);
 		installDefaultFetch();
-		const { unmount } = render(Page);
+	const { unmount } = render(Page);
 
-		await screen.findByText('perf-0001.csv');
+		await screen.findByText('Enable WiFi at Boot');
 		expect(metricsPanelLoader).not.toHaveBeenCalled();
 
 		await fireEvent.click(screen.getByRole('button', { name: /^expand$/i }));
@@ -161,12 +166,12 @@ describe('dev route page', () => {
 
 	it('keeps metrics auto refresh working after the panel is lazy-loaded', async () => {
 		vi.useFakeTimers();
-		const fetchMock = installDefaultFetch();
-		const { unmount } = render(Page);
+	const fetchMock = installDefaultFetch();
+	const { unmount } = render(Page);
 
-		await screen.findByText('perf-0001.csv');
+		await screen.findByText('Enable WiFi at Boot');
 		await fireEvent.click(screen.getByRole('button', { name: /^expand$/i }));
-		await screen.findByText('BLE Queue (V1 to Display)');
+	await screen.findByText('BLE Queue (V1 to Display)');
 
 		await fireEvent.click(screen.getByText('Auto (2s)'));
 		await vi.advanceTimersByTimeAsync(2000);
@@ -183,9 +188,9 @@ describe('dev route page', () => {
 		installDefaultFetch([
 			{ method: 'GET', match: '/api/debug/metrics', respond: jsonResponse({ error: 'bad metrics' }, 500) }
 		]);
-		const { unmount } = render(Page);
+	const { unmount } = render(Page);
 
-		await screen.findByText('perf-0001.csv');
+		await screen.findByText('Enable WiFi at Boot');
 		await fireEvent.click(screen.getByRole('button', { name: /^expand$/i }));
 
 		await waitFor(() => {
@@ -197,15 +202,17 @@ describe('dev route page', () => {
 		unmount();
 	});
 
-	it('shows an error when perf files fail to load on mount', async () => {
-		installDefaultFetch([
-			{ method: 'GET', match: '/api/debug/perf-files', respond: jsonResponse({ error: 'bad files' }, 500) }
-		]);
-		const { unmount } = render(Page);
+it('shows an error when perf files fail to load after the panel is opened', async () => {
+	installDefaultFetch([
+		{ method: 'GET', match: '/api/debug/perf-files', respond: jsonResponse({ error: 'bad files' }, 500) }
+	]);
+	const { unmount } = render(Page);
 
-		await screen.findByText('Failed to load perf files');
-		expect(screen.getByText('Perf CSV Files')).toBeInTheDocument();
-		expect(screen.queryByText('perf-0001.csv')).not.toBeInTheDocument();
+		await screen.findByText('Enable WiFi at Boot');
+		await fireEvent.click(screen.getByRole('button', { name: /^show files$/i }));
+	await screen.findByText('Failed to load perf files');
+	expect(screen.getByText('Perf CSV Files')).toBeInTheDocument();
+	expect(screen.queryByText('perf-0001.csv')).not.toBeInTheDocument();
 
 		unmount();
 	});
@@ -217,12 +224,14 @@ describe('dev route page', () => {
 				match: '/api/debug/perf-files/delete',
 				respond: jsonResponse({ error: 'locked' }, 500)
 			}
-		]);
-		const { unmount } = render(Page);
+	]);
+	const { unmount } = render(Page);
 
-		await screen.findByText('perf-0001.csv');
-		await fireEvent.click(screen.getByRole('checkbox', { name: /i understand the risks/i }));
-		await fireEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+		await screen.findByText('Enable WiFi at Boot');
+		await fireEvent.click(screen.getByRole('button', { name: /^show files$/i }));
+	await screen.findByText('perf-0001.csv');
+	await fireEvent.click(screen.getByRole('checkbox', { name: /i understand the risks/i }));
+	await fireEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
 		await screen.findByText('Failed to delete perf-0001.csv: locked');
 		expect(screen.getByText('perf-0001.csv')).toBeInTheDocument();
@@ -267,12 +276,14 @@ describe('dev route page', () => {
 					]
 				})
 			}
-		]);
-		const { unmount } = render(Page);
+	]);
+	const { unmount } = render(Page);
 
-		await screen.findByText('perf-0001.csv');
-		await fireEvent.click(screen.getByRole('checkbox', { name: /i understand the risks/i }));
-		expect(screen.getByText(/downloads are temporarily unavailable/i)).toBeInTheDocument();
+		await screen.findByText('Enable WiFi at Boot');
+		await fireEvent.click(screen.getByRole('button', { name: /^show files$/i }));
+	await screen.findByText('perf-0001.csv');
+	await fireEvent.click(screen.getByRole('checkbox', { name: /i understand the risks/i }));
+	expect(screen.getByText(/downloads are temporarily unavailable/i)).toBeInTheDocument();
 		const downloadButtons = screen.getAllByRole('button', { name: /^download$/i });
 		const deleteButtons = screen.getAllByRole('button', { name: /^delete$/i });
 		expect(downloadButtons[0]).toBeDisabled();

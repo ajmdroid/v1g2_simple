@@ -38,8 +38,10 @@
 	const METRICS_REFRESH_INTERVAL_MS = 2000;
 
 	// Perf CSV file management
+	let perfFilesExpanded = $state(false);
 	let perfFiles = $state([]);
-	let perfFilesLoading = $state(true);
+	let perfFilesLoading = $state(false);
+	let perfFilesLoaded = $state(false);
 	let perfFileActionBusy = $state('');
 	let perfFilesInfo = $state({
 		storageReady: false,
@@ -100,7 +102,7 @@
 
 	onMount(async () => {
 		loadWarningPreferences();
-		await Promise.all([loadSettings(), loadPerfFiles()]);
+		await loadSettings();
 	});
 
 	async function loadSettings() {
@@ -232,6 +234,7 @@
 			perfFilesInfo.fileOpsBlocked = data.fileOpsBlocked ?? false;
 			perfFilesInfo.fileOpsBlockedReason = data.fileOpsBlockedReason || '';
 			perfFilesInfo.fileOpsBlockedReasonCode = data.fileOpsBlockedReasonCode || '';
+			perfFilesLoaded = true;
 		} catch (error) {
 			console.error('Failed to load perf files:', error);
 			perfFiles = [];
@@ -243,9 +246,17 @@
 			perfFilesInfo.fileOpsBlocked = false;
 			perfFilesInfo.fileOpsBlockedReason = '';
 			perfFilesInfo.fileOpsBlockedReasonCode = '';
+			perfFilesLoaded = true;
 			setMessage('error', 'Failed to load perf files');
 		} finally {
 			perfFilesLoading = false;
+		}
+	}
+
+	function togglePerfFilesExpanded() {
+		perfFilesExpanded = !perfFilesExpanded;
+		if (perfFilesExpanded && !perfFilesLoaded && !perfFilesLoading) {
+			void loadPerfFiles();
 		}
 	}
 
@@ -448,16 +459,49 @@
 			</div>
 		</div>
 
-		<DevPerfFilesPanel
-			{acknowledged}
-			{perfFiles}
-			{perfFilesLoading}
-			{perfFileActionBusy}
-			{perfFilesInfo}
-			onrefresh={loadPerfFiles}
-			ondownload={downloadPerfFile}
-			ondelete={deletePerfFile}
-		/>
+		<div class="surface-card" class:opacity-50={!acknowledged}>
+			<div class="card-body">
+				<CardSectionHead title="Perf CSV Files">
+					<div class="flex gap-2">
+						{#if perfFilesExpanded}
+							<button
+								class="btn btn-sm btn-outline"
+								onclick={loadPerfFiles}
+								disabled={perfFilesLoading}
+							>
+								{#if perfFilesLoading}
+									<span class="loading loading-spinner loading-xs"></span>
+								{:else}
+									Refresh
+								{/if}
+							</button>
+						{/if}
+						<button
+							class="btn btn-sm btn-ghost"
+							onclick={togglePerfFilesExpanded}
+						>
+							{perfFilesExpanded ? 'Hide Files' : 'Show Files'}
+						</button>
+					</div>
+				</CardSectionHead>
+
+				{#if perfFilesExpanded}
+					<DevPerfFilesPanel
+						{acknowledged}
+						{perfFiles}
+						{perfFilesLoading}
+						{perfFileActionBusy}
+						{perfFilesInfo}
+						ondownload={downloadPerfFile}
+						ondelete={deletePerfFile}
+					/>
+				{:else}
+					<p class="copy-caption-soft">
+						Load the perf CSV inventory only when needed to avoid drive-time SD and AP work on route mount.
+					</p>
+				{/if}
+			</div>
+		</div>
 
 		<!-- Action Buttons -->
 		<div class="flex gap-4">

@@ -19,7 +19,6 @@ function renderPanel(props = {}) {
 			fileOpsBlockedReason: '',
 			fileOpsBlockedReasonCode: ''
 		},
-		onrefresh: vi.fn(),
 		ondownload: vi.fn(),
 		ondelete: vi.fn(),
 		...props
