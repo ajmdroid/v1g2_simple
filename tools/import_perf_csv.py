@@ -26,7 +26,7 @@ DEFAULT_HEADER_COLUMNS = [
     for line in (ROOT / "test" / "contracts" / "perf_csv_column_contract.txt").read_text(encoding="utf-8").splitlines()
     if line.strip() and not line.startswith("#")
 ]
-CURRENT_PERF_CSV_SCHEMA = 17
+CURRENT_PERF_CSV_SCHEMA = 18
 MIN_DROP_COUNTER_SCHEMA = 13
 ALWAYS_UNSUPPORTED_METRICS = {"samples_to_stable", "time_to_stable_ms"}
 LEGACY_UNSUPPORTED_METRICS = {"perf_drop_delta", "event_drop_delta"}
@@ -111,6 +111,13 @@ ATTRIBUTION_COLUMNS = (
     "proxyAdvertising",
     "proxyAdvertisingLastTransitionReason",
     "wifiPriorityMode",
+    "dispMax_us",
+    "bleFollowupRequestAlertMax_us",
+    "bleFollowupRequestVersionMax_us",
+    "bleConnectStableCallbackMax_us",
+    "bleProxyStartMax_us",
+    "displayVoiceMax_us",
+    "displayGapRecoverMax_us",
     "obdMax_us",
     "obdConnectCallMax_us",
     "obdSecurityStartCallMax_us",
@@ -142,6 +149,17 @@ WIFI_SUBPHASE_COLUMNS = (
     ("wifiTimeoutCheckMax_us", "WiFi timeout check"),
     ("wifiHeapGuardMax_us", "WiFi heap guard"),
     ("wifiApStaPollMax_us", "AP station poll"),
+)
+CONNECT_BURST_BLE_COLUMNS = (
+    ("bleFollowupRequestAlertMax_us", "followup alert request"),
+    ("bleFollowupRequestVersionMax_us", "followup version request"),
+    ("bleConnectStableCallbackMax_us", "stable-connect callback"),
+    ("bleProxyStartMax_us", "proxy advertising start"),
+)
+CONNECT_BURST_DISPLAY_COLUMNS = (
+    ("dispMax_us", "display render"),
+    ("displayVoiceMax_us", "display voice processing"),
+    ("displayGapRecoverMax_us", "display gap recovery"),
 )
 BOUNDARY_EVENT_WINDOW_ROWS = 2
 MIN_BOUNDARY_PADDING_ROWS = 3
@@ -520,6 +538,12 @@ def _build_row_summary(row: dict[str, int], row_index: int, column: str) -> dict
     for field in ("loopMax_us", "obdMax_us", "wifiMax_us", "fsMax_us", "bleProcessMax_us", "dispPipeMax_us"):
         if field in row:
             summary[field] = int(row.get(field, 0))
+    for field, _label in CONNECT_BURST_BLE_COLUMNS:
+        if field in row:
+            summary[field] = int(row.get(field, 0))
+    for field, _label in CONNECT_BURST_DISPLAY_COLUMNS:
+        if field in row:
+            summary[field] = int(row.get(field, 0))
     if "bleState" in row:
         summary["bleState"] = _decode_ble_state(row.get("bleState", 0))
         summary["bleStateCode"] = int(row.get("bleState", 0))
@@ -713,10 +737,24 @@ def _peak_phase_bucket(summary: dict[str, Any], segment_position: str, classific
     if _is_fs_wrapped_wifi(summary):
         return "steady-state WiFi/AP file serving stall"
     ble_state = summary.get("bleState", "")
+    subscribe_step = summary.get("subscribeStep", "")
+    connect_burst_ble = _dominant_named_metric(summary, CONNECT_BURST_BLE_COLUMNS)
+    connect_burst_display = _dominant_named_metric(summary, CONNECT_BURST_DISPLAY_COLUMNS)
     if summary.get("pendingDisconnectCleanup"):
         return "boundary spike during disconnect/cleanup/proxy transition"
     if ble_state in CONNECT_PHASE_STATES:
         return "boundary spike during connect/discovery/subscribe"
+    if (
+        segment_position == "start"
+        and ble_state == "CONNECTED"
+        and (
+            subscribe_step == "COMPLETE"
+            or summary.get("proxyAdvertising")
+            or connect_burst_ble is not None
+            or connect_burst_display is not None
+        )
+    ):
+        return "boundary spike during first-connected burst"
     if ble_state in DISCONNECT_PHASE_STATES:
         return "boundary spike during disconnect/cleanup/proxy transition"
     if summary.get("connectInProgress") or summary.get("asyncConnectPending"):
@@ -785,6 +823,8 @@ def _augment_peak_diagnostics(
             ]
         root_cause_hint = None
         top_row = top_rows[0]
+        dominant_connect_burst_ble = _dominant_named_metric(top_row, CONNECT_BURST_BLE_COLUMNS)
+        dominant_connect_burst_display = _dominant_named_metric(top_row, CONNECT_BURST_DISPLAY_COLUMNS)
         if metric_name == "loop_max_peak_us":
             if _is_obd_wrapped_loop(top_row):
                 wrapper_symptom_of = "obdMax_us"
@@ -801,6 +841,14 @@ def _augment_peak_diagnostics(
                     ble_value = float(ble_diag["value"])
                     if ble_value > 0 and (loop_value - ble_value) <= max(50000.0, ble_value * 0.2):
                         wrapper_symptom_of = "ble_process_max_peak_us"
+            if root_cause_hint is None:
+                if dominant_connect_burst_ble is not None:
+                    root_cause_hint = f"connect-burst BLE subphase: {dominant_connect_burst_ble['label']}"
+                elif dominant_connect_burst_display is not None:
+                    root_cause_hint = f"connect-burst display subphase: {dominant_connect_burst_display['label']}"
+        elif metric_name == "ble_process_max_peak_us":
+            if dominant_connect_burst_ble is not None:
+                root_cause_hint = f"connect-burst BLE subphase: {dominant_connect_burst_ble['label']}"
         elif metric_name == "wifi_max_peak_us":
             if _is_fs_wrapped_wifi(top_row):
                 wrapper_symptom_of = "fsMax_us"
@@ -808,6 +856,9 @@ def _augment_peak_diagnostics(
             dominant_wifi_phase = _dominant_named_metric(top_row, WIFI_SUBPHASE_COLUMNS)
             if dominant_wifi_phase is not None and root_cause_hint is None:
                 root_cause_hint = f"WiFi subphase stall: {dominant_wifi_phase['label']}"
+        elif metric_name == "disp_pipe_max_peak_us":
+            if dominant_connect_burst_display is not None:
+                root_cause_hint = f"connect-burst display subphase: {dominant_connect_burst_display['label']}"
         enriched_metric.update(
             {
                 "limit": limit,
@@ -829,6 +880,12 @@ def _augment_peak_diagnostics(
         if dominant_wifi_phase is not None:
             enriched_metric["wifi_dominant_subphase_column"] = dominant_wifi_phase["column"]
             enriched_metric["wifi_dominant_subphase_label"] = dominant_wifi_phase["label"]
+        if dominant_connect_burst_ble is not None:
+            enriched_metric["connect_burst_ble_subphase_column"] = dominant_connect_burst_ble["column"]
+            enriched_metric["connect_burst_ble_subphase_label"] = dominant_connect_burst_ble["label"]
+        if dominant_connect_burst_display is not None:
+            enriched_metric["connect_burst_display_subphase_column"] = dominant_connect_burst_display["column"]
+            enriched_metric["connect_burst_display_subphase_label"] = dominant_connect_burst_display["label"]
         if root_cause_hint:
             enriched_metric["root_cause_hint"] = root_cause_hint
         enriched[metric_name] = enriched_metric
@@ -1074,6 +1131,14 @@ def append_import_sections(
                 lines.append(
                     f"  wifi_dominant_subphase={peak['wifi_dominant_subphase_label']} ({peak['wifi_dominant_subphase_column']})"
                 )
+            if peak.get("connect_burst_ble_subphase_label"):
+                lines.append(
+                    f"  connect_burst_ble_subphase={peak['connect_burst_ble_subphase_label']} ({peak['connect_burst_ble_subphase_column']})"
+                )
+            if peak.get("connect_burst_display_subphase_label"):
+                lines.append(
+                    f"  connect_burst_display_subphase={peak['connect_burst_display_subphase_label']} ({peak['connect_burst_display_subphase_column']})"
+                )
             for top_row in peak.get("top_5_rows", [])[:3]:
                 detail_fields = [
                     f"row={top_row['row_index']}",
@@ -1085,11 +1150,22 @@ def append_import_sections(
                         detail_fields.append(f"{field}={top_row[field]}")
                 for field in (
                     "loopMax_us",
+                    "dispMax_us",
                     "obdMax_us",
                     "wifiMax_us",
                     "fsMax_us",
                     "bleProcessMax_us",
                     "dispPipeMax_us",
+                ):
+                    if field in top_row:
+                        detail_fields.append(f"{field}={top_row[field]}")
+                for field in (
+                    "bleFollowupRequestAlertMax_us",
+                    "bleFollowupRequestVersionMax_us",
+                    "bleConnectStableCallbackMax_us",
+                    "bleProxyStartMax_us",
+                    "displayVoiceMax_us",
+                    "displayGapRecoverMax_us",
                 ):
                     if field in top_row:
                         detail_fields.append(f"{field}={top_row[field]}")

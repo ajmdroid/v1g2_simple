@@ -887,6 +887,11 @@ Get runtime performance counters and subsystem health snapshots.
 **Notes:**
 - Counters are boot-session counters (monotonic until reboot/reset).
 - This endpoint is intended to match SD perf CSV counters for runtime/CSV correlation checks.
+- Connect-burst attribution fields now include `bleFollowupRequestAlertMaxUs`,
+  `bleFollowupRequestVersionMaxUs`, `bleConnectStableCallbackMaxUs`,
+  `bleProxyStartMaxUs`, `displayVoiceMaxUs`, and `displayGapRecoverMaxUs`.
+- `dispMaxUs` now reports display render time, while `dispPipeMaxUs` remains the
+  full `DisplayPipelineModule::handleParsed()` path.
 
 ### POST /api/debug/enable
 

@@ -464,6 +464,12 @@ struct PerfExtendedMetrics {
     uint32_t bleConnectStartMs = 0;   // First transition to CONNECTING
     uint32_t bleConnectedMs = 0;      // First transition to CONNECTED
     uint32_t bleFirstRxMs = 0;        // First packet observed in BLE drain path
+    uint32_t bleFollowupRequestAlertMaxUs = 0;   // Max REQUEST_ALERT_DATA followup duration
+    uint32_t bleFollowupRequestVersionMaxUs = 0; // Max REQUEST_VERSION followup duration
+    uint32_t bleConnectStableCallbackMaxUs = 0;  // Max stable-connect callback duration
+    uint32_t bleProxyStartMaxUs = 0;             // Max proxy advertising start duration
+    uint32_t displayVoiceMaxUs = 0;              // Max voice-processing branch duration
+    uint32_t displayGapRecoverMaxUs = 0;         // Max alert-gap recovery request duration
 
     void reset() {
         notifyToDisplayMs.reset();
@@ -525,6 +531,12 @@ struct PerfExtendedMetrics {
         bleConnectStartMs = 0;
         bleConnectedMs = 0;
         bleFirstRxMs = 0;
+        bleFollowupRequestAlertMaxUs = 0;
+        bleFollowupRequestVersionMaxUs = 0;
+        bleConnectStableCallbackMaxUs = 0;
+        bleProxyStartMaxUs = 0;
+        displayVoiceMaxUs = 0;
+        displayGapRecoverMaxUs = 0;
     }
 };
 
@@ -549,8 +561,14 @@ void perfRecordBleDrainUs(uint32_t us);
 void perfRecordBleConnectUs(uint32_t us);
 void perfRecordBleDiscoveryUs(uint32_t us);
 void perfRecordBleSubscribeUs(uint32_t us);
+void perfRecordBleFollowupRequestAlertUs(uint32_t us);
+void perfRecordBleFollowupRequestVersionUs(uint32_t us);
+void perfRecordBleConnectStableCallbackUs(uint32_t us);
+void perfRecordBleProxyStartUs(uint32_t us);
 void perfRecordBleProcessUs(uint32_t us);
 void perfRecordDispPipeUs(uint32_t us);
+void perfRecordDisplayVoiceUs(uint32_t us);
+void perfRecordDisplayGapRecoverUs(uint32_t us);
 void perfRecordTouchUs(uint32_t us);
 void perfRecordGpsUs(uint32_t us);
 void perfRecordLockoutUs(uint32_t us);
@@ -584,9 +602,16 @@ uint32_t perfGetObdRssiCallMaxUs();
 uint32_t perfGetFsMaxUs();
 uint32_t perfGetSdMaxUs();
 uint32_t perfGetFlushMaxUs();
+uint32_t perfGetDisplayRenderMaxUs();
 uint32_t perfGetBleDrainMaxUs();
+uint32_t perfGetBleFollowupRequestAlertMaxUs();
+uint32_t perfGetBleFollowupRequestVersionMaxUs();
+uint32_t perfGetBleConnectStableCallbackMaxUs();
+uint32_t perfGetBleProxyStartMaxUs();
 uint32_t perfGetBleProcessMaxUs();
 uint32_t perfGetDispPipeMaxUs();
+uint32_t perfGetDisplayVoiceMaxUs();
+uint32_t perfGetDisplayGapRecoverMaxUs();
 void perfRecordObdUs(uint32_t us);
 uint32_t perfGetPrevWindowLoopMaxUs();
 uint32_t perfGetPrevWindowWifiMaxUs();

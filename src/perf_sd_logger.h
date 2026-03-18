@@ -63,6 +63,12 @@ struct PerfSdSnapshot {
     uint32_t bleConnectStartMs;   // First connect-start timestamp
     uint32_t bleConnectedMs;      // First connected timestamp
     uint32_t bleFirstRxMs;        // First parsed/received V1 packet timestamp
+    uint32_t bleFollowupRequestAlertMaxUs;   // Window max connect-burst alert request duration
+    uint32_t bleFollowupRequestVersionMaxUs; // Window max connect-burst version request duration
+    uint32_t bleConnectStableCallbackMaxUs;  // Window max stable-connect callback duration
+    uint32_t bleProxyStartMaxUs;             // Window max proxy advertising start duration
+    uint32_t displayVoiceMaxUs;              // Window max display voice branch duration
+    uint32_t displayGapRecoverMaxUs;         // Window max display alert-gap recovery duration
     uint32_t alertPersistStarts;  // Persisted-alert sessions started
     uint32_t alertPersistExpires; // Persisted-alert windows expired naturally
     uint32_t alertPersistClears;  // Persisted-alert state cleared explicitly

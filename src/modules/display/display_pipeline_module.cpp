@@ -95,7 +95,9 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         if (gapNow - lastAlertGapRecoverMs > 50) {
             // Preserve partially assembled alert rows; parser freshness/timeout
             // guards handle stale data without discarding in-progress tables.
+            const unsigned long gapStartUs = micros();
             ble->requestAlertData();
+            perfRecordDisplayGapRecoverUs(micros() - gapStartUs);
             lastAlertGapRecoverMs = gapNow;
         }
     }
@@ -132,7 +134,9 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         voiceCtx.isSuppressed = prioritySuppressed;
         voiceCtx.now = nowMs;
 
+        const unsigned long voiceStartUs = micros();
         const VoiceAction voiceAction = voice->process(voiceCtx);
+        perfRecordDisplayVoiceUs(micros() - voiceStartUs);
 
         const unsigned long startUs = micros();
         if (hasRenderablePriority) {

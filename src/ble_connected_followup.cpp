@@ -2,26 +2,39 @@
 
 #include "../include/config.h"
 #include "../include/ble_internals.h"
+#include "perf_metrics.h"
 
 void V1BLEClient::processConnectedFollowup() {
     switch (connectedFollowupStep) {
         case ConnectedFollowupStep::NONE:
             return;
         case ConnectedFollowupStep::REQUEST_ALERT_DATA:
-            if (!requestAlertData()) {
-                Serial.println("[BLE] Failed to request alert data (non-critical)");
+            {
+                const uint32_t startUs = micros();
+                const bool ok = requestAlertData();
+                perfRecordBleFollowupRequestAlertUs(micros() - startUs);
+                if (!ok) {
+                    Serial.println("[BLE] Failed to request alert data (non-critical)");
+                }
             }
             connectedFollowupStep = ConnectedFollowupStep::REQUEST_VERSION;
             return;
         case ConnectedFollowupStep::REQUEST_VERSION:
-            if (!requestVersion()) {
-                Serial.println("[BLE] Failed to request version (non-critical)");
+            {
+                const uint32_t startUs = micros();
+                const bool ok = requestVersion();
+                perfRecordBleFollowupRequestVersionUs(micros() - startUs);
+                if (!ok) {
+                    Serial.println("[BLE] Failed to request version (non-critical)");
+                }
             }
             connectedFollowupStep = ConnectedFollowupStep::NOTIFY_CALLBACK;
             return;
         case ConnectedFollowupStep::NOTIFY_CALLBACK:
             if (connectCallback) {
+                const uint32_t startUs = micros();
                 connectCallback();
+                perfRecordBleConnectStableCallbackUs(micros() - startUs);
             }
             connectedFollowupStep = ConnectedFollowupStep::SCHEDULE_PROXY_ADVERTISING;
             return;

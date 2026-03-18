@@ -44,6 +44,12 @@ bleTargetFoundMs
 bleConnectStartMs
 bleConnectedMs
 bleFirstRxMs
+bleFollowupRequestAlertMax_us
+bleFollowupRequestVersionMax_us
+bleConnectStableCallbackMax_us
+bleProxyStartMax_us
+displayVoiceMax_us
+displayGapRecoverMax_us
 alertPersistStarts
 alertPersistExpires
 alertPersistClears

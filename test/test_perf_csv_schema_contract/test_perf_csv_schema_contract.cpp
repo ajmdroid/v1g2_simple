@@ -25,7 +25,7 @@ void test_perf_csv_schema_version_matches_current_header() {
     TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_sd_logger.cpp");
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 17;"));
+        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 18;"));
 }
 
 void test_perf_csv_header_drops_camera_voice_columns() {
@@ -49,10 +49,40 @@ void test_perf_csv_header_appends_drive_gate_columns() {
             "perfDrop,eventBusDrops,wifiHandleClientMax_us,wifiMaintenanceMax_us,wifiStatusCheckMax_us,wifiTimeoutCheckMax_us,wifiHeapGuardMax_us,wifiApStaPollMax_us,freeDmaMin,largestDmaMin,bleState,subscribeStep,connectInProgress,asyncConnectPending,pendingDisconnectCleanup,proxyAdvertising,proxyAdvertisingLastTransitionReason,wifiPriorityMode\\n\";"));
 }
 
+void test_perf_csv_header_includes_connect_burst_attribution_columns() {
+    const std::string source = readTextFile("src/perf_sd_logger.cpp");
+
+    TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_sd_logger.cpp");
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find(
+            "bleFirstRxMs,bleFollowupRequestAlertMax_us,bleFollowupRequestVersionMax_us,bleConnectStableCallbackMax_us,bleProxyStartMax_us,displayVoiceMax_us,displayGapRecoverMax_us,alertPersistStarts"));
+}
+
+void test_perf_metrics_exports_render_and_connect_burst_sources() {
+    const std::string source = readTextFile("src/perf_metrics.cpp");
+
+    TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_metrics.cpp");
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find("snapshot.dispMaxUs = perfExtended.displayRenderMaxUs;"));
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find("snapshot.bleProxyStartMaxUs = perfExtended.bleProxyStartMaxUs;"));
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find("snapshot.displayVoiceMaxUs = perfExtended.displayVoiceMaxUs;"));
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find("snapshot.displayGapRecoverMaxUs = perfExtended.displayGapRecoverMaxUs;"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_perf_csv_schema_version_matches_current_header);
     RUN_TEST(test_perf_csv_header_drops_camera_voice_columns);
     RUN_TEST(test_perf_csv_header_appends_drive_gate_columns);
+    RUN_TEST(test_perf_csv_header_includes_connect_burst_attribution_columns);
+    RUN_TEST(test_perf_metrics_exports_render_and_connect_burst_sources);
     return UNITY_END();
 }

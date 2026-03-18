@@ -24,6 +24,9 @@ namespace {
 fs::FS g_sdFs(std::filesystem::temp_directory_path() / "v1g2_ble_deferred_bond_backup");
 int g_tryBackupCalls = 0;
 int g_tryBackupResult = 1;
+uint32_t g_lastAlertFollowupUs = 0;
+uint32_t g_lastVersionFollowupUs = 0;
+uint32_t g_lastStableCallbackUs = 0;
 
 }  // namespace
 
@@ -71,6 +74,10 @@ void V1BLEClient::processSubscribeYield() {}
 void V1BLEClient::releaseProxyQueues() {}
 void V1BLEClient::startProxyAdvertising(uint8_t, bool) {}
 
+void perfRecordBleFollowupRequestAlertUs(uint32_t us) { g_lastAlertFollowupUs = us; }
+void perfRecordBleFollowupRequestVersionUs(uint32_t us) { g_lastVersionFollowupUs = us; }
+void perfRecordBleConnectStableCallbackUs(uint32_t us) { g_lastStableCallbackUs = us; }
+
 int V1BLEClient::tryBackupBondsToSD() {
     g_tryBackupCalls++;
     StorageManager::SDTryLock lock(storageManager.getSDMutex(), false);
@@ -87,6 +94,9 @@ void setUp() {
     mockMicros = 0;
     g_tryBackupCalls = 0;
     g_tryBackupResult = 1;
+    g_lastAlertFollowupUs = 0;
+    g_lastVersionFollowupUs = 0;
+    g_lastStableCallbackUs = 0;
     mock_reset_nimble_state();
     StorageManager::resetMockSdLockState();
     storageManager.reset();

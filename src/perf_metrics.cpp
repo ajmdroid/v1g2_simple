@@ -308,7 +308,7 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
 
     snapshot.loopMaxUs = perfExtended.loopMaxUs;
     snapshot.bleDrainMaxUs = perfExtended.bleDrainMaxUs;
-    snapshot.dispMaxUs = perfExtended.dispPipeMaxUs;
+    snapshot.dispMaxUs = perfExtended.displayRenderMaxUs;
     snapshot.bleProcessMaxUs = perfExtended.bleProcessMaxUs;
     snapshot.touchMaxUs = perfExtended.touchMaxUs;
     snapshot.obdMaxUs = perfExtended.obdMaxUs;
@@ -371,6 +371,12 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.bleConnectStartMs = perfExtended.bleConnectStartMs;
     snapshot.bleConnectedMs = perfExtended.bleConnectedMs;
     snapshot.bleFirstRxMs = perfExtended.bleFirstRxMs;
+    snapshot.bleFollowupRequestAlertMaxUs = perfExtended.bleFollowupRequestAlertMaxUs;
+    snapshot.bleFollowupRequestVersionMaxUs = perfExtended.bleFollowupRequestVersionMaxUs;
+    snapshot.bleConnectStableCallbackMaxUs = perfExtended.bleConnectStableCallbackMaxUs;
+    snapshot.bleProxyStartMaxUs = perfExtended.bleProxyStartMaxUs;
+    snapshot.displayVoiceMaxUs = perfExtended.displayVoiceMaxUs;
+    snapshot.displayGapRecoverMaxUs = perfExtended.displayGapRecoverMaxUs;
 
     // Keep previous window maxima available to low-cost API samples. This helps
     // explain transient strict peaks even when current-window values look calm.
@@ -382,8 +388,15 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     // Windowed maxima for the CSV logger.
     perfExtended.loopMaxUs = 0;
     perfExtended.bleDrainMaxUs = 0;
+    perfExtended.displayRenderMaxUs = 0;
     perfExtended.dispPipeMaxUs = 0;
     perfExtended.bleProcessMaxUs = 0;
+    perfExtended.bleFollowupRequestAlertMaxUs = 0;
+    perfExtended.bleFollowupRequestVersionMaxUs = 0;
+    perfExtended.bleConnectStableCallbackMaxUs = 0;
+    perfExtended.bleProxyStartMaxUs = 0;
+    perfExtended.displayVoiceMaxUs = 0;
+    perfExtended.displayGapRecoverMaxUs = 0;
     perfExtended.touchMaxUs = 0;
     perfExtended.obdMaxUs = 0;
     perfExtended.obdConnectCallMaxUs = 0;
@@ -535,6 +548,30 @@ void perfRecordBleSubscribeUs(uint32_t us) {
     }
 }
 
+void perfRecordBleFollowupRequestAlertUs(uint32_t us) {
+    if (us > perfExtended.bleFollowupRequestAlertMaxUs) {
+        perfExtended.bleFollowupRequestAlertMaxUs = us;
+    }
+}
+
+void perfRecordBleFollowupRequestVersionUs(uint32_t us) {
+    if (us > perfExtended.bleFollowupRequestVersionMaxUs) {
+        perfExtended.bleFollowupRequestVersionMaxUs = us;
+    }
+}
+
+void perfRecordBleConnectStableCallbackUs(uint32_t us) {
+    if (us > perfExtended.bleConnectStableCallbackMaxUs) {
+        perfExtended.bleConnectStableCallbackMaxUs = us;
+    }
+}
+
+void perfRecordBleProxyStartUs(uint32_t us) {
+    if (us > perfExtended.bleProxyStartMaxUs) {
+        perfExtended.bleProxyStartMaxUs = us;
+    }
+}
+
 void perfRecordBleProcessUs(uint32_t us) {
     if (us > perfExtended.bleProcessMaxUs) {
         perfExtended.bleProcessMaxUs = us;
@@ -547,6 +584,18 @@ void perfRecordDispPipeUs(uint32_t us) {
         perfExtended.dispPipeMaxUs = us;
     }
     portEXIT_CRITICAL(&sPerfSnapshotMux);
+}
+
+void perfRecordDisplayVoiceUs(uint32_t us) {
+    if (us > perfExtended.displayVoiceMaxUs) {
+        perfExtended.displayVoiceMaxUs = us;
+    }
+}
+
+void perfRecordDisplayGapRecoverUs(uint32_t us) {
+    if (us > perfExtended.displayGapRecoverMaxUs) {
+        perfExtended.displayGapRecoverMaxUs = us;
+    }
 }
 
 void perfRecordTouchUs(uint32_t us) {
@@ -770,9 +819,16 @@ uint32_t perfGetObdRssiCallMaxUs() { return perfExtended.obdRssiCallMaxUs; }
 uint32_t perfGetFsMaxUs() { return perfExtended.fsMaxUs; }
 uint32_t perfGetSdMaxUs() { return perfExtended.sdMaxUs; }
 uint32_t perfGetFlushMaxUs() { return perfExtended.flushMaxUs; }
+uint32_t perfGetDisplayRenderMaxUs() { return perfExtended.displayRenderMaxUs; }
 uint32_t perfGetBleDrainMaxUs() { return perfExtended.bleDrainMaxUs; }
+uint32_t perfGetBleFollowupRequestAlertMaxUs() { return perfExtended.bleFollowupRequestAlertMaxUs; }
+uint32_t perfGetBleFollowupRequestVersionMaxUs() { return perfExtended.bleFollowupRequestVersionMaxUs; }
+uint32_t perfGetBleConnectStableCallbackMaxUs() { return perfExtended.bleConnectStableCallbackMaxUs; }
+uint32_t perfGetBleProxyStartMaxUs() { return perfExtended.bleProxyStartMaxUs; }
 uint32_t perfGetBleProcessMaxUs() { return perfExtended.bleProcessMaxUs; }
 uint32_t perfGetDispPipeMaxUs() { return perfExtended.dispPipeMaxUs; }
+uint32_t perfGetDisplayVoiceMaxUs() { return perfExtended.displayVoiceMaxUs; }
+uint32_t perfGetDisplayGapRecoverMaxUs() { return perfExtended.displayGapRecoverMaxUs; }
 uint32_t perfGetPrevWindowLoopMaxUs() {
     return sPrevWindowLoopMaxUs.load(std::memory_order_relaxed);
 }
@@ -953,6 +1009,21 @@ String perfMetricsToJson() {
     doc["powerAutoPowerTimerExpire"] = perfCounters.powerAutoPowerTimerExpire.load();
     doc["powerCriticalWarn"] = perfCounters.powerCriticalWarn.load();
     doc["powerCriticalShutdown"] = perfCounters.powerCriticalShutdown.load();
+    doc["loopMaxUs"] = perfGetLoopMaxUs();
+    doc["wifiMaxUs"] = perfGetWifiMaxUs();
+    doc["fsMaxUs"] = perfGetFsMaxUs();
+    doc["sdMaxUs"] = perfGetSdMaxUs();
+    doc["flushMaxUs"] = perfGetFlushMaxUs();
+    doc["dispMaxUs"] = perfGetDisplayRenderMaxUs();
+    doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
+    doc["bleFollowupRequestAlertMaxUs"] = perfGetBleFollowupRequestAlertMaxUs();
+    doc["bleFollowupRequestVersionMaxUs"] = perfGetBleFollowupRequestVersionMaxUs();
+    doc["bleConnectStableCallbackMaxUs"] = perfGetBleConnectStableCallbackMaxUs();
+    doc["bleProxyStartMaxUs"] = perfGetBleProxyStartMaxUs();
+    doc["bleProcessMaxUs"] = perfGetBleProcessMaxUs();
+    doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
+    doc["displayVoiceMaxUs"] = perfGetDisplayVoiceMaxUs();
+    doc["displayGapRecoverMaxUs"] = perfGetDisplayGapRecoverMaxUs();
     doc["audioPlayCount"] = perfCounters.audioPlayCount.load();
     doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
     doc["audioTaskFail"] = perfCounters.audioTaskFail.load();

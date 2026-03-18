@@ -421,6 +421,28 @@ def test_reduced_perf_boot_fixture_attributes_obd_and_wifi_stalls(tmpdir: Path) 
     assert_true(wifi_diag["root_cause_hint"] == "LittleFS static file serving during AP", f"wifi root cause hint wrong: {wifi_diag}")
 
 
+def test_reduced_connect_burst_fixture_attributes_first_connected_spike(tmpdir: Path) -> None:
+    csv_path = FIXTURES_DIR / "perf_boot_6_connect_burst_reduced.csv"
+    out_dir = tmpdir / "perf_boot_6_connect_burst_reduced_out"
+    result = run_import(csv_path, out_dir)
+    assert_true(result.returncode != 3, f"connect-burst fixture import errored: rc={result.returncode} stderr={result.stderr}")
+    diagnostics = json.loads((out_dir / "import_diagnostics.json").read_text(encoding="utf-8"))
+    loop_diag = diagnostics["peaks"]["loop_max_peak_us"]
+    ble_diag = diagnostics["peaks"]["ble_process_max_peak_us"]
+    disp_diag = diagnostics["peaks"]["disp_pipe_max_peak_us"]
+
+    assert_true(loop_diag["millis"] == 9419, f"loop peak millis wrong: {loop_diag}")
+    assert_true(loop_diag["likely_phase_bucket"] == "boundary spike during first-connected burst", f"loop phase bucket wrong: {loop_diag}")
+    assert_true(loop_diag["top_5_rows"][0]["proxyAdvertising"] == 1, f"loop row should show proxy advertising: {loop_diag}")
+    assert_true(loop_diag["top_5_rows"][0]["subscribeStep"] == "COMPLETE", f"loop row should show completed subscribe step: {loop_diag}")
+    assert_true(loop_diag["top_5_rows"][0]["bleState"] == "CONNECTED", f"loop row should show connected state: {loop_diag}")
+
+    assert_true(ble_diag["millis"] == 9419, f"ble peak millis wrong: {ble_diag}")
+    assert_true(ble_diag["likely_phase_bucket"] == "boundary spike during first-connected burst", f"ble phase bucket wrong: {ble_diag}")
+    assert_true(disp_diag["millis"] == 9419, f"display peak millis wrong: {disp_diag}")
+    assert_true(disp_diag["likely_phase_bucket"] == "boundary spike during first-connected burst", f"display phase bucket wrong: {disp_diag}")
+
+
 def test_peak_diagnostics_surface_named_obd_and_wifi_root_causes(tmpdir: Path) -> None:
     csv_path = tmpdir / "named_root_causes.csv"
     out_dir = tmpdir / "named_root_causes_out"
@@ -479,6 +501,64 @@ def test_peak_diagnostics_surface_named_obd_and_wifi_root_causes(tmpdir: Path) -
     assert_true(wifi_diag["root_cause_hint"] == "WiFi subphase stall: HTTP client handling", f"wifi root cause hint wrong: {wifi_diag}")
 
 
+def test_peak_diagnostics_surface_named_connect_burst_root_causes(tmpdir: Path) -> None:
+    csv_path = tmpdir / "named_connect_burst_root_causes.csv"
+    out_dir = tmpdir / "named_connect_burst_root_causes_out"
+    rows = []
+    for index, millis in enumerate((0, 1000, 2000, 3000, 4000)):
+        row = base_row(millis, connected=True, header_columns=HEADER_COLUMNS)
+        row["rx"] = 40 + (index * 25)
+        row["parseOK"] = 30 + (index * 20)
+        row["displayUpdates"] = 5 + (index * 4)
+        row["bleState"] = 8
+        row["subscribeStep"] = 11
+        row["proxyAdvertising"] = 1 if index >= 1 else 0
+        rows.append(row)
+
+    rows[1].update(
+        {
+            "loopMax_us": 138000,
+            "bleProcessMax_us": 73100,
+            "bleProxyStartMax_us": 70200,
+            "dispPipeMax_us": 52000,
+            "dispMax_us": 26000,
+        }
+    )
+    rows[2].update(
+        {
+            "dispPipeMax_us": 76400,
+            "dispMax_us": 12000,
+            "displayVoiceMax_us": 65000,
+            "bleProcessMax_us": 600,
+            "loopMax_us": 82000,
+        }
+    )
+
+    write_capture(
+        csv_path,
+        header_columns=HEADER_COLUMNS,
+        sessions=[
+            {
+                "meta": "#session_start,seq=1,bootId=1,uptime_ms=4000,token=BURST001,schema=18",
+                "rows": rows,
+            }
+        ],
+    )
+
+    result = run_import(csv_path, out_dir)
+    assert_true(result.returncode != 3, f"named connect-burst fixture import errored: rc={result.returncode} stderr={result.stderr}")
+    diagnostics = json.loads((out_dir / "import_diagnostics.json").read_text(encoding="utf-8"))
+    loop_diag = diagnostics["peaks"]["loop_max_peak_us"]
+    ble_diag = diagnostics["peaks"]["ble_process_max_peak_us"]
+    disp_diag = diagnostics["peaks"]["disp_pipe_max_peak_us"]
+
+    assert_true(loop_diag["root_cause_hint"] == "connect-burst BLE subphase: proxy advertising start", f"loop root cause hint wrong: {loop_diag}")
+    assert_true(loop_diag["connect_burst_ble_subphase_column"] == "bleProxyStartMax_us", f"loop connect-burst column wrong: {loop_diag}")
+    assert_true(ble_diag["root_cause_hint"] == "connect-burst BLE subphase: proxy advertising start", f"ble root cause hint wrong: {ble_diag}")
+    assert_true(disp_diag["root_cause_hint"] == "connect-burst display subphase: display voice processing", f"display root cause hint wrong: {disp_diag}")
+    assert_true(disp_diag["connect_burst_display_subphase_column"] == "displayVoiceMax_us", f"display connect-burst column wrong: {disp_diag}")
+
+
 def test_leading_rows_form_implicit_segment(tmpdir: Path) -> None:
     csv_path = tmpdir / "leading_rows.csv"
     out_dir = tmpdir / "leading_rows_out"
@@ -516,7 +596,9 @@ def main() -> int:
         test_peak_diagnostics_classify_spike_and_attribute_phase(tmpdir)
         test_peak_diagnostics_classify_sustained_runs(tmpdir)
         test_reduced_perf_boot_fixture_attributes_obd_and_wifi_stalls(tmpdir)
+        test_reduced_connect_burst_fixture_attributes_first_connected_spike(tmpdir)
         test_peak_diagnostics_surface_named_obd_and_wifi_root_causes(tmpdir)
+        test_peak_diagnostics_surface_named_connect_burst_root_causes(tmpdir)
         test_leading_rows_form_implicit_segment(tmpdir)
 
     print("[perf-csv-import] integration tests passed")

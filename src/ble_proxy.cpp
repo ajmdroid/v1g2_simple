@@ -371,12 +371,15 @@ void V1BLEClient::startProxyAdvertising(uint8_t reasonCode, bool ignoreWifiPrior
         Serial.printf("[BLE] Proxy no-client timeout armed (%lus)\n",
                       static_cast<unsigned long>(PROXY_NO_CLIENT_TIMEOUT_MS / 1000));
     }
+
+    const uint32_t startUs = micros();
     
     // Don't restart if client already connected
     if (pServer->getConnectedCount() > 0) {
         Serial.println("Proxy client already connected, not restarting advertising");
         proxyAdvertisingWindowStartMs = 0;
         proxyAdvertisingRetryAtMs = 0;
+        perfRecordBleProxyStartUs(micros() - startUs);
         return;
     }
     
@@ -394,6 +397,7 @@ void V1BLEClient::startProxyAdvertising(uint8_t reasonCode, bool ignoreWifiPrior
         perfRecordProxyAdvertisingTransition(true, reasonCode, millis());
         Serial.println("Proxy already advertising");
     }
+    perfRecordBleProxyStartUs(micros() - startUs);
 }
 
 void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t sourceCharUUID) {
