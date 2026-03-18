@@ -19,6 +19,7 @@ struct DisplayDirtyFlags {
     bool topCounter     = false;  // Force top counter (bogey symbol) redraw
     bool lockout        = false;  // Force lockout "L" badge redraw
     bool gpsIndicator   = false;  // Force GPS indicator redraw
+    bool obdIndicator   = false;  // Force OBD indicator redraw
     bool resetTracking  = false;  // Signal to reset change-tracking statics
 
     /// Mark every element as needing a forced redraw (called after screen clear).
@@ -32,6 +33,7 @@ struct DisplayDirtyFlags {
         topCounter   = true;
         lockout      = true;
         gpsIndicator = true;
+        obdIndicator = true;
     }
 };
 

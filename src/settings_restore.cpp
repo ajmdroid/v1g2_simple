@@ -225,6 +225,7 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["colorRssiProxy"].is<int>()) settings.colorRssiProxy = doc["colorRssiProxy"];
     if (doc["colorLockout"].is<int>()) settings.colorLockout = doc["colorLockout"];
     if (doc["colorGps"].is<int>()) settings.colorGps = doc["colorGps"];
+    if (doc["colorObd"].is<int>()) settings.colorObd = doc["colorObd"];
     restoreBool("freqUseBandColor", settings.freqUseBandColor);
 
     // === UI Toggles ===

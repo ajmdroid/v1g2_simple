@@ -176,6 +176,9 @@ private:
     void drawMuteIcon(bool muted);
     void drawLockoutIndicator();
     void drawGpsIndicator();
+    void drawObdIndicator();
+    void syncTopIndicators(uint32_t nowMs);
+    void setObdStatus(bool enabled, bool connected);
     int measureSevenSegmentText(const char* text, float scale) const;
     int drawSevenSegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);
     void drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
@@ -220,6 +223,8 @@ private:
     bool gpsSatEnabled_ = false;           // GPS module enabled
     bool gpsSatHasFix_ = false;            // GPS has satellite fix
     uint8_t gpsSatCount_ = 0;              // Satellite count for display
+    bool obdEnabled_ = false;              // OBD module enabled
+    bool obdConnected_ = false;            // OBD adapter connected
     DisplayBleContext bleCtx_;              // BLE state snapshot for display DI
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout

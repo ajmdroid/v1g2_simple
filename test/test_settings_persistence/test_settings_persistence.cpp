@@ -128,6 +128,7 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     settings.displayStyle = DISPLAY_STYLE_SERPENTINE;
     settings.colorBogey = 0x1234;
     settings.colorGps = 0x4567;
+    settings.colorObd = 0x6789;
     settings.hideWifiIcon = true;
     settings.enableWifiAtBoot = true;
     settings.enableSignalTraceLogging = false;
@@ -202,6 +203,7 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_EQUAL_INT(DISPLAY_STYLE_SERPENTINE, loaded.displayStyle);
     TEST_ASSERT_EQUAL_HEX16(0x1234, loaded.colorBogey);
     TEST_ASSERT_EQUAL_HEX16(0x4567, loaded.colorGps);
+    TEST_ASSERT_EQUAL_HEX16(0x6789, loaded.colorObd);
     TEST_ASSERT_TRUE(loaded.hideWifiIcon);
     TEST_ASSERT_TRUE(loaded.enableWifiAtBoot);
     TEST_ASSERT_FALSE(loaded.enableSignalTraceLogging);
@@ -252,6 +254,7 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_TRUE(backupDoc["cameraAlertsEnabled"].isNull());
     TEST_ASSERT_TRUE(backupDoc["cameraAlertRangeCm"].isNull());
     TEST_ASSERT_EQUAL_INT(123, backupDoc["brightness"].as<int>());
+    TEST_ASSERT_EQUAL_INT(0x6789, backupDoc["colorObd"].as<int>());
     TEST_ASSERT_EQUAL_INT(VOICE_MODE_FREQ_ONLY, backupDoc["voiceAlertMode"].as<int>());
     TEST_ASSERT_TRUE(backupDoc["autoPushEnabled"].as<bool>());
     TEST_ASSERT_EQUAL_STRING("Quiet", backupDoc["slot2ProfileName"].as<const char*>());
@@ -278,6 +281,7 @@ void test_apply_backup_document_unifies_restore_field_coverage_and_profile_resto
     doc["gpsLockoutKLearningEnabled"] = true;
     doc["gpsLockoutXLearningEnabled"] = false;
     doc["brightness"] = 77;
+    doc["colorObd"] = 0x2468;
     doc["voiceVolume"] = 42;
     doc["obdEnabled"] = true;
     doc["obdMinRssi"] = -61;
@@ -308,6 +312,7 @@ void test_apply_backup_document_unifies_restore_field_coverage_and_profile_resto
     TEST_ASSERT_TRUE(restored.gpsLockoutKLearningEnabled);
     TEST_ASSERT_FALSE(restored.gpsLockoutXLearningEnabled);
     TEST_ASSERT_EQUAL_UINT8(77, restored.brightness);
+    TEST_ASSERT_EQUAL_HEX16(0x2468, restored.colorObd);
     TEST_ASSERT_EQUAL_UINT8(42, restored.voiceVolume);
     TEST_ASSERT_TRUE(restored.obdEnabled);
     TEST_ASSERT_EQUAL_INT8(-61, restored.obdMinRssi);

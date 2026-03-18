@@ -261,6 +261,7 @@ struct V1Settings {
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
     uint16_t colorLockout;       // Lockout "L" badge color
     uint16_t colorGps;           // GPS "G" satellite badge color
+    uint16_t colorObd;           // OBD "OBD" status text color when connected
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
     
     // Display visibility settings
@@ -425,6 +426,7 @@ struct V1Settings {
         colorRssiProxy(0x001F),  // Blue (proxy RSSI label) — matches NVS default
         colorLockout(0x07E0),     // Green lockout badge (matches existing lockout default)
         colorGps(0x07FF),         // Cyan GPS badge (matches existing GPS indicator default)
+        colorObd(0x001F),         // Blue OBD badge (matches existing BLE disconnected icon default)
         freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default

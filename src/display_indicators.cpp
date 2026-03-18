@@ -11,6 +11,8 @@
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
 #include "settings.h"
+#include "modules/gps/gps_runtime_module.h"
+#include "modules/obd/obd_runtime_module.h"
 
 // ============================================================================
 // Base frame
@@ -80,6 +82,19 @@ void V1Display::setGpsSatellites(bool enabled, bool hasFix, uint8_t satellites) 
     gpsSatCount_   = satellites;
 }
 
+void V1Display::setObdStatus(bool enabled, bool connected) {
+    obdEnabled_ = enabled;
+    obdConnected_ = connected;
+}
+
+void V1Display::syncTopIndicators(uint32_t nowMs) {
+    const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
+    setGpsSatellites(gpsStatus.enabled, gpsStatus.stableHasFix, gpsStatus.stableSatellites);
+
+    const ObdRuntimeStatus obdStatus = obdRuntimeModule.snapshot(nowMs);
+    setObdStatus(obdStatus.enabled, obdStatus.connected);
+}
+
 void V1Display::drawGpsIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     // Build current desired state: show when GPS enabled and has fix.
@@ -120,6 +135,48 @@ void V1Display::drawGpsIndicator() {
     } else {
         FILL_RECT(x, y, w, h, PALETTE_BG);
     }
+#endif
+}
+
+// ============================================================================
+// OBD indicator ("OBD" text, right of lockout badge)
+// ============================================================================
+
+void V1Display::drawObdIndicator() {
+#if defined(DISPLAY_WAVESHARE_349)
+    const bool wantShow = obdEnabled_;
+    const bool curConnected = wantShow && obdConnected_;
+
+    static bool lastShown = false;
+    static bool lastConnected = false;
+
+    if (!dirty.obdIndicator &&
+        wantShow == lastShown &&
+        curConnected == lastConnected) {
+        return;
+    }
+    dirty.obdIndicator = false;
+    lastShown = wantShow;
+    lastConnected = curConnected;
+
+    // Position: right of lockout badge, before signal bars.
+    const int x = 370;
+    const int y = 5;
+    const int h = 26;
+    const int w = 50;
+
+    FILL_RECT(x, y, w, h, PALETTE_BG);
+    if (!wantShow) {
+        return;
+    }
+
+    const V1Settings& s = settingsManager.get();
+    const uint16_t textColor = curConnected ? s.colorObd : s.colorMuted;
+
+    GFX_setTextDatum(MC_DATUM);
+    TFT_CALL(setTextSize)(2);
+    TFT_CALL(setTextColor)(textColor, PALETTE_BG);
+    GFX_drawString(tft, "OBD", x + w / 2, y + h / 2);
 #endif
 }
 

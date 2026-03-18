@@ -84,8 +84,10 @@ void V1Display::showResting(bool forceRedraw) {
         
         // Mute indicator off
         drawMuteIcon(false);
+        syncTopIndicators(millis());
         drawLockoutIndicator();
         drawGpsIndicator();
+        drawObdIndicator();
         
         // Profile indicator
         drawProfileIndicator(profileSlot);
@@ -167,8 +169,10 @@ void V1Display::showScanning() {
     drawVerticalSignalBars(0, 0, BAND_KA, false);
     drawDirectionArrow(DIR_NONE, false);
     drawMuteIcon(false);
+    syncTopIndicators(millis());
     drawLockoutIndicator();
     drawGpsIndicator();
+    drawObdIndicator();
     drawProfileIndicator(currentProfileSlot);
     
     // Draw "SCAN" in frequency area - match display style

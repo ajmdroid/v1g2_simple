@@ -227,6 +227,7 @@ void SettingsManager::load() {
     settings.colorRssiProxy = preferences.getUShort("colorRssiPrx", 0x001F);   // Blue for Proxy RSSI label
     settings.colorLockout = preferences.getUShort("colorLockL", 0x07E0);        // Green lockout badge color
     settings.colorGps = preferences.getUShort("colorGps", 0x07FF);              // Cyan GPS badge color
+    settings.colorObd = preferences.getUShort("colorObd", 0x001F);              // Blue OBD badge color
     settings.freqUseBandColor = preferences.getBool("freqBandCol", false);  // Use custom freq color by default
     settings.hideWifiIcon = preferences.getBool("hideWifi", false);
     settings.hideProfileIndicator = preferences.getBool("hideProfile", false);

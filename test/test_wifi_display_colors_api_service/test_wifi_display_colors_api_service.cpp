@@ -88,6 +88,7 @@ void test_get_serializes_display_payload_only() {
     FakeRuntime rt;
     rt.settings.colorBogey = 123;
     rt.settings.colorBandKa = 456;
+    rt.settings.colorObd = 789;
     rt.settings.hideWifiIcon = true;
     rt.settings.brightness = 67;
     rt.settings.displayStyle = DISPLAY_STYLE_SERPENTINE;
@@ -100,6 +101,7 @@ void test_get_serializes_display_payload_only() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"bogey\":123"));
     TEST_ASSERT_TRUE(responseContains(server, "\"bandKa\":456"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"obd\":789"));
     TEST_ASSERT_TRUE(responseContains(server, "\"hideWifiIcon\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"brightness\":67"));
     TEST_ASSERT_TRUE(responseContains(server, "\"displayStyle\":3"));
@@ -129,6 +131,7 @@ void test_save_updates_display_settings_and_calls_side_effects() {
 
     server.setArg("bogey", "321");
     server.setArg("wifiConnected", "987");
+    server.setArg("obd", "654");
     server.setArg("hideWifiIcon", "true");
     server.setArg("brightness", "111");
     server.setArg("displayStyle", "3");
@@ -142,6 +145,7 @@ void test_save_updates_display_settings_and_calls_side_effects() {
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
     TEST_ASSERT_EQUAL_UINT16(321, rt.settings.colorBogey);
     TEST_ASSERT_EQUAL_UINT16(987, rt.settings.colorWiFiConnected);
+    TEST_ASSERT_EQUAL_UINT16(654, rt.settings.colorObd);
     TEST_ASSERT_TRUE(rt.settings.hideWifiIcon);
     TEST_ASSERT_EQUAL_UINT8(111, rt.settings.brightness);
     TEST_ASSERT_EQUAL_INT(1, rt.setDisplayBrightnessCalls);
@@ -226,6 +230,7 @@ void test_reset_restores_defaults_and_triggers_preview() {
     TEST_ASSERT_EQUAL_UINT16(0x001F, rt.settings.colorBandL);
     TEST_ASSERT_EQUAL_UINT16(0x07E0, rt.settings.colorLockout);
     TEST_ASSERT_EQUAL_UINT16(0x07FF, rt.settings.colorGps);
+    TEST_ASSERT_EQUAL_UINT16(0x001F, rt.settings.colorObd);
     TEST_ASSERT_FALSE(rt.settings.freqUseBandColor);
     TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);

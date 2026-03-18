@@ -385,6 +385,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("colorRssiPrx", settings.colorRssiProxy);
     written += prefs.putUShort("colorLockL", settings.colorLockout);
     written += prefs.putUShort("colorGps", settings.colorGps);
+    written += prefs.putUShort("colorObd", settings.colorObd);
     written += prefs.putBool("freqBandCol", settings.freqUseBandColor);
     written += prefs.putBool("hideWifi", settings.hideWifiIcon);
     written += prefs.putBool("hideProfile", settings.hideProfileIndicator);

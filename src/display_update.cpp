@@ -18,8 +18,6 @@
 #include "audio_beep.h"
 #include "perf_metrics.h"
 #include "packet_parser.h"
-#include "modules/gps/gps_runtime_module.h"
-
 using DisplayLayout::SECONDARY_ROW_HEIGHT;
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 
@@ -49,6 +47,7 @@ void V1Display::drawStatusStrip(const DisplayState& state,
                                 char topChar,
                                 bool topMuted,
                                 bool topDot) {
+    syncTopIndicators(millis());
     drawTopCounter(topChar, topMuted, topDot);
     const V1Settings& s = settingsManager.get();
     static bool rightStripCleared = false;
@@ -79,6 +78,7 @@ void V1Display::updateStatusStripIncremental(const DisplayState& state,
                                              unsigned long now,
                                              bool& flushLeftStrip,
                                              bool& flushRightStrip) {
+    syncTopIndicators(now);
     const V1Settings& s = settingsManager.get();
     const bool showVolumeAndRssi = state.supportsVolume() && !s.hideVolumeIndicator;
 
@@ -101,6 +101,10 @@ void V1Display::updateStatusStripIncremental(const DisplayState& state,
         drawTopCounter(topChar, topMuted, topDot);
         flushLeftStrip = true;
     }
+
+    drawLockoutIndicator();
+    drawGpsIndicator();
+    drawObdIndicator();
 }
 
 void V1Display::update(const DisplayState& state) {
@@ -290,6 +294,7 @@ void V1Display::update(const DisplayState& state) {
     drawMuteIcon(effectiveMuted);
     drawLockoutIndicator();
     drawGpsIndicator();
+    drawObdIndicator();
     drawProfileIndicator(currentProfileSlot);
     
     // Clear any persisted card slots when entering resting state
@@ -312,39 +317,45 @@ void V1Display::update(const DisplayState& state) {
 void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     drawFrequency(freqMHz, band, muted, isPhotoRadar);
 
-    // Keep top-row badges responsive even when we're in lightweight refresh mode.
-    // This path runs independently of full display.update() redraws.
     const uint32_t nowMs = millis();
-    const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
-    const bool gpsShow = gpsStatus.enabled && gpsStatus.stableHasFix;
-    const uint8_t gpsSats = gpsShow ? gpsStatus.stableSatellites : 0;
+    syncTopIndicators(nowMs);
 
-    setGpsSatellites(gpsStatus.enabled, gpsStatus.stableHasFix, gpsStatus.stableSatellites);
+    const bool gpsShow = gpsSatEnabled_ && gpsSatHasFix_;
+    const uint8_t gpsSats = gpsShow ? gpsSatCount_ : 0;
+    const bool obdShow = obdEnabled_;
+    const bool obdConnected = obdShow && obdConnected_;
 
-    const bool forceBadgeFlush = dirty.lockout || dirty.gpsIndicator;
+    const bool forceBadgeFlush = dirty.lockout || dirty.gpsIndicator || dirty.obdIndicator;
 
     drawLockoutIndicator();
     drawGpsIndicator();
+    drawObdIndicator();
 
     static bool badgeCacheValid = false;
     static bool lastLockoutShown = false;
     static bool lastGpsShown = false;
     static uint8_t lastGpsSats = 0;
+    static bool lastObdShown = false;
+    static bool lastObdConnected = false;
 
     const bool badgeStripChanged =
         !badgeCacheValid ||
         forceBadgeFlush ||
         (lockoutIndicatorShown_ != lastLockoutShown) ||
         (gpsShow != lastGpsShown) ||
-        (gpsSats != lastGpsSats);
+        (gpsSats != lastGpsSats) ||
+        (obdShow != lastObdShown) ||
+        (obdConnected != lastObdConnected);
 
     if (badgeStripChanged) {
-        // Top status strip containing GPS / lockout badges.
+        // Top status strip containing GPS / lockout / OBD badges.
         flushRegion(120, 0, 320, 36);
         badgeCacheValid = true;
         lastLockoutShown = lockoutIndicatorShown_;
         lastGpsShown = gpsShow;
         lastGpsSats = gpsSats;
+        lastObdShown = obdShow;
+        lastObdConnected = obdConnected;
     }
 
     if (frequencyRenderDirty) {
@@ -684,6 +695,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     drawMuteIcon(state.muted);
     drawLockoutIndicator();
     drawGpsIndicator();
+    drawObdIndicator();
     drawProfileIndicator(currentProfileSlot);
     DISP_PERF_LOG("arrows+icons");
     

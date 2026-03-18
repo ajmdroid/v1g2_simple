@@ -119,10 +119,16 @@ describe('colors route page', () => {
 		const fetchMock = installDefaultFetch();
 		const { unmount } = render(Page);
 
+		expect(await screen.findByText('OBD Badge')).toBeInTheDocument();
+
 		const saveButton = await screen.findByRole('button', { name: /save colors/i });
 		await fireEvent.click(saveButton);
 
 		await screen.findByText('Colors saved! Previewing on display...');
+		const saveCall = fetchMock.mock.calls.find(
+			([url, init]) => url === DISPLAY_SETTINGS_ENDPOINT && init?.method === 'POST'
+		);
+		expect(saveCall?.[1]?.body?.get('obd')).toBe(String(cloneDefaultColors().obd));
 		await vi.advanceTimersByTimeAsync(3000);
 		await waitFor(() => {
 			expect(
