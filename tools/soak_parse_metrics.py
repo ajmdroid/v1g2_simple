@@ -96,6 +96,20 @@ def compute_window_stats(records, start_idx, end_idx):
     }
 
 
+def compute_window_peak(records, start_idx, end_idx, key):
+    if start_idx < 0:
+        start_idx = 0
+    if end_idx < start_idx:
+        end_idx = start_idx
+    if start_idx > len(records):
+        start_idx = len(records)
+    if end_idx > len(records):
+        end_idx = len(records)
+
+    values = [rec.get(key) for rec in records[start_idx:end_idx] if rec.get(key) is not None]
+    return max(values) if values else None
+
+
 def parse_args(argv):
     parser = argparse.ArgumentParser(description="Parse soak metrics JSONL into key=value fields")
     parser.add_argument("metrics_jsonl", help="Path to metrics.jsonl")
@@ -110,6 +124,12 @@ def parse_args(argv):
         type=float,
         default=None,
         help="Optional dispPipeMaxUs threshold used to emit over-limit sample counts",
+    )
+    parser.add_argument(
+        "--ble-threshold",
+        type=float,
+        default=None,
+        help="Optional bleProcessMaxUs threshold used for connect-burst stability diagnostics",
     )
     parser.add_argument(
         "--skip-first-wifi-samples",
@@ -134,6 +154,18 @@ def parse_args(argv):
         type=float,
         default=None,
         help="Optional heapDmaLargest floor for below-floor sample/streak diagnostics",
+    )
+    parser.add_argument(
+        "--connect-burst-disp-threshold",
+        type=float,
+        default=None,
+        help="Optional dispPipeMaxUs threshold used for connect-burst stability diagnostics",
+    )
+    parser.add_argument(
+        "--connect-burst-consecutive-samples",
+        type=int,
+        default=3,
+        help="Consecutive in-threshold samples required to mark the first-connected burst as settled",
     )
     return parser.parse_args(argv)
 
@@ -277,6 +309,7 @@ def main() -> int:
                 wifi_val = num(data.get("wifiMaxUs"))
                 ble_drain_val = num(data.get("bleDrainMaxUs"))
                 disp_pipe_val = num(data.get("dispPipeMaxUs"))
+                ble_process_val = num(data.get("bleProcessMaxUs"))
                 sample_ts = rec.get("ts") if isinstance(rec.get("ts"), str) else ""
                 # Prefer firmware uptime for per-device rate calculations; host wall-clock
                 # sampling jitter can inflate short-window Hz estimates under load.
@@ -509,7 +542,7 @@ def main() -> int:
                     fragmentation_pct = max(0.0, 100.0 - largest_to_free_pct)
                     dma_fragmentation_pct_samples.append(fragmentation_pct)
 
-                ble_process_max_peak = update_max(ble_process_max_peak, num(data.get("bleProcessMaxUs")))
+                ble_process_max_peak = update_max(ble_process_max_peak, ble_process_val)
                 disp_pipe_max_peak = update_max(disp_pipe_max_peak, disp_pipe_val)
                 if disp_pipe_val is not None:
                     disp_pipe_samples.append(disp_pipe_val)
@@ -531,7 +564,20 @@ def main() -> int:
                         "epoch": sample_epoch,
                         "wifi": wifi_val,
                         "loop": loop_val,
+                        "ble": ble_process_val,
                         "disp": disp_pipe_val,
+                        "disp_render": num(data.get("dispMaxUs")),
+                        "display_voice": num(data.get("displayVoiceMaxUs")),
+                        "display_gap_recover": num(data.get("displayGapRecoverMaxUs")),
+                        "ble_followup_request_alert": num(data.get("bleFollowupRequestAlertMaxUs")),
+                        "ble_followup_request_version": num(data.get("bleFollowupRequestVersionMaxUs")),
+                        "ble_connect_stable_callback": num(data.get("bleConnectStableCallbackMaxUs")),
+                        "ble_proxy_start": num(data.get("bleProxyStartMaxUs")),
+                        "ble_state": data.get("bleState") if isinstance(data.get("bleState"), str) else None,
+                        "ble_state_code": num(data.get("bleStateCode")),
+                        "subscribe_step": data.get("subscribeStep") if isinstance(data.get("subscribeStep"), str) else None,
+                        "subscribe_step_code": num(data.get("subscribeStepCode")),
+                        "proxy_advertising": proxy_adv_state,
                     }
                 )
     except FileNotFoundError:
@@ -606,6 +652,46 @@ def main() -> int:
             if stable_flags[idx]:
                 consec += 1
                 if consec >= stable_required:
+                    return idx
+            else:
+                consec = 0
+        return None
+
+    connect_burst_disp_threshold = (
+        args.connect_burst_disp_threshold if args.connect_burst_disp_threshold is not None else args.disp_threshold
+    )
+    connect_burst_required = max(args.connect_burst_consecutive_samples, 1)
+
+    def connect_burst_event_matches(rec):
+        ble_state = rec.get("ble_state")
+        ble_state_code = rec.get("ble_state_code")
+        subscribe_step = rec.get("subscribe_step")
+        subscribe_step_code = rec.get("subscribe_step_code")
+        ble_connected = ble_state == "CONNECTED" or ble_state_code == 8
+        subscribe_complete = subscribe_step == "COMPLETE" or subscribe_step_code == 11
+        return ble_connected and subscribe_complete
+
+    def connect_burst_sample_is_stable(rec):
+        if args.ble_threshold is not None:
+            ble_val = rec.get("ble")
+            if ble_val is None or ble_val > args.ble_threshold:
+                return False
+        if connect_burst_disp_threshold is not None:
+            disp_val = rec.get("disp")
+            if disp_val is None or disp_val > connect_burst_disp_threshold:
+                return False
+        return True
+
+    connect_burst_stable_flags = [connect_burst_sample_is_stable(rec) for rec in sample_records]
+
+    def find_connect_burst_stable_index(start_idx):
+        consec = 0
+        if start_idx < 0:
+            start_idx = 0
+        for idx in range(start_idx, len(sample_records)):
+            if connect_burst_stable_flags[idx]:
+                consec += 1
+                if consec >= connect_burst_required:
                     return idx
             else:
                 consec = 0
@@ -692,6 +778,65 @@ def main() -> int:
         pre_stats = compute_window_stats(sample_records, 0, primary_event_idx)
         transition_stats = compute_window_stats(sample_records, primary_event_idx, primary_stable_idx + 1)
         post_stats = compute_window_stats(sample_records, primary_stable_idx + 1, len(sample_records))
+
+    connect_burst_event_idx = None
+    for idx, rec in enumerate(sample_records):
+        if connect_burst_event_matches(rec):
+            connect_burst_event_idx = idx
+            break
+
+    connect_burst_stable_idx = None
+    connect_burst_samples_to_stable = None
+    connect_burst_time_to_stable_ms = None
+    connect_burst_pre_start_idx = 0
+    connect_burst_pre_end_idx = 0
+    connect_burst_event_ble_state = None
+    connect_burst_event_subscribe_step = None
+    connect_burst_event_proxy_advertising = None
+    if connect_burst_event_idx is not None:
+        connect_burst_event = sample_records[connect_burst_event_idx]
+        connect_burst_event_ble_state = connect_burst_event.get("ble_state")
+        connect_burst_event_subscribe_step = connect_burst_event.get("subscribe_step")
+        connect_burst_event_proxy_advertising = connect_burst_event.get("proxy_advertising")
+        connect_burst_stable_idx = find_connect_burst_stable_index(connect_burst_event_idx)
+        connect_burst_pre_start_idx = connect_burst_event_idx
+        if connect_burst_stable_idx is None:
+            connect_burst_pre_end_idx = len(sample_records)
+        else:
+            connect_burst_samples_to_stable = connect_burst_stable_idx - connect_burst_event_idx + 1
+            connect_burst_pre_end_idx = connect_burst_stable_idx + 1
+            event_epoch = sample_records[connect_burst_event_idx].get("epoch")
+            stable_epoch = sample_records[connect_burst_stable_idx].get("epoch")
+            if event_epoch is not None and stable_epoch is not None:
+                connect_burst_time_to_stable_ms = to_int_ms(stable_epoch - event_epoch)
+
+    connect_burst_pre_ble_process_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "ble"
+    )
+    connect_burst_pre_disp_pipe_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "disp"
+    )
+    connect_burst_ble_followup_request_alert_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "ble_followup_request_alert"
+    )
+    connect_burst_ble_followup_request_version_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "ble_followup_request_version"
+    )
+    connect_burst_ble_connect_stable_callback_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "ble_connect_stable_callback"
+    )
+    connect_burst_ble_proxy_start_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "ble_proxy_start"
+    )
+    connect_burst_disp_render_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "disp_render"
+    )
+    connect_burst_display_voice_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "display_voice"
+    )
+    connect_burst_display_gap_recover_peak = compute_window_peak(
+        sample_records, connect_burst_pre_start_idx, connect_burst_pre_end_idx, "display_gap_recover"
+    )
 
     emit("samples", samples)
     emit("ok_samples", ok_samples)
@@ -886,6 +1031,28 @@ def main() -> int:
         "window_post_stable_disp_pipe_p95",
         round(post_stats["disp_p95"], 3) if post_stats["disp_p95"] is not None else None,
     )
+    emit("connect_burst_detected", 1 if connect_burst_event_idx is not None else 0)
+    emit("connect_burst_event_index", connect_burst_event_idx)
+    emit("connect_burst_stable_index", connect_burst_stable_idx)
+    emit(
+        "connect_burst_stabilized",
+        (1 if connect_burst_stable_idx is not None else 0) if connect_burst_event_idx is not None else None,
+    )
+    emit("connect_burst_event_ble_state", connect_burst_event_ble_state)
+    emit("connect_burst_event_subscribe_step", connect_burst_event_subscribe_step)
+    emit("connect_burst_event_proxy_advertising", connect_burst_event_proxy_advertising)
+    emit("connect_burst_stable_consecutive_samples_required", connect_burst_required)
+    emit("connect_burst_samples_to_stable", connect_burst_samples_to_stable)
+    emit("connect_burst_time_to_stable_ms", connect_burst_time_to_stable_ms)
+    emit("connect_burst_pre_ble_process_peak", connect_burst_pre_ble_process_peak)
+    emit("connect_burst_pre_disp_pipe_peak", connect_burst_pre_disp_pipe_peak)
+    emit("connect_burst_ble_followup_request_alert_peak", connect_burst_ble_followup_request_alert_peak)
+    emit("connect_burst_ble_followup_request_version_peak", connect_burst_ble_followup_request_version_peak)
+    emit("connect_burst_ble_connect_stable_callback_peak", connect_burst_ble_connect_stable_callback_peak)
+    emit("connect_burst_ble_proxy_start_peak", connect_burst_ble_proxy_start_peak)
+    emit("connect_burst_disp_render_peak", connect_burst_disp_render_peak)
+    emit("connect_burst_display_voice_peak", connect_burst_display_voice_peak)
+    emit("connect_burst_display_gap_recover_peak", connect_burst_display_gap_recover_peak)
 
     inherited_counter_suspect = 0
     for first_val in (queue_drops_first, perf_drop_first, event_drop_first):

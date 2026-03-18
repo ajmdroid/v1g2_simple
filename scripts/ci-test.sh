@@ -52,6 +52,7 @@ run_step "Deterministic perf scorer regression tests" python3 scripts/test_perf_
 run_step "Perf computed metric contract" python3 scripts/check_perf_computed_metric_contract.py
 run_step "Hardware manifest scoring regression tests" python3 scripts/test_hardware_run_scoring.py
 run_step "Perf CSV import regression tests" python3 scripts/test_perf_csv_import.py
+run_step "Soak metrics parser regression tests" python3 scripts/test_soak_parse_metrics.py
 run_step "Single hardware test script regression tests" python3 scripts/test_hardware_test_script.py
 run_step "Real firmware soak regression tests" python3 scripts/test_real_fw_soak_script.py
 run_step "Road map builder regression tests" python3 scripts/test_build_road_map.py

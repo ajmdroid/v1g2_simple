@@ -117,6 +117,7 @@ TRANSITION_DRIVE_INTERVAL_SECONDS=15
 TRANSITION_FLAP_CYCLES=3
 TRANSITION_CONTROL_URL="${REAL_FW_TRANSITION_CONTROL_URL:-${REAL_FW_SETTINGS_URL:-}}"
 TRANSITION_STABLE_CONSECUTIVE_SAMPLES="${REAL_FW_STABLE_CONSECUTIVE_SAMPLES:-2}"
+CONNECT_BURST_STABLE_CONSECUTIVE_SAMPLES="${REAL_FW_CONNECT_BURST_STABLE_CONSECUTIVE_SAMPLES:-3}"
 MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN=0
 MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF=0
 MAX_SAMPLES_TO_STABLE=0
@@ -2102,13 +2103,18 @@ metrics_parser_args=(
   "$METRICS_JSONL"
   "--skip-first-wifi-samples" "$WIFI_ROBUST_SKIP_FIRST_SAMPLES"
   "--stable-consecutive-samples" "$TRANSITION_STABLE_CONSECUTIVE_SAMPLES"
+  "--connect-burst-consecutive-samples" "$CONNECT_BURST_STABLE_CONSECUTIVE_SAMPLES"
   "--exclude-tail-samples-for-minima" "$MINIMA_TAIL_EXCLUDE_SAMPLES"
 )
+if [[ "$MAX_BLE_PROCESS_MAX_US" -gt 0 ]]; then
+  metrics_parser_args+=(--ble-threshold "$MAX_BLE_PROCESS_MAX_US")
+fi
 if [[ "$MAX_WIFI_MAX_US" -gt 0 ]]; then
   metrics_parser_args+=(--wifi-threshold "$MAX_WIFI_MAX_US")
 fi
 if [[ "$MAX_DISP_PIPE_MAX_US" -gt 0 ]]; then
   metrics_parser_args+=(--disp-threshold "$MAX_DISP_PIPE_MAX_US")
+  metrics_parser_args+=(--connect-burst-disp-threshold "$MAX_DISP_PIPE_MAX_US")
 fi
 if [[ "$MIN_DMA_LARGEST" -gt 0 ]]; then
   metrics_parser_args+=(--dma-largest-floor "$MIN_DMA_LARGEST")
@@ -2257,6 +2263,25 @@ window_post_stable_loop_peak=""
 window_post_stable_loop_p95=""
 window_post_stable_disp_pipe_peak=""
 window_post_stable_disp_pipe_p95=""
+connect_burst_detected=""
+connect_burst_event_index=""
+connect_burst_stable_index=""
+connect_burst_stabilized=""
+connect_burst_event_ble_state=""
+connect_burst_event_subscribe_step=""
+connect_burst_event_proxy_advertising=""
+connect_burst_stable_consecutive_samples_required=""
+connect_burst_samples_to_stable=""
+connect_burst_time_to_stable_ms=""
+connect_burst_pre_ble_process_peak=""
+connect_burst_pre_disp_pipe_peak=""
+connect_burst_ble_followup_request_alert_peak=""
+connect_burst_ble_followup_request_version_peak=""
+connect_burst_ble_connect_stable_callback_peak=""
+connect_burst_ble_proxy_start_peak=""
+connect_burst_disp_render_peak=""
+connect_burst_display_voice_peak=""
+connect_burst_display_gap_recover_peak=""
 
 while IFS='=' read -r key value; do
   case "$key" in
@@ -2395,6 +2420,25 @@ while IFS='=' read -r key value; do
     window_post_stable_loop_p95) window_post_stable_loop_p95="$value" ;;
     window_post_stable_disp_pipe_peak) window_post_stable_disp_pipe_peak="$value" ;;
     window_post_stable_disp_pipe_p95) window_post_stable_disp_pipe_p95="$value" ;;
+    connect_burst_detected) connect_burst_detected="$value" ;;
+    connect_burst_event_index) connect_burst_event_index="$value" ;;
+    connect_burst_stable_index) connect_burst_stable_index="$value" ;;
+    connect_burst_stabilized) connect_burst_stabilized="$value" ;;
+    connect_burst_event_ble_state) connect_burst_event_ble_state="$value" ;;
+    connect_burst_event_subscribe_step) connect_burst_event_subscribe_step="$value" ;;
+    connect_burst_event_proxy_advertising) connect_burst_event_proxy_advertising="$value" ;;
+    connect_burst_stable_consecutive_samples_required) connect_burst_stable_consecutive_samples_required="$value" ;;
+    connect_burst_samples_to_stable) connect_burst_samples_to_stable="$value" ;;
+    connect_burst_time_to_stable_ms) connect_burst_time_to_stable_ms="$value" ;;
+    connect_burst_pre_ble_process_peak) connect_burst_pre_ble_process_peak="$value" ;;
+    connect_burst_pre_disp_pipe_peak) connect_burst_pre_disp_pipe_peak="$value" ;;
+    connect_burst_ble_followup_request_alert_peak) connect_burst_ble_followup_request_alert_peak="$value" ;;
+    connect_burst_ble_followup_request_version_peak) connect_burst_ble_followup_request_version_peak="$value" ;;
+    connect_burst_ble_connect_stable_callback_peak) connect_burst_ble_connect_stable_callback_peak="$value" ;;
+    connect_burst_ble_proxy_start_peak) connect_burst_ble_proxy_start_peak="$value" ;;
+    connect_burst_disp_render_peak) connect_burst_disp_render_peak="$value" ;;
+    connect_burst_display_voice_peak) connect_burst_display_voice_peak="$value" ;;
+    connect_burst_display_gap_recover_peak) connect_burst_display_gap_recover_peak="$value" ;;
   esac
 done < "$metrics_kv"
 
@@ -3191,6 +3235,12 @@ fi
   echo "- Window pre samples wifiPeak/wifiP95 loopPeak/loopP95 dispPeak/dispP95: ${window_pre_samples:-n/a} ${window_pre_wifi_peak:-n/a}/${window_pre_wifi_p95:-n/a} ${window_pre_loop_peak:-n/a}/${window_pre_loop_p95:-n/a} ${window_pre_disp_pipe_peak:-n/a}/${window_pre_disp_pipe_p95:-n/a}"
   echo "- Window transition samples wifiPeak/wifiP95 loopPeak/loopP95 dispPeak/dispP95: ${window_transition_samples:-n/a} ${window_transition_wifi_peak:-n/a}/${window_transition_wifi_p95:-n/a} ${window_transition_loop_peak:-n/a}/${window_transition_loop_p95:-n/a} ${window_transition_disp_pipe_peak:-n/a}/${window_transition_disp_pipe_p95:-n/a}"
   echo "- Window post-stable samples wifiPeak/wifiP95 loopPeak/loopP95 dispPeak/dispP95: ${window_post_stable_samples:-n/a} ${window_post_stable_wifi_peak:-n/a}/${window_post_stable_wifi_p95:-n/a} ${window_post_stable_loop_peak:-n/a}/${window_post_stable_loop_p95:-n/a} ${window_post_stable_disp_pipe_peak:-n/a}/${window_post_stable_disp_pipe_p95:-n/a}"
+  echo "- Connect-burst diagnostics (diagnostic-only): detected=${connect_burst_detected:-n/a} stabilized=${connect_burst_stabilized:-n/a} consecutiveSamples=${connect_burst_stable_consecutive_samples_required:-n/a}"
+  echo "- Connect-burst event sample/state/step/proxy: ${connect_burst_event_index:-n/a} / ${connect_burst_event_ble_state:-n/a} / ${connect_burst_event_subscribe_step:-n/a} / ${connect_burst_event_proxy_advertising:-n/a}"
+  echo "- Connect-burst stable sample/samples/time: ${connect_burst_stable_index:-n/a} / ${connect_burst_samples_to_stable:-n/a} / ${connect_burst_time_to_stable_ms:-n/a}ms"
+  echo "- Connect-burst pre-window bleProcess/dispPipe peaks: ${connect_burst_pre_ble_process_peak:-n/a} / ${connect_burst_pre_disp_pipe_peak:-n/a}"
+  echo "- Connect-burst BLE root-cause peaks alert/version/stableCallback/proxyStart: ${connect_burst_ble_followup_request_alert_peak:-n/a} / ${connect_burst_ble_followup_request_version_peak:-n/a} / ${connect_burst_ble_connect_stable_callback_peak:-n/a} / ${connect_burst_ble_proxy_start_peak:-n/a}"
+  echo "- Connect-burst display root-cause peaks render/voice/gapRecover: ${connect_burst_disp_render_peak:-n/a} / ${connect_burst_display_voice_peak:-n/a} / ${connect_burst_display_gap_recover_peak:-n/a}"
   echo "- Transition churn gates (steady-state): AP down <= ${MAX_AP_TRANSITION_CHURN_DELTA}, proxy on/off <= ${MAX_PROXY_ADV_TRANSITION_CHURN_DELTA}"
   echo "- Transition minimum events gates (active drive): AP down >= ${MIN_AP_DOWN_TRANSITIONS}, proxy off >= ${MIN_PROXY_ADV_OFF_TRANSITIONS}"
   echo "- Peak bleDrainMaxUs: ${ble_drain_max_peak:-n/a} (max gate ${MAX_BLE_DRAIN_MAX_US})"
@@ -3340,6 +3390,17 @@ disp_pipe_p95_us=${disp_pipe_p95}
 dma_fragmentation_pct_p95=${dma_fragmentation_pct_p95}
 samples_to_stable=${samples_to_stable}
 time_to_stable_ms=${time_to_stable_ms}
+connect_burst_samples_to_stable=${connect_burst_samples_to_stable}
+connect_burst_time_to_stable_ms=${connect_burst_time_to_stable_ms}
+connect_burst_pre_ble_process_peak_us=${connect_burst_pre_ble_process_peak}
+connect_burst_pre_disp_pipe_peak_us=${connect_burst_pre_disp_pipe_peak}
+connect_burst_ble_followup_request_alert_peak_us=${connect_burst_ble_followup_request_alert_peak}
+connect_burst_ble_followup_request_version_peak_us=${connect_burst_ble_followup_request_version_peak}
+connect_burst_ble_connect_stable_callback_peak_us=${connect_burst_ble_connect_stable_callback_peak}
+connect_burst_ble_proxy_start_peak_us=${connect_burst_ble_proxy_start_peak}
+connect_burst_disp_render_peak_us=${connect_burst_disp_render_peak}
+connect_burst_display_voice_peak_us=${connect_burst_display_voice_peak}
+connect_burst_display_gap_recover_peak_us=${connect_burst_display_gap_recover_peak}
 EOF
 
 trend_metric_count="$(python3 - "$TREND_METRICS_KV" "$TREND_METRICS_NDJSON" "$RUN_ID" "$GIT_SHA_SHORT" "$track_name" "$RUN_STRESS_CLASS" <<'PY'
@@ -3386,6 +3447,17 @@ units = {
     "dma_fragmentation_pct_p95": "percent",
     "samples_to_stable": "count",
     "time_to_stable_ms": "ms",
+    "connect_burst_samples_to_stable": "count",
+    "connect_burst_time_to_stable_ms": "ms",
+    "connect_burst_pre_ble_process_peak_us": "us",
+    "connect_burst_pre_disp_pipe_peak_us": "us",
+    "connect_burst_ble_followup_request_alert_peak_us": "us",
+    "connect_burst_ble_followup_request_version_peak_us": "us",
+    "connect_burst_ble_connect_stable_callback_peak_us": "us",
+    "connect_burst_ble_proxy_start_peak_us": "us",
+    "connect_burst_disp_render_peak_us": "us",
+    "connect_burst_display_voice_peak_us": "us",
+    "connect_burst_display_gap_recover_peak_us": "us",
 }
 
 count = 0
