@@ -393,6 +393,16 @@ enum class PerfProxyAdvertisingTransitionReason : uint8_t {
     StopOther = 12
 };
 
+enum class PerfObdSyncCall : uint8_t {
+    None = 0,
+    Connect = 1,
+    SecurityStart = 2,
+    Discovery = 3,
+    Subscribe = 4,
+    Write = 5,
+    RssiRead = 6,
+};
+
 struct PerfExtendedMetrics {
     PerfHistogramMs notifyToDisplayMs;
     PerfHistogramMs notifyToProxyMs;
@@ -402,6 +412,12 @@ struct PerfExtendedMetrics {
     uint32_t minFreeDma = UINT32_MAX;         // DMA-capable internal SRAM (WiFi/SD contention)
     uint32_t minLargestDma = UINT32_MAX;      // Largest DMA block (fragmentation detection)
     uint32_t wifiMaxUs = 0;
+    uint32_t wifiHandleClientMaxUs = 0;
+    uint32_t wifiMaintenanceMaxUs = 0;
+    uint32_t wifiStatusCheckMaxUs = 0;
+    uint32_t wifiTimeoutCheckMaxUs = 0;
+    uint32_t wifiHeapGuardMaxUs = 0;
+    uint32_t wifiApStaPollMaxUs = 0;
     uint32_t fsMaxUs = 0;
     uint32_t sdMaxUs = 0;
     uint32_t flushMaxUs = 0;
@@ -415,6 +431,12 @@ struct PerfExtendedMetrics {
     uint32_t dispPipeMaxUs = 0;       // displayPipelineModule.handleParsed() duration
     uint32_t touchMaxUs = 0;          // touchUiModule.process() duration
     uint32_t obdMaxUs = 0;              // obdRuntimeModule.update() duration
+    uint32_t obdConnectCallMaxUs = 0;
+    uint32_t obdSecurityStartCallMaxUs = 0;
+    uint32_t obdDiscoveryCallMaxUs = 0;
+    uint32_t obdSubscribeCallMaxUs = 0;
+    uint32_t obdWriteCallMaxUs = 0;
+    uint32_t obdRssiCallMaxUs = 0;
     uint32_t gpsMaxUs = 0;             // gpsRuntimeModule.update() duration
     uint32_t lockoutMaxUs = 0;         // lockoutEnforcer.process() + signalCapture duration
     uint32_t lockoutSaveMaxUs = 0;     // lockout zone JSON serialize + SD write
@@ -452,6 +474,12 @@ struct PerfExtendedMetrics {
         minFreeDma = UINT32_MAX;
         minLargestDma = UINT32_MAX;
         wifiMaxUs = 0;
+        wifiHandleClientMaxUs = 0;
+        wifiMaintenanceMaxUs = 0;
+        wifiStatusCheckMaxUs = 0;
+        wifiTimeoutCheckMaxUs = 0;
+        wifiHeapGuardMaxUs = 0;
+        wifiApStaPollMaxUs = 0;
         fsMaxUs = 0;
         sdMaxUs = 0;
         flushMaxUs = 0;
@@ -464,6 +492,12 @@ struct PerfExtendedMetrics {
         dispPipeMaxUs = 0;
         touchMaxUs = 0;
         obdMaxUs = 0;
+        obdConnectCallMaxUs = 0;
+        obdSecurityStartCallMaxUs = 0;
+        obdDiscoveryCallMaxUs = 0;
+        obdSubscribeCallMaxUs = 0;
+        obdWriteCallMaxUs = 0;
+        obdRssiCallMaxUs = 0;
         gpsMaxUs = 0;
         lockoutMaxUs = 0;
         lockoutSaveMaxUs = 0;
@@ -501,6 +535,12 @@ void perfRecordNotifyToProxyMs(uint32_t ms);
 void perfRecordLoopJitterUs(uint32_t us);
 void perfRecordHeapStats(uint32_t freeHeap, uint32_t largestBlock, uint32_t freeDma, uint32_t largestDma);
 void perfRecordWifiProcessUs(uint32_t us);
+void perfRecordWifiHandleClientUs(uint32_t us);
+void perfRecordWifiMaintenanceUs(uint32_t us);
+void perfRecordWifiStatusCheckUs(uint32_t us);
+void perfRecordWifiTimeoutCheckUs(uint32_t us);
+void perfRecordWifiHeapGuardUs(uint32_t us);
+void perfRecordWifiApStaPollUs(uint32_t us);
 void perfRecordFsServeUs(uint32_t us);
 void perfRecordSdFlushUs(uint32_t us);
 void perfRecordFlushUs(uint32_t us);
@@ -518,6 +558,12 @@ void perfRecordLockoutSaveUs(uint32_t us);
 void perfRecordLearnerSaveUs(uint32_t us);
 void perfRecordTimeSaveUs(uint32_t us);
 void perfRecordPerfReportUs(uint32_t us);
+void perfRecordObdConnectCallUs(uint32_t us);
+void perfRecordObdSecurityStartCallUs(uint32_t us);
+void perfRecordObdDiscoveryCallUs(uint32_t us);
+void perfRecordObdSubscribeCallUs(uint32_t us);
+void perfRecordObdWriteCallUs(uint32_t us);
+void perfRecordObdRssiCallUs(uint32_t us);
 void perfRecordDisplayScreenTransition(PerfDisplayScreen from, PerfDisplayScreen to, uint32_t nowMs);
 void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolume, uint8_t originalVolume, uint32_t nowMs);
 void perfRecordBleTimelineEvent(PerfBleTimelineEvent event, uint32_t nowMs);
@@ -529,6 +575,12 @@ uint32_t perfGetMinFreeHeap();
 uint32_t perfGetMinFreeDma();
 uint32_t perfGetMinLargestDma();
 uint32_t perfGetWifiMaxUs();
+uint32_t perfGetObdConnectCallMaxUs();
+uint32_t perfGetObdSecurityStartCallMaxUs();
+uint32_t perfGetObdDiscoveryCallMaxUs();
+uint32_t perfGetObdSubscribeCallMaxUs();
+uint32_t perfGetObdWriteCallMaxUs();
+uint32_t perfGetObdRssiCallMaxUs();
 uint32_t perfGetFsMaxUs();
 uint32_t perfGetSdMaxUs();
 uint32_t perfGetFlushMaxUs();

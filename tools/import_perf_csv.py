@@ -26,7 +26,7 @@ DEFAULT_HEADER_COLUMNS = [
     for line in (ROOT / "test" / "contracts" / "perf_csv_column_contract.txt").read_text(encoding="utf-8").splitlines()
     if line.strip() and not line.startswith("#")
 ]
-CURRENT_PERF_CSV_SCHEMA = 14
+CURRENT_PERF_CSV_SCHEMA = 17
 MIN_DROP_COUNTER_SCHEMA = 13
 ALWAYS_UNSUPPORTED_METRICS = {"samples_to_stable", "time_to_stable_ms"}
 LEGACY_UNSUPPORTED_METRICS = {"perf_drop_delta", "event_drop_delta"}
@@ -111,6 +111,37 @@ ATTRIBUTION_COLUMNS = (
     "proxyAdvertising",
     "proxyAdvertisingLastTransitionReason",
     "wifiPriorityMode",
+    "obdMax_us",
+    "obdConnectCallMax_us",
+    "obdSecurityStartCallMax_us",
+    "obdDiscoveryCallMax_us",
+    "obdSubscribeCallMax_us",
+    "obdWriteCallMax_us",
+    "obdRssiCallMax_us",
+    "fsMax_us",
+    "wifiHandleClientMax_us",
+    "wifiMaintenanceMax_us",
+    "wifiStatusCheckMax_us",
+    "wifiTimeoutCheckMax_us",
+    "wifiHeapGuardMax_us",
+    "wifiApStaPollMax_us",
+)
+OBD_SYNC_CALL_COLUMNS = (
+    ("obdConnectCallMax_us", "connect"),
+    ("obdSecurityStartCallMax_us", "security start"),
+    ("obdDiscoveryCallMax_us", "service discovery"),
+    ("obdSubscribeCallMax_us", "notification subscribe"),
+    ("obdWriteCallMax_us", "command write"),
+    ("obdRssiCallMax_us", "RSSI read"),
+)
+WIFI_SUBPHASE_COLUMNS = (
+    ("fsMax_us", "LittleFS static file serving"),
+    ("wifiHandleClientMax_us", "HTTP client handling"),
+    ("wifiMaintenanceMax_us", "WiFi maintenance"),
+    ("wifiStatusCheckMax_us", "WiFi status check"),
+    ("wifiTimeoutCheckMax_us", "WiFi timeout check"),
+    ("wifiHeapGuardMax_us", "WiFi heap guard"),
+    ("wifiApStaPollMax_us", "AP station poll"),
 )
 BOUNDARY_EVENT_WINDOW_ROWS = 2
 MIN_BOUNDARY_PADDING_ROWS = 3
@@ -486,6 +517,9 @@ def _build_row_summary(row: dict[str, int], row_index: int, column: str) -> dict
     for field in TOP_ROW_FIELDS:
         if field in row:
             summary[field] = int(row.get(field, 0))
+    for field in ("loopMax_us", "obdMax_us", "wifiMax_us", "fsMax_us", "bleProcessMax_us", "dispPipeMax_us"):
+        if field in row:
+            summary[field] = int(row.get(field, 0))
     if "bleState" in row:
         summary["bleState"] = _decode_ble_state(row.get("bleState", 0))
         summary["bleStateCode"] = int(row.get("bleState", 0))
@@ -497,7 +531,53 @@ def _build_row_summary(row: dict[str, int], row_index: int, column: str) -> dict
     for field in ("connectInProgress", "asyncConnectPending", "pendingDisconnectCleanup", "proxyAdvertising", "wifiPriorityMode"):
         if field in row:
             summary[field] = bool(int(row.get(field, 0)))
+    for field, _label in OBD_SYNC_CALL_COLUMNS:
+        if field in row:
+            summary[field] = int(row.get(field, 0))
+    for field, _label in WIFI_SUBPHASE_COLUMNS:
+        if field in row:
+            summary[field] = int(row.get(field, 0))
     return summary
+
+
+def _wrapped_metric(value: float, wrapped_value: float, *, min_slack: float = 5000.0) -> bool:
+    if value <= 0 or wrapped_value <= 0:
+        return False
+    return abs(value - wrapped_value) <= max(min_slack, wrapped_value * 0.2)
+
+
+def _dominant_named_metric(summary: dict[str, Any], columns: tuple[tuple[str, str], ...]) -> Optional[dict[str, Any]]:
+    best: Optional[tuple[str, str, int]] = None
+    for column, label in columns:
+        try:
+            value = int(summary.get(column, 0))
+        except (TypeError, ValueError):
+            value = 0
+        if value <= 0:
+            continue
+        if best is None or value > best[2]:
+            best = (column, label, value)
+    if best is None:
+        return None
+    return {
+        "column": best[0],
+        "label": best[1],
+        "value": best[2],
+    }
+
+
+def _is_obd_wrapped_loop(summary: dict[str, Any]) -> bool:
+    try:
+        return _wrapped_metric(float(summary.get("value", 0)), float(summary.get("obdMax_us", 0)), min_slack=50000.0)
+    except (TypeError, ValueError):
+        return False
+
+
+def _is_fs_wrapped_wifi(summary: dict[str, Any]) -> bool:
+    try:
+        return _wrapped_metric(float(summary.get("value", 0)), float(summary.get("fsMax_us", 0)))
+    except (TypeError, ValueError):
+        return False
 
 
 def _longest_exceed_run(rows: list[dict[str, int]], column: str, limit: float) -> int:
@@ -628,6 +708,10 @@ def build_peak_partition_analysis(
 
 
 def _peak_phase_bucket(summary: dict[str, Any], segment_position: str, classification: str) -> str:
+    if _is_obd_wrapped_loop(summary):
+        return "steady-state OBD runtime stall"
+    if _is_fs_wrapped_wifi(summary):
+        return "steady-state WiFi/AP file serving stall"
     ble_state = summary.get("bleState", "")
     if summary.get("pendingDisconnectCleanup"):
         return "boundary spike during disconnect/cleanup/proxy transition"
@@ -695,18 +779,35 @@ def _augment_peak_diagnostics(
         )
         segment_position = _segment_position(int(diagnostic["row_index"]), len(rows))
         wrapper_symptom_of = None
-        if metric_name == "loop_max_peak_us" and "ble_process_max_peak_us" in peak_diagnostics:
-            ble_diag = peak_diagnostics["ble_process_max_peak_us"]
-            if (int(ble_diag["row_index"]) == int(diagnostic["row_index"]) and
-                    int(ble_diag["millis"]) == int(diagnostic["millis"])):
-                loop_value = float(diagnostic["value"])
-                ble_value = float(ble_diag["value"])
-                if ble_value > 0 and (loop_value - ble_value) <= max(50000.0, ble_value * 0.2):
-                    wrapper_symptom_of = "ble_process_max_peak_us"
         if not top_rows:
             top_rows = [
                 _build_row_summary(rows[int(diagnostic["row_index"]) - 1], int(diagnostic["row_index"]), column)
             ]
+        root_cause_hint = None
+        top_row = top_rows[0]
+        if metric_name == "loop_max_peak_us":
+            if _is_obd_wrapped_loop(top_row):
+                wrapper_symptom_of = "obdMax_us"
+                dominant_obd_call = _dominant_named_metric(top_row, OBD_SYNC_CALL_COLUMNS)
+                if dominant_obd_call is not None:
+                    root_cause_hint = f"inline OBD {dominant_obd_call['label']} stall"
+                else:
+                    root_cause_hint = "inline OBD runtime stall"
+            elif "ble_process_max_peak_us" in peak_diagnostics:
+                ble_diag = peak_diagnostics["ble_process_max_peak_us"]
+                if (int(ble_diag["row_index"]) == int(diagnostic["row_index"]) and
+                        int(ble_diag["millis"]) == int(diagnostic["millis"])):
+                    loop_value = float(diagnostic["value"])
+                    ble_value = float(ble_diag["value"])
+                    if ble_value > 0 and (loop_value - ble_value) <= max(50000.0, ble_value * 0.2):
+                        wrapper_symptom_of = "ble_process_max_peak_us"
+        elif metric_name == "wifi_max_peak_us":
+            if _is_fs_wrapped_wifi(top_row):
+                wrapper_symptom_of = "fsMax_us"
+                root_cause_hint = "LittleFS static file serving during AP"
+            dominant_wifi_phase = _dominant_named_metric(top_row, WIFI_SUBPHASE_COLUMNS)
+            if dominant_wifi_phase is not None and root_cause_hint is None:
+                root_cause_hint = f"WiFi subphase stall: {dominant_wifi_phase['label']}"
         enriched_metric.update(
             {
                 "limit": limit,
@@ -720,6 +821,16 @@ def _augment_peak_diagnostics(
         )
         if wrapper_symptom_of:
             enriched_metric["wrapper_symptom_of"] = wrapper_symptom_of
+        dominant_obd_call = _dominant_named_metric(top_row, OBD_SYNC_CALL_COLUMNS)
+        if dominant_obd_call is not None:
+            enriched_metric["obd_dominant_sync_call_column"] = dominant_obd_call["column"]
+            enriched_metric["obd_dominant_sync_call_label"] = dominant_obd_call["label"]
+        dominant_wifi_phase = _dominant_named_metric(top_row, WIFI_SUBPHASE_COLUMNS)
+        if dominant_wifi_phase is not None:
+            enriched_metric["wifi_dominant_subphase_column"] = dominant_wifi_phase["column"]
+            enriched_metric["wifi_dominant_subphase_label"] = dominant_wifi_phase["label"]
+        if root_cause_hint:
+            enriched_metric["root_cause_hint"] = root_cause_hint
         enriched[metric_name] = enriched_metric
     return enriched
 
@@ -953,6 +1064,16 @@ def append_import_sections(
                 lines.append(f"  wrapper_symptom_of={peak['wrapper_symptom_of']}")
             if peak.get("likely_phase_bucket"):
                 lines.append(f"  likely_phase_bucket={peak['likely_phase_bucket']}")
+            if peak.get("root_cause_hint"):
+                lines.append(f"  root_cause_hint={peak['root_cause_hint']}")
+            if peak.get("obd_dominant_sync_call_label"):
+                lines.append(
+                    f"  obd_dominant_sync_call={peak['obd_dominant_sync_call_label']} ({peak['obd_dominant_sync_call_column']})"
+                )
+            if peak.get("wifi_dominant_subphase_label"):
+                lines.append(
+                    f"  wifi_dominant_subphase={peak['wifi_dominant_subphase_label']} ({peak['wifi_dominant_subphase_column']})"
+                )
             for top_row in peak.get("top_5_rows", [])[:3]:
                 detail_fields = [
                     f"row={top_row['row_index']}",
@@ -960,6 +1081,16 @@ def append_import_sections(
                     f"value={int(round(top_row['value'])) if abs(top_row['value'] - round(top_row['value'])) < 1e-9 else top_row['value']}",
                 ]
                 for field in TOP_ROW_FIELDS:
+                    if field in top_row:
+                        detail_fields.append(f"{field}={top_row[field]}")
+                for field in (
+                    "loopMax_us",
+                    "obdMax_us",
+                    "wifiMax_us",
+                    "fsMax_us",
+                    "bleProcessMax_us",
+                    "dispPipeMax_us",
+                ):
                     if field in top_row:
                         detail_fields.append(f"{field}={top_row[field]}")
                 if "bleState" in top_row:

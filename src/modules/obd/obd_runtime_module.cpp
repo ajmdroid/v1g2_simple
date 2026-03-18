@@ -2,6 +2,7 @@
 
 #include "obd_elm327_parser.h"
 #include "obd_scan_policy.h"
+#include "perf_metrics.h"
 
 #ifndef UNIT_TEST
 #include "ble_client.h"
@@ -405,7 +406,11 @@ bool ObdRuntimeModule::startBleScan() {
 
 bool ObdRuntimeModule::connectBle(uint32_t timeoutMs, bool preferCachedAttributes) {
 #ifndef UNIT_TEST
-    return obdBleClient.connect(savedAddress_, savedAddrType_, timeoutMs, preferCachedAttributes);
+    const uint32_t startUs = PERF_TIMESTAMP_US();
+    const bool connected =
+        obdBleClient.connect(savedAddress_, savedAddrType_, timeoutMs, preferCachedAttributes);
+    perfRecordObdConnectCallUs(PERF_TIMESTAMP_US() - startUs);
+    return connected;
 #else
     (void)timeoutMs;
     (void)preferCachedAttributes;
@@ -424,7 +429,10 @@ bool ObdRuntimeModule::isBleConnected() const {
 
 bool ObdRuntimeModule::beginBleSecurity() {
 #ifndef UNIT_TEST
-    return obdBleClient.beginSecurity();
+    const uint32_t startUs = PERF_TIMESTAMP_US();
+    const bool started = obdBleClient.beginSecurity();
+    perfRecordObdSecurityStartCallUs(PERF_TIMESTAMP_US() - startUs);
+    return started;
 #else
     testBeginSecurityCalls_++;
     return testBeginSecurityResult_;
@@ -481,7 +489,10 @@ int ObdRuntimeModule::getBleSecurityFailure() const {
 
 bool ObdRuntimeModule::discoverBleServices() {
 #ifndef UNIT_TEST
-    return obdBleClient.discoverServices();
+    const uint32_t startUs = PERF_TIMESTAMP_US();
+    const bool discovered = obdBleClient.discoverServices();
+    perfRecordObdDiscoveryCallUs(PERF_TIMESTAMP_US() - startUs);
+    return discovered;
 #else
     testDiscoverCalls_++;
     return testDiscoverResult_;
@@ -490,9 +501,12 @@ bool ObdRuntimeModule::discoverBleServices() {
 
 bool ObdRuntimeModule::subscribeBleNotifications() {
 #ifndef UNIT_TEST
-    return obdBleClient.subscribeNotify([](const uint8_t* data, size_t len) {
+    const uint32_t startUs = PERF_TIMESTAMP_US();
+    const bool subscribed = obdBleClient.subscribeNotify([](const uint8_t* data, size_t len) {
         obdRuntimeModule.onBleData(data, len);
     });
+    perfRecordObdSubscribeCallUs(PERF_TIMESTAMP_US() - startUs);
+    return subscribed;
 #else
     return testSubscribeResult_;
 #endif
@@ -500,7 +514,10 @@ bool ObdRuntimeModule::subscribeBleNotifications() {
 
 bool ObdRuntimeModule::writeBleCommand(const char* cmd, bool withResponse) {
 #ifndef UNIT_TEST
-    return obdBleClient.writeCommand(cmd, withResponse);
+    const uint32_t startUs = PERF_TIMESTAMP_US();
+    const bool wrote = obdBleClient.writeCommand(cmd, withResponse);
+    perfRecordObdWriteCallUs(PERF_TIMESTAMP_US() - startUs);
+    return wrote;
 #else
     testWriteCalls_++;
     copyString(testLastCommand_, sizeof(testLastCommand_), cmd);
@@ -543,7 +560,10 @@ void ObdRuntimeModule::stopBleScan() {
 
 int8_t ObdRuntimeModule::readBleRssi(uint32_t nowMs) {
 #ifndef UNIT_TEST
-    return obdBleClient.getRssi(nowMs);
+    const uint32_t startUs = PERF_TIMESTAMP_US();
+    const int8_t rssi = obdBleClient.getRssi(nowMs);
+    perfRecordObdRssiCallUs(PERF_TIMESTAMP_US() - startUs);
+    return rssi;
 #else
     (void)nowMs;
     return testRssi_;

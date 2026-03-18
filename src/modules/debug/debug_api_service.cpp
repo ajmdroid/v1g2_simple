@@ -280,6 +280,12 @@ static void sendMetrics(WebServer& server) {
     doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
     doc["bleProcessMaxUs"] = perfGetBleProcessMaxUs();
     doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
+    doc["obdConnectCallMaxUs"] = perfGetObdConnectCallMaxUs();
+    doc["obdSecurityStartCallMaxUs"] = perfGetObdSecurityStartCallMaxUs();
+    doc["obdDiscoveryCallMaxUs"] = perfGetObdDiscoveryCallMaxUs();
+    doc["obdSubscribeCallMaxUs"] = perfGetObdSubscribeCallMaxUs();
+    doc["obdWriteCallMaxUs"] = perfGetObdWriteCallMaxUs();
+    doc["obdRssiCallMaxUs"] = perfGetObdRssiCallMaxUs();
     doc["loopMaxPrevWindowUs"] = perfGetPrevWindowLoopMaxUs();
     doc["wifiMaxPrevWindowUs"] = perfGetPrevWindowWifiMaxUs();
     doc["bleProcessMaxPrevWindowUs"] = perfGetPrevWindowBleProcessMaxUs();
@@ -539,6 +545,12 @@ static void buildMetricsSoakDoc(JsonDocument& doc) {
     doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
     doc["bleProcessMaxUs"] = perfGetBleProcessMaxUs();
     doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
+    doc["obdConnectCallMaxUs"] = perfGetObdConnectCallMaxUs();
+    doc["obdSecurityStartCallMaxUs"] = perfGetObdSecurityStartCallMaxUs();
+    doc["obdDiscoveryCallMaxUs"] = perfGetObdDiscoveryCallMaxUs();
+    doc["obdSubscribeCallMaxUs"] = perfGetObdSubscribeCallMaxUs();
+    doc["obdWriteCallMaxUs"] = perfGetObdWriteCallMaxUs();
+    doc["obdRssiCallMaxUs"] = perfGetObdRssiCallMaxUs();
     doc["loopMaxPrevWindowUs"] = perfGetPrevWindowLoopMaxUs();
     doc["wifiMaxPrevWindowUs"] = perfGetPrevWindowWifiMaxUs();
     doc["bleProcessMaxPrevWindowUs"] = perfGetPrevWindowBleProcessMaxUs();

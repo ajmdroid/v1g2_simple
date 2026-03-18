@@ -312,6 +312,12 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.bleProcessMaxUs = perfExtended.bleProcessMaxUs;
     snapshot.touchMaxUs = perfExtended.touchMaxUs;
     snapshot.obdMaxUs = perfExtended.obdMaxUs;
+    snapshot.obdConnectCallMaxUs = perfExtended.obdConnectCallMaxUs;
+    snapshot.obdSecurityStartCallMaxUs = perfExtended.obdSecurityStartCallMaxUs;
+    snapshot.obdDiscoveryCallMaxUs = perfExtended.obdDiscoveryCallMaxUs;
+    snapshot.obdSubscribeCallMaxUs = perfExtended.obdSubscribeCallMaxUs;
+    snapshot.obdWriteCallMaxUs = perfExtended.obdWriteCallMaxUs;
+    snapshot.obdRssiCallMaxUs = perfExtended.obdRssiCallMaxUs;
     snapshot.obdPollErrors = obdStatus.pollErrors;
     snapshot.obdStaleCount = obdStatus.staleSpeedCount;
     snapshot.obdVinDetected = obdStatus.vinDetected ? 1 : 0;
@@ -324,6 +330,12 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     snapshot.gpsMaxUs = perfExtended.gpsMaxUs;
     snapshot.lockoutMaxUs = perfExtended.lockoutMaxUs;
     snapshot.wifiMaxUs = perfExtended.wifiMaxUs;
+    snapshot.wifiHandleClientMaxUs = perfExtended.wifiHandleClientMaxUs;
+    snapshot.wifiMaintenanceMaxUs = perfExtended.wifiMaintenanceMaxUs;
+    snapshot.wifiStatusCheckMaxUs = perfExtended.wifiStatusCheckMaxUs;
+    snapshot.wifiTimeoutCheckMaxUs = perfExtended.wifiTimeoutCheckMaxUs;
+    snapshot.wifiHeapGuardMaxUs = perfExtended.wifiHeapGuardMaxUs;
+    snapshot.wifiApStaPollMaxUs = perfExtended.wifiApStaPollMaxUs;
     snapshot.fsMaxUs = perfExtended.fsMaxUs;
     snapshot.sdMaxUs = perfExtended.sdMaxUs;
     snapshot.flushMaxUs = perfExtended.flushMaxUs;
@@ -374,9 +386,21 @@ static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
     perfExtended.bleProcessMaxUs = 0;
     perfExtended.touchMaxUs = 0;
     perfExtended.obdMaxUs = 0;
+    perfExtended.obdConnectCallMaxUs = 0;
+    perfExtended.obdSecurityStartCallMaxUs = 0;
+    perfExtended.obdDiscoveryCallMaxUs = 0;
+    perfExtended.obdSubscribeCallMaxUs = 0;
+    perfExtended.obdWriteCallMaxUs = 0;
+    perfExtended.obdRssiCallMaxUs = 0;
     perfExtended.gpsMaxUs = 0;
     perfExtended.lockoutMaxUs = 0;
     perfExtended.wifiMaxUs = 0;
+    perfExtended.wifiHandleClientMaxUs = 0;
+    perfExtended.wifiMaintenanceMaxUs = 0;
+    perfExtended.wifiStatusCheckMaxUs = 0;
+    perfExtended.wifiTimeoutCheckMaxUs = 0;
+    perfExtended.wifiHeapGuardMaxUs = 0;
+    perfExtended.wifiApStaPollMaxUs = 0;
     perfExtended.fsMaxUs = 0;
     perfExtended.sdMaxUs = 0;
     perfExtended.flushMaxUs = 0;
@@ -424,6 +448,42 @@ void perfRecordHeapStats(uint32_t freeHeap, uint32_t largestBlock, uint32_t free
 void perfRecordWifiProcessUs(uint32_t us) {
     if (us > perfExtended.wifiMaxUs) {
         perfExtended.wifiMaxUs = us;
+    }
+}
+
+void perfRecordWifiHandleClientUs(uint32_t us) {
+    if (us > perfExtended.wifiHandleClientMaxUs) {
+        perfExtended.wifiHandleClientMaxUs = us;
+    }
+}
+
+void perfRecordWifiMaintenanceUs(uint32_t us) {
+    if (us > perfExtended.wifiMaintenanceMaxUs) {
+        perfExtended.wifiMaintenanceMaxUs = us;
+    }
+}
+
+void perfRecordWifiStatusCheckUs(uint32_t us) {
+    if (us > perfExtended.wifiStatusCheckMaxUs) {
+        perfExtended.wifiStatusCheckMaxUs = us;
+    }
+}
+
+void perfRecordWifiTimeoutCheckUs(uint32_t us) {
+    if (us > perfExtended.wifiTimeoutCheckMaxUs) {
+        perfExtended.wifiTimeoutCheckMaxUs = us;
+    }
+}
+
+void perfRecordWifiHeapGuardUs(uint32_t us) {
+    if (us > perfExtended.wifiHeapGuardMaxUs) {
+        perfExtended.wifiHeapGuardMaxUs = us;
+    }
+}
+
+void perfRecordWifiApStaPollUs(uint32_t us) {
+    if (us > perfExtended.wifiApStaPollMaxUs) {
+        perfExtended.wifiApStaPollMaxUs = us;
     }
 }
 
@@ -504,6 +564,42 @@ void perfRecordGpsUs(uint32_t us) {
 void perfRecordObdUs(uint32_t us) {
     if (us > perfExtended.obdMaxUs) {
         perfExtended.obdMaxUs = us;
+    }
+}
+
+void perfRecordObdConnectCallUs(uint32_t us) {
+    if (us > perfExtended.obdConnectCallMaxUs) {
+        perfExtended.obdConnectCallMaxUs = us;
+    }
+}
+
+void perfRecordObdSecurityStartCallUs(uint32_t us) {
+    if (us > perfExtended.obdSecurityStartCallMaxUs) {
+        perfExtended.obdSecurityStartCallMaxUs = us;
+    }
+}
+
+void perfRecordObdDiscoveryCallUs(uint32_t us) {
+    if (us > perfExtended.obdDiscoveryCallMaxUs) {
+        perfExtended.obdDiscoveryCallMaxUs = us;
+    }
+}
+
+void perfRecordObdSubscribeCallUs(uint32_t us) {
+    if (us > perfExtended.obdSubscribeCallMaxUs) {
+        perfExtended.obdSubscribeCallMaxUs = us;
+    }
+}
+
+void perfRecordObdWriteCallUs(uint32_t us) {
+    if (us > perfExtended.obdWriteCallMaxUs) {
+        perfExtended.obdWriteCallMaxUs = us;
+    }
+}
+
+void perfRecordObdRssiCallUs(uint32_t us) {
+    if (us > perfExtended.obdRssiCallMaxUs) {
+        perfExtended.obdRssiCallMaxUs = us;
     }
 }
 
@@ -665,6 +761,12 @@ uint32_t perfGetMinFreeHeap() { return perfExtended.minFreeHeap == UINT32_MAX ? 
 uint32_t perfGetMinFreeDma() { return perfExtended.minFreeDma == UINT32_MAX ? 0 : perfExtended.minFreeDma; }
 uint32_t perfGetMinLargestDma() { return perfExtended.minLargestDma == UINT32_MAX ? 0 : perfExtended.minLargestDma; }
 uint32_t perfGetWifiMaxUs() { return perfExtended.wifiMaxUs; }
+uint32_t perfGetObdConnectCallMaxUs() { return perfExtended.obdConnectCallMaxUs; }
+uint32_t perfGetObdSecurityStartCallMaxUs() { return perfExtended.obdSecurityStartCallMaxUs; }
+uint32_t perfGetObdDiscoveryCallMaxUs() { return perfExtended.obdDiscoveryCallMaxUs; }
+uint32_t perfGetObdSubscribeCallMaxUs() { return perfExtended.obdSubscribeCallMaxUs; }
+uint32_t perfGetObdWriteCallMaxUs() { return perfExtended.obdWriteCallMaxUs; }
+uint32_t perfGetObdRssiCallMaxUs() { return perfExtended.obdRssiCallMaxUs; }
 uint32_t perfGetFsMaxUs() { return perfExtended.fsMaxUs; }
 uint32_t perfGetSdMaxUs() { return perfExtended.sdMaxUs; }
 uint32_t perfGetFlushMaxUs() { return perfExtended.flushMaxUs; }

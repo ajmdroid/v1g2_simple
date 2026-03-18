@@ -572,7 +572,9 @@ void WiFiManager::process() {
     heapGuardInput.apStaFreeJitterTolerance = WIFI_RUNTIME_AP_STA_FREE_JITTER_TOLERANCE;
     heapGuardInput.staOnlyBlockJitterTolerance = WIFI_RUNTIME_STA_BLOCK_JITTER_TOLERANCE;
     const WifiHeapGuardResult heapGuard = sWifiHeapGuardModule.evaluate(heapGuardInput);
-    PERF_MAX(wifiHeapGuardMaxUs, PERF_TIMESTAMP_US() - heapGuardStartUs);
+    const uint32_t heapGuardUs = PERF_TIMESTAMP_US() - heapGuardStartUs;
+    PERF_MAX(wifiHeapGuardMaxUs, heapGuardUs);
+    perfRecordWifiHeapGuardUs(heapGuardUs);
     const bool lowHeap = heapGuard.lowHeap;
 
     if (lowHeap) {
@@ -651,7 +653,9 @@ void WiFiManager::process() {
             const uint32_t apStaPollStartUs = PERF_TIMESTAMP_US();
             cachedApStaCount = WiFi.softAPgetStationNum();
             lastApStaCountPollMs = now;
-            PERF_MAX(wifiApStaPollMaxUs, PERF_TIMESTAMP_US() - apStaPollStartUs);
+            const uint32_t apStaPollUs = PERF_TIMESTAMP_US() - apStaPollStartUs;
+            PERF_MAX(wifiApStaPollMaxUs, apStaPollUs);
+            perfRecordWifiApStaPollUs(apStaPollUs);
         }
         apClientCount = cachedApStaCount;
     } else {
@@ -717,7 +721,9 @@ void WiFiManager::process() {
     if (isWifiServiceActive()) {
         const uint32_t handleClientStartUs = PERF_TIMESTAMP_US();
         server.handleClient();
-        PERF_MAX(wifiHandleClientMaxUs, PERF_TIMESTAMP_US() - handleClientStartUs);
+        const uint32_t handleClientUs = PERF_TIMESTAMP_US() - handleClientStartUs;
+        PERF_MAX(wifiHandleClientMaxUs, handleClientUs);
+        perfRecordWifiHandleClientUs(handleClientUs);
     }
 
     if (lastMaintenanceFastMs == 0 ||
@@ -725,14 +731,18 @@ void WiFiManager::process() {
         const uint32_t maintenanceStartUs = PERF_TIMESTAMP_US();
         processWifiClientConnectPhase();
         lastMaintenanceFastMs = now;
-        PERF_MAX(wifiMaintenanceMaxUs, PERF_TIMESTAMP_US() - maintenanceStartUs);
+        const uint32_t maintenanceUs = PERF_TIMESTAMP_US() - maintenanceStartUs;
+        PERF_MAX(wifiMaintenanceMaxUs, maintenanceUs);
+        perfRecordWifiMaintenanceUs(maintenanceUs);
     }
     if (lastTimeoutCheckMs == 0 ||
         (now - lastTimeoutCheckMs) >= WIFI_TIMEOUT_CHECK_MS) {
         const uint32_t timeoutCheckStartUs = PERF_TIMESTAMP_US();
         checkAutoTimeout();
         lastTimeoutCheckMs = now;
-        PERF_MAX(wifiTimeoutCheckMaxUs, PERF_TIMESTAMP_US() - timeoutCheckStartUs);
+        const uint32_t timeoutCheckUs = PERF_TIMESTAMP_US() - timeoutCheckStartUs;
+        PERF_MAX(wifiTimeoutCheckMaxUs, timeoutCheckUs);
+        perfRecordWifiTimeoutCheckUs(timeoutCheckUs);
     }
 
     // Check WiFi client (STA) status at a moderate cadence to avoid tight-loop
@@ -742,7 +752,9 @@ void WiFiManager::process() {
         const uint32_t statusCheckStartUs = PERF_TIMESTAMP_US();
         checkWifiClientStatus();
         lastStatusCheckMs = now;
-        PERF_MAX(wifiStatusCheckMaxUs, PERF_TIMESTAMP_US() - statusCheckStartUs);
+        const uint32_t statusCheckUs = PERF_TIMESTAMP_US() - statusCheckStartUs;
+        PERF_MAX(wifiStatusCheckMaxUs, statusCheckUs);
+        perfRecordWifiStatusCheckUs(statusCheckUs);
     }
 
     finalizeProcessTiming();

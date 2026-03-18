@@ -25,7 +25,7 @@ void test_perf_csv_schema_version_matches_current_header() {
     TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_sd_logger.cpp");
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 16;"));
+        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 17;"));
 }
 
 void test_perf_csv_header_drops_camera_voice_columns() {
@@ -36,7 +36,7 @@ void test_perf_csv_header_drops_camera_voice_columns() {
     TEST_ASSERT_EQUAL(std::string::npos, source.find("cameraVoiceStarted"));
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("displayLiveFallbackToUsable,obdMax_us,obdPollErrors,obdStaleCount,obdVinDetected,obdVehicleFamily,obdEotValid,obdEotC_x10,obdEotAgeMs,obdEotProfileId,obdEotProbeFailures,perfDrop,eventBusDrops"));
+        source.find("displayLiveFallbackToUsable,obdMax_us,obdConnectCallMax_us,obdSecurityStartCallMax_us,obdDiscoveryCallMax_us,obdSubscribeCallMax_us,obdWriteCallMax_us,obdRssiCallMax_us,obdPollErrors,obdStaleCount,obdVinDetected,obdVehicleFamily,obdEotValid,obdEotC_x10,obdEotAgeMs,obdEotProfileId,obdEotProbeFailures,perfDrop,eventBusDrops"));
 }
 
 void test_perf_csv_header_appends_drive_gate_columns() {
@@ -46,7 +46,7 @@ void test_perf_csv_header_appends_drive_gate_columns() {
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
         source.find(
-            "perfDrop,eventBusDrops,freeDmaMin,largestDmaMin,bleState,subscribeStep,connectInProgress,asyncConnectPending,pendingDisconnectCleanup,proxyAdvertising,proxyAdvertisingLastTransitionReason,wifiPriorityMode\\n\";"));
+            "perfDrop,eventBusDrops,wifiHandleClientMax_us,wifiMaintenanceMax_us,wifiStatusCheckMax_us,wifiTimeoutCheckMax_us,wifiHeapGuardMax_us,wifiApStaPollMax_us,freeDmaMin,largestDmaMin,bleState,subscribeStep,connectInProgress,asyncConnectPending,pendingDisconnectCleanup,proxyAdvertising,proxyAdvertisingLastTransitionReason,wifiPriorityMode\\n\";"));
 }
 
 int main() {

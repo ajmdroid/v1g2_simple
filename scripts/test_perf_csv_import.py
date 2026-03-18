@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOLS_DIR = ROOT / "tools"
+FIXTURES_DIR = ROOT / "test" / "fixtures" / "perf"
 sys.path.insert(0, str(TOOLS_DIR))
 
 import import_perf_csv  # type: ignore  # noqa: E402
@@ -398,6 +399,28 @@ def test_peak_diagnostics_classify_sustained_runs(tmpdir: Path) -> None:
     assert_true(partition["loop_max_peak_us"]["steady_state_peak"]["classification"] == "sustained", f"steady-state partition should be sustained: {partition}")
 
 
+def test_reduced_perf_boot_fixture_attributes_obd_and_wifi_stalls(tmpdir: Path) -> None:
+    csv_path = FIXTURES_DIR / "perf_boot_6_reduced.csv"
+    out_dir = tmpdir / "perf_boot_6_reduced_out"
+    result = run_import(csv_path, out_dir)
+    assert_true(result.returncode == 2, f"expected failing reduced fixture import, got rc={result.returncode} stderr={result.stderr}")
+    diagnostics = json.loads((out_dir / "import_diagnostics.json").read_text(encoding="utf-8"))
+    loop_diag = diagnostics["peaks"]["loop_max_peak_us"]
+    wifi_diag = diagnostics["peaks"]["wifi_max_peak_us"]
+
+    assert_true(loop_diag["millis"] == 200097, f"loop peak millis wrong: {loop_diag}")
+    assert_true(loop_diag["wrapper_symptom_of"] == "obdMax_us", f"loop peak should attribute to OBD: {loop_diag}")
+    assert_true(loop_diag["likely_phase_bucket"] == "steady-state OBD runtime stall", f"loop phase bucket wrong: {loop_diag}")
+    assert_true(loop_diag["top_5_rows"][0]["obdMax_us"] == 4147506, f"loop row missing obd max: {loop_diag}")
+    assert_true(loop_diag["root_cause_hint"] == "inline OBD runtime stall", f"loop root cause hint wrong: {loop_diag}")
+
+    assert_true(wifi_diag["millis"] == 235205, f"wifi peak millis wrong: {wifi_diag}")
+    assert_true(wifi_diag["wrapper_symptom_of"] == "fsMax_us", f"wifi peak should attribute to fs serve: {wifi_diag}")
+    assert_true(wifi_diag["likely_phase_bucket"] == "steady-state WiFi/AP file serving stall", f"wifi phase bucket wrong: {wifi_diag}")
+    assert_true(wifi_diag["top_5_rows"][0]["fsMax_us"] == 266110, f"wifi row missing fs max: {wifi_diag}")
+    assert_true(wifi_diag["root_cause_hint"] == "LittleFS static file serving during AP", f"wifi root cause hint wrong: {wifi_diag}")
+
+
 def test_leading_rows_form_implicit_segment(tmpdir: Path) -> None:
     csv_path = tmpdir / "leading_rows.csv"
     out_dir = tmpdir / "leading_rows_out"
@@ -434,6 +457,7 @@ def main() -> int:
         test_segment_selection_and_listing(tmpdir)
         test_peak_diagnostics_classify_spike_and_attribute_phase(tmpdir)
         test_peak_diagnostics_classify_sustained_runs(tmpdir)
+        test_reduced_perf_boot_fixture_attributes_obd_and_wifi_stalls(tmpdir)
         test_leading_rows_form_implicit_segment(tmpdir)
 
     print("[perf-csv-import] integration tests passed")

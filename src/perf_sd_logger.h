@@ -147,6 +147,12 @@ struct PerfSdSnapshot {
     uint32_t displayLiveInvalidPrioritySkips; // Live display invalid-priority early returns
     uint32_t displayLiveFallbackToUsable;  // Live display fallback-to-usable selections
     uint32_t obdMaxUs;                     // Window max obdRuntimeModule.update() duration
+    uint32_t obdConnectCallMaxUs;          // Window max inline OBD BLE connect() duration
+    uint32_t obdSecurityStartCallMaxUs;    // Window max inline OBD BLE security-start duration
+    uint32_t obdDiscoveryCallMaxUs;        // Window max inline OBD BLE discovery duration
+    uint32_t obdSubscribeCallMaxUs;        // Window max inline OBD BLE subscribe duration
+    uint32_t obdWriteCallMaxUs;            // Window max inline OBD BLE command write duration
+    uint32_t obdRssiCallMaxUs;             // Window max inline OBD BLE RSSI read duration
     uint32_t obdPollErrors;                // OBD poll errors this window
     uint32_t obdStaleCount;                // OBD stale speed readings this window
     uint8_t obdVinDetected;                // VIN resolved this session
@@ -158,6 +164,12 @@ struct PerfSdSnapshot {
     uint32_t obdEotProbeFailures;          // OEM profile probe failures
     uint32_t perfDrop;                     // Perf snapshot drops since session start
     uint32_t eventBusDrops;                // System event-bus drops since session start
+    uint32_t wifiHandleClientMaxUs;        // Window max HTTP client servicing duration
+    uint32_t wifiMaintenanceMaxUs;         // Window max WiFi maintenance duration
+    uint32_t wifiStatusCheckMaxUs;         // Window max STA status check duration
+    uint32_t wifiTimeoutCheckMaxUs;        // Window max auto-timeout check duration
+    uint32_t wifiHeapGuardMaxUs;           // Window max WiFi heap guard duration
+    uint32_t wifiApStaPollMaxUs;           // Window max AP station polling duration
     uint32_t freeDmaMin;                   // Min cached internal 8-bit heap free bytes since session start
     uint32_t largestDmaMin;                // Min cached internal 8-bit largest block since session start
     uint8_t bleState;                      // BLE runtime state code
