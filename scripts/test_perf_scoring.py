@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import subprocess
 import sys
 import tempfile
@@ -299,6 +300,37 @@ def test_compare_perf_csv_regressions(tmpdir: Path) -> None:
     assert_true(hard_result.returncode == 2, "hard regression must exit 2")
 
 
+def test_reduced_perf_boot_fixture_preserves_failure_profile() -> None:
+    csv_path = ROOT / "test" / "fixtures" / "perf" / "perf_boot_6_reduced.csv"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools" / "score_perf_csv.py"),
+            str(csv_path),
+            "--profile",
+            "drive_wifi_ap",
+            "--session",
+            "1",
+            "--json",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert_true(result.returncode == 2, f"reduced real fixture must remain a hard fail: {result.stderr}")
+    payload = json.loads(result.stdout)
+    failing_metrics = {
+        check["metric"]
+        for check in payload["checks"]
+        if check["level"] == "hard" and not check["passed"]
+    }
+    assert_true(
+        failing_metrics == {"loopMax_us", "fsMax_us", "queueHighWater", "wifiMax_us"},
+        f"unexpected hard-fail metric set for reduced fixture: {failing_metrics}",
+    )
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="perf_scoring_") as tmp:
         tmpdir = Path(tmp)
@@ -307,10 +339,12 @@ def main() -> int:
         test_no_connected_session_failure(tmpdir)
         test_pinned_session_stability(tmpdir)
         test_compare_perf_csv_regressions(tmpdir)
+        test_reduced_perf_boot_fixture_preserves_failure_profile()
 
     print("[perf-scoring] pass/warn/fail/error cases verified")
     print("[perf-scoring] session selectors and pinned-session stability verified")
     print("[perf-scoring] compare_perf_csv regression exit codes verified")
+    print("[perf-scoring] reduced real fixture failure profile verified")
     return 0
 
 

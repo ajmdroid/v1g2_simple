@@ -421,6 +421,64 @@ def test_reduced_perf_boot_fixture_attributes_obd_and_wifi_stalls(tmpdir: Path) 
     assert_true(wifi_diag["root_cause_hint"] == "LittleFS static file serving during AP", f"wifi root cause hint wrong: {wifi_diag}")
 
 
+def test_peak_diagnostics_surface_named_obd_and_wifi_root_causes(tmpdir: Path) -> None:
+    csv_path = tmpdir / "named_root_causes.csv"
+    out_dir = tmpdir / "named_root_causes_out"
+    rows = []
+    for index, millis in enumerate((0, 1000, 2000, 3000, 4000)):
+        row = base_row(millis, connected=True, header_columns=HEADER_COLUMNS)
+        row["rx"] = 150 + (index * 50)
+        row["parseOK"] = 150 + (index * 50)
+        row["displayUpdates"] = 10 + (index * 5)
+        row["bleState"] = 8
+        row["subscribeStep"] = 11
+        rows.append(row)
+
+    rows[2].update(
+        {
+            "loopMax_us": 610000,
+            "obdMax_us": 602000,
+            "obdWriteCallMax_us": 598000,
+            "wifiMax_us": 1200,
+        }
+    )
+    rows[4].update(
+        {
+            "wifiMax_us": 182000,
+            "wifiHandleClientMax_us": 179000,
+            "fsMax_us": 0,
+            "loopMax_us": 110000,
+            "obdMax_us": 500,
+        }
+    )
+
+    write_capture(
+        csv_path,
+        header_columns=HEADER_COLUMNS,
+        sessions=[
+            {
+                "meta": "#session_start,seq=1,bootId=1,uptime_ms=4000,token=CAUSE001,schema=13",
+                "rows": rows,
+            }
+        ],
+    )
+
+    result = run_import(csv_path, out_dir)
+    assert_true(result.returncode != 3, f"named root-cause fixture import errored: rc={result.returncode} stderr={result.stderr}")
+    diagnostics = json.loads((out_dir / "import_diagnostics.json").read_text(encoding="utf-8"))
+    loop_diag = diagnostics["peaks"]["loop_max_peak_us"]
+    wifi_diag = diagnostics["peaks"]["wifi_max_peak_us"]
+
+    assert_true(loop_diag["wrapper_symptom_of"] == "obdMax_us", f"loop wrapper symptom wrong: {loop_diag}")
+    assert_true(loop_diag["obd_dominant_sync_call_column"] == "obdWriteCallMax_us", f"loop dominant obd call wrong: {loop_diag}")
+    assert_true(loop_diag["obd_dominant_sync_call_label"] == "command write", f"loop dominant obd label wrong: {loop_diag}")
+    assert_true(loop_diag["root_cause_hint"] == "inline OBD command write stall", f"loop root cause hint wrong: {loop_diag}")
+
+    assert_true(wifi_diag["wifi_dominant_subphase_column"] == "wifiHandleClientMax_us", f"wifi dominant subphase wrong: {wifi_diag}")
+    assert_true(wifi_diag["wifi_dominant_subphase_label"] == "HTTP client handling", f"wifi dominant subphase label wrong: {wifi_diag}")
+    assert_true(wifi_diag["root_cause_hint"] == "WiFi subphase stall: HTTP client handling", f"wifi root cause hint wrong: {wifi_diag}")
+
+
 def test_leading_rows_form_implicit_segment(tmpdir: Path) -> None:
     csv_path = tmpdir / "leading_rows.csv"
     out_dir = tmpdir / "leading_rows_out"
@@ -458,6 +516,7 @@ def main() -> int:
         test_peak_diagnostics_classify_spike_and_attribute_phase(tmpdir)
         test_peak_diagnostics_classify_sustained_runs(tmpdir)
         test_reduced_perf_boot_fixture_attributes_obd_and_wifi_stalls(tmpdir)
+        test_peak_diagnostics_surface_named_obd_and_wifi_root_causes(tmpdir)
         test_leading_rows_form_implicit_segment(tmpdir)
 
     print("[perf-csv-import] integration tests passed")
