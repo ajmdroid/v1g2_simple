@@ -186,6 +186,16 @@ static AlertData makeKAlert(uint16_t freq = 24148) {
     return a;
 }
 
+static AlertData makeKaAlert(uint16_t freq = 34520) {
+    AlertData a{};
+    a.isValid = true;
+    a.band = BAND_KA;
+    a.frequency = freq;
+    a.direction = DIR_REAR;
+    a.rearStrength = 4;
+    return a;
+}
+
 static void beginModule() {
     module.begin(&displayMode,
                  &display,
@@ -224,6 +234,7 @@ void test_handle_parsed_updates_live_display_when_alert_present() {
     TEST_ASSERT_EQUAL(DisplayMode::LIVE, displayMode);
     TEST_ASSERT_EQUAL(1, display.updateCalls);
     TEST_ASSERT_EQUAL(0, display.updatePersistedCalls);
+    TEST_ASSERT_EQUAL(1, display.lastAlertUpdateCount);
 }
 
 void test_handle_parsed_updates_resting_display_when_idle() {
@@ -247,6 +258,19 @@ void test_handle_parsed_prefers_persisted_alert_when_configured() {
     TEST_ASSERT_EQUAL(DisplayMode::IDLE, displayMode);
     TEST_ASSERT_EQUAL(0, display.updateCalls);
     TEST_ASSERT_EQUAL(1, display.updatePersistedCalls);
+}
+
+void test_handle_parsed_defers_secondary_cards_while_connect_burst_settles() {
+    ble.setConnectBurstSettling(true);
+    parser.setAlerts({makeKAlert(), makeKaAlert()});
+
+    mockMillis = 1000;
+    mockMicros = 1000 * 1000UL;
+    module.handleParsed(1000, false);
+
+    TEST_ASSERT_EQUAL(DisplayMode::LIVE, displayMode);
+    TEST_ASSERT_EQUAL(1, display.updateCalls);
+    TEST_ASSERT_EQUAL(1, display.lastAlertUpdateCount);
 }
 
 void test_restore_current_owner_shows_scanning_when_ble_is_disconnected() {
@@ -308,6 +332,7 @@ int main() {
     RUN_TEST(test_handle_parsed_updates_live_display_when_alert_present);
     RUN_TEST(test_handle_parsed_updates_resting_display_when_idle);
     RUN_TEST(test_handle_parsed_prefers_persisted_alert_when_configured);
+    RUN_TEST(test_handle_parsed_defers_secondary_cards_while_connect_burst_settles);
     RUN_TEST(test_restore_current_owner_shows_scanning_when_ble_is_disconnected);
     RUN_TEST(test_restore_current_owner_restores_live_display_when_alerts_present);
     RUN_TEST(test_alert_gap_recovery_throttle_is_instance_owned);

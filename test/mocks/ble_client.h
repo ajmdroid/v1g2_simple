@@ -28,6 +28,7 @@ public:
     int processProxyQueueCalls = 0;
     int onUserBytesReceivedCalls = 0;
     bool bootReadyFlag = true;  // Default true to preserve existing test behavior
+    bool connectBurstSettling = false;
     int connectionRssi = -70;
     int proxyRssi = -80;
     bool writeUserBytesResult = true;
@@ -60,6 +61,7 @@ public:
         processProxyQueueCalls = 0;
         onUserBytesReceivedCalls = 0;
         bootReadyFlag = true;
+        connectBurstSettling = false;
         connectionRssi = -70;
         proxyRssi = -80;
         writeUserBytesResult = true;
@@ -77,6 +79,8 @@ public:
     void setProxyConnected(bool v) { proxyConnected = v; }
     bool isConnected() const { return connected; }
     void setConnected(bool v) { connected = v; }
+    bool isConnectBurstSettling() const { return connectBurstSettling; }
+    void setConnectBurstSettling(bool v) { connectBurstSettling = v; }
     void setBootReady(bool ready) { bootReadyFlag = ready; }
     bool isBootReady() const { return bootReadyFlag; }
     int getConnectionRssi() const { return connectionRssi; }

@@ -152,6 +152,7 @@ public:
     // Record latest loop timings used by the connect-burst settle gate.
     void noteBleProcessDuration(uint32_t us);
     void noteDisplayPipelineDuration(uint32_t us);
+    bool isConnectBurstSettling() const;
     
     // Send command to V1 (e.g., request alert data)
     bool sendCommand(const uint8_t* data, size_t length);

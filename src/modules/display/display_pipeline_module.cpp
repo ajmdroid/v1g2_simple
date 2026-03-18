@@ -121,6 +121,15 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
     if (hasAlerts) {
         const int alertCount = parser->getAlertCount();
         const auto& currentAlerts = parser->getAllAlerts();
+        const bool deferSecondaryCards = ble->isConnectBurstSettling();
+        const AlertData* renderAlerts = currentAlerts.data();
+        int renderAlertCount = alertCount;
+        AlertData priorityOnlyAlert[1];
+        if (deferSecondaryCards && hasRenderablePriority) {
+            priorityOnlyAlert[0] = priority;
+            renderAlerts = priorityOnlyAlert;
+            renderAlertCount = 1;
+        }
 
         *displayMode = DisplayMode::LIVE;
 
@@ -140,7 +149,7 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
 
         const unsigned long startUs = micros();
         if (hasRenderablePriority) {
-            display->update(priority, currentAlerts.data(), alertCount, state);
+            display->update(priority, renderAlerts, renderAlertCount, state);
         } else {
             display->update(state);
         }

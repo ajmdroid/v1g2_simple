@@ -766,3 +766,7 @@ void V1BLEClient::noteBleProcessDuration(uint32_t us) {
 void V1BLEClient::noteDisplayPipelineDuration(uint32_t us) {
     lastDisplayPipelineDurationUs.store(us, std::memory_order_relaxed);
 }
+
+bool V1BLEClient::isConnectBurstSettling() const {
+    return connectedFollowupStep != ConnectedFollowupStep::NONE;
+}

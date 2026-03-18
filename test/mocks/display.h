@@ -70,6 +70,7 @@ public:
     int lastFrequencyBand = 0;
     bool lastFrequencyMuted = false;
     bool lastFrequencyPhotoRadar = false;
+    int lastAlertUpdateCount = 0;
     int refreshSecondaryAlertCardsCalls = 0;
     int lastSecondaryAlertCount = 0;
     bool lastSecondaryMuted = false;
@@ -111,6 +112,7 @@ public:
         lastFrequencyBand = 0;
         lastFrequencyMuted = false;
         lastFrequencyPhotoRadar = false;
+        lastAlertUpdateCount = 0;
         refreshSecondaryAlertCardsCalls = 0;
         lastSecondaryAlertCount = 0;
         lastSecondaryMuted = false;
@@ -123,8 +125,11 @@ public:
     void showDisconnected() { showDisconnectedCalls++; }
     
     void update(const DisplayState& /*state*/) { updateCalls++; }
-    void update(const AlertData& /*priority*/, const AlertData* /*alerts*/, 
-                int /*count*/, const DisplayState& /*state*/) { updateCalls++; }
+    void update(const AlertData& /*priority*/, const AlertData* /*alerts*/,
+                int count, const DisplayState& /*state*/) {
+        updateCalls++;
+        lastAlertUpdateCount = count;
+    }
     void updatePersisted(const AlertData& /*alert*/, const DisplayState& /*state*/) { 
         updatePersistedCalls++; 
     }
