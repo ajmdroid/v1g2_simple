@@ -337,7 +337,8 @@ void ObdRuntimeModule::handlePollingError(uint32_t nowMs,
     if (disconnectBleNow) {
         disconnectBle();
     }
-    if (consecutiveErrors_ >= obd::ERRORS_BEFORE_DISCONNECT) {
+    if (consecutiveErrors_ >= obd::ERRORS_BEFORE_DISCONNECT &&
+        shouldDisconnectAfterPollingError(reason)) {
         transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
         return;
     }
@@ -350,6 +351,28 @@ void ObdRuntimeModule::handleCommandFailure(uint32_t nowMs,
                                             ObdFailureReason reason,
                                             bool disconnectBleNow) {
     handlePollingError(nowMs, disconnectBleNow, reason);
+}
+
+bool ObdRuntimeModule::shouldDisconnectAfterPollingError(ObdFailureReason reason) {
+    switch (reason) {
+        case ObdFailureReason::WRITE:
+        case ObdFailureReason::BUFFER_OVERFLOW:
+            return true;
+        case ObdFailureReason::NONE:
+        case ObdFailureReason::CONNECT_START:
+        case ObdFailureReason::CONNECT_TIMEOUT:
+        case ObdFailureReason::DISCOVERY:
+        case ObdFailureReason::SUBSCRIBE:
+        case ObdFailureReason::INIT_TIMEOUT:
+        case ObdFailureReason::INIT_RESPONSE:
+        case ObdFailureReason::COMMAND_TIMEOUT:
+        case ObdFailureReason::COMMAND_RESPONSE:
+        case ObdFailureReason::VIN_MISMATCH:
+        case ObdFailureReason::SECURITY_START:
+        case ObdFailureReason::SECURITY_TIMEOUT:
+        default:
+            return false;
+    }
 }
 
 void ObdRuntimeModule::setSavedAddressFromBuffer(const char* address) {
@@ -1010,7 +1033,7 @@ bool ObdRuntimeModule::startSpeedCommand(uint32_t nowMs) {
                       0x0D,
                       0x0000,
                       obd::POLL_TIMEOUT_MS,
-                      0,
+                      obd::POLL_COMMAND_RETRIES,
                       ObdEotProfileId::NONE,
                       nowMs)) {
         handlePollingError(nowMs, false, ObdFailureReason::WRITE);
@@ -1390,6 +1413,15 @@ void ObdRuntimeModule::updatePolling(uint32_t nowMs) {
                 (nowMs - activeCommand_.sentMs) < obd::SEARCH_EXTENDED_TIMEOUT_MS) {
                 return;
             }
+            if (activeCommand_.kind == ObdCommandKind::SPEED &&
+                bleBufLen_ == 0 &&
+                retryActiveCommandWithAlternateWriteMode(nowMs)) {
+#ifndef UNIT_TEST
+                Serial.printf("[OBD] speed timeout retrying with alternate write mode=%s\n",
+                              activeCommand_.writeWithResponse ? "with_response" : "no_response");
+#endif
+                return;
+            }
             const ObdCommandKind timedOutKind = activeCommand_.kind;
             const ObdEotProfileId timedOutProfile = activeCommand_.profileId;
 #ifndef UNIT_TEST
@@ -1577,10 +1609,14 @@ void ObdRuntimeModule::update(uint32_t nowMs,
 
         case ObdConnectionState::ERROR_BACKOFF:
             if ((nowMs - stateEnteredMs_) >= obd::ERROR_PAUSE_MS) {
-                if (consecutiveErrors_ >= obd::ERRORS_BEFORE_DISCONNECT) {
+                if (shouldDisconnectAfterPollingError(lastFailure_) &&
+                    consecutiveErrors_ >= obd::ERRORS_BEFORE_DISCONNECT) {
                     disconnectBle();
                     transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
                 } else {
+                    if (!shouldDisconnectAfterPollingError(lastFailure_)) {
+                        consecutiveErrors_ = 0;
+                    }
                     transitionTo(ObdConnectionState::POLLING, nowMs);
                 }
             }

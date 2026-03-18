@@ -144,6 +144,7 @@ public:
     void forceStateForTest(ObdConnectionState state, uint32_t enteredMs);
     void setConsecutiveErrorsForTest(uint32_t errors) { consecutiveErrors_ = errors; }
     void setConsecutiveSpeedSamplesForTest(uint32_t samples) { consecutiveSpeedSamples_ = samples; }
+    void setLastFailureForTest(ObdFailureReason reason) { lastFailure_ = reason; }
     ObdConnectionState getState() const { return state_; }
     ObdCommandKind getActiveCommandKindForTest() const;
     ObdEotProfileId getActiveEotProfileForTest() const;
@@ -219,6 +220,7 @@ private:
     void handleConnectFailure(uint32_t nowMs, ObdFailureReason reason);
     void handlePollingError(uint32_t nowMs, bool disconnectBleNow, ObdFailureReason reason);
     void handleCommandFailure(uint32_t nowMs, ObdFailureReason reason, bool disconnectBleNow);
+    static bool shouldDisconnectAfterPollingError(ObdFailureReason reason);
     void setSavedAddressFromBuffer(const char* address);
     void setCachedProfile(const char* vinPrefix11, ObdEotProfileId profileId);
     void clearCachedProfile();

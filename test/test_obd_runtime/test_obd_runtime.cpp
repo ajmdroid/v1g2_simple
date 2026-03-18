@@ -582,6 +582,14 @@ void test_poll_timeout_counts_as_error() {
     // POLL_TIMEOUT_MS is 1000, so timeout fires at 100+1000=1100
     obdRuntimeModule.update(1200, true, true, true);
     ObdRuntimeStatus status = obdRuntimeModule.snapshot(1200);
+    TEST_ASSERT_EQUAL_UINT32(2, obdRuntimeModule.getWriteCallCountForTest());
+    TEST_ASSERT_TRUE(obdRuntimeModule.getLastWriteWithResponseForTest());
+    TEST_ASSERT_EQUAL_UINT32(0, status.pollErrors);
+    TEST_ASSERT_EQUAL_UINT32(0, status.consecutiveErrors);
+    TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
+
+    obdRuntimeModule.update(2301, true, true, true);
+    status = obdRuntimeModule.snapshot(2301);
     TEST_ASSERT_EQUAL_UINT32(1, status.pollErrors);
     TEST_ASSERT_EQUAL_UINT32(1, status.consecutiveErrors);
     TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
@@ -671,15 +679,19 @@ void test_error_backoff_returns_to_polling() {
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::ERROR_BACKOFF, 1000);
     obdRuntimeModule.setConsecutiveErrorsForTest(5);
+    obdRuntimeModule.setLastFailureForTest(ObdFailureReason::COMMAND_TIMEOUT);
 
     obdRuntimeModule.update(6001, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(6001);
+    TEST_ASSERT_EQUAL_UINT32(0, status.consecutiveErrors);
 }
 
-void test_error_backoff_disconnects_after_ten_errors() {
+void test_error_backoff_disconnects_after_ten_write_errors() {
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::ERROR_BACKOFF, 1000);
     obdRuntimeModule.setConsecutiveErrorsForTest(10);
+    obdRuntimeModule.setLastFailureForTest(ObdFailureReason::WRITE);
 
     obdRuntimeModule.update(6001, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
@@ -803,7 +815,7 @@ int main() {
     RUN_TEST(test_cached_profile_polls_before_background_vin_lookup);
     RUN_TEST(test_vin_response_sets_family_and_starts_standard_eot_probe);
     RUN_TEST(test_error_backoff_returns_to_polling);
-    RUN_TEST(test_error_backoff_disconnects_after_ten_errors);
+    RUN_TEST(test_error_backoff_disconnects_after_ten_write_errors);
 
     // Disconnected reconnect
     RUN_TEST(test_disconnected_reconnects_after_backoff);
