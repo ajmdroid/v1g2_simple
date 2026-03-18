@@ -3,6 +3,7 @@
 #include "obd_elm327_parser.h"
 #include "obd_scan_policy.h"
 #include "perf_metrics.h"
+#include "../../psram_freertos_alloc.h"
 
 #ifndef UNIT_TEST
 #include "ble_client.h"
@@ -107,6 +108,150 @@ size_t commandDisplayLen(const char* command) {
     return len;
 }
 
+constexpr uint32_t OBD_RSSI_REFRESH_MS = 2000;
+
+#ifndef UNIT_TEST
+constexpr UBaseType_t OBD_TRANSPORT_QUEUE_DEPTH = 1;
+constexpr uint32_t OBD_TRANSPORT_STACK_SIZE = 8192;
+constexpr UBaseType_t OBD_TRANSPORT_PRIORITY = 1;
+constexpr TickType_t OBD_TRANSPORT_RECEIVE_TIMEOUT_TICKS = pdMS_TO_TICKS(1000);
+constexpr size_t OBD_TRANSPORT_ADDR_BUF_LEN = 18;
+constexpr size_t OBD_TRANSPORT_CMD_BUF_LEN = 16;
+
+struct ObdTransportRequest {
+    ObdTransportOp op = ObdTransportOp::NONE;
+    uint32_t requestId = 0;
+    uint32_t timeoutMs = 0;
+    uint32_t nowMs = 0;
+    char address[OBD_TRANSPORT_ADDR_BUF_LEN] = {};
+    uint8_t addrType = 0;
+    bool preferCachedAttributes = false;
+    char cmd[OBD_TRANSPORT_CMD_BUF_LEN] = {};
+    bool withResponse = false;
+};
+
+struct ObdTransportRuntime {
+    QueueHandle_t requestQueue = nullptr;
+    QueueHandle_t resultQueue = nullptr;
+    TaskHandle_t task = nullptr;
+    PsramQueueAllocation requestQueueAllocation = {};
+    PsramQueueAllocation resultQueueAllocation = {};
+    bool requestQueueInPsram = false;
+    bool resultQueueInPsram = false;
+    bool taskStackInPsram = false;
+};
+
+ObdTransportRuntime sObdTransport;
+
+void obdTransportTaskEntry(void* /*param*/) {
+    while (true) {
+        ObdTransportRequest request{};
+        if (!sObdTransport.requestQueue ||
+            xQueueReceive(sObdTransport.requestQueue,
+                          &request,
+                          OBD_TRANSPORT_RECEIVE_TIMEOUT_TICKS) != pdTRUE) {
+            continue;
+        }
+
+        ObdTransportResult result{};
+        result.ready = true;
+        result.op = request.op;
+        result.requestId = request.requestId;
+        result.issuedMs = request.nowMs;
+
+        switch (request.op) {
+            case ObdTransportOp::CONNECT:
+                result.success = obdBleClient.connect(
+                    request.address,
+                    request.addrType,
+                    request.timeoutMs,
+                    request.preferCachedAttributes);
+                result.bleError = obdBleClient.getLastBleError();
+                break;
+            case ObdTransportOp::DISCONNECT:
+                obdBleClient.disconnect();
+                result.success = true;
+                result.bleError = obdBleClient.getLastBleError();
+                break;
+            case ObdTransportOp::SECURITY_START:
+                result.success = obdBleClient.beginSecurity();
+                result.bleError = obdBleClient.getLastBleError();
+                result.securityError = obdBleClient.getLastSecurityError();
+                break;
+            case ObdTransportOp::DISCOVER:
+                result.success = obdBleClient.discoverServices();
+                result.bleError = obdBleClient.getLastBleError();
+                break;
+            case ObdTransportOp::SUBSCRIBE:
+                result.success = obdBleClient.subscribeNotify([](const uint8_t* data, size_t len) {
+                    obdRuntimeModule.onBleData(data, len);
+                });
+                result.bleError = obdBleClient.getLastBleError();
+                break;
+            case ObdTransportOp::WRITE:
+                result.success = obdBleClient.writeCommand(request.cmd, request.withResponse);
+                result.bleError = obdBleClient.getLastBleError();
+                break;
+            case ObdTransportOp::RSSI_READ:
+                result.success = true;
+                result.rssi = obdBleClient.getRssi(request.nowMs);
+                result.bleError = obdBleClient.getLastBleError();
+                break;
+            case ObdTransportOp::NONE:
+            default:
+                result.success = false;
+                break;
+        }
+
+        if (sObdTransport.resultQueue) {
+            xQueueOverwrite(sObdTransport.resultQueue, &result);
+        }
+        taskYIELD();
+    }
+}
+
+bool ensureObdTransportRuntime() {
+    if (!sObdTransport.requestQueue) {
+        sObdTransport.requestQueue = createQueuePreferPsram(
+            OBD_TRANSPORT_QUEUE_DEPTH,
+            sizeof(ObdTransportRequest),
+            sObdTransport.requestQueueAllocation,
+            &sObdTransport.requestQueueInPsram);
+        if (!sObdTransport.requestQueue) {
+            Serial.println("[OBD] ERROR: failed to create transport request queue");
+            return false;
+        }
+    }
+    if (!sObdTransport.resultQueue) {
+        sObdTransport.resultQueue = createQueuePreferPsram(
+            OBD_TRANSPORT_QUEUE_DEPTH,
+            sizeof(ObdTransportResult),
+            sObdTransport.resultQueueAllocation,
+            &sObdTransport.resultQueueInPsram);
+        if (!sObdTransport.resultQueue) {
+            Serial.println("[OBD] ERROR: failed to create transport result queue");
+            return false;
+        }
+    }
+    if (!sObdTransport.task) {
+        const BaseType_t rc = createTaskPinnedToCorePreferPsram(
+            obdTransportTaskEntry,
+            "ObdTransport",
+            OBD_TRANSPORT_STACK_SIZE,
+            nullptr,
+            OBD_TRANSPORT_PRIORITY,
+            &sObdTransport.task,
+            0,
+            &sObdTransport.taskStackInPsram);
+        if (rc != pdPASS) {
+            Serial.println("[OBD] ERROR: failed to create transport task");
+            return false;
+        }
+    }
+    return true;
+}
+#endif
+
 }  // namespace
 
 ObdRuntimeModule obdRuntimeModule;
@@ -154,6 +299,9 @@ void ObdRuntimeModule::resetForBegin() {
     clearBleResponseState();
     bleDisconnected_ = false;
     resetCommandState();
+    nextTransportRequestId_ = 0;
+    clearTransportRequest();
+    readyTransportResult_ = {};
     clearSpeedState();
     clearEotState(true);
     clearVehicleState(true);
@@ -204,6 +352,7 @@ void ObdRuntimeModule::begin(bool enabled,
 
 #ifndef UNIT_TEST
     obdBleClient.init(this);
+    (void)ensureObdTransportRuntime();
 #endif
 
     if (!enabled_) {
@@ -570,6 +719,135 @@ int8_t ObdRuntimeModule::readBleRssi(uint32_t nowMs) {
 #endif
 }
 
+void ObdRuntimeModule::clearTransportRequest() {
+    transportRequestActive_ = false;
+    pendingTransportOp_ = ObdTransportOp::NONE;
+    pendingTransportRequestId_ = 0;
+    pendingTransportIssuedMs_ = 0;
+    pendingTransportTimeoutMs_ = 0;
+    pendingTransportTimedOut_ = false;
+}
+
+bool ObdRuntimeModule::beginTransportRequest(ObdTransportOp op,
+                                             uint32_t nowMs,
+                                             uint32_t timeoutMs,
+                                             const char* cmd,
+                                             bool withResponse,
+                                             bool preferCachedAttributes) {
+    if (transportRequestActive_) {
+        return false;
+    }
+    readyTransportResult_ = {};
+
+#ifndef UNIT_TEST
+    if (!ensureObdTransportRuntime() || !sObdTransport.requestQueue) {
+        return false;
+    }
+
+    ObdTransportRequest request{};
+    request.op = op;
+    request.requestId = ++nextTransportRequestId_;
+    request.timeoutMs = timeoutMs;
+    request.nowMs = nowMs;
+    request.addrType = savedAddrType_;
+    request.preferCachedAttributes = preferCachedAttributes;
+    request.withResponse = withResponse;
+    copyString(request.address, sizeof(request.address), savedAddress_);
+    copyString(request.cmd, sizeof(request.cmd), cmd);
+
+    if (xQueueSend(sObdTransport.requestQueue, &request, 0) != pdTRUE) {
+        return false;
+    }
+
+    transportRequestActive_ = true;
+    pendingTransportOp_ = op;
+    pendingTransportRequestId_ = request.requestId;
+    pendingTransportIssuedMs_ = nowMs;
+    pendingTransportTimeoutMs_ = timeoutMs;
+    pendingTransportTimedOut_ = false;
+    return true;
+#else
+    ObdTransportResult result{};
+    result.ready = true;
+    result.op = op;
+    result.requestId = ++nextTransportRequestId_;
+    result.issuedMs = nowMs;
+    switch (op) {
+        case ObdTransportOp::CONNECT:
+            result.success = connectBle(timeoutMs, preferCachedAttributes);
+            result.bleError = getBleLastError();
+            break;
+        case ObdTransportOp::DISCONNECT:
+            disconnectBle();
+            result.success = true;
+            result.bleError = getBleLastError();
+            break;
+        case ObdTransportOp::SECURITY_START:
+            result.success = beginBleSecurity();
+            result.bleError = getBleLastError();
+            result.securityError = getBleSecurityFailure();
+            break;
+        case ObdTransportOp::DISCOVER:
+            result.success = discoverBleServices();
+            result.bleError = getBleLastError();
+            break;
+        case ObdTransportOp::SUBSCRIBE:
+            result.success = subscribeBleNotifications();
+            result.bleError = getBleLastError();
+            break;
+        case ObdTransportOp::WRITE:
+            result.success = writeBleCommand(cmd, withResponse);
+            result.bleError = getBleLastError();
+            break;
+        case ObdTransportOp::RSSI_READ:
+            result.success = true;
+            result.rssi = readBleRssi(nowMs);
+            result.bleError = getBleLastError();
+            break;
+        case ObdTransportOp::NONE:
+        default:
+            result.success = false;
+            break;
+    }
+    readyTransportResult_ = result;
+    return true;
+#endif
+}
+
+void ObdRuntimeModule::pumpTransportResults() {
+#ifndef UNIT_TEST
+    if (!sObdTransport.resultQueue) {
+        return;
+    }
+
+    ObdTransportResult result{};
+    while (xQueueReceive(sObdTransport.resultQueue, &result, 0) == pdTRUE) {
+        if (!transportRequestActive_ || result.requestId != pendingTransportRequestId_) {
+            continue;
+        }
+        result.timedOut = pendingTransportTimedOut_;
+        readyTransportResult_ = result;
+        clearTransportRequest();
+    }
+#endif
+}
+
+bool ObdRuntimeModule::pendingTransportTimedOut(uint32_t nowMs) const {
+    return transportRequestActive_ &&
+           pendingTransportTimeoutMs_ > 0 &&
+           static_cast<int32_t>(nowMs - pendingTransportIssuedMs_) >=
+               static_cast<int32_t>(pendingTransportTimeoutMs_);
+}
+
+bool ObdRuntimeModule::takeTransportResult(ObdTransportOp op, ObdTransportResult& result) {
+    if (!readyTransportResult_.ready || readyTransportResult_.op != op) {
+        return false;
+    }
+    result = readyTransportResult_;
+    readyTransportResult_ = {};
+    return true;
+}
+
 void ObdRuntimeModule::setEnabled(bool enabled) {
     if (enabled_ == enabled) return;
     enabled_ = enabled;
@@ -582,6 +860,8 @@ void ObdRuntimeModule::setEnabled(bool enabled) {
         pendingAddress_[0] = '\0';
         clearBleResponseState();
         resetCommandState();
+        clearTransportRequest();
+        readyTransportResult_ = {};
         bleDisconnected_ = false;
         clearSpeedState();
         clearEotState(false);
@@ -656,12 +936,15 @@ bool ObdRuntimeModule::startCommand(ObdCommandKind kind,
     activeCommand_.alternateWriteModeTried = false;
     copyString(activeCommand_.tx, sizeof(activeCommand_.tx), tx);
 
-    if (!writeBleCommand(activeCommand_.tx, activeCommand_.writeWithResponse)) {
+    activeCommand_.sentMs = 0;
+    if (!beginTransportRequest(ObdTransportOp::WRITE,
+                               nowMs,
+                               0,
+                               activeCommand_.tx,
+                               activeCommand_.writeWithResponse)) {
         resetCommandState();
         return false;
     }
-
-    activeCommand_.sentMs = nowMs;
     return true;
 }
 
@@ -673,10 +956,14 @@ bool ObdRuntimeModule::retryActiveCommand(uint32_t nowMs) {
     activeCommand_.retriesRemaining--;
     initRetries_++;
     clearBleResponseState();
-    if (!writeBleCommand(activeCommand_.tx, activeCommand_.writeWithResponse)) {
+    activeCommand_.sentMs = 0;
+    if (!beginTransportRequest(ObdTransportOp::WRITE,
+                               nowMs,
+                               0,
+                               activeCommand_.tx,
+                               activeCommand_.writeWithResponse)) {
         return false;
     }
-    activeCommand_.sentMs = nowMs;
     return true;
 }
 
@@ -692,10 +979,14 @@ bool ObdRuntimeModule::retryActiveCommandWithAlternateWriteMode(uint32_t nowMs) 
     activeCommand_.writeWithResponse = !activeCommand_.writeWithResponse;
     initRetries_++;
     clearBleResponseState();
-    if (!writeBleCommand(activeCommand_.tx, activeCommand_.writeWithResponse)) {
+    activeCommand_.sentMs = 0;
+    if (!beginTransportRequest(ObdTransportOp::WRITE,
+                               nowMs,
+                               0,
+                               activeCommand_.tx,
+                               activeCommand_.writeWithResponse)) {
         return false;
     }
-    activeCommand_.sentMs = nowMs;
     return true;
 }
 
@@ -1231,6 +1522,8 @@ bool ObdRuntimeModule::sendNextPollingCommand(uint32_t nowMs) {
 }
 
 void ObdRuntimeModule::updateSecuring(uint32_t nowMs) {
+    ObdTransportResult transportResult{};
+
     if (bleDisconnected_) {
 #ifndef UNIT_TEST
         Serial.printf("[OBD] lost connection during securing (ble reason=%d %s)\n",
@@ -1254,9 +1547,26 @@ void ObdRuntimeModule::updateSecuring(uint32_t nowMs) {
         return;
     }
 
-    if (!beginBleSecurity()) {
+    if (takeTransportResult(ObdTransportOp::SECURITY_START, transportResult) &&
+        (!transportResult.success || transportResult.timedOut)) {
 #ifndef UNIT_TEST
         Serial.printf("[OBD] secureConnection start failed rc=%d (%s)\n",
+                      transportResult.securityError,
+                      bleReasonName(transportResult.securityError));
+#endif
+        if (autoHealBondIfAllowed(nowMs, "securing_start")) {
+            return;
+        }
+        disconnectBle();
+        handleConnectFailure(nowMs, ObdFailureReason::SECURITY_START);
+        return;
+    }
+
+    if (!transportRequestActive_ &&
+        !readyTransportResult_.ready &&
+        !beginTransportRequest(ObdTransportOp::SECURITY_START, nowMs, obd::SECURITY_TIMEOUT_MS)) {
+#ifndef UNIT_TEST
+        Serial.printf("[OBD] secureConnection request queue failed rc=%d (%s)\n",
                       getBleSecurityFailure(),
                       bleReasonName(getBleSecurityFailure()));
 #endif
@@ -1285,6 +1595,8 @@ void ObdRuntimeModule::updateSecuring(uint32_t nowMs) {
 }
 
 void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
+    ObdTransportResult transportResult{};
+
     if (bleDisconnected_) {
 #ifndef UNIT_TEST
         Serial.printf("[OBD] lost connection during AT init (ble reason=%d %s)\n",
@@ -1297,6 +1609,34 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
     }
 
     if (activeCommand_.active) {
+        if (activeCommand_.sentMs == 0) {
+            if (!takeTransportResult(ObdTransportOp::WRITE, transportResult)) {
+                return;
+            }
+            if (!transportResult.success || transportResult.timedOut) {
+                const int cmdLen = static_cast<int>(commandDisplayLen(activeCommand_.tx));
+#ifndef UNIT_TEST
+                Serial.printf("[OBD] AT init write failed cmd=%.*s writeMode=%s rc=%d (%s) timedOut=%d\n",
+                              cmdLen,
+                              activeCommand_.tx,
+                              activeCommand_.writeWithResponse ? "with_response" : "no_response",
+                              transportResult.bleError,
+                              bleReasonName(transportResult.bleError),
+                              transportResult.timedOut ? 1 : 0);
+#endif
+                if (initIndex_ == 0 && autoHealBondIfAllowed(nowMs, "at_init_write")) {
+                    return;
+                }
+                disconnectBle();
+                handleConnectFailure(nowMs,
+                                     transportResult.timedOut
+                                         ? ObdFailureReason::INIT_TIMEOUT
+                                         : ObdFailureReason::WRITE);
+                return;
+            }
+            activeCommand_.sentMs = transportResult.issuedMs;
+            return;
+        }
         if (bleDataReady_) {
             handleAtInitResponse(nowMs);
             return;
@@ -1404,6 +1744,8 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
 }
 
 void ObdRuntimeModule::updatePolling(uint32_t nowMs) {
+    ObdTransportResult transportResult{};
+
     if (bleDisconnected_) {
 #ifndef UNIT_TEST
         Serial.printf("[OBD] lost connection during polling (ble reason=%d %s)\n",
@@ -1419,6 +1761,23 @@ void ObdRuntimeModule::updatePolling(uint32_t nowMs) {
     }
 
     if (activeCommand_.active) {
+        if (activeCommand_.sentMs == 0) {
+            if (!takeTransportResult(ObdTransportOp::WRITE, transportResult)) {
+                return;
+            }
+            if (!transportResult.success || transportResult.timedOut) {
+                clearBleResponseState();
+                completeActiveCommand();
+                handlePollingError(nowMs,
+                                   false,
+                                   transportResult.timedOut
+                                       ? ObdFailureReason::COMMAND_TIMEOUT
+                                       : ObdFailureReason::WRITE);
+                return;
+            }
+            activeCommand_.sentMs = transportResult.issuedMs;
+            return;
+        }
         if (bleDataReady_) {
             handlePollingResponse(nowMs);
             if (state_ != ObdConnectionState::POLLING) {
@@ -1477,7 +1836,17 @@ void ObdRuntimeModule::updatePolling(uint32_t nowMs) {
         sendNextPollingCommand(nowMs);
     }
 
-    rssi_ = readBleRssi(nowMs);
+    if (takeTransportResult(ObdTransportOp::RSSI_READ, transportResult)) {
+        rssi_ = transportResult.rssi;
+        lastRssiMs_ = nowMs;
+    } else if (!transportRequestActive_ &&
+               !readyTransportResult_.ready &&
+               !(activeCommand_.active && activeCommand_.sentMs == 0) &&
+               static_cast<int32_t>(nowMs - lastRssiMs_) >= static_cast<int32_t>(OBD_RSSI_REFRESH_MS)) {
+        if (beginTransportRequest(ObdTransportOp::RSSI_READ, nowMs, 0)) {
+            lastRssiMs_ = nowMs;
+        }
+    }
 
     if (speedValid_ && !isSpeedFresh(nowMs)) {
         speedValid_ = false;
@@ -1493,6 +1862,11 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                               bool v1Connected,
                               bool bleScanIdle) {
     if (!enabled_) return;
+
+    if (pendingTransportTimedOut(nowMs)) {
+        pendingTransportTimedOut_ = true;
+    }
+    pumpTransportResults();
 
     if (bootReady && bootReadyMs_ == 0) {
         bootReadyMs_ = nowMs == 0 ? 1 : nowMs;
@@ -1551,11 +1925,28 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                 handleConnectFailure(nowMs, ObdFailureReason::CONNECT_START);
                 break;
             }
+            {
+                ObdTransportResult transportResult{};
+                if (takeTransportResult(ObdTransportOp::CONNECT, transportResult)) {
+                    if (!transportResult.success || transportResult.timedOut) {
+                        handleConnectFailure(nowMs,
+                                             transportResult.timedOut
+                                                 ? ObdFailureReason::CONNECT_TIMEOUT
+                                                 : ObdFailureReason::CONNECT_START);
+                        break;
+                    }
+                }
+            }
             if (justEntered) {
                 bleDisconnectReason_ = 0;
                 lastConnectStartMs_ = nowMs;
                 const bool preferCachedAttributes = preferWarmReconnect_ && savedAddress_[0] != '\0';
-                if (!connectBle(obd::CONNECT_TIMEOUT_MS, preferCachedAttributes)) {
+                if (!beginTransportRequest(ObdTransportOp::CONNECT,
+                                           nowMs,
+                                           obd::CONNECT_TIMEOUT_MS,
+                                           nullptr,
+                                           false,
+                                           preferCachedAttributes)) {
                     handleConnectFailure(nowMs, ObdFailureReason::CONNECT_START);
                     break;
                 }
@@ -1564,12 +1955,20 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                 connectAttempts_ = 0;
                 connectSuccesses_++;
                 lastConnectSuccessMs_ = nowMs;
+                if (pendingTransportOp_ == ObdTransportOp::CONNECT ||
+                    readyTransportResult_.op == ObdTransportOp::CONNECT) {
+                    clearTransportRequest();
+                    readyTransportResult_ = {};
+                }
                 transitionTo(ObdConnectionState::DISCOVERING, nowMs);
                 break;
             }
             if ((nowMs - stateEnteredMs_) >= obd::CONNECT_TIMEOUT_MS) {
+                clearTransportRequest();
+                readyTransportResult_ = {};
                 disconnectBle();
                 handleConnectFailure(nowMs, ObdFailureReason::CONNECT_TIMEOUT);
+                break;
             }
             break;
 
@@ -1593,29 +1992,47 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                 break;
             }
             {
-                if (!discoverBleServices()) {
+                ObdTransportResult transportResult{};
+                if (takeTransportResult(ObdTransportOp::DISCOVER, transportResult)) {
+                    if (!transportResult.success || transportResult.timedOut) {
+                        disconnectBle();
+                        handleConnectFailure(nowMs, ObdFailureReason::DISCOVERY);
+                        break;
+                    }
+                    if (bleDisconnected_) {
+#ifndef UNIT_TEST
+                        Serial.printf("[OBD] lost connection after discovery (ble reason=%d %s)\n",
+                                      bleDisconnectReason_,
+                                      bleReasonName(bleDisconnectReason_));
+#endif
+                        bleDisconnected_ = false;
+                        transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
+                        break;
+                    }
+                    if (!beginTransportRequest(ObdTransportOp::SUBSCRIBE, nowMs, obd::CONNECT_TIMEOUT_MS)) {
+                        disconnectBle();
+                        handleConnectFailure(nowMs, ObdFailureReason::SUBSCRIBE);
+                        break;
+                    }
+                    break;
+                }
+                if (takeTransportResult(ObdTransportOp::SUBSCRIBE, transportResult)) {
+                    if (!transportResult.success || transportResult.timedOut) {
+                        disconnectBle();
+                        handleConnectFailure(nowMs, ObdFailureReason::SUBSCRIBE);
+                        break;
+                    }
+                    resetInitState(preferWarmReconnect_);
+                    preferWarmReconnect_ = true;
+                    transitionTo(ObdConnectionState::AT_INIT, nowMs);
+                    break;
+                }
+                if (!transportRequestActive_ && !readyTransportResult_.ready &&
+                    !beginTransportRequest(ObdTransportOp::DISCOVER, nowMs, obd::CONNECT_TIMEOUT_MS)) {
                     disconnectBle();
                     handleConnectFailure(nowMs, ObdFailureReason::DISCOVERY);
                     break;
                 }
-                if (bleDisconnected_) {
-#ifndef UNIT_TEST
-                    Serial.printf("[OBD] lost connection after discovery (ble reason=%d %s)\n",
-                                  bleDisconnectReason_,
-                                  bleReasonName(bleDisconnectReason_));
-#endif
-                    bleDisconnected_ = false;
-                    transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
-                    break;
-                }
-                if (!subscribeBleNotifications()) {
-                    disconnectBle();
-                    handleConnectFailure(nowMs, ObdFailureReason::SUBSCRIBE);
-                    break;
-                }
-                resetInitState(preferWarmReconnect_);
-                preferWarmReconnect_ = true;
-                transitionTo(ObdConnectionState::AT_INIT, nowMs);
             }
             break;
 

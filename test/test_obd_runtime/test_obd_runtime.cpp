@@ -300,8 +300,11 @@ void test_discover_entry_action_runs_on_next_tick() {
     obdRuntimeModule.setTestDiscoverResult(false);
     // POST_CONNECT_SETTLE_MS (500ms) must elapse before GATT work begins.
     obdRuntimeModule.update(5501, true, true, true);
-    TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDiscoverCallCountForTest());
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCOVERING, obdRuntimeModule.getState());
+
+    obdRuntimeModule.update(5502, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
 }
 
 void test_connect_enters_discovering_with_settle_delay() {
@@ -413,8 +416,10 @@ void test_at_init_empty_timeout_switches_to_no_response_and_keeps_mode() {
     TEST_ASSERT_FALSE(obdRuntimeModule.getLastWriteWithResponseForTest());
     TEST_ASSERT_EQUAL_STRING("ATZ\r", obdRuntimeModule.getLastCommandForTest());
 
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS + 1, true, true, true);
+
     // Empty timeout alternates to with-response
-    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS + obd::AT_INIT_RESPONSE_TIMEOUT_MS,
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS + obd::AT_INIT_RESPONSE_TIMEOUT_MS + 1,
                             true,
                             true,
                             true);
@@ -422,12 +427,17 @@ void test_at_init_empty_timeout_switches_to_no_response_and_keeps_mode() {
     TEST_ASSERT_TRUE(obdRuntimeModule.getLastWriteWithResponseForTest());
     TEST_ASSERT_EQUAL_STRING("ATZ\r", obdRuntimeModule.getLastCommandForTest());
 
-    feedBleResponse("OBDLink CX\r\n>");
-    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS + obd::AT_INIT_RESPONSE_TIMEOUT_MS + 1,
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS + obd::AT_INIT_RESPONSE_TIMEOUT_MS + 2,
                             true,
                             true,
                             true);
-    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS + obd::AT_INIT_RESPONSE_TIMEOUT_MS + 2,
+
+    feedBleResponse("OBDLink CX\r\n>");
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS + obd::AT_INIT_RESPONSE_TIMEOUT_MS + 3,
+                            true,
+                            true,
+                            true);
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS + obd::AT_INIT_RESPONSE_TIMEOUT_MS + 4,
                             true,
                             true,
                             true);
@@ -448,6 +458,7 @@ void test_first_at_init_write_failure_auto_heals_bond() {
     obdRuntimeModule.setTestLastBleError(1);
 
     obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS, true, true, true);
+    obdRuntimeModule.update(obd::POST_SUBSCRIBE_SETTLE_MS + 1, true, true, true);
 
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getDeleteBondCallCountForTest());
@@ -579,6 +590,8 @@ void test_poll_timeout_counts_as_error() {
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getWriteCallCountForTest());
     TEST_ASSERT_EQUAL_STRING("010D\r", obdRuntimeModule.getLastCommandForTest());
 
+    obdRuntimeModule.update(101, true, true, true);
+
     // POLL_TIMEOUT_MS is 1000, so timeout fires at 100+1000=1100
     obdRuntimeModule.update(1200, true, true, true);
     ObdRuntimeStatus status = obdRuntimeModule.snapshot(1200);
@@ -588,6 +601,7 @@ void test_poll_timeout_counts_as_error() {
     TEST_ASSERT_EQUAL_UINT32(0, status.consecutiveErrors);
     TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
 
+    obdRuntimeModule.update(1201, true, true, true);
     obdRuntimeModule.update(2301, true, true, true);
     status = obdRuntimeModule.snapshot(2301);
     TEST_ASSERT_EQUAL_UINT32(1, status.pollErrors);
@@ -602,6 +616,7 @@ void test_searching_extends_speed_timeout() {
     // Send speed command at t=100
     obdRuntimeModule.update(100, true, true, true);
     TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getWriteCallCountForTest());
+    obdRuntimeModule.update(101, true, true, true);
 
     // CX replies with "SEARCHING...\r" (no ">", so data not ready)
     feedBleResponse("SEARCHING...\r");
@@ -634,10 +649,12 @@ void test_cached_profile_polls_before_background_vin_lookup() {
 
     obdRuntimeModule.update(6000, true, true, true);
     TEST_ASSERT_EQUAL_STRING("010D\r", obdRuntimeModule.getLastCommandForTest());
+    obdRuntimeModule.update(6001, true, true, true);
 
     feedBleResponse("41 0D 28\r\n>");
     obdRuntimeModule.update(6050, true, true, true);
     obdRuntimeModule.update(6100, true, true, true);
+    obdRuntimeModule.update(6101, true, true, true);
 
     TEST_ASSERT_EQUAL(ObdCommandKind::EOT_POLL, obdRuntimeModule.getActiveCommandKindForTest());
     TEST_ASSERT_EQUAL_STRING("22F45C\r", obdRuntimeModule.getLastCommandForTest());
@@ -652,6 +669,7 @@ void test_vin_response_sets_family_and_starts_standard_eot_probe() {
     obdRuntimeModule.setConsecutiveSpeedSamplesForTest(3);
 
     obdRuntimeModule.update(6000, true, true, true);
+    obdRuntimeModule.update(6001, true, true, true);
     feedBleResponse("41 0D 28\r\n>");
     obdRuntimeModule.update(6050, true, true, true);
     obdRuntimeModule.update(6100, true, true, true);
@@ -671,6 +689,7 @@ void test_vin_response_sets_family_and_starts_standard_eot_probe() {
     TEST_ASSERT_EQUAL(ObdVehicleFamily::FORD, status.vehicleFamily);
 
     obdRuntimeModule.update(6200, true, true, true);
+    obdRuntimeModule.update(6201, true, true, true);
     TEST_ASSERT_EQUAL(ObdCommandKind::EOT_PROBE, obdRuntimeModule.getActiveCommandKindForTest());
     TEST_ASSERT_EQUAL_STRING("015C\r", obdRuntimeModule.getLastCommandForTest());
 }

@@ -61,6 +61,29 @@ enum class ObdFailureReason : uint8_t {
     SECURITY_TIMEOUT = 13,
 };
 
+enum class ObdTransportOp : uint8_t {
+    NONE = 0,
+    CONNECT = 1,
+    DISCONNECT = 2,
+    SECURITY_START = 3,
+    DISCOVER = 4,
+    SUBSCRIBE = 5,
+    WRITE = 6,
+    RSSI_READ = 7,
+};
+
+struct ObdTransportResult {
+    bool ready = false;
+    ObdTransportOp op = ObdTransportOp::NONE;
+    uint32_t requestId = 0;
+    uint32_t issuedMs = 0;
+    bool success = false;
+    bool timedOut = false;
+    int bleError = 0;
+    int securityError = 0;
+    int8_t rssi = 0;
+};
+
 struct ObdRuntimeStatus {
     bool enabled = false;
     bool connected = false;
@@ -299,6 +322,16 @@ private:
     bool validateEotSample(int16_t tempC_x10, uint32_t nowMs, ObdEotProfileId profileId) const;
     void markProfileUnsupported(ObdEotProfileId profileId);
     bool isProfileUnsupported(ObdEotProfileId profileId) const;
+    void pumpTransportResults();
+    bool beginTransportRequest(ObdTransportOp op,
+                               uint32_t nowMs,
+                               uint32_t timeoutMs,
+                               const char* cmd = nullptr,
+                               bool withResponse = false,
+                               bool preferCachedAttributes = false);
+    bool pendingTransportTimedOut(uint32_t nowMs) const;
+    bool takeTransportResult(ObdTransportOp op, ObdTransportResult& result);
+    void clearTransportRequest();
 
     bool enabled_ = false;
     ObdConnectionState state_ = ObdConnectionState::IDLE;
@@ -367,6 +400,14 @@ private:
     uint8_t initIndex_ = 0;
 
     ActiveObdCommand activeCommand_ = {};
+    bool transportRequestActive_ = false;
+    ObdTransportOp pendingTransportOp_ = ObdTransportOp::NONE;
+    uint32_t nextTransportRequestId_ = 0;
+    uint32_t pendingTransportRequestId_ = 0;
+    uint32_t pendingTransportIssuedMs_ = 0;
+    uint32_t pendingTransportTimeoutMs_ = 0;
+    bool pendingTransportTimedOut_ = false;
+    ObdTransportResult readyTransportResult_ = {};
 
     char bleBuf_[BLE_BUF_LEN] = {};
     size_t bleBufLen_ = 0;
