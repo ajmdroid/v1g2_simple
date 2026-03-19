@@ -97,6 +97,7 @@ SKIP_WEB=false
 RUN_TESTS=false
 PIO_ENV="$DEFAULT_ENV"
 UPLOAD_PORT=""
+PIO_JOBS=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -138,6 +139,19 @@ while [[ $# -gt 0 ]]; do
             UPLOAD_PORT="$2"
             shift 2
             ;;
+        --jobs|-j)
+            if [[ $# -lt 2 ]]; then
+                echo "Missing value for --jobs" >&2
+                exit 1
+            fi
+            PIO_JOBS="$2"
+            if ! [[ "$PIO_JOBS" =~ ^[1-9][0-9]*$ ]]; then
+                echo -e "${RED}❌ Invalid --jobs value: $PIO_JOBS${NC}"
+                echo "   Expected a positive integer."
+                exit 1
+            fi
+            shift 2
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -150,12 +164,14 @@ while [[ $# -gt 0 ]]; do
             echo "  -s, --skip-web     Skip web interface build"
             echo "  -t, --test         Run unit tests before upload (native environment)"
             echo "  -e, --env ENV      PlatformIO environment (default: waveshare-349)"
+            echo "  -j, --jobs N       PlatformIO job count override (default: PlatformIO default)"
             echo "  --upload-port PORT COM port for upload (e.g., COM6)"
             echo "  -h, --help         Show this help"
             echo ""
             echo "Examples:"
             echo "  $0                 # Build everything (no upload)"
             echo "  $0 --clean --all   # Clean build and upload everything"
+            echo "  $0 --clean --all --jobs 1  # Force single-threaded PlatformIO run"
             echo "  $0 -u -m           # Build firmware, upload, and monitor"
             echo "  $0 -f              # Build and upload filesystem only"
             echo "  $0 -s -u           # Skip web build, just build and upload firmware"
@@ -176,7 +192,10 @@ PIO_ARGS="-e $PIO_ENV"
 if [ -n "$UPLOAD_PORT" ]; then
     PIO_ARGS="$PIO_ARGS --upload-port $UPLOAD_PORT"
 fi
-PIO_RUN_ARGS="$PIO_ARGS -j 1"
+PIO_RUN_ARGS="$PIO_ARGS"
+if [ -n "$PIO_JOBS" ]; then
+    PIO_RUN_ARGS="$PIO_RUN_ARGS -j $PIO_JOBS"
+fi
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║         V1G2 Simple Complete Build Script         ║${NC}"
