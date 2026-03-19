@@ -1,7 +1,10 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
+
+#include <freertos/FreeRTOS.h>
 
 enum class ObdConnectionState : uint8_t {
     IDLE = 0,
@@ -332,6 +335,30 @@ private:
     bool pendingTransportTimedOut(uint32_t nowMs) const;
     bool takeTransportResult(ObdTransportOp op, ObdTransportResult& result);
     void clearTransportRequest();
+    void clearBleEventQueue();
+    void drainBleEventQueue();
+
+    enum class BleEventType : uint8_t {
+        DEVICE_FOUND = 0,
+        DISCONNECT = 1,
+        DATA = 2,
+    };
+
+    struct BleEvent {
+        BleEventType type = BleEventType::DATA;
+        size_t dataLen = 0;
+        int disconnectReason = 0;
+        int8_t rssi = 0;
+        uint8_t addrType = 0;
+        bool dataReady = false;
+        bool overflowed = false;
+        char address[ADDR_BUF_LEN] = {};
+        uint8_t data[BLE_BUF_LEN - 1] = {};
+    };
+
+    bool enqueueBleEvent(const BleEvent& event);
+    bool popBleEvent(BleEvent& event);
+    void applyBleEvent(const BleEvent& event);
 
     bool enabled_ = false;
     ObdConnectionState state_ = ObdConnectionState::IDLE;
@@ -415,6 +442,11 @@ private:
     bool bleDisconnected_ = false;
     int bleDisconnectReason_ = 0;
     bool bleOverflowed_ = false;
+    static constexpr size_t BLE_EVENT_QUEUE_DEPTH = 8;
+    std::array<BleEvent, BLE_EVENT_QUEUE_DEPTH> bleEventQueue_ = {};
+    size_t bleEventQueueHead_ = 0;
+    size_t bleEventQueueCount_ = 0;
+    portMUX_TYPE bleEventQueueMux_ = portMUX_INITIALIZER_UNLOCKED;
 
 #ifdef UNIT_TEST
     bool testStartScanResult_ = true;

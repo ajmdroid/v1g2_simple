@@ -580,6 +580,18 @@ void test_set_min_rssi_applies_immediately() {
     TEST_ASSERT_EQUAL(ObdConnectionState::SCANNING, obdRuntimeModule.getState());
 }
 
+void test_disconnect_callback_is_delivered_from_queue() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
+    obdRuntimeModule.setTestBleConnected(true);
+
+    obdRuntimeModule.onBleDisconnect(534);
+    TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
+
+    obdRuntimeModule.update(100, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
+}
+
 // ── Error backoff ─────────────────────────────────────────────────
 
 void test_poll_timeout_counts_as_error() {
@@ -607,6 +619,46 @@ void test_poll_timeout_counts_as_error() {
     TEST_ASSERT_EQUAL_UINT32(1, status.pollErrors);
     TEST_ASSERT_EQUAL_UINT32(1, status.consecutiveErrors);
     TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
+}
+
+void test_speed_response_assembles_from_multiple_ble_chunks() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
+
+    obdRuntimeModule.update(100, true, true, true);
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getWriteCallCountForTest());
+    obdRuntimeModule.update(101, true, true, true);
+
+    obdRuntimeModule.onBleData(reinterpret_cast<const uint8_t*>("41 0D "), 6);
+    obdRuntimeModule.onBleData(reinterpret_cast<const uint8_t*>("28\r\n>"), 5);
+
+    obdRuntimeModule.update(150, true, true, true);
+
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(150);
+    TEST_ASSERT_TRUE(status.speedValid);
+    TEST_ASSERT_FLOAT_WITHIN(0.05f, 24.85f, status.speedMph);
+    TEST_ASSERT_EQUAL_UINT32(0, status.bufferOverflows);
+}
+
+void test_data_queue_overflow_fails_response_as_buffer_overflow() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
+
+    obdRuntimeModule.update(100, true, true, true);
+    TEST_ASSERT_EQUAL_UINT32(1, obdRuntimeModule.getWriteCallCountForTest());
+    obdRuntimeModule.update(101, true, true, true);
+
+    const char* chunks[] = {"4", "1", " ", "0", "D", " ", "2", "8", "\r\n>"};
+    for (const char* chunk : chunks) {
+        obdRuntimeModule.onBleData(reinterpret_cast<const uint8_t*>(chunk), strlen(chunk));
+    }
+
+    obdRuntimeModule.update(150, true, true, true);
+
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(150);
+    TEST_ASSERT_FALSE(status.speedValid);
+    TEST_ASSERT_EQUAL_UINT32(1, status.bufferOverflows);
+    TEST_ASSERT_EQUAL_UINT32(1, status.pollErrors);
 }
 
 void test_searching_extends_speed_timeout() {
@@ -827,9 +879,12 @@ int main() {
     RUN_TEST(test_enable_same_state_is_noop);
     RUN_TEST(test_reenable_with_saved_address_restores_wait_boot);
     RUN_TEST(test_set_min_rssi_applies_immediately);
+    RUN_TEST(test_disconnect_callback_is_delivered_from_queue);
 
     // Error handling
     RUN_TEST(test_poll_timeout_counts_as_error);
+    RUN_TEST(test_speed_response_assembles_from_multiple_ble_chunks);
+    RUN_TEST(test_data_queue_overflow_fails_response_as_buffer_overflow);
     RUN_TEST(test_searching_extends_speed_timeout);
     RUN_TEST(test_cached_profile_polls_before_background_vin_lookup);
     RUN_TEST(test_vin_response_sets_family_and_starts_standard_eot_probe);

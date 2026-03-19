@@ -296,6 +296,7 @@ void ObdRuntimeModule::resetForBegin() {
     bleDisconnectReason_ = 0;
     repairedBondAddress_[0] = '\0';
 
+    clearBleEventQueue();
     clearBleResponseState();
     bleDisconnected_ = false;
     resetCommandState();
@@ -393,6 +394,97 @@ void ObdRuntimeModule::transitionTo(ObdConnectionState newState, uint32_t nowMs)
     state_ = newState;
     stateEnteredMs_ = nowMs;
     stateEntryPending_ = true;
+}
+
+void ObdRuntimeModule::clearBleEventQueue() {
+    taskENTER_CRITICAL(&bleEventQueueMux_);
+    bleEventQueueHead_ = 0;
+    bleEventQueueCount_ = 0;
+    taskEXIT_CRITICAL(&bleEventQueueMux_);
+}
+
+bool ObdRuntimeModule::enqueueBleEvent(const BleEvent& event) {
+    BleEvent queuedEvent = event;
+
+    taskENTER_CRITICAL(&bleEventQueueMux_);
+    if (bleEventQueueCount_ >= BLE_EVENT_QUEUE_DEPTH) {
+        const BleEvent& dropped = bleEventQueue_[bleEventQueueHead_];
+        if (queuedEvent.type == BleEventType::DATA && dropped.type == BleEventType::DATA) {
+            queuedEvent.overflowed = true;
+        }
+        bleEventQueueHead_ = (bleEventQueueHead_ + 1) % BLE_EVENT_QUEUE_DEPTH;
+        bleEventQueueCount_--;
+    }
+
+    const size_t tail = (bleEventQueueHead_ + bleEventQueueCount_) % BLE_EVENT_QUEUE_DEPTH;
+    bleEventQueue_[tail] = queuedEvent;
+    bleEventQueueCount_++;
+    taskEXIT_CRITICAL(&bleEventQueueMux_);
+    return true;
+}
+
+bool ObdRuntimeModule::popBleEvent(BleEvent& event) {
+    taskENTER_CRITICAL(&bleEventQueueMux_);
+    if (bleEventQueueCount_ == 0) {
+        taskEXIT_CRITICAL(&bleEventQueueMux_);
+        return false;
+    }
+
+    event = bleEventQueue_[bleEventQueueHead_];
+    bleEventQueueHead_ = (bleEventQueueHead_ + 1) % BLE_EVENT_QUEUE_DEPTH;
+    bleEventQueueCount_--;
+    taskEXIT_CRITICAL(&bleEventQueueMux_);
+    return true;
+}
+
+void ObdRuntimeModule::applyBleEvent(const BleEvent& event) {
+    switch (event.type) {
+        case BleEventType::DEVICE_FOUND:
+            if (state_ != ObdConnectionState::SCANNING ||
+                event.address[0] == '\0' ||
+                event.rssi < minRssi_) {
+                return;
+            }
+            copyString(pendingAddress_, sizeof(pendingAddress_), event.address);
+            pendingRssi_ = event.rssi;
+            pendingAddrType_ = event.addrType;
+            pendingDeviceFound_ = true;
+            return;
+
+        case BleEventType::DISCONNECT:
+            bleDisconnected_ = true;
+            bleDisconnectReason_ = event.disconnectReason;
+            return;
+
+        case BleEventType::DATA:
+            if (state_ != ObdConnectionState::AT_INIT &&
+                state_ != ObdConnectionState::POLLING) {
+                return;
+            }
+            {
+                const size_t remaining = BLE_BUF_LEN - 1 - bleBufLen_;
+                const size_t toCopy = std::min(event.dataLen, remaining);
+                if (toCopy > 0) {
+                    memcpy(bleBuf_ + bleBufLen_, event.data, toCopy);
+                    bleBufLen_ += toCopy;
+                    bleBuf_[bleBufLen_] = '\0';
+                }
+                if (toCopy < event.dataLen || event.overflowed) {
+                    bleOverflowed_ = true;
+                }
+                if (event.dataReady) {
+                    bleDataReady_ = true;
+                }
+            }
+            return;
+    }
+}
+
+void ObdRuntimeModule::drainBleEventQueue() {
+    BleEvent event;
+    while (popBleEvent(event)) {
+        applyBleEvent(event);
+    }
 }
 
 void ObdRuntimeModule::clearBleResponseState() {
@@ -855,6 +947,7 @@ void ObdRuntimeModule::setEnabled(bool enabled) {
     if (!enabled_) {
         stopBleScan();
         disconnectBle();
+        clearBleEventQueue();
         scanRequested_ = false;
         pendingDeviceFound_ = false;
         pendingAddress_[0] = '\0';
@@ -875,6 +968,7 @@ void ObdRuntimeModule::setEnabled(bool enabled) {
     clearEotState(false);
     connectAttempts_ = 0;
     resetPollingSchedule(0);
+    clearBleEventQueue();
     clearBleResponseState();
     resetCommandState();
     bleDisconnected_ = false;
@@ -1863,6 +1957,8 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                               bool bleScanIdle) {
     if (!enabled_) return;
 
+    drainBleEventQueue();
+
     if (pendingTransportTimedOut(nowMs)) {
         pendingTransportTimedOut_ = true;
     }
@@ -2151,6 +2247,7 @@ bool ObdRuntimeModule::startScan() {
 void ObdRuntimeModule::forgetDevice() {
     stopBleScan();
     disconnectBle();
+    clearBleEventQueue();
     setSavedAddressFromBuffer("");
     clearVehicleState(true);
     clearEotState(true);
@@ -2168,39 +2265,40 @@ void ObdRuntimeModule::forgetDevice() {
 }
 
 void ObdRuntimeModule::onDeviceFound(const char* name, const char* address, int rssi, uint8_t addrType) {
-    if (!address || address[0] == '\0' || rssi < minRssi_ || state_ != ObdConnectionState::SCANNING) {
+    if (!address || address[0] == '\0') {
         return;
     }
     if (name && strcmp(name, obd::DEVICE_NAME_CX) != 0) {
         return;
     }
 
-    copyString(pendingAddress_, sizeof(pendingAddress_), address);
-    pendingRssi_ = static_cast<int8_t>(rssi);
-    pendingAddrType_ = addrType;
-    pendingDeviceFound_ = true;
+    BleEvent event{};
+    event.type = BleEventType::DEVICE_FOUND;
+    event.rssi = static_cast<int8_t>(rssi);
+    event.addrType = addrType;
+    copyString(event.address, sizeof(event.address), address);
+    enqueueBleEvent(event);
 }
 
 void ObdRuntimeModule::onBleDisconnect(int reason) {
-    bleDisconnected_ = true;
-    bleDisconnectReason_ = reason;
+    BleEvent event{};
+    event.type = BleEventType::DISCONNECT;
+    event.disconnectReason = reason;
+    enqueueBleEvent(event);
 }
 
 void ObdRuntimeModule::onBleData(const uint8_t* data, size_t len) {
     if (!data || len == 0) return;
 
-    const size_t remaining = BLE_BUF_LEN - 1 - bleBufLen_;
-    const size_t toCopy = std::min(len, remaining);
-    memcpy(bleBuf_ + bleBufLen_, data, toCopy);
-    bleBufLen_ += toCopy;
-    bleBuf_[bleBufLen_] = '\0';
-
-    if (toCopy < len) {
-        bleOverflowed_ = true;
+    BleEvent event{};
+    event.type = BleEventType::DATA;
+    event.dataLen = std::min(len, BLE_BUF_LEN - 1);
+    if (event.dataLen > 0) {
+        memcpy(event.data, data, event.dataLen);
     }
-    if (memchr(data, '>', len) != nullptr) {
-        bleDataReady_ = true;
-    }
+    event.overflowed = event.dataLen < len;
+    event.dataReady = memchr(data, '>', len) != nullptr;
+    enqueueBleEvent(event);
 }
 
 const char* ObdRuntimeModule::vehicleFamilyName(ObdVehicleFamily family) {
@@ -2317,6 +2415,7 @@ void ObdRuntimeModule::forceStateForTest(ObdConnectionState state, uint32_t ente
     state_ = state;
     stateEnteredMs_ = enteredMs;
     stateEntryPending_ = false;
+    clearBleEventQueue();
     clearBleResponseState();
     resetCommandState();
     bleDisconnected_ = false;
