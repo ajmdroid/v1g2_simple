@@ -16,11 +16,12 @@ static PeriodicMaintenanceModule module;
 enum CallId {
     CALL_PERF = 1,
     CALL_TIME_SAVE = 2,
-    CALL_DEFERRED_SETTINGS_BACKUP = 3,
-    CALL_DEFERRED_BLE_BOND_BACKUP = 4,
-    CALL_LEARNER = 5,
-    CALL_LOCKOUT_SAVE = 6,
-    CALL_PENDING_SAVE = 7,
+    CALL_OBD_SETTINGS_SYNC = 3,
+    CALL_DEFERRED_SETTINGS_BACKUP = 4,
+    CALL_DEFERRED_BLE_BOND_BACKUP = 5,
+    CALL_LEARNER = 6,
+    CALL_LOCKOUT_SAVE = 7,
+    CALL_PENDING_SAVE = 8,
 };
 
 static int callLog[16];
@@ -35,6 +36,7 @@ static uint32_t timeElapsedUs = 0;
 static int perfRecordCalls = 0;
 static int timeRecordCalls = 0;
 static uint32_t timeSaveNowMs = 0;
+static uint32_t obdSettingsSyncNowMs = 0;
 static uint32_t deferredSettingsBackupNowMs = 0;
 static uint32_t deferredBleBondBackupNowMs = 0;
 static int64_t epochNowMs = 0;
@@ -82,6 +84,11 @@ static void runTimeSave(void*, uint32_t nowMs) {
     timeSaveNowMs = nowMs;
 }
 
+static void runObdSettingsSync(void*, uint32_t nowMs) {
+    noteCall(CALL_OBD_SETTINGS_SYNC);
+    obdSettingsSyncNowMs = nowMs;
+}
+
 static void recordTimeSaveUs(void*, uint32_t elapsedUs) {
     timeRecordCalls++;
     timeElapsedUs = elapsedUs;
@@ -126,6 +133,7 @@ static void resetState() {
     perfRecordCalls = 0;
     timeRecordCalls = 0;
     timeSaveNowMs = 0;
+    obdSettingsSyncNowMs = 0;
     deferredSettingsBackupNowMs = 0;
     deferredBleBondBackupNowMs = 0;
     epochNowMs = 0;
@@ -148,6 +156,7 @@ void test_process_runs_full_bundle_in_order_with_timing_records() {
     providers.recordPerfReportUs = recordPerfReportUs;
     providers.runTimeSave = runTimeSave;
     providers.recordTimeSaveUs = recordTimeSaveUs;
+    providers.runObdSettingsSync = runObdSettingsSync;
     providers.runDeferredSettingsBackup = runDeferredSettingsBackup;
     providers.runDeferredBleBondBackup = runDeferredBleBondBackup;
     providers.nowEpochMsOr0 = nowEpochMsOr0;
@@ -160,14 +169,15 @@ void test_process_runs_full_bundle_in_order_with_timing_records() {
     epochNowMs = 456789;
     module.process(5000);
 
-    TEST_ASSERT_EQUAL(7, callLogCount);
+    TEST_ASSERT_EQUAL(8, callLogCount);
     TEST_ASSERT_EQUAL(CALL_PERF, callLog[0]);
     TEST_ASSERT_EQUAL(CALL_TIME_SAVE, callLog[1]);
-    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_BACKUP, callLog[2]);
-    TEST_ASSERT_EQUAL(CALL_DEFERRED_BLE_BOND_BACKUP, callLog[3]);
-    TEST_ASSERT_EQUAL(CALL_LEARNER, callLog[4]);
-    TEST_ASSERT_EQUAL(CALL_LOCKOUT_SAVE, callLog[5]);
-    TEST_ASSERT_EQUAL(CALL_PENDING_SAVE, callLog[6]);
+    TEST_ASSERT_EQUAL(CALL_OBD_SETTINGS_SYNC, callLog[2]);
+    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_BACKUP, callLog[3]);
+    TEST_ASSERT_EQUAL(CALL_DEFERRED_BLE_BOND_BACKUP, callLog[4]);
+    TEST_ASSERT_EQUAL(CALL_LEARNER, callLog[5]);
+    TEST_ASSERT_EQUAL(CALL_LOCKOUT_SAVE, callLog[6]);
+    TEST_ASSERT_EQUAL(CALL_PENDING_SAVE, callLog[7]);
 
     TEST_ASSERT_EQUAL(1, perfRecordCalls);
     TEST_ASSERT_EQUAL(30u, perfElapsedUs);
@@ -175,6 +185,7 @@ void test_process_runs_full_bundle_in_order_with_timing_records() {
     TEST_ASSERT_EQUAL(45u, timeElapsedUs);
 
     TEST_ASSERT_EQUAL(5000u, timeSaveNowMs);
+    TEST_ASSERT_EQUAL(5000u, obdSettingsSyncNowMs);
     TEST_ASSERT_EQUAL(5000u, deferredSettingsBackupNowMs);
     TEST_ASSERT_EQUAL(5000u, deferredBleBondBackupNowMs);
     TEST_ASSERT_EQUAL(5000u, learnerNowMs);
@@ -187,6 +198,7 @@ void test_process_defaults_epoch_to_zero_when_provider_missing() {
     PeriodicMaintenanceModule::Providers providers;
     providers.runPerfReport = runPerfReport;
     providers.runTimeSave = runTimeSave;
+    providers.runObdSettingsSync = runObdSettingsSync;
     providers.runDeferredSettingsBackup = runDeferredSettingsBackup;
     providers.runDeferredBleBondBackup = runDeferredBleBondBackup;
     providers.runLockoutLearner = runLockoutLearner;
@@ -196,14 +208,15 @@ void test_process_defaults_epoch_to_zero_when_provider_missing() {
 
     module.process(1200);
 
-    TEST_ASSERT_EQUAL(7, callLogCount);
+    TEST_ASSERT_EQUAL(8, callLogCount);
     TEST_ASSERT_EQUAL(CALL_PERF, callLog[0]);
     TEST_ASSERT_EQUAL(CALL_TIME_SAVE, callLog[1]);
-    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_BACKUP, callLog[2]);
-    TEST_ASSERT_EQUAL(CALL_DEFERRED_BLE_BOND_BACKUP, callLog[3]);
-    TEST_ASSERT_EQUAL(CALL_LEARNER, callLog[4]);
-    TEST_ASSERT_EQUAL(CALL_LOCKOUT_SAVE, callLog[5]);
-    TEST_ASSERT_EQUAL(CALL_PENDING_SAVE, callLog[6]);
+    TEST_ASSERT_EQUAL(CALL_OBD_SETTINGS_SYNC, callLog[2]);
+    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_BACKUP, callLog[3]);
+    TEST_ASSERT_EQUAL(CALL_DEFERRED_BLE_BOND_BACKUP, callLog[4]);
+    TEST_ASSERT_EQUAL(CALL_LEARNER, callLog[5]);
+    TEST_ASSERT_EQUAL(CALL_LOCKOUT_SAVE, callLog[6]);
+    TEST_ASSERT_EQUAL(CALL_PENDING_SAVE, callLog[7]);
 
     TEST_ASSERT_EQUAL(0, perfRecordCalls);
     TEST_ASSERT_EQUAL(0, timeRecordCalls);

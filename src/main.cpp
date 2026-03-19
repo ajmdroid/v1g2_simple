@@ -87,6 +87,7 @@
 #include "modules/debug/debug_api_service.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/obd/obd_runtime_module.h"
+#include "modules/obd/obd_settings_sync_module.h"
 #include "modules/wifi/wifi_boot_policy.h"
 #include "modules/wifi/wifi_auto_start_module.h"
 #include "modules/wifi/wifi_priority_policy_module.h"
@@ -173,6 +174,7 @@ DisplayOrchestrationModule displayOrchestrationModule;
 DisplayRestoreModule displayRestoreModule;
 SystemEventBus systemEventBus;
 PeriodicMaintenanceModule periodicMaintenanceModule;
+ObdSettingsSyncModule obdSettingsSyncModule;
 LoopTailModule loopTailModule;
 LoopTelemetryModule loopTelemetryModule;
 LoopIngestModule loopIngestModule;
@@ -514,6 +516,8 @@ static void configureConnectionStateDispatchModule() {
 }
 
 static void configurePeriodicMaintenanceModule() {
+    obdSettingsSyncModule.begin(&settingsManager, &obdRuntimeModule);
+
     PeriodicMaintenanceModule::Providers periodicMaintenanceProviders;
     periodicMaintenanceProviders.timestampUs = [](void*) -> uint32_t {
         return PERF_TIMESTAMP_US();
@@ -528,6 +532,9 @@ static void configurePeriodicMaintenanceModule() {
     periodicMaintenanceProviders.recordTimeSaveUs = [](void*, uint32_t elapsedUs) {
         perfRecordTimeSaveUs(elapsedUs);
     };
+    periodicMaintenanceProviders.runObdSettingsSync =
+        ProviderCallbackBindings::member<ObdSettingsSyncModule, &ObdSettingsSyncModule::process>;
+    periodicMaintenanceProviders.obdSettingsSyncContext = &obdSettingsSyncModule;
     periodicMaintenanceProviders.runDeferredSettingsBackup =
         ProviderCallbackBindings::member<SettingsManager, &SettingsManager::serviceDeferredBackup>;
     periodicMaintenanceProviders.deferredSettingsBackupContext = &settingsManager;
@@ -745,38 +752,6 @@ static void configureRuntimeSensorModules() {
         settingsManager.get().obdMinRssi,
         settingsManager.get().obdCachedVinPrefix11.c_str(),
         settingsManager.get().obdCachedEotProfileId);
-}
-
-static void syncObdSettings() {
-    const char* runtimeAddress = obdRuntimeModule.getSavedAddress();
-    const char* cachedVinPrefix11 = obdRuntimeModule.getCachedVinPrefix11();
-    const uint8_t cachedEotProfileId = obdRuntimeModule.getCachedEotProfileId();
-    V1Settings& settings = settingsManager.mutableSettings();
-    bool changed = false;
-
-    if (settings.obdSavedAddress != runtimeAddress) {
-        settings.obdSavedAddress = runtimeAddress;
-        changed = true;
-    }
-    const uint8_t runtimeAddrType = obdRuntimeModule.getSavedAddrType();
-    if (settings.obdSavedAddrType != runtimeAddrType) {
-        settings.obdSavedAddrType = runtimeAddrType;
-        changed = true;
-    }
-    if (settings.obdCachedVinPrefix11 != cachedVinPrefix11) {
-        settings.obdCachedVinPrefix11 = cachedVinPrefix11;
-        changed = true;
-    }
-    if (settings.obdCachedEotProfileId != cachedEotProfileId) {
-        settings.obdCachedEotProfileId = cachedEotProfileId;
-        changed = true;
-    }
-
-    if (!changed) {
-        return;
-    }
-
-    settingsManager.saveDeferredBackup();
 }
 
 static void configureRuntimeCoreModules() {
@@ -1088,7 +1063,6 @@ void loop() {
         perfRecordObdUs(micros() - obdStartUs);
     }
     speedSourceSelector.update(now);
-    syncObdSettings();
 
     // No overload guard: handleParsed's internal 25ms throttle gates expensive draws;
     // fade/debounce/gap-recovery remain microsecond-cheap and must run every frame.

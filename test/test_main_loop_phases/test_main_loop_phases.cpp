@@ -74,6 +74,7 @@ enum CallId {
     CALL_CONNECTION_STATE_DISPATCH,
     CALL_PERF_REPORT,
     CALL_TIME_SAVE,
+    CALL_OBD_SETTINGS_SYNC,
     CALL_DEFERRED_SETTINGS_BACKUP,
     CALL_DEFERRED_BLE_BOND_BACKUP,
     CALL_READ_EPOCH,
@@ -364,6 +365,10 @@ void runTimeSave(void*, uint32_t) {
     noteCall(CALL_TIME_SAVE);
 }
 
+void runObdSettingsSync(void*, uint32_t) {
+    noteCall(CALL_OBD_SETTINGS_SYNC);
+}
+
 void runDeferredSettingsBackup(void*, uint32_t) {
     noteCall(CALL_DEFERRED_SETTINGS_BACKUP);
 }
@@ -507,6 +512,7 @@ void configureModules() {
     PeriodicMaintenanceModule::Providers maintenanceProviders;
     maintenanceProviders.runPerfReport = runPerfReport;
     maintenanceProviders.runTimeSave = runTimeSave;
+    maintenanceProviders.runObdSettingsSync = runObdSettingsSync;
     maintenanceProviders.runDeferredSettingsBackup = runDeferredSettingsBackup;
     maintenanceProviders.runDeferredBleBondBackup = runDeferredBleBondBackup;
     maintenanceProviders.nowEpochMsOr0 = readEpoch;
@@ -655,6 +661,7 @@ void test_main_loop_phases_preserve_expected_order_and_phase_contracts() {
         CALL_CONNECTION_STATE_DISPATCH,
         CALL_PERF_REPORT,
         CALL_TIME_SAVE,
+        CALL_OBD_SETTINGS_SYNC,
         CALL_DEFERRED_SETTINGS_BACKUP,
         CALL_DEFERRED_BLE_BOND_BACKUP,
         CALL_READ_EPOCH,
