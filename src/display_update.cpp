@@ -380,6 +380,8 @@ void V1Display::update(const DisplayState& state) {
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::Flush,
                                       micros() - stageStartUs);
 
+    dirty.resetTracking = false;
+
     if (currentScreen != ScreenMode::Resting) {
         perfRecordDisplayScreenTransition(
             static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
