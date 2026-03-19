@@ -141,6 +141,17 @@ inline void mock_reset_task_create_state() {
     g_mock_task_create_state = MockTaskCreateState{};
 }
 
+struct MockTaskDeleteState {
+    uint32_t standardCalls = 0;
+    uint32_t capsCalls = 0;
+};
+
+inline MockTaskDeleteState g_mock_task_delete_state{};
+
+inline void mock_reset_task_delete_state() {
+    g_mock_task_delete_state = MockTaskDeleteState{};
+}
+
 // Task stubs
 inline void vTaskDelay(TickType_t) {}
 inline TaskHandle_t xTaskGetCurrentTaskHandle() { return nullptr; }

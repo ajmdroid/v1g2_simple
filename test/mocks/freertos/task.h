@@ -55,7 +55,14 @@ inline BaseType_t xTaskCreatePinnedToCoreWithCaps(void (*)(void*),
     return pdPASS;
 }
 
-inline void vTaskDelete(void*) {}
+inline void vTaskDelete(void*) {
+    g_mock_task_delete_state.standardCalls++;
+}
+
+inline void vTaskDeleteWithCaps(void*) {
+    g_mock_task_delete_state.capsCalls++;
+}
+
 inline uint32_t ulTaskNotifyTake(BaseType_t, TickType_t) { return 0; }
 inline void xTaskNotifyGive(TaskHandle_t) {}
 inline void taskYIELD() {}

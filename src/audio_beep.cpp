@@ -457,7 +457,7 @@ static void audio_playback_task(void* pvParameters) {
     if (!i2s_initialized) {
         Serial.println("[AUDIO] ERROR: I2S init failed!");
         audioResetTaskState(audio_playing, audioTaskHandle);
-        vTaskDelete(NULL);
+        vTaskDeleteWithCaps(NULL);
         return;
     }
     
