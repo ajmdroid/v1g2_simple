@@ -6,6 +6,7 @@ route=HTTP_GET /api/autopush/status rate_limit=0 ui_activity=0 handlers= delegat
 route=HTTP_GET /api/device/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiSettingsApiService::handleApiDeviceSettingsGet
 route=HTTP_GET /api/display/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiGet
 route=HTTP_GET /api/obd/config rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiConfigGet
+route=HTTP_GET /api/obd/devices rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiDevicesList
 route=HTTP_GET /api/obd/status rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiStatus
 route=HTTP_GET /api/status rate_limit=0 ui_activity=0 handlers= delegates=WifiStatusApiService::handleApiStatus
 route=HTTP_GET /api/v1/current rate_limit=0 ui_activity=0 handlers= delegates=WifiV1ProfileApiService::handleApiCurrentSettings
@@ -23,6 +24,7 @@ route=HTTP_POST /api/display/preview/clear rate_limit=0 ui_activity=0 handlers= 
 route=HTTP_POST /api/display/settings rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiSave
 route=HTTP_POST /api/display/settings/reset rate_limit=0 ui_activity=0 handlers= delegates=WifiDisplayColorsApiService::handleApiReset
 route=HTTP_POST /api/obd/config rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiConfig
+route=HTTP_POST /api/obd/devices/name rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiDeviceNameSave
 route=HTTP_POST /api/obd/forget rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiForget
 route=HTTP_POST /api/obd/scan rate_limit=0 ui_activity=0 handlers= delegates=ObdApiService::handleApiScan
 route=HTTP_POST /api/profile/push rate_limit=0 ui_activity=0 handlers= delegates=WifiControlApiService::handleApiProfilePush

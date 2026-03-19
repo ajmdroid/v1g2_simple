@@ -448,6 +448,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     // OBD settings
     written += prefs.putBool("obdEn", settings.obdEnabled);
     written += prefs.putString("obdAddr", settings.obdSavedAddress);
+    written += prefs.putString("obdName", settings.obdSavedName);
     written += prefs.putUChar("obdAddrT", settings.obdSavedAddrType);
     written += prefs.putChar("obdMinRssi", settings.obdMinRssi);
     written += prefs.putString("obdVin11", settings.obdCachedVinPrefix11);

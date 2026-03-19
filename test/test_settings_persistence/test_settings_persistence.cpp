@@ -164,6 +164,7 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     settings.apTimeoutMinutes = 15;
     settings.obdEnabled = true;
     settings.obdSavedAddress = "11:22:33:44:55:66";
+    settings.obdSavedName = "Truck Adapter";
     settings.obdMinRssi = -65;
     settings.obdCachedVinPrefix11 = "1FTFW1ET7D";
     settings.obdCachedEotProfileId = 3;
@@ -177,6 +178,7 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_TRUE(mock_preferences::namespaceHasKey(activeNs.c_str(), "apSSID"));
     TEST_ASSERT_TRUE(mock_preferences::namespaceHasKey(activeNs.c_str(), "voiceMode"));
     TEST_ASSERT_TRUE(mock_preferences::namespaceHasKey(activeNs.c_str(), "obdMinRssi"));
+    TEST_ASSERT_TRUE(mock_preferences::namespaceHasKey(activeNs.c_str(), "obdName"));
     TEST_ASSERT_TRUE(mock_preferences::namespaceHasKey(activeNs.c_str(), "obdVin11"));
     TEST_ASSERT_TRUE(mock_preferences::namespaceHasKey(activeNs.c_str(), "obdEotPid"));
     TEST_ASSERT_TRUE(
@@ -238,6 +240,7 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_EQUAL_UINT8(15, loaded.apTimeoutMinutes);
     TEST_ASSERT_TRUE(loaded.obdEnabled);
     TEST_ASSERT_EQUAL_STRING("11:22:33:44:55:66", loaded.obdSavedAddress.c_str());
+    TEST_ASSERT_EQUAL_STRING("Truck Adapter", loaded.obdSavedName.c_str());
     TEST_ASSERT_EQUAL_INT8(-65, loaded.obdMinRssi);
     TEST_ASSERT_EQUAL_STRING("1FTFW1ET7D", loaded.obdCachedVinPrefix11.c_str());
     TEST_ASSERT_EQUAL_UINT8(3, loaded.obdCachedEotProfileId);
@@ -258,6 +261,7 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_EQUAL_INT(VOICE_MODE_FREQ_ONLY, backupDoc["voiceAlertMode"].as<int>());
     TEST_ASSERT_TRUE(backupDoc["autoPushEnabled"].as<bool>());
     TEST_ASSERT_EQUAL_STRING("Quiet", backupDoc["slot2ProfileName"].as<const char*>());
+    TEST_ASSERT_EQUAL_STRING("Truck Adapter", backupDoc["obdSavedName"].as<const char*>());
     TEST_ASSERT_EQUAL_INT(-65, backupDoc["obdMinRssi"].as<int>());
     TEST_ASSERT_EQUAL_STRING("1FTFW1ET7D", backupDoc["obdCachedVinPrefix11"].as<const char*>());
     TEST_ASSERT_EQUAL_INT(3, backupDoc["obdCachedEotProfileId"].as<int>());
@@ -284,6 +288,7 @@ void test_apply_backup_document_unifies_restore_field_coverage_and_profile_resto
     doc["colorObd"] = 0x2468;
     doc["voiceVolume"] = 42;
     doc["obdEnabled"] = true;
+    doc["obdSavedName"] = "Restored Adapter";
     doc["obdMinRssi"] = -61;
     doc["slot0ProfileName"] = "Road";
     doc["slot0Mode"] = static_cast<int>(V1_MODE_LOGIC);
@@ -315,6 +320,7 @@ void test_apply_backup_document_unifies_restore_field_coverage_and_profile_resto
     TEST_ASSERT_EQUAL_HEX16(0x2468, restored.colorObd);
     TEST_ASSERT_EQUAL_UINT8(42, restored.voiceVolume);
     TEST_ASSERT_TRUE(restored.obdEnabled);
+    TEST_ASSERT_EQUAL_STRING("Restored Adapter", restored.obdSavedName.c_str());
     TEST_ASSERT_EQUAL_INT8(-61, restored.obdMinRssi);
     TEST_ASSERT_EQUAL_STRING("Road", restored.slot0_default.profileName.c_str());
     TEST_ASSERT_EQUAL_INT(V1_MODE_LOGIC, restored.slot0_default.mode);

@@ -367,7 +367,7 @@ Get list of remembered V1 devices.
 
 Set a friendly name for a remembered V1 device.
 
-**Request (JSON or form):** `address=<BLE address>&name=<friendly name>`
+**Request (form):** `address=<BLE address>&name=<friendly name>`
 
 ### POST /api/v1/devices/profile
 
@@ -690,6 +690,7 @@ Get OBD-II adapter connection status and speed data.
   "rssi": -52,
   "scanInProgress": false,
   "savedAddressValid": true,
+  "savedAddress": "A4:C1:38:00:11:22",
   "connectAttempts": 1,
   "pollCount": 842,
   "pollErrors": 0,
@@ -708,7 +709,34 @@ Get OBD-II adapter connection status and speed data.
 | `rssi` | integer | BLE signal strength in dBm |
 | `scanInProgress` | boolean | BLE scan is currently running |
 | `savedAddressValid` | boolean | A paired adapter address is saved |
+| `savedAddress` | string | Saved adapter BLE address when present |
 | `state` | integer | State machine state (0=Idle, 1=WaitBoot, 2=Scanning, 4=Connecting, 5=Securing, 6=Discovering, 7=ATInit, 8=Polling, 9=ErrorBackoff, 10=Disconnected) |
+
+### GET /api/obd/devices
+
+Get the saved OBD adapter list for the web UI. The current runtime only remembers one adapter at a time, so this list is currently empty or contains one item.
+
+**Response**
+
+```json
+{
+  "devices": [
+    {
+      "address": "A4:C1:38:00:11:22",
+      "name": "Truck Adapter",
+      "connected": true,
+      "active": true
+    }
+  ],
+  "count": 1
+}
+```
+
+### POST /api/obd/devices/name
+
+Set or clear the friendly name for the saved OBD adapter.
+
+**Request (JSON or form):** `address=<BLE address>&name=<friendly name>`
 
 ### POST /api/obd/scan
 

@@ -179,6 +179,7 @@ struct V1Settings {
     bool obdEnabled = false;
     uint8_t autoPowerOffMinutes = 10;
     String obdSavedAddress = "";
+    String obdSavedName = "";
     uint8_t obdSavedAddrType = 0;
     int8_t obdMinRssi = -80;
     String obdCachedVinPrefix11 = "";

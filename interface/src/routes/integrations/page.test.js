@@ -47,10 +47,24 @@ function installDefaultFetch() {
 			},
 			{
 				method: 'GET',
+				match: '/api/obd/devices',
+				respond: jsonResponse({
+					devices: [{ address: 'A4:C1:38:00:11:22', name: 'Truck Adapter', connected: false, active: true }]
+				})
+			},
+			{
+				method: 'GET',
 				match: '/api/obd/status',
-				respond: jsonResponse({ enabled: false, connected: false, pollCount: 0, pollErrors: 0 })
+				respond: jsonResponse({
+					enabled: false,
+					connected: false,
+					pollCount: 0,
+					pollErrors: 0,
+					savedAddress: 'A4:C1:38:00:11:22'
+				})
 			},
 			{ method: 'POST', match: '/api/obd/config', respond: jsonResponse({ success: true }) },
+			{ method: 'POST', match: '/api/obd/devices/name', respond: jsonResponse({ success: true }) },
 			{ method: 'POST', match: '/api/obd/scan', respond: jsonResponse({ success: true }) },
 			{ method: 'POST', match: '/api/obd/forget', respond: jsonResponse({ success: true }) }
 		],
@@ -104,10 +118,24 @@ function installGpsRecoveryFetch() {
 			},
 			{
 				method: 'GET',
+				match: '/api/obd/devices',
+				respond: jsonResponse({
+					devices: [{ address: 'A4:C1:38:00:11:22', name: 'Truck Adapter', connected: false, active: true }]
+				})
+			},
+			{
+				method: 'GET',
 				match: '/api/obd/status',
-				respond: jsonResponse({ enabled: false, connected: false, pollCount: 0, pollErrors: 0 })
+				respond: jsonResponse({
+					enabled: false,
+					connected: false,
+					pollCount: 0,
+					pollErrors: 0,
+					savedAddress: 'A4:C1:38:00:11:22'
+				})
 			},
 			{ method: 'POST', match: '/api/obd/config', respond: jsonResponse({ success: true }) },
+			{ method: 'POST', match: '/api/obd/devices/name', respond: jsonResponse({ success: true }) },
 			{ method: 'POST', match: '/api/obd/scan', respond: jsonResponse({ success: true }) },
 			{ method: 'POST', match: '/api/obd/forget', respond: jsonResponse({ success: true }) }
 		],
@@ -252,6 +280,30 @@ describe('integrations route page', () => {
 
 		await screen.findByText('Failed to load OBD settings.');
 		expect(errorSpy).toHaveBeenCalled();
+
+		unmount();
+	});
+
+	it('shows saved OBD devices and lets you rename them', async () => {
+		const fetchMock = installDefaultFetch();
+		const { unmount } = render(Page);
+
+		await screen.findByText('Truck Adapter');
+		await fireEvent.click(screen.getByRole('button', { name: /^rename$/i }));
+
+		const input = await screen.findByDisplayValue('Truck Adapter');
+		await fireEvent.input(input, { target: { value: 'Family Car' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+		await screen.findByText('OBD device name saved.');
+		await waitFor(() => {
+			expect(screen.getByText('Family Car')).toBeInTheDocument();
+		});
+		expect(
+			fetchMock.mock.calls.some(
+				([url, init]) => url === '/api/obd/devices/name' && init?.method === 'POST'
+			)
+		).toBe(true);
 
 		unmount();
 	});

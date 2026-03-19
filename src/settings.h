@@ -360,6 +360,7 @@ struct V1Settings {
     // OBD-II speed source settings
     bool obdEnabled;             // Enable OBD module
     String obdSavedAddress;      // Saved OBDLink CX BLE address for auto-reconnect
+    String obdSavedName;         // Optional friendly name for the saved OBD adapter
     uint8_t obdSavedAddrType;    // Saved BLE address type (0=public, 1=random)
     int8_t obdMinRssi;           // Minimum RSSI for scan acceptance (dBm)
     String obdCachedVinPrefix11; // Last VIN prefix matched to cached EOT profile
@@ -484,6 +485,7 @@ struct V1Settings {
         apTimeoutMinutes(0),     // Default: always on (0=unlimited)
         obdEnabled(false),       // OBD disabled by default
         obdSavedAddress(""),     // No saved device
+        obdSavedName(""),        // No friendly name
         obdSavedAddrType(0),     // Default PUBLIC address type
         obdMinRssi(-80),         // Default -80 dBm minimum RSSI
         obdCachedVinPrefix11(""),

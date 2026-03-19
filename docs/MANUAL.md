@@ -1249,6 +1249,8 @@ Controls:
 - **Enable OBD:** Master toggle — when enabled, V1-Simple scans for and connects to an OBDLink CX adapter via BLE
 - **Min RSSI:** Minimum BLE signal strength for scan results (default: −80 dBm)
 - **Status Display:** Shows current OBD connection state, speed reading, RSSI, poll count, and error counts (polls every 2 seconds)
+- **Saved OBD Devices:** Shows the saved adapter address and connection state
+- **Rename:** Assigns a friendly name to the saved OBD adapter for easier identification
 - **Scan Now:** Triggers a 5-second BLE scan for nearby OBDLink devices
 - **Forget Device:** Clears the saved OBD adapter address and disconnects
 

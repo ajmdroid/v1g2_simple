@@ -19,13 +19,18 @@
 
 	let obdStatus = $state(null);
 	let obdMessage = $state(null);
+	let savedDevices = $state([]);
 	let enabled = $state(false);
 	let minRssi = $state(-80);
 	let saving = $state(false);
 	let scanning = $state(false);
 	let forgetting = $state(false);
+	let renaming = $state(false);
 	let statusFetchInFlight = false;
 	let loaded = $state(false);
+	let editingAddress = $state('');
+	let editName = $state('');
+	let lastSavedAddressSeen = '';
 
 	const statusPoll = createPoll(async () => {
 		await fetchObdStatus();
@@ -35,8 +40,10 @@
 		await fetchObdStatus();
 		if (obdStatus) {
 			enabled = obdStatus.enabled;
+			lastSavedAddressSeen = obdStatus.savedAddress || '';
 		}
 		await fetchObdConfig({ showLoadError: true }).catch(() => null);
+		await fetchObdDevices({ showLoadError: true }).catch(() => null);
 		loaded = true;
 		syncStatusPollToEnabled();
 	});
@@ -67,6 +74,29 @@
 			if (showLoadError) {
 				console.error('Failed to load OBD settings', error);
 				obdMessage = { type: 'error', text: 'Failed to load OBD settings.' };
+			}
+			throw error;
+		}
+	}
+
+	async function fetchObdDevices({ showLoadError = false } = {}) {
+		try {
+			const res = await fetchWithTimeout('/api/obd/devices');
+			if (!res.ok) {
+				throw new Error(`OBD devices request failed with status ${res.status}`);
+			}
+			const data = await res.json();
+			savedDevices = (data.devices || []).map((device) => ({
+				address: device.address || '',
+				name: device.name || '',
+				connected: !!device.connected,
+				active: !!device.active
+			}));
+			return data;
+		} catch (error) {
+			if (showLoadError) {
+				console.error('Failed to load saved OBD devices', error);
+				obdMessage = { type: 'error', text: 'Failed to load saved OBD devices.' };
 			}
 			throw error;
 		}
@@ -134,7 +164,15 @@
 		statusFetchInFlight = true;
 		try {
 			const res = await fetchWithTimeout('/api/obd/status');
-			if (res.ok) obdStatus = await res.json();
+			if (res.ok) {
+				const nextStatus = await res.json();
+				obdStatus = nextStatus;
+				const nextSavedAddress = nextStatus.savedAddress || '';
+				if (nextSavedAddress !== lastSavedAddressSeen) {
+					lastSavedAddressSeen = nextSavedAddress;
+					await fetchObdDevices().catch(() => null);
+				}
+			}
 		} catch (error) {
 			console.warn('Failed to poll OBD status', error);
 		} finally {
@@ -167,6 +205,9 @@
 			if (res.ok) {
 				obdMessage = { type: 'success', text: 'Device forgotten.' };
 				obdStatus = null;
+				savedDevices = [];
+				lastSavedAddressSeen = '';
+				cancelRename();
 			} else {
 				obdMessage = { type: 'error', text: 'Failed to forget device.' };
 			}
@@ -179,6 +220,45 @@
 
 	function stateName(s) {
 		return STATE_NAMES[s] ?? `Unknown(${s})`;
+	}
+
+	function startRename(device) {
+		editingAddress = device.address;
+		editName = device.name || '';
+	}
+
+	function cancelRename() {
+		editingAddress = '';
+		editName = '';
+	}
+
+	async function saveDeviceName(address) {
+		renaming = true;
+		obdMessage = null;
+		try {
+			const formData = new FormData();
+			formData.append('address', address);
+			formData.append('name', editName.trim());
+
+			const res = await fetchWithTimeout('/api/obd/devices/name', {
+				method: 'POST',
+				body: formData
+			});
+			if (!res.ok) {
+				obdMessage = { type: 'error', text: 'Failed to save OBD device name.' };
+				return;
+			}
+
+			savedDevices = savedDevices.map((device) =>
+				device.address === address ? { ...device, name: editName.trim() } : device
+			);
+			obdMessage = { type: 'success', text: 'OBD device name saved.' };
+			cancelRename();
+		} catch (_) {
+			obdMessage = { type: 'error', text: 'Failed to save OBD device name.' };
+		} finally {
+			renaming = false;
+		}
 	}
 </script>
 
@@ -236,11 +316,66 @@
 					{/if}
 					Scan Now
 				</button>
-				<button class="btn btn-error btn-outline btn-sm" onclick={forgetDevice} disabled={forgetting || !obdStatus?.savedAddressValid}>
-					Forget Device
-				</button>
+					<button class="btn btn-error btn-outline btn-sm" onclick={forgetDevice} disabled={forgetting || savedDevices.length === 0}>
+						Forget Device
+					</button>
+				</div>
+			{/if}
+
+			<div class="space-y-2">
+				<div class="copy-caption font-semibold uppercase tracking-wide">Saved OBD Devices</div>
+				{#if savedDevices.length === 0}
+					<p class="copy-caption">No saved OBD adapters yet.</p>
+				{:else}
+					<div class="grid gap-3">
+						{#each savedDevices as device (device.address)}
+							<div class="surface-note space-y-2">
+								<div class="flex items-start justify-between gap-3">
+									<div class="space-y-1">
+										{#if editingAddress === device.address}
+											<input
+												type="text"
+												class="input input-bordered input-sm w-full max-w-xs"
+												bind:value={editName}
+												maxlength="32"
+												onkeydown={(e) => {
+													if (e.key === 'Enter') saveDeviceName(device.address);
+													if (e.key === 'Escape') cancelRename();
+												}}
+											/>
+										{:else}
+											<div class="font-medium">{device.name || 'Unnamed OBD adapter'}</div>
+										{/if}
+										<div class="copy-caption font-mono">{device.address}</div>
+										<div class="flex gap-2">
+											{#if device.active}
+												<span class="badge badge-outline badge-sm">Saved</span>
+											{/if}
+											{#if device.connected}
+												<span class="badge badge-success badge-sm">Connected</span>
+											{/if}
+										</div>
+									</div>
+									<div class="flex gap-2">
+										{#if editingAddress === device.address}
+											<button class="btn btn-success btn-sm" onclick={() => saveDeviceName(device.address)} disabled={renaming}>
+												Save
+											</button>
+											<button class="btn btn-ghost btn-sm" onclick={cancelRename} disabled={renaming}>
+												Cancel
+											</button>
+										{:else}
+											<button class="btn btn-ghost btn-sm" onclick={() => startRename(device)} disabled={renaming}>
+												Rename
+											</button>
+										{/if}
+									</div>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
 			</div>
-		{/if}
-		{/if}
+			{/if}
+		</div>
 	</div>
-</div>

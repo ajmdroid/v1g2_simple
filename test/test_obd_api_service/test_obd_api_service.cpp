@@ -56,6 +56,59 @@ void test_config_get_returns_persisted_settings() {
     TEST_ASSERT_TRUE(responseContains(server, "\"minRssi\":-62"));
 }
 
+void test_devices_list_returns_saved_obd_device_with_name() {
+    WebServer server(80);
+    SettingsManager settingsManager;
+    settingsManager.settings.obdSavedAddress = "A4:C1:38:00:11:22";
+    settingsManager.settings.obdSavedName = "Truck Adapter";
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+
+    ObdApiService::handleApiDevicesList(server, obdRuntimeModule, settingsManager, []() {});
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"count\":1"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"address\":\"A4:C1:38:00:11:22\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"name\":\"Truck Adapter\""));
+}
+
+void test_device_name_save_updates_saved_name_and_persists_setting() {
+    WebServer server(80);
+    SettingsManager settingsManager;
+    settingsManager.settings.obdSavedAddress = "A4:C1:38:00:11:22";
+
+    server.setArg("address", "a4:c1:38:00:11:22");
+    server.setArg("name", "  Family Car  ");
+
+    ObdApiService::handleApiDeviceNameSave(server,
+                                           settingsManager,
+                                           []() { return true; },
+                                           []() {});
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
+    TEST_ASSERT_EQUAL_STRING("Family Car", settingsManager.settings.obdSavedName.c_str());
+    TEST_ASSERT_EQUAL_INT(1, settingsManager.saveCalls);
+}
+
+void test_device_name_save_rejects_unknown_saved_device() {
+    WebServer server(80);
+    SettingsManager settingsManager;
+    settingsManager.settings.obdSavedAddress = "A4:C1:38:00:11:22";
+
+    server.setArg("address", "B4:C1:38:00:11:33");
+    server.setArg("name", "Spare");
+
+    ObdApiService::handleApiDeviceNameSave(server,
+                                           settingsManager,
+                                           []() { return true; },
+                                           []() {});
+
+    TEST_ASSERT_EQUAL_INT(404, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "Saved OBD device not found"));
+    TEST_ASSERT_EQUAL_STRING("", settingsManager.settings.obdSavedName.c_str());
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
+}
+
 void test_config_updates_runtime_settings_and_selector_inputs() {
     WebServer server(80);
     SettingsManager settingsManager;
@@ -93,6 +146,7 @@ void test_forget_clears_saved_address_and_persists_setting() {
     WebServer server(80);
     SettingsManager settingsManager;
     settingsManager.settings.obdSavedAddress = "A4:C1:38:00:11:22";
+    settingsManager.settings.obdSavedName = "Truck Adapter";
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
     ObdApiService::handleApiForget(server,
@@ -104,6 +158,7 @@ void test_forget_clears_saved_address_and_persists_setting() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ok\":true"));
     TEST_ASSERT_EQUAL_STRING("", settingsManager.settings.obdSavedAddress.c_str());
+    TEST_ASSERT_EQUAL_STRING("", settingsManager.settings.obdSavedName.c_str());
     TEST_ASSERT_EQUAL_INT(1, settingsManager.saveCalls);
 
     ObdRuntimeStatus status = obdRuntimeModule.snapshot(mockMillis);
@@ -179,6 +234,9 @@ int main() {
     UNITY_BEGIN();
 
     RUN_TEST(test_config_get_returns_persisted_settings);
+    RUN_TEST(test_devices_list_returns_saved_obd_device_with_name);
+    RUN_TEST(test_device_name_save_updates_saved_name_and_persists_setting);
+    RUN_TEST(test_device_name_save_rejects_unknown_saved_device);
     RUN_TEST(test_config_updates_runtime_settings_and_selector_inputs);
     RUN_TEST(test_forget_clears_saved_address_and_persists_setting);
     RUN_TEST(test_config_rejects_missing_json_body);

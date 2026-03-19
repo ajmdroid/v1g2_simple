@@ -40,6 +40,50 @@ const char* commandKindName(ObdCommandKind kind) {
     }
 }
 
+constexpr size_t MAX_OBD_DEVICE_NAME_LEN = 32;
+
+bool isHex(char c) {
+    return (c >= '0' && c <= '9') ||
+           (c >= 'a' && c <= 'f') ||
+           (c >= 'A' && c <= 'F');
+}
+
+String normalizeObdDeviceAddress(const String& rawAddress) {
+    String value = rawAddress;
+    value.trim();
+    value.replace("-", ":");
+    value.toUpperCase();
+
+    if (value.length() != 17) {
+        return "";
+    }
+
+    for (int i = 0; i < 17; ++i) {
+        const char c = value[i];
+        if ((i + 1) % 3 == 0) {
+            if (c != ':') {
+                return "";
+            }
+            continue;
+        }
+        if (!isHex(c)) {
+            return "";
+        }
+    }
+
+    return value;
+}
+
+String sanitizeObdDeviceName(const String& raw) {
+    String value = raw;
+    value.trim();
+    if (value.length() > MAX_OBD_DEVICE_NAME_LEN) {
+        value = value.substring(0, MAX_OBD_DEVICE_NAME_LEN);
+        value.trim();
+    }
+    return value;
+}
+
 }  // namespace
 
 void handleApiConfigGet(WebServer& server,
@@ -70,6 +114,7 @@ void handleApiStatus(WebServer& server,
     doc["rssi"] = status.rssi;
     doc["scanInProgress"] = status.scanInProgress;
     doc["savedAddressValid"] = status.savedAddressValid;
+    doc["savedAddress"] = status.savedAddressValid ? String(obdRuntime.getSavedAddress()) : "";
     doc["connectAttempts"] = status.connectAttempts;
     doc["connectSuccesses"] = status.connectSuccesses;
     doc["connectFailures"] = status.connectFailures;
@@ -104,6 +149,55 @@ void handleApiStatus(WebServer& server,
     doc["cachedProfileActive"] = status.cachedProfileActive;
     doc["state"] = static_cast<int>(status.state);
     WifiApiResponse::sendJsonDocument(server, 200, doc);
+}
+
+void handleApiDevicesList(WebServer& server,
+                          ObdRuntimeModule& obdRuntime,
+                          SettingsManager& settingsManager,
+                          const std::function<void()>& markUiActivity) {
+    if (markUiActivity) markUiActivity();
+
+    JsonDocument doc;
+    JsonArray arr = doc["devices"].to<JsonArray>();
+
+    const V1Settings& settings = settingsManager.get();
+    const String address = normalizeObdDeviceAddress(settings.obdSavedAddress);
+    if (address.length() > 0) {
+        JsonObject obj = arr.add<JsonObject>();
+        obj["address"] = address;
+        obj["name"] = settings.obdSavedName;
+        obj["connected"] = obdRuntime.snapshot(millis()).connected;
+        obj["active"] = true;
+    }
+
+    doc["count"] = arr.size();
+    WifiApiResponse::sendJsonDocument(server, 200, doc);
+}
+
+void handleApiDeviceNameSave(WebServer& server,
+                             SettingsManager& settingsManager,
+                             const std::function<bool()>& checkRateLimit,
+                             const std::function<void()>& markUiActivity) {
+    if (markUiActivity) markUiActivity();
+    if (checkRateLimit && !checkRateLimit()) return;
+
+    if (!server.hasArg("address")) {
+        server.send(400, "application/json", "{\"error\":\"Missing address\"}");
+        return;
+    }
+
+    const String requestedAddress = normalizeObdDeviceAddress(server.arg("address"));
+    const String savedAddress = normalizeObdDeviceAddress(settingsManager.get().obdSavedAddress);
+    if (requestedAddress.length() == 0 || savedAddress.length() == 0 || !requestedAddress.equalsIgnoreCase(savedAddress)) {
+        server.send(404, "application/json", "{\"error\":\"Saved OBD device not found\"}");
+        return;
+    }
+
+    V1Settings& settings = settingsManager.mutableSettings();
+    settings.obdSavedName = sanitizeObdDeviceName(server.hasArg("name") ? server.arg("name") : "");
+    settingsManager.save();
+
+    server.send(200, "application/json", "{\"success\":true}");
 }
 
 void handleApiScan(WebServer& server,
@@ -146,6 +240,7 @@ void handleApiForget(WebServer& server,
     obdRuntime.forgetDevice();
     V1Settings& settings = settingsManager.mutableSettings();
     settings.obdSavedAddress = "";
+    settings.obdSavedName = "";
     settings.obdSavedAddrType = 0;
     settings.obdCachedVinPrefix11 = "";
     settings.obdCachedEotProfileId = 0;

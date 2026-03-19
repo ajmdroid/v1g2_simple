@@ -539,8 +539,14 @@ void WiFiManager::setupWebServer() {
     server.on("/api/obd/status", HTTP_GET, [this, markUiActivityCallback]() {
         ObdApiService::handleApiStatus(server, obdRuntimeModule, markUiActivityCallback);
     });
+    server.on("/api/obd/devices", HTTP_GET, [this, markUiActivityCallback]() {
+        ObdApiService::handleApiDevicesList(server, obdRuntimeModule, settingsManager, markUiActivityCallback);
+    });
     server.on("/api/obd/config", HTTP_GET, [this, markUiActivityCallback]() {
         ObdApiService::handleApiConfigGet(server, settingsManager, markUiActivityCallback);
+    });
+    server.on("/api/obd/devices/name", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+        ObdApiService::handleApiDeviceNameSave(server, settingsManager, rateLimitCallback, markUiActivityCallback);
     });
     server.on("/api/obd/scan", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
         ObdApiService::handleApiScan(server, obdRuntimeModule, rateLimitCallback, markUiActivityCallback);

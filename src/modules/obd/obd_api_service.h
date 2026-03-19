@@ -18,6 +18,16 @@ void handleApiStatus(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
                      const std::function<void()>& markUiActivity);
 
+void handleApiDevicesList(WebServer& server,
+                          ObdRuntimeModule& obdRuntime,
+                          SettingsManager& settingsManager,
+                          const std::function<void()>& markUiActivity);
+
+void handleApiDeviceNameSave(WebServer& server,
+                             SettingsManager& settingsManager,
+                             const std::function<bool()>& checkRateLimit,
+                             const std::function<void()>& markUiActivity);
+
 void handleApiScan(WebServer& server,
                    ObdRuntimeModule& obdRuntime,
                    const std::function<bool()>& checkRateLimit,

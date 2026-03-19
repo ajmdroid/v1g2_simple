@@ -64,6 +64,9 @@ void ObdSettingsSyncModule::applySnapshot(const Snapshot& snapshot) {
     }
 
     V1Settings& settings = settingsManager_->mutableSettings();
+    if (settings.obdSavedAddress != snapshot.savedAddress) {
+        settings.obdSavedName = "";
+    }
     settings.obdSavedAddress = snapshot.savedAddress;
     settings.obdSavedAddrType = snapshot.savedAddrType;
     settings.obdCachedVinPrefix11 = snapshot.cachedVinPrefix11;

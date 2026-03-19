@@ -45,6 +45,7 @@ VoiceAlertMode clampVoiceAlertModeValue(int raw) {
 }
 
 static constexpr size_t MAX_V1_ADDRESS_LEN = 32;
+static constexpr size_t MAX_OBD_SAVED_NAME_LEN = 32;
 
 String sanitizeApPasswordValue(const String& raw) {
     String value = clampStringLength(raw, MAX_AP_PASSWORD_LEN);
@@ -56,6 +57,12 @@ String sanitizeApPasswordValue(const String& raw) {
 
 String sanitizeLastV1AddressValue(const String& raw) {
     return clampStringLength(raw, MAX_V1_ADDRESS_LEN);
+}
+
+String sanitizeObdSavedNameValue(const String& raw) {
+    String value = clampStringLength(raw, MAX_OBD_SAVED_NAME_LEN);
+    value.trim();
+    return value;
 }
 
 
@@ -324,6 +331,7 @@ void SettingsManager::load() {
     // OBD settings
     settings.obdEnabled = preferences.getBool("obdEn", false);
     settings.obdSavedAddress = preferences.getString("obdAddr", "");
+    settings.obdSavedName = sanitizeObdSavedNameValue(preferences.getString("obdName", ""));
     settings.obdSavedAddrType = preferences.getUChar("obdAddrT", 0);
     settings.obdMinRssi = static_cast<int8_t>(
         preferences.getChar("obdMinRssi", -80));
