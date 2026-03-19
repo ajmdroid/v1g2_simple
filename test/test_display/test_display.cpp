@@ -20,6 +20,8 @@
 #include <vector>
 #include <cmath>
 
+#include "../../include/display_slider_math.h"
+
 // ============================================================================
 // Mock Implementations and Test Helpers
 // ============================================================================
@@ -845,6 +847,16 @@ void test_boundary_brightness_range() {
     TEST_ASSERT_EQUAL(255, brightness);
 }
 
+void test_brightness_slider_clamps_fill_below_display_range() {
+    TEST_ASSERT_EQUAL_INT(0, computeBrightnessSliderFill(50, 560));
+    TEST_ASSERT_EQUAL_INT(0, computeBrightnessSliderPercent(50));
+}
+
+void test_brightness_slider_clamps_fill_above_display_range() {
+    TEST_ASSERT_EQUAL_INT(560, computeBrightnessSliderFill(255, 560));
+    TEST_ASSERT_EQUAL_INT(100, computeBrightnessSliderPercent(255));
+}
+
 void test_boundary_volume_range() {
     // Volume is 0-9
     for (uint8_t vol = 0; vol <= 9; vol++) {
@@ -1429,6 +1441,8 @@ void runAllTests() {
     RUN_TEST(test_boundary_frequency_min_max);
     RUN_TEST(test_boundary_signal_strength_clamping);
     RUN_TEST(test_boundary_brightness_range);
+    RUN_TEST(test_brightness_slider_clamps_fill_below_display_range);
+    RUN_TEST(test_brightness_slider_clamps_fill_above_display_range);
     RUN_TEST(test_boundary_volume_range);
     
     // Stress tests (rapid state changes)

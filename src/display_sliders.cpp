@@ -9,6 +9,7 @@
 #include "../include/display_layout.h"
 #include "../include/display_palette.h"
 #include "../include/display_flush.h"
+#include "../include/display_slider_math.h"
 
 // Combined settings screen with brightness and voice volume sliders
 void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel) {
@@ -43,7 +44,7 @@ void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel
     tft->fillRect(sliderX, brightnessY, sliderWidth, sliderHeight, 0x2104);
     
     // Fill based on brightness level (80-255 range)
-    int brightnessFill = ((brightnessLevel - 80) * sliderWidth) / 175;
+    int brightnessFill = computeBrightnessSliderFill(brightnessLevel, sliderWidth);
     tft->fillRect(sliderX, brightnessY, brightnessFill, sliderHeight, 0x07E0);  // Green
     
     // Thumb
@@ -54,7 +55,7 @@ void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel
     
     // Percentage text
     char brightStr[8];
-    int brightPercent = ((brightnessLevel - 80) * 100) / 175;
+    int brightPercent = computeBrightnessSliderPercent(brightnessLevel);
     snprintf(brightStr, sizeof(brightStr), "%d%%", brightPercent);
     tft->setCursor(sliderX + sliderWidth + 8, brightnessY);
     tft->print(brightStr);
