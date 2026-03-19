@@ -232,4 +232,50 @@ describe('lockoutValidation', () => {
 		});
 		expect(resetZoneEditorState()).toEqual(defaultZoneEditorState());
 	});
+
+	it('matches learner radius when runtime only exposes feet', () => {
+		const lockoutConfig = {
+			modeRaw: 1,
+			coreGuardEnabled: true,
+			maxQueueDrops: 10,
+			maxPerfDrops: 20,
+			maxEventBusDrops: 30,
+			learnerPromotionHits: 3,
+			learnerRadiusFt: radiusE5ToFeet(45),
+			learnerFreqToleranceMHz: 10,
+			learnerLearnIntervalHours: 4,
+			learnerUnlearnIntervalHours: 4,
+			learnerUnlearnCount: 5,
+			manualDemotionMissCount: 25,
+			kaLearningEnabled: false,
+			kLearningEnabled: true,
+			xLearningEnabled: true,
+			preQuietBufferE5: 0,
+			maxHdopX10: 50,
+			minLearnerSpeedMph: 5
+		};
+
+		expect(
+			lockoutConfigMatchesRuntime(lockoutConfig, {
+				modeRaw: 1,
+				coreGuardEnabled: true,
+				maxQueueDrops: 10,
+				maxPerfDrops: 20,
+				maxEventBusDrops: 30,
+				learnerPromotionHits: 3,
+				learnerRadiusFt: radiusE5ToFeet(45),
+				learnerFreqToleranceMHz: 10,
+				learnerLearnIntervalHours: 4,
+				learnerUnlearnIntervalHours: 4,
+				learnerUnlearnCount: 5,
+				manualDemotionMissCount: 25,
+				kaLearningEnabled: false,
+				kLearningEnabled: true,
+				xLearningEnabled: true,
+				preQuietBufferE5: 0,
+				maxHdopX10: 50,
+				minLearnerSpeedMph: 5
+			})
+		).toBe(true);
+	});
 });

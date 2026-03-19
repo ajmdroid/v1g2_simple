@@ -240,7 +240,10 @@ export function buildZoneEditorPayload(zoneEditor) {
 
 export function lockoutConfigMatchesRuntime(lockoutConfig, runtime) {
 	if (!runtime) return false;
-	const runtimeRadiusE5 = clampLearnerRadiusE5(runtime.learnerRadiusE5);
+	const runtimeRadiusE5 =
+		typeof runtime.learnerRadiusE5 === 'number'
+			? clampLearnerRadiusE5(runtime.learnerRadiusE5)
+			: feetToRadiusE5(runtime.learnerRadiusFt);
 	return (
 		Math.max(0, Math.min(3, Number(lockoutConfig.modeRaw) || 0)) ===
 			Math.max(0, Math.min(3, Number(runtime.modeRaw) || 0)) &&
