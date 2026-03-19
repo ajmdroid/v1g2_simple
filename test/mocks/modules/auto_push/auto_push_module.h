@@ -10,7 +10,9 @@ public:
         PROFILE_LOAD_FAILED,
     };
 
-    QueueResult queueSlotPush(int slotIndex) {
+    QueueResult queueSlotPush(int slotIndex,
+                              bool /*activateSlot*/ = false,
+                              bool /*updateProfileIndicator*/ = true) {
         ++queueSlotPushCalls;
         lastQueueSlotPushSlot = slotIndex;
         return queueSlotPushResult;

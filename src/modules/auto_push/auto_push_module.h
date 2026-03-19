@@ -38,7 +38,9 @@ public:
                V1Display* disp);
 
     // Queue a slot-driven auto-push through the shared executor.
-    QueueResult queueSlotPush(int slotIndex, bool activateSlot = false);
+    QueueResult queueSlotPush(int slotIndex,
+                              bool activateSlot = false,
+                              bool updateProfileIndicator = true);
 
     // Kick off auto-push for the given slot index (0-2).
     void start(int slotIndex);
@@ -87,12 +89,14 @@ private:
                                   const V1Profile& profile,
                                   bool isPushNow,
                                   bool activateSlot,
-                                  bool countAutoPushStart);
+                                  bool countAutoPushStart,
+                                  bool updateProfileIndicator);
     void armState(int slotIndex,
                   const AutoPushSlot& slot,
                   bool profileLoaded,
                   const V1Profile& profile,
-                  bool isPushNow);
+                  bool isPushNow,
+                  bool updateProfileIndicator);
 
     SettingsManager* settings = nullptr;
     V1ProfileManager* profiles = nullptr;

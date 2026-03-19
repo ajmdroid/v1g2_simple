@@ -21,7 +21,7 @@ String AutoPushModule::getStatusJson() const {
     return String("{}");
 }
 
-AutoPushModule::QueueResult AutoPushModule::queueSlotPush(int, bool) {
+AutoPushModule::QueueResult AutoPushModule::queueSlotPush(int, bool, bool) {
     return QueueResult::QUEUED;
 }
 

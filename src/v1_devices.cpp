@@ -384,6 +384,7 @@ bool V1DeviceStore::migrateLegacyFiles(fs::FS* sourceFs) {
 bool V1DeviceStore::begin(fs::FS* filesystem, fs::FS* importFilesystem) {
     fs = filesystem;
     ready = fs != nullptr;
+    dirty = false;
     devices.clear();
 
     if (!ready) {
@@ -403,7 +404,8 @@ bool V1DeviceStore::begin(fs::FS* filesystem, fs::FS* importFilesystem) {
             migrated = migrateLegacyFiles(importFilesystem);
         }
         if (migrated) {
-            saveToStore();
+            dirty = true;
+            persistDirtyStore();
         }
     }
 
@@ -414,7 +416,18 @@ std::vector<V1DeviceRecord> V1DeviceStore::listDevices() const {
     return devices;
 }
 
-bool V1DeviceStore::upsertDevice(const String& address) {
+bool V1DeviceStore::persistDirtyStore() {
+    if (!dirty) {
+        return true;
+    }
+    if (!saveToStore()) {
+        return false;
+    }
+    dirty = false;
+    return true;
+}
+
+bool V1DeviceStore::upsertDeviceInternal(const String& address, bool persistNow) {
     if (!ready) {
         return false;
     }
@@ -437,7 +450,23 @@ bool V1DeviceStore::upsertDevice(const String& address) {
     }
 
     sortAndTrim();
-    return saveToStore();
+    dirty = true;
+    if (!persistNow) {
+        return true;
+    }
+    return persistDirtyStore();
+}
+
+bool V1DeviceStore::upsertDevice(const String& address) {
+    return upsertDeviceInternal(address, true);
+}
+
+bool V1DeviceStore::touchDeviceInMemory(const String& address) {
+    return upsertDeviceInternal(address, false);
+}
+
+bool V1DeviceStore::flushPendingSave() {
+    return persistDirtyStore();
 }
 
 bool V1DeviceStore::setDeviceName(const String& address, const String& name) {
@@ -462,7 +491,8 @@ bool V1DeviceStore::setDeviceName(const String& address, const String& name) {
 
     devices[index].name = safeName;
     sortAndTrim();
-    return saveToStore();
+    dirty = true;
+    return persistDirtyStore();
 }
 
 bool V1DeviceStore::setDeviceDefaultProfile(const String& address, uint8_t defaultProfile) {
@@ -486,7 +516,8 @@ bool V1DeviceStore::setDeviceDefaultProfile(const String& address, uint8_t defau
 
     devices[index].defaultProfile = clampDefaultProfileValue(defaultProfile);
     sortAndTrim();
-    return saveToStore();
+    dirty = true;
+    return persistDirtyStore();
 }
 
 bool V1DeviceStore::removeDevice(const String& address) {
@@ -508,7 +539,8 @@ bool V1DeviceStore::removeDevice(const String& address) {
     }
 
     devices.erase(it, devices.end());
-    return saveToStore();
+    dirty = true;
+    return persistDirtyStore();
 }
 
 uint8_t V1DeviceStore::getDeviceDefaultProfile(const String& address) const {

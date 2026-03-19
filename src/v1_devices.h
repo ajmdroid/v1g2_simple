@@ -34,9 +34,12 @@ public:
     std::vector<V1DeviceRecord> listDevices() const;
 
     bool upsertDevice(const String& address);
+    bool touchDeviceInMemory(const String& address);
     bool setDeviceName(const String& address, const String& name);
     bool setDeviceDefaultProfile(const String& address, uint8_t defaultProfile);
     bool removeDevice(const String& address);
+    bool hasPendingSave() const { return dirty; }
+    bool flushPendingSave();
 
     uint8_t getDeviceDefaultProfile(const String& address) const;
 
@@ -57,9 +60,13 @@ private:
 
     static String sanitizeName(const String& raw);
     static uint8_t clampDefaultProfileValue(int raw);
+    bool persistDirtyStore();
+    bool upsertDeviceInternal(const String& address, bool persistNow);
 
     int findDeviceIndex(const String& normalizedAddress) const;
     void sortAndTrim();
+
+    bool dirty = false;
 };
 
 extern V1DeviceStore v1DeviceStore;

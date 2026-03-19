@@ -65,7 +65,7 @@ V1ConnectedAutoPushSelection resolveV1ConnectedAutoPushSelection(const V1Setting
     }
 
     if (selection.connectedAddress.length() > 0 && v1DeviceStore.isReady()) {
-        v1DeviceStore.upsertDevice(selection.connectedAddress);
+        v1DeviceStore.touchDeviceInMemory(selection.connectedAddress);
         selection.deviceDefaultProfile = v1DeviceStore.getDeviceDefaultProfile(selection.connectedAddress);
         if (selection.deviceDefaultProfile >= 1 && selection.deviceDefaultProfile <= 3) {
             selection.selectedSlotIndex = static_cast<int>(selection.deviceDefaultProfile) - 1;
@@ -148,7 +148,10 @@ void onV1Connected() {
         AUTO_PUSH_LOGF("[AutoPush] Using global activeSlot: %d\n", selection.selectedSlotIndex);
     }
 
-    const auto queueResult = autoPushModule.queueSlotPush(selection.selectedSlotIndex);
+    display.setProfileIndicatorSlot(selection.selectedSlotIndex);
+    const auto queueResult = autoPushModule.queueSlotPush(selection.selectedSlotIndex,
+                                                          false,
+                                                          false);
     if (queueResult != AutoPushModule::QueueResult::QUEUED) {
         AUTO_PUSH_LOGF("[AutoPush] Skipped queue on connect, result=%d\n",
                        static_cast<int>(queueResult));

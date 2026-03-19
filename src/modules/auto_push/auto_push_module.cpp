@@ -28,7 +28,8 @@ void AutoPushModule::armState(int slotIndex,
                               const AutoPushSlot& slot,
                               bool profileLoaded,
                               const V1Profile& profile,
-                              bool isPushNow) {
+                              bool isPushNow,
+                              bool updateProfileIndicator) {
     state = State{};
     state.slotIndex = slotIndex;
     state.slot = slot;
@@ -38,7 +39,7 @@ void AutoPushModule::armState(int slotIndex,
     state.nextStepAtMs = millis() + 100;
     state.isPushNow = isPushNow;
 
-    if (display) {
+    if (display && updateProfileIndicator) {
         display->drawProfileIndicator(slotIndex);
     }
 }
@@ -49,7 +50,8 @@ AutoPushModule::QueueResult AutoPushModule::queuePreparedSlot(int slotIndex,
                                                               const V1Profile& profile,
                                                               bool isPushNow,
                                                               bool activateSlot,
-                                                              bool countAutoPushStart) {
+                                                              bool countAutoPushStart,
+                                                              bool updateProfileIndicator) {
     if (!settings || !profiles || !bleClient || !display) {
         return QueueResult::PROFILE_LOAD_FAILED;
     }
@@ -68,11 +70,13 @@ AutoPushModule::QueueResult AutoPushModule::queuePreparedSlot(int slotIndex,
         PERF_INC(autoPushStarts);
     }
 
-    armState(clampedIndex, slot, profileLoaded, profile, isPushNow);
+    armState(clampedIndex, slot, profileLoaded, profile, isPushNow, updateProfileIndicator);
     return QueueResult::QUEUED;
 }
 
-AutoPushModule::QueueResult AutoPushModule::queueSlotPush(int slotIndex, bool activateSlot) {
+AutoPushModule::QueueResult AutoPushModule::queueSlotPush(int slotIndex,
+                                                          bool activateSlot,
+                                                          bool updateProfileIndicator) {
     if (!settings) {
         return QueueResult::PROFILE_LOAD_FAILED;
     }
@@ -80,7 +84,7 @@ AutoPushModule::QueueResult AutoPushModule::queueSlotPush(int slotIndex, bool ac
     const int clampedIndex = std::max(0, std::min(2, slotIndex));
     const AutoPushSlot slot = settings->getSlot(clampedIndex);
     return queuePreparedSlot(
-        clampedIndex, slot, false, V1Profile{}, false, activateSlot, true);
+        clampedIndex, slot, false, V1Profile{}, false, activateSlot, true, updateProfileIndicator);
 }
 
 void AutoPushModule::start(int slotIndex) {
@@ -128,7 +132,7 @@ AutoPushModule::QueueResult AutoPushModule::queuePushNow(const PushNowRequest& r
                    slot.profileName.c_str(),
                    static_cast<int>(slot.mode));
     return queuePreparedSlot(
-        clampedIndex, slot, true, profile, true, request.activateSlot, false);
+        clampedIndex, slot, true, profile, true, request.activateSlot, false, true);
 }
 
 void AutoPushModule::applySlotMuteToZero(V1UserSettings& userSettings, bool slotMuteToZero) {

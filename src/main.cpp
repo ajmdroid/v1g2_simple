@@ -543,6 +543,7 @@ static void configurePeriodicMaintenanceModule() {
     periodicMaintenanceProviders.lockoutLearnerContext = &lockoutLearner;
     periodicMaintenanceProviders.runLockoutStoreSave = [](void*, uint32_t nowMs) {
         processLockoutStoreSave(nowMs);
+        processV1DeviceStoreSave(nowMs);
     };
     periodicMaintenanceProviders.runLearnerPendingSave = [](void*, uint32_t nowMs) {
         processLearnerPendingSave(nowMs);

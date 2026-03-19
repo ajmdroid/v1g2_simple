@@ -93,6 +93,7 @@ public:
     
     // Profile indicator
     void drawProfileIndicator(int slot);  // 0=Default, 1=Highway, 2=Comfort
+    void setProfileIndicatorSlot(int slot);
     
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();

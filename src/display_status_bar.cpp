@@ -132,17 +132,20 @@ void V1Display::drawRssiIndicator(int rssi) {
 // Profile indicator
 // ============================================================================
 
+void V1Display::setProfileIndicatorSlot(int slot) {
+    if (slot != lastProfileSlot) {
+        lastProfileSlot = slot;
+        profileChangedTime = millis();
+    }
+    currentProfileSlot = slot;
+}
+
 void V1Display::drawProfileIndicator(int slot) {
     // Get custom slot names and colors from settings
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
 
-    // Track current slot and timestamp for flash feature
-    if (slot != lastProfileSlot) {
-        lastProfileSlot = slot;
-        profileChangedTime = millis();  // Record when profile changed
-    }
-    currentProfileSlot = slot;
+    setProfileIndicatorSlot(slot);
 
     // Check if we're in the "flash" period after a profile change
     bool inFlashPeriod = (millis() - profileChangedTime) < HIDE_TIMEOUT_MS;

@@ -10,6 +10,7 @@
 #include "perf_metrics.h"
 #include "storage_manager.h"
 #include "wifi_manager.h"
+#include "v1_devices.h"
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/lockout_learner.h"
 #include <ArduinoJson.h>
@@ -194,6 +195,9 @@ struct DirtySaveState {
     SaveDiagStats diag;
 };
 
+static constexpr uint32_t V1_DEVICE_STORE_SAVE_INTERVAL_MS = 5000;
+static constexpr uint32_t V1_DEVICE_STORE_SAVE_RETRY_MS = 1000;
+
 static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, uint32_t nowMs) {
     uint32_t startUs = PERF_TIMESTAMP_US();
 
@@ -371,8 +375,22 @@ static const DirtySaveConfig learnerSaveConfig = {
     .recordPerfUs = [](uint32_t us) { perfRecordLearnerSaveUs(us); },
 };
 
+static const DirtySaveConfig v1DeviceStoreSaveConfig = {
+    .tag = "V1DeviceStore",
+    .filePath = "/v1devices.json",
+    .saveIntervalMs = V1_DEVICE_STORE_SAVE_INTERVAL_MS,
+    .retryMs = V1_DEVICE_STORE_SAVE_RETRY_MS,
+    .isDirty = []() { return v1DeviceStore.hasPendingSave(); },
+    .clearDirty = []() {},
+    .saveDirect = [](fs::FS& /*fs*/, const char* /*path*/) { return v1DeviceStore.flushPendingSave(); },
+    .serialize = nullptr,
+    .logSuccess = nullptr,
+    .recordPerfUs = [](uint32_t /*us*/) {},
+};
+
 static DirtySaveState lockoutSaveState;
 static DirtySaveState learnerSaveState;
+static DirtySaveState v1DeviceStoreSaveState;
 
 void processLockoutStoreSave(uint32_t nowMs) {
     processDirtySave(lockoutSaveConfig, lockoutSaveState, nowMs);
@@ -380,4 +398,8 @@ void processLockoutStoreSave(uint32_t nowMs) {
 
 void processLearnerPendingSave(uint32_t nowMs) {
     processDirtySave(learnerSaveConfig, learnerSaveState, nowMs);
+}
+
+void processV1DeviceStoreSave(uint32_t nowMs) {
+    processDirtySave(v1DeviceStoreSaveConfig, v1DeviceStoreSaveState, nowMs);
 }

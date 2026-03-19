@@ -73,4 +73,7 @@ void processLockoutStoreSave(uint32_t nowMs);
 /// Periodic best-effort save of learner pending candidates (Tier 7).
 void processLearnerPendingSave(uint32_t nowMs);
 
+/// Periodic best-effort save of deferred V1 device-store updates (Tier 7).
+void processV1DeviceStoreSave(uint32_t nowMs);
+
 #endif // MAIN_INTERNALS_H

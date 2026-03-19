@@ -215,11 +215,37 @@ void test_start_while_active_does_not_override_inflight_request() {
     TEST_ASSERT_EQUAL_UINT8(2, bleClient.lastMuteVolume);
 }
 
+void test_queue_slot_push_can_suppress_immediate_profile_indicator_draw() {
+    bleClient.setConnected(true);
+    settingsManager.setSlot(1, "Road", V1_MODE_LOGIC);
+    settingsManager.setSlotVolumes(1, 6, 2);
+    settingsManager.setSlotDarkMode(1, false);
+    settingsManager.setSlotMuteToZero(1, true);
+
+    profileManager.loadProfileResult = true;
+    profileManager.loadableProfileName = "Road";
+    profileManager.loadableProfile = makeProfile("Road", 0xFF);
+
+    const auto result = module.queueSlotPush(1, false, false);
+
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(AutoPushModule::QueueResult::QUEUED),
+                          static_cast<int>(result));
+    TEST_ASSERT_TRUE(module.isActive());
+    TEST_ASSERT_EQUAL_INT(0, display.drawProfileIndicatorCalls);
+
+    runUntilIdle();
+
+    TEST_ASSERT_FALSE(module.isActive());
+    TEST_ASSERT_EQUAL_INT(1, bleClient.writeUserBytesCalls);
+    TEST_ASSERT_EQUAL_UINT32(1, perfCounters.autoPushCompletes.load());
+}
+
 void runAllTests() {
     RUN_TEST(test_start_runs_existing_auto_push_path);
     RUN_TEST(test_queue_push_now_with_profile_override_skips_slot_mode_without_override);
     RUN_TEST(test_queue_push_now_retries_display_step_and_tracks_push_now_metrics);
     RUN_TEST(test_start_while_active_does_not_override_inflight_request);
+    RUN_TEST(test_queue_slot_push_can_suppress_immediate_profile_indicator_draw);
 }
 
 #ifdef ARDUINO
