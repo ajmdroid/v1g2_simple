@@ -246,12 +246,6 @@ bool V1BLEClient::startAsyncConnect() {
     BLE_SM_LOGF("[BLE] Async connect attempt %d/%d to %s\n", 
                 connectAttemptNumber, MAX_CONNECT_ATTEMPTS, addrStr.c_str());
     
-    // Clear any stale bonding info (quick operation)
-    if (NimBLEDevice::isBonded(targetAddress)) {
-        NimBLEDevice::deleteBond(targetAddress);
-        // No delay - deleteBond is quick
-    }
-    
     // CRITICAL: Stop proxy advertising - this competes with client connect!
     if (proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
         BLE_SM_LOGF("[BLE] Stopping proxy advertising before connect\n");
