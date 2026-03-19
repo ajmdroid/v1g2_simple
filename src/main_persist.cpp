@@ -384,7 +384,7 @@ static const DirtySaveConfig v1DeviceStoreSaveConfig = {
     .clearDirty = []() {},
     .saveDirect = [](fs::FS& /*fs*/, const char* /*path*/) { return v1DeviceStore.flushPendingSave(); },
     .serialize = nullptr,
-    .logSuccess = nullptr,
+    .logSuccess = [](const char* /*path*/) {},
     .recordPerfUs = [](uint32_t /*us*/) {},
 };
 
