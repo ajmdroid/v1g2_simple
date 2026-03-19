@@ -146,8 +146,9 @@ test/
 
 ## Current Baseline
 
-Suite counts change frequently. Treat the commands below as authoritative, not
-historical totals.
+Suite counts change frequently. Treat the commands below as current entry
+points, not historical totals. Observability/testing authority lives in
+[`docs/OBSERVABILITY.md`](../docs/OBSERVABILITY.md).
 
 | Metric | Native | Device |
 |--------|--------|--------|

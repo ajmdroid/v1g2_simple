@@ -181,7 +181,10 @@ def test_dma_fragmentation_uses_current_values() -> None:
         row["dmaLargestMin"] = 49000
         rows.append(row)
     metrics, _peaks, unsupported = import_perf_csv.extract_metrics(rows, 12)
-    expected = import_perf_csv._percentile([(1.0 - (10000.0 / free_dma)) * 100.0 for free_dma in [20000, 18000, 16000, 14000, 12000]], 95)
+    expected = import_perf_csv.percentile(
+        [(1.0 - (10000.0 / free_dma)) * 100.0 for free_dma in [20000, 18000, 16000, 14000, 12000]],
+        95,
+    )
     assert_true(abs(metrics["dma_fragmentation_pct_p95"][0] - float(expected)) < 0.01, "fragmentation must use current freeDma/largestDma values")
     assert_true("perf_drop_delta" in unsupported and "event_drop_delta" in unsupported, "legacy schema should mark drop deltas unsupported")
 

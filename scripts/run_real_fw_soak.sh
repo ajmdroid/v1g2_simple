@@ -3437,7 +3437,7 @@ display_preview_first_render_peak_us=${display_preview_first_render_peak:-}
 display_preview_steady_render_peak_us=${display_preview_steady_render_peak:-}
 EOF
 
-trend_metric_count="$(python3 - "$TREND_METRICS_KV" "$TREND_METRICS_NDJSON" "$RUN_ID" "$GIT_SHA_SHORT" "$track_name" "$RUN_STRESS_CLASS" <<'PY'
+trend_metric_count="$(python3 - "$TREND_METRICS_KV" "$TREND_METRICS_NDJSON" "$RUN_ID" "$GIT_SHA_SHORT" "$track_name" "$RUN_STRESS_CLASS" "$ROOT_DIR" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -3448,85 +3448,26 @@ run_id = sys.argv[3]
 git_sha = sys.argv[4]
 track_name = sys.argv[5]
 stress_class = sys.argv[6]
+root_dir = Path(sys.argv[7])
+sys.path.insert(0, str(root_dir / "tools"))
 
-units = {
-    "metrics_ok_samples": "count",
-    "rx_packets_delta": "count",
-    "parse_successes_delta": "count",
-    "parse_failures_delta": "count",
-    "queue_drops_delta": "count",
-    "perf_drop_delta": "count",
-    "event_drop_delta": "count",
-    "oversize_drops_delta": "count",
-    "display_updates_delta": "count",
-    "display_skips_delta": "count",
-    "reconnects_delta": "count",
-    "disconnects_delta": "count",
-    "gps_obs_drops_delta": "count",
-    "flush_max_peak_us": "us",
-    "loop_max_peak_us": "us",
-    "wifi_max_peak_us": "us",
-    "ble_drain_max_peak_us": "us",
-    "sd_max_peak_us": "us",
-    "fs_max_peak_us": "us",
-    "queue_high_water_peak": "count",
-    "wifi_connect_deferred_delta": "count",
-    "dma_free_min_bytes": "bytes",
-    "dma_largest_min_bytes": "bytes",
-    "ble_process_max_peak_us": "us",
-    "disp_pipe_max_peak_us": "us",
-    "ble_mutex_timeout_delta": "count",
-    "wifi_p95_us": "us",
-    "disp_pipe_p95_us": "us",
-    "dma_fragmentation_pct_p95": "percent",
-    "samples_to_stable": "count",
-    "time_to_stable_ms": "ms",
-    "connect_burst_samples_to_stable": "count",
-    "connect_burst_time_to_stable_ms": "ms",
-    "connect_burst_pre_ble_process_peak_us": "us",
-    "connect_burst_pre_disp_pipe_peak_us": "us",
-    "connect_burst_ble_followup_request_alert_peak_us": "us",
-    "connect_burst_ble_followup_request_version_peak_us": "us",
-    "connect_burst_ble_connect_stable_callback_peak_us": "us",
-    "connect_burst_ble_proxy_start_peak_us": "us",
-    "connect_burst_disp_render_peak_us": "us",
-    "connect_burst_display_voice_peak_us": "us",
-    "connect_burst_display_gap_recover_peak_us": "us",
-    "connect_burst_display_base_frame_peak_us": "us",
-    "connect_burst_display_status_strip_peak_us": "us",
-    "connect_burst_display_frequency_peak_us": "us",
-    "connect_burst_display_bands_bars_peak_us": "us",
-    "connect_burst_display_arrows_icons_peak_us": "us",
-    "connect_burst_display_cards_peak_us": "us",
-    "connect_burst_display_flush_subphase_peak_us": "us",
-    "display_full_flush_count_delta": "count",
-    "display_partial_flush_count_delta": "count",
-    "display_partial_flush_area_peak_px": "px",
-    "display_flush_max_area_px": "px",
-    "display_base_frame_peak_us": "us",
-    "display_status_strip_peak_us": "us",
-    "display_frequency_peak_us": "us",
-    "display_bands_bars_peak_us": "us",
-    "display_arrows_icons_peak_us": "us",
-    "display_cards_peak_us": "us",
-    "display_flush_subphase_peak_us": "us",
-    "display_live_render_peak_us": "us",
-    "display_resting_render_peak_us": "us",
-    "display_persisted_render_peak_us": "us",
-    "display_preview_render_peak_us": "us",
-    "display_restore_render_peak_us": "us",
-    "display_preview_first_render_peak_us": "us",
-    "display_preview_steady_render_peak_us": "us",
-}
+from metric_schema import SOAK_TREND_METRIC_KV_ALIASES, SOAK_TREND_METRIC_UNITS  # type: ignore
 
-count = 0
-with kv_path.open("r", encoding="utf-8") as handle, out_path.open("w", encoding="utf-8") as out_handle:
+payload = {}
+with kv_path.open("r", encoding="utf-8") as handle:
     for raw in handle:
         line = raw.strip()
         if not line or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        if key not in units or value == "":
+        payload[key] = value
+
+count = 0
+with out_path.open("w", encoding="utf-8") as out_handle:
+    for key, unit in SOAK_TREND_METRIC_UNITS.items():
+        source_key = SOAK_TREND_METRIC_KV_ALIASES.get(key, key)
+        value = payload.get(source_key, "")
+        if value == "":
             continue
         try:
             numeric = float(value)
@@ -3541,7 +3482,7 @@ with kv_path.open("r", encoding="utf-8") as handle, out_path.open("w", encoding=
             "metric": key,
             "sample": "value",
             "value": numeric,
-            "unit": units[key],
+            "unit": unit,
             "tags": {"stress_class": stress_class},
         }
         out_handle.write(json.dumps(record, sort_keys=True))

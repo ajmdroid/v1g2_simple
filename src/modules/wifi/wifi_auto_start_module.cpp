@@ -7,6 +7,7 @@ namespace {
 
 constexpr uint32_t WIFI_SETTLE_MS = 3000;
 constexpr uint32_t WIFI_BOOT_TIMEOUT_MS = 30000;
+constexpr bool WIFI_AUTOSTART_DECISION_LOGS = false;
 
 }  // namespace
 
@@ -88,6 +89,10 @@ WifiAutoStartDecisionSnapshot WifiAutoStartModule::buildDecisionSnapshot(unsigne
 }
 
 void WifiAutoStartModule::logDecisionIfChanged(const WifiAutoStartDecisionSnapshot& snapshot) {
+    if (!WIFI_AUTOSTART_DECISION_LOGS) {
+        return;
+    }
+
     if (hasLoggedDecision_ &&
         snapshot.gate == lastLoggedGate_ &&
         snapshot.shouldAutoStart == lastLoggedShouldAutoStart_ &&

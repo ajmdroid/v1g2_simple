@@ -15,6 +15,7 @@ from typing import Any
 
 import score_hardware_run  # type: ignore
 from hardware_report_utils import write_comparison_text, write_comparison_tsv  # type: ignore
+from metric_schema import SOAK_TREND_METRIC_KV_ALIASES, SOAK_TREND_METRIC_UNITS  # type: ignore
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,73 +26,6 @@ SOAK_PARSE_PANIC = ROOT / "tools" / "soak_parse_panic.py"
 RESET_RE = re.compile(r"rst:0x")
 PANIC_SIGNATURE_RE = re.compile(r"task watchdog|task_wdt|Guru Meditation|panic|abort\(", re.IGNORECASE)
 GURU_RE = re.compile(r"Guru Meditation", re.IGNORECASE)
-
-METRIC_UNITS = {
-    "metrics_ok_samples": "count",
-    "rx_packets_delta": "count",
-    "parse_successes_delta": "count",
-    "parse_failures_delta": "count",
-    "queue_drops_delta": "count",
-    "perf_drop_delta": "count",
-    "event_drop_delta": "count",
-    "oversize_drops_delta": "count",
-    "display_updates_delta": "count",
-    "display_skips_delta": "count",
-    "reconnects_delta": "count",
-    "disconnects_delta": "count",
-    "gps_obs_drops_delta": "count",
-    "flush_max_peak_us": "us",
-    "loop_max_peak_us": "us",
-    "wifi_max_peak_us": "us",
-    "ble_drain_max_peak_us": "us",
-    "sd_max_peak_us": "us",
-    "fs_max_peak_us": "us",
-    "queue_high_water_peak": "count",
-    "wifi_connect_deferred_delta": "count",
-    "dma_free_min_bytes": "bytes",
-    "dma_largest_min_bytes": "bytes",
-    "ble_process_max_peak_us": "us",
-    "disp_pipe_max_peak_us": "us",
-    "ble_mutex_timeout_delta": "count",
-    "wifi_p95_us": "us",
-    "disp_pipe_p95_us": "us",
-    "dma_fragmentation_pct_p95": "percent",
-    "samples_to_stable": "count",
-    "time_to_stable_ms": "ms",
-}
-
-KV_ALIASES = {
-    "metrics_ok_samples": "ok_samples",
-    "rx_packets_delta": "rx_packets_delta",
-    "parse_successes_delta": "parse_successes_delta",
-    "parse_failures_delta": "parse_failures_delta",
-    "queue_drops_delta": "queue_drops_delta",
-    "perf_drop_delta": "perf_drop_delta",
-    "event_drop_delta": "event_drop_delta",
-    "oversize_drops_delta": "oversize_drops_delta",
-    "display_updates_delta": "display_updates_delta",
-    "display_skips_delta": "display_skips_delta",
-    "reconnects_delta": "reconnects_delta",
-    "disconnects_delta": "disconnects_delta",
-    "gps_obs_drops_delta": "gps_obs_drops_delta",
-    "flush_max_peak_us": "flush_max_peak",
-    "loop_max_peak_us": "loop_max_peak",
-    "ble_drain_max_peak_us": "ble_drain_max_peak",
-    "sd_max_peak_us": "sd_max_peak",
-    "fs_max_peak_us": "fs_max_peak",
-    "queue_high_water_peak": "queue_high_water_peak",
-    "wifi_connect_deferred_delta": "wifi_connect_deferred_delta",
-    "dma_free_min_bytes": "dma_free_min",
-    "dma_largest_min_bytes": "dma_largest_min",
-    "ble_process_max_peak_us": "ble_process_max_peak",
-    "disp_pipe_max_peak_us": "disp_pipe_max_peak",
-    "ble_mutex_timeout_delta": "ble_mutex_timeout_delta",
-    "disp_pipe_p95_us": "disp_pipe_p95",
-    "dma_fragmentation_pct_p95": "dma_fragmentation_pct_p95",
-    "samples_to_stable": "samples_to_stable",
-    "time_to_stable_ms": "time_to_stable_ms",
-}
-
 
 @dataclass(frozen=True)
 class SourceBundle:
@@ -399,13 +333,13 @@ def append_import_diagnostics(text_path: Path, diagnostics: dict[str, Any]) -> N
 def render_metrics_ndjson(out_path: Path, run_id: str, git_sha: str, suite_or_profile: str, kv: dict[str, str]) -> int:
     count = 0
     with out_path.open("w", encoding="utf-8") as handle:
-        for key, unit in METRIC_UNITS.items():
+        for key, unit in SOAK_TREND_METRIC_UNITS.items():
             if key == "wifi_max_peak_us":
                 value = select_wifi_peak_metric(kv)
             elif key == "wifi_p95_us":
                 value = select_wifi_p95_metric(kv)
             else:
-                source_key = KV_ALIASES.get(key, key)
+                source_key = SOAK_TREND_METRIC_KV_ALIASES.get(key, key)
                 value = numeric(kv.get(source_key, ""))
             if value is None:
                 continue

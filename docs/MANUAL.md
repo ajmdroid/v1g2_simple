@@ -1,7 +1,7 @@
 # V1 Gen2 Simple Display - Technical Manual
 
-> This is the single authoritative and reference document for the project.
-> For perf thresholds see `PERF_SLOS.md`. For the full REST API see `API.md`.
+> This is the primary technical reference document for the project.
+> For observability/testing authority see `OBSERVABILITY.md`. For perf thresholds see `PERF_SLOS.md`. For the full REST API see `API.md`.
 > For the GPS road-map binary format see `ROAD_MAP_FORMAT.md`.
 
 
@@ -39,7 +39,7 @@ Current train (`v4.0.0-dev`) highlights:
 12. [Troubleshooting](#j-troubleshooting)
 13. [Developer Guide](#k-developer-guide)
 14. [Reference](#l-reference)
-15. [Testing & Validation](#m-testing--validation) (authoritative)
+15. [Testing & Validation](#m-testing--validation)
 16. [Known Limitations](#known-limitations--todos)
 17. [Known Issues / Risks](#known-issues--risks)
 
@@ -1956,10 +1956,11 @@ struct DisplayState {
 
 ## M. Testing & Validation
 
-> Status: authoritative
+> Status: overview
 > Last validated against scripts: March 12, 2026
 
-This section is the testing and validation policy authority for the repo.
+Observability/testing authority now lives in [`OBSERVABILITY.md`](OBSERVABILITY.md).
+This section is a workflow overview and entry-point guide only.
 
 ### Evidence Lanes
 
@@ -2032,8 +2033,8 @@ Single-board or multi-board hardware qualification.
 
 Uptime continuity is checked between steps to detect unexpected reboots.
 
-`--strict` treats authoritative `PASS_WITH_WARNINGS` results as a failing exit.
-`--strict-soaks` makes `core_soak` / `display_soak` authoritative instead of
+`--strict` treats wrapper `PASS_WITH_WARNINGS` results as a failing exit.
+`--strict-soaks` makes `core_soak` / `display_soak` gate-owning instead of
 diagnostic-only. Per-board artifact isolation stores runs under
 `<artifact-root>/<board-id>/runs/<timestamp>_<sha>/`.
 
@@ -2046,7 +2047,7 @@ Artifacts: `.artifacts/hardware/test/<board-id>/runs/<timestamp>_<sha>/`
 
 ### Authoritative Scoring
 
-Use `tools/score_perf_csv.py` as the only authoritative perf scorer:
+Use `tools/score_perf_csv.py` as the canonical perf scorer:
 
 ```bash
 python3 tools/score_perf_csv.py /path/to/perf.csv --profile drive_wifi_ap --session longest-connected

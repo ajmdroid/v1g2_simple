@@ -212,12 +212,13 @@ performance, factory reset), see [docs/MANUAL.md Section J](docs/MANUAL.md#j-tro
 
 | Doc | Role |
 |-----|------|
-| [docs/MANUAL.md](docs/MANUAL.md) | **Authoritative.** Architecture, BLE protocol, display, troubleshooting, testing & validation (Sec M), hardware qualification, developer guide, Windows setup |
-| [docs/PERF_SLOS.md](docs/PERF_SLOS.md) | **Authoritative.** Perf thresholds and scoring rules (machine-readable) |
+| [docs/MANUAL.md](docs/MANUAL.md) | Architecture, BLE protocol, display, troubleshooting, developer guide, Windows setup |
+| [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | **Authoritative.** Observability surfaces, metric naming, offline derivation, and test-evidence interpretation |
+| [docs/PERF_SLOS.md](docs/PERF_SLOS.md) | Perf thresholds and scoring rules |
 | [docs/API.md](docs/API.md) | Full HTTP REST API reference with request/response schemas |
 | [docs/ROAD_MAP_FORMAT.md](docs/ROAD_MAP_FORMAT.md) | GPS road-map binary format specification |
 
-MANUAL.md Section M is the testing/release authority. Each topic has ONE home.
+Observability/testing authority lives in `docs/OBSERVABILITY.md`. Each topic has ONE home.
 
 ---
 

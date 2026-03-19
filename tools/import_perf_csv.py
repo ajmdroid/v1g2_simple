@@ -16,6 +16,15 @@ import import_drive_log  # type: ignore
 import score_hardware_run  # type: ignore
 import score_perf_csv  # type: ignore
 from hardware_report_utils import write_comparison_text, write_comparison_tsv  # type: ignore
+from metric_derivation import percentile  # type: ignore
+from metric_schema import (  # type: ignore
+    CSV_DELTA_COLUMNS,
+    CSV_PEAK_DIAGNOSTIC_COLUMNS,
+    CSV_PEAK_ONLY_COLUMNS,
+    coverage_status_for_unsupported_metrics,
+    metric_unit,
+    unsupported_metrics_for_perf_csv,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,74 +35,6 @@ DEFAULT_HEADER_COLUMNS = [
     for line in (ROOT / "test" / "contracts" / "perf_csv_column_contract.txt").read_text(encoding="utf-8").splitlines()
     if line.strip() and not line.startswith("#")
 ]
-CURRENT_PERF_CSV_SCHEMA = 19
-MIN_DROP_COUNTER_SCHEMA = 13
-ALWAYS_UNSUPPORTED_METRICS = {"samples_to_stable", "time_to_stable_ms"}
-LEGACY_UNSUPPORTED_METRICS = {"perf_drop_delta", "event_drop_delta"}
-PEAK_COLUMNS = {
-    "loop_max_peak_us": "loopMax_us",
-    "ble_process_max_peak_us": "bleProcessMax_us",
-    "wifi_max_peak_us": "wifiMax_us",
-    "disp_pipe_max_peak_us": "dispPipeMax_us",
-}
-DELTA_COLUMNS = {
-    "rx_packets_delta": "rx",
-    "parse_successes_delta": "parseOK",
-    "parse_failures_delta": "parseFail",
-    "queue_drops_delta": "qDrop",
-    "perf_drop_delta": "perfDrop",
-    "event_drop_delta": "eventBusDrops",
-    "oversize_drops_delta": "oversizeDrops",
-    "display_updates_delta": "displayUpdates",
-    "display_skips_delta": "displaySkips",
-    "reconnects_delta": "reconn",
-    "disconnects_delta": "disc",
-    "gps_obs_drops_delta": "gpsObsDrops",
-    "ble_mutex_timeout_delta": "bleMutexTimeout",
-    "wifi_connect_deferred_delta": "wifiConnectDeferred",
-}
-PEAK_ONLY_COLUMNS = {
-    "loop_max_peak_us": "loopMax_us",
-    "flush_max_peak_us": "flushMax_us",
-    "wifi_max_peak_us": "wifiMax_us",
-    "ble_drain_max_peak_us": "bleDrainMax_us",
-    "sd_max_peak_us": "sdMax_us",
-    "fs_max_peak_us": "fsMax_us",
-    "queue_high_water_peak": "queueHighWater",
-    "ble_process_max_peak_us": "bleProcessMax_us",
-    "disp_pipe_max_peak_us": "dispPipeMax_us",
-}
-METRIC_UNITS = {
-    "metrics_ok_samples": "count",
-    "rx_packets_delta": "count",
-    "parse_successes_delta": "count",
-    "parse_failures_delta": "count",
-    "queue_drops_delta": "count",
-    "perf_drop_delta": "count",
-    "event_drop_delta": "count",
-    "oversize_drops_delta": "count",
-    "display_updates_delta": "count",
-    "display_skips_delta": "count",
-    "reconnects_delta": "count",
-    "disconnects_delta": "count",
-    "gps_obs_drops_delta": "count",
-    "ble_mutex_timeout_delta": "count",
-    "wifi_connect_deferred_delta": "count",
-    "loop_max_peak_us": "us",
-    "flush_max_peak_us": "us",
-    "wifi_max_peak_us": "us",
-    "ble_drain_max_peak_us": "us",
-    "sd_max_peak_us": "us",
-    "fs_max_peak_us": "us",
-    "queue_high_water_peak": "count",
-    "ble_process_max_peak_us": "us",
-    "disp_pipe_max_peak_us": "us",
-    "dma_free_min_bytes": "bytes",
-    "dma_largest_min_bytes": "bytes",
-    "wifi_p95_us": "us",
-    "disp_pipe_p95_us": "us",
-    "dma_fragmentation_pct_p95": "pct",
-}
 TOP_ROW_FIELDS = (
     "disc",
     "reconn",
@@ -301,21 +242,6 @@ def _segment_position(row_index: int, row_count: int) -> str:
     if row_index > max(0, row_count - threshold):
         return "end"
     return "mid-drive"
-
-
-def _percentile(values: list[float], pct: float) -> Optional[float]:
-    if not values:
-        return None
-    ordered = sorted(values)
-    if len(ordered) == 1:
-        return float(ordered[0])
-    rank = (pct / 100.0) * (len(ordered) - 1)
-    lo = int(math.floor(rank))
-    hi = int(math.ceil(rank))
-    if lo == hi:
-        return float(ordered[lo])
-    frac = rank - lo
-    return float(ordered[lo] + (ordered[hi] - ordered[lo]) * frac)
 
 
 def peak_limit_map(profile: str) -> dict[str, float]:
@@ -756,7 +682,7 @@ def build_peak_partition_analysis(
     limits = peak_limit_map(profile)
 
     metrics: dict[str, Any] = {}
-    for metric_name, column in PEAK_COLUMNS.items():
+    for metric_name, column in CSV_PEAK_DIAGNOSTIC_COLUMNS.items():
         if metric_name not in peak_diagnostics:
             continue
         limit = limits.get(column)
@@ -953,27 +879,25 @@ def extract_metrics(
         return {}, {}, []
 
     metrics: dict[str, tuple[float, str]] = {
-        "metrics_ok_samples": (float(len(rows)), METRIC_UNITS["metrics_ok_samples"])
+        "metrics_ok_samples": (float(len(rows)), metric_unit("metrics_ok_samples"))
     }
-    unsupported_metrics = set(ALWAYS_UNSUPPORTED_METRICS)
     columns = set(rows[0].keys())
-    if source_schema < MIN_DROP_COUNTER_SCHEMA or not {"perfDrop", "eventBusDrops"} <= columns:
-        unsupported_metrics.update(LEGACY_UNSUPPORTED_METRICS)
+    unsupported_metrics = unsupported_metrics_for_perf_csv(source_schema, columns)
 
-    for metric_name, column in DELTA_COLUMNS.items():
+    for metric_name, column in CSV_DELTA_COLUMNS.items():
         if metric_name in unsupported_metrics:
             continue
         value = _delta_metric(rows, column)
         if value is not None:
-            metrics[metric_name] = (value, METRIC_UNITS[metric_name])
+            metrics[metric_name] = (value, metric_unit(metric_name))
 
     peak_diagnostics: dict[str, dict[str, Any]] = {}
-    for metric_name, column in PEAK_ONLY_COLUMNS.items():
+    for metric_name, column in CSV_PEAK_ONLY_COLUMNS.items():
         value = _peak_metric(rows, column)
         if value is None:
             continue
-        metrics[metric_name] = (value, METRIC_UNITS[metric_name])
-        if metric_name in PEAK_COLUMNS:
+        metrics[metric_name] = (value, metric_unit(metric_name))
+        if metric_name in CSV_PEAK_DIAGNOSTIC_COLUMNS:
             diagnostic = _peak_diagnostic(rows, column)
             if diagnostic is not None:
                 peak_diagnostics[metric_name] = diagnostic
@@ -983,21 +907,21 @@ def extract_metrics(
     dma_free_floor = _floor_metric(rows, free_dma_floor_column)
     dma_largest_floor = _floor_metric(rows, largest_dma_floor_column)
     if dma_free_floor is not None:
-        metrics["dma_free_min_bytes"] = (dma_free_floor, METRIC_UNITS["dma_free_min_bytes"])
+        metrics["dma_free_min_bytes"] = (dma_free_floor, metric_unit("dma_free_min_bytes"))
     if dma_largest_floor is not None:
-        metrics["dma_largest_min_bytes"] = (dma_largest_floor, METRIC_UNITS["dma_largest_min_bytes"])
+        metrics["dma_largest_min_bytes"] = (dma_largest_floor, metric_unit("dma_largest_min_bytes"))
 
     if _has_column(rows, "wifiMax_us"):
         wifi_samples = [float(int(row.get("wifiMax_us", 0))) for row in rows]
-        wifi_p95 = _percentile(wifi_samples, 95)
+        wifi_p95 = percentile(wifi_samples, 95)
         if wifi_p95 is not None:
-            metrics["wifi_p95_us"] = (wifi_p95, METRIC_UNITS["wifi_p95_us"])
+            metrics["wifi_p95_us"] = (wifi_p95, metric_unit("wifi_p95_us"))
 
     if _has_column(rows, "dispPipeMax_us"):
         disp_samples = [float(int(row.get("dispPipeMax_us", 0))) for row in rows]
-        disp_p95 = _percentile(disp_samples, 95)
+        disp_p95 = percentile(disp_samples, 95)
         if disp_p95 is not None:
-            metrics["disp_pipe_p95_us"] = (disp_p95, METRIC_UNITS["disp_pipe_p95_us"])
+            metrics["disp_pipe_p95_us"] = (disp_p95, metric_unit("disp_pipe_p95_us"))
 
     if _has_column(rows, "freeDma") and _has_column(rows, "largestDma"):
         fragmentation_samples: list[float] = []
@@ -1006,11 +930,11 @@ def extract_metrics(
             largest_dma = float(int(row.get("largestDma", 0)))
             if free_dma > 0:
                 fragmentation_samples.append((1.0 - (largest_dma / free_dma)) * 100.0)
-        fragmentation_p95 = _percentile(fragmentation_samples, 95)
+        fragmentation_p95 = percentile(fragmentation_samples, 95)
         if fragmentation_p95 is not None:
             metrics["dma_fragmentation_pct_p95"] = (
                 fragmentation_p95,
-                METRIC_UNITS["dma_fragmentation_pct_p95"],
+                metric_unit("dma_fragmentation_pct_p95"),
             )
 
     return metrics, peak_diagnostics, sorted(unsupported_metrics)
@@ -1118,15 +1042,6 @@ def _panic_summary(panic_path: Path | None) -> tuple[dict[str, Any], str]:
         "path": str(panic_path),
         "parsed_text": raw_panic_kv,
     }, base_result
-
-
-def coverage_status_for(unsupported_metrics: list[str]) -> str:
-    unsupported = set(unsupported_metrics)
-    if {"perf_drop_delta", "event_drop_delta"} & unsupported:
-        return "partial_legacy_import"
-    if unsupported:
-        return "full_runtime_gates"
-    return "full"
 
 
 def append_import_sections(
@@ -1355,7 +1270,7 @@ def main() -> int:
     if panic_summary.get("present") and panic_summary.get("parsed_text"):
         (out_dir / "parsed_panic_kv.txt").write_text(str(panic_summary["parsed_text"]), encoding="utf-8")
 
-    coverage_status = coverage_status_for(unsupported_metrics)
+    coverage_status = coverage_status_for_unsupported_metrics(unsupported_metrics)
     selected_segment_payload = {
         **selected_summary.to_dict(),
         "selector": selector,
