@@ -113,6 +113,7 @@ void handleApiStatus(WebServer& server,
     doc["speedAgeMs"] = status.speedAgeMs;
     doc["rssi"] = status.rssi;
     doc["scanInProgress"] = status.scanInProgress;
+    doc["manualScanPending"] = status.manualScanPending;
     doc["savedAddressValid"] = status.savedAddressValid;
     doc["savedAddress"] = status.savedAddressValid ? String(obdRuntime.getSavedAddress()) : "";
     doc["connectAttempts"] = status.connectAttempts;

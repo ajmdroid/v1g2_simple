@@ -266,14 +266,21 @@ void ObdRuntimeModule::resetForBegin() {
     pendingRssi_ = 0;
     pendingAddrType_ = 0;
     savedAddrType_ = 0;
+    connectAddrType_ = 0;
+    manualCandidateAddrType_ = 0;
     pendingDeviceFound_ = false;
     scanRequested_ = false;
+    manualScanPending_ = false;
+    manualCandidateValid_ = false;
+    connectTargetFromManualCandidate_ = false;
     preferWarmReconnect_ = false;
     warmInitPreferred_ = false;
     coldInitFallbackUsed_ = false;
     preferWriteWithResponse_ = false;
 
     savedAddress_[0] = '\0';
+    connectAddress_[0] = '\0';
+    manualCandidateAddress_[0] = '\0';
     pendingAddress_[0] = '\0';
 
     connectAttempts_ = 0;
@@ -388,6 +395,9 @@ const char* obdStateName(ObdConnectionState s) {
 }  // namespace
 
 void ObdRuntimeModule::transitionTo(ObdConnectionState newState, uint32_t nowMs) {
+    if (newState == ObdConnectionState::POLLING) {
+        commitManualScanCandidate();
+    }
 #ifndef UNIT_TEST
     Serial.printf("[OBD] %s -> %s\n", obdStateName(state_), obdStateName(newState));
 #endif
@@ -557,6 +567,12 @@ void ObdRuntimeModule::handleConnectFailure(uint32_t nowMs, ObdFailureReason rea
     clearBleResponseState();
     resetCommandState();
     bleDisconnected_ = false;
+    if (manualScanPending_) {
+        connectAttempts_ = 0;
+        clearManualScanState();
+        transitionTo(ObdConnectionState::IDLE, nowMs);
+        return;
+    }
     if (connectAttempts_ >= obd::MAX_DIRECT_CONNECT_FAILURES) {
         connectAttempts_ = 0;
         transitionTo(ObdConnectionState::IDLE, nowMs);
@@ -634,6 +650,50 @@ void ObdRuntimeModule::clearCachedProfile() {
     cachedEotProfileId_ = ObdEotProfileId::NONE;
 }
 
+void ObdRuntimeModule::setConnectTarget(const char* address,
+                                        uint8_t addrType,
+                                        bool fromManualCandidate) {
+    copyString(connectAddress_, sizeof(connectAddress_), address);
+    connectAddrType_ = addrType;
+    connectTargetFromManualCandidate_ = fromManualCandidate && connectAddress_[0] != '\0';
+}
+
+void ObdRuntimeModule::setConnectTargetFromSaved() {
+    setConnectTarget(savedAddress_, savedAddrType_, false);
+}
+
+void ObdRuntimeModule::clearConnectTarget() {
+    connectAddress_[0] = '\0';
+    connectAddrType_ = 0;
+    connectTargetFromManualCandidate_ = false;
+}
+
+void ObdRuntimeModule::clearManualScanState() {
+    manualScanPending_ = false;
+    manualCandidateValid_ = false;
+    manualCandidateAddress_[0] = '\0';
+    manualCandidateAddrType_ = 0;
+    clearConnectTarget();
+}
+
+void ObdRuntimeModule::commitManualScanCandidate() {
+    if (!manualScanPending_ || !manualCandidateValid_) {
+        return;
+    }
+
+    const bool addressChanged =
+        strcmp(savedAddress_, manualCandidateAddress_) != 0 || savedAddrType_ != manualCandidateAddrType_;
+
+    setSavedAddressFromBuffer(manualCandidateAddress_);
+    savedAddrType_ = manualCandidateAddrType_;
+    if (addressChanged) {
+        clearVehicleState(true);
+        clearEotState(true);
+        preferWarmReconnect_ = false;
+    }
+    clearManualScanState();
+}
+
 bool ObdRuntimeModule::startBleScan() {
 #ifndef UNIT_TEST
     return obdBleClient.startScan(minRssi_);
@@ -644,13 +704,16 @@ bool ObdRuntimeModule::startBleScan() {
 }
 
 bool ObdRuntimeModule::connectBle(uint32_t timeoutMs, bool preferCachedAttributes) {
+    const char* const address = connectAddress_[0] != '\0' ? connectAddress_ : savedAddress_;
+    const uint8_t addrType = connectAddress_[0] != '\0' ? connectAddrType_ : savedAddrType_;
 #ifndef UNIT_TEST
     const uint32_t startUs = PERF_TIMESTAMP_US();
-    const bool connected =
-        obdBleClient.connect(savedAddress_, savedAddrType_, timeoutMs, preferCachedAttributes);
+    const bool connected = obdBleClient.connect(address, addrType, timeoutMs, preferCachedAttributes);
     perfRecordObdConnectCallUs(PERF_TIMESTAMP_US() - startUs);
     return connected;
 #else
+    (void)address;
+    (void)addrType;
     (void)timeoutMs;
     (void)preferCachedAttributes;
     testConnectCalls_++;
@@ -766,9 +829,13 @@ bool ObdRuntimeModule::writeBleCommand(const char* cmd, bool withResponse) {
 }
 
 bool ObdRuntimeModule::deleteBleBond() {
+    const char* const address = connectAddress_[0] != '\0' ? connectAddress_ : savedAddress_;
+    const uint8_t addrType = connectAddress_[0] != '\0' ? connectAddrType_ : savedAddrType_;
 #ifndef UNIT_TEST
-    return obdBleClient.deleteBond(savedAddress_, savedAddrType_);
+    return obdBleClient.deleteBond(address, addrType);
 #else
+    (void)address;
+    (void)addrType;
     testDeleteBondCalls_++;
     return true;
 #endif
@@ -839,10 +906,12 @@ bool ObdRuntimeModule::beginTransportRequest(ObdTransportOp op,
     request.requestId = ++nextTransportRequestId_;
     request.timeoutMs = timeoutMs;
     request.nowMs = nowMs;
-    request.addrType = savedAddrType_;
+    const char* const address = connectAddress_[0] != '\0' ? connectAddress_ : savedAddress_;
+    const uint8_t addrType = connectAddress_[0] != '\0' ? connectAddrType_ : savedAddrType_;
+    request.addrType = addrType;
     request.preferCachedAttributes = preferCachedAttributes;
     request.withResponse = withResponse;
-    copyString(request.address, sizeof(request.address), savedAddress_);
+    copyString(request.address, sizeof(request.address), address);
     copyString(request.cmd, sizeof(request.cmd), cmd);
 
     if (xQueueSend(sObdTransport.requestQueue, &request, 0) != pdTRUE) {
@@ -947,6 +1016,7 @@ void ObdRuntimeModule::setEnabled(bool enabled) {
         disconnectBle();
         clearBleEventQueue();
         scanRequested_ = false;
+        clearManualScanState();
         pendingDeviceFound_ = false;
         pendingAddress_[0] = '\0';
         clearBleResponseState();
@@ -970,6 +1040,7 @@ void ObdRuntimeModule::setEnabled(bool enabled) {
     clearBleResponseState();
     resetCommandState();
     bleDisconnected_ = false;
+    clearManualScanState();
     state_ = (savedAddress_[0] != '\0') ? ObdConnectionState::WAIT_BOOT : ObdConnectionState::IDLE;
     stateEnteredMs_ = 0;
     stateEntryPending_ = false;
@@ -1696,6 +1767,11 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
                       bleReasonName(bleDisconnectReason_));
 #endif
         bleDisconnected_ = false;
+        if (manualScanPending_) {
+            clearManualScanState();
+            transitionTo(ObdConnectionState::IDLE, nowMs);
+            return;
+        }
         transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
         return;
     }
@@ -1986,6 +2062,7 @@ void ObdRuntimeModule::update(uint32_t nowMs,
 
             const uint32_t elapsed = nowMs - bootReadyMs_;
             if (v1Connected || elapsed >= obd::POST_BOOT_DWELL_MS) {
+                setConnectTargetFromSaved();
                 transitionTo(ObdConnectionState::CONNECTING, nowMs);
             }
             break;
@@ -1994,15 +2071,26 @@ void ObdRuntimeModule::update(uint32_t nowMs,
         case ObdConnectionState::SCANNING: {
             if (pendingDeviceFound_) {
                 pendingDeviceFound_ = false;
-                setSavedAddressFromBuffer(pendingAddress_);
-                savedAddrType_ = pendingAddrType_;
                 rssi_ = pendingRssi_;
                 connectAttempts_ = 0;
                 preferWarmReconnect_ = false;
+                if (manualScanPending_) {
+                    copyString(manualCandidateAddress_, sizeof(manualCandidateAddress_), pendingAddress_);
+                    manualCandidateAddrType_ = pendingAddrType_;
+                    manualCandidateValid_ = true;
+                    setConnectTarget(manualCandidateAddress_, manualCandidateAddrType_, true);
+                } else {
+                    setSavedAddressFromBuffer(pendingAddress_);
+                    savedAddrType_ = pendingAddrType_;
+                    setConnectTargetFromSaved();
+                }
                 transitionTo(ObdConnectionState::CONNECTING, nowMs);
                 break;
             }
             if ((nowMs - stateEnteredMs_) >= obd::SCAN_DURATION_MS) {
+                if (manualScanPending_) {
+                    clearManualScanState();
+                }
                 transitionTo(ObdConnectionState::IDLE, nowMs);
             }
             break;
@@ -2078,6 +2166,11 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                               bleReasonName(bleDisconnectReason_));
 #endif
                 bleDisconnected_ = false;
+                if (manualScanPending_) {
+                    clearManualScanState();
+                    transitionTo(ObdConnectionState::IDLE, nowMs);
+                    break;
+                }
                 transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
                 break;
             }
@@ -2100,6 +2193,11 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                                       bleReasonName(bleDisconnectReason_));
 #endif
                         bleDisconnected_ = false;
+                        if (manualScanPending_) {
+                            clearManualScanState();
+                            transitionTo(ObdConnectionState::IDLE, nowMs);
+                            break;
+                        }
                         transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
                         break;
                     }
@@ -2168,6 +2266,7 @@ void ObdRuntimeModule::update(uint32_t nowMs,
             }
             if ((nowMs - stateEnteredMs_) >= obd::RECONNECT_BACKOFF_MS) {
                 if (savedAddress_[0] != '\0') {
+                    setConnectTargetFromSaved();
                     transitionTo(ObdConnectionState::CONNECTING, nowMs);
                 } else {
                     transitionTo(ObdConnectionState::IDLE, nowMs);
@@ -2209,6 +2308,7 @@ ObdRuntimeStatus ObdRuntimeModule::snapshot(uint32_t nowMs) const {
     status.connectFailures = connectFailures_;
     status.securityRepairs = securityRepairs_;
     status.scanInProgress = (state_ == ObdConnectionState::SCANNING);
+    status.manualScanPending = manualScanPending_;
     status.savedAddressValid = savedAddress_[0] != '\0';
     status.initRetries = initRetries_;
     status.pollCount = pollCount_;
@@ -2242,6 +2342,31 @@ bool ObdRuntimeModule::startScan() {
     return true;
 }
 
+bool ObdRuntimeModule::requestManualPairScan(uint32_t nowMs) {
+    if (!enabled_ || isBleConnected() || manualScanPending_) {
+        return false;
+    }
+
+    stopBleScan();
+    disconnectBle();
+    clearBleEventQueue();
+    clearBleResponseState();
+    resetCommandState();
+    clearTransportRequest();
+    readyTransportResult_ = {};
+    bleDisconnected_ = false;
+    pendingDeviceFound_ = false;
+    pendingAddress_[0] = '\0';
+    connectAttempts_ = 0;
+    clearManualScanState();
+    manualScanPending_ = true;
+    scanRequested_ = true;
+    state_ = ObdConnectionState::IDLE;
+    stateEnteredMs_ = nowMs;
+    stateEntryPending_ = false;
+    return true;
+}
+
 void ObdRuntimeModule::forgetDevice() {
     stopBleScan();
     disconnectBle();
@@ -2252,6 +2377,7 @@ void ObdRuntimeModule::forgetDevice() {
     pendingAddress_[0] = '\0';
     pendingDeviceFound_ = false;
     scanRequested_ = false;
+    clearManualScanState();
     connectAttempts_ = 0;
     clearSpeedState();
     clearBleResponseState();
@@ -2366,7 +2492,9 @@ bool ObdRuntimeModule::isSecurityBleError(int error) {
 }
 
 bool ObdRuntimeModule::canAutoHealBond() const {
-    return savedAddress_[0] != '\0' && strcmp(repairedBondAddress_, savedAddress_) != 0;
+    return !connectTargetFromManualCandidate_ &&
+           savedAddress_[0] != '\0' &&
+           strcmp(repairedBondAddress_, savedAddress_) != 0;
 }
 
 bool ObdRuntimeModule::autoHealBondIfAllowed(uint32_t nowMs, const char* context) {
@@ -2417,6 +2545,10 @@ void ObdRuntimeModule::forceStateForTest(ObdConnectionState state, uint32_t ente
     clearBleResponseState();
     resetCommandState();
     bleDisconnected_ = false;
+}
+
+void ObdRuntimeModule::transitionToPollingForTest(uint32_t nowMs) {
+    transitionTo(ObdConnectionState::POLLING, nowMs);
 }
 
 ObdCommandKind ObdRuntimeModule::getActiveCommandKindForTest() const {

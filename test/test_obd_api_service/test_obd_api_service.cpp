@@ -230,6 +230,18 @@ void test_scan_rejects_when_request_already_pending() {
     TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"OBD scan already requested or in progress\""));
 }
 
+void test_status_reports_manual_scan_pending() {
+    WebServer server(80);
+    obdRuntimeModule.begin(true, "", 0, -80);
+    TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(mockMillis));
+
+    ObdApiService::handleApiStatus(server, obdRuntimeModule, []() {});
+
+    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_TRUE(responseContains(server, "\"manualScanPending\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"savedAddressValid\":false"));
+}
+
 int main() {
     UNITY_BEGIN();
 
@@ -243,6 +255,7 @@ int main() {
     RUN_TEST(test_scan_rejects_when_obd_is_disabled);
     RUN_TEST(test_scan_reports_requested_when_obd_is_enabled);
     RUN_TEST(test_scan_rejects_when_request_already_pending);
+    RUN_TEST(test_status_reports_manual_scan_pending);
 
     return UNITY_END();
 }

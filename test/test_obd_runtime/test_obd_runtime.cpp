@@ -177,6 +177,105 @@ void test_scan_request_retries_when_start_scan_fails_once() {
     TEST_ASSERT_EQUAL_UINT32(2, obdRuntimeModule.getStartScanCallCountForTest());
 }
 
+void test_manual_pair_scan_request_sets_pending_and_starts_scanning() {
+    obdRuntimeModule.begin(true, "", 0, -80);
+
+    TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(1000));
+
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(1000);
+    TEST_ASSERT_TRUE(status.manualScanPending);
+    TEST_ASSERT_FALSE(status.scanInProgress);
+    TEST_ASSERT_FALSE(status.savedAddressValid);
+
+    obdRuntimeModule.update(1001, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::SCANNING, obdRuntimeModule.getState());
+
+    status = obdRuntimeModule.snapshot(1001);
+    TEST_ASSERT_TRUE(status.manualScanPending);
+    TEST_ASSERT_TRUE(status.scanInProgress);
+}
+
+void test_manual_pair_scan_timeout_preserves_saved_device_and_cache() {
+    obdRuntimeModule.begin(true,
+                           "A4:C1:38:00:11:22",
+                           0,
+                           -80,
+                           "1FTW1ET7DFA",
+                           static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
+
+    TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(1000));
+    obdRuntimeModule.update(1001, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::SCANNING, obdRuntimeModule.getState());
+
+    obdRuntimeModule.update(7002, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
+
+    const ObdRuntimeStatus status = obdRuntimeModule.snapshot(7002);
+    TEST_ASSERT_FALSE(status.manualScanPending);
+    TEST_ASSERT_TRUE(status.savedAddressValid);
+    TEST_ASSERT_EQUAL_STRING("A4:C1:38:00:11:22", obdRuntimeModule.getSavedAddress());
+    TEST_ASSERT_EQUAL_STRING("1FTW1ET7DFA", obdRuntimeModule.getCachedVinPrefix11());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C),
+                            obdRuntimeModule.getCachedEotProfileId());
+}
+
+void test_manual_pair_connect_failure_preserves_saved_device_and_returns_idle() {
+    obdRuntimeModule.begin(true,
+                           "A4:C1:38:00:11:22",
+                           0,
+                           -80,
+                           "1FTW1ET7DFA",
+                           static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
+
+    TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(1000));
+    obdRuntimeModule.update(1001, true, true, true);
+    obdRuntimeModule.onDeviceFound("OBDLink CX", "B4:C1:38:00:11:33", -50);
+    obdRuntimeModule.update(2000, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL_STRING("A4:C1:38:00:11:22", obdRuntimeModule.getSavedAddress());
+
+    obdRuntimeModule.update(7001, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
+
+    const ObdRuntimeStatus status = obdRuntimeModule.snapshot(7001);
+    TEST_ASSERT_FALSE(status.manualScanPending);
+    TEST_ASSERT_TRUE(status.savedAddressValid);
+    TEST_ASSERT_EQUAL_STRING("A4:C1:38:00:11:22", obdRuntimeModule.getSavedAddress());
+    TEST_ASSERT_EQUAL_STRING("1FTW1ET7DFA", obdRuntimeModule.getCachedVinPrefix11());
+    TEST_ASSERT_EQUAL_UINT8(0, status.connectAttempts);
+}
+
+void test_manual_pair_success_commits_candidate_only_when_polling_begins() {
+    obdRuntimeModule.begin(true,
+                           "A4:C1:38:00:11:22",
+                           0,
+                           -80,
+                           "1FTW1ET7DFA",
+                           static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
+
+    TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(1000));
+    obdRuntimeModule.update(1001, true, true, true);
+    obdRuntimeModule.onDeviceFound("OBDLink CX", "B4:C1:38:00:11:33", -50);
+    obdRuntimeModule.update(2000, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
+
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(2000);
+    TEST_ASSERT_TRUE(status.manualScanPending);
+    TEST_ASSERT_TRUE(status.savedAddressValid);
+    TEST_ASSERT_EQUAL_STRING("A4:C1:38:00:11:22", obdRuntimeModule.getSavedAddress());
+    TEST_ASSERT_EQUAL_STRING("1FTW1ET7DFA", obdRuntimeModule.getCachedVinPrefix11());
+
+    obdRuntimeModule.transitionToPollingForTest(2500);
+    TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
+
+    status = obdRuntimeModule.snapshot(2500);
+    TEST_ASSERT_FALSE(status.manualScanPending);
+    TEST_ASSERT_TRUE(status.savedAddressValid);
+    TEST_ASSERT_EQUAL_STRING("B4:C1:38:00:11:33", obdRuntimeModule.getSavedAddress());
+    TEST_ASSERT_EQUAL_STRING("", obdRuntimeModule.getCachedVinPrefix11());
+    TEST_ASSERT_EQUAL_UINT8(0, obdRuntimeModule.getCachedEotProfileId());
+}
+
 // ── RSSI gate ─────────────────────────────────────────────────────
 
 void test_rssi_gate_rejects_weak_signal() {
@@ -852,6 +951,10 @@ int main() {
     RUN_TEST(test_scan_timeout_returns_to_idle);
     RUN_TEST(test_scan_finds_device_transitions_to_connecting);
     RUN_TEST(test_scan_request_retries_when_start_scan_fails_once);
+    RUN_TEST(test_manual_pair_scan_request_sets_pending_and_starts_scanning);
+    RUN_TEST(test_manual_pair_scan_timeout_preserves_saved_device_and_cache);
+    RUN_TEST(test_manual_pair_connect_failure_preserves_saved_device_and_returns_idle);
+    RUN_TEST(test_manual_pair_success_commits_candidate_only_when_polling_begins);
 
     // RSSI gate
     RUN_TEST(test_rssi_gate_rejects_weak_signal);

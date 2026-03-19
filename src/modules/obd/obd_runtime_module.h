@@ -115,6 +115,7 @@ struct ObdRuntimeStatus {
     uint32_t connectFailures = 0;
     uint32_t securityRepairs = 0;
     bool scanInProgress = false;
+    bool manualScanPending = false;
     bool savedAddressValid = false;
     uint8_t initRetries = 0;
 
@@ -159,6 +160,7 @@ public:
     uint8_t getCachedEotProfileId() const { return static_cast<uint8_t>(cachedEotProfileId_); }
 
     bool startScan();
+    bool requestManualPairScan(uint32_t nowMs);
     void forgetDevice();
 
     void onDeviceFound(const char* name, const char* address, int rssi, uint8_t addrType = 0);
@@ -200,6 +202,7 @@ public:
     void setTestSecurityAuthenticated(bool authenticated) { testSecurityAuthenticated_ = authenticated; }
     void setTestLastBleError(int error) { testLastBleError_ = error; }
     void setTestLastSecurityError(int error) { testLastSecurityError_ = error; }
+    void transitionToPollingForTest(uint32_t nowMs);
 #endif
 
 private:
@@ -250,6 +253,11 @@ private:
     void setSavedAddressFromBuffer(const char* address);
     void setCachedProfile(const char* vinPrefix11, ObdEotProfileId profileId);
     void clearCachedProfile();
+    void setConnectTarget(const char* address, uint8_t addrType, bool fromManualCandidate);
+    void setConnectTargetFromSaved();
+    void clearConnectTarget();
+    void clearManualScanState();
+    void commitManualScanCandidate();
 
     bool startBleScan();
     bool connectBle(uint32_t timeoutMs, bool preferCachedAttributes);
@@ -388,14 +396,21 @@ private:
     uint32_t unsupportedProfileMask_ = 0;
 
     char savedAddress_[ADDR_BUF_LEN] = {};
+    char connectAddress_[ADDR_BUF_LEN] = {};
+    char manualCandidateAddress_[ADDR_BUF_LEN] = {};
     char pendingAddress_[ADDR_BUF_LEN] = {};
     int8_t minRssi_ = -80;
     int8_t rssi_ = 0;
     int8_t pendingRssi_ = 0;
     uint8_t pendingAddrType_ = 0;
     uint8_t savedAddrType_ = 0;
+    uint8_t connectAddrType_ = 0;
+    uint8_t manualCandidateAddrType_ = 0;
     bool pendingDeviceFound_ = false;
     bool scanRequested_ = false;
+    bool manualScanPending_ = false;
+    bool manualCandidateValid_ = false;
+    bool connectTargetFromManualCandidate_ = false;
     bool preferWarmReconnect_ = false;
     bool warmInitPreferred_ = false;
     bool coldInitFallbackUsed_ = false;
