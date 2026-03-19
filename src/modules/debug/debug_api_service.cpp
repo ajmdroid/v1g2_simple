@@ -620,6 +620,7 @@ void appendSoakMetricsDoc(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& s
     doc["heapDmaLargest"] = snapshot.heap.heapInternalLargest;
     doc["heapDmaLargestMin"] = snapshot.heap.heapInternalLargestMin;
     doc["latencyMaxUs"] = snapshot.latencyMaxUs;
+    appendEventBusMetrics(doc, snapshot);
 }
 }  // anonymous namespace
 namespace DebugApiService {

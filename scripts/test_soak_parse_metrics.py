@@ -105,6 +105,7 @@ def write_metrics_jsonl(path: Path) -> None:
                 "bleFollowupRequestVersionMaxUs": 0,
                 "bleConnectStableCallbackMaxUs": 0,
                 "bleProxyStartMaxUs": 0,
+                "eventBus": {"publishCount": 0, "dropCount": 0, "size": 1},
             },
         },
         {
@@ -171,6 +172,7 @@ def write_metrics_jsonl(path: Path) -> None:
                 "bleFollowupRequestVersionMaxUs": 17000,
                 "bleConnectStableCallbackMaxUs": 21000,
                 "bleProxyStartMaxUs": 58000,
+                "eventBus": {"publishCount": 3, "dropCount": 0, "size": 2},
             },
         },
         {
@@ -237,6 +239,7 @@ def write_metrics_jsonl(path: Path) -> None:
                 "bleFollowupRequestVersionMaxUs": 0,
                 "bleConnectStableCallbackMaxUs": 0,
                 "bleProxyStartMaxUs": 0,
+                "eventBus": {"publishCount": 5, "dropCount": 1, "size": 4},
             },
         },
         {
@@ -303,6 +306,7 @@ def write_metrics_jsonl(path: Path) -> None:
                 "bleFollowupRequestVersionMaxUs": 0,
                 "bleConnectStableCallbackMaxUs": 0,
                 "bleProxyStartMaxUs": 0,
+                "eventBus": {"publishCount": 6, "dropCount": 1, "size": 3},
             },
         },
         {
@@ -369,6 +373,7 @@ def write_metrics_jsonl(path: Path) -> None:
                 "bleFollowupRequestVersionMaxUs": 0,
                 "bleConnectStableCallbackMaxUs": 0,
                 "bleProxyStartMaxUs": 0,
+                "eventBus": {"publishCount": 8, "dropCount": 1, "size": 5},
             },
         },
     ]
@@ -392,6 +397,9 @@ def test_reduced_fixture_surfaces_unstable_connect_burst() -> None:
     assert_true(parsed["connect_burst_event_proxy_advertising"] == "1", f"wrong proxy flag: {parsed}")
     assert_true(parsed["connect_burst_pre_ble_process_peak"] == "73755", f"wrong ble peak: {parsed}")
     assert_true(parsed["connect_burst_pre_disp_pipe_peak"] == "73276", f"wrong display peak: {parsed}")
+    assert_true(parsed["event_publish_delta"] == "76", f"wrong event publish delta: {parsed}")
+    assert_true(parsed["event_drop_delta"] == "0", f"wrong event drop delta: {parsed}")
+    assert_true(parsed["event_size_peak"] == "1", f"wrong event size peak: {parsed}")
     assert_true(parsed["connect_burst_samples_to_stable"] == "", f"unexpected settle result: {parsed}")
     assert_true(parsed["connect_burst_time_to_stable_ms"] == "", f"unexpected settle time: {parsed}")
 
@@ -428,6 +436,9 @@ def test_synthetic_fixture_tracks_root_causes_and_settle_window() -> None:
     assert_true(parsed["connect_burst_display_base_frame_peak"] == "9000", f"wrong base-frame peak: {parsed}")
     assert_true(parsed["connect_burst_display_frequency_peak"] == "14000", f"wrong frequency peak: {parsed}")
     assert_true(parsed["connect_burst_display_flush_subphase_peak"] == "21000", f"wrong flush subphase peak: {parsed}")
+    assert_true(parsed["event_publish_delta"] == "8", f"wrong event publish delta: {parsed}")
+    assert_true(parsed["event_drop_delta"] == "1", f"wrong event drop delta: {parsed}")
+    assert_true(parsed["event_size_peak"] == "5", f"wrong event size peak: {parsed}")
     assert_true(parsed["display_full_render_count_delta"] == "1", f"wrong full-render delta: {parsed}")
     assert_true(parsed["display_incremental_render_count_delta"] == "1", f"wrong incremental delta: {parsed}")
     assert_true(parsed["display_cards_only_render_count_delta"] == "1", f"wrong cards-only delta: {parsed}")
