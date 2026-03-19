@@ -47,12 +47,16 @@
 	let wifiPassword = $state('');
 	let wifiConnecting = $state(false);
 	let wifiPoll = $state(null);
+	let wifiConnectPollStartedMs = $state(0);
 	let clientNowMs = $state(Date.now());
 	let wifiStatusFetchInFlight = false;
 	let SettingsWifiModalComponent = $state(null);
 	let wifiModalLoading = $state(false);
 	const WIFI_STATUS_ERROR_TEXT = 'Failed to load WiFi status';
 	const WIFI_SCAN_ERROR_TEXT = 'Failed to update WiFi scan';
+	const WIFI_CONNECT_TIMEOUT_TEXT = 'Wi-Fi connection timed out. Check status and retry.';
+	const WIFI_CONNECT_POLL_INTERVAL_MS = 1000;
+	const WIFI_CONNECT_TIMEOUT_MS = 30000;
 	const TIME_TICK_INTERVAL_MS = 1000;
 	const timeTickPoll = createPoll(async () => {
 		clientNowMs = Date.now();
@@ -100,6 +104,11 @@
 		if (!wifiPoll) return;
 		wifiPoll.stop();
 		wifiPoll = null;
+		wifiConnectPollStartedMs = 0;
+	}
+
+	function isWifiConnectTerminalState(state) {
+		return ['connected', 'failed', 'disabled', 'disconnected', 'unknown'].includes(state);
 	}
 
 	function clearMessageText(text) {
@@ -212,6 +221,7 @@
 				message = { type: 'success', text: `Connecting to ${selectedNetwork.ssid}...` };
 				// Start polling for connection status
 				stopWifiPoll();
+				wifiConnectPollStartedMs = Date.now();
 				wifiPoll = createPoll(async () => {
 					await fetchWifiStatus();
 					if (wifiStatus.state === 'connected') {
@@ -221,8 +231,14 @@
 					} else if (wifiStatus.state === 'failed') {
 						stopWifiPoll();
 						message = { type: 'error', text: 'Connection failed. Check password.' };
+					} else if (
+						isWifiConnectTerminalState(wifiStatus.state) ||
+						Date.now() - wifiConnectPollStartedMs >= WIFI_CONNECT_TIMEOUT_MS
+					) {
+						stopWifiPoll();
+						message = { type: 'error', text: WIFI_CONNECT_TIMEOUT_TEXT };
 					}
-				}, 1000);
+				}, WIFI_CONNECT_POLL_INTERVAL_MS);
 				wifiPoll.start();
 			} else {
 				message = { type: 'error', text: 'Failed to initiate connection' };

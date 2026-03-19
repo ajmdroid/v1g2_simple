@@ -41,6 +41,15 @@ function installDefaultFetch(overrides = []) {
 	);
 }
 
+async function openWifiModalAndConnect() {
+	const scanButton = await screen.findByRole('button', { name: /scan for networks/i });
+	await fireEvent.click(scanButton);
+	await vi.advanceTimersByTimeAsync(1000);
+	await screen.findByText('Select WiFi Network');
+	await fireEvent.click(await screen.findByRole('button', { name: /BenchAP/i }));
+	await fireEvent.click(await screen.findByRole('button', { name: /^Connect$/i }));
+}
+
 describe('settings route page', () => {
 	afterEach(() => {
 		vi.useRealTimers();
@@ -201,6 +210,156 @@ describe('settings route page', () => {
 		await vi.advanceTimersByTimeAsync(1000);
 
 		await screen.findByText('Failed to update WiFi scan');
+
+		unmount();
+	});
+
+	it('times out wifi connection polling after 30 seconds of connecting', async () => {
+		vi.useFakeTimers();
+		let statusCalls = 0;
+		const fetchMock = installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/device/settings',
+					respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true })
+				},
+				{
+					method: 'GET',
+					match: '/api/wifi/status',
+					respond: () => {
+						statusCalls += 1;
+						if (statusCalls === 1) {
+							return jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' });
+						}
+						return jsonResponse({ enabled: true, state: 'connecting', savedSSID: 'BenchAP' });
+					}
+				},
+				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) },
+				{
+					method: 'POST',
+					match: '/api/wifi/scan',
+					respond: jsonResponse({
+						scanning: false,
+						networks: [{ ssid: 'BenchAP', secure: false, rssi: -42 }]
+					})
+				},
+				{ method: 'POST', match: '/api/wifi/connect', respond: jsonResponse({ success: true }) }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await openWifiModalAndConnect();
+		vi.setSystemTime(Date.now() + 30000);
+		await vi.advanceTimersByTimeAsync(1000);
+		await Promise.resolve();
+		expect(screen.getByText('Wi-Fi connection timed out. Check status and retry.')).toBeInTheDocument();
+
+		const stoppedCalls = countCalls(fetchMock, '/api/wifi/status');
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(countCalls(fetchMock, '/api/wifi/status')).toBe(stoppedCalls);
+
+		unmount();
+	});
+
+	it('stops wifi connection polling on disconnected terminal state', async () => {
+		vi.useFakeTimers();
+		let statusCalls = 0;
+		const fetchMock = installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/device/settings',
+					respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true })
+				},
+				{
+					method: 'GET',
+					match: '/api/wifi/status',
+					respond: () => {
+						statusCalls += 1;
+						if (statusCalls === 1) {
+							return jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' });
+						}
+						return jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'BenchAP' });
+					}
+				},
+				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) },
+				{
+					method: 'POST',
+					match: '/api/wifi/scan',
+					respond: jsonResponse({
+						scanning: false,
+						networks: [{ ssid: 'BenchAP', secure: false, rssi: -42 }]
+					})
+				},
+				{ method: 'POST', match: '/api/wifi/connect', respond: jsonResponse({ success: true }) }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await openWifiModalAndConnect();
+		await vi.advanceTimersByTimeAsync(1000);
+		await screen.findByText('Wi-Fi connection timed out. Check status and retry.');
+
+		const stoppedCalls = countCalls(fetchMock, '/api/wifi/status');
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(countCalls(fetchMock, '/api/wifi/status')).toBe(stoppedCalls);
+
+		unmount();
+	});
+
+	it('stops wifi connection polling after a successful connection', async () => {
+		vi.useFakeTimers();
+		let statusCalls = 0;
+		const fetchMock = installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/device/settings',
+					respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true })
+				},
+				{
+					method: 'GET',
+					match: '/api/wifi/status',
+					respond: () => {
+						statusCalls += 1;
+						if (statusCalls === 1) {
+							return jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' });
+						}
+						return jsonResponse({
+							enabled: true,
+							state: 'connected',
+							savedSSID: 'BenchAP',
+							connectedSSID: 'BenchAP',
+							ip: '192.168.1.10',
+							rssi: -41
+						});
+					}
+				},
+				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) },
+				{
+					method: 'POST',
+					match: '/api/wifi/scan',
+					respond: jsonResponse({
+						scanning: false,
+						networks: [{ ssid: 'BenchAP', secure: false, rssi: -42 }]
+					})
+				},
+				{ method: 'POST', match: '/api/wifi/connect', respond: jsonResponse({ success: true }) }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await openWifiModalAndConnect();
+		await vi.advanceTimersByTimeAsync(1000);
+		await screen.findByText('Connected to BenchAP!');
+
+		const stoppedCalls = countCalls(fetchMock, '/api/wifi/status');
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(countCalls(fetchMock, '/api/wifi/status')).toBe(stoppedCalls);
 
 		unmount();
 	});
