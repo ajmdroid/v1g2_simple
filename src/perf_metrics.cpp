@@ -7,11 +7,17 @@
 #include "perf_sd_logger.h"
 #include "storage_manager.h"
 #include "time_service.h"
+#include "settings.h"
 #include "../include/main_globals.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_observation_log.h"
+#include "modules/gps/gps_lockout_safety.h"
+#include "modules/lockout/lockout_band_policy.h"
+#include "modules/lockout/lockout_learner.h"
 #include "modules/obd/obd_runtime_module.h"
+#include "modules/speed/speed_source_selector.h"
 #include "modules/system/system_event_bus.h"
+#include "modules/wifi/wifi_auto_start_module.h"
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
@@ -248,341 +254,633 @@ static const char* proxyAdvertisingTransitionReasonNameInternal(uint32_t reasonC
     }
 }
 
-static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
-    // Keep expensive calls outside the critical section; only copy shared state
-    // while holding the lock so the snapshot is internally consistent.
-    uint32_t nowMs = millis();
-    uint32_t freeHeap = ESP.getFreeHeap();
-    uint32_t freeDma = StorageManager::getCachedFreeDma();
-    uint32_t largestDma = StorageManager::getCachedLargestDma();
-    uint32_t freeDmaCap = heap_caps_get_free_size(MALLOC_CAP_DMA);
-    uint32_t largestDmaCap = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
-    GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
-    GpsObservationLogStats gpsLogStats = gpsObservationLog.stats();
-    ObdRuntimeStatus obdStatus = obdRuntimeModule.snapshot(nowMs);
+struct RuntimeSnapshotCaptureContext {
+    uint32_t nowMs = 0;
+    uint32_t freeHeap = 0;
+    uint32_t largestHeap = 0;
+    uint32_t freeDma = 0;
+    uint32_t largestDma = 0;
+    uint32_t freeDmaCap = 0;
+    uint32_t largestDmaCap = 0;
+    uint32_t psramTotal = 0;
+    uint32_t psramFree = 0;
+    uint32_t psramLargest = 0;
+    GpsRuntimeStatus gpsStatus = {};
+    GpsObservationLogStats gpsLogStats = {};
+    ObdRuntimeStatus obdStatus = {};
+    SpeedSelectorStatus speedStatus = {};
+    WifiAutoStartDecisionSnapshot wifiAutoStart = {};
+    ProxyMetrics proxyMetrics = {};
+    uint32_t eventBusPublishCount = 0;
+    uint32_t eventBusDropCount = 0;
+    uint32_t eventBusSize = 0;
+    PhoneCmdDropMetricsSnapshot phoneCmdDropMetrics = {};
+    const V1Settings* settings = nullptr;
+    GpsLockoutCoreGuardStatus lockoutGuard = {};
+    uint32_t backupRevision = 0;
+    bool deferredBackupPending = false;
+    bool deferredBackupRetryScheduled = false;
+    uint32_t deferredBackupNextAttemptAtMs = 0;
+    bool perfLoggingEnabled = false;
+    const char* perfLoggingPath = "";
+    uint32_t sdTryLockFails = 0;
+    uint32_t sdDmaStarvation = 0;
+};
 
-    snapshot.millisTs = nowMs;
-    snapshot.timeValid = timeService.timeValid() ? 1 : 0;
-    snapshot.timeSource = timeService.timeSource();
-    snapshot.freeHeap = freeHeap;
-    snapshot.freeDma = freeDma;
-    snapshot.largestDma = largestDma;
-    snapshot.freeDmaCap = freeDmaCap;
-    snapshot.largestDmaCap = largestDmaCap;
+static RuntimeSnapshotCaptureContext captureRuntimeSnapshotContext() {
+    RuntimeSnapshotCaptureContext ctx{};
+    ctx.nowMs = millis();
+    ctx.freeHeap = ESP.getFreeHeap();
+    ctx.largestHeap = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    ctx.freeDma = StorageManager::getCachedFreeDma();
+    ctx.largestDma = StorageManager::getCachedLargestDma();
+    ctx.freeDmaCap = heap_caps_get_free_size(MALLOC_CAP_DMA);
+    ctx.largestDmaCap = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+    ctx.psramTotal = static_cast<uint32_t>(ESP.getPsramSize());
+    ctx.psramFree = static_cast<uint32_t>(ESP.getFreePsram());
+    ctx.psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+    ctx.gpsStatus = gpsRuntimeModule.snapshot(ctx.nowMs);
+    ctx.gpsLogStats = gpsObservationLog.stats();
+    ctx.obdStatus = obdRuntimeModule.snapshot(ctx.nowMs);
+    ctx.speedStatus = speedSourceSelector.snapshot();
+    ctx.wifiAutoStart = wifiAutoStartModule.getLastDecision();
+    ctx.proxyMetrics = bleClient.getProxyMetrics();
+    ctx.eventBusPublishCount = systemEventBus.getPublishCount();
+    ctx.eventBusDropCount = systemEventBus.getDropCount();
+    ctx.eventBusSize = static_cast<uint32_t>(systemEventBus.size());
+    ctx.phoneCmdDropMetrics = perfPhoneCmdDropMetricsSnapshot();
+    ctx.settings = &settingsManager.get();
+    ctx.lockoutGuard = gpsLockoutEvaluateCoreGuard(
+        ctx.settings->gpsLockoutCoreGuardEnabled,
+        ctx.settings->gpsLockoutMaxQueueDrops,
+        ctx.settings->gpsLockoutMaxPerfDrops,
+        ctx.settings->gpsLockoutMaxEventBusDrops,
+        perfCounters.queueDrops.load(std::memory_order_relaxed),
+        perfCounters.perfDrop.load(std::memory_order_relaxed),
+        ctx.eventBusDropCount);
+    ctx.backupRevision = settingsManager.backupRevision();
+    ctx.deferredBackupPending = settingsManager.deferredBackupPending();
+    ctx.deferredBackupRetryScheduled = settingsManager.deferredBackupRetryScheduled();
+    ctx.deferredBackupNextAttemptAtMs = settingsManager.deferredBackupNextAttemptAtMs();
+    ctx.perfLoggingEnabled = perfSdLogger.isEnabled();
+    ctx.perfLoggingPath = perfSdLogger.csvPath();
+    ctx.sdTryLockFails = StorageManager::sdTryLockFailCount.load(std::memory_order_relaxed);
+    ctx.sdDmaStarvation = StorageManager::sdDmaStarvationCount.load(std::memory_order_relaxed);
+    return ctx;
+}
 
-    snapshot.rx = perfCounters.rxPackets.load(std::memory_order_relaxed);
-    snapshot.qDrop = perfCounters.queueDrops.load(std::memory_order_relaxed);
-    snapshot.perfDrop = perfCounters.perfDrop.load(std::memory_order_relaxed);
-    snapshot.eventBusDrops = systemEventBus.getDropCount();
-    snapshot.parseOk = perfCounters.parseSuccesses.load(std::memory_order_relaxed);
-    snapshot.parseFail = perfCounters.parseFailures.load(std::memory_order_relaxed);
-    snapshot.disc = perfCounters.disconnects.load(std::memory_order_relaxed);
-    snapshot.reconn = perfCounters.reconnects.load(std::memory_order_relaxed);
+static void populateFlatSnapshot(PerfSdSnapshot& flat,
+                                 const RuntimeSnapshotCaptureContext& ctx,
+                                 PerfRuntimeSnapshotMode mode) {
+    flat = {};
+    flat.millisTs = ctx.nowMs;
+    flat.timeValid = timeService.timeValid() ? 1 : 0;
+    flat.timeSource = timeService.timeSource();
+    flat.freeHeap = ctx.freeHeap;
+    flat.freeDma = ctx.freeDma;
+    flat.largestDma = ctx.largestDma;
+    flat.freeDmaCap = ctx.freeDmaCap;
+    flat.largestDmaCap = ctx.largestDmaCap;
 
-    snapshot.alertPersistStarts = perfCounters.alertPersistStarts.load(std::memory_order_relaxed);
-    snapshot.alertPersistExpires = perfCounters.alertPersistExpires.load(std::memory_order_relaxed);
-    snapshot.alertPersistClears = perfCounters.alertPersistClears.load(std::memory_order_relaxed);
-    snapshot.autoPushStarts = perfCounters.autoPushStarts.load(std::memory_order_relaxed);
-    snapshot.autoPushCompletes = perfCounters.autoPushCompletes.load(std::memory_order_relaxed);
-    snapshot.autoPushNoProfile = perfCounters.autoPushNoProfile.load(std::memory_order_relaxed);
-    snapshot.autoPushProfileLoadFail = perfCounters.autoPushProfileLoadFail.load(std::memory_order_relaxed);
-    snapshot.autoPushProfileWriteFail = perfCounters.autoPushProfileWriteFail.load(std::memory_order_relaxed);
-    snapshot.autoPushBusyRetries = perfCounters.autoPushBusyRetries.load(std::memory_order_relaxed);
-    snapshot.autoPushModeFail = perfCounters.autoPushModeFail.load(std::memory_order_relaxed);
-    snapshot.autoPushVolumeFail = perfCounters.autoPushVolumeFail.load(std::memory_order_relaxed);
-    snapshot.autoPushDisconnectAbort = perfCounters.autoPushDisconnectAbort.load(std::memory_order_relaxed);
-    snapshot.prioritySelectDisplayIndex = perfCounters.prioritySelectDisplayIndex.load(std::memory_order_relaxed);
-    snapshot.prioritySelectRowFlag = perfCounters.prioritySelectRowFlag.load(std::memory_order_relaxed);
-    snapshot.prioritySelectFirstUsable = perfCounters.prioritySelectFirstUsable.load(std::memory_order_relaxed);
-    snapshot.prioritySelectFirstEntry = perfCounters.prioritySelectFirstEntry.load(std::memory_order_relaxed);
-    snapshot.prioritySelectAmbiguousIndex = perfCounters.prioritySelectAmbiguousIndex.load(std::memory_order_relaxed);
-    snapshot.prioritySelectUnusableIndex = perfCounters.prioritySelectUnusableIndex.load(std::memory_order_relaxed);
-    snapshot.prioritySelectInvalidChosen = perfCounters.prioritySelectInvalidChosen.load(std::memory_order_relaxed);
-    snapshot.alertTablePublishes = perfCounters.alertTablePublishes.load(std::memory_order_relaxed);
-    snapshot.alertTablePublishes3Bogey =
-        perfCounters.alertTablePublishes3Bogey.load(std::memory_order_relaxed);
-    snapshot.alertTableRowReplacements =
-        perfCounters.alertTableRowReplacements.load(std::memory_order_relaxed);
-    snapshot.alertTableAssemblyTimeouts =
-        perfCounters.alertTableAssemblyTimeouts.load(std::memory_order_relaxed);
-    snapshot.parserRowsBandNone = perfCounters.parserRowsBandNone.load(std::memory_order_relaxed);
-    snapshot.parserRowsKuRaw = perfCounters.parserRowsKuRaw.load(std::memory_order_relaxed);
-    snapshot.displayLiveInvalidPrioritySkips =
-        perfCounters.displayLiveInvalidPrioritySkips.load(std::memory_order_relaxed);
-    snapshot.displayLiveFallbackToUsable =
-        perfCounters.displayLiveFallbackToUsable.load(std::memory_order_relaxed);
-    snapshot.voiceAnnouncePriority = perfCounters.voiceAnnouncePriority.load(std::memory_order_relaxed);
-    snapshot.voiceAnnounceDirection = perfCounters.voiceAnnounceDirection.load(std::memory_order_relaxed);
-    snapshot.voiceAnnounceSecondary = perfCounters.voiceAnnounceSecondary.load(std::memory_order_relaxed);
-    snapshot.voiceAnnounceEscalation = perfCounters.voiceAnnounceEscalation.load(std::memory_order_relaxed);
-    snapshot.voiceDirectionThrottled = perfCounters.voiceDirectionThrottled.load(std::memory_order_relaxed);
-    snapshot.powerAutoPowerArmed = perfCounters.powerAutoPowerArmed.load(std::memory_order_relaxed);
-    snapshot.powerAutoPowerTimerStart = perfCounters.powerAutoPowerTimerStart.load(std::memory_order_relaxed);
-    snapshot.powerAutoPowerTimerCancel = perfCounters.powerAutoPowerTimerCancel.load(std::memory_order_relaxed);
-    snapshot.powerAutoPowerTimerExpire = perfCounters.powerAutoPowerTimerExpire.load(std::memory_order_relaxed);
-    snapshot.powerCriticalWarn = perfCounters.powerCriticalWarn.load(std::memory_order_relaxed);
-    snapshot.powerCriticalShutdown = perfCounters.powerCriticalShutdown.load(std::memory_order_relaxed);
-    snapshot.cmdBleBusy = perfCounters.cmdBleBusy.load(std::memory_order_relaxed);
-    snapshot.gpsEnabled = gpsStatus.enabled ? 1 : 0;
-    snapshot.gpsHasFix = gpsStatus.hasFix ? 1 : 0;
-    snapshot.gpsLocationValid = gpsStatus.locationValid ? 1 : 0;
-    snapshot.gpsSatellites = gpsStatus.satellites;
-    snapshot.gpsParserActive = gpsStatus.parserActive ? 1 : 0;
-    snapshot.gpsModuleDetected = gpsStatus.moduleDetected ? 1 : 0;
-    snapshot.gpsDetectionTimedOut = gpsStatus.detectionTimedOut ? 1 : 0;
-    snapshot.gpsSpeedMphX10 =
-        (gpsStatus.sampleValid && std::isfinite(gpsStatus.speedMph))
-            ? static_cast<int32_t>(std::lround(gpsStatus.speedMph * 10.0f))
+    flat.rx = perfCounters.rxPackets.load(std::memory_order_relaxed);
+    flat.qDrop = perfCounters.queueDrops.load(std::memory_order_relaxed);
+    flat.perfDrop = perfCounters.perfDrop.load(std::memory_order_relaxed);
+    flat.eventBusDrops = ctx.eventBusDropCount;
+    flat.parseOk = perfCounters.parseSuccesses.load(std::memory_order_relaxed);
+    flat.parseFail = perfCounters.parseFailures.load(std::memory_order_relaxed);
+    flat.disc = perfCounters.disconnects.load(std::memory_order_relaxed);
+    flat.reconn = perfCounters.reconnects.load(std::memory_order_relaxed);
+
+    flat.alertPersistStarts = perfCounters.alertPersistStarts.load(std::memory_order_relaxed);
+    flat.alertPersistExpires = perfCounters.alertPersistExpires.load(std::memory_order_relaxed);
+    flat.alertPersistClears = perfCounters.alertPersistClears.load(std::memory_order_relaxed);
+    flat.autoPushStarts = perfCounters.autoPushStarts.load(std::memory_order_relaxed);
+    flat.autoPushCompletes = perfCounters.autoPushCompletes.load(std::memory_order_relaxed);
+    flat.autoPushNoProfile = perfCounters.autoPushNoProfile.load(std::memory_order_relaxed);
+    flat.autoPushProfileLoadFail = perfCounters.autoPushProfileLoadFail.load(std::memory_order_relaxed);
+    flat.autoPushProfileWriteFail = perfCounters.autoPushProfileWriteFail.load(std::memory_order_relaxed);
+    flat.autoPushBusyRetries = perfCounters.autoPushBusyRetries.load(std::memory_order_relaxed);
+    flat.autoPushModeFail = perfCounters.autoPushModeFail.load(std::memory_order_relaxed);
+    flat.autoPushVolumeFail = perfCounters.autoPushVolumeFail.load(std::memory_order_relaxed);
+    flat.autoPushDisconnectAbort = perfCounters.autoPushDisconnectAbort.load(std::memory_order_relaxed);
+    flat.prioritySelectDisplayIndex = perfCounters.prioritySelectDisplayIndex.load(std::memory_order_relaxed);
+    flat.prioritySelectRowFlag = perfCounters.prioritySelectRowFlag.load(std::memory_order_relaxed);
+    flat.prioritySelectFirstUsable = perfCounters.prioritySelectFirstUsable.load(std::memory_order_relaxed);
+    flat.prioritySelectFirstEntry = perfCounters.prioritySelectFirstEntry.load(std::memory_order_relaxed);
+    flat.prioritySelectAmbiguousIndex = perfCounters.prioritySelectAmbiguousIndex.load(std::memory_order_relaxed);
+    flat.prioritySelectUnusableIndex = perfCounters.prioritySelectUnusableIndex.load(std::memory_order_relaxed);
+    flat.prioritySelectInvalidChosen = perfCounters.prioritySelectInvalidChosen.load(std::memory_order_relaxed);
+    flat.alertTablePublishes = perfCounters.alertTablePublishes.load(std::memory_order_relaxed);
+    flat.alertTablePublishes3Bogey = perfCounters.alertTablePublishes3Bogey.load(std::memory_order_relaxed);
+    flat.alertTableRowReplacements = perfCounters.alertTableRowReplacements.load(std::memory_order_relaxed);
+    flat.alertTableAssemblyTimeouts = perfCounters.alertTableAssemblyTimeouts.load(std::memory_order_relaxed);
+    flat.parserRowsBandNone = perfCounters.parserRowsBandNone.load(std::memory_order_relaxed);
+    flat.parserRowsKuRaw = perfCounters.parserRowsKuRaw.load(std::memory_order_relaxed);
+    flat.displayLiveInvalidPrioritySkips = perfCounters.displayLiveInvalidPrioritySkips.load(std::memory_order_relaxed);
+    flat.displayLiveFallbackToUsable = perfCounters.displayLiveFallbackToUsable.load(std::memory_order_relaxed);
+    flat.voiceAnnouncePriority = perfCounters.voiceAnnouncePriority.load(std::memory_order_relaxed);
+    flat.voiceAnnounceDirection = perfCounters.voiceAnnounceDirection.load(std::memory_order_relaxed);
+    flat.voiceAnnounceSecondary = perfCounters.voiceAnnounceSecondary.load(std::memory_order_relaxed);
+    flat.voiceAnnounceEscalation = perfCounters.voiceAnnounceEscalation.load(std::memory_order_relaxed);
+    flat.voiceDirectionThrottled = perfCounters.voiceDirectionThrottled.load(std::memory_order_relaxed);
+    flat.powerAutoPowerArmed = perfCounters.powerAutoPowerArmed.load(std::memory_order_relaxed);
+    flat.powerAutoPowerTimerStart = perfCounters.powerAutoPowerTimerStart.load(std::memory_order_relaxed);
+    flat.powerAutoPowerTimerCancel = perfCounters.powerAutoPowerTimerCancel.load(std::memory_order_relaxed);
+    flat.powerAutoPowerTimerExpire = perfCounters.powerAutoPowerTimerExpire.load(std::memory_order_relaxed);
+    flat.powerCriticalWarn = perfCounters.powerCriticalWarn.load(std::memory_order_relaxed);
+    flat.powerCriticalShutdown = perfCounters.powerCriticalShutdown.load(std::memory_order_relaxed);
+    flat.cmdBleBusy = perfCounters.cmdBleBusy.load(std::memory_order_relaxed);
+    flat.gpsEnabled = ctx.gpsStatus.enabled ? 1 : 0;
+    flat.gpsHasFix = ctx.gpsStatus.hasFix ? 1 : 0;
+    flat.gpsLocationValid = ctx.gpsStatus.locationValid ? 1 : 0;
+    flat.gpsSatellites = ctx.gpsStatus.satellites;
+    flat.gpsParserActive = ctx.gpsStatus.parserActive ? 1 : 0;
+    flat.gpsModuleDetected = ctx.gpsStatus.moduleDetected ? 1 : 0;
+    flat.gpsDetectionTimedOut = ctx.gpsStatus.detectionTimedOut ? 1 : 0;
+    flat.gpsSpeedMphX10 =
+        (ctx.gpsStatus.sampleValid && std::isfinite(ctx.gpsStatus.speedMph))
+            ? static_cast<int32_t>(std::lround(ctx.gpsStatus.speedMph * 10.0f))
             : -1;
-    snapshot.gpsHdopX10 =
-        std::isfinite(gpsStatus.hdop)
-            ? static_cast<uint16_t>(std::lround(((gpsStatus.hdop < 0.0f) ? 0.0f : gpsStatus.hdop) * 10.0f))
+    flat.gpsHdopX10 =
+        std::isfinite(ctx.gpsStatus.hdop)
+            ? static_cast<uint16_t>(std::lround(((ctx.gpsStatus.hdop < 0.0f) ? 0.0f : ctx.gpsStatus.hdop) * 10.0f))
             : UINT16_MAX;
-    snapshot.gpsSampleAgeMs = gpsStatus.sampleAgeMs;
-    snapshot.gpsObsDrops = gpsLogStats.drops;
-    snapshot.gpsObsSize = static_cast<uint32_t>(gpsLogStats.size);
-    snapshot.gpsObsPublished = gpsLogStats.published;
+    flat.gpsSampleAgeMs = ctx.gpsStatus.sampleAgeMs;
+    flat.gpsObsDrops = ctx.gpsLogStats.drops;
+    flat.gpsObsSize = static_cast<uint32_t>(ctx.gpsLogStats.size);
+    flat.gpsObsPublished = ctx.gpsLogStats.published;
 
-    snapshot.rxBytes = perfCounters.rxBytes.load(std::memory_order_relaxed);
-    snapshot.oversizeDrops = perfCounters.oversizeDrops.load(std::memory_order_relaxed);
-    snapshot.queueHighWater = perfCounters.queueHighWater.load(std::memory_order_relaxed);
-    snapshot.bleMutexSkip = perfCounters.bleMutexSkip.load(std::memory_order_relaxed);
-    snapshot.bleMutexTimeout = perfCounters.bleMutexTimeout.load(std::memory_order_relaxed);
-    snapshot.cmdPaceNotYet = perfCounters.cmdPaceNotYet.load(std::memory_order_relaxed);
-    snapshot.bleDiscTaskCreateFail = perfCounters.bleDiscTaskCreateFail.load(std::memory_order_relaxed);
-    snapshot.displayUpdates = perfCounters.displayUpdates.load(std::memory_order_relaxed);
-    snapshot.displaySkips = perfCounters.displaySkips.load(std::memory_order_relaxed);
-    snapshot.wifiConnectDeferred = perfCounters.wifiConnectDeferred.load(std::memory_order_relaxed);
-    snapshot.pushNowRetries = perfCounters.pushNowRetries.load(std::memory_order_relaxed);
-    snapshot.pushNowFailures = perfCounters.pushNowFailures.load(std::memory_order_relaxed);
-    snapshot.audioPlayCount = perfCounters.audioPlayCount.load(std::memory_order_relaxed);
-    snapshot.audioPlayBusy = perfCounters.audioPlayBusy.load(std::memory_order_relaxed);
-    snapshot.audioTaskFail = perfCounters.audioTaskFail.load(std::memory_order_relaxed);
-    snapshot.sigObsQueueDrops = perfCounters.sigObsQueueDrops.load(std::memory_order_relaxed);
-    snapshot.sigObsWriteFail = perfCounters.sigObsWriteFail.load(std::memory_order_relaxed);
-    snapshot.freeDmaMin = (perfExtended.minFreeDma == UINT32_MAX) ? freeDma : perfExtended.minFreeDma;
-    snapshot.largestDmaMin =
-        (perfExtended.minLargestDma == UINT32_MAX) ? largestDma : perfExtended.minLargestDma;
-    snapshot.bleState = bleClient.getBLEStateCode();
-    snapshot.subscribeStep = bleClient.getSubscribeStepCode();
-    snapshot.connectInProgress = bleClient.isConnectInProgress() ? 1 : 0;
-    snapshot.asyncConnectPending = bleClient.isAsyncConnectPending() ? 1 : 0;
-    snapshot.pendingDisconnectCleanup = bleClient.hasPendingDisconnectCleanup() ? 1 : 0;
-    snapshot.proxyAdvertising = bleClient.isProxyAdvertising() ? 1 : 0;
-    snapshot.proxyAdvertisingLastTransitionReason =
+    flat.rxBytes = perfCounters.rxBytes.load(std::memory_order_relaxed);
+    flat.oversizeDrops = perfCounters.oversizeDrops.load(std::memory_order_relaxed);
+    flat.queueHighWater = perfCounters.queueHighWater.load(std::memory_order_relaxed);
+    flat.bleMutexSkip = perfCounters.bleMutexSkip.load(std::memory_order_relaxed);
+    flat.bleMutexTimeout = perfCounters.bleMutexTimeout.load(std::memory_order_relaxed);
+    flat.cmdPaceNotYet = perfCounters.cmdPaceNotYet.load(std::memory_order_relaxed);
+    flat.bleDiscTaskCreateFail = perfCounters.bleDiscTaskCreateFail.load(std::memory_order_relaxed);
+    flat.displayUpdates = perfCounters.displayUpdates.load(std::memory_order_relaxed);
+    flat.displaySkips = perfCounters.displaySkips.load(std::memory_order_relaxed);
+    flat.wifiConnectDeferred = perfCounters.wifiConnectDeferred.load(std::memory_order_relaxed);
+    flat.pushNowRetries = perfCounters.pushNowRetries.load(std::memory_order_relaxed);
+    flat.pushNowFailures = perfCounters.pushNowFailures.load(std::memory_order_relaxed);
+    flat.audioPlayCount = perfCounters.audioPlayCount.load(std::memory_order_relaxed);
+    flat.audioPlayBusy = perfCounters.audioPlayBusy.load(std::memory_order_relaxed);
+    flat.audioTaskFail = perfCounters.audioTaskFail.load(std::memory_order_relaxed);
+    flat.sigObsQueueDrops = perfCounters.sigObsQueueDrops.load(std::memory_order_relaxed);
+    flat.sigObsWriteFail = perfCounters.sigObsWriteFail.load(std::memory_order_relaxed);
+    flat.freeDmaMin = (perfExtended.minFreeDma == UINT32_MAX) ? ctx.freeDma : perfExtended.minFreeDma;
+    flat.largestDmaMin =
+        (perfExtended.minLargestDma == UINT32_MAX) ? ctx.largestDma : perfExtended.minLargestDma;
+    flat.bleState = bleClient.getBLEStateCode();
+    flat.subscribeStep = bleClient.getSubscribeStepCode();
+    flat.connectInProgress = bleClient.isConnectInProgress() ? 1 : 0;
+    flat.asyncConnectPending = bleClient.isAsyncConnectPending() ? 1 : 0;
+    flat.pendingDisconnectCleanup = bleClient.hasPendingDisconnectCleanup() ? 1 : 0;
+    flat.proxyAdvertising = perfGetProxyAdvertisingState() != 0 ? 1 : 0;
+    flat.proxyAdvertisingLastTransitionReason =
         static_cast<uint8_t>(perfGetProxyAdvertisingLastTransitionReason());
-    snapshot.wifiPriorityMode = bleClient.isWifiPriority() ? 1 : 0;
+    flat.wifiPriorityMode = bleClient.isWifiPriority() ? 1 : 0;
 
-    // Keep the lock only around windowed maxima read+reset and shared
-    // timeline/fade counters that are mutated under this same mux.
     portENTER_CRITICAL(&sPerfSnapshotMux);
-    if (freeDmaCap < sDmaFreeCapMin) {
-        sDmaFreeCapMin = freeDmaCap;
-    }
-    if (largestDmaCap < sDmaLargestCapMin) {
-        sDmaLargestCapMin = largestDmaCap;
-    }
-    snapshot.dmaFreeMin = (sDmaFreeCapMin == UINT32_MAX) ? freeDmaCap : sDmaFreeCapMin;
-    snapshot.dmaLargestMin = (sDmaLargestCapMin == UINT32_MAX) ? largestDmaCap : sDmaLargestCapMin;
+    const uint32_t dmaFreeMin = [&]() {
+        if (mode == PerfRuntimeSnapshotMode::CaptureAndResetWindowPeaks &&
+            ctx.freeDmaCap < sDmaFreeCapMin) {
+            sDmaFreeCapMin = ctx.freeDmaCap;
+        }
+        return (sDmaFreeCapMin == UINT32_MAX) ? ctx.freeDmaCap : sDmaFreeCapMin;
+    }();
+    const uint32_t dmaLargestMin = [&]() {
+        if (mode == PerfRuntimeSnapshotMode::CaptureAndResetWindowPeaks &&
+            ctx.largestDmaCap < sDmaLargestCapMin) {
+            sDmaLargestCapMin = ctx.largestDmaCap;
+        }
+        return (sDmaLargestCapMin == UINT32_MAX) ? ctx.largestDmaCap : sDmaLargestCapMin;
+    }();
+    flat.dmaFreeMin = dmaFreeMin;
+    flat.dmaLargestMin = dmaLargestMin;
 
-    snapshot.loopMaxUs = perfExtended.loopMaxUs;
-    snapshot.bleDrainMaxUs = perfExtended.bleDrainMaxUs;
-    snapshot.dispMaxUs = perfExtended.displayRenderMaxUs;
-    snapshot.bleProcessMaxUs = perfExtended.bleProcessMaxUs;
-    snapshot.touchMaxUs = perfExtended.touchMaxUs;
-    snapshot.obdMaxUs = perfExtended.obdMaxUs;
-    snapshot.obdConnectCallMaxUs = perfExtended.obdConnectCallMaxUs;
-    snapshot.obdSecurityStartCallMaxUs = perfExtended.obdSecurityStartCallMaxUs;
-    snapshot.obdDiscoveryCallMaxUs = perfExtended.obdDiscoveryCallMaxUs;
-    snapshot.obdSubscribeCallMaxUs = perfExtended.obdSubscribeCallMaxUs;
-    snapshot.obdWriteCallMaxUs = perfExtended.obdWriteCallMaxUs;
-    snapshot.obdRssiCallMaxUs = perfExtended.obdRssiCallMaxUs;
-    snapshot.obdPollErrors = obdStatus.pollErrors;
-    snapshot.obdStaleCount = obdStatus.staleSpeedCount;
-    snapshot.obdVinDetected = obdStatus.vinDetected ? 1 : 0;
-    snapshot.obdVehicleFamily = static_cast<uint8_t>(obdStatus.vehicleFamily);
-    snapshot.obdEotValid = obdStatus.eotValid ? 1 : 0;
-    snapshot.obdEotC_x10 = obdStatus.eotValid ? obdStatus.eotC_x10 : 0;
-    snapshot.obdEotAgeMs = obdStatus.eotValid ? obdStatus.eotAgeMs : UINT32_MAX;
-    snapshot.obdEotProfileId = static_cast<uint8_t>(obdStatus.eotProfileId);
-    snapshot.obdEotProbeFailures = obdStatus.eotProbeFailures;
-    snapshot.gpsMaxUs = perfExtended.gpsMaxUs;
-    snapshot.lockoutMaxUs = perfExtended.lockoutMaxUs;
-    snapshot.wifiMaxUs = perfExtended.wifiMaxUs;
-    snapshot.wifiHandleClientMaxUs = perfExtended.wifiHandleClientMaxUs;
-    snapshot.wifiMaintenanceMaxUs = perfExtended.wifiMaintenanceMaxUs;
-    snapshot.wifiStatusCheckMaxUs = perfExtended.wifiStatusCheckMaxUs;
-    snapshot.wifiTimeoutCheckMaxUs = perfExtended.wifiTimeoutCheckMaxUs;
-    snapshot.wifiHeapGuardMaxUs = perfExtended.wifiHeapGuardMaxUs;
-    snapshot.wifiApStaPollMaxUs = perfExtended.wifiApStaPollMaxUs;
-    snapshot.fsMaxUs = perfExtended.fsMaxUs;
-    snapshot.sdMaxUs = perfExtended.sdMaxUs;
-    snapshot.flushMaxUs = perfExtended.flushMaxUs;
-    snapshot.bleConnectMaxUs = perfExtended.bleConnectMaxUs;
-    snapshot.bleDiscoveryMaxUs = perfExtended.bleDiscoveryMaxUs;
-    snapshot.bleSubscribeMaxUs = perfExtended.bleSubscribeMaxUs;
-    snapshot.dispPipeMaxUs = perfExtended.dispPipeMaxUs;
-    snapshot.lockoutSaveMaxUs = perfExtended.lockoutSaveMaxUs;
-    snapshot.learnerSaveMaxUs = perfExtended.learnerSaveMaxUs;
-    snapshot.timeSaveMaxUs = perfExtended.timeSaveMaxUs;
-    snapshot.perfReportMaxUs = perfExtended.perfReportMaxUs;
-    snapshot.minLargestBlock =
+    flat.loopMaxUs = perfExtended.loopMaxUs;
+    flat.bleDrainMaxUs = perfExtended.bleDrainMaxUs;
+    flat.dispMaxUs = perfExtended.displayRenderMaxUs;
+    flat.bleProcessMaxUs = perfExtended.bleProcessMaxUs;
+    flat.touchMaxUs = perfExtended.touchMaxUs;
+    flat.obdMaxUs = perfExtended.obdMaxUs;
+    flat.obdConnectCallMaxUs = perfExtended.obdConnectCallMaxUs;
+    flat.obdSecurityStartCallMaxUs = perfExtended.obdSecurityStartCallMaxUs;
+    flat.obdDiscoveryCallMaxUs = perfExtended.obdDiscoveryCallMaxUs;
+    flat.obdSubscribeCallMaxUs = perfExtended.obdSubscribeCallMaxUs;
+    flat.obdWriteCallMaxUs = perfExtended.obdWriteCallMaxUs;
+    flat.obdRssiCallMaxUs = perfExtended.obdRssiCallMaxUs;
+    flat.obdPollErrors = ctx.obdStatus.pollErrors;
+    flat.obdStaleCount = ctx.obdStatus.staleSpeedCount;
+    flat.obdVinDetected = ctx.obdStatus.vinDetected ? 1 : 0;
+    flat.obdVehicleFamily = static_cast<uint8_t>(ctx.obdStatus.vehicleFamily);
+    flat.obdEotValid = ctx.obdStatus.eotValid ? 1 : 0;
+    flat.obdEotC_x10 = ctx.obdStatus.eotValid ? ctx.obdStatus.eotC_x10 : 0;
+    flat.obdEotAgeMs = ctx.obdStatus.eotValid ? ctx.obdStatus.eotAgeMs : UINT32_MAX;
+    flat.obdEotProfileId = static_cast<uint8_t>(ctx.obdStatus.eotProfileId);
+    flat.obdEotProbeFailures = ctx.obdStatus.eotProbeFailures;
+    flat.gpsMaxUs = perfExtended.gpsMaxUs;
+    flat.lockoutMaxUs = perfExtended.lockoutMaxUs;
+    flat.wifiMaxUs = perfExtended.wifiMaxUs;
+    flat.wifiHandleClientMaxUs = perfExtended.wifiHandleClientMaxUs;
+    flat.wifiMaintenanceMaxUs = perfExtended.wifiMaintenanceMaxUs;
+    flat.wifiStatusCheckMaxUs = perfExtended.wifiStatusCheckMaxUs;
+    flat.wifiTimeoutCheckMaxUs = perfExtended.wifiTimeoutCheckMaxUs;
+    flat.wifiHeapGuardMaxUs = perfExtended.wifiHeapGuardMaxUs;
+    flat.wifiApStaPollMaxUs = perfExtended.wifiApStaPollMaxUs;
+    flat.fsMaxUs = perfExtended.fsMaxUs;
+    flat.sdMaxUs = perfExtended.sdMaxUs;
+    flat.flushMaxUs = perfExtended.flushMaxUs;
+    flat.bleConnectMaxUs = perfExtended.bleConnectMaxUs;
+    flat.bleDiscoveryMaxUs = perfExtended.bleDiscoveryMaxUs;
+    flat.bleSubscribeMaxUs = perfExtended.bleSubscribeMaxUs;
+    flat.dispPipeMaxUs = perfExtended.dispPipeMaxUs;
+    flat.lockoutSaveMaxUs = perfExtended.lockoutSaveMaxUs;
+    flat.learnerSaveMaxUs = perfExtended.learnerSaveMaxUs;
+    flat.timeSaveMaxUs = perfExtended.timeSaveMaxUs;
+    flat.perfReportMaxUs = perfExtended.perfReportMaxUs;
+    flat.minLargestBlock =
         (perfExtended.minLargestBlock == UINT32_MAX) ? 0 : perfExtended.minLargestBlock;
 
-    snapshot.uiToScanCount = perfExtended.uiToScanCount;
-    snapshot.uiToRestCount = perfExtended.uiToRestCount;
-    snapshot.uiScanToRestCount = perfExtended.uiScanToRestCount;
-    snapshot.uiFastScanExitCount = perfExtended.uiFastScanExitCount;
-    snapshot.uiLastScanDwellMs = perfExtended.uiLastScanDwellMs;
-    snapshot.uiMinScanDwellMs =
+    flat.uiToScanCount = perfExtended.uiToScanCount;
+    flat.uiToRestCount = perfExtended.uiToRestCount;
+    flat.uiScanToRestCount = perfExtended.uiScanToRestCount;
+    flat.uiFastScanExitCount = perfExtended.uiFastScanExitCount;
+    flat.uiLastScanDwellMs = perfExtended.uiLastScanDwellMs;
+    flat.uiMinScanDwellMs =
         (perfExtended.uiMinScanDwellMs == UINT32_MAX) ? 0 : perfExtended.uiMinScanDwellMs;
-    snapshot.fadeDownCount = perfExtended.fadeDownCount;
-    snapshot.fadeRestoreCount = perfExtended.fadeRestoreCount;
-    snapshot.fadeSkipEqualCount = perfExtended.fadeSkipEqualCount;
-    snapshot.fadeSkipNoBaselineCount = perfExtended.fadeSkipNoBaselineCount;
-    snapshot.fadeSkipNotFadedCount = perfExtended.fadeSkipNotFadedCount;
-    snapshot.fadeLastDecision = perfExtended.fadeLastDecision;
-    snapshot.fadeLastCurrentVol = perfExtended.fadeLastCurrentVol;
-    snapshot.fadeLastOriginalVol = perfExtended.fadeLastOriginalVol;
-    snapshot.fadeLastDecisionMs = perfExtended.fadeLastDecisionMs;
-    snapshot.bleScanStartMs = perfExtended.bleScanStartMs;
-    snapshot.bleTargetFoundMs = perfExtended.bleTargetFoundMs;
-    snapshot.bleConnectStartMs = perfExtended.bleConnectStartMs;
-    snapshot.bleConnectedMs = perfExtended.bleConnectedMs;
-    snapshot.bleFirstRxMs = perfExtended.bleFirstRxMs;
-    snapshot.bleFollowupRequestAlertMaxUs = perfExtended.bleFollowupRequestAlertMaxUs;
-    snapshot.bleFollowupRequestVersionMaxUs = perfExtended.bleFollowupRequestVersionMaxUs;
-    snapshot.bleConnectStableCallbackMaxUs = perfExtended.bleConnectStableCallbackMaxUs;
-    snapshot.bleProxyStartMaxUs = perfExtended.bleProxyStartMaxUs;
-    snapshot.displayVoiceMaxUs = perfExtended.displayVoiceMaxUs;
-    snapshot.displayGapRecoverMaxUs = perfExtended.displayGapRecoverMaxUs;
-    snapshot.displayFullRenderCount = perfExtended.displayFullRenderCount;
-    snapshot.displayIncrementalRenderCount = perfExtended.displayIncrementalRenderCount;
-    snapshot.displayCardsOnlyRenderCount = perfExtended.displayCardsOnlyRenderCount;
-    snapshot.displayRestingFullRenderCount = perfExtended.displayRestingFullRenderCount;
-    snapshot.displayRestingIncrementalRenderCount =
-        perfExtended.displayRestingIncrementalRenderCount;
-    snapshot.displayPersistedRenderCount = perfExtended.displayPersistedRenderCount;
-    snapshot.displayPreviewRenderCount = perfExtended.displayPreviewRenderCount;
-    snapshot.displayRestoreRenderCount = perfExtended.displayRestoreRenderCount;
-    snapshot.displayLiveScenarioRenderCount = perfExtended.displayLiveScenarioRenderCount;
-    snapshot.displayRestingScenarioRenderCount = perfExtended.displayRestingScenarioRenderCount;
-    snapshot.displayPersistedScenarioRenderCount =
-        perfExtended.displayPersistedScenarioRenderCount;
-    snapshot.displayPreviewScenarioRenderCount = perfExtended.displayPreviewScenarioRenderCount;
-    snapshot.displayRestoreScenarioRenderCount = perfExtended.displayRestoreScenarioRenderCount;
-    snapshot.displayRedrawReasonFirstRunCount = perfExtended.displayRedrawReasonFirstRunCount;
-    snapshot.displayRedrawReasonEnterLiveCount = perfExtended.displayRedrawReasonEnterLiveCount;
-    snapshot.displayRedrawReasonLeaveLiveCount = perfExtended.displayRedrawReasonLeaveLiveCount;
-    snapshot.displayRedrawReasonLeavePersistedCount =
-        perfExtended.displayRedrawReasonLeavePersistedCount;
-    snapshot.displayRedrawReasonForceRedrawCount =
-        perfExtended.displayRedrawReasonForceRedrawCount;
-    snapshot.displayRedrawReasonFrequencyChangeCount =
-        perfExtended.displayRedrawReasonFrequencyChangeCount;
-    snapshot.displayRedrawReasonBandSetChangeCount =
-        perfExtended.displayRedrawReasonBandSetChangeCount;
-    snapshot.displayRedrawReasonArrowChangeCount =
-        perfExtended.displayRedrawReasonArrowChangeCount;
-    snapshot.displayRedrawReasonSignalBarChangeCount =
-        perfExtended.displayRedrawReasonSignalBarChangeCount;
-    snapshot.displayRedrawReasonVolumeChangeCount =
-        perfExtended.displayRedrawReasonVolumeChangeCount;
-    snapshot.displayRedrawReasonBogeyCounterChangeCount =
-        perfExtended.displayRedrawReasonBogeyCounterChangeCount;
-    snapshot.displayRedrawReasonRssiRefreshCount =
-        perfExtended.displayRedrawReasonRssiRefreshCount;
-    snapshot.displayRedrawReasonFlashTickCount =
-        perfExtended.displayRedrawReasonFlashTickCount;
-    snapshot.displayFullFlushCount = perfExtended.displayFullFlushCount;
-    snapshot.displayPartialFlushCount = perfExtended.displayPartialFlushCount;
-    snapshot.displayPartialFlushAreaPeakPx = perfExtended.displayPartialFlushAreaPeakPx;
-    snapshot.displayPartialFlushAreaTotalPx = perfExtended.displayPartialFlushAreaTotalPx;
-    snapshot.displayFlushEquivalentAreaTotalPx =
-        perfExtended.displayFlushEquivalentAreaTotalPx;
-    snapshot.displayFlushMaxAreaPx = perfExtended.displayFlushMaxAreaPx;
-    snapshot.displayBaseFrameMaxUs = perfExtended.displayBaseFrameMaxUs;
-    snapshot.displayStatusStripMaxUs = perfExtended.displayStatusStripMaxUs;
-    snapshot.displayFrequencyMaxUs = perfExtended.displayFrequencyMaxUs;
-    snapshot.displayBandsBarsMaxUs = perfExtended.displayBandsBarsMaxUs;
-    snapshot.displayArrowsIconsMaxUs = perfExtended.displayArrowsIconsMaxUs;
-    snapshot.displayCardsMaxUs = perfExtended.displayCardsMaxUs;
-    snapshot.displayFlushSubphaseMaxUs = perfExtended.displayFlushSubphaseMaxUs;
-    snapshot.displayLiveRenderMaxUs = perfExtended.displayLiveRenderMaxUs;
-    snapshot.displayRestingRenderMaxUs = perfExtended.displayRestingRenderMaxUs;
-    snapshot.displayPersistedRenderMaxUs = perfExtended.displayPersistedRenderMaxUs;
-    snapshot.displayPreviewRenderMaxUs = perfExtended.displayPreviewRenderMaxUs;
-    snapshot.displayRestoreRenderMaxUs = perfExtended.displayRestoreRenderMaxUs;
-    snapshot.displayPreviewFirstRenderMaxUs = perfExtended.displayPreviewFirstRenderMaxUs;
-    snapshot.displayPreviewSteadyRenderMaxUs =
-        perfExtended.displayPreviewSteadyRenderMaxUs;
+    flat.fadeDownCount = perfExtended.fadeDownCount;
+    flat.fadeRestoreCount = perfExtended.fadeRestoreCount;
+    flat.fadeSkipEqualCount = perfExtended.fadeSkipEqualCount;
+    flat.fadeSkipNoBaselineCount = perfExtended.fadeSkipNoBaselineCount;
+    flat.fadeSkipNotFadedCount = perfExtended.fadeSkipNotFadedCount;
+    flat.fadeLastDecision = perfExtended.fadeLastDecision;
+    flat.fadeLastCurrentVol = perfExtended.fadeLastCurrentVol;
+    flat.fadeLastOriginalVol = perfExtended.fadeLastOriginalVol;
+    flat.fadeLastDecisionMs = perfExtended.fadeLastDecisionMs;
+    flat.bleScanStartMs = perfExtended.bleScanStartMs;
+    flat.bleTargetFoundMs = perfExtended.bleTargetFoundMs;
+    flat.bleConnectStartMs = perfExtended.bleConnectStartMs;
+    flat.bleConnectedMs = perfExtended.bleConnectedMs;
+    flat.bleFirstRxMs = perfExtended.bleFirstRxMs;
+    flat.bleFollowupRequestAlertMaxUs = perfExtended.bleFollowupRequestAlertMaxUs;
+    flat.bleFollowupRequestVersionMaxUs = perfExtended.bleFollowupRequestVersionMaxUs;
+    flat.bleConnectStableCallbackMaxUs = perfExtended.bleConnectStableCallbackMaxUs;
+    flat.bleProxyStartMaxUs = perfExtended.bleProxyStartMaxUs;
+    flat.displayVoiceMaxUs = perfExtended.displayVoiceMaxUs;
+    flat.displayGapRecoverMaxUs = perfExtended.displayGapRecoverMaxUs;
+    flat.displayFullRenderCount = perfExtended.displayFullRenderCount;
+    flat.displayIncrementalRenderCount = perfExtended.displayIncrementalRenderCount;
+    flat.displayCardsOnlyRenderCount = perfExtended.displayCardsOnlyRenderCount;
+    flat.displayRestingFullRenderCount = perfExtended.displayRestingFullRenderCount;
+    flat.displayRestingIncrementalRenderCount = perfExtended.displayRestingIncrementalRenderCount;
+    flat.displayPersistedRenderCount = perfExtended.displayPersistedRenderCount;
+    flat.displayPreviewRenderCount = perfExtended.displayPreviewRenderCount;
+    flat.displayRestoreRenderCount = perfExtended.displayRestoreRenderCount;
+    flat.displayLiveScenarioRenderCount = perfExtended.displayLiveScenarioRenderCount;
+    flat.displayRestingScenarioRenderCount = perfExtended.displayRestingScenarioRenderCount;
+    flat.displayPersistedScenarioRenderCount = perfExtended.displayPersistedScenarioRenderCount;
+    flat.displayPreviewScenarioRenderCount = perfExtended.displayPreviewScenarioRenderCount;
+    flat.displayRestoreScenarioRenderCount = perfExtended.displayRestoreScenarioRenderCount;
+    flat.displayRedrawReasonFirstRunCount = perfExtended.displayRedrawReasonFirstRunCount;
+    flat.displayRedrawReasonEnterLiveCount = perfExtended.displayRedrawReasonEnterLiveCount;
+    flat.displayRedrawReasonLeaveLiveCount = perfExtended.displayRedrawReasonLeaveLiveCount;
+    flat.displayRedrawReasonLeavePersistedCount = perfExtended.displayRedrawReasonLeavePersistedCount;
+    flat.displayRedrawReasonForceRedrawCount = perfExtended.displayRedrawReasonForceRedrawCount;
+    flat.displayRedrawReasonFrequencyChangeCount = perfExtended.displayRedrawReasonFrequencyChangeCount;
+    flat.displayRedrawReasonBandSetChangeCount = perfExtended.displayRedrawReasonBandSetChangeCount;
+    flat.displayRedrawReasonArrowChangeCount = perfExtended.displayRedrawReasonArrowChangeCount;
+    flat.displayRedrawReasonSignalBarChangeCount = perfExtended.displayRedrawReasonSignalBarChangeCount;
+    flat.displayRedrawReasonVolumeChangeCount = perfExtended.displayRedrawReasonVolumeChangeCount;
+    flat.displayRedrawReasonBogeyCounterChangeCount = perfExtended.displayRedrawReasonBogeyCounterChangeCount;
+    flat.displayRedrawReasonRssiRefreshCount = perfExtended.displayRedrawReasonRssiRefreshCount;
+    flat.displayRedrawReasonFlashTickCount = perfExtended.displayRedrawReasonFlashTickCount;
+    flat.displayFullFlushCount = perfExtended.displayFullFlushCount;
+    flat.displayPartialFlushCount = perfExtended.displayPartialFlushCount;
+    flat.displayPartialFlushAreaPeakPx = perfExtended.displayPartialFlushAreaPeakPx;
+    flat.displayPartialFlushAreaTotalPx = perfExtended.displayPartialFlushAreaTotalPx;
+    flat.displayFlushEquivalentAreaTotalPx = perfExtended.displayFlushEquivalentAreaTotalPx;
+    flat.displayFlushMaxAreaPx = perfExtended.displayFlushMaxAreaPx;
+    flat.displayBaseFrameMaxUs = perfExtended.displayBaseFrameMaxUs;
+    flat.displayStatusStripMaxUs = perfExtended.displayStatusStripMaxUs;
+    flat.displayFrequencyMaxUs = perfExtended.displayFrequencyMaxUs;
+    flat.displayBandsBarsMaxUs = perfExtended.displayBandsBarsMaxUs;
+    flat.displayArrowsIconsMaxUs = perfExtended.displayArrowsIconsMaxUs;
+    flat.displayCardsMaxUs = perfExtended.displayCardsMaxUs;
+    flat.displayFlushSubphaseMaxUs = perfExtended.displayFlushSubphaseMaxUs;
+    flat.displayLiveRenderMaxUs = perfExtended.displayLiveRenderMaxUs;
+    flat.displayRestingRenderMaxUs = perfExtended.displayRestingRenderMaxUs;
+    flat.displayPersistedRenderMaxUs = perfExtended.displayPersistedRenderMaxUs;
+    flat.displayPreviewRenderMaxUs = perfExtended.displayPreviewRenderMaxUs;
+    flat.displayRestoreRenderMaxUs = perfExtended.displayRestoreRenderMaxUs;
+    flat.displayPreviewFirstRenderMaxUs = perfExtended.displayPreviewFirstRenderMaxUs;
+    flat.displayPreviewSteadyRenderMaxUs = perfExtended.displayPreviewSteadyRenderMaxUs;
 
-    // Keep previous window maxima available to low-cost API samples. This helps
-    // explain transient strict peaks even when current-window values look calm.
-    sPrevWindowLoopMaxUs.store(snapshot.loopMaxUs, std::memory_order_relaxed);
-    sPrevWindowWifiMaxUs.store(snapshot.wifiMaxUs, std::memory_order_relaxed);
-    sPrevWindowBleProcessMaxUs.store(snapshot.bleProcessMaxUs, std::memory_order_relaxed);
-    sPrevWindowDispPipeMaxUs.store(snapshot.dispPipeMaxUs, std::memory_order_relaxed);
+    if (mode == PerfRuntimeSnapshotMode::CaptureAndResetWindowPeaks) {
+        sPrevWindowLoopMaxUs.store(flat.loopMaxUs, std::memory_order_relaxed);
+        sPrevWindowWifiMaxUs.store(flat.wifiMaxUs, std::memory_order_relaxed);
+        sPrevWindowBleProcessMaxUs.store(flat.bleProcessMaxUs, std::memory_order_relaxed);
+        sPrevWindowDispPipeMaxUs.store(flat.dispPipeMaxUs, std::memory_order_relaxed);
 
-    // Windowed maxima for the CSV logger.
-    perfExtended.loopMaxUs = 0;
-    perfExtended.bleDrainMaxUs = 0;
-    perfExtended.displayRenderMaxUs = 0;
-    perfExtended.dispPipeMaxUs = 0;
-    perfExtended.bleProcessMaxUs = 0;
-    perfExtended.bleFollowupRequestAlertMaxUs = 0;
-    perfExtended.bleFollowupRequestVersionMaxUs = 0;
-    perfExtended.bleConnectStableCallbackMaxUs = 0;
-    perfExtended.bleProxyStartMaxUs = 0;
-    perfExtended.displayVoiceMaxUs = 0;
-    perfExtended.displayGapRecoverMaxUs = 0;
-    perfExtended.displayPartialFlushAreaPeakPx = 0;
-    perfExtended.displayFlushMaxAreaPx = 0;
-    perfExtended.displayBaseFrameMaxUs = 0;
-    perfExtended.displayStatusStripMaxUs = 0;
-    perfExtended.displayFrequencyMaxUs = 0;
-    perfExtended.displayBandsBarsMaxUs = 0;
-    perfExtended.displayArrowsIconsMaxUs = 0;
-    perfExtended.displayCardsMaxUs = 0;
-    perfExtended.displayFlushSubphaseMaxUs = 0;
-    perfExtended.displayLiveRenderMaxUs = 0;
-    perfExtended.displayRestingRenderMaxUs = 0;
-    perfExtended.displayPersistedRenderMaxUs = 0;
-    perfExtended.displayPreviewRenderMaxUs = 0;
-    perfExtended.displayRestoreRenderMaxUs = 0;
-    perfExtended.displayPreviewFirstRenderMaxUs = 0;
-    perfExtended.displayPreviewSteadyRenderMaxUs = 0;
-    perfExtended.touchMaxUs = 0;
-    perfExtended.obdMaxUs = 0;
-    perfExtended.obdConnectCallMaxUs = 0;
-    perfExtended.obdSecurityStartCallMaxUs = 0;
-    perfExtended.obdDiscoveryCallMaxUs = 0;
-    perfExtended.obdSubscribeCallMaxUs = 0;
-    perfExtended.obdWriteCallMaxUs = 0;
-    perfExtended.obdRssiCallMaxUs = 0;
-    perfExtended.gpsMaxUs = 0;
-    perfExtended.lockoutMaxUs = 0;
-    perfExtended.wifiMaxUs = 0;
-    perfExtended.wifiHandleClientMaxUs = 0;
-    perfExtended.wifiMaintenanceMaxUs = 0;
-    perfExtended.wifiStatusCheckMaxUs = 0;
-    perfExtended.wifiTimeoutCheckMaxUs = 0;
-    perfExtended.wifiHeapGuardMaxUs = 0;
-    perfExtended.wifiApStaPollMaxUs = 0;
-    perfExtended.fsMaxUs = 0;
-    perfExtended.sdMaxUs = 0;
-    perfExtended.flushMaxUs = 0;
-    perfExtended.bleConnectMaxUs = 0;
-    perfExtended.bleDiscoveryMaxUs = 0;
-    perfExtended.bleSubscribeMaxUs = 0;
-    perfExtended.lockoutSaveMaxUs = 0;
-    perfExtended.learnerSaveMaxUs = 0;
-    perfExtended.timeSaveMaxUs = 0;
-    perfExtended.perfReportMaxUs = 0;
-    perfExtended.minLargestBlock = UINT32_MAX;
+        perfExtended.loopMaxUs = 0;
+        perfExtended.bleDrainMaxUs = 0;
+        perfExtended.displayRenderMaxUs = 0;
+        perfExtended.dispPipeMaxUs = 0;
+        perfExtended.bleProcessMaxUs = 0;
+        perfExtended.bleFollowupRequestAlertMaxUs = 0;
+        perfExtended.bleFollowupRequestVersionMaxUs = 0;
+        perfExtended.bleConnectStableCallbackMaxUs = 0;
+        perfExtended.bleProxyStartMaxUs = 0;
+        perfExtended.displayVoiceMaxUs = 0;
+        perfExtended.displayGapRecoverMaxUs = 0;
+        perfExtended.displayPartialFlushAreaPeakPx = 0;
+        perfExtended.displayFlushMaxAreaPx = 0;
+        perfExtended.displayBaseFrameMaxUs = 0;
+        perfExtended.displayStatusStripMaxUs = 0;
+        perfExtended.displayFrequencyMaxUs = 0;
+        perfExtended.displayBandsBarsMaxUs = 0;
+        perfExtended.displayArrowsIconsMaxUs = 0;
+        perfExtended.displayCardsMaxUs = 0;
+        perfExtended.displayFlushSubphaseMaxUs = 0;
+        perfExtended.displayLiveRenderMaxUs = 0;
+        perfExtended.displayRestingRenderMaxUs = 0;
+        perfExtended.displayPersistedRenderMaxUs = 0;
+        perfExtended.displayPreviewRenderMaxUs = 0;
+        perfExtended.displayRestoreRenderMaxUs = 0;
+        perfExtended.displayPreviewFirstRenderMaxUs = 0;
+        perfExtended.displayPreviewSteadyRenderMaxUs = 0;
+        perfExtended.touchMaxUs = 0;
+        perfExtended.obdMaxUs = 0;
+        perfExtended.obdConnectCallMaxUs = 0;
+        perfExtended.obdSecurityStartCallMaxUs = 0;
+        perfExtended.obdDiscoveryCallMaxUs = 0;
+        perfExtended.obdSubscribeCallMaxUs = 0;
+        perfExtended.obdWriteCallMaxUs = 0;
+        perfExtended.obdRssiCallMaxUs = 0;
+        perfExtended.gpsMaxUs = 0;
+        perfExtended.lockoutMaxUs = 0;
+        perfExtended.wifiMaxUs = 0;
+        perfExtended.wifiHandleClientMaxUs = 0;
+        perfExtended.wifiMaintenanceMaxUs = 0;
+        perfExtended.wifiStatusCheckMaxUs = 0;
+        perfExtended.wifiTimeoutCheckMaxUs = 0;
+        perfExtended.wifiHeapGuardMaxUs = 0;
+        perfExtended.wifiApStaPollMaxUs = 0;
+        perfExtended.fsMaxUs = 0;
+        perfExtended.sdMaxUs = 0;
+        perfExtended.flushMaxUs = 0;
+        perfExtended.bleConnectMaxUs = 0;
+        perfExtended.bleDiscoveryMaxUs = 0;
+        perfExtended.bleSubscribeMaxUs = 0;
+        perfExtended.lockoutSaveMaxUs = 0;
+        perfExtended.learnerSaveMaxUs = 0;
+        perfExtended.timeSaveMaxUs = 0;
+        perfExtended.perfReportMaxUs = 0;
+        perfExtended.minLargestBlock = UINT32_MAX;
+    }
     portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
+
+static void populateRuntimeSnapshot(PerfRuntimeMetricsSnapshot& snapshot,
+                                    const RuntimeSnapshotCaptureContext& ctx,
+                                    PerfRuntimeSnapshotMode mode) {
+    snapshot = {};
+    populateFlatSnapshot(snapshot.flat, ctx, mode);
+
+    snapshot.phoneCmdDrops = ctx.phoneCmdDropMetrics;
+    snapshot.uptimeMs = ctx.nowMs;
+    snapshot.connectionDispatchRuns = perfCounters.connectionDispatchRuns.load(std::memory_order_relaxed);
+    snapshot.connectionCadenceDisplayDue =
+        perfCounters.connectionCadenceDisplayDue.load(std::memory_order_relaxed);
+    snapshot.connectionCadenceHoldScanDwell =
+        perfCounters.connectionCadenceHoldScanDwell.load(std::memory_order_relaxed);
+    snapshot.connectionStateProcessRuns =
+        perfCounters.connectionStateProcessRuns.load(std::memory_order_relaxed);
+    snapshot.connectionStateWatchdogForces =
+        perfCounters.connectionStateWatchdogForces.load(std::memory_order_relaxed);
+    snapshot.connectionStateProcessGapMaxMs =
+        perfCounters.connectionStateProcessGapMaxMs.load(std::memory_order_relaxed);
+    snapshot.bleScanStateEntries = perfCounters.bleScanStateEntries.load(std::memory_order_relaxed);
+    snapshot.bleScanStateExits = perfCounters.bleScanStateExits.load(std::memory_order_relaxed);
+    snapshot.bleScanTargetFound = perfCounters.bleScanTargetFound.load(std::memory_order_relaxed);
+    snapshot.bleScanNoTargetExits =
+        perfCounters.bleScanNoTargetExits.load(std::memory_order_relaxed);
+    snapshot.bleScanDwellMaxMs = perfCounters.bleScanDwellMaxMs.load(std::memory_order_relaxed);
+    snapshot.uuid128FallbackHits = perfCounters.uuid128FallbackHits.load(std::memory_order_relaxed);
+    snapshot.wifiStopGraceful = perfCounters.wifiStopGraceful.load(std::memory_order_relaxed);
+    snapshot.wifiStopImmediate = perfCounters.wifiStopImmediate.load(std::memory_order_relaxed);
+    snapshot.wifiStopManual = perfCounters.wifiStopManual.load(std::memory_order_relaxed);
+    snapshot.wifiStopTimeout = perfCounters.wifiStopTimeout.load(std::memory_order_relaxed);
+    snapshot.wifiStopNoClients = perfCounters.wifiStopNoClients.load(std::memory_order_relaxed);
+    snapshot.wifiStopNoClientsAuto =
+        perfCounters.wifiStopNoClientsAuto.load(std::memory_order_relaxed);
+    snapshot.wifiStopLowDma = perfCounters.wifiStopLowDma.load(std::memory_order_relaxed);
+    snapshot.wifiStopPoweroff = perfCounters.wifiStopPoweroff.load(std::memory_order_relaxed);
+    snapshot.wifiStopOther = perfCounters.wifiStopOther.load(std::memory_order_relaxed);
+    snapshot.wifiApDropLowDma = perfCounters.wifiApDropLowDma.load(std::memory_order_relaxed);
+    snapshot.wifiApDropIdleSta = perfCounters.wifiApDropIdleSta.load(std::memory_order_relaxed);
+    snapshot.wifiApUpTransitions = perfCounters.wifiApUpTransitions.load(std::memory_order_relaxed);
+    snapshot.wifiApDownTransitions =
+        perfCounters.wifiApDownTransitions.load(std::memory_order_relaxed);
+    snapshot.wifiProcessMaxUs = perfCounters.wifiProcessMaxUs.load(std::memory_order_relaxed);
+    const BLEState bleState = bleClient.getBLEState();
+    snapshot.bleState = bleStateToString(bleState);
+    snapshot.bleStateCode = snapshot.flat.bleState;
+    snapshot.subscribeStep = bleClient.getSubscribeStepName();
+    snapshot.subscribeStepCode = snapshot.flat.subscribeStep;
+    snapshot.connectInProgress = snapshot.flat.connectInProgress != 0;
+    snapshot.asyncConnectPending = snapshot.flat.asyncConnectPending != 0;
+    snapshot.pendingDisconnectCleanup = snapshot.flat.pendingDisconnectCleanup != 0;
+    snapshot.proxyAdvertising = snapshot.flat.proxyAdvertising != 0;
+    snapshot.proxyAdvertisingOnTransitions = perfCounters.proxyAdvertisingOnTransitions.load(std::memory_order_relaxed);
+    snapshot.proxyAdvertisingOffTransitions = perfCounters.proxyAdvertisingOffTransitions.load(std::memory_order_relaxed);
+    snapshot.proxyAdvertisingLastTransitionMs = perfGetProxyAdvertisingLastTransitionMs();
+    snapshot.proxyAdvertisingLastTransitionReasonCode = perfGetProxyAdvertisingLastTransitionReason();
+    snapshot.proxyAdvertisingLastTransitionReason =
+        perfProxyAdvertisingTransitionReasonName(snapshot.proxyAdvertisingLastTransitionReasonCode);
+    snapshot.wifiPriorityMode = snapshot.flat.wifiPriorityMode != 0;
+    snapshot.loopMaxPrevWindowUs = perfGetPrevWindowLoopMaxUs();
+    snapshot.wifiMaxPrevWindowUs = perfGetPrevWindowWifiMaxUs();
+    snapshot.bleProcessMaxPrevWindowUs = perfGetPrevWindowBleProcessMaxUs();
+    snapshot.dispPipeMaxPrevWindowUs = perfGetPrevWindowDispPipeMaxUs();
+    snapshot.wifiApActive = perfGetWifiApState();
+    snapshot.wifiApLastTransitionMs = perfGetWifiApLastTransitionMs();
+    snapshot.wifiApLastTransitionReasonCode = perfGetWifiApLastTransitionReason();
+    snapshot.wifiApLastTransitionReason =
+        perfWifiApTransitionReasonName(snapshot.wifiApLastTransitionReasonCode);
+    snapshot.perfSdLockFail = perfCounters.perfSdLockFail.load(std::memory_order_relaxed);
+    snapshot.perfSdDirFail = perfCounters.perfSdDirFail.load(std::memory_order_relaxed);
+    snapshot.perfSdOpenFail = perfCounters.perfSdOpenFail.load(std::memory_order_relaxed);
+    snapshot.perfSdHeaderFail = perfCounters.perfSdHeaderFail.load(std::memory_order_relaxed);
+    snapshot.perfSdMarkerFail = perfCounters.perfSdMarkerFail.load(std::memory_order_relaxed);
+    snapshot.perfSdWriteFail = perfCounters.perfSdWriteFail.load(std::memory_order_relaxed);
+#if PERF_METRICS
+    snapshot.monitoringEnabled = static_cast<bool>(PERF_MONITORING);
+#if PERF_MONITORING
+    const uint32_t minUsVal = perfLatency.minUs.load(std::memory_order_relaxed);
+    snapshot.latencyMinUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
+    snapshot.latencyAvgUs = perfLatency.avgUs();
+    snapshot.latencyMaxUs = perfLatency.maxUs.load(std::memory_order_relaxed);
+    snapshot.latencySamples = perfLatency.sampleCount.load(std::memory_order_relaxed);
+    snapshot.debugEnabled = perfDebugEnabled;
+#endif
+#else
+    snapshot.metricsEnabled = false;
+#endif
+
+    snapshot.wifiAutoStart.gate = wifiAutoStartGateName(ctx.wifiAutoStart.gate);
+    snapshot.wifiAutoStart.gateCode = static_cast<uint8_t>(ctx.wifiAutoStart.gate);
+    snapshot.wifiAutoStart.enableWifi = ctx.wifiAutoStart.enableWifi;
+    snapshot.wifiAutoStart.enableWifiAtBoot = ctx.wifiAutoStart.enableWifiAtBoot;
+    snapshot.wifiAutoStart.bleConnected = ctx.wifiAutoStart.bleConnected;
+    snapshot.wifiAutoStart.v1ConnectedAtMs = ctx.wifiAutoStart.v1ConnectedAtMs;
+    snapshot.wifiAutoStart.msSinceV1Connect = ctx.wifiAutoStart.msSinceV1Connect;
+    snapshot.wifiAutoStart.settleMs = ctx.wifiAutoStart.settleMs;
+    snapshot.wifiAutoStart.bootTimeoutMs = ctx.wifiAutoStart.bootTimeoutMs;
+    snapshot.wifiAutoStart.canStartDma = ctx.wifiAutoStart.canStartDma;
+    snapshot.wifiAutoStart.wifiAutoStartDone = ctx.wifiAutoStart.wifiAutoStartDone;
+    snapshot.wifiAutoStart.bleSettled = ctx.wifiAutoStart.bleSettled;
+    snapshot.wifiAutoStart.bootTimeoutReached = ctx.wifiAutoStart.bootTimeoutReached;
+    snapshot.wifiAutoStart.shouldAutoStart = ctx.wifiAutoStart.shouldAutoStart;
+    snapshot.wifiAutoStart.startTriggered = ctx.wifiAutoStart.startTriggered;
+    snapshot.wifiAutoStart.startSucceeded = ctx.wifiAutoStart.startSucceeded;
+
+    snapshot.settingsPersistence.backupRevision = ctx.backupRevision;
+    snapshot.settingsPersistence.deferredBackupPending = ctx.deferredBackupPending;
+    snapshot.settingsPersistence.deferredBackupRetryScheduled = ctx.deferredBackupRetryScheduled;
+    snapshot.settingsPersistence.deferredBackupHasNextAttempt = ctx.deferredBackupNextAttemptAtMs != 0;
+    snapshot.settingsPersistence.deferredBackupNextAttemptAtMs = ctx.deferredBackupNextAttemptAtMs;
+    snapshot.settingsPersistence.deferredBackupDelayMs =
+        (ctx.deferredBackupNextAttemptAtMs != 0 &&
+         static_cast<int32_t>(ctx.deferredBackupNextAttemptAtMs - ctx.nowMs) > 0)
+            ? (ctx.deferredBackupNextAttemptAtMs - ctx.nowMs)
+            : 0;
+    snapshot.settingsPersistence.perfLoggingEnabled = ctx.perfLoggingEnabled;
+    snapshot.settingsPersistence.perfLoggingPath = ctx.perfLoggingPath;
+
+    snapshot.gps.enabled = ctx.gpsStatus.enabled;
+    snapshot.gps.mode =
+        (ctx.gpsStatus.parserActive || ctx.gpsStatus.moduleDetected || ctx.gpsStatus.hardwareSamples > 0)
+            ? "runtime"
+            : "scaffold";
+    snapshot.gps.sampleValid = ctx.gpsStatus.sampleValid;
+    snapshot.gps.hasFix = ctx.gpsStatus.hasFix;
+    snapshot.gps.satellites = ctx.gpsStatus.satellites;
+    snapshot.gps.injectedSamples = ctx.gpsStatus.injectedSamples > 0;
+    snapshot.gps.moduleDetected = ctx.gpsStatus.moduleDetected;
+    snapshot.gps.detectionTimedOut = ctx.gpsStatus.detectionTimedOut;
+    snapshot.gps.parserActive = ctx.gpsStatus.parserActive;
+    snapshot.gps.hardwareSamples = ctx.gpsStatus.hardwareSamples;
+    snapshot.gps.bytesRead = ctx.gpsStatus.bytesRead;
+    snapshot.gps.sentencesSeen = ctx.gpsStatus.sentencesSeen;
+    snapshot.gps.sentencesParsed = ctx.gpsStatus.sentencesParsed;
+    snapshot.gps.parseFailures = ctx.gpsStatus.parseFailures;
+    snapshot.gps.checksumFailures = ctx.gpsStatus.checksumFailures;
+    snapshot.gps.bufferOverruns = ctx.gpsStatus.bufferOverruns;
+    snapshot.gps.hdopValid = std::isfinite(ctx.gpsStatus.hdop);
+    snapshot.gps.hdop = snapshot.gps.hdopValid ? ctx.gpsStatus.hdop : 0.0f;
+    snapshot.gps.locationValid = ctx.gpsStatus.locationValid;
+    snapshot.gps.latitudeDeg = ctx.gpsStatus.locationValid ? ctx.gpsStatus.latitudeDeg : 0.0;
+    snapshot.gps.longitudeDeg = ctx.gpsStatus.locationValid ? ctx.gpsStatus.longitudeDeg : 0.0;
+    snapshot.gps.courseValid = ctx.gpsStatus.courseValid;
+    snapshot.gps.courseDeg = ctx.gpsStatus.courseValid ? ctx.gpsStatus.courseDeg : 0.0f;
+    snapshot.gps.courseSampleTsMs = ctx.gpsStatus.courseValid ? ctx.gpsStatus.courseSampleTsMs : 0;
+    snapshot.gps.speedMph = ctx.gpsStatus.sampleValid ? ctx.gpsStatus.speedMph : 0.0f;
+    snapshot.gps.sampleTsMs = ctx.gpsStatus.sampleValid ? ctx.gpsStatus.sampleTsMs : 0;
+    snapshot.gps.sampleAgeValid = ctx.gpsStatus.sampleAgeMs != UINT32_MAX;
+    snapshot.gps.sampleAgeMs = snapshot.gps.sampleAgeValid ? ctx.gpsStatus.sampleAgeMs : 0;
+    snapshot.gps.courseAgeValid = ctx.gpsStatus.courseAgeMs != UINT32_MAX;
+    snapshot.gps.courseAgeMs = snapshot.gps.courseAgeValid ? ctx.gpsStatus.courseAgeMs : 0;
+    snapshot.gps.lastSentenceTsValid = ctx.gpsStatus.lastSentenceTsMs != 0;
+    snapshot.gps.lastSentenceTsMs = snapshot.gps.lastSentenceTsValid ? ctx.gpsStatus.lastSentenceTsMs : 0;
+
+    snapshot.gpsLog.published = ctx.gpsLogStats.published;
+    snapshot.gpsLog.drops = ctx.gpsLogStats.drops;
+    snapshot.gpsLog.size = static_cast<uint32_t>(ctx.gpsLogStats.size);
+    snapshot.gpsLog.capacity = static_cast<uint32_t>(GpsObservationLog::kCapacity);
+
+    snapshot.speedSource.gpsEnabled = ctx.speedStatus.gpsEnabled;
+    snapshot.speedSource.selected = SpeedSourceSelector::sourceName(ctx.speedStatus.selectedSource);
+    snapshot.speedSource.selectedValueValid = ctx.speedStatus.selectedSource != SpeedSource::NONE;
+    snapshot.speedSource.selectedMph = snapshot.speedSource.selectedValueValid ? ctx.speedStatus.selectedSpeedMph : 0.0f;
+    snapshot.speedSource.selectedAgeMs = snapshot.speedSource.selectedValueValid ? ctx.speedStatus.selectedAgeMs : 0;
+    snapshot.speedSource.gpsFresh = ctx.speedStatus.gpsFresh;
+    snapshot.speedSource.gpsMph = ctx.speedStatus.gpsSpeedMph;
+    snapshot.speedSource.gpsAgeValid = ctx.speedStatus.gpsAgeMs != UINT32_MAX;
+    snapshot.speedSource.gpsAgeMs = snapshot.speedSource.gpsAgeValid ? ctx.speedStatus.gpsAgeMs : 0;
+    snapshot.speedSource.sourceSwitches = ctx.speedStatus.sourceSwitches;
+    snapshot.speedSource.gpsSelections = ctx.speedStatus.gpsSelections;
+    snapshot.speedSource.noSourceSelections = ctx.speedStatus.noSourceSelections;
+
+    snapshot.heap.heapFree = ctx.freeHeap;
+    snapshot.heap.heapMinFree = perfGetMinFreeHeap();
+    snapshot.heap.heapLargest = ctx.largestHeap;
+    snapshot.heap.heapInternalFree = ctx.freeDma;
+    snapshot.heap.heapInternalFreeMin = snapshot.flat.freeDmaMin;
+    snapshot.heap.heapInternalLargest = ctx.largestDma;
+    snapshot.heap.heapInternalLargestMin = snapshot.flat.largestDmaMin;
+    snapshot.heap.heapDmaFree = ctx.freeDmaCap;
+    snapshot.heap.heapDmaFreeMin = snapshot.flat.dmaFreeMin;
+    snapshot.heap.heapDmaLargest = ctx.largestDmaCap;
+    snapshot.heap.heapDmaLargestMin = snapshot.flat.dmaLargestMin;
+
+    snapshot.psram.total = ctx.psramTotal;
+    snapshot.psram.free = ctx.psramFree;
+    snapshot.psram.largest = ctx.psramLargest;
+
+    snapshot.sdContention.tryLockFails = ctx.sdTryLockFails;
+    snapshot.sdContention.dmaStarvation = ctx.sdDmaStarvation;
+
+    snapshot.proxy.sendCount = ctx.proxyMetrics.sendCount;
+    snapshot.proxy.dropCount = ctx.proxyMetrics.dropCount;
+    snapshot.proxy.errorCount = ctx.proxyMetrics.errorCount;
+    snapshot.proxy.queueHighWater = ctx.proxyMetrics.queueHighWater;
+    snapshot.proxy.connected = bleClient.isProxyClientConnected();
+    snapshot.proxy.advertising = snapshot.proxyAdvertising;
+    snapshot.proxy.advertisingOnTransitions = snapshot.proxyAdvertisingOnTransitions;
+    snapshot.proxy.advertisingOffTransitions = snapshot.proxyAdvertisingOffTransitions;
+    snapshot.proxy.advertisingLastTransitionMs = snapshot.proxyAdvertisingLastTransitionMs;
+    snapshot.proxy.advertisingLastTransitionReasonCode = snapshot.proxyAdvertisingLastTransitionReasonCode;
+    snapshot.proxy.advertisingLastTransitionReason = snapshot.proxyAdvertisingLastTransitionReason;
+
+    snapshot.eventBus.publishCount = ctx.eventBusPublishCount;
+    snapshot.eventBus.dropCount = ctx.eventBusDropCount;
+    snapshot.eventBus.size = ctx.eventBusSize;
+
+    snapshot.lockout.mode = lockoutRuntimeModeName(ctx.settings->gpsLockoutMode);
+    snapshot.lockout.modeRaw = static_cast<int>(ctx.settings->gpsLockoutMode);
+    snapshot.lockout.coreGuardEnabled = ctx.settings->gpsLockoutCoreGuardEnabled;
+    snapshot.lockout.coreGuardTripped = ctx.lockoutGuard.tripped;
+    snapshot.lockout.coreGuardReason = ctx.lockoutGuard.reason;
+    snapshot.lockout.maxQueueDrops = ctx.settings->gpsLockoutMaxQueueDrops;
+    snapshot.lockout.maxPerfDrops = ctx.settings->gpsLockoutMaxPerfDrops;
+    snapshot.lockout.maxEventBusDrops = ctx.settings->gpsLockoutMaxEventBusDrops;
+    snapshot.lockout.learnerPromotionHits = static_cast<uint32_t>(lockoutLearner.promotionHits());
+    snapshot.lockout.learnerRadiusE5 = static_cast<uint32_t>(lockoutLearner.radiusE5());
+    snapshot.lockout.learnerFreqToleranceMHz = static_cast<uint32_t>(lockoutLearner.freqToleranceMHz());
+    snapshot.lockout.learnerLearnIntervalHours = static_cast<uint32_t>(lockoutLearner.learnIntervalHours());
+    snapshot.lockout.learnerUnlearnIntervalHours = static_cast<uint32_t>(ctx.settings->gpsLockoutLearnerUnlearnIntervalHours);
+    snapshot.lockout.learnerUnlearnCount = static_cast<uint32_t>(ctx.settings->gpsLockoutLearnerUnlearnCount);
+    snapshot.lockout.manualDemotionMissCount = static_cast<uint32_t>(ctx.settings->gpsLockoutManualDemotionMissCount);
+    snapshot.lockout.kaLearningEnabled = ctx.settings->gpsLockoutKaLearningEnabled;
+    snapshot.lockout.enforceRequested = (ctx.settings->gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE);
+    snapshot.lockout.enforceAllowed = snapshot.lockout.enforceRequested && !ctx.lockoutGuard.tripped;
+}
+
+static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
+    PerfRuntimeMetricsSnapshot runtimeSnapshot{};
+    perfCaptureRuntimeMetricsSnapshot(runtimeSnapshot,
+                                      PerfRuntimeSnapshotMode::CaptureAndResetWindowPeaks);
+    snapshot = runtimeSnapshot.flat;
+}
+
 } // namespace
+
+void perfCaptureRuntimeMetricsSnapshot(PerfRuntimeMetricsSnapshot& snapshot,
+                                       PerfRuntimeSnapshotMode mode) {
+    const RuntimeSnapshotCaptureContext ctx = captureRuntimeSnapshotContext();
+    populateRuntimeSnapshot(snapshot, ctx, mode);
+}
 
 void perfRecordNotifyToDisplayMs(uint32_t ms) {
     addLatencySample(perfExtended.notifyToDisplayMs, ms);
@@ -1207,219 +1505,6 @@ bool perfMetricsEnqueueSnapshotNow() {
     PerfSdSnapshot snapshot{};
     captureSdSnapshot(snapshot);
     return perfSdLogger.enqueue(snapshot);
-}
-
-String perfMetricsToJson() {
-    JsonDocument doc;
-    const PhoneCmdDropMetricsSnapshot phoneCmdDropMetrics = perfPhoneCmdDropMetricsSnapshot();
-    
-    doc["rxPackets"] = perfCounters.rxPackets.load();
-    doc["rxBytes"] = perfCounters.rxBytes.load();
-    doc["parseSuccesses"] = perfCounters.parseSuccesses.load();
-    doc["parseFailures"] = perfCounters.parseFailures.load();
-    doc["queueDrops"] = perfCounters.queueDrops.load();
-    doc["perfDrop"] = perfCounters.perfDrop.load();
-    doc["perfSdLockFail"] = perfCounters.perfSdLockFail.load();
-    doc["perfSdDirFail"] = perfCounters.perfSdDirFail.load();
-    doc["perfSdOpenFail"] = perfCounters.perfSdOpenFail.load();
-    doc["perfSdHeaderFail"] = perfCounters.perfSdHeaderFail.load();
-    doc["perfSdMarkerFail"] = perfCounters.perfSdMarkerFail.load();
-    doc["perfSdWriteFail"] = perfCounters.perfSdWriteFail.load();
-    doc["oversizeDrops"] = perfCounters.oversizeDrops.load();
-    doc["queueHighWater"] = perfCounters.queueHighWater.load();
-    doc["proxyQueueHighWater"] = perfCounters.proxyQueueHighWater.load();
-    doc["phoneCmdQueueHighWater"] = perfCounters.phoneCmdQueueHighWater.load();
-    perfAppendPhoneCmdDropMetrics(doc, phoneCmdDropMetrics);
-    doc["displayUpdates"] = perfCounters.displayUpdates.load();
-    doc["displaySkips"] = perfCounters.displaySkips.load();
-    doc["reconnects"] = perfCounters.reconnects.load();
-    doc["disconnects"] = perfCounters.disconnects.load();
-    doc["connectionDispatchRuns"] = perfCounters.connectionDispatchRuns.load();
-    doc["connectionCadenceDisplayDue"] = perfCounters.connectionCadenceDisplayDue.load();
-    doc["connectionCadenceHoldScanDwell"] = perfCounters.connectionCadenceHoldScanDwell.load();
-    doc["connectionStateProcessRuns"] = perfCounters.connectionStateProcessRuns.load();
-    doc["connectionStateWatchdogForces"] = perfCounters.connectionStateWatchdogForces.load();
-    doc["connectionStateProcessGapMaxMs"] = perfCounters.connectionStateProcessGapMaxMs.load();
-    doc["bleScanStateEntries"] = perfCounters.bleScanStateEntries.load();
-    doc["bleScanStateExits"] = perfCounters.bleScanStateExits.load();
-    doc["bleScanTargetFound"] = perfCounters.bleScanTargetFound.load();
-    doc["bleScanNoTargetExits"] = perfCounters.bleScanNoTargetExits.load();
-    doc["bleScanDwellMaxMs"] = perfCounters.bleScanDwellMaxMs.load();
-    doc["uuid128FallbackHits"] = perfCounters.uuid128FallbackHits.load();
-    doc["bleDiscTaskCreateFail"] = perfCounters.bleDiscTaskCreateFail.load();
-    doc["wifiConnectDeferred"] = perfCounters.wifiConnectDeferred.load();
-    doc["wifiStopGraceful"] = perfCounters.wifiStopGraceful.load();
-    doc["wifiStopImmediate"] = perfCounters.wifiStopImmediate.load();
-    doc["wifiStopManual"] = perfCounters.wifiStopManual.load();
-    doc["wifiStopTimeout"] = perfCounters.wifiStopTimeout.load();
-    doc["wifiStopNoClients"] = perfCounters.wifiStopNoClients.load();
-    doc["wifiStopNoClientsAuto"] = perfCounters.wifiStopNoClientsAuto.load();
-    doc["wifiStopLowDma"] = perfCounters.wifiStopLowDma.load();
-    doc["wifiStopPoweroff"] = perfCounters.wifiStopPoweroff.load();
-    doc["wifiStopOther"] = perfCounters.wifiStopOther.load();
-    doc["wifiApDropLowDma"] = perfCounters.wifiApDropLowDma.load();
-    doc["wifiApDropIdleSta"] = perfCounters.wifiApDropIdleSta.load();
-    doc["wifiApUpTransitions"] = perfCounters.wifiApUpTransitions.load();
-    doc["wifiApDownTransitions"] = perfCounters.wifiApDownTransitions.load();
-    doc["wifiApActive"] = perfGetWifiApState();
-    doc["wifiApLastTransitionMs"] = perfGetWifiApLastTransitionMs();
-    doc["wifiApLastTransitionReasonCode"] = perfGetWifiApLastTransitionReason();
-    doc["wifiApLastTransitionReason"] =
-        perfWifiApTransitionReasonName(perfGetWifiApLastTransitionReason());
-    doc["proxyAdvertisingOnTransitions"] = perfCounters.proxyAdvertisingOnTransitions.load();
-    doc["proxyAdvertisingOffTransitions"] = perfCounters.proxyAdvertisingOffTransitions.load();
-    doc["proxyAdvertising"] = perfGetProxyAdvertisingState();
-    doc["proxyAdvertisingLastTransitionMs"] = perfGetProxyAdvertisingLastTransitionMs();
-    doc["proxyAdvertisingLastTransitionReasonCode"] = perfGetProxyAdvertisingLastTransitionReason();
-    doc["proxyAdvertisingLastTransitionReason"] =
-        perfProxyAdvertisingTransitionReasonName(perfGetProxyAdvertisingLastTransitionReason());
-    doc["pushNowRetries"] = perfCounters.pushNowRetries.load();
-    doc["pushNowFailures"] = perfCounters.pushNowFailures.load();
-    doc["alertPersistStarts"] = perfCounters.alertPersistStarts.load();
-    doc["alertPersistExpires"] = perfCounters.alertPersistExpires.load();
-    doc["alertPersistClears"] = perfCounters.alertPersistClears.load();
-    doc["autoPushStarts"] = perfCounters.autoPushStarts.load();
-    doc["autoPushCompletes"] = perfCounters.autoPushCompletes.load();
-    doc["autoPushNoProfile"] = perfCounters.autoPushNoProfile.load();
-    doc["autoPushProfileLoadFail"] = perfCounters.autoPushProfileLoadFail.load();
-    doc["autoPushProfileWriteFail"] = perfCounters.autoPushProfileWriteFail.load();
-    doc["autoPushBusyRetries"] = perfCounters.autoPushBusyRetries.load();
-    doc["autoPushModeFail"] = perfCounters.autoPushModeFail.load();
-    doc["autoPushVolumeFail"] = perfCounters.autoPushVolumeFail.load();
-    doc["autoPushDisconnectAbort"] = perfCounters.autoPushDisconnectAbort.load();
-    doc["prioritySelectDisplayIndex"] = perfCounters.prioritySelectDisplayIndex.load();
-    doc["prioritySelectRowFlag"] = perfCounters.prioritySelectRowFlag.load();
-    doc["prioritySelectFirstUsable"] = perfCounters.prioritySelectFirstUsable.load();
-    doc["prioritySelectFirstEntry"] = perfCounters.prioritySelectFirstEntry.load();
-    doc["prioritySelectAmbiguousIndex"] = perfCounters.prioritySelectAmbiguousIndex.load();
-    doc["prioritySelectUnusableIndex"] = perfCounters.prioritySelectUnusableIndex.load();
-    doc["prioritySelectInvalidChosen"] = perfCounters.prioritySelectInvalidChosen.load();
-    doc["alertTablePublishes"] = perfCounters.alertTablePublishes.load();
-    doc["alertTablePublishes3Bogey"] = perfCounters.alertTablePublishes3Bogey.load();
-    doc["alertTableRowReplacements"] = perfCounters.alertTableRowReplacements.load();
-    doc["alertTableAssemblyTimeouts"] = perfCounters.alertTableAssemblyTimeouts.load();
-    doc["parserRowsBandNone"] = perfCounters.parserRowsBandNone.load();
-    doc["parserRowsKuRaw"] = perfCounters.parserRowsKuRaw.load();
-    doc["displayLiveInvalidPrioritySkips"] = perfCounters.displayLiveInvalidPrioritySkips.load();
-    doc["displayLiveFallbackToUsable"] = perfCounters.displayLiveFallbackToUsable.load();
-    doc["voiceAnnouncePriority"] = perfCounters.voiceAnnouncePriority.load();
-    doc["voiceAnnounceDirection"] = perfCounters.voiceAnnounceDirection.load();
-    doc["voiceAnnounceSecondary"] = perfCounters.voiceAnnounceSecondary.load();
-    doc["voiceAnnounceEscalation"] = perfCounters.voiceAnnounceEscalation.load();
-    doc["voiceDirectionThrottled"] = perfCounters.voiceDirectionThrottled.load();
-    doc["powerAutoPowerArmed"] = perfCounters.powerAutoPowerArmed.load();
-    doc["powerAutoPowerTimerStart"] = perfCounters.powerAutoPowerTimerStart.load();
-    doc["powerAutoPowerTimerCancel"] = perfCounters.powerAutoPowerTimerCancel.load();
-    doc["powerAutoPowerTimerExpire"] = perfCounters.powerAutoPowerTimerExpire.load();
-    doc["powerCriticalWarn"] = perfCounters.powerCriticalWarn.load();
-    doc["powerCriticalShutdown"] = perfCounters.powerCriticalShutdown.load();
-    doc["loopMaxUs"] = perfGetLoopMaxUs();
-    doc["wifiMaxUs"] = perfGetWifiMaxUs();
-    doc["fsMaxUs"] = perfGetFsMaxUs();
-    doc["sdMaxUs"] = perfGetSdMaxUs();
-    doc["flushMaxUs"] = perfGetFlushMaxUs();
-    doc["dispMaxUs"] = perfGetDisplayRenderMaxUs();
-    doc["bleDrainMaxUs"] = perfGetBleDrainMaxUs();
-    doc["bleFollowupRequestAlertMaxUs"] = perfGetBleFollowupRequestAlertMaxUs();
-    doc["bleFollowupRequestVersionMaxUs"] = perfGetBleFollowupRequestVersionMaxUs();
-    doc["bleConnectStableCallbackMaxUs"] = perfGetBleConnectStableCallbackMaxUs();
-    doc["bleProxyStartMaxUs"] = perfGetBleProxyStartMaxUs();
-    doc["bleProcessMaxUs"] = perfGetBleProcessMaxUs();
-    doc["dispPipeMaxUs"] = perfGetDispPipeMaxUs();
-    doc["displayVoiceMaxUs"] = perfGetDisplayVoiceMaxUs();
-    doc["displayGapRecoverMaxUs"] = perfGetDisplayGapRecoverMaxUs();
-    doc["displayFullRenderCount"] = perfExtended.displayFullRenderCount;
-    doc["displayIncrementalRenderCount"] = perfExtended.displayIncrementalRenderCount;
-    doc["displayCardsOnlyRenderCount"] = perfExtended.displayCardsOnlyRenderCount;
-    doc["displayRestingFullRenderCount"] = perfExtended.displayRestingFullRenderCount;
-    doc["displayRestingIncrementalRenderCount"] =
-        perfExtended.displayRestingIncrementalRenderCount;
-    doc["displayPersistedRenderCount"] = perfExtended.displayPersistedRenderCount;
-    doc["displayPreviewRenderCount"] = perfExtended.displayPreviewRenderCount;
-    doc["displayRestoreRenderCount"] = perfExtended.displayRestoreRenderCount;
-    doc["displayLiveScenarioRenderCount"] = perfExtended.displayLiveScenarioRenderCount;
-    doc["displayRestingScenarioRenderCount"] = perfExtended.displayRestingScenarioRenderCount;
-    doc["displayPersistedScenarioRenderCount"] =
-        perfExtended.displayPersistedScenarioRenderCount;
-    doc["displayPreviewScenarioRenderCount"] = perfExtended.displayPreviewScenarioRenderCount;
-    doc["displayRestoreScenarioRenderCount"] = perfExtended.displayRestoreScenarioRenderCount;
-    doc["displayRedrawReasonFirstRunCount"] =
-        perfExtended.displayRedrawReasonFirstRunCount;
-    doc["displayRedrawReasonEnterLiveCount"] =
-        perfExtended.displayRedrawReasonEnterLiveCount;
-    doc["displayRedrawReasonLeaveLiveCount"] =
-        perfExtended.displayRedrawReasonLeaveLiveCount;
-    doc["displayRedrawReasonLeavePersistedCount"] =
-        perfExtended.displayRedrawReasonLeavePersistedCount;
-    doc["displayRedrawReasonForceRedrawCount"] =
-        perfExtended.displayRedrawReasonForceRedrawCount;
-    doc["displayRedrawReasonFrequencyChangeCount"] =
-        perfExtended.displayRedrawReasonFrequencyChangeCount;
-    doc["displayRedrawReasonBandSetChangeCount"] =
-        perfExtended.displayRedrawReasonBandSetChangeCount;
-    doc["displayRedrawReasonArrowChangeCount"] =
-        perfExtended.displayRedrawReasonArrowChangeCount;
-    doc["displayRedrawReasonSignalBarChangeCount"] =
-        perfExtended.displayRedrawReasonSignalBarChangeCount;
-    doc["displayRedrawReasonVolumeChangeCount"] =
-        perfExtended.displayRedrawReasonVolumeChangeCount;
-    doc["displayRedrawReasonBogeyCounterChangeCount"] =
-        perfExtended.displayRedrawReasonBogeyCounterChangeCount;
-    doc["displayRedrawReasonRssiRefreshCount"] =
-        perfExtended.displayRedrawReasonRssiRefreshCount;
-    doc["displayRedrawReasonFlashTickCount"] =
-        perfExtended.displayRedrawReasonFlashTickCount;
-    doc["displayFullFlushCount"] = perfExtended.displayFullFlushCount;
-    doc["displayPartialFlushCount"] = perfExtended.displayPartialFlushCount;
-    doc["displayPartialFlushAreaPeakPx"] = perfExtended.displayPartialFlushAreaPeakPx;
-    doc["displayPartialFlushAreaTotalPx"] = perfExtended.displayPartialFlushAreaTotalPx;
-    doc["displayFlushEquivalentAreaTotalPx"] =
-        perfExtended.displayFlushEquivalentAreaTotalPx;
-    doc["displayFlushMaxAreaPx"] = perfGetDisplayFlushMaxAreaPx();
-    doc["displayBaseFrameMaxUs"] = perfExtended.displayBaseFrameMaxUs;
-    doc["displayStatusStripMaxUs"] = perfExtended.displayStatusStripMaxUs;
-    doc["displayFrequencyMaxUs"] = perfExtended.displayFrequencyMaxUs;
-    doc["displayBandsBarsMaxUs"] = perfExtended.displayBandsBarsMaxUs;
-    doc["displayArrowsIconsMaxUs"] = perfExtended.displayArrowsIconsMaxUs;
-    doc["displayCardsMaxUs"] = perfExtended.displayCardsMaxUs;
-    doc["displayFlushSubphaseMaxUs"] = perfExtended.displayFlushSubphaseMaxUs;
-    doc["displayLiveRenderMaxUs"] = perfExtended.displayLiveRenderMaxUs;
-    doc["displayRestingRenderMaxUs"] = perfExtended.displayRestingRenderMaxUs;
-    doc["displayPersistedRenderMaxUs"] = perfExtended.displayPersistedRenderMaxUs;
-    doc["displayPreviewRenderMaxUs"] = perfExtended.displayPreviewRenderMaxUs;
-    doc["displayRestoreRenderMaxUs"] = perfExtended.displayRestoreRenderMaxUs;
-    doc["displayPreviewFirstRenderMaxUs"] = perfExtended.displayPreviewFirstRenderMaxUs;
-    doc["displayPreviewSteadyRenderMaxUs"] = perfExtended.displayPreviewSteadyRenderMaxUs;
-    doc["audioPlayCount"] = perfCounters.audioPlayCount.load();
-    doc["audioPlayBusy"] = perfCounters.audioPlayBusy.load();
-    doc["audioTaskFail"] = perfCounters.audioTaskFail.load();
-    doc["sigObsQueueDrops"] = perfCounters.sigObsQueueDrops.load();
-    doc["sigObsWriteFail"] = perfCounters.sigObsWriteFail.load();
-    
-#if PERF_METRICS
-    doc["monitoringEnabled"] = (bool)PERF_MONITORING;
-#if PERF_MONITORING
-    uint32_t minUsVal = perfLatency.minUs.load();
-    uint32_t minUs = (minUsVal == UINT32_MAX) ? 0 : minUsVal;
-    doc["latencyMinUs"] = minUs;
-    doc["latencyAvgUs"] = perfLatency.avgUs();
-    doc["latencyMaxUs"] = perfLatency.maxUs.load();
-    doc["latencySamples"] = perfLatency.sampleCount.load();
-    doc["debugEnabled"] = perfDebugEnabled;
-#else
-    doc["latencyMinUs"] = 0;
-    doc["latencyAvgUs"] = 0;
-    doc["latencyMaxUs"] = 0;
-    doc["latencySamples"] = 0;
-    doc["debugEnabled"] = false;
-#endif
-#else
-    doc["metricsEnabled"] = false;
-#endif
-    
-    String json;
-    serializeJson(doc, json);
-    return json;
 }
 
 void perfMetricsSetDebug(bool enabled) {

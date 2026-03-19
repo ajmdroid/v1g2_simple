@@ -75,25 +75,25 @@ void test_perf_metrics_exports_render_and_connect_burst_sources() {
     TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_metrics.cpp");
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("snapshot.dispMaxUs = perfExtended.displayRenderMaxUs;"));
+        source.find("flat.dispMaxUs = perfExtended.displayRenderMaxUs;"));
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("snapshot.bleProxyStartMaxUs = perfExtended.bleProxyStartMaxUs;"));
+        source.find("flat.bleProxyStartMaxUs = perfExtended.bleProxyStartMaxUs;"));
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("snapshot.displayVoiceMaxUs = perfExtended.displayVoiceMaxUs;"));
+        source.find("flat.displayVoiceMaxUs = perfExtended.displayVoiceMaxUs;"));
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("snapshot.displayGapRecoverMaxUs = perfExtended.displayGapRecoverMaxUs;"));
+        source.find("flat.displayGapRecoverMaxUs = perfExtended.displayGapRecoverMaxUs;"));
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("snapshot.displayPartialFlushAreaPeakPx = perfExtended.displayPartialFlushAreaPeakPx;"));
+        source.find("flat.displayPartialFlushAreaPeakPx = perfExtended.displayPartialFlushAreaPeakPx;"));
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("snapshot.displayFlushSubphaseMaxUs = perfExtended.displayFlushSubphaseMaxUs;"));
+        source.find("flat.displayFlushSubphaseMaxUs = perfExtended.displayFlushSubphaseMaxUs;"));
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("snapshot.displayPreviewFirstRenderMaxUs = perfExtended.displayPreviewFirstRenderMaxUs;"));
+        source.find("flat.displayPreviewFirstRenderMaxUs = perfExtended.displayPreviewFirstRenderMaxUs;"));
 }
 
 int main() {
