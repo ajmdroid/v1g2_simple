@@ -244,7 +244,7 @@ void test_connect_timeout_increments_attempts() {
     TEST_ASSERT_EQUAL_UINT8(1, status.connectAttempts);
 }
 
-void test_three_connect_failures_clears_saved_address() {
+void test_three_connect_failures_preserve_saved_address_and_stop_retries_for_session() {
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
     // Get past boot wait
@@ -267,12 +267,21 @@ void test_three_connect_failures_clears_saved_address() {
     obdRuntimeModule.update(25004, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
 
-    // Fail 3 — should clear saved address and go to IDLE
+    // Fail 3 — should keep the saved address but stop auto-retrying for this session
     obdRuntimeModule.update(30005, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
 
     ObdRuntimeStatus status = obdRuntimeModule.snapshot(30005);
-    TEST_ASSERT_FALSE(status.savedAddressValid);
+    TEST_ASSERT_TRUE(status.savedAddressValid);
+    TEST_ASSERT_EQUAL_UINT32(3, status.connectFailures);
+    TEST_ASSERT_EQUAL_UINT8(0, status.connectAttempts);
+
+    // Once idled by the failure threshold, the runtime should stay idle until
+    // a manual action (scan/enable-cycle/reboot) re-arms it.
+    obdRuntimeModule.update(40006, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
+    status = obdRuntimeModule.snapshot(40006);
+    TEST_ASSERT_TRUE(status.savedAddressValid);
     TEST_ASSERT_EQUAL_UINT8(0, status.connectAttempts);
 }
 
@@ -790,7 +799,7 @@ void test_disconnected_reconnects_after_backoff() {
     TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
 }
 
-void test_disconnected_no_saved_addr_goes_idle() {
+void test_disconnected_failure_threshold_idles_without_forgetting_saved_device() {
     obdRuntimeModule.begin(true, "", 0, -80);
 
     // Trigger scan, find device, connect, then fail 3 times
@@ -810,14 +819,14 @@ void test_disconnected_no_saved_addr_goes_idle() {
     obdRuntimeModule.update(17003, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
 
-    // Backoff, reconnect, fail 3 → clears address → IDLE
+    // Backoff, reconnect, fail 3 → stop auto-retrying for this session but keep the saved address
     obdRuntimeModule.update(22004, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
     obdRuntimeModule.update(27005, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
 
     ObdRuntimeStatus status = obdRuntimeModule.snapshot(27005);
-    TEST_ASSERT_FALSE(status.savedAddressValid);
+    TEST_ASSERT_TRUE(status.savedAddressValid);
 }
 
 int main() {
@@ -852,7 +861,7 @@ int main() {
 
     // Connect timeout & retry
     RUN_TEST(test_connect_timeout_increments_attempts);
-    RUN_TEST(test_three_connect_failures_clears_saved_address);
+    RUN_TEST(test_three_connect_failures_preserve_saved_address_and_stop_retries_for_session);
     RUN_TEST(test_connect_entry_action_runs_on_next_tick);
     RUN_TEST(test_discover_entry_action_runs_on_next_tick);
     RUN_TEST(test_connect_enters_discovering_with_settle_delay);
@@ -893,7 +902,7 @@ int main() {
 
     // Disconnected reconnect
     RUN_TEST(test_disconnected_reconnects_after_backoff);
-    RUN_TEST(test_disconnected_no_saved_addr_goes_idle);
+    RUN_TEST(test_disconnected_failure_threshold_idles_without_forgetting_saved_device);
 
     return UNITY_END();
 }

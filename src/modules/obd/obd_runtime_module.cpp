@@ -558,8 +558,6 @@ void ObdRuntimeModule::handleConnectFailure(uint32_t nowMs, ObdFailureReason rea
     resetCommandState();
     bleDisconnected_ = false;
     if (connectAttempts_ >= obd::MAX_DIRECT_CONNECT_FAILURES) {
-        setSavedAddressFromBuffer("");
-        clearCachedProfile();
         connectAttempts_ = 0;
         transitionTo(ObdConnectionState::IDLE, nowMs);
         return;
