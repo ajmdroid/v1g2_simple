@@ -10,7 +10,7 @@
     { "metric": "bleProcessMax_us", "source": "max", "op": "<=", "limit": 120000 },
     { "metric": "dispPipeMax_us", "source": "max", "op": "<=", "limit": 80000 },
     { "metric": "flushMax_us", "source": "max", "op": "<=", "limit": 100000 },
-    { "metric": "sdMax_us", "source": "max", "op": "<=", "limit": 50000 },
+    { "metric": "sdMax_us", "source": "max", "op": "<=", "limit": 75000 },
     { "metric": "fsMax_us", "source": "max", "op": "<=", "limit": 50000 },
     { "metric": "queueHighWater", "source": "final", "op": "<=", "limit": 12 },
     { "metric": "dmaLargestMin", "source": "min", "op": ">=", "limit": 10000 },

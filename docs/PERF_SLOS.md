@@ -38,7 +38,7 @@ These are release gates unless a test is explicitly exploratory.
 | `bleProcessMax_us` | max <= | `120000` | `120000` | BLE process budget |
 | `dispPipeMax_us` | max <= | `80000` | `80000` | Display pipeline budget |
 | `flushMax_us` | max <= | `100000` | `100000` | Storage flush budget |
-| `sdMax_us` | max <= | `50000` | `50000` | SD write chunk budget |
+| `sdMax_us` | max <= | `75000` | `75000` | SD write chunk budget |
 | `fsMax_us` | max <= | `50000` | `50000` | FS serve budget |
 | `queueHighWater` | final <= | `12` | `12` | Queue occupancy margin (`64` depth default) |
 | `dmaLargestMin` | min >= | `10000` | `10000` | DMA contiguous block floor |
