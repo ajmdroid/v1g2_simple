@@ -69,6 +69,8 @@ void V1BLEClient::process() {
         }
     }
 
+    drainProxyCallbackEvents();
+
     if (proxyCmdPending) {
         uint8_t packetId = 0;
         uint8_t packetLen = 0;

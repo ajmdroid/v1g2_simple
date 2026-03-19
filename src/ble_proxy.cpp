@@ -21,22 +21,15 @@ void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer, NimBLEC
     if (BLE_CALLBACK_LOGS) {
         BLE_LOGF("[BLE] App connected (handle: %d)\n", connInfo.getConnHandle());
     }
-    
-    // Request connection parameters - use Android-compatible range
-    // Min 15ms (12), Max 45ms (36), Latency 0, Timeout 4s (400)
-    // Some devices (Motorola G series) reject very tight intervals
-    uint16_t connHandle = connInfo.getConnHandle();
-    pServer->updateConnParams(connHandle, 12, 36, 0, 400);
-    
-    if (bleClient) {
-        bleClient->setProxyClientConnected(true);
-        bleClient->proxyAdvertisingWindowStartMs = 0;
-        bleClient->proxyAdvertisingRetryAtMs = 0;
-        perfRecordProxyAdvertisingTransition(
-            false,
-            static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopAppConnected),
-            millis());
+
+    if (!bleClient) {
+        return;
     }
+
+    ProxyCallbackEvent event{};
+    event.type = ProxyCallbackEventType::APP_CONNECTED;
+    event.connHandle = connInfo.getConnHandle();
+    bleClient->enqueueProxyCallbackEvent(event);
 }
 
 void V1BLEClient::ProxyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) {
@@ -44,15 +37,14 @@ void V1BLEClient::ProxyServerCallbacks::onDisconnect(NimBLEServer* pServer, NimB
     if (BLE_CALLBACK_LOGS) {
         BLE_LOGF("[BLE] App disconnected (reason: %d)\n", reason);
     }
-    if (bleClient) {
-        bleClient->proxyClientConnected = false;
-        bleClient->proxyAdvertisingWindowStartMs = 0;
-        // Resume advertising if V1 is still connected and WiFi-priority suppression is off.
-        if (bleClient->connected && !bleClient->wifiPriorityMode) {
-            bleClient->startProxyAdvertising(
-                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartAppDisconnect));
-        }
+    if (!bleClient) {
+        return;
     }
+
+    ProxyCallbackEvent event{};
+    event.type = ProxyCallbackEventType::APP_DISCONNECTED;
+    event.reason = reason;
+    bleClient->enqueueProxyCallbackEvent(event);
 }
 
 void V1BLEClient::deferLastV1Address(const char* addr) {
@@ -79,6 +71,99 @@ uint32_t V1BLEClient::getPhoneCmdDropsBleFail() const {
 
 uint32_t V1BLEClient::getPhoneCmdDropsLockBusy() const {
     return perfPhoneCmdDropMetricsSnapshot().lockBusy;
+}
+
+bool V1BLEClient::enqueueProxyCallbackEvent(const ProxyCallbackEvent& event) {
+    taskENTER_CRITICAL(&proxyCallbackEventMux_);
+    if (proxyCallbackEventQueueCount_ >= PROXY_CALLBACK_EVENT_QUEUE_DEPTH) {
+        proxyCallbackEventQueueHead_ =
+            (proxyCallbackEventQueueHead_ + 1) % PROXY_CALLBACK_EVENT_QUEUE_DEPTH;
+        proxyCallbackEventQueueCount_--;
+    }
+
+    const size_t tail =
+        (proxyCallbackEventQueueHead_ + proxyCallbackEventQueueCount_) % PROXY_CALLBACK_EVENT_QUEUE_DEPTH;
+    proxyCallbackEventQueue_[tail] = event;
+    proxyCallbackEventQueueCount_++;
+    taskEXIT_CRITICAL(&proxyCallbackEventMux_);
+    return true;
+}
+
+bool V1BLEClient::popProxyCallbackEvent(ProxyCallbackEvent& event) {
+    taskENTER_CRITICAL(&proxyCallbackEventMux_);
+    if (proxyCallbackEventQueueCount_ == 0) {
+        taskEXIT_CRITICAL(&proxyCallbackEventMux_);
+        return false;
+    }
+
+    event = proxyCallbackEventQueue_[proxyCallbackEventQueueHead_];
+    proxyCallbackEventQueueHead_ =
+        (proxyCallbackEventQueueHead_ + 1) % PROXY_CALLBACK_EVENT_QUEUE_DEPTH;
+    proxyCallbackEventQueueCount_--;
+    taskEXIT_CRITICAL(&proxyCallbackEventMux_);
+    return true;
+}
+
+void V1BLEClient::clearProxyAdvertisingSchedule() {
+    proxyAdvertisingStartMs = 0;
+    proxyAdvertisingStartReasonCode =
+        static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
+}
+
+void V1BLEClient::clearProxyAdvertisingWindowState() {
+    proxyAdvertisingWindowStartMs = 0;
+    proxyAdvertisingRetryAtMs = 0;
+}
+
+void V1BLEClient::stopProxyAdvertisingFromMainLoop(uint8_t reasonCode) {
+    clearProxyAdvertisingSchedule();
+    clearProxyAdvertisingWindowState();
+
+    NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+    if (pAdv && pAdv->isAdvertising()) {
+        NimBLEDevice::stopAdvertising();
+        perfRecordProxyAdvertisingTransition(false, reasonCode, millis());
+    }
+}
+
+void V1BLEClient::handleProxyCallbackEvent(const ProxyCallbackEvent& event) {
+    switch (event.type) {
+        case ProxyCallbackEventType::APP_CONNECTED:
+            if (pServer && pServer->getConnectedCount() > 0) {
+                // Request Android-compatible connection parameters from the main loop.
+                pServer->updateConnParams(event.connHandle, 12, 36, 0, 400);
+            }
+            setProxyClientConnected(true);
+            clearProxyAdvertisingWindowState();
+            perfRecordProxyAdvertisingTransition(
+                false,
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopAppConnected),
+                millis());
+            return;
+
+        case ProxyCallbackEventType::APP_DISCONNECTED:
+            proxyClientConnected = false;
+            clearProxyAdvertisingWindowState();
+            if (connected.load(std::memory_order_relaxed) && !wifiPriorityMode) {
+                proxyAdvertisingStartMs = millis();
+                proxyAdvertisingStartReasonCode =
+                    static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartAppDisconnect);
+            }
+            return;
+
+        case ProxyCallbackEventType::V1_DISCONNECTED:
+            proxyClientConnected = false;
+            stopProxyAdvertisingFromMainLoop(
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopV1Disconnect));
+            return;
+    }
+}
+
+void V1BLEClient::drainProxyCallbackEvents() {
+    ProxyCallbackEvent event{};
+    while (popProxyCallbackEvent(event)) {
+        handleProxyCallbackEvent(event);
+    }
 }
 
 void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteristic, NimBLEConnInfo& connInfo) {
@@ -338,17 +423,7 @@ bool V1BLEClient::forceProxyAdvertising(bool enable, uint8_t reasonCode) {
         return isProxyAdvertising();
     }
 
-    proxyAdvertisingStartMs = 0;
-    proxyAdvertisingStartReasonCode =
-        static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
-    proxyAdvertisingWindowStartMs = 0;
-    proxyAdvertisingRetryAtMs = 0;
-
-    NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
-    if (pAdv && pAdv->isAdvertising()) {
-        NimBLEDevice::stopAdvertising();
-    }
-    perfRecordProxyAdvertisingTransition(false, stopReason, millis());
+    stopProxyAdvertisingFromMainLoop(stopReason);
     return true;
 }
 
@@ -377,8 +452,7 @@ void V1BLEClient::startProxyAdvertising(uint8_t reasonCode, bool ignoreWifiPrior
     // Don't restart if client already connected
     if (pServer->getConnectedCount() > 0) {
         Serial.println("Proxy client already connected, not restarting advertising");
-        proxyAdvertisingWindowStartMs = 0;
-        proxyAdvertisingRetryAtMs = 0;
+        clearProxyAdvertisingWindowState();
         perfRecordBleProxyStartUs(micros() - startUs);
         return;
     }
@@ -447,52 +521,9 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
 }
 
 // PERFORMANCE: Immediate proxy forwarding - zero latency path
-// Called directly from BLE callback context - no queue, no delay
-// Uses non-blocking mutex to avoid deadlock while preventing concurrent notifies
+// Called directly from BLE callback context. Keep callback work to queueing only.
 void V1BLEClient::forwardToProxyImmediate(const uint8_t* data, size_t length, uint16_t sourceCharUUID) {
-    if (!proxyEnabled || !proxyClientConnected) {
-        return;
-    }
-    
-    // Validate packet size
-    if (length == 0 || length > PROXY_PACKET_MAX) {
-        return;
-    }
-    
-    // Route to correct proxy characteristic based on source
-    // B2CE (0xB2CE) -> proxy B2CE (short display data)
-    // B4E0 (0xB4E0) -> proxy B4E0 (long alert/response data - voltage, etc)
-    NimBLECharacteristic* targetChar = nullptr;
-    
-    if (sourceCharUUID == 0xB4E0 && pProxyNotifyLongChar) {
-        targetChar = pProxyNotifyLongChar;
-    } else if (pProxyNotifyChar) {
-        targetChar = pProxyNotifyChar;
-    }
-    
-    if (!targetChar) {
-        return;
-    }
-    
-    // Try non-blocking mutex acquire to avoid concurrent notifies
-    // If mutex is held (processProxyQueue running), enqueue instead
-    if (xSemaphoreTake(bleNotifyMutex, 0) == pdTRUE) {
-        // Got mutex - safe to notify immediately
-        if (targetChar->notify(data, length)) {
-            proxyMetrics.sendCount++;
-        } else {
-            proxyMetrics.errorCount++;
-            // Notify failed (stack busy) - enqueue for retry
-            // Release mutex first to avoid recursive lock in forwardToProxy
-            xSemaphoreGive(bleNotifyMutex);
-            forwardToProxy(data, length, sourceCharUUID);
-            return;
-        }
-        xSemaphoreGive(bleNotifyMutex);
-    } else {
-        // Mutex held by processProxyQueue - enqueue to avoid race
-        forwardToProxy(data, length, sourceCharUUID);
-    }
+    forwardToProxy(data, length, sourceCharUUID);
 }
 
 int V1BLEClient::processProxyQueue() {

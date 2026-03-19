@@ -149,28 +149,15 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
     }
 
     if (instancePtr) {
-        // Stop proxy advertising FIRST before any state changes
-        if (instancePtr->proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
-            NimBLEDevice::stopAdvertising();
-            perfRecordProxyAdvertisingTransition(
-                false,
-                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopV1Disconnect),
-                millis());
-            // No delay here - callback must return quickly
-        }
-        instancePtr->proxyAdvertisingStartMs = 0;
-        instancePtr->proxyAdvertisingStartReasonCode =
-            static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
-        instancePtr->proxyAdvertisingWindowStartMs = 0;
-        instancePtr->proxyAdvertisingRetryAtMs = 0;
+        ProxyCallbackEvent event{};
+        event.type = ProxyCallbackEventType::V1_DISCONNECTED;
+        instancePtr->enqueueProxyCallbackEvent(event);
         
         if (instancePtr->bleMutex && xSemaphoreTake(instancePtr->bleMutex, 0) == pdTRUE) {
             instancePtr->connected = false;
             instancePtr->connectInProgress = false;  // Clear connection guard
             instancePtr->connectStartMs = 0;  // Clear async connect timer
             instancePtr->connectedFollowupStep = ConnectedFollowupStep::NONE;
-            // Clear proxy client connection state too - can't proxy without V1 connection
-            instancePtr->proxyClientConnected = false;
             // Do NOT clear pClient - we reuse it to prevent memory leaks
             instancePtr->pRemoteService = nullptr;
             instancePtr->pDisplayDataChar = nullptr;
@@ -790,8 +777,7 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
         }
     }
 
-    // PERFORMANCE: Forward to proxy IMMEDIATELY - zero latency path to app
-    // NimBLE handles thread safety for server notifications
+    // Forward to proxy via the proxy queue only. Keep BLE callback path notify-free.
     instancePtr->forwardToProxyImmediate(pData, length, routeCharId);
 
     if (instancePtr->connected.load(std::memory_order_relaxed) &&

@@ -104,6 +104,10 @@ V1BLEClient::~V1BLEClient() {
 
 void V1BLEClient::setProxyClientConnected(bool connectedState) {
     proxyClientConnected = connectedState;
+    if (connectedState) {
+        proxyClientConnectedOnceThisBoot = true;
+        proxyNoClientDeadlineMs = 0;
+    }
 }
 
 SendResult V1BLEClient::sendCommandWithResult(const uint8_t* data, size_t length) {
@@ -261,6 +265,79 @@ void test_phone_command_drop_metrics_reset_zeroes_all_observable_surfaces() {
     assertPhoneCmdDropMetrics(client, 0, 0, 0, 0);
 }
 
+void test_proxy_app_connect_defers_conn_param_update_until_drained() {
+    V1BLEClient client;
+    client.proxyEnabled = true;
+    client.proxyServerInitialized = client.initProxyServer("Proxy");
+    TEST_ASSERT_TRUE(client.proxyServerInitialized);
+    TEST_ASSERT_NOT_NULL(client.pServer);
+    client.pServer->setConnectedCount(1);
+
+    V1BLEClient::ProxyServerCallbacks callbacks(&client);
+    NimBLEConnInfo connInfo;
+    callbacks.onConnect(client.pServer, connInfo);
+
+    TEST_ASSERT_EQUAL_UINT32(0, g_mock_nimble_state.updateConnParamsCalls);
+    TEST_ASSERT_FALSE(client.proxyClientConnected.load(std::memory_order_relaxed));
+
+    client.drainProxyCallbackEvents();
+
+    TEST_ASSERT_EQUAL_UINT32(1, g_mock_nimble_state.updateConnParamsCalls);
+    TEST_ASSERT_TRUE(client.proxyClientConnected.load(std::memory_order_relaxed));
+    TEST_ASSERT_TRUE(client.proxyClientConnectedOnceThisBoot);
+    TEST_ASSERT_EQUAL_UINT32(0, client.proxyNoClientDeadlineMs);
+}
+
+void test_proxy_app_disconnect_only_schedules_restart_when_drained() {
+    V1BLEClient client;
+    client.proxyEnabled = true;
+    client.proxyServerInitialized = client.initProxyServer("Proxy");
+    TEST_ASSERT_TRUE(client.proxyServerInitialized);
+    client.connected.store(true, std::memory_order_relaxed);
+    client.proxyClientConnected.store(true, std::memory_order_relaxed);
+    client.pServer->setConnectedCount(0);
+    mockMillis = 1234;
+    const uint32_t startAdvertisingCallsBefore = g_mock_nimble_state.startAdvertisingCalls;
+
+    V1BLEClient::ProxyServerCallbacks callbacks(&client);
+    NimBLEConnInfo connInfo;
+    callbacks.onDisconnect(client.pServer, connInfo, 19);
+
+    TEST_ASSERT_TRUE(client.proxyClientConnected.load(std::memory_order_relaxed));
+    TEST_ASSERT_EQUAL_UINT32(startAdvertisingCallsBefore, g_mock_nimble_state.startAdvertisingCalls);
+    TEST_ASSERT_EQUAL_UINT32(0, client.proxyAdvertisingStartMs);
+
+    client.drainProxyCallbackEvents();
+
+    TEST_ASSERT_FALSE(client.proxyClientConnected.load(std::memory_order_relaxed));
+    TEST_ASSERT_EQUAL_UINT32(startAdvertisingCallsBefore, g_mock_nimble_state.startAdvertisingCalls);
+    TEST_ASSERT_EQUAL_UINT32(1234, client.proxyAdvertisingStartMs);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartAppDisconnect),
+        client.proxyAdvertisingStartReasonCode);
+}
+
+void test_forward_to_proxy_immediate_queues_until_main_loop_send() {
+    V1BLEClient client;
+    client.proxyEnabled = true;
+    client.proxyServerInitialized = client.initProxyServer("Proxy");
+    TEST_ASSERT_TRUE(client.proxyServerInitialized);
+    client.proxyClientConnected.store(true, std::memory_order_relaxed);
+    client.bleNotifyMutex = xSemaphoreCreateMutex();
+    const uint8_t data[] = {0xAA, 0x55, 0x10, 0x41, 0x00};
+
+    client.forwardToProxyImmediate(data, sizeof(data), 0xB4E0);
+
+    TEST_ASSERT_EQUAL_UINT32(0, g_mock_nimble_state.characteristicNotifyCalls);
+    TEST_ASSERT_EQUAL_UINT32(1, client.proxyQueueCount);
+
+    TEST_ASSERT_EQUAL_INT(1, client.processProxyQueue());
+
+    TEST_ASSERT_EQUAL_UINT32(1, g_mock_nimble_state.characteristicNotifyCalls);
+    TEST_ASSERT_EQUAL_UINT32(0, client.proxyQueueCount);
+    TEST_ASSERT_EQUAL_UINT32(1, client.proxyMetrics.sendCount);
+}
+
 int main(int argc, char** argv) {
     UNITY_BEGIN();
 
@@ -273,6 +350,9 @@ int main(int argc, char** argv) {
     RUN_TEST(test_phone_command_overflow_drops_oldest_and_keeps_newest);
     RUN_TEST(test_phone_command_ble_failure_updates_getters_and_metrics_payload);
     RUN_TEST(test_phone_command_drop_metrics_reset_zeroes_all_observable_surfaces);
+    RUN_TEST(test_proxy_app_connect_defers_conn_param_update_until_drained);
+    RUN_TEST(test_proxy_app_disconnect_only_schedules_restart_when_drained);
+    RUN_TEST(test_forward_to_proxy_immediate_queues_until_main_loop_send);
 
     return UNITY_END();
 }

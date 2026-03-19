@@ -9,6 +9,7 @@
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include <array>
 #include <vector>
 #include <atomic>
 #include <memory>
@@ -299,6 +300,18 @@ private:
         V1BLEClient* bleClient;
     };
 
+    enum class ProxyCallbackEventType : uint8_t {
+        APP_CONNECTED = 0,
+        APP_DISCONNECTED = 1,
+        V1_DISCONNECTED = 2,
+    };
+
+    struct ProxyCallbackEvent {
+        ProxyCallbackEventType type = ProxyCallbackEventType::APP_CONNECTED;
+        uint16_t connHandle = 0;
+        int reason = 0;
+    };
+
     NimBLEClient* pClient;
     NimBLERemoteService* pRemoteService;
     NimBLERemoteCharacteristic* pDisplayDataChar;
@@ -365,6 +378,11 @@ private:
     std::atomic<bool> pendingScanEndUpdate{false};         // Deferred scan-end state update from BLE callback
     std::atomic<bool> pendingScanTargetUpdate{false};      // Deferred target update from BLE scan callback
     std::atomic<bool> phoneCmdPendingClear{false};         // Clear stale phone cmd state on reconnect
+    static constexpr size_t PROXY_CALLBACK_EVENT_QUEUE_DEPTH = 8;
+    std::array<ProxyCallbackEvent, PROXY_CALLBACK_EVENT_QUEUE_DEPTH> proxyCallbackEventQueue_{};
+    size_t proxyCallbackEventQueueHead_ = 0;
+    size_t proxyCallbackEventQueueCount_ = 0;
+    portMUX_TYPE proxyCallbackEventMux_ = portMUX_INITIALIZER_UNLOCKED;
 
     // Async discovery task (avoids ~2s block on main loop)
     std::atomic<bool> discoveryTaskRunning{false};
@@ -536,6 +554,13 @@ private:
     bool initProxyServer(const char* deviceName);
     bool allocateProxyQueues();
     void releaseProxyQueues();
+    bool enqueueProxyCallbackEvent(const ProxyCallbackEvent& event);
+    bool popProxyCallbackEvent(ProxyCallbackEvent& event);
+    void drainProxyCallbackEvents();
+    void handleProxyCallbackEvent(const ProxyCallbackEvent& event);
+    void clearProxyAdvertisingSchedule();
+    void clearProxyAdvertisingWindowState();
+    void stopProxyAdvertisingFromMainLoop(uint8_t reasonCode);
     
     // Start advertising proxy service
     void startProxyAdvertising(uint8_t reasonCode = 0, bool ignoreWifiPriority = false);

@@ -60,9 +60,21 @@ void test_disconnect_callback_still_defers_bond_heal() {
     TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("pendingDeleteBond = true"));
 }
 
+void test_disconnect_callback_no_longer_stops_proxy_advertising_inline() {
+    const std::filesystem::path source =
+        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_connection.cpp");
+    const std::string text = readFile(source);
+    const std::string body =
+        extractFunctionBody(text, "void V1BLEClient::ClientCallbacks::onDisconnect");
+
+    TEST_ASSERT_EQUAL(std::string::npos, body.find("NimBLEDevice::stopAdvertising("));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("enqueueProxyCallbackEvent"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_async_connect_does_not_delete_bond);
     RUN_TEST(test_disconnect_callback_still_defers_bond_heal);
+    RUN_TEST(test_disconnect_callback_no_longer_stops_proxy_advertising_inline);
     return UNITY_END();
 }

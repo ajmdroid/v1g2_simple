@@ -26,6 +26,11 @@ struct MockNimBLEState {
     uint32_t createServerCalls = 0;
     uint32_t createServiceCalls = 0;
     uint32_t createCharacteristicCalls = 0;
+    uint32_t updateConnParamsCalls = 0;
+    uint32_t serverDisconnectCalls = 0;
+    uint32_t characteristicNotifyCalls = 0;
+    uint32_t startAdvertisingCalls = 0;
+    uint32_t stopAdvertisingCalls = 0;
     bool advertising = false;
     uint8_t bondCount = 0;
 };
@@ -95,7 +100,10 @@ public:
         : uuid_(uuid ? uuid : "") {}
 
     void setCallbacks(NimBLECharacteristicCallbacks* callbacks) { callbacks_ = callbacks; }
-    bool notify(const uint8_t*, size_t) { return notifyResult_; }
+    bool notify(const uint8_t*, size_t) {
+        g_mock_nimble_state.characteristicNotifyCalls++;
+        return notifyResult_;
+    }
     bool writeValue(const uint8_t*, size_t, bool) { return writeValueResult_; }
     NimBLEAttValue getValue() const { return value_; }
     NimBLEUUID getUUID() const { return NimBLEUUID(uuid_.c_str()); }
@@ -141,10 +149,22 @@ public:
     }
 
     void setCallbacks(NimBLEServerCallbacks* callbacks) { callbacks_ = callbacks; }
-    void updateConnParams(uint16_t, uint16_t, uint16_t, uint16_t, uint16_t) {}
+    void updateConnParams(uint16_t, uint16_t, uint16_t, uint16_t, uint16_t) {
+        g_mock_nimble_state.updateConnParamsCalls++;
+    }
     int getConnectedCount() const { return connectedCount_; }
     NimBLEConnInfo getPeerInfo(int) const { return NimBLEConnInfo(); }
     void setConnectedCount(int count) { connectedCount_ = count; }
+    bool disconnect(uint16_t, uint8_t = 0) {
+        g_mock_nimble_state.serverDisconnectCalls++;
+        connectedCount_ = 0;
+        return true;
+    }
+    bool disconnect(const NimBLEConnInfo&, uint8_t = 0) {
+        g_mock_nimble_state.serverDisconnectCalls++;
+        connectedCount_ = 0;
+        return true;
+    }
 
 private:
     NimBLEServerCallbacks* callbacks_ = nullptr;
@@ -184,6 +204,7 @@ public:
     void setMaxInterval(uint16_t) {}
     bool start() {
         g_mock_nimble_state.advertising = true;
+        g_mock_nimble_state.startAdvertisingCalls++;
         return true;
     }
     bool isAdvertising() const { return g_mock_nimble_state.advertising; }
@@ -232,13 +253,18 @@ public:
     }
     static bool startAdvertising() {
         g_mock_nimble_state.advertising = true;
+        g_mock_nimble_state.startAdvertisingCalls++;
         return true;
     }
     static bool startAdvertising(int) {
         g_mock_nimble_state.advertising = true;
+        g_mock_nimble_state.startAdvertisingCalls++;
         return true;
     }
-    static void stopAdvertising() { g_mock_nimble_state.advertising = false; }
+    static void stopAdvertising() {
+        g_mock_nimble_state.advertising = false;
+        g_mock_nimble_state.stopAdvertisingCalls++;
+    }
     static uint8_t getNumBonds() { return g_mock_nimble_state.bondCount; }
     static void deleteAllBonds() {}
     static bool isBonded(const NimBLEAddress&) { return false; }
