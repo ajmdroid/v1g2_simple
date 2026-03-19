@@ -121,6 +121,8 @@ public:
     
     // WiFi indicator (shows when connected to STA network)
     void drawWiFiIndicator();
+    void refreshObdIndicator(uint32_t nowMs);
+    void setObdAttention(bool attention);
     
     // Flush canvas to physical display
     void flush();
@@ -179,7 +181,7 @@ private:
     void drawGpsIndicator();
     void drawObdIndicator();
     void syncTopIndicators(uint32_t nowMs);
-    void setObdStatus(bool enabled, bool connected);
+    void setObdStatus(bool enabled, bool connected, bool scanAttention = false);
     int measureSevenSegmentText(const char* text, float scale) const;
     int drawSevenSegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);
     void drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
@@ -226,6 +228,8 @@ private:
     uint8_t gpsSatCount_ = 0;              // Satellite count for display
     bool obdEnabled_ = false;              // OBD module enabled
     bool obdConnected_ = false;            // OBD adapter connected
+    bool obdScanAttention_ = false;        // Runtime manual scan / scan-pending state
+    bool obdAttention_ = false;            // Temporary UI hold-time attention
     DisplayBleContext bleCtx_;              // BLE state snapshot for display DI
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout

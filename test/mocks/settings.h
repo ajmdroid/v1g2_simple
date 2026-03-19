@@ -157,6 +157,7 @@ struct V1Settings {
     
     // Audio / voice
     uint8_t volume = 5;
+    uint8_t voiceVolume = 75;
     VoiceAlertMode voiceAlertMode = VOICE_MODE_BAND_FREQ;
     bool voiceDirectionEnabled = true;
     bool announceBogeyCount = true;
@@ -235,6 +236,8 @@ public:
         settings.gpsEnabled = enabled;
         ++setGpsEnabledCalls;
     }
+    void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
+    void updateVoiceVolume(uint8_t volume) { settings.voiceVolume = volume; }
     void saveDeferredBackup() { ++saveDeferredBackupCalls; }
     void setDefaults() {}
     bool backupToSD() {

@@ -6,6 +6,7 @@
 #include <functional>
 
 #include "display.h"
+#include "modules/obd/obd_runtime_module.h"
 #include "settings.h"
 #include "touch_handler.h"
 
@@ -19,6 +20,9 @@ public:
         std::function<void()> startWifi;       // start WiFi/AP
         std::function<void()> drawWifiIndicator;
         std::function<void()> restoreDisplay;  // refresh display with current state
+        std::function<ObdRuntimeStatus(uint32_t nowMs)> readObdStatus;
+        std::function<bool(uint32_t nowMs)> requestObdManualPairScan;
+        std::function<bool(uint32_t nowMs)> isObdPairGestureSafe;
     };
 
     void begin(V1Display* disp,
@@ -33,6 +37,8 @@ private:
     void enterAdjustMode();
     void exitAdjustModeAndSave();
     bool handleSliderTouch(unsigned long nowMs);
+    bool canArmObdPairGesture(unsigned long nowMs) const;
+    void updateObdIndicatorAttention(bool attention, unsigned long nowMs);
 
     // State
     V1Display* display = nullptr;
@@ -49,10 +55,12 @@ private:
 
     unsigned long bootPressStart = 0;
     bool bootWasPressed = false;
+    bool obdPairGestureArmed = false;
 
     // Timing constants (mirrors previous inline logic)
     static constexpr unsigned long BOOT_DEBOUNCE_MS = 300;
     static constexpr unsigned long AP_TOGGLE_LONG_PRESS_MS = 4000;
+    static constexpr unsigned long OBD_PAIR_LONG_PRESS_MS = 10000;
     static constexpr unsigned long VOLUME_TEST_DEBOUNCE_MS = 1000;
     static constexpr unsigned long SLIDER_REDRAW_MIN_MS = 50;  // Cap slider redraw rate (~20 Hz)
 };

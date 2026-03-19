@@ -45,6 +45,7 @@ public:
     int flushCalls = 0;
     int forceNextRedrawCalls = 0;
     int drawWiFiIndicatorCalls = 0;
+    int drawObdIndicatorCalls = 0;
     int drawBatteryIndicatorCalls = 0;
     int drawProfileIndicatorCalls = 0;
     int lastProfileIndicatorSlot = -1;
@@ -65,6 +66,26 @@ public:
     bool lastGpsEnabled = false;
     bool lastGpsHasFix = false;
     uint8_t lastGpsSatellites = 0;
+    int setObdStatusCalls = 0;
+    bool lastObdEnabled = false;
+    bool lastObdConnected = false;
+    bool lastObdScanAttention = false;
+    int setObdAttentionCalls = 0;
+    bool lastObdAttention = false;
+    int syncTopIndicatorsCalls = 0;
+    uint32_t lastSyncTopIndicatorsNowMs = 0;
+    int flushRegionCalls = 0;
+    int16_t lastFlushX = 0;
+    int16_t lastFlushY = 0;
+    int16_t lastFlushW = 0;
+    int16_t lastFlushH = 0;
+    int showSettingsSlidersCalls = 0;
+    int updateSettingsSlidersCalls = 0;
+    int hideBrightnessSliderCalls = 0;
+    int lastSettingsBrightness = 0;
+    int lastSettingsVolume = 0;
+    int lastSettingsActiveSlider = -1;
+    int activeSliderFromTouch = -1;
     int refreshFrequencyOnlyCalls = 0;
     uint32_t lastFrequencyMHz = 0;
     int lastFrequencyBand = 0;
@@ -87,6 +108,7 @@ public:
         flushCalls = 0;
         forceNextRedrawCalls = 0;
         drawWiFiIndicatorCalls = 0;
+        drawObdIndicatorCalls = 0;
         drawBatteryIndicatorCalls = 0;
         drawProfileIndicatorCalls = 0;
         lastProfileIndicatorSlot = -1;
@@ -107,6 +129,26 @@ public:
         lastGpsEnabled = false;
         lastGpsHasFix = false;
         lastGpsSatellites = 0;
+        setObdStatusCalls = 0;
+        lastObdEnabled = false;
+        lastObdConnected = false;
+        lastObdScanAttention = false;
+        setObdAttentionCalls = 0;
+        lastObdAttention = false;
+        syncTopIndicatorsCalls = 0;
+        lastSyncTopIndicatorsNowMs = 0;
+        flushRegionCalls = 0;
+        lastFlushX = 0;
+        lastFlushY = 0;
+        lastFlushW = 0;
+        lastFlushH = 0;
+        showSettingsSlidersCalls = 0;
+        updateSettingsSlidersCalls = 0;
+        hideBrightnessSliderCalls = 0;
+        lastSettingsBrightness = 0;
+        lastSettingsVolume = 0;
+        lastSettingsActiveSlider = -1;
+        activeSliderFromTouch = -1;
         refreshFrequencyOnlyCalls = 0;
         lastFrequencyMHz = 0;
         lastFrequencyBand = 0;
@@ -138,6 +180,7 @@ public:
     void forceNextRedraw() { forceNextRedrawCalls++; }
     
     void drawWiFiIndicator() { drawWiFiIndicatorCalls++; }
+    void drawObdIndicator() { drawObdIndicatorCalls++; }
     void drawBatteryIndicator() { drawBatteryIndicatorCalls++; }
     void showLowBattery() { showLowBatteryCalls++; }
     void drawProfileIndicator(int slot) {
@@ -183,6 +226,36 @@ public:
         lastGpsSatellites = satellites;
     }
 
+    void setObdStatus(bool enabled, bool connected, bool scanAttention = false) {
+        setObdStatusCalls++;
+        lastObdEnabled = enabled;
+        lastObdConnected = connected;
+        lastObdScanAttention = scanAttention;
+    }
+
+    void setObdAttention(bool attention) {
+        setObdAttentionCalls++;
+        lastObdAttention = attention;
+    }
+
+    void refreshObdIndicator(uint32_t nowMs) {
+        syncTopIndicators(nowMs);
+        drawObdIndicator();
+    }
+
+    void syncTopIndicators(uint32_t nowMs) {
+        syncTopIndicatorsCalls++;
+        lastSyncTopIndicatorsNowMs = nowMs;
+    }
+
+    void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
+        flushRegionCalls++;
+        lastFlushX = x;
+        lastFlushY = y;
+        lastFlushW = w;
+        lastFlushH = h;
+    }
+
     void refreshFrequencyOnly(uint32_t freqMHz, int band, bool muted, bool isPhotoRadar = false) {
         refreshFrequencyOnlyCalls++;
         lastFrequencyMHz = freqMHz;
@@ -199,6 +272,19 @@ public:
     }
 
     void setBrightness(uint8_t /*level*/) {}
+    void showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel) {
+        showSettingsSlidersCalls++;
+        lastSettingsBrightness = brightnessLevel;
+        lastSettingsVolume = volumeLevel;
+    }
+    void updateSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel, int activeSlider) {
+        updateSettingsSlidersCalls++;
+        lastSettingsBrightness = brightnessLevel;
+        lastSettingsVolume = volumeLevel;
+        lastSettingsActiveSlider = activeSlider;
+    }
+    void hideBrightnessSlider() { hideBrightnessSliderCalls++; }
+    int getActiveSliderFromTouch(int16_t /*touchY*/) { return activeSliderFromTouch; }
     
     // Static methods
     static void resetChangeTracking() { resetChangeTrackingCalls++; }

@@ -82,9 +82,23 @@ void V1Display::setGpsSatellites(bool enabled, bool hasFix, uint8_t satellites) 
     gpsSatCount_   = satellites;
 }
 
-void V1Display::setObdStatus(bool enabled, bool connected) {
+void V1Display::setObdStatus(bool enabled, bool connected, bool scanAttention) {
     obdEnabled_ = enabled;
     obdConnected_ = connected;
+    obdScanAttention_ = scanAttention;
+}
+
+void V1Display::setObdAttention(bool attention) {
+    if (obdAttention_ == attention) {
+        return;
+    }
+    obdAttention_ = attention;
+    dirty.obdIndicator = true;
+}
+
+void V1Display::refreshObdIndicator(uint32_t nowMs) {
+    syncTopIndicators(nowMs);
+    drawObdIndicator();
 }
 
 void V1Display::syncTopIndicators(uint32_t nowMs) {
@@ -92,7 +106,9 @@ void V1Display::syncTopIndicators(uint32_t nowMs) {
     setGpsSatellites(gpsStatus.enabled, gpsStatus.stableHasFix, gpsStatus.stableSatellites);
 
     const ObdRuntimeStatus obdStatus = obdRuntimeModule.snapshot(nowMs);
-    setObdStatus(obdStatus.enabled, obdStatus.connected);
+    setObdStatus(obdStatus.enabled,
+                 obdStatus.connected,
+                 obdStatus.scanInProgress || obdStatus.manualScanPending);
 }
 
 void V1Display::drawGpsIndicator() {
@@ -146,18 +162,22 @@ void V1Display::drawObdIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     const bool wantShow = obdEnabled_;
     const bool curConnected = wantShow && obdConnected_;
+    const bool curAttention = wantShow && !curConnected && (obdScanAttention_ || obdAttention_);
 
     static bool lastShown = false;
     static bool lastConnected = false;
+    static bool lastAttention = false;
 
     if (!dirty.obdIndicator &&
         wantShow == lastShown &&
-        curConnected == lastConnected) {
+        curConnected == lastConnected &&
+        curAttention == lastAttention) {
         return;
     }
     dirty.obdIndicator = false;
     lastShown = wantShow;
     lastConnected = curConnected;
+    lastAttention = curAttention;
 
     // Position: right of lockout badge, before signal bars.
     const int x = 370;
@@ -171,7 +191,7 @@ void V1Display::drawObdIndicator() {
     }
 
     const V1Settings& s = settingsManager.get();
-    const uint16_t textColor = curConnected ? s.colorObd : s.colorMuted;
+    const uint16_t textColor = curConnected ? s.colorObd : (curAttention ? 0xF800 : s.colorMuted);
 
     GFX_setTextDatum(MC_DATUM);
     TFT_CALL(setTextSize)(2);

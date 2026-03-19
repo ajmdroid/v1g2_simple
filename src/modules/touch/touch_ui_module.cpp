@@ -2,6 +2,13 @@
 
 #include "audio_beep.h"  // audio_set_volume, play_test_voice
 
+namespace {
+constexpr int kObdBadgeFlushX = 360;
+constexpr int kObdBadgeFlushY = 0;
+constexpr int kObdBadgeFlushW = 72;
+constexpr int kObdBadgeFlushH = 36;
+}
+
 void TouchUiModule::begin(V1Display* disp,
                TouchHandler* touch,
                SettingsManager* settingsMgr,
@@ -22,11 +29,33 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
         bootPressStart = nowMs;
     }
 
+    if (bootPressed) {
+        const bool shouldArmObdPair = !brightnessAdjustMode &&
+                                      (nowMs - bootPressStart) >= OBD_PAIR_LONG_PRESS_MS &&
+                                      canArmObdPairGesture(nowMs);
+        if (shouldArmObdPair != obdPairGestureArmed) {
+            obdPairGestureArmed = shouldArmObdPair;
+            updateObdIndicatorAttention(obdPairGestureArmed, nowMs);
+        }
+    }
+
     // On release: determine action based on hold duration
     if (!bootPressed && bootWasPressed) {
         unsigned long pressDuration = nowMs - bootPressStart;
+        const bool triggerObdPair = obdPairGestureArmed && pressDuration >= OBD_PAIR_LONG_PRESS_MS;
 
-        if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
+        if (obdPairGestureArmed) {
+            obdPairGestureArmed = false;
+            updateObdIndicatorAttention(false, nowMs);
+        }
+
+        if (triggerObdPair) {
+            if (callbacks.requestObdManualPairScan) {
+                (void)callbacks.requestObdManualPairScan(nowMs);
+            }
+            display->refreshObdIndicator(nowMs);
+            display->flushRegion(kObdBadgeFlushX, kObdBadgeFlushY, kObdBadgeFlushW, kObdBadgeFlushH);
+        } else if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
             // 4s+ hold: toggle WiFi on release
             if (callbacks.isWifiSetupActive && callbacks.isWifiSetupActive()) {
                 if (callbacks.stopWifiSetup) callbacks.stopWifiSetup();
@@ -60,6 +89,25 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
     }
 
     return false;
+}
+
+bool TouchUiModule::canArmObdPairGesture(unsigned long nowMs) const {
+    if (!callbacks.readObdStatus || !callbacks.isObdPairGestureSafe) {
+        return false;
+    }
+
+    const ObdRuntimeStatus status = callbacks.readObdStatus(nowMs);
+    return status.enabled &&
+           !status.connected &&
+           !status.scanInProgress &&
+           !status.manualScanPending &&
+           callbacks.isObdPairGestureSafe(nowMs);
+}
+
+void TouchUiModule::updateObdIndicatorAttention(bool attention, unsigned long nowMs) {
+    display->setObdAttention(attention);
+    display->refreshObdIndicator(nowMs);
+    display->flushRegion(kObdBadgeFlushX, kObdBadgeFlushY, kObdBadgeFlushW, kObdBadgeFlushH);
 }
 
 void TouchUiModule::enterAdjustMode() {

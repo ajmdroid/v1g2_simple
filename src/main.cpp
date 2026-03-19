@@ -680,6 +680,13 @@ void configureTouchUiModule() {
                 return;
             }
             displayPipelineModule.restoreCurrentOwner(millis());
+        },
+        .readObdStatus = [](uint32_t nowMs) { return obdRuntimeModule.snapshot(nowMs); },
+        .requestObdManualPairScan = [](uint32_t nowMs) {
+            return obdRuntimeModule.requestManualPairScan(nowMs);
+        },
+        .isObdPairGestureSafe = [](uint32_t nowMs) {
+            return displayPipelineModule.allowsObdPairGesture(nowMs);
         }
     };
     touchUiModule.begin(&display, &touchHandler, &settingsManager, touchCbs);

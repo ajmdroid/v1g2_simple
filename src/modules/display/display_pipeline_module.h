@@ -25,6 +25,7 @@ public:
     // prioritySuppressed is a per-frame software suppression flag (e.g. lockout ENFORCE match).
     void handleParsed(unsigned long nowMs, bool prioritySuppressed);
     void restoreCurrentOwner(uint32_t nowMs);
+    bool allowsObdPairGesture(uint32_t nowMs) const;
 
 private:
     enum class RenderOwner : uint8_t {

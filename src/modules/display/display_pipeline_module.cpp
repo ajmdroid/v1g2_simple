@@ -246,6 +246,30 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
     renderIdleOwner(nowMs, state, true, true);
 }
 
+bool DisplayPipelineModule::allowsObdPairGesture(uint32_t nowMs) const {
+    if (!displayMode || !parser || !settings || !alertPersistence) {
+        return false;
+    }
+
+    if (*displayMode != DisplayMode::IDLE) {
+        return false;
+    }
+
+    if (parser->hasAlerts()) {
+        return false;
+    }
+
+    const V1Settings& s = settings->get();
+    const uint8_t persistSec = settings->getSlotAlertPersistSec(s.activeSlot);
+    if (persistSec > 0 &&
+        alertPersistence->getPersistedAlert().isValid &&
+        alertPersistence->shouldShowPersisted(nowMs, persistSec * 1000UL)) {
+        return false;
+    }
+
+    return true;
+}
+
 void DisplayPipelineModule::recordDisplayTiming(const char* label, unsigned long startUs, unsigned long endUs) {
     const unsigned long dur = endUs - startUs;
     displayLatencySum += dur;
