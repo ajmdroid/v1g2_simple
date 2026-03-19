@@ -314,4 +314,193 @@ describe('integrations route page', () => {
 
 		unmount();
 	});
+
+	it('reconciles the OBD toggle from backend truth after a failed save', async () => {
+		const fetchMock = installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/gps/status',
+					respond: jsonResponse({
+						enabled: true,
+						runtimeEnabled: true,
+						mode: 'drive',
+						hasFix: true,
+						stableHasFix: true,
+						satellites: 7,
+						stableSatellites: 7,
+						sampleAgeMs: 1900,
+						moduleDetected: true,
+						detectionTimedOut: false,
+						parserActive: true
+					})
+				},
+				{
+					method: 'GET',
+					match: '/api/obd/config',
+					respond: jsonResponse({ enabled: false, minRssi: -80 })
+				},
+				{
+					method: 'GET',
+					match: '/api/obd/status',
+					respond: jsonResponse({ enabled: false, connected: false, pollCount: 0, pollErrors: 0 })
+				},
+				{
+					method: 'POST',
+					match: '/api/obd/config',
+					respond: jsonResponse({ success: false }, 500)
+				},
+				{ method: 'POST', match: '/api/obd/scan', respond: jsonResponse({ success: true }) },
+				{ method: 'POST', match: '/api/obd/forget', respond: jsonResponse({ success: true }) }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		const toggle = await screen.findByRole('checkbox', { name: /enable obd/i });
+		expect(toggle).not.toBeChecked();
+
+		await fireEvent.click(toggle);
+
+		await screen.findByText('Failed to save OBD setting.');
+		await waitFor(() => expect(toggle).not.toBeChecked());
+		expect(countCalls(fetchMock, '/api/obd/config')).toBeGreaterThanOrEqual(3);
+
+		unmount();
+	});
+
+	it('reconciles the OBD min RSSI input after a failed save', async () => {
+		installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/gps/status',
+					respond: jsonResponse({
+						enabled: true,
+						runtimeEnabled: true,
+						mode: 'drive',
+						hasFix: true,
+						stableHasFix: true,
+						satellites: 7,
+						stableSatellites: 7,
+						sampleAgeMs: 1900,
+						moduleDetected: true,
+						detectionTimedOut: false,
+						parserActive: true
+					})
+				},
+				{
+					method: 'GET',
+					match: '/api/obd/config',
+					respond: jsonResponse({ enabled: true, minRssi: -80 })
+				},
+				{
+					method: 'GET',
+					match: '/api/obd/status',
+					respond: jsonResponse({
+						enabled: true,
+						connected: true,
+						speedValid: false,
+						rssi: -64,
+						state: 8,
+						savedAddressValid: true,
+						pollCount: 12,
+						pollErrors: 0
+					})
+				},
+				{
+					method: 'POST',
+					match: '/api/obd/config',
+					respond: jsonResponse({ success: false }, 500)
+				},
+				{ method: 'POST', match: '/api/obd/scan', respond: jsonResponse({ success: true }) },
+				{ method: 'POST', match: '/api/obd/forget', respond: jsonResponse({ success: true }) }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		const input = await screen.findByLabelText(/Min RSSI \(dBm\)/i);
+		expect(input).toHaveValue(-80);
+
+		await fireEvent.input(input, { target: { value: '-55' } });
+		await fireEvent.change(input);
+
+		await screen.findByText('Failed to save OBD setting.');
+		await waitFor(() => expect(input).toHaveValue(-80));
+
+		unmount();
+	});
+
+	it('re-fetches OBD config and status after a rejected save request', async () => {
+		let obdConfig = { enabled: false, minRssi: -80 };
+		let obdStatus = { enabled: false, connected: false, pollCount: 0, pollErrors: 0, state: 0 };
+		const fetchMock = installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/gps/status',
+					respond: jsonResponse({
+						enabled: true,
+						runtimeEnabled: true,
+						mode: 'drive',
+						hasFix: true,
+						stableHasFix: true,
+						satellites: 7,
+						stableSatellites: 7,
+						sampleAgeMs: 1900,
+						moduleDetected: true,
+						detectionTimedOut: false,
+						parserActive: true
+					})
+				},
+				{
+					method: 'GET',
+					match: '/api/obd/config',
+					respond: () => jsonResponse(obdConfig)
+				},
+				{
+					method: 'GET',
+					match: '/api/obd/status',
+					respond: () => jsonResponse(obdStatus)
+				},
+				{
+					method: 'POST',
+					match: '/api/obd/config',
+					respond: async ({ init }) => {
+						const body = JSON.parse(init.body);
+						obdConfig = { ...obdConfig, ...body };
+						obdStatus = {
+							enabled: !!obdConfig.enabled,
+							connected: !!obdConfig.enabled,
+							speedValid: false,
+							rssi: -61,
+							state: obdConfig.enabled ? 8 : 0,
+							savedAddressValid: !!obdConfig.enabled,
+							pollCount: obdConfig.enabled ? 18 : 0,
+							pollErrors: 0
+						};
+						return Promise.reject(new Error('connection lost after write'));
+					}
+				},
+				{ method: 'POST', match: '/api/obd/scan', respond: jsonResponse({ success: true }) },
+				{ method: 'POST', match: '/api/obd/forget', respond: jsonResponse({ success: true }) }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		const toggle = await screen.findByRole('checkbox', { name: /enable obd/i });
+		expect(toggle).not.toBeChecked();
+
+		await fireEvent.click(toggle);
+
+		await screen.findByText('Connection error.');
+		await screen.findByText('Polling');
+		await waitFor(() => expect(toggle).toBeChecked());
+		expect(countCalls(fetchMock, '/api/obd/config')).toBeGreaterThanOrEqual(3);
+		expect(countCalls(fetchMock, '/api/obd/status')).toBeGreaterThanOrEqual(2);
+
+		unmount();
+	});
 });

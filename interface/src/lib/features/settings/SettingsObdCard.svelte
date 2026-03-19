@@ -36,25 +36,56 @@
 		if (obdStatus) {
 			enabled = obdStatus.enabled;
 		}
-		// Fetch current settings for minRssi
-		try {
-			const res = await fetchWithTimeout('/api/obd/config');
-			if (res.ok) {
-				const data = await res.json();
-				if (typeof data.minRssi === 'number') minRssi = data.minRssi;
-				if (typeof data.enabled === 'boolean') enabled = data.enabled;
-			}
-		} catch (error) {
-			console.error('Failed to load OBD settings', error);
-			obdMessage = { type: 'error', text: 'Failed to load OBD settings.' };
-		}
+		await fetchObdConfig({ showLoadError: true }).catch(() => null);
 		loaded = true;
-		if (enabled) statusPoll.start();
+		syncStatusPollToEnabled();
 	});
 
 	onDestroy(() => {
 		statusPoll.stop();
 	});
+
+	function syncStatusPollToEnabled() {
+		if (enabled) {
+			statusPoll.start();
+			return;
+		}
+		statusPoll.stop();
+	}
+
+	async function fetchObdConfig({ showLoadError = false } = {}) {
+		try {
+			const res = await fetchWithTimeout('/api/obd/config');
+			if (!res.ok) {
+				throw new Error(`OBD config request failed with status ${res.status}`);
+			}
+			const data = await res.json();
+			if (typeof data.minRssi === 'number') minRssi = data.minRssi;
+			if (typeof data.enabled === 'boolean') enabled = data.enabled;
+			return data;
+		} catch (error) {
+			if (showLoadError) {
+				console.error('Failed to load OBD settings', error);
+				obdMessage = { type: 'error', text: 'Failed to load OBD settings.' };
+			}
+			throw error;
+		}
+	}
+
+	async function reconcileObdUiStateAfterSaveFailure() {
+		try {
+			await fetchObdConfig();
+			if (enabled) {
+				syncStatusPollToEnabled();
+				await fetchObdStatus();
+			} else {
+				syncStatusPollToEnabled();
+				obdStatus = null;
+			}
+		} catch (error) {
+			console.warn('Failed to reconcile OBD settings after save failure', error);
+		}
+	}
 
 	async function saveConfig(fields) {
 		saving = true;
@@ -67,21 +98,29 @@
 			});
 			if (!res.ok) {
 				obdMessage = { type: 'error', text: 'Failed to save OBD setting.' };
+				await reconcileObdUiStateAfterSaveFailure();
+				return false;
 			}
+			return true;
 		} catch (_) {
 			obdMessage = { type: 'error', text: 'Connection error.' };
+			await reconcileObdUiStateAfterSaveFailure();
+			return false;
 		} finally {
 			saving = false;
 		}
 	}
 
 	async function handleToggle() {
-		await saveConfig({ enabled });
+		const saved = await saveConfig({ enabled });
+		if (!saved) {
+			return;
+		}
 		if (enabled) {
-			statusPoll.start();
+			syncStatusPollToEnabled();
 			await fetchObdStatus();
 		} else {
-			statusPoll.stop();
+			syncStatusPollToEnabled();
 			obdStatus = null;
 		}
 	}
