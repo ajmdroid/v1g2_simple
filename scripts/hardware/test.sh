@@ -474,8 +474,12 @@ suite_suspicious_uptime_drop_count=0
 suite_flash_boundary_advisory_count=0
 UPTIME_LOG=""
 
-poll_uptime_ms() {
-  local endpoint="$METRICS_URL"
+metrics_soak_url() {
+  local endpoint="$1"
+  if [[ -z "$endpoint" ]]; then
+    echo ""
+    return
+  fi
   if [[ "$endpoint" != *"soak="* ]]; then
     if [[ "$endpoint" == *"?"* ]]; then
       endpoint="${endpoint}&soak=1"
@@ -483,6 +487,12 @@ poll_uptime_ms() {
       endpoint="${endpoint}?soak=1"
     fi
   fi
+  echo "$endpoint"
+}
+
+poll_uptime_ms() {
+  local endpoint
+  endpoint="$(metrics_soak_url "$METRICS_URL")"
   local payload
   payload="$(curl -fsS --max-time "$HTTP_TIMEOUT_SECONDS" "$endpoint" 2>/dev/null || true)"
   if [[ -z "$payload" ]]; then
@@ -570,7 +580,9 @@ run_rad_scenario() {
   if [[ "$NEEDS_LIVE_BOARD" -eq 0 || -z "$METRICS_URL" ]]; then
     return 0
   fi
-  if ! wait_for_metrics_endpoint_recovery "RAD metrics endpoint" "$METRICS_URL"; then
+  local metrics_poll_url=""
+  metrics_poll_url="$(metrics_soak_url "$METRICS_URL")"
+  if ! wait_for_metrics_endpoint_recovery "RAD metrics endpoint" "$metrics_poll_url"; then
     echo "==> rad_scenario [skip] metrics endpoint failed to recover" | tee -a "$RUN_LOG"
     return 0
   fi
