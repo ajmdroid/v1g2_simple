@@ -775,7 +775,7 @@ static void syncObdSettings() {
         return;
     }
 
-    settingsManager.save();
+    settingsManager.saveDeferredBackup();
 }
 
 static void configureRuntimeCoreModules() {
