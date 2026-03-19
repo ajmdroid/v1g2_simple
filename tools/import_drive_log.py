@@ -157,11 +157,14 @@ def integer(value: str) -> int | None:
 
 
 def select_wifi_peak_metric(kv: dict[str, str]) -> float | None:
-    ok_samples = numeric(kv.get("ok_samples", ""))
+    ok_samples = numeric(kv.get("ok_samples", "")) or numeric(kv.get("metrics_ok_samples", ""))
     warm_value = numeric(kv.get("wifi_max_peak_excluding_first", ""))
     if ok_samples is not None and ok_samples > 2 and warm_value is not None:
         return warm_value
-    return numeric(kv.get("wifi_max_peak", ""))
+    selected_value = numeric(kv.get("wifi_max_peak", ""))
+    if selected_value is not None:
+        return selected_value
+    return numeric(kv.get("wifi_max_peak_us", ""))
 
 
 def select_wifi_p95_metric(kv: dict[str, str]) -> float | None:
@@ -169,7 +172,10 @@ def select_wifi_p95_metric(kv: dict[str, str]) -> float | None:
     warm_value = numeric(kv.get("wifi_p95_excluding_first", ""))
     if sample_count_excluding_first is not None and sample_count_excluding_first > 0 and warm_value is not None:
         return warm_value
-    return numeric(kv.get("wifi_p95_raw", ""))
+    selected_value = numeric(kv.get("wifi_p95_raw", ""))
+    if selected_value is not None:
+        return selected_value
+    return numeric(kv.get("wifi_p95_us", ""))
 
 
 def parse_serial_log(path: Path | None) -> dict[str, Any]:
@@ -224,6 +230,8 @@ def build_import_diagnostics(
     metric_count: int,
 ) -> dict[str, Any]:
     metrics_ok_samples = integer(metrics_kv.get("ok_samples", ""))
+    if metrics_ok_samples is None:
+        metrics_ok_samples = integer(metrics_kv.get("metrics_ok_samples", ""))
     panic_ok_samples = integer(panic_kv.get("ok_samples", ""))
     runtime_crash = panic_runtime_crash_detected(panic_kv)
     preexisting_panic_state = panic_preexisting_crash_state(panic_kv)
@@ -341,6 +349,8 @@ def render_metrics_ndjson(out_path: Path, run_id: str, git_sha: str, suite_or_pr
             else:
                 source_key = SOAK_TREND_METRIC_KV_ALIASES.get(key, key)
                 value = numeric(kv.get(source_key, ""))
+                if value is None and source_key != key:
+                    value = numeric(kv.get(key, ""))
             if value is None:
                 continue
             record = {

@@ -1491,6 +1491,62 @@ for field in ("ok", "attempts", "elapsed_seconds", "reason"):
 PY
 }
 
+metrics_reset_max_wait_seconds() {
+  local budget=$((HTTP_TIMEOUT_SECONDS + METRICS_ENDPOINT_RETRY_DELAY_SECONDS * 2))
+  local recovery_budget
+  recovery_budget="$(metrics_endpoint_max_wait_seconds)"
+  if [[ "$recovery_budget" =~ ^[0-9]+$ ]] && [[ "$recovery_budget" -gt 0 ]] && [[ "$recovery_budget" -lt "$budget" ]]; then
+    budget="$recovery_budget"
+  fi
+  if [[ "$budget" -lt 1 ]]; then
+    budget=1
+  fi
+  echo "$budget"
+}
+
+attempt_metrics_reset() {
+  local endpoint_url="$1"
+  local max_wait_seconds="$2"
+  local attempts=0
+  local deadline_epoch
+  local now_epoch
+
+  deadline_epoch=$(( $(date +%s) + max_wait_seconds ))
+  while :; do
+    attempts=$((attempts + 1))
+    metrics_reset_http_code="$(curl -sS --max-time "$HTTP_TIMEOUT_SECONDS" -o /dev/null -w "%{http_code}" -X POST "$endpoint_url" 2>/dev/null || true)"
+    if [[ "$metrics_reset_http_code" == "200" ]]; then
+      metrics_reset_success=1
+      metrics_reset_reason="ok"
+      if [[ "$attempts" -eq 1 ]]; then
+        echo "    metrics reset: OK (HTTP 200)" | tee -a "$RUN_LOG"
+      else
+        echo "    metrics reset: OK after retry (${attempts} attempt(s), HTTP 200)" | tee -a "$RUN_LOG"
+      fi
+      return 0
+    fi
+
+    if [[ -n "$metrics_reset_http_code" ]]; then
+      metrics_reset_reason="http_${metrics_reset_http_code}"
+    else
+      metrics_reset_reason="no_response"
+    fi
+
+    now_epoch="$(date +%s)"
+    if [[ "$now_epoch" -ge "$deadline_epoch" ]]; then
+      break
+    fi
+    sleep "$METRICS_ENDPOINT_RETRY_DELAY_SECONDS"
+  done
+
+  if [[ -n "$metrics_reset_http_code" ]]; then
+    echo "    metrics reset: WARN (HTTP ${metrics_reset_http_code} after ${attempts} attempt(s))" | tee -a "$RUN_LOG"
+  else
+    echo "    metrics reset: WARN (no response after ${attempts} attempt(s))" | tee -a "$RUN_LOG"
+  fi
+  return 1
+}
+
 wait_for_json_endpoint() {
   local endpoint_name="$1"
   local endpoint_url="$2"
@@ -1776,20 +1832,10 @@ metrics_reset_success=0
 metrics_reset_http_code=""
 metrics_reset_reason="not-attempted"
 if [[ "$SKIP_FLASH" -eq 1 && -n "$METRICS_RESET_URL" ]]; then
+  metrics_reset_max_wait_budget="$(metrics_reset_max_wait_seconds)"
   metrics_reset_attempted=1
-  echo "==> Resetting debug metrics counters via ${METRICS_RESET_URL}" | tee -a "$RUN_LOG"
-  metrics_reset_http_code="$(curl -sS --max-time "$HTTP_TIMEOUT_SECONDS" -o /dev/null -w "%{http_code}" -X POST "$METRICS_RESET_URL" 2>/dev/null || true)"
-  if [[ "$metrics_reset_http_code" == "200" ]]; then
-    metrics_reset_success=1
-    metrics_reset_reason="ok"
-    echo "    metrics reset: OK (HTTP 200)" | tee -a "$RUN_LOG"
-  elif [[ -n "$metrics_reset_http_code" ]]; then
-    metrics_reset_reason="http_${metrics_reset_http_code}"
-    echo "    metrics reset: WARN (HTTP ${metrics_reset_http_code})" | tee -a "$RUN_LOG"
-  else
-    metrics_reset_reason="no_response"
-    echo "    metrics reset: WARN (no response)" | tee -a "$RUN_LOG"
-  fi
+  echo "==> Resetting debug metrics counters via ${METRICS_RESET_URL} (retry ${METRICS_ENDPOINT_RETRY_DELAY_SECONDS}s, bounded wait <= ${metrics_reset_max_wait_budget}s)" | tee -a "$RUN_LOG"
+  attempt_metrics_reset "$METRICS_RESET_URL" "$metrics_reset_max_wait_budget" || true
 fi
 
 echo "==> Starting serial capture on $MONITOR_PORT" | tee -a "$RUN_LOG"
@@ -3467,6 +3513,8 @@ with out_path.open("w", encoding="utf-8") as out_handle:
     for key, unit in SOAK_TREND_METRIC_UNITS.items():
         source_key = SOAK_TREND_METRIC_KV_ALIASES.get(key, key)
         value = payload.get(source_key, "")
+        if value == "" and source_key != key:
+            value = payload.get(key, "")
         if value == "":
             continue
         try:
