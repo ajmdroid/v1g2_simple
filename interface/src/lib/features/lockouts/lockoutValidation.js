@@ -267,6 +267,7 @@ export function lockoutConfigMatchesRuntime(lockoutConfig, runtime) {
 		!!lockoutConfig.kaLearningEnabled === !!runtime.kaLearningEnabled &&
 		!!lockoutConfig.kLearningEnabled === !!runtime.kLearningEnabled &&
 		!!lockoutConfig.xLearningEnabled === !!runtime.xLearningEnabled &&
+		!!lockoutConfig.preQuiet === !!runtime.preQuiet &&
 		(Number(lockoutConfig.preQuietBufferE5) || 0) === (Number(runtime.preQuietBufferE5) || 0) &&
 		clampHdopX10(lockoutConfig.maxHdopX10) === clampHdopX10(runtime.maxHdopX10) &&
 		clampMinLearnerSpeed(lockoutConfig.minLearnerSpeedMph) === clampMinLearnerSpeed(runtime.minLearnerSpeedMph)

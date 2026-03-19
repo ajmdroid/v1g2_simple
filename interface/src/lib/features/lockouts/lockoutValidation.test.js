@@ -278,4 +278,52 @@ describe('lockoutValidation', () => {
 			})
 		).toBe(true);
 	});
+
+	it('requires pre-quiet toggle to match even when buffer matches', () => {
+		const lockoutConfig = {
+			modeRaw: 1,
+			coreGuardEnabled: true,
+			maxQueueDrops: 10,
+			maxPerfDrops: 20,
+			maxEventBusDrops: 30,
+			learnerPromotionHits: 3,
+			learnerRadiusFt: radiusE5ToFeet(135),
+			learnerFreqToleranceMHz: 10,
+			learnerLearnIntervalHours: 4,
+			learnerUnlearnIntervalHours: 4,
+			learnerUnlearnCount: 5,
+			manualDemotionMissCount: 25,
+			kaLearningEnabled: false,
+			kLearningEnabled: true,
+			xLearningEnabled: true,
+			preQuiet: true,
+			preQuietBufferE5: 12,
+			maxHdopX10: 50,
+			minLearnerSpeedMph: 5
+		};
+
+		expect(
+			lockoutConfigMatchesRuntime(lockoutConfig, {
+				modeRaw: 1,
+				coreGuardEnabled: true,
+				maxQueueDrops: 10,
+				maxPerfDrops: 20,
+				maxEventBusDrops: 30,
+				learnerPromotionHits: 3,
+				learnerRadiusE5: 135,
+				learnerFreqToleranceMHz: 10,
+				learnerLearnIntervalHours: 4,
+				learnerUnlearnIntervalHours: 4,
+				learnerUnlearnCount: 5,
+				manualDemotionMissCount: 25,
+				kaLearningEnabled: false,
+				kLearningEnabled: true,
+				xLearningEnabled: true,
+				preQuiet: false,
+				preQuietBufferE5: 12,
+				maxHdopX10: 50,
+				minLearnerSpeedMph: 5
+			})
+		).toBe(false);
+	});
 });
