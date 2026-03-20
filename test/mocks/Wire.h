@@ -7,6 +7,12 @@
 
 class TwoWire {
 public:
+    struct TransmissionRecord {
+        uint8_t address = 0;
+        std::vector<uint8_t> data;
+        bool sendStop = true;
+    };
+
     struct RequestResult {
         std::size_t returnedSize = 0;
         std::vector<uint8_t> data;
@@ -51,6 +57,7 @@ public:
     uint8_t endTransmission(bool sendStop = true) {
         ++endTransmissionCalls;
         lastSendStop = sendStop;
+        transmissionHistory.push_back(TransmissionRecord{lastTxAddress, txBuffer, sendStop});
         if (endTransmissionResults.empty()) {
             return 0;
         }
@@ -128,6 +135,7 @@ public:
         txBuffer.clear();
         rxBuffer.clear();
         rxIndex = 0;
+        transmissionHistory.clear();
         endTransmissionResults.clear();
         requestResults.clear();
         started = false;
@@ -149,6 +157,7 @@ public:
     bool lastSendStop = true;
     bool started = false;
     std::vector<uint8_t> txBuffer;
+    std::vector<TransmissionRecord> transmissionHistory;
 
 private:
     std::deque<uint8_t> endTransmissionResults;

@@ -41,90 +41,67 @@ i2s_chan_handle_t i2s_tx_chan = NULL;  // New I2S driver handle
 // Current volume level (0-100%) - must be declared before es8311_init() uses it
 static uint8_t current_volume_percent = 75;
 
-class ScopedTca9554Lock {
-public:
-    explicit ScopedTca9554Lock(TickType_t timeoutTicks = pdMS_TO_TICKS(50)) {
-        locked_ = (tca9554WireMutex && xSemaphoreTake(tca9554WireMutex, timeoutTicks) == pdTRUE);
-    }
-    ~ScopedTca9554Lock() {
-        if (locked_) {
-            xSemaphoreGive(tca9554WireMutex);
-        }
-    }
-    bool ok() const { return locked_; }
+namespace {
 
-private:
-    bool locked_ = false;
-};
+constexpr unsigned long AUDIO_I2C_LOG_MIN_INTERVAL_MS = 2000;
+unsigned long lastAudioI2cErrorLogMs = 0;
 
-// Write a register to ES8311
-static void es8311_write_reg(uint8_t reg, uint8_t val) {
-    ScopedTca9554Lock lock;
-    if (!lock.ok()) {
-        AUDIO_LOGLN("[AUDIO][I2C] lock timeout in es8311_write_reg");
+bool shouldLogAudioI2cFailureNow() {
+    const unsigned long now = millis();
+    if (lastAudioI2cErrorLogMs != 0 &&
+        now - lastAudioI2cErrorLogMs < AUDIO_I2C_LOG_MIN_INTERVAL_MS) {
+        return false;
+    }
+    lastAudioI2cErrorLogMs = now;
+    return true;
+}
+
+}  // namespace
+
+void audio_log_i2c_failure(const char* context, AudioI2cResult result) {
+    if (!context || result == AudioI2cResult::Ok || !shouldLogAudioI2cFailureNow()) {
         return;
     }
-    audioWire.beginTransmission(ES8311_ADDR);
-    audioWire.write(reg);
-    audioWire.write(val);
-    uint8_t result = audioWire.endTransmission();
-    if (result != 0) {
-        AUDIO_LOGF("[AUDIO][I2C] ES8311 reg 0x%02X <= 0x%02X FAILED: %d\n", reg, val, result);
+
+    Serial.printf("[AUDIO][I2C] %s: %s\n", context, audioI2cResultToString(result));
+}
+
+// Write a register to ES8311
+static AudioI2cResult es8311_write_reg(uint8_t reg,
+                                       uint8_t val,
+                                       TickType_t timeoutTicks = pdMS_TO_TICKS(50)) {
+    AudioI2cLockGuard lock(tca9554WireMutex, timeoutTicks);
+    if (!lock.ok()) {
+        return lock.result();
     }
+    return audioI2cWriteRegister(audioWire, ES8311_ADDR, reg, val);
 }
 
 // Enable/disable speaker amp via TCA9554 pin 7
 // Note: Battery manager uses pin 6 for power latch, we use pin 7 for speaker amp
 // Per ESP-ADF and Waveshare examples, PA_EN is active-HIGH
-void set_speaker_amp(bool enable) {
-    ScopedTca9554Lock lock;
+AudioI2cResult set_speaker_amp(bool enable, TickType_t timeoutTicks) {
+    AudioI2cLockGuard lock(tca9554WireMutex, timeoutTicks);
     if (!lock.ok()) {
-        AUDIO_LOGLN("[AUDIO][I2C] lock timeout in set_speaker_amp");
-        return;
+        return lock.result();
     }
 
-    // Step 1: Read current config register
-    audioWire.beginTransmission(TCA9554_ADDR);
-    audioWire.write(0x03); // Configuration register
-    audioWire.endTransmission(false);
-    audioWire.requestFrom((uint8_t)TCA9554_ADDR, (uint8_t)1);
-    uint8_t config = 0xFF;
-    if (audioWire.available()) {
-        config = audioWire.read();
-    }
-    
-    // Step 2: Read current output state
-    audioWire.beginTransmission(TCA9554_ADDR);
-    audioWire.write(0x01); // Output port register
-    audioWire.endTransmission(false);
-    audioWire.requestFrom((uint8_t)TCA9554_ADDR, (uint8_t)1);
-    uint8_t output = 0xFF;
-    if (audioWire.available()) {
-        output = audioWire.read();
-    }
-    
-    AUDIO_LOGF("[AUDIO] TCA9554 BEFORE: config=0x%02X output=0x%02X\n", config, output);
-    
-    // Step 3: Set the output value FIRST (before configuring as output)
-    // Active HIGH per Waveshare esp_io_expander example: set_level(pin, 1) to enable
-    if (enable) {
-        output |= (1 << TCA9554_SPK_AMP_PIN);   // HIGH to enable
-    } else {
-        output &= ~(1 << TCA9554_SPK_AMP_PIN);  // LOW to disable
-    }
-    audioWire.beginTransmission(TCA9554_ADDR);
-    audioWire.write(0x01); // Output port register
-    audioWire.write(output);
-    audioWire.endTransmission();
-    
-    // Step 4: Configure pin 7 as output (if not already)
-    config &= ~(1 << TCA9554_SPK_AMP_PIN); // Bit = 0 means output
-    audioWire.beginTransmission(TCA9554_ADDR);
-    audioWire.write(0x03); // Configuration register
-    audioWire.write(config);
-    audioWire.endTransmission();
-    
-    AUDIO_LOGF("[AUDIO] Speaker amp %s\n", enable ? "ENABLED" : "DISABLED");
+    uint8_t nextConfig = 0;
+    uint8_t nextOutput = 0;
+    const AudioI2cResult result = audioI2cSetTca9554Pin(audioWire,
+                                                        TCA9554_ADDR,
+                                                        TCA9554_CONFIG_PORT,
+                                                        TCA9554_OUTPUT_PORT,
+                                                        TCA9554_SPK_AMP_PIN,
+                                                        enable,
+                                                        &nextConfig,
+                                                        &nextOutput);
+    AUDIO_LOGF("[AUDIO] Speaker amp %s config=0x%02X output=0x%02X result=%s\n",
+               enable ? "ENABLED" : "DISABLED",
+               nextConfig,
+               nextOutput,
+               audioI2cResultToString(result));
+    return result;
 }
 
 // ES8311 Register definitions (from ESP-ADF)
@@ -161,97 +138,111 @@ void set_speaker_amp(bool enable) {
 #define ES8311_GP_REG45           0x45
 
 // Read a register from ES8311
-static uint8_t es8311_read_reg(uint8_t reg) {
-    ScopedTca9554Lock lock;
+static AudioI2cResult es8311_read_reg(uint8_t reg,
+                                      uint8_t& value,
+                                      TickType_t timeoutTicks = pdMS_TO_TICKS(50)) {
+    AudioI2cLockGuard lock(tca9554WireMutex, timeoutTicks);
     if (!lock.ok()) {
-        AUDIO_LOGLN("[AUDIO][I2C] lock timeout in es8311_read_reg");
-        return 0;
+        return lock.result();
     }
-    audioWire.beginTransmission(ES8311_ADDR);
-    audioWire.write(reg);
-    audioWire.endTransmission(false);
-    audioWire.requestFrom((uint8_t)ES8311_ADDR, (uint8_t)1);
-    if (audioWire.available()) {
-        return audioWire.read();
-    }
-    return 0;
+    return audioI2cReadRegister(audioWire, ES8311_ADDR, reg, value);
 }
 
 // Full ES8311 initialization - exact copy of ESP-ADF es8311_codec_init
 // For 24kHz, MCLK=6.144MHz (256*fs), slave mode, DAC output
-void es8311_init() {
-    if (es8311_initialized) return;
+bool es8311_init() {
+    if (es8311_initialized) return true;
     
     AUDIO_LOGLN("[AUDIO] ES8311 init (ESP-ADF pattern)");
+
+    auto writeOrFail = [](const char* context, uint8_t reg, uint8_t value) -> bool {
+        const AudioI2cResult result = es8311_write_reg(reg, value);
+        if (result == AudioI2cResult::Ok) {
+            return true;
+        }
+        audio_log_i2c_failure(context, result);
+        return false;
+    };
+
+    auto readOrFail = [](const char* context, uint8_t reg, uint8_t& value) -> bool {
+        const AudioI2cResult result = es8311_read_reg(reg, value);
+        if (result == AudioI2cResult::Ok) {
+            return true;
+        }
+        audio_log_i2c_failure(context, result);
+        return false;
+    };
     
     // Coefficient for 24kHz with 6.144MHz MCLK from coeff_div table:
     // {6144000 , 24000, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0xff, 0x04, 0x10, 0x10}
     // pre_div=1, pre_multi=1, adc_div=1, dac_div=1, fs_mode=0, lrck_h=0, lrck_l=0xff, bclk_div=4, adc_osr=0x10, dac_osr=0x10
     
     // Step 1: Enhance I2C noise immunity (write twice per ESP-ADF)
-    es8311_write_reg(ES8311_GPIO_REG44, 0x08);
-    es8311_write_reg(ES8311_GPIO_REG44, 0x08);
+    if (!writeOrFail("es8311_init gpio44 noise immunity 1", ES8311_GPIO_REG44, 0x08)) return false;
+    if (!writeOrFail("es8311_init gpio44 noise immunity 2", ES8311_GPIO_REG44, 0x08)) return false;
     
     // Step 2: Initial clock setup
-    es8311_write_reg(ES8311_CLK_MANAGER_REG01, 0x30);  // Clock setup initial
-    es8311_write_reg(ES8311_CLK_MANAGER_REG02, 0x00);  // Divider reset
-    es8311_write_reg(ES8311_CLK_MANAGER_REG03, 0x10);  // ADC OSR
-    es8311_write_reg(ES8311_ADC_REG16, 0x24);         // MIC gain
-    es8311_write_reg(ES8311_CLK_MANAGER_REG04, 0x10);  // DAC OSR
-    es8311_write_reg(ES8311_CLK_MANAGER_REG05, 0x00);  // ADC/DAC dividers
-    es8311_write_reg(ES8311_SYSTEM_REG0B, 0x00);
-    es8311_write_reg(ES8311_SYSTEM_REG0C, 0x00);
-    es8311_write_reg(ES8311_SYSTEM_REG10, 0x1F);
-    es8311_write_reg(ES8311_SYSTEM_REG11, 0x7F);
+    if (!writeOrFail("es8311_init reg01", ES8311_CLK_MANAGER_REG01, 0x30)) return false;
+    if (!writeOrFail("es8311_init reg02", ES8311_CLK_MANAGER_REG02, 0x00)) return false;
+    if (!writeOrFail("es8311_init reg03", ES8311_CLK_MANAGER_REG03, 0x10)) return false;
+    if (!writeOrFail("es8311_init reg16", ES8311_ADC_REG16, 0x24)) return false;
+    if (!writeOrFail("es8311_init reg04", ES8311_CLK_MANAGER_REG04, 0x10)) return false;
+    if (!writeOrFail("es8311_init reg05", ES8311_CLK_MANAGER_REG05, 0x00)) return false;
+    if (!writeOrFail("es8311_init reg0b", ES8311_SYSTEM_REG0B, 0x00)) return false;
+    if (!writeOrFail("es8311_init reg0c", ES8311_SYSTEM_REG0C, 0x00)) return false;
+    if (!writeOrFail("es8311_init reg10", ES8311_SYSTEM_REG10, 0x1F)) return false;
+    if (!writeOrFail("es8311_init reg11", ES8311_SYSTEM_REG11, 0x7F)) return false;
     
     // Step 3: Enable CSM (clock state machine) in slave mode
-    es8311_write_reg(ES8311_RESET_REG00, 0x80);  // CSM_ON=1, slave mode (bit6=0)
+    if (!writeOrFail("es8311_init reset", ES8311_RESET_REG00, 0x80)) return false;
     
     // Step 4: Enable all clocks, MCLK from external pin
-    es8311_write_reg(ES8311_CLK_MANAGER_REG01, 0x3F);  // bit7=0 (MCLK from pin), enable all clocks
+    if (!writeOrFail("es8311_init reg01 enable clocks", ES8311_CLK_MANAGER_REG01, 0x3F)) return false;
     
     // Step 5: Configure clock dividers for 24kHz @ 6.144MHz MCLK
     // pre_div=1, pre_multi=1 => REG02 = ((1-1)<<5) | (0<<3) = 0x00
-    es8311_write_reg(ES8311_CLK_MANAGER_REG02, 0x00);
+    if (!writeOrFail("es8311_init reg02 dividers", ES8311_CLK_MANAGER_REG02, 0x00)) return false;
     
     // adc_div=1, dac_div=1 => REG05 = ((1-1)<<4) | ((1-1)<<0) = 0x00
-    es8311_write_reg(ES8311_CLK_MANAGER_REG05, 0x00);
+    if (!writeOrFail("es8311_init reg05 dividers", ES8311_CLK_MANAGER_REG05, 0x00)) return false;
     
     // fs_mode=0, adc_osr=0x10 => REG03 = (0<<6) | 0x10 = 0x10
-    es8311_write_reg(ES8311_CLK_MANAGER_REG03, 0x10);
+    if (!writeOrFail("es8311_init reg03 osr", ES8311_CLK_MANAGER_REG03, 0x10)) return false;
     
     // dac_osr=0x10 => REG04 = 0x10
-    es8311_write_reg(ES8311_CLK_MANAGER_REG04, 0x10);
+    if (!writeOrFail("es8311_init reg04 osr", ES8311_CLK_MANAGER_REG04, 0x10)) return false;
     
     // lrck_h=0x00, lrck_l=0xff => LRCK divider = 256
-    es8311_write_reg(ES8311_CLK_MANAGER_REG07, 0x00);
-    es8311_write_reg(ES8311_CLK_MANAGER_REG08, 0xFF);
+    if (!writeOrFail("es8311_init reg07", ES8311_CLK_MANAGER_REG07, 0x00)) return false;
+    if (!writeOrFail("es8311_init reg08", ES8311_CLK_MANAGER_REG08, 0xFF)) return false;
     
     // bclk_div=4 => REG06 = (4-1)<<0 = 0x03
-    es8311_write_reg(ES8311_CLK_MANAGER_REG06, 0x03);
+    if (!writeOrFail("es8311_init reg06", ES8311_CLK_MANAGER_REG06, 0x03)) return false;
     
     // Step 6: Additional setup from ESP-ADF
-    es8311_write_reg(ES8311_SYSTEM_REG13, 0x10);
-    es8311_write_reg(ES8311_ADC_REG1B, 0x0A);
-    es8311_write_reg(ES8311_ADC_REG1C, 0x6A);
+    if (!writeOrFail("es8311_init reg13", ES8311_SYSTEM_REG13, 0x10)) return false;
+    if (!writeOrFail("es8311_init reg1b", ES8311_ADC_REG1B, 0x0A)) return false;
+    if (!writeOrFail("es8311_init reg1c", ES8311_ADC_REG1C, 0x6A)) return false;
     
     // Step 7: START the DAC (from es8311_start)
     // REG09: DAC input config - bit6=0 for DAC enabled
-    uint8_t dac_iface = es8311_read_reg(ES8311_SDPIN_REG09) & 0xBF;  // Clear bit 6 to enable
+    uint8_t dac_iface = 0;
+    if (!readOrFail("es8311_init read reg09", ES8311_SDPIN_REG09, dac_iface)) return false;
+    dac_iface &= 0xBF;  // Clear bit 6 to enable
     dac_iface |= 0x0C;  // 16-bit samples (bits 4:2 = 0b11)
-    es8311_write_reg(ES8311_SDPIN_REG09, dac_iface);
+    if (!writeOrFail("es8311_init write reg09", ES8311_SDPIN_REG09, dac_iface)) return false;
     
-    es8311_write_reg(ES8311_ADC_REG17, 0xBF);
-    es8311_write_reg(ES8311_SYSTEM_REG0E, 0x02);  // Power up DAC
-    es8311_write_reg(ES8311_SYSTEM_REG12, 0x00);  // DAC output enable
-    es8311_write_reg(ES8311_SYSTEM_REG14, 0x1A);  // Output routing (no DMIC)
-    es8311_write_reg(ES8311_SYSTEM_REG0D, 0x01);  // Power up analog
-    es8311_write_reg(ES8311_ADC_REG15, 0x40);
-    es8311_write_reg(ES8311_DAC_REG37, 0x08);
-    es8311_write_reg(ES8311_GP_REG45, 0x00);
+    if (!writeOrFail("es8311_init reg17", ES8311_ADC_REG17, 0xBF)) return false;
+    if (!writeOrFail("es8311_init reg0e", ES8311_SYSTEM_REG0E, 0x02)) return false;
+    if (!writeOrFail("es8311_init reg12", ES8311_SYSTEM_REG12, 0x00)) return false;
+    if (!writeOrFail("es8311_init reg14", ES8311_SYSTEM_REG14, 0x1A)) return false;
+    if (!writeOrFail("es8311_init reg0d", ES8311_SYSTEM_REG0D, 0x01)) return false;
+    if (!writeOrFail("es8311_init reg15", ES8311_ADC_REG15, 0x40)) return false;
+    if (!writeOrFail("es8311_init reg37", ES8311_DAC_REG37, 0x08)) return false;
+    if (!writeOrFail("es8311_init reg45", ES8311_GP_REG45, 0x00)) return false;
     
     // Step 8: Set internal reference signal
-    es8311_write_reg(ES8311_GPIO_REG44, 0x58);
+    if (!writeOrFail("es8311_init gpio44 ref signal", ES8311_GPIO_REG44, 0x58)) return false;
     
     // Step 9: Set DAC volume based on saved setting
     // Use same mapping as audio_set_volume(): 0%=mute, 1-100%=0x90-0xBF
@@ -261,11 +252,13 @@ void es8311_init() {
     } else {
         volReg = 0x90 + ((current_volume_percent - 1) * (0xBF - 0x90)) / 99;
     }
-    es8311_write_reg(ES8311_DAC_REG32, volReg);
+    if (!writeOrFail("es8311_init reg32 volume", ES8311_DAC_REG32, volReg)) return false;
     
     // Step 10: Unmute DAC (clear bits 6:5 of REG31)
-    uint8_t regv = es8311_read_reg(ES8311_DAC_REG31) & 0x9F;
-    es8311_write_reg(ES8311_DAC_REG31, regv);
+    uint8_t regv = 0;
+    if (!readOrFail("es8311_init read reg31", ES8311_DAC_REG31, regv)) return false;
+    regv &= 0x9F;
+    if (!writeOrFail("es8311_init write reg31", ES8311_DAC_REG31, regv)) return false;
     
     es8311_initialized = true;
     
@@ -273,19 +266,24 @@ void es8311_init() {
     
     // Debug: Dump key registers (only when debug logging enabled)
     if (AUDIO_DEBUG_LOGS) {
+        auto readDebugReg = [](uint8_t reg) -> uint8_t {
+            uint8_t value = 0;
+            return es8311_read_reg(reg, value) == AudioI2cResult::Ok ? value : 0;
+        };
         Serial.println("[AUDIO] ES8311 registers after init:");
-        Serial.printf("  REG00: 0x%02X\n", es8311_read_reg(ES8311_RESET_REG00));
-        Serial.printf("  REG01: 0x%02X\n", es8311_read_reg(ES8311_CLK_MANAGER_REG01));
-        Serial.printf("  REG06: 0x%02X\n", es8311_read_reg(ES8311_CLK_MANAGER_REG06));
-        Serial.printf("  REG09: 0x%02X\n", es8311_read_reg(ES8311_SDPIN_REG09));
-        Serial.printf("  REG0D: 0x%02X\n", es8311_read_reg(ES8311_SYSTEM_REG0D));
-        Serial.printf("  REG0E: 0x%02X\n", es8311_read_reg(ES8311_SYSTEM_REG0E));
-        Serial.printf("  REG12: 0x%02X\n", es8311_read_reg(ES8311_SYSTEM_REG12));
-        Serial.printf("  REG14: 0x%02X\n", es8311_read_reg(ES8311_SYSTEM_REG14));
-        Serial.printf("  REG31: 0x%02X\n", es8311_read_reg(ES8311_DAC_REG31));
-        Serial.printf("  REG32: 0x%02X\n", es8311_read_reg(ES8311_DAC_REG32));
-        Serial.printf("  REG44: 0x%02X\n", es8311_read_reg(ES8311_GPIO_REG44));
+        Serial.printf("  REG00: 0x%02X\n", readDebugReg(ES8311_RESET_REG00));
+        Serial.printf("  REG01: 0x%02X\n", readDebugReg(ES8311_CLK_MANAGER_REG01));
+        Serial.printf("  REG06: 0x%02X\n", readDebugReg(ES8311_CLK_MANAGER_REG06));
+        Serial.printf("  REG09: 0x%02X\n", readDebugReg(ES8311_SDPIN_REG09));
+        Serial.printf("  REG0D: 0x%02X\n", readDebugReg(ES8311_SYSTEM_REG0D));
+        Serial.printf("  REG0E: 0x%02X\n", readDebugReg(ES8311_SYSTEM_REG0E));
+        Serial.printf("  REG12: 0x%02X\n", readDebugReg(ES8311_SYSTEM_REG12));
+        Serial.printf("  REG14: 0x%02X\n", readDebugReg(ES8311_SYSTEM_REG14));
+        Serial.printf("  REG31: 0x%02X\n", readDebugReg(ES8311_DAC_REG31));
+        Serial.printf("  REG32: 0x%02X\n", readDebugReg(ES8311_DAC_REG32));
+        Serial.printf("  REG44: 0x%02X\n", readDebugReg(ES8311_GPIO_REG44));
     }
+    return true;
 }
 
 // Set audio volume (0-100%)
@@ -308,7 +306,10 @@ void audio_set_volume(uint8_t volumePercent) {
     
     // Apply volume if ES8311 is initialized
     if (es8311_initialized) {
-        es8311_write_reg(ES8311_DAC_REG32, regVal);
+        const AudioI2cResult result = es8311_write_reg(ES8311_DAC_REG32, regVal);
+        if (result != AudioI2cResult::Ok) {
+            audio_log_i2c_failure("audio_set_volume", result);
+        }
         AUDIO_LOGF("[AUDIO] Volume set to %d%% (reg=0x%02X)\n", volumePercent, regVal);
     }
 }
@@ -461,11 +462,21 @@ static void audio_playback_task(void* pvParameters) {
         return;
     }
     
-    es8311_init();
+    if (!es8311_init()) {
+        audioResetTaskState(audio_playing, audioTaskHandle);
+        vTaskDeleteWithCaps(NULL);
+        return;
+    }
     vTaskDelay(pdMS_TO_TICKS(50));  // Let ES8311 lock to MCLK
     
     // Enable speaker amp - let it fully stabilize
-    set_speaker_amp(true);
+    const AudioI2cResult ampEnableResult = set_speaker_amp(true);
+    if (ampEnableResult != AudioI2cResult::Ok) {
+        audio_log_i2c_failure("audio_playback_task amp enable", ampEnableResult);
+        audioResetTaskState(audio_playing, audioTaskHandle);
+        vTaskDeleteWithCaps(NULL);
+        return;
+    }
     vTaskDelay(pdMS_TO_TICKS(100));
     
     // Stream mono PCM to stereo in chunks using pre-allocated buffer
@@ -507,7 +518,14 @@ static void audio_playback_task(void* pvParameters) {
     // Wait for DMA to finish
     vTaskDelay(pdMS_TO_TICKS(duration_ms > 0 ? 100 : 50));
     
-    set_speaker_amp(false);
+    const AudioI2cResult ampDisableResult = set_speaker_amp(false);
+    if (ampDisableResult != AudioI2cResult::Ok) {
+        audio_log_i2c_failure("audio_playback_task amp disable", ampDisableResult);
+        amp_is_warm = true;
+        amp_last_used_ms = millis();
+    } else {
+        amp_is_warm = false;
+    }
     audioResetTaskState(audio_playing, audioTaskHandle);
     // Self-delete: IDF recommends external deletion, but this fire-and-forget
     // task has no external owner.  Deferred cleanup (prvTaskDeleteWithCapsTask)

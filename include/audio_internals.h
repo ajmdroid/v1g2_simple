@@ -10,6 +10,7 @@
 #define AUDIO_INTERNALS_H
 
 #include "audio_beep.h"
+#include "audio_i2c_utils.h"
 #include "perf_metrics.h"
 #include <atomic>
 #include <cstdint>
@@ -65,9 +66,10 @@ extern StackType_t g_sdAudioTaskStack[SD_AUDIO_TASK_STACK_SIZE];
 extern StaticTask_t g_sdAudioTaskTCB;
 
 // ---- Promoted hardware helper declarations (defined in audio_beep.cpp) ----
-void es8311_init();
+bool es8311_init();
 void i2s_init();
-void set_speaker_amp(bool enable);
+AudioI2cResult set_speaker_amp(bool enable, TickType_t timeoutTicks = pdMS_TO_TICKS(50));
+void audio_log_i2c_failure(const char* context, AudioI2cResult result);
 
 // ---- Promoted pure function (defined in audio_voice.cpp) ----
 int getGHz(AlertBand band, uint16_t freqMHz);

@@ -34,10 +34,39 @@ typedef unsigned int UBaseType_t;
 #endif
 
 // Semaphore stubs
+struct MockSemaphoreState {
+    uint32_t takeCalls = 0;
+    uint32_t giveCalls = 0;
+    TickType_t lastTakeTimeout = 0;
+    std::deque<int> takeResults;
+};
+
+inline MockSemaphoreState g_mock_semaphore_state{};
+
+inline void mock_reset_semaphore_state() {
+    g_mock_semaphore_state = MockSemaphoreState{};
+}
+
+inline void mock_queue_semaphore_take_result(int result) {
+    g_mock_semaphore_state.takeResults.push_back(result);
+}
+
 inline SemaphoreHandle_t xSemaphoreCreateMutex() { return (void*)1; }
 inline SemaphoreHandle_t xSemaphoreCreateBinary() { return (void*)1; }
-inline int xSemaphoreTake(SemaphoreHandle_t, TickType_t) { return 1; }
-inline int xSemaphoreGive(SemaphoreHandle_t) { return 1; }
+inline int xSemaphoreTake(SemaphoreHandle_t, TickType_t timeoutTicks) {
+    g_mock_semaphore_state.takeCalls++;
+    g_mock_semaphore_state.lastTakeTimeout = timeoutTicks;
+    if (!g_mock_semaphore_state.takeResults.empty()) {
+        const int result = g_mock_semaphore_state.takeResults.front();
+        g_mock_semaphore_state.takeResults.pop_front();
+        return result;
+    }
+    return 1;
+}
+inline int xSemaphoreGive(SemaphoreHandle_t) {
+    g_mock_semaphore_state.giveCalls++;
+    return 1;
+}
 inline void vSemaphoreDelete(SemaphoreHandle_t) {}
 
 // Queue stubs

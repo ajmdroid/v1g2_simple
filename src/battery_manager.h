@@ -95,6 +95,7 @@ private:
     bool initADC();
     bool initTCA9554();
     bool setTCA9554Pin(uint8_t pin, bool high);
+    bool setTCA9554PinWithBudget(uint8_t pin, bool high, TickType_t timeoutTicks, int maxRetries);
     uint16_t readADCMillivolts();
 };
 

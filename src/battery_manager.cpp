@@ -237,27 +237,34 @@ bool BatteryManager::initTCA9554() {
 }
 
 bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) {
-    if (!tca9554WireMutex || xSemaphoreTake(tca9554WireMutex, pdMS_TO_TICKS(50)) != pdTRUE) {
-        Serial.println("[Battery] TCA9554 mutex busy");
+    return setTCA9554PinWithBudget(pin, high, pdMS_TO_TICKS(50), 3);
+}
+
+bool BatteryManager::setTCA9554PinWithBudget(uint8_t pin,
+                                             bool high,
+                                             TickType_t timeoutTicks,
+                                             int maxRetries) {
+    if (!tca9554WireMutex || xSemaphoreTake(tca9554WireMutex, timeoutTicks) != pdTRUE) {
+        Serial.printf("[Battery] TCA9554 mutex busy (timeout=%lu ms)\n",
+                      static_cast<unsigned long>(timeoutTicks));
         return false;
     }
 
-    static constexpr int MAX_RETRIES = 3;
     static constexpr int RETRY_DELAY_MS = 5;
     
-    for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
         // Read current output state
         tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
         tca9554Wire.write(TCA9554_OUTPUT_PORT);
         uint8_t error = tca9554Wire.endTransmission(false);
         
         if (error != 0) {
-            if (attempt < MAX_RETRIES - 1) {
+            if (attempt < maxRetries - 1) {
                 BATTERY_LOGF("[Battery] TCA9554 read start failed, retry %d\n", attempt + 1);
                 delay(RETRY_DELAY_MS);
                 continue;
             }
-            Serial.printf("[Battery] TCA9554 read start FAILED after %d attempts\n", MAX_RETRIES);
+            Serial.printf("[Battery] TCA9554 read start FAILED after %d attempts\n", maxRetries);
             xSemaphoreGive(tca9554WireMutex);
             return false;
         }
@@ -265,12 +272,12 @@ bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) {
         tca9554Wire.requestFrom((uint8_t)TCA9554_I2C_ADDR, (uint8_t)1);
         
         if (tca9554Wire.available() < 1) {
-            if (attempt < MAX_RETRIES - 1) {
+            if (attempt < maxRetries - 1) {
                 BATTERY_LOGF("[Battery] TCA9554 read failed, retry %d\n", attempt + 1);
                 delay(RETRY_DELAY_MS);
                 continue;
             }
-            Serial.printf("[Battery] TCA9554 read FAILED after %d attempts\n", MAX_RETRIES);
+            Serial.printf("[Battery] TCA9554 read FAILED after %d attempts\n", maxRetries);
             xSemaphoreGive(tca9554WireMutex);
             return false;
         }
@@ -295,13 +302,13 @@ bool BatteryManager::setTCA9554Pin(uint8_t pin, bool high) {
             return true;  // Success!
         }
         
-        if (attempt < MAX_RETRIES - 1) {
+        if (attempt < maxRetries - 1) {
             BATTERY_LOGF("[Battery] TCA9554 write failed (err=%d), retry %d\n", error, attempt + 1);
             delay(RETRY_DELAY_MS);
         }
     }
     
-    Serial.printf("[Battery] TCA9554 pin %d set FAILED after %d attempts\n", pin, MAX_RETRIES);
+    Serial.printf("[Battery] TCA9554 pin %d set FAILED after %d attempts\n", pin, maxRetries);
     xSemaphoreGive(tca9554WireMutex);
     return false;
 }
@@ -473,10 +480,16 @@ bool BatteryManager::powerOff() {
     //                   without needing a phone sync.
     if (isCritical()) {
         Serial.println("[Battery] Critical battery - hard power off to protect cell");
-        setTCA9554Pin(TCA9554_PWR_LATCH_PIN, false);
+        const bool latchDropped = setTCA9554PinWithBudget(TCA9554_PWR_LATCH_PIN,
+                                                          false,
+                                                          pdMS_TO_TICKS(250),
+                                                          5);
+        if (!latchDropped) {
+            Serial.println("[Battery] ERROR: Failed to drop power latch, falling back to deep sleep");
+        }
         delay(200);
         esp_deep_sleep_start();  // fallback (latch already cut)
-        return true;
+        return latchDropped;
     }
     
     Serial.println("[Battery] Entering deep sleep (RTC clock preserved by 18650)...");

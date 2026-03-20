@@ -135,18 +135,34 @@ static void sd_audio_playback_task(void* pvParameters) {
         return;
     }
     
-    es8311_init();
+    if (!es8311_init()) {
+        audioResetTaskState(audio_playing, audioTaskHandle);
+        vTaskDelete(NULL);
+        return;
+    }
     
     // Amp warm-keeping: skip stabilization delay if amp is already warm
     if (!amp_is_warm) {
         vTaskDelay(pdMS_TO_TICKS(20));  // ES8311 lock time
-        set_speaker_amp(true);
+        const AudioI2cResult ampEnableResult = set_speaker_amp(true);
+        if (ampEnableResult != AudioI2cResult::Ok) {
+            audio_log_i2c_failure("sd_audio_playback_task amp enable (cold)", ampEnableResult);
+            audioResetTaskState(audio_playing, audioTaskHandle);
+            vTaskDelete(NULL);
+            return;
+        }
         vTaskDelay(pdMS_TO_TICKS(50));  // Amp stabilization (only on cold start)
         amp_is_warm = true;
         AUDIO_LOGLN("[AUDIO] Amp cold start - full init");
     } else {
         // Amp already warm - just ensure it's on (no delay needed)
-        set_speaker_amp(true);
+        const AudioI2cResult ampEnableResult = set_speaker_amp(true);
+        if (ampEnableResult != AudioI2cResult::Ok) {
+            audio_log_i2c_failure("sd_audio_playback_task amp enable (warm)", ampEnableResult);
+            audioResetTaskState(audio_playing, audioTaskHandle);
+            vTaskDelete(NULL);
+            return;
+        }
         AUDIO_LOGLN("[AUDIO] Amp warm - skipping stabilization");
     }
     
@@ -210,8 +226,14 @@ static void sd_audio_playback_task(void* pvParameters) {
     }
     
     if (writeAborted) {
-        set_speaker_amp(false);
-        amp_is_warm = false;
+        const AudioI2cResult ampDisableResult = set_speaker_amp(false);
+        if (ampDisableResult != AudioI2cResult::Ok) {
+            audio_log_i2c_failure("sd_audio_playback_task amp disable", ampDisableResult);
+            amp_is_warm = true;
+            amp_last_used_ms = millis();
+        } else {
+            amp_is_warm = false;
+        }
     } else {
         // Brief delay for DMA buffer to flush
         vTaskDelay(pdMS_TO_TICKS(30));  // Reduced from 50ms
@@ -450,9 +472,13 @@ void audio_process_amp_timeout() {
     if (amp_is_warm && !audio_playing) {
         unsigned long now = millis();
         if (now - amp_last_used_ms >= AMP_WARM_TIMEOUT_MS) {
-            set_speaker_amp(false);
-            amp_is_warm = false;
-            AUDIO_LOGLN("[AUDIO] Amp timeout - disabled to save power");
+            const AudioI2cResult result = set_speaker_amp(false, 0);
+            if (result == AudioI2cResult::Ok) {
+                amp_is_warm = false;
+                AUDIO_LOGLN("[AUDIO] Amp timeout - disabled to save power");
+            } else if (result != AudioI2cResult::Busy) {
+                audio_log_i2c_failure("audio_process_amp_timeout", result);
+            }
         }
     }
 }

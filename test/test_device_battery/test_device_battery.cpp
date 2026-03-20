@@ -6,7 +6,7 @@
  *   - TCA9554 I2C port expander communication
  *   - Power latch pin control
  *   - Power button GPIO (GPIO 16)
- *   - I2C mutex (shared between battery + touch controller)
+ *   - I2C mutex / TCA9554 preservation behavior (shared between battery + audio)
  *
  * These tests run non-destructive checks — they will NOT actually power off
  * the device.  They verify the I2C bus, ADC, and GPIO are responsive, which
@@ -21,6 +21,7 @@
 #include <esp_task_wdt.h>
 #include <driver/gpio.h>
 #include "../../include/battery_math.h"
+#include "../../src/audio_i2c_utils.cpp"
 #include "../device_test_reset.h"
 
 // GPIO definitions from battery_manager.h
@@ -117,6 +118,53 @@ void test_battery_tca9554_config_register_readable() {
     testWire.end();
 }
 
+void test_audio_amp_pin_update_preserves_power_latch_bits() {
+    TwoWire testWire(1);
+    testWire.begin(TCA9554_SDA_GPIO, TCA9554_SCL_GPIO, 100000);
+
+    uint8_t initialConfig = 0;
+    uint8_t initialOutput = 0;
+    AudioI2cResult result = audioI2cReadRegister(testWire, TCA9554_ADDR, TCA9554_CONFIG_PORT, initialConfig);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(AudioI2cResult::Ok), static_cast<uint8_t>(result));
+    result = audioI2cReadRegister(testWire, TCA9554_ADDR, TCA9554_OUTPUT_PORT, initialOutput);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(AudioI2cResult::Ok), static_cast<uint8_t>(result));
+
+    uint8_t enabledConfig = 0;
+    uint8_t enabledOutput = 0;
+    result = audioI2cSetTca9554Pin(testWire,
+                                   TCA9554_ADDR,
+                                   TCA9554_CONFIG_PORT,
+                                   TCA9554_OUTPUT_PORT,
+                                   7,
+                                   true,
+                                   &enabledConfig,
+                                   &enabledOutput);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(AudioI2cResult::Ok), static_cast<uint8_t>(result));
+    TEST_ASSERT_EQUAL_UINT8(initialConfig & (1 << 6), enabledConfig & (1 << 6));
+    TEST_ASSERT_EQUAL_UINT8(initialOutput & (1 << 6), enabledOutput & (1 << 6));
+
+    uint8_t disabledConfig = 0;
+    uint8_t disabledOutput = 0;
+    result = audioI2cSetTca9554Pin(testWire,
+                                   TCA9554_ADDR,
+                                   TCA9554_CONFIG_PORT,
+                                   TCA9554_OUTPUT_PORT,
+                                   7,
+                                   false,
+                                   &disabledConfig,
+                                   &disabledOutput);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(AudioI2cResult::Ok), static_cast<uint8_t>(result));
+    TEST_ASSERT_EQUAL_UINT8(initialConfig & (1 << 6), disabledConfig & (1 << 6));
+    TEST_ASSERT_EQUAL_UINT8(initialOutput & (1 << 6), disabledOutput & (1 << 6));
+
+    result = audioI2cWriteRegister(testWire, TCA9554_ADDR, TCA9554_OUTPUT_PORT, initialOutput);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(AudioI2cResult::Ok), static_cast<uint8_t>(result));
+    result = audioI2cWriteRegister(testWire, TCA9554_ADDR, TCA9554_CONFIG_PORT, initialConfig);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(AudioI2cResult::Ok), static_cast<uint8_t>(result));
+
+    testWire.end();
+}
+
 // ===========================================================================
 // POWER BUTTON GPIO
 // ===========================================================================
@@ -134,7 +182,7 @@ void test_battery_power_button_gpio_readable() {
 }
 
 // ===========================================================================
-// I2C MUTEX (shared resource between battery + touch)
+// I2C MUTEX (shared resource between battery + audio)
 // ===========================================================================
 
 void test_battery_i2c_mutex_create_take_give() {
@@ -155,7 +203,7 @@ void test_battery_i2c_mutex_create_take_give() {
 }
 
 void test_battery_i2c_concurrent_access_safe() {
-    // Simulate the shared I2C bus pattern used by battery + touch:
+    // Simulate the shared I2C bus pattern used by battery + audio:
     // mutex-protected access from two rapid callers
     SemaphoreHandle_t mutex = xSemaphoreCreateMutex();
     TEST_ASSERT_NOT_NULL(mutex);
@@ -224,6 +272,7 @@ void setup() {
     // TCA9554 I2C
     RUN_TEST(test_battery_tca9554_i2c_responds);
     RUN_TEST(test_battery_tca9554_config_register_readable);
+    RUN_TEST(test_audio_amp_pin_update_preserves_power_latch_bits);
 
     // Power button
     RUN_TEST(test_battery_power_button_gpio_readable);
