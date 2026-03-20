@@ -27,30 +27,39 @@ static bool responseContains(const WebServer& server, const char* needle) {
 struct FakeRuntime {
     V1Settings settings;
 
-    int updateApCredentialsCalls = 0;
+    int applySettingsUpdateCalls = 0;
     String lastApSsid;
     String lastApPassword;
 
     int saveDeferredBackupCalls = 0;
 };
 
+static void applyDeviceSettingsUpdateForTest(FakeRuntime& rt, const DeviceSettingsUpdate& update) {
+    rt.applySettingsUpdateCalls++;
+    rt.saveDeferredBackupCalls++;
+    if (update.hasApCredentials) {
+        rt.lastApSsid = update.apSSID;
+        rt.lastApPassword = update.apPassword;
+        rt.settings.apSSID = update.apSSID;
+        rt.settings.apPassword = update.apPassword;
+    }
+    if (update.hasProxyBLE) rt.settings.proxyBLE = update.proxyBLE;
+    if (update.hasProxyName) rt.settings.proxyName = sanitizeProxyNameValue(update.proxyName);
+    if (update.hasAutoPowerOffMinutes) rt.settings.autoPowerOffMinutes = update.autoPowerOffMinutes;
+    if (update.hasApTimeoutMinutes) rt.settings.apTimeoutMinutes = update.apTimeoutMinutes;
+    if (update.hasEnableWifiAtBoot) rt.settings.enableWifiAtBoot = update.enableWifiAtBoot;
+    if (update.hasEnableSignalTraceLogging) {
+        rt.settings.enableSignalTraceLogging = update.enableSignalTraceLogging;
+    }
+}
+
 static WifiSettingsApiService::Runtime makeRuntime(FakeRuntime& rt) {
     return WifiSettingsApiService::Runtime{
         [&rt]() -> const V1Settings& {
             return rt.settings;
         },
-        [&rt]() -> V1Settings& {
-            return rt.settings;
-        },
-        [&rt](const String& ssid, const String& password) {
-            rt.updateApCredentialsCalls++;
-            rt.lastApSsid = ssid;
-            rt.lastApPassword = password;
-            rt.settings.apSSID = ssid;
-            rt.settings.apPassword = password;
-        },
-        [&rt]() {
-            rt.saveDeferredBackupCalls++;
+        [&rt](const DeviceSettingsUpdate& update) {
+            applyDeviceSettingsUpdateForTest(rt, update);
         },
     };
 }
@@ -101,7 +110,7 @@ void test_device_settings_save_rejects_invalid_ap_credentials() {
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "AP SSID required and password must be at least 8 characters"));
-    TEST_ASSERT_EQUAL_INT(0, rt.updateApCredentialsCalls);
+    TEST_ASSERT_EQUAL_INT(0, rt.applySettingsUpdateCalls);
     TEST_ASSERT_EQUAL_INT(0, rt.saveDeferredBackupCalls);
 }
 
@@ -118,7 +127,7 @@ void test_device_settings_save_uses_existing_password_placeholder() {
         []() { return true; });
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_EQUAL_INT(1, rt.updateApCredentialsCalls);
+    TEST_ASSERT_EQUAL_INT(1, rt.applySettingsUpdateCalls);
     TEST_ASSERT_EQUAL_STRING("RenamedAP", rt.lastApSsid.c_str());
     TEST_ASSERT_EQUAL_STRING("existing123", rt.lastApPassword.c_str());
     TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);

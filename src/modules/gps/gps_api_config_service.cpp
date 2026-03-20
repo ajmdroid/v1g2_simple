@@ -113,8 +113,7 @@ void handleConfig(WebServer& server,
                   GpsObservationLog& gpsObservationLog,
                   PerfCounters& perfCounters,
                   SystemEventBus& systemEventBus) {
-    V1Settings& mutableSettings = settingsManager.mutableSettings();
-    const V1Settings& currentSettings = mutableSettings;
+    const V1Settings& currentSettings = settingsManager.get();
 
     bool hasEnabled = false;
     bool enabled = currentSettings.gpsEnabled;
@@ -592,119 +591,59 @@ void handleConfig(WebServer& server,
         return;
     }
 
+    GpsSettingsUpdate settingsUpdate;
+    settingsUpdate.hasEnabled = hasEnabled;
+    settingsUpdate.enabled = enabled;
+    settingsUpdate.hasLockoutMode = hasLockoutMode;
+    settingsUpdate.lockoutMode = lockoutMode;
+    settingsUpdate.hasCoreGuardEnabled = hasCoreGuardEnabled;
+    settingsUpdate.coreGuardEnabled = coreGuardEnabled;
+    settingsUpdate.hasMaxQueueDrops = hasMaxQueueDrops;
+    settingsUpdate.maxQueueDrops = maxQueueDrops;
+    settingsUpdate.hasMaxPerfDrops = hasMaxPerfDrops;
+    settingsUpdate.maxPerfDrops = maxPerfDrops;
+    settingsUpdate.hasMaxEventBusDrops = hasMaxEventBusDrops;
+    settingsUpdate.maxEventBusDrops = maxEventBusDrops;
+    settingsUpdate.hasLearnerPromotionHits = hasLearnerPromotionHits;
+    settingsUpdate.learnerPromotionHits = learnerPromotionHits;
+    settingsUpdate.hasLearnerRadiusE5 = hasLearnerRadiusE5;
+    settingsUpdate.learnerRadiusE5 = learnerRadiusE5;
+    settingsUpdate.hasLearnerFreqToleranceMHz = hasLearnerFreqToleranceMHz;
+    settingsUpdate.learnerFreqToleranceMHz = learnerFreqToleranceMHz;
+    settingsUpdate.hasLearnerLearnIntervalHours = hasLearnerLearnIntervalHours;
+    settingsUpdate.learnerLearnIntervalHours = learnerLearnIntervalHours;
+    settingsUpdate.hasLearnerUnlearnIntervalHours = hasLearnerUnlearnIntervalHours;
+    settingsUpdate.learnerUnlearnIntervalHours = learnerUnlearnIntervalHours;
+    settingsUpdate.hasLearnerUnlearnCount = hasLearnerUnlearnCount;
+    settingsUpdate.learnerUnlearnCount = learnerUnlearnCount;
+    settingsUpdate.hasManualDemotionMissCount = hasManualDemotionMissCount;
+    settingsUpdate.manualDemotionMissCount = manualDemotionMissCount;
+    settingsUpdate.hasKaLearningEnabled = hasKaLearningEnabled;
+    settingsUpdate.kaLearningEnabled = kaLearningEnabled;
+    settingsUpdate.hasKLearningEnabled = hasKLearningEnabled;
+    settingsUpdate.kLearningEnabled = kLearningEnabled;
+    settingsUpdate.hasXLearningEnabled = hasXLearningEnabled;
+    settingsUpdate.xLearningEnabled = xLearningEnabled;
+    settingsUpdate.hasPreQuiet = hasPreQuiet;
+    settingsUpdate.preQuiet = preQuiet;
+    settingsUpdate.hasPreQuietBufferE5 = hasPreQuietBufferE5;
+    settingsUpdate.preQuietBufferE5 = preQuietBufferE5;
+    settingsUpdate.hasMaxHdopX10 = hasMaxHdopX10;
+    settingsUpdate.maxHdopX10 = maxHdopX10;
+    settingsUpdate.hasMinLearnerSpeedMph = hasMinLearnerSpeedMph;
+    settingsUpdate.minLearnerSpeedMph = minLearnerSpeedMph;
+
+    const GpsSettingsApplyResult applyResult = settingsManager.applyGpsSettingsUpdate(settingsUpdate);
     if (hasEnabled) {
-        settingsManager.setGpsEnabled(enabled);
         SettingsRuntimeSync::syncGpsVehicleRuntimeSettings(settingsManager.get(),
                                                            gpsRuntimeModule,
                                                            speedSourceSelector);
     }
-
-    bool lockoutSettingsChanged = false;
-    bool learnerTuningChanged = false;
-    if (hasLockoutMode && mutableSettings.gpsLockoutMode != lockoutMode) {
-        mutableSettings.gpsLockoutMode = lockoutMode;
-        lockoutSettingsChanged = true;
+    if (applyResult.bandLearningPolicyChanged) {
+        SettingsRuntimeSync::syncLockoutBandLearningPolicy(settingsManager.get());
     }
-    if (hasCoreGuardEnabled && mutableSettings.gpsLockoutCoreGuardEnabled != coreGuardEnabled) {
-        mutableSettings.gpsLockoutCoreGuardEnabled = coreGuardEnabled;
-        lockoutSettingsChanged = true;
-    }
-    if (hasMaxQueueDrops && mutableSettings.gpsLockoutMaxQueueDrops != maxQueueDrops) {
-        mutableSettings.gpsLockoutMaxQueueDrops = maxQueueDrops;
-        lockoutSettingsChanged = true;
-    }
-    if (hasMaxPerfDrops && mutableSettings.gpsLockoutMaxPerfDrops != maxPerfDrops) {
-        mutableSettings.gpsLockoutMaxPerfDrops = maxPerfDrops;
-        lockoutSettingsChanged = true;
-    }
-    if (hasMaxEventBusDrops && mutableSettings.gpsLockoutMaxEventBusDrops != maxEventBusDrops) {
-        mutableSettings.gpsLockoutMaxEventBusDrops = maxEventBusDrops;
-        lockoutSettingsChanged = true;
-    }
-    if (hasLearnerPromotionHits &&
-        mutableSettings.gpsLockoutLearnerPromotionHits != learnerPromotionHits) {
-        mutableSettings.gpsLockoutLearnerPromotionHits = learnerPromotionHits;
-        lockoutSettingsChanged = true;
-        learnerTuningChanged = true;
-    }
-    if (hasLearnerRadiusE5 &&
-        mutableSettings.gpsLockoutLearnerRadiusE5 != learnerRadiusE5) {
-        mutableSettings.gpsLockoutLearnerRadiusE5 = learnerRadiusE5;
-        lockoutSettingsChanged = true;
-        learnerTuningChanged = true;
-    }
-    if (hasLearnerFreqToleranceMHz &&
-        mutableSettings.gpsLockoutLearnerFreqToleranceMHz != learnerFreqToleranceMHz) {
-        mutableSettings.gpsLockoutLearnerFreqToleranceMHz = learnerFreqToleranceMHz;
-        lockoutSettingsChanged = true;
-        learnerTuningChanged = true;
-    }
-    if (hasLearnerLearnIntervalHours &&
-        mutableSettings.gpsLockoutLearnerLearnIntervalHours != learnerLearnIntervalHours) {
-        mutableSettings.gpsLockoutLearnerLearnIntervalHours = learnerLearnIntervalHours;
-        lockoutSettingsChanged = true;
-        learnerTuningChanged = true;
-    }
-    if (hasLearnerUnlearnIntervalHours &&
-        mutableSettings.gpsLockoutLearnerUnlearnIntervalHours != learnerUnlearnIntervalHours) {
-        mutableSettings.gpsLockoutLearnerUnlearnIntervalHours = learnerUnlearnIntervalHours;
-        lockoutSettingsChanged = true;
-    }
-    if (hasLearnerUnlearnCount &&
-        mutableSettings.gpsLockoutLearnerUnlearnCount != learnerUnlearnCount) {
-        mutableSettings.gpsLockoutLearnerUnlearnCount = learnerUnlearnCount;
-        lockoutSettingsChanged = true;
-    }
-    if (hasManualDemotionMissCount &&
-        mutableSettings.gpsLockoutManualDemotionMissCount != manualDemotionMissCount) {
-        mutableSettings.gpsLockoutManualDemotionMissCount = manualDemotionMissCount;
-        lockoutSettingsChanged = true;
-    }
-    if (hasKaLearningEnabled &&
-        mutableSettings.gpsLockoutKaLearningEnabled != kaLearningEnabled) {
-        mutableSettings.gpsLockoutKaLearningEnabled = kaLearningEnabled;
-        lockoutSettingsChanged = true;
-    }
-    if (hasKLearningEnabled &&
-        mutableSettings.gpsLockoutKLearningEnabled != kLearningEnabled) {
-        mutableSettings.gpsLockoutKLearningEnabled = kLearningEnabled;
-        lockoutSettingsChanged = true;
-    }
-    if (hasXLearningEnabled &&
-        mutableSettings.gpsLockoutXLearningEnabled != xLearningEnabled) {
-        mutableSettings.gpsLockoutXLearningEnabled = xLearningEnabled;
-        lockoutSettingsChanged = true;
-    }
-    if (hasPreQuiet &&
-        mutableSettings.gpsLockoutPreQuiet != preQuiet) {
-        mutableSettings.gpsLockoutPreQuiet = preQuiet;
-        lockoutSettingsChanged = true;
-    }
-    if (hasPreQuietBufferE5 &&
-        mutableSettings.gpsLockoutPreQuietBufferE5 != preQuietBufferE5) {
-        mutableSettings.gpsLockoutPreQuietBufferE5 = preQuietBufferE5;
-        lockoutSettingsChanged = true;
-    }
-    if (hasMaxHdopX10 &&
-        mutableSettings.gpsLockoutMaxHdopX10 != maxHdopX10) {
-        mutableSettings.gpsLockoutMaxHdopX10 = maxHdopX10;
-        lockoutSettingsChanged = true;
-        learnerTuningChanged = true;
-    }
-    if (hasMinLearnerSpeedMph &&
-        mutableSettings.gpsLockoutMinLearnerSpeedMph != minLearnerSpeedMph) {
-        mutableSettings.gpsLockoutMinLearnerSpeedMph = minLearnerSpeedMph;
-        lockoutSettingsChanged = true;
-        learnerTuningChanged = true;
-    }
-    if (hasKaLearningEnabled || hasKLearningEnabled || hasXLearningEnabled) {
-        SettingsRuntimeSync::syncLockoutBandLearningPolicy(mutableSettings);
-    }
-    if (learnerTuningChanged) {
-        SettingsRuntimeSync::syncLockoutLearnerTuning(mutableSettings, lockoutLearner);
-    }
-    if (lockoutSettingsChanged) {
-        settingsManager.save();
+    if (applyResult.learnerTuningChanged) {
+        SettingsRuntimeSync::syncLockoutLearnerTuning(settingsManager.get(), lockoutLearner);
     }
 
     if (enabled && hasScaffoldSample) {

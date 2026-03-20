@@ -213,6 +213,79 @@ struct V1Settings {
 // Backwards compatibility alias used by some legacy tests
 using Settings = V1Settings;
 
+enum class SettingsPersistMode : uint8_t {
+    Immediate,
+    Deferred,
+};
+
+struct GpsSettingsUpdate {
+    bool hasEnabled = false;
+    bool enabled = false;
+    bool hasLockoutMode = false;
+    LockoutRuntimeMode lockoutMode = LOCKOUT_RUNTIME_OFF;
+    bool hasCoreGuardEnabled = false;
+    bool coreGuardEnabled = false;
+    bool hasMaxQueueDrops = false;
+    uint16_t maxQueueDrops = 0;
+    bool hasMaxPerfDrops = false;
+    uint16_t maxPerfDrops = 0;
+    bool hasMaxEventBusDrops = false;
+    uint16_t maxEventBusDrops = 0;
+    bool hasLearnerPromotionHits = false;
+    uint8_t learnerPromotionHits = LOCKOUT_LEARNER_HITS_DEFAULT;
+    bool hasLearnerRadiusE5 = false;
+    uint16_t learnerRadiusE5 = LOCKOUT_LEARNER_RADIUS_E5_DEFAULT;
+    bool hasLearnerFreqToleranceMHz = false;
+    uint16_t learnerFreqToleranceMHz = LOCKOUT_LEARNER_FREQ_TOL_DEFAULT;
+    bool hasLearnerLearnIntervalHours = false;
+    uint8_t learnerLearnIntervalHours = LOCKOUT_LEARNER_LEARN_INTERVAL_HOURS_DEFAULT;
+    bool hasLearnerUnlearnIntervalHours = false;
+    uint8_t learnerUnlearnIntervalHours = LOCKOUT_LEARNER_UNLEARN_INTERVAL_HOURS_DEFAULT;
+    bool hasLearnerUnlearnCount = false;
+    uint8_t learnerUnlearnCount = LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT;
+    bool hasManualDemotionMissCount = false;
+    uint8_t manualDemotionMissCount = LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT;
+    bool hasKaLearningEnabled = false;
+    bool kaLearningEnabled = false;
+    bool hasKLearningEnabled = false;
+    bool kLearningEnabled = false;
+    bool hasXLearningEnabled = false;
+    bool xLearningEnabled = false;
+    bool hasPreQuiet = false;
+    bool preQuiet = false;
+    bool hasPreQuietBufferE5 = false;
+    uint16_t preQuietBufferE5 = LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT;
+    bool hasMaxHdopX10 = false;
+    uint16_t maxHdopX10 = LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT;
+    bool hasMinLearnerSpeedMph = false;
+    uint8_t minLearnerSpeedMph = LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT;
+};
+
+struct GpsSettingsApplyResult {
+    bool changed = false;
+    bool enabledChanged = false;
+    bool bandLearningPolicyChanged = false;
+    bool learnerTuningChanged = false;
+};
+
+struct ObdSettingsUpdate {
+    bool hasEnabled = false;
+    bool enabled = false;
+    bool hasMinRssi = false;
+    int8_t minRssi = -80;
+    bool hasSavedAddress = false;
+    String savedAddress;
+    bool hasSavedName = false;
+    String savedName;
+    bool hasSavedAddrType = false;
+    uint8_t savedAddrType = 0;
+    bool hasCachedVinPrefix11 = false;
+    String cachedVinPrefix11;
+    bool hasCachedEotProfileId = false;
+    uint8_t cachedEotProfileId = 0;
+    bool resetSavedNameOnAddressChange = false;
+};
+
 // Settings manager stub
 class SettingsManager {
 public:
@@ -290,6 +363,165 @@ public:
     const V1Settings& get() const { return settings; }
     V1Settings& getMutable() { return settings; }
     V1Settings& mutableSettings() { return settings; }
+    GpsSettingsApplyResult applyGpsSettingsUpdate(const GpsSettingsUpdate& update,
+                                                  SettingsPersistMode persistMode = SettingsPersistMode::Immediate) {
+        (void)persistMode;
+        GpsSettingsApplyResult result;
+        if (update.hasEnabled) {
+            ++setGpsEnabledCalls;
+            if (settings.gpsEnabled != update.enabled) {
+                settings.gpsEnabled = update.enabled;
+                result.changed = true;
+                result.enabledChanged = true;
+            }
+        }
+        if (update.hasLockoutMode && settings.gpsLockoutMode != clampLockoutRuntimeModeValue(update.lockoutMode)) {
+            settings.gpsLockoutMode = clampLockoutRuntimeModeValue(update.lockoutMode);
+            result.changed = true;
+        }
+        if (update.hasCoreGuardEnabled && settings.gpsLockoutCoreGuardEnabled != update.coreGuardEnabled) {
+            settings.gpsLockoutCoreGuardEnabled = update.coreGuardEnabled;
+            result.changed = true;
+        }
+        if (update.hasMaxQueueDrops && settings.gpsLockoutMaxQueueDrops != update.maxQueueDrops) {
+            settings.gpsLockoutMaxQueueDrops = update.maxQueueDrops;
+            result.changed = true;
+        }
+        if (update.hasMaxPerfDrops && settings.gpsLockoutMaxPerfDrops != update.maxPerfDrops) {
+            settings.gpsLockoutMaxPerfDrops = update.maxPerfDrops;
+            result.changed = true;
+        }
+        if (update.hasMaxEventBusDrops && settings.gpsLockoutMaxEventBusDrops != update.maxEventBusDrops) {
+            settings.gpsLockoutMaxEventBusDrops = update.maxEventBusDrops;
+            result.changed = true;
+        }
+        if (update.hasLearnerPromotionHits &&
+            settings.gpsLockoutLearnerPromotionHits != clampLockoutLearnerHitsValue(update.learnerPromotionHits)) {
+            settings.gpsLockoutLearnerPromotionHits = clampLockoutLearnerHitsValue(update.learnerPromotionHits);
+            result.changed = true;
+            result.learnerTuningChanged = true;
+        }
+        if (update.hasLearnerRadiusE5 &&
+            settings.gpsLockoutLearnerRadiusE5 != clampLockoutLearnerRadiusE5Value(update.learnerRadiusE5)) {
+            settings.gpsLockoutLearnerRadiusE5 = clampLockoutLearnerRadiusE5Value(update.learnerRadiusE5);
+            result.changed = true;
+            result.learnerTuningChanged = true;
+        }
+        if (update.hasLearnerFreqToleranceMHz &&
+            settings.gpsLockoutLearnerFreqToleranceMHz != clampLockoutLearnerFreqTolValue(update.learnerFreqToleranceMHz)) {
+            settings.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(update.learnerFreqToleranceMHz);
+            result.changed = true;
+            result.learnerTuningChanged = true;
+        }
+        if (update.hasLearnerLearnIntervalHours &&
+            settings.gpsLockoutLearnerLearnIntervalHours != clampLockoutLearnerIntervalHoursValue(update.learnerLearnIntervalHours)) {
+            settings.gpsLockoutLearnerLearnIntervalHours = clampLockoutLearnerIntervalHoursValue(update.learnerLearnIntervalHours);
+            result.changed = true;
+            result.learnerTuningChanged = true;
+        }
+        if (update.hasLearnerUnlearnIntervalHours &&
+            settings.gpsLockoutLearnerUnlearnIntervalHours != clampLockoutLearnerIntervalHoursValue(update.learnerUnlearnIntervalHours)) {
+            settings.gpsLockoutLearnerUnlearnIntervalHours = clampLockoutLearnerIntervalHoursValue(update.learnerUnlearnIntervalHours);
+            result.changed = true;
+        }
+        if (update.hasLearnerUnlearnCount &&
+            settings.gpsLockoutLearnerUnlearnCount != clampLockoutLearnerUnlearnCountValue(update.learnerUnlearnCount)) {
+            settings.gpsLockoutLearnerUnlearnCount = clampLockoutLearnerUnlearnCountValue(update.learnerUnlearnCount);
+            result.changed = true;
+        }
+        if (update.hasManualDemotionMissCount &&
+            settings.gpsLockoutManualDemotionMissCount != clampLockoutManualDemotionMissCountValue(update.manualDemotionMissCount)) {
+            settings.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(update.manualDemotionMissCount);
+            result.changed = true;
+        }
+        if (update.hasKaLearningEnabled && settings.gpsLockoutKaLearningEnabled != update.kaLearningEnabled) {
+            settings.gpsLockoutKaLearningEnabled = update.kaLearningEnabled;
+            result.changed = true;
+            result.bandLearningPolicyChanged = true;
+        }
+        if (update.hasKLearningEnabled && settings.gpsLockoutKLearningEnabled != update.kLearningEnabled) {
+            settings.gpsLockoutKLearningEnabled = update.kLearningEnabled;
+            result.changed = true;
+            result.bandLearningPolicyChanged = true;
+        }
+        if (update.hasXLearningEnabled && settings.gpsLockoutXLearningEnabled != update.xLearningEnabled) {
+            settings.gpsLockoutXLearningEnabled = update.xLearningEnabled;
+            result.changed = true;
+            result.bandLearningPolicyChanged = true;
+        }
+        if (update.hasPreQuiet && settings.gpsLockoutPreQuiet != update.preQuiet) {
+            settings.gpsLockoutPreQuiet = update.preQuiet;
+            result.changed = true;
+        }
+        if (update.hasPreQuietBufferE5 &&
+            settings.gpsLockoutPreQuietBufferE5 != clampLockoutPreQuietBufferE5Value(update.preQuietBufferE5)) {
+            settings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(update.preQuietBufferE5);
+            result.changed = true;
+        }
+        if (update.hasMaxHdopX10 &&
+            settings.gpsLockoutMaxHdopX10 != clampLockoutGpsMaxHdopX10Value(update.maxHdopX10)) {
+            settings.gpsLockoutMaxHdopX10 = clampLockoutGpsMaxHdopX10Value(update.maxHdopX10);
+            result.changed = true;
+            result.learnerTuningChanged = true;
+        }
+        if (update.hasMinLearnerSpeedMph &&
+            settings.gpsLockoutMinLearnerSpeedMph != clampLockoutGpsMinLearnerSpeedMphValue(update.minLearnerSpeedMph)) {
+            settings.gpsLockoutMinLearnerSpeedMph = clampLockoutGpsMinLearnerSpeedMphValue(update.minLearnerSpeedMph);
+            result.changed = true;
+            result.learnerTuningChanged = true;
+        }
+        if (result.changed) {
+            ++saveCalls;
+        }
+        return result;
+    }
+    bool applyObdSettingsUpdate(const ObdSettingsUpdate& update,
+                                SettingsPersistMode persistMode = SettingsPersistMode::Immediate) {
+        (void)persistMode;
+        bool changed = false;
+        if (update.resetSavedNameOnAddressChange &&
+            update.hasSavedAddress &&
+            settings.obdSavedAddress != update.savedAddress &&
+            !update.hasSavedName) {
+            settings.obdSavedName = "";
+            changed = true;
+        }
+        if (update.hasEnabled && settings.obdEnabled != update.enabled) {
+            settings.obdEnabled = update.enabled;
+            changed = true;
+        }
+        if (update.hasMinRssi && settings.obdMinRssi != update.minRssi) {
+            settings.obdMinRssi = update.minRssi;
+            changed = true;
+        }
+        if (update.hasSavedAddress && settings.obdSavedAddress != update.savedAddress) {
+            settings.obdSavedAddress = update.savedAddress;
+            changed = true;
+        }
+        if (update.hasSavedName && settings.obdSavedName != update.savedName) {
+            settings.obdSavedName = update.savedName;
+            changed = true;
+        }
+        if (update.hasSavedAddrType && settings.obdSavedAddrType != update.savedAddrType) {
+            settings.obdSavedAddrType = update.savedAddrType;
+            changed = true;
+        }
+        if (update.hasCachedVinPrefix11 && settings.obdCachedVinPrefix11 != update.cachedVinPrefix11) {
+            settings.obdCachedVinPrefix11 = update.cachedVinPrefix11;
+            changed = true;
+        }
+        if (update.hasCachedEotProfileId && settings.obdCachedEotProfileId != update.cachedEotProfileId) {
+            settings.obdCachedEotProfileId = update.cachedEotProfileId;
+            changed = true;
+        }
+        if (changed) {
+            ++saveCalls;
+            if (persistMode == SettingsPersistMode::Deferred) {
+                ++saveDeferredBackupCalls;
+            }
+        }
+        return changed;
+    }
     uint8_t getSlotAlertPersistSec(uint8_t slot) const {
         return (slot < 3) ? slotAlertPersistSec[slot] : 0;
     }

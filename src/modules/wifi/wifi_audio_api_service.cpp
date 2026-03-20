@@ -39,7 +39,7 @@ void handleApiSave(WebServer& server,
                    const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
-    if (!runtime.getMutableSettings) {
+    if (!runtime.getSettings || !runtime.applySettingsUpdate) {
         server.send(500, "application/json", "{\"error\":\"Settings unavailable\"}");
         return;
     }
@@ -51,66 +51,83 @@ void handleApiSave(WebServer& server,
         return server.arg(key) == "true" || server.arg(key) == "1";
     };
 
-    V1Settings& settings = runtime.getMutableSettings();
+    const V1Settings& settings = runtime.getSettings();
+    AudioSettingsUpdate update;
+    bool hasVoiceVolume = false;
+    uint8_t nextVoiceVolume = settings.voiceVolume;
 
     if (server.hasArg("voiceAlertMode")) {
         int mode = server.arg("voiceAlertMode").toInt();
         mode = std::max(0, std::min(mode, 3));
-        settings.voiceAlertMode = static_cast<VoiceAlertMode>(mode);
+        update.hasVoiceAlertMode = true;
+        update.voiceAlertMode = static_cast<VoiceAlertMode>(mode);
     }
     if (server.hasArg("voiceDirectionEnabled")) {
-        settings.voiceDirectionEnabled =
+        update.hasVoiceDirectionEnabled = true;
+        update.voiceDirectionEnabled =
             argBool("voiceDirectionEnabled", settings.voiceDirectionEnabled);
     }
     if (server.hasArg("announceBogeyCount")) {
-        settings.announceBogeyCount =
+        update.hasAnnounceBogeyCount = true;
+        update.announceBogeyCount =
             argBool("announceBogeyCount", settings.announceBogeyCount);
     }
     if (server.hasArg("muteVoiceIfVolZero")) {
-        settings.muteVoiceIfVolZero =
+        update.hasMuteVoiceIfVolZero = true;
+        update.muteVoiceIfVolZero =
             argBool("muteVoiceIfVolZero", settings.muteVoiceIfVolZero);
     }
     if (server.hasArg("voiceVolume")) {
         int volume = server.arg("voiceVolume").toInt();
         volume = std::max(0, std::min(volume, 100));
-        settings.voiceVolume = static_cast<uint8_t>(volume);
-        if (runtime.setAudioVolume) {
-            runtime.setAudioVolume(static_cast<uint8_t>(volume));
-        }
+        update.hasVoiceVolume = true;
+        update.voiceVolume = static_cast<uint8_t>(volume);
+        hasVoiceVolume = true;
+        nextVoiceVolume = static_cast<uint8_t>(volume);
     }
     if (server.hasArg("announceSecondaryAlerts")) {
-        settings.announceSecondaryAlerts =
+        update.hasAnnounceSecondaryAlerts = true;
+        update.announceSecondaryAlerts =
             argBool("announceSecondaryAlerts", settings.announceSecondaryAlerts);
     }
     if (server.hasArg("secondaryLaser")) {
-        settings.secondaryLaser = argBool("secondaryLaser", settings.secondaryLaser);
+        update.hasSecondaryLaser = true;
+        update.secondaryLaser = argBool("secondaryLaser", settings.secondaryLaser);
     }
     if (server.hasArg("secondaryKa")) {
-        settings.secondaryKa = argBool("secondaryKa", settings.secondaryKa);
+        update.hasSecondaryKa = true;
+        update.secondaryKa = argBool("secondaryKa", settings.secondaryKa);
     }
     if (server.hasArg("secondaryK")) {
-        settings.secondaryK = argBool("secondaryK", settings.secondaryK);
+        update.hasSecondaryK = true;
+        update.secondaryK = argBool("secondaryK", settings.secondaryK);
     }
     if (server.hasArg("secondaryX")) {
-        settings.secondaryX = argBool("secondaryX", settings.secondaryX);
+        update.hasSecondaryX = true;
+        update.secondaryX = argBool("secondaryX", settings.secondaryX);
     }
     if (server.hasArg("alertVolumeFadeEnabled")) {
-        settings.alertVolumeFadeEnabled =
+        update.hasAlertVolumeFadeEnabled = true;
+        update.alertVolumeFadeEnabled =
             argBool("alertVolumeFadeEnabled", settings.alertVolumeFadeEnabled);
     }
     if (server.hasArg("alertVolumeFadeDelaySec")) {
         int delaySec = server.arg("alertVolumeFadeDelaySec").toInt();
-        settings.alertVolumeFadeDelaySec =
+        update.hasAlertVolumeFadeDelaySec = true;
+        update.alertVolumeFadeDelaySec =
             static_cast<uint8_t>(std::max(1, std::min(delaySec, 10)));
     }
     if (server.hasArg("alertVolumeFadeVolume")) {
         int fadeVolume = server.arg("alertVolumeFadeVolume").toInt();
-        settings.alertVolumeFadeVolume =
+        update.hasAlertVolumeFadeVolume = true;
+        update.alertVolumeFadeVolume =
             static_cast<uint8_t>(std::max(0, std::min(fadeVolume, 9)));
     }
 
-    if (runtime.persistSettings) {
-        runtime.persistSettings();
+    runtime.applySettingsUpdate(update);
+
+    if (hasVoiceVolume && runtime.setAudioVolume) {
+        runtime.setAudioVolume(nextVoiceVolume);
     }
 
     server.send(200, "application/json", "{\"success\":true}");

@@ -11,14 +11,13 @@ namespace WifiDisplayColorsApiService {
 
 struct Runtime {
     std::function<const V1Settings&()> getSettings;
-    std::function<V1Settings&()> getMutableSettings;
+    std::function<void(const DisplaySettingsUpdate&)> applySettingsUpdate;
+    std::function<void()> resetDisplaySettings;
     std::function<void(uint8_t)> setDisplayBrightness;
-    std::function<void(DisplayStyle)> updateDisplayStyle;
     std::function<void()> forceDisplayRedraw;
     std::function<void(uint32_t)> requestColorPreviewHoldMs;
     std::function<bool()> isColorPreviewRunning;
     std::function<void()> cancelColorPreview;
-    std::function<void()> persistSettings;
 };
 
 void handleApiGet(WebServer& server, const Runtime& runtime);

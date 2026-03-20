@@ -5,6 +5,27 @@
 
 #include "settings_internals.h"
 
+namespace {
+
+template <typename T>
+bool assignIfChanged(T& target, const T& value) {
+    if (target == value) {
+        return false;
+    }
+    target = value;
+    return true;
+}
+
+void persistSettingsByMode(SettingsManager& manager, SettingsPersistMode persistMode) {
+    if (persistMode == SettingsPersistMode::Deferred) {
+        manager.saveDeferredBackup();
+        return;
+    }
+    manager.save();
+}
+
+}  // namespace
+
 // --- Simple property setters ---
 
 void SettingsManager::setWiFiEnabled(bool enabled) {
@@ -325,4 +346,308 @@ void SettingsManager::setLastV1Address(const String& addr) {
         save();
         Serial.printf("Saved new V1 address: %s\n", safeAddr.c_str());
     }
+}
+
+void SettingsManager::applyDeviceSettingsUpdate(const DeviceSettingsUpdate& update,
+                                                SettingsPersistMode persistMode) {
+    if (update.hasApCredentials) {
+        settings.apSSID = sanitizeApSsidValue(update.apSSID);
+        settings.apPassword = sanitizeApPasswordValue(update.apPassword);
+    }
+    if (update.hasProxyBLE) {
+        settings.proxyBLE = update.proxyBLE;
+    }
+    if (update.hasProxyName) {
+        settings.proxyName = sanitizeProxyNameValue(update.proxyName);
+    }
+    if (update.hasAutoPowerOffMinutes) {
+        settings.autoPowerOffMinutes = clampU8(update.autoPowerOffMinutes, 0, 60);
+    }
+    if (update.hasApTimeoutMinutes) {
+        settings.apTimeoutMinutes = clampApTimeoutValue(update.apTimeoutMinutes);
+    }
+    if (update.hasEnableWifiAtBoot) {
+        settings.enableWifiAtBoot = update.enableWifiAtBoot;
+    }
+    if (update.hasEnableSignalTraceLogging) {
+        settings.enableSignalTraceLogging = update.enableSignalTraceLogging;
+    }
+
+    persistSettingsByMode(*this, persistMode);
+}
+
+void SettingsManager::applyAudioSettingsUpdate(const AudioSettingsUpdate& update,
+                                               SettingsPersistMode persistMode) {
+    if (update.hasVoiceAlertMode) {
+        settings.voiceAlertMode = clampVoiceAlertModeValue(static_cast<int>(update.voiceAlertMode));
+    }
+    if (update.hasVoiceDirectionEnabled) {
+        settings.voiceDirectionEnabled = update.voiceDirectionEnabled;
+    }
+    if (update.hasAnnounceBogeyCount) {
+        settings.announceBogeyCount = update.announceBogeyCount;
+    }
+    if (update.hasMuteVoiceIfVolZero) {
+        settings.muteVoiceIfVolZero = update.muteVoiceIfVolZero;
+    }
+    if (update.hasVoiceVolume) {
+        settings.voiceVolume = clampU8(update.voiceVolume, 0, 100);
+    }
+    if (update.hasAnnounceSecondaryAlerts) {
+        settings.announceSecondaryAlerts = update.announceSecondaryAlerts;
+    }
+    if (update.hasSecondaryLaser) {
+        settings.secondaryLaser = update.secondaryLaser;
+    }
+    if (update.hasSecondaryKa) {
+        settings.secondaryKa = update.secondaryKa;
+    }
+    if (update.hasSecondaryK) {
+        settings.secondaryK = update.secondaryK;
+    }
+    if (update.hasSecondaryX) {
+        settings.secondaryX = update.secondaryX;
+    }
+    if (update.hasAlertVolumeFadeEnabled) {
+        settings.alertVolumeFadeEnabled = update.alertVolumeFadeEnabled;
+    }
+    if (update.hasAlertVolumeFadeDelaySec) {
+        settings.alertVolumeFadeDelaySec = clampU8(update.alertVolumeFadeDelaySec, 1, 10);
+    }
+    if (update.hasAlertVolumeFadeVolume) {
+        settings.alertVolumeFadeVolume = clampU8(update.alertVolumeFadeVolume, 0, 9);
+    }
+
+    persistSettingsByMode(*this, persistMode);
+}
+
+void SettingsManager::applyDisplaySettingsUpdate(const DisplaySettingsUpdate& update,
+                                                 SettingsPersistMode persistMode) {
+    if (update.hasColorBogey) settings.colorBogey = update.colorBogey;
+    if (update.hasColorFrequency) settings.colorFrequency = update.colorFrequency;
+    if (update.hasColorArrowFront) settings.colorArrowFront = update.colorArrowFront;
+    if (update.hasColorArrowSide) settings.colorArrowSide = update.colorArrowSide;
+    if (update.hasColorArrowRear) settings.colorArrowRear = update.colorArrowRear;
+    if (update.hasColorBandL) settings.colorBandL = update.colorBandL;
+    if (update.hasColorBandKa) settings.colorBandKa = update.colorBandKa;
+    if (update.hasColorBandK) settings.colorBandK = update.colorBandK;
+    if (update.hasColorBandX) settings.colorBandX = update.colorBandX;
+    if (update.hasColorBandPhoto) settings.colorBandPhoto = update.colorBandPhoto;
+    if (update.hasColorWiFiIcon) settings.colorWiFiIcon = update.colorWiFiIcon;
+    if (update.hasColorWiFiConnected) settings.colorWiFiConnected = update.colorWiFiConnected;
+    if (update.hasColorBleConnected) settings.colorBleConnected = update.colorBleConnected;
+    if (update.hasColorBleDisconnected) settings.colorBleDisconnected = update.colorBleDisconnected;
+    if (update.hasColorBar1) settings.colorBar1 = update.colorBar1;
+    if (update.hasColorBar2) settings.colorBar2 = update.colorBar2;
+    if (update.hasColorBar3) settings.colorBar3 = update.colorBar3;
+    if (update.hasColorBar4) settings.colorBar4 = update.colorBar4;
+    if (update.hasColorBar5) settings.colorBar5 = update.colorBar5;
+    if (update.hasColorBar6) settings.colorBar6 = update.colorBar6;
+    if (update.hasColorMuted) settings.colorMuted = update.colorMuted;
+    if (update.hasColorPersisted) settings.colorPersisted = update.colorPersisted;
+    if (update.hasColorVolumeMain) settings.colorVolumeMain = update.colorVolumeMain;
+    if (update.hasColorVolumeMute) settings.colorVolumeMute = update.colorVolumeMute;
+    if (update.hasColorRssiV1) settings.colorRssiV1 = update.colorRssiV1;
+    if (update.hasColorRssiProxy) settings.colorRssiProxy = update.colorRssiProxy;
+    if (update.hasColorLockout) settings.colorLockout = update.colorLockout;
+    if (update.hasColorGps) settings.colorGps = update.colorGps;
+    if (update.hasColorObd) settings.colorObd = update.colorObd;
+    if (update.hasFreqUseBandColor) settings.freqUseBandColor = update.freqUseBandColor;
+    if (update.hasHideWifiIcon) settings.hideWifiIcon = update.hideWifiIcon;
+    if (update.hasHideProfileIndicator) settings.hideProfileIndicator = update.hideProfileIndicator;
+    if (update.hasHideBatteryIcon) settings.hideBatteryIcon = update.hideBatteryIcon;
+    if (update.hasShowBatteryPercent) settings.showBatteryPercent = update.showBatteryPercent;
+    if (update.hasHideBleIcon) settings.hideBleIcon = update.hideBleIcon;
+    if (update.hasHideVolumeIndicator) settings.hideVolumeIndicator = update.hideVolumeIndicator;
+    if (update.hasHideRssiIndicator) settings.hideRssiIndicator = update.hideRssiIndicator;
+    if (update.hasBrightness) settings.brightness = update.brightness;
+    if (update.hasDisplayStyle) {
+        settings.displayStyle = normalizeDisplayStyle(static_cast<int>(update.displayStyle));
+    }
+
+    persistSettingsByMode(*this, persistMode);
+}
+
+void SettingsManager::resetDisplaySettings(SettingsPersistMode persistMode) {
+    settings.colorBogey = 0xF800;
+    settings.colorFrequency = 0xF800;
+    settings.colorArrowFront = 0xF800;
+    settings.colorArrowSide = 0xF800;
+    settings.colorArrowRear = 0xF800;
+    settings.colorBandL = 0x001F;
+    settings.colorBandKa = 0xF800;
+    settings.colorBandK = 0x001F;
+    settings.colorBandX = 0x07E0;
+    settings.colorBandPhoto = 0x780F;
+    settings.colorWiFiIcon = 0x07FF;
+    settings.colorWiFiConnected = 0x07E0;
+    settings.colorBleConnected = 0x07E0;
+    settings.colorBleDisconnected = 0x001F;
+    settings.colorBar1 = 0x07E0;
+    settings.colorBar2 = 0x07E0;
+    settings.colorBar3 = 0xFFE0;
+    settings.colorBar4 = 0xFFE0;
+    settings.colorBar5 = 0xF800;
+    settings.colorBar6 = 0xF800;
+    settings.colorMuted = 0x3186;
+    settings.colorPersisted = 0x18C3;
+    settings.colorVolumeMain = 0x001F;
+    settings.colorVolumeMute = 0xFFE0;
+    settings.colorRssiV1 = 0x07E0;
+    settings.colorRssiProxy = 0x001F;
+    settings.colorLockout = 0x07E0;
+    settings.colorGps = 0x07FF;
+    settings.colorObd = 0x001F;
+    settings.freqUseBandColor = false;
+
+    persistSettingsByMode(*this, persistMode);
+}
+
+GpsSettingsApplyResult SettingsManager::applyGpsSettingsUpdate(const GpsSettingsUpdate& update,
+                                                              SettingsPersistMode persistMode) {
+    GpsSettingsApplyResult result;
+
+    if (update.hasEnabled && assignIfChanged(settings.gpsEnabled, update.enabled)) {
+        result.changed = true;
+        result.enabledChanged = true;
+    }
+    if (update.hasLockoutMode &&
+        assignIfChanged(settings.gpsLockoutMode,
+                        clampLockoutRuntimeModeValue(static_cast<int>(update.lockoutMode)))) {
+        result.changed = true;
+    }
+    if (update.hasCoreGuardEnabled &&
+        assignIfChanged(settings.gpsLockoutCoreGuardEnabled, update.coreGuardEnabled)) {
+        result.changed = true;
+    }
+    if (update.hasMaxQueueDrops && assignIfChanged(settings.gpsLockoutMaxQueueDrops, update.maxQueueDrops)) {
+        result.changed = true;
+    }
+    if (update.hasMaxPerfDrops && assignIfChanged(settings.gpsLockoutMaxPerfDrops, update.maxPerfDrops)) {
+        result.changed = true;
+    }
+    if (update.hasMaxEventBusDrops && assignIfChanged(settings.gpsLockoutMaxEventBusDrops, update.maxEventBusDrops)) {
+        result.changed = true;
+    }
+    if (update.hasLearnerPromotionHits &&
+        assignIfChanged(settings.gpsLockoutLearnerPromotionHits,
+                        clampLockoutLearnerHitsValue(update.learnerPromotionHits))) {
+        result.changed = true;
+        result.learnerTuningChanged = true;
+    }
+    if (update.hasLearnerRadiusE5 &&
+        assignIfChanged(settings.gpsLockoutLearnerRadiusE5,
+                        clampLockoutLearnerRadiusE5Value(update.learnerRadiusE5))) {
+        result.changed = true;
+        result.learnerTuningChanged = true;
+    }
+    if (update.hasLearnerFreqToleranceMHz &&
+        assignIfChanged(settings.gpsLockoutLearnerFreqToleranceMHz,
+                        clampLockoutLearnerFreqTolValue(update.learnerFreqToleranceMHz))) {
+        result.changed = true;
+        result.learnerTuningChanged = true;
+    }
+    if (update.hasLearnerLearnIntervalHours &&
+        assignIfChanged(settings.gpsLockoutLearnerLearnIntervalHours,
+                        clampLockoutLearnerIntervalHoursValue(update.learnerLearnIntervalHours))) {
+        result.changed = true;
+        result.learnerTuningChanged = true;
+    }
+    if (update.hasLearnerUnlearnIntervalHours &&
+        assignIfChanged(settings.gpsLockoutLearnerUnlearnIntervalHours,
+                        clampLockoutLearnerIntervalHoursValue(update.learnerUnlearnIntervalHours))) {
+        result.changed = true;
+    }
+    if (update.hasLearnerUnlearnCount &&
+        assignIfChanged(settings.gpsLockoutLearnerUnlearnCount,
+                        clampLockoutLearnerUnlearnCountValue(update.learnerUnlearnCount))) {
+        result.changed = true;
+    }
+    if (update.hasManualDemotionMissCount &&
+        assignIfChanged(settings.gpsLockoutManualDemotionMissCount,
+                        clampLockoutManualDemotionMissCountValue(update.manualDemotionMissCount))) {
+        result.changed = true;
+    }
+    if (update.hasKaLearningEnabled &&
+        assignIfChanged(settings.gpsLockoutKaLearningEnabled, update.kaLearningEnabled)) {
+        result.changed = true;
+        result.bandLearningPolicyChanged = true;
+    }
+    if (update.hasKLearningEnabled &&
+        assignIfChanged(settings.gpsLockoutKLearningEnabled, update.kLearningEnabled)) {
+        result.changed = true;
+        result.bandLearningPolicyChanged = true;
+    }
+    if (update.hasXLearningEnabled &&
+        assignIfChanged(settings.gpsLockoutXLearningEnabled, update.xLearningEnabled)) {
+        result.changed = true;
+        result.bandLearningPolicyChanged = true;
+    }
+    if (update.hasPreQuiet && assignIfChanged(settings.gpsLockoutPreQuiet, update.preQuiet)) {
+        result.changed = true;
+    }
+    if (update.hasPreQuietBufferE5 &&
+        assignIfChanged(settings.gpsLockoutPreQuietBufferE5,
+                        clampLockoutPreQuietBufferE5Value(update.preQuietBufferE5))) {
+        result.changed = true;
+    }
+    if (update.hasMaxHdopX10 &&
+        assignIfChanged(settings.gpsLockoutMaxHdopX10,
+                        clampLockoutGpsMaxHdopX10Value(update.maxHdopX10))) {
+        result.changed = true;
+        result.learnerTuningChanged = true;
+    }
+    if (update.hasMinLearnerSpeedMph &&
+        assignIfChanged(settings.gpsLockoutMinLearnerSpeedMph,
+                        clampLockoutGpsMinLearnerSpeedMphValue(update.minLearnerSpeedMph))) {
+        result.changed = true;
+        result.learnerTuningChanged = true;
+    }
+
+    if (result.changed) {
+        persistSettingsByMode(*this, persistMode);
+    }
+
+    return result;
+}
+
+bool SettingsManager::applyObdSettingsUpdate(const ObdSettingsUpdate& update,
+                                             SettingsPersistMode persistMode) {
+    bool changed = false;
+
+    if (update.resetSavedNameOnAddressChange &&
+        update.hasSavedAddress &&
+        settings.obdSavedAddress != update.savedAddress &&
+        !update.hasSavedName) {
+        changed |= assignIfChanged(settings.obdSavedName, String(""));
+    }
+
+    if (update.hasEnabled) {
+        changed |= assignIfChanged(settings.obdEnabled, update.enabled);
+    }
+    if (update.hasMinRssi) {
+        const int clampedRssi = std::max(-90, std::min(static_cast<int>(update.minRssi), -40));
+        changed |= assignIfChanged(settings.obdMinRssi, static_cast<int8_t>(clampedRssi));
+    }
+    if (update.hasSavedAddress) {
+        changed |= assignIfChanged(settings.obdSavedAddress, update.savedAddress);
+    }
+    if (update.hasSavedName) {
+        changed |= assignIfChanged(settings.obdSavedName, sanitizeObdSavedNameValue(update.savedName));
+    }
+    if (update.hasSavedAddrType) {
+        changed |= assignIfChanged(settings.obdSavedAddrType, update.savedAddrType);
+    }
+    if (update.hasCachedVinPrefix11) {
+        changed |= assignIfChanged(settings.obdCachedVinPrefix11, update.cachedVinPrefix11);
+    }
+    if (update.hasCachedEotProfileId) {
+        changed |= assignIfChanged(settings.obdCachedEotProfileId, update.cachedEotProfileId);
+    }
+
+    if (changed) {
+        persistSettingsByMode(*this, persistMode);
+    }
+
+    return changed;
 }

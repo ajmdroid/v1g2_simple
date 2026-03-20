@@ -112,14 +112,14 @@ WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
         [this]() -> const V1Settings& {
             return settingsManager.get();
         },
-        [this]() -> V1Settings& {
-            return settingsManager.mutableSettings();
+        [this](const DisplaySettingsUpdate& update) {
+            settingsManager.applyDisplaySettingsUpdate(update, SettingsPersistMode::Deferred);
+        },
+        [this]() {
+            settingsManager.resetDisplaySettings(SettingsPersistMode::Deferred);
         },
         [this](uint8_t brightness) {
             display.setBrightness(brightness);
-        },
-        [this](DisplayStyle style) {
-            settingsManager.updateDisplayStyle(style);
         },
         [this]() {
             display.forceNextRedraw();
@@ -133,7 +133,6 @@ WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
         []() {
             cancelColorPreview();
         },
-        [this]() { settingsManager.saveDeferredBackup(); },
     };
 }
 
@@ -142,13 +141,12 @@ WifiAudioApiService::Runtime WiFiManager::makeAudioRuntime() {
         [this]() -> const V1Settings& {
             return settingsManager.get();
         },
-        [this]() -> V1Settings& {
-            return settingsManager.mutableSettings();
+        [this](const AudioSettingsUpdate& update) {
+            settingsManager.applyAudioSettingsUpdate(update, SettingsPersistMode::Deferred);
         },
         [](uint8_t volume) {
             audio_set_volume(volume);
         },
-        [this]() { settingsManager.saveDeferredBackup(); },
     };
 }
 
@@ -189,13 +187,9 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
         [this]() -> const V1Settings& {
             return settingsManager.get();
         },
-        [this]() -> V1Settings& {
-            return settingsManager.mutableSettings();
+        [this](const DeviceSettingsUpdate& update) {
+            settingsManager.applyDeviceSettingsUpdate(update, SettingsPersistMode::Deferred);
         },
-        [this](const String& ssid, const String& password) {
-            settingsManager.updateAPCredentials(ssid, password);
-        },
-        [this]() { settingsManager.saveDeferredBackup(); },
     };
 }
 

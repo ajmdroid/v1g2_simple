@@ -20,8 +20,6 @@ struct FakeRuntime {
 
     int setDisplayBrightnessCalls = 0;
     uint8_t lastDisplayBrightness = 0;
-    int updateDisplayStyleCalls = 0;
-    DisplayStyle lastDisplayStyle = DISPLAY_STYLE_CLASSIC;
     int forceDisplayRedrawCalls = 0;
     int requestColorPreviewHoldCalls = 0;
     uint32_t lastPreviewHoldMs = 0;
@@ -30,22 +28,97 @@ struct FakeRuntime {
     int saveDeferredBackupCalls = 0;
 };
 
+static void applyDisplaySettingsUpdateForTest(FakeRuntime& rt, const DisplaySettingsUpdate& update) {
+    rt.saveDeferredBackupCalls++;
+    if (update.hasColorBogey) rt.settings.colorBogey = update.colorBogey;
+    if (update.hasColorFrequency) rt.settings.colorFrequency = update.colorFrequency;
+    if (update.hasColorArrowFront) rt.settings.colorArrowFront = update.colorArrowFront;
+    if (update.hasColorArrowSide) rt.settings.colorArrowSide = update.colorArrowSide;
+    if (update.hasColorArrowRear) rt.settings.colorArrowRear = update.colorArrowRear;
+    if (update.hasColorBandL) rt.settings.colorBandL = update.colorBandL;
+    if (update.hasColorBandKa) rt.settings.colorBandKa = update.colorBandKa;
+    if (update.hasColorBandK) rt.settings.colorBandK = update.colorBandK;
+    if (update.hasColorBandX) rt.settings.colorBandX = update.colorBandX;
+    if (update.hasColorBandPhoto) rt.settings.colorBandPhoto = update.colorBandPhoto;
+    if (update.hasColorWiFiIcon) rt.settings.colorWiFiIcon = update.colorWiFiIcon;
+    if (update.hasColorWiFiConnected) rt.settings.colorWiFiConnected = update.colorWiFiConnected;
+    if (update.hasColorBleConnected) rt.settings.colorBleConnected = update.colorBleConnected;
+    if (update.hasColorBleDisconnected) rt.settings.colorBleDisconnected = update.colorBleDisconnected;
+    if (update.hasColorBar1) rt.settings.colorBar1 = update.colorBar1;
+    if (update.hasColorBar2) rt.settings.colorBar2 = update.colorBar2;
+    if (update.hasColorBar3) rt.settings.colorBar3 = update.colorBar3;
+    if (update.hasColorBar4) rt.settings.colorBar4 = update.colorBar4;
+    if (update.hasColorBar5) rt.settings.colorBar5 = update.colorBar5;
+    if (update.hasColorBar6) rt.settings.colorBar6 = update.colorBar6;
+    if (update.hasColorMuted) rt.settings.colorMuted = update.colorMuted;
+    if (update.hasColorPersisted) rt.settings.colorPersisted = update.colorPersisted;
+    if (update.hasColorVolumeMain) rt.settings.colorVolumeMain = update.colorVolumeMain;
+    if (update.hasColorVolumeMute) rt.settings.colorVolumeMute = update.colorVolumeMute;
+    if (update.hasColorRssiV1) rt.settings.colorRssiV1 = update.colorRssiV1;
+    if (update.hasColorRssiProxy) rt.settings.colorRssiProxy = update.colorRssiProxy;
+    if (update.hasColorLockout) rt.settings.colorLockout = update.colorLockout;
+    if (update.hasColorGps) rt.settings.colorGps = update.colorGps;
+    if (update.hasColorObd) rt.settings.colorObd = update.colorObd;
+    if (update.hasFreqUseBandColor) rt.settings.freqUseBandColor = update.freqUseBandColor;
+    if (update.hasHideWifiIcon) rt.settings.hideWifiIcon = update.hideWifiIcon;
+    if (update.hasHideProfileIndicator) rt.settings.hideProfileIndicator = update.hideProfileIndicator;
+    if (update.hasHideBatteryIcon) rt.settings.hideBatteryIcon = update.hideBatteryIcon;
+    if (update.hasShowBatteryPercent) rt.settings.showBatteryPercent = update.showBatteryPercent;
+    if (update.hasHideBleIcon) rt.settings.hideBleIcon = update.hideBleIcon;
+    if (update.hasHideVolumeIndicator) rt.settings.hideVolumeIndicator = update.hideVolumeIndicator;
+    if (update.hasHideRssiIndicator) rt.settings.hideRssiIndicator = update.hideRssiIndicator;
+    if (update.hasBrightness) rt.settings.brightness = update.brightness;
+    if (update.hasDisplayStyle) rt.settings.displayStyle = update.displayStyle;
+}
+
+static void resetDisplaySettingsForTest(FakeRuntime& rt) {
+    rt.saveDeferredBackupCalls++;
+    rt.settings.colorBogey = 0xF800;
+    rt.settings.colorFrequency = 0xF800;
+    rt.settings.colorArrowFront = 0xF800;
+    rt.settings.colorArrowSide = 0xF800;
+    rt.settings.colorArrowRear = 0xF800;
+    rt.settings.colorBandL = 0x001F;
+    rt.settings.colorBandKa = 0xF800;
+    rt.settings.colorBandK = 0x001F;
+    rt.settings.colorBandX = 0x07E0;
+    rt.settings.colorBandPhoto = 0x780F;
+    rt.settings.colorWiFiIcon = 0x07FF;
+    rt.settings.colorWiFiConnected = 0x07E0;
+    rt.settings.colorBleConnected = 0x07E0;
+    rt.settings.colorBleDisconnected = 0x001F;
+    rt.settings.colorBar1 = 0x07E0;
+    rt.settings.colorBar2 = 0x07E0;
+    rt.settings.colorBar3 = 0xFFE0;
+    rt.settings.colorBar4 = 0xFFE0;
+    rt.settings.colorBar5 = 0xF800;
+    rt.settings.colorBar6 = 0xF800;
+    rt.settings.colorMuted = 0x3186;
+    rt.settings.colorPersisted = 0x18C3;
+    rt.settings.colorVolumeMain = 0x001F;
+    rt.settings.colorVolumeMute = 0xFFE0;
+    rt.settings.colorRssiV1 = 0x07E0;
+    rt.settings.colorRssiProxy = 0x001F;
+    rt.settings.colorLockout = 0x07E0;
+    rt.settings.colorGps = 0x07FF;
+    rt.settings.colorObd = 0x001F;
+    rt.settings.freqUseBandColor = false;
+}
+
 static WifiDisplayColorsApiService::Runtime makeRuntime(FakeRuntime& rt) {
     return WifiDisplayColorsApiService::Runtime{
         [&rt]() -> const V1Settings& {
             return rt.settings;
         },
-        [&rt]() -> V1Settings& {
-            return rt.settings;
+        [&rt](const DisplaySettingsUpdate& update) {
+            applyDisplaySettingsUpdateForTest(rt, update);
+        },
+        [&rt]() {
+            resetDisplaySettingsForTest(rt);
         },
         [&rt](uint8_t brightness) {
             rt.setDisplayBrightnessCalls++;
             rt.lastDisplayBrightness = brightness;
-        },
-        [&rt](DisplayStyle style) {
-            rt.updateDisplayStyleCalls++;
-            rt.lastDisplayStyle = style;
-            rt.settings.displayStyle = style;
         },
         [&rt]() {
             rt.forceDisplayRedrawCalls++;
@@ -59,9 +132,6 @@ static WifiDisplayColorsApiService::Runtime makeRuntime(FakeRuntime& rt) {
         },
         [&rt]() {
             rt.cancelColorPreviewCalls++;
-        },
-        [&rt]() {
-            rt.saveDeferredBackupCalls++;
         },
     };
 }
@@ -150,9 +220,8 @@ void test_save_updates_display_settings_and_calls_side_effects() {
     TEST_ASSERT_EQUAL_UINT8(111, rt.settings.brightness);
     TEST_ASSERT_EQUAL_INT(1, rt.setDisplayBrightnessCalls);
     TEST_ASSERT_EQUAL_UINT8(111, rt.lastDisplayBrightness);
-    TEST_ASSERT_EQUAL_INT(1, rt.updateDisplayStyleCalls);
     TEST_ASSERT_EQUAL_INT(static_cast<int>(DISPLAY_STYLE_SERPENTINE),
-                          static_cast<int>(rt.lastDisplayStyle));
+                          static_cast<int>(rt.settings.displayStyle));
     TEST_ASSERT_EQUAL_INT(1, rt.forceDisplayRedrawCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);

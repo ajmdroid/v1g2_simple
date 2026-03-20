@@ -63,14 +63,17 @@ void ObdSettingsSyncModule::applySnapshot(const Snapshot& snapshot) {
         return;
     }
 
-    V1Settings& settings = settingsManager_->mutableSettings();
-    if (settings.obdSavedAddress != snapshot.savedAddress) {
-        settings.obdSavedName = "";
-    }
-    settings.obdSavedAddress = snapshot.savedAddress;
-    settings.obdSavedAddrType = snapshot.savedAddrType;
-    settings.obdCachedVinPrefix11 = snapshot.cachedVinPrefix11;
-    settings.obdCachedEotProfileId = snapshot.cachedEotProfileId;
+    ObdSettingsUpdate update;
+    update.hasSavedAddress = true;
+    update.savedAddress = snapshot.savedAddress;
+    update.hasSavedAddrType = true;
+    update.savedAddrType = snapshot.savedAddrType;
+    update.hasCachedVinPrefix11 = true;
+    update.cachedVinPrefix11 = snapshot.cachedVinPrefix11;
+    update.hasCachedEotProfileId = true;
+    update.cachedEotProfileId = snapshot.cachedEotProfileId;
+    update.resetSavedNameOnAddressChange = true;
+    settingsManager_->applyObdSettingsUpdate(update, SettingsPersistMode::Deferred);
 }
 
 void ObdSettingsSyncModule::process(uint32_t nowMs) {
@@ -102,6 +105,5 @@ void ObdSettingsSyncModule::process(uint32_t nowMs) {
     }
 
     applySnapshot(pendingSnapshot_);
-    settingsManager_->saveDeferredBackup();
     pendingValid_ = false;
 }

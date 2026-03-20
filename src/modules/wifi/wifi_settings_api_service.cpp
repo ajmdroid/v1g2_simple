@@ -46,13 +46,13 @@ void handleApiDeviceSettingsSave(WebServer& server,
                                  const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
-    if (!runtime.getMutableSettings) {
+    if (!runtime.getSettings || !runtime.applySettingsUpdate) {
         sendSettingsUnavailable(server);
         return;
     }
 
-    V1Settings& mutableSettings = runtime.getMutableSettings();
-    const V1Settings& currentSettings = mutableSettings;
+    const V1Settings& currentSettings = runtime.getSettings();
+    DeviceSettingsUpdate update;
 
     if (server.hasArg("ap_ssid")) {
         String apSsid = clampStringLength(server.arg("ap_ssid"), MAX_WIFI_SSID_LEN);
@@ -71,41 +71,44 @@ void handleApiDeviceSettingsSave(WebServer& server,
             return;
         }
 
-        if (runtime.updateAPCredentials) {
-            runtime.updateAPCredentials(apSsid, apPass);
-        }
+        update.hasApCredentials = true;
+        update.apSSID = apSsid;
+        update.apPassword = apPass;
     }
 
     if (server.hasArg("proxy_ble")) {
-        bool proxyEnabled = argIsTrue(server.arg("proxy_ble"));
-        mutableSettings.proxyBLE = proxyEnabled;
+        update.hasProxyBLE = true;
+        update.proxyBLE = argIsTrue(server.arg("proxy_ble"));
     }
     if (server.hasArg("proxy_name")) {
-        mutableSettings.proxyName = sanitizeProxyNameValue(server.arg("proxy_name"));
+        update.hasProxyName = true;
+        update.proxyName = server.arg("proxy_name");
     }
     if (server.hasArg("autoPowerOffMinutes")) {
         int minutes = server.arg("autoPowerOffMinutes").toInt();
         minutes = std::max(0, std::min(minutes, 60));
-        mutableSettings.autoPowerOffMinutes = static_cast<uint8_t>(minutes);
+        update.hasAutoPowerOffMinutes = true;
+        update.autoPowerOffMinutes = static_cast<uint8_t>(minutes);
     }
     if (server.hasArg("apTimeoutMinutes")) {
         int minutes = server.arg("apTimeoutMinutes").toInt();
         if (minutes != 0) {
             minutes = std::max(5, std::min(minutes, 60));
         }
-        mutableSettings.apTimeoutMinutes = static_cast<uint8_t>(minutes);
+        update.hasApTimeoutMinutes = true;
+        update.apTimeoutMinutes = static_cast<uint8_t>(minutes);
     }
     if (server.hasArg("enableWifiAtBoot")) {
-        mutableSettings.enableWifiAtBoot = argIsTrue(server.arg("enableWifiAtBoot"));
+        update.hasEnableWifiAtBoot = true;
+        update.enableWifiAtBoot = argIsTrue(server.arg("enableWifiAtBoot"));
     }
     if (server.hasArg("enableSignalTraceLogging")) {
-        mutableSettings.enableSignalTraceLogging =
+        update.hasEnableSignalTraceLogging = true;
+        update.enableSignalTraceLogging =
             argIsTrue(server.arg("enableSignalTraceLogging"));
     }
 
-    if (runtime.persistSettings) {
-        runtime.persistSettings();
-    }
+    runtime.applySettingsUpdate(update);
 
     server.send(200, "application/json", "{\"success\":true}");
 }

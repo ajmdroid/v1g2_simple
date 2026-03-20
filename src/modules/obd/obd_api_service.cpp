@@ -194,9 +194,10 @@ void handleApiDeviceNameSave(WebServer& server,
         return;
     }
 
-    V1Settings& settings = settingsManager.mutableSettings();
-    settings.obdSavedName = sanitizeObdDeviceName(server.hasArg("name") ? server.arg("name") : "");
-    settingsManager.save();
+    ObdSettingsUpdate update;
+    update.hasSavedName = true;
+    update.savedName = sanitizeObdDeviceName(server.hasArg("name") ? server.arg("name") : "");
+    settingsManager.applyObdSettingsUpdate(update);
 
     server.send(200, "application/json", "{\"success\":true}");
 }
@@ -239,13 +240,18 @@ void handleApiForget(WebServer& server,
     if (markUiActivity) markUiActivity();
     if (checkRateLimit && !checkRateLimit()) return;
     obdRuntime.forgetDevice();
-    V1Settings& settings = settingsManager.mutableSettings();
-    settings.obdSavedAddress = "";
-    settings.obdSavedName = "";
-    settings.obdSavedAddrType = 0;
-    settings.obdCachedVinPrefix11 = "";
-    settings.obdCachedEotProfileId = 0;
-    settingsManager.save();
+    ObdSettingsUpdate update;
+    update.hasSavedAddress = true;
+    update.savedAddress = "";
+    update.hasSavedName = true;
+    update.savedName = "";
+    update.hasSavedAddrType = true;
+    update.savedAddrType = 0;
+    update.hasCachedVinPrefix11 = true;
+    update.cachedVinPrefix11 = "";
+    update.hasCachedEotProfileId = true;
+    update.cachedEotProfileId = 0;
+    settingsManager.applyObdSettingsUpdate(update);
     JsonDocument doc;
     doc["ok"] = true;
     WifiApiResponse::sendJsonDocument(server, 200, doc);
@@ -277,24 +283,22 @@ void handleApiConfig(WebServer& server,
         return;
     }
 
-    V1Settings& settings = settingsManager.mutableSettings();
-    bool changed = false;
+    ObdSettingsUpdate update;
 
     if (body["enabled"].is<bool>()) {
-        bool enabled = body["enabled"].as<bool>();
-        settings.obdEnabled = enabled;
-        changed = true;
+        update.hasEnabled = true;
+        update.enabled = body["enabled"].as<bool>();
     }
     if (!body["minRssi"].isNull()) {
         int rssi = body["minRssi"].as<int>();
         rssi = std::max(-90, std::min(rssi, -40));
-        settings.obdMinRssi = static_cast<int8_t>(rssi);
-        changed = true;
+        update.hasMinRssi = true;
+        update.minRssi = static_cast<int8_t>(rssi);
     }
 
+    const bool changed = settingsManager.applyObdSettingsUpdate(update);
     if (changed) {
-        SettingsRuntimeSync::syncObdVehicleRuntimeSettings(settings, obdRuntime, speedSourceSelector);
-        settingsManager.save();
+        SettingsRuntimeSync::syncObdVehicleRuntimeSettings(settingsManager.get(), obdRuntime, speedSourceSelector);
     }
 
     JsonDocument doc;

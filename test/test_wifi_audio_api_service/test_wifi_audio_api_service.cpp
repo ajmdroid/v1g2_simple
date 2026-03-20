@@ -22,20 +22,42 @@ struct FakeRuntime {
     int saveDeferredBackupCalls = 0;
 };
 
+static void applyAudioSettingsUpdateForTest(FakeRuntime& rt, const AudioSettingsUpdate& update) {
+    rt.saveDeferredBackupCalls++;
+    if (update.hasVoiceAlertMode) rt.settings.voiceAlertMode = update.voiceAlertMode;
+    if (update.hasVoiceDirectionEnabled) rt.settings.voiceDirectionEnabled = update.voiceDirectionEnabled;
+    if (update.hasAnnounceBogeyCount) rt.settings.announceBogeyCount = update.announceBogeyCount;
+    if (update.hasMuteVoiceIfVolZero) rt.settings.muteVoiceIfVolZero = update.muteVoiceIfVolZero;
+    if (update.hasVoiceVolume) rt.settings.voiceVolume = update.voiceVolume;
+    if (update.hasAnnounceSecondaryAlerts) {
+        rt.settings.announceSecondaryAlerts = update.announceSecondaryAlerts;
+    }
+    if (update.hasSecondaryLaser) rt.settings.secondaryLaser = update.secondaryLaser;
+    if (update.hasSecondaryKa) rt.settings.secondaryKa = update.secondaryKa;
+    if (update.hasSecondaryK) rt.settings.secondaryK = update.secondaryK;
+    if (update.hasSecondaryX) rt.settings.secondaryX = update.secondaryX;
+    if (update.hasAlertVolumeFadeEnabled) {
+        rt.settings.alertVolumeFadeEnabled = update.alertVolumeFadeEnabled;
+    }
+    if (update.hasAlertVolumeFadeDelaySec) {
+        rt.settings.alertVolumeFadeDelaySec = update.alertVolumeFadeDelaySec;
+    }
+    if (update.hasAlertVolumeFadeVolume) {
+        rt.settings.alertVolumeFadeVolume = update.alertVolumeFadeVolume;
+    }
+}
+
 static WifiAudioApiService::Runtime makeRuntime(FakeRuntime& rt) {
     return WifiAudioApiService::Runtime{
         [&rt]() -> const V1Settings& {
             return rt.settings;
         },
-        [&rt]() -> V1Settings& {
-            return rt.settings;
+        [&rt](const AudioSettingsUpdate& update) {
+            applyAudioSettingsUpdateForTest(rt, update);
         },
         [&rt](uint8_t volume) {
             rt.setAudioVolumeCalls++;
             rt.lastAudioVolume = volume;
-        },
-        [&rt]() {
-            rt.saveDeferredBackupCalls++;
         },
     };
 }

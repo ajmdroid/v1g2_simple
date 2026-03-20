@@ -12,9 +12,7 @@ namespace WifiSettingsApiService {
 
 struct Runtime {
     std::function<const V1Settings&()> getSettings;
-    std::function<V1Settings&()> getMutableSettings;
-    std::function<void(const String&, const String&)> updateAPCredentials;
-    std::function<void()> persistSettings;
+    std::function<void(const DeviceSettingsUpdate&)> applySettingsUpdate;
 };
 
 void handleApiDeviceSettingsGet(WebServer& server, const Runtime& runtime);

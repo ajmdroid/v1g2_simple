@@ -13,7 +13,7 @@ void handleApiSave(WebServer& server,
                    const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
-    if (!runtime.getMutableSettings) {
+    if (!runtime.getSettings || !runtime.applySettingsUpdate) {
         server.send(500, "application/json", "{\"error\":\"Settings unavailable\"}");
         return;
     }
@@ -26,7 +26,11 @@ void handleApiSave(WebServer& server,
     }
 #endif
 
-    V1Settings& s = runtime.getMutableSettings();
+    const V1Settings& s = runtime.getSettings();
+    DisplaySettingsUpdate update;
+    bool hasBrightness = false;
+    uint8_t nextBrightness = s.brightness;
+    bool hasDisplayStyle = false;
 
     auto argBool = [&server](const char* key, bool fallback) -> bool {
         if (!server.hasArg(key)) return fallback;
@@ -37,80 +41,105 @@ void handleApiSave(WebServer& server,
     if (server.hasArg("bogey") || server.hasArg("freq") || server.hasArg("arrowFront") ||
         server.hasArg("arrowSide") || server.hasArg("arrowRear") || server.hasArg("bandL") ||
         server.hasArg("bandKa") || server.hasArg("bandK") || server.hasArg("bandX")) {
-        s.colorBogey = server.hasArg("bogey") ? server.arg("bogey").toInt() : s.colorBogey;
-        s.colorFrequency = server.hasArg("freq") ? server.arg("freq").toInt() : s.colorFrequency;
-        s.colorArrowFront = server.hasArg("arrowFront") ? server.arg("arrowFront").toInt() : s.colorArrowFront;
-        s.colorArrowSide = server.hasArg("arrowSide") ? server.arg("arrowSide").toInt() : s.colorArrowSide;
-        s.colorArrowRear = server.hasArg("arrowRear") ? server.arg("arrowRear").toInt() : s.colorArrowRear;
-        s.colorBandL = server.hasArg("bandL") ? server.arg("bandL").toInt() : s.colorBandL;
-        s.colorBandKa = server.hasArg("bandKa") ? server.arg("bandKa").toInt() : s.colorBandKa;
-        s.colorBandK = server.hasArg("bandK") ? server.arg("bandK").toInt() : s.colorBandK;
-        s.colorBandX = server.hasArg("bandX") ? server.arg("bandX").toInt() : s.colorBandX;
+        if (server.hasArg("bogey")) {
+            update.hasColorBogey = true;
+            update.colorBogey = server.arg("bogey").toInt();
+        }
+        if (server.hasArg("freq")) {
+            update.hasColorFrequency = true;
+            update.colorFrequency = server.arg("freq").toInt();
+        }
+        if (server.hasArg("arrowFront")) {
+            update.hasColorArrowFront = true;
+            update.colorArrowFront = server.arg("arrowFront").toInt();
+        }
+        if (server.hasArg("arrowSide")) {
+            update.hasColorArrowSide = true;
+            update.colorArrowSide = server.arg("arrowSide").toInt();
+        }
+        if (server.hasArg("arrowRear")) {
+            update.hasColorArrowRear = true;
+            update.colorArrowRear = server.arg("arrowRear").toInt();
+        }
+        if (server.hasArg("bandL")) {
+            update.hasColorBandL = true;
+            update.colorBandL = server.arg("bandL").toInt();
+        }
+        if (server.hasArg("bandKa")) {
+            update.hasColorBandKa = true;
+            update.colorBandKa = server.arg("bandKa").toInt();
+        }
+        if (server.hasArg("bandK")) {
+            update.hasColorBandK = true;
+            update.colorBandK = server.arg("bandK").toInt();
+        }
+        if (server.hasArg("bandX")) {
+            update.hasColorBandX = true;
+            update.colorBandX = server.arg("bandX").toInt();
+        }
 
         Serial.printf("[HTTP] Saving colors: bogey=%d freq=%d arrowF=%d arrowS=%d arrowR=%d\n",
-                      s.colorBogey,
-                      s.colorFrequency,
-                      s.colorArrowFront,
-                      s.colorArrowSide,
-                      s.colorArrowRear);
+                      update.hasColorBogey ? update.colorBogey : s.colorBogey,
+                      update.hasColorFrequency ? update.colorFrequency : s.colorFrequency,
+                      update.hasColorArrowFront ? update.colorArrowFront : s.colorArrowFront,
+                      update.hasColorArrowSide ? update.colorArrowSide : s.colorArrowSide,
+                      update.hasColorArrowRear ? update.colorArrowRear : s.colorArrowRear);
     }
 
     // Color groups
-    if (server.hasArg("wifiIcon")) s.colorWiFiIcon = server.arg("wifiIcon").toInt();
-    if (server.hasArg("wifiConnected")) s.colorWiFiConnected = server.arg("wifiConnected").toInt();
-    if (server.hasArg("bleConnected")) s.colorBleConnected = server.arg("bleConnected").toInt();
-    if (server.hasArg("bleDisconnected")) s.colorBleDisconnected = server.arg("bleDisconnected").toInt();
-    if (server.hasArg("bar1")) s.colorBar1 = server.arg("bar1").toInt();
-    if (server.hasArg("bar2")) s.colorBar2 = server.arg("bar2").toInt();
-    if (server.hasArg("bar3")) s.colorBar3 = server.arg("bar3").toInt();
-    if (server.hasArg("bar4")) s.colorBar4 = server.arg("bar4").toInt();
-    if (server.hasArg("bar5")) s.colorBar5 = server.arg("bar5").toInt();
-    if (server.hasArg("bar6")) s.colorBar6 = server.arg("bar6").toInt();
-    if (server.hasArg("muted")) s.colorMuted = server.arg("muted").toInt();
-    if (server.hasArg("bandPhoto")) s.colorBandPhoto = server.arg("bandPhoto").toInt();
-    if (server.hasArg("persisted")) s.colorPersisted = server.arg("persisted").toInt();
-    if (server.hasArg("volumeMain")) s.colorVolumeMain = server.arg("volumeMain").toInt();
-    if (server.hasArg("volumeMute")) s.colorVolumeMute = server.arg("volumeMute").toInt();
-    if (server.hasArg("rssiV1")) s.colorRssiV1 = server.arg("rssiV1").toInt();
-    if (server.hasArg("rssiProxy")) s.colorRssiProxy = server.arg("rssiProxy").toInt();
-    if (server.hasArg("lockout")) s.colorLockout = server.arg("lockout").toInt();
-    if (server.hasArg("gps")) s.colorGps = server.arg("gps").toInt();
-    if (server.hasArg("obd")) s.colorObd = server.arg("obd").toInt();
+    if (server.hasArg("wifiIcon")) { update.hasColorWiFiIcon = true; update.colorWiFiIcon = server.arg("wifiIcon").toInt(); }
+    if (server.hasArg("wifiConnected")) { update.hasColorWiFiConnected = true; update.colorWiFiConnected = server.arg("wifiConnected").toInt(); }
+    if (server.hasArg("bleConnected")) { update.hasColorBleConnected = true; update.colorBleConnected = server.arg("bleConnected").toInt(); }
+    if (server.hasArg("bleDisconnected")) { update.hasColorBleDisconnected = true; update.colorBleDisconnected = server.arg("bleDisconnected").toInt(); }
+    if (server.hasArg("bar1")) { update.hasColorBar1 = true; update.colorBar1 = server.arg("bar1").toInt(); }
+    if (server.hasArg("bar2")) { update.hasColorBar2 = true; update.colorBar2 = server.arg("bar2").toInt(); }
+    if (server.hasArg("bar3")) { update.hasColorBar3 = true; update.colorBar3 = server.arg("bar3").toInt(); }
+    if (server.hasArg("bar4")) { update.hasColorBar4 = true; update.colorBar4 = server.arg("bar4").toInt(); }
+    if (server.hasArg("bar5")) { update.hasColorBar5 = true; update.colorBar5 = server.arg("bar5").toInt(); }
+    if (server.hasArg("bar6")) { update.hasColorBar6 = true; update.colorBar6 = server.arg("bar6").toInt(); }
+    if (server.hasArg("muted")) { update.hasColorMuted = true; update.colorMuted = server.arg("muted").toInt(); }
+    if (server.hasArg("bandPhoto")) { update.hasColorBandPhoto = true; update.colorBandPhoto = server.arg("bandPhoto").toInt(); }
+    if (server.hasArg("persisted")) { update.hasColorPersisted = true; update.colorPersisted = server.arg("persisted").toInt(); }
+    if (server.hasArg("volumeMain")) { update.hasColorVolumeMain = true; update.colorVolumeMain = server.arg("volumeMain").toInt(); }
+    if (server.hasArg("volumeMute")) { update.hasColorVolumeMute = true; update.colorVolumeMute = server.arg("volumeMute").toInt(); }
+    if (server.hasArg("rssiV1")) { update.hasColorRssiV1 = true; update.colorRssiV1 = server.arg("rssiV1").toInt(); }
+    if (server.hasArg("rssiProxy")) { update.hasColorRssiProxy = true; update.colorRssiProxy = server.arg("rssiProxy").toInt(); }
+    if (server.hasArg("lockout")) { update.hasColorLockout = true; update.colorLockout = server.arg("lockout").toInt(); }
+    if (server.hasArg("gps")) { update.hasColorGps = true; update.colorGps = server.arg("gps").toInt(); }
+    if (server.hasArg("obd")) { update.hasColorObd = true; update.colorObd = server.arg("obd").toInt(); }
 
     // Display toggles
-    if (server.hasArg("freqUseBandColor")) s.freqUseBandColor = argBool("freqUseBandColor", s.freqUseBandColor);
-    if (server.hasArg("hideWifiIcon")) s.hideWifiIcon = argBool("hideWifiIcon", s.hideWifiIcon);
-    if (server.hasArg("hideProfileIndicator")) s.hideProfileIndicator = argBool("hideProfileIndicator", s.hideProfileIndicator);
-    if (server.hasArg("hideBatteryIcon")) s.hideBatteryIcon = argBool("hideBatteryIcon", s.hideBatteryIcon);
-    if (server.hasArg("showBatteryPercent")) s.showBatteryPercent = argBool("showBatteryPercent", s.showBatteryPercent);
-    if (server.hasArg("hideBleIcon")) s.hideBleIcon = argBool("hideBleIcon", s.hideBleIcon);
-    if (server.hasArg("hideVolumeIndicator")) s.hideVolumeIndicator = argBool("hideVolumeIndicator", s.hideVolumeIndicator);
-    if (server.hasArg("hideRssiIndicator")) s.hideRssiIndicator = argBool("hideRssiIndicator", s.hideRssiIndicator);
+    if (server.hasArg("freqUseBandColor")) { update.hasFreqUseBandColor = true; update.freqUseBandColor = argBool("freqUseBandColor", s.freqUseBandColor); }
+    if (server.hasArg("hideWifiIcon")) { update.hasHideWifiIcon = true; update.hideWifiIcon = argBool("hideWifiIcon", s.hideWifiIcon); }
+    if (server.hasArg("hideProfileIndicator")) { update.hasHideProfileIndicator = true; update.hideProfileIndicator = argBool("hideProfileIndicator", s.hideProfileIndicator); }
+    if (server.hasArg("hideBatteryIcon")) { update.hasHideBatteryIcon = true; update.hideBatteryIcon = argBool("hideBatteryIcon", s.hideBatteryIcon); }
+    if (server.hasArg("showBatteryPercent")) { update.hasShowBatteryPercent = true; update.showBatteryPercent = argBool("showBatteryPercent", s.showBatteryPercent); }
+    if (server.hasArg("hideBleIcon")) { update.hasHideBleIcon = true; update.hideBleIcon = argBool("hideBleIcon", s.hideBleIcon); }
+    if (server.hasArg("hideVolumeIndicator")) { update.hasHideVolumeIndicator = true; update.hideVolumeIndicator = argBool("hideVolumeIndicator", s.hideVolumeIndicator); }
+    if (server.hasArg("hideRssiIndicator")) { update.hasHideRssiIndicator = true; update.hideRssiIndicator = argBool("hideRssiIndicator", s.hideRssiIndicator); }
 
     // Misc sliders
     if (server.hasArg("brightness")) {
         int brightness = server.arg("brightness").toInt();
         brightness = std::max(0, std::min(brightness, 255));
-        s.brightness = static_cast<uint8_t>(brightness);
-        if (runtime.setDisplayBrightness) {
-            runtime.setDisplayBrightness(static_cast<uint8_t>(brightness));
-        }
+        update.hasBrightness = true;
+        update.brightness = static_cast<uint8_t>(brightness);
+        hasBrightness = true;
+        nextBrightness = static_cast<uint8_t>(brightness);
     }
     if (server.hasArg("displayStyle")) {
-        DisplayStyle style = normalizeDisplayStyle(server.arg("displayStyle").toInt());
-        if (runtime.updateDisplayStyle) {
-            runtime.updateDisplayStyle(style);
-        } else {
-            s.displayStyle = style;
-        }
-        if (runtime.forceDisplayRedraw) {
-            runtime.forceDisplayRedraw();
-        }
+        update.hasDisplayStyle = true;
+        update.displayStyle = normalizeDisplayStyle(server.arg("displayStyle").toInt());
+        hasDisplayStyle = true;
     }
 
-    // Persist all color/visibility changes
-    if (runtime.persistSettings) {
-        runtime.persistSettings();
+    runtime.applySettingsUpdate(update);
+
+    if (hasBrightness && runtime.setDisplayBrightness) {
+        runtime.setDisplayBrightness(nextBrightness);
+    }
+    if (hasDisplayStyle && runtime.forceDisplayRedraw) {
+        runtime.forceDisplayRedraw();
     }
 
     // Trigger immediate display preview to show new colors (skip if requested)
@@ -129,48 +158,12 @@ void handleApiReset(WebServer& server,
                     const std::function<bool()>& checkRateLimit) {
     if (checkRateLimit && !checkRateLimit()) return;
 
-    if (!runtime.getMutableSettings) {
+    if (!runtime.resetDisplaySettings) {
         server.send(500, "application/json", "{\"error\":\"Settings unavailable\"}");
         return;
     }
 
-    V1Settings& s = runtime.getMutableSettings();
-
-    // Reset to default colors: Bogey/Freq=Red, Front/Side/Rear=Red, L/K=Blue, Ka=Red, X=Green, WiFi=Cyan
-    s.colorBogey = 0xF800;
-    s.colorFrequency = 0xF800;
-    s.colorArrowFront = 0xF800;
-    s.colorArrowSide = 0xF800;
-    s.colorArrowRear = 0xF800;
-    s.colorBandL = 0x001F;
-    s.colorBandKa = 0xF800;
-    s.colorBandK = 0x001F;
-    s.colorBandX = 0x07E0;
-    s.colorBandPhoto = 0x780F;
-    s.colorWiFiIcon = 0x07FF;
-    s.colorWiFiConnected = 0x07E0;
-    s.colorBleConnected = 0x07E0;
-    s.colorBleDisconnected = 0x001F;
-    s.colorBar1 = 0x07E0;
-    s.colorBar2 = 0x07E0;
-    s.colorBar3 = 0xFFE0;
-    s.colorBar4 = 0xFFE0;
-    s.colorBar5 = 0xF800;
-    s.colorBar6 = 0xF800;
-    s.colorMuted = 0x3186;
-    s.colorPersisted = 0x18C3;
-    s.colorVolumeMain = 0x001F;
-    s.colorVolumeMute = 0xFFE0;
-    s.colorRssiV1 = 0x07E0;
-    s.colorRssiProxy = 0x001F;
-    s.colorLockout = 0x07E0;
-    s.colorGps = 0x07FF;
-    s.colorObd = 0x001F;
-    s.freqUseBandColor = false;
-
-    if (runtime.persistSettings) {
-        runtime.persistSettings();
-    }
+    runtime.resetDisplaySettings();
 
     // Trigger immediate display preview to show reset colors.
     if (runtime.requestColorPreviewHoldMs) {

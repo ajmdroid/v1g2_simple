@@ -582,6 +582,232 @@ struct SettingsBackupApplyResult {
     int profilesRestored = 0;
 };
 
+enum class SettingsPersistMode : uint8_t {
+    Immediate,
+    Deferred,
+};
+
+struct DeviceSettingsUpdate {
+    bool hasApCredentials = false;
+    String apSSID;
+    String apPassword;
+
+    bool hasProxyBLE = false;
+    bool proxyBLE = false;
+
+    bool hasProxyName = false;
+    String proxyName;
+
+    bool hasAutoPowerOffMinutes = false;
+    uint8_t autoPowerOffMinutes = 0;
+
+    bool hasApTimeoutMinutes = false;
+    uint8_t apTimeoutMinutes = 0;
+
+    bool hasEnableWifiAtBoot = false;
+    bool enableWifiAtBoot = false;
+
+    bool hasEnableSignalTraceLogging = false;
+    bool enableSignalTraceLogging = false;
+};
+
+struct AudioSettingsUpdate {
+    bool hasVoiceAlertMode = false;
+    VoiceAlertMode voiceAlertMode = VOICE_MODE_DISABLED;
+
+    bool hasVoiceDirectionEnabled = false;
+    bool voiceDirectionEnabled = false;
+
+    bool hasAnnounceBogeyCount = false;
+    bool announceBogeyCount = false;
+
+    bool hasMuteVoiceIfVolZero = false;
+    bool muteVoiceIfVolZero = false;
+
+    bool hasVoiceVolume = false;
+    uint8_t voiceVolume = 0;
+
+    bool hasAnnounceSecondaryAlerts = false;
+    bool announceSecondaryAlerts = false;
+
+    bool hasSecondaryLaser = false;
+    bool secondaryLaser = false;
+
+    bool hasSecondaryKa = false;
+    bool secondaryKa = false;
+
+    bool hasSecondaryK = false;
+    bool secondaryK = false;
+
+    bool hasSecondaryX = false;
+    bool secondaryX = false;
+
+    bool hasAlertVolumeFadeEnabled = false;
+    bool alertVolumeFadeEnabled = false;
+
+    bool hasAlertVolumeFadeDelaySec = false;
+    uint8_t alertVolumeFadeDelaySec = 0;
+
+    bool hasAlertVolumeFadeVolume = false;
+    uint8_t alertVolumeFadeVolume = 0;
+};
+
+struct DisplaySettingsUpdate {
+    bool hasColorBogey = false;
+    uint16_t colorBogey = 0;
+    bool hasColorFrequency = false;
+    uint16_t colorFrequency = 0;
+    bool hasColorArrowFront = false;
+    uint16_t colorArrowFront = 0;
+    bool hasColorArrowSide = false;
+    uint16_t colorArrowSide = 0;
+    bool hasColorArrowRear = false;
+    uint16_t colorArrowRear = 0;
+    bool hasColorBandL = false;
+    uint16_t colorBandL = 0;
+    bool hasColorBandKa = false;
+    uint16_t colorBandKa = 0;
+    bool hasColorBandK = false;
+    uint16_t colorBandK = 0;
+    bool hasColorBandX = false;
+    uint16_t colorBandX = 0;
+    bool hasColorBandPhoto = false;
+    uint16_t colorBandPhoto = 0;
+    bool hasColorWiFiIcon = false;
+    uint16_t colorWiFiIcon = 0;
+    bool hasColorWiFiConnected = false;
+    uint16_t colorWiFiConnected = 0;
+    bool hasColorBleConnected = false;
+    uint16_t colorBleConnected = 0;
+    bool hasColorBleDisconnected = false;
+    uint16_t colorBleDisconnected = 0;
+    bool hasColorBar1 = false;
+    uint16_t colorBar1 = 0;
+    bool hasColorBar2 = false;
+    uint16_t colorBar2 = 0;
+    bool hasColorBar3 = false;
+    uint16_t colorBar3 = 0;
+    bool hasColorBar4 = false;
+    uint16_t colorBar4 = 0;
+    bool hasColorBar5 = false;
+    uint16_t colorBar5 = 0;
+    bool hasColorBar6 = false;
+    uint16_t colorBar6 = 0;
+    bool hasColorMuted = false;
+    uint16_t colorMuted = 0;
+    bool hasColorPersisted = false;
+    uint16_t colorPersisted = 0;
+    bool hasColorVolumeMain = false;
+    uint16_t colorVolumeMain = 0;
+    bool hasColorVolumeMute = false;
+    uint16_t colorVolumeMute = 0;
+    bool hasColorRssiV1 = false;
+    uint16_t colorRssiV1 = 0;
+    bool hasColorRssiProxy = false;
+    uint16_t colorRssiProxy = 0;
+    bool hasColorLockout = false;
+    uint16_t colorLockout = 0;
+    bool hasColorGps = false;
+    uint16_t colorGps = 0;
+    bool hasColorObd = false;
+    uint16_t colorObd = 0;
+    bool hasFreqUseBandColor = false;
+    bool freqUseBandColor = false;
+    bool hasHideWifiIcon = false;
+    bool hideWifiIcon = false;
+    bool hasHideProfileIndicator = false;
+    bool hideProfileIndicator = false;
+    bool hasHideBatteryIcon = false;
+    bool hideBatteryIcon = false;
+    bool hasShowBatteryPercent = false;
+    bool showBatteryPercent = false;
+    bool hasHideBleIcon = false;
+    bool hideBleIcon = false;
+    bool hasHideVolumeIndicator = false;
+    bool hideVolumeIndicator = false;
+    bool hasHideRssiIndicator = false;
+    bool hideRssiIndicator = false;
+    bool hasBrightness = false;
+    uint8_t brightness = 0;
+    bool hasDisplayStyle = false;
+    DisplayStyle displayStyle = DISPLAY_STYLE_CLASSIC;
+};
+
+struct GpsSettingsUpdate {
+    bool hasEnabled = false;
+    bool enabled = false;
+    bool hasLockoutMode = false;
+    LockoutRuntimeMode lockoutMode = LOCKOUT_RUNTIME_OFF;
+    bool hasCoreGuardEnabled = false;
+    bool coreGuardEnabled = false;
+    bool hasMaxQueueDrops = false;
+    uint16_t maxQueueDrops = 0;
+    bool hasMaxPerfDrops = false;
+    uint16_t maxPerfDrops = 0;
+    bool hasMaxEventBusDrops = false;
+    uint16_t maxEventBusDrops = 0;
+    bool hasLearnerPromotionHits = false;
+    uint8_t learnerPromotionHits = LOCKOUT_LEARNER_HITS_DEFAULT;
+    bool hasLearnerRadiusE5 = false;
+    uint16_t learnerRadiusE5 = LOCKOUT_LEARNER_RADIUS_E5_DEFAULT;
+    bool hasLearnerFreqToleranceMHz = false;
+    uint16_t learnerFreqToleranceMHz = LOCKOUT_LEARNER_FREQ_TOL_DEFAULT;
+    bool hasLearnerLearnIntervalHours = false;
+    uint8_t learnerLearnIntervalHours = LOCKOUT_LEARNER_LEARN_INTERVAL_HOURS_DEFAULT;
+    bool hasLearnerUnlearnIntervalHours = false;
+    uint8_t learnerUnlearnIntervalHours = LOCKOUT_LEARNER_UNLEARN_INTERVAL_HOURS_DEFAULT;
+    bool hasLearnerUnlearnCount = false;
+    uint8_t learnerUnlearnCount = LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT;
+    bool hasManualDemotionMissCount = false;
+    uint8_t manualDemotionMissCount = LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT;
+    bool hasKaLearningEnabled = false;
+    bool kaLearningEnabled = false;
+    bool hasKLearningEnabled = false;
+    bool kLearningEnabled = false;
+    bool hasXLearningEnabled = false;
+    bool xLearningEnabled = false;
+    bool hasPreQuiet = false;
+    bool preQuiet = false;
+    bool hasPreQuietBufferE5 = false;
+    uint16_t preQuietBufferE5 = LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT;
+    bool hasMaxHdopX10 = false;
+    uint16_t maxHdopX10 = LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT;
+    bool hasMinLearnerSpeedMph = false;
+    uint8_t minLearnerSpeedMph = LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT;
+};
+
+struct GpsSettingsApplyResult {
+    bool changed = false;
+    bool enabledChanged = false;
+    bool bandLearningPolicyChanged = false;
+    bool learnerTuningChanged = false;
+};
+
+struct ObdSettingsUpdate {
+    bool hasEnabled = false;
+    bool enabled = false;
+
+    bool hasMinRssi = false;
+    int8_t minRssi = -80;
+
+    bool hasSavedAddress = false;
+    String savedAddress;
+
+    bool hasSavedName = false;
+    String savedName;
+
+    bool hasSavedAddrType = false;
+    uint8_t savedAddrType = 0;
+
+    bool hasCachedVinPrefix11 = false;
+    String cachedVinPrefix11;
+
+    bool hasCachedEotProfileId = false;
+    uint8_t cachedEotProfileId = 0;
+
+    bool resetSavedNameOnAddressChange = false;
+};
+
 class SettingsManager {
 public:
     SettingsManager();
@@ -591,8 +817,10 @@ public:
     
     // Get current settings (read-only)
     const V1Settings& get() const { return settings; }
-    // Explicit mutable access for batch handlers that apply many fields then call save().
+#ifdef UNIT_TEST
+    // Test-only mutable access for fixture seeding.
     V1Settings& mutableSettings() { return settings; }
+#endif
     uint32_t backupRevision() const { return backupRevisionCounter; }
     
     // Update settings (calls save automatically)
@@ -662,6 +890,18 @@ public:
     void setSlotMuteToZero(int slotNum, bool mz);
     void setSlotAlertPersistSec(int slotNum, uint8_t seconds);
     void setSlotPriorityArrowOnly(int slotNum, bool prioArrow);
+
+    void applyDeviceSettingsUpdate(const DeviceSettingsUpdate& update,
+                                   SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
+    void applyAudioSettingsUpdate(const AudioSettingsUpdate& update,
+                                  SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
+    void applyDisplaySettingsUpdate(const DisplaySettingsUpdate& update,
+                                    SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
+    void resetDisplaySettings(SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
+    GpsSettingsApplyResult applyGpsSettingsUpdate(const GpsSettingsUpdate& update,
+                                                  SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
+    bool applyObdSettingsUpdate(const ObdSettingsUpdate& update,
+                                SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
     
     // Batch update methods (don't auto-save, call save() after)
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }

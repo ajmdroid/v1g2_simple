@@ -11,9 +11,8 @@ namespace WifiAudioApiService {
 
 struct Runtime {
     std::function<const V1Settings&()> getSettings;
-    std::function<V1Settings&()> getMutableSettings;
+    std::function<void(const AudioSettingsUpdate&)> applySettingsUpdate;
     std::function<void(uint8_t)> setAudioVolume;
-    std::function<void()> persistSettings;
 };
 
 void handleApiGet(WebServer& server, const Runtime& runtime);
