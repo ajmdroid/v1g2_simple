@@ -184,7 +184,6 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
 
 bool V1BLEClient::connectToServer() {
     std::string addrStr = targetAddress.toString();
-    [[maybe_unused]] int addrType = hasTargetDevice ? targetDevice.getAddressType() : targetAddressType;
     
     // ========== CONNECTION GUARDS ==========
     // Prevent overlapping connection attempts which cause EBUSY errors

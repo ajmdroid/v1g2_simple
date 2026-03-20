@@ -407,6 +407,7 @@ private:
     BLEState bleState = BLEState::DISCONNECTED;
     unsigned long stateEnteredMs = 0;       // When current state was entered
     unsigned long scanStopRequestedMs = 0;  // When scan stop was requested
+    bool scanStopResultsCleared_ = false;   // One-shot clearResults gate for SCAN_STOPPING
     // ESP32-S3 BLE: radio needs time after scan to be ready for connect
     // Cold boot needs significantly more time for NimBLE stack to stabilize
     static constexpr unsigned long SCAN_STOP_SETTLE_MS = 100;        // 100ms settle for reconnects

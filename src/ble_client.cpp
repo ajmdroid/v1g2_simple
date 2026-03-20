@@ -323,6 +323,9 @@ V1BLEClient::V1BLEClient()
 
 V1BLEClient::~V1BLEClient() {
     releaseProxyQueues();
+    if (instancePtr == this) {
+        instancePtr = nullptr;
+    }
 }
 
 const char* V1BLEClient::getSubscribeStepName() const {
@@ -367,6 +370,9 @@ void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
     
     bleState = newState;
     stateEnteredMs = now;
+    if (newState == BLEState::SCAN_STOPPING || oldState == BLEState::SCAN_STOPPING) {
+        scanStopResultsCleared_ = false;
+    }
 
     if (newState == BLEState::SCANNING) {
         PERF_INC(bleScanStateEntries);
@@ -428,6 +434,7 @@ void V1BLEClient::cleanupConnection() {
     notifyShortCharId.store(0, std::memory_order_relaxed);
     notifyLongChar.store(nullptr, std::memory_order_relaxed);
     notifyLongCharId.store(0, std::memory_order_relaxed);
+    scanStopResultsCleared_ = false;
     
     // 4. Clear connection flags
     {

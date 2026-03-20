@@ -366,10 +366,9 @@ void V1BLEClient::process() {
             }
 
             // Clear scan results once scan has stopped
-            static bool resultsCleared = false;
-            if (!resultsCleared && elapsed > 100) {  // Clear after brief delay
+            if (!scanStopResultsCleared_ && elapsed > 100) {  // Clear after brief delay
                 pScan->clearResults();
-                resultsCleared = true;
+                scanStopResultsCleared_ = true;
             }
 
             // Check if settle time has elapsed
@@ -380,7 +379,6 @@ void V1BLEClient::process() {
                     Serial.println("[BLE] First scan settle complete (extended)");
                     firstScanAfterBoot = false;
                 }
-                resultsCleared = false;  // Reset for next time
                 // Ready to connect
                 bool wantConnect = false;
                 {
