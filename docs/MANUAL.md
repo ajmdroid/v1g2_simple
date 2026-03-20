@@ -189,7 +189,7 @@ caches like `.pio/`, `interface/node_modules/`, `.scratch/`, and `data/`.
 
 All platforms use the single `waveshare-349` environment. `build.sh` auto-detects Windows for PlatformIO path resolution only.
 
-**Source:** [platformio.ini](platformio.ini#L1-L50), [build.sh](build.sh#L1-L30), [interface/scripts/deploy.js](interface/scripts/deploy.js#L1-L30)
+**Source:** [platformio.ini](../platformio.ini#L1-L50), [build.sh](../build.sh#L1-L30), [interface/scripts/deploy.js](../interface/scripts/deploy.js#L1-L30)
 
 ---
 
@@ -218,7 +218,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 
 **Note:** Some units ship with 8MB flash. All environments use the same `partitions_v1.csv` partition table.
 
-**Source:** [platformio.ini](platformio.ini#L1-L50), [include/config.h](include/config.h#L1-L20), [src/battery_manager.h](src/battery_manager.h#L1-L30)
+**Source:** [platformio.ini](../platformio.ini#L1-L50), [include/config.h](../include/config.h#L1-L20), [src/battery_manager.h](../src/battery_manager.h#L1-L30)
 
 ### Key Features
 
@@ -229,7 +229,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 5. **Web Configuration:** AP mode at 192.168.35.5 for settings
 6. **Full Color Customization:** Per-element RGB565 colors via web UI
 
-**Source:** [src/main.cpp](src/main.cpp), [src/ble_client.cpp](src/ble_client.cpp)
+**Source:** [src/main.cpp](../src/main.cpp), [src/ble_client.cpp](../src/ble_client.cpp)
 
 ---
 
@@ -308,7 +308,7 @@ V1 Gen2 (BLE)
 
 **Key optimization:** Proxy forwarding uses `forwardToProxyImmediate()` directly in the BLE callback for zero-latency pass-through to the app. Display updates are queued because SPI operations cannot run in BLE callback context.
 
-**Source:** [src/ble_proxy.cpp](src/ble_proxy.cpp#L325) (immediate proxy forward), [src/modules/ble/ble_queue_module.cpp](src/modules/ble/ble_queue_module.cpp) (BLE data queue), [src/modules/display/display_pipeline_module.cpp](src/modules/display/display_pipeline_module.cpp) (display updates)
+**Source:** [src/ble_proxy.cpp](../src/ble_proxy.cpp#L325) (immediate proxy forward), [src/modules/ble/ble_queue_module.cpp](../src/modules/ble/ble_queue_module.cpp) (BLE data queue), [src/modules/display/display_pipeline_module.cpp](../src/modules/display/display_pipeline_module.cpp) (display updates)
 
 ### Threading Model
 
@@ -322,7 +322,7 @@ V1 Gen2 (BLE)
 - SPI operations (display) must NOT occur in BLE callbacks → uses queue
 - Proxy forwarding DOES run in BLE callback → zero added latency to app
 
-**Source:** [src/main.cpp](src/main.cpp#L197) (onV1Data callback queues data), [src/ble_proxy.cpp](src/ble_proxy.cpp) (immediate proxy)
+**Source:** [src/main.cpp](../src/main.cpp#L197) (onV1Data callback queues data), [src/ble_proxy.cpp](../src/ble_proxy.cpp) (immediate proxy)
 
 ### Timing Constraints
 
@@ -477,7 +477,7 @@ Use for loop-phase orchestration with narrow function interfaces. Examples: all 
 16. loop()                             // Main application loop
 ```
 
-**Source:** [src/main.cpp](src/main.cpp#L347) (setup function)
+**Source:** [src/main.cpp](../src/main.cpp#L347) (setup function)
 
 ### Boot Splash Logic
 
@@ -487,7 +487,7 @@ Use for loop-phase orchestration with narrow function interfaces. Examples: all 
 
 The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen and in the web UI header.
 
-**Source:** [src/main.cpp](src/main.cpp#L471) (showBootSplash call), [src/display_screens.cpp](src/display_screens.cpp) showBootSplash()
+**Source:** [src/main.cpp](../src/main.cpp#L471) (showBootSplash call), [src/display_screens.cpp](../src/display_screens.cpp) showBootSplash()
 
 ### Fallback Behavior
 
@@ -502,8 +502,8 @@ The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen
 ### WiFi AP Control & Timeout
 
 - **Default behavior:** AP is OFF by default; start it with a ~4s BOOT long-press. It stays on until you toggle it off.
-- **Button toggle:** Long-press BOOT (GPIO0) for ~4s to toggle the AP on/off. Short-press enters settings mode (brightness + voice volume sliders). See [src/modules/touch/touch_ui_module.cpp](src/modules/touch/touch_ui_module.cpp).
-- **Auto-timeout (optional):** Disabled by default (`WIFI_AP_AUTO_TIMEOUT_MS = 0`). Set a nonzero value in [src/wifi_manager.cpp](src/wifi_manager.cpp#L16) to allow the AP to stop after the timeout **and** at least 60s of no UI activity and zero connected stations. Timeout logic is in [WiFiManager::checkAutoTimeout()](src/wifi_manager.cpp#L493-L525), called from [WiFiManager::process()](src/wifi_manager.cpp#L528).
+- **Button toggle:** Long-press BOOT (GPIO0) for ~4s to toggle the AP on/off. Short-press enters settings mode (brightness + voice volume sliders). See [src/modules/touch/touch_ui_module.cpp](../src/modules/touch/touch_ui_module.cpp).
+- **Auto-timeout (optional):** Disabled by default (`WIFI_AP_AUTO_TIMEOUT_MS = 0`). Set a nonzero value in [src/wifi_manager.cpp](../src/wifi_manager.cpp#L16) to allow the AP to stop after the timeout **and** at least 60s of no UI activity and zero connected stations. Timeout logic is in [WiFiManager::checkAutoTimeout()](../src/wifi_manager.cpp#L493-L525), called from [WiFiManager::process()](../src/wifi_manager.cpp#L528).
 
 ---
 
@@ -518,7 +518,7 @@ The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen
 | `92A0B6D4-...` | Command Write | Client → V1 |
 | `92A0BAD4-...` | Alt Command Write | Fallback if B6D4 unavailable |
 
-**Source:** [include/config.h](include/config.h#L23-L28)
+**Source:** [include/config.h](../include/config.h#L23-L28)
 
 ### Connection State Machine
 
@@ -563,7 +563,7 @@ The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen
 └─────────────┘
 ```
 
-**Source:** [src/ble_client.h](src/ble_client.h#L30-L50) (BLEState enum), [src/ble_connection.cpp](src/ble_connection.cpp#L18) (scan callbacks), [src/ble_connection.cpp](src/ble_connection.cpp#L205) (connectToServer)
+**Source:** [src/ble_client.h](../src/ble_client.h#L30-L50) (BLEState enum), [src/ble_connection.cpp](../src/ble_connection.cpp#L18) (scan callbacks), [src/ble_connection.cpp](../src/ble_connection.cpp#L205) (connectToServer)
 
 ### Packet Format (ESP Protocol)
 
@@ -584,7 +584,7 @@ The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen
 | 0x34 | reqMuteOn | Mute alerts |
 | 0x35 | reqMuteOff | Unmute |
 
-**Source:** [include/config.h](include/config.h#L30-L50), [src/packet_parser.cpp](src/packet_parser.cpp#L40-L75)
+**Source:** [include/config.h](../include/config.h#L30-L50), [src/packet_parser.cpp](../src/packet_parser.cpp#L40-L75)
 
 ### Display Data Parsing (0x31)
 
@@ -596,7 +596,7 @@ The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen
 // Bit 3: X        Bit 7: Rear arrow
 ```
 
-**Source:** [src/packet_parser.cpp](src/packet_parser.cpp#L20-L37) (processBandArrow)
+**Source:** [src/packet_parser.cpp](../src/packet_parser.cpp#L20-L37) (processBandArrow)
 
 ### Alert Data Parsing (0x43)
 
@@ -604,7 +604,7 @@ The firmware version (e.g., "v4.0.0-dev") is displayed on the boot splash screen
 - Each alert is 7 bytes in the chunked table
 - Chunks accumulated until count reached, then processed
 
-**Source:** [src/packet_parser.cpp](src/packet_parser.cpp#L170-L250)
+**Source:** [src/packet_parser.cpp](../src/packet_parser.cpp#L170-L250)
 
 ### Signal Strength Mapping
 
@@ -616,7 +616,7 @@ V1 Gen2 sends raw RSSI values. Mapped to 0-8 bars using threshold tables:
 // X thresholds:  0x7F, 0x8A, 0x98, 0xA6, 0xB4, 0xC2, 0xFF
 ```
 
-**Source:** [src/packet_parser_alerts.cpp](src/packet_parser_alerts.cpp#L94-L96)
+**Source:** [src/packet_parser_alerts.cpp](../src/packet_parser_alerts.cpp#L94-L96)
 
 ### Queue / Buffering
 
@@ -626,7 +626,7 @@ V1 Gen2 sends raw RSSI values. Mapped to 0-8 bars using threshold tables:
 - **Buffer accumulation:** `rxBuffer` accumulates chunks until 0xAA...0xAB frame complete
 - **Max buffer size:** 512 bytes, trimmed if exceeded
 
-**Source:** [src/modules/ble/ble_queue_module.cpp](src/modules/ble/ble_queue_module.cpp) (queue management), [src/ble_client.cpp](src/ble_client.cpp) (forwardToProxyImmediate)
+**Source:** [src/modules/ble/ble_queue_module.cpp](../src/modules/ble/ble_queue_module.cpp) (queue management), [src/ble_client.cpp](../src/ble_client.cpp) (forwardToProxyImmediate)
 
 ### Proxy Mode (App Compatibility)
 
@@ -638,7 +638,7 @@ When `proxyBLE=true`:
 
 **Performance:** Proxy forwarding happens directly in the BLE notification callback, before queuing for display. This ensures the app sees data with minimal latency (only the inherent V1→ESP32 BLE hop, no queuing delay).
 
-**Source:** [src/ble_connection.cpp](src/ble_connection.cpp#L782) (notify callback), [src/ble_proxy.cpp](src/ble_proxy.cpp#L325) (forwardToProxyImmediate)
+**Source:** [src/ble_connection.cpp](../src/ble_connection.cpp#L782) (notify callback), [src/ble_proxy.cpp](../src/ble_proxy.cpp#L325) (forwardToProxyImmediate)
 
 ### Connection Parameters
 
@@ -654,7 +654,7 @@ NimBLEDevice::setMTU(517);  // 512 payload + 5 header
 
 **Note:** The same tight connection parameters (15-30ms) are also applied to the app side of the proxy connection for optimal latency.
 
-**Source:** [src/ble_connection.cpp](src/ble_connection.cpp#L295) (V1 connection params), [src/ble_proxy.cpp](src/ble_proxy.cpp) (phone connection)
+**Source:** [src/ble_connection.cpp](../src/ble_connection.cpp#L295) (V1 connection params), [src/ble_proxy.cpp](../src/ble_proxy.cpp) (phone connection)
 
 ### Backoff on Failure
 
@@ -663,7 +663,7 @@ NimBLEDevice::setMTU(517);  // 512 payload + 5 header
 - Formula: `BACKOFF_BASE_MS * (1 << min(failures-1, 4))`
 - Hard reset after 5 consecutive failures
 
-**Source:** [src/ble_connection.cpp](src/ble_connection.cpp#L342) (backoff computation)
+**Source:** [src/ble_connection.cpp](../src/ble_connection.cpp#L342) (backoff computation)
 
 ---
 
@@ -702,7 +702,7 @@ Layout zones (left to right):
 └─ 470-640px: Direction arrows (front ▲, side ◀▶, rear ▼)
 ```
 
-**Source:** [src/display_status_bar.cpp](src/display_status_bar.cpp#L135) (drawProfileIndicator), [src/display_frequency.cpp](src/display_frequency.cpp#L532) (drawFrequency), [src/display_bands.cpp](src/display_bands.cpp#L44) (drawBandIndicators), [src/display_bands.cpp](src/display_bands.cpp#L165) (drawVerticalSignalBars), [src/display_arrow.cpp](src/display_arrow.cpp#L18) (drawDirectionArrow)
+**Source:** [src/display_status_bar.cpp](../src/display_status_bar.cpp#L135) (drawProfileIndicator), [src/display_frequency.cpp](../src/display_frequency.cpp#L532) (drawFrequency), [src/display_bands.cpp](../src/display_bands.cpp#L44) (drawBandIndicators), [src/display_bands.cpp](../src/display_bands.cpp#L165) (drawVerticalSignalBars), [src/display_arrow.cpp](../src/display_arrow.cpp#L18) (drawDirectionArrow)
 
 
 ### Display States
@@ -726,7 +726,7 @@ Layout zones (left to right):
 - **Signal Bar Decay Reset:** On V1 disconnect, signal bar decay statics are reset to prevent stale display.
 - **Alert Chunk Assembly Reset:** If alert count changes mid-transmission, chunk assembly is reset to avoid stale/mixed data.
 
-**Source:** [src/display.h](src/display.h#L40-L55), [src/display.cpp](src/display.cpp) various show*() methods, [src/packet_parser.cpp](src/packet_parser.cpp)
+**Source:** [src/display.h](../src/display.h#L40-L55), [src/display.cpp](../src/display.cpp) various show*() methods, [src/packet_parser.cpp](../src/packet_parser.cpp)
 
 ### Multi-Alert Display
 
@@ -741,7 +741,7 @@ When multiple alerts are active simultaneously, secondary alerts appear as compa
 - **Fixed layout:** Secondary row has fixed height; cards don't cause layout shifts
 - **Automatic:** Mode activates when 2+ alerts are present
 
-**Source:** [src/display_cards.cpp](src/display_cards.cpp) (drawSecondaryAlertCards)
+**Source:** [src/display_cards.cpp](../src/display_cards.cpp) (drawSecondaryAlertCards)
 
 ### Color Customization
 
@@ -759,7 +759,7 @@ All display colors are customizable via the web UI (`/colors`). Colors are store
 
 **Note:** The color picker uses a custom modal with RGB sliders for Android Chrome compatibility (native color inputs don't work reliably on mobile).
 
-**Source:** [include/color_themes.h](include/color_themes.h#L1-L30), [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)
+**Source:** [include/color_themes.h](../include/color_themes.h#L1-L30), [interface/src/routes/colors/+page.svelte](../interface/src/routes/colors/+page.svelte)
 
 ### Display Styles
 
@@ -775,7 +775,7 @@ Both active styles use 7-segment for the bogey counter to ensure proper display 
 
 Toggle via web UI: **Colors → Display Style**
 
-**Source:** [src/settings.h](src/settings.h#L57-L60) (normalizeDisplayStyle), [src/display_update.cpp](src/display_update.cpp) (draw pipeline)
+**Source:** [src/settings.h](../src/settings.h#L57-L60) (normalizeDisplayStyle), [src/display_update.cpp](../src/display_update.cpp) (draw pipeline)
 
 ### 7-Segment Digit Rendering
 
@@ -793,7 +793,7 @@ constexpr bool DIGIT_SEGMENTS[10][7] = {
 - "Ghost" segments drawn in dim color for realism
 - Decimal point handling
 
-**Source:** [src/display_frequency.cpp](src/display_frequency.cpp) (7-segment digit rendering)
+**Source:** [src/display_frequency.cpp](../src/display_frequency.cpp) (7-segment digit rendering)
 
 ### 14-Segment Letters
 
@@ -804,7 +804,7 @@ For band labels (Ka, K, X, LASER):
 // Supports: A, C, D, E, F, G, H, I, J, K, L, M, N, O, P, R, S, T, U, V, X, Y
 ```
 
-**Source:** [src/display_top_counter.cpp](src/display_top_counter.cpp#L175) (draw14SegmentDigit)
+**Source:** [src/display_top_counter.cpp](../src/display_top_counter.cpp#L175) (draw14SegmentDigit)
 
 ### Refresh Model
 
@@ -816,7 +816,7 @@ For band labels (Ka, K, X, LASER):
 - BLE notify → queue → parse → update() → flush()
 - Target: <100ms end-to-end latency
 
-**Source:** [src/modules/display/display_pipeline_module.cpp](src/modules/display/display_pipeline_module.cpp) (throttle check), [src/display.cpp](src/display.cpp) flush()
+**Source:** [src/modules/display/display_pipeline_module.cpp](../src/modules/display/display_pipeline_module.cpp) (throttle check), [src/display.cpp](../src/display.cpp) flush()
 
 ### Adding a Widget
 
@@ -856,7 +856,7 @@ The display includes a built-in speaker (ES8311 DAC) that announces radar alerts
 **I2C Bus:** SDA=47, SCL=48 (shared with battery manager)
 **I2S Pins:** MCLK=7, BCLK=15, WS=46, DOUT=45
 
-**Source:** [src/audio_beep.cpp](src/audio_beep.cpp#L1-L50)
+**Source:** [src/audio_beep.cpp](../src/audio_beep.cpp#L1-L50)
 
 ### Voice Mode Settings
 
@@ -893,7 +893,7 @@ Announcement format examples (with `VOICE_MODE_BAND_FREQ`):
 - Direction change: `"behind"` (direction only, same alert moved)
 - Laser alert: `"Laser ahead"` (no frequency, always includes direction when enabled)
 
-**Source:** [src/modules/voice/voice_module.cpp](src/modules/voice/voice_module.cpp) (voice alert logic)
+**Source:** [src/modules/voice/voice_module.cpp](../src/modules/voice/voice_module.cpp) (voice alert logic)
 
 ### Secondary Alert Announcements
 
@@ -926,7 +926,7 @@ When a secondary alert ramps up from weak to strong, a full announcement provide
 - The "was weak" flag is permanent - even if you're stopped for 60+ seconds at 1 bar, then drive toward the source, escalation will trigger when it ramps to 4+ bars
 - Direction breakdown always included for situational awareness
 
-**Source:** [src/modules/voice/voice_module.cpp](src/modules/voice/voice_module.cpp) (secondary alert logic)
+**Source:** [src/modules/voice/voice_module.cpp](../src/modules/voice/voice_module.cpp) (secondary alert logic)
 
 ### Audio Files
 
@@ -944,7 +944,7 @@ Pre-recorded TTS clips stored as mu-law encoded files in LittleFS (`data/audio/*
 
 **Audio format:** 8-bit mu-law encoded, 22kHz mono, loaded from LittleFS at runtime.
 
-**Source:** [data/audio/](data/audio/) (audio files), [src/audio_beep.cpp](src/audio_beep.cpp#L400-L500) (playback)
+**Source:** [data/audio/](../data/audio/) (audio files), [src/audio_beep.cpp](../src/audio_beep.cpp#L400-L500) (playback)
 
 ### Volume Control
 
@@ -956,7 +956,7 @@ Volume mapping: `0% = mute, 1-100% maps to 0x90-0xBF`
 
 **Adjustment:** Short-press BOOT → use bottom blue slider → release to hear test voice ("Ka ahead")
 
-**Source:** [src/audio_beep.cpp](src/audio_beep.cpp#L270-L290) (audio_set_volume)
+**Source:** [src/audio_beep.cpp](../src/audio_beep.cpp#L270-L290) (audio_set_volume)
 
 ### Audio API Functions
 
@@ -985,7 +985,7 @@ void audio_set_volume(int level);
 bool audio_init();
 ```
 
-**Source:** [src/audio_beep.h](src/audio_beep.h#L1-L60)
+**Source:** [src/audio_beep.h](../src/audio_beep.h#L1-L60)
 
 ### Settings Screen
 
@@ -995,7 +995,7 @@ The settings screen shows two sliders:
 
 On volume slider release, plays "Ka ahead" test clip after 1 second delay.
 
-**Source:** [src/display_sliders.cpp](src/display_sliders.cpp#L14) (showSettingsSliders)
+**Source:** [src/display_sliders.cpp](../src/display_sliders.cpp#L14) (showSettingsSliders)
 
 ### Web Configuration
 
@@ -1069,7 +1069,7 @@ ESP32 Preferences API with namespace `v1settings`:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | enableWifi | bool | true | WiFi enabled |
-| wifiMode | int | 2 (AP) | V1_WIFI_OFF/STA/AP/APSTA |
+| wifiMode | int | 2 (AP) | V1_WIFI_OFF/AP/APSTA |
 | apSSID | String | "V1-Simple" | AP network name |
 | apPassword | String | "setupv1g2" (obfuscated) | AP password |
 | proxyBLE | bool | true | BLE proxy enabled |
@@ -1108,7 +1108,7 @@ ESP32 Preferences API with namespace `v1settings`:
 
 *Note: Slot 1 and 2 have analogous keys (slot1dark, slot2persist, etc.)*
 
-**Source:** [src/settings.cpp](src/settings.cpp#L119-L340) (load), [src/settings_nvs.cpp](src/settings_nvs.cpp#L338-L470) (save)
+**Source:** [src/settings.cpp](../src/settings.cpp#L119-L340) (load), [src/settings_nvs.cpp](../src/settings_nvs.cpp#L338-L470) (save)
 
 ### Password Obfuscation
 
@@ -1124,7 +1124,7 @@ static String xorObfuscate(const String& input) {
 
 **Security note:** This prevents casual viewing but is NOT secure against determined attackers.
 
-**Source:** [src/settings_nvs.cpp](src/settings_nvs.cpp#L44-L55) (xorObfuscate), XOR key at [src/settings.cpp](src/settings.cpp#L75)
+**Source:** [src/settings_nvs.cpp](../src/settings_nvs.cpp#L44-L55) (xorObfuscate), XOR key at [src/settings.cpp](../src/settings.cpp#L75)
 
 ### Profile File Format
 
@@ -1139,14 +1139,14 @@ static String xorObfuscate(const String& input) {
 }
 ```
 
-**Source:** [src/v1_profiles.h](src/v1_profiles.h#L1-L100), [src/v1_profiles.cpp](src/v1_profiles.cpp)
+**Source:** [src/v1_profiles.h](../src/v1_profiles.h#L1-L100), [src/v1_profiles.cpp](../src/v1_profiles.cpp)
 
 ### SD Card Backup
 
 On settings save, automatically backs up to `/v1settings_backup.json` on SD card.
 On boot, if NVS appears empty (fresh flash), restores from SD backup.
 
-**Source:** [src/settings_backup.cpp](src/settings_backup.cpp#L463) (backupToSD), [src/settings_backup.cpp](src/settings_backup.cpp#L672) (restoreFromSD)
+**Source:** [src/settings_backup.cpp](../src/settings_backup.cpp#L463) (backupToSD), [src/settings_backup.cpp](../src/settings_backup.cpp#L672) (restoreFromSD)
 
 ---
 
@@ -1181,7 +1181,7 @@ Controls:
 - **Download Backup:** Export all settings (colors, slot configs, voice settings) and V1 profiles to a JSON file
 - **Restore from Backup:** Upload a previously saved backup file to restore all settings and profiles
 
-**Source:** [interface/src/routes/settings/+page.svelte](interface/src/routes/settings/+page.svelte)
+**Source:** [interface/src/routes/settings/+page.svelte](../interface/src/routes/settings/+page.svelte)
 
 ### Audio Page (`/audio`)
 
@@ -1204,7 +1204,7 @@ Controls:
 
 Voice alerts announce through the built-in speaker when no phone app is connected via BLE proxy. Priority alerts are announced immediately; secondary alerts wait for priority to stabilize. Smart threat escalation detects when secondary alerts ramp up from weak (≤2 bars) to strong (≥4 bars sustained) and announces with full context.
 
-**Source:** [interface/src/routes/audio/+page.svelte](interface/src/routes/audio/+page.svelte)
+**Source:** [interface/src/routes/audio/+page.svelte](../interface/src/routes/audio/+page.svelte)
 
 ### GPS / Lockout Settings (`/integrations` and `/lockouts`)
 
@@ -1221,7 +1221,7 @@ Controls:
 - **Learn Interval:** Hours between counted hits (default: 0, disabled)
 - **Unlearn Interval:** Hours between counted misses (default: 0, disabled)
 
-**Source:** [interface/src/routes/integrations/+page.svelte](interface/src/routes/integrations/+page.svelte), [interface/src/routes/lockouts/+page.svelte](interface/src/routes/lockouts/+page.svelte)
+**Source:** [interface/src/routes/integrations/+page.svelte](../interface/src/routes/integrations/+page.svelte), [interface/src/routes/lockouts/+page.svelte](../interface/src/routes/lockouts/+page.svelte)
 
 ### Colors Page (`/colors`)
 
@@ -1241,7 +1241,7 @@ Controls:
 - **Visibility Toggles:** Hide WiFi icon, Hide profile indicator, Hide battery icon, Hide BLE icon, Hide volume indicator, Hide RSSI indicator
 - **Test Button:** Shows color demo on physical display (cycles through X, K, Ka, Laser with cards and muted state)
 
-**Source:** [interface/src/routes/colors/+page.svelte](interface/src/routes/colors/+page.svelte)
+**Source:** [interface/src/routes/colors/+page.svelte](../interface/src/routes/colors/+page.svelte)
 
 ### OBD Settings (within `/settings`)
 
@@ -1256,7 +1256,7 @@ Controls:
 
 When OBD is enabled and connected, the speed source selector prefers OBD speed over GPS speed for lockout mute/unmute decisions.
 
-**Source:** [interface/src/lib/features/settings/SettingsObdCard.svelte](interface/src/lib/features/settings/SettingsObdCard.svelte)
+**Source:** [interface/src/lib/features/settings/SettingsObdCard.svelte](../interface/src/lib/features/settings/SettingsObdCard.svelte)
 
 ### Auto-Push Page (`/autopush`)
 
@@ -1276,7 +1276,7 @@ Controls:
   - Priority arrow only (show only strongest alert's direction, reduces flicker with multiple alerts)
 - **Quick-Push Buttons:** Activate and push a slot immediately
 
-**Source:** [interface/src/routes/autopush/+page.svelte](interface/src/routes/autopush/+page.svelte)
+**Source:** [interface/src/routes/autopush/+page.svelte](../interface/src/routes/autopush/+page.svelte)
 
 ### Profiles Page (`/profiles`)
 
@@ -1292,7 +1292,7 @@ Controls:
 - **Push to V1:** Send profile to connected V1
 - **Delete:** Remove saved profile
 
-**Source:** [interface/src/routes/profiles/+page.svelte](interface/src/routes/profiles/+page.svelte)
+**Source:** [interface/src/routes/profiles/+page.svelte](../interface/src/routes/profiles/+page.svelte)
 
 ### Devices Page (`/devices`)
 
@@ -1302,12 +1302,12 @@ Controls:
 - **Default Profile:** Auto-push profile for specific V1
 - **Delete:** Remove device from list
 
-**Source:** [interface/src/routes/devices/+page.svelte](interface/src/routes/devices/+page.svelte)
+**Source:** [interface/src/routes/devices/+page.svelte](../interface/src/routes/devices/+page.svelte)
 
 ### Adding a New Page
 
 1. Create `interface/src/routes/newpage/+page.svelte`
-2. Add route handler in [src/wifi_routes.cpp](src/wifi_routes.cpp) inside `WiFiManager::setupWebServer()`:
+2. Add route handler in [src/wifi_routes.cpp](../src/wifi_routes.cpp) inside `WiFiManager::setupWebServer()`:
    ```cpp
    server.on("/newpage", HTTP_GET, [this]() { 
        serveLittleFSFile("/newpage.html", "text/html"); 
@@ -1339,7 +1339,7 @@ Each slot stores:
 - Alert persistence duration (0-5 seconds ghost display after alert clears)
 - Priority arrow only (show only strongest alert's direction arrow)
 
-**Source:** [src/settings.cpp](src/settings.cpp#L299-L340) (load), [src/settings_nvs.cpp](src/settings_nvs.cpp#L432-L462) (save)
+**Source:** [src/settings.cpp](../src/settings.cpp#L299-L340) (load), [src/settings_nvs.cpp](../src/settings_nvs.cpp#L432-L462) (save)
 
 ### Auto-Push State Machine
 
@@ -1377,13 +1377,13 @@ When auto-push is enabled and V1 connects, the system executes a 5-step sequence
 
 **Timing:** Each step waits 100ms before sending the next command to avoid overwhelming the V1.
 
-**Source:** [src/modules/auto_push/auto_push_module.cpp](src/modules/auto_push/auto_push_module.cpp) (auto-push state machine)
+**Source:** [src/modules/auto_push/auto_push_module.cpp](../src/modules/auto_push/auto_push_module.cpp) (auto-push state machine)
 
 ### Debug Logging
 
 Auto-push Serial spam is gated by a compile-time switch. To see every state transition and command:
 
-1. Auto-push debug logs are controlled by `AUTO_PUSH_LOGF` / `AUTO_PUSH_LOGLN` macros in [src/modules/perf/debug_macros.h](src/modules/perf/debug_macros.h).
+1. Auto-push debug logs are controlled by `AUTO_PUSH_LOGF` / `AUTO_PUSH_LOGLN` macros in [src/modules/perf/debug_macros.h](../src/modules/perf/debug_macros.h).
 2. Toggle `n_LOGS` in that file to enable/disable.
 
 Default is `true`.
@@ -1397,7 +1397,7 @@ When a new slot is selected:
 2. If auto-push enabled, immediately pushes the new profile's settings to V1
 3. Active slot persisted to NVS
 
-**Source:** [src/modules/touch/tap_gesture_module.cpp](src/modules/touch/tap_gesture_module.cpp) (triple-tap profile cycle)
+**Source:** [src/modules/touch/tap_gesture_module.cpp](../src/modules/touch/tap_gesture_module.cpp) (triple-tap profile cycle)
 
 ### Configuration (Web UI)
 
@@ -1421,7 +1421,7 @@ Auto-push sends these V1 ESP commands:
 | MODE | reqChangeMode | 1=All, 2=Logic, 3=AdvLogic |
 | VOLUME | reqSetVolume | main (0-9), mute (0-9) |
 
-**Source:** [src/ble_commands.cpp](src/ble_commands.cpp) (sendCommand, setVolume, writeUserBytes, etc.)
+**Source:** [src/ble_commands.cpp](../src/ble_commands.cpp) (sendCommand, setVolume, writeUserBytes, etc.)
 
 ---
 
@@ -1461,7 +1461,7 @@ board_build.filesystem = littlefs
 **Windows users:** Use the same `waveshare-349` environment — no separate Windows env is needed.
 See [Section A: Windows Setup](#windows-setup) for detailed Windows instructions.
 
-**Source:** [platformio.ini](platformio.ini#L1-L80)
+**Source:** [platformio.ini](../platformio.ini#L1-L80)
 
 ### Compile-Time Flags
 
@@ -1476,7 +1476,7 @@ See [Section A: Windows Setup](#windows-setup) for detailed Windows instructions
 | `PERF_VERBOSE` | 0 | Enable immediate latency alerts |
 | `AUTOPUSH_DEBUG_LOGS` | false | Enable verbose `[AutoPush]` Serial logs (set in `src/main.cpp`) |
 
-**Source:** [include/config.h](include/config.h#L65-L68), [src/perf_metrics.h](src/perf_metrics.h#L25-L55)
+**Source:** [include/config.h](../include/config.h#L65-L68), [src/perf_metrics.h](../src/perf_metrics.h#L25-L55)
 
 ### Runtime Configuration
 
@@ -1493,11 +1493,11 @@ All settings modifiable via web UI at `http://192.168.35.5`:
 
 For UI development without V1 hardware:
 
-1. Uncomment `#define REPLAY_MODE` in [include/config.h](include/config.h#L68)
+1. Uncomment `#define REPLAY_MODE` in [include/config.h](../include/config.h#L68)
 2. Rebuild and flash
 3. Device cycles through sample alert packets
 
-**Source:** [src/main.cpp](src/main.cpp#L805) (replay mode packet definitions)
+**Source:** [src/main.cpp](../src/main.cpp#L805) (replay mode packet definitions)
 
 ---
 
@@ -1662,8 +1662,8 @@ Enable verbose logging by checking serial output for:
 ```
 
 **Tuning knobs (advanced):**
-- Connection attempts: 5 (see MAX_CONNECT_ATTEMPTS in [src/ble_client.h](src/ble_client.h#L377)).
-- Backoff/settle: adjust `BACKOFF_BASE_MS` / `BACKOFF_MAX_MS` and `SCAN_STOP_SETTLE_MS` / `SCAN_STOP_SETTLE_FRESH_MS` in [src/ble_client.h](src/ble_client.h#L440) if you need slower retries or longer radio settle time.
+- Connection attempts: 5 (see MAX_CONNECT_ATTEMPTS in [src/ble_client.h](../src/ble_client.h#L377)).
+- Backoff/settle: adjust `BACKOFF_BASE_MS` / `BACKOFF_MAX_MS` and `SCAN_STOP_SETTLE_MS` / `SCAN_STOP_SETTLE_FRESH_MS` in [src/ble_client.h](../src/ble_client.h#L440) if you need slower retries or longer radio settle time.
 
 ### Web API Quick Reference
 
@@ -1789,7 +1789,7 @@ npm run deploy                            # Copy build/ to data/
 | `tools/smoke_metrics_runtime.py` | Runtime perf counter smoke checks (API + CSV reflection) |
 | `tools/score_perf_csv.py` | Score `/perf/perf_boot_*.csv` against hard/advisory SLOs |
 
-**Source:** [build.sh](build.sh), [scripts/](scripts/)
+**Source:** [build.sh](../build.sh), [scripts/](../scripts/)
 
 ### Testing
 
@@ -1832,7 +1832,7 @@ python tools/smoke_metrics_runtime.py --base-url http://192.168.35.5 --profile p
 3. `BleQueueModule::process()` - Main loop, target <10ms
 4. `display.update()` + `flush()` - Target <15ms total
 
-**Source:** [src/ble_connection.cpp](src/ble_connection.cpp#L782) (notifyCallback immediate forward), [src/perf_metrics.h](src/perf_metrics.h) (thresholds)
+**Source:** [src/ble_connection.cpp](../src/ble_connection.cpp#L782) (notifyCallback immediate forward), [src/perf_metrics.h](../src/perf_metrics.h) (thresholds)
 
 ---
 
@@ -1856,7 +1856,7 @@ class V1BLEClient {
 };
 ```
 
-**Source:** [src/ble_client.h](src/ble_client.h#L65-L130)
+**Source:** [src/ble_client.h](../src/ble_client.h#L65-L130)
 
 #### PacketParser
 
@@ -1870,7 +1870,7 @@ class PacketParser {
 };
 ```
 
-**Source:** [src/packet_parser.h](src/packet_parser.h#L55-L75)
+**Source:** [src/packet_parser.h](../src/packet_parser.h#L55-L75)
 
 #### V1Display
 
@@ -1888,7 +1888,7 @@ class V1Display {
 };
 ```
 
-**Source:** [src/display.h](src/display.h#L28-L60)
+**Source:** [src/display.h](../src/display.h#L28-L60)
 
 #### SettingsManager
 
@@ -1903,7 +1903,7 @@ class SettingsManager {
 };
 ```
 
-**Source:** [src/settings.h](src/settings.h#L150-L200)
+**Source:** [src/settings.h](../src/settings.h#L150-L200)
 
 ### Data Structures
 
@@ -1920,7 +1920,7 @@ struct AlertData {
 };
 ```
 
-**Source:** [src/packet_parser.h](src/packet_parser.h#L25-L40)
+**Source:** [src/packet_parser.h](../src/packet_parser.h#L25-L40)
 
 #### DisplayState
 
@@ -1936,7 +1936,7 @@ struct DisplayState {
 };
 ```
 
-**Source:** [src/packet_parser.h](src/packet_parser.h#L42-L55)
+**Source:** [src/packet_parser.h](../src/packet_parser.h#L42-L55)
 
 #### V1UserSettings
 
@@ -1952,7 +1952,7 @@ struct DisplayState {
 | 3 | 0-7 | X sens, photo systems (DS3D, Redflex, etc) |
 | 4-5 | — | Reserved |
 
-**Source:** [src/v1_profiles.h](src/v1_profiles.h#L10-L90)
+**Source:** [src/v1_profiles.h](../src/v1_profiles.h#L10-L90)
 
 ---
 
@@ -2103,7 +2103,7 @@ Based on code analysis:
 **Fragile areas requiring care:**
 
 1. **BLE Queue Overflow:** If BLE data arrives faster than display processing, oldest packets dropped.
-   - Location: [src/modules/ble/ble_queue_module.h](src/modules/ble/ble_queue_module.h) - `bleDataQueue` 64 slots
+   - Location: [src/modules/ble/ble_queue_module.h](../src/modules/ble/ble_queue_module.h) - `bleDataQueue` 64 slots
    - Impact: Only affects local display; proxy forwarding is unaffected (immediate path)
    - Mitigation: Throttle display updates, process queue quickly
 
@@ -2112,14 +2112,14 @@ Based on code analysis:
    - Mitigation: Always queue data for main loop processing
 
 3. **Password Obfuscation Not Encryption:** XOR obfuscation is NOT cryptographically secure.
-   - Location: [src/settings.cpp](src/settings.cpp#L75) (XOR key), [src/settings_nvs.cpp](src/settings_nvs.cpp#L44-L55) (xorObfuscate)
+   - Location: [src/settings.cpp](../src/settings.cpp#L75) (XOR key), [src/settings_nvs.cpp](../src/settings_nvs.cpp#L44-L55) (xorObfuscate)
    - Risk: Anyone with flash dump can recover passwords
 
 4. **NVS Wear:** Frequent saves could wear flash (100k write cycles).
    - Mitigation: Settings only save on explicit user action
 
 5. **Battery Voltage Calibration:** ADC readings may vary by hardware unit.
-   - Location: [src/battery_manager.cpp](src/battery_manager.cpp) - `BATTERY_MAX_VOLTAGE = 4.1V`
+   - Location: [src/battery_manager.cpp](../src/battery_manager.cpp) - `BATTERY_MAX_VOLTAGE = 4.1V`
 
 ---
 
