@@ -180,6 +180,7 @@ void SettingsManager::saveDeferredBackup() {
         return;
     }
 
+    clearDeferredPersistState();
     bumpBackupRevision();
     Serial.println("Settings saved atomically");
     requestDeferredBackupFromCurrentState();

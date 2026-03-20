@@ -22,6 +22,9 @@ public:
         void (*runObdSettingsSync)(void* ctx, uint32_t nowMs) = nullptr;
         void* obdSettingsSyncContext = nullptr;
 
+        void (*runDeferredSettingsPersist)(void* ctx, uint32_t nowMs) = nullptr;
+        void* deferredSettingsPersistContext = nullptr;
+
         void (*runDeferredSettingsBackup)(void* ctx, uint32_t nowMs) = nullptr;
         void* deferredSettingsBackupContext = nullptr;
 

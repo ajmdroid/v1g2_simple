@@ -293,6 +293,7 @@ public:
     int saveCalls = 0;
     int setGpsEnabledCalls = 0;
     int saveDeferredBackupCalls = 0;
+    int requestDeferredPersistCalls = 0;
     int backupToSDCalls = 0;
     int requestDeferredBackupCalls = 0;
     uint8_t slotAlertPersistSec[3] = {0, 0, 0};
@@ -312,6 +313,11 @@ public:
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
     void updateVoiceVolume(uint8_t volume) { settings.voiceVolume = volume; }
     void saveDeferredBackup() { ++saveDeferredBackupCalls; }
+    void requestDeferredPersist() { ++requestDeferredPersistCalls; }
+    void serviceDeferredPersist(uint32_t) {}
+    bool deferredPersistPending() const { return false; }
+    bool deferredPersistRetryScheduled() const { return false; }
+    uint32_t deferredPersistNextAttemptAtMs() const { return 0; }
     void setDefaults() {}
     bool backupToSD() {
         ++backupToSDCalls;
@@ -515,9 +521,10 @@ public:
             changed = true;
         }
         if (changed) {
-            ++saveCalls;
             if (persistMode == SettingsPersistMode::Deferred) {
-                ++saveDeferredBackupCalls;
+                ++requestDeferredPersistCalls;
+            } else {
+                ++saveCalls;
             }
         }
         return changed;

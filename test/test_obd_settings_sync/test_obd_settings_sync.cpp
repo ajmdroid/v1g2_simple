@@ -46,7 +46,7 @@ void test_process_skips_save_when_runtime_already_matches_settings() {
 
     module.process(1000);
 
-    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveDeferredBackupCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.requestDeferredPersistCalls);
     TEST_ASSERT_FALSE(module.hasPendingSnapshotForTest());
 }
 
@@ -61,15 +61,15 @@ void test_process_saves_once_after_runtime_values_stabilize() {
     module.process(1000);
     TEST_ASSERT_TRUE(module.hasPendingSnapshotForTest());
     TEST_ASSERT_EQUAL_UINT32(1000, module.getPendingChangedAtMsForTest());
-    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveDeferredBackupCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.requestDeferredPersistCalls);
 
     module.process(5999);
-    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveDeferredBackupCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.requestDeferredPersistCalls);
 
     module.process(6000);
 
     const V1Settings& settings = settingsManager.get();
-    TEST_ASSERT_EQUAL_INT(1, settingsManager.saveDeferredBackupCalls);
+    TEST_ASSERT_EQUAL_INT(1, settingsManager.requestDeferredPersistCalls);
     TEST_ASSERT_FALSE(module.hasPendingSnapshotForTest());
     TEST_ASSERT_EQUAL_STRING("A4:C1:38:00:11:22", settings.obdSavedAddress.c_str());
     TEST_ASSERT_EQUAL_UINT8(2, settings.obdSavedAddrType);
@@ -97,15 +97,15 @@ void test_process_resets_debounce_when_runtime_keeps_changing() {
 
     TEST_ASSERT_TRUE(module.hasPendingSnapshotForTest());
     TEST_ASSERT_EQUAL_UINT32(4000, module.getPendingChangedAtMsForTest());
-    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveDeferredBackupCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.requestDeferredPersistCalls);
 
     module.process(8999);
-    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveDeferredBackupCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.requestDeferredPersistCalls);
 
     module.process(9000);
 
     const V1Settings& settings = settingsManager.get();
-    TEST_ASSERT_EQUAL_INT(1, settingsManager.saveDeferredBackupCalls);
+    TEST_ASSERT_EQUAL_INT(1, settingsManager.requestDeferredPersistCalls);
     TEST_ASSERT_EQUAL_STRING("B4:C1:38:00:11:33", settings.obdSavedAddress.c_str());
     TEST_ASSERT_EQUAL_UINT8(3, settings.obdSavedAddrType);
     TEST_ASSERT_EQUAL_STRING("WAULFAFR1FN", settings.obdCachedVinPrefix11.c_str());

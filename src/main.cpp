@@ -535,6 +535,9 @@ static void configurePeriodicMaintenanceModule() {
     periodicMaintenanceProviders.runObdSettingsSync =
         ProviderCallbackBindings::member<ObdSettingsSyncModule, &ObdSettingsSyncModule::process>;
     periodicMaintenanceProviders.obdSettingsSyncContext = &obdSettingsSyncModule;
+    periodicMaintenanceProviders.runDeferredSettingsPersist =
+        ProviderCallbackBindings::member<SettingsManager, &SettingsManager::serviceDeferredPersist>;
+    periodicMaintenanceProviders.deferredSettingsPersistContext = &settingsManager;
     periodicMaintenanceProviders.runDeferredSettingsBackup =
         ProviderCallbackBindings::member<SettingsManager, &SettingsManager::serviceDeferredBackup>;
     periodicMaintenanceProviders.deferredSettingsBackupContext = &settingsManager;

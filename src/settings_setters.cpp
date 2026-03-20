@@ -18,7 +18,7 @@ bool assignIfChanged(T& target, const T& value) {
 
 void persistSettingsByMode(SettingsManager& manager, SettingsPersistMode persistMode) {
     if (persistMode == SettingsPersistMode::Deferred) {
-        manager.saveDeferredBackup();
+        manager.requestDeferredPersist();
         return;
     }
     manager.save();

@@ -39,6 +39,10 @@ void PeriodicMaintenanceModule::process(uint32_t nowMs) {
         providers.runObdSettingsSync(providers.obdSettingsSyncContext, nowMs);
     }
 
+    if (providers.runDeferredSettingsPersist) {
+        providers.runDeferredSettingsPersist(providers.deferredSettingsPersistContext, nowMs);
+    }
+
     if (providers.runDeferredSettingsBackup) {
         providers.runDeferredSettingsBackup(providers.deferredSettingsBackupContext, nowMs);
     }

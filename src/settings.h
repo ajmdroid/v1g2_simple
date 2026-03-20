@@ -912,6 +912,11 @@ public:
     // Save all settings to flash
     void save();
     void saveDeferredBackup();
+    void requestDeferredPersist();
+    void serviceDeferredPersist(uint32_t nowMs);
+    bool deferredPersistPending() const;
+    bool deferredPersistRetryScheduled() const;
+    uint32_t deferredPersistNextAttemptAtMs() const;
 
     // Load settings from flash (public for testing)
     void load();
@@ -943,7 +948,11 @@ private:
     V1Settings settings;
     Preferences preferences;
     uint32_t backupRevisionCounter = 1;
+    bool deferredPersistPending_ = false;
+    bool deferredPersistRetryScheduled_ = false;
+    uint32_t deferredPersistNextAttemptAtMs_ = 0;
     void bumpBackupRevision();
+    void clearDeferredPersistState();
     bool persistSettingsAtomically();
     bool writeSettingsToNamespace(const char* ns);
     String getActiveNamespace();

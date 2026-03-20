@@ -46,6 +46,12 @@ VoiceAlertMode clampVoiceAlertModeValue(int raw) {
 
 static constexpr size_t MAX_V1_ADDRESS_LEN = 32;
 static constexpr size_t MAX_OBD_SAVED_NAME_LEN = 32;
+static constexpr uint32_t SETTINGS_DEFERRED_PERSIST_DEBOUNCE_MS = 750;
+static constexpr uint32_t SETTINGS_DEFERRED_PERSIST_RETRY_BACKOFF_MS = 1000;
+
+static bool isDeferredPersistDue(uint32_t nowMs, uint32_t targetMs) {
+    return static_cast<int32_t>(nowMs - targetMs) >= 0;
+}
 
 String sanitizeApPasswordValue(const String& raw) {
     String value = clampStringLength(raw, MAX_AP_PASSWORD_LEN);
@@ -83,6 +89,12 @@ void SettingsManager::bumpBackupRevision() {
         return;
     }
     backupRevisionCounter++;
+}
+
+void SettingsManager::clearDeferredPersistState() {
+    deferredPersistPending_ = false;
+    deferredPersistRetryScheduled_ = false;
+    deferredPersistNextAttemptAtMs_ = 0;
 }
 
 void SettingsManager::begin() {
@@ -352,11 +364,53 @@ void SettingsManager::save() {
         return;
     }
 
+    clearDeferredPersistState();
     bumpBackupRevision();
     Serial.println("Settings saved atomically");
 
     // Backup display settings to SD card (survives reflash)
     backupToSD();
+}
+
+void SettingsManager::requestDeferredPersist() {
+    deferredPersistPending_ = true;
+    deferredPersistRetryScheduled_ = false;
+    deferredPersistNextAttemptAtMs_ = millis() + SETTINGS_DEFERRED_PERSIST_DEBOUNCE_MS;
+}
+
+bool SettingsManager::deferredPersistPending() const {
+    return deferredPersistPending_;
+}
+
+bool SettingsManager::deferredPersistRetryScheduled() const {
+    return deferredPersistRetryScheduled_;
+}
+
+uint32_t SettingsManager::deferredPersistNextAttemptAtMs() const {
+    return deferredPersistNextAttemptAtMs_;
+}
+
+void SettingsManager::serviceDeferredPersist(uint32_t nowMs) {
+    if (!deferredPersistPending_) {
+        return;
+    }
+
+    if (deferredPersistNextAttemptAtMs_ != 0 &&
+        !isDeferredPersistDue(nowMs, deferredPersistNextAttemptAtMs_)) {
+        return;
+    }
+
+    if (!persistSettingsAtomically()) {
+        deferredPersistPending_ = true;
+        deferredPersistRetryScheduled_ = true;
+        deferredPersistNextAttemptAtMs_ = nowMs + SETTINGS_DEFERRED_PERSIST_RETRY_BACKOFF_MS;
+        return;
+    }
+
+    clearDeferredPersistState();
+    bumpBackupRevision();
+    Serial.println("Settings saved atomically");
+    requestDeferredBackupFromCurrentState();
 }
 
 // Check if NVS appears to be in default state (likely erased during reflash)

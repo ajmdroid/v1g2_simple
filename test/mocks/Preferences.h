@@ -40,8 +40,18 @@ inline Store& store() {
     return g_store;
 }
 
+inline bool& failWrites() {
+    static bool g_failWrites = false;
+    return g_failWrites;
+}
+
 inline void reset() {
     store().clear();
+    failWrites() = false;
+}
+
+inline void set_fail_writes(bool enabled) {
+    failWrites() = enabled;
 }
 
 inline NamespaceStore& ensureNamespace(const std::string& name) {
@@ -297,7 +307,7 @@ public:
     }
 
     size_t putString(const char* key, const char* value) {
-        if (!started_ || readOnly_ || !key || !value) {
+        if (!started_ || readOnly_ || !key || !value || mock_preferences::failWrites()) {
             return 0;
         }
         mock_preferences::Entry entry;
@@ -308,7 +318,8 @@ public:
     }
 
     size_t putBytes(const char* key, const void* value, size_t len) {
-        if (!started_ || readOnly_ || !key || (!value && len > 0)) {
+        if (!started_ || readOnly_ || !key || (!value && len > 0) ||
+            mock_preferences::failWrites()) {
             return 0;
         }
         mock_preferences::Entry entry;
@@ -322,7 +333,7 @@ public:
 private:
     template <typename Value>
     size_t storeScalar(const char* key, PreferenceType type, Value value, size_t writtenBytes) {
-        if (!started_ || readOnly_ || !key) {
+        if (!started_ || readOnly_ || !key || mock_preferences::failWrites()) {
             return 0;
         }
         mock_preferences::Entry entry;
