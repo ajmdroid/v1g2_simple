@@ -41,6 +41,20 @@ function installDefaultFetch(overrides = []) {
 	);
 }
 
+async function selectRestoreFile(contents, name = 'backup.json') {
+	await screen.findByRole('button', { name: /restore from backup/i });
+	const input = document.querySelector('input[type="file"]');
+	expect(input).not.toBeNull();
+	const file = new File([contents], name, { type: 'application/json' });
+	await fireEvent.change(input, { target: { files: [file] } });
+	return file;
+}
+
+async function startRestore(contents, name = 'backup.json') {
+	await selectRestoreFile(contents, name);
+	await fireEvent.click(await screen.findByRole('button', { name: /restore from backup/i }));
+}
+
 async function openWifiModalAndConnect() {
 	const scanButton = await screen.findByRole('button', { name: /scan for networks/i });
 	await fireEvent.click(scanButton);
@@ -54,6 +68,7 @@ describe('settings route page', () => {
 	afterEach(() => {
 		vi.useRealTimers();
 		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
 	});
 
 	it('loads and fetches initial settings/status data', async () => {
@@ -389,6 +404,50 @@ describe('settings route page', () => {
 		await fireEvent.click(saveButton);
 
 		await screen.findByText('Failed to save settings');
+		unmount();
+	});
+
+	it('rejects invalid backup JSON before posting restore', async () => {
+		const fetchMock = installDefaultFetch();
+		vi.stubGlobal('confirm', vi.fn(() => true));
+		const { unmount } = render(Page);
+
+		await startRestore('{not-json');
+
+		await screen.findByText('Selected file is not valid JSON.');
+		expect(fetchMock.mock.calls.some(([url]) => url === '/api/settings/restore')).toBe(false);
+
+		unmount();
+	});
+
+	it('rejects unrecognized backup types before posting restore', async () => {
+		const fetchMock = installDefaultFetch();
+		vi.stubGlobal('confirm', vi.fn(() => true));
+		const { unmount } = render(Page);
+
+		await startRestore(JSON.stringify({ _type: 'wrong_backup_type' }));
+
+		await screen.findByText('Selected file is not a V1 Simple settings backup.');
+		expect(fetchMock.mock.calls.some(([url]) => url === '/api/settings/restore')).toBe(false);
+
+		unmount();
+	});
+
+	it('posts valid backups to restore endpoint', async () => {
+		const fetchMock = installDefaultFetch([
+			{ method: 'POST', match: '/api/settings/restore', respond: jsonResponse({ success: true }) }
+		]);
+		vi.stubGlobal('confirm', vi.fn(() => true));
+		const { unmount } = render(Page);
+		const payload = JSON.stringify({ _type: 'v1simple_backup', profiles: [] });
+
+		await startRestore(payload);
+
+		await screen.findByText('Settings restored! Refresh to see changes.');
+		expect(
+			fetchMock.mock.calls.some(([url, init]) => url === '/api/settings/restore' && init?.body === payload)
+		).toBe(true);
+
 		unmount();
 	});
 

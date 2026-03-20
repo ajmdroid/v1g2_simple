@@ -55,6 +55,7 @@
 	const WIFI_STATUS_ERROR_TEXT = 'Failed to load WiFi status';
 	const WIFI_SCAN_ERROR_TEXT = 'Failed to update WiFi scan';
 	const WIFI_CONNECT_TIMEOUT_TEXT = 'Wi-Fi connection timed out. Check status and retry.';
+	const RECOGNIZED_BACKUP_TYPES = new Set(['v1simple_backup', 'v1simple_sd_backup']);
 	const WIFI_CONNECT_POLL_INTERVAL_MS = 1000;
 	const WIFI_CONNECT_TIMEOUT_MS = 30000;
 	const TIME_TICK_INTERVAL_MS = 1000;
@@ -115,6 +116,26 @@
 		if (message?.text === text) {
 			message = null;
 		}
+	}
+
+	function getBackupValidationError(text) {
+		let parsed;
+
+		try {
+			parsed = JSON.parse(text);
+		} catch (_error) {
+			return 'Selected file is not valid JSON.';
+		}
+
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+			return 'Backup file must contain a JSON object.';
+		}
+
+		if (!RECOGNIZED_BACKUP_TYPES.has(parsed._type)) {
+			return 'Selected file is not a V1 Simple settings backup.';
+		}
+
+		return null;
 	}
 	
 	async function fetchSettings() {
@@ -401,6 +422,12 @@
 		
 		try {
 			const text = await restoreFile.text();
+			const validationError = getBackupValidationError(text);
+			if (validationError) {
+				message = { type: 'error', text: validationError };
+				return;
+			}
+
 			const res = await fetchWithTimeout('/api/settings/restore', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
