@@ -13,7 +13,8 @@ const config = {
 			strict: true
 		}),
 		paths: {
-			base: ''  // No base path needed for ESP32
+			base: '',  // No base path needed for ESP32
+			relative: false
 		}
 	}
 };
