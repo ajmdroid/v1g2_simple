@@ -440,7 +440,7 @@ void V1BLEClient::cleanupConnection() {
     {
         SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: disconnect cleanup
         if (lock.locked()) {
-            connected = false;
+            connected.store(false, std::memory_order_relaxed);
             shouldConnect = false;
             hasTargetDevice = false;
             targetDevice = NimBLEAdvertisedDevice();
@@ -671,7 +671,7 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
 bool V1BLEClient::isConnected() {
     // Quick check without mutex - the connected flag is atomic enough for reading
     // and pClient->isConnected() is thread-safe in NimBLE
-    if (!connected || !pClient) {
+    if (!connected.load(std::memory_order_relaxed) || !pClient) {
         return false;
     }
     return pClient->isConnected();
@@ -684,7 +684,7 @@ static constexpr unsigned long RSSI_QUERY_INTERVAL_MS = 2000;
 
 int V1BLEClient::getConnectionRssi() {
     // Return RSSI of connected V1 device, or 0 if not connected
-    if (!connected || !pClient || !pClient->isConnected()) {
+    if (!connected.load(std::memory_order_relaxed) || !pClient || !pClient->isConnected()) {
         s_cachedV1Rssi = 0;
         return 0;
     }

@@ -118,6 +118,47 @@ void test_connect_to_server_removes_unused_addr_type_local() {
     TEST_ASSERT_EQUAL(std::string::npos, body.find("addrType"));
 }
 
+void test_ble_mutex_trylocks_use_semaphore_guard_in_runtime_and_callbacks() {
+    const std::filesystem::path runtimeSource =
+        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_runtime.cpp");
+    const std::filesystem::path connectionSource =
+        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_connection.cpp");
+    const std::string runtimeText = readFile(runtimeSource);
+    const std::string connectionText = readFile(connectionSource);
+
+    TEST_ASSERT_EQUAL(std::string::npos, runtimeText.find("xSemaphoreTake(bleMutex"));
+    TEST_ASSERT_EQUAL(std::string::npos, runtimeText.find("xSemaphoreGive(bleMutex"));
+    TEST_ASSERT_EQUAL(std::string::npos, connectionText.find("xSemaphoreTake(instancePtr->bleMutex"));
+    TEST_ASSERT_EQUAL(std::string::npos, connectionText.find("xSemaphoreGive(instancePtr->bleMutex"));
+    TEST_ASSERT_EQUAL(std::string::npos, connectionText.find("xSemaphoreTake(bleClient->bleMutex"));
+    TEST_ASSERT_EQUAL(std::string::npos, connectionText.find("xSemaphoreGive(bleClient->bleMutex"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, runtimeText.find("SemaphoreGuard lock(bleMutex, 0)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("SemaphoreGuard lock(instancePtr->bleMutex, 0)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("SemaphoreGuard lock(bleClient->bleMutex, 0)"));
+}
+
+void test_connected_flag_uses_explicit_atomic_load_store() {
+    const std::filesystem::path clientSource =
+        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_client.cpp");
+    const std::filesystem::path runtimeSource =
+        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_runtime.cpp");
+    const std::filesystem::path connectionSource =
+        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_connection.cpp");
+    const std::filesystem::path proxySource =
+        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_proxy.cpp");
+    const std::string clientText = readFile(clientSource);
+    const std::string runtimeText = readFile(runtimeSource);
+    const std::string connectionText = readFile(connectionSource);
+    const std::string proxyText = readFile(proxySource);
+
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, clientText.find("connected.load(std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, runtimeText.find("connected.store(false, std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, runtimeText.find("connected.store(true, std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("connected.store(true, std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("connected.store(false, std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, proxyText.find("connected.load(std::memory_order_relaxed)"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_async_connect_does_not_delete_bond);
@@ -127,5 +168,7 @@ int main() {
     RUN_TEST(test_scan_stopping_uses_instance_owned_results_cleared_state);
     RUN_TEST(test_destructor_clears_instance_ptr_only_for_active_instance);
     RUN_TEST(test_connect_to_server_removes_unused_addr_type_local);
+    RUN_TEST(test_ble_mutex_trylocks_use_semaphore_guard_in_runtime_and_callbacks);
+    RUN_TEST(test_connected_flag_uses_explicit_atomic_load_store);
     return UNITY_END();
 }

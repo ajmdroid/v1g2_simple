@@ -16,18 +16,19 @@
 void V1BLEClient::process() {
     // Handle deferred BLE callback updates without blocking in callbacks
     if (pendingConnectStateUpdate) {
-        if (bleMutex && xSemaphoreTake(bleMutex, 0) == pdTRUE) {
+        SemaphoreGuard lock(bleMutex, 0);
+        if (lock.locked()) {
             pendingConnectStateUpdate = false;
-            connected = true;
+            connected.store(true, std::memory_order_relaxed);
             // Don't set CONNECTED state here - async state machine handles transitions
             // Just set the connected flag; state machine will transition via asyncConnectSuccess
-            xSemaphoreGive(bleMutex);
         }
     }
     if (pendingDisconnectCleanup) {
-        if (bleMutex && xSemaphoreTake(bleMutex, 0) == pdTRUE) {
+        SemaphoreGuard lock(bleMutex, 0);
+        if (lock.locked()) {
             pendingDisconnectCleanup = false;
-            connected = false;
+            connected.store(false, std::memory_order_relaxed);
             connectInProgress = false;
             connectStartMs = 0;
             connectedFollowupStep = ConnectedFollowupStep::NONE;
@@ -50,7 +51,6 @@ void V1BLEClient::process() {
             verifyComplete = false;
             verifyMatch = false;
             setBLEState(BLEState::DISCONNECTED, "deferred onDisconnect");
-            xSemaphoreGive(bleMutex);
         }
     }
     // Deferred bond deletion (NVS write moved out of BLE callback)
@@ -61,12 +61,12 @@ void V1BLEClient::process() {
         }
     }
     if (pendingScanEndUpdate) {
-        if (bleMutex && xSemaphoreTake(bleMutex, 0) == pdTRUE) {
+        SemaphoreGuard lock(bleMutex, 0);
+        if (lock.locked()) {
             pendingScanEndUpdate = false;
             if (bleState == BLEState::SCANNING) {
                 setBLEState(BLEState::DISCONNECTED, "scan ended without finding V1 (deferred)");
             }
-            xSemaphoreGive(bleMutex);
         }
     }
 
@@ -101,7 +101,8 @@ void V1BLEClient::process() {
     }
 
     if (pendingScanTargetUpdate) {
-        if (bleMutex && xSemaphoreTake(bleMutex, 0) == pdTRUE) {
+        SemaphoreGuard lock(bleMutex, 0);
+        if (lock.locked()) {
             char addrCopy[sizeof(pendingScanTargetAddress)] = {0};
             uint8_t addrTypeCopy = BLE_ADDR_PUBLIC;
             bool havePending = false;
@@ -122,7 +123,6 @@ void V1BLEClient::process() {
                 scanStopRequestedMs = millis();
                 setBLEState(BLEState::SCAN_STOPPING, "V1 found (deferred)");
             }
-            xSemaphoreGive(bleMutex);
         }
     }
     if (pendingLastV1AddressValid) {
@@ -452,7 +452,7 @@ void V1BLEClient::process() {
             // All good - nothing to do in state machine
             // Verify we're actually still connected
             if (!pClient || !pClient->isConnected()) {
-                connected = false;
+                connected.store(false, std::memory_order_relaxed);
                 connectInProgress = false;
                 setBLEState(BLEState::DISCONNECTED, "connection lost");
             }

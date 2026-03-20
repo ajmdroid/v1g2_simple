@@ -74,7 +74,8 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     // Queue connection to this V1 device (non-blocking lock to avoid BLE callback stalls)
     // IMPORTANT: Don't copy full NimBLEAdvertisedDevice - it allocates memory which can fail
     // during heap pressure. Just store the address and type.
-    if (bleClient->bleMutex && xSemaphoreTake(bleClient->bleMutex, 0) == pdTRUE) {
+    SemaphoreGuard lock(bleClient->bleMutex, 0);
+    if (lock.locked()) {
         // Store just the address (no heap allocation)
         bleClient->targetAddress = advertisedDevice->getAddress();
         bleClient->targetAddressType = advAddrType;  // Save for reconnect
@@ -82,7 +83,6 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
         bleClient->shouldConnect = true;
         bleClient->scanStopRequestedMs = millis();
         bleClient->setBLEState(BLEState::SCAN_STOPPING, "V1 found");
-        xSemaphoreGive(bleClient->bleMutex);
     } else {
         // Defer update to main loop if mutex is busy
         portENTER_CRITICAL(&pendingAddrMux);
@@ -97,13 +97,13 @@ void V1BLEClient::ScanCallbacks::onScanEnd(const NimBLEScanResults& scanResults,
     // If we were SCANNING and scan ended without finding V1, go back to DISCONNECTED
     // to allow process() to restart the scan
     if (instancePtr) {
-        if (instancePtr->bleMutex && xSemaphoreTake(instancePtr->bleMutex, 0) == pdTRUE) {
+        SemaphoreGuard lock(instancePtr->bleMutex, 0);
+        if (lock.locked()) {
             if (instancePtr->bleState == BLEState::SCANNING) {
                 // Scan ended without finding V1, go back to DISCONNECTED
                 instancePtr->setBLEState(BLEState::DISCONNECTED, "scan ended without finding V1");
             }
             // If SCAN_STOPPING, process() will handle the transition
-            xSemaphoreGive(instancePtr->bleMutex);
         } else {
             instancePtr->pendingScanEndUpdate = true;
         }
@@ -119,11 +119,11 @@ void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient) {
         instancePtr->asyncConnectSuccess = true;
         instancePtr->asyncConnectPending = false;
         
-        if (instancePtr->bleMutex && xSemaphoreTake(instancePtr->bleMutex, 0) == pdTRUE) {
-            instancePtr->connected = true;
+        SemaphoreGuard lock(instancePtr->bleMutex, 0);
+        if (lock.locked()) {
+            instancePtr->connected.store(true, std::memory_order_relaxed);
             // Don't set CONNECTED state here - let state machine handle it
             // The async state machine will transition through DISCOVERING -> SUBSCRIBING -> CONNECTED
-            xSemaphoreGive(instancePtr->bleMutex);
         } else {
             instancePtr->pendingConnectStateUpdate = true;
         }
@@ -153,8 +153,9 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
         event.type = ProxyCallbackEventType::V1_DISCONNECTED;
         instancePtr->enqueueProxyCallbackEvent(event);
         
-        if (instancePtr->bleMutex && xSemaphoreTake(instancePtr->bleMutex, 0) == pdTRUE) {
-            instancePtr->connected = false;
+        SemaphoreGuard lock(instancePtr->bleMutex, 0);
+        if (lock.locked()) {
+            instancePtr->connected.store(false, std::memory_order_relaxed);
             instancePtr->connectInProgress = false;  // Clear connection guard
             instancePtr->connectStartMs = 0;  // Clear async connect timer
             instancePtr->connectedFollowupStep = ConnectedFollowupStep::NONE;
@@ -173,7 +174,6 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
             instancePtr->verifyMatch = false;
             // Set state to DISCONNECTED - will trigger scan restart in process()
             instancePtr->setBLEState(BLEState::DISCONNECTED, "onDisconnect callback");
-            xSemaphoreGive(instancePtr->bleMutex);
         } else {
             instancePtr->pendingDisconnectCleanup = true;
         }
@@ -557,7 +557,7 @@ void V1BLEClient::processSubscribing() {
         // All steps complete - success!
         {
             SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: subscribe complete
-            connected = true;
+            connected.store(true, std::memory_order_relaxed);
         }
         const uint32_t connectedNowMs = millis();
         connectCompletedAtMs.store(connectedNowMs, std::memory_order_relaxed);

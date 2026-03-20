@@ -372,7 +372,7 @@ private:
     DataCallback dataCallback;
     ConnectionCallback connectImmediateCallback;
     ConnectionCallback connectStableCallback;
-    std::atomic<bool> connected{false};      // Atomic for thread safety (set from BLE callbacks)
+    std::atomic<bool> connected{false};      // Standalone connection flag; use atomic load/store for all direct accesses
     std::atomic<bool> shouldConnect{false};  // Atomic for thread safety (set from BLE callbacks)
     std::atomic<bool> pendingConnectStateUpdate{false};   // Deferred update from BLE callbacks
     std::atomic<bool> pendingDisconnectCleanup{false};    // Deferred cleanup from BLE callbacks

@@ -190,7 +190,7 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
         return;
     }
     
-    if (!bleClient->connected) {
+    if (!bleClient->connected.load(std::memory_order_relaxed)) {
         return;
     }
     
@@ -429,7 +429,7 @@ bool V1BLEClient::forceProxyAdvertising(bool enable, uint8_t reasonCode) {
                                    : reasonCode;
 
     if (enable) {
-        if (!connected) {
+        if (!connected.load(std::memory_order_relaxed)) {
             return false;
         }
         // Explicit debug/test control refreshes the no-client window so
@@ -618,7 +618,7 @@ bool V1BLEClient::enqueuePhoneCommand(const uint8_t* data, size_t length, uint16
 }
 
 int V1BLEClient::processPhoneCommandQueue() {
-    if (!connected) {
+    if (!connected.load(std::memory_order_relaxed)) {
         return 0;
     }
 
