@@ -52,11 +52,6 @@
 #define PERF_SAMPLE_RATE 8  // Measure every 8th packet
 #endif
 
-// Report interval (only in DEBUG mode)
-#ifndef PERF_REPORT_INTERVAL_MS
-#define PERF_REPORT_INTERVAL_MS 10000  // 10 seconds
-#endif
-
 // Threshold for alert (print immediately if exceeded)
 #ifndef PERF_LATENCY_ALERT_MS
 #define PERF_LATENCY_ALERT_MS 100  // Alert if latency > 100ms
@@ -734,31 +729,8 @@ void perfRecordBleTimelineEvent(PerfBleTimelineEvent event, uint32_t nowMs);
 void perfRecordWifiApTransition(bool apActive, uint8_t reasonCode, uint32_t nowMs);
 void perfRecordProxyAdvertisingTransition(bool advertising, uint8_t reasonCode, uint32_t nowMs);
 
-uint32_t perfGetLoopMaxUs();
 uint32_t perfGetMinFreeHeap();
 uint32_t perfGetMinFreeDma();
-uint32_t perfGetMinLargestDma();
-uint32_t perfGetWifiMaxUs();
-uint32_t perfGetObdConnectCallMaxUs();
-uint32_t perfGetObdSecurityStartCallMaxUs();
-uint32_t perfGetObdDiscoveryCallMaxUs();
-uint32_t perfGetObdSubscribeCallMaxUs();
-uint32_t perfGetObdWriteCallMaxUs();
-uint32_t perfGetObdRssiCallMaxUs();
-uint32_t perfGetFsMaxUs();
-uint32_t perfGetSdMaxUs();
-uint32_t perfGetFlushMaxUs();
-uint32_t perfGetDisplayRenderMaxUs();
-uint32_t perfGetBleDrainMaxUs();
-uint32_t perfGetBleFollowupRequestAlertMaxUs();
-uint32_t perfGetBleFollowupRequestVersionMaxUs();
-uint32_t perfGetBleConnectStableCallbackMaxUs();
-uint32_t perfGetBleProxyStartMaxUs();
-uint32_t perfGetBleProcessMaxUs();
-uint32_t perfGetDispPipeMaxUs();
-uint32_t perfGetDisplayVoiceMaxUs();
-uint32_t perfGetDisplayGapRecoverMaxUs();
-uint32_t perfGetDisplayFlushMaxAreaPx();
 void perfRecordObdUs(uint32_t us);
 uint32_t perfGetPrevWindowLoopMaxUs();
 uint32_t perfGetPrevWindowWifiMaxUs();
