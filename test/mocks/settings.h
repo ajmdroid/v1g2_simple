@@ -407,7 +407,6 @@ public:
     V1Settings& mutableSettings() { return settings; }
     GpsSettingsApplyResult applyGpsSettingsUpdate(const GpsSettingsUpdate& update,
                                                   SettingsPersistMode persistMode = SettingsPersistMode::Immediate) {
-        (void)persistMode;
         GpsSettingsApplyResult result;
         if (update.hasEnabled) {
             ++setGpsEnabledCalls;
@@ -513,7 +512,11 @@ public:
             result.learnerTuningChanged = true;
         }
         if (result.changed) {
-            ++saveCalls;
+            if (persistMode == SettingsPersistMode::Deferred) {
+                ++requestDeferredPersistCalls;
+            } else {
+                ++saveCalls;
+            }
         }
         return result;
     }

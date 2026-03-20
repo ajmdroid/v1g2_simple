@@ -87,7 +87,8 @@ void test_device_name_save_updates_saved_name_and_persists_setting() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
     TEST_ASSERT_EQUAL_STRING("Family Car", settingsManager.settings.obdSavedName.c_str());
-    TEST_ASSERT_EQUAL_INT(1, settingsManager.saveCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
+    TEST_ASSERT_EQUAL_INT(1, settingsManager.requestDeferredPersistCalls);
 }
 
 void test_device_name_save_rejects_unknown_saved_device() {
@@ -107,6 +108,7 @@ void test_device_name_save_rejects_unknown_saved_device() {
     TEST_ASSERT_TRUE(responseContains(server, "Saved OBD device not found"));
     TEST_ASSERT_EQUAL_STRING("", settingsManager.settings.obdSavedName.c_str());
     TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.requestDeferredPersistCalls);
 }
 
 void test_config_updates_runtime_settings_and_selector_inputs() {
@@ -133,7 +135,8 @@ void test_config_updates_runtime_settings_and_selector_inputs() {
     TEST_ASSERT_EQUAL_INT(1, speedSourceSelector.syncEnabledInputsCalls);
     TEST_ASSERT_TRUE(speedSourceSelector.lastGpsEnabled);
     TEST_ASSERT_TRUE(speedSourceSelector.lastObdEnabled);
-    TEST_ASSERT_EQUAL_INT(1, settingsManager.saveCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
+    TEST_ASSERT_EQUAL_INT(1, settingsManager.requestDeferredPersistCalls);
 
     obdRuntimeModule.startScan();
     obdRuntimeModule.update(2000, true, true, true);
@@ -159,7 +162,8 @@ void test_forget_clears_saved_address_and_persists_setting() {
     TEST_ASSERT_TRUE(responseContains(server, "\"ok\":true"));
     TEST_ASSERT_EQUAL_STRING("", settingsManager.settings.obdSavedAddress.c_str());
     TEST_ASSERT_EQUAL_STRING("", settingsManager.settings.obdSavedName.c_str());
-    TEST_ASSERT_EQUAL_INT(1, settingsManager.saveCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
+    TEST_ASSERT_EQUAL_INT(1, settingsManager.requestDeferredPersistCalls);
 
     ObdRuntimeStatus status = obdRuntimeModule.snapshot(mockMillis);
     TEST_ASSERT_FALSE(status.savedAddressValid);
@@ -182,6 +186,7 @@ void test_config_rejects_missing_json_body() {
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "Missing JSON body"));
     TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.requestDeferredPersistCalls);
 }
 
 void test_scan_rejects_when_obd_is_disabled() {

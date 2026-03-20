@@ -445,6 +445,68 @@ void test_display_batch_update_skips_noop_persist_and_saves_once_on_change() {
     TEST_ASSERT_TRUE(activeNamespaceOrEmpty().length() > 0);
 }
 
+void test_gps_batch_update_skips_noop_persist_and_defers_one_save_on_change() {
+    SettingsManager manager;
+
+    GpsSettingsUpdate emptyUpdate;
+    manager.applyGpsSettingsUpdate(emptyUpdate, SettingsPersistMode::Deferred);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_FALSE(manager.deferredPersistPending());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    GpsSettingsUpdate sameValueUpdate;
+    sameValueUpdate.hasEnabled = true;
+    sameValueUpdate.enabled = manager.get().gpsEnabled;
+    manager.applyGpsSettingsUpdate(sameValueUpdate, SettingsPersistMode::Deferred);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_FALSE(manager.deferredPersistPending());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    GpsSettingsUpdate changedUpdate;
+    changedUpdate.hasLockoutMode = true;
+    changedUpdate.lockoutMode = LOCKOUT_RUNTIME_ENFORCE;
+    manager.applyGpsSettingsUpdate(changedUpdate, SettingsPersistMode::Deferred);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_TRUE(manager.deferredPersistPending());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    manager.serviceDeferredPersist(manager.deferredPersistNextAttemptAtMs());
+    TEST_ASSERT_EQUAL_UINT32(2u, manager.backupRevision());
+    TEST_ASSERT_FALSE(manager.deferredPersistPending());
+    TEST_ASSERT_TRUE(activeNamespaceOrEmpty().length() > 0);
+}
+
+void test_obd_batch_update_skips_noop_persist_and_defers_one_save_on_change() {
+    SettingsManager manager;
+
+    ObdSettingsUpdate emptyUpdate;
+    manager.applyObdSettingsUpdate(emptyUpdate, SettingsPersistMode::Deferred);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_FALSE(manager.deferredPersistPending());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    ObdSettingsUpdate sameValueUpdate;
+    sameValueUpdate.hasEnabled = true;
+    sameValueUpdate.enabled = manager.get().obdEnabled;
+    manager.applyObdSettingsUpdate(sameValueUpdate, SettingsPersistMode::Deferred);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_FALSE(manager.deferredPersistPending());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    ObdSettingsUpdate changedUpdate;
+    changedUpdate.hasEnabled = true;
+    changedUpdate.enabled = true;
+    manager.applyObdSettingsUpdate(changedUpdate, SettingsPersistMode::Deferred);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_TRUE(manager.deferredPersistPending());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    manager.serviceDeferredPersist(manager.deferredPersistNextAttemptAtMs());
+    TEST_ASSERT_EQUAL_UINT32(2u, manager.backupRevision());
+    TEST_ASSERT_FALSE(manager.deferredPersistPending());
+    TEST_ASSERT_TRUE(activeNamespaceOrEmpty().length() > 0);
+}
+
 void test_autopush_slot_batch_update_skips_noop_persist_and_saves_once_on_change() {
     SettingsManager manager;
 
@@ -511,6 +573,8 @@ int main() {
     RUN_TEST(test_device_batch_update_skips_noop_persist_and_saves_once_on_change);
     RUN_TEST(test_audio_batch_update_skips_noop_persist_and_saves_once_on_change);
     RUN_TEST(test_display_batch_update_skips_noop_persist_and_saves_once_on_change);
+    RUN_TEST(test_gps_batch_update_skips_noop_persist_and_defers_one_save_on_change);
+    RUN_TEST(test_obd_batch_update_skips_noop_persist_and_defers_one_save_on_change);
     RUN_TEST(test_autopush_slot_batch_update_skips_noop_persist_and_saves_once_on_change);
     RUN_TEST(test_autopush_state_batch_update_skips_noop_persist_and_saves_once_on_change);
     return UNITY_END();

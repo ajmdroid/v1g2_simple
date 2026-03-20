@@ -197,7 +197,7 @@ void handleApiDeviceNameSave(WebServer& server,
     ObdSettingsUpdate update;
     update.hasSavedName = true;
     update.savedName = sanitizeObdDeviceName(server.hasArg("name") ? server.arg("name") : "");
-    settingsManager.applyObdSettingsUpdate(update);
+    settingsManager.applyObdSettingsUpdate(update, SettingsPersistMode::Deferred);
 
     server.send(200, "application/json", "{\"success\":true}");
 }
@@ -251,7 +251,7 @@ void handleApiForget(WebServer& server,
     update.cachedVinPrefix11 = "";
     update.hasCachedEotProfileId = true;
     update.cachedEotProfileId = 0;
-    settingsManager.applyObdSettingsUpdate(update);
+    settingsManager.applyObdSettingsUpdate(update, SettingsPersistMode::Deferred);
     JsonDocument doc;
     doc["ok"] = true;
     WifiApiResponse::sendJsonDocument(server, 200, doc);
@@ -296,7 +296,8 @@ void handleApiConfig(WebServer& server,
         update.minRssi = static_cast<int8_t>(rssi);
     }
 
-    const bool changed = settingsManager.applyObdSettingsUpdate(update);
+    const bool changed =
+        settingsManager.applyObdSettingsUpdate(update, SettingsPersistMode::Deferred);
     if (changed) {
         SettingsRuntimeSync::syncObdVehicleRuntimeSettings(settingsManager.get(), obdRuntime, speedSourceSelector);
     }

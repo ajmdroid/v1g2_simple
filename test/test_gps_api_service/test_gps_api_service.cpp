@@ -602,6 +602,7 @@ void test_handle_api_config_rejects_invalid_json() {
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING("{\"success\":false,\"message\":\"Invalid JSON\"}", server.lastBody.c_str());
     TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.requestDeferredPersistCalls);
 }
 
 void test_handle_api_config_requires_enabled_or_lockout_update() {
@@ -729,7 +730,8 @@ void test_handle_api_config_lockout_only_update_mutates_real_settings_path() {
     TEST_ASSERT_FALSE(settingsManager.settings.gpsLockoutKLearningEnabled);
     TEST_ASSERT_FALSE(settingsManager.settings.gpsLockoutXLearningEnabled);
     TEST_ASSERT_TRUE(settingsManager.settings.gpsLockoutPreQuiet);
-    TEST_ASSERT_EQUAL_INT(1, settingsManager.saveCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
+    TEST_ASSERT_EQUAL_INT(1, settingsManager.requestDeferredPersistCalls);
     TEST_ASSERT_EQUAL_INT(0, settingsManager.setGpsEnabledCalls);
     TEST_ASSERT_EQUAL_INT(0, gpsRuntime.setEnabledCalls);
     TEST_ASSERT_EQUAL_INT(0, speedSelector.syncEnabledInputsCalls);
@@ -791,6 +793,7 @@ void test_handle_api_config_enabled_scaffold_sample_updates_runtime_and_selector
     TEST_ASSERT_TRUE(speedSelector.lastGpsEnabled);
     TEST_ASSERT_FALSE(speedSelector.lastObdEnabled);
     TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
+    TEST_ASSERT_EQUAL_INT(0, settingsManager.requestDeferredPersistCalls);
 
     JsonDocument doc;
     parseBody(server, doc);

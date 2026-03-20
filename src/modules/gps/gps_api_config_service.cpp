@@ -633,7 +633,8 @@ void handleConfig(WebServer& server,
     settingsUpdate.hasMinLearnerSpeedMph = hasMinLearnerSpeedMph;
     settingsUpdate.minLearnerSpeedMph = minLearnerSpeedMph;
 
-    const GpsSettingsApplyResult applyResult = settingsManager.applyGpsSettingsUpdate(settingsUpdate);
+    const GpsSettingsApplyResult applyResult =
+        settingsManager.applyGpsSettingsUpdate(settingsUpdate, SettingsPersistMode::Deferred);
     if (hasEnabled) {
         SettingsRuntimeSync::syncGpsVehicleRuntimeSettings(settingsManager.get(),
                                                            gpsRuntimeModule,
