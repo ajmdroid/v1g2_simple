@@ -1,4 +1,5 @@
 #include "v1_devices.h"
+#include "storage_json_rollback.h"
 #include "storage_manager.h"
 
 #include <ArduinoJson.h>
@@ -96,7 +97,7 @@ V1DeviceStore v1DeviceStore;
 String normalizeV1DeviceAddress(const String& rawAddress) {
     String value = rawAddress;
     value.trim();
-    value.replace('-', ':');
+    value.replace("-", ":");
     value.toUpperCase();
 
     if (value.length() != 17) {
@@ -208,25 +209,13 @@ bool V1DeviceStore::loadFromStore() {
         return false;
     }
 
-    if (!fs->exists(STORE_PATH)) {
+    JsonDocument doc;
+    const JsonRollbackLoadResult loadResult =
+        loadJsonDocumentWithRollback(*fs, STORE_PATH, MAX_STORE_BYTES, doc);
+    if (loadResult == JsonRollbackLoadResult::Missing) {
         return true;
     }
-
-    File file = fs->open(STORE_PATH, FILE_READ);
-    if (!file) {
-        return false;
-    }
-
-    if (file.size() > MAX_STORE_BYTES) {
-        file.close();
-        return false;
-    }
-
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, file);
-    file.close();
-
-    if (err) {
+    if (loadResult == JsonRollbackLoadResult::Invalid) {
         return false;
     }
 
@@ -236,12 +225,12 @@ bool V1DeviceStore::loadFromStore() {
 
     JsonArray arr = doc["devices"].as<JsonArray>();
     for (JsonObject item : arr) {
-        String address = normalizeV1DeviceAddress(item["address"].as<String>());
+        String address = normalizeV1DeviceAddress(String(item["address"] | ""));
         if (address.length() == 0) {
             continue;
         }
 
-        const String name = sanitizeName(item["name"].as<String>());
+        const String name = sanitizeName(String(item["name"] | ""));
         uint8_t defaultProfile = clampDefaultProfileValue(item["defaultProfile"] | 0);
         uint32_t lastSeenMs = item["lastSeenMs"] | 0;
 

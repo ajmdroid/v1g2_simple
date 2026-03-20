@@ -44,11 +44,18 @@ public:
     fs::FS* getLittleFS() const { return littlefsReady_ ? littlefs_ : nullptr; }
     SemaphoreHandle_t getSDMutex() const { return sdMutex_; }
 
+    static String rollbackPathFor(const char* livePath) {
+        if (!livePath || livePath[0] == '\0') {
+            return String("");
+        }
+        return String(livePath) + ".prev";
+    }
+
     static bool promoteTempFileWithRollback(fs::FS& fs, const char* tempPath, const char* livePath) {
         if (!tempPath || !livePath) {
             return false;
         }
-        const String backupPath = String(livePath) + ".bak";
+        const String backupPath = rollbackPathFor(livePath);
         const bool hadLive = fs.exists(livePath);
         if (hadLive && !fs.rename(livePath, backupPath.c_str())) {
             return false;

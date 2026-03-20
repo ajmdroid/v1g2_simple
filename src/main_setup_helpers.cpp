@@ -34,6 +34,7 @@
 #include "modules/lockout/lockout_boot_storage.h"
 #include "modules/lockout/lockout_index.h"
 #include "modules/lockout/lockout_learner.h"
+#include "modules/lockout/lockout_pending_store.h"
 #include "modules/lockout/lockout_store.h"
 #include "modules/lockout/road_map_reader.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
@@ -78,34 +79,35 @@ V1ConnectedAutoPushSelection resolveV1ConnectedAutoPushSelection(const V1Setting
 
 static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
 static constexpr const char* LOCKOUT_ZONES_BINARY_PATH = LockoutStore::kBinaryPath;
-static constexpr const char* LOCKOUT_PENDING_PATH = "/v1simple_lockout_pending.json";
+static constexpr const char* LOCKOUT_PENDING_PATH = lockout_pending_store::kPendingLearnerPath;
 
-bool loadPendingLearnerJsonDocument(JsonDocument& outDoc) {
+bool loadPendingLearnerJsonDocument(JsonDocument& outDoc, String* loadedPath = nullptr) {
     if (!storageManager.isReady()) {
         return false;
     }
 
     fs::FS* fs = storageManager.getFilesystem();
-    if (!(fs && fs->exists(LOCKOUT_PENDING_PATH))) {
+    if (!fs) {
         SerialLog.println("[Learner] No saved pending candidate file found");
         return false;
     }
 
-    File f = fs->open(LOCKOUT_PENDING_PATH, "r");
-    if (!(f && f.size() > 0 && f.size() < 32768)) {
-        if (f) {
-            f.close();
-        }
-        return false;
+    String errorMessage;
+    const JsonRollbackLoadResult result =
+        lockout_pending_store::loadPendingLearnerJsonDocument(*fs, outDoc, &errorMessage, loadedPath);
+    switch (result) {
+        case JsonRollbackLoadResult::LoadedLive:
+        case JsonRollbackLoadResult::LoadedRollback:
+            return true;
+        case JsonRollbackLoadResult::Missing:
+            SerialLog.println("[Learner] No saved pending candidate file found");
+            return false;
+        case JsonRollbackLoadResult::Invalid:
+        default:
+            SerialLog.printf("[Learner] Pending JSON parse error: %s\n",
+                             errorMessage.length() > 0 ? errorMessage.c_str() : "invalid");
+            return false;
     }
-
-    const DeserializationError err = deserializeJson(outDoc, f);
-    f.close();
-    if (err) {
-        SerialLog.printf("[Learner] Pending JSON parse error: %s\n", err.c_str());
-        return false;
-    }
-    return true;
 }
 
 }  // namespace
@@ -349,17 +351,19 @@ uint32_t initializeBootPerformanceLoggers() {
 
 void restorePendingLearnerCandidates() {
     JsonDocument doc;
-    if (!loadPendingLearnerJsonDocument(doc)) {
+    String loadedPath;
+    if (!loadPendingLearnerJsonDocument(doc, &loadedPath)) {
         return;
     }
 
+    const char* sourcePath = loadedPath.length() > 0 ? loadedPath.c_str() : LOCKOUT_PENDING_PATH;
     if (lockoutLearner.fromJson(doc, timeService.nowEpochMsOr0())) {
         SerialLog.printf("[Learner] Restored %u pending candidates from %s\n",
                          static_cast<unsigned>(lockoutLearner.activeCandidateCount()),
-                         LOCKOUT_PENDING_PATH);
+                         sourcePath);
     } else {
         SerialLog.printf("[Learner] Ignoring invalid pending file format: %s\n",
-                         LOCKOUT_PENDING_PATH);
+                         sourcePath);
     }
 }
 

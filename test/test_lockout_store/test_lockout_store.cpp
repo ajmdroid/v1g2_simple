@@ -783,6 +783,78 @@ void test_loadBinary_failure_does_not_mutate_live_index() {
     assertEntriesEqual(sentinel, live);
 }
 
+void test_loadBinary_prefers_valid_live_over_prev() {
+    const std::filesystem::path root = makeFsRoot("load_prefers_live");
+    fs::FS fs(root);
+
+    const LockoutEntry prevEntry = makeEntry(2000000, -2000000, 10525, 0x08);
+    testIndex.clear();
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(prevEntry));
+    TEST_ASSERT_TRUE(store.saveBinary(fs, "/staged_prev.bin"));
+
+    const std::filesystem::path prevPath = resolveFsPath(
+        root, StorageManager::rollbackPathFor(LockoutStore::kBinaryPath).c_str());
+    std::filesystem::copy_file(resolveFsPath(root, "/staged_prev.bin"),
+                               prevPath,
+                               std::filesystem::copy_options::overwrite_existing);
+
+    const LockoutEntry liveEntry = makeEntry(1000000, -1000000, 24120, 0x04);
+    testIndex.clear();
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(liveEntry));
+    TEST_ASSERT_TRUE(store.saveBinary(fs, LockoutStore::kBinaryPath));
+
+    testIndex.clear();
+    TEST_ASSERT_TRUE(store.loadBinary(fs, LockoutStore::kBinaryPath));
+    TEST_ASSERT_EQUAL(1, testIndex.activeCount());
+    TEST_ASSERT_NOT_NULL(testIndex.at(0));
+    TEST_ASSERT_EQUAL(liveEntry.latE5, testIndex.at(0)->latE5);
+}
+
+void test_loadBinary_falls_back_to_prev_when_live_missing() {
+    const std::filesystem::path root = makeFsRoot("load_missing_live_prev");
+    fs::FS fs(root);
+
+    const LockoutEntry prevEntry = makeEntry(3000000, -3000000, 24148, 0x04);
+    testIndex.clear();
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(prevEntry));
+    TEST_ASSERT_TRUE(store.saveBinary(fs, LockoutStore::kBinaryPath));
+
+    const std::filesystem::path livePath = resolveFsPath(root, LockoutStore::kBinaryPath);
+    const std::filesystem::path prevPath = resolveFsPath(
+        root, StorageManager::rollbackPathFor(LockoutStore::kBinaryPath).c_str());
+    std::filesystem::rename(livePath, prevPath);
+
+    testIndex.clear();
+    TEST_ASSERT_TRUE(store.loadBinary(fs, LockoutStore::kBinaryPath));
+    TEST_ASSERT_EQUAL(1, testIndex.activeCount());
+    TEST_ASSERT_NOT_NULL(testIndex.at(0));
+    TEST_ASSERT_EQUAL(prevEntry.latE5, testIndex.at(0)->latE5);
+}
+
+void test_loadBinary_falls_back_to_prev_when_live_is_corrupt() {
+    const std::filesystem::path root = makeFsRoot("load_corrupt_live_prev");
+    fs::FS fs(root);
+
+    const LockoutEntry prevEntry = makeEntry(4000000, -4000000, 24148, 0x04);
+    testIndex.clear();
+    TEST_ASSERT_GREATER_OR_EQUAL(0, testIndex.add(prevEntry));
+    TEST_ASSERT_TRUE(store.saveBinary(fs, LockoutStore::kBinaryPath));
+
+    const std::filesystem::path livePath = resolveFsPath(root, LockoutStore::kBinaryPath);
+    const std::filesystem::path prevPath = resolveFsPath(
+        root, StorageManager::rollbackPathFor(LockoutStore::kBinaryPath).c_str());
+    std::filesystem::copy_file(livePath, prevPath, std::filesystem::copy_options::overwrite_existing);
+
+    const uint8_t badMagic[4] = {'B', 'A', 'D', '!'};
+    overwriteFileBytes(livePath, 0, badMagic, sizeof(badMagic));
+
+    testIndex.clear();
+    TEST_ASSERT_TRUE(store.loadBinary(fs, LockoutStore::kBinaryPath));
+    TEST_ASSERT_EQUAL(1, testIndex.activeCount());
+    TEST_ASSERT_NOT_NULL(testIndex.at(0));
+    TEST_ASSERT_EQUAL(prevEntry.latE5, testIndex.at(0)->latE5);
+}
+
 // ================================================================
 // Dirty tracking
 // ================================================================
@@ -879,6 +951,9 @@ int main(int argc, char** argv) {
     RUN_TEST(test_loadBinary_rejects_bad_crc);
     RUN_TEST(test_loadBinary_rejects_truncated_file);
     RUN_TEST(test_loadBinary_failure_does_not_mutate_live_index);
+    RUN_TEST(test_loadBinary_prefers_valid_live_over_prev);
+    RUN_TEST(test_loadBinary_falls_back_to_prev_when_live_missing);
+    RUN_TEST(test_loadBinary_falls_back_to_prev_when_live_is_corrupt);
 
     // Dirty tracking & stats
     RUN_TEST(test_dirty_tracking);

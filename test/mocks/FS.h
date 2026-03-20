@@ -109,6 +109,18 @@ public:
         return static_cast<int>(end - current);
     }
 
+    String readStringUntil(char terminator) {
+        String result;
+        while (available() > 0) {
+            const int next = read();
+            if (next < 0 || next == terminator) {
+                break;
+            }
+            result += static_cast<char>(next);
+        }
+        return result;
+    }
+
     bool seek(uint32_t pos, SeekMode mode = SeekSet) {
         if (!state_ || state_->directory || !state_->stream.is_open()) {
             return false;

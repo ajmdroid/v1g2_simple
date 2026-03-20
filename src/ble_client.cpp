@@ -18,6 +18,7 @@
  */
 
 #include "ble_client.h"
+#include "ble_bond_backup_store.h"
 #include "ble_fresh_flash_policy.h"
 #include "settings.h"
 #include "perf_metrics.h"
@@ -54,28 +55,20 @@ extern "C" {
 // =========================================================================
 
 static constexpr const char* BLE_BOND_BACKUP_PATH = "/v1simple_ble_bonds.bin";
-static constexpr uint8_t BLE_BOND_MAGIC[4] = { 'B', 'L', 'B', 0x01 };
-static constexpr size_t MAX_BOND_ENTRIES = 8;  // Generous limit
 // Use a standard BLE TX power step instead of the previous max-power 15 dBm
 // setting so BLE is less aggressive during WiFi coexistence.
 static constexpr int8_t BLE_TX_POWER_DBM = 9;
 
-struct BondBackupHeader {
-    uint8_t magic[4];
-    uint32_t ourSecCount;
-    uint32_t peerSecCount;
-};
-
 // Callback context for ble_store_iterate
 struct BondCollector {
-    struct ble_store_value_sec entries[MAX_BOND_ENTRIES];
+    struct ble_store_value_sec entries[kMaxBleBondEntries];
     size_t count;
 };
 
 static int bondCollectCallback(int obj_type, union ble_store_value* val, void* cookie) {
     (void)obj_type;
     auto* collector = static_cast<BondCollector*>(cookie);
-    if (collector->count < MAX_BOND_ENTRIES) {
+    if (collector->count < kMaxBleBondEntries) {
         memcpy(&collector->entries[collector->count], &val->sec, sizeof(struct ble_store_value_sec));
         collector->count++;
     }
@@ -99,7 +92,7 @@ static int writeBondBackupSnapshot(fs::FS& sdFs,
     }
 
     BondBackupHeader hdr = {};
-    memcpy(hdr.magic, BLE_BOND_MAGIC, 4);
+    memcpy(hdr.magic, kBleBondMagic, 4);
     hdr.ourSecCount = ourSecs.count;
     hdr.peerSecCount = peerSecs.count;
 
@@ -200,80 +193,13 @@ static int restoreBondsFromSD() {
     }
 
     fs::FS* sdFs = storageManager.getFilesystem();
-    if (!sdFs || !sdFs->exists(BLE_BOND_BACKUP_PATH)) {
+    if (!sdFs) {
         return -1;
     }
-
-    File f = sdFs->open(BLE_BOND_BACKUP_PATH, "r");
-    if (!f) {
+    const int restored = restoreBleBondBackup(*sdFs, BLE_BOND_BACKUP_PATH);
+    if (restored < 0) {
         return -1;
     }
-
-    // Sanity: file must be at least header size, and less than a reasonable max
-    const size_t fileSize = f.size();
-    const size_t maxSize = sizeof(BondBackupHeader) + 
-                           2 * MAX_BOND_ENTRIES * sizeof(struct ble_store_value_sec);
-    if (fileSize < sizeof(BondBackupHeader) || fileSize > maxSize) {
-        f.close();
-        Serial.printf("[BLE] Bond backup file size invalid: %u\n", (unsigned)fileSize);
-        return -1;
-    }
-
-    BondBackupHeader hdr = {};
-    if (f.read((uint8_t*)&hdr, sizeof(hdr)) != sizeof(hdr)) {
-        f.close();
-        return -1;
-    }
-
-    // Validate magic
-    if (memcmp(hdr.magic, BLE_BOND_MAGIC, 4) != 0) {
-        f.close();
-        Serial.println("[BLE] Bond backup magic mismatch");
-        return -1;
-    }
-
-    // Validate counts
-    if (hdr.ourSecCount > MAX_BOND_ENTRIES || hdr.peerSecCount > MAX_BOND_ENTRIES) {
-        f.close();
-        Serial.println("[BLE] Bond backup count out of range");
-        return -1;
-    }
-
-    // Validate file size matches header
-    const size_t expectedSize = sizeof(BondBackupHeader) +
-                                hdr.ourSecCount * sizeof(struct ble_store_value_sec) +
-                                hdr.peerSecCount * sizeof(struct ble_store_value_sec);
-    if (fileSize < expectedSize) {
-        f.close();
-        Serial.println("[BLE] Bond backup file truncated");
-        return -1;
-    }
-
-    int restored = 0;
-
-    // Restore our_sec entries
-    for (uint32_t i = 0; i < hdr.ourSecCount; i++) {
-        struct ble_store_value_sec sec = {};
-        if (f.read((uint8_t*)&sec, sizeof(sec)) != sizeof(sec)) {
-            break;
-        }
-        if (ble_store_write_our_sec(&sec) == 0) {
-            restored++;
-        }
-    }
-
-    // Restore peer_sec entries
-    for (uint32_t i = 0; i < hdr.peerSecCount; i++) {
-        struct ble_store_value_sec sec = {};
-        if (f.read((uint8_t*)&sec, sizeof(sec)) != sizeof(sec)) {
-            break;
-        }
-        if (ble_store_write_peer_sec(&sec) == 0) {
-            restored++;
-        }
-    }
-
-    f.close();
 
     if (restored > 0) {
         Serial.printf("[BLE] Restored %d bond(s) from SD backup\n", restored);

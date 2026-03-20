@@ -237,6 +237,13 @@ public:
     
     // Promote a temp file to the live path with rollback if promotion fails.
     // Returns true on success.
+    static String rollbackPathFor(const char* livePath) {
+        if (!livePath || livePath[0] == '\0') {
+            return String("");
+        }
+        return String(livePath) + ".prev";
+    }
+
     static bool promoteTempFileWithRollback(fs::FS& fs,
                                             const char* tempPath,
                                             const char* livePath,
@@ -248,7 +255,7 @@ public:
         String derivedBackupPath;
         const char* backupPathToUse = backupPath;
         if (!backupPathToUse || backupPathToUse[0] == '\0') {
-            derivedBackupPath = String(livePath) + ".prev";
+            derivedBackupPath = rollbackPathFor(livePath);
             backupPathToUse = derivedBackupPath.c_str();
         }
 

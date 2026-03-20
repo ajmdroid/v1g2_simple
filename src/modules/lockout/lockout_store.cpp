@@ -556,6 +556,23 @@ bool LockoutStore::saveBinary(fs::FS& fs, const char* path) const {
 }
 
 bool LockoutStore::loadBinary(fs::FS& fs, const char* path) {
+    if (!path || path[0] == '\0') {
+        return false;
+    }
+
+    if (loadBinaryFromPath(fs, path)) {
+        return true;
+    }
+
+    const String rollbackPath = StorageManager::rollbackPathFor(path);
+    if (rollbackPath.length() == 0 || !fs.exists(rollbackPath.c_str())) {
+        return false;
+    }
+
+    return loadBinaryFromPath(fs, rollbackPath.c_str());
+}
+
+bool LockoutStore::loadBinaryFromPath(fs::FS& fs, const char* path) {
     if (!index_) {
         Serial.println("[LockoutStore] loadBinary: no index wired");
         ++stats_.loadErrors;

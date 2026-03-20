@@ -127,6 +127,8 @@ public:
     const Stats& stats() const { return stats_; }
 
 private:
+    bool loadBinaryFromPath(fs::FS& fs, const char* path);
+
     LockoutIndex* index_ = nullptr;
     bool          dirty_ = false;
     mutable Stats stats_ = {};
