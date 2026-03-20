@@ -154,8 +154,8 @@ void V1Display::forceNextRedraw() {
     lastState = DisplayState();
     // Set screen mode to Unknown so any next update/showResting detects a screen change
     currentScreen = ScreenMode::Unknown;
-    // Reset all static change tracking variables (volume, mode, arrows, etc.)
-    // This ensures the next update() does a full redraw with fresh data
+    // Reset the singleton-scoped render tracking variables (volume, mode,
+    // arrows, etc.) so the single production display path fully redraws.
     resetChangeTracking();
 }
 

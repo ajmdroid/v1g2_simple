@@ -9,6 +9,7 @@
 #include "../include/color_themes.h"
 #include "../include/band_utils.h"
 #include "../include/display_segments.h"  // 7/14-segment data tables
+#include "../include/display_ble_freshness.h"
 #include "v1simple_logo.h"  // Splash screen image (640x172)
 #include "settings.h"
 #include "battery_manager.h"
@@ -245,6 +246,15 @@ void V1Display::clear() {
     tft->fillScreen(PALETTE_BG);
     DISPLAY_FLUSH();
     bleProxyDrawn = false;
+}
+
+void V1Display::setBleContext(const DisplayBleContext& ctx) {
+    bleCtx_ = ctx;
+    bleCtxUpdatedAtMs_ = millis();
+}
+
+bool V1Display::hasFreshBleContext(uint32_t nowMs) const {
+    return DisplayBleFreshness::isFresh(bleCtxUpdatedAtMs_, nowMs);
 }
 
 void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool receivingData) {

@@ -15,6 +15,10 @@
  * 
  * Threading: All draw operations must be called from main thread
  * Display updates throttled to ~10 FPS max for performance
+ *
+ * Ownership: production firmware uses a single global V1Display instance.
+ * Some hot-path render tracking is still singleton-scoped behind this class
+ * so runtime behavior is singleton-oriented even though the API is object-shaped.
  */
 
 #ifndef DISPLAY_H
@@ -61,7 +65,8 @@ public:
     // Force next update() call to fully redraw (use after settings change)
     void forceNextRedraw();
     
-    // Reset change tracking statics (call on V1 disconnect to ensure clean state on reconnect)
+    // Reset singleton-scoped render tracking (call on V1 disconnect to ensure
+    // the single production display path reconnects with a clean redraw state).
     static void resetChangeTracking();
 
     // Demo mode
@@ -110,9 +115,9 @@ public:
     // intentionally dropped by the lockout pre-quiet feature.
     void setPreQuietActive(bool active);
 
-    // BLE context snapshot — populated each loop iteration by main.cpp
-    // so display files never depend on extern V1BLEClient.
-    void setBleContext(const DisplayBleContext& ctx) { bleCtx_ = ctx; }
+    // BLE context snapshot — populated by the loop orchestration path so display
+    // files never depend on extern V1BLEClient. Freshness is tracked internally.
+    void setBleContext(const DisplayBleContext& ctx);
     const DisplayBleContext& getBleContext() const { return bleCtx_; }
 
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
@@ -182,6 +187,7 @@ private:
     void drawObdIndicator();
     void syncTopIndicators(uint32_t nowMs);
     void setObdStatus(bool enabled, bool connected, bool scanAttention = false);
+    bool hasFreshBleContext(uint32_t nowMs) const;
     int measureSevenSegmentText(const char* text, float scale) const;
     int drawSevenSegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);
     void drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
@@ -231,6 +237,7 @@ private:
     bool obdScanAttention_ = false;        // Runtime manual scan / scan-pending state
     bool obdAttention_ = false;            // Temporary UI hold-time attention
     DisplayBleContext bleCtx_;              // BLE state snapshot for display DI
+    uint32_t bleCtxUpdatedAtMs_ = 0;        // When setBleContext() last refreshed bleCtx_
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 };

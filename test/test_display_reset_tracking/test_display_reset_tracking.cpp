@@ -37,6 +37,12 @@ std::string extractBlock(const std::string& text, const std::string& marker) {
     return text.substr(openBrace, closeBrace - openBrace + 1);
 }
 
+void assertNoFunctionLocalStatic(const std::string& block, const char* label) {
+    const std::string token = "\n    static ";
+    const size_t staticPos = block.find(token);
+    TEST_ASSERT_EQUAL_MESSAGE(std::string::npos, staticPos, label);
+}
+
 }  // namespace
 
 void setUp() {}
@@ -66,9 +72,46 @@ void test_resting_full_redraw_clears_tracking_reset_after_flush() {
     TEST_ASSERT_TRUE_MESSAGE(clearPos < screenPos, "resting path should clear resetTracking before final state commit");
 }
 
+void test_display_update_paths_no_longer_hide_persistent_state_in_function_locals() {
+    const std::string source = readFile("/Users/ajmedford/v1g2_simple/src/display_update.cpp");
+
+    assertNoFunctionLocalStatic(
+        extractBlock(source, "void V1Display::drawStatusStrip"),
+        "drawStatusStrip should use explicit render cache instead of function-local static state");
+    assertNoFunctionLocalStatic(
+        extractBlock(source, "void V1Display::update(const DisplayState& state)"),
+        "resting update should use explicit render cache instead of function-local static state");
+    assertNoFunctionLocalStatic(
+        extractBlock(source, "void V1Display::refreshFrequencyOnly"),
+        "refreshFrequencyOnly should use explicit render cache instead of function-local static state");
+    assertNoFunctionLocalStatic(
+        extractBlock(source, "void V1Display::update(const AlertData& priority"),
+        "live update should use explicit render cache instead of function-local static state");
+}
+
+void test_stale_ble_policy_is_wired_into_display_sources() {
+    const std::string updateSource = readFile("/Users/ajmedford/v1g2_simple/src/display_update.cpp");
+    const std::string statusSource = readFile("/Users/ajmedford/v1g2_simple/src/display_status_bar.cpp");
+
+    const std::string restingUpdate = extractBlock(updateSource, "void V1Display::update(const DisplayState& state)");
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, restingUpdate.find("const bool bleContextFresh = hasFreshBleContext(now);"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, restingUpdate.find("volZeroWarn.reset();"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, restingUpdate.find("volZeroWarn.evaluate("));
+
+    const std::string rssiBlock = extractBlock(statusSource, "void V1Display::drawRssiIndicator(int rssi)");
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, rssiBlock.find("if (!hasFreshBleContext(millis()))"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, rssiBlock.find("FILL_RECT(x, y, clearW, clearH, PALETTE_BG);"));
+
+    const std::string bleBlock = extractBlock(statusSource, "void V1Display::drawBLEProxyIndicator()");
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, bleBlock.find("const bool bleContextFresh = hasFreshBleContext(millis());"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, bleBlock.find("const bool receivingData = bleReceivingData && bleContextFresh;"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_scanning_early_return_does_not_clear_tracking_reset);
     RUN_TEST(test_resting_full_redraw_clears_tracking_reset_after_flush);
+    RUN_TEST(test_display_update_paths_no_longer_hide_persistent_state_in_function_locals);
+    RUN_TEST(test_stale_ble_policy_is_wired_into_display_sources);
     return UNITY_END();
 }

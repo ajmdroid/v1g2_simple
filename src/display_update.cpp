@@ -21,18 +21,6 @@
 using DisplayLayout::SECONDARY_ROW_HEIGHT;
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 
-// RSSI periodic update timer (shared between resting and alert modes)
-static unsigned long s_lastRssiUpdateMs = 0;
-static constexpr unsigned long RSSI_UPDATE_INTERVAL_MS = 2000;  // Update RSSI every 2 seconds
-
-inline bool shouldRefreshRssi(unsigned long nowMs) {
-    return (nowMs - s_lastRssiUpdateMs) >= RSSI_UPDATE_INTERVAL_MS;
-}
-
-inline void markRssiRefreshed(unsigned long nowMs) {
-    s_lastRssiUpdateMs = nowMs;
-}
-
 // Debug timing for display operations (set to true to profile display)
 static constexpr bool DISPLAY_PERF_TIMING = false;  // Disable for production
 static unsigned long _dispPerfStart = 0;
@@ -44,6 +32,81 @@ static unsigned long _dispPerfStart = 0;
 } } while(0)
 
 namespace {
+
+// Singleton-scoped render cache for the single production display path.
+// The V1Display API remains object-shaped, but the hot-path renderer still
+// shares one cache until a larger per-instance refactor is justified.
+struct DisplayRenderCache {
+    static constexpr unsigned long RSSI_UPDATE_INTERVAL_MS = 2000;
+
+    bool rightStripCleared = false;
+
+    bool restingFirstUpdate = true;
+    bool restingWasInFlashPeriod = false;
+    unsigned long restingBandLastSeen[4] = {0, 0, 0, 0};  // L, Ka, K, X
+    uint8_t lastRestingDebouncedBands = 0;
+    uint8_t lastRestingSignalBars = 0;
+    uint8_t lastRestingArrows = 0;
+    uint8_t lastRestingMainVol = 255;
+    uint8_t lastRestingMuteVol = 255;
+    uint8_t lastRestingBogeyByte = 0;
+
+    bool badgeCacheValid = false;
+    bool lastLockoutShown = false;
+    bool lastGpsShown = false;
+    uint8_t lastGpsSats = 0;
+    bool lastObdShown = false;
+    bool lastObdConnected = false;
+
+    AlertData liveLastPriority{};
+    uint8_t liveLastBogeyByte = 0;
+    DisplayState liveLastMultiState{};
+    bool liveFirstRun = true;
+    AlertData liveLastSecondary[PacketParser::MAX_ALERTS]{};
+    uint8_t liveLastArrows = 0;
+    uint8_t liveLastSignalBars = 0;
+    uint8_t liveLastActiveBands = 0;
+    uint8_t liveLastMainVol = 255;
+    uint8_t liveLastMuteVol = 255;
+    unsigned long liveLastFlashRedraw = 0;
+
+    unsigned long lastRssiUpdateMs = 0;
+
+    void resetRestingTracking() {
+        restingFirstUpdate = true;
+        lastRestingDebouncedBands = 0;
+        lastRestingSignalBars = 0;
+        lastRestingArrows = 0;
+        lastRestingMainVol = 255;
+        lastRestingMuteVol = 255;
+        lastRestingBogeyByte = 0;
+        lastRssiUpdateMs = 0;
+    }
+
+    void resetLiveTracking() {
+        liveLastPriority = AlertData();
+        liveLastBogeyByte = 0;
+        liveLastMultiState = DisplayState();
+        liveFirstRun = true;
+        for (int i = 0; i < PacketParser::MAX_ALERTS; ++i) {
+            liveLastSecondary[i] = AlertData();
+        }
+        liveLastArrows = 0;
+        liveLastSignalBars = 0;
+        liveLastActiveBands = 0;
+    }
+};
+
+DisplayRenderCache s_displayRenderCache;
+
+inline bool shouldRefreshRssi(unsigned long nowMs) {
+    return (nowMs - s_displayRenderCache.lastRssiUpdateMs) >=
+           DisplayRenderCache::RSSI_UPDATE_INTERVAL_MS;
+}
+
+inline void markRssiRefreshed(unsigned long nowMs) {
+    s_displayRenderCache.lastRssiUpdateMs = nowMs;
+}
 
 PerfDisplayRenderPath liveRenderPathForScenario() {
     const PerfDisplayRenderScenario scenario = perfGetDisplayRenderScenario();
@@ -83,20 +146,20 @@ void V1Display::drawStatusStrip(const DisplayState& state,
                                 char topChar,
                                 bool topMuted,
                                 bool topDot) {
+    DisplayRenderCache& cache = s_displayRenderCache;
     syncTopIndicators(millis());
     drawTopCounter(topChar, topMuted, topDot);
     const V1Settings& s = settingsManager.get();
-    static bool rightStripCleared = false;
     const bool showVolumeAndRssi = state.supportsVolume() && !s.hideVolumeIndicator;
     if (showVolumeAndRssi) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);
         drawRssiIndicator(bleCtx_.v1Rssi);
-        rightStripCleared = false;
+        cache.rightStripCleared = false;
     } else {
         // Clear once on transition into hidden/unsupported state.
-        if (!rightStripCleared) {
+        if (!cache.rightStripCleared) {
             FILL_RECT(8, 75, 75, 68, PALETTE_BG);
-            rightStripCleared = true;
+            cache.rightStripCleared = true;
         }
     }
 }
@@ -144,6 +207,8 @@ void V1Display::updateStatusStripIncremental(const DisplayState& state,
 }
 
 void V1Display::update(const DisplayState& state) {
+    DisplayRenderCache& cache = s_displayRenderCache;
+
     // Track if we're transitioning FROM persisted mode (need full redraw)
     bool wasPersistedMode = persistedMode;
     persistedMode = false;  // Not in persisted mode
@@ -153,59 +218,40 @@ void V1Display::update(const DisplayState& state) {
     if (currentScreen == ScreenMode::Scanning) {
         return;
     }
-    
-    static bool firstUpdate = true;
-    static bool wasInFlashPeriod = false;
-    
+
     // Always use multi-alert layout positioning
     dirty.multiAlert = true;
     multiAlertMode = false;  // No cards to draw in resting state
     
     // Check if profile flash period just expired (needs redraw to clear)
     bool inFlashPeriod = (millis() - profileChangedTime) < HIDE_TIMEOUT_MS;
-    bool flashJustExpired = wasInFlashPeriod && !inFlashPeriod;
-    wasInFlashPeriod = inFlashPeriod;
+    bool flashJustExpired = cache.restingWasInFlashPeriod && !inFlashPeriod;
+    cache.restingWasInFlashPeriod = inFlashPeriod;
 
     // Band debouncing: keep bands visible for a short grace period to prevent flicker
-    static unsigned long restingBandLastSeen[4] = {0, 0, 0, 0};  // L, Ka, K, X
-    static uint8_t restingDebouncedBands = 0;
+    uint8_t restingDebouncedBands = 0;
     const unsigned long BAND_GRACE_MS = 100;  // Reduced from 200ms for snappier response
     unsigned long now = millis();
     
-    if (state.activeBands & BAND_LASER) restingBandLastSeen[0] = now;
-    if (state.activeBands & BAND_KA)    restingBandLastSeen[1] = now;
-    if (state.activeBands & BAND_K)     restingBandLastSeen[2] = now;
-    if (state.activeBands & BAND_X)     restingBandLastSeen[3] = now;
+    if (state.activeBands & BAND_LASER) cache.restingBandLastSeen[0] = now;
+    if (state.activeBands & BAND_KA)    cache.restingBandLastSeen[1] = now;
+    if (state.activeBands & BAND_K)     cache.restingBandLastSeen[2] = now;
+    if (state.activeBands & BAND_X)     cache.restingBandLastSeen[3] = now;
     
     restingDebouncedBands = state.activeBands;
-    if ((now - restingBandLastSeen[0]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_LASER;
-    if ((now - restingBandLastSeen[1]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_KA;
-    if ((now - restingBandLastSeen[2]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_K;
-    if ((now - restingBandLastSeen[3]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_X;
+    if ((now - cache.restingBandLastSeen[0]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_LASER;
+    if ((now - cache.restingBandLastSeen[1]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_KA;
+    if ((now - cache.restingBandLastSeen[2]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_K;
+    if ((now - cache.restingBandLastSeen[3]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_X;
 
     // In resting mode (no alerts), never show muted visual - just normal display
     // Apps commonly set main volume to 0 when idle, adjusting on new alerts
     // The muted state should only affect active alert display, not resting
     bool effectiveMuted = false;
 
-    // Track last debounced bands for change detection
-    static uint8_t lastRestingDebouncedBands = 0;
-    static uint8_t lastRestingSignalBars = 0;
-    static uint8_t lastRestingArrows = 0;
-    static uint8_t lastRestingMainVol = 255;
-    static uint8_t lastRestingMuteVol = 255;
-    static uint8_t lastRestingBogeyByte = 0;  // Track V1's bogey counter for change detection
-    
     // Reset resting statics when change tracking reset is requested (on V1 disconnect)
     if (dirty.resetTracking) {
-        firstUpdate = true;
-        lastRestingDebouncedBands = 0;
-        lastRestingSignalBars = 0;
-        lastRestingArrows = 0;
-        lastRestingMainVol = 255;
-        lastRestingMuteVol = 255;
-        lastRestingBogeyByte = 0;
-        s_lastRssiUpdateMs = 0;
+        cache.resetRestingTracking();
         // Don't clear the flag here - let the alert update() clear it
     }
     
@@ -217,22 +263,26 @@ void V1Display::update(const DisplayState& state) {
     
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
-        firstUpdate ||
+        cache.restingFirstUpdate ||
         flashJustExpired ||
         wasPersistedMode ||  // Force full redraw when leaving persisted mode
         leavingLiveMode ||   // Force full redraw when alerts end (clear cards/frequency)
-        restingDebouncedBands != lastRestingDebouncedBands ||
+        restingDebouncedBands != cache.lastRestingDebouncedBands ||
         effectiveMuted != lastState.muted;
     
-    bool arrowsChanged = (state.arrows != lastRestingArrows);
-    bool signalBarsChanged = (state.signalBars != lastRestingSignalBars);
-    bool volumeChanged = (state.mainVolume != lastRestingMainVol || state.muteVolume != lastRestingMuteVol);
-    bool bogeyCounterChanged = (state.bogeyCounterByte != lastRestingBogeyByte);
+    bool arrowsChanged = (state.arrows != cache.lastRestingArrows);
+    bool signalBarsChanged = (state.signalBars != cache.lastRestingSignalBars);
+    bool volumeChanged = (state.mainVolume != cache.lastRestingMainVol ||
+                          state.muteVolume != cache.lastRestingMuteVol);
+    bool bogeyCounterChanged = (state.bogeyCounterByte != cache.lastRestingBogeyByte);
     
     // Check if volume zero warning needs a flashing redraw
+    const bool bleContextFresh = hasFreshBleContext(now);
     bool currentProxyConnected = bleCtx_.proxyConnected;
     bool volZero = (state.mainVolume == 0 && state.hasVolumeData);
-    if (volZeroWarn.needsFlashRedraw(volZero, currentProxyConnected, preQuietActive_)) {
+    if (!bleContextFresh) {
+        volZeroWarn.reset();
+    } else if (volZeroWarn.needsFlashRedraw(volZero, currentProxyConnected, preQuietActive_)) {
         needsFullRedraw = true;
     }
     
@@ -254,12 +304,12 @@ void V1Display::update(const DisplayState& state) {
         bool flushRightStrip = false;
 
         if (arrowsChanged) {
-            lastRestingArrows = state.arrows;
+            cache.lastRestingArrows = state.arrows;
             drawDirectionArrow(state.arrows, effectiveMuted, state.flashBits);
             flushRightStrip = true;
         }
         if (signalBarsChanged) {
-            lastRestingSignalBars = state.signalBars;
+            cache.lastRestingSignalBars = state.signalBars;
             Band primaryBand = BAND_KA;
             if (restingDebouncedBands & BAND_LASER) primaryBand = BAND_LASER;
             else if (restingDebouncedBands & BAND_KA) primaryBand = BAND_KA;
@@ -275,9 +325,9 @@ void V1Display::update(const DisplayState& state) {
                                      volumeChanged,
                                      rssiNeedsUpdate,
                                      bogeyCounterChanged,
-                                     lastRestingMainVol,
-                                     lastRestingMuteVol,
-                                     lastRestingBogeyByte,
+                                     cache.lastRestingMainVol,
+                                     cache.lastRestingMuteVol,
+                                     cache.lastRestingBogeyByte,
                                      now,
                                      flushLeftStrip,
                                      flushRightStrip);
@@ -291,10 +341,10 @@ void V1Display::update(const DisplayState& state) {
     }
 
     perfRecordDisplayRenderPath(restingRenderPathForScenario());
-    recordDisplayRedrawReasonIf(firstUpdate, PerfDisplayRedrawReason::FirstRun);
+    recordDisplayRedrawReasonIf(cache.restingFirstUpdate, PerfDisplayRedrawReason::FirstRun);
     recordDisplayRedrawReasonIf(wasPersistedMode, PerfDisplayRedrawReason::LeavePersisted);
     recordDisplayRedrawReasonIf(leavingLiveMode, PerfDisplayRedrawReason::LeaveLive);
-    recordDisplayRedrawReasonIf(restingDebouncedBands != lastRestingDebouncedBands,
+    recordDisplayRedrawReasonIf(restingDebouncedBands != cache.lastRestingDebouncedBands,
                                 PerfDisplayRedrawReason::BandSetChange);
     recordDisplayRedrawReasonIf(arrowsChanged, PerfDisplayRedrawReason::ArrowChange);
     recordDisplayRedrawReasonIf(signalBarsChanged, PerfDisplayRedrawReason::SignalBarChange);
@@ -307,13 +357,13 @@ void V1Display::update(const DisplayState& state) {
                                 PerfDisplayRedrawReason::ForceRedraw);
 
     // Full redraw needed
-    firstUpdate = false;
-    lastRestingDebouncedBands = restingDebouncedBands;
-    lastRestingArrows = state.arrows;
-    lastRestingSignalBars = state.signalBars;
-    lastRestingMainVol = state.mainVolume;
-    lastRestingMuteVol = state.muteVolume;
-    lastRestingBogeyByte = state.bogeyCounterByte;
+    cache.restingFirstUpdate = false;
+    cache.lastRestingDebouncedBands = restingDebouncedBands;
+    cache.lastRestingArrows = state.arrows;
+    cache.lastRestingSignalBars = state.signalBars;
+    cache.lastRestingMainVol = state.mainVolume;
+    cache.lastRestingMuteVol = state.muteVolume;
+    cache.lastRestingBogeyByte = state.bogeyCounterByte;
     markRssiRefreshed(now);  // Reset RSSI timer on full redraw
     
     uint32_t stageStartUs = micros();
@@ -338,8 +388,13 @@ void V1Display::update(const DisplayState& state) {
     
     // Volume-zero warning: 15s delay → 10s flashing "VOL 0" → acknowledge
     bool proxyConnected = bleCtx_.proxyConnected;
-    bool showVolumeWarning = volZeroWarn.evaluate(
-        volZero, proxyConnected, preQuietActive_, play_vol0_beep);
+    bool showVolumeWarning = false;
+    if (!bleContextFresh) {
+        volZeroWarn.reset();
+    } else {
+        showVolumeWarning = volZeroWarn.evaluate(
+            volZero, proxyConnected, preQuietActive_, play_vol0_beep);
+    }
     
     if (showVolumeWarning) {
         drawVolumeZeroWarning();
@@ -393,6 +448,8 @@ void V1Display::update(const DisplayState& state) {
 }
 
 void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
+    DisplayRenderCache& cache = s_displayRenderCache;
+
     drawFrequency(freqMHz, band, muted, isPhotoRadar);
 
     const uint32_t nowMs = millis();
@@ -409,31 +466,24 @@ void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bo
     drawGpsIndicator();
     drawObdIndicator();
 
-    static bool badgeCacheValid = false;
-    static bool lastLockoutShown = false;
-    static bool lastGpsShown = false;
-    static uint8_t lastGpsSats = 0;
-    static bool lastObdShown = false;
-    static bool lastObdConnected = false;
-
     const bool badgeStripChanged =
-        !badgeCacheValid ||
+        !cache.badgeCacheValid ||
         forceBadgeFlush ||
-        (lockoutIndicatorShown_ != lastLockoutShown) ||
-        (gpsShow != lastGpsShown) ||
-        (gpsSats != lastGpsSats) ||
-        (obdShow != lastObdShown) ||
-        (obdConnected != lastObdConnected);
+        (lockoutIndicatorShown_ != cache.lastLockoutShown) ||
+        (gpsShow != cache.lastGpsShown) ||
+        (gpsSats != cache.lastGpsSats) ||
+        (obdShow != cache.lastObdShown) ||
+        (obdConnected != cache.lastObdConnected);
 
     if (badgeStripChanged) {
         // Top status strip containing GPS / lockout / OBD badges.
         flushRegion(120, 0, 320, 36);
-        badgeCacheValid = true;
-        lastLockoutShown = lockoutIndicatorShown_;
-        lastGpsShown = gpsShow;
-        lastGpsSats = gpsSats;
-        lastObdShown = obdShow;
-        lastObdConnected = obdConnected;
+        cache.badgeCacheValid = true;
+        cache.lastLockoutShown = lockoutIndicatorShown_;
+        cache.lastGpsShown = gpsShow;
+        cache.lastGpsSats = gpsSats;
+        cache.lastObdShown = obdShow;
+        cache.lastObdConnected = obdConnected;
     }
 
     if (frequencyRenderDirty) {
@@ -547,6 +597,8 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
 
 // Multi-alert update: draws priority alert with secondary alert cards below
 void V1Display::update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state) {
+    DisplayRenderCache& cache = s_displayRenderCache;
+
     // Check if we're transitioning FROM persisted mode (need full redraw to restore colors)
     bool wasPersistedMode = persistedMode;
     persistedMode = false;  // Not in persisted mode
@@ -582,27 +634,10 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
 
     char liveTopCounterChar = state.bogeyCounterChar;
     bool liveTopCounterDot = state.bogeyCounterDot;
-
-    // Change detection: check if we need to redraw
-    static AlertData lastPriority;
-    static uint8_t lastBogeyByte = 0;  // Track V1's bogey counter byte for change detection
-    static DisplayState lastMultiState;
-    static bool firstRun = true;
-    static AlertData lastSecondary[PacketParser::MAX_ALERTS];  // Track all 15 possible V1 alerts for change detection
-    static uint8_t lastArrows = 0;
-    static uint8_t lastSignalBars = 0;
-    static uint8_t lastActiveBands = 0;
     
     // Check if reset was requested (e.g., on V1 disconnect)
     if (dirty.resetTracking) {
-        lastPriority = AlertData();
-        lastBogeyByte = 0;
-        lastMultiState = DisplayState();
-        firstRun = true;
-        for (int i = 0; i < PacketParser::MAX_ALERTS; i++) lastSecondary[i] = AlertData();
-        lastArrows = 0;
-        lastSignalBars = 0;
-        lastActiveBands = 0;
+        cache.resetLiveTracking();
         dirty.resetTracking = false;
     }
     
@@ -616,14 +651,14 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     };
     
     // Always redraw on first run, entering live mode, or when transitioning from persisted mode
-    if (firstRun) { needsRedraw = true; firstRun = false; }
+    if (cache.liveFirstRun) { needsRedraw = true; cache.liveFirstRun = false; }
     else if (enteringLiveMode) { needsRedraw = true; }
     else if (wasPersistedMode) { needsRedraw = true; }
     // V1 is source of truth - always redraw when priority alert changes
     // Use frequency tolerance to avoid full redraws from V1 jitter
-    else if (freqDifferent(priority.frequency, lastPriority.frequency)) { needsRedraw = true; }
-    else if (priority.band != lastPriority.band) { needsRedraw = true; }
-    else if (state.muted != lastMultiState.muted) { needsRedraw = true; }
+    else if (freqDifferent(priority.frequency, cache.liveLastPriority.frequency)) { needsRedraw = true; }
+    else if (priority.band != cache.liveLastPriority.band) { needsRedraw = true; }
+    else if (state.muted != cache.liveLastMultiState.muted) { needsRedraw = true; }
     // Note: bogey counter changes are handled via incremental update (bogeyCounterChanged) for rapid response
     
     // Also check if any secondary alert changed (set-based, not order-based)
@@ -633,7 +668,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         // Compare counts first
         int lastAlertCount = 0;
         for (int i = 0; i < PacketParser::MAX_ALERTS; i++) {
-            if (lastSecondary[i].band != BAND_NONE) lastAlertCount++;
+            if (cache.liveLastSecondary[i].band != BAND_NONE) lastAlertCount++;
         }
         if (alertCount != lastAlertCount) {
             needsRedraw = true;
@@ -645,13 +680,14 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             for (int i = 0; i < alertCount && i < PacketParser::MAX_ALERTS && !needsRedraw; i++) {
                 bool foundInLast = false;
                 for (int j = 0; j < PacketParser::MAX_ALERTS; j++) {
-                    if (allAlerts[i].band == lastSecondary[j].band) {
+                    if (allAlerts[i].band == cache.liveLastSecondary[j].band) {
                         if (allAlerts[i].band == BAND_LASER) {
                             foundInLast = true;
                         } else {
-                            uint32_t diff = (allAlerts[i].frequency > lastSecondary[j].frequency) 
-                                ? (allAlerts[i].frequency - lastSecondary[j].frequency) 
-                                : (lastSecondary[j].frequency - allAlerts[i].frequency);
+                            uint32_t diff =
+                                (allAlerts[i].frequency > cache.liveLastSecondary[j].frequency)
+                                    ? (allAlerts[i].frequency - cache.liveLastSecondary[j].frequency)
+                                    : (cache.liveLastSecondary[j].frequency - allAlerts[i].frequency);
                             if (diff <= FREQ_TOLERANCE_MHZ) foundInLast = true;
                         }
                         if (foundInLast) break;
@@ -676,15 +712,14 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     } else {
         arrowsToShow = state.arrows;
     }
-    bool arrowsChanged = (arrowsToShow != lastArrows);
-    bool signalBarsChanged = (state.signalBars != lastSignalBars);
-    bool bandsChanged = (state.activeBands != lastActiveBands);
-    bool bogeyCounterChanged = (state.bogeyCounterByte != lastBogeyByte);
+    bool arrowsChanged = (arrowsToShow != cache.liveLastArrows);
+    bool signalBarsChanged = (state.signalBars != cache.liveLastSignalBars);
+    bool bandsChanged = (state.activeBands != cache.liveLastActiveBands);
+    bool bogeyCounterChanged = (state.bogeyCounterByte != cache.liveLastBogeyByte);
 
     // Volume tracking
-    static uint8_t lastMainVol = 255;
-    static uint8_t lastMuteVol = 255;
-    bool volumeChanged = (state.mainVolume != lastMainVol || state.muteVolume != lastMuteVol);
+    bool volumeChanged =
+        (state.mainVolume != cache.liveLastMainVol || state.muteVolume != cache.liveLastMuteVol);
     
     // Check if RSSI needs periodic refresh (every 2 seconds)
     unsigned long now = millis();
@@ -693,12 +728,11 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // Force periodic redraw when something is flashing (for blink animation)
     // Check if any arrows or bands are marked as flashing
     bool hasFlashing = (state.flashBits != 0) || (state.bandFlashBits != 0);
-    static unsigned long lastFlashRedraw = 0;
     bool needsFlashUpdate = false;
     if (hasFlashing) {
-        if (now - lastFlashRedraw >= 75) {  // Redraw at ~13Hz for smoother blink
+        if (now - cache.liveLastFlashRedraw >= 75) {  // Redraw at ~13Hz for smoother blink
             needsFlashUpdate = true;
-            lastFlashRedraw = now;
+            cache.liveLastFlashRedraw = now;
         }
     }
     
@@ -723,17 +757,17 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         bool flushRightStrip = false;
 
         if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
-            lastArrows = arrowsToShow;
+            cache.liveLastArrows = arrowsToShow;
             drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
             flushRightStrip = true;
         }
         if (signalBarsChanged) {
-            lastSignalBars = state.signalBars;
+            cache.liveLastSignalBars = state.signalBars;
             drawVerticalSignalBars(state.signalBars, state.signalBars, priority.band, state.muted);
             flushRightStrip = true;
         }
         if (bandsChanged || (needsFlashUpdate && state.bandFlashBits != 0)) {
-            lastActiveBands = state.activeBands;
+            cache.liveLastActiveBands = state.activeBands;
             drawBandIndicators(state.activeBands, state.muted, state.bandFlashBits);
             flushLeftStrip = true;
         }
@@ -744,9 +778,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
                                      volumeChanged,
                                      rssiNeedsUpdate,
                                      bogeyCounterChanged,
-                                     lastMainVol,
-                                     lastMuteVol,
-                                     lastBogeyByte,
+                                     cache.liveLastMainVol,
+                                     cache.liveLastMuteVol,
+                                     cache.liveLastBogeyByte,
                                      now,
                                      flushLeftStrip,
                                      flushRightStrip);
@@ -759,12 +793,12 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     }
 
     perfRecordDisplayRenderPath(liveRenderPathForScenario());
-    recordDisplayRedrawReasonIf(firstRun, PerfDisplayRedrawReason::FirstRun);
+    recordDisplayRedrawReasonIf(cache.liveFirstRun, PerfDisplayRedrawReason::FirstRun);
     recordDisplayRedrawReasonIf(enteringLiveMode, PerfDisplayRedrawReason::EnterLive);
     recordDisplayRedrawReasonIf(wasPersistedMode, PerfDisplayRedrawReason::LeavePersisted);
-    recordDisplayRedrawReasonIf(freqDifferent(priority.frequency, lastPriority.frequency),
+    recordDisplayRedrawReasonIf(freqDifferent(priority.frequency, cache.liveLastPriority.frequency),
                                 PerfDisplayRedrawReason::FrequencyChange);
-    recordDisplayRedrawReasonIf(priority.band != lastPriority.band,
+    recordDisplayRedrawReasonIf(priority.band != cache.liveLastPriority.band,
                                 PerfDisplayRedrawReason::BandSetChange);
     recordDisplayRedrawReasonIf(arrowsChanged, PerfDisplayRedrawReason::ArrowChange);
     recordDisplayRedrawReasonIf(signalBarsChanged,
@@ -776,24 +810,24 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     recordDisplayRedrawReasonIf(needsFlashUpdate, PerfDisplayRedrawReason::FlashTick);
     recordDisplayRedrawReasonIf(requestedTrackingReset ||
                                     secondarySetChanged ||
-                                    (state.muted != lastMultiState.muted),
+                                    (state.muted != cache.liveLastMultiState.muted),
                                 PerfDisplayRedrawReason::ForceRedraw);
 
     // Full redraw needed - store current state for next comparison
-    lastPriority = priority;
-    lastBogeyByte = state.bogeyCounterByte;
-    lastMultiState = state;
+    cache.liveLastPriority = priority;
+    cache.liveLastBogeyByte = state.bogeyCounterByte;
+    cache.liveLastMultiState = state;
     // Use same arrowsToShow logic as computed above for change detection
-    lastArrows = arrowsToShow;
-    lastSignalBars = state.signalBars;
-    lastActiveBands = state.activeBands;
-    lastMainVol = state.mainVolume;
-    lastMuteVol = state.muteVolume;
+    cache.liveLastArrows = arrowsToShow;
+    cache.liveLastSignalBars = state.signalBars;
+    cache.liveLastActiveBands = state.activeBands;
+    cache.liveLastMainVol = state.mainVolume;
+    cache.liveLastMuteVol = state.muteVolume;
     markRssiRefreshed(now);  // Reset RSSI timer on full redraw
     // Store all alerts for change detection (V1 supports up to 15)
     // We only display primary + 2 cards, but track all for accurate change detection
     for (int i = 0; i < PacketParser::MAX_ALERTS; i++) {
-        lastSecondary[i] = (i < alertCount) ? allAlerts[i] : AlertData();
+        cache.liveLastSecondary[i] = (i < alertCount) ? allAlerts[i] : AlertData();
     }
     
     DISP_PERF_START();

@@ -73,6 +73,12 @@ void V1Display::drawRssiIndicator(int rssi) {
         FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
         return;  // Don't draw anything
     }
+
+    if (!hasFreshBleContext(millis())) {
+        FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
+        return;
+    }
+
     // Clear the area first
     FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
     
@@ -197,7 +203,7 @@ void V1Display::drawProfileIndicator(int slot) {
 
     drawWiFiIndicator();
     drawBatteryIndicator();
-    setBLEProxyStatus(bleProxyEnabled, bleProxyClientConnected);
+    setBLEProxyStatus(bleProxyEnabled, bleProxyClientConnected, bleReceivingData);
     
 #else
     // Original position for smaller displays (top area)
@@ -267,7 +273,7 @@ void V1Display::drawProfileIndicator(int slot) {
     drawBatteryIndicator();
 
     // Draw BLE proxy indicator using the latest status
-    setBLEProxyStatus(bleProxyEnabled, bleProxyClientConnected);
+    setBLEProxyStatus(bleProxyEnabled, bleProxyClientConnected, bleReceivingData);
 #endif
 }
 
@@ -480,13 +486,16 @@ void V1Display::drawBLEProxyIndicator() {
         return;
     }
 
+    const bool bleContextFresh = hasFreshBleContext(millis());
+
     // Icon color from settings: connected vs disconnected
     // When connected but not receiving data, dim further to show "stale" state
     uint16_t btColor;
     if (bleProxyClientConnected) {
         // Connected: bright green when receiving, dimmed when stale
-        btColor = bleReceivingData ? dimColor(s.colorBleConnected, 85)
-                                   : dimColor(s.colorBleConnected, 40);  // Much dimmer when no data
+        const bool receivingData = bleReceivingData && bleContextFresh;
+        btColor = receivingData ? dimColor(s.colorBleConnected, 85)
+                                : dimColor(s.colorBleConnected, 40);  // Much dimmer when no data
     } else {
         btColor = dimColor(s.colorBleDisconnected, 85);
     }
