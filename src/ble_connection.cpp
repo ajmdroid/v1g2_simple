@@ -738,7 +738,8 @@ void V1BLEClient::logConnParams(const char* tag) {
 
 // ---- notify callback --------------------------------------------------
 
-// NOTE: setupCharacteristics() has been replaced by the step machine (executeSubscribeStep)
+// Subscription setup now runs through the non-blocking executeSubscribeStep()
+// state machine instead of a single monolithic helper.
 void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar, 
                                   uint8_t* pData, 
                                   size_t length, 

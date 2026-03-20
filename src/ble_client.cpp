@@ -280,24 +280,6 @@ static int restoreBondsFromSD() {
     }
     return restored;
 }
-// Task to restart advertising after delay
-// Pattern derived from v1g2-t4s3 reference implementation for NimBLE 2.x dual-role stability
-// Only restarts if no client is connected
-[[maybe_unused]] static void restartAdvertisingTask(void* param) {
-    vTaskDelay(pdMS_TO_TICKS(150));
-    
-    // Don't restart advertising if a client is already connected
-    NimBLEServer* pServer = NimBLEDevice::getServer();
-    if (pServer && pServer->getConnectedCount() > 0) {
-        Serial.println("[ADV_TASK] Client connected, skipping advertising restart");
-        vTaskDelete(NULL);
-        return;
-    }
-    
-    NimBLEDevice::startAdvertising(0);  // 0 = advertise indefinitely (no timeout)
-    vTaskDelete(NULL);
-}
-
 // Spinlock for deferring settings writes from BLE scan callbacks
 portMUX_TYPE pendingAddrMux = portMUX_INITIALIZER_UNLOCKED;
 // Spinlock for proxy command telemetry (avoid Serial in BLE callback)

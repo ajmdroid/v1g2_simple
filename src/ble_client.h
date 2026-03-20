@@ -581,7 +581,6 @@ private:
                                bool isNotify);
     
     bool connectToServer();
-    bool setupCharacteristics();
 };
 
 // Refresh the shared NimBLE bond backup snapshot after an external module

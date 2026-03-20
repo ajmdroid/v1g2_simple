@@ -473,7 +473,7 @@ struct PerfExtendedMetrics {
     // BLE connection path timing (for diagnosing reconnect stalls)
     uint32_t bleConnectMaxUs = 0;     // pClient->connect() duration
     uint32_t bleDiscoveryMaxUs = 0;   // discoverAttributes() duration
-    uint32_t bleSubscribeMaxUs = 0;   // setupCharacteristics() duration
+    uint32_t bleSubscribeMaxUs = 0;   // Max executeSubscribeStep() duration
     uint32_t bleProcessMaxUs = 0;     // bleClient.process() total duration
     uint32_t dispPipeMaxUs = 0;       // displayPipelineModule.handleParsed() duration
     uint32_t touchMaxUs = 0;          // touchUiModule.process() duration
