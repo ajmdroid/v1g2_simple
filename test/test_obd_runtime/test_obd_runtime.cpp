@@ -214,6 +214,8 @@ void test_manual_pair_scan_request_sets_pending_and_starts_scanning() {
     obdRuntimeModule.begin(true, "", 0, -80);
 
     TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(1000));
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::PREEMPT_PROXY_FOR_MANUAL_SCAN,
+                      obdRuntimeModule.getBleArbitrationRequest());
 
     ObdRuntimeStatus status = obdRuntimeModule.snapshot(1000);
     TEST_ASSERT_TRUE(status.manualScanPending);
@@ -226,6 +228,42 @@ void test_manual_pair_scan_request_sets_pending_and_starts_scanning() {
     status = obdRuntimeModule.snapshot(1001);
     TEST_ASSERT_TRUE(status.manualScanPending);
     TEST_ASSERT_TRUE(status.scanInProgress);
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::PREEMPT_PROXY_FOR_MANUAL_SCAN,
+                      obdRuntimeModule.getBleArbitrationRequest());
+}
+
+void test_manual_pair_scan_waits_for_proxy_to_be_idle() {
+    obdRuntimeModule.begin(true, "", 0, -80);
+    TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(1000));
+
+    obdRuntimeModule.update(1001, makeBleContext(true, true, true, false, true, false));
+    TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::PREEMPT_PROXY_FOR_MANUAL_SCAN,
+                      obdRuntimeModule.getBleArbitrationRequest());
+
+    obdRuntimeModule.update(1002, makeBleContext(true, true, true, false, false, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::PREEMPT_PROXY_FOR_MANUAL_SCAN,
+                      obdRuntimeModule.getBleArbitrationRequest());
+
+    obdRuntimeModule.update(1003, makeBleContext(true, true, true, false, false, false));
+    TEST_ASSERT_EQUAL(ObdConnectionState::SCANNING, obdRuntimeModule.getState());
+}
+
+void test_manual_pair_found_device_releases_preempt_and_holds_connect_flow() {
+    obdRuntimeModule.begin(true, "", 0, -80);
+
+    TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(1000));
+    obdRuntimeModule.update(1001, makeBleContext(true, true, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::SCANNING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::PREEMPT_PROXY_FOR_MANUAL_SCAN,
+                      obdRuntimeModule.getBleArbitrationRequest());
+
+    obdRuntimeModule.onDeviceFound("OBDLink CX", "B4:C1:38:00:11:33", -50);
+    obdRuntimeModule.update(2000, makeBleContext(true, true, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD,
+                      obdRuntimeModule.getBleArbitrationRequest());
 }
 
 void test_manual_pair_scan_timeout_preserves_saved_device_and_cache() {
@@ -250,6 +288,8 @@ void test_manual_pair_scan_timeout_preserves_saved_device_and_cache() {
     TEST_ASSERT_EQUAL_STRING("1FTW1ET7DFA", obdRuntimeModule.getCachedVinPrefix11());
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C),
                             obdRuntimeModule.getCachedEotProfileId());
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::NONE,
+                      obdRuntimeModule.getBleArbitrationRequest());
 }
 
 void test_manual_pair_connect_failure_preserves_saved_device_and_returns_idle() {
@@ -276,6 +316,8 @@ void test_manual_pair_connect_failure_preserves_saved_device_and_returns_idle() 
     TEST_ASSERT_EQUAL_STRING("A4:C1:38:00:11:22", obdRuntimeModule.getSavedAddress());
     TEST_ASSERT_EQUAL_STRING("1FTW1ET7DFA", obdRuntimeModule.getCachedVinPrefix11());
     TEST_ASSERT_EQUAL_UINT8(0, status.connectAttempts);
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::NONE,
+                      obdRuntimeModule.getBleArbitrationRequest());
 }
 
 void test_manual_pair_success_commits_candidate_only_when_polling_begins() {
@@ -1039,6 +1081,8 @@ int main() {
     RUN_TEST(test_scan_finds_device_transitions_to_connecting);
     RUN_TEST(test_scan_request_retries_when_start_scan_fails_once);
     RUN_TEST(test_manual_pair_scan_request_sets_pending_and_starts_scanning);
+    RUN_TEST(test_manual_pair_scan_waits_for_proxy_to_be_idle);
+    RUN_TEST(test_manual_pair_found_device_releases_preempt_and_holds_connect_flow);
     RUN_TEST(test_manual_pair_scan_timeout_preserves_saved_device_and_cache);
     RUN_TEST(test_manual_pair_connect_failure_preserves_saved_device_and_returns_idle);
     RUN_TEST(test_manual_pair_success_commits_candidate_only_when_polling_begins);

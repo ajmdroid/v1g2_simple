@@ -214,7 +214,7 @@ void handleApiScan(WebServer& server,
         WifiApiResponse::sendJsonDocument(server, 409, doc);
         return;
     }
-    if (!obdRuntime.startScan()) {
+    if (!obdRuntime.requestManualPairScan(millis())) {
         JsonDocument doc;
         doc["ok"] = false;
         doc["message"] = "OBD scan already requested or in progress";

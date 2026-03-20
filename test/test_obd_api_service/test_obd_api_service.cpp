@@ -213,12 +213,17 @@ void test_scan_reports_requested_when_obd_is_enabled() {
     TEST_ASSERT_TRUE(responseContains(server, "\"requested\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"scanInProgress\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"message\":\"OBD scan requested\""));
+    const ObdRuntimeStatus status = obdRuntimeModule.snapshot(mockMillis);
+    TEST_ASSERT_TRUE(status.manualScanPending);
+    TEST_ASSERT_FALSE(status.scanInProgress);
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::PREEMPT_PROXY_FOR_MANUAL_SCAN,
+                      obdRuntimeModule.getBleArbitrationRequest());
 }
 
 void test_scan_rejects_when_request_already_pending() {
     WebServer server(80);
     obdRuntimeModule.begin(true, "", 0, -80);
-    TEST_ASSERT_TRUE(obdRuntimeModule.startScan());
+    TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(mockMillis));
 
     ObdApiService::handleApiScan(server,
                                  obdRuntimeModule,

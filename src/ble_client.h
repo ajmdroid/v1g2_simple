@@ -532,6 +532,7 @@ private:
     bool proxyNoClientTimeoutLatched = false;
     bool proxyClientConnectedOnceThisBoot = false;
     bool proxySuppressedForObdHold_ = false;
+    bool proxyDisconnectRequestedForObdPreempt_ = false;
     uint8_t proxySuppressedResumeReasonCode_ = 0;
     ObdBleArbitrationRequest obdBleArbitrationRequest_ = ObdBleArbitrationRequest::NONE;
     

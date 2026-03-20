@@ -37,6 +37,7 @@ void V1BLEClient::process() {
             lastDisplayPipelineDurationUs.store(0, std::memory_order_relaxed);
             connectBurstStableLoopCount = 0;
             proxyClientConnected = false;
+            proxyDisconnectRequestedForObdPreempt_ = false;
             pRemoteService = nullptr;
             pDisplayDataChar = nullptr;
             pCommandChar = nullptr;
@@ -152,13 +153,16 @@ void V1BLEClient::process() {
 
     const bool holdProxyForAutoObd =
         obdBleArbitrationRequest_ == ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD;
+    const bool preemptProxyForManualScan =
+        obdBleArbitrationRequest_ == ObdBleArbitrationRequest::PREEMPT_PROXY_FOR_MANUAL_SCAN;
+    const bool suppressPassiveProxy = holdProxyForAutoObd || preemptProxyForManualScan;
     const bool proxyConnected = proxyClientConnected.load(std::memory_order_relaxed);
     NimBLEAdvertising* pProxyAdvertising =
         (proxyEnabled && proxyServerInitialized) ? NimBLEDevice::getAdvertising() : nullptr;
     const bool proxyAdvertisingActive = pProxyAdvertising && pProxyAdvertising->isAdvertising();
 
-    if (holdProxyForAutoObd && isConnected() && proxyEnabled && proxyServerInitialized && !proxyConnected) {
-        if (proxyAdvertisingActive) {
+    if (suppressPassiveProxy && isConnected() && proxyEnabled && proxyServerInitialized) {
+        if (!proxyConnected && proxyAdvertisingActive) {
             proxySuppressedForObdHold_ = true;
             if (proxySuppressedResumeReasonCode_ ==
                 static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown)) {
@@ -168,7 +172,21 @@ void V1BLEClient::process() {
             stopProxyAdvertisingFromMainLoop(
                 static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopOther));
         }
-    } else if (!holdProxyForAutoObd &&
+        if (preemptProxyForManualScan &&
+            proxyConnected &&
+            !proxyDisconnectRequestedForObdPreempt_ &&
+            pServer &&
+            pServer->getConnectedCount() > 0) {
+            proxyDisconnectRequestedForObdPreempt_ = true;
+            proxySuppressedForObdHold_ = true;
+            if (proxySuppressedResumeReasonCode_ ==
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown)) {
+                proxySuppressedResumeReasonCode_ =
+                    static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartRetryWindow);
+            }
+            (void)pServer->disconnect(pServer->getPeerInfo(0));
+        }
+    } else if (!suppressPassiveProxy &&
                proxySuppressedForObdHold_ &&
                isConnected() &&
                proxyEnabled &&
@@ -216,7 +234,7 @@ void V1BLEClient::process() {
     // Handle deferred proxy advertising start (non-blocking replacement for delay(1500))
     if (!proxyNoClientTimeoutLatched &&
         proxyAdvertisingStartMs != 0 && static_cast<int32_t>(millis() - proxyAdvertisingStartMs) >= 0) {
-        if (holdProxyForAutoObd && !proxyConnected) {
+        if (suppressPassiveProxy && !proxyConnected) {
             proxySuppressedForObdHold_ = true;
             if (proxySuppressedResumeReasonCode_ ==
                 static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown)) {

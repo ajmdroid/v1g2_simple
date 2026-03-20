@@ -425,6 +425,7 @@ private:
     bool pendingDeviceFound_ = false;
     bool scanRequested_ = false;
     bool manualScanPending_ = false;
+    bool manualScanPreemptProxy_ = false;
     bool manualCandidateValid_ = false;
     bool connectTargetFromManualCandidate_ = false;
     bool preferWarmReconnect_ = false;

@@ -71,10 +71,22 @@ void test_disconnect_callback_no_longer_stops_proxy_advertising_inline() {
     TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("enqueueProxyCallbackEvent"));
 }
 
+void test_manual_obd_preempt_disconnects_proxy_from_main_loop() {
+    const std::filesystem::path source =
+        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_runtime.cpp");
+    const std::string text = readFile(source);
+    const std::string body = extractFunctionBody(text, "void V1BLEClient::process()");
+
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("PREEMPT_PROXY_FOR_MANUAL_SCAN"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("stopProxyAdvertisingFromMainLoop("));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("pServer->disconnect("));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_async_connect_does_not_delete_bond);
     RUN_TEST(test_disconnect_callback_still_defers_bond_heal);
     RUN_TEST(test_disconnect_callback_no_longer_stops_proxy_advertising_inline);
+    RUN_TEST(test_manual_obd_preempt_disconnects_proxy_from_main_loop);
     return UNITY_END();
 }

@@ -744,8 +744,14 @@ void V1BLEClient::setObdBleArbitrationRequest(ObdBleArbitrationRequest request) 
         return;
     }
 
-    if (obdBleArbitrationRequest_ == ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD &&
-        request != ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD) {
+    const bool releasingAutoHold =
+        obdBleArbitrationRequest_ == ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD &&
+        request != ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD;
+    const bool releasingManualPreempt =
+        obdBleArbitrationRequest_ == ObdBleArbitrationRequest::PREEMPT_PROXY_FOR_MANUAL_SCAN &&
+        request == ObdBleArbitrationRequest::NONE;
+
+    if (releasingAutoHold || releasingManualPreempt) {
         proxySuppressedForObdHold_ = true;
         if (proxySuppressedResumeReasonCode_ ==
             static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown)) {

@@ -135,6 +135,7 @@ void V1BLEClient::handleProxyCallbackEvent(const ProxyCallbackEvent& event) {
             }
             setProxyClientConnected(true);
             proxySuppressedForObdHold_ = false;
+            proxyDisconnectRequestedForObdPreempt_ = false;
             proxySuppressedResumeReasonCode_ =
                 static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
             clearProxyAdvertisingWindowState();
@@ -146,9 +147,11 @@ void V1BLEClient::handleProxyCallbackEvent(const ProxyCallbackEvent& event) {
 
         case ProxyCallbackEventType::APP_DISCONNECTED:
             proxyClientConnected = false;
+            proxyDisconnectRequestedForObdPreempt_ = false;
             clearProxyAdvertisingWindowState();
             if (connected.load(std::memory_order_relaxed) && !wifiPriorityMode) {
-                if (obdBleArbitrationRequest_ == ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD) {
+                if (obdBleArbitrationRequest_ == ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD ||
+                    obdBleArbitrationRequest_ == ObdBleArbitrationRequest::PREEMPT_PROXY_FOR_MANUAL_SCAN) {
                     proxySuppressedForObdHold_ = true;
                     proxySuppressedResumeReasonCode_ =
                         static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartAppDisconnect);
@@ -164,6 +167,7 @@ void V1BLEClient::handleProxyCallbackEvent(const ProxyCallbackEvent& event) {
         case ProxyCallbackEventType::V1_DISCONNECTED:
             proxyClientConnected = false;
             proxySuppressedForObdHold_ = false;
+            proxyDisconnectRequestedForObdPreempt_ = false;
             proxySuppressedResumeReasonCode_ =
                 static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
             stopProxyAdvertisingFromMainLoop(

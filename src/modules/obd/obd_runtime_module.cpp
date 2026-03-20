@@ -271,6 +271,7 @@ void ObdRuntimeModule::resetForBegin() {
     pendingDeviceFound_ = false;
     scanRequested_ = false;
     manualScanPending_ = false;
+    manualScanPreemptProxy_ = false;
     manualCandidateValid_ = false;
     connectTargetFromManualCandidate_ = false;
     preferWarmReconnect_ = false;
@@ -683,6 +684,7 @@ void ObdRuntimeModule::clearConnectTarget() {
 
 void ObdRuntimeModule::clearManualScanState() {
     manualScanPending_ = false;
+    manualScanPreemptProxy_ = false;
     manualCandidateValid_ = false;
     manualCandidateAddress_[0] = '\0';
     manualCandidateAddrType_ = 0;
@@ -2054,7 +2056,6 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
     const bool v1ConnectBurstSettling = bootReadyContext.v1ConnectBurstSettling;
     const bool proxyAdvertising = bootReadyContext.proxyAdvertising;
     const bool proxyClientConnected = bootReadyContext.proxyClientConnected;
-    (void)proxyAdvertising;
 
     if (bootReady && bootReadyMs_ == 0) {
         bootReadyMs_ = nowMs == 0 ? 1 : nowMs;
@@ -2065,6 +2066,9 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
 
     switch (state_) {
         case ObdConnectionState::IDLE:
+            if (manualScanPreemptProxy_ && (proxyAdvertising || proxyClientConnected)) {
+                break;
+            }
             if (scanRequested_ && bleScanIdle) {
                 if (startBleScan()) {
                     scanRequested_ = false;
@@ -2105,6 +2109,7 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
                     manualCandidateAddrType_ = pendingAddrType_;
                     manualCandidateValid_ = true;
                     setConnectTarget(manualCandidateAddress_, manualCandidateAddrType_, true);
+                    manualScanPreemptProxy_ = false;
                 } else {
                     setSavedAddressFromBuffer(pendingAddress_);
                     savedAddrType_ = pendingAddrType_;
@@ -2306,6 +2311,9 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
 }
 
 ObdBleArbitrationRequest ObdRuntimeModule::getBleArbitrationRequest() const {
+    if (manualScanPreemptProxy_) {
+        return ObdBleArbitrationRequest::PREEMPT_PROXY_FOR_MANUAL_SCAN;
+    }
     return shouldHoldProxyForAutoObd()
                ? ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD
                : ObdBleArbitrationRequest::NONE;
@@ -2378,7 +2386,8 @@ bool ObdRuntimeModule::startScan() {
 }
 
 bool ObdRuntimeModule::requestManualPairScan(uint32_t nowMs) {
-    if (!enabled_ || isBleConnected() || manualScanPending_) {
+    if (!enabled_ || isBleConnected() || manualScanPending_ || scanRequested_ ||
+        state_ == ObdConnectionState::SCANNING) {
         return false;
     }
 
@@ -2395,6 +2404,7 @@ bool ObdRuntimeModule::requestManualPairScan(uint32_t nowMs) {
     connectAttempts_ = 0;
     clearManualScanState();
     manualScanPending_ = true;
+    manualScanPreemptProxy_ = true;
     scanRequested_ = true;
     state_ = ObdConnectionState::IDLE;
     stateEnteredMs_ = nowMs;
