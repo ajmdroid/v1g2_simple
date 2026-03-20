@@ -60,6 +60,7 @@ bool streamOpenFile(WebServer& server,
                     const char* contentType,
                     size_t fileSize,
                     bool gzip) {
+    constexpr size_t kStreamChunkBytes = 256;
     server.setContentLength(fileSize);
     if (gzip) {
         server.sendHeader("Content-Encoding", "gzip");
@@ -70,7 +71,9 @@ bool streamOpenFile(WebServer& server,
     server.send(200, contentType, "");
 
     auto client = server.client();
-    uint8_t buf[1024];
+    // WiFi static-file serving is Tier 5. Prefer smaller loopTask chunks over
+    // a large transient stack buffer on the WebServer path.
+    uint8_t buf[kStreamChunkBytes];
     size_t bytesSent = 0;
     while (file.available()) {
         const size_t len = file.read(buf, sizeof(buf));

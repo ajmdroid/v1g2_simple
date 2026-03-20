@@ -33,8 +33,19 @@ void test_perf_sd_snapshot_stays_on_flat_path() {
             "populateFlatSnapshot(snapshot, ctx, PerfRuntimeSnapshotMode::CaptureAndResetWindowPeaks);"));
 }
 
+void test_wifi_file_streaming_uses_small_chunk_buffer() {
+    const std::string source = readTextFile("src/wifi_manager_helpers.cpp");
+
+    TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/wifi_manager_helpers.cpp");
+    TEST_ASSERT_EQUAL(std::string::npos, source.find("uint8_t buf[1024];"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                          source.find("constexpr size_t kStreamChunkBytes = 256;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, source.find("uint8_t buf[kStreamChunkBytes];"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_perf_sd_snapshot_stays_on_flat_path);
+    RUN_TEST(test_wifi_file_streaming_uses_small_chunk_buffer);
     return UNITY_END();
 }
