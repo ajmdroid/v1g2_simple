@@ -2,6 +2,7 @@
 #include "debug_perf_files_service.h"
 #include "debug_soak_metrics_cache.h"
 #include <ArduinoJson.h>
+#include "../wifi/wifi_json_document.h"
 #include <LittleFS.h>
 #include <cmath>
 #include "json_stream_response.h"
@@ -625,7 +626,7 @@ void appendSoakMetricsDoc(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& s
 }  // anonymous namespace
 namespace DebugApiService {
 static void sendMetrics(WebServer& server) {
-    JsonDocument doc;
+    WifiJson::Document doc;
     PerfRuntimeMetricsSnapshot snapshot{};
     perfCaptureRuntimeMetricsSnapshot(snapshot);
     appendFullMetricsDoc(doc, snapshot);
@@ -694,7 +695,7 @@ void handleApiMetricsReset(WebServer& server,
     handleMetricsReset(server);
 }
 void handleProxyAdvertisingControl(WebServer& server) {
-    JsonDocument body;
+    WifiJson::Document body;
     bool hasBody = false;
     if (!parseRequestBody(server, body, hasBody)) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON body\"}");
@@ -706,7 +707,7 @@ void handleProxyAdvertisingControl(WebServer& server) {
         enable,
         static_cast<uint8_t>(enable ? PerfProxyAdvertisingTransitionReason::StartDirect
                                     : PerfProxyAdvertisingTransitionReason::StopOther));
-    JsonDocument doc;
+    WifiJson::Document doc;
     doc["success"] = ok;
     doc["requestedEnabled"] = enable;
     doc["advertising"] = bleClient.isProxyAdvertising();
@@ -727,7 +728,7 @@ void handleApiProxyAdvertisingControl(WebServer& server,
 void sendPanic(WebServer& server, bool soakMode) {
     // Return last panic info from LittleFS (written by logPanicBreadcrumbs on crash recovery)
     // with a lightweight soak mode that avoids streaming large panic strings.
-    JsonDocument doc;
+    WifiJson::Document doc;
     // Get last reset reason
     esp_reset_reason_t reason = esp_reset_reason();
     const char* reasonStr = "UNKNOWN";

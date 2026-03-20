@@ -2,6 +2,7 @@
 #include "debug_perf_files_service.h"
 
 #include <ArduinoJson.h>
+#include "../wifi/wifi_json_document.h"
 #include <LittleFS.h>
 #include <cmath>
 #include "json_stream_response.h"
@@ -1014,7 +1015,7 @@ void appendScenarioStatus(JsonDocument& doc, uint32_t nowMs) {
 }
 
 void sendV1ScenarioList(WebServer& server) {
-    JsonDocument doc;
+    WifiJson::Document doc;
     doc["success"] = true;
     doc["count"] = static_cast<uint32_t>(sizeof(kScenarioCatalog) / sizeof(kScenarioCatalog[0]));
     JsonObject tuning = doc["timingTuning"].to<JsonObject>();
@@ -1034,14 +1035,14 @@ void sendV1ScenarioList(WebServer& server) {
 }
 
 void sendV1ScenarioStatus(WebServer& server) {
-    JsonDocument doc;
+    WifiJson::Document doc;
     doc["success"] = true;
     appendScenarioStatus(doc, millis());
     sendJsonStream(server, doc);
 }
 
 void handleV1ScenarioLoad(WebServer& server) {
-    JsonDocument body;
+    WifiJson::Document body;
     bool hasBody = false;
     if (!parseRequestBody(server, body, hasBody)) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON body\"}");
@@ -1078,7 +1079,7 @@ void handleV1ScenarioLoad(WebServer& server) {
         startScenarioPlayback();
     }
 
-    JsonDocument doc;
+    WifiJson::Document doc;
     doc["success"] = true;
     doc["action"] = "load";
     appendScenarioStatus(doc, millis());
@@ -1086,7 +1087,7 @@ void handleV1ScenarioLoad(WebServer& server) {
 }
 
 void handleV1ScenarioStart(WebServer& server) {
-    JsonDocument body;
+    WifiJson::Document body;
     bool hasBody = false;
     if (!parseRequestBody(server, body, hasBody)) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON body\"}");
@@ -1134,7 +1135,7 @@ void handleV1ScenarioStart(WebServer& server) {
         return;
     }
 
-    JsonDocument doc;
+    WifiJson::Document doc;
     doc["success"] = true;
     doc["action"] = "start";
     appendScenarioStatus(doc, millis());
@@ -1143,7 +1144,7 @@ void handleV1ScenarioStart(WebServer& server) {
 
 void handleV1ScenarioStop(WebServer& server) {
     stopScenarioPlayback();
-    JsonDocument doc;
+    WifiJson::Document doc;
     doc["success"] = true;
     doc["action"] = "stop";
     appendScenarioStatus(doc, millis());

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <vector>
 #include <esp_heap_caps.h>
+#include "../wifi/wifi_json_document.h"
 
 #include "../../storage_manager.h"
 #include "../../perf_sd_logger.h"
@@ -169,7 +170,7 @@ void sendPerfFileError(WebServer& server,
                        const char* operation = nullptr,
                        const String& fileName = String(),
                        bool retryable = false) {
-    JsonDocument doc;
+    WifiJson::Document doc;
     doc["success"] = false;
     doc["error"] = errorMessage;
     doc["reasonCode"] = reasonCode;
@@ -185,7 +186,7 @@ void sendPerfFileError(WebServer& server,
 
 void sendPerfFilesList(WebServer& server) {
     const uint16_t limit = perfFilesLimitFromRequest(server);
-    JsonDocument doc;
+    WifiJson::Document doc;
     doc["success"] = true;
     doc["storageReady"] = storageManager.isReady();
     doc["onSdCard"] = storageManager.isSDCard();
@@ -509,7 +510,7 @@ void handlePerfFileDelete(WebServer& server) {
         invalidatePerfFileCache();
     }
 
-    JsonDocument doc;
+    WifiJson::Document doc;
     doc["success"] = ok;
     doc["name"] = requestedName;
     if (!ok) {
