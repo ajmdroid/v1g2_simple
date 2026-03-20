@@ -28,6 +28,7 @@
 #include "touch_handler.h"
 #include "v1_devices.h"
 #include "v1_profiles.h"
+#include "wifi_manager.h"
 #include "modules/auto_push/auto_push_module.h"
 #include "modules/alert_persistence/alert_persistence_module.h"
 #include "modules/lockout/lockout_boot_storage.h"
@@ -108,6 +109,63 @@ bool loadPendingLearnerJsonDocument(JsonDocument& outDoc) {
 }
 
 }  // namespace
+
+void prepareForShutdown(void* /*context*/) {
+    if (wifiManager.isWifiServiceActive()) {
+        Serial.println("[Battery] Stopping WiFi before shutdown flush...");
+        wifiManager.stopSetupMode(true, "poweroff");
+        delay(100);
+    }
+
+    Serial.println("[Battery] Saving settings...");
+    settingsManager.save();
+
+    Serial.println("[Battery] Forcing final SD settings backup...");
+    settingsManager.backupToSD();
+
+    if (storageManager.isReady()) {
+        fs::FS* fs = storageManager.getFilesystem();
+        if (fs) {
+            auto flushDirtyLockoutData = [&]() {
+                if (lockoutStore.isDirty()) {
+                    if (lockoutStore.saveBinary(*fs, LockoutStore::kBinaryPath)) {
+                        lockoutStore.clearDirty();
+                        Serial.printf("[Battery] Flushed %lu lockout zones\n",
+                                      static_cast<unsigned long>(lockoutStore.stats().entriesSaved));
+                    } else {
+                        Serial.println("[Battery] Lockout zone flush failed");
+                    }
+                }
+
+                if (lockoutLearner.isDirty()) {
+                    JsonDocument doc;
+                    lockoutLearner.toJson(doc);
+                    if (StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc)) {
+                        lockoutLearner.clearDirty();
+                        Serial.printf("[Battery] Flushed %u pending candidates\n",
+                                      static_cast<unsigned>(lockoutLearner.activeCandidateCount()));
+                    } else {
+                        Serial.println("[Battery] Learner candidate flush failed");
+                    }
+                }
+            };
+
+            if (storageManager.isSDCard()) {
+                StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
+                if (!sdLock) {
+                    Serial.println("[Battery] WARNING: Could not acquire SD mutex for shutdown flush");
+                } else {
+                    flushDirtyLockoutData();
+                }
+            } else {
+                flushDirtyLockoutData();
+            }
+        }
+    }
+
+    Serial.println("[Battery] Persisting time to NVS...");
+    timeService.persistCurrentTime();
+}
 
 void onV1ConnectImmediate() {
     mainRuntimeState.v1ConnectedAtMs = millis();

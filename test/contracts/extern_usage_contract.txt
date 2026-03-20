@@ -15,7 +15,7 @@ kind=header file=include/audio_internals.h line=65 text=extern StaticTask_t g_sd
 kind=header file=include/ble_internals.h line=169 text=extern portMUX_TYPE pendingAddrMux;
 kind=header file=include/ble_internals.h line=171 text=extern portMUX_TYPE proxyCmdMux;
 kind=header file=include/ble_internals.h line=173 text=extern V1BLEClient* instancePtr;
-kind=header file=include/display_dirty_flags.h line=40 text=extern DisplayDirtyFlags dirty;
+kind=header file=include/display_dirty_flags.h line=42 text=extern DisplayDirtyFlags dirty;
 kind=header file=include/display_palette.h line=19 text=extern V1Display* g_displayInstance;
 kind=header file=include/display_vol_warn.h line=84 text=extern VolumeZeroWarning volZeroWarn;
 kind=header file=include/main_globals.h line=56 text=extern LoopConnectionEarlyModule loopConnectionEarlyModule;
@@ -63,20 +63,17 @@ kind=header file=include/wifi_manager_internals.h line=21 text=extern bool isDis
 kind=header file=include/wifi_manager_internals.h line=22 text=extern bool isColorPreviewRunning();
 kind=header file=include/wifi_manager_internals.h line=23 text=extern void cancelDisplayPreview();
 kind=header file=include/wifi_manager_internals.h line=24 text=extern void cancelColorPreview();
-kind=source file=src/battery_manager.cpp line=24 text=extern V1Display display;
-kind=source file=src/battery_manager.cpp line=25 text=extern SettingsManager settingsManager;
-kind=source file=src/battery_manager.cpp line=26 text=extern WiFiManager wifiManager;
 kind=header file=src/battery_manager.h line=101 text=extern BatteryManager batteryManager;
 kind=header file=src/battery_manager.h line=104 text=extern TwoWire tca9554Wire;
 kind=header file=src/battery_manager.h line=105 text=extern SemaphoreHandle_t tca9554WireMutex;
 kind=source file=src/ble_connection.cpp line=16 text=extern int backupBondsToSD();
-kind=header file=src/display.h line=229 text=extern V1Display display;
+kind=header file=src/display.h line=246 text=extern V1Display display;
 kind=header file=src/display_font_manager.h line=123 text=extern DisplayFontManager fontMgr;
-kind=source file=src/display_status_bar.cpp line=137 text=extern SettingsManager settingsManager;
-kind=source file=src/display_status_bar.cpp line=277 text=extern BatteryManager batteryManager;
-kind=source file=src/display_status_bar.cpp line=278 text=extern SettingsManager settingsManager;
-kind=source file=src/display_status_bar.cpp line=552 text=extern WiFiManager wifiManager;
-kind=source file=src/display_status_bar.cpp line=553 text=extern SettingsManager settingsManager;
+kind=source file=src/display_status_bar.cpp line=151 text=extern SettingsManager settingsManager;
+kind=source file=src/display_status_bar.cpp line=286 text=extern BatteryManager batteryManager;
+kind=source file=src/display_status_bar.cpp line=287 text=extern SettingsManager settingsManager;
+kind=source file=src/display_status_bar.cpp line=564 text=extern WiFiManager wifiManager;
+kind=source file=src/display_status_bar.cpp line=565 text=extern SettingsManager settingsManager;
 kind=source file=src/main_boot.cpp line=22 text=extern V1Display display;
 kind=header file=src/modules/gps/gps_observation_log.h line=73 text=extern GpsObservationLog gpsObservationLog;
 kind=header file=src/modules/gps/gps_runtime_module.h line=149 text=extern GpsRuntimeModule gpsRuntimeModule;
@@ -90,18 +87,18 @@ kind=header file=src/modules/lockout/signal_capture_module.h line=46 text=extern
 kind=header file=src/modules/lockout/signal_observation_log.h line=86 text=extern SignalObservationLog signalObservationLog;
 kind=header file=src/modules/lockout/signal_observation_sd_logger.h line=86 text=extern SignalObservationSdLogger signalObservationSdLogger;
 kind=header file=src/modules/obd/obd_ble_client.h line=120 text=extern ObdBleClient obdBleClient;
-kind=header file=src/modules/obd/obd_runtime_module.h line=404 text=extern ObdRuntimeModule obdRuntimeModule;
+kind=header file=src/modules/obd/obd_runtime_module.h line=511 text=extern ObdRuntimeModule obdRuntimeModule;
 kind=header file=src/modules/speed/speed_source_selector.h line=72 text=extern SpeedSourceSelector speedSourceSelector;
-kind=source file=src/perf_metrics.cpp line=23 text=extern SystemEventBus systemEventBus;
-kind=header file=src/perf_metrics.h line=497 text=extern PerfExtendedMetrics perfExtended;
-kind=header file=src/perf_metrics.h line=587 text=extern PerfCounters perfCounters;
-kind=header file=src/perf_metrics.h line=614 text=extern PerfLatency perfLatency;
-kind=header file=src/perf_metrics.h line=618 text=extern bool perfDebugEnabled; // Runtime debug print enable
-kind=header file=src/perf_metrics.h line=619 text=extern uint32_t perfLastReportMs; // Last report timestamp
-kind=header file=src/perf_sd_logger.h line=218 text=extern PerfSdLogger perfSdLogger;
-kind=header file=src/settings.h line=705 text=extern SettingsManager settingsManager;
+kind=source file=src/perf_metrics.cpp line=29 text=extern SystemEventBus systemEventBus;
+kind=header file=src/perf_metrics.h line=677 text=extern PerfExtendedMetrics perfExtended;
+kind=header file=src/perf_metrics.h line=783 text=extern PerfCounters perfCounters;
+kind=header file=src/perf_metrics.h line=1266 text=extern PerfLatency perfLatency;
+kind=header file=src/perf_metrics.h line=1270 text=extern bool perfDebugEnabled; // Runtime debug print enable
+kind=header file=src/perf_metrics.h line=1271 text=extern uint32_t perfLastReportMs; // Last report timestamp
+kind=header file=src/perf_sd_logger.h line=68 text=extern PerfSdLogger perfSdLogger;
+kind=header file=src/settings.h line=716 text=extern SettingsManager settingsManager;
 kind=header file=src/storage_manager.h line=299 text=extern StorageManager storageManager;
 kind=header file=src/time_service.h line=68 text=extern TimeService timeService;
-kind=header file=src/v1_devices.h line=65 text=extern V1DeviceStore v1DeviceStore;
+kind=header file=src/v1_devices.h line=72 text=extern V1DeviceStore v1DeviceStore;
 kind=header file=src/v1_profiles.h line=172 text=extern V1ProfileManager v1ProfileManager;
-kind=header file=src/wifi_manager.h line=296 text=extern WiFiManager wifiManager;
+kind=header file=src/wifi_manager.h line=311 text=extern WiFiManager wifiManager;

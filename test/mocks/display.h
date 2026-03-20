@@ -50,6 +50,7 @@ public:
     int drawProfileIndicatorCalls = 0;
     int lastProfileIndicatorSlot = -1;
     int showLowBatteryCalls = 0;
+    int showShutdownCalls = 0;
     int setLockoutMutedCalls = 0;
     bool lastLockoutMutedValue = false;
     int setLockoutIndicatorCalls = 0;
@@ -113,6 +114,7 @@ public:
         drawProfileIndicatorCalls = 0;
         lastProfileIndicatorSlot = -1;
         showLowBatteryCalls = 0;
+        showShutdownCalls = 0;
         setLockoutMutedCalls = 0;
         lastLockoutMutedValue = false;
         setLockoutIndicatorCalls = 0;
@@ -183,6 +185,7 @@ public:
     void drawObdIndicator() { drawObdIndicatorCalls++; }
     void drawBatteryIndicator() { drawBatteryIndicatorCalls++; }
     void showLowBattery() { showLowBatteryCalls++; }
+    void showShutdown() { showShutdownCalls++; }
     void drawProfileIndicator(int slot) {
         drawProfileIndicatorCalls++;
         lastProfileIndicatorSlot = slot;

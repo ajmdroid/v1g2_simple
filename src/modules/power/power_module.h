@@ -8,9 +8,13 @@
 
 class PowerModule {
 public:
+    using ShutdownPreparationCallback = void (*)(void*);
+
     void begin(BatteryManager* batteryMgr,
                V1Display* disp,
                SettingsManager* settingsMgr);
+
+    void setShutdownPreparationCallback(ShutdownPreparationCallback callback, void* context);
 
     // Log initial battery status after display init.
     void logStartupStatus();
@@ -30,6 +34,8 @@ private:
     BatteryManager* battery = nullptr;
     V1Display* display = nullptr;
     SettingsManager* settings = nullptr;
+    ShutdownPreparationCallback shutdownPreparationCallback = nullptr;
+    void* shutdownPreparationContext = nullptr;
 
     bool lowBatteryWarningShown = false;
     unsigned long criticalBatteryTime = 0;

@@ -44,6 +44,9 @@ void onV1Connected();
 /// Mount storage + initialize profile/device stores and restore dependent settings.
 void initializeStorageAndProfiles();
 
+/// Prepare persistence/runtime services for a power-off sequence before the final hardware tail runs.
+void prepareForShutdown(void* context);
+
 /// Apply persisted lockout policy and hydrate lockout zones from storage.
 void applyLockoutPolicyAndLoadZonesFromStorage();
 

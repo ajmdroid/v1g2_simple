@@ -9,11 +9,18 @@
 #endif
 
 void PowerModule::performShutdownRequest() {
-    if (!battery) {
-        return;
+    if (shutdownPreparationCallback) {
+        shutdownPreparationCallback(shutdownPreparationContext);
     }
 
-    battery->powerOff();
+    if (display) {
+        display->showShutdown();
+        delay(1000);
+    }
+
+    if (battery) {
+        battery->powerOff();
+    }
 }
 
 void PowerModule::begin(BatteryManager* batteryMgr,
@@ -22,6 +29,11 @@ void PowerModule::begin(BatteryManager* batteryMgr,
     battery = batteryMgr;
     display = disp;
     settings = settingsMgr;
+}
+
+void PowerModule::setShutdownPreparationCallback(ShutdownPreparationCallback callback, void* context) {
+    shutdownPreparationCallback = callback;
+    shutdownPreparationContext = context;
 }
 
 void PowerModule::logStartupStatus() {

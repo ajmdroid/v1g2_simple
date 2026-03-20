@@ -67,7 +67,7 @@ public:
     // Keep system powered on (call early in setup when on battery)
     bool latchPowerOn();
     
-    // Power off the system (only works when on battery)
+    // Execute the final hardware-only power-off tail after shutdown prep completes
     bool powerOff();
     
     // Check if power button is pressed

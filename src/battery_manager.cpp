@@ -3,13 +3,7 @@
  */
 
 #include "battery_manager.h"
-#include "display.h"
-#include "settings.h"
-#include "time_service.h"
-#include "storage_manager.h"
-#include "wifi_manager.h"
-#include "modules/lockout/lockout_store.h"
-#include "modules/lockout/lockout_learner.h"
+#include "../include/display_driver.h"
 #include <Wire.h>
 #include <esp_adc/adc_oneshot.h>
 #include <esp_adc/adc_cali.h>
@@ -19,11 +13,6 @@
 #include <esp_system.h>
 
 // Only compile for Waveshare 3.49 board
-
-// External references for graceful shutdown
-extern V1Display display;
-extern SettingsManager settingsManager;
-extern WiFiManager wifiManager;
 
 BatteryManager batteryManager;
 
@@ -459,91 +448,24 @@ bool BatteryManager::latchPowerOn() {
 }
 
 bool BatteryManager::powerOff() {
-    // Even if USB is present, attempt a graceful shutdown and drop the latch.
-    // This covers cases where onBattery was mis-detected (e.g., button held during boot).
-    Serial.println("[Battery] Initiating graceful shutdown...");
+    // Callers must run shutdown preparation before entering this final
+    // hardware-only tail.
+    Serial.println("[Battery] Executing final power-off sequence...");
 
-    // Stop WiFi first to free internal SRAM before SD/NVS flush operations.
-    if (wifiManager.isWifiServiceActive()) {
-        Serial.println("[Battery] Stopping WiFi before shutdown flush...");
-        wifiManager.stopSetupMode(true, "poweroff");
-        delay(100);
-    }
-    
-    // Step 1: Save settings to ensure state is preserved
-    Serial.println("[Battery] Saving settings...");
-    settingsManager.save();
-    // Force a final SD snapshot even if NVS persistence failed during save().
-    Serial.println("[Battery] Forcing final SD settings backup...");
-    settingsManager.backupToSD();
-    
-    // Step 1b: Flush dirty lockout zones and learner candidates to storage
-    if (storageManager.isReady()) {
-        fs::FS* fs = storageManager.getFilesystem();
-        if (fs) {
-            auto flushDirtyLockoutData = [&]() {
-                if (lockoutStore.isDirty()) {
-                    if (lockoutStore.saveBinary(*fs, LockoutStore::kBinaryPath)) {
-                        lockoutStore.clearDirty();
-                        Serial.printf("[Battery] Flushed %lu lockout zones\n",
-                                      static_cast<unsigned long>(lockoutStore.stats().entriesSaved));
-                    } else {
-                        Serial.println("[Battery] Lockout zone flush failed");
-                    }
-                }
-
-                if (lockoutLearner.isDirty()) {
-                    JsonDocument doc;
-                    lockoutLearner.toJson(doc);
-                    if (StorageManager::writeJsonFileAtomic(*fs, "/v1simple_lockout_pending.json", doc)) {
-                        lockoutLearner.clearDirty();
-                        Serial.printf("[Battery] Flushed %u pending candidates\n",
-                                      static_cast<unsigned>(lockoutLearner.activeCandidateCount()));
-                    } else {
-                        Serial.println("[Battery] Learner candidate flush failed");
-                    }
-                }
-            };
-
-            if (storageManager.isSDCard()) {
-                StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
-                if (!sdLock) {
-                    Serial.println("[Battery] WARNING: Could not acquire SD mutex for shutdown flush");
-                } else {
-                    flushDirtyLockoutData();
-                }
-            } else {
-                flushDirtyLockoutData();
-            }
-        }
-    }
-
-    // Step 1c: Persist current time to NVS (fallback if deep sleep battery dies)
-    Serial.println("[Battery] Persisting time to NVS...");
-    timeService.persistCurrentTime();
-    
-    // Step 2: Show shutdown screen
-    Serial.println("[Battery] Showing shutdown screen...");
-    display.showShutdown();
-    
-    // Step 3: Brief delay for user feedback
-    delay(1000);
-    
-    // Step 4: Fade backlight (optional smooth transition)
+    // Fade backlight (optional smooth transition)
     Serial.println("[Battery] Fading backlight...");
     for (int i = 0; i <= 255; i += 5) {
         analogWrite(LCD_BL, i);  // Inverted: 255 = off
         delay(10);
     }
 
-    // Ensure screen is fully blanked before final power cut / deep sleep
-    display.clear();
+    // Ensure the panel backlight is fully blanked before final power cut / deep sleep.
     analogWrite(LCD_BL, 255);  // Backlight off (inverted)
     pinMode(LCD_BL, OUTPUT);
     digitalWrite(LCD_BL, HIGH);  // Force off (inverted backlight)
     delay(50);
     
-    // Step 5: Choose shutdown strategy based on battery health.
+    // Choose shutdown strategy based on battery health.
     // Critical battery: hard latch drop to protect the cell from deep discharge.
     // Normal shutdown:  deep sleep with latch ON so the 18650 keeps the ESP32-S3's
     //                   internal RTC running.  settimeofday() persists through deep

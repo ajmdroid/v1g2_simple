@@ -21,6 +21,24 @@ BatteryManager battery;
 V1Display display;
 SettingsManager testSettings;
 PowerModule module;
+struct ShutdownPrepState {
+    int calls = 0;
+    int showShutdownCallsAtPrep = -1;
+    int powerOffCallsAtPrep = -1;
+};
+
+ShutdownPrepState shutdownPrepState;
+
+void recordShutdownPreparation(void* context) {
+    auto* state = static_cast<ShutdownPrepState*>(context);
+    if (!state) {
+        return;
+    }
+
+    state->calls++;
+    state->showShutdownCallsAtPrep = display.showShutdownCalls;
+    state->powerOffCallsAtPrep = battery.powerOffCalls;
+}
 
 void setTime(unsigned long nowMs) {
     mockMillis = nowMs;
@@ -45,6 +63,7 @@ void setUp() {
 
     testSettings = SettingsManager{};
     testSettings.settings.autoPowerOffMinutes = 10;
+    shutdownPrepState = ShutdownPrepState{};
 
     module = PowerModule{};
     module.begin(&battery, &display, &testSettings);
@@ -65,7 +84,29 @@ void test_critical_battery_shows_warning_before_shutdown() {
 void test_perform_shutdown_request_delegates_to_battery_power_off() {
     module.performShutdownRequest();
 
+    TEST_ASSERT_EQUAL(1, display.showShutdownCalls);
     TEST_ASSERT_TRUE(battery.powerOffCalled);
+    TEST_ASSERT_EQUAL(1, battery.powerOffCalls);
+}
+
+void test_set_shutdown_preparation_callback_runs_before_shutdown_tail() {
+    module.setShutdownPreparationCallback(recordShutdownPreparation, &shutdownPrepState);
+
+    module.performShutdownRequest();
+
+    TEST_ASSERT_EQUAL(1, shutdownPrepState.calls);
+    TEST_ASSERT_EQUAL(0, shutdownPrepState.showShutdownCallsAtPrep);
+    TEST_ASSERT_EQUAL(0, shutdownPrepState.powerOffCallsAtPrep);
+    TEST_ASSERT_EQUAL(1, display.showShutdownCalls);
+    TEST_ASSERT_EQUAL(1, battery.powerOffCalls);
+}
+
+void test_null_shutdown_preparation_callback_is_tolerated() {
+    module.setShutdownPreparationCallback(nullptr, nullptr);
+
+    module.performShutdownRequest();
+
+    TEST_ASSERT_EQUAL(1, display.showShutdownCalls);
     TEST_ASSERT_EQUAL(1, battery.powerOffCalls);
 }
 
@@ -75,6 +116,7 @@ void test_power_button_shutdown_request_routes_through_power_module() {
 
     module.process(1000);
 
+    TEST_ASSERT_EQUAL(1, display.showShutdownCalls);
     TEST_ASSERT_TRUE(battery.powerOffCalled);
     TEST_ASSERT_EQUAL(1, battery.powerOffCalls);
     TEST_ASSERT_EQUAL(0, display.showLowBatteryCalls);
@@ -86,6 +128,7 @@ void test_critical_battery_shutdown_occurs_after_grace_period() {
     module.process(1000);
     module.process(6001);
 
+    TEST_ASSERT_EQUAL(1, display.showShutdownCalls);
     TEST_ASSERT_TRUE(battery.powerOffCalled);
     TEST_ASSERT_EQUAL(1, battery.powerOffCalls);
 }
@@ -165,6 +208,7 @@ void test_auto_power_off_shuts_down_after_timeout() {
     advanceTime(30001);
     module.process(mockMillis);
 
+    TEST_ASSERT_EQUAL(1, display.showShutdownCalls);
     TEST_ASSERT_TRUE(battery.powerOffCalled);
     TEST_ASSERT_EQUAL(1, battery.powerOffCalls);
 }
@@ -193,6 +237,7 @@ void test_critical_battery_still_wins_while_auto_power_timer_is_running() {
     advanceTime(5001);
     module.process(mockMillis);
 
+    TEST_ASSERT_EQUAL(1, display.showShutdownCalls);
     TEST_ASSERT_TRUE(battery.powerOffCalled);
 }
 
@@ -200,6 +245,8 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_critical_battery_shows_warning_before_shutdown);
     RUN_TEST(test_perform_shutdown_request_delegates_to_battery_power_off);
+    RUN_TEST(test_set_shutdown_preparation_callback_runs_before_shutdown_tail);
+    RUN_TEST(test_null_shutdown_preparation_callback_is_tolerated);
     RUN_TEST(test_power_button_shutdown_request_routes_through_power_module);
     RUN_TEST(test_critical_battery_shutdown_occurs_after_grace_period);
     RUN_TEST(test_critical_battery_recovery_clears_warning_without_shutdown);
