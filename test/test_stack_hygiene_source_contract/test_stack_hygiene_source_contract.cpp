@@ -1,0 +1,40 @@
+#include <unity.h>
+
+#include <fstream>
+#include <string>
+
+namespace {
+
+std::string readTextFile(const char* path) {
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream.is_open()) {
+        return {};
+    }
+    return std::string((std::istreambuf_iterator<char>(stream)),
+                       std::istreambuf_iterator<char>());
+}
+
+}  // namespace
+
+void setUp() {}
+void tearDown() {}
+
+void test_perf_sd_snapshot_stays_on_flat_path() {
+    const std::string source = readTextFile("src/perf_metrics.cpp");
+
+    TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_metrics.cpp");
+    TEST_ASSERT_EQUAL(std::string::npos,
+                      source.find("PerfRuntimeMetricsSnapshot runtimeSnapshot{};"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                          source.find("const RuntimeSnapshotCaptureContext ctx = captureRuntimeSnapshotContext();"));
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find(
+            "populateFlatSnapshot(snapshot, ctx, PerfRuntimeSnapshotMode::CaptureAndResetWindowPeaks);"));
+}
+
+int main() {
+    UNITY_BEGIN();
+    RUN_TEST(test_perf_sd_snapshot_stays_on_flat_path);
+    return UNITY_END();
+}

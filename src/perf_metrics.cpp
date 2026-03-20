@@ -868,10 +868,11 @@ static void populateRuntimeSnapshot(PerfRuntimeMetricsSnapshot& snapshot,
 }
 
 static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
-    PerfRuntimeMetricsSnapshot runtimeSnapshot{};
-    perfCaptureRuntimeMetricsSnapshot(runtimeSnapshot,
-                                      PerfRuntimeSnapshotMode::CaptureAndResetWindowPeaks);
-    snapshot = runtimeSnapshot.flat;
+    // loopTask has an 8 KB stack budget. Keep the periodic SD snapshot on the
+    // flat-only path so Tier 4 observability work cannot pay for the larger
+    // runtime wrapper when only the CSV payload is needed.
+    const RuntimeSnapshotCaptureContext ctx = captureRuntimeSnapshotContext();
+    populateFlatSnapshot(snapshot, ctx, PerfRuntimeSnapshotMode::CaptureAndResetWindowPeaks);
 }
 
 } // namespace
