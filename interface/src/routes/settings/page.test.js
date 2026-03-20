@@ -55,12 +55,16 @@ async function startRestore(contents, name = 'backup.json') {
 	await fireEvent.click(await screen.findByRole('button', { name: /restore from backup/i }));
 }
 
-async function openWifiModalAndConnect() {
+async function openWifiModalAndSelectNetwork() {
 	const scanButton = await screen.findByRole('button', { name: /scan for networks/i });
 	await fireEvent.click(scanButton);
 	await vi.advanceTimersByTimeAsync(1000);
 	await screen.findByText('Select WiFi Network');
 	await fireEvent.click(await screen.findByRole('button', { name: /BenchAP/i }));
+}
+
+async function openWifiModalAndConnect() {
+	await openWifiModalAndSelectNetwork();
 	await fireEvent.click(await screen.findByRole('button', { name: /^Connect$/i }));
 }
 
@@ -375,6 +379,182 @@ describe('settings route page', () => {
 		const stoppedCalls = countCalls(fetchMock, '/api/wifi/status');
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(countCalls(fetchMock, '/api/wifi/status')).toBe(stoppedCalls);
+
+		unmount();
+	});
+
+	it('prevents overlapping wifi connect requests from double-clicking connect', async () => {
+		vi.useFakeTimers();
+		const connectRequest = createDeferred();
+		const fetchMock = installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/device/settings',
+					respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true })
+				},
+				{
+					method: 'GET',
+					match: '/api/wifi/status',
+					respond: jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' })
+				},
+				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) },
+				{
+					method: 'POST',
+					match: '/api/wifi/scan',
+					respond: jsonResponse({
+						scanning: false,
+						networks: [{ ssid: 'BenchAP', secure: false, rssi: -42 }]
+					})
+				},
+				{ method: 'POST', match: '/api/wifi/connect', respond: () => connectRequest.promise }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await openWifiModalAndSelectNetwork();
+		const connectButton = await screen.findByRole('button', { name: /^Connect$/i });
+		await fireEvent.click(connectButton);
+		await fireEvent.click(connectButton);
+
+		expect(countCalls(fetchMock, '/api/wifi/connect')).toBe(1);
+
+		connectRequest.resolve(jsonResponse({ success: false }, 500));
+		await screen.findByText('Failed to initiate connection');
+
+		unmount();
+	});
+
+	it('prevents overlapping wifi connect requests from repeated enter presses', async () => {
+		vi.useFakeTimers();
+		const connectRequest = createDeferred();
+		const fetchMock = installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/device/settings',
+					respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true })
+				},
+				{
+					method: 'GET',
+					match: '/api/wifi/status',
+					respond: jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' })
+				},
+				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) },
+				{
+					method: 'POST',
+					match: '/api/wifi/scan',
+					respond: jsonResponse({
+						scanning: false,
+						networks: [{ ssid: 'BenchAP', secure: true, rssi: -42 }]
+					})
+				},
+				{ method: 'POST', match: '/api/wifi/connect', respond: () => connectRequest.promise }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await openWifiModalAndSelectNetwork();
+		const passwordInput = await screen.findByLabelText('Password');
+		await fireEvent.input(passwordInput, { target: { value: 'secret123' } });
+		await fireEvent.keyDown(passwordInput, { key: 'Enter' });
+		await fireEvent.keyDown(passwordInput, { key: 'Enter' });
+
+		expect(countCalls(fetchMock, '/api/wifi/connect')).toBe(1);
+
+		connectRequest.resolve(jsonResponse({ success: false }, 500));
+		await screen.findByText('Failed to initiate connection');
+
+		unmount();
+	});
+
+	it('does not post wifi connect when enter is pressed with an empty secure password', async () => {
+		vi.useFakeTimers();
+		const fetchMock = installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/device/settings',
+					respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true })
+				},
+				{
+					method: 'GET',
+					match: '/api/wifi/status',
+					respond: jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' })
+				},
+				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) },
+				{
+					method: 'POST',
+					match: '/api/wifi/scan',
+					respond: jsonResponse({
+						scanning: false,
+						networks: [{ ssid: 'BenchAP', secure: true, rssi: -42 }]
+					})
+				}
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await openWifiModalAndSelectNetwork();
+		const passwordInput = await screen.findByLabelText('Password');
+		await fireEvent.keyDown(passwordInput, { key: 'Enter' });
+
+		expect(countCalls(fetchMock, '/api/wifi/connect')).toBe(0);
+
+		unmount();
+	});
+
+	it('keeps wifi modal controls inert during an active connect attempt', async () => {
+		vi.useFakeTimers();
+		const connectRequest = createDeferred();
+		installFetchMock(
+			[
+				{
+					method: 'GET',
+					match: '/api/device/settings',
+					respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true })
+				},
+				{
+					method: 'GET',
+					match: '/api/wifi/status',
+					respond: jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' })
+				},
+				{ method: 'GET', match: '/api/status', respond: jsonResponse({ time: { valid: false } }) },
+				{
+					method: 'POST',
+					match: '/api/wifi/scan',
+					respond: jsonResponse({
+						scanning: false,
+						networks: [{ ssid: 'BenchAP', secure: false, rssi: -42 }]
+					})
+				},
+				{ method: 'POST', match: '/api/wifi/connect', respond: () => connectRequest.promise }
+			],
+			jsonResponse({})
+		);
+		const { unmount } = render(Page);
+
+		await openWifiModalAndSelectNetwork();
+		await fireEvent.click(await screen.findByRole('button', { name: /^Connect$/i }));
+
+		const backButton = await screen.findByRole('button', { name: /^Back$/i });
+		const closeButton = await screen.findByRole('button', { name: /^Close$/i });
+		await waitFor(() => {
+			expect(backButton).toBeDisabled();
+			expect(closeButton).toBeDisabled();
+		});
+
+		await fireEvent.click(backButton);
+		await fireEvent.click(closeButton);
+		await fireEvent.click(screen.getByRole('presentation'));
+		expect(screen.getByText('Select WiFi Network')).toBeInTheDocument();
+		expect(screen.getByText((_, node) => node?.textContent === 'Connect to BenchAP')).toBeInTheDocument();
+
+		connectRequest.resolve(jsonResponse({ success: false }, 500));
+		await screen.findByText('Failed to initiate connection');
 
 		unmount();
 	});

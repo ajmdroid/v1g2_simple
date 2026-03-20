@@ -13,6 +13,29 @@
 		onconnectToNetwork,
 		oncloseWifiModal
 	} = $props();
+
+	function handlePasswordKeydown(event) {
+		if (event.key !== 'Enter' || wifiConnecting || (selectedNetwork?.secure && !wifiPassword)) {
+			return;
+		}
+
+		onconnectToNetwork();
+	}
+
+	function handleBack() {
+		if (wifiConnecting) return;
+		selectedNetwork = null;
+	}
+
+	function handleClose() {
+		if (wifiConnecting) return;
+		oncloseWifiModal();
+	}
+
+	function handleBackdropClick() {
+		if (wifiConnecting) return;
+		oncloseWifiModal();
+	}
 </script>
 
 {#if open}
@@ -40,7 +63,7 @@
 								class="input input-bordered"
 								bind:value={wifiPassword}
 								placeholder="Enter WiFi password"
-								onkeydown={(event) => event.key === 'Enter' && onconnectToNetwork()}
+								onkeydown={handlePasswordKeydown}
 							/>
 						</div>
 					{:else}
@@ -48,7 +71,7 @@
 					{/if}
 
 					<div class="flex gap-2 justify-end">
-						<button class="btn btn-ghost" onclick={() => (selectedNetwork = null)}>
+						<button class="btn btn-ghost" onclick={handleBack} disabled={wifiConnecting}>
 							Back
 						</button>
 						<button class="btn btn-primary" onclick={onconnectToNetwork} disabled={wifiConnecting || (selectedNetwork.secure && !wifiPassword)}>
@@ -90,9 +113,9 @@
 			{/if}
 
 			<div class="modal-action">
-				<button class="btn" onclick={oncloseWifiModal}>Close</button>
+				<button class="btn" onclick={handleClose} disabled={wifiConnecting}>Close</button>
 			</div>
 		</div>
-		<div class="modal-backdrop bg-black/50" role="presentation" onclick={oncloseWifiModal}></div>
+		<div class="modal-backdrop bg-black/50" role="presentation" onclick={handleBackdropClick}></div>
 	</div>
 {/if}

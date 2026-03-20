@@ -108,6 +108,17 @@
 		wifiConnectPollStartedMs = 0;
 	}
 
+	function finishWifiConnectAttempt({ closeModal = false } = {}) {
+		stopWifiPoll();
+		wifiConnecting = false;
+
+		if (closeModal) {
+			showWifiModal = false;
+			selectedNetwork = null;
+			wifiPassword = '';
+		}
+	}
+
 	function isWifiConnectTerminalState(state) {
 		return ['connected', 'failed', 'disabled', 'disconnected', 'unknown'].includes(state);
 	}
@@ -225,49 +236,51 @@
 	}
 	
 	async function connectToNetwork() {
-		if (!selectedNetwork) return;
-		
+		if (!selectedNetwork || wifiConnecting || (selectedNetwork.secure && !wifiPassword)) return;
+
+		const ssid = selectedNetwork.ssid;
+		const password = wifiPassword;
 		wifiConnecting = true;
+
 		try {
 			const res = await fetchWithTimeout('/api/wifi/connect', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					ssid: selectedNetwork.ssid,
-					password: wifiPassword
-				})
+				body: JSON.stringify({ ssid, password })
 			});
-			
-			if (res.ok) {
-				message = { type: 'success', text: `Connecting to ${selectedNetwork.ssid}...` };
-				// Start polling for connection status
-				stopWifiPoll();
-				wifiConnectPollStartedMs = Date.now();
-				wifiPoll = createPoll(async () => {
-					await fetchWifiStatus();
-					if (wifiStatus.state === 'connected') {
-						stopWifiPoll();
-						showWifiModal = false;
-						message = { type: 'success', text: `Connected to ${wifiStatus.connectedSSID}!` };
-					} else if (wifiStatus.state === 'failed') {
-						stopWifiPoll();
-						message = { type: 'error', text: 'Connection failed. Check password.' };
-					} else if (
-						isWifiConnectTerminalState(wifiStatus.state) ||
-						Date.now() - wifiConnectPollStartedMs >= WIFI_CONNECT_TIMEOUT_MS
-					) {
-						stopWifiPoll();
-						message = { type: 'error', text: WIFI_CONNECT_TIMEOUT_TEXT };
-					}
-				}, WIFI_CONNECT_POLL_INTERVAL_MS);
-				wifiPoll.start();
-			} else {
+
+			if (!res.ok) {
 				message = { type: 'error', text: 'Failed to initiate connection' };
+				return;
 			}
+
+			message = { type: 'success', text: `Connecting to ${ssid}...` };
+			stopWifiPoll();
+			wifiConnectPollStartedMs = Date.now();
+			wifiPoll = createPoll(async () => {
+				await fetchWifiStatus();
+
+				if (wifiStatus.state === 'connected') {
+					finishWifiConnectAttempt({ closeModal: true });
+					message = { type: 'success', text: `Connected to ${wifiStatus.connectedSSID}!` };
+				} else if (wifiStatus.state === 'failed') {
+					finishWifiConnectAttempt();
+					message = { type: 'error', text: 'Connection failed. Check password.' };
+				} else if (
+					isWifiConnectTerminalState(wifiStatus.state) ||
+					Date.now() - wifiConnectPollStartedMs >= WIFI_CONNECT_TIMEOUT_MS
+				) {
+					finishWifiConnectAttempt();
+					message = { type: 'error', text: WIFI_CONNECT_TIMEOUT_TEXT };
+				}
+			}, WIFI_CONNECT_POLL_INTERVAL_MS);
+			wifiPoll.start();
 		} catch (e) {
 			message = { type: 'error', text: 'Connection error' };
 		} finally {
-			wifiConnecting = false;
+			if (!wifiPoll) {
+				wifiConnecting = false;
+			}
 		}
 	}
 	
@@ -312,6 +325,8 @@
 	}
 	
 	function closeWifiModal() {
+		if (wifiConnecting) return;
+
 		showWifiModal = false;
 		selectedNetwork = null;
 		wifiPassword = '';
