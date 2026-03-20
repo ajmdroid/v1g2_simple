@@ -347,6 +347,32 @@ void test_alert_stream_aux0_junk_gated_before_41032() {
     TEST_ASSERT_FALSE(state.hasPhotoAlert);
 }
 
+void test_alert_stream_malformed_version_does_not_overwrite_gating_state() {
+    PacketParser parser;
+
+    const auto validVersion = makePacket(PACKET_ID_VERSION, makeVersionPayload('4', '1', '0', '3', '5'));
+    const auto malformedVersion = makePacket(
+        PACKET_ID_VERSION,
+        {0x00, static_cast<uint8_t>('V'), static_cast<uint8_t>('4'), static_cast<uint8_t>('1'),
+         0xFF, static_cast<uint8_t>('9'), static_cast<uint8_t>('9')});
+    const auto row = makePacket(PACKET_ID_ALERT_DATA, makeAlertPayload(1, 1, 24150, 0x90, 0x80, 0x84, 0xC3));
+
+    TEST_ASSERT_TRUE(parser.parse(validVersion.data(), validVersion.size()));
+    TEST_ASSERT_TRUE(parser.parse(malformedVersion.data(), malformedVersion.size()));
+    TEST_ASSERT_TRUE(parser.parse(row.data(), row.size()));
+
+    const DisplayState& state = parser.getDisplayState();
+    TEST_ASSERT_TRUE(state.hasV1Version);
+    TEST_ASSERT_EQUAL_UINT32(41035, state.v1FirmwareVersion);
+    TEST_ASSERT_TRUE(state.hasJunkAlert);
+    TEST_ASSERT_FALSE(state.hasPhotoAlert);
+
+    const AlertData priority = parser.getPriorityAlert();
+    TEST_ASSERT_TRUE(priority.isPriority);
+    TEST_ASSERT_TRUE(priority.isJunk);
+    TEST_ASSERT_EQUAL_UINT8(0, priority.photoType);
+}
+
 void test_alert_stream_ku_raw_flag_is_preserved_without_forcing_mute() {
     PacketParser parser;
 
@@ -692,6 +718,7 @@ int main() {
     RUN_TEST(test_alert_stream_aux0_decodes_junk_photo_and_priority);
     RUN_TEST(test_alert_stream_aux0_photo_gated_before_41037);
     RUN_TEST(test_alert_stream_aux0_junk_gated_before_41032);
+    RUN_TEST(test_alert_stream_malformed_version_does_not_overwrite_gating_state);
     RUN_TEST(test_alert_stream_ku_raw_flag_is_preserved_without_forcing_mute);
     RUN_TEST(test_alert_stream_ku_tag_requires_exact_raw_band_value);
     RUN_TEST(test_alert_stream_without_row_priority_picks_first_usable_alert);

@@ -73,6 +73,10 @@ char decodeBogeyCounterByte(uint8_t bogeyImage, bool& hasDot) {
     }
 }
 
+bool isAsciiDigit(uint8_t v) {
+    return v >= '0' && v <= '9';
+}
+
 } // namespace
 
 PacketParser::PacketParser()
@@ -140,28 +144,31 @@ bool PacketParser::parse(const uint8_t* data, size_t length) {
         
         case PACKET_ID_VERSION: {           // 0x01 - Version response
             // Parse V1 firmware version from response
-            // Payload format: [versionID][major][minor][rev1][rev2][ctrl]
+            // Payload format: [reserved][versionID][major][minor][rev1][rev2][ctrl]
             // versionID 'V' = main firmware version
-            // Example: V 4 1 0 2 8 = version 4.1028
-            if (length >= 12) {  // Full packet with 7-byte payload
-                const uint8_t* payload = data + 5;
-                char versionID = (char)payload[1];
-                if (versionID == 'V') {
+            // Example: 0x00 V 4 1 0 2 8 = version 4.1028
+            const size_t declaredPayloadLen = data[4];
+            if (payload && payloadLen >= 7 && declaredPayloadLen >= 7) {
+                if (payload[1] == 'V' &&
+                    isAsciiDigit(payload[2]) &&
+                    isAsciiDigit(payload[3]) &&
+                    isAsciiDigit(payload[4]) &&
+                    isAsciiDigit(payload[5]) &&
+                    isAsciiDigit(payload[6])) {
                     // Convert ASCII digits to integer version
                     // e.g., "4.1028" becomes 41028
-                    char major = (char)payload[2];
-                    char minor = (char)payload[3];
-                    char rev1 = (char)payload[4];
-                    char rev2 = (char)payload[5];
-                    char ctrl = (char)payload[6];
+                    char major = static_cast<char>(payload[2]);
+                    char minor = static_cast<char>(payload[3]);
+                    char rev1 = static_cast<char>(payload[4]);
+                    char rev2 = static_cast<char>(payload[5]);
+                    char ctrl = static_cast<char>(payload[6]);
                     
                     // Build version number: major * 10000 + minor * 1000 + rev1 * 100 + rev2 * 10 + ctrl
-                    uint32_t version = 0;
-                    if (major >= '0' && major <= '9') version += (major - '0') * 10000;
-                    if (minor >= '0' && minor <= '9') version += (minor - '0') * 1000;
-                    if (rev1 >= '0' && rev1 <= '9') version += (rev1 - '0') * 100;
-                    if (rev2 >= '0' && rev2 <= '9') version += (rev2 - '0') * 10;
-                    if (ctrl >= '0' && ctrl <= '9') version += (ctrl - '0');
+                    uint32_t version = static_cast<uint32_t>(major - '0') * 10000u +
+                                       static_cast<uint32_t>(minor - '0') * 1000u +
+                                       static_cast<uint32_t>(rev1 - '0') * 100u +
+                                       static_cast<uint32_t>(rev2 - '0') * 10u +
+                                       static_cast<uint32_t>(ctrl - '0');
                     
                     displayState.v1FirmwareVersion = version;
                     displayState.hasV1Version = true;

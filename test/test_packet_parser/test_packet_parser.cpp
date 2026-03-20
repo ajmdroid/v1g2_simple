@@ -161,6 +161,61 @@ void test_parse_version_packet_records_supported_volume_version() {
     TEST_ASSERT_TRUE(state.supportsVolume());
 }
 
+void test_parse_version_packet_ignores_non_digit_payload() {
+    PacketParser parser;
+    const auto packet = makePacket(
+        PACKET_ID_VERSION,
+        {0x00, static_cast<uint8_t>('V'), static_cast<uint8_t>('4'), static_cast<uint8_t>('1'),
+         0xFF, static_cast<uint8_t>('2'), static_cast<uint8_t>('8')});
+
+    TEST_ASSERT_TRUE(parser.parse(packet.data(), packet.size()));
+
+    const DisplayState& state = parser.getDisplayState();
+    TEST_ASSERT_FALSE(state.hasV1Version);
+    TEST_ASSERT_EQUAL_UINT32(0, state.v1FirmwareVersion);
+    TEST_ASSERT_FALSE(state.supportsVolume());
+}
+
+void test_parse_version_packet_ignores_short_payload() {
+    PacketParser parser;
+    const uint8_t packet[] = {
+        ESP_PACKET_START,
+        0xDA,
+        0xE4,
+        PACKET_ID_VERSION,
+        0x06,
+        0x00,
+        static_cast<uint8_t>('V'),
+        static_cast<uint8_t>('4'),
+        static_cast<uint8_t>('1'),
+        static_cast<uint8_t>('0'),
+        static_cast<uint8_t>('2'),
+        ESP_PACKET_END
+    };
+
+    TEST_ASSERT_TRUE(parser.parse(packet, sizeof(packet)));
+
+    const DisplayState& state = parser.getDisplayState();
+    TEST_ASSERT_FALSE(state.hasV1Version);
+    TEST_ASSERT_EQUAL_UINT32(0, state.v1FirmwareVersion);
+}
+
+void test_parse_version_packet_preserves_prior_valid_version_on_malformed_followup() {
+    PacketParser parser;
+    const auto validPacket = makePacket(PACKET_ID_VERSION, makeVersionPayload('4', '1', '0', '3', '5'));
+    const auto malformedPacket = makePacket(
+        PACKET_ID_VERSION,
+        {0x00, static_cast<uint8_t>('V'), static_cast<uint8_t>('4'), static_cast<uint8_t>('1'),
+         0xFF, static_cast<uint8_t>('9'), static_cast<uint8_t>('9')});
+
+    TEST_ASSERT_TRUE(parser.parse(validPacket.data(), validPacket.size()));
+    TEST_ASSERT_TRUE(parser.parse(malformedPacket.data(), malformedPacket.size()));
+
+    const DisplayState& state = parser.getDisplayState();
+    TEST_ASSERT_TRUE(state.hasV1Version);
+    TEST_ASSERT_EQUAL_UINT32(41035, state.v1FirmwareVersion);
+}
+
 void test_parse_display_ack_packets_toggle_display_state() {
     PacketParser parser;
     const auto darkPacket = makePacket(PACKET_ID_TURN_OFF_DISPLAY, {0x00, 0x00});
@@ -184,6 +239,9 @@ int main(int argc, char** argv) {
     RUN_TEST(test_parse_packet_rejects_seven_byte_frame);
     RUN_TEST(test_parse_packet_rejects_bad_framing);
     RUN_TEST(test_parse_version_packet_records_supported_volume_version);
+    RUN_TEST(test_parse_version_packet_ignores_non_digit_payload);
+    RUN_TEST(test_parse_version_packet_ignores_short_payload);
+    RUN_TEST(test_parse_version_packet_preserves_prior_valid_version_on_malformed_followup);
     RUN_TEST(test_parse_display_ack_packets_toggle_display_state);
     return UNITY_END();
 }
