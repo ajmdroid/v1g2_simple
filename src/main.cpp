@@ -1030,6 +1030,7 @@ void loop() {
     // Process audio amp timeout (disables amp after 3s of inactivity)
     audio_process_amp_timeout();
     unsigned long now = millis();
+    bleClient.setObdBleArbitrationRequest(obdRuntimeModule.getBleArbitrationRequest());
     const LoopConnectionEarlyPhaseValues loopConnectionEarlyValues = processLoopConnectionEarlyPhase(
         now,
         micros(),
@@ -1066,7 +1067,16 @@ void loop() {
     // Refresh speed inputs before display/lockout so the current loop sees the latest OBD/GPS state.
     {
         const uint32_t obdStartUs = micros();
-        obdRuntimeModule.update(now, mainRuntimeState.bootReady, bleConnectedNow, !bleClient.isScanning());
+        const ObdBleContext obdBleContext{
+            mainRuntimeState.bootReady,
+            bleConnectedNow,
+            !bleClient.isScanning(),
+            bleClient.isConnectBurstSettling(),
+            bleClient.isProxyAdvertising(),
+            bleClient.isProxyClientConnected(),
+        };
+        obdRuntimeModule.update(now, obdBleContext);
+        bleClient.setObdBleArbitrationRequest(obdRuntimeModule.getBleArbitrationRequest());
         perfRecordObdUs(micros() - obdStartUs);
     }
     speedSourceSelector.update(now);

@@ -14,6 +14,8 @@
 #include <atomic>
 #include <memory>
 
+#include "include/obd_ble_arbitration.h"
+
 // Forward declarations
 class V1BLEClient;
 
@@ -134,6 +136,9 @@ public:
     
     // Check if proxy is actively advertising (only true after V1 connects)
     bool isProxyAdvertising() const;
+
+    void setObdBleArbitrationRequest(ObdBleArbitrationRequest request);
+    ObdBleArbitrationRequest getObdBleArbitrationRequest() const { return obdBleArbitrationRequest_; }
     
     // Debug/test control: force proxy advertising on/off at runtime.
     bool forceProxyAdvertising(bool enable, uint8_t reasonCode = 0);
@@ -526,6 +531,9 @@ private:
     unsigned long proxyNoClientDeadlineMs = 0;
     bool proxyNoClientTimeoutLatched = false;
     bool proxyClientConnectedOnceThisBoot = false;
+    bool proxySuppressedForObdHold_ = false;
+    uint8_t proxySuppressedResumeReasonCode_ = 0;
+    ObdBleArbitrationRequest obdBleArbitrationRequest_ = ObdBleArbitrationRequest::NONE;
     
     // Write verification state
     bool verifyPending = false;

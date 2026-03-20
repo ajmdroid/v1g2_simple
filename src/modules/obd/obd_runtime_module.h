@@ -6,6 +6,8 @@
 
 #include <freertos/FreeRTOS.h>
 
+#include "../../include/obd_ble_arbitration.h"
+
 enum class ObdConnectionState : uint8_t {
     IDLE = 0,
     WAIT_BOOT = 1,
@@ -136,6 +138,15 @@ struct ObdRuntimeStatus {
     ObdConnectionState state = ObdConnectionState::IDLE;
 };
 
+struct ObdBleContext {
+    bool bootReady = false;
+    bool v1Connected = false;
+    bool bleScanIdle = false;
+    bool v1ConnectBurstSettling = false;
+    bool proxyAdvertising = false;
+    bool proxyClientConnected = false;
+};
+
 class ObdRuntimeModule {
 public:
     void begin(bool enabled,
@@ -144,7 +155,10 @@ public:
                int8_t minRssi,
                const char* cachedVinPrefix11 = nullptr,
                uint8_t cachedEotProfileId = 0);
-    void update(uint32_t nowMs, bool bootReady, bool v1Connected, bool bleScanIdle);
+    void update(uint32_t nowMs, const ObdBleContext& bootReadyContext);
+    void update(uint32_t nowMs, bool bootReady, bool v1Connected, bool bleScanIdle) {
+        update(nowMs, ObdBleContext{bootReady, v1Connected, bleScanIdle});
+    }
     ObdRuntimeStatus snapshot(uint32_t nowMs) const;
 
     void setEnabled(bool enabled);
@@ -162,6 +176,7 @@ public:
     bool startScan();
     bool requestManualPairScan(uint32_t nowMs);
     void forgetDevice();
+    ObdBleArbitrationRequest getBleArbitrationRequest() const;
 
     void onDeviceFound(const char* name, const char* address, int rssi, uint8_t addrType = 0);
     void onBleDisconnect(int reason = 0);
@@ -345,6 +360,7 @@ private:
     void clearTransportRequest();
     void clearBleEventQueue();
     void drainBleEventQueue();
+    bool shouldHoldProxyForAutoObd() const;
 
     enum class BleEventType : uint8_t {
         DEVICE_FOUND = 0,

@@ -150,6 +150,45 @@ void V1BLEClient::process() {
         processConnectedFollowup();
     }
 
+    const bool holdProxyForAutoObd =
+        obdBleArbitrationRequest_ == ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD;
+    const bool proxyConnected = proxyClientConnected.load(std::memory_order_relaxed);
+    NimBLEAdvertising* pProxyAdvertising =
+        (proxyEnabled && proxyServerInitialized) ? NimBLEDevice::getAdvertising() : nullptr;
+    const bool proxyAdvertisingActive = pProxyAdvertising && pProxyAdvertising->isAdvertising();
+
+    if (holdProxyForAutoObd && isConnected() && proxyEnabled && proxyServerInitialized && !proxyConnected) {
+        if (proxyAdvertisingActive) {
+            proxySuppressedForObdHold_ = true;
+            if (proxySuppressedResumeReasonCode_ ==
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown)) {
+                proxySuppressedResumeReasonCode_ =
+                    static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartRetryWindow);
+            }
+            stopProxyAdvertisingFromMainLoop(
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopOther));
+        }
+    } else if (!holdProxyForAutoObd &&
+               proxySuppressedForObdHold_ &&
+               isConnected() &&
+               proxyEnabled &&
+               proxyServerInitialized &&
+               !wifiPriorityMode &&
+               !proxyNoClientTimeoutLatched &&
+               !proxyConnected &&
+               !proxyAdvertisingActive &&
+               proxyAdvertisingStartMs == 0 &&
+               proxyAdvertisingRetryAtMs == 0) {
+        proxyAdvertisingStartMs = millis() + PROXY_STABILIZE_MS;
+        proxyAdvertisingStartReasonCode =
+            proxySuppressedResumeReasonCode_ == 0
+                ? static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartRetryWindow)
+                : proxySuppressedResumeReasonCode_;
+        proxySuppressedForObdHold_ = false;
+        proxySuppressedResumeReasonCode_ =
+            static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
+    }
+
     // Enforce boot-lifetime proxy no-client timeout.
     if (proxyEnabled && proxyServerInitialized && !proxyNoClientTimeoutLatched &&
         !proxyClientConnectedOnceThisBoot && proxyNoClientDeadlineMs != 0) {
@@ -177,14 +216,23 @@ void V1BLEClient::process() {
     // Handle deferred proxy advertising start (non-blocking replacement for delay(1500))
     if (!proxyNoClientTimeoutLatched &&
         proxyAdvertisingStartMs != 0 && static_cast<int32_t>(millis() - proxyAdvertisingStartMs) >= 0) {
-        const uint8_t startReason = proxyAdvertisingStartReasonCode;
-        proxyAdvertisingStartMs = 0;  // Clear pending flag
-        proxyAdvertisingStartReasonCode =
-            static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
-
-        if (isConnected() && proxyEnabled && proxyServerInitialized) {
+        if (holdProxyForAutoObd && !proxyConnected) {
+            proxySuppressedForObdHold_ = true;
+            if (proxySuppressedResumeReasonCode_ ==
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown)) {
+                proxySuppressedResumeReasonCode_ = proxyAdvertisingStartReasonCode;
+            }
+        } else if (isConnected() && proxyEnabled && proxyServerInitialized) {
+            const uint8_t startReason = proxyAdvertisingStartReasonCode;
+            proxyAdvertisingStartMs = 0;  // Clear pending flag
+            proxyAdvertisingStartReasonCode =
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
             // Advertising data already configured in initProxyServer() with proper flags
             startProxyAdvertising(startReason);
+        } else {
+            proxyAdvertisingStartMs = 0;
+            proxyAdvertisingStartReasonCode =
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
         }
     }
 
@@ -193,7 +241,6 @@ void V1BLEClient::process() {
     if (isConnected() && proxyEnabled && proxyServerInitialized &&
         !wifiPriorityMode && !proxyNoClientTimeoutLatched) {
         const bool staConnected = (WiFi.status() == WL_CONNECTED);
-        const bool proxyConnected = proxyClientConnected.load();
         NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
         const bool advertising = pAdv && pAdv->isAdvertising();
 

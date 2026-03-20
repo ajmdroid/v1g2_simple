@@ -12,6 +12,22 @@ static void feedBleResponse(const char* response) {
     obdRuntimeModule.onBleData(reinterpret_cast<const uint8_t*>(response), strlen(response));
 }
 
+static ObdBleContext makeBleContext(bool bootReady,
+                                    bool v1Connected,
+                                    bool bleScanIdle,
+                                    bool v1ConnectBurstSettling = false,
+                                    bool proxyAdvertising = false,
+                                    bool proxyClientConnected = false) {
+    ObdBleContext ctx;
+    ctx.bootReady = bootReady;
+    ctx.v1Connected = v1Connected;
+    ctx.bleScanIdle = bleScanIdle;
+    ctx.v1ConnectBurstSettling = v1ConnectBurstSettling;
+    ctx.proxyAdvertising = proxyAdvertising;
+    ctx.proxyClientConnected = proxyClientConnected;
+    return ctx;
+}
+
 void setUp() {
     resetRuntime();
 }
@@ -63,6 +79,23 @@ void test_wait_boot_transitions_when_v1_connected() {
     // Boot ready, V1 connected → should transition to CONNECTING
     obdRuntimeModule.update(5000, true, true, true);
     TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
+}
+
+void test_wait_boot_holds_proxy_until_v1_burst_settles() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD,
+                      obdRuntimeModule.getBleArbitrationRequest());
+
+    obdRuntimeModule.update(5000, makeBleContext(true, true, true, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::WAIT_BOOT, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD,
+                      obdRuntimeModule.getBleArbitrationRequest());
+
+    obdRuntimeModule.update(5001, makeBleContext(true, true, true, false));
+    TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD,
+                      obdRuntimeModule.getBleArbitrationRequest());
 }
 
 void test_wait_boot_transitions_after_dwell_without_v1() {
@@ -382,6 +415,59 @@ void test_three_connect_failures_preserve_saved_address_and_stop_retries_for_ses
     status = obdRuntimeModule.snapshot(40006);
     TEST_ASSERT_TRUE(status.savedAddressValid);
     TEST_ASSERT_EQUAL_UINT8(0, status.connectAttempts);
+}
+
+void test_wait_boot_auto_connect_waits_for_proxy_client_disconnect() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+
+    obdRuntimeModule.update(5000, makeBleContext(true, true, true, false, false, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::WAIT_BOOT, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD,
+                      obdRuntimeModule.getBleArbitrationRequest());
+
+    obdRuntimeModule.update(5001, makeBleContext(true, true, true, false, false, false));
+    TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
+}
+
+void test_auto_obd_states_hold_proxy_until_polling_or_backoff() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::CONNECTING, 1000);
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD,
+                      obdRuntimeModule.getBleArbitrationRequest());
+
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::DISCOVERING, 1000);
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD,
+                      obdRuntimeModule.getBleArbitrationRequest());
+
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::AT_INIT, 1000);
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD,
+                      obdRuntimeModule.getBleArbitrationRequest());
+
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 1000);
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::NONE,
+                      obdRuntimeModule.getBleArbitrationRequest());
+
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::DISCONNECTED, 1000);
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::NONE,
+                      obdRuntimeModule.getBleArbitrationRequest());
+}
+
+void test_disconnected_auto_reconnect_waits_for_proxy_client_disconnect() {
+    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::DISCONNECTED, 1000);
+
+    obdRuntimeModule.update(1000 + obd::RECONNECT_BACKOFF_MS + 1,
+                            makeBleContext(true, true, true, false, false, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::NONE,
+                      obdRuntimeModule.getBleArbitrationRequest());
+
+    obdRuntimeModule.update(1000 + obd::RECONNECT_BACKOFF_MS + 2,
+                            makeBleContext(true, true, true, false, false, false));
+    TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD,
+                      obdRuntimeModule.getBleArbitrationRequest());
 }
 
 void test_connect_entry_action_runs_on_next_tick() {
@@ -940,6 +1026,7 @@ int main() {
     // Boot defer
     RUN_TEST(test_wait_boot_stays_until_boot_ready);
     RUN_TEST(test_wait_boot_transitions_when_v1_connected);
+    RUN_TEST(test_wait_boot_holds_proxy_until_v1_burst_settles);
     RUN_TEST(test_wait_boot_transitions_after_dwell_without_v1);
     RUN_TEST(test_idle_no_scan_at_boot_without_saved_addr);
     RUN_TEST(test_disabled_module_never_transitions);
@@ -965,6 +1052,9 @@ int main() {
     // Connect timeout & retry
     RUN_TEST(test_connect_timeout_increments_attempts);
     RUN_TEST(test_three_connect_failures_preserve_saved_address_and_stop_retries_for_session);
+    RUN_TEST(test_wait_boot_auto_connect_waits_for_proxy_client_disconnect);
+    RUN_TEST(test_auto_obd_states_hold_proxy_until_polling_or_backoff);
+    RUN_TEST(test_disconnected_auto_reconnect_waits_for_proxy_client_disconnect);
     RUN_TEST(test_connect_entry_action_runs_on_next_tick);
     RUN_TEST(test_discover_entry_action_runs_on_next_tick);
     RUN_TEST(test_connect_enters_discovering_with_settle_delay);

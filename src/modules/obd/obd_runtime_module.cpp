@@ -406,6 +406,19 @@ void ObdRuntimeModule::transitionTo(ObdConnectionState newState, uint32_t nowMs)
     stateEntryPending_ = true;
 }
 
+bool ObdRuntimeModule::shouldHoldProxyForAutoObd() const {
+    switch (state_) {
+        case ObdConnectionState::WAIT_BOOT:
+        case ObdConnectionState::CONNECTING:
+        case ObdConnectionState::SECURING:
+        case ObdConnectionState::DISCOVERING:
+        case ObdConnectionState::AT_INIT:
+            return savedAddress_[0] != '\0' || connectAddress_[0] != '\0';
+        default:
+            return false;
+    }
+}
+
 void ObdRuntimeModule::clearBleEventQueue() {
     taskENTER_CRITICAL(&bleEventQueueMux_);
     bleEventQueueHead_ = 0;
@@ -2025,10 +2038,7 @@ void ObdRuntimeModule::updatePolling(uint32_t nowMs) {
     }
 }
 
-void ObdRuntimeModule::update(uint32_t nowMs,
-                              bool bootReady,
-                              bool v1Connected,
-                              bool bleScanIdle) {
+void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyContext) {
     if (!enabled_) return;
 
     drainBleEventQueue();
@@ -2037,6 +2047,14 @@ void ObdRuntimeModule::update(uint32_t nowMs,
         pendingTransportTimedOut_ = true;
     }
     pumpTransportResults();
+
+    const bool bootReady = bootReadyContext.bootReady;
+    const bool v1Connected = bootReadyContext.v1Connected;
+    const bool bleScanIdle = bootReadyContext.bleScanIdle;
+    const bool v1ConnectBurstSettling = bootReadyContext.v1ConnectBurstSettling;
+    const bool proxyAdvertising = bootReadyContext.proxyAdvertising;
+    const bool proxyClientConnected = bootReadyContext.proxyClientConnected;
+    (void)proxyAdvertising;
 
     if (bootReady && bootReadyMs_ == 0) {
         bootReadyMs_ = nowMs == 0 ? 1 : nowMs;
@@ -2061,6 +2079,14 @@ void ObdRuntimeModule::update(uint32_t nowMs,
             }
 
             const uint32_t elapsed = nowMs - bootReadyMs_;
+            if (proxyClientConnected) {
+                break;
+            }
+
+            if (v1Connected && v1ConnectBurstSettling) {
+                break;
+            }
+
             if (v1Connected || elapsed >= obd::POST_BOOT_DWELL_MS) {
                 setConnectTargetFromSaved();
                 transitionTo(ObdConnectionState::CONNECTING, nowMs);
@@ -2265,6 +2291,9 @@ void ObdRuntimeModule::update(uint32_t nowMs,
                 }
             }
             if ((nowMs - stateEnteredMs_) >= obd::RECONNECT_BACKOFF_MS) {
+                if (proxyClientConnected) {
+                    break;
+                }
                 if (savedAddress_[0] != '\0') {
                     setConnectTargetFromSaved();
                     transitionTo(ObdConnectionState::CONNECTING, nowMs);
@@ -2274,6 +2303,12 @@ void ObdRuntimeModule::update(uint32_t nowMs,
             }
             break;
     }
+}
+
+ObdBleArbitrationRequest ObdRuntimeModule::getBleArbitrationRequest() const {
+    return shouldHoldProxyForAutoObd()
+               ? ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD
+               : ObdBleArbitrationRequest::NONE;
 }
 
 ObdRuntimeStatus ObdRuntimeModule::snapshot(uint32_t nowMs) const {

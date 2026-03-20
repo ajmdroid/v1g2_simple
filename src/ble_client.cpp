@@ -739,6 +739,24 @@ bool V1BLEClient::isProxyClientConnected() {
     return proxyClientConnected;
 }
 
+void V1BLEClient::setObdBleArbitrationRequest(ObdBleArbitrationRequest request) {
+    if (obdBleArbitrationRequest_ == request) {
+        return;
+    }
+
+    if (obdBleArbitrationRequest_ == ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD &&
+        request != ObdBleArbitrationRequest::HOLD_PROXY_FOR_AUTO_OBD) {
+        proxySuppressedForObdHold_ = true;
+        if (proxySuppressedResumeReasonCode_ ==
+            static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown)) {
+            proxySuppressedResumeReasonCode_ =
+                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartRetryWindow);
+        }
+    }
+
+    obdBleArbitrationRequest_ = request;
+}
+
 void V1BLEClient::setProxyClientConnected(bool connected) {
     proxyClientConnected = connected;
     if (connected) {
