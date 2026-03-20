@@ -408,8 +408,8 @@ void SettingsManager::setLastV1Address(const String& addr) {
     String safeAddr = sanitizeLastV1AddressValue(addr);
     if (safeAddr != settings.lastV1Address) {
         settings.lastV1Address = safeAddr;
-        save();
-        Serial.printf("Saved new V1 address: %s\n", safeAddr.c_str());
+        requestDeferredPersist();
+        Serial.printf("Deferred persist for new V1 address: %s\n", safeAddr.c_str());
     }
 }
 

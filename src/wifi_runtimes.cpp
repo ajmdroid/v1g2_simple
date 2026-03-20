@@ -357,7 +357,7 @@ WifiV1DevicesApiService::Runtime WiFiManager::makeV1DevicesRuntime() {
 
             const String lastV1Address = normalizeV1DeviceAddress(settingsManager.get().lastV1Address);
             if (!hasAddress(lastV1Address)) {
-                v1DeviceStore.upsertDevice(lastV1Address);
+                v1DeviceStore.touchDeviceInMemory(lastV1Address);
                 devices = v1DeviceStore.listDevices();
             }
 
@@ -366,7 +366,7 @@ WifiV1DevicesApiService::Runtime WiFiManager::makeV1DevicesRuntime() {
             if (!connected.isNull()) {
                 connectedAddress = normalizeV1DeviceAddress(String(connected.toString().c_str()));
                 if (!hasAddress(connectedAddress)) {
-                    v1DeviceStore.upsertDevice(connectedAddress);
+                    v1DeviceStore.touchDeviceInMemory(connectedAddress);
                     devices = v1DeviceStore.listDevices();
                 }
             }
