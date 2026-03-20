@@ -651,6 +651,16 @@ static void sendMetricsSoak(WebServer& server) {
         });
 }
 void handleApiMetrics(WebServer& server) {
+    // Guard: refuse to build the large JSON doc if internal DMA heap is low.
+    // WiFi STA + BLE dual-role can leave <20KB internal SRAM; the JsonDocument
+    // + WiFi TX buffers would starve the display QSPI flush and cause a panic.
+    const uint32_t dmaFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (dmaFree < StorageManager::MIN_DMA_FREE_FOR_SD) {
+        server.send(503, "application/json",
+                    "{\"error\":\"internal heap too low for metrics\",\"dmaFree\":" + String(dmaFree) + "}");
+        return;
+    }
+
     if (server.hasArg("soak") && isTruthyArgValue(server.arg("soak"))) {
         sendMetricsSoak(server);
         return;
