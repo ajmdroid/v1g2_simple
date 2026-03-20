@@ -1,4 +1,5 @@
 #include "display_pipeline_module.h"
+#include "modules/speed_mute/speed_mute_module.h"
 #include "perf_metrics.h"  // perfRecordDisplayRenderUs
 
 void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
@@ -149,6 +150,16 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         voiceCtx.mainVolume = state.mainVolume;
         voiceCtx.isSuppressed = prioritySuppressed;
         voiceCtx.now = nowMs;
+
+        // Speed mute: suppress voice if low-speed mute active & band not overridden
+        if (!voiceCtx.isSuppressed && speedMute) {
+            const auto& smState = speedMute->getState();
+            if (smState.muteActive && hasRenderablePriority) {
+                if (!speedMute->isBandOverridden(priority.band)) {
+                    voiceCtx.isSuppressed = true;
+                }
+            }
+        }
 
         const unsigned long voiceStartUs = micros();
         const VoiceAction voiceAction = voice->process(voiceCtx);

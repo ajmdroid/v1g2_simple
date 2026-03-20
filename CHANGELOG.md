@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.0.0-dev] - 2026-02-25
 
+> Note: no tagged releases were published between `3.0.7` and `4.0.0-dev`;
+> ongoing work during that gap landed directly in the dev cycle summarized here.
+
 ### Added
 
 **Module Extraction (625 commits since 2026-02-15)**

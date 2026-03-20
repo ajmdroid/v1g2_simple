@@ -91,4 +91,14 @@ inline void syncGpsLockoutRuntimeSettings(const V1Settings& settings,
     syncLockoutLearnerTuning(settings, lockoutLearner);
 }
 
+template <typename TSpeedMuteModule>
+inline void syncSpeedMuteRuntimeSettings(const V1Settings& settings,
+                                         TSpeedMuteModule& speedMuteModule) {
+    speedMuteModule.syncSettings(settings.speedMuteEnabled,
+                                 settings.speedMuteThresholdMph,
+                                 settings.speedMuteHysteresisMph,
+                                 settings.speedMuteOverrideLaser,
+                                 settings.speedMuteOverrideKa);
+}
+
 }  // namespace SettingsRuntimeSync

@@ -175,6 +175,13 @@ struct V1Settings {
     uint8_t alertVolumeFadeDelaySec = 5;
     uint8_t alertVolumeFadeVolume = 3;
     
+    // Speed mute
+    bool speedMuteEnabled = false;
+    uint8_t speedMuteThresholdMph = 25;
+    uint8_t speedMuteHysteresisMph = 3;
+    bool speedMuteOverrideLaser = true;
+    bool speedMuteOverrideKa = false;
+    
     // Misc flags retained for compatibility
     bool gpsEnabled = true;
     bool obdEnabled = false;

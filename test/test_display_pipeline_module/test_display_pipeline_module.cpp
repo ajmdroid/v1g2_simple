@@ -169,6 +169,7 @@ void audio_init_sd() {}
 void audio_init_buffers() {}
 void audio_process_amp_timeout() {}
 
+#include "../../src/modules/speed_mute/speed_mute_module.cpp"
 #include "../../src/modules/display/display_pipeline_module.cpp"
 
 static DisplayMode displayMode = DisplayMode::IDLE;

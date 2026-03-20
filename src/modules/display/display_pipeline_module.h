@@ -11,6 +11,8 @@
 #include "modules/alert_persistence/alert_persistence_module.h"
 #include "modules/voice/voice_module.h"
 
+class SpeedMuteModule;
+
 class DisplayPipelineModule {
 public:
     void begin(DisplayMode* displayModePtr,
@@ -20,6 +22,8 @@ public:
                V1BLEClient* bleClient,
                AlertPersistenceModule* alertPersistenceModule,
                VoiceModule* voiceModule);
+
+    void setSpeedMuteModule(SpeedMuteModule* module) { speedMute = module; }
 
     // Process after a successful parser.parse(); expects parser state already updated.
     // prioritySuppressed is a per-frame software suppression flag (e.g. lockout ENFORCE match).
@@ -43,6 +47,7 @@ private:
     V1BLEClient* ble = nullptr;
     AlertPersistenceModule* alertPersistence = nullptr;
     VoiceModule* voice = nullptr;
+    SpeedMuteModule* speedMute = nullptr;
 
     // Mute debounce
     bool debouncedMuteState = false;

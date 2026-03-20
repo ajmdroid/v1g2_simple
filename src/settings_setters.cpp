@@ -285,6 +285,17 @@ void SettingsManager::setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t
     save();
 }
 
+void SettingsManager::setSpeedMute(bool enabled, uint8_t thresholdMph,
+                                   uint8_t hysteresisMph, bool overrideLaser,
+                                   bool overrideKa) {
+    settings.speedMuteEnabled = enabled;
+    settings.speedMuteThresholdMph = clampU8(thresholdMph, 5, 60);
+    settings.speedMuteHysteresisMph = clampU8(hysteresisMph, 1, 10);
+    settings.speedMuteOverrideLaser = overrideLaser;
+    settings.speedMuteOverrideKa = overrideKa;
+    save();
+}
+
 
 const AutoPushSlot& SettingsManager::getActiveSlot() const {
     return settings.autoPushSlotView(settings.activeSlot).config;
@@ -492,6 +503,23 @@ void SettingsManager::applyAudioSettingsUpdate(const AudioSettingsUpdate& update
     if (update.hasAlertVolumeFadeVolume) {
         changed |= assignIfChanged(settings.alertVolumeFadeVolume,
                                    clampU8(update.alertVolumeFadeVolume, 0, 9));
+    }
+    if (update.hasSpeedMuteEnabled) {
+        changed |= assignIfChanged(settings.speedMuteEnabled, update.speedMuteEnabled);
+    }
+    if (update.hasSpeedMuteThresholdMph) {
+        changed |= assignIfChanged(settings.speedMuteThresholdMph,
+                                   clampU8(update.speedMuteThresholdMph, 5, 60));
+    }
+    if (update.hasSpeedMuteHysteresisMph) {
+        changed |= assignIfChanged(settings.speedMuteHysteresisMph,
+                                   clampU8(update.speedMuteHysteresisMph, 1, 10));
+    }
+    if (update.hasSpeedMuteOverrideLaser) {
+        changed |= assignIfChanged(settings.speedMuteOverrideLaser, update.speedMuteOverrideLaser);
+    }
+    if (update.hasSpeedMuteOverrideKa) {
+        changed |= assignIfChanged(settings.speedMuteOverrideKa, update.speedMuteOverrideKa);
     }
 
     if (changed) {

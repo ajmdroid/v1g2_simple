@@ -264,6 +264,15 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["alertVolumeFadeVolume"].is<int>()) {
         settings.alertVolumeFadeVolume = clampU8(doc["alertVolumeFadeVolume"].as<int>(), 0, 9);
     }
+    restoreBool("speedMuteEnabled", settings.speedMuteEnabled);
+    if (doc["speedMuteThresholdMph"].is<int>()) {
+        settings.speedMuteThresholdMph = clampU8(doc["speedMuteThresholdMph"].as<int>(), 5, 60);
+    }
+    if (doc["speedMuteHysteresisMph"].is<int>()) {
+        settings.speedMuteHysteresisMph = clampU8(doc["speedMuteHysteresisMph"].as<int>(), 1, 10);
+    }
+    restoreBool("speedMuteOverrideLaser", settings.speedMuteOverrideLaser);
+    restoreBool("speedMuteOverrideKa", settings.speedMuteOverrideKa);
 
     // === Auto-Push Settings ===
     bool backupAutoPushEnabled = false;

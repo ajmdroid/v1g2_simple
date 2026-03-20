@@ -4,6 +4,7 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 
 **Base URL**: `http://192.168.35.5` (default AP mode)  
 **Content-Type**: `application/x-www-form-urlencoded` (POST) or `application/json`
+**Updated**: `2026-03-20`
 
 ---
 
@@ -229,7 +230,36 @@ Download all settings as JSON file.
 
 Restore settings from backup JSON file.
 
-**Request:** JSON body with settings object
+**Request:** JSON body using the backup envelope produced by `GET /api/settings/backup`
+or SD backups. `_type` must be `v1simple_backup` or `v1simple_sd_backup`.
+
+**Request (JSON body example):**
+```json
+{
+  "_type": "v1simple_backup",
+  "_version": 2,
+  "_timestamp": 1742400000,
+  "timestamp": 1742400000,
+  "enableWifi": true,
+  "proxyBLE": true,
+  "proxyName": "V1C-LE-S3",
+  "gpsEnabled": true,
+  "obdEnabled": false,
+  "profiles": [
+    {
+      "name": "Highway",
+      "description": "Default highway settings",
+      "displayOn": true,
+      "mainVolume": 8,
+      "mutedVolume": 0,
+      "bytes": [1, 2, 3, 4, 5, 6]
+    }
+  ]
+}
+```
+
+The envelope includes the top-level metadata fields above plus the full saved
+settings payload.
 
 **Response:**
 ```json
@@ -928,6 +958,32 @@ Enable/disable runtime perf debug reporting.
 **Request (form data):**
 ```
 enable=true
+```
+
+### POST /api/debug/proxy-advertising
+
+Force proxy advertising on or off for debug validation.
+
+**Request (JSON body):**
+```json
+{"enabled": true}
+```
+
+If `enabled` is omitted, the route defaults to enabling advertising.
+
+**Response (example):**
+```json
+{
+  "success": true,
+  "requestedEnabled": true,
+  "advertising": true,
+  "proxyEnabled": true,
+  "v1Connected": true,
+  "wifiPriority": false,
+  "proxyClientConnected": false,
+  "lastTransitionReasonCode": 5,
+  "lastTransitionReason": "start_direct"
+}
 ```
 
 ### GET /api/debug/panic

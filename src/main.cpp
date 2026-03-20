@@ -86,6 +86,7 @@
 #include "modules/lockout/lockout_orchestration_module.h"
 #include "modules/debug/debug_api_service.h"
 #include "modules/speed/speed_source_selector.h"
+#include "modules/speed_mute/speed_mute_module.h"
 #include "modules/obd/obd_runtime_module.h"
 #include "modules/obd/obd_settings_sync_module.h"
 #include "modules/wifi/wifi_boot_policy.h"
@@ -175,6 +176,7 @@ DisplayRestoreModule displayRestoreModule;
 SystemEventBus systemEventBus;
 PeriodicMaintenanceModule periodicMaintenanceModule;
 ObdSettingsSyncModule obdSettingsSyncModule;
+SpeedMuteModule speedMuteModule;
 LoopTailModule loopTailModule;
 LoopTelemetryModule loopTelemetryModule;
 LoopIngestModule loopIngestModule;
@@ -707,6 +709,7 @@ static void configureAlertAudioDisplayPipeline() {
                                 &bleClient,
                                 &alertPersistenceModule,
                                 &voiceModule);
+    displayPipelineModule.setSpeedMuteModule(&speedMuteModule);
 }
 
 static void configureSystemLoopCoreModules() {
@@ -762,6 +765,12 @@ static void configureRuntimeSensorModules() {
         settingsManager.get().obdMinRssi,
         settingsManager.get().obdCachedVinPrefix11.c_str(),
         settingsManager.get().obdCachedEotProfileId);
+    speedMuteModule.begin(
+        settingsManager.get().speedMuteEnabled,
+        settingsManager.get().speedMuteThresholdMph,
+        settingsManager.get().speedMuteHysteresisMph,
+        settingsManager.get().speedMuteOverrideLaser,
+        settingsManager.get().speedMuteOverrideKa);
 }
 
 static void configureRuntimeCoreModules() {
@@ -1084,6 +1093,16 @@ void loop() {
         perfRecordObdUs(micros() - obdStartUs);
     }
     speedSourceSelector.update(now);
+    {
+        const V1Settings& s = settingsManager.get();
+        speedMuteModule.syncSettings(s.speedMuteEnabled,
+                                     s.speedMuteThresholdMph,
+                                     s.speedMuteHysteresisMph,
+                                     s.speedMuteOverrideLaser,
+                                     s.speedMuteOverrideKa);
+        const SpeedSelection speed = speedSourceSelector.selectedSpeed();
+        speedMuteModule.update(speed.speedMph, speed.valid, now);
+    }
 
     // No overload guard: handleParsed's internal 25ms throttle gates expensive draws;
     // fade/debounce/gap-recovery remain microsecond-cheap and must run every frame.

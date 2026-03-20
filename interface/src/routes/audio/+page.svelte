@@ -20,7 +20,13 @@
 		// Volume fade settings
 		alertVolumeFadeEnabled: false,
 		alertVolumeFadeDelaySec: 2,
-		alertVolumeFadeVolume: 1
+		alertVolumeFadeVolume: 1,
+		// Speed mute settings
+		speedMuteEnabled: false,
+		speedMuteThresholdMph: 25,
+		speedMuteHysteresisMph: 3,
+		speedMuteOverrideLaser: true,
+		speedMuteOverrideKa: false
 	});
 	
 	let loading = $state(true);
@@ -60,6 +66,12 @@
 				settings.alertVolumeFadeEnabled = data.alertVolumeFadeEnabled ?? false;
 				settings.alertVolumeFadeDelaySec = data.alertVolumeFadeDelaySec ?? 2;
 				settings.alertVolumeFadeVolume = data.alertVolumeFadeVolume ?? 1;
+				// Speed mute settings
+				settings.speedMuteEnabled = data.speedMuteEnabled ?? false;
+				settings.speedMuteThresholdMph = data.speedMuteThresholdMph ?? 25;
+				settings.speedMuteHysteresisMph = data.speedMuteHysteresisMph ?? 3;
+				settings.speedMuteOverrideLaser = data.speedMuteOverrideLaser ?? true;
+				settings.speedMuteOverrideKa = data.speedMuteOverrideKa ?? false;
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load settings' };
@@ -89,6 +101,12 @@
 			params.append('alertVolumeFadeEnabled', settings.alertVolumeFadeEnabled);
 			params.append('alertVolumeFadeDelaySec', settings.alertVolumeFadeDelaySec);
 			params.append('alertVolumeFadeVolume', settings.alertVolumeFadeVolume);
+			// Speed mute settings
+			params.append('speedMuteEnabled', settings.speedMuteEnabled);
+			params.append('speedMuteThresholdMph', settings.speedMuteThresholdMph);
+			params.append('speedMuteHysteresisMph', settings.speedMuteHysteresisMph);
+			params.append('speedMuteOverrideLaser', settings.speedMuteOverrideLaser);
+			params.append('speedMuteOverrideKa', settings.speedMuteOverrideKa);
 			
 			const res = await fetchWithTimeout('/api/audio/settings', {
 				method: 'POST',
@@ -361,6 +379,110 @@
 									Alert starts → <strong>full volume</strong> for {settings.alertVolumeFadeDelaySec}s → 
 									fade to <strong>level {settings.alertVolumeFadeVolume}</strong> → 
 									alert clears → <strong>restore volume</strong>
+								</p>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+		</div>
+		
+		<!-- Speed-Aware Muting -->
+		<div class="surface-card">
+			<div class="card-body">
+				<CardSectionHead
+					title="Speed-Aware Muting"
+					subtitle="Suppress voice alerts below a speed threshold (requires OBD or GPS speed source)."
+				/>
+				
+				<div class="space-y-4">
+					<!-- Master Toggle -->
+					<div class="form-control">
+						<label class="label cursor-pointer">
+							<div>
+								<span class="label-text font-medium">Enable Speed Mute</span>
+								<p class="copy-caption-soft">Suppress voice announcements when driving below the speed threshold</p>
+							</div>
+							<input 
+								type="checkbox" 
+								class="toggle toggle-primary" 
+								bind:checked={settings.speedMuteEnabled}
+							/>
+						</label>
+					</div>
+					
+					{#if settings.speedMuteEnabled}
+						<div class="surface-subsection">
+							<!-- Threshold -->
+							<div class="form-control">
+								<label class="label" for="speed-mute-threshold">
+									<span class="label-text">Mute Below (mph)</span>
+									<span class="label-text-alt">{settings.speedMuteThresholdMph} mph</span>
+								</label>
+								<input 
+									id="speed-mute-threshold"
+									type="range" 
+									min="5" 
+									max="60" 
+									bind:value={settings.speedMuteThresholdMph}
+									class="range range-primary range-sm" 
+								/>
+								<p class="copy-caption-soft mt-1">Alerts are suppressed below this speed</p>
+							</div>
+							
+							<!-- Hysteresis -->
+							<div class="form-control">
+								<label class="label" for="speed-mute-hysteresis">
+									<span class="label-text">Hysteresis (mph)</span>
+									<span class="label-text-alt">{settings.speedMuteHysteresisMph} mph</span>
+								</label>
+								<input 
+									id="speed-mute-hysteresis"
+									type="range" 
+									min="1" 
+									max="10" 
+									bind:value={settings.speedMuteHysteresisMph}
+									class="range range-primary range-sm" 
+								/>
+								<p class="copy-caption-soft mt-1">Unmutes at threshold + hysteresis to prevent cycling</p>
+							</div>
+							
+							<!-- Band Overrides -->
+							<p class="copy-caption-soft mb-2 mt-4">Band overrides (always alert regardless of speed):</p>
+							
+							<div class="form-control">
+								<label class="label cursor-pointer py-1">
+									<div>
+										<span class="label-text">Laser Override</span>
+										<p class="copy-caption-soft">Always announce Laser alerts at any speed</p>
+									</div>
+									<input 
+										type="checkbox" 
+										class="toggle toggle-sm toggle-primary" 
+										bind:checked={settings.speedMuteOverrideLaser}
+									/>
+								</label>
+							</div>
+							
+							<div class="form-control">
+								<label class="label cursor-pointer py-1">
+									<div>
+										<span class="label-text">Ka Override</span>
+										<p class="copy-caption-soft">Always announce Ka alerts at any speed</p>
+									</div>
+									<input 
+										type="checkbox" 
+										class="toggle toggle-sm toggle-primary" 
+										bind:checked={settings.speedMuteOverrideKa}
+									/>
+								</label>
+							</div>
+							
+							<!-- Preview -->
+							<div class="surface-panel text-sm mt-4">
+								<p class="copy-subtle">
+									Below <strong>{settings.speedMuteThresholdMph} mph</strong> → voice muted →
+									above <strong>{settings.speedMuteThresholdMph + settings.speedMuteHysteresisMph} mph</strong> → voice restored
 								</p>
 							</div>
 						</div>

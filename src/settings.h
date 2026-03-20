@@ -295,6 +295,13 @@ struct V1Settings {
     uint8_t alertVolumeFadeDelaySec; // Seconds at full volume before fading (1-10)
     uint8_t alertVolumeFadeVolume;  // Volume to fade to (0-9)
     
+    // Speed-aware muting (suppress alerts below speed threshold)
+    bool speedMuteEnabled;           // Enable speed-based auto-muting
+    uint8_t speedMuteThresholdMph;   // Mute below this speed (5-60 mph)
+    uint8_t speedMuteHysteresisMph;  // Unmute at threshold + hysteresis (1-10 mph)
+    bool speedMuteOverrideLaser;     // Always alert on Laser regardless of speed
+    bool speedMuteOverrideKa;        // Always alert on Ka regardless of speed
+
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
     int activeSlot;              // Which slot is active: 0=Default, 1=Highway, 2=Comfort
@@ -450,6 +457,11 @@ struct V1Settings {
         alertVolumeFadeEnabled(false),   // Volume fade disabled by default
         alertVolumeFadeDelaySec(2),      // 2 seconds at full volume before fade
         alertVolumeFadeVolume(1),        // Fade to volume 1 (quiet but audible)
+        speedMuteEnabled(false),         // Speed mute disabled by default
+        speedMuteThresholdMph(25),       // 25 mph default (city driving)
+        speedMuteHysteresisMph(3),       // 3 mph hysteresis band
+        speedMuteOverrideLaser(true),    // Laser always alerts
+        speedMuteOverrideKa(false),      // Ka follows speed mute by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -650,6 +662,21 @@ struct AudioSettingsUpdate {
 
     bool hasAlertVolumeFadeVolume = false;
     uint8_t alertVolumeFadeVolume = 0;
+
+    bool hasSpeedMuteEnabled = false;
+    bool speedMuteEnabled = false;
+
+    bool hasSpeedMuteThresholdMph = false;
+    uint8_t speedMuteThresholdMph = 0;
+
+    bool hasSpeedMuteHysteresisMph = false;
+    uint8_t speedMuteHysteresisMph = 0;
+
+    bool hasSpeedMuteOverrideLaser = false;
+    bool speedMuteOverrideLaser = false;
+
+    bool hasSpeedMuteOverrideKa = false;
+    bool speedMuteOverrideKa = false;
 };
 
 struct DisplaySettingsUpdate {
@@ -913,6 +940,8 @@ public:
     void setSecondaryK(bool enabled);
     void setSecondaryX(bool enabled);
     void setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t volume);
+    void setSpeedMute(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph,
+                      bool overrideLaser, bool overrideKa);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration

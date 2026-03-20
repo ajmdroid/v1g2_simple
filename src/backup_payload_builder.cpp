@@ -146,6 +146,11 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["alertVolumeFadeEnabled"] = settings.alertVolumeFadeEnabled;
     doc["alertVolumeFadeDelaySec"] = settings.alertVolumeFadeDelaySec;
     doc["alertVolumeFadeVolume"] = settings.alertVolumeFadeVolume;
+    doc["speedMuteEnabled"] = settings.speedMuteEnabled;
+    doc["speedMuteThresholdMph"] = settings.speedMuteThresholdMph;
+    doc["speedMuteHysteresisMph"] = settings.speedMuteHysteresisMph;
+    doc["speedMuteOverrideLaser"] = settings.speedMuteOverrideLaser;
+    doc["speedMuteOverrideKa"] = settings.speedMuteOverrideKa;
 
     doc["autoPushEnabled"] = settings.autoPushEnabled;
     doc["activeSlot"] = settings.activeSlot;

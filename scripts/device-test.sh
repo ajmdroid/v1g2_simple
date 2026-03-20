@@ -9,11 +9,12 @@
 # Use:
 #   ./scripts/hardware/test.sh --all --board-id release
 #
-echo "================================================================"
-echo "DEPRECATED: device-test.sh is retired."
-echo "Redirecting to: ./scripts/hardware/test.sh --all"
-echo "================================================================"
-echo ""
+echo "⚠️ Deprecated: use ./scripts/hardware/test.sh" >&2
+echo "================================================================" >&2
+echo "DEPRECATED: device-test.sh is retired." >&2
+echo "Redirecting to: ./scripts/hardware/test.sh --all" >&2
+echo "================================================================" >&2
+echo "" >&2
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 exec "$ROOT_DIR/scripts/hardware/test.sh" --all

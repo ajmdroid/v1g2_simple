@@ -30,6 +30,11 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["alertVolumeFadeEnabled"] = settings.alertVolumeFadeEnabled;
     doc["alertVolumeFadeDelaySec"] = settings.alertVolumeFadeDelaySec;
     doc["alertVolumeFadeVolume"] = settings.alertVolumeFadeVolume;
+    doc["speedMuteEnabled"] = settings.speedMuteEnabled;
+    doc["speedMuteThresholdMph"] = settings.speedMuteThresholdMph;
+    doc["speedMuteHysteresisMph"] = settings.speedMuteHysteresisMph;
+    doc["speedMuteOverrideLaser"] = settings.speedMuteOverrideLaser;
+    doc["speedMuteOverrideKa"] = settings.speedMuteOverrideKa;
 
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
@@ -122,6 +127,33 @@ void handleApiSave(WebServer& server,
         update.hasAlertVolumeFadeVolume = true;
         update.alertVolumeFadeVolume =
             static_cast<uint8_t>(std::max(0, std::min(fadeVolume, 9)));
+    }
+    if (server.hasArg("speedMuteEnabled")) {
+        update.hasSpeedMuteEnabled = true;
+        update.speedMuteEnabled =
+            argBool("speedMuteEnabled", settings.speedMuteEnabled);
+    }
+    if (server.hasArg("speedMuteThresholdMph")) {
+        int threshold = server.arg("speedMuteThresholdMph").toInt();
+        update.hasSpeedMuteThresholdMph = true;
+        update.speedMuteThresholdMph =
+            static_cast<uint8_t>(std::max(5, std::min(threshold, 60)));
+    }
+    if (server.hasArg("speedMuteHysteresisMph")) {
+        int hysteresis = server.arg("speedMuteHysteresisMph").toInt();
+        update.hasSpeedMuteHysteresisMph = true;
+        update.speedMuteHysteresisMph =
+            static_cast<uint8_t>(std::max(1, std::min(hysteresis, 10)));
+    }
+    if (server.hasArg("speedMuteOverrideLaser")) {
+        update.hasSpeedMuteOverrideLaser = true;
+        update.speedMuteOverrideLaser =
+            argBool("speedMuteOverrideLaser", settings.speedMuteOverrideLaser);
+    }
+    if (server.hasArg("speedMuteOverrideKa")) {
+        update.hasSpeedMuteOverrideKa = true;
+        update.speedMuteOverrideKa =
+            argBool("speedMuteOverrideKa", settings.speedMuteOverrideKa);
     }
 
     runtime.applySettingsUpdate(update);
