@@ -3,7 +3,7 @@
  * Uses ESP32 Preferences API for persistent flash storage
  * 
  * Settings Categories:
- * - WiFi: Mode (Off/STA/AP/APSTA), credentials
+ * - WiFi: Mode (Off/AP/APSTA), credentials
  * - BLE Proxy: Enable/disable, device name
  * - Display: Brightness, custom colors, resting mode
  * - Auto-Push: 3-slot profile system with modes
@@ -67,8 +67,7 @@ enum VoiceAlertMode {
     VOICE_MODE_BAND_FREQ = 3     // Band + frequency ("Ka 34.7")
 };
 
-// GPS lockout runtime behavior.
-// NOTE: this is config scaffolding only until lockout runtime is explicitly enabled.
+// GPS lockout runtime behavior used by the active lockout runtime stack.
 enum LockoutRuntimeMode : uint8_t {
     LOCKOUT_RUNTIME_OFF = 0,       // No lockout evaluation or suppression
     LOCKOUT_RUNTIME_SHADOW = 1,    // Evaluate only; never suppress

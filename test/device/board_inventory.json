@@ -3,7 +3,7 @@
   "boards": [
     {
       "board_id": "release",
-      "role": "Release qualification — full qualify_hardware.sh gate",
+      "role": "Release qualification — full scripts/hardware/test.sh gate",
       "device_path": "/dev/cu.usbmodem21201",
       "metrics_url": "http://192.168.160.212/api/debug/metrics",
       "usb_serial": "REPLACE_WITH_ACTUAL_SERIAL"
