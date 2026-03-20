@@ -592,8 +592,7 @@ bool BatteryManager::processPowerButton() {
     } else if (pressed && buttonWasPressed) {
         // Button held - check for long press (2 seconds)
         if (now - buttonPressStart >= 2000) {
-            Serial.println("[Battery] Long press detected - powering off");
-            powerOff();
+            Serial.println("[Battery] Long press detected - requesting shutdown");
             return true;
         }
     } else if (!pressed && buttonWasPressed) {

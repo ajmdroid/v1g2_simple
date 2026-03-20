@@ -8,6 +8,14 @@
 #define POWER_PERF_FLUSH_NOW() do { } while (0)
 #endif
 
+void PowerModule::performShutdownRequest() {
+    if (!battery) {
+        return;
+    }
+
+    battery->powerOff();
+}
+
 void PowerModule::begin(BatteryManager* batteryMgr,
                         V1Display* disp,
                         SettingsManager* settingsMgr) {
@@ -62,7 +70,10 @@ void PowerModule::process(unsigned long nowMs) {
     if (!battery || !display || !settings) return;
 
     battery->update();
-    battery->processPowerButton();
+    if (battery->processPowerButton()) {
+        performShutdownRequest();
+        return;
+    }
 
     // Critical battery handling (warning + shutdown)
     if (battery->isOnBattery() && battery->hasBattery()) {
@@ -77,7 +88,8 @@ void PowerModule::process(unsigned long nowMs) {
                 Serial.println("[Battery] CRITICAL - auto shutdown to protect battery");
                 POWER_PERF_INC(powerCriticalShutdown);
                 POWER_PERF_FLUSH_NOW();
-                battery->powerOff();
+                performShutdownRequest();
+                return;
             }
         } else {
             lowBatteryWarningShown = false;
@@ -94,7 +106,8 @@ void PowerModule::process(unsigned long nowMs) {
             autoPowerOffTimerStart = 0;
             POWER_PERF_INC(powerAutoPowerTimerExpire);
             POWER_PERF_FLUSH_NOW();
-            battery->powerOff();
+            performShutdownRequest();
+            return;
         }
     }
 }

@@ -62,6 +62,24 @@ void test_critical_battery_shows_warning_before_shutdown() {
     TEST_ASSERT_FALSE(battery.powerOffCalled);
 }
 
+void test_perform_shutdown_request_delegates_to_battery_power_off() {
+    module.performShutdownRequest();
+
+    TEST_ASSERT_TRUE(battery.powerOffCalled);
+    TEST_ASSERT_EQUAL(1, battery.powerOffCalls);
+}
+
+void test_power_button_shutdown_request_routes_through_power_module() {
+    battery.processPowerButtonResult = true;
+    battery.setCritical(true);
+
+    module.process(1000);
+
+    TEST_ASSERT_TRUE(battery.powerOffCalled);
+    TEST_ASSERT_EQUAL(1, battery.powerOffCalls);
+    TEST_ASSERT_EQUAL(0, display.showLowBatteryCalls);
+}
+
 void test_critical_battery_shutdown_occurs_after_grace_period() {
     battery.setCritical(true);
 
@@ -148,6 +166,7 @@ void test_auto_power_off_shuts_down_after_timeout() {
     module.process(mockMillis);
 
     TEST_ASSERT_TRUE(battery.powerOffCalled);
+    TEST_ASSERT_EQUAL(1, battery.powerOffCalls);
 }
 
 void test_process_updates_battery_every_call() {
@@ -180,6 +199,8 @@ void test_critical_battery_still_wins_while_auto_power_timer_is_running() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_critical_battery_shows_warning_before_shutdown);
+    RUN_TEST(test_perform_shutdown_request_delegates_to_battery_power_off);
+    RUN_TEST(test_power_button_shutdown_request_routes_through_power_module);
     RUN_TEST(test_critical_battery_shutdown_occurs_after_grace_period);
     RUN_TEST(test_critical_battery_recovery_clears_warning_without_shutdown);
     RUN_TEST(test_usb_power_skips_critical_battery_shutdown_path);

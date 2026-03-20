@@ -25,6 +25,8 @@ public:
     void process(unsigned long nowMs);
 
 private:
+    void performShutdownRequest();
+
     BatteryManager* battery = nullptr;
     V1Display* display = nullptr;
     SettingsManager* settings = nullptr;
