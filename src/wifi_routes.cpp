@@ -24,6 +24,7 @@
 #include "modules/wifi/wifi_settings_api_service.h"
 #include "modules/wifi/wifi_status_api_service.h"
 #include "modules/wifi/wifi_autopush_api_service.h"
+#include "modules/wifi/wifi_static_path_guard.h"
 #include "modules/wifi/wifi_v1_profile_api_service.h"
 #include "modules/wifi/wifi_v1_devices_api_service.h"
 #include "modules/lockout/lockout_store.h"
@@ -74,6 +75,12 @@ void WiFiManager::setupWebServer() {
     server.onNotFound([this]() {
         markUiActivity();  // Track UI activity
         String uri = server.uri();
+
+        if (!WifiStaticPathGuard::isSafe(uri.c_str())) {
+            Serial.printf("[HTTP] REJECT unsafe path %s\n", uri.c_str());
+            server.send(404, "text/plain", "Not found");
+            return;
+        }
         
         // Serve _app files from LittleFS
         if (uri.startsWith("/_app/")) {

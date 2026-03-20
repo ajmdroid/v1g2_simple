@@ -15,6 +15,12 @@ static bool responseContains(const WebServer& server, const char* needle) {
     return std::strstr(server.lastBody.c_str(), needle) != nullptr;
 }
 
+static void assertCaptivePortalNoStoreHeaders(const WebServer& server) {
+    TEST_ASSERT_EQUAL_STRING("no-store, no-cache, must-revalidate",
+                             server.sentHeader("Cache-Control").c_str());
+    TEST_ASSERT_EQUAL_STRING("no-cache", server.sentHeader("Pragma").c_str());
+}
+
 void setUp() {
     mockMillis = 1000;
     mockMicros = 1000000;
@@ -34,6 +40,8 @@ void test_ping_marks_ui_activity_and_returns_ok() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING("text/plain", server.lastContentType.c_str());
     TEST_ASSERT_TRUE(responseContains(server, "OK"));
+    TEST_ASSERT_EQUAL_STRING("", server.sentHeader("Cache-Control").c_str());
+    TEST_ASSERT_EQUAL_STRING("", server.sentHeader("Pragma").c_str());
 }
 
 void test_generate_204_marks_ui_activity_and_returns_empty_204() {
@@ -48,6 +56,7 @@ void test_generate_204_marks_ui_activity_and_returns_empty_204() {
     TEST_ASSERT_EQUAL_INT(204, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING("text/plain", server.lastContentType.c_str());
     TEST_ASSERT_EQUAL_STRING("", server.lastBody.c_str());
+    assertCaptivePortalNoStoreHeaders(server);
 }
 
 void test_gen_204_marks_ui_activity_and_returns_empty_204() {
@@ -62,6 +71,7 @@ void test_gen_204_marks_ui_activity_and_returns_empty_204() {
     TEST_ASSERT_EQUAL_INT(204, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING("text/plain", server.lastContentType.c_str());
     TEST_ASSERT_EQUAL_STRING("", server.lastBody.c_str());
+    assertCaptivePortalNoStoreHeaders(server);
 }
 
 void test_hotspot_detect_marks_ui_activity_and_redirects_to_settings() {
@@ -77,6 +87,7 @@ void test_hotspot_detect_marks_ui_activity_and_redirects_to_settings() {
     TEST_ASSERT_EQUAL_INT(302, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING("text/html", server.lastContentType.c_str());
     TEST_ASSERT_EQUAL_STRING("", server.lastBody.c_str());
+    assertCaptivePortalNoStoreHeaders(server);
 }
 
 void test_fwlink_redirects_to_settings() {
@@ -88,6 +99,7 @@ void test_fwlink_redirects_to_settings() {
     TEST_ASSERT_EQUAL_INT(302, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING("text/html", server.lastContentType.c_str());
     TEST_ASSERT_EQUAL_STRING("", server.lastBody.c_str());
+    assertCaptivePortalNoStoreHeaders(server);
 }
 
 void test_ncsi_returns_expected_body() {
@@ -98,6 +110,7 @@ void test_ncsi_returns_expected_body() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING("text/plain", server.lastContentType.c_str());
     TEST_ASSERT_TRUE(responseContains(server, "Microsoft NCSI"));
+    assertCaptivePortalNoStoreHeaders(server);
 }
 
 int main() {

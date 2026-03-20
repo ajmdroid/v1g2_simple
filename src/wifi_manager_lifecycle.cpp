@@ -7,6 +7,7 @@
 #include "settings.h"
 #include "perf_sd_logger.h"
 #include "time_service.h"
+#include "modules/wifi/wifi_static_path_guard.h"
 #include "modules/wifi/wifi_auto_timeout_module.h"
 #include "modules/wifi/wifi_heap_guard_module.h"
 #include "modules/wifi/wifi_stop_reason_module.h"
@@ -763,6 +764,12 @@ void WiFiManager::process() {
 
 void WiFiManager::handleNotFound() {
     String uri = server.uri();
+
+    if (!WifiStaticPathGuard::isSafe(uri.c_str())) {
+        Serial.printf("[HTTP] REJECT unsafe path %s\n", uri.c_str());
+        server.send(404, "text/plain", "Not found");
+        return;
+    }
     
     // Try to serve HTML pages from LittleFS (SvelteKit pre-rendered pages)
     if (uri.endsWith(".html") || uri.indexOf('.') == -1) {
