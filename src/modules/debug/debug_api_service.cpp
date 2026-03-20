@@ -5,6 +5,7 @@
 #include "../wifi/wifi_json_document.h"
 #include <LittleFS.h>
 #include <cmath>
+#include <new>
 #include "json_stream_response.h"
 #include <algorithm>
 #include <initializer_list>
@@ -25,6 +26,13 @@
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
 #include "../../../include/main_globals.h"
+
+#if defined(__GNUC__)
+#define DEBUG_API_NOINLINE __attribute__((noinline))
+#else
+#define DEBUG_API_NOINLINE
+#endif
+
 namespace {
 bool isTruthyArgValue(const String& value) {
     return value == "1" || value == "true" || value == "TRUE" ||
@@ -102,6 +110,41 @@ constexpr uint8_t kBogeyPhoto = 115;
 constexpr uint8_t kBogeyLaser = 73;
 constexpr uint32_t kSoakMetricsCacheTtlMs = 250;
 DebugApiService::SoakMetricsJsonCache gSoakMetricsCache;
+
+class MetricsSnapshotScratch {
+public:
+    MetricsSnapshotScratch() {
+        void* storage = heap_caps_malloc(sizeof(PerfRuntimeMetricsSnapshot),
+                                         WifiJson::kPsramCaps);
+        if (!storage) {
+            storage = heap_caps_malloc(sizeof(PerfRuntimeMetricsSnapshot),
+                                       WifiJson::kInternalCaps);
+        }
+        if (storage) {
+            snapshot_ = new (storage) PerfRuntimeMetricsSnapshot();
+        }
+    }
+
+    ~MetricsSnapshotScratch() {
+        if (!snapshot_) {
+            return;
+        }
+        snapshot_->~PerfRuntimeMetricsSnapshot();
+        heap_caps_free(snapshot_);
+    }
+
+    PerfRuntimeMetricsSnapshot* get() const {
+        return snapshot_;
+    }
+
+    explicit operator bool() const {
+        return snapshot_ != nullptr;
+    }
+
+private:
+    PerfRuntimeMetricsSnapshot* snapshot_ = nullptr;
+};
+
 bool parseRequestBody(WebServer& server, JsonDocument& body, bool& hasBody) {
     hasBody = false;
     if (!server.hasArg("plain")) {
@@ -378,7 +421,8 @@ void appendLockoutMetrics(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& s
     lockoutObj["enforceAllowed"] = snapshot.lockout.enforceAllowed;
 }
 
-void appendFullMetricsDoc(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& snapshot) {
+DEBUG_API_NOINLINE void appendFullMetricsDoc(JsonDocument& doc,
+                                             const PerfRuntimeMetricsSnapshot& snapshot) {
     const PerfSdSnapshot& flat = snapshot.flat;
     doc["rxPackets"] = flat.rx;
     doc["rxBytes"] = flat.rxBytes;
@@ -626,17 +670,33 @@ void appendSoakMetricsDoc(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& s
 }  // anonymous namespace
 namespace DebugApiService {
 static void sendMetrics(WebServer& server) {
+    // /api/debug/metrics runs on Arduino's loopTask (8 KB stack by default).
+    // Keep the large runtime snapshot off-stack so Tier 4 observability work
+    // cannot destabilize Tier 1/2 runtime paths during Wi-Fi + BLE coexistence.
+    MetricsSnapshotScratch snapshotScratch;
+    if (!snapshotScratch) {
+        Serial.println("[DebugApi] Metrics snapshot allocation failed");
+        server.send(503, "application/json",
+                    "{\"error\":\"metrics snapshot alloc failed\"}");
+        return;
+    }
+
+    perfCaptureRuntimeMetricsSnapshot(*snapshotScratch.get());
+
     WifiJson::Document doc;
-    PerfRuntimeMetricsSnapshot snapshot{};
-    perfCaptureRuntimeMetricsSnapshot(snapshot);
-    appendFullMetricsDoc(doc, snapshot);
+    appendFullMetricsDoc(doc, *snapshotScratch.get());
     sendJsonStream(server, doc);
 }
 
 static void buildMetricsSoakDoc(JsonDocument& doc) {
-    PerfRuntimeMetricsSnapshot snapshot{};
-    perfCaptureRuntimeMetricsSnapshot(snapshot);
-    appendSoakMetricsDoc(doc, snapshot);
+    MetricsSnapshotScratch snapshotScratch;
+    if (!snapshotScratch) {
+        doc["error"] = "metrics snapshot alloc failed";
+        return;
+    }
+
+    perfCaptureRuntimeMetricsSnapshot(*snapshotScratch.get());
+    appendSoakMetricsDoc(doc, *snapshotScratch.get());
 }
 
 static void sendMetricsSoak(WebServer& server) {
