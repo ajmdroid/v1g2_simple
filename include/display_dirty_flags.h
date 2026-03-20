@@ -22,7 +22,9 @@ struct DisplayDirtyFlags {
     bool obdIndicator   = false;  // Force OBD indicator redraw
     bool resetTracking  = false;  // Signal to reset change-tracking statics
 
-    /// Mark every element as needing a forced redraw (called after screen clear).
+    /// Mark the primary frame redraw flags after a full screen clear.
+    /// multiAlert, cards, and resetTracking are intentionally managed by
+    /// their own state/update paths rather than blanket-reset here.
     void setAll() {
         frequency    = true;
         battery      = true;

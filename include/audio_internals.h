@@ -27,7 +27,7 @@ static constexpr bool AUDIO_DEBUG_LOGS = false;
 // ---- Shared constants ----
 static constexpr int AUDIO_CHUNK_SAMPLES = 1024;
 static constexpr int AUDIO_STEREO_CHUNK_SIZE = AUDIO_CHUNK_SAMPLES * 2;
-static constexpr int SD_AUDIO_TASK_STACK_SIZE = 4096;  // Reduced from 6144 to reclaim 8 KiB BSS
+static constexpr int SD_AUDIO_TASK_STACK_SIZE = 4096;  // Reduced from 6144 to reclaim 2 KiB BSS
 static constexpr int MAX_AUDIO_CLIPS = 12;
 static constexpr unsigned long AMP_WARM_TIMEOUT_MS = 3000;
 

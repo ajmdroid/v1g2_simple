@@ -14,7 +14,9 @@
 #include <memory>
 
 
-// Shared datum state (file-scope — set by GFX_setTextDatum, read by GFX_drawString)
+// Shared datum state for the current single display context.
+// This intentionally lives in a function-local static so all Arduino_GFX text
+// helpers share one datum without exporting another mutable global symbol.
 inline uint8_t& gfxCurrentTextDatum() {
     static uint8_t datum = TL_DATUM;
     return datum;

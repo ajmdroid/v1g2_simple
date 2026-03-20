@@ -107,6 +107,8 @@ inline uint16_t shortUuid(const NimBLEUUID& uuid) {
 // =========================================================================
 
 constexpr uint8_t V1_BLE_MAX_BACKOFF_FAILURES = 5;
+// The V1 peripheral is expected to be nearby and continuously advertising, so
+// we bias toward quick reconnects rather than a more generic BLE-friendly base.
 constexpr unsigned long V1_BLE_BACKOFF_BASE_MS = 200;   // 200ms base - quick retry
 constexpr unsigned long V1_BLE_BACKOFF_MAX_MS = 1500;   // 1.5s max - keep retries snappy
 
