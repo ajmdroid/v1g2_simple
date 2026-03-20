@@ -339,6 +339,71 @@ void SettingsManager::setSlotPriorityArrowOnly(int slotNum, bool prioArrow) {
     save();
 }
 
+bool SettingsManager::applyAutoPushSlotUpdate(const AutoPushSlotUpdate& update,
+                                              SettingsPersistMode persistMode) {
+    bool changed = false;
+    V1Settings::AutoPushSlotView slot = settings.autoPushSlotView(update.slot);
+
+    if (update.hasName) {
+        changed |= assignIfChanged(slot.name, sanitizeSlotNameValue(update.name));
+    }
+    if (update.hasColor) {
+        changed |= assignIfChanged(slot.color, update.color);
+    }
+    if (update.hasVolume) {
+        changed |= assignIfChanged(slot.volume, clampSlotVolumeValue(update.volume));
+    }
+    if (update.hasMuteVolume) {
+        changed |= assignIfChanged(slot.muteVolume, clampSlotVolumeValue(update.muteVolume));
+    }
+    if (update.hasDarkMode) {
+        changed |= assignIfChanged(slot.darkMode, update.darkMode);
+    }
+    if (update.hasMuteToZero) {
+        changed |= assignIfChanged(slot.muteToZero, update.muteToZero);
+    }
+    if (update.hasAlertPersist) {
+        changed |= assignIfChanged(slot.alertPersist, std::min<uint8_t>(5, update.alertPersist));
+    }
+    if (update.hasPriorityArrowOnly) {
+        changed |= assignIfChanged(slot.priorityArrow, update.priorityArrowOnly);
+    }
+    if (update.hasProfileName) {
+        changed |= assignIfChanged(slot.config.profileName,
+                                   sanitizeProfileNameValue(update.profileName));
+    }
+    if (update.hasMode) {
+        changed |= assignIfChanged(slot.config.mode,
+                                   normalizeV1ModeValue(static_cast<int>(update.mode)));
+    }
+
+    if (changed) {
+        persistSettingsByMode(*this, persistMode);
+    }
+
+    return changed;
+}
+
+bool SettingsManager::applyAutoPushStateUpdate(const AutoPushStateUpdate& update,
+                                               SettingsPersistMode persistMode) {
+    bool changed = false;
+
+    if (update.hasActiveSlot) {
+        changed |= assignIfChanged(settings.activeSlot,
+                                   static_cast<int>(
+                                       V1Settings::normalizeAutoPushSlotIndex(update.activeSlot)));
+    }
+    if (update.hasEnabled) {
+        changed |= assignIfChanged(settings.autoPushEnabled, update.enabled);
+    }
+
+    if (changed) {
+        persistSettingsByMode(*this, persistMode);
+    }
+
+    return changed;
+}
+
 void SettingsManager::setLastV1Address(const String& addr) {
     String safeAddr = sanitizeLastV1AddressValue(addr);
     if (safeAddr != settings.lastV1Address) {

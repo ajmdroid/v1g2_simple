@@ -72,45 +72,79 @@ void handleApiSlotSave(WebServer& server,
         return;
     }
 
-    if (name.length() > 0 && runtime.setSlotName) {
-        runtime.setSlotName(slot, name);
+    bool changed = false;
+
+    if (runtime.applySlotUpdate) {
+        SlotUpdateRequest request;
+        request.slot = slot;
+        request.hasName = name.length() > 0;
+        request.name = name;
+        request.hasColor = color >= 0;
+        request.color = static_cast<uint16_t>(std::max(0, color));
+        request.hasVolume = volume >= 0;
+        request.volume = static_cast<uint8_t>(std::max(0, volume));
+        request.hasMuteVolume = muteVol >= 0;
+        request.muteVolume = static_cast<uint8_t>(std::max(0, muteVol));
+        request.hasDarkMode = hasDarkMode;
+        request.darkMode = darkMode;
+        request.hasMuteToZero = hasMuteToZero;
+        request.muteToZero = muteToZero;
+        request.hasAlertPersist = hasAlertPersist && alertPersist >= 0;
+        request.alertPersist = static_cast<uint8_t>(std::max(0, std::min(5, alertPersist)));
+        request.hasPriorityArrowOnly = server.hasArg("priorityArrowOnly");
+        request.priorityArrowOnly = server.arg("priorityArrowOnly") == "true";
+        request.profile = profile;
+        request.mode = mode;
+        changed = runtime.applySlotUpdate(request);
+    } else {
+        if (name.length() > 0 && runtime.setSlotName) {
+            runtime.setSlotName(slot, name);
+            changed = true;
+        }
+
+        if (color >= 0 && runtime.setSlotColor) {
+            runtime.setSlotColor(slot, static_cast<uint16_t>(color));
+            changed = true;
+        }
+
+        uint8_t existingVol = runtime.getSlotVolume ? runtime.getSlotVolume(slot) : 0;
+        uint8_t existingMute = runtime.getSlotMuteVolume ? runtime.getSlotMuteVolume(slot) : 0;
+        uint8_t vol = (volume >= 0) ? static_cast<uint8_t>(volume) : existingVol;
+        uint8_t mute = (muteVol >= 0) ? static_cast<uint8_t>(muteVol) : existingMute;
+
+        if ((volume >= 0 || muteVol >= 0) && runtime.setSlotVolumes) {
+            runtime.setSlotVolumes(slot, vol, mute);
+            changed = true;
+        }
+
+        if (hasDarkMode && runtime.setSlotDarkMode) {
+            runtime.setSlotDarkMode(slot, darkMode);
+            changed = true;
+        }
+        if (hasMuteToZero && runtime.setSlotMuteToZero) {
+            runtime.setSlotMuteToZero(slot, muteToZero);
+            changed = true;
+        }
+
+        if (hasAlertPersist && alertPersist >= 0 && runtime.setSlotAlertPersistSec) {
+            int clamped = std::max(0, std::min(5, alertPersist));
+            runtime.setSlotAlertPersistSec(slot, static_cast<uint8_t>(clamped));
+            changed = true;
+        }
+
+        if (server.hasArg("priorityArrowOnly") && runtime.setSlotPriorityArrowOnly) {
+            bool prioArrow = server.arg("priorityArrowOnly") == "true";
+            runtime.setSlotPriorityArrowOnly(slot, prioArrow);
+            changed = true;
+        }
+
+        if (runtime.setSlotProfileAndMode) {
+            runtime.setSlotProfileAndMode(slot, profile, mode);
+            changed = true;
+        }
     }
 
-    if (color >= 0 && runtime.setSlotColor) {
-        runtime.setSlotColor(slot, static_cast<uint16_t>(color));
-    }
-
-    uint8_t existingVol = runtime.getSlotVolume ? runtime.getSlotVolume(slot) : 0;
-    uint8_t existingMute = runtime.getSlotMuteVolume ? runtime.getSlotMuteVolume(slot) : 0;
-    uint8_t vol = (volume >= 0) ? static_cast<uint8_t>(volume) : existingVol;
-    uint8_t mute = (muteVol >= 0) ? static_cast<uint8_t>(muteVol) : existingMute;
-
-    if (runtime.setSlotVolumes) {
-        runtime.setSlotVolumes(slot, vol, mute);
-    }
-
-    if (hasDarkMode && runtime.setSlotDarkMode) {
-        runtime.setSlotDarkMode(slot, darkMode);
-    }
-    if (hasMuteToZero && runtime.setSlotMuteToZero) {
-        runtime.setSlotMuteToZero(slot, muteToZero);
-    }
-
-    if (hasAlertPersist && alertPersist >= 0 && runtime.setSlotAlertPersistSec) {
-        int clamped = std::max(0, std::min(5, alertPersist));
-        runtime.setSlotAlertPersistSec(slot, static_cast<uint8_t>(clamped));
-    }
-
-    if (server.hasArg("priorityArrowOnly") && runtime.setSlotPriorityArrowOnly) {
-        bool prioArrow = server.arg("priorityArrowOnly") == "true";
-        runtime.setSlotPriorityArrowOnly(slot, prioArrow);
-    }
-
-    if (runtime.setSlotProfileAndMode) {
-        runtime.setSlotProfileAndMode(slot, profile, mode);
-    }
-
-    if (runtime.getActiveSlot && runtime.drawProfileIndicator &&
+    if (changed && runtime.getActiveSlot && runtime.drawProfileIndicator &&
         slot == runtime.getActiveSlot()) {
         runtime.drawProfileIndicator(slot);
     }
@@ -136,11 +170,18 @@ void handleApiActivate(WebServer& server,
         return;
     }
 
-    if (runtime.setActiveSlot) {
-        runtime.setActiveSlot(slot);
-    }
-    if (runtime.setAutoPushEnabled) {
-        runtime.setAutoPushEnabled(enable);
+    if (runtime.applyActivation) {
+        ActivationRequest request;
+        request.slot = slot;
+        request.enable = enable;
+        runtime.applyActivation(request);
+    } else {
+        if (runtime.setActiveSlot) {
+            runtime.setActiveSlot(slot);
+        }
+        if (runtime.setAutoPushEnabled) {
+            runtime.setAutoPushEnabled(enable);
+        }
     }
 
     server.send(200, "application/json", "{\"success\":true}");

@@ -808,6 +808,48 @@ struct ObdSettingsUpdate {
     bool resetSavedNameOnAddressChange = false;
 };
 
+struct AutoPushSlotUpdate {
+    int slot = 0;
+
+    bool hasName = false;
+    String name;
+
+    bool hasColor = false;
+    uint16_t color = 0;
+
+    bool hasVolume = false;
+    uint8_t volume = 0xFF;
+
+    bool hasMuteVolume = false;
+    uint8_t muteVolume = 0xFF;
+
+    bool hasDarkMode = false;
+    bool darkMode = false;
+
+    bool hasMuteToZero = false;
+    bool muteToZero = false;
+
+    bool hasAlertPersist = false;
+    uint8_t alertPersist = 0;
+
+    bool hasPriorityArrowOnly = false;
+    bool priorityArrowOnly = false;
+
+    bool hasProfileName = false;
+    String profileName;
+
+    bool hasMode = false;
+    V1Mode mode = V1_MODE_UNKNOWN;
+};
+
+struct AutoPushStateUpdate {
+    bool hasActiveSlot = false;
+    int activeSlot = 0;
+
+    bool hasEnabled = false;
+    bool enabled = false;
+};
+
 class SettingsManager {
 public:
     SettingsManager();
@@ -902,6 +944,10 @@ public:
                                                   SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
     bool applyObdSettingsUpdate(const ObdSettingsUpdate& update,
                                 SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
+    bool applyAutoPushSlotUpdate(const AutoPushSlotUpdate& update,
+                                 SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
+    bool applyAutoPushStateUpdate(const AutoPushStateUpdate& update,
+                                  SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
     
     // Batch update methods (don't auto-save, call save() after)
     void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }

@@ -445,6 +445,64 @@ void test_display_batch_update_skips_noop_persist_and_saves_once_on_change() {
     TEST_ASSERT_TRUE(activeNamespaceOrEmpty().length() > 0);
 }
 
+void test_autopush_slot_batch_update_skips_noop_persist_and_saves_once_on_change() {
+    SettingsManager manager;
+
+    AutoPushSlotUpdate emptyUpdate;
+    manager.applyAutoPushSlotUpdate(emptyUpdate);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    const V1Settings::ConstAutoPushSlotView slot = manager.get().autoPushSlotView(1);
+
+    AutoPushSlotUpdate sameValueUpdate;
+    sameValueUpdate.slot = 1;
+    sameValueUpdate.hasProfileName = true;
+    sameValueUpdate.profileName = slot.config.profileName;
+    sameValueUpdate.hasMode = true;
+    sameValueUpdate.mode = slot.config.mode;
+    manager.applyAutoPushSlotUpdate(sameValueUpdate);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    AutoPushSlotUpdate changedUpdate;
+    changedUpdate.slot = 1;
+    changedUpdate.hasProfileName = true;
+    changedUpdate.profileName = "Road";
+    changedUpdate.hasMode = true;
+    changedUpdate.mode = V1_MODE_LOGIC;
+    manager.applyAutoPushSlotUpdate(changedUpdate);
+    TEST_ASSERT_EQUAL_UINT32(2u, manager.backupRevision());
+    TEST_ASSERT_TRUE(activeNamespaceOrEmpty().length() > 0);
+}
+
+void test_autopush_state_batch_update_skips_noop_persist_and_saves_once_on_change() {
+    SettingsManager manager;
+
+    AutoPushStateUpdate emptyUpdate;
+    manager.applyAutoPushStateUpdate(emptyUpdate);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    AutoPushStateUpdate sameValueUpdate;
+    sameValueUpdate.hasActiveSlot = true;
+    sameValueUpdate.activeSlot = manager.get().activeSlot;
+    sameValueUpdate.hasEnabled = true;
+    sameValueUpdate.enabled = manager.get().autoPushEnabled;
+    manager.applyAutoPushStateUpdate(sameValueUpdate);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    AutoPushStateUpdate changedUpdate;
+    changedUpdate.hasActiveSlot = true;
+    changedUpdate.activeSlot = 2;
+    changedUpdate.hasEnabled = true;
+    changedUpdate.enabled = true;
+    manager.applyAutoPushStateUpdate(changedUpdate);
+    TEST_ASSERT_EQUAL_UINT32(2u, manager.backupRevision());
+    TEST_ASSERT_TRUE(activeNamespaceOrEmpty().length() > 0);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_save_load_and_backup_round_trip_current_shape_fields);
@@ -453,5 +511,7 @@ int main() {
     RUN_TEST(test_device_batch_update_skips_noop_persist_and_saves_once_on_change);
     RUN_TEST(test_audio_batch_update_skips_noop_persist_and_saves_once_on_change);
     RUN_TEST(test_display_batch_update_skips_noop_persist_and_saves_once_on_change);
+    RUN_TEST(test_autopush_slot_batch_update_skips_noop_persist_and_saves_once_on_change);
+    RUN_TEST(test_autopush_state_batch_update_skips_noop_persist_and_saves_once_on_change);
     return UNITY_END();
 }

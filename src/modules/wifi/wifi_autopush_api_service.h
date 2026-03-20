@@ -35,6 +35,33 @@ struct PushNowRequest {
     int mode = 0;
 };
 
+struct SlotUpdateRequest {
+    int slot = 0;
+    bool hasName = false;
+    String name;
+    bool hasColor = false;
+    uint16_t color = 0;
+    bool hasVolume = false;
+    uint8_t volume = 0;
+    bool hasMuteVolume = false;
+    uint8_t muteVolume = 0;
+    bool hasDarkMode = false;
+    bool darkMode = false;
+    bool hasMuteToZero = false;
+    bool muteToZero = false;
+    bool hasAlertPersist = false;
+    uint8_t alertPersist = 0;
+    bool hasPriorityArrowOnly = false;
+    bool priorityArrowOnly = false;
+    String profile;
+    int mode = 0;
+};
+
+struct ActivationRequest {
+    int slot = 0;
+    bool enable = true;
+};
+
 enum class PushNowQueueResult : uint8_t {
     QUEUED = 0,
     V1_NOT_CONNECTED,
@@ -46,6 +73,7 @@ enum class PushNowQueueResult : uint8_t {
 struct Runtime {
     std::function<void(SlotsSnapshot&)> loadSlotsSnapshot;
     std::function<bool(String&)> loadPushStatusJson;
+    std::function<bool(const SlotUpdateRequest&)> applySlotUpdate;
     std::function<void(int, const String&)> setSlotName;
     std::function<void(int, uint16_t)> setSlotColor;
     std::function<uint8_t(int)> getSlotVolume;
@@ -58,6 +86,7 @@ struct Runtime {
     std::function<void(int, const String&, int)> setSlotProfileAndMode;
     std::function<int()> getActiveSlot;
     std::function<void(int)> drawProfileIndicator;
+    std::function<bool(const ActivationRequest&)> applyActivation;
     std::function<void(int)> setActiveSlot;
     std::function<void(bool)> setAutoPushEnabled;
     std::function<PushNowQueueResult(const PushNowRequest&)> queuePushNow;

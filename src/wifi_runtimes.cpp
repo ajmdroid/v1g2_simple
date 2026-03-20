@@ -56,6 +56,31 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
             json = getPushStatusJson();
             return true;
         },
+        [this](const WifiAutoPushApiService::SlotUpdateRequest& request) {
+            AutoPushSlotUpdate update;
+            update.slot = request.slot;
+            update.hasName = request.hasName;
+            update.name = request.name;
+            update.hasColor = request.hasColor;
+            update.color = request.color;
+            update.hasVolume = request.hasVolume;
+            update.volume = request.volume;
+            update.hasMuteVolume = request.hasMuteVolume;
+            update.muteVolume = request.muteVolume;
+            update.hasDarkMode = request.hasDarkMode;
+            update.darkMode = request.darkMode;
+            update.hasMuteToZero = request.hasMuteToZero;
+            update.muteToZero = request.muteToZero;
+            update.hasAlertPersist = request.hasAlertPersist;
+            update.alertPersist = request.alertPersist;
+            update.hasPriorityArrowOnly = request.hasPriorityArrowOnly;
+            update.priorityArrowOnly = request.priorityArrowOnly;
+            update.hasProfileName = true;
+            update.profileName = request.profile;
+            update.hasMode = true;
+            update.mode = normalizeV1ModeValue(request.mode);
+            return settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
+        },
         [this](int slot, const String& name) {
             settingsManager.setSlotName(slot, name);
         },
@@ -91,6 +116,14 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
         },
         [this](int slot) {
             display.drawProfileIndicator(slot);
+        },
+        [this](const WifiAutoPushApiService::ActivationRequest& request) {
+            AutoPushStateUpdate update;
+            update.hasActiveSlot = true;
+            update.activeSlot = request.slot;
+            update.hasEnabled = true;
+            update.enabled = request.enable;
+            return settingsManager.applyAutoPushStateUpdate(update, SettingsPersistMode::Deferred);
         },
         [this](int slot) {
             settingsManager.setActiveSlot(slot);

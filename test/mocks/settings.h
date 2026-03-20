@@ -286,6 +286,37 @@ struct ObdSettingsUpdate {
     bool resetSavedNameOnAddressChange = false;
 };
 
+struct AutoPushSlotUpdate {
+    int slot = 0;
+    bool hasName = false;
+    String name;
+    bool hasColor = false;
+    uint16_t color = 0;
+    bool hasVolume = false;
+    uint8_t volume = 0xFF;
+    bool hasMuteVolume = false;
+    uint8_t muteVolume = 0xFF;
+    bool hasDarkMode = false;
+    bool darkMode = false;
+    bool hasMuteToZero = false;
+    bool muteToZero = false;
+    bool hasAlertPersist = false;
+    uint8_t alertPersist = 0;
+    bool hasPriorityArrowOnly = false;
+    bool priorityArrowOnly = false;
+    bool hasProfileName = false;
+    String profileName;
+    bool hasMode = false;
+    V1Mode mode = V1_MODE_UNKNOWN;
+};
+
+struct AutoPushStateUpdate {
+    bool hasActiveSlot = false;
+    int activeSlot = 0;
+    bool hasEnabled = false;
+    bool enabled = false;
+};
+
 // Settings manager stub
 class SettingsManager {
 public:
@@ -294,14 +325,19 @@ public:
     int setGpsEnabledCalls = 0;
     int saveDeferredBackupCalls = 0;
     int requestDeferredPersistCalls = 0;
+    int applyAutoPushSlotUpdateCalls = 0;
+    int applyAutoPushStateUpdateCalls = 0;
     int backupToSDCalls = 0;
     int requestDeferredBackupCalls = 0;
+    String slotNames[3];
+    uint16_t slotColors[3] = {0, 0, 0};
     uint8_t slotAlertPersistSec[3] = {0, 0, 0};
     AutoPushSlot slotConfigs[3];
     uint8_t slotVolumes[3] = {0xFF, 0xFF, 0xFF};
     uint8_t slotMuteVolumes[3] = {0xFF, 0xFF, 0xFF};
     bool slotDarkModes[3] = {false, false, false};
     bool slotMuteToZero[3] = {false, false, false};
+    bool slotPriorityArrowOnly[3] = {false, false, false};
     bool backupToSDResult = true;
     
     void load() {}
@@ -518,6 +554,86 @@ public:
         }
         if (update.hasCachedEotProfileId && settings.obdCachedEotProfileId != update.cachedEotProfileId) {
             settings.obdCachedEotProfileId = update.cachedEotProfileId;
+            changed = true;
+        }
+        if (changed) {
+            if (persistMode == SettingsPersistMode::Deferred) {
+                ++requestDeferredPersistCalls;
+            } else {
+                ++saveCalls;
+            }
+        }
+        return changed;
+    }
+    bool applyAutoPushSlotUpdate(const AutoPushSlotUpdate& update,
+                                 SettingsPersistMode persistMode = SettingsPersistMode::Immediate) {
+        ++applyAutoPushSlotUpdateCalls;
+        if (update.slot < 0 || update.slot > 2) {
+            return false;
+        }
+
+        bool changed = false;
+        if (update.hasName && slotNames[update.slot] != update.name) {
+            slotNames[update.slot] = update.name;
+            changed = true;
+        }
+        if (update.hasColor && slotColors[update.slot] != update.color) {
+            slotColors[update.slot] = update.color;
+            changed = true;
+        }
+        if (update.hasVolume && slotVolumes[update.slot] != update.volume) {
+            slotVolumes[update.slot] = update.volume;
+            changed = true;
+        }
+        if (update.hasMuteVolume && slotMuteVolumes[update.slot] != update.muteVolume) {
+            slotMuteVolumes[update.slot] = update.muteVolume;
+            changed = true;
+        }
+        if (update.hasDarkMode && slotDarkModes[update.slot] != update.darkMode) {
+            slotDarkModes[update.slot] = update.darkMode;
+            changed = true;
+        }
+        if (update.hasMuteToZero && slotMuteToZero[update.slot] != update.muteToZero) {
+            slotMuteToZero[update.slot] = update.muteToZero;
+            changed = true;
+        }
+        if (update.hasAlertPersist && slotAlertPersistSec[update.slot] != update.alertPersist) {
+            slotAlertPersistSec[update.slot] = update.alertPersist;
+            changed = true;
+        }
+        if (update.hasPriorityArrowOnly &&
+            slotPriorityArrowOnly[update.slot] != update.priorityArrowOnly) {
+            slotPriorityArrowOnly[update.slot] = update.priorityArrowOnly;
+            changed = true;
+        }
+        if (update.hasProfileName && slotConfigs[update.slot].profileName != update.profileName) {
+            slotConfigs[update.slot].profileName = update.profileName;
+            changed = true;
+        }
+        if (update.hasMode && slotConfigs[update.slot].mode != update.mode) {
+            slotConfigs[update.slot].mode = update.mode;
+            changed = true;
+        }
+
+        if (changed) {
+            if (persistMode == SettingsPersistMode::Deferred) {
+                ++requestDeferredPersistCalls;
+            } else {
+                ++saveCalls;
+            }
+        }
+        return changed;
+    }
+    bool applyAutoPushStateUpdate(const AutoPushStateUpdate& update,
+                                  SettingsPersistMode persistMode = SettingsPersistMode::Immediate) {
+        ++applyAutoPushStateUpdateCalls;
+        bool changed = false;
+        if (update.hasActiveSlot && settings.activeSlot != update.activeSlot) {
+            settings.activeSlot = static_cast<uint8_t>(update.activeSlot);
+            changed = true;
+        }
+        if (update.hasEnabled && settings.autoPushEnabled != update.enabled) {
+            settings.autoPushEnabled = update.enabled;
             changed = true;
         }
         if (changed) {
