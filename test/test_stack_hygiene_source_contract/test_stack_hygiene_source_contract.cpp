@@ -43,9 +43,20 @@ void test_wifi_file_streaming_uses_small_chunk_buffer() {
     TEST_ASSERT_NOT_EQUAL(std::string::npos, source.find("uint8_t buf[kStreamChunkBytes];"));
 }
 
+void test_obd_parser_avoids_line_matrix_scratch() {
+    const std::string source = readTextFile("src/modules/obd/obd_elm327_parser.cpp");
+
+    TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/modules/obd/obd_elm327_parser.cpp");
+    TEST_ASSERT_EQUAL(std::string::npos,
+                      source.find("char lines[kMaxNormalizedLines][kMaxLineLength]"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                          source.find("bool nextNormalizedLine(const char* trimmed,"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_perf_sd_snapshot_stays_on_flat_path);
     RUN_TEST(test_wifi_file_streaming_uses_small_chunk_buffer);
+    RUN_TEST(test_obd_parser_avoids_line_matrix_scratch);
     return UNITY_END();
 }

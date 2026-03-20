@@ -9,12 +9,6 @@ constexpr size_t kMaxNormalizedLines = 12;
 constexpr size_t kMaxLineLength = 96;
 constexpr size_t kMaxPayloadBytes = 48;
 
-struct NormalizedResponse {
-    char lines[kMaxNormalizedLines][kMaxLineLength] = {};
-    size_t lineCount = 0;
-    bool overflow = false;
-};
-
 bool isTrimChar(char c) {
     return c == ' ' || c == '\r' || c == '\n' || c == '\t' || c == '>';
 }
@@ -167,47 +161,81 @@ bool isNoDataLine(const char* line) {
     return line && startsWithCI(line, strlen(line), "NO DATA");
 }
 
-NormalizedResponse normalizeResponse(const char* response, size_t len) {
-    NormalizedResponse normalized;
-    if (!response || len == 0) {
-        return normalized;
+bool nextRawLine(const char* trimmed,
+                 size_t trimmedLen,
+                 size_t& cursor,
+                 const char*& lineStart,
+                 size_t& lineLen) {
+    if (!trimmed || cursor >= trimmedLen) {
+        return false;
     }
 
-    size_t trimmedLen = 0;
-    const char* trimmed = trimResponse(response, len, trimmedLen);
-    if (trimmedLen == 0) {
-        return normalized;
+    size_t start = cursor;
+    size_t end = start;
+    while (end < trimmedLen && trimmed[end] != '\r' && trimmed[end] != '\n') {
+        ++end;
     }
 
-    size_t lineStart = 0;
-    while (lineStart < trimmedLen) {
-        size_t lineEnd = lineStart;
-        while (lineEnd < trimmedLen && trimmed[lineEnd] != '\r' && trimmed[lineEnd] != '\n') {
-            ++lineEnd;
+    lineStart = trimmed + start;
+    lineLen = end - start;
+    cursor = end;
+    while (cursor < trimmedLen && (trimmed[cursor] == '\r' || trimmed[cursor] == '\n')) {
+        ++cursor;
+    }
+    return true;
+}
+
+void copyNormalizedLine(const char* rawLine, size_t rawLen, char line[kMaxLineLength]) {
+    const size_t copyLen = (rawLen < (kMaxLineLength - 1)) ? rawLen : (kMaxLineLength - 1);
+    memcpy(line, rawLine, copyLen);
+    line[copyLen] = '\0';
+    trimLineInPlace(line);
+}
+
+bool hasNormalizedLineOverflow(const char* trimmed, size_t trimmedLen) {
+    size_t cursor = 0;
+    size_t lineCount = 0;
+    char line[kMaxLineLength] = {};
+    while (cursor < trimmedLen) {
+        const char* rawLine = nullptr;
+        size_t rawLen = 0;
+        if (!nextRawLine(trimmed, trimmedLen, cursor, rawLine, rawLen)) {
+            break;
         }
 
-        if (normalized.lineCount >= kMaxNormalizedLines) {
-            normalized.overflow = true;
-            return normalized;
+        if (lineCount >= kMaxNormalizedLines) {
+            return true;
         }
 
-        const size_t rawLen = lineEnd - lineStart;
-        const size_t copyLen = (rawLen < (kMaxLineLength - 1)) ? rawLen : (kMaxLineLength - 1);
-        memcpy(normalized.lines[normalized.lineCount], trimmed + lineStart, copyLen);
-        normalized.lines[normalized.lineCount][copyLen] = '\0';
-        trimLineInPlace(normalized.lines[normalized.lineCount]);
-        if (normalized.lines[normalized.lineCount][0] != '\0') {
-            ++normalized.lineCount;
-        }
-
-        lineStart = lineEnd;
-        while (lineStart < trimmedLen &&
-               (trimmed[lineStart] == '\r' || trimmed[lineStart] == '\n')) {
-            ++lineStart;
+        copyNormalizedLine(rawLine, rawLen, line);
+        if (line[0] != '\0') {
+            ++lineCount;
         }
     }
 
-    return normalized;
+    return false;
+}
+
+// Normalize one line at a time so the OBD update path avoids a large stack
+// resident line matrix while preserving the existing line filtering semantics.
+bool nextNormalizedLine(const char* trimmed,
+                        size_t trimmedLen,
+                        size_t& cursor,
+                        char line[kMaxLineLength]) {
+    while (cursor < trimmedLen) {
+        const char* rawLine = nullptr;
+        size_t rawLen = 0;
+        if (!nextRawLine(trimmed, trimmedLen, cursor, rawLine, rawLen)) {
+            return false;
+        }
+
+        copyNormalizedLine(rawLine, rawLen, line);
+        if (line[0] != '\0') {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool collectHexBytesFromLine(const char* rawLine,
@@ -263,7 +291,8 @@ bool collectHexBytesFromLine(const char* rawLine,
     return true;
 }
 
-bool collectNormalizedHexPayload(const NormalizedResponse& normalized,
+bool collectNormalizedHexPayload(const char* trimmed,
+                                 size_t trimmedLen,
                                  uint8_t* out,
                                  size_t outCap,
                                  size_t& outLen,
@@ -275,13 +304,14 @@ bool collectNormalizedHexPayload(const NormalizedResponse& normalized,
     sawNoData = false;
     sawError = false;
 
-    if (normalized.overflow) {
+    if (hasNormalizedLineOverflow(trimmed, trimmedLen)) {
         sawError = true;
         return false;
     }
 
-    for (size_t i = 0; i < normalized.lineCount; ++i) {
-        const char* line = normalized.lines[i];
+    size_t cursor = 0;
+    char line[kMaxLineLength] = {};
+    while (nextNormalizedLine(trimmed, trimmedLen, cursor, line)) {
         if (isNoDataLine(line)) {
             sawNoData = true;
             continue;
@@ -341,7 +371,13 @@ Elm327ParseResult parseElm327Response(const char* response, size_t len) {
         return result;
     }
 
-    const NormalizedResponse normalized = normalizeResponse(response, len);
+    size_t trimmedLen = 0;
+    const char* trimmed = trimResponse(response, len, trimmedLen);
+    if (trimmedLen == 0) {
+        result.error = true;
+        return result;
+    }
+
     uint8_t bytes[kMaxPayloadBytes] = {};
     size_t byteCount = 0;
     bool sawBusInit = false;
@@ -349,7 +385,7 @@ Elm327ParseResult parseElm327Response(const char* response, size_t len) {
     bool sawError = false;
 
     const bool hasPayload = collectNormalizedHexPayload(
-        normalized, bytes, sizeof(bytes), byteCount, sawBusInit, sawNoData, sawError);
+        trimmed, trimmedLen, bytes, sizeof(bytes), byteCount, sawBusInit, sawNoData, sawError);
 
     result.busInit = sawBusInit;
     if (sawBusInit && !hasPayload && !sawNoData && !sawError) {
@@ -412,8 +448,14 @@ Elm327VinParseResult parseVinResponse(const char* response, size_t len) {
         return result;
     }
 
-    const NormalizedResponse normalized = normalizeResponse(response, len);
-    if (normalized.overflow) {
+    size_t trimmedLen = 0;
+    const char* trimmed = trimResponse(response, len, trimmedLen);
+    if (trimmedLen == 0) {
+        result.error = true;
+        return result;
+    }
+
+    if (hasNormalizedLineOverflow(trimmed, trimmedLen)) {
         result.error = true;
         return result;
     }
@@ -422,8 +464,9 @@ Elm327VinParseResult parseVinResponse(const char* response, size_t len) {
     size_t vinLen = 0;
     bool sawHexFrame = false;
 
-    for (size_t i = 0; i < normalized.lineCount; ++i) {
-        const char* line = normalized.lines[i];
+    size_t cursor = 0;
+    char line[kMaxLineLength] = {};
+    while (nextNormalizedLine(trimmed, trimmedLen, cursor, line)) {
         if (isNoDataLine(line)) {
             result.noData = true;
             continue;

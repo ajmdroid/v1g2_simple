@@ -255,11 +255,53 @@ void test_parse_mode_22_response_sets_did() {
     TEST_ASSERT_EQUAL_UINT8(0x78, r.dataBytes[0]);
 }
 
+void test_parse_response_ignores_echo_and_status_lines() {
+    const char* resp =
+        "ATSH 7E0\r\n"
+        "010D\r\n"
+        "SEARCHING...\r\n"
+        "41 0D 3C\r\n"
+        ">";
+    Elm327ParseResult r = parseElm327Response(resp, strlen(resp));
+    TEST_ASSERT_TRUE(r.valid);
+    TEST_ASSERT_EQUAL_UINT8(0x41, r.service);
+    TEST_ASSERT_EQUAL_UINT8(0x0D, r.pid);
+    TEST_ASSERT_EQUAL_UINT8(0x3C, r.dataBytes[0]);
+    TEST_ASSERT_FALSE(r.noData);
+    TEST_ASSERT_FALSE(r.error);
+}
+
+void test_parse_too_many_lines_reports_error() {
+    const char* resp =
+        "NO DATA\r\nNO DATA\r\nNO DATA\r\nNO DATA\r\nNO DATA\r\nNO DATA\r\n"
+        "NO DATA\r\nNO DATA\r\nNO DATA\r\nNO DATA\r\nNO DATA\r\nNO DATA\r\n"
+        "NO DATA\r\n>";
+    Elm327ParseResult r = parseElm327Response(resp, strlen(resp));
+    TEST_ASSERT_FALSE(r.valid);
+    TEST_ASSERT_FALSE(r.noData);
+    TEST_ASSERT_TRUE(r.error);
+}
+
 void test_parse_vin_multiline_response() {
     const char* resp =
         "0902\r\n"
         "0: 49 02 01 31 46 54\r\n"
         "1: 57 31 45 54 37 44\r\n"
+        "2: 46 41 31 32 33 34\r\n"
+        "3: 35 36\r\n"
+        ">";
+    Elm327VinParseResult vin = parseVinResponse(resp, strlen(resp));
+    TEST_ASSERT_TRUE(vin.valid);
+    TEST_ASSERT_EQUAL_STRING("1FTW1ET7DFA123456", vin.vin);
+}
+
+void test_parse_vin_multiline_response_with_echo_and_status_lines() {
+    const char* resp =
+        "0902\r\n"
+        "SEARCHING...\r\n"
+        "0: 49 02 01 31 46 54\r\n"
+        "1: 57 31 45 54 37 44\r\n"
+        "OK\r\n"
         "2: 46 41 31 32 33 34\r\n"
         "3: 35 36\r\n"
         ">";
@@ -387,7 +429,10 @@ int main() {
     RUN_TEST(test_parse_lowercase_hex);
     RUN_TEST(test_parse_multi_byte_data);
     RUN_TEST(test_parse_mode_22_response_sets_did);
+    RUN_TEST(test_parse_response_ignores_echo_and_status_lines);
+    RUN_TEST(test_parse_too_many_lines_reports_error);
     RUN_TEST(test_parse_vin_multiline_response);
+    RUN_TEST(test_parse_vin_multiline_response_with_echo_and_status_lines);
     RUN_TEST(test_parse_vin_no_data);
     RUN_TEST(test_decode_u8_offset40_temperature);
     RUN_TEST(test_decode_u16_div10_offset40_temperature);
