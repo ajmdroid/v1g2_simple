@@ -350,122 +350,148 @@ void SettingsManager::setLastV1Address(const String& addr) {
 
 void SettingsManager::applyDeviceSettingsUpdate(const DeviceSettingsUpdate& update,
                                                 SettingsPersistMode persistMode) {
+    bool changed = false;
+
     if (update.hasApCredentials) {
-        settings.apSSID = sanitizeApSsidValue(update.apSSID);
-        settings.apPassword = sanitizeApPasswordValue(update.apPassword);
+        changed |= assignIfChanged(settings.apSSID, sanitizeApSsidValue(update.apSSID));
+        changed |= assignIfChanged(settings.apPassword, sanitizeApPasswordValue(update.apPassword));
     }
     if (update.hasProxyBLE) {
-        settings.proxyBLE = update.proxyBLE;
+        changed |= assignIfChanged(settings.proxyBLE, update.proxyBLE);
     }
     if (update.hasProxyName) {
-        settings.proxyName = sanitizeProxyNameValue(update.proxyName);
+        changed |= assignIfChanged(settings.proxyName, sanitizeProxyNameValue(update.proxyName));
     }
     if (update.hasAutoPowerOffMinutes) {
-        settings.autoPowerOffMinutes = clampU8(update.autoPowerOffMinutes, 0, 60);
+        changed |= assignIfChanged(settings.autoPowerOffMinutes,
+                                   clampU8(update.autoPowerOffMinutes, 0, 60));
     }
     if (update.hasApTimeoutMinutes) {
-        settings.apTimeoutMinutes = clampApTimeoutValue(update.apTimeoutMinutes);
+        changed |= assignIfChanged(settings.apTimeoutMinutes,
+                                   clampApTimeoutValue(update.apTimeoutMinutes));
     }
     if (update.hasEnableWifiAtBoot) {
-        settings.enableWifiAtBoot = update.enableWifiAtBoot;
+        changed |= assignIfChanged(settings.enableWifiAtBoot, update.enableWifiAtBoot);
     }
     if (update.hasEnableSignalTraceLogging) {
-        settings.enableSignalTraceLogging = update.enableSignalTraceLogging;
+        changed |= assignIfChanged(settings.enableSignalTraceLogging, update.enableSignalTraceLogging);
     }
 
-    persistSettingsByMode(*this, persistMode);
+    if (changed) {
+        persistSettingsByMode(*this, persistMode);
+    }
 }
 
 void SettingsManager::applyAudioSettingsUpdate(const AudioSettingsUpdate& update,
                                                SettingsPersistMode persistMode) {
+    bool changed = false;
+
     if (update.hasVoiceAlertMode) {
-        settings.voiceAlertMode = clampVoiceAlertModeValue(static_cast<int>(update.voiceAlertMode));
+        changed |= assignIfChanged(settings.voiceAlertMode,
+                                   clampVoiceAlertModeValue(static_cast<int>(update.voiceAlertMode)));
     }
     if (update.hasVoiceDirectionEnabled) {
-        settings.voiceDirectionEnabled = update.voiceDirectionEnabled;
+        changed |= assignIfChanged(settings.voiceDirectionEnabled, update.voiceDirectionEnabled);
     }
     if (update.hasAnnounceBogeyCount) {
-        settings.announceBogeyCount = update.announceBogeyCount;
+        changed |= assignIfChanged(settings.announceBogeyCount, update.announceBogeyCount);
     }
     if (update.hasMuteVoiceIfVolZero) {
-        settings.muteVoiceIfVolZero = update.muteVoiceIfVolZero;
+        changed |= assignIfChanged(settings.muteVoiceIfVolZero, update.muteVoiceIfVolZero);
     }
     if (update.hasVoiceVolume) {
-        settings.voiceVolume = clampU8(update.voiceVolume, 0, 100);
+        changed |= assignIfChanged(settings.voiceVolume, clampU8(update.voiceVolume, 0, 100));
     }
     if (update.hasAnnounceSecondaryAlerts) {
-        settings.announceSecondaryAlerts = update.announceSecondaryAlerts;
+        changed |= assignIfChanged(settings.announceSecondaryAlerts, update.announceSecondaryAlerts);
     }
     if (update.hasSecondaryLaser) {
-        settings.secondaryLaser = update.secondaryLaser;
+        changed |= assignIfChanged(settings.secondaryLaser, update.secondaryLaser);
     }
     if (update.hasSecondaryKa) {
-        settings.secondaryKa = update.secondaryKa;
+        changed |= assignIfChanged(settings.secondaryKa, update.secondaryKa);
     }
     if (update.hasSecondaryK) {
-        settings.secondaryK = update.secondaryK;
+        changed |= assignIfChanged(settings.secondaryK, update.secondaryK);
     }
     if (update.hasSecondaryX) {
-        settings.secondaryX = update.secondaryX;
+        changed |= assignIfChanged(settings.secondaryX, update.secondaryX);
     }
     if (update.hasAlertVolumeFadeEnabled) {
-        settings.alertVolumeFadeEnabled = update.alertVolumeFadeEnabled;
+        changed |= assignIfChanged(settings.alertVolumeFadeEnabled, update.alertVolumeFadeEnabled);
     }
     if (update.hasAlertVolumeFadeDelaySec) {
-        settings.alertVolumeFadeDelaySec = clampU8(update.alertVolumeFadeDelaySec, 1, 10);
+        changed |= assignIfChanged(settings.alertVolumeFadeDelaySec,
+                                   clampU8(update.alertVolumeFadeDelaySec, 1, 10));
     }
     if (update.hasAlertVolumeFadeVolume) {
-        settings.alertVolumeFadeVolume = clampU8(update.alertVolumeFadeVolume, 0, 9);
+        changed |= assignIfChanged(settings.alertVolumeFadeVolume,
+                                   clampU8(update.alertVolumeFadeVolume, 0, 9));
     }
 
-    persistSettingsByMode(*this, persistMode);
+    if (changed) {
+        persistSettingsByMode(*this, persistMode);
+    }
 }
 
 void SettingsManager::applyDisplaySettingsUpdate(const DisplaySettingsUpdate& update,
                                                  SettingsPersistMode persistMode) {
-    if (update.hasColorBogey) settings.colorBogey = update.colorBogey;
-    if (update.hasColorFrequency) settings.colorFrequency = update.colorFrequency;
-    if (update.hasColorArrowFront) settings.colorArrowFront = update.colorArrowFront;
-    if (update.hasColorArrowSide) settings.colorArrowSide = update.colorArrowSide;
-    if (update.hasColorArrowRear) settings.colorArrowRear = update.colorArrowRear;
-    if (update.hasColorBandL) settings.colorBandL = update.colorBandL;
-    if (update.hasColorBandKa) settings.colorBandKa = update.colorBandKa;
-    if (update.hasColorBandK) settings.colorBandK = update.colorBandK;
-    if (update.hasColorBandX) settings.colorBandX = update.colorBandX;
-    if (update.hasColorBandPhoto) settings.colorBandPhoto = update.colorBandPhoto;
-    if (update.hasColorWiFiIcon) settings.colorWiFiIcon = update.colorWiFiIcon;
-    if (update.hasColorWiFiConnected) settings.colorWiFiConnected = update.colorWiFiConnected;
-    if (update.hasColorBleConnected) settings.colorBleConnected = update.colorBleConnected;
-    if (update.hasColorBleDisconnected) settings.colorBleDisconnected = update.colorBleDisconnected;
-    if (update.hasColorBar1) settings.colorBar1 = update.colorBar1;
-    if (update.hasColorBar2) settings.colorBar2 = update.colorBar2;
-    if (update.hasColorBar3) settings.colorBar3 = update.colorBar3;
-    if (update.hasColorBar4) settings.colorBar4 = update.colorBar4;
-    if (update.hasColorBar5) settings.colorBar5 = update.colorBar5;
-    if (update.hasColorBar6) settings.colorBar6 = update.colorBar6;
-    if (update.hasColorMuted) settings.colorMuted = update.colorMuted;
-    if (update.hasColorPersisted) settings.colorPersisted = update.colorPersisted;
-    if (update.hasColorVolumeMain) settings.colorVolumeMain = update.colorVolumeMain;
-    if (update.hasColorVolumeMute) settings.colorVolumeMute = update.colorVolumeMute;
-    if (update.hasColorRssiV1) settings.colorRssiV1 = update.colorRssiV1;
-    if (update.hasColorRssiProxy) settings.colorRssiProxy = update.colorRssiProxy;
-    if (update.hasColorLockout) settings.colorLockout = update.colorLockout;
-    if (update.hasColorGps) settings.colorGps = update.colorGps;
-    if (update.hasColorObd) settings.colorObd = update.colorObd;
-    if (update.hasFreqUseBandColor) settings.freqUseBandColor = update.freqUseBandColor;
-    if (update.hasHideWifiIcon) settings.hideWifiIcon = update.hideWifiIcon;
-    if (update.hasHideProfileIndicator) settings.hideProfileIndicator = update.hideProfileIndicator;
-    if (update.hasHideBatteryIcon) settings.hideBatteryIcon = update.hideBatteryIcon;
-    if (update.hasShowBatteryPercent) settings.showBatteryPercent = update.showBatteryPercent;
-    if (update.hasHideBleIcon) settings.hideBleIcon = update.hideBleIcon;
-    if (update.hasHideVolumeIndicator) settings.hideVolumeIndicator = update.hideVolumeIndicator;
-    if (update.hasHideRssiIndicator) settings.hideRssiIndicator = update.hideRssiIndicator;
-    if (update.hasBrightness) settings.brightness = update.brightness;
+    bool changed = false;
+
+    if (update.hasColorBogey) changed |= assignIfChanged(settings.colorBogey, update.colorBogey);
+    if (update.hasColorFrequency) changed |= assignIfChanged(settings.colorFrequency, update.colorFrequency);
+    if (update.hasColorArrowFront) changed |= assignIfChanged(settings.colorArrowFront, update.colorArrowFront);
+    if (update.hasColorArrowSide) changed |= assignIfChanged(settings.colorArrowSide, update.colorArrowSide);
+    if (update.hasColorArrowRear) changed |= assignIfChanged(settings.colorArrowRear, update.colorArrowRear);
+    if (update.hasColorBandL) changed |= assignIfChanged(settings.colorBandL, update.colorBandL);
+    if (update.hasColorBandKa) changed |= assignIfChanged(settings.colorBandKa, update.colorBandKa);
+    if (update.hasColorBandK) changed |= assignIfChanged(settings.colorBandK, update.colorBandK);
+    if (update.hasColorBandX) changed |= assignIfChanged(settings.colorBandX, update.colorBandX);
+    if (update.hasColorBandPhoto) changed |= assignIfChanged(settings.colorBandPhoto, update.colorBandPhoto);
+    if (update.hasColorWiFiIcon) changed |= assignIfChanged(settings.colorWiFiIcon, update.colorWiFiIcon);
+    if (update.hasColorWiFiConnected) {
+        changed |= assignIfChanged(settings.colorWiFiConnected, update.colorWiFiConnected);
+    }
+    if (update.hasColorBleConnected) changed |= assignIfChanged(settings.colorBleConnected, update.colorBleConnected);
+    if (update.hasColorBleDisconnected) {
+        changed |= assignIfChanged(settings.colorBleDisconnected, update.colorBleDisconnected);
+    }
+    if (update.hasColorBar1) changed |= assignIfChanged(settings.colorBar1, update.colorBar1);
+    if (update.hasColorBar2) changed |= assignIfChanged(settings.colorBar2, update.colorBar2);
+    if (update.hasColorBar3) changed |= assignIfChanged(settings.colorBar3, update.colorBar3);
+    if (update.hasColorBar4) changed |= assignIfChanged(settings.colorBar4, update.colorBar4);
+    if (update.hasColorBar5) changed |= assignIfChanged(settings.colorBar5, update.colorBar5);
+    if (update.hasColorBar6) changed |= assignIfChanged(settings.colorBar6, update.colorBar6);
+    if (update.hasColorMuted) changed |= assignIfChanged(settings.colorMuted, update.colorMuted);
+    if (update.hasColorPersisted) changed |= assignIfChanged(settings.colorPersisted, update.colorPersisted);
+    if (update.hasColorVolumeMain) changed |= assignIfChanged(settings.colorVolumeMain, update.colorVolumeMain);
+    if (update.hasColorVolumeMute) changed |= assignIfChanged(settings.colorVolumeMute, update.colorVolumeMute);
+    if (update.hasColorRssiV1) changed |= assignIfChanged(settings.colorRssiV1, update.colorRssiV1);
+    if (update.hasColorRssiProxy) changed |= assignIfChanged(settings.colorRssiProxy, update.colorRssiProxy);
+    if (update.hasColorLockout) changed |= assignIfChanged(settings.colorLockout, update.colorLockout);
+    if (update.hasColorGps) changed |= assignIfChanged(settings.colorGps, update.colorGps);
+    if (update.hasColorObd) changed |= assignIfChanged(settings.colorObd, update.colorObd);
+    if (update.hasFreqUseBandColor) changed |= assignIfChanged(settings.freqUseBandColor, update.freqUseBandColor);
+    if (update.hasHideWifiIcon) changed |= assignIfChanged(settings.hideWifiIcon, update.hideWifiIcon);
+    if (update.hasHideProfileIndicator) {
+        changed |= assignIfChanged(settings.hideProfileIndicator, update.hideProfileIndicator);
+    }
+    if (update.hasHideBatteryIcon) changed |= assignIfChanged(settings.hideBatteryIcon, update.hideBatteryIcon);
+    if (update.hasShowBatteryPercent) changed |= assignIfChanged(settings.showBatteryPercent, update.showBatteryPercent);
+    if (update.hasHideBleIcon) changed |= assignIfChanged(settings.hideBleIcon, update.hideBleIcon);
+    if (update.hasHideVolumeIndicator) {
+        changed |= assignIfChanged(settings.hideVolumeIndicator, update.hideVolumeIndicator);
+    }
+    if (update.hasHideRssiIndicator) changed |= assignIfChanged(settings.hideRssiIndicator, update.hideRssiIndicator);
+    if (update.hasBrightness) changed |= assignIfChanged(settings.brightness, update.brightness);
     if (update.hasDisplayStyle) {
-        settings.displayStyle = normalizeDisplayStyle(static_cast<int>(update.displayStyle));
+        changed |= assignIfChanged(settings.displayStyle,
+                                   normalizeDisplayStyle(static_cast<int>(update.displayStyle)));
     }
 
-    persistSettingsByMode(*this, persistMode);
+    if (changed) {
+        persistSettingsByMode(*this, persistMode);
+    }
 }
 
 void SettingsManager::resetDisplaySettings(SettingsPersistMode persistMode) {

@@ -35,6 +35,7 @@ inline bool canConvertFromJson(JsonVariantConst src, const ::String&) {
 #include "../../src/backup_payload_builder.cpp"
 #include "../../src/psram_freertos_alloc.cpp"
 #include "../../src/settings.cpp"
+#include "../../src/settings_setters.cpp"
 #include "../../src/settings_nvs.cpp"
 #include "../../src/settings_backup.cpp"
 #include "../../src/settings_deferred_backup.cpp"
@@ -375,10 +376,82 @@ void test_serialized_backup_payload_matches_builder_and_writes_same_json() {
     TEST_ASSERT_NULL(payload.data);
 }
 
+void test_device_batch_update_skips_noop_persist_and_saves_once_on_change() {
+    SettingsManager manager;
+
+    DeviceSettingsUpdate emptyUpdate;
+    manager.applyDeviceSettingsUpdate(emptyUpdate);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    DeviceSettingsUpdate sameValueUpdate;
+    sameValueUpdate.hasProxyBLE = true;
+    sameValueUpdate.proxyBLE = manager.get().proxyBLE;
+    manager.applyDeviceSettingsUpdate(sameValueUpdate);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    DeviceSettingsUpdate changedUpdate;
+    changedUpdate.hasProxyBLE = true;
+    changedUpdate.proxyBLE = !manager.get().proxyBLE;
+    manager.applyDeviceSettingsUpdate(changedUpdate);
+    TEST_ASSERT_EQUAL_UINT32(2u, manager.backupRevision());
+    TEST_ASSERT_TRUE(activeNamespaceOrEmpty().length() > 0);
+}
+
+void test_audio_batch_update_skips_noop_persist_and_saves_once_on_change() {
+    SettingsManager manager;
+
+    AudioSettingsUpdate emptyUpdate;
+    manager.applyAudioSettingsUpdate(emptyUpdate);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    AudioSettingsUpdate sameValueUpdate;
+    sameValueUpdate.hasVoiceDirectionEnabled = true;
+    sameValueUpdate.voiceDirectionEnabled = manager.get().voiceDirectionEnabled;
+    manager.applyAudioSettingsUpdate(sameValueUpdate);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    AudioSettingsUpdate changedUpdate;
+    changedUpdate.hasVoiceDirectionEnabled = true;
+    changedUpdate.voiceDirectionEnabled = !manager.get().voiceDirectionEnabled;
+    manager.applyAudioSettingsUpdate(changedUpdate);
+    TEST_ASSERT_EQUAL_UINT32(2u, manager.backupRevision());
+    TEST_ASSERT_TRUE(activeNamespaceOrEmpty().length() > 0);
+}
+
+void test_display_batch_update_skips_noop_persist_and_saves_once_on_change() {
+    SettingsManager manager;
+
+    DisplaySettingsUpdate emptyUpdate;
+    manager.applyDisplaySettingsUpdate(emptyUpdate);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    DisplaySettingsUpdate sameValueUpdate;
+    sameValueUpdate.hasColorBogey = true;
+    sameValueUpdate.colorBogey = manager.get().colorBogey;
+    manager.applyDisplaySettingsUpdate(sameValueUpdate);
+    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
+    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
+
+    DisplaySettingsUpdate changedUpdate;
+    changedUpdate.hasColorBogey = true;
+    changedUpdate.colorBogey = static_cast<uint16_t>(manager.get().colorBogey ^ 0x00FFu);
+    manager.applyDisplaySettingsUpdate(changedUpdate);
+    TEST_ASSERT_EQUAL_UINT32(2u, manager.backupRevision());
+    TEST_ASSERT_TRUE(activeNamespaceOrEmpty().length() > 0);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_save_load_and_backup_round_trip_current_shape_fields);
     RUN_TEST(test_apply_backup_document_unifies_restore_field_coverage_and_profile_restore);
     RUN_TEST(test_serialized_backup_payload_matches_builder_and_writes_same_json);
+    RUN_TEST(test_device_batch_update_skips_noop_persist_and_saves_once_on_change);
+    RUN_TEST(test_audio_batch_update_skips_noop_persist_and_saves_once_on_change);
+    RUN_TEST(test_display_batch_update_skips_noop_persist_and_saves_once_on_change);
     return UNITY_END();
 }
