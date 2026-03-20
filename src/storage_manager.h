@@ -252,12 +252,11 @@ public:
             backupPathToUse = derivedBackupPath.c_str();
         }
 
-        if (backupPathToUse && backupPathToUse[0] != '\0' && fs.exists(backupPathToUse)) {
-            fs.remove(backupPathToUse);
-        }
-
         const bool liveExists = fs.exists(livePath);
         if (liveExists) {
+            if (backupPathToUse && backupPathToUse[0] != '\0' && fs.exists(backupPathToUse)) {
+                fs.remove(backupPathToUse);
+            }
             if (!fs.rename(livePath, backupPathToUse)) {
                 fs.remove(tempPath);
                 return false;
@@ -276,7 +275,7 @@ public:
             return false;
         }
 
-        if (liveExists && backupPathToUse && backupPathToUse[0] != '\0' && fs.exists(backupPathToUse)) {
+        if (backupPathToUse && backupPathToUse[0] != '\0' && fs.exists(backupPathToUse)) {
             fs.remove(backupPathToUse);
         }
 

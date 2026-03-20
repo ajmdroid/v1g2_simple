@@ -120,11 +120,44 @@ void test_promote_temp_file_rolls_back_when_temp_promotion_fails() {
     TEST_ASSERT_EQUAL_STRING("old", readFile(resolveFsPath(root, "/settings.json")).c_str());
 }
 
+void test_promote_temp_file_keeps_prev_when_live_missing_and_promotion_fails() {
+    const std::filesystem::path root = makeFsRoot(__func__);
+    fs::FS testFs(root);
+    writeFile(resolveFsPath(root, "/settings.json.prev"), "old");
+    writeFile(resolveFsPath(root, "/settings.json.tmp"), "new");
+    fs::mock_fail_next_rename();
+
+    TEST_ASSERT_FALSE(
+        StorageManager::promoteTempFileWithRollback(testFs, "/settings.json.tmp", "/settings.json"));
+
+    TEST_ASSERT_FALSE(testFs.exists("/settings.json"));
+    TEST_ASSERT_FALSE(testFs.exists("/settings.json.tmp"));
+    TEST_ASSERT_TRUE(testFs.exists("/settings.json.prev"));
+    TEST_ASSERT_EQUAL_STRING("old", readFile(resolveFsPath(root, "/settings.json.prev")).c_str());
+}
+
+void test_promote_temp_file_cleans_prev_when_live_missing_and_promotion_succeeds() {
+    const std::filesystem::path root = makeFsRoot(__func__);
+    fs::FS testFs(root);
+    writeFile(resolveFsPath(root, "/settings.json.prev"), "old");
+    writeFile(resolveFsPath(root, "/settings.json.tmp"), "new");
+
+    TEST_ASSERT_TRUE(
+        StorageManager::promoteTempFileWithRollback(testFs, "/settings.json.tmp", "/settings.json"));
+
+    TEST_ASSERT_TRUE(testFs.exists("/settings.json"));
+    TEST_ASSERT_FALSE(testFs.exists("/settings.json.tmp"));
+    TEST_ASSERT_FALSE(testFs.exists("/settings.json.prev"));
+    TEST_ASSERT_EQUAL_STRING("new", readFile(resolveFsPath(root, "/settings.json")).c_str());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_promote_temp_file_succeeds_when_no_live_file_exists);
     RUN_TEST(test_promote_temp_file_replaces_existing_live_file_and_cleans_backup);
     RUN_TEST(test_promote_temp_file_fails_when_live_file_cannot_rotate);
     RUN_TEST(test_promote_temp_file_rolls_back_when_temp_promotion_fails);
+    RUN_TEST(test_promote_temp_file_keeps_prev_when_live_missing_and_promotion_fails);
+    RUN_TEST(test_promote_temp_file_cleans_prev_when_live_missing_and_promotion_succeeds);
     return UNITY_END();
 }
