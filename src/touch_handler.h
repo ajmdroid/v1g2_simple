@@ -67,11 +67,39 @@ private:
 public:
     uint32_t getI2cStallCount() const { return i2cStallCount; }
     uint32_t getI2cMaxUs() const { return i2cMaxUs; }
-    void resetI2cStats() { i2cStallCount = 0; i2cMaxUs = 0; }
+    uint32_t getI2cRecoveryCount() const { return i2cRecoveryCount; }
+    void resetI2cStats() {
+        i2cStallCount = 0;
+        i2cMaxUs = 0;
+        i2cRecoveryCount = 0;
+        consecutiveI2cFailures = 0;
+    }
 
 private:
+    static constexpr uint8_t I2C_RECOVERY_THRESHOLD = 3;
+    static constexpr unsigned long I2C_RECOVERY_COOLDOWN_MS = 250;
+    static constexpr unsigned long I2C_RECOVERY_BACKOFF_MS = 50;
+    static constexpr uint8_t I2C_RECOVERY_CLOCK_PULSES = 9;
+    static constexpr unsigned int I2C_RECOVERY_PULSE_DELAY_US = 5;
+    static constexpr uint32_t I2C_CLOCK_HZ = 400000;
+    static constexpr uint16_t I2C_TIMEOUT_MS = 5;
+
+    int sdaPin = 17;
+    int sclPin = 18;
     // I2C communication
+    void configureWireBus();
+    void noteNoTouch(unsigned long now);
+    void recordI2cFailure(unsigned long now, uint32_t elapsedUs);
+    void recordI2cSuccess();
+    void maybeRecoverI2cBus(unsigned long now);
+    void recoverI2cBus(unsigned long now);
+    bool isI2cPollBackoffActive(unsigned long now) const;
     uint8_t readRegister(uint8_t reg);
+
+    unsigned long lastRecoveryMs = 0;
+    unsigned long nextI2cPollAllowedMs = 0;
+    uint8_t consecutiveI2cFailures = 0;
+    uint32_t i2cRecoveryCount = 0;
 };
 
 #endif // TOUCH_HANDLER_H

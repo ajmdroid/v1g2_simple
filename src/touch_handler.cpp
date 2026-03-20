@@ -23,15 +23,18 @@ TouchHandler::TouchHandler()
 }
 
 bool TouchHandler::begin(int sda, int scl, uint8_t addr, int rst) {
+    sdaPin = sda;
+    sclPin = scl;
     i2cAddr = addr;
     rstPin = rst;
+    nextI2cPollAllowedMs = 0;
+    lastRecoveryMs = 0;
+    consecutiveI2cFailures = 0;
     
     TOUCH_LOGF("[Touch] Initializing AXS15231B touch on I2C SDA=%d SCL=%d addr=0x%02X\n", sda, scl, addr);
     
     // Initialize I2C with specified pins
-    Wire.begin(sda, scl);
-    Wire.setClock(400000);  // 400kHz I2C speed
-    Wire.setTimeOut(5);     // 5ms I2C transaction cap (prevents bus-hang stalls)
+    configureWireBus();
     
     delay(30);   // Conservative I2C/touch controller settle
     
@@ -76,8 +79,105 @@ bool TouchHandler::isTouched() {
     return getTouchPoint(x, y);
 }
 
+void TouchHandler::configureWireBus() {
+    Wire.begin(sdaPin, sclPin);
+    Wire.setClock(I2C_CLOCK_HZ);
+    Wire.setTimeOut(I2C_TIMEOUT_MS);
+}
+
+void TouchHandler::noteNoTouch(unsigned long now) {
+    if (touchActive) {
+        lastReleaseTime = now;
+        touchActive = false;
+    }
+}
+
+void TouchHandler::recordI2cFailure(unsigned long now, uint32_t elapsedUs) {
+    if (elapsedUs > i2cMaxUs) {
+        i2cMaxUs = elapsedUs;
+    }
+    ++i2cStallCount;
+    if (consecutiveI2cFailures < UINT8_MAX) {
+        ++consecutiveI2cFailures;
+    }
+    noteNoTouch(now);
+    maybeRecoverI2cBus(now);
+}
+
+void TouchHandler::recordI2cSuccess() {
+    consecutiveI2cFailures = 0;
+}
+
+bool TouchHandler::isI2cPollBackoffActive(unsigned long now) const {
+    return static_cast<long>(now - nextI2cPollAllowedMs) < 0;
+}
+
+void TouchHandler::maybeRecoverI2cBus(unsigned long now) {
+    if (consecutiveI2cFailures < I2C_RECOVERY_THRESHOLD) {
+        return;
+    }
+
+    if (i2cRecoveryCount != 0 &&
+        (now - lastRecoveryMs) < I2C_RECOVERY_COOLDOWN_MS) {
+        return;
+    }
+
+    recoverI2cBus(now);
+}
+
+void TouchHandler::recoverI2cBus(unsigned long now) {
+    const uint8_t failuresBeforeRecovery = consecutiveI2cFailures;
+    ++i2cRecoveryCount;
+    lastRecoveryMs = now;
+    nextI2cPollAllowedMs = now + I2C_RECOVERY_BACKOFF_MS;
+    consecutiveI2cFailures = 0;
+
+    Wire.end();
+
+    pinMode(sdaPin, OUTPUT_OPEN_DRAIN);
+    pinMode(sclPin, OUTPUT_OPEN_DRAIN);
+    digitalWrite(sdaPin, HIGH);
+    digitalWrite(sclPin, HIGH);
+    delayMicroseconds(I2C_RECOVERY_PULSE_DELAY_US);
+
+    bool sdaReleased = (digitalRead(sdaPin) != LOW);
+    if (!sdaReleased) {
+        for (uint8_t pulse = 0; pulse < I2C_RECOVERY_CLOCK_PULSES; ++pulse) {
+            digitalWrite(sclPin, LOW);
+            delayMicroseconds(I2C_RECOVERY_PULSE_DELAY_US);
+            digitalWrite(sclPin, HIGH);
+            delayMicroseconds(I2C_RECOVERY_PULSE_DELAY_US);
+            if (digitalRead(sdaPin) != LOW) {
+                sdaReleased = true;
+                break;
+            }
+        }
+    }
+
+    digitalWrite(sclPin, HIGH);
+    delayMicroseconds(I2C_RECOVERY_PULSE_DELAY_US);
+    digitalWrite(sdaPin, LOW);
+    delayMicroseconds(I2C_RECOVERY_PULSE_DELAY_US);
+    digitalWrite(sdaPin, HIGH);
+    delayMicroseconds(I2C_RECOVERY_PULSE_DELAY_US);
+
+    pinMode(sdaPin, INPUT_PULLUP);
+    pinMode(sclPin, INPUT_PULLUP);
+
+    configureWireBus();
+
+    Serial.printf("[Touch] I2C recovery #%lu after %u consecutive failures (%s)\n",
+                  static_cast<unsigned long>(i2cRecoveryCount),
+                  static_cast<unsigned>(failuresBeforeRecovery),
+                  sdaReleased ? "sda_released" : "sda_still_low");
+}
+
 bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
     unsigned long now = millis();
+    if (isI2cPollBackoffActive(now)) {
+        noteNoTouch(now);
+        return false;
+    }
     
     // AXS15231B requires special command sequence to read touch data
     // Send command: {0xb5, 0xab, 0xa5, 0x5a, 0x0, 0x0, 0x0, 0x0e, 0x0, 0x0, 0x0}
@@ -89,20 +189,31 @@ bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
     uint8_t err = Wire.endTransmission(false);  // Keep connection open for read
     
     if (err != 0) {
-        uint32_t elapsed = micros() - i2cStart;
-        if (elapsed > i2cMaxUs) i2cMaxUs = elapsed;
-        i2cStallCount++;
+        recordI2cFailure(now, micros() - i2cStart);
         return false;
     }
     
     // Read 32 bytes of touch data
     uint8_t buff[32] = {0};
-    Wire.requestFrom(i2cAddr, (uint8_t)32);
+    const size_t bytesRead = Wire.requestFrom(i2cAddr, static_cast<uint8_t>(32));
     uint32_t i2cElapsed = micros() - i2cStart;
+    if (bytesRead != 32) {
+        while (Wire.available()) {
+            (void)Wire.read();
+        }
+        recordI2cFailure(now, i2cElapsed);
+        return false;
+    }
+
     if (i2cElapsed > i2cMaxUs) i2cMaxUs = i2cElapsed;
-    for (int i = 0; i < 32 && Wire.available(); i++) {
+    for (int i = 0; i < 32; i++) {
+        if (!Wire.available()) {
+            recordI2cFailure(now, micros() - i2cStart);
+            return false;
+        }
         buff[i] = Wire.read();
     }
+    recordI2cSuccess();
     
     // Parse touch data from AXS15231B response
     // buff[0] = gesture (ignored)
@@ -116,10 +227,7 @@ bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
     
     if (numPoints == 0 || numPoints > 4) {
         // No touch - track when finger was released
-        if (touchActive) {
-            lastReleaseTime = now;
-            touchActive = false;
-        }
+        noteNoTouch(now);
         return false;
     }
     
