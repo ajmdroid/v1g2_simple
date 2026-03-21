@@ -623,25 +623,37 @@ bool V1ProfileManager::deleteProfile(const String& name) {
 
 bool V1ProfileManager::renameProfile(const String& oldName, const String& newName) {
     if (!ready || !fs) {
+        lastError = "Filesystem not ready";
         return false;
     }
 
-    // Guard: no-op rename would save then delete the same file
+    const String oldPath = profilePath(oldName);
+    const String newPath = profilePath(newName);
+
+    // Guard: exact no-op rename should not touch disk or revision state.
     if (oldName == newName) {
         return true;
     }
 
-    // Guard: refuse to overwrite a different existing profile
-    if (fs->exists(profilePath(newName))) {
-        Serial.printf("[V1Profiles] Rename refused: target '%s' already exists\n", newName.c_str());
-        return false;
-    }
-    
     V1Profile profile;
     if (!loadProfile(oldName, profile)) {
         return false;
     }
-    
+
+    // Sanitized path collision: update metadata in place without delete/recreate.
+    if (oldPath == newPath) {
+        profile.name = newName;
+        ProfileSaveResult result = saveProfile(profile);
+        return result.success;
+    }
+
+    // Guard: refuse to overwrite a different existing profile.
+    if (fs->exists(newPath)) {
+        lastError = "Rename target already exists: " + newName;
+        Serial.printf("[V1Profiles] %s\n", lastError.c_str());
+        return false;
+    }
+
     profile.name = newName;
     ProfileSaveResult result = saveProfile(profile);
     if (!result.success) {

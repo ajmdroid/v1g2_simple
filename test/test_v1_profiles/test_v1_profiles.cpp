@@ -36,6 +36,32 @@ std::string readFileToString(fs::FS& fs, const char* path) {
     return output;
 }
 
+size_t countFilesInProfileDir(const char* suffix = nullptr) {
+    const std::filesystem::path profileDir = g_tempRoot / "v1profiles";
+    if (!std::filesystem::exists(profileDir)) {
+        return 0;
+    }
+
+    size_t count = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(profileDir)) {
+        if (!entry.is_regular_file()) {
+            continue;
+        }
+        const std::string filename = entry.path().filename().string();
+        if (suffix != nullptr) {
+            const std::string wantedSuffix(suffix);
+            if (filename.size() < wantedSuffix.size() ||
+                filename.compare(filename.size() - wantedSuffix.size(),
+                                 wantedSuffix.size(),
+                                 wantedSuffix) != 0) {
+                continue;
+            }
+        }
+        ++count;
+    }
+    return count;
+}
+
 V1Profile makeProfile(const String& name,
                       uint8_t baseByte,
                       const String& description = "profile") {
@@ -130,10 +156,94 @@ void test_save_profile_normal_path_still_succeeds() {
     TEST_ASSERT_EQUAL_UINT8(35, loaded.settings.bytes[5]);
 }
 
+void test_rename_same_name_is_successful_noop() {
+    fs::FS fs(g_tempRoot);
+    V1ProfileManager manager;
+    TEST_ASSERT_TRUE(manager.begin(&fs));
+
+    TEST_ASSERT_TRUE(manager.saveProfile(makeProfile("City", 40, "same-name")).success);
+    const uint32_t beforeRevision = manager.catalogRevision();
+    const std::string before = readFileToString(fs, "/v1profiles/City.json");
+
+    TEST_ASSERT_TRUE(manager.renameProfile("City", "City"));
+    TEST_ASSERT_EQUAL_UINT32(beforeRevision, manager.catalogRevision());
+    TEST_ASSERT_EQUAL_STRING(before.c_str(), readFileToString(fs, "/v1profiles/City.json").c_str());
+}
+
+void test_rename_sanitized_collision_updates_name_in_place() {
+    fs::FS fs(g_tempRoot);
+    V1ProfileManager manager;
+    TEST_ASSERT_TRUE(manager.begin(&fs));
+
+    TEST_ASSERT_TRUE(manager.saveProfile(makeProfile("Road/1", 50, "collision")).success);
+    const uint32_t beforeRevision = manager.catalogRevision();
+
+    TEST_ASSERT_TRUE(manager.renameProfile("Road/1", "Road_1"));
+    TEST_ASSERT_TRUE(manager.catalogRevision() > beforeRevision);
+    TEST_ASSERT_TRUE(fs.exists("/v1profiles/Road_1.json"));
+    TEST_ASSERT_EQUAL_UINT32(1u, static_cast<uint32_t>(countFilesInProfileDir(".json")));
+
+    V1Profile loaded;
+    TEST_ASSERT_TRUE(manager.loadProfile("Road_1", loaded));
+    TEST_ASSERT_EQUAL_STRING("Road_1", loaded.name.c_str());
+    TEST_ASSERT_EQUAL_STRING("collision", loaded.description.c_str());
+    TEST_ASSERT_EQUAL_UINT8(50, loaded.settings.bytes[0]);
+    TEST_ASSERT_EQUAL_UINT8(55, loaded.settings.bytes[5]);
+}
+
+void test_rename_existing_distinct_destination_fails_without_mutation() {
+    fs::FS fs(g_tempRoot);
+    V1ProfileManager manager;
+    TEST_ASSERT_TRUE(manager.begin(&fs));
+
+    TEST_ASSERT_TRUE(manager.saveProfile(makeProfile("Alpha", 60, "alpha")).success);
+    TEST_ASSERT_TRUE(manager.saveProfile(makeProfile("Beta", 70, "beta")).success);
+    const uint32_t beforeRevision = manager.catalogRevision();
+    const std::string alphaBefore = readFileToString(fs, "/v1profiles/Alpha.json");
+    const std::string betaBefore = readFileToString(fs, "/v1profiles/Beta.json");
+
+    TEST_ASSERT_FALSE(manager.renameProfile("Alpha", "Beta"));
+    TEST_ASSERT_EQUAL_UINT32(beforeRevision, manager.catalogRevision());
+    TEST_ASSERT_EQUAL_STRING(alphaBefore.c_str(), readFileToString(fs, "/v1profiles/Alpha.json").c_str());
+    TEST_ASSERT_EQUAL_STRING(betaBefore.c_str(), readFileToString(fs, "/v1profiles/Beta.json").c_str());
+
+    V1Profile loadedAlpha;
+    V1Profile loadedBeta;
+    TEST_ASSERT_TRUE(manager.loadProfile("Alpha", loadedAlpha));
+    TEST_ASSERT_TRUE(manager.loadProfile("Beta", loadedBeta));
+    TEST_ASSERT_EQUAL_STRING("alpha", loadedAlpha.description.c_str());
+    TEST_ASSERT_EQUAL_STRING("beta", loadedBeta.description.c_str());
+}
+
+void test_rename_normal_path_succeeds_and_advances_revision() {
+    fs::FS fs(g_tempRoot);
+    V1ProfileManager manager;
+    TEST_ASSERT_TRUE(manager.begin(&fs));
+
+    TEST_ASSERT_TRUE(manager.saveProfile(makeProfile("Quiet", 80, "rename")).success);
+    const uint32_t beforeRevision = manager.catalogRevision();
+
+    TEST_ASSERT_TRUE(manager.renameProfile("Quiet", "Highway"));
+    TEST_ASSERT_TRUE(manager.catalogRevision() > beforeRevision);
+    TEST_ASSERT_FALSE(fs.exists("/v1profiles/Quiet.json"));
+    TEST_ASSERT_TRUE(fs.exists("/v1profiles/Highway.json"));
+
+    V1Profile loaded;
+    TEST_ASSERT_TRUE(manager.loadProfile("Highway", loaded));
+    TEST_ASSERT_EQUAL_STRING("Highway", loaded.name.c_str());
+    TEST_ASSERT_EQUAL_STRING("rename", loaded.description.c_str());
+    TEST_ASSERT_EQUAL_UINT8(80, loaded.settings.bytes[0]);
+    TEST_ASSERT_EQUAL_UINT8(85, loaded.settings.bytes[5]);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_save_profile_short_write_new_file_leaves_no_live_json);
     RUN_TEST(test_save_profile_short_write_existing_file_preserves_previous_profile);
     RUN_TEST(test_save_profile_normal_path_still_succeeds);
+    RUN_TEST(test_rename_same_name_is_successful_noop);
+    RUN_TEST(test_rename_sanitized_collision_updates_name_in_place);
+    RUN_TEST(test_rename_existing_distinct_destination_fails_without_mutation);
+    RUN_TEST(test_rename_normal_path_succeeds_and_advances_revision);
     return UNITY_END();
 }
