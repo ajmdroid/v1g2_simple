@@ -501,6 +501,9 @@ struct PerfExtendedMetrics {
     uint8_t fadeLastCurrentVol = 0xFF;
     uint8_t fadeLastOriginalVol = 0xFF;
     uint32_t fadeLastDecisionMs = 0;
+    uint32_t preQuietDropCount = 0;         // Pre-quiet volume drops
+    uint32_t preQuietRestoreCount = 0;      // Pre-quiet restores issued
+    uint32_t preQuietRestoreRetryCount = 0; // Pre-quiet restore retries
     uint32_t bleScanStartMs = 0;      // First transition to SCANNING
     uint32_t bleTargetFoundMs = 0;    // First "V1 found" scan-stop transition
     uint32_t bleConnectStartMs = 0;   // First transition to CONNECTING
@@ -614,6 +617,9 @@ struct PerfExtendedMetrics {
         fadeLastCurrentVol = 0xFF;
         fadeLastOriginalVol = 0xFF;
         fadeLastDecisionMs = 0;
+        preQuietDropCount = 0;
+        preQuietRestoreCount = 0;
+        preQuietRestoreRetryCount = 0;
         bleScanStartMs = 0;
         bleTargetFoundMs = 0;
         bleConnectStartMs = 0;
@@ -725,6 +731,9 @@ void perfRecordObdWriteCallUs(uint32_t us);
 void perfRecordObdRssiCallUs(uint32_t us);
 void perfRecordDisplayScreenTransition(PerfDisplayScreen from, PerfDisplayScreen to, uint32_t nowMs);
 void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolume, uint8_t originalVolume, uint32_t nowMs);
+void perfRecordPreQuietDrop();
+void perfRecordPreQuietRestore();
+void perfRecordPreQuietRestoreRetry();
 void perfRecordBleTimelineEvent(PerfBleTimelineEvent event, uint32_t nowMs);
 void perfRecordWifiApTransition(bool apActive, uint8_t reasonCode, uint32_t nowMs);
 void perfRecordProxyAdvertisingTransition(bool advertising, uint8_t reasonCode, uint32_t nowMs);
@@ -822,6 +831,9 @@ struct PerfSdSnapshot {
     uint8_t fadeLastCurrentVol;   // Last observed current volume
     uint8_t fadeLastOriginalVol;  // Last observed baseline/original volume
     uint32_t fadeLastDecisionMs;  // Last fade decision timestamp
+    uint32_t preQuietDropCount;         // Pre-quiet volume drops
+    uint32_t preQuietRestoreCount;      // Pre-quiet restores issued
+    uint32_t preQuietRestoreRetryCount; // Pre-quiet restore retries
     uint32_t bleScanStartMs;      // First scan start timestamp
     uint32_t bleTargetFoundMs;    // First target-found timestamp
     uint32_t bleConnectStartMs;   // First connect-start timestamp

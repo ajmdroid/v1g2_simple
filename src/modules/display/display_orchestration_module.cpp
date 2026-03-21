@@ -11,6 +11,7 @@
 #include "settings.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/lockout/lockout_orchestration_module.h"
+#include "perf_metrics.h"
 #endif
 
 void DisplayOrchestrationModule::begin(V1Display* displayPtr,
@@ -40,6 +41,10 @@ void DisplayOrchestrationModule::reset() {
     lastGpsSatUpdateMs = 0;
     lastFreqUiMs = 0;
     lastCardUiMs = 0;
+    pendingPqRestoreVol_ = 0xFF;
+    pendingPqRestoreMuteVol_ = 0;
+    pendingPqRestoreSetMs_ = 0;
+    pendingPqRestoreLastRetryMs_ = 0;
 }
 
 bool DisplayOrchestrationModule::executeLockoutVolumeCommand(const LockoutVolumeCommand& command,
@@ -48,19 +53,66 @@ bool DisplayOrchestrationModule::executeLockoutVolumeCommand(const LockoutVolume
         return false;
     }
 
-    ble->setVolume(command.volume, command.muteVolume);
+    const bool sent = ble->setVolume(command.volume, command.muteVolume);
     if (command.type == LockoutVolumeCommandType::PreQuietRestore) {
         if (volumeFade) {
             volumeFade->setBaselineHint(command.volume, command.muteVolume, nowMs);
         }
+        // Always arm the pending-restore tracker so we confirm V1 echoes
+        // the correct volume.  If setVolume was paced/dropped, the retry
+        // loop in retryPendingPreQuietRestore() will resend.
+        pendingPqRestoreVol_ = command.volume;
+        pendingPqRestoreMuteVol_ = command.muteVolume;
+        pendingPqRestoreSetMs_ = nowMs;
+        pendingPqRestoreLastRetryMs_ = nowMs;
+#ifndef UNIT_TEST
+        perfRecordPreQuietRestore();
+#endif
         Serial.println("[Lockout] PRE-QUIET: volume restored");
         return true;
     }
 
     if (command.type == LockoutVolumeCommandType::PreQuietDrop) {
+        // Successful drop clears any pending restore (volume was re-dropped).
+        pendingPqRestoreVol_ = 0xFF;
+#ifndef UNIT_TEST
+        perfRecordPreQuietDrop();
+#endif
         Serial.println("[Lockout] PRE-QUIET: volume dropped in lockout zone");
     }
 
+    return true;
+}
+
+bool DisplayOrchestrationModule::retryPendingPreQuietRestore(const uint32_t nowMs) {
+    if (pendingPqRestoreVol_ == 0xFF || !ble || !parser) {
+        return false;
+    }
+
+    // Timeout: give up after PQ_RESTORE_TIMEOUT_MS to avoid infinite retries.
+    if ((nowMs - pendingPqRestoreSetMs_) >= PQ_RESTORE_TIMEOUT_MS) {
+        Serial.println("[Lockout] PRE-QUIET: restore retry timeout");
+        pendingPqRestoreVol_ = 0xFF;
+        return false;
+    }
+
+    // Check if V1 volume already matches the target (confirmed).
+    const DisplayState state = parser->getDisplayState();
+    if (state.mainVolume == pendingPqRestoreVol_) {
+        pendingPqRestoreVol_ = 0xFF;
+        return false;
+    }
+
+    // Pace retries at PQ_RESTORE_RETRY_INTERVAL_MS.
+    if ((nowMs - pendingPqRestoreLastRetryMs_) < PQ_RESTORE_RETRY_INTERVAL_MS) {
+        return true;  // Still pending but not retrying this frame
+    }
+
+    pendingPqRestoreLastRetryMs_ = nowMs;
+    ble->setVolume(pendingPqRestoreVol_, pendingPqRestoreMuteVol_);
+#ifndef UNIT_TEST
+    perfRecordPreQuietRestoreRetry();
+#endif
     return true;
 }
 
@@ -143,6 +195,9 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         const bool lockoutVolumeCommandExecuted =
             executeLockoutVolumeCommand(lockoutResult.volumeCommand, ctx.nowMs);
 
+        // Retry any pending pre-quiet restore that hasn't been confirmed yet.
+        const bool pqRestorePending = retryPendingPreQuietRestore(ctx.nowMs);
+
         if (lastGpsSatUpdateMs == 0 ||
             (ctx.nowMs - lastGpsSatUpdateMs >= GPS_SAT_UPDATE_INTERVAL_MS)) {
             display->setGpsSatellites(gpsStatus.enabled,
@@ -152,7 +207,7 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         }
 
         result.runDisplayPipeline = !preview->isRunning();
-        if (result.runDisplayPipeline && !lockoutVolumeCommandExecuted) {
+        if (result.runDisplayPipeline && !lockoutVolumeCommandExecuted && !pqRestorePending) {
             executeVolumeFade(ctx.nowMs, result.lockoutPrioritySuppressed);
         }
         return result;

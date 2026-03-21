@@ -89,5 +89,16 @@ private:
     static constexpr unsigned long CARD_UI_MAX_MS = 100;
 
     bool executeLockoutVolumeCommand(const LockoutVolumeCommand& command, uint32_t nowMs);
+    bool retryPendingPreQuietRestore(uint32_t nowMs);
     void executeVolumeFade(uint32_t nowMs, bool lockoutPrioritySuppressed);
+
+    // Pending pre-quiet restore retry state.
+    // Mirrors volume-fade's pendingRestore pattern: stash the target volumes
+    // and retry until V1 confirms or a timeout expires.
+    uint8_t pendingPqRestoreVol_ = 0xFF;       // 0xFF = no pending restore
+    uint8_t pendingPqRestoreMuteVol_ = 0;
+    uint32_t pendingPqRestoreSetMs_ = 0;
+    uint32_t pendingPqRestoreLastRetryMs_ = 0;
+    static constexpr uint32_t PQ_RESTORE_TIMEOUT_MS = 2000;
+    static constexpr uint32_t PQ_RESTORE_RETRY_INTERVAL_MS = 75;
 };

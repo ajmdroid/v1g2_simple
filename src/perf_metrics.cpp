@@ -518,6 +518,9 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.fadeLastCurrentVol = perfExtended.fadeLastCurrentVol;
     flat.fadeLastOriginalVol = perfExtended.fadeLastOriginalVol;
     flat.fadeLastDecisionMs = perfExtended.fadeLastDecisionMs;
+    flat.preQuietDropCount = perfExtended.preQuietDropCount;
+    flat.preQuietRestoreCount = perfExtended.preQuietRestoreCount;
+    flat.preQuietRestoreRetryCount = perfExtended.preQuietRestoreRetryCount;
     flat.bleScanStartMs = perfExtended.bleScanStartMs;
     flat.bleTargetFoundMs = perfExtended.bleTargetFoundMs;
     flat.bleConnectStartMs = perfExtended.bleConnectStartMs;
@@ -1345,6 +1348,24 @@ void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolu
     perfExtended.fadeLastCurrentVol = currentVolume;
     perfExtended.fadeLastOriginalVol = originalVolume;
     perfExtended.fadeLastDecisionMs = nowMs;
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
+}
+
+void perfRecordPreQuietDrop() {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    perfExtended.preQuietDropCount++;
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
+}
+
+void perfRecordPreQuietRestore() {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    perfExtended.preQuietRestoreCount++;
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
+}
+
+void perfRecordPreQuietRestoreRetry() {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    perfExtended.preQuietRestoreRetryCount++;
     portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 

@@ -339,6 +339,121 @@ void test_lightweight_refresh_does_not_touch_frequency_while_preview_running() {
     TEST_ASSERT_EQUAL(0, display.refreshSecondaryAlertCardsCalls);
 }
 
+// --- Pre-quiet restore retry tests ---
+
+void test_prequiet_restore_retries_until_v1_confirms() {
+    // Issue a pre-quiet restore with target volume = 7
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::PreQuietRestore;
+    lockout.nextResult.volumeCommand.volume = 7;
+    lockout.nextResult.volumeCommand.muteVolume = 2;
+    // V1 still reports old volume (5)
+    parser.setMainVolume(5);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+
+    module.processParsedFrame(ctx);
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);  // Initial send
+
+    // Next frame after retry interval — should retry since volume != 7
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::None;
+    ctx.nowMs = 1000 + 80;  // past 75ms retry interval
+    ble.setVolumeCalls = 0;
+
+    module.processParsedFrame(ctx);
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);  // Retry fired
+    TEST_ASSERT_EQUAL_UINT8(7, ble.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, ble.lastMuteVolume);
+    // Volume fade should be suppressed during pending restore
+    TEST_ASSERT_EQUAL(0, volumeFade.processCalls);
+}
+
+void test_prequiet_restore_confirmed_when_v1_volume_matches() {
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::PreQuietRestore;
+    lockout.nextResult.volumeCommand.volume = 7;
+    lockout.nextResult.volumeCommand.muteVolume = 2;
+    parser.setMainVolume(5);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 2000;
+    ctx.parsedReady = true;
+
+    module.processParsedFrame(ctx);
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+
+    // V1 echoes back the correct volume
+    parser.setMainVolume(7);
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::None;
+    ctx.nowMs = 2100;
+    ble.setVolumeCalls = 0;
+    volumeFade.processCalls = 0;
+
+    module.processParsedFrame(ctx);
+    // No retry needed — confirmed
+    TEST_ASSERT_EQUAL(0, ble.setVolumeCalls);
+    // Volume fade should run again now that pending is cleared
+    TEST_ASSERT_EQUAL(1, volumeFade.processCalls);
+}
+
+void test_prequiet_restore_timeout_clears_pending() {
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::PreQuietRestore;
+    lockout.nextResult.volumeCommand.volume = 7;
+    lockout.nextResult.volumeCommand.muteVolume = 2;
+    parser.setMainVolume(3);  // V1 never confirms
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 3000;
+    ctx.parsedReady = true;
+
+    module.processParsedFrame(ctx);
+
+    // Advance past timeout (2000ms)
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::None;
+    ctx.nowMs = 3000 + 2001;
+    ble.setVolumeCalls = 0;
+    volumeFade.processCalls = 0;
+
+    module.processParsedFrame(ctx);
+    // Timed out — no retry, fade runs again
+    TEST_ASSERT_EQUAL(0, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL(1, volumeFade.processCalls);
+}
+
+void test_prequiet_drop_clears_pending_restore() {
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::PreQuietRestore;
+    lockout.nextResult.volumeCommand.volume = 7;
+    lockout.nextResult.volumeCommand.muteVolume = 2;
+    parser.setMainVolume(3);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 4000;
+    ctx.parsedReady = true;
+
+    module.processParsedFrame(ctx);  // Arms pending restore
+
+    // New drop command should clear the pending restore
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::PreQuietDrop;
+    lockout.nextResult.volumeCommand.volume = 1;
+    lockout.nextResult.volumeCommand.muteVolume = 1;
+    ctx.nowMs = 4050;
+    ble.setVolumeCalls = 0;
+
+    module.processParsedFrame(ctx);
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(1, ble.lastVolume);
+
+    // Next frame: no pending restore, fade should run
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::None;
+    ctx.nowMs = 4200;
+    ble.setVolumeCalls = 0;
+    volumeFade.processCalls = 0;
+
+    module.processParsedFrame(ctx);
+    TEST_ASSERT_EQUAL(0, ble.setVolumeCalls);  // No retry
+    TEST_ASSERT_EQUAL(1, volumeFade.processCalls);  // Fade runs
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_process_early_updates_ble_context_and_proxy_status);
@@ -354,5 +469,9 @@ int main() {
     RUN_TEST(test_pipeline_draw_resets_frequency_timer_for_same_tick);
     RUN_TEST(test_lightweight_refresh_clears_frequency_when_idle);
     RUN_TEST(test_lightweight_refresh_does_not_touch_frequency_while_preview_running);
+    RUN_TEST(test_prequiet_restore_retries_until_v1_confirms);
+    RUN_TEST(test_prequiet_restore_confirmed_when_v1_volume_matches);
+    RUN_TEST(test_prequiet_restore_timeout_clears_pending);
+    RUN_TEST(test_prequiet_drop_clears_pending_restore);
     return UNITY_END();
 }

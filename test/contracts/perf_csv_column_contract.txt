@@ -39,6 +39,9 @@ fadeLastDecision
 fadeLastCurrentVol
 fadeLastOriginalVol
 fadeLastDecisionMs
+preQuietDrop
+preQuietRestore
+preQuietRestoreRetry
 bleScanStartMs
 bleTargetFoundMs
 bleConnectStartMs
