@@ -508,6 +508,7 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
     uint32_t crc = calculateCRC32(s.bytes, 6);
     doc["crc32"] = crc;
     
+    const size_t expectedPrettyBytes = measureJsonPretty(doc);
     size_t written = serializeJsonPretty(doc, file);
     
     // Step 2: Flush to ensure data is written to SD before closing
@@ -517,6 +518,15 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
     // Step 3: Verify write succeeded and file size matches
     if (written == 0) {
         lastError = "Serialization failed - no data written";
+        Serial.printf("[V1Profiles] %s\n", lastError.c_str());
+        fs->remove(tmpPath);
+        return ProfileSaveResult(false, lastError);
+    }
+    if (written != expectedPrettyBytes) {
+        lastError = "Partial write detected: expected " +
+                    String(static_cast<unsigned long>(expectedPrettyBytes)) +
+                    " bytes, wrote " +
+                    String(static_cast<unsigned long>(written));
         Serial.printf("[V1Profiles] %s\n", lastError.c_str());
         fs->remove(tmpPath);
         return ProfileSaveResult(false, lastError);

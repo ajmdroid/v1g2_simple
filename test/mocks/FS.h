@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <limits>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -27,6 +28,13 @@
 namespace fs {
 class FS;
 }
+
+namespace mock_fs_detail {
+
+inline constexpr size_t kUnlimitedWriteBudget = std::numeric_limits<size_t>::max();
+inline size_t g_new_file_write_budget = kUnlimitedWriteBudget;
+
+}  // namespace mock_fs_detail
 
 enum SeekMode {
     SeekSet = 0,
@@ -64,8 +72,21 @@ public:
         if (!state_ || state_->directory || !state_->writable || !state_->stream.is_open()) {
             return 0;
         }
-        state_->stream.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(length));
-        return state_->stream.good() ? length : 0u;
+        size_t bytesToWrite = length;
+        if (state_->writeBudgetRemaining != mock_fs_detail::kUnlimitedWriteBudget) {
+            if (state_->writeBudgetRemaining == 0) {
+                return 0;
+            }
+            bytesToWrite = std::min(bytesToWrite, state_->writeBudgetRemaining);
+        }
+        state_->stream.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(bytesToWrite));
+        if (!state_->stream.good()) {
+            return 0;
+        }
+        if (state_->writeBudgetRemaining != mock_fs_detail::kUnlimitedWriteBudget) {
+            state_->writeBudgetRemaining -= bytesToWrite;
+        }
+        return bytesToWrite;
     }
 
     size_t write(uint8_t byte) {
@@ -172,6 +193,7 @@ private:
         std::string name;
         std::vector<std::filesystem::path> dirEntries;
         size_t dirIndex = 0;
+        size_t writeBudgetRemaining = mock_fs_detail::kUnlimitedWriteBudget;
     };
 
     explicit File(std::shared_ptr<State> state) : state_(std::move(state)) {}
@@ -196,6 +218,9 @@ private:
         const bool truncate = openMode.find('w') != std::string::npos;
         state->readable = (openMode.find('r') != std::string::npos);
         state->writable = append || truncate;
+        if (state->writable) {
+            state->writeBudgetRemaining = mock_fs_detail::g_new_file_write_budget;
+        }
 
         std::ios::openmode iosMode = std::ios::binary;
         if (state->readable) {
@@ -247,6 +272,14 @@ inline void mock_fail_next_rename() {
 
 inline void mock_fail_rename_on_call(size_t callNumber) {
     g_mock_fs_rename_state.failOnCall = callNumber;
+}
+
+inline void mock_reset_fs_write_budget() {
+    mock_fs_detail::g_new_file_write_budget = mock_fs_detail::kUnlimitedWriteBudget;
+}
+
+inline void mock_set_fs_write_budget(size_t bytes) {
+    mock_fs_detail::g_new_file_write_budget = bytes;
 }
 
 class FS {
