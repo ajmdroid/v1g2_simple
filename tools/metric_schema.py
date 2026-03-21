@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-CURRENT_PERF_CSV_SCHEMA = 20
+CURRENT_PERF_CSV_SCHEMA = 21
 MIN_DROP_COUNTER_SCHEMA = 13
 
 CANONICAL_METRIC_UNITS: dict[str, str] = {

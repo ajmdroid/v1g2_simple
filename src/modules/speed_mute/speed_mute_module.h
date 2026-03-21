@@ -24,6 +24,7 @@ struct SpeedMuteSettings {
     uint8_t hysteresisMph = 3;       // Unmute at threshold + hysteresis
     bool overrideLaser = true;       // Always alert on Laser regardless of speed
     bool overrideKa = false;         // Always alert on Ka regardless of speed
+    uint8_t v1Volume = 0xFF;         // V1 volume when speed-muted (0-9, 0xFF = no change)
 };
 
 // ---------------------------------------------------------------------------
@@ -69,11 +70,11 @@ SpeedMuteDecision evaluateSpeedMute(
 class SpeedMuteModule {
 public:
     void begin(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph,
-               bool overrideLaser, bool overrideKa);
+               bool overrideLaser, bool overrideKa, uint8_t v1Volume = 0xFF);
 
     /// Update settings at runtime (from web UI / settings sync).
     void syncSettings(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph,
-                      bool overrideLaser, bool overrideKa);
+                      bool overrideLaser, bool overrideKa, uint8_t v1Volume = 0xFF);
 
     /// Evaluate muting decision.  Call once per loop iteration.
     SpeedMuteDecision update(float speedMph, bool speedValid, uint32_t nowMs);

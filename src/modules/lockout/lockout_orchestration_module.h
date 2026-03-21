@@ -72,6 +72,18 @@ public:
     /// Reset all internal state (e.g. on proxy connect or mode change).
     void reset();
 
+    /// True when pre-quiet has actively lowered V1 volume (DROPPED phase).
+    bool isPreQuietActive() const { return preQuietState_.phase == PreQuietPhase::DROPPED; }
+
+    /// Inject a volume hint from an external owner (e.g. speed volume).
+    /// When set, pre-quiet uses this value instead of DisplayState for its
+    /// volume capture, preventing stale-capture of a lowered volume.
+    void setVolumeHint(uint8_t mainVol, uint8_t muteVol) {
+        volumeHintMain_ = mainVol;
+        volumeHintMute_ = muteVol;
+    }
+    void clearVolumeHint() { volumeHintMain_ = 0xFF; }
+
 private:
     // Persistent state (was static locals in loop())
     LockoutRuntimeMuteState muteState_{};
@@ -80,6 +92,11 @@ private:
     uint32_t overrideUnmuteLastRetryMs_ = 0;
     uint8_t overrideUnmuteRetryCount_ = 0;
     static constexpr uint8_t MAX_OVERRIDE_UNMUTE_RETRIES = 15;  // 15 × 400ms = 6s
+
+    // External volume hint (e.g. from speed volume module).
+    // When set (main != 0xFF), pre-quiet captures this instead of DisplayState.
+    uint8_t volumeHintMain_ = 0xFF;
+    uint8_t volumeHintMute_ = 0;
 
     // DI pointers (set in begin())
     V1BLEClient* ble_ = nullptr;

@@ -42,6 +42,9 @@ fadeLastDecisionMs
 preQuietDrop
 preQuietRestore
 preQuietRestoreRetry
+speedVolDrop
+speedVolRestore
+speedVolRetry
 bleScanStartMs
 bleTargetFoundMs
 bleConnectStartMs

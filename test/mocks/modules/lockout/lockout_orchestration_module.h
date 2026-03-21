@@ -34,6 +34,12 @@ public:
     GpsRuntimeStatus lastGpsStatus{};
     LockoutOrchestrationResult nextResult{};
 
+    bool mockPreQuietActive = false;
+    uint8_t volumeHintMain = 0xFF;
+    uint8_t volumeHintMute = 0;
+    int setVolumeHintCalls = 0;
+    int clearVolumeHintCalls = 0;
+
     LockoutOrchestrationResult process(uint32_t nowMs,
                                        const GpsRuntimeStatus& gpsStatus,
                                        bool proxyClientConnected,
@@ -44,5 +50,19 @@ public:
         lastProxyConnected = proxyClientConnected;
         lastEnableSignalTrace = enableSignalTrace;
         return nextResult;
+    }
+
+    bool isPreQuietActive() const { return mockPreQuietActive; }
+
+    void setVolumeHint(uint8_t mainVol, uint8_t muteVol) {
+        setVolumeHintCalls++;
+        volumeHintMain = mainVol;
+        volumeHintMute = muteVol;
+    }
+
+    void clearVolumeHint() {
+        clearVolumeHintCalls++;
+        volumeHintMain = 0xFF;
+        volumeHintMute = 0;
     }
 };

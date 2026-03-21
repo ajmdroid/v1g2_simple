@@ -301,6 +301,7 @@ struct V1Settings {
     uint8_t speedMuteHysteresisMph;  // Unmute at threshold + hysteresis (1-10 mph)
     bool speedMuteOverrideLaser;     // Always alert on Laser regardless of speed
     bool speedMuteOverrideKa;        // Always alert on Ka regardless of speed
+    uint8_t speedMuteVolume;         // V1 volume when speed-muted (0-9, 0xFF = voice-only)
 
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -462,6 +463,7 @@ struct V1Settings {
         speedMuteHysteresisMph(3),       // 3 mph hysteresis band
         speedMuteOverrideLaser(true),    // Laser always alerts
         speedMuteOverrideKa(false),      // Ka follows speed mute by default
+        speedMuteVolume(0xFF),           // Voice-only by default (no V1 volume change)
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -677,6 +679,9 @@ struct AudioSettingsUpdate {
 
     bool hasSpeedMuteOverrideKa = false;
     bool speedMuteOverrideKa = false;
+
+    bool hasSpeedMuteVolume = false;
+    uint8_t speedMuteVolume = 0xFF;      // 0xFF = voice-only (no V1 volume change)
 };
 
 struct DisplaySettingsUpdate {

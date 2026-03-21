@@ -307,6 +307,10 @@ void SettingsManager::load() {
     settings.speedMuteHysteresisMph = std::clamp<uint8_t>(preferences.getUChar("spdMuteHys", 3), 1, 10);
     settings.speedMuteOverrideLaser = preferences.getBool("spdMuteOvL", true);
     settings.speedMuteOverrideKa = preferences.getBool("spdMuteOvK", false);
+    {
+        const uint8_t raw = preferences.getUChar("spdMuteVol", 0xFF);
+        settings.speedMuteVolume = (raw <= 9 || raw == 0xFF) ? raw : 0xFF;
+    }
 
     settings.autoPushEnabled = preferences.getBool("autoPush", true);  // Default to enabled for profiles to work
     settings.activeSlot = preferences.getInt("activeSlot", 0);

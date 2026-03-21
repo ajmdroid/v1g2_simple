@@ -175,6 +175,10 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
                     gpsStatus.courseDeg,
                     bufferE5, nearbyBuf, 16);
             }
+            // Use external volume hint (e.g. from speed volume) for capture
+            // so pre-quiet saves the true user volume, not a lowered one.
+            const uint8_t pqMainVol = (volumeHintMain_ != 0xFF)
+                                        ? volumeHintMain_ : pqState.mainVolume;
             const PreQuietDecision pqDecision = evaluatePreQuiet(
                 lockoutSettings.gpsLockoutPreQuiet,
                 enforceMode,
@@ -184,7 +188,7 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
                 lockRes.evaluated,
                 effectiveLockoutMute,
                 nearbyCount,
-                pqState.mainVolume,
+                pqMainVol,
                 pqState.muteVolume,
                 nowMs,
                 preQuietState_,
@@ -217,4 +221,6 @@ void LockoutOrchestrationModule::reset() {
     overrideUnmuteActive_ = false;
     overrideUnmuteLastRetryMs_ = 0;
     overrideUnmuteRetryCount_ = 0;
+    volumeHintMain_ = 0xFF;
+    volumeHintMute_ = 0;
 }

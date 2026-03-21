@@ -26,7 +26,8 @@
 		speedMuteThresholdMph: 25,
 		speedMuteHysteresisMph: 3,
 		speedMuteOverrideLaser: true,
-		speedMuteOverrideKa: false
+		speedMuteOverrideKa: false,
+		speedMuteVolume: 255
 	});
 	
 	let loading = $state(true);
@@ -72,6 +73,7 @@
 				settings.speedMuteHysteresisMph = data.speedMuteHysteresisMph ?? 3;
 				settings.speedMuteOverrideLaser = data.speedMuteOverrideLaser ?? true;
 				settings.speedMuteOverrideKa = data.speedMuteOverrideKa ?? false;
+				settings.speedMuteVolume = data.speedMuteVolume ?? 255;
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load settings' };
@@ -107,6 +109,7 @@
 			params.append('speedMuteHysteresisMph', settings.speedMuteHysteresisMph);
 			params.append('speedMuteOverrideLaser', settings.speedMuteOverrideLaser);
 			params.append('speedMuteOverrideKa', settings.speedMuteOverrideKa);
+			params.append('speedMuteVolume', settings.speedMuteVolume);
 			
 			const res = await fetchWithTimeout('/api/audio/settings', {
 				method: 'POST',
@@ -478,11 +481,30 @@
 								</label>
 							</div>
 							
+							<!-- V1 Alert Volume -->
+							<div class="form-control mt-4">
+								<label class="label" for="speed-mute-volume">
+									<span class="label-text">V1 Alert Volume</span>
+									<span class="label-text-alt">{settings.speedMuteVolume === 255 ? 'No Change' : settings.speedMuteVolume}</span>
+								</label>
+								<select
+									id="speed-mute-volume"
+									class="select select-bordered select-sm w-full"
+									bind:value={settings.speedMuteVolume}
+								>
+									<option value={255}>No Change (voice only)</option>
+									{#each Array.from({length: 10}, (_, i) => i) as vol}
+										<option value={vol}>{vol}{vol === 0 ? ' (silent)' : ''}</option>
+									{/each}
+								</select>
+								<p class="copy-caption-soft mt-1">Also lower V1 hardware alert volume when speed-muted</p>
+							</div>
+
 							<!-- Preview -->
 							<div class="surface-panel text-sm mt-4">
 								<p class="copy-subtle">
-									Below <strong>{settings.speedMuteThresholdMph} mph</strong> → voice muted →
-									above <strong>{settings.speedMuteThresholdMph + settings.speedMuteHysteresisMph} mph</strong> → voice restored
+									Below <strong>{settings.speedMuteThresholdMph} mph</strong> → voice muted{settings.speedMuteVolume !== 255 ? ` + V1 vol → ${settings.speedMuteVolume}` : ''} →
+									above <strong>{settings.speedMuteThresholdMph + settings.speedMuteHysteresisMph} mph</strong> → restored
 								</p>
 							</div>
 						</div>

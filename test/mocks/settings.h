@@ -181,6 +181,7 @@ struct V1Settings {
     uint8_t speedMuteHysteresisMph = 3;
     bool speedMuteOverrideLaser = true;
     bool speedMuteOverrideKa = false;
+    uint8_t speedMuteVolume = 0xFF;
     
     // Misc flags retained for compatibility
     bool gpsEnabled = true;

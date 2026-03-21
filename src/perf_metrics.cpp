@@ -521,6 +521,9 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.preQuietDropCount = perfExtended.preQuietDropCount;
     flat.preQuietRestoreCount = perfExtended.preQuietRestoreCount;
     flat.preQuietRestoreRetryCount = perfExtended.preQuietRestoreRetryCount;
+    flat.speedVolDropCount = perfExtended.speedVolDropCount;
+    flat.speedVolRestoreCount = perfExtended.speedVolRestoreCount;
+    flat.speedVolRetryCount = perfExtended.speedVolRetryCount;
     flat.bleScanStartMs = perfExtended.bleScanStartMs;
     flat.bleTargetFoundMs = perfExtended.bleTargetFoundMs;
     flat.bleConnectStartMs = perfExtended.bleConnectStartMs;
@@ -1366,6 +1369,24 @@ void perfRecordPreQuietRestore() {
 void perfRecordPreQuietRestoreRetry() {
     portENTER_CRITICAL(&sPerfSnapshotMux);
     perfExtended.preQuietRestoreRetryCount++;
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
+}
+
+void perfRecordSpeedVolDrop() {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    perfExtended.speedVolDropCount++;
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
+}
+
+void perfRecordSpeedVolRestore() {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    perfExtended.speedVolRestoreCount++;
+    portEXIT_CRITICAL(&sPerfSnapshotMux);
+}
+
+void perfRecordSpeedVolRetry() {
+    portENTER_CRITICAL(&sPerfSnapshotMux);
+    perfExtended.speedVolRetryCount++;
     portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 

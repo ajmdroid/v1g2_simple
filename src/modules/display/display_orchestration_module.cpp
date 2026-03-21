@@ -7,6 +7,7 @@
 #include "modules/display/display_preview_module.h"
 #include "modules/display/display_restore_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
+#include "modules/speed_mute/speed_mute_module.h"
 #include "packet_parser.h"
 #include "settings.h"
 #include "modules/gps/gps_runtime_module.h"
@@ -23,7 +24,8 @@ void DisplayOrchestrationModule::begin(V1Display* displayPtr,
                                        SettingsManager* settingsManager,
                                        GpsRuntimeModule* gpsModule,
                                        LockoutOrchestrationModule* lockoutModule,
-                                       VolumeFadeModule* volumeFadeModule) {
+                                       VolumeFadeModule* volumeFadeModule,
+                                       SpeedMuteModule* speedMuteModule) {
     display = displayPtr;
     ble = bleClient;
     bleQueue = bleQueueModule;
@@ -34,6 +36,7 @@ void DisplayOrchestrationModule::begin(V1Display* displayPtr,
     gpsRuntime = gpsModule;
     lockout = lockoutModule;
     volumeFade = volumeFadeModule;
+    speedMute = speedMuteModule;
     reset();
 }
 
@@ -45,6 +48,14 @@ void DisplayOrchestrationModule::reset() {
     pendingPqRestoreMuteVol_ = 0;
     pendingPqRestoreSetMs_ = 0;
     pendingPqRestoreLastRetryMs_ = 0;
+    speedVolActive_ = false;
+    speedVolSavedOriginal_ = 0xFF;
+    speedVolSavedMuteVol_ = 0;
+    pendingSpeedVolRestoreVol_ = 0xFF;
+    pendingSpeedVolRestoreMuteVol_ = 0;
+    pendingSpeedVolRestoreSetMs_ = 0;
+    pendingSpeedVolRestoreLastRetryMs_ = 0;
+    speedVolLastRetryMs_ = 0;
 }
 
 bool DisplayOrchestrationModule::executeLockoutVolumeCommand(const LockoutVolumeCommand& command,
@@ -112,6 +123,147 @@ bool DisplayOrchestrationModule::retryPendingPreQuietRestore(const uint32_t nowM
     ble->setVolume(pendingPqRestoreVol_, pendingPqRestoreMuteVol_);
 #ifndef UNIT_TEST
     perfRecordPreQuietRestoreRetry();
+#endif
+    return true;
+}
+
+bool DisplayOrchestrationModule::processSpeedVolume(const uint32_t nowMs) {
+    if (!speedMute || !ble || !parser) {
+        return retryPendingSpeedVolRestore(nowMs);
+    }
+
+    const auto& smSettings = speedMute->getSettings();
+    const auto& smState = speedMute->getState();
+
+    // Feature not configured for V1 volume control.
+    if (smSettings.v1Volume == 0xFF) {
+        if (speedVolActive_) {
+            // Settings changed at runtime — restore and exit.
+            ble->setVolume(speedVolSavedOriginal_, speedVolSavedMuteVol_);
+            if (volumeFade) {
+                volumeFade->setBaselineHint(speedVolSavedOriginal_, speedVolSavedMuteVol_, nowMs);
+            }
+            if (lockout) lockout->clearVolumeHint();
+            pendingSpeedVolRestoreVol_ = speedVolSavedOriginal_;
+            pendingSpeedVolRestoreMuteVol_ = speedVolSavedMuteVol_;
+            pendingSpeedVolRestoreSetMs_ = nowMs;
+            pendingSpeedVolRestoreLastRetryMs_ = nowMs;
+            speedVolActive_ = false;
+            speedVolSavedOriginal_ = 0xFF;
+#ifndef UNIT_TEST
+            perfRecordSpeedVolRestore();
+#endif
+        }
+        return retryPendingSpeedVolRestore(nowMs);
+    }
+
+    bool wantsActive = smState.muteActive;
+
+    // Band override: if an override band (Ka/Laser) is active, force restore
+    // so the user hears the real threat at full volume.
+    if (wantsActive && parser->hasAlerts()) {
+        const DisplayState ds = parser->getDisplayState();
+        const bool laserActive = (ds.activeBands & 0x01) != 0; // BAND_LASER
+        const bool kaActive    = (ds.activeBands & 0x02) != 0; // BAND_KA
+        if ((laserActive && smSettings.overrideLaser) ||
+            (kaActive && smSettings.overrideKa)) {
+            wantsActive = false;
+        }
+    }
+
+    // Pre-quiet busy = pre-quiet in DROPPED phase or pending PQ restore.
+    const bool pqBusy = (lockout && lockout->isPreQuietActive()) ||
+                        pendingPqRestoreVol_ != 0xFF;
+
+    // --- Activation: not active → wants active ---
+    if (wantsActive && !speedVolActive_) {
+        if (pqBusy) return false;  // Pre-quiet owns volume, defer.
+        // Cancel any pending restore from a previous cycle.
+        pendingSpeedVolRestoreVol_ = 0xFF;
+
+        const DisplayState ds = parser->getDisplayState();
+        speedVolSavedOriginal_ = ds.mainVolume;
+        speedVolSavedMuteVol_ = ds.muteVolume;
+        speedVolActive_ = true;
+        speedVolLastRetryMs_ = nowMs;
+        ble->setVolume(smSettings.v1Volume, 0xFF);
+        // Set hint so pre-quiet captures the user's true volume.
+        if (lockout) lockout->setVolumeHint(speedVolSavedOriginal_, speedVolSavedMuteVol_);
+#ifndef UNIT_TEST
+        perfRecordSpeedVolDrop();
+#endif
+        Serial.printf("[SpeedVol] DROP: %d -> %d\n", speedVolSavedOriginal_, smSettings.v1Volume);
+        return true;
+    }
+
+    // --- Deactivation: active → doesn't want ---
+    if (!wantsActive && speedVolActive_) {
+        ble->setVolume(speedVolSavedOriginal_, speedVolSavedMuteVol_);
+        if (volumeFade) {
+            volumeFade->setBaselineHint(speedVolSavedOriginal_, speedVolSavedMuteVol_, nowMs);
+        }
+        if (lockout) lockout->clearVolumeHint();
+        pendingSpeedVolRestoreVol_ = speedVolSavedOriginal_;
+        pendingSpeedVolRestoreMuteVol_ = speedVolSavedMuteVol_;
+        pendingSpeedVolRestoreSetMs_ = nowMs;
+        pendingSpeedVolRestoreLastRetryMs_ = nowMs;
+#ifndef UNIT_TEST
+        perfRecordSpeedVolRestore();
+#endif
+        Serial.printf("[SpeedVol] RESTORE: -> %d\n", speedVolSavedOriginal_);
+        speedVolActive_ = false;
+        speedVolSavedOriginal_ = 0xFF;
+        return retryPendingSpeedVolRestore(nowMs);
+    }
+
+    // --- Steady state: active and wants active ---
+    if (speedVolActive_) {
+        if (pqBusy) return true;  // Pre-quiet overrides, hold state.
+        // Check V1 confirms our target volume.
+        const DisplayState ds = parser->getDisplayState();
+        if (ds.mainVolume == smSettings.v1Volume) return true;  // Confirmed.
+        // Rate-limited retry.
+        if ((nowMs - speedVolLastRetryMs_) >= SPEED_VOL_RETRY_INTERVAL_MS) {
+            speedVolLastRetryMs_ = nowMs;
+            ble->setVolume(smSettings.v1Volume, 0xFF);
+#ifndef UNIT_TEST
+            perfRecordSpeedVolRetry();
+#endif
+        }
+        return true;
+    }
+
+    return retryPendingSpeedVolRestore(nowMs);
+}
+
+bool DisplayOrchestrationModule::retryPendingSpeedVolRestore(const uint32_t nowMs) {
+    if (pendingSpeedVolRestoreVol_ == 0xFF || !ble || !parser) {
+        return false;
+    }
+
+    // Timeout.
+    if ((nowMs - pendingSpeedVolRestoreSetMs_) >= SPEED_VOL_RESTORE_TIMEOUT_MS) {
+        Serial.println("[SpeedVol] restore retry timeout");
+        pendingSpeedVolRestoreVol_ = 0xFF;
+        return false;
+    }
+
+    // Confirmed.
+    const DisplayState ds = parser->getDisplayState();
+    if (ds.mainVolume == pendingSpeedVolRestoreVol_) {
+        pendingSpeedVolRestoreVol_ = 0xFF;
+        return false;
+    }
+
+    // Pace retries.
+    if ((nowMs - pendingSpeedVolRestoreLastRetryMs_) < SPEED_VOL_RETRY_INTERVAL_MS) {
+        return true;
+    }
+
+    pendingSpeedVolRestoreLastRetryMs_ = nowMs;
+    ble->setVolume(pendingSpeedVolRestoreVol_, pendingSpeedVolRestoreMuteVol_);
+#ifndef UNIT_TEST
+    perfRecordSpeedVolRetry();
 #endif
     return true;
 }
@@ -198,6 +350,10 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         // Retry any pending pre-quiet restore that hasn't been confirmed yet.
         const bool pqRestorePending = retryPendingPreQuietRestore(ctx.nowMs);
 
+        // Speed volume: lower/restore V1 volume based on speed mute state.
+        // Defers to pre-quiet when it owns volume. Gates volume fade.
+        const bool speedVolBusy = processSpeedVolume(ctx.nowMs);
+
         if (lastGpsSatUpdateMs == 0 ||
             (ctx.nowMs - lastGpsSatUpdateMs >= GPS_SAT_UPDATE_INTERVAL_MS)) {
             display->setGpsSatellites(gpsStatus.enabled,
@@ -207,7 +363,8 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         }
 
         result.runDisplayPipeline = !preview->isRunning();
-        if (result.runDisplayPipeline && !lockoutVolumeCommandExecuted && !pqRestorePending) {
+        if (result.runDisplayPipeline && !lockoutVolumeCommandExecuted &&
+            !pqRestorePending && !speedVolBusy) {
             executeVolumeFade(ctx.nowMs, result.lockoutPrioritySuppressed);
         }
         return result;

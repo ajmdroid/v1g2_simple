@@ -736,7 +736,8 @@ static void configureSystemLoopCoreModules() {
                                      &settingsManager,
                                      &gpsRuntimeModule,
                                      &lockoutOrchestrationModule,
-                                     &volumeFadeModule);
+                                     &volumeFadeModule,
+                                     &speedMuteModule);
 }
 
 static void configureSystemLoopPhaseModules() {
@@ -770,7 +771,8 @@ static void configureRuntimeSensorModules() {
         settingsManager.get().speedMuteThresholdMph,
         settingsManager.get().speedMuteHysteresisMph,
         settingsManager.get().speedMuteOverrideLaser,
-        settingsManager.get().speedMuteOverrideKa);
+        settingsManager.get().speedMuteOverrideKa,
+        settingsManager.get().speedMuteVolume);
 }
 
 static void configureRuntimeCoreModules() {
@@ -1099,7 +1101,8 @@ void loop() {
                                      s.speedMuteThresholdMph,
                                      s.speedMuteHysteresisMph,
                                      s.speedMuteOverrideLaser,
-                                     s.speedMuteOverrideKa);
+                                     s.speedMuteOverrideKa,
+                                     s.speedMuteVolume);
         const SpeedSelection speed = speedSourceSelector.selectedSpeed();
         speedMuteModule.update(speed.speedMph, speed.valid, now);
     }

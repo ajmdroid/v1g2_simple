@@ -98,7 +98,8 @@ inline void syncSpeedMuteRuntimeSettings(const V1Settings& settings,
                                  settings.speedMuteThresholdMph,
                                  settings.speedMuteHysteresisMph,
                                  settings.speedMuteOverrideLaser,
-                                 settings.speedMuteOverrideKa);
+                                 settings.speedMuteOverrideKa,
+                                 settings.speedMuteVolume);
 }
 
 }  // namespace SettingsRuntimeSync

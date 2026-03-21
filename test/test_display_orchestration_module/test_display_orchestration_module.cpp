@@ -11,6 +11,7 @@
 #include "../mocks/modules/gps/gps_runtime_module.h"
 #include "../mocks/modules/lockout/lockout_orchestration_module.h"
 #include "../mocks/modules/volume_fade/volume_fade_module.h"
+#include "../mocks/modules/speed_mute/speed_mute_module.h"
 
 #ifndef ARDUINO
 SerialClass Serial;
@@ -30,6 +31,7 @@ static PacketParser parser;
 static GpsRuntimeModule gpsRuntime;
 static LockoutOrchestrationModule lockout;
 static VolumeFadeModule volumeFade;
+static SpeedMuteModule speedMute;
 static DisplayOrchestrationModule module;
 
 static void beginModule() {
@@ -42,7 +44,8 @@ static void beginModule() {
                  &settingsManager,
                  &gpsRuntime,
                  &lockout,
-                 &volumeFade);
+                 &volumeFade,
+                 &speedMute);
 }
 
 void setUp() {
@@ -55,6 +58,7 @@ void setUp() {
     gpsRuntime = GpsRuntimeModule{};
     lockout = LockoutOrchestrationModule{};
     volumeFade.reset();
+    speedMute = SpeedMuteModule{};
     settingsManager = SettingsManager{};
     beginModule();
 }
@@ -454,6 +458,375 @@ void test_prequiet_drop_clears_pending_restore() {
     TEST_ASSERT_EQUAL(1, volumeFade.processCalls);  // Fade runs
 }
 
+// --- Speed volume tests ---
+
+// Helper to enable speed volume and make it active (muteActive = true).
+static void enableSpeedVolume(uint8_t targetVol, uint8_t originalVol = 7,
+                              uint8_t originalMuteVol = 2) {
+    speedMute.settings_.v1Volume = targetVol;
+    speedMute.settings_.enabled = true;
+    speedMute.state_.muteActive = true;
+    parser.setMainVolume(originalVol);
+    parser.setMuteVolume(originalMuteVol);
+}
+
+void test_speed_vol_drops_volume_when_mute_active() {
+    enableSpeedVolume(3);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+
+    module.processParsedFrame(ctx);
+
+    // Should have sent setVolume with target 3 (only mainVol, muteVol = 0xFF).
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(3, ble.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(0xFF, ble.lastMuteVolume);
+    // Volume hint should be set on lockout with original volume.
+    TEST_ASSERT_EQUAL(1, lockout.setVolumeHintCalls);
+    TEST_ASSERT_EQUAL_UINT8(7, lockout.volumeHintMain);
+    TEST_ASSERT_EQUAL_UINT8(2, lockout.volumeHintMute);
+    // Volume fade should be gated.
+    TEST_ASSERT_EQUAL(0, volumeFade.processCalls);
+}
+
+void test_speed_vol_confirmed_by_v1_holds_steady() {
+    enableSpeedVolume(3);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+    module.processParsedFrame(ctx);  // Activate
+
+    // V1 confirms the target volume.
+    parser.setMainVolume(3);
+    ble.setVolumeCalls = 0;
+    ctx.nowMs = 1100;
+
+    module.processParsedFrame(ctx);
+    // No retry needed — confirmed.
+    TEST_ASSERT_EQUAL(0, ble.setVolumeCalls);
+    // Still busy — fade still gated.
+    TEST_ASSERT_EQUAL(0, volumeFade.processCalls);
+}
+
+void test_speed_vol_retries_until_v1_confirms_drop() {
+    enableSpeedVolume(3);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+    module.processParsedFrame(ctx);  // Activate
+
+    // V1 hasn't confirmed (still at 7).
+    ble.setVolumeCalls = 0;
+    ctx.nowMs = 1000 + 80;  // Past retry interval (75ms).
+
+    module.processParsedFrame(ctx);
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(3, ble.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(0xFF, ble.lastMuteVolume);
+}
+
+void test_speed_vol_restores_when_mute_deactivates() {
+    enableSpeedVolume(3);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+    module.processParsedFrame(ctx);  // Activate
+
+    // Speed rises above threshold — mute deactivates.
+    speedMute.state_.muteActive = false;
+    parser.setMainVolume(3);  // V1 still at lowered volume.
+    ble.setVolumeCalls = 0;
+    volumeFade.setBaselineHintCalls = 0;
+    lockout.clearVolumeHintCalls = 0;
+    ctx.nowMs = 2000;
+
+    module.processParsedFrame(ctx);
+
+    // Should restore to original volume.
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(7, ble.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, ble.lastMuteVolume);
+    // Baseline hint injected into volume fade.
+    TEST_ASSERT_EQUAL(1, volumeFade.setBaselineHintCalls);
+    TEST_ASSERT_EQUAL_UINT8(7, volumeFade.lastHintVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, volumeFade.lastHintMuteVolume);
+    // Volume hint cleared on lockout.
+    TEST_ASSERT_EQUAL(1, lockout.clearVolumeHintCalls);
+}
+
+void test_speed_vol_restore_retries_until_confirmed() {
+    enableSpeedVolume(3);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+    module.processParsedFrame(ctx);  // Activate
+
+    // Deactivate.
+    speedMute.state_.muteActive = false;
+    parser.setMainVolume(3);
+    ble.setVolumeCalls = 0;
+    ctx.nowMs = 2000;
+    module.processParsedFrame(ctx);  // Restore issued
+
+    // V1 still hasn't confirmed (still at 3).
+    ble.setVolumeCalls = 0;
+    ctx.nowMs = 2000 + 80;  // Past retry interval.
+
+    module.processParsedFrame(ctx);
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(7, ble.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, ble.lastMuteVolume);
+
+    // Confirm arrives.
+    parser.setMainVolume(7);
+    ble.setVolumeCalls = 0;
+    volumeFade.processCalls = 0;
+    ctx.nowMs = 2200;
+
+    module.processParsedFrame(ctx);
+    // No retry — confirmed. Fade should run again.
+    TEST_ASSERT_EQUAL(0, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL(1, volumeFade.processCalls);
+}
+
+void test_speed_vol_restore_times_out() {
+    enableSpeedVolume(3);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+    module.processParsedFrame(ctx);  // Activate
+
+    // Deactivate.
+    speedMute.state_.muteActive = false;
+    parser.setMainVolume(3);
+    ctx.nowMs = 2000;
+    module.processParsedFrame(ctx);  // Restore issued
+
+    // V1 never confirms — advance past timeout (2000ms).
+    ble.setVolumeCalls = 0;
+    volumeFade.processCalls = 0;
+    ctx.nowMs = 2000 + 2001;
+
+    module.processParsedFrame(ctx);
+    // Timed out — no retry. Fade runs again.
+    TEST_ASSERT_EQUAL(0, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL(1, volumeFade.processCalls);
+}
+
+void test_speed_vol_defers_when_prequiet_active() {
+    // Pre-quiet is currently in DROPPED phase.
+    lockout.mockPreQuietActive = true;
+    enableSpeedVolume(3);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+
+    module.processParsedFrame(ctx);
+
+    // Speed volume should NOT activate (pre-quiet owns volume).
+    TEST_ASSERT_EQUAL(0, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL(0, lockout.setVolumeHintCalls);
+}
+
+void test_speed_vol_defers_when_pq_restore_pending() {
+    // Issue a pre-quiet restore first to arm pending.
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::PreQuietRestore;
+    lockout.nextResult.volumeCommand.volume = 7;
+    lockout.nextResult.volumeCommand.muteVolume = 2;
+    parser.setMainVolume(3);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+    module.processParsedFrame(ctx);  // Arms pending PQ restore.
+
+    // Now enable speed volume — PQ restore is still pending (V1 at 3, target 7).
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::None;
+    speedMute.settings_.v1Volume = 3;
+    speedMute.settings_.enabled = true;
+    speedMute.state_.muteActive = true;
+    ble.setVolumeCalls = 0;
+    ctx.nowMs = 1080;  // Past 75ms PQ restore retry interval.
+
+    module.processParsedFrame(ctx);
+
+    // Speed volume should defer — PQ restore pending. The only setVolume
+    // should be the PQ restore retry (not a speed volume drop).
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(7, ble.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, ble.lastMuteVolume);
+    TEST_ASSERT_EQUAL(0, lockout.setVolumeHintCalls);
+}
+
+void test_speed_vol_active_prequiet_enters_captures_correct_original() {
+    // Speed volume active at vol 3, original was 7.
+    enableSpeedVolume(3);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+    module.processParsedFrame(ctx);  // Activate speed vol.
+
+    // Verify hint was set with original volume.
+    TEST_ASSERT_EQUAL(1, lockout.setVolumeHintCalls);
+    TEST_ASSERT_EQUAL_UINT8(7, lockout.volumeHintMain);
+
+    // Now pre-quiet enters while speed vol is active.
+    // The volume hint ensures pre-quiet will capture 7 (not 3).
+    lockout.mockPreQuietActive = true;
+    lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::PreQuietDrop;
+    lockout.nextResult.volumeCommand.volume = 0;
+    lockout.nextResult.volumeCommand.muteVolume = 0;
+    parser.setMainVolume(3);  // V1 is at speed-lowered volume.
+    ble.setVolumeCalls = 0;
+    ctx.nowMs = 2000;
+
+    module.processParsedFrame(ctx);
+
+    // Pre-quiet drop command should execute.
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(0, ble.lastVolume);
+}
+
+void test_speed_vol_band_override_restores_on_ka() {
+    enableSpeedVolume(3);
+    speedMute.settings_.overrideKa = true;
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+    module.processParsedFrame(ctx);  // Activate speed vol.
+
+    // Ka alert appears.
+    parser.setActiveBands(0x02);  // BAND_KA
+    parser.setAlerts({
+        AlertData::create(BAND_KA, DIR_FRONT, 6, 0, 35500, true, true)
+    });
+    ble.setVolumeCalls = 0;
+    lockout.clearVolumeHintCalls = 0;
+    ctx.nowMs = 2000;
+
+    module.processParsedFrame(ctx);
+
+    // Should restore to original.
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(7, ble.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, ble.lastMuteVolume);
+    TEST_ASSERT_EQUAL(1, lockout.clearVolumeHintCalls);
+}
+
+void test_speed_vol_band_override_restores_on_laser() {
+    enableSpeedVolume(3);
+    speedMute.settings_.overrideLaser = true;
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+    module.processParsedFrame(ctx);  // Activate speed vol.
+
+    // Laser alert appears.
+    parser.setActiveBands(0x01);  // BAND_LASER
+    parser.setAlerts({
+        AlertData::create(BAND_LASER, DIR_FRONT, 8, 0, 0, true, true)
+    });
+    ble.setVolumeCalls = 0;
+    lockout.clearVolumeHintCalls = 0;
+    ctx.nowMs = 2000;
+
+    module.processParsedFrame(ctx);
+
+    // Should restore to original.
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(7, ble.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, ble.lastMuteVolume);
+    TEST_ASSERT_EQUAL(1, lockout.clearVolumeHintCalls);
+}
+
+void test_speed_vol_no_band_override_when_flag_not_set() {
+    enableSpeedVolume(3);
+    speedMute.settings_.overrideKa = false;
+    // overrideLaser is true by default, so set it false too.
+    speedMute.settings_.overrideLaser = false;
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+    module.processParsedFrame(ctx);  // Activate speed vol.
+
+    // Ka alert appears — but override not set.
+    parser.setActiveBands(0x02);
+    parser.setAlerts({
+        AlertData::create(BAND_KA, DIR_FRONT, 6, 0, 35500, true, true)
+    });
+    parser.setMainVolume(3);
+    ble.setVolumeCalls = 0;
+    ctx.nowMs = 2000;
+
+    module.processParsedFrame(ctx);
+
+    // Should NOT restore — band override not configured.
+    TEST_ASSERT_EQUAL(0, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL(0, lockout.clearVolumeHintCalls);
+}
+
+void test_speed_vol_settings_disable_restores() {
+    enableSpeedVolume(3);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+    module.processParsedFrame(ctx);  // Activate speed vol.
+
+    // User changes settings: disables V1 volume (set to 0xFF).
+    speedMute.settings_.v1Volume = 0xFF;
+    parser.setMainVolume(3);
+    ble.setVolumeCalls = 0;
+    lockout.clearVolumeHintCalls = 0;
+    volumeFade.setBaselineHintCalls = 0;
+    ctx.nowMs = 2000;
+
+    module.processParsedFrame(ctx);
+
+    // Should restore to original.
+    TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
+    TEST_ASSERT_EQUAL_UINT8(7, ble.lastVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, ble.lastMuteVolume);
+    TEST_ASSERT_EQUAL(1, lockout.clearVolumeHintCalls);
+    TEST_ASSERT_EQUAL(1, volumeFade.setBaselineHintCalls);
+}
+
+void test_speed_vol_gates_volume_fade() {
+    enableSpeedVolume(3);
+    // Provide fade action that would fire if not gated.
+    parser.state.muted = false;
+    parser.setAlerts({
+        AlertData::create(BAND_KA, DIR_FRONT, 6, 0, 35500, true, true)
+    });
+    // Don't set band override — keep speed vol active.
+    speedMute.settings_.overrideKa = false;
+    speedMute.settings_.overrideLaser = false;
+    volumeFade.nextAction.type = VolumeFadeAction::Type::FADE_DOWN;
+    volumeFade.nextAction.targetVolume = 2;
+    volumeFade.nextAction.targetMuteVolume = 1;
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 1000;
+    ctx.parsedReady = true;
+
+    module.processParsedFrame(ctx);
+
+    // Volume fade should not run while speed vol is active.
+    TEST_ASSERT_EQUAL(0, volumeFade.processCalls);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_process_early_updates_ble_context_and_proxy_status);
@@ -473,5 +846,19 @@ int main() {
     RUN_TEST(test_prequiet_restore_confirmed_when_v1_volume_matches);
     RUN_TEST(test_prequiet_restore_timeout_clears_pending);
     RUN_TEST(test_prequiet_drop_clears_pending_restore);
+    RUN_TEST(test_speed_vol_drops_volume_when_mute_active);
+    RUN_TEST(test_speed_vol_confirmed_by_v1_holds_steady);
+    RUN_TEST(test_speed_vol_retries_until_v1_confirms_drop);
+    RUN_TEST(test_speed_vol_restores_when_mute_deactivates);
+    RUN_TEST(test_speed_vol_restore_retries_until_confirmed);
+    RUN_TEST(test_speed_vol_restore_times_out);
+    RUN_TEST(test_speed_vol_defers_when_prequiet_active);
+    RUN_TEST(test_speed_vol_defers_when_pq_restore_pending);
+    RUN_TEST(test_speed_vol_active_prequiet_enters_captures_correct_original);
+    RUN_TEST(test_speed_vol_band_override_restores_on_ka);
+    RUN_TEST(test_speed_vol_band_override_restores_on_laser);
+    RUN_TEST(test_speed_vol_no_band_override_when_flag_not_set);
+    RUN_TEST(test_speed_vol_settings_disable_restores);
+    RUN_TEST(test_speed_vol_gates_volume_fade);
     return UNITY_END();
 }

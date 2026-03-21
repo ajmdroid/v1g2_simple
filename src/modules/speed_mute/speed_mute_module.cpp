@@ -74,23 +74,25 @@ SpeedMuteDecision evaluateSpeedMute(
 
 void SpeedMuteModule::begin(bool enabled, uint8_t thresholdMph,
                             uint8_t hysteresisMph, bool overrideLaser,
-                            bool overrideKa) {
+                            bool overrideKa, uint8_t v1Volume) {
     settings_.enabled = enabled;
     settings_.thresholdMph = thresholdMph;
     settings_.hysteresisMph = hysteresisMph;
     settings_.overrideLaser = overrideLaser;
     settings_.overrideKa = overrideKa;
+    settings_.v1Volume = v1Volume;
     state_ = {};
 }
 
 void SpeedMuteModule::syncSettings(bool enabled, uint8_t thresholdMph,
                                    uint8_t hysteresisMph, bool overrideLaser,
-                                   bool overrideKa) {
+                                   bool overrideKa, uint8_t v1Volume) {
     settings_.enabled = enabled;
     settings_.thresholdMph = thresholdMph;
     settings_.hysteresisMph = hysteresisMph;
     settings_.overrideLaser = overrideLaser;
     settings_.overrideKa = overrideKa;
+    settings_.v1Volume = v1Volume;
 }
 
 SpeedMuteDecision SpeedMuteModule::update(float speedMph, bool speedValid,

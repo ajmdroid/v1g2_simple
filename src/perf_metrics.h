@@ -504,6 +504,9 @@ struct PerfExtendedMetrics {
     uint32_t preQuietDropCount = 0;         // Pre-quiet volume drops
     uint32_t preQuietRestoreCount = 0;      // Pre-quiet restores issued
     uint32_t preQuietRestoreRetryCount = 0; // Pre-quiet restore retries
+    uint32_t speedVolDropCount = 0;         // Speed volume drops
+    uint32_t speedVolRestoreCount = 0;      // Speed volume restores issued
+    uint32_t speedVolRetryCount = 0;        // Speed volume retries
     uint32_t bleScanStartMs = 0;      // First transition to SCANNING
     uint32_t bleTargetFoundMs = 0;    // First "V1 found" scan-stop transition
     uint32_t bleConnectStartMs = 0;   // First transition to CONNECTING
@@ -620,6 +623,9 @@ struct PerfExtendedMetrics {
         preQuietDropCount = 0;
         preQuietRestoreCount = 0;
         preQuietRestoreRetryCount = 0;
+        speedVolDropCount = 0;
+        speedVolRestoreCount = 0;
+        speedVolRetryCount = 0;
         bleScanStartMs = 0;
         bleTargetFoundMs = 0;
         bleConnectStartMs = 0;
@@ -734,6 +740,9 @@ void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolu
 void perfRecordPreQuietDrop();
 void perfRecordPreQuietRestore();
 void perfRecordPreQuietRestoreRetry();
+void perfRecordSpeedVolDrop();
+void perfRecordSpeedVolRestore();
+void perfRecordSpeedVolRetry();
 void perfRecordBleTimelineEvent(PerfBleTimelineEvent event, uint32_t nowMs);
 void perfRecordWifiApTransition(bool apActive, uint8_t reasonCode, uint32_t nowMs);
 void perfRecordProxyAdvertisingTransition(bool advertising, uint8_t reasonCode, uint32_t nowMs);
@@ -834,6 +843,9 @@ struct PerfSdSnapshot {
     uint32_t preQuietDropCount;         // Pre-quiet volume drops
     uint32_t preQuietRestoreCount;      // Pre-quiet restores issued
     uint32_t preQuietRestoreRetryCount; // Pre-quiet restore retries
+    uint32_t speedVolDropCount;         // Speed volume drops
+    uint32_t speedVolRestoreCount;      // Speed volume restores issued
+    uint32_t speedVolRetryCount;        // Speed volume retries
     uint32_t bleScanStartMs;      // First scan start timestamp
     uint32_t bleTargetFoundMs;    // First target-found timestamp
     uint32_t bleConnectStartMs;   // First connect-start timestamp
