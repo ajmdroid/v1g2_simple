@@ -25,8 +25,6 @@
 		speedMuteEnabled: false,
 		speedMuteThresholdMph: 25,
 		speedMuteHysteresisMph: 3,
-		speedMuteOverrideLaser: true,
-		speedMuteOverrideKa: false,
 		speedMuteVolume: 255
 	});
 	
@@ -71,8 +69,6 @@
 				settings.speedMuteEnabled = data.speedMuteEnabled ?? false;
 				settings.speedMuteThresholdMph = data.speedMuteThresholdMph ?? 25;
 				settings.speedMuteHysteresisMph = data.speedMuteHysteresisMph ?? 3;
-				settings.speedMuteOverrideLaser = data.speedMuteOverrideLaser ?? true;
-				settings.speedMuteOverrideKa = data.speedMuteOverrideKa ?? false;
 				settings.speedMuteVolume = data.speedMuteVolume ?? 255;
 			}
 		} catch (e) {
@@ -107,8 +103,6 @@
 			params.append('speedMuteEnabled', settings.speedMuteEnabled);
 			params.append('speedMuteThresholdMph', settings.speedMuteThresholdMph);
 			params.append('speedMuteHysteresisMph', settings.speedMuteHysteresisMph);
-			params.append('speedMuteOverrideLaser', settings.speedMuteOverrideLaser);
-			params.append('speedMuteOverrideKa', settings.speedMuteOverrideKa);
 			params.append('speedMuteVolume', settings.speedMuteVolume);
 			
 			const res = await fetchWithTimeout('/api/audio/settings', {
@@ -448,37 +442,6 @@
 									class="range range-primary range-sm" 
 								/>
 								<p class="copy-caption-soft mt-1">Unmutes at threshold + hysteresis to prevent cycling</p>
-							</div>
-							
-							<!-- Band Overrides -->
-							<p class="copy-caption-soft mb-2 mt-4">Band overrides (always alert regardless of speed):</p>
-							
-							<div class="form-control">
-								<label class="label cursor-pointer py-1">
-									<div>
-										<span class="label-text">Laser Override</span>
-										<p class="copy-caption-soft">Always announce Laser alerts at any speed</p>
-									</div>
-									<input 
-										type="checkbox" 
-										class="toggle toggle-sm toggle-primary" 
-										bind:checked={settings.speedMuteOverrideLaser}
-									/>
-								</label>
-							</div>
-							
-							<div class="form-control">
-								<label class="label cursor-pointer py-1">
-									<div>
-										<span class="label-text">Ka Override</span>
-										<p class="copy-caption-soft">Always announce Ka alerts at any speed</p>
-									</div>
-									<input 
-										type="checkbox" 
-										class="toggle toggle-sm toggle-primary" 
-										bind:checked={settings.speedMuteOverrideKa}
-									/>
-								</label>
 							</div>
 							
 							<!-- V1 Alert Volume -->

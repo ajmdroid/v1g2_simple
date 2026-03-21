@@ -286,13 +286,10 @@ void SettingsManager::setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t
 }
 
 void SettingsManager::setSpeedMute(bool enabled, uint8_t thresholdMph,
-                                   uint8_t hysteresisMph, bool overrideLaser,
-                                   bool overrideKa) {
+                                   uint8_t hysteresisMph) {
     settings.speedMuteEnabled = enabled;
     settings.speedMuteThresholdMph = clampU8(thresholdMph, 5, 60);
     settings.speedMuteHysteresisMph = clampU8(hysteresisMph, 1, 10);
-    settings.speedMuteOverrideLaser = overrideLaser;
-    settings.speedMuteOverrideKa = overrideKa;
     save();
 }
 
@@ -514,12 +511,6 @@ void SettingsManager::applyAudioSettingsUpdate(const AudioSettingsUpdate& update
     if (update.hasSpeedMuteHysteresisMph) {
         changed |= assignIfChanged(settings.speedMuteHysteresisMph,
                                    clampU8(update.speedMuteHysteresisMph, 1, 10));
-    }
-    if (update.hasSpeedMuteOverrideLaser) {
-        changed |= assignIfChanged(settings.speedMuteOverrideLaser, update.speedMuteOverrideLaser);
-    }
-    if (update.hasSpeedMuteOverrideKa) {
-        changed |= assignIfChanged(settings.speedMuteOverrideKa, update.speedMuteOverrideKa);
     }
     if (update.hasSpeedMuteVolume) {
         const uint8_t val = (update.speedMuteVolume <= 9) ? update.speedMuteVolume : 0xFF;

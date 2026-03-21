@@ -6,8 +6,6 @@ struct SpeedMuteSettings {
     bool enabled = false;
     uint8_t thresholdMph = 25;
     uint8_t hysteresisMph = 3;
-    bool overrideLaser = true;
-    bool overrideKa = false;
     uint8_t v1Volume = 0xFF;
 };
 
@@ -22,29 +20,23 @@ public:
     SpeedMuteState state_;
 
     void begin(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph,
-               bool overrideLaser, bool overrideKa, uint8_t v1Volume = 0xFF) {
+               uint8_t v1Volume = 0xFF) {
         settings_.enabled = enabled;
         settings_.thresholdMph = thresholdMph;
         settings_.hysteresisMph = hysteresisMph;
-        settings_.overrideLaser = overrideLaser;
-        settings_.overrideKa = overrideKa;
         settings_.v1Volume = v1Volume;
     }
 
     void syncSettings(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph,
-                      bool overrideLaser, bool overrideKa, uint8_t v1Volume = 0xFF) {
+                      uint8_t v1Volume = 0xFF) {
         settings_.enabled = enabled;
         settings_.thresholdMph = thresholdMph;
         settings_.hysteresisMph = hysteresisMph;
-        settings_.overrideLaser = overrideLaser;
-        settings_.overrideKa = overrideKa;
         settings_.v1Volume = v1Volume;
     }
 
     bool isBandOverridden(uint8_t band) const {
-        if (settings_.overrideLaser && band == 1) return true;
-        if (settings_.overrideKa && band == 2) return true;
-        return false;
+        return (band == 1 || band == 2);  // Laser and Ka always override
     }
 
     const SpeedMuteSettings& getSettings() const { return settings_; }

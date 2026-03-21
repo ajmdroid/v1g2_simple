@@ -698,7 +698,6 @@ void test_speed_vol_active_prequiet_enters_captures_correct_original() {
 
 void test_speed_vol_band_override_restores_on_ka() {
     enableSpeedVolume(3);
-    speedMute.settings_.overrideKa = true;
 
     DisplayOrchestrationParsedContext ctx;
     ctx.nowMs = 1000;
@@ -725,7 +724,6 @@ void test_speed_vol_band_override_restores_on_ka() {
 
 void test_speed_vol_band_override_restores_on_laser() {
     enableSpeedVolume(3);
-    speedMute.settings_.overrideLaser = true;
 
     DisplayOrchestrationParsedContext ctx;
     ctx.nowMs = 1000;
@@ -750,21 +748,18 @@ void test_speed_vol_band_override_restores_on_laser() {
     TEST_ASSERT_EQUAL(1, lockout.clearVolumeHintCalls);
 }
 
-void test_speed_vol_no_band_override_when_flag_not_set() {
+void test_speed_vol_no_band_override_for_k_band() {
     enableSpeedVolume(3);
-    speedMute.settings_.overrideKa = false;
-    // overrideLaser is true by default, so set it false too.
-    speedMute.settings_.overrideLaser = false;
 
     DisplayOrchestrationParsedContext ctx;
     ctx.nowMs = 1000;
     ctx.parsedReady = true;
     module.processParsedFrame(ctx);  // Activate speed vol.
 
-    // Ka alert appears — but override not set.
-    parser.setActiveBands(0x02);
+    // K-band alert appears — should NOT trigger override (only Laser/Ka do).
+    parser.setActiveBands(0x04);  // BAND_K
     parser.setAlerts({
-        AlertData::create(BAND_KA, DIR_FRONT, 6, 0, 35500, true, true)
+        AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24150, true, true)
     });
     parser.setMainVolume(3);
     ble.setVolumeCalls = 0;
@@ -772,7 +767,7 @@ void test_speed_vol_no_band_override_when_flag_not_set() {
 
     module.processParsedFrame(ctx);
 
-    // Should NOT restore — band override not configured.
+    // Should NOT restore — K band is not overridden.
     TEST_ASSERT_EQUAL(0, ble.setVolumeCalls);
     TEST_ASSERT_EQUAL(0, lockout.clearVolumeHintCalls);
 }
@@ -805,14 +800,12 @@ void test_speed_vol_settings_disable_restores() {
 
 void test_speed_vol_gates_volume_fade() {
     enableSpeedVolume(3);
-    // Provide fade action that would fire if not gated.
+    // Use K-band alert (not overridden) to keep speed vol active.
     parser.state.muted = false;
+    parser.setActiveBands(0x04);  // BAND_K
     parser.setAlerts({
-        AlertData::create(BAND_KA, DIR_FRONT, 6, 0, 35500, true, true)
+        AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24150, true, true)
     });
-    // Don't set band override — keep speed vol active.
-    speedMute.settings_.overrideKa = false;
-    speedMute.settings_.overrideLaser = false;
     volumeFade.nextAction.type = VolumeFadeAction::Type::FADE_DOWN;
     volumeFade.nextAction.targetVolume = 2;
     volumeFade.nextAction.targetMuteVolume = 1;
@@ -857,7 +850,7 @@ int main() {
     RUN_TEST(test_speed_vol_active_prequiet_enters_captures_correct_original);
     RUN_TEST(test_speed_vol_band_override_restores_on_ka);
     RUN_TEST(test_speed_vol_band_override_restores_on_laser);
-    RUN_TEST(test_speed_vol_no_band_override_when_flag_not_set);
+    RUN_TEST(test_speed_vol_no_band_override_for_k_band);
     RUN_TEST(test_speed_vol_settings_disable_restores);
     RUN_TEST(test_speed_vol_gates_volume_fade);
     return UNITY_END();

@@ -305,8 +305,6 @@ void SettingsManager::load() {
     settings.speedMuteEnabled = preferences.getBool("spdMuteEn", false);
     settings.speedMuteThresholdMph = std::clamp<uint8_t>(preferences.getUChar("spdMuteThr", 25), 5, 60);
     settings.speedMuteHysteresisMph = std::clamp<uint8_t>(preferences.getUChar("spdMuteHys", 3), 1, 10);
-    settings.speedMuteOverrideLaser = preferences.getBool("spdMuteOvL", true);
-    settings.speedMuteOverrideKa = preferences.getBool("spdMuteOvK", false);
     {
         const uint8_t raw = preferences.getUChar("spdMuteVol", 0xFF);
         settings.speedMuteVolume = (raw <= 9 || raw == 0xFF) ? raw : 0xFF;

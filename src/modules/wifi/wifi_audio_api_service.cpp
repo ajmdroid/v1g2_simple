@@ -33,8 +33,6 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["speedMuteEnabled"] = settings.speedMuteEnabled;
     doc["speedMuteThresholdMph"] = settings.speedMuteThresholdMph;
     doc["speedMuteHysteresisMph"] = settings.speedMuteHysteresisMph;
-    doc["speedMuteOverrideLaser"] = settings.speedMuteOverrideLaser;
-    doc["speedMuteOverrideKa"] = settings.speedMuteOverrideKa;
     doc["speedMuteVolume"] = settings.speedMuteVolume;
 
     WifiApiResponse::sendJsonDocument(server, 200, doc);
@@ -145,16 +143,6 @@ void handleApiSave(WebServer& server,
         update.hasSpeedMuteHysteresisMph = true;
         update.speedMuteHysteresisMph =
             static_cast<uint8_t>(std::max(1, std::min(hysteresis, 10)));
-    }
-    if (server.hasArg("speedMuteOverrideLaser")) {
-        update.hasSpeedMuteOverrideLaser = true;
-        update.speedMuteOverrideLaser =
-            argBool("speedMuteOverrideLaser", settings.speedMuteOverrideLaser);
-    }
-    if (server.hasArg("speedMuteOverrideKa")) {
-        update.hasSpeedMuteOverrideKa = true;
-        update.speedMuteOverrideKa =
-            argBool("speedMuteOverrideKa", settings.speedMuteOverrideKa);
     }
     if (server.hasArg("speedMuteVolume")) {
         int vol = server.arg("speedMuteVolume").toInt();

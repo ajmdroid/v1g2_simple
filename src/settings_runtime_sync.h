@@ -97,8 +97,6 @@ inline void syncSpeedMuteRuntimeSettings(const V1Settings& settings,
     speedMuteModule.syncSettings(settings.speedMuteEnabled,
                                  settings.speedMuteThresholdMph,
                                  settings.speedMuteHysteresisMph,
-                                 settings.speedMuteOverrideLaser,
-                                 settings.speedMuteOverrideKa,
                                  settings.speedMuteVolume);
 }
 

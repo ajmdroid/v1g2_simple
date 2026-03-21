@@ -271,8 +271,6 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["speedMuteHysteresisMph"].is<int>()) {
         settings.speedMuteHysteresisMph = clampU8(doc["speedMuteHysteresisMph"].as<int>(), 1, 10);
     }
-    restoreBool("speedMuteOverrideLaser", settings.speedMuteOverrideLaser);
-    restoreBool("speedMuteOverrideKa", settings.speedMuteOverrideKa);
 
     // === Auto-Push Settings ===
     bool backupAutoPushEnabled = false;

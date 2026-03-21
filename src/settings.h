@@ -299,8 +299,6 @@ struct V1Settings {
     bool speedMuteEnabled;           // Enable speed-based auto-muting
     uint8_t speedMuteThresholdMph;   // Mute below this speed (5-60 mph)
     uint8_t speedMuteHysteresisMph;  // Unmute at threshold + hysteresis (1-10 mph)
-    bool speedMuteOverrideLaser;     // Always alert on Laser regardless of speed
-    bool speedMuteOverrideKa;        // Always alert on Ka regardless of speed
     uint8_t speedMuteVolume;         // V1 volume when speed-muted (0-9, 0xFF = voice-only)
 
     // Auto-push on connection settings
@@ -461,8 +459,6 @@ struct V1Settings {
         speedMuteEnabled(false),         // Speed mute disabled by default
         speedMuteThresholdMph(25),       // 25 mph default (city driving)
         speedMuteHysteresisMph(3),       // 3 mph hysteresis band
-        speedMuteOverrideLaser(true),    // Laser always alerts
-        speedMuteOverrideKa(false),      // Ka follows speed mute by default
         speedMuteVolume(0xFF),           // Voice-only by default (no V1 volume change)
         autoPushEnabled(false),
         activeSlot(0),
@@ -673,12 +669,6 @@ struct AudioSettingsUpdate {
 
     bool hasSpeedMuteHysteresisMph = false;
     uint8_t speedMuteHysteresisMph = 0;
-
-    bool hasSpeedMuteOverrideLaser = false;
-    bool speedMuteOverrideLaser = false;
-
-    bool hasSpeedMuteOverrideKa = false;
-    bool speedMuteOverrideKa = false;
 
     bool hasSpeedMuteVolume = false;
     uint8_t speedMuteVolume = 0xFF;      // 0xFF = voice-only (no V1 volume change)
@@ -945,8 +935,7 @@ public:
     void setSecondaryK(bool enabled);
     void setSecondaryX(bool enabled);
     void setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t volume);
-    void setSpeedMute(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph,
-                      bool overrideLaser, bool overrideKa);
+    void setSpeedMute(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph);
     void setLastV1Address(const String& addr);
     
     // Get active slot configuration

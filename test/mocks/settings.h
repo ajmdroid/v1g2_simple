@@ -179,8 +179,6 @@ struct V1Settings {
     bool speedMuteEnabled = false;
     uint8_t speedMuteThresholdMph = 25;
     uint8_t speedMuteHysteresisMph = 3;
-    bool speedMuteOverrideLaser = true;
-    bool speedMuteOverrideKa = false;
     uint8_t speedMuteVolume = 0xFF;
     
     // Misc flags retained for compatibility

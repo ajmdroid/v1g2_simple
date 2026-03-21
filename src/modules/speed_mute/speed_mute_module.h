@@ -6,7 +6,7 @@
 // Design rules:
 //   - Fail-open: if speed source is lost, NEVER mute (safety first)
 //   - Hysteresis: unmute threshold = threshold + hysteresis to prevent cycling
-//   - Band overrides: Laser (and optionally Ka) always bypass low-speed mute
+//   - Band overrides: Laser and Ka always bypass low-speed mute
 //   - Best-effort (Priority tier 4): never blocks BLE/display/connectivity
 //   - Pure decision function: caller owns BLE commands & voice suppression
 
@@ -22,8 +22,6 @@ struct SpeedMuteSettings {
     bool enabled = false;
     uint8_t thresholdMph = 25;       // Mute below this speed (5–60 mph)
     uint8_t hysteresisMph = 3;       // Unmute at threshold + hysteresis
-    bool overrideLaser = true;       // Always alert on Laser regardless of speed
-    bool overrideKa = false;         // Always alert on Ka regardless of speed
     uint8_t v1Volume = 0xFF;         // V1 volume when speed-muted (0-9, 0xFF = no change)
 };
 
@@ -70,11 +68,11 @@ SpeedMuteDecision evaluateSpeedMute(
 class SpeedMuteModule {
 public:
     void begin(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph,
-               bool overrideLaser, bool overrideKa, uint8_t v1Volume = 0xFF);
+               uint8_t v1Volume = 0xFF);
 
     /// Update settings at runtime (from web UI / settings sync).
     void syncSettings(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph,
-                      bool overrideLaser, bool overrideKa, uint8_t v1Volume = 0xFF);
+                      uint8_t v1Volume = 0xFF);
 
     /// Evaluate muting decision.  Call once per loop iteration.
     SpeedMuteDecision update(float speedMph, bool speedValid, uint32_t nowMs);

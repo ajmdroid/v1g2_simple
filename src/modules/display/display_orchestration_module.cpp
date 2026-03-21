@@ -159,14 +159,12 @@ bool DisplayOrchestrationModule::processSpeedVolume(const uint32_t nowMs) {
 
     bool wantsActive = smState.muteActive;
 
-    // Band override: if an override band (Ka/Laser) is active, force restore
-    // so the user hears the real threat at full volume.
+    // Band override: Laser and Ka always force restore so the user
+    // hears the real threat at full volume.
     if (wantsActive && parser->hasAlerts()) {
         const DisplayState ds = parser->getDisplayState();
-        const bool laserActive = (ds.activeBands & 0x01) != 0; // BAND_LASER
-        const bool kaActive    = (ds.activeBands & 0x02) != 0; // BAND_KA
-        if ((laserActive && smSettings.overrideLaser) ||
-            (kaActive && smSettings.overrideKa)) {
+        const bool laserOrKa = (ds.activeBands & 0x03) != 0; // BAND_LASER|BAND_KA
+        if (laserOrKa) {
             wantsActive = false;
         }
     }

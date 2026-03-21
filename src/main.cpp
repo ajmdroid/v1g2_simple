@@ -770,8 +770,6 @@ static void configureRuntimeSensorModules() {
         settingsManager.get().speedMuteEnabled,
         settingsManager.get().speedMuteThresholdMph,
         settingsManager.get().speedMuteHysteresisMph,
-        settingsManager.get().speedMuteOverrideLaser,
-        settingsManager.get().speedMuteOverrideKa,
         settingsManager.get().speedMuteVolume);
 }
 
@@ -1100,8 +1098,6 @@ void loop() {
         speedMuteModule.syncSettings(s.speedMuteEnabled,
                                      s.speedMuteThresholdMph,
                                      s.speedMuteHysteresisMph,
-                                     s.speedMuteOverrideLaser,
-                                     s.speedMuteOverrideKa,
                                      s.speedMuteVolume);
         const SpeedSelection speed = speedSourceSelector.selectedSpeed();
         speedMuteModule.update(speed.speedMph, speed.valid, now);

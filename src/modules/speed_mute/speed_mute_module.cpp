@@ -73,25 +73,19 @@ SpeedMuteDecision evaluateSpeedMute(
 // ---------------------------------------------------------------------------
 
 void SpeedMuteModule::begin(bool enabled, uint8_t thresholdMph,
-                            uint8_t hysteresisMph, bool overrideLaser,
-                            bool overrideKa, uint8_t v1Volume) {
+                            uint8_t hysteresisMph, uint8_t v1Volume) {
     settings_.enabled = enabled;
     settings_.thresholdMph = thresholdMph;
     settings_.hysteresisMph = hysteresisMph;
-    settings_.overrideLaser = overrideLaser;
-    settings_.overrideKa = overrideKa;
     settings_.v1Volume = v1Volume;
     state_ = {};
 }
 
 void SpeedMuteModule::syncSettings(bool enabled, uint8_t thresholdMph,
-                                   uint8_t hysteresisMph, bool overrideLaser,
-                                   bool overrideKa, uint8_t v1Volume) {
+                                   uint8_t hysteresisMph, uint8_t v1Volume) {
     settings_.enabled = enabled;
     settings_.thresholdMph = thresholdMph;
     settings_.hysteresisMph = hysteresisMph;
-    settings_.overrideLaser = overrideLaser;
-    settings_.overrideKa = overrideKa;
     settings_.v1Volume = v1Volume;
 }
 
@@ -105,8 +99,6 @@ SpeedMuteDecision SpeedMuteModule::update(float speedMph, bool speedValid,
 }
 
 bool SpeedMuteModule::isBandOverridden(uint8_t band) const {
-    // Band constants from parser.h:  BAND_LASER=1, BAND_KA=2
-    if (settings_.overrideLaser && band == 1) return true;
-    if (settings_.overrideKa && band == 2) return true;
-    return false;
+    // Laser and Ka always override speed mute — never suppress these.
+    return (band == 1 || band == 2);  // BAND_LASER=1, BAND_KA=2
 }
