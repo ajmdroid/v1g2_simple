@@ -181,6 +181,14 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
         settings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
             doc["gpsLockoutPreQuietBufferE5"].as<int>());
     }
+    if (doc["gpsLockoutMaxHdopX10"].is<int>()) {
+        settings.gpsLockoutMaxHdopX10 = clampLockoutGpsMaxHdopX10Value(
+            doc["gpsLockoutMaxHdopX10"].as<int>());
+    }
+    if (doc["gpsLockoutMinLearnerSpeedMph"].is<int>()) {
+        settings.gpsLockoutMinLearnerSpeedMph = clampLockoutGpsMinLearnerSpeedMphValue(
+            doc["gpsLockoutMinLearnerSpeedMph"].as<int>());
+    }
     if (doc["lastV1Address"].is<const char*>()) {
         settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
     }
@@ -271,12 +279,13 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["speedMuteHysteresisMph"].is<int>()) {
         settings.speedMuteHysteresisMph = clampU8(doc["speedMuteHysteresisMph"].as<int>(), 1, 10);
     }
+    if (doc["speedMuteVolume"].is<int>()) {
+        int raw = doc["speedMuteVolume"].as<int>();
+        settings.speedMuteVolume = (raw >= 0 && raw <= 9) ? static_cast<uint8_t>(raw) : 0xFF;
+    }
 
     // === Auto-Push Settings ===
-    bool backupAutoPushEnabled = false;
-    if (parseBoolVariant(doc["autoPushEnabled"], backupAutoPushEnabled) && backupAutoPushEnabled) {
-        settings.autoPushEnabled = true;
-    }
+    restoreBool("autoPushEnabled", settings.autoPushEnabled);
     if (doc["activeSlot"].is<int>()) settings.activeSlot = std::max(0, std::min(doc["activeSlot"].as<int>(), 2));
 
     if (doc["slot0Name"].is<const char*>()) settings.slot0Name = sanitizeSlotNameValue(doc["slot0Name"].as<String>());

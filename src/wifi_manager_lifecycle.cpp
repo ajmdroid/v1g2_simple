@@ -213,7 +213,11 @@ bool WiFiManager::startSetupMode(const bool autoStarted) {
     Serial.println("[WiFi] TX power 5dBm (low RF for BLE coex)");
 
     setupAP();
-    setupWebServer();
+    if (!setupWebServer()) {
+        WIFI_LOG("[SetupMode] ABORT: LittleFS unavailable, AP would have no routes\n");
+        WiFi.mode(WIFI_OFF);
+        return false;
+    }
 
     // Collect headers for GZIP support and caching
     const char* headerKeys[] = {"Accept-Encoding", "If-None-Match"};

@@ -36,11 +36,11 @@
 #include "battery_manager.h"
 #include <LittleFS.h>
 
-void WiFiManager::setupWebServer() {
+bool WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
     if (!LittleFS.begin(false, "/littlefs", 10, "storage")) {
         WIFI_LOG("[SetupMode] ERROR: LittleFS mount failed (not formatting automatically)\n");
-        return;
+        return false;
     }
     WIFI_LOG("[SetupMode] LittleFS mounted\n");
     // Dump LittleFS root for diagnostics (opt-in to avoid startup stall)
@@ -51,7 +51,7 @@ void WiFiManager::setupWebServer() {
     // WebServer::stop() only closes the listening socket; registered handlers
     // persist on the server instance across WiFi restarts.
     if (webRoutesInitialized) {
-        return;
+        return true;
     }
     
     // New UI served from LittleFS
@@ -572,4 +572,5 @@ void WiFiManager::setupWebServer() {
     
     // Note: onNotFound is set earlier to handle LittleFS static files
     webRoutesInitialized = true;
+    return true;
 }

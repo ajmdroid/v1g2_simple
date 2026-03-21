@@ -75,6 +75,8 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["gpsLockoutXLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
     doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
     doc["gpsLockoutPreQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
+    doc["gpsLockoutMaxHdopX10"] = settings.gpsLockoutMaxHdopX10;
+    doc["gpsLockoutMinLearnerSpeedMph"] = settings.gpsLockoutMinLearnerSpeedMph;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -149,6 +151,7 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["speedMuteEnabled"] = settings.speedMuteEnabled;
     doc["speedMuteThresholdMph"] = settings.speedMuteThresholdMph;
     doc["speedMuteHysteresisMph"] = settings.speedMuteHysteresisMph;
+    doc["speedMuteVolume"] = settings.speedMuteVolume;
 
     doc["autoPushEnabled"] = settings.autoPushEnabled;
     doc["activeSlot"] = settings.activeSlot;

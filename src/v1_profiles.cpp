@@ -514,12 +514,29 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
     file.flush();
     file.close();
     
-    // Step 3: Verify write succeeded
+    // Step 3: Verify write succeeded and file size matches
     if (written == 0) {
         lastError = "Serialization failed - no data written";
         Serial.printf("[V1Profiles] %s\n", lastError.c_str());
         fs->remove(tmpPath);
         return ProfileSaveResult(false, lastError);
+    }
+    {
+        File verify = fs->open(tmpPath, FILE_READ);
+        if (!verify) {
+            lastError = "Failed to re-open temp file for verification";
+            Serial.printf("[V1Profiles] %s\n", lastError.c_str());
+            fs->remove(tmpPath);
+            return ProfileSaveResult(false, lastError);
+        }
+        size_t fileSize = verify.size();
+        verify.close();
+        if (fileSize != written) {
+            lastError = "Partial write detected: expected " + String(written) + " bytes, got " + String(fileSize);
+            Serial.printf("[V1Profiles] %s\n", lastError.c_str());
+            fs->remove(tmpPath);
+            return ProfileSaveResult(false, lastError);
+        }
     }
     
     // Step 4: Create backup of existing file before replacement
@@ -598,6 +615,17 @@ bool V1ProfileManager::renameProfile(const String& oldName, const String& newNam
     if (!ready || !fs) {
         return false;
     }
+
+    // Guard: no-op rename would save then delete the same file
+    if (oldName == newName) {
+        return true;
+    }
+
+    // Guard: refuse to overwrite a different existing profile
+    if (fs->exists(profilePath(newName))) {
+        Serial.printf("[V1Profiles] Rename refused: target '%s' already exists\n", newName.c_str());
+        return false;
+    }
     
     V1Profile profile;
     if (!loadProfile(oldName, profile)) {
@@ -610,7 +638,10 @@ bool V1ProfileManager::renameProfile(const String& oldName, const String& newNam
         return false;
     }
     
-    return deleteProfile(oldName);
+    if (!deleteProfile(oldName)) {
+        Serial.println("[V1Profiles] Warning: rename saved new but failed to delete old");
+    }
+    return true;
 }
 
 void V1ProfileManager::setCurrentSettings(const uint8_t* bytes) {

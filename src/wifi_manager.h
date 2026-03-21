@@ -282,7 +282,7 @@ private:
     
     // Setup functions
     void setupAP();
-    void setupWebServer();
+    bool setupWebServer();
     void checkAutoTimeout();
     void processWifiClientConnectPhase();
     bool enableWifiClientFromSavedCredentials();
