@@ -415,11 +415,8 @@ void configureUiInteractionModules() {
 void logBootSummaryAndWifiStartup(uint32_t bootId, esp_reset_reason_t resetReason) {
     const V1Settings& bootSettings = settingsManager.get();
     const char* scenario = "default";
-#ifdef GIT_SHA
-    const char* gitSha = GIT_SHA;
-#else
-    const char* gitSha = "unknown";
-#endif
+    extern const char* getBuildGitSha();
+    const char* gitSha = getBuildGitSha();
     const char* resetStr = resetReasonToString(resetReason);
     SerialLog.printf("BOOT bootId=%lu reset=%s git=%s scenario=%s wifiMaster=%s wifiAtBoot=%s\n",
                      static_cast<unsigned long>(bootId),
