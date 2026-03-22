@@ -152,6 +152,7 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["speedMuteThresholdMph"] = settings.speedMuteThresholdMph;
     doc["speedMuteHysteresisMph"] = settings.speedMuteHysteresisMph;
     doc["speedMuteVolume"] = settings.speedMuteVolume;
+    doc["speedMuteRequireObd"] = settings.speedMuteRequireObd;
 
     doc["autoPushEnabled"] = settings.autoPushEnabled;
     doc["activeSlot"] = settings.activeSlot;

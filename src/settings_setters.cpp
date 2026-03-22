@@ -516,6 +516,9 @@ void SettingsManager::applyAudioSettingsUpdate(const AudioSettingsUpdate& update
         const uint8_t val = (update.speedMuteVolume <= 9) ? update.speedMuteVolume : 0xFF;
         changed |= assignIfChanged(settings.speedMuteVolume, val);
     }
+    if (update.hasSpeedMuteRequireObd) {
+        changed |= assignIfChanged(settings.speedMuteRequireObd, update.speedMuteRequireObd);
+    }
 
     if (changed) {
         persistSettingsByMode(*this, persistMode);

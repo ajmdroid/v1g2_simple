@@ -352,6 +352,13 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         // Defers to pre-quiet when it owns volume. Gates volume fade.
         const bool speedVolBusy = processSpeedVolume(ctx.nowMs);
 
+        // Suppress VOL 0 warning when speed-mute intentionally set volume to 0.
+        {
+            const bool speedVolZero = speedVolActive_ && speedMute &&
+                                      speedMute->getSettings().v1Volume == 0;
+            display->setSpeedVolZeroActive(speedVolZero);
+        }
+
         if (lastGpsSatUpdateMs == 0 ||
             (ctx.nowMs - lastGpsSatUpdateMs >= GPS_SAT_UPDATE_INTERVAL_MS)) {
             display->setGpsSatellites(gpsStatus.enabled,

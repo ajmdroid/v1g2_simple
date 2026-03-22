@@ -282,7 +282,7 @@ void V1Display::update(const DisplayState& state) {
     bool volZero = (state.mainVolume == 0 && state.hasVolumeData);
     if (!bleContextFresh) {
         volZeroWarn.reset();
-    } else if (volZeroWarn.needsFlashRedraw(volZero, currentProxyConnected, preQuietActive_)) {
+    } else if (volZeroWarn.needsFlashRedraw(volZero, currentProxyConnected, preQuietActive_, speedVolZeroActive_)) {
         needsFullRedraw = true;
     }
     
@@ -393,7 +393,7 @@ void V1Display::update(const DisplayState& state) {
         volZeroWarn.reset();
     } else {
         showVolumeWarning = volZeroWarn.evaluate(
-            volZero, proxyConnected, preQuietActive_, play_vol0_beep);
+            volZero, proxyConnected, preQuietActive_, speedVolZeroActive_, play_vol0_beep);
     }
     
     if (showVolumeWarning) {

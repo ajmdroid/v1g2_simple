@@ -57,6 +57,8 @@ public:
     bool lastLockoutIndicatorValue = false;
     int setPreQuietActiveCalls = 0;
     bool lastPreQuietActiveValue = false;
+    int setSpeedVolZeroActiveCalls = 0;
+    bool lastSpeedVolZeroActiveValue = false;
     int setBleContextCalls = 0;
     DisplayBleContext lastBleContext{};
     int setBLEProxyStatusCalls = 0;
@@ -121,6 +123,8 @@ public:
         lastLockoutIndicatorValue = false;
         setPreQuietActiveCalls = 0;
         lastPreQuietActiveValue = false;
+        setSpeedVolZeroActiveCalls = 0;
+        lastSpeedVolZeroActiveValue = false;
         setBleContextCalls = 0;
         lastBleContext = DisplayBleContext{};
         setBLEProxyStatusCalls = 0;
@@ -204,6 +208,11 @@ public:
     void setPreQuietActive(bool active) {
         setPreQuietActiveCalls++;
         lastPreQuietActiveValue = active;
+    }
+
+    void setSpeedVolZeroActive(bool active) {
+        setSpeedVolZeroActiveCalls++;
+        lastSpeedVolZeroActiveValue = active;
     }
     
     void setBleContext(const DisplayBleContext& ctx) {

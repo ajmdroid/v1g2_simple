@@ -1100,7 +1100,9 @@ void loop() {
                                      s.speedMuteHysteresisMph,
                                      s.speedMuteVolume);
         const SpeedSelection speed = speedSourceSelector.selectedSpeed();
-        speedMuteModule.update(speed.speedMph, speed.valid, now);
+        const bool speedValid = speed.valid &&
+            (!s.speedMuteRequireObd || speed.source == SpeedSource::OBD);
+        speedMuteModule.update(speed.speedMph, speedValid, now);
     }
 
     // No overload guard: handleParsed's internal 25ms throttle gates expensive draws;

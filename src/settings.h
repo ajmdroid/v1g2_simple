@@ -300,6 +300,7 @@ struct V1Settings {
     uint8_t speedMuteThresholdMph;   // Mute below this speed (5-60 mph)
     uint8_t speedMuteHysteresisMph;  // Unmute at threshold + hysteresis (1-10 mph)
     uint8_t speedMuteVolume;         // V1 volume when speed-muted (0-9, 0xFF = voice-only)
+    bool speedMuteRequireObd;        // Require OBD speed source (ignore GPS for speed mute)
 
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -460,6 +461,7 @@ struct V1Settings {
         speedMuteThresholdMph(25),       // 25 mph default (city driving)
         speedMuteHysteresisMph(3),       // 3 mph hysteresis band
         speedMuteVolume(0xFF),           // Voice-only by default (no V1 volume change)
+        speedMuteRequireObd(false),      // Allow GPS fallback by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -672,6 +674,9 @@ struct AudioSettingsUpdate {
 
     bool hasSpeedMuteVolume = false;
     uint8_t speedMuteVolume = 0xFF;      // 0xFF = voice-only (no V1 volume change)
+
+    bool hasSpeedMuteRequireObd = false;
+    bool speedMuteRequireObd = false;
 };
 
 struct DisplaySettingsUpdate {

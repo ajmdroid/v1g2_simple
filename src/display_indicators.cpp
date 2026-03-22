@@ -38,6 +38,10 @@ void V1Display::setPreQuietActive(bool active) {
     preQuietActive_ = active;
 }
 
+void V1Display::setSpeedVolZeroActive(bool active) {
+    speedVolZeroActive_ = active;
+}
+
 void V1Display::drawLockoutIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     static bool lastShown = false;

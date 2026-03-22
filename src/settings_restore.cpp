@@ -283,6 +283,7 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
         int raw = doc["speedMuteVolume"].as<int>();
         settings.speedMuteVolume = (raw >= 0 && raw <= 9) ? static_cast<uint8_t>(raw) : 0xFF;
     }
+    restoreBool("speedMuteRequireObd", settings.speedMuteRequireObd);
 
     // === Auto-Push Settings ===
     restoreBool("autoPushEnabled", settings.autoPushEnabled);

@@ -180,6 +180,7 @@ struct V1Settings {
     uint8_t speedMuteThresholdMph = 25;
     uint8_t speedMuteHysteresisMph = 3;
     uint8_t speedMuteVolume = 0xFF;
+    bool speedMuteRequireObd = false;
     
     // Misc flags retained for compatibility
     bool gpsEnabled = true;

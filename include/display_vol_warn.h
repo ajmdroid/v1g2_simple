@@ -26,10 +26,12 @@ struct VolumeZeroWarning {
     /// @param volZero          true when mainVolume == 0 && hasVolumeData
     /// @param proxyConnected   true when BLE proxy client is connected
     /// @param preQuietActive   true when lockout pre-quiet is suppressing the warning
+    /// @param speedVolZeroActive true when speed-mute intentionally set volume to 0
     /// @param playBeepFn       called once when the warning first appears
     bool evaluate(bool volZero, bool proxyConnected, bool preQuietActive,
+                  bool speedVolZeroActive = false,
                   void (*playBeepFn)() = nullptr) {
-        if (!volZero || proxyConnected || preQuietActive) {
+        if (!volZero || proxyConnected || preQuietActive || speedVolZeroActive) {
             reset();
             return false;
         }
@@ -64,8 +66,9 @@ struct VolumeZeroWarning {
 
     /// Return true when a flashing redraw is needed even on the incremental path.
     /// Used in the resting-screen early-exit check.
-    bool needsFlashRedraw(bool volZero, bool proxyConnected, bool preQuietActive) const {
-        if (!volZero || proxyConnected || preQuietActive || acknowledged) {
+    bool needsFlashRedraw(bool volZero, bool proxyConnected, bool preQuietActive,
+                          bool speedVolZeroActive = false) const {
+        if (!volZero || proxyConnected || preQuietActive || speedVolZeroActive || acknowledged) {
             return false;
         }
         if (detectedMs == 0) {

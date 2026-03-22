@@ -115,6 +115,10 @@ public:
     // intentionally dropped by the lockout pre-quiet feature.
     void setPreQuietActive(bool active);
 
+    // Speed-vol zero active flag — suppresses VOL 0 warning when speed mute
+    // intentionally set the V1 volume to 0.
+    void setSpeedVolZeroActive(bool active);
+
     // BLE context snapshot — populated by the loop orchestration path so display
     // files never depend on extern V1BLEClient. Freshness is tracked internally.
     void setBleContext(const DisplayBleContext& ctx);
@@ -229,6 +233,7 @@ private:
     bool secondaryCardsRenderDirty_ = false; // True when drawSecondaryAlertCards changed card-row pixels
     bool lockoutIndicatorShown_ = false;  // Current lockout indicator state (set by main.cpp)
     bool preQuietActive_ = false;          // Suppress VOL 0 warning during lockout pre-quiet
+    bool speedVolZeroActive_ = false;      // Suppress VOL 0 warning during speed-mute vol 0
     bool gpsSatEnabled_ = false;           // GPS module enabled
     bool gpsSatHasFix_ = false;            // GPS has satellite fix
     uint8_t gpsSatCount_ = 0;              // Satellite count for display
