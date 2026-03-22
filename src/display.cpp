@@ -316,33 +316,10 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
     }
 
     const uint32_t startUs = PERF_TIMESTAMP_US();
-    const int16_t stride = tft->width();
-
-    if (w == stride) {
-        // Region spans full canvas width — framebuffer rows are already
-        // contiguous so we can blit the block in a single SPI transaction.
-        uint16_t* blockPtr = fb + y * stride;
-        gfxPanel->draw16bitRGBBitmap(0, y, blockPtr, w, h);
-    } else {
-        // Sub-width region: pack rows into a contiguous PSRAM scratch buffer
-        // so draw16bitRGBBitmap can push the whole block in one SPI call.
-        const size_t bytes = static_cast<size_t>(w) * h * sizeof(uint16_t);
-        uint16_t* packed = (bytes <= 65536)
-            ? static_cast<uint16_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM))
-            : nullptr;
-        if (packed) {
-            for (int16_t row = 0; row < h; ++row) {
-                memcpy(packed + row * w, fb + (y + row) * stride + x, w * sizeof(uint16_t));
-            }
-            gfxPanel->draw16bitRGBBitmap(x, y, packed, w, h);
-            heap_caps_free(packed);
-        } else {
-            // Fallback: row-by-row if PSRAM alloc fails or region too large
-            for (int16_t row = 0; row < h; ++row) {
-                uint16_t* rowPtr = fb + (y + row) * stride + x;
-                gfxPanel->draw16bitRGBBitmap(x, y + row, rowPtr, w, 1);
-            }
-        }
+    int16_t stride = tft->width();
+    for (int16_t row = 0; row < h; ++row) {
+        uint16_t* rowPtr = fb + (y + row) * stride + x;
+        gfxPanel->draw16bitRGBBitmap(x, y + row, rowPtr, w, 1);
     }
     perfRecordFlushUs(PERF_TIMESTAMP_US() - startUs, areaPx, false);
 }

@@ -332,20 +332,10 @@ void V1Display::update(const DisplayState& state) {
                                      flushLeftStrip,
                                      flushRightStrip);
         const bool cardsChanged = drawRestTelemetryCards(false);
-        if (flushLeftStrip && flushRightStrip) {
-            DISPLAY_FLUSH();
-        } else if (flushLeftStrip) {
-            flushRegion(0, 0, DisplayLayout::BAND_COLUMN_WIDTH, SCREEN_HEIGHT);
-        } else if (flushRightStrip) {
-            flushRegion(SCREEN_WIDTH - DisplayLayout::SIGNAL_COLUMN_WIDTH, 0,
-                        DisplayLayout::SIGNAL_COLUMN_WIDTH, SCREEN_HEIGHT);
-        }
-        if (cardsChanged) {
-            flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
-                        SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT,
-                        DisplayLayout::CONTENT_AVAILABLE_WIDTH,
-                        SECONDARY_ROW_HEIGHT);
-        }
+        (void)flushLeftStrip;
+        (void)flushRightStrip;
+        (void)cardsChanged;
+        DISPLAY_FLUSH();
         lastState = state;
         return;
     }
@@ -664,14 +654,11 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     if (cache.liveFirstRun) { needsRedraw = true; cache.liveFirstRun = false; }
     else if (enteringLiveMode) { needsRedraw = true; }
     else if (wasPersistedMode) { needsRedraw = true; }
-    // Band/mute changes require full redraw (structural layout change)
+    // V1 is source of truth - always redraw when priority alert changes
+    // Use frequency tolerance to avoid full redraws from V1 jitter
+    else if (freqDifferent(priority.frequency, cache.liveLastPriority.frequency)) { needsRedraw = true; }
     else if (priority.band != cache.liveLastPriority.band) { needsRedraw = true; }
     else if (state.muted != cache.liveLastMultiState.muted) { needsRedraw = true; }
-
-    // Frequency-only changes are handled incrementally via targeted region flush,
-    // avoiding the expensive fillScreen + full QSPI push of a full redraw.
-    const bool freqOnlyChanged = !needsRedraw &&
-        freqDifferent(priority.frequency, cache.liveLastPriority.frequency);
     // Note: bogey counter changes are handled via incremental update (bogeyCounterChanged) for rapid response
     
     // Also check if any secondary alert changed (set-based, not order-based)
@@ -749,7 +736,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         }
     }
     
-    if (!needsRedraw && !freqOnlyChanged && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
+    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
         if (secondaryCardsRenderDirty_) {
@@ -762,21 +749,12 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         return;
     }
     
-    if (!needsRedraw && (freqOnlyChanged || arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
+    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
         perfRecordDisplayRenderPath(PerfDisplayRenderPath::Incremental);
-        // Incremental update without full redraw — only redraw changed elements
-        // and flush their specific screen regions.
+        // Only arrows, signal bars, bands, or bogey count changed - do incremental update without full redraw
+        // Also handle flash updates (periodic redraw for blink animation)
         bool flushLeftStrip = false;
         bool flushRightStrip = false;
-
-        if (freqOnlyChanged) {
-            cache.liveLastPriority.frequency = priority.frequency;
-            const bool isPhotoRadar =
-                (priority.photoType != 0) ||
-                state.hasPhotoAlert ||
-                (liveTopCounterChar == 'P');
-            drawFrequency(priority.frequency, priority.band, state.muted, isPhotoRadar);
-        }
 
         if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
             cache.liveLastArrows = arrowsToShow;
@@ -808,36 +786,9 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
                                      flushRightStrip);
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
-        // Flush only the regions that actually changed
-        if (freqOnlyChanged && flushLeftStrip && flushRightStrip) {
-            // Freq center + both strips = effectively everything, full flush
-            DISPLAY_FLUSH();
-        } else {
-            if (freqOnlyChanged && frequencyRenderDirty) {
-                if (frequencyDirtyValid)
-                    flushRegion(frequencyDirtyX, frequencyDirtyY,
-                                frequencyDirtyW, frequencyDirtyH);
-                else
-                    flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
-                                DisplayLayout::PRIMARY_ZONE_Y,
-                                DisplayLayout::CONTENT_AVAILABLE_WIDTH,
-                                DisplayLayout::PRIMARY_ZONE_HEIGHT);
-            }
-            if (flushLeftStrip && flushRightStrip) {
-                DISPLAY_FLUSH();
-            } else if (flushLeftStrip) {
-                flushRegion(0, 0, DisplayLayout::BAND_COLUMN_WIDTH, SCREEN_HEIGHT);
-            } else if (flushRightStrip) {
-                flushRegion(SCREEN_WIDTH - DisplayLayout::SIGNAL_COLUMN_WIDTH, 0,
-                            DisplayLayout::SIGNAL_COLUMN_WIDTH, SCREEN_HEIGHT);
-            }
-        }
-        if (secondaryCardsRenderDirty_) {
-            flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
-                        SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT,
-                        DisplayLayout::CONTENT_AVAILABLE_WIDTH,
-                        SECONDARY_ROW_HEIGHT);
-        }
+        (void)flushLeftStrip;
+        (void)flushRightStrip;
+        DISPLAY_FLUSH();
         return;
     }
 
@@ -845,6 +796,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     recordDisplayRedrawReasonIf(cache.liveFirstRun, PerfDisplayRedrawReason::FirstRun);
     recordDisplayRedrawReasonIf(enteringLiveMode, PerfDisplayRedrawReason::EnterLive);
     recordDisplayRedrawReasonIf(wasPersistedMode, PerfDisplayRedrawReason::LeavePersisted);
+    recordDisplayRedrawReasonIf(freqDifferent(priority.frequency, cache.liveLastPriority.frequency),
+                                PerfDisplayRedrawReason::FrequencyChange);
     recordDisplayRedrawReasonIf(priority.band != cache.liveLastPriority.band,
                                 PerfDisplayRedrawReason::BandSetChange);
     recordDisplayRedrawReasonIf(arrowsChanged, PerfDisplayRedrawReason::ArrowChange);
