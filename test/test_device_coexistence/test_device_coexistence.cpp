@@ -41,7 +41,7 @@ static uint32_t internalLargest() {
 // Thresholds from wifi_manager.cpp
 static constexpr uint32_t WIFI_MIN_FREE_DMA     = 40 * 1024;   // 40 KB
 static constexpr uint32_t WIFI_MIN_LARGEST_BLOCK = 20 * 1024;   // 20 KB
-static constexpr int BLE_TARGET_TX_POWER_DBM = 12;
+static constexpr int BLE_TARGET_TX_POWER_DBM = 9;
 static bool bleStackInitialised = false;
 
 static void ensureBleStackInitialised() {

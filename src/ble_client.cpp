@@ -55,9 +55,9 @@ extern "C" {
 // =========================================================================
 
 static constexpr const char* BLE_BOND_BACKUP_PATH = "/v1simple_ble_bonds.bin";
-// 12 dBm balances BLE range (priority #1–2) with WiFi coexistence (priority #6).
-// Previous: 15 dBm (too aggressive for WiFi), then 9 dBm (too conservative for range).
-static constexpr int8_t BLE_TX_POWER_DBM = 12;
+// Use a standard BLE TX power step instead of the previous max-power 15 dBm
+// setting so BLE is less aggressive during WiFi coexistence.
+static constexpr int8_t BLE_TX_POWER_DBM = 9;
 
 // Callback context for ble_store_iterate
 struct BondCollector {
