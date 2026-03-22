@@ -122,12 +122,16 @@ public:
     uint8_t lastFrontStrength = 0;
     uint8_t lastRearStrength = 0;
     bool lastMuted = false;
-    
-    // Additional state for band/signal/card tracking
+
+    // Additional state for band/signal/card/top/profile tracking
     uint8_t lastBandMask = 0;
     bool lastBandMuted = false;
     int lastCardCount = -1;  // -1 means "never drawn"
-    
+    char lastStatusSymbol = '\0';
+    bool lastStatusMuted = false;
+    bool lastStatusDot = false;
+    int lastProfileSlot = -1;
+
     // Force flags
     bool forceFrequencyRedraw = false;
     bool forceBandRedraw = false;
@@ -138,7 +142,8 @@ public:
     bool forceMuteIconRedraw = false;
     bool forceTopCounterRedraw = false;
     bool forceBatteryRedraw = false;
-    
+    bool forceProfileRedraw = false;
+
     // Draw counters
     int frequencyDrawCount = 0;
     int bandDrawCount = 0;
@@ -149,11 +154,12 @@ public:
     int muteIconDrawCount = 0;
     int topCounterDrawCount = 0;
     int batteryDrawCount = 0;
+    int profileDrawCount = 0;
     int fullScreenClearCount = 0;
-    
+
     // Frequency tolerance constant (MHz)
     static constexpr int FREQ_TOLERANCE = 5;
-    
+
     void reset() {
         lastBand = BAND_NONE;
         lastDirection = DIR_NONE;
@@ -164,10 +170,14 @@ public:
         lastBandMask = 255;  // Invalid to force first draw
         lastBandMuted = false;
         lastCardCount = -1;  // Never drawn
+        lastStatusSymbol = '\0';
+        lastStatusMuted = false;
+        lastStatusDot = false;
+        lastProfileSlot = -1;
         clearForceFlags();
         clearDrawCounters();
     }
-    
+
     void clearForceFlags() {
         forceFrequencyRedraw = false;
         forceBandRedraw = false;
@@ -178,8 +188,9 @@ public:
         forceMuteIconRedraw = false;
         forceTopCounterRedraw = false;
         forceBatteryRedraw = false;
+        forceProfileRedraw = false;
     }
-    
+
     void clearDrawCounters() {
         frequencyDrawCount = 0;
         bandDrawCount = 0;
@@ -190,9 +201,10 @@ public:
         muteIconDrawCount = 0;
         topCounterDrawCount = 0;
         batteryDrawCount = 0;
+        profileDrawCount = 0;
         fullScreenClearCount = 0;
     }
-    
+
     void setAllForceFlags() {
         forceFrequencyRedraw = true;
         forceBandRedraw = true;
@@ -203,21 +215,27 @@ public:
         forceMuteIconRedraw = true;
         forceTopCounterRedraw = true;
         forceBatteryRedraw = true;
+        forceProfileRedraw = true;
     }
-    
+
     // Simulated drawBaseFrame - clears screen and sets force flags
     void drawBaseFrame() {
         fullScreenClearCount++;
         setAllForceFlags();
     }
-    
+
+    // Simulated invalidate-only full redraw prep
+    void prepareFullRedrawNoClear() {
+        setAllForceFlags();
+    }
+
     // Check if frequency changed (with tolerance)
     bool frequencyChanged(uint32_t newFreq) {
         if (forceFrequencyRedraw) return true;
         int diff = abs((int)newFreq - (int)lastFrequency);
         return diff > FREQ_TOLERANCE;
     }
-    
+
     // Simulate drawing frequency
     void drawFrequency(uint32_t freq, Band band, bool muted) {
         if (frequencyChanged(freq) || band != lastBand || muted != lastMuted || forceFrequencyRedraw) {
@@ -228,7 +246,7 @@ public:
             forceFrequencyRedraw = false;
         }
     }
-    
+
     // Simulate drawing band indicators
     void drawBandIndicators(uint8_t bandMask, bool muted) {
         if (bandMask != lastBandMask || muted != lastBandMuted || forceBandRedraw) {
@@ -238,7 +256,7 @@ public:
             forceBandRedraw = false;
         }
     }
-    
+
     // Simulate drawing arrow
     void drawDirectionArrow(Direction dir, bool muted) {
         if (dir != lastDirection || muted != lastMuted || forceArrowRedraw) {
@@ -248,7 +266,7 @@ public:
             forceArrowRedraw = false;
         }
     }
-    
+
     // Simulate drawing signal bars
     void drawVerticalSignalBars(uint8_t front, uint8_t rear, bool muted) {
         if (front != lastFrontStrength || rear != lastRearStrength || muted != lastMuted || forceSignalBarsRedraw) {
@@ -258,7 +276,7 @@ public:
             forceSignalBarsRedraw = false;
         }
     }
-    
+
     // Simulate drawing secondary cards
     void drawSecondaryAlertCards(int alertCount) {
         if (alertCount != lastCardCount || forceCardRedraw) {
@@ -267,11 +285,129 @@ public:
             forceCardRedraw = false;
         }
     }
+
+    void drawStatusBar(char symbol, bool muted, bool showDot) {
+        if (symbol != lastStatusSymbol ||
+            muted != lastStatusMuted ||
+            showDot != lastStatusDot ||
+            forceStatusBarRedraw) {
+            statusBarDrawCount++;
+            lastStatusSymbol = symbol;
+            lastStatusMuted = muted;
+            lastStatusDot = showDot;
+            forceStatusBarRedraw = false;
+        }
+    }
+
+    void drawProfileIndicator(int slot) {
+        if (slot != lastProfileSlot || forceProfileRedraw) {
+            profileDrawCount++;
+            lastProfileSlot = slot;
+            forceProfileRedraw = false;
+        }
+    }
 };
 
 // Global tracker instance
 static DisplayCacheTracker g_tracker;
 
+enum class ArrowOwnedRegion {
+    None = 0,
+    Front,
+    Side,
+    Rear,
+};
+
+class ArrowPartialRedrawTracker {
+public:
+    bool cacheValid = false;
+    bool lastShowFront = false;
+    bool lastShowSide = false;
+    bool lastShowRear = false;
+    bool lastMuted = false;
+    bool lastRaisedLayout = true;
+    bool forceArrowRedraw = false;
+    int fullRegionRedrawCount = 0;
+    int targetedRegionRedrawCount = 0;
+    ArrowOwnedRegion lastTargetedRegion = ArrowOwnedRegion::None;
+
+    void reset() {
+        cacheValid = false;
+        lastShowFront = false;
+        lastShowSide = false;
+        lastShowRear = false;
+        lastMuted = false;
+        lastRaisedLayout = true;
+        forceArrowRedraw = false;
+        clearDrawCounters();
+    }
+
+    void clearDrawCounters() {
+        fullRegionRedrawCount = 0;
+        targetedRegionRedrawCount = 0;
+        lastTargetedRegion = ArrowOwnedRegion::None;
+    }
+
+    void invalidate() {
+        forceArrowRedraw = true;
+    }
+
+    void render(Direction dir,
+                bool muted,
+                bool blinkOn,
+                uint8_t flashBits = 0,
+                bool raisedLayout = true) {
+        bool showFront = (dir & DIR_FRONT) != 0;
+        bool showSide = (dir & DIR_SIDE) != 0;
+        bool showRear = (dir & DIR_REAR) != 0;
+
+        if (!blinkOn) {
+            if (flashBits & 0x20) showFront = false;
+            if (flashBits & 0x40) showSide = false;
+            if (flashBits & 0x80) showRear = false;
+        }
+
+        const bool frontChanged = cacheValid && (showFront != lastShowFront);
+        const bool sideChanged = cacheValid && (showSide != lastShowSide);
+        const bool rearChanged = cacheValid && (showRear != lastShowRear);
+        const bool mutedChanged = cacheValid && (muted != lastMuted);
+        const bool layoutChanged = cacheValid && (raisedLayout != lastRaisedLayout);
+        const int changedCount = static_cast<int>(frontChanged) +
+                                 static_cast<int>(sideChanged) +
+                                 static_cast<int>(rearChanged);
+
+        const bool anyChanged =
+            forceArrowRedraw || !cacheValid || frontChanged || sideChanged || rearChanged ||
+            mutedChanged || layoutChanged;
+        if (!anyChanged) {
+            return;
+        }
+
+        if (!forceArrowRedraw && cacheValid && !mutedChanged && !layoutChanged && changedCount == 1) {
+            targetedRegionRedrawCount++;
+            lastTargetedRegion = frontChanged
+                                     ? ArrowOwnedRegion::Front
+                                     : (sideChanged ? ArrowOwnedRegion::Side
+                                                    : ArrowOwnedRegion::Rear);
+        } else {
+            fullRegionRedrawCount++;
+            lastTargetedRegion = ArrowOwnedRegion::None;
+        }
+
+        lastShowFront = showFront;
+        lastShowSide = showSide;
+        lastShowRear = showRear;
+        lastMuted = muted;
+        lastRaisedLayout = raisedLayout;
+        cacheValid = true;
+        forceArrowRedraw = false;
+    }
+};
+
+static ArrowPartialRedrawTracker g_arrowTracker;
+
+// ============================================================================
+// Test Cases: Band Decoding
 // ============================================================================
 // Test Cases: Band Decoding
 // ============================================================================
@@ -453,6 +589,55 @@ void test_cache_drawBaseFrame_sets_all_force_flags() {
     TEST_ASSERT_TRUE(g_tracker.forceBatteryRedraw);
 }
 
+
+void test_prepareFullRedrawNoClear_sets_force_flags_without_screen_clear() {
+    g_tracker.reset();
+    g_tracker.clearForceFlags();
+
+    g_tracker.prepareFullRedrawNoClear();
+
+    TEST_ASSERT_EQUAL(0, g_tracker.fullScreenClearCount);
+    TEST_ASSERT_TRUE(g_tracker.forceFrequencyRedraw);
+    TEST_ASSERT_TRUE(g_tracker.forceBandRedraw);
+    TEST_ASSERT_TRUE(g_tracker.forceArrowRedraw);
+    TEST_ASSERT_TRUE(g_tracker.forceSignalBarsRedraw);
+    TEST_ASSERT_TRUE(g_tracker.forceCardRedraw);
+    TEST_ASSERT_TRUE(g_tracker.forceStatusBarRedraw);
+    TEST_ASSERT_TRUE(g_tracker.forceProfileRedraw);
+}
+
+void test_invalidate_only_full_redraw_repaints_cached_regions() {
+    g_tracker.reset();
+
+    g_tracker.drawFrequency(34700, BAND_KA, false);
+    g_tracker.drawSecondaryAlertCards(2);
+    g_tracker.drawDirectionArrow((Direction)(DIR_FRONT | DIR_SIDE), false);
+    g_tracker.drawBandIndicators(BAND_KA | BAND_K, false);
+    g_tracker.drawVerticalSignalBars(4, 2, false);
+    g_tracker.drawStatusBar('A', false, true);
+    g_tracker.drawProfileIndicator(1);
+    g_tracker.clearDrawCounters();
+
+    g_tracker.prepareFullRedrawNoClear();
+
+    g_tracker.drawFrequency(34700, BAND_KA, false);
+    g_tracker.drawSecondaryAlertCards(2);
+    g_tracker.drawDirectionArrow((Direction)(DIR_FRONT | DIR_SIDE), false);
+    g_tracker.drawBandIndicators(BAND_KA | BAND_K, false);
+    g_tracker.drawVerticalSignalBars(4, 2, false);
+    g_tracker.drawStatusBar('A', false, true);
+    g_tracker.drawProfileIndicator(1);
+
+    TEST_ASSERT_EQUAL(0, g_tracker.fullScreenClearCount);
+    TEST_ASSERT_EQUAL(1, g_tracker.frequencyDrawCount);
+    TEST_ASSERT_EQUAL(1, g_tracker.cardDrawCount);
+    TEST_ASSERT_EQUAL(1, g_tracker.arrowDrawCount);
+    TEST_ASSERT_EQUAL(1, g_tracker.bandDrawCount);
+    TEST_ASSERT_EQUAL(1, g_tracker.signalBarsDrawCount);
+    TEST_ASSERT_EQUAL(1, g_tracker.statusBarDrawCount);
+    TEST_ASSERT_EQUAL(1, g_tracker.profileDrawCount);
+}
+
 void test_cache_no_redraw_when_unchanged() {
     g_tracker.reset();
     
@@ -571,6 +756,54 @@ void test_arrow_combined_directions() {
     // Different combination
     g_tracker.drawDirectionArrow((Direction)(DIR_FRONT | DIR_SIDE), false);
     TEST_ASSERT_EQUAL(2, g_tracker.arrowDrawCount);
+}
+
+
+void test_arrow_partial_redraw_single_blink_toggle_updates_only_one_owned_region() {
+    g_arrowTracker.reset();
+    g_arrowTracker.render((Direction)(DIR_FRONT | DIR_SIDE), false, true, 0x20);
+    g_arrowTracker.clearDrawCounters();
+
+    g_arrowTracker.render((Direction)(DIR_FRONT | DIR_SIDE), false, false, 0x20);
+
+    TEST_ASSERT_EQUAL(0, g_arrowTracker.fullRegionRedrawCount);
+    TEST_ASSERT_EQUAL(1, g_arrowTracker.targetedRegionRedrawCount);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(ArrowOwnedRegion::Front),
+                          static_cast<int>(g_arrowTracker.lastTargetedRegion));
+}
+
+void test_arrow_partial_redraw_two_arrow_change_falls_back_to_full_region() {
+    g_arrowTracker.reset();
+    g_arrowTracker.render((Direction)(DIR_FRONT | DIR_SIDE), false, true, 0x60);
+    g_arrowTracker.clearDrawCounters();
+
+    g_arrowTracker.render((Direction)(DIR_FRONT | DIR_SIDE), false, false, 0x60);
+
+    TEST_ASSERT_EQUAL(1, g_arrowTracker.fullRegionRedrawCount);
+    TEST_ASSERT_EQUAL(0, g_arrowTracker.targetedRegionRedrawCount);
+}
+
+void test_arrow_partial_redraw_muted_transition_falls_back_to_full_region() {
+    g_arrowTracker.reset();
+    g_arrowTracker.render(DIR_FRONT, false, true, 0);
+    g_arrowTracker.clearDrawCounters();
+
+    g_arrowTracker.render(DIR_FRONT, true, true, 0);
+
+    TEST_ASSERT_EQUAL(1, g_arrowTracker.fullRegionRedrawCount);
+    TEST_ASSERT_EQUAL(0, g_arrowTracker.targetedRegionRedrawCount);
+}
+
+void test_arrow_partial_redraw_dirty_flag_forces_full_region_redraw() {
+    g_arrowTracker.reset();
+    g_arrowTracker.render(DIR_FRONT, false, true, 0);
+    g_arrowTracker.clearDrawCounters();
+    g_arrowTracker.invalidate();
+
+    g_arrowTracker.render(DIR_FRONT, false, true, 0);
+
+    TEST_ASSERT_EQUAL(1, g_arrowTracker.fullRegionRedrawCount);
+    TEST_ASSERT_EQUAL(0, g_arrowTracker.targetedRegionRedrawCount);
 }
 
 // ============================================================================
@@ -1404,6 +1637,9 @@ void runAllTests() {
     RUN_TEST(test_cache_redraw_when_state_changes);
     RUN_TEST(test_cache_force_flag_clears_after_draw);
     
+    RUN_TEST(test_prepareFullRedrawNoClear_sets_force_flags_without_screen_clear);
+    RUN_TEST(test_invalidate_only_full_redraw_repaints_cached_regions);
+
     // Band indicator caching tests
     RUN_TEST(test_band_cache_no_redraw_unchanged);
     RUN_TEST(test_band_cache_redraw_on_mask_change);
@@ -1414,6 +1650,11 @@ void runAllTests() {
     RUN_TEST(test_arrow_cache_redraw_on_direction_change);
     RUN_TEST(test_arrow_combined_directions);
     
+    RUN_TEST(test_arrow_partial_redraw_single_blink_toggle_updates_only_one_owned_region);
+    RUN_TEST(test_arrow_partial_redraw_two_arrow_change_falls_back_to_full_region);
+    RUN_TEST(test_arrow_partial_redraw_muted_transition_falls_back_to_full_region);
+    RUN_TEST(test_arrow_partial_redraw_dirty_flag_forces_full_region_redraw);
+
     // Signal bars caching tests
     RUN_TEST(test_signal_bars_cache_no_redraw_unchanged);
     RUN_TEST(test_signal_bars_cache_redraw_on_strength_change);
