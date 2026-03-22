@@ -24,10 +24,11 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     static uint16_t lastFrontCol = 0;
     static uint16_t lastSideCol = 0;
     static uint16_t lastRearCol = 0;
+    static bool lastRaisedLayout = true;
     static bool cacheValid = false;
-    
-    // Check for forced invalidation (after screen clear)
-    if (dirty.arrow) {
+
+    const bool forceFullRedraw = dirty.arrow;
+    if (forceFullRedraw) {
         cacheValid = false;
         dirty.arrow = false;
     }
@@ -62,7 +63,8 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
 
     // Position arrows to fit ABOVE frequency display at bottom
     // With multi-alert always enabled, use raised layout as default
-    if (dirty.multiAlert) {
+    const bool raisedLayout = dirty.multiAlert;
+    if (raisedLayout) {
         cy = 85;  // Raised but allow full-size arrows
         cx -= 6;
     } else {
@@ -105,16 +107,26 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     uint16_t rearCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowRear;
     uint16_t offCol = 0x1082;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
 
-    // Check if anything changed - if so, redraw ALL arrows to avoid clearing overlap issues
-    bool anyChanged = !cacheValid || 
-                      (showFront != lastShowFront) || 
-                      (showSide != lastShowSide) || 
-                      (showRear != lastShowRear) ||
-                      (muted != lastMuted) ||
-                      (frontCol != lastFrontCol) ||
-                      (sideCol != lastSideCol) ||
-                      (rearCol != lastRearCol);
-    
+    const bool frontVisibilityChanged = cacheValid && (showFront != lastShowFront);
+    const bool sideVisibilityChanged = cacheValid && (showSide != lastShowSide);
+    const bool rearVisibilityChanged = cacheValid && (showRear != lastShowRear);
+    const bool mutedChanged = cacheValid && (muted != lastMuted);
+    const bool colorsChanged = cacheValid &&
+                               ((frontCol != lastFrontCol) ||
+                                (sideCol != lastSideCol) ||
+                                (rearCol != lastRearCol));
+    const bool layoutChanged = cacheValid && (raisedLayout != lastRaisedLayout);
+    const int visibilityChangeCount = static_cast<int>(frontVisibilityChanged) +
+                                      static_cast<int>(sideVisibilityChanged) +
+                                      static_cast<int>(rearVisibilityChanged);
+    bool anyChanged = !cacheValid ||
+                      frontVisibilityChanged ||
+                      sideVisibilityChanged ||
+                      rearVisibilityChanged ||
+                      mutedChanged ||
+                      colorsChanged ||
+                      layoutChanged;
+
     // If nothing changed, skip redraw entirely
     if (!anyChanged) {
         return;
@@ -210,17 +222,66 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
         DRAW_LINE(cx + barW/2 + headW, cy, cx + barW/2, cy + headH, outlineCol);
     };
 
-    // Clear entire arrow region once, then redraw all
-    [[maybe_unused]] const int headH = (int)(22 * scale);
-    int totalTop = topArrowCenterY - topH/2 - 2;
-    int totalBottom = bottomArrowCenterY + bottomH/2 + 2;
-    FILL_RECT(clearLeft, totalTop, clearWidth, totalBottom - totalTop, PALETTE_BG);
-    
-    // Draw all three arrows
-    drawTriangleArrow(topArrowCenterY, false, showFront, topW, topH, topNotchW, topNotchH, frontCol, false);
-    drawSideArrow(showSide, false);
-    drawTriangleArrow(bottomArrowCenterY, true, showRear, bottomW, bottomH, bottomNotchW, bottomNotchH, rearCol, false);
-    
+    const bool canTargetSingleArrow = !forceFullRedraw &&
+                                      cacheValid &&
+                                      !mutedChanged &&
+                                      !colorsChanged &&
+                                      !layoutChanged &&
+                                      visibilityChangeCount == 1;
+
+    if (canTargetSingleArrow) {
+        if (frontVisibilityChanged) {
+            drawTriangleArrow(topArrowCenterY,
+                              false,
+                              showFront,
+                              topW,
+                              topH,
+                              topNotchW,
+                              topNotchH,
+                              frontCol,
+                              true);
+        } else if (sideVisibilityChanged) {
+            drawSideArrow(showSide, true);
+        } else {
+            drawTriangleArrow(bottomArrowCenterY,
+                              true,
+                              showRear,
+                              bottomW,
+                              bottomH,
+                              bottomNotchW,
+                              bottomNotchH,
+                              rearCol,
+                              true);
+        }
+    } else {
+        // Clear entire arrow region once, then redraw all
+        [[maybe_unused]] const int headH = (int)(22 * scale);
+        int totalTop = topArrowCenterY - topH/2 - 2;
+        int totalBottom = bottomArrowCenterY + bottomH/2 + 2;
+        FILL_RECT(clearLeft, totalTop, clearWidth, totalBottom - totalTop, PALETTE_BG);
+
+        // Draw all three arrows
+        drawTriangleArrow(topArrowCenterY,
+                          false,
+                          showFront,
+                          topW,
+                          topH,
+                          topNotchW,
+                          topNotchH,
+                          frontCol,
+                          false);
+        drawSideArrow(showSide, false);
+        drawTriangleArrow(bottomArrowCenterY,
+                          true,
+                          showRear,
+                          bottomW,
+                          bottomH,
+                          bottomNotchW,
+                          bottomNotchH,
+                          rearCol,
+                          false);
+    }
+
     // Update cache
     lastShowFront = showFront;
     lastShowSide = showSide;
@@ -229,5 +290,6 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     lastFrontCol = frontCol;
     lastSideCol = sideCol;
     lastRearCol = rearCol;
+    lastRaisedLayout = raisedLayout;
     cacheValid = true;
 }
