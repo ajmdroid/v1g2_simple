@@ -29,6 +29,13 @@
 #include "../include/config.h"
 
 WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
+    auto applyDeferredSlotUpdate = [this](const AutoPushSlotUpdate& update) {
+        return settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
+    };
+    auto applyDeferredStateUpdate = [this](const AutoPushStateUpdate& update) {
+        return settingsManager.applyAutoPushStateUpdate(update, SettingsPersistMode::Deferred);
+    };
+
     return WifiAutoPushApiService::Runtime{
         [this](WifiAutoPushApiService::SlotsSnapshot& snapshot) {
             const V1Settings& s = settingsManager.get();
@@ -56,7 +63,7 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
             json = getPushStatusJson();
             return true;
         },
-        [this](const WifiAutoPushApiService::SlotUpdateRequest& request) {
+        [this, applyDeferredSlotUpdate](const WifiAutoPushApiService::SlotUpdateRequest& request) {
             AutoPushSlotUpdate update;
             update.slot = request.slot;
             update.hasName = request.hasName;
@@ -79,13 +86,21 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
             update.profileName = request.profile;
             update.hasMode = true;
             update.mode = normalizeV1ModeValue(request.mode);
-            return settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
+            return applyDeferredSlotUpdate(update);
         },
-        [this](int slot, const String& name) {
-            settingsManager.setSlotName(slot, name);
+        [applyDeferredSlotUpdate](int slot, const String& name) {
+            AutoPushSlotUpdate update;
+            update.slot = slot;
+            update.hasName = true;
+            update.name = name;
+            (void)applyDeferredSlotUpdate(update);
         },
-        [this](int slot, uint16_t color) {
-            settingsManager.setSlotColor(slot, color);
+        [applyDeferredSlotUpdate](int slot, uint16_t color) {
+            AutoPushSlotUpdate update;
+            update.slot = slot;
+            update.hasColor = true;
+            update.color = color;
+            (void)applyDeferredSlotUpdate(update);
         },
         [this](int slot) {
             return settingsManager.getSlotVolume(slot);
@@ -93,23 +108,51 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
         [this](int slot) {
             return settingsManager.getSlotMuteVolume(slot);
         },
-        [this](int slot, uint8_t volume, uint8_t muteVolume) {
-            settingsManager.setSlotVolumes(slot, volume, muteVolume);
+        [applyDeferredSlotUpdate](int slot, uint8_t volume, uint8_t muteVolume) {
+            AutoPushSlotUpdate update;
+            update.slot = slot;
+            update.hasVolume = true;
+            update.volume = volume;
+            update.hasMuteVolume = true;
+            update.muteVolume = muteVolume;
+            (void)applyDeferredSlotUpdate(update);
         },
-        [this](int slot, bool darkMode) {
-            settingsManager.setSlotDarkMode(slot, darkMode);
+        [applyDeferredSlotUpdate](int slot, bool darkMode) {
+            AutoPushSlotUpdate update;
+            update.slot = slot;
+            update.hasDarkMode = true;
+            update.darkMode = darkMode;
+            (void)applyDeferredSlotUpdate(update);
         },
-        [this](int slot, bool muteToZero) {
-            settingsManager.setSlotMuteToZero(slot, muteToZero);
+        [applyDeferredSlotUpdate](int slot, bool muteToZero) {
+            AutoPushSlotUpdate update;
+            update.slot = slot;
+            update.hasMuteToZero = true;
+            update.muteToZero = muteToZero;
+            (void)applyDeferredSlotUpdate(update);
         },
-        [this](int slot, uint8_t alertPersistSec) {
-            settingsManager.setSlotAlertPersistSec(slot, alertPersistSec);
+        [applyDeferredSlotUpdate](int slot, uint8_t alertPersistSec) {
+            AutoPushSlotUpdate update;
+            update.slot = slot;
+            update.hasAlertPersist = true;
+            update.alertPersist = alertPersistSec;
+            (void)applyDeferredSlotUpdate(update);
         },
-        [this](int slot, bool priorityArrowOnly) {
-            settingsManager.setSlotPriorityArrowOnly(slot, priorityArrowOnly);
+        [applyDeferredSlotUpdate](int slot, bool priorityArrowOnly) {
+            AutoPushSlotUpdate update;
+            update.slot = slot;
+            update.hasPriorityArrowOnly = true;
+            update.priorityArrowOnly = priorityArrowOnly;
+            (void)applyDeferredSlotUpdate(update);
         },
-        [this](int slot, const String& profile, int mode) {
-            settingsManager.setSlot(slot, profile, normalizeV1ModeValue(mode));
+        [applyDeferredSlotUpdate](int slot, const String& profile, int mode) {
+            AutoPushSlotUpdate update;
+            update.slot = slot;
+            update.hasProfileName = true;
+            update.profileName = profile;
+            update.hasMode = true;
+            update.mode = normalizeV1ModeValue(mode);
+            (void)applyDeferredSlotUpdate(update);
         },
         [this]() {
             return static_cast<int>(settingsManager.get().activeSlot);
@@ -117,19 +160,25 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
         [this](int slot) {
             display.drawProfileIndicator(slot);
         },
-        [this](const WifiAutoPushApiService::ActivationRequest& request) {
+        [this, applyDeferredStateUpdate](const WifiAutoPushApiService::ActivationRequest& request) {
             AutoPushStateUpdate update;
             update.hasActiveSlot = true;
             update.activeSlot = request.slot;
             update.hasEnabled = true;
             update.enabled = request.enable;
-            return settingsManager.applyAutoPushStateUpdate(update, SettingsPersistMode::Deferred);
+            return applyDeferredStateUpdate(update);
         },
-        [this](int slot) {
-            settingsManager.setActiveSlot(slot);
+        [applyDeferredStateUpdate](int slot) {
+            AutoPushStateUpdate update;
+            update.hasActiveSlot = true;
+            update.activeSlot = slot;
+            (void)applyDeferredStateUpdate(update);
         },
-        [this](bool enabled) {
-            settingsManager.setAutoPushEnabled(enabled);
+        [applyDeferredStateUpdate](bool enabled) {
+            AutoPushStateUpdate update;
+            update.hasEnabled = true;
+            update.enabled = enabled;
+            (void)applyDeferredStateUpdate(update);
         },
         [this](const WifiAutoPushApiService::PushNowRequest& request) {
             if (!queuePushNow) {
