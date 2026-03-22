@@ -640,8 +640,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         cache.resetLiveTracking();
         dirty.resetTracking = false;
     }
-
-    const bool firstLiveRun = cache.liveFirstRun;
     
     bool needsRedraw = false;
     
@@ -653,7 +651,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     };
     
     // Always redraw on first run, entering live mode, or when transitioning from persisted mode
-    if (firstLiveRun) { needsRedraw = true; cache.liveFirstRun = false; }
+    if (cache.liveFirstRun) { needsRedraw = true; cache.liveFirstRun = false; }
     else if (enteringLiveMode) { needsRedraw = true; }
     else if (wasPersistedMode) { needsRedraw = true; }
     // V1 is source of truth - always redraw when priority alert changes
@@ -807,7 +805,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     }
 
     perfRecordDisplayRenderPath(liveRenderPathForScenario());
-    recordDisplayRedrawReasonIf(firstLiveRun, PerfDisplayRedrawReason::FirstRun);
+    recordDisplayRedrawReasonIf(cache.liveFirstRun, PerfDisplayRedrawReason::FirstRun);
     recordDisplayRedrawReasonIf(enteringLiveMode, PerfDisplayRedrawReason::EnterLive);
     recordDisplayRedrawReasonIf(wasPersistedMode, PerfDisplayRedrawReason::LeavePersisted);
     recordDisplayRedrawReasonIf(priority.band != cache.liveLastPriority.band,
@@ -841,21 +839,13 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     for (int i = 0; i < PacketParser::MAX_ALERTS; i++) {
         cache.liveLastSecondary[i] = (i < alertCount) ? allAlerts[i] : AlertData();
     }
-
-    // Same-screen live full redraws already redraw owned regions, so only
-    // clear on the first live frame or when transitioning back into live mode.
-    const bool mustClearScreen = firstLiveRun || enteringLiveMode || wasPersistedMode;
     
     DISP_PERF_START();
     uint32_t stageStartUs = micros();
-    if (mustClearScreen) {
-        drawBaseFrame();
-    } else {
-        prepareFullRedrawNoClear();
-    }
+    drawBaseFrame();
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::BaseFrame,
                                       micros() - stageStartUs);
-    DISP_PERF_LOG(mustClearScreen ? "drawBaseFrame" : "prepareFullRedrawNoClear");
+    DISP_PERF_LOG("drawBaseFrame");
 
     // V1 is source of truth - use activeBands directly (allows blinking)
     uint8_t bandMask = state.activeBands;
@@ -898,8 +888,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
                                       micros() - stageStartUs);
     DISP_PERF_LOG("arrows+icons");
     
-    // Force card redraw on every live full redraw, even when the full-screen
-    // clear is skipped for same-screen live updates.
+    // Force card redraw since drawBaseFrame cleared the screen
     dirty.cards = true;
     
     // Draw secondary alert cards at bottom
