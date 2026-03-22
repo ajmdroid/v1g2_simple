@@ -161,6 +161,21 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
             }
         }
 
+        // Speed mute band override: when speed-mute lowered vol to 0 the parser
+        // sets state.muted = true.  That isMuted flag (and muteVoiceIfVolZero)
+        // would kill voice for ALL bands — including Laser/Ka — before the
+        // isSuppressed band check above is reached.  Clear the false mute for
+        // bands that are overridden so the voice module can announce them.
+        if (speedMute && hasRenderablePriority) {
+            const auto& smState = speedMute->getState();
+            if (smState.muteActive && speedMute->isBandOverridden(priority.band)) {
+                voiceCtx.isMuted = false;
+                if (voiceCtx.mainVolume == 0) {
+                    voiceCtx.mainVolume = 1;   // Prevent muteVoiceIfVolZero kill
+                }
+            }
+        }
+
         const unsigned long voiceStartUs = micros();
         const VoiceAction voiceAction = voice->process(voiceCtx);
         perfRecordDisplayVoiceUs(micros() - voiceStartUs);
