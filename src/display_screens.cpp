@@ -65,7 +65,6 @@ void V1Display::showResting(bool forceRedraw) {
         renderStartUs = micros();
         recordRenderTiming = true;
         // Full redraw when forced, coming from another screen, or after theme change
-        TFT_CALL(fillScreen)(PALETTE_BG);
         drawBaseFrame();
         
         // Draw idle state: if V1 is connected, show last known mode; otherwise show "0"
@@ -181,7 +180,6 @@ void V1Display::showScanning() {
     const V1Settings& s = settingsManager.get();
 
     // Clear and draw the base frame
-    TFT_CALL(fillScreen)(PALETTE_BG);
     drawBaseFrame();
     
     // Draw idle state elements
@@ -328,7 +326,6 @@ void V1Display::showDemo() {
 
 void V1Display::showBootSplash() {
     const unsigned long splashStartMs = millis();
-    TFT_CALL(fillScreen)(PALETTE_BG); // Clear screen to prevent artifacts
     drawBaseFrame();
 
     // Draw the lossless RLE-compressed V1 Simple logo row-by-row.

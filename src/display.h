@@ -167,6 +167,7 @@ private:
     void drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength, Band band = BAND_KA, bool muted = false);
     void drawBandBadge(Band band);
     void drawBaseFrame();
+    void prepareFullRedrawNoClear();
     void drawTopCounter(char symbol, bool muted, bool showDot);
     void drawTopCounterClassic(char symbol, bool muted, bool showDot);       // 7-segment style (used for all styles)
     void drawStatusStrip(const DisplayState& state, char topChar, bool topMuted, bool topDot);

@@ -21,6 +21,10 @@
 void V1Display::drawBaseFrame() {
     // Clean black background (t4s3-style)
     TFT_CALL(fillScreen)(PALETTE_BG);
+    prepareFullRedrawNoClear();
+}
+
+void V1Display::prepareFullRedrawNoClear() {
     bleProxyDrawn = false;  // Force indicator redraw after full clears
     dirty.setAll();         // Invalidate every element cache after screen clear
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
