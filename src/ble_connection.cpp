@@ -12,6 +12,10 @@
 #include <cstring>
 #include <esp_heap_caps.h>
 
+// Diagnostic: last scan-time RSSI for comparison with connection RSSI.
+// Written from the scan callback, read from main loop.
+volatile int g_lastScanRssi = 0;
+
 // Bond backup helper defined in ble_client.cpp (non-static)
 extern int backupBondsToSD();
 
@@ -52,6 +56,9 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
         // Not a V1 device, keep scanning
         return;
     }
+    
+    // Store scan-time RSSI for deferred main-loop logging (no Serial in hot path).
+    g_lastScanRssi = rssi;
     
     // *** FOUND V1! Stop scan and queue connection ***
     int advAddrType = advertisedDevice->getAddressType();

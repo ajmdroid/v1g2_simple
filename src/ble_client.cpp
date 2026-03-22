@@ -633,7 +633,9 @@ int V1BLEClient::getConnectionRssi() {
     if (now - s_lastV1RssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
         s_cachedV1Rssi = pClient->getRssi();
         s_lastV1RssiQueryMs = now;
-        Serial.printf("[BLE] V1 RSSI=%d\n", s_cachedV1Rssi);
+        // Scan RSSI is stored by the scan callback in ble_connection.cpp
+        extern volatile int g_lastScanRssi;
+        Serial.printf("[BLE] V1 RSSI=%d scanRSSI=%d\n", s_cachedV1Rssi, g_lastScanRssi);
     }
     return s_cachedV1Rssi;
 }
