@@ -331,7 +331,7 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     }
     if (doc["obdMinRssi"].is<int>()) {
         const int rssi = doc["obdMinRssi"].as<int>();
-        settings.obdMinRssi = static_cast<int8_t>(std::max(-90, std::min(rssi, -40)));
+        settings.obdMinRssi = static_cast<int8_t>(std::max(-100, std::min(rssi, -40)));
     }
     if (doc["obdCachedVinPrefix11"].is<const char*>()) {
         settings.obdCachedVinPrefix11 = doc["obdCachedVinPrefix11"].as<String>();

@@ -743,7 +743,7 @@ bool SettingsManager::applyObdSettingsUpdate(const ObdSettingsUpdate& update,
         changed |= assignIfChanged(settings.obdEnabled, update.enabled);
     }
     if (update.hasMinRssi) {
-        const int clampedRssi = std::max(-90, std::min(static_cast<int>(update.minRssi), -40));
+        const int clampedRssi = std::max(-100, std::min(static_cast<int>(update.minRssi), -40));
         changed |= assignIfChanged(settings.obdMinRssi, static_cast<int8_t>(clampedRssi));
     }
     if (update.hasSavedAddress) {

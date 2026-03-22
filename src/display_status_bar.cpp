@@ -95,11 +95,13 @@ void V1Display::drawRssiIndicator(int rssi) {
         TFT_CALL(setTextColor)(s.colorRssiV1, PALETTE_BG);
         GFX_drawString(tft, "V ", x, y);
         
-        // Color code RSSI value: green >= -60, yellow -60 to -80, red < -80
+        // Color code RSSI value: green >= -75, yellow -75 to -90, red < -90
+        // Calibrated for ESP-IDF 5.3.x BLE controller on ESP32-S3 which reports
+        // ~20-30 dB lower than ESP-IDF 4.4.x at the same physical distance.
         uint16_t rssiColor;
-        if (v1Rssi >= -60) {
+        if (v1Rssi >= -75) {
             rssiColor = COLOR_GREEN;
-        } else if (v1Rssi >= -80) {
+        } else if (v1Rssi >= -90) {
             rssiColor = COLOR_YELLOW;
         } else {
             rssiColor = COLOR_RED;
@@ -117,11 +119,11 @@ void V1Display::drawRssiIndicator(int rssi) {
         TFT_CALL(setTextColor)(s.colorRssiProxy, PALETTE_BG);
         GFX_drawString(tft, "P ", x, y + lineHeight);
         
-        // Color code RSSI value
+        // Color code RSSI value (same calibration as V1 RSSI above)
         uint16_t rssiColor;
-        if (appRssi >= -60) {
+        if (appRssi >= -75) {
             rssiColor = COLOR_GREEN;
-        } else if (appRssi >= -80) {
+        } else if (appRssi >= -90) {
             rssiColor = COLOR_YELLOW;
         } else {
             rssiColor = COLOR_RED;

@@ -498,7 +498,7 @@ struct V1Settings {
         obdSavedAddress(""),     // No saved device
         obdSavedName(""),        // No friendly name
         obdSavedAddrType(0),     // Default PUBLIC address type
-        obdMinRssi(-80),         // Default -80 dBm minimum RSSI
+        obdMinRssi(-90),         // Default -90 dBm minimum RSSI
         obdCachedVinPrefix11(""),
         obdCachedEotProfileId(0) {}
 

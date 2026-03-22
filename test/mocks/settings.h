@@ -189,7 +189,7 @@ struct V1Settings {
     String obdSavedAddress = "";
     String obdSavedName = "";
     uint8_t obdSavedAddrType = 0;
-    int8_t obdMinRssi = -80;
+    int8_t obdMinRssi = -90;
     String obdCachedVinPrefix11 = "";
     uint8_t obdCachedEotProfileId = 0;
     LockoutRuntimeMode gpsLockoutMode = LOCKOUT_RUNTIME_OFF;
@@ -279,7 +279,7 @@ struct ObdSettingsUpdate {
     bool hasEnabled = false;
     bool enabled = false;
     bool hasMinRssi = false;
-    int8_t minRssi = -80;
+    int8_t minRssi = -90;
     bool hasSavedAddress = false;
     String savedAddress;
     bool hasSavedName = false;

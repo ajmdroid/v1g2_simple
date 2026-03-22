@@ -27,7 +27,6 @@
 #include <Arduino.h>
 #include <WiFi.h>  // For WiFi coexistence during BLE connect
 #include <Preferences.h>  // For fresh-flash detection
-#include <esp_bt.h>        // BLE controller config diagnostics
 #include <set>
 #include <string>
 #include <cstdlib>
@@ -500,13 +499,6 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     // degrades RSSI readings significantly on the ESP32-S3.
     NimBLEDevice::setDefaultPhy(BLE_GAP_LE_PHY_1M_MASK, BLE_GAP_LE_PHY_1M_MASK);
 
-    // Diagnostic: confirm AGC recorrection and BLE 5.0 feature flags
-    {
-        esp_bt_controller_config_t diag = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
-        Serial.printf("[BLE] controller cfg: hw_recorrect_en=%u ble_50_feat=%u txpwr_dft=%u\n",
-                      diag.hw_recorrect_en, diag.ble_50_feat_supp, diag.txpwr_dft);
-    }
-
     // OBDLink CX requires encrypted communication and benefits from bond
     // restore on reconnect. Keep pairing compatibility high by using
     // no-input/no-output legacy-capable bonding with ENC+ID key exchange.
@@ -633,9 +625,6 @@ int V1BLEClient::getConnectionRssi() {
     if (now - s_lastV1RssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
         s_cachedV1Rssi = pClient->getRssi();
         s_lastV1RssiQueryMs = now;
-        // Scan RSSI is stored by the scan callback in ble_connection.cpp
-        extern volatile int g_lastScanRssi;
-        Serial.printf("[BLE] V1 RSSI=%d scanRSSI=%d\n", s_cachedV1Rssi, g_lastScanRssi);
     }
     return s_cachedV1Rssi;
 }
