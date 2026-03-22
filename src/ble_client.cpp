@@ -638,12 +638,15 @@ int V1BLEClient::getProxyClientRssi() {
     // Only query BLE stack every 2 seconds
     unsigned long now = millis();
     if (now - s_lastProxyRssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
-        // Get connection handle of first connected peer
-        NimBLEConnInfo peerInfo = pServer->getPeerInfo(0);
-        uint16_t connHandle = peerInfo.getConnHandle();
-        int8_t rssi = 0;
-        if (ble_gap_conn_rssi(connHandle, &rssi) == 0) {
-            s_cachedProxyRssi = rssi;
+        // Use getPeerDevices() to get a valid handle safely.
+        // getPeerInfo(0) can return conn_handle=0 (V1's handle) if the
+        // phone disconnects between the count check and the lookup.
+        std::vector<uint16_t> peers = pServer->getPeerDevices();
+        if (!peers.empty()) {
+            int8_t rssi = 0;
+            if (ble_gap_conn_rssi(peers[0], &rssi) == 0) {
+                s_cachedProxyRssi = rssi;
+            }
         }
         s_lastProxyRssiQueryMs = now;
     }

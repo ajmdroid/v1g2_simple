@@ -184,7 +184,14 @@ void V1BLEClient::process() {
                 proxySuppressedResumeReasonCode_ =
                     static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartRetryWindow);
             }
-            (void)pServer->disconnect(pServer->getPeerInfo(0));
+            // Use getPeerDevices() instead of getPeerInfo(0) to avoid a
+            // TOCTOU race: if the phone disconnects between the count
+            // check above and the handle lookup, getPeerInfo(0) returns
+            // a default NimBLEConnInfo with conn_handle=0 which would
+            // inadvertently terminate the V1 client connection.
+            for (uint16_t h : pServer->getPeerDevices()) {
+                pServer->disconnect(h);
+            }
         }
     } else if (!suppressPassiveProxy &&
                proxySuppressedForObdHold_ &&
