@@ -89,6 +89,17 @@ void test_display_update_paths_no_longer_hide_persistent_state_in_function_local
         "live update should use explicit render cache instead of function-local static state");
 }
 
+void test_live_full_redraw_only_clears_on_live_screen_transitions() {
+    const std::string source = readFile("/Users/ajmedford/v1g2_simple/src/display_update.cpp");
+    const std::string liveUpdate = extractBlock(source, "void V1Display::update(const AlertData& priority");
+
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, liveUpdate.find("const bool firstLiveRun = cache.liveFirstRun;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, liveUpdate.find("const bool mustClearScreen = firstLiveRun || enteringLiveMode || wasPersistedMode;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, liveUpdate.find("if (mustClearScreen) {"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, liveUpdate.find("drawBaseFrame();"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, liveUpdate.find("prepareFullRedrawNoClear();"));
+}
+
 void test_stale_ble_policy_is_wired_into_display_sources() {
     const std::string updateSource = readFile("/Users/ajmedford/v1g2_simple/src/display_update.cpp");
     const std::string statusSource = readFile("/Users/ajmedford/v1g2_simple/src/display_status_bar.cpp");
@@ -112,6 +123,7 @@ int main() {
     RUN_TEST(test_scanning_early_return_does_not_clear_tracking_reset);
     RUN_TEST(test_resting_full_redraw_clears_tracking_reset_after_flush);
     RUN_TEST(test_display_update_paths_no_longer_hide_persistent_state_in_function_locals);
+    RUN_TEST(test_live_full_redraw_only_clears_on_live_screen_transitions);
     RUN_TEST(test_stale_ble_policy_is_wired_into_display_sources);
     return UNITY_END();
 }
