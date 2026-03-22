@@ -25,13 +25,52 @@ struct FakeMetricsSource {
     int buildCalls = 0;
     String mode = "initial";
     uint32_t counter = 1;
+    String blob;
 };
+
+String repeatChar(char ch, size_t count) {
+    String value;
+    value.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+        value += ch;
+    }
+    return value;
+}
+
+size_t measurePayloadBytes(const FakeMetricsSource& source) {
+    JsonDocument doc;
+    doc["mode"] = source.mode;
+    doc["counter"] = source.counter;
+    if (source.blob.length() > 0) {
+        doc["blob"] = source.blob;
+    }
+    return measureJson(doc) + 1u;
+}
+
+String buildBlobFittingCacheCap() {
+    FakeMetricsSource probe;
+    probe.mode = "cap";
+    probe.counter = 42;
+
+    size_t length = 8192u;
+    while (length > 0u) {
+        probe.blob = repeatChar('x', length);
+        if (measurePayloadBytes(probe) <= 8192u) {
+            return probe.blob;
+        }
+        --length;
+    }
+    return String();
+}
 
 DebugApiService::SoakMetricsBuildFn makeBuildFn(FakeMetricsSource& source) {
     return [&source](JsonDocument& doc) {
         source.buildCalls++;
         doc["mode"] = source.mode;
         doc["counter"] = source.counter;
+        if (source.blob.length() > 0) {
+            doc["blob"] = source.blob;
+        }
     };
 }
 
@@ -217,6 +256,120 @@ void test_allocation_failure_falls_back_to_uncached_send() {
     TEST_ASSERT_EQUAL_UINT(0, cache.length);
 }
 
+
+void test_oversized_first_payload_streams_uncached_without_allocating() {
+    WebServer server(80);
+    DebugApiService::SoakMetricsJsonCache cache;
+    FakeMetricsSource source;
+    uint32_t now = 1000;
+    source.mode = "oversized";
+    source.counter = 99;
+    source.blob = repeatChar('x', 9000);
+
+    const bool cached = DebugApiService::sendCachedSoakMetrics(
+        server,
+        cache,
+        250,
+        makeBuildFn(source),
+        [&now]() { return now; });
+
+    TEST_ASSERT_FALSE(cached);
+    TEST_ASSERT_EQUAL_INT(1, source.buildCalls);
+    TEST_ASSERT_EQUAL_UINT32(0u, g_mock_heap_caps_malloc_calls);
+    TEST_ASSERT_NULL(cache.data);
+    TEST_ASSERT_EQUAL_UINT(0u, cache.capacity);
+    TEST_ASSERT_EQUAL_UINT(0u, cache.length);
+    TEST_ASSERT_EQUAL_UINT32(0u, cache.lastBuildMs);
+    TEST_ASSERT_FALSE(cache.valid);
+    TEST_ASSERT_TRUE(responseContains(server, "\"mode\":\"oversized\""));
+}
+
+void test_oversized_payload_invalidates_prior_cache_and_reuses_buffer_later() {
+    WebServer server(80);
+    DebugApiService::SoakMetricsJsonCache cache;
+    FakeMetricsSource source;
+    uint32_t now = 1000;
+
+    TEST_ASSERT_TRUE(DebugApiService::sendCachedSoakMetrics(
+        server,
+        cache,
+        250,
+        makeBuildFn(source),
+        [&now]() { return now; }));
+
+    char* originalData = cache.data;
+    const size_t originalCapacity = cache.capacity;
+    const uint32_t originalMallocCalls = g_mock_heap_caps_malloc_calls;
+
+    source.mode = "oversized";
+    source.counter = 2;
+    source.blob = repeatChar('z', 9000);
+    now = 1300;
+
+    TEST_ASSERT_FALSE(DebugApiService::sendCachedSoakMetrics(
+        server,
+        cache,
+        250,
+        makeBuildFn(source),
+        [&now]() { return now; }));
+
+    TEST_ASSERT_EQUAL_INT(2, source.buildCalls);
+    TEST_ASSERT_FALSE(cache.valid);
+    TEST_ASSERT_EQUAL_UINT(0u, cache.length);
+    TEST_ASSERT_EQUAL_UINT32(0u, cache.lastBuildMs);
+    TEST_ASSERT_EQUAL_PTR(originalData, cache.data);
+    TEST_ASSERT_EQUAL_UINT(originalCapacity, cache.capacity);
+    TEST_ASSERT_EQUAL_UINT32(originalMallocCalls, g_mock_heap_caps_malloc_calls);
+    TEST_ASSERT_TRUE(responseContains(server, "\"mode\":\"oversized\""));
+
+    source.mode = "small-again";
+    source.counter = 3;
+    source.blob = String();
+    now = 1600;
+
+    TEST_ASSERT_TRUE(DebugApiService::sendCachedSoakMetrics(
+        server,
+        cache,
+        250,
+        makeBuildFn(source),
+        [&now]() { return now; }));
+
+    TEST_ASSERT_EQUAL_INT(3, source.buildCalls);
+    TEST_ASSERT_TRUE(cache.valid);
+    TEST_ASSERT_EQUAL_UINT32(1600u, cache.lastBuildMs);
+    TEST_ASSERT_EQUAL_PTR(originalData, cache.data);
+    TEST_ASSERT_EQUAL_UINT(originalCapacity, cache.capacity);
+    TEST_ASSERT_EQUAL_UINT32(originalMallocCalls, g_mock_heap_caps_malloc_calls);
+    TEST_ASSERT_TRUE(responseContains(server, "\"mode\":\"small-again\""));
+    releaseCache(cache);
+}
+
+void test_cached_payload_capacity_never_exceeds_8k_cap() {
+    WebServer server(80);
+    DebugApiService::SoakMetricsJsonCache cache;
+    FakeMetricsSource source;
+    uint32_t now = 1000;
+    source.mode = "cap";
+    source.counter = 7;
+    source.blob = buildBlobFittingCacheCap();
+
+    TEST_ASSERT_TRUE(source.blob.length() > 0);
+    TEST_ASSERT_TRUE(measurePayloadBytes(source) <= 8192u);
+
+    const bool cached = DebugApiService::sendCachedSoakMetrics(
+        server,
+        cache,
+        250,
+        makeBuildFn(source),
+        [&now]() { return now; });
+
+    TEST_ASSERT_TRUE(cached);
+    TEST_ASSERT_TRUE(cache.valid);
+    TEST_ASSERT_TRUE(cache.capacity <= 8192u);
+    TEST_ASSERT_TRUE(g_mock_heap_caps_last_malloc_size <= 8192u);
+    releaseCache(cache);
+}
+
 void test_release_cache_frees_buffer_and_resets_state() {
     WebServer server(80);
     DebugApiService::SoakMetricsJsonCache cache;
@@ -250,6 +403,9 @@ int main() {
     RUN_TEST(test_invalidation_forces_rebuild_within_ttl);
     RUN_TEST(test_psram_failure_falls_back_to_internal_cache);
     RUN_TEST(test_allocation_failure_falls_back_to_uncached_send);
+    RUN_TEST(test_oversized_first_payload_streams_uncached_without_allocating);
+    RUN_TEST(test_oversized_payload_invalidates_prior_cache_and_reuses_buffer_later);
+    RUN_TEST(test_cached_payload_capacity_never_exceeds_8k_cap);
     RUN_TEST(test_release_cache_frees_buffer_and_resets_state);
     return UNITY_END();
 }

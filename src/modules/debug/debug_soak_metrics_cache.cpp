@@ -10,6 +10,7 @@ namespace DebugApiService {
 namespace {
 
 constexpr size_t SOAK_CACHE_GROWTH_QUANTUM = 256u;
+constexpr size_t SOAK_CACHE_MAX_CAPACITY = 8192u;
 
 size_t roundUpSoakCacheCapacity(size_t required) {
     return ((required + SOAK_CACHE_GROWTH_QUANTUM - 1u) / SOAK_CACHE_GROWTH_QUANTUM) *
@@ -74,6 +75,17 @@ bool sendCachedSoakMetrics(WebServer& server,
     }
 
     const size_t required = measureJson(doc) + 1u;
+    if (required > SOAK_CACHE_MAX_CAPACITY) {
+        Serial.printf(
+            "[DebugApi] Soak cache skip oversized payload %lu > %lu bytes; streaming uncached response\n",
+            static_cast<unsigned long>(required),
+            static_cast<unsigned long>(SOAK_CACHE_MAX_CAPACITY));
+        cache.length = 0;
+        cache.lastBuildMs = 0;
+        cache.valid = false;
+        sendJsonStream(server, doc);
+        return false;
+    }
     char* targetData = cache.data;
     size_t targetCapacity = cache.capacity;
     bool targetInPsram = cache.inPsram;
