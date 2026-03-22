@@ -494,6 +494,11 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
     }
 
+    // Force 1M PHY only. NimBLE 2.x defaults to all-PHY (1M|2M|CODED) which
+    // allows the controller to auto-negotiate 2M PHY after connection.  2M PHY
+    // degrades RSSI readings significantly on the ESP32-S3.
+    NimBLEDevice::setDefaultPhy(BLE_GAP_LE_PHY_1M_MASK, BLE_GAP_LE_PHY_1M_MASK);
+
     // OBDLink CX requires encrypted communication and benefits from bond
     // restore on reconnect. Keep pairing compatibility high by using
     // no-input/no-output legacy-capable bonding with ENC+ID key exchange.

@@ -276,6 +276,7 @@ private:
     public:
         void onConnect(NimBLEClient* pClient) override;
         void onDisconnect(NimBLEClient* pClient, int reason) override;
+        void onPhyUpdate(NimBLEClient* pClient, uint8_t txPhy, uint8_t rxPhy) override;
     };
     
     // NimBLE 2.x uses NimBLEScanCallbacks

@@ -13,6 +13,13 @@ static constexpr int BLE_UUID_TYPE_16 = 16;
 static constexpr int BLE_UUID_TYPE_128 = 128;
 static constexpr int ESP_PWR_LVL_P9 = 11;
 
+// BLE PHY constants
+static constexpr uint8_t BLE_GAP_LE_PHY_1M       = 1;
+static constexpr uint8_t BLE_GAP_LE_PHY_2M       = 2;
+static constexpr uint8_t BLE_GAP_LE_PHY_CODED    = 3;
+static constexpr uint8_t BLE_GAP_LE_PHY_1M_MASK  = 0x01;
+static constexpr uint8_t BLE_GAP_LE_PHY_2M_MASK  = 0x02;
+
 enum class NimBLETxPowerType { All = 0, Advertise = 1, Scan = 2, Connection = 3 };
 
 enum NIMBLE_PROPERTY : uint32_t {
@@ -235,6 +242,7 @@ public:
     static void deinit(bool = false) {}
     static void setDeviceName(const char*) {}
     static void setPower(int) {}
+    static bool setDefaultPhy(uint8_t, uint8_t) { return true; }
     static int getPower(NimBLETxPowerType = NimBLETxPowerType::All) { return 9; }
     static void setMTU(uint16_t) {}
     static NimBLEScan* getScan() { static NimBLEScan scan; return &scan; }
@@ -276,6 +284,7 @@ public:
     virtual ~NimBLEClientCallbacks() = default;
     virtual void onConnect(NimBLEClient*) {}
     virtual void onDisconnect(NimBLEClient*, int) {}
+    virtual void onPhyUpdate(NimBLEClient*, uint8_t, uint8_t) {}
 };
 
 class NimBLEScanCallbacks {

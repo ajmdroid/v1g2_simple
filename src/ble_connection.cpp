@@ -112,6 +112,12 @@ void V1BLEClient::ScanCallbacks::onScanEnd(const NimBLEScanResults& scanResults,
 
 // ---- client callbacks -------------------------------------------------
 
+void V1BLEClient::ClientCallbacks::onPhyUpdate(NimBLEClient* pClient, uint8_t txPhy, uint8_t rxPhy) {
+    Serial.printf("[BLE] PHY updated: tx=%s rx=%s\n",
+                  txPhy == BLE_GAP_LE_PHY_2M ? "2M" : txPhy == BLE_GAP_LE_PHY_CODED ? "CODED" : "1M",
+                  rxPhy == BLE_GAP_LE_PHY_2M ? "2M" : rxPhy == BLE_GAP_LE_PHY_CODED ? "CODED" : "1M");
+}
+
 void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient) {
     // NOTE: BLE callback - keep fast, no blocking operations
     if (instancePtr) {
