@@ -367,33 +367,11 @@ void V1Display::drawBatteryIndicator() {
         // Positioned to avoid top arrow which extends to roughly SCREEN_WIDTH - 14
         FILL_RECT(SCREEN_WIDTH - 50, 0, 48, 30, PALETTE_BG);
 
-        // Draw using OpenFontRender if available; fall back to built-in font otherwise
-        if (fontMgr.modernReady) {
-            const int fontSize = 20;  // Larger for better visibility
-            uint8_t bgR = (PALETTE_BG >> 11) << 3;
-            uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
-            uint8_t bgB = (PALETTE_BG & 0x1F) << 3;
-            fontMgr.modern.setBackgroundColor(bgR, bgG, bgB);
-            fontMgr.modern.setFontColor((textColor >> 11) << 3, ((textColor >> 5) & 0x3F) << 2, (textColor & 0x1F) << 3);
-            fontMgr.modern.setFontSize(fontSize);
-
-            FT_BBox bbox = fontMgr.modern.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, pctStr);
-            int textW = bbox.xMax - bbox.xMin;
-            [[maybe_unused]] int textH = bbox.yMax - bbox.yMin;
-
-            // Position text at top-right corner - use fixed Y position near top
-            int textX = SCREEN_WIDTH - textW - 4;
-            int textY = 2;  // Fixed: 2 pixels from top (OFR draws from top of glyph, not baseline)
-
-            fontMgr.modern.setCursor(textX, textY);
-            fontMgr.modern.printf("%s", pctStr);
-        } else {
-            // Fallback: built-in font, right-aligned near top-right
-            GFX_setTextDatum(TR_DATUM);
-            TFT_CALL(setTextSize)(2);  // Larger for better visibility
-            TFT_CALL(setTextColor)(textColor, PALETTE_BG);
-            GFX_drawString(tft, pctStr, SCREEN_WIDTH - 4, 12);
-        }
+        // Right-aligned built-in font near the top-right corner.
+        GFX_setTextDatum(TR_DATUM);
+        TFT_CALL(setTextSize)(2);  // Larger for better visibility
+        TFT_CALL(setTextColor)(textColor, PALETTE_BG);
+        GFX_drawString(tft, pctStr, SCREEN_WIDTH - 4, 12);
 
         // Update cache
         lastPctDrawn = pct;

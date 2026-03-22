@@ -3,7 +3,6 @@
 
 #include <ArduinoJson.h>
 #include "../wifi/wifi_json_document.h"
-#include <LittleFS.h>
 #include <cmath>
 #include "json_stream_response.h"
 #include <algorithm>
@@ -32,57 +31,6 @@ namespace {
 bool isTruthyArgValue(const String& value) {
     return value == "1" || value == "true" || value == "TRUE" ||
            value == "on" || value == "ON";
-}
-
-bool parseUint32Arg(const String& token, uint32_t& outValue) {
-    if (token.length() == 0) {
-        return false;
-    }
-
-    uint32_t value = 0;
-    for (size_t i = 0; i < token.length(); ++i) {
-        const char ch = token.charAt(i);
-        if (ch < '0' || ch > '9') {
-            return false;
-        }
-        const uint32_t nextValue = (value * 10U) + static_cast<uint32_t>(ch - '0');
-        if (nextValue < value) {
-            return false;
-        }
-        value = nextValue;
-    }
-
-    outValue = value;
-    return true;
-}
-
-struct PanicFileSnapshot {
-    bool loaded = false;
-    bool hasPanicFile = false;
-    String panicInfo = "";
-};
-
-PanicFileSnapshot gPanicFileSnapshot;
-
-const PanicFileSnapshot& getPanicFileSnapshot() {
-    if (gPanicFileSnapshot.loaded) {
-        return gPanicFileSnapshot;
-    }
-    gPanicFileSnapshot.loaded = true;
-    gPanicFileSnapshot.hasPanicFile = LittleFS.exists("/panic.txt");
-    if (!gPanicFileSnapshot.hasPanicFile) {
-        return gPanicFileSnapshot;
-    }
-
-    File f = LittleFS.open("/panic.txt", "r");
-    if (!f) {
-        // If open fails, surface a conservative "present but unreadable" snapshot.
-        gPanicFileSnapshot.panicInfo = "";
-        return gPanicFileSnapshot;
-    }
-    gPanicFileSnapshot.panicInfo = f.readString();
-    f.close();
-    return gPanicFileSnapshot;
 }
 
 constexpr uint16_t kScenarioCharShort = 0xB2CE;

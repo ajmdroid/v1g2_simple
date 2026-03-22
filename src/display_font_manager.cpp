@@ -59,9 +59,6 @@ void DisplayFontManager::init(Arduino_Canvas* canvas) {
     // --- Serpentine (deferred until first use) ---
     serpentineReady = false;
 
-    // --- Modern (placeholder, not loaded) ---
-    modernReady = false;
-
 #ifdef CONFIG_SPIRAM_SUPPORT
     Serial.println("[FontMgr] OFR using PSRAM-preferring allocator (ps_malloc)");
 #else

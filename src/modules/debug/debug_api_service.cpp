@@ -38,25 +38,6 @@ bool isTruthyArgValue(const String& value) {
     return value == "1" || value == "true" || value == "TRUE" ||
            value == "on" || value == "ON";
 }
-bool parseUint32Arg(const String& token, uint32_t& outValue) {
-    if (token.length() == 0) {
-        return false;
-    }
-    uint32_t value = 0;
-    for (size_t i = 0; i < token.length(); ++i) {
-        const char ch = token.charAt(i);
-        if (ch < '0' || ch > '9') {
-            return false;
-        }
-        const uint32_t nextValue = (value * 10U) + static_cast<uint32_t>(ch - '0');
-        if (nextValue < value) {
-            return false;
-        }
-        value = nextValue;
-    }
-    outValue = value;
-    return true;
-}
 struct PanicFileSnapshot {
     bool loaded = false;
     bool hasPanicFile = false;
@@ -82,32 +63,6 @@ const PanicFileSnapshot& getPanicFileSnapshot() {
     f.close();
     return gPanicFileSnapshot;
 }
-constexpr uint16_t kScenarioCharShort = 0xB2CE;
-constexpr uint16_t kScenarioCharLong = 0xB4E0;
-constexpr uint8_t kScenarioDest = 0x04;
-constexpr uint8_t kScenarioSrc = ESP_PACKET_ORIGIN_V1;
-// Frequency values are rendered as freq/1000.0 in UI, so 24150 => 24.150 GHz.
-constexpr uint16_t kFreqKBase = 24150;
-constexpr uint16_t kFreqKa = 34700;
-constexpr uint16_t kFreqX = 10525;
-constexpr uint16_t kFreqKJunkLow = 24089;
-constexpr uint16_t kFreqKJunkHigh = 24205;
-// Stretch scenario timing so alerts persist long enough to resemble live traffic.
-// Keeps generated scenarios in roughly 2-30s windows.
-constexpr uint32_t kScenarioTimeScale = 10;
-constexpr uint8_t kBandKFront = 0x24;
-constexpr uint8_t kBandKSide = 0x44;
-constexpr uint8_t kBandKRear = 0x84;
-constexpr uint8_t kBandKaFront = 0x22;
-constexpr uint8_t kBandKaSide = 0x42;
-constexpr uint8_t kBandKaRear = 0x82;
-constexpr uint8_t kBandXRear = 0x88;        // X + rear
-constexpr uint8_t kDisplayXRearMuted = 0x98;  // Display image bit: X + rear + mute
-constexpr uint8_t kBandLaserFront = 0x21;
-constexpr uint8_t kBogeyOne = 6;
-constexpr uint8_t kBogeyJunk = 30;
-constexpr uint8_t kBogeyPhoto = 115;
-constexpr uint8_t kBogeyLaser = 73;
 constexpr uint32_t kSoakMetricsCacheTtlMs = 250;
 DebugApiService::SoakMetricsJsonCache gSoakMetricsCache;
 

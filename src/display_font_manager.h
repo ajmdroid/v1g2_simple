@@ -22,14 +22,12 @@ struct DisplayFontManager {
     // ----- Layout constant shared with display drawing code ---------------
     static constexpr int TOP_COUNTER_FONT_SIZE = 60;
 
-    // ----- Renderers (4 instances) -------------------------------------
-    OpenFontRender modern;      // Montserrat Bold — battery percentage text
+    // ----- Renderers (3 instances) -------------------------------------
     OpenFontRender segment7;    // Classic style (Segment7)
     OpenFontRender topCounter;  // Dedicated Segment7 renderer for top counter
     OpenFontRender serpentine;  // Serpentine style (lazy-loaded on first demand)
 
     // ----- Init flags -----------------------------------------------------
-    bool modernReady      = false;
     bool segment7Ready    = false;
     bool topCounterReady  = false;
     bool serpentineReady  = false;
