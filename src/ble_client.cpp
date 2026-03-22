@@ -55,9 +55,9 @@ extern "C" {
 // =========================================================================
 
 static constexpr const char* BLE_BOND_BACKUP_PATH = "/v1simple_ble_bonds.bin";
-// Use a standard BLE TX power step instead of the previous max-power 15 dBm
-// setting so BLE is less aggressive during WiFi coexistence.
-static constexpr int8_t BLE_TX_POWER_DBM = 9;
+// Max TX power (21 dBm) to maximize BLE range.
+// ESP32-S3 valid steps: -12, -9, -6, -3, 0, 3, 6, 9, 12, 15, 18, 21.
+static constexpr int8_t BLE_TX_POWER_DBM = 21;
 
 // Callback context for ble_store_iterate
 struct BondCollector {
