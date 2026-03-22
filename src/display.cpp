@@ -326,8 +326,10 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
     } else {
         // Sub-width region: pack rows into a contiguous PSRAM scratch buffer
         // so draw16bitRGBBitmap can push the whole block in one SPI call.
+        // Cap at full-screen size (220K on 640×172) — any region fits easily in PSRAM.
         const size_t bytes = static_cast<size_t>(w) * h * sizeof(uint16_t);
-        uint16_t* packed = (bytes <= 65536)
+        const size_t maxBytes = static_cast<size_t>(stride) * maxH * sizeof(uint16_t);
+        uint16_t* packed = (bytes <= maxBytes)
             ? static_cast<uint16_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM))
             : nullptr;
         if (packed) {
