@@ -479,10 +479,10 @@ void test_speed_vol_drops_volume_when_mute_active() {
 
     module.processParsedFrame(ctx);
 
-    // Should have sent setVolume with target 3 (only mainVol, muteVol = 0xFF).
+    // Should have sent setVolume with target 3, mute vol unchanged (2).
     TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
     TEST_ASSERT_EQUAL_UINT8(3, ble.lastVolume);
-    TEST_ASSERT_EQUAL_UINT8(0xFF, ble.lastMuteVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, ble.lastMuteVolume);
     // Volume hint should be set on lockout with original volume.
     TEST_ASSERT_EQUAL(1, lockout.setVolumeHintCalls);
     TEST_ASSERT_EQUAL_UINT8(7, lockout.volumeHintMain);
@@ -526,7 +526,7 @@ void test_speed_vol_retries_until_v1_confirms_drop() {
     module.processParsedFrame(ctx);
     TEST_ASSERT_EQUAL(1, ble.setVolumeCalls);
     TEST_ASSERT_EQUAL_UINT8(3, ble.lastVolume);
-    TEST_ASSERT_EQUAL_UINT8(0xFF, ble.lastMuteVolume);
+    TEST_ASSERT_EQUAL_UINT8(2, ble.lastMuteVolume);
 }
 
 void test_speed_vol_restores_when_mute_deactivates() {

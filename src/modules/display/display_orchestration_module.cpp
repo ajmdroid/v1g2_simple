@@ -184,7 +184,7 @@ bool DisplayOrchestrationModule::processSpeedVolume(const uint32_t nowMs) {
         speedVolSavedMuteVol_ = ds.muteVolume;
         speedVolActive_ = true;
         speedVolLastRetryMs_ = nowMs;
-        ble->setVolume(smSettings.v1Volume, 0xFF);
+        ble->setVolume(smSettings.v1Volume, speedVolSavedMuteVol_);
         // Set hint so pre-quiet captures the user's true volume.
         if (lockout) lockout->setVolumeHint(speedVolSavedOriginal_, speedVolSavedMuteVol_);
 #ifndef UNIT_TEST
@@ -223,7 +223,7 @@ bool DisplayOrchestrationModule::processSpeedVolume(const uint32_t nowMs) {
         // Rate-limited retry.
         if ((nowMs - speedVolLastRetryMs_) >= SPEED_VOL_RETRY_INTERVAL_MS) {
             speedVolLastRetryMs_ = nowMs;
-            ble->setVolume(smSettings.v1Volume, 0xFF);
+            ble->setVolume(smSettings.v1Volume, speedVolSavedMuteVol_);
 #ifndef UNIT_TEST
             perfRecordSpeedVolRetry();
 #endif
