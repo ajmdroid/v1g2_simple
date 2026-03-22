@@ -655,8 +655,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     else if (enteringLiveMode) { needsRedraw = true; }
     else if (wasPersistedMode) { needsRedraw = true; }
     // V1 is source of truth - always redraw when priority alert changes
-    // Use frequency tolerance to avoid full redraws from V1 jitter
-    else if (freqDifferent(priority.frequency, cache.liveLastPriority.frequency)) { needsRedraw = true; }
+    // Frequency-only changes are handled via incremental path (freqOnlyChanged below)
     else if (priority.band != cache.liveLastPriority.band) { needsRedraw = true; }
     else if (state.muted != cache.liveLastMultiState.muted) { needsRedraw = true; }
     // Note: bogey counter changes are handled via incremental update (bogeyCounterChanged) for rapid response
@@ -736,7 +735,12 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         }
     }
     
-    if (!needsRedraw && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
+    // Frequency-only change: no fillScreen or full subphase redraw needed.
+    // drawFrequency() self-clears its bounding box so no ghost pixels.
+    const bool freqOnlyChanged = !needsRedraw &&
+        freqDifferent(priority.frequency, cache.liveLastPriority.frequency);
+
+    if (!needsRedraw && !freqOnlyChanged && !arrowsChanged && !signalBarsChanged && !bandsChanged && !needsFlashUpdate && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
         // Nothing changed on main display, but still process cards for expiration
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
         if (secondaryCardsRenderDirty_) {
@@ -749,12 +753,20 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         return;
     }
     
-    if (!needsRedraw && (arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
+    if (!needsRedraw && (freqOnlyChanged || arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
         perfRecordDisplayRenderPath(PerfDisplayRenderPath::Incremental);
-        // Only arrows, signal bars, bands, or bogey count changed - do incremental update without full redraw
-        // Also handle flash updates (periodic redraw for blink animation)
+        // Incremental update without full redraw — only redraw changed elements.
         bool flushLeftStrip = false;
         bool flushRightStrip = false;
+
+        if (freqOnlyChanged) {
+            cache.liveLastPriority.frequency = priority.frequency;
+            const bool isPhotoRadar =
+                (priority.photoType != 0) ||
+                state.hasPhotoAlert ||
+                (liveTopCounterChar == 'P');
+            drawFrequency(priority.frequency, priority.band, state.muted, isPhotoRadar);
+        }
 
         if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
             cache.liveLastArrows = arrowsToShow;
@@ -796,8 +808,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     recordDisplayRedrawReasonIf(cache.liveFirstRun, PerfDisplayRedrawReason::FirstRun);
     recordDisplayRedrawReasonIf(enteringLiveMode, PerfDisplayRedrawReason::EnterLive);
     recordDisplayRedrawReasonIf(wasPersistedMode, PerfDisplayRedrawReason::LeavePersisted);
-    recordDisplayRedrawReasonIf(freqDifferent(priority.frequency, cache.liveLastPriority.frequency),
-                                PerfDisplayRedrawReason::FrequencyChange);
     recordDisplayRedrawReasonIf(priority.band != cache.liveLastPriority.band,
                                 PerfDisplayRedrawReason::BandSetChange);
     recordDisplayRedrawReasonIf(arrowsChanged, PerfDisplayRedrawReason::ArrowChange);
