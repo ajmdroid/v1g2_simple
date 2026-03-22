@@ -21,32 +21,6 @@
 using namespace DisplaySegments;
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 
-namespace {
-
-int measure14SegmentTextWidth(const char* text, float scale) {
-    SegMetrics m = segMetrics(scale);
-    int width = 0;
-    size_t glyphCount = 0;
-    const size_t len = strlen(text);
-    for (size_t i = 0; i < len; ++i) {
-        if (text[i] == '.') {
-            continue;
-        }
-        width += m.digitW;
-        if (i + 1 < len && text[i + 1] == '.') {
-            width += m.dot / 2;
-            ++i;
-        }
-        ++glyphCount;
-    }
-    if (glyphCount > 1) {
-        width += static_cast<int>((glyphCount - 1) * m.spacing);
-    }
-    return width;
-}
-
-}  // namespace
-
 // Convenience alias (matches display.cpp)
 using TextWidthCacheEntry = DisplayFontManager::WidthCacheEntry;
 

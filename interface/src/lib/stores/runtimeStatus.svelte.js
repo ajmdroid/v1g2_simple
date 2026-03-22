@@ -48,7 +48,6 @@ export const runtimeStatusError = writable(null);
 export const runtimeStatusLoading = writable(true);
 export const runtimeGpsStatus = writable(createDefaultGpsStatus());
 export const runtimeGpsError = writable(null);
-export const runtimeGpsLoading = writable(true);
 
 let statusFetchInFlight = false;
 let gpsFetchInFlight = false;
@@ -69,7 +68,6 @@ function resetRuntimeState() {
 	runtimeStatusLoading.set(true);
 	runtimeGpsStatus.set(createDefaultGpsStatus());
 	runtimeGpsError.set(null);
-	runtimeGpsLoading.set(true);
 	statusFetchInFlight = false;
 	gpsFetchInFlight = false;
 }
@@ -181,9 +179,6 @@ export async function fetchRuntimeGpsStatus() {
 			runtimeGpsError.set('GPS connection lost');
 		}
 	} finally {
-		if (fetchVersion === stateVersion && hasActiveGpsConsumers()) {
-			runtimeGpsLoading.set(false);
-		}
 		gpsFetchInFlight = false;
 	}
 }

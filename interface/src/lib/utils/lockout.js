@@ -21,7 +21,6 @@ export const LEARNER_FREQ_TOLERANCE_MHZ_MAX = 20;
 export const LEARNER_RADIUS_E5_DEFAULT = 135;
 export const LEARNER_RADIUS_E5_MIN = 45;
 export const LEARNER_RADIUS_E5_MAX = 360;
-export const LOCKOUT_INTERVAL_OPTIONS = [0, 1, 4, 12, 24];
 export const LEARNER_UNLEARN_COUNT_DEFAULT = 0;
 export const LEARNER_UNLEARN_COUNT_MIN = 0;
 export const LEARNER_UNLEARN_COUNT_MAX = 10;
@@ -34,9 +33,6 @@ export const GPS_MIN_LEARNER_SPEED_MPH_DEFAULT = 5;
 export const GPS_MIN_LEARNER_SPEED_MPH_MIN = 0;
 export const GPS_MIN_LEARNER_SPEED_MPH_MAX = 20;
 export const GPS_MIN_SATELLITES = 4;
-
-// --- Manual demotion options ---
-export const MANUAL_DEMOTION_OPTIONS = [0, 10, 25, 50];
 
 // --- Zone editor option arrays ---
 export const DIRECTION_MODE_OPTIONS = [
