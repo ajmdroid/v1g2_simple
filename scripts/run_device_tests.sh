@@ -16,7 +16,7 @@ cd "$ROOT_DIR"
 MODE="device"
 RUN_STRESS=0
 SUITE_COOLDOWN_SECONDS="${DEVICE_SUITE_COOLDOWN_SECONDS:-5}"
-COMPARE_TO=""
+COMPARE_TO_MANIFESTS=()
 OUT_DIR_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
         echo "Missing value for --compare-to" >&2
         exit 2
       fi
-      COMPARE_TO="$2"
+      COMPARE_TO_MANIFESTS+=("$2")
       shift
       ;;
     --out-dir)
@@ -55,7 +55,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N] [--compare-to PATH] [--out-dir PATH]"
+      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N] [--compare-to PATH ...] [--out-dir PATH]"
       echo ""
       echo "Modes:"
       echo "  (default)  Run all device-only test suites (safe set)"
@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --cooldown-seconds N"
       echo "             Wait N seconds between suites (default: ${DEVICE_SUITE_COOLDOWN_SECONDS:-5})"
       echo "  --compare-to PATH"
-      echo "             Compare this run against a prior manifest.json"
+      echo "             Compare this run against a prior manifest.json (repeat for a baseline window)"
       echo "  --out-dir PATH"
       echo "             Write all run artifacts to PATH"
       echo ""
@@ -76,7 +76,7 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N] [--compare-to PATH] [--out-dir PATH]" >&2
+      echo "Usage: $0 [--quick | --full] [--stress] [--cooldown-seconds N] [--compare-to PATH ...] [--out-dir PATH]" >&2
       echo "" >&2
       echo "Unknown option: $1" >&2
       exit 2
@@ -424,35 +424,30 @@ PY
 
 score_manifest() {
   local scorer_status=0
+  local compare_args=()
+  local compare_to=""
+
+  if [[ "${#COMPARE_TO_MANIFESTS[@]}" -gt 0 ]]; then
+    for compare_to in "${COMPARE_TO_MANIFESTS[@]}"; do
+      compare_args+=(--compare-to "$compare_to")
+    done
+  fi
 
   set +e
-  if [[ -n "$COMPARE_TO" ]]; then
-    python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-      "$MANIFEST_JSON" \
-      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-      --compare-to "$COMPARE_TO" \
-      --json > "$SCORING_JSON"
-  else
-    python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-      "$MANIFEST_JSON" \
-      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-      --json > "$SCORING_JSON"
-  fi
+  python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+    "$MANIFEST_JSON" \
+    --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+    "${compare_args[@]}" \
+    --json > "$SCORING_JSON"
   scorer_status=$?
   set -e
 
   if [[ "$scorer_status" -le 2 ]]; then
     set +e
-    if [[ -n "$COMPARE_TO" ]]; then
-      python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-        "$MANIFEST_JSON" \
-        --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-        --compare-to "$COMPARE_TO" > "$SUMMARY_MD"
-    else
-      python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-        "$MANIFEST_JSON" \
-        --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" > "$SUMMARY_MD"
-    fi
+    python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+      "$MANIFEST_JSON" \
+      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+      "${compare_args[@]}" > "$SUMMARY_MD"
     set -e
 
     python3 - "$MANIFEST_JSON" "$SCORING_JSON" <<'PY'

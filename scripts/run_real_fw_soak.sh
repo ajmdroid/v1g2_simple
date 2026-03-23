@@ -126,7 +126,7 @@ MAX_PROXY_ADV_TRANSITION_CHURN_DELTA=0
 MIN_AP_DOWN_TRANSITIONS=0
 MIN_PROXY_ADV_OFF_TRANSITIONS=0
 OUT_DIR=""
-COMPARE_TO=""
+COMPARE_TO_MANIFESTS=()
 METRICS_RECOVERY_ATTEMPTS=0
 METRICS_RECOVERY_ELAPSED_SECONDS=0
 METRICS_RECOVERY_BUDGET_SECONDS=0
@@ -532,7 +532,7 @@ while [[ $# -gt 0 ]]; do
         echo "Missing value for --compare-to" >&2
         exit 2
       fi
-      COMPARE_TO="$2"
+      COMPARE_TO_MANIFESTS+=("$2")
       shift
       ;;
     --ignore-gps-errors)
@@ -809,7 +809,7 @@ Options:
                         (default: 0)
   --dry-run              Print resolved config/gates and exit
   --allow-inconclusive   Exit 0 even when no telemetry signals were captured
-  --compare-to PATH      Compare this run against a prior manifest.json
+  --compare-to PATH      Compare this run against a prior manifest.json (repeatable)
   --out-dir PATH         Write artifacts to PATH
   -h, --help             Show this help
 EOF
@@ -3611,34 +3611,27 @@ payload = {
 Path(sys.argv[1]).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 PY
 else
-  set +e
-  if [[ -n "$COMPARE_TO" ]]; then
-    python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-      "$MANIFEST_JSON" \
-      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-      --compare-to "$COMPARE_TO" \
-      --json > "$TREND_SCORING_JSON" 2> "$TREND_SCORING_STDERR"
-  else
-    python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-      "$MANIFEST_JSON" \
-      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-      --json > "$TREND_SCORING_JSON" 2> "$TREND_SCORING_STDERR"
+  compare_args=()
+  if [[ "${#COMPARE_TO_MANIFESTS[@]}" -gt 0 ]]; then
+    for compare_to in "${COMPARE_TO_MANIFESTS[@]}"; do
+      compare_args+=(--compare-to "$compare_to")
+    done
   fi
+  set +e
+  python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+    "$MANIFEST_JSON" \
+    --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+    "${compare_args[@]}" \
+    --json > "$TREND_SCORING_JSON" 2> "$TREND_SCORING_STDERR"
   trend_scorer_exit=$?
   set -e
 
   if [[ "$trend_scorer_exit" -le 2 ]]; then
     set +e
-    if [[ -n "$COMPARE_TO" ]]; then
-      python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-        "$MANIFEST_JSON" \
-        --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
-        --compare-to "$COMPARE_TO" > "$TREND_SUMMARY_MD" 2>> "$TREND_SCORING_STDERR"
-    else
-      python3 "$ROOT_DIR/tools/score_hardware_run.py" \
-        "$MANIFEST_JSON" \
-        --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" > "$TREND_SUMMARY_MD" 2>> "$TREND_SCORING_STDERR"
-    fi
+    python3 "$ROOT_DIR/tools/score_hardware_run.py" \
+      "$MANIFEST_JSON" \
+      --catalog "$ROOT_DIR/tools/hardware_metric_catalog.json" \
+      "${compare_args[@]}" > "$TREND_SUMMARY_MD" 2>> "$TREND_SCORING_STDERR"
     set -e
   fi
 

@@ -44,7 +44,12 @@ def parse_args() -> argparse.Namespace:
         help="Path to a soak run directory, metrics.jsonl, panic.jsonl, or serial.log",
     )
     parser.add_argument("--out-dir", required=True, help="Output directory for manifest/scoring artifacts")
-    parser.add_argument("--compare-to", default="", help="Optional baseline manifest.json")
+    parser.add_argument(
+        "--compare-to",
+        action="append",
+        default=[],
+        help="Optional baseline manifest.json (repeat for a baseline window)",
+    )
     parser.add_argument("--board-id", default="", help="Override board_id in emitted manifest")
     parser.add_argument("--git-sha", default="", help="Override git_sha in emitted manifest")
     parser.add_argument("--git-ref", default="", help="Override git_ref in emitted manifest")
@@ -452,9 +457,9 @@ def main() -> int:
         manifest["source_serial_log"] = str(bundle.serial_log)
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
-    baseline_path = Path(args.compare_to).resolve() if args.compare_to else None
+    baseline_paths = [Path(path).resolve() for path in args.compare_to if path]
     try:
-        scored = score_hardware_run.score_run(manifest_path, CATALOG_PATH, baseline_path)
+        scored = score_hardware_run.score_run(manifest_path, CATALOG_PATH, baseline_paths)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 3

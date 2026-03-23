@@ -64,6 +64,7 @@ def write_comparison_tsv(scoring: dict[str, Any], out_path: Path) -> None:
 def write_comparison_text(scoring: dict[str, Any], out_path: Path) -> None:
     manifest = scoring.get("manifest", {})
     baseline = scoring.get("baseline_manifest") or {}
+    baseline_window = scoring.get("baseline_window") or {}
     summary = scoring.get("summary", {})
     metrics = scoring.get("metrics", [])
 
@@ -96,6 +97,8 @@ def write_comparison_text(scoring: dict[str, Any], out_path: Path) -> None:
         f"result: {scoring.get('result', '')}",
         f"comparison: {scoring.get('comparison_kind', '')}",
         f"baseline_git: {baseline.get('git_sha', 'n/a')}",
+        f"baseline_strategy: {baseline_window.get('strategy', 'none')}",
+        f"baseline_candidates: {baseline_window.get('candidate_count', 0)}",
         f"source_type: {manifest.get('source_type', '') or 'n/a'}",
         f"source_schema: {manifest.get('source_schema', 'n/a')}",
         f"coverage_status: {manifest.get('coverage_status', '') or 'n/a'}",

@@ -274,7 +274,12 @@ def parse_args() -> argparse.Namespace:
         help="Compatibility alias for --segment",
     )
     parser.add_argument("--list-segments", action="store_true", help="List discovered CSV segments and exit")
-    parser.add_argument("--compare-to", default="", help="Optional baseline manifest.json")
+    parser.add_argument(
+        "--compare-to",
+        action="append",
+        default=[],
+        help="Optional baseline manifest.json (repeat for a baseline window)",
+    )
     parser.add_argument("--board-id", default="", help="Override board_id")
     parser.add_argument("--git-sha", default="", help="Override git_sha")
     parser.add_argument("--git-ref", default="", help="Override git_ref")
@@ -1330,9 +1335,9 @@ def main() -> int:
         manifest["source_panic_jsonl"] = str(panic_path)
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
-    baseline_path = Path(args.compare_to).resolve() if args.compare_to else None
+    baseline_paths = [Path(path).resolve() for path in args.compare_to if path]
     try:
-        scored = score_hardware_run.score_run(manifest_path, CATALOG_PATH, baseline_path)
+        scored = score_hardware_run.score_run(manifest_path, CATALOG_PATH, baseline_paths)
     except Exception as exc:
         print(f"ERROR: scoring failed: {exc}", file=sys.stderr)
         return 3

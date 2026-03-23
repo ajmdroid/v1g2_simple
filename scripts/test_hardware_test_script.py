@@ -32,6 +32,16 @@ def read_tsv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle, delimiter="\t"))
 
 
+def read_lines(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    return [line for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+def resolved_path_text(path: str | Path) -> str:
+    return str(Path(path).resolve())
+
+
 def create_fake_child_script(path: Path, child_type: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -39,7 +49,7 @@ def create_fake_child_script(path: Path, child_type: str) -> None:
 set -euo pipefail
 
 OUT_DIR=""
-COMPARE_TO=""
+COMPARE_TO=()
 STEP_KIND="{child_type}"
 BOARD_ID="${{DEVICE_BOARD_ID:-release}}"
 if [[ "$STEP_KIND" == "soak" ]]; then
@@ -53,7 +63,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --compare-to)
-      COMPARE_TO="$2"
+      COMPARE_TO+=("$2")
       shift
       ;;
     --drive-display-preview)
@@ -64,8 +74,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 mkdir -p "$OUT_DIR"
-if [[ -n "$COMPARE_TO" ]]; then
-  printf "%s\\n" "$COMPARE_TO" > "$OUT_DIR/received_compare_to.txt"
+if [[ "${{#COMPARE_TO[@]}}" -gt 0 ]]; then
+  printf "%s\\n" "${{COMPARE_TO[@]}}" > "$OUT_DIR/received_compare_to.txt"
 fi
 
 STEP_UPPER="$(printf "%s" "$STEP_KIND" | tr '[:lower:]' '[:upper:]')"
@@ -75,7 +85,9 @@ VALUE_VAR="FAKE_${{STEP_UPPER}}_VALUE"
 BASELINE_VAR="FAKE_${{STEP_UPPER}}_BASELINE"
 EXIT_VAR="FAKE_${{STEP_UPPER}}_EXIT"
 
-python3 - "$OUT_DIR" "$COMPARE_TO" "$STEP_KIND" "$BOARD_ID" "${{!RESULT_VAR}}" "${{!COMPARE_VAR}}" "${{!VALUE_VAR}}" "${{!BASELINE_VAR:-}}" <<'PY'
+FIRST_COMPARE_TO="${{COMPARE_TO[0]:-}}"
+COMPARE_TO_COUNT="${{#COMPARE_TO[@]}}"
+python3 - "$OUT_DIR" "$FIRST_COMPARE_TO" "$COMPARE_TO_COUNT" "$STEP_KIND" "$BOARD_ID" "${{!RESULT_VAR}}" "${{!COMPARE_VAR}}" "${{!VALUE_VAR}}" "${{!BASELINE_VAR:-}}" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
@@ -83,12 +95,13 @@ from pathlib import Path
 
 out_dir = Path(sys.argv[1])
 compare_to = sys.argv[2]
-step_kind = sys.argv[3]
-board_id = sys.argv[4]
-result = sys.argv[5]
-compare_kind = sys.argv[6]
-value = float(sys.argv[7])
-baseline_raw = sys.argv[8]
+compare_to_count = int(sys.argv[3])
+step_kind = sys.argv[4]
+board_id = sys.argv[5]
+result = sys.argv[6]
+compare_kind = sys.argv[7]
+value = float(sys.argv[8])
+baseline_raw = sys.argv[9]
 baseline_value = None if baseline_raw == "" else float(baseline_raw)
 
 suite_or_profile = {{
@@ -146,6 +159,12 @@ if compare_to:
         "git_ref": "main",
     }}
 
+baseline_window = {{
+    "strategy": "single_baseline" if compare_to_count == 1 else ("median_last_3_trustworthy" if compare_to_count > 1 else "none"),
+    "candidate_count": compare_to_count,
+    "candidates": [],
+}}
+
 scoring = {{
     "schema_version": 1,
     "manifest": {{
@@ -162,6 +181,7 @@ scoring = {{
         "base_result": "PASS",
     }},
     "baseline_manifest": baseline_manifest,
+    "baseline_window": baseline_window,
     "comparison_kind": compare_kind,
     "result": result,
     "summary": {{
@@ -614,12 +634,15 @@ def main() -> int:
         assert_true(second_result["result"] == "PASS", f"unexpected second result: {second_result}")
         assert_true(second_result["previous_run_dir"] == str(first_run_dir), "suite did not point to previous run dir")
 
-        device_compare = (latest / "device_tests" / "received_compare_to.txt").read_text(encoding="utf-8").strip()
-        core_compare = (latest / "core_soak" / "received_compare_to.txt").read_text(encoding="utf-8").strip()
-        display_compare = (latest / "display_soak" / "received_compare_to.txt").read_text(encoding="utf-8").strip()
-        assert_true(device_compare.endswith("/device_tests/manifest.json"), f"unexpected device compare path: {device_compare}")
-        assert_true(core_compare.endswith("/core_soak/manifest.json"), f"unexpected core compare path: {core_compare}")
-        assert_true(display_compare.endswith("/display_soak/manifest.json"), f"unexpected display compare path: {display_compare}")
+        device_compare = read_lines(latest / "device_tests" / "received_compare_to.txt")
+        core_compare = read_lines(latest / "core_soak" / "received_compare_to.txt")
+        display_compare = read_lines(latest / "display_soak" / "received_compare_to.txt")
+        assert_true(len(device_compare) == 1, f"unexpected device compare list: {device_compare}")
+        assert_true(len(core_compare) == 1, f"unexpected core compare list: {core_compare}")
+        assert_true(len(display_compare) == 1, f"unexpected display compare list: {display_compare}")
+        assert_true(device_compare[0].endswith("/device_tests/manifest.json"), f"unexpected device compare path: {device_compare}")
+        assert_true(core_compare[0].endswith("/core_soak/manifest.json"), f"unexpected core compare path: {core_compare}")
+        assert_true(display_compare[0].endswith("/display_soak/manifest.json"), f"unexpected display compare path: {display_compare}")
 
         run_history = read_tsv(release_root / "run_history.tsv")
         assert_true(len(run_history) == 2, f"expected 2 run-history rows, saw {len(run_history)}")
@@ -647,6 +670,8 @@ def main() -> int:
             }
         )
         assert_true(failing.returncode == 1, f"failing hardware test should exit 1: {failing.stdout}\n{failing.stderr}")
+        failing_result = json.loads((latest / "result.json").read_text(encoding="utf-8"))
+        failing_run_dir = Path(failing_result["run_dir"])
 
         recovered = run_test_script(
             {
@@ -674,20 +699,165 @@ def main() -> int:
             f"recovered run should skip failed latest baseline: {recovered_result}",
         )
 
-        recovered_device_compare = (latest / "device_tests" / "received_compare_to.txt").read_text(encoding="utf-8").strip()
-        recovered_core_compare = (latest / "core_soak" / "received_compare_to.txt").read_text(encoding="utf-8").strip()
-        recovered_display_compare = (latest / "display_soak" / "received_compare_to.txt").read_text(encoding="utf-8").strip()
+        recovered_device_compare = read_lines(latest / "device_tests" / "received_compare_to.txt")
+        recovered_core_compare = read_lines(latest / "core_soak" / "received_compare_to.txt")
+        recovered_display_compare = read_lines(latest / "display_soak" / "received_compare_to.txt")
         assert_true(
-            recovered_device_compare.startswith(str(second_run_dir / "device_tests")),
+            len(recovered_device_compare) == 1
+            and resolved_path_text(recovered_device_compare[0]).startswith(resolved_path_text(second_run_dir / "device_tests")),
             f"unexpected recovered device compare path: {recovered_device_compare}",
         )
         assert_true(
-            recovered_core_compare.startswith(str(second_run_dir / "core_soak")),
+            [resolved_path_text(item) for item in recovered_core_compare] == [
+                resolved_path_text(failing_run_dir / "core_soak" / "manifest.json"),
+                resolved_path_text(second_run_dir / "core_soak" / "manifest.json"),
+            ],
             f"unexpected recovered core compare path: {recovered_core_compare}",
         )
         assert_true(
-            recovered_display_compare.startswith(str(second_run_dir / "display_soak")),
+            [resolved_path_text(item) for item in recovered_display_compare] == [
+                resolved_path_text(failing_run_dir / "display_soak" / "manifest.json"),
+                resolved_path_text(second_run_dir / "display_soak" / "manifest.json"),
+            ],
             f"unexpected recovered display compare path: {recovered_display_compare}",
+        )
+
+        window_artifact_root = temp_root / "window_artifacts"
+        window_env = {
+            **common_env,
+            "HARDWARE_TEST_ARTIFACT_ROOT": str(window_artifact_root),
+        }
+        window_latest = window_artifact_root / "release" / "latest"
+
+        window_seed_1 = run_test_script(
+            {
+                **window_env,
+                "FAKE_DEVICE_RESULT": "NO_BASELINE",
+                "FAKE_DEVICE_COMPARE_KIND": "no_baseline",
+                "FAKE_DEVICE_VALUE": "101",
+                "FAKE_CORE_RESULT": "NO_BASELINE",
+                "FAKE_CORE_COMPARE_KIND": "no_baseline",
+                "FAKE_CORE_VALUE": "201",
+                "FAKE_DISPLAY_RESULT": "NO_BASELINE",
+                "FAKE_DISPLAY_COMPARE_KIND": "no_baseline",
+                "FAKE_DISPLAY_VALUE": "301",
+            }
+        )
+        assert_true(window_seed_1.returncode == 0, f"window seed 1 failed: {window_seed_1.stdout}\n{window_seed_1.stderr}")
+        window_seed_1_result = json.loads((window_latest / "result.json").read_text(encoding="utf-8"))
+        window_seed_1_dir = Path(window_seed_1_result["run_dir"])
+
+        window_seed_2 = run_test_script(
+            {
+                **window_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "run_variance",
+                "FAKE_DEVICE_VALUE": "102",
+                "FAKE_DEVICE_BASELINE": "101",
+                "FAKE_CORE_RESULT": "PASS",
+                "FAKE_CORE_COMPARE_KIND": "run_variance",
+                "FAKE_CORE_VALUE": "202",
+                "FAKE_CORE_BASELINE": "201",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "run_variance",
+                "FAKE_DISPLAY_VALUE": "302",
+                "FAKE_DISPLAY_BASELINE": "301",
+            }
+        )
+        assert_true(window_seed_2.returncode == 0, f"window seed 2 failed: {window_seed_2.stdout}\n{window_seed_2.stderr}")
+        window_seed_2_result = json.loads((window_latest / "result.json").read_text(encoding="utf-8"))
+        window_seed_2_dir = Path(window_seed_2_result["run_dir"])
+
+        window_seed_3 = run_test_script(
+            {
+                **window_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "run_variance",
+                "FAKE_DEVICE_VALUE": "103",
+                "FAKE_DEVICE_BASELINE": "102",
+                "FAKE_CORE_RESULT": "FAIL",
+                "FAKE_CORE_COMPARE_KIND": "commit_regression",
+                "FAKE_CORE_VALUE": "203",
+                "FAKE_CORE_BASELINE": "202",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "run_variance",
+                "FAKE_DISPLAY_VALUE": "303",
+                "FAKE_DISPLAY_BASELINE": "302",
+            }
+        )
+        assert_true(window_seed_3.returncode == 0, f"window seed 3 failed: {window_seed_3.stdout}\n{window_seed_3.stderr}")
+        window_seed_3_result = json.loads((window_latest / "result.json").read_text(encoding="utf-8"))
+        window_seed_3_dir = Path(window_seed_3_result["run_dir"])
+
+        window_seed_4 = run_test_script(
+            {
+                **window_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "run_variance",
+                "FAKE_DEVICE_VALUE": "104",
+                "FAKE_DEVICE_BASELINE": "103",
+                "FAKE_CORE_RESULT": "PASS",
+                "FAKE_CORE_COMPARE_KIND": "run_variance",
+                "FAKE_CORE_VALUE": "204",
+                "FAKE_CORE_BASELINE": "202",
+                "FAKE_DISPLAY_RESULT": "FAIL",
+                "FAKE_DISPLAY_COMPARE_KIND": "commit_regression",
+                "FAKE_DISPLAY_VALUE": "304",
+                "FAKE_DISPLAY_BASELINE": "303",
+            }
+        )
+        assert_true(window_seed_4.returncode == 0, f"window seed 4 failed: {window_seed_4.stdout}\n{window_seed_4.stderr}")
+        window_seed_4_result = json.loads((window_latest / "result.json").read_text(encoding="utf-8"))
+        window_seed_4_dir = Path(window_seed_4_result["run_dir"])
+
+        window_probe = run_test_script(
+            {
+                **window_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "run_variance",
+                "FAKE_DEVICE_VALUE": "105",
+                "FAKE_DEVICE_BASELINE": "104",
+                "FAKE_CORE_RESULT": "PASS",
+                "FAKE_CORE_COMPARE_KIND": "run_variance",
+                "FAKE_CORE_VALUE": "205",
+                "FAKE_CORE_BASELINE": "204",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "run_variance",
+                "FAKE_DISPLAY_VALUE": "305",
+                "FAKE_DISPLAY_BASELINE": "303",
+            }
+        )
+        assert_true(window_probe.returncode == 0, f"window probe failed: {window_probe.stdout}\n{window_probe.stderr}")
+        window_probe_result = json.loads((window_latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(
+            window_probe_result["previous_run_dir"] == str(window_seed_2_dir),
+            f"suite previous_run_dir should stay on newest fully trustworthy run: {window_probe_result}",
+        )
+
+        device_window_compare = read_lines(window_latest / "device_tests" / "received_compare_to.txt")
+        core_window_compare = read_lines(window_latest / "core_soak" / "received_compare_to.txt")
+        display_window_compare = read_lines(window_latest / "display_soak" / "received_compare_to.txt")
+        assert_true(
+            [resolved_path_text(item) for item in device_window_compare] == [
+                resolved_path_text(window_seed_4_dir / "device_tests" / "manifest.json"),
+                resolved_path_text(window_seed_3_dir / "device_tests" / "manifest.json"),
+                resolved_path_text(window_seed_2_dir / "device_tests" / "manifest.json"),
+            ],
+            f"device baseline window should forward last 3 passing manifests newest-first: {device_window_compare}",
+        )
+        assert_true(
+            [resolved_path_text(item) for item in core_window_compare] == [
+                resolved_path_text(window_seed_4_dir / "core_soak" / "manifest.json"),
+                resolved_path_text(window_seed_2_dir / "core_soak" / "manifest.json"),
+            ],
+            f"core baseline window should exclude failed run and NO_BASELINE fallback when passes exist: {core_window_compare}",
+        )
+        assert_true(
+            [resolved_path_text(item) for item in display_window_compare] == [
+                resolved_path_text(window_seed_3_dir / "display_soak" / "manifest.json"),
+                resolved_path_text(window_seed_2_dir / "display_soak" / "manifest.json"),
+            ],
+            f"display baseline window should exclude failed run and preserve newest-first ordering: {display_window_compare}",
         )
 
         soak_only_failure = run_test_script(

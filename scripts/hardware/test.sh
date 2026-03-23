@@ -410,15 +410,72 @@ find_previous_run_dir() {
   return 1
 }
 
+collect_previous_step_manifests() {
+  local step_name="$1"
+  python3 - "$BOARD_ARTIFACT_ROOT/runs" "$RUN_DIR" "$step_name" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+runs_root = Path(sys.argv[1])
+current_run_dir = Path(sys.argv[2]).resolve()
+step_name = sys.argv[3]
+pass_like = {"PASS", "PASS_WITH_WARNINGS"}
+fallback_like = {"NO_BASELINE"}
+
+passing: list[Path] = []
+fallback: list[Path] = []
+
+for candidate_dir in sorted(runs_root.iterdir(), reverse=True):
+    if not candidate_dir.is_dir() or candidate_dir.resolve() == current_run_dir:
+        continue
+    result_path = candidate_dir / "result.json"
+    if not result_path.is_file():
+        continue
+    try:
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        continue
+    steps = {str(item.get("name")): item for item in payload.get("steps") or [] if isinstance(item, dict)}
+    step = steps.get(step_name)
+    if not isinstance(step, dict):
+        continue
+    if str(step.get("comparison_kind", "")) == "no_scoring":
+        continue
+    manifest_path = Path(str(step.get("manifest_path", "")))
+    if not manifest_path.is_absolute():
+        manifest_path = candidate_dir / manifest_path
+    manifest_path = manifest_path.resolve()
+    if not manifest_path.is_file():
+        continue
+    result = str(step.get("result", ""))
+    if result in pass_like:
+        passing.append(manifest_path)
+    elif result in fallback_like:
+        fallback.append(manifest_path)
+
+selected = passing[:3] if passing else fallback[:3]
+for manifest_path in selected:
+    print(manifest_path)
+PY
+}
+
 PREVIOUS_RUN_DIR="$(find_previous_run_dir || true)"
-PREVIOUS_DEVICE_MANIFEST=""
-PREVIOUS_CORE_MANIFEST=""
-PREVIOUS_DISPLAY_MANIFEST=""
-if [[ -n "$PREVIOUS_RUN_DIR" ]]; then
-  [[ -f "$PREVIOUS_RUN_DIR/device_tests/manifest.json" ]] && PREVIOUS_DEVICE_MANIFEST="$PREVIOUS_RUN_DIR/device_tests/manifest.json"
-  [[ -f "$PREVIOUS_RUN_DIR/core_soak/manifest.json" ]] && PREVIOUS_CORE_MANIFEST="$PREVIOUS_RUN_DIR/core_soak/manifest.json"
-  [[ -f "$PREVIOUS_RUN_DIR/display_soak/manifest.json" ]] && PREVIOUS_DISPLAY_MANIFEST="$PREVIOUS_RUN_DIR/display_soak/manifest.json"
-fi
+PREVIOUS_DEVICE_MANIFESTS=()
+PREVIOUS_CORE_MANIFESTS=()
+PREVIOUS_DISPLAY_MANIFESTS=()
+while IFS= read -r manifest_path; do
+  [[ -n "$manifest_path" ]] && PREVIOUS_DEVICE_MANIFESTS+=("$manifest_path")
+done < <(collect_previous_step_manifests "device_tests")
+while IFS= read -r manifest_path; do
+  [[ -n "$manifest_path" ]] && PREVIOUS_CORE_MANIFESTS+=("$manifest_path")
+done < <(collect_previous_step_manifests "core_soak")
+while IFS= read -r manifest_path; do
+  [[ -n "$manifest_path" ]] && PREVIOUS_DISPLAY_MANIFESTS+=("$manifest_path")
+done < <(collect_previous_step_manifests "display_soak")
+PREVIOUS_DEVICE_MANIFEST="${PREVIOUS_DEVICE_MANIFESTS[0]:-}"
+PREVIOUS_CORE_MANIFEST="${PREVIOUS_CORE_MANIFESTS[0]:-}"
+PREVIOUS_DISPLAY_MANIFEST="${PREVIOUS_DISPLAY_MANIFESTS[0]:-}"
 
 : > "$RUN_LOG"
 
@@ -740,8 +797,10 @@ if [[ "$RUN_DEVICE" -eq 1 ]]; then
     --full
     --out-dir "$DEVICE_DIR"
   )
-  if [[ -n "$PREVIOUS_DEVICE_MANIFEST" ]]; then
-    device_args+=(--compare-to "$PREVIOUS_DEVICE_MANIFEST")
+  if [[ "${#PREVIOUS_DEVICE_MANIFESTS[@]}" -gt 0 ]]; then
+    for previous_manifest in "${PREVIOUS_DEVICE_MANIFESTS[@]}"; do
+      device_args+=(--compare-to "$previous_manifest")
+    done
   fi
   run_step "device_tests" "${device_args[@]}" || device_exit=$?
   render_step_views "$DEVICE_DIR"
@@ -777,8 +836,10 @@ if [[ "$RUN_CORE" -eq 1 ]]; then
         --lane hardware-test-parse
       )
     fi
-    if [[ -n "$PREVIOUS_CORE_MANIFEST" ]]; then
-      core_args+=(--compare-to "$PREVIOUS_CORE_MANIFEST")
+    if [[ "${#PREVIOUS_CORE_MANIFESTS[@]}" -gt 0 ]]; then
+      for previous_manifest in "${PREVIOUS_CORE_MANIFESTS[@]}"; do
+        core_args+=(--compare-to "$previous_manifest")
+      done
     fi
     run_step "core_soak" "${core_args[@]}" || core_exit=$?
   else
@@ -796,8 +857,10 @@ if [[ "$RUN_CORE" -eq 1 ]]; then
       --max-proxy-adv-transition-churn-delta 1
       --out-dir "$CORE_DIR"
     )
-    if [[ -n "$PREVIOUS_CORE_MANIFEST" ]]; then
-      core_args+=(--compare-to "$PREVIOUS_CORE_MANIFEST")
+    if [[ "${#PREVIOUS_CORE_MANIFESTS[@]}" -gt 0 ]]; then
+      for previous_manifest in "${PREVIOUS_CORE_MANIFESTS[@]}"; do
+        core_args+=(--compare-to "$previous_manifest")
+      done
     fi
     run_step "core_soak" "${core_args[@]}" || core_exit=$?
     render_step_views "$CORE_DIR"
@@ -834,8 +897,10 @@ if [[ "$RUN_DISPLAY" -eq 1 ]]; then
         --lane hardware-test-parse
       )
     fi
-    if [[ -n "$PREVIOUS_DISPLAY_MANIFEST" ]]; then
-      display_args+=(--compare-to "$PREVIOUS_DISPLAY_MANIFEST")
+    if [[ "${#PREVIOUS_DISPLAY_MANIFESTS[@]}" -gt 0 ]]; then
+      for previous_manifest in "${PREVIOUS_DISPLAY_MANIFESTS[@]}"; do
+        display_args+=(--compare-to "$previous_manifest")
+      done
     fi
     run_step "display_soak" "${display_args[@]}" || display_exit=$?
   else
@@ -854,8 +919,10 @@ if [[ "$RUN_DISPLAY" -eq 1 ]]; then
       --max-proxy-adv-transition-churn-delta 1
       --out-dir "$DISPLAY_DIR"
     )
-    if [[ -n "$PREVIOUS_DISPLAY_MANIFEST" ]]; then
-      display_args+=(--compare-to "$PREVIOUS_DISPLAY_MANIFEST")
+    if [[ "${#PREVIOUS_DISPLAY_MANIFESTS[@]}" -gt 0 ]]; then
+      for previous_manifest in "${PREVIOUS_DISPLAY_MANIFESTS[@]}"; do
+        display_args+=(--compare-to "$previous_manifest")
+      done
     fi
     run_step "display_soak" "${display_args[@]}" || display_exit=$?
     render_step_views "$DISPLAY_DIR"

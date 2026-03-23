@@ -7,6 +7,7 @@ import argparse
 import json
 import math
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -52,8 +53,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--compare-to",
-        default="",
-        help="Optional baseline manifest for run-to-run or commit-to-commit comparison",
+        action="append",
+        default=[],
+        help="Optional baseline manifest for run-to-run or commit-to-commit comparison (repeat for a baseline window)",
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of human-readable text")
     return parser.parse_args()
@@ -277,6 +279,10 @@ def _format_num(value: Optional[float]) -> str:
     return f"{value:.3f}"
 
 
+def _median(values: Sequence[float]) -> Optional[float]:
+    return _percentile(list(values), 50.0)
+
+
 def _pct_delta(current: float, baseline: Optional[float]) -> Optional[float]:
     if baseline is None:
         return None
@@ -341,6 +347,28 @@ def _track_key(manifest: dict[str, Any]) -> tuple[str, str, str, str]:
     )
 
 
+def _normalize_baseline_paths(
+    baseline_manifest_paths: Optional[Path | Sequence[Path]],
+) -> list[Path]:
+    if baseline_manifest_paths is None:
+        return []
+    if isinstance(baseline_manifest_paths, Path):
+        return [baseline_manifest_paths]
+    return [path for path in baseline_manifest_paths if isinstance(path, Path)]
+
+
+def _baseline_result(candidate: dict[str, Any]) -> str:
+    return str(candidate.get("result", candidate.get("base_result", "")))
+
+
+def _baseline_strategy_label(candidate_count: int) -> str:
+    if candidate_count <= 0:
+        return "none"
+    if candidate_count == 1:
+        return "single_baseline"
+    return "median_last_3_trustworthy"
+
+
 def _build_metric_map(
     policies: list[MetricPolicy],
     records: list[dict[str, Any]],
@@ -376,7 +404,7 @@ def _build_metric_map(
 def score_run(
     manifest_path: Path,
     catalog_path: Path,
-    baseline_manifest_path: Optional[Path] = None,
+    baseline_manifest_paths: Optional[Path | Sequence[Path]] = None,
 ) -> dict[str, Any]:
     manifest = load_manifest(manifest_path)
     policies = load_catalog(catalog_path)
@@ -387,17 +415,55 @@ def score_run(
     if not executed_tracks:
         executed_tracks = {str(aggregate.suite_or_profile) for aggregate in current_map.values()}
 
+    baseline_paths = _normalize_baseline_paths(baseline_manifest_paths)
     baseline_manifest: Optional[dict[str, Any]] = None
-    baseline_map: dict[tuple[str, str], MetricAggregate] = {}
+    baseline_values: dict[tuple[str, str], float] = {}
     comparison_kind = "no_baseline"
+    baseline_candidates: list[dict[str, Any]] = []
+    selected_candidates: list[dict[str, Any]] = []
     unsupported_metric_names = _unsupported_metric_names(manifest)
-    if baseline_manifest_path is not None and baseline_manifest_path.exists():
+    for baseline_manifest_path in baseline_paths:
+        if not baseline_manifest_path.exists():
+            continue
         candidate = load_manifest(baseline_manifest_path)
-        if _track_key(candidate) == _track_key(manifest):
-            baseline_manifest = candidate
-            baseline_records = load_metrics(baseline_manifest_path, candidate)
-            baseline_map, _ = _build_metric_map(policies, baseline_records, candidate)
-            comparison_kind = "run_variance" if candidate.get("git_sha") == manifest.get("git_sha") else "commit_regression"
+        if _track_key(candidate) != _track_key(manifest):
+            continue
+        candidate_result = _baseline_result(candidate)
+        if candidate_result not in {"PASS", "PASS_WITH_WARNINGS", "NO_BASELINE"}:
+            continue
+        baseline_records = load_metrics(baseline_manifest_path, candidate)
+        baseline_map, _ = _build_metric_map(policies, baseline_records, candidate)
+        baseline_candidates.append(
+            {
+                "path": baseline_manifest_path,
+                "manifest": candidate,
+                "result": candidate_result,
+                "metrics": baseline_map,
+            }
+        )
+
+    if baseline_candidates:
+        passing_candidates = [
+            candidate
+            for candidate in baseline_candidates
+            if candidate["result"] in {"PASS", "PASS_WITH_WARNINGS"}
+        ]
+        selected_candidates = passing_candidates if passing_candidates else baseline_candidates
+        baseline_manifest = selected_candidates[0]["manifest"]
+        grouped_baselines: dict[tuple[str, str], list[float]] = {}
+        for candidate in selected_candidates:
+            for key, aggregate in candidate["metrics"].items():
+                grouped_baselines.setdefault(key, []).append(aggregate.value)
+        for key, values in grouped_baselines.items():
+            median = _median(values)
+            if median is not None:
+                baseline_values[key] = median
+        if selected_candidates:
+            same_git = all(
+                str(candidate["manifest"].get("git_sha")) == str(manifest.get("git_sha"))
+                for candidate in selected_candidates
+            )
+            comparison_kind = "run_variance" if same_git else "commit_regression"
 
     metric_results: list[dict[str, Any]] = []
     hard_failures = 0
@@ -410,12 +476,12 @@ def score_run(
     for key in sorted(current_map):
         current = current_map[key]
         policy = policy_map[key]
-        baseline = baseline_map.get(key)
+        baseline_value = baseline_values.get(key)
         absolute_state, absolute_message = _absolute_state(policy, current.value)
         regression_state, classification, regression_message = _regression_state(
             policy,
             current.value,
-            baseline.value if baseline else None,
+            baseline_value,
         )
         score_status = "pass"
         messages = [msg for msg in [absolute_message, regression_message] if msg]
@@ -453,9 +519,9 @@ def score_run(
                 "score_level": policy.score_level,
                 "required": policy.required,
                 "current_value": current.value,
-                "baseline_value": baseline.value if baseline else None,
-                "delta_abs": None if baseline is None else current.value - baseline.value,
-                "delta_pct": _pct_delta(current.value, baseline.value if baseline else None),
+                "baseline_value": baseline_value,
+                "delta_abs": None if baseline_value is None else current.value - baseline_value,
+                "delta_pct": _pct_delta(current.value, baseline_value),
                 "sample_count": current.sample_count,
                 "classification": classification,
                 "absolute_state": absolute_state,
@@ -569,10 +635,24 @@ def score_run(
             "selected_segment": manifest.get("selected_segment"),
         },
         "baseline_manifest": None if baseline_manifest is None else {
-            "path": str(baseline_manifest_path),
+            "path": str(selected_candidates[0]["path"]),
             "run_id": baseline_manifest["run_id"],
             "git_sha": baseline_manifest["git_sha"],
             "git_ref": baseline_manifest["git_ref"],
+        },
+        "baseline_window": {
+            "strategy": _baseline_strategy_label(len(selected_candidates) if baseline_candidates else 0),
+            "candidate_count": len(selected_candidates) if baseline_candidates else 0,
+            "candidates": [
+                {
+                    "path": str(candidate["path"]),
+                    "run_id": str(candidate["manifest"].get("run_id", "")),
+                    "git_sha": str(candidate["manifest"].get("git_sha", "")),
+                    "git_ref": str(candidate["manifest"].get("git_ref", "")),
+                    "result": str(candidate["result"]),
+                }
+                for candidate in (selected_candidates if baseline_candidates else [])
+            ],
         },
         "comparison_kind": comparison_kind,
         "result": final_result,
@@ -604,6 +684,7 @@ def score_run(
 def render_human(result: dict[str, Any]) -> str:
     manifest = result["manifest"]
     baseline = result.get("baseline_manifest")
+    baseline_window = result.get("baseline_window") or {}
     lines = [
         "# Hardware Run Score",
         "",
@@ -627,6 +708,9 @@ def render_human(result: dict[str, Any]) -> str:
         lines.append(f"- Selected segment: `{manifest['selected_segment']}`")
     if baseline:
         lines.append(f"- Baseline git: `{baseline['git_sha']}` ({baseline['git_ref']})")
+    if baseline_window.get("strategy") and baseline_window.get("strategy") != "none":
+        lines.append(f"- Baseline strategy: `{baseline_window['strategy']}`")
+        lines.append(f"- Baseline candidates: {baseline_window.get('candidate_count', 0)}")
 
     summary = result["summary"]
     lines.extend(
@@ -676,10 +760,10 @@ def main() -> int:
     args = parse_args()
     manifest_path = Path(args.manifest).resolve()
     catalog_path = Path(args.catalog).resolve()
-    baseline_path = Path(args.compare_to).resolve() if args.compare_to else None
+    baseline_paths = [Path(path).resolve() for path in args.compare_to if path]
 
     try:
-        result = score_run(manifest_path, catalog_path, baseline_path)
+        result = score_run(manifest_path, catalog_path, baseline_paths)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 3

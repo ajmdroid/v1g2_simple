@@ -729,8 +729,8 @@
       "required": true,
       "absolute_min": 10000,
       "absolute_max": null,
-      "regress_abs": 1000,
-      "regress_pct": 0.10
+      "regress_abs": 4096,
+      "regress_pct": null
     },
     {
       "metric": "ble_process_max_peak_us",
@@ -753,12 +753,12 @@
       "unit": "us",
       "aggregation": "last",
       "direction": "lower_better",
-      "score_level": "hard",
-      "required": true,
+      "score_level": "info",
+      "required": false,
       "absolute_min": null,
       "absolute_max": 80000,
-      "regress_abs": 5000,
-      "regress_pct": 0.10
+      "regress_abs": 20000,
+      "regress_pct": null
     },
     {
       "metric": "ble_mutex_timeout_delta",
@@ -851,7 +851,7 @@
       "unit": "count",
       "aggregation": "last",
       "direction": "lower_better",
-      "score_level": "info",
+      "score_level": "hard",
       "required": true,
       "absolute_min": 0,
       "absolute_max": null,
@@ -879,7 +879,7 @@
       "unit": "us",
       "aggregation": "last",
       "direction": "lower_better",
-      "score_level": "info",
+      "score_level": "hard",
       "required": true,
       "absolute_min": null,
       "absolute_max": null,

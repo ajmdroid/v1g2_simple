@@ -115,6 +115,49 @@ def soak_metric(track: str, metric: str, value: float) -> dict[str, object]:
     }
 
 
+def standard_soak_records(
+    track: str = "drive_wifi_ap",
+    *,
+    dma_largest_min_bytes: float = 14000,
+    disp_pipe_max_peak_us: float = 30000,
+    disp_pipe_p95_us: float = 21000,
+    display_updates_delta: float | None = None,
+) -> list[dict[str, object]]:
+    records = [
+        soak_metric(track, "metrics_ok_samples", 10),
+        soak_metric(track, "rx_packets_delta", 120),
+        soak_metric(track, "parse_successes_delta", 120),
+        soak_metric(track, "parse_failures_delta", 0),
+        soak_metric(track, "queue_drops_delta", 0),
+        soak_metric(track, "perf_drop_delta", 0),
+        soak_metric(track, "event_drop_delta", 0),
+        soak_metric(track, "oversize_drops_delta", 0),
+        soak_metric(track, "loop_max_peak_us", 200000),
+        soak_metric(track, "flush_max_peak_us", 30000),
+        soak_metric(track, "wifi_max_peak_us", 3000),
+        soak_metric(track, "ble_drain_max_peak_us", 5000),
+        soak_metric(track, "sd_max_peak_us", 10000),
+        soak_metric(track, "fs_max_peak_us", 10000),
+        soak_metric(track, "queue_high_water_peak", 4),
+        soak_metric(track, "wifi_connect_deferred_delta", 1),
+        soak_metric(track, "dma_free_min_bytes", 25000),
+        soak_metric(track, "dma_largest_min_bytes", dma_largest_min_bytes),
+        soak_metric(track, "ble_process_max_peak_us", 40000),
+        soak_metric(track, "disp_pipe_max_peak_us", disp_pipe_max_peak_us),
+        soak_metric(track, "ble_mutex_timeout_delta", 0),
+        soak_metric(track, "display_skips_delta", 0),
+        soak_metric(track, "reconnects_delta", 0),
+        soak_metric(track, "disconnects_delta", 0),
+        soak_metric(track, "gps_obs_drops_delta", 0),
+        soak_metric(track, "wifi_p95_us", 1800),
+        soak_metric(track, "disp_pipe_p95_us", disp_pipe_p95_us),
+        soak_metric(track, "dma_fragmentation_pct_p95", 18),
+    ]
+    if display_updates_delta is not None:
+        records.append(soak_metric(track, "display_updates_delta", display_updates_delta))
+    return records
+
+
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(ROOT / "tools" / "score_hardware_run.py"), *args],
@@ -364,6 +407,199 @@ def test_drive_wifi_ap_loop_peak_is_informational(tmpdir: Path) -> None:
     loop_metric = next(metric for metric in result["metrics"] if metric["metric"] == "loop_max_peak_us")
     assert_true(loop_metric["score_level"] == "info", f"wifi-ap loop peak should be info: {loop_metric}")
     assert_true(loop_metric["score_status"] == "info", f"wifi-ap loop regression should stay informational: {loop_metric}")
+
+
+def test_dma_largest_uses_fixed_absolute_threshold(tmpdir: Path) -> None:
+    case_dir = tmpdir / "dma_fixed_threshold"
+    case_dir.mkdir(parents=True, exist_ok=True)
+    current_metrics = case_dir / "current.ndjson"
+    baseline_metrics = case_dir / "baseline.ndjson"
+    current_manifest = case_dir / "current.json"
+    baseline_manifest = case_dir / "baseline.json"
+
+    write_metrics(current_metrics, standard_soak_records(dma_largest_min_bytes=22516))
+    write_metrics(baseline_metrics, standard_soak_records(dma_largest_min_bytes=25588))
+
+    write_manifest(
+        current_manifest,
+        run_id="dma-current",
+        git_sha="abc1234",
+        git_ref="dev",
+        run_kind="real_fw_soak",
+        board_id="release",
+        env="waveshare-349",
+        lane="real-fw-soak",
+        suite_or_profile="drive_wifi_ap",
+        stress_class="core",
+        result="PASS",
+        metrics_file="current.ndjson",
+        base_result="PASS",
+        tracks=["drive_wifi_ap"],
+    )
+    write_manifest(
+        baseline_manifest,
+        run_id="dma-baseline",
+        git_sha="abc1234",
+        git_ref="dev",
+        run_kind="real_fw_soak",
+        board_id="release",
+        env="waveshare-349",
+        lane="real-fw-soak",
+        suite_or_profile="drive_wifi_ap",
+        stress_class="core",
+        result="PASS",
+        metrics_file="baseline.ndjson",
+        base_result="PASS",
+        tracks=["drive_wifi_ap"],
+    )
+
+    result = score_hardware_run.score_run(current_manifest, CATALOG_PATH, baseline_manifest)
+    dma_metric = next(metric for metric in result["metrics"] if metric["metric"] == "dma_largest_min_bytes")
+    assert_true(result["result"] == "PASS", f"3,072-byte DMA drop should pass fixed threshold scoring: {result}")
+    assert_true(dma_metric["baseline_value"] == 25588, f"unexpected DMA baseline value: {dma_metric}")
+    assert_true(dma_metric["regression_state"] == "pass", f"DMA metric should stay within fixed threshold: {dma_metric}")
+    assert_true(dma_metric["classification"] == "unchanged", f"DMA delta inside threshold should be unchanged: {dma_metric}")
+
+
+def test_multi_baseline_median_ignores_failed_candidates(tmpdir: Path) -> None:
+    case_dir = tmpdir / "median_baseline"
+    case_dir.mkdir(parents=True, exist_ok=True)
+    current_metrics = case_dir / "current.ndjson"
+    current_manifest = case_dir / "current.json"
+    baseline_specs = [
+        ("baseline_latest", 25588, "PASS"),
+        ("baseline_failed", 50000, "FAIL"),
+        ("baseline_mid", 21492, "PASS"),
+        ("baseline_oldest", 21492, "PASS_WITH_WARNINGS"),
+    ]
+    baseline_paths: list[Path] = []
+
+    write_metrics(current_metrics, standard_soak_records(dma_largest_min_bytes=22516))
+    write_manifest(
+        current_manifest,
+        run_id="median-current",
+        git_sha="abc1234",
+        git_ref="dev",
+        run_kind="real_fw_soak",
+        board_id="release",
+        env="waveshare-349",
+        lane="real-fw-soak",
+        suite_or_profile="drive_wifi_ap",
+        stress_class="core",
+        result="PASS",
+        metrics_file="current.ndjson",
+        base_result="PASS",
+        tracks=["drive_wifi_ap"],
+    )
+
+    for name, dma_value, result_name in baseline_specs:
+        metrics_path = case_dir / f"{name}.ndjson"
+        manifest_path = case_dir / f"{name}.json"
+        write_metrics(metrics_path, standard_soak_records(dma_largest_min_bytes=dma_value))
+        write_manifest(
+            manifest_path,
+            run_id=name,
+            git_sha="abc1234",
+            git_ref="dev",
+            run_kind="real_fw_soak",
+            board_id="release",
+            env="waveshare-349",
+            lane="real-fw-soak",
+            suite_or_profile="drive_wifi_ap",
+            stress_class="core",
+            result=result_name,
+            metrics_file=metrics_path.name,
+            base_result=result_name,
+            tracks=["drive_wifi_ap"],
+        )
+        baseline_paths.append(manifest_path)
+
+    result = score_hardware_run.score_run(current_manifest, CATALOG_PATH, baseline_paths)
+    dma_metric = next(metric for metric in result["metrics"] if metric["metric"] == "dma_largest_min_bytes")
+    baseline_window = result["baseline_window"]
+
+    assert_true(result["result"] == "PASS", f"median baseline should keep clean DMA run passing: {result}")
+    assert_true(dma_metric["baseline_value"] == 21492, f"expected median DMA baseline of 21492: {dma_metric}")
+    assert_true(baseline_window["strategy"] == "median_last_3_trustworthy", f"unexpected baseline strategy: {baseline_window}")
+    assert_true(baseline_window["candidate_count"] == 3, f"failed baseline should be ignored: {baseline_window}")
+    assert_true(
+        [candidate["result"] for candidate in baseline_window["candidates"]] == ["PASS", "PASS", "PASS_WITH_WARNINGS"],
+        f"unexpected selected baseline candidates: {baseline_window}",
+    )
+    assert_true(
+        result["baseline_manifest"]["run_id"] == "baseline_latest",
+        f"newest passing baseline should remain provenance anchor: {result}",
+    )
+
+
+def test_disp_pipe_peak_spike_is_diagnostic_only(tmpdir: Path) -> None:
+    case_dir = tmpdir / "display_peak_diagnostic"
+    case_dir.mkdir(parents=True, exist_ok=True)
+    current_metrics = case_dir / "current.ndjson"
+    baseline_metrics = case_dir / "baseline.ndjson"
+    current_manifest = case_dir / "current.json"
+    baseline_manifest = case_dir / "baseline.json"
+
+    write_metrics(
+        current_metrics,
+        standard_soak_records(
+            disp_pipe_max_peak_us=46817,
+            disp_pipe_p95_us=27003.7,
+            display_updates_delta=40,
+        ),
+    )
+    write_metrics(
+        baseline_metrics,
+        standard_soak_records(
+            disp_pipe_max_peak_us=27320,
+            disp_pipe_p95_us=26902.0,
+            display_updates_delta=38,
+        ),
+    )
+
+    write_manifest(
+        current_manifest,
+        run_id="display-current",
+        git_sha="abc1234",
+        git_ref="dev",
+        run_kind="real_fw_soak",
+        board_id="release",
+        env="waveshare-349",
+        lane="real-fw-soak",
+        suite_or_profile="drive_wifi_ap",
+        stress_class="display_preview",
+        result="PASS",
+        metrics_file="current.ndjson",
+        base_result="PASS",
+        tracks=["drive_wifi_ap"],
+    )
+    write_manifest(
+        baseline_manifest,
+        run_id="display-baseline",
+        git_sha="abc1234",
+        git_ref="dev",
+        run_kind="real_fw_soak",
+        board_id="release",
+        env="waveshare-349",
+        lane="real-fw-soak",
+        suite_or_profile="drive_wifi_ap",
+        stress_class="display_preview",
+        result="PASS",
+        metrics_file="baseline.ndjson",
+        base_result="PASS",
+        tracks=["drive_wifi_ap"],
+    )
+
+    result = score_hardware_run.score_run(current_manifest, CATALOG_PATH, baseline_manifest)
+    peak_metric = next(metric for metric in result["metrics"] if metric["metric"] == "disp_pipe_max_peak_us")
+    p95_metric = next(metric for metric in result["metrics"] if metric["metric"] == "disp_pipe_p95_us")
+
+    assert_true(result["result"] == "PASS", f"single-frame display spike should not fail trend scoring: {result}")
+    assert_true(peak_metric["score_level"] == "info", f"display peak should be diagnostic-only: {peak_metric}")
+    assert_true(peak_metric["required"] is False, f"display peak should not be required: {peak_metric}")
+    assert_true(peak_metric["score_status"] != "fail", f"display peak should never hard-fail trend scoring: {peak_metric}")
+    assert_true(p95_metric["score_level"] == "hard", f"display p95 should be the hard gate: {p95_metric}")
+    assert_true(p95_metric["score_status"] == "pass", f"flat display p95 should keep the run clean: {p95_metric}")
 
 
 def test_optional_metric_gap_warns_but_is_not_inconclusive(tmpdir: Path) -> None:
@@ -778,6 +1014,10 @@ def main() -> int:
         tmpdir = Path(tmp)
         test_no_baseline_and_run_variance_commit_regression(tmpdir)
         test_selector_and_track_matching(tmpdir)
+        test_drive_wifi_ap_loop_peak_is_informational(tmpdir)
+        test_dma_largest_uses_fixed_absolute_threshold(tmpdir)
+        test_multi_baseline_median_ignores_failed_candidates(tmpdir)
+        test_disp_pipe_peak_spike_is_diagnostic_only(tmpdir)
         test_optional_metric_gap_warns_but_is_not_inconclusive(tmpdir)
         test_unsupported_metrics_do_not_fail_run(tmpdir)
         test_uncataloged_metric_rejected(tmpdir)
