@@ -86,7 +86,7 @@ void test_start_runs_existing_auto_push_path() {
     profileManager.loadableProfileName = "Road";
     profileManager.loadableProfile = makeProfile("Road", 0xFF);
 
-    module.start(1);
+    module.queueSlotPush(1);
 
     TEST_ASSERT_TRUE(module.isActive());
     TEST_ASSERT_EQUAL_UINT32(1, perfCounters.autoPushStarts.load());
@@ -201,8 +201,8 @@ void test_start_while_active_does_not_override_inflight_request() {
     profileManager.loadableProfileName = "Road";
     profileManager.loadableProfile = makeProfile("Road", 0xFF);
 
-    module.start(1);
-    module.start(2);
+    module.queueSlotPush(1);
+    module.queueSlotPush(2);
 
     TEST_ASSERT_TRUE(module.isActive());
     TEST_ASSERT_EQUAL_UINT32(1, perfCounters.autoPushStarts.load());

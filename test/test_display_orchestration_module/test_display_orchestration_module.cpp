@@ -62,7 +62,7 @@ void setUp() {
     parser.reset();
     gpsRuntime = GpsRuntimeModule{};
     lockout = LockoutOrchestrationModule{};
-    volumeFade.reset();
+    volumeFade = VolumeFadeModule{};
     speedMute = SpeedMuteModule{};
     settingsManager = SettingsManager{};
     beginModule();

@@ -90,17 +90,6 @@ AutoPushModule::QueueResult AutoPushModule::queueSlotPush(int slotIndex,
         clampedIndex, slot, false, V1Profile{}, false, activateSlot, true, updateProfileIndicator);
 }
 
-void AutoPushModule::start(int slotIndex) {
-    if (queueSlotPush(slotIndex) != QueueResult::QUEUED) {
-        return;
-    }
-
-    const int clampedIndex = std::max(0, std::min(2, slotIndex));
-    AUTO_PUSH_LOGF("[AutoPush] V1 connected - applying '%s' profile (slot %d)...\n",
-                   slotNameForIndex(clampedIndex),
-                   clampedIndex);
-}
-
 AutoPushModule::QueueResult AutoPushModule::queuePushNow(const PushNowRequest& request) {
     if (!settings || !profiles || !bleClient || !display) {
         return QueueResult::PROFILE_LOAD_FAILED;

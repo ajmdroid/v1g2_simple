@@ -51,7 +51,6 @@ void test_fade_triggers_after_delay() {
     auto ctx = makeCtx(true, 1000, 7, 34700);
     auto action1 = fade.process(ctx);
     TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, action1.type);
-    TEST_ASSERT_TRUE(fade.isTracking());  // original captured
 
     ctx.now = 3500;  // beyond delay (>=2s later)
     auto action2 = fade.process(ctx);
@@ -135,13 +134,11 @@ void test_alert_clear_does_not_restore_when_never_faded() {
     auto ctx = makeCtx(true, 1000, 5, 24150);
     auto start = fade.process(ctx);
     TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, start.type);
-    TEST_ASSERT_TRUE(fade.isTracking());
 
     // Alert clears with a different current volume (e.g., user/external change).
     auto clearCtx = makeCtx(false, 1200, 1, 0);
     auto restore = fade.process(clearCtx);
     TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, restore.type);
-    TEST_ASSERT_FALSE(fade.isTracking());
 }
 
 void test_alert_clear_restores_when_fade_command_inflight_and_volume_stale() {
@@ -245,7 +242,6 @@ void test_restore_retries_stop_after_pending_window_expires() {
     auto clearCtx = makeCtx(false, 2300, 1, 0);
     auto restore1 = fade.process(clearCtx);
     TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore1.type);
-    TEST_ASSERT_TRUE(fade.isTracking());
 
     // While pending window is open, retries continue.
     auto retryCtx = makeCtx(false, 2400, 1, 0);
@@ -256,7 +252,6 @@ void test_restore_retries_stop_after_pending_window_expires() {
     auto expiredCtx = makeCtx(false, 3900, 1, 0);
     auto none = fade.process(expiredCtx);
     TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, none.type);
-    TEST_ASSERT_FALSE(fade.isTracking());
 }
 
 void runAllTests() {

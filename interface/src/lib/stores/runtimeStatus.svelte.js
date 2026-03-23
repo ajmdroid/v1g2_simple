@@ -130,7 +130,7 @@ function hasActiveGpsConsumers() {
 	return gpsConsumers.size > 0;
 }
 
-export async function fetchRuntimeStatus() {
+async function fetchRuntimeStatus() {
 	if (statusFetchInFlight) return;
 	statusFetchInFlight = true;
 	const fetchVersion = stateVersion;

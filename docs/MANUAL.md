@@ -971,8 +971,6 @@ void play_band_only(AlertBand band);
 // Direction-only announcement: "ahead", "behind", "side" (optional bogey count)
 void play_direction_only(AlertDirection dir, uint8_t bogeyCount = 0);
 
-// Compatibility note: play_bogey_breakdown(...) is retained for legacy/tests but is not used by the current production voice flow.
-
 // Threat escalation: "K 24.150 behind 2 bogeys, 1 ahead, 1 behind" (full context)
 void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection direction,
                             uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);

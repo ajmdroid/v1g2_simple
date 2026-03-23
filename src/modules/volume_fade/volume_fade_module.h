@@ -70,12 +70,6 @@ public:
     
     // Main decision method
     VolumeFadeAction process(const VolumeFadeContext& ctx);
-    
-    // State management  
-    void reset();               // Reset all tracking state
-    
-    // Returns true if fade logic has captured an original volume (blocks speed boost)
-    bool isTracking() const { return originalVolume != 0xFF; }
 
     /// Inject a one-shot baseline hint from an external volume owner (e.g.
     /// lockout pre-quiet restore).  If a new alert arrives before the V1
@@ -84,6 +78,7 @@ public:
     void setBaselineHint(uint8_t mainVol, uint8_t muteVol, uint32_t nowMs);
     
 private:
+    void reset();
     SettingsManager* settings;
     
     // Tracking state

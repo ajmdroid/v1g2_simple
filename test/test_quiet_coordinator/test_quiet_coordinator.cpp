@@ -34,7 +34,7 @@ void setUp() {
     ble.reset();
     parser.reset();
     lockout = LockoutOrchestrationModule{};
-    volumeFade.reset();
+    volumeFade = VolumeFadeModule{};
     speedMute = SpeedMuteModule{};
     mockMillis = 0;
     mockMicros = 0;

@@ -287,13 +287,6 @@ void V1Display::update(const DisplayState& state) {
     }
     
     if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
-        if (drawRestTelemetryCards(false)) {
-            perfRecordDisplayRenderPath(PerfDisplayRenderPath::CardsOnly);
-            flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
-                        SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT,
-                        DisplayLayout::CONTENT_AVAILABLE_WIDTH,
-                        SECONDARY_ROW_HEIGHT);
-        }
         return;
     }
     
@@ -331,10 +324,8 @@ void V1Display::update(const DisplayState& state) {
                                      now,
                                      flushLeftStrip,
                                      flushRightStrip);
-        const bool cardsChanged = drawRestTelemetryCards(false);
         (void)flushLeftStrip;
         (void)flushRightStrip;
-        (void)cardsChanged;
         DISPLAY_FLUSH();
         lastState = state;
         return;
@@ -426,7 +417,6 @@ void V1Display::update(const DisplayState& state) {
     AlertData emptyPriority;
     stageStartUs = micros();
     drawSecondaryAlertCards(nullptr, 0, emptyPriority, effectiveMuted);
-    drawRestTelemetryCards(true);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::Cards,
                                       micros() - stageStartUs);
 

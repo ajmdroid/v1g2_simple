@@ -77,7 +77,7 @@ void test_perf_display_screen_keeps_camera_reserved_and_unemitted() {
     TEST_ASSERT_EQUAL(std::string::npos, displayUpdate.find("PerfDisplayScreen::Disconnected"));
 }
 
-void test_manual_and_audio_comments_mark_bogey_breakdown_as_legacy_only() {
+void test_bogey_breakdown_has_been_fully_retired() {
     const std::string manual = readTextFile("docs/MANUAL.md");
     const std::string audioHeader = readTextFile("src/audio_beep.h");
     const std::string audioVoice = readTextFile("src/audio_voice.cpp");
@@ -86,13 +86,11 @@ void test_manual_and_audio_comments_mark_bogey_breakdown_as_legacy_only() {
     TEST_ASSERT_FALSE_MESSAGE(audioHeader.empty(), "failed to read src/audio_beep.h");
     TEST_ASSERT_FALSE_MESSAGE(audioVoice.empty(), "failed to read src/audio_voice.cpp");
     TEST_ASSERT_EQUAL(std::string::npos,
-                      manual.find("void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos,
-                          manual.find("Compatibility note: play_bogey_breakdown(...) is retained for legacy/tests but is not used by the current production voice flow."));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos,
-                          audioHeader.find("Compatibility-retained legacy helper for older/tests callers."));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos,
-                          audioVoice.find("Compatibility-retained legacy helper: older/tests callers may still use this,"));
+                      manual.find("play_bogey_breakdown"));
+    TEST_ASSERT_EQUAL(std::string::npos,
+                      audioHeader.find("play_bogey_breakdown"));
+    TEST_ASSERT_EQUAL(std::string::npos,
+                      audioVoice.find("play_bogey_breakdown"));
 }
 
 int main() {
@@ -101,6 +99,6 @@ int main() {
     RUN_TEST(test_wifi_toggle_setup_mode_stays_a_compatibility_wrapper);
     RUN_TEST(test_alert_persistence_update_stays_a_safe_no_op_hook);
     RUN_TEST(test_perf_display_screen_keeps_camera_reserved_and_unemitted);
-    RUN_TEST(test_manual_and_audio_comments_mark_bogey_breakdown_as_legacy_only);
+    RUN_TEST(test_bogey_breakdown_has_been_fully_retired);
     return UNITY_END();
 }

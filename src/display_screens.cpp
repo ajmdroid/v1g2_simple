@@ -102,7 +102,6 @@ void V1Display::showResting(bool forceRedraw) {
         // Reset secondary alert card state, then draw resting telemetry cards.
         AlertData emptyPriority;
         drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
-        drawRestTelemetryCards(true);
 
         lastRestingPaletteRevision = paletteRevision;
         lastRestingProfileSlot = profileSlot;

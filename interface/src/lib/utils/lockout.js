@@ -7,8 +7,8 @@ export const LOCKOUT_EVENTS_LIMIT = 24;
 export const LOCKOUT_ZONES_LIMIT = 32;
 
 // --- Unit conversions ---
-export const FEET_PER_METER = 3.28084;
-export const METERS_PER_RADIUS_E5 = 1.11;
+const FEET_PER_METER = 3.28084;
+const METERS_PER_RADIUS_E5 = 1.11;
 export const FEET_PER_RADIUS_E5 = METERS_PER_RADIUS_E5 * FEET_PER_METER;
 
 // --- Learner defaults / ranges ---
@@ -22,8 +22,8 @@ export const LEARNER_RADIUS_E5_DEFAULT = 135;
 export const LEARNER_RADIUS_E5_MIN = 45;
 export const LEARNER_RADIUS_E5_MAX = 360;
 export const LEARNER_UNLEARN_COUNT_DEFAULT = 0;
-export const LEARNER_UNLEARN_COUNT_MIN = 0;
-export const LEARNER_UNLEARN_COUNT_MAX = 10;
+const LEARNER_UNLEARN_COUNT_MIN = 0;
+const LEARNER_UNLEARN_COUNT_MAX = 10;
 
 // --- GPS quality defaults / ranges ---
 export const GPS_MAX_HDOP_X10_DEFAULT = 50;

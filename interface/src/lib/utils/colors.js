@@ -1,4 +1,4 @@
-export const COLOR_BOOLEAN_KEYS = new Set([
+const COLOR_BOOLEAN_KEYS = new Set([
 	'freqUseBandColor',
 	'hideWifiIcon',
 	'hideProfileIndicator',
@@ -50,7 +50,7 @@ export const COLOR_PARAM_ORDER = [
 	'brightness'
 ];
 
-export const DEFAULT_COLORS = {
+const DEFAULT_COLORS = {
 	bogey: 0xF800,
 	freq: 0xF800,
 	freqUseBandColor: false,

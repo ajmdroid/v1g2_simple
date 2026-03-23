@@ -197,8 +197,6 @@ private:
     
     // Multi-alert card row
     void drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);
-    // Resting telemetry cards
-    bool drawRestTelemetryCards(bool forceRedraw = false);
     // Use centralized constant from display_layout.h
     static constexpr int SECONDARY_ROW_HEIGHT = DisplayLayout::SECONDARY_ROW_HEIGHT;
 

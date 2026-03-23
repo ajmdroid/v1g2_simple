@@ -22,7 +22,6 @@ void play_alert_voice(AlertBand band, AlertDirection direction);
 void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direction,
                           VoiceAlertMode mode, bool includeDirection, uint8_t bogeyCount = 1);
 void play_direction_only(AlertDirection direction, uint8_t bogeyCount = 0);
-void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);
 void play_threat_escalation(AlertBand band, uint16_t freqMHz, AlertDirection direction,
                             uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side);
 void play_band_only(AlertBand band);

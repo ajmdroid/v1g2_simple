@@ -19,15 +19,6 @@ using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 using DisplayLayout::SECONDARY_ROW_HEIGHT;
 
 // ---------------------------------------------------------------------------
-// Rest telemetry cards — stub
-// ---------------------------------------------------------------------------
-
-bool V1Display::drawRestTelemetryCards(bool forceRedraw) {
-    (void)forceRedraw;
-    return false;
-}
-
-// ---------------------------------------------------------------------------
 // Secondary alert cards — mini V1 alert cards at screen bottom
 // With persistence: cards stay visible (greyed) for grace period after alert ends
 // ---------------------------------------------------------------------------

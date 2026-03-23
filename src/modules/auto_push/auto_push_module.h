@@ -44,9 +44,6 @@ public:
                               bool activateSlot = false,
                               bool updateProfileIndicator = true);
 
-    // Kick off auto-push for the given slot index (0-2).
-    void start(int slotIndex);
-
     // Queue an explicit push-now request through the shared executor.
     QueueResult queuePushNow(const PushNowRequest& request);
 
