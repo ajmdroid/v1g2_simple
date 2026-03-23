@@ -170,6 +170,8 @@ void audio_init_buffers() {}
 void audio_process_amp_timeout() {}
 
 #include "../../src/modules/speed_mute/speed_mute_module.cpp"
+#include "../../src/modules/lockout/lockout_runtime_mute_controller.cpp"
+#include "../../src/modules/quiet/quiet_coordinator_module.cpp"
 #include "../../src/modules/display/display_pipeline_module.cpp"
 
 static DisplayMode displayMode = DisplayMode::IDLE;
@@ -178,6 +180,7 @@ static PacketParser parser;
 static V1BLEClient ble;
 static AlertPersistenceModule alertPersistence;
 static VoiceModule voice;
+static QuietCoordinatorModule quiet;
 static DisplayPipelineModule module;
 
 static AlertData makeKAlert(uint16_t freq = 24148) {
@@ -208,7 +211,8 @@ static void beginModule() {
                  &settingsManager,
                  &ble,
                  &alertPersistence,
-                 &voice);
+                 &voice,
+                 &quiet);
 }
 
 void setUp() {
@@ -224,6 +228,7 @@ void setUp() {
     settingsManager = SettingsManager{};
     perfCounters.reset();
     perfExtended.reset();
+    quiet.begin(&ble, &parser);
     beginModule();
 }
 
@@ -316,12 +321,16 @@ void test_alert_gap_recovery_throttle_is_instance_owned() {
     DisplayMode modeB = DisplayMode::IDLE;
     DisplayPipelineModule moduleA;
     DisplayPipelineModule moduleB;
+    QuietCoordinatorModule quietA;
+    QuietCoordinatorModule quietB;
 
     parserA.setActiveBands(BAND_K);
     parserB.setActiveBands(BAND_K);
+    quietA.begin(&bleA, &parserA);
+    quietB.begin(&bleB, &parserB);
 
-    moduleA.begin(&modeA, &displayA, &parserA, &settingsManager, &bleA, &persistenceA, &voiceA);
-    moduleB.begin(&modeB, &displayB, &parserB, &settingsManager, &bleB, &persistenceB, &voiceB);
+    moduleA.begin(&modeA, &displayA, &parserA, &settingsManager, &bleA, &persistenceA, &voiceA, &quietA);
+    moduleB.begin(&modeB, &displayB, &parserB, &settingsManager, &bleB, &persistenceB, &voiceB, &quietB);
 
     mockMillis = 1000;
     mockMicros = 1000 * 1000UL;

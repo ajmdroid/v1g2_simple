@@ -20,6 +20,8 @@ unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
 #endif
 
+#include "../../src/modules/lockout/lockout_runtime_mute_controller.cpp"
+#include "../../src/modules/quiet/quiet_coordinator_module.cpp"
 #include "../../src/modules/display/display_orchestration_module.cpp"
 
 static V1Display display;
@@ -32,9 +34,11 @@ static GpsRuntimeModule gpsRuntime;
 static LockoutOrchestrationModule lockout;
 static VolumeFadeModule volumeFade;
 static SpeedMuteModule speedMute;
+static QuietCoordinatorModule quiet;
 static DisplayOrchestrationModule module;
 
 static void beginModule() {
+    quiet.begin(&ble, &parser);
     module.begin(&display,
                  &ble,
                  &bleQueue,
@@ -45,7 +49,8 @@ static void beginModule() {
                  &gpsRuntime,
                  &lockout,
                  &volumeFade,
-                 &speedMute);
+                 &speedMute,
+                 &quiet);
 }
 
 void setUp() {

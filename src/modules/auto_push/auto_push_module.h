@@ -10,6 +10,7 @@
 #include "v1_profiles.h"       // V1ProfileManager, V1Profile
 #include "ble_client.h"        // V1BLEClient
 #include "display.h"           // V1Display
+class QuietCoordinatorModule;
 
 class AutoPushModule {
 public:
@@ -35,7 +36,8 @@ public:
     void begin(SettingsManager* settingsMgr,
                V1ProfileManager* profileMgr,
                V1BLEClient* ble,
-               V1Display* disp);
+               V1Display* disp,
+               QuietCoordinatorModule* quietCoordinator);
 
     // Queue a slot-driven auto-push through the shared executor.
     QueueResult queueSlotPush(int slotIndex,
@@ -102,6 +104,7 @@ private:
     V1ProfileManager* profiles = nullptr;
     V1BLEClient* bleClient = nullptr;
     V1Display* display = nullptr;
+    QuietCoordinatorModule* quiet = nullptr;
 
     State state;
 };

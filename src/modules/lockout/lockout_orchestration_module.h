@@ -16,6 +16,7 @@ class SystemEventBus;
 struct PerfCounters;
 class TimeService;
 struct GpsRuntimeStatus;
+class QuietCoordinatorModule;
 
 enum class LockoutVolumeCommandType : uint8_t {
     None = 0,
@@ -57,7 +58,8 @@ public:
                SignalCaptureModule* sigCapture,
                SystemEventBus* eventBus,
                PerfCounters* perfCounters,
-               TimeService* timeSvc);
+               TimeService* timeSvc,
+               QuietCoordinatorModule* quietCoordinator);
 
     /// Run the full lockout pipeline for one parsed BLE frame.
     /// @param nowMs                Current millis() timestamp
@@ -85,13 +87,7 @@ public:
     void clearVolumeHint() { volumeHintMain_ = 0xFF; }
 
 private:
-    // Persistent state (was static locals in loop())
-    LockoutRuntimeMuteState muteState_{};
     PreQuietState preQuietState_{};
-    bool overrideUnmuteActive_ = false;
-    uint32_t overrideUnmuteLastRetryMs_ = 0;
-    uint8_t overrideUnmuteRetryCount_ = 0;
-    static constexpr uint8_t MAX_OVERRIDE_UNMUTE_RETRIES = 15;  // 15 × 400ms = 6s
 
     // External volume hint (e.g. from speed volume module).
     // When set (main != 0xFF), pre-quiet captures this instead of DisplayState.
@@ -109,4 +105,5 @@ private:
     SystemEventBus* eventBus_ = nullptr;
     PerfCounters* perfCounters_ = nullptr;
     TimeService* timeSvc_ = nullptr;
+    QuietCoordinatorModule* quiet_ = nullptr;
 };

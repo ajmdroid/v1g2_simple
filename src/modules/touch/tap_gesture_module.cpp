@@ -1,4 +1,5 @@
 #include "tap_gesture_module.h"
+#include "../quiet/quiet_coordinator_module.h"
 
 #ifndef UNIT_TEST
 #include "modules/auto_push/auto_push_module.h"
@@ -12,7 +13,8 @@ void TapGestureModule::begin(TouchHandler* touchHandler,
                              PacketParser* parserPtr,
                              AutoPushModule* autoPushModule,
                              AlertPersistenceModule* alertPersistenceModule,
-                             DisplayMode* displayModePtr) {
+                             DisplayMode* displayModePtr,
+                             QuietCoordinatorModule* quietCoordinator) {
     touch = touchHandler;
     settings = settingsMgr;
     display = displayPtr;
@@ -21,6 +23,7 @@ void TapGestureModule::begin(TouchHandler* touchHandler,
     autoPush = autoPushModule;
     alertPersistence = alertPersistenceModule;
     displayMode = displayModePtr;
+    quiet = quietCoordinator;
 }
 
 void TapGestureModule::process(unsigned long nowMs) {
@@ -46,7 +49,7 @@ void TapGestureModule::process(unsigned long nowMs) {
                       newMuted ? "MUTE_ON" : "MUTE_OFF",
                       reason);
 
-        bool cmdSent = ble->setMute(newMuted);
+        const bool cmdSent = quiet && quiet->sendMute(QuietOwner::TapGesture, newMuted);
         Serial.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
     };
 

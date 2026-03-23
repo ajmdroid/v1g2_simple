@@ -10,6 +10,7 @@
 #include "storage_manager.h"
 #include "settings.h"
 #include "modules/auto_push/auto_push_module.h"
+class QuietCoordinatorModule;
 
 class WifiOrchestrator {
 public:
@@ -18,7 +19,8 @@ public:
                      PacketParser& parser,
                      SettingsManager& settingsManager,
                      StorageManager& storageManager,
-                     AutoPushModule& autoPushModule);
+                     AutoPushModule& autoPushModule,
+                     QuietCoordinatorModule& quietCoordinator);
 
     void ensureCallbacksConfigured();
 
@@ -31,5 +33,6 @@ private:
     SettingsManager& settingsManager;
     StorageManager& storageManager;
     AutoPushModule& autoPushModule;
+    QuietCoordinatorModule& quietCoordinator;
     bool callbacksConfigured = false;
 };

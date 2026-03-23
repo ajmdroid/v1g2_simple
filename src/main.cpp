@@ -72,6 +72,7 @@
 #include "esp_heap_caps.h"
 #include "modules/voice/voice_module.h"
 #include "modules/volume_fade/volume_fade_module.h"
+#include "modules/quiet/quiet_coordinator_module.h"
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_lockout_safety.h"
@@ -160,6 +161,7 @@ DisplayMode displayMode = DisplayMode::IDLE;
 
 // Volume fade module - reduce V1 volume after X seconds of continuous alert
 VolumeFadeModule volumeFadeModule;
+QuietCoordinatorModule quietCoordinatorModule;
 
 // Auto-push profile state machine
 AutoPushModule autoPushModule;
@@ -207,7 +209,8 @@ static WifiOrchestrator& getWifiOrchestrator() {
         parser,
         settingsManager,
         storageManager,
-        autoPushModule);
+        autoPushModule,
+        quietCoordinatorModule);
     return orchestrator;
 }
 
@@ -702,13 +705,15 @@ static void configureAlertAudioDisplayPipeline() {
     alertPersistenceModule.begin(&bleClient, &parser, &display, &settingsManager);
     voiceModule.begin(&settingsManager, &bleClient);
     volumeFadeModule.begin(&settingsManager);
+    quietCoordinatorModule.begin(&bleClient, &parser);
     displayPipelineModule.begin(&displayMode,
                                 &display,
                                 &parser,
                                 &settingsManager,
                                 &bleClient,
                                 &alertPersistenceModule,
-                                &voiceModule);
+                                &voiceModule,
+                                &quietCoordinatorModule);
     displayPipelineModule.setSpeedMuteModule(&speedMuteModule);
 }
 
@@ -737,7 +742,8 @@ static void configureSystemLoopCoreModules() {
                                      &gpsRuntimeModule,
                                      &lockoutOrchestrationModule,
                                      &volumeFadeModule,
-                                     &speedMuteModule);
+                                     &speedMuteModule,
+                                     &quietCoordinatorModule);
 }
 
 static void configureSystemLoopPhaseModules() {
@@ -787,7 +793,8 @@ static void configureLockoutPipelineModules() {
     lockoutOrchestrationModule.begin(&bleClient, &parser, &settingsManager,
                                      &display, &lockoutEnforcer, &lockoutIndex,
                                      &signalCaptureModule,
-                                     &systemEventBus, &perfCounters, &timeService);
+                                     &systemEventBus, &perfCounters, &timeService,
+                                     &quietCoordinatorModule);
     lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
     SettingsRuntimeSync::syncGpsLockoutRuntimeSettings(settingsManager.get(), lockoutLearner);
 }
@@ -994,7 +1001,7 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
 
     initializeBlePreInitAndScan(logBootCheckpoint, logBootStage);
 
-    configureUiInteractionModules();
+    configureUiInteractionModules(quietCoordinatorModule);
     logBootStage("ui_modules");
 
     logBootSummaryAndWifiStartup(bootId, resetReason);

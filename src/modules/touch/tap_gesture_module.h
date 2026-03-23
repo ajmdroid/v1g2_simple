@@ -11,6 +11,7 @@
 
 class AutoPushModule;
 class AlertPersistenceModule;
+class QuietCoordinatorModule;
 
 class TapGestureModule {
 public:
@@ -21,7 +22,8 @@ public:
                PacketParser* parser,
                AutoPushModule* autoPushModule,
                AlertPersistenceModule* alertPersistenceModule,
-               DisplayMode* displayModePtr);
+               DisplayMode* displayModePtr,
+               QuietCoordinatorModule* quietCoordinator);
 
     void process(unsigned long nowMs);
 
@@ -34,6 +36,7 @@ private:
     AutoPushModule* autoPush = nullptr;
     AlertPersistenceModule* alertPersistence = nullptr;
     DisplayMode* displayMode = nullptr;
+    QuietCoordinatorModule* quiet = nullptr;
 
     unsigned long lastTapTime = 0;
     int tapCount = 0;

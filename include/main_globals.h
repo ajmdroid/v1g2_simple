@@ -39,6 +39,7 @@ class TapGestureModule;
 class AlertPersistenceModule;
 class BleQueueModule;
 class SystemEventBus;
+class QuietCoordinatorModule;
 
 #ifndef UNIT_TEST
 class DisplayPipelineModule;

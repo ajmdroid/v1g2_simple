@@ -1,19 +1,22 @@
 #include "wifi_orchestrator_module.h"
 
 #include "settings_sanitize.h"
+#include "../quiet/quiet_coordinator_module.h"
 
 WifiOrchestrator::WifiOrchestrator(WiFiManager& wifiManager,
                                    V1BLEClient& bleClient,
                                    PacketParser& parser,
                                    SettingsManager& settingsManager,
                                    StorageManager& storageManager,
-                                   AutoPushModule& autoPushModule)
+                                   AutoPushModule& autoPushModule,
+                                   QuietCoordinatorModule& quietCoordinator)
     : wifiManager(wifiManager),
       bleClient(bleClient),
       parser(parser),
       settingsManager(settingsManager),
       storageManager(storageManager),
-      autoPushModule(autoPushModule) {}
+      autoPushModule(autoPushModule),
+      quietCoordinator(quietCoordinator) {}
 
 void WifiOrchestrator::ensureCallbacksConfigured() {
     if (!callbacksConfigured) {
@@ -52,7 +55,7 @@ void WifiOrchestrator::configureCallbacks() {
         if (strcmp(cmd, "display") == 0) {
             return bleClient.setDisplayOn(state);
         } else if (strcmp(cmd, "mute") == 0) {
-            return bleClient.setMute(state);
+            return quietCoordinator.sendMute(QuietOwner::WifiCommand, state);
         }
         return false;
     });

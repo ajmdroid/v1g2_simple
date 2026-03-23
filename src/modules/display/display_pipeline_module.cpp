@@ -1,5 +1,7 @@
 #include "display_pipeline_module.h"
 #include "modules/speed_mute/speed_mute_module.h"
+#include "modules/quiet/quiet_coordinator_module.h"
+#include "modules/quiet/quiet_coordinator_voice_templates.h"
 #include "perf_metrics.h"  // perfRecordDisplayRenderUs
 
 void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
@@ -8,7 +10,8 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
                                   SettingsManager* settingsMgr,
                                   V1BLEClient* bleClient,
                                   AlertPersistenceModule* alertPersistenceModule,
-                                  VoiceModule* voiceModule) {
+                                  VoiceModule* voiceModule,
+                                  QuietCoordinatorModule* quietCoordinator) {
     displayMode = displayModePtr;
     display = displayPtr;
     parser = parserPtr;
@@ -16,6 +19,7 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     ble = bleClient;
     alertPersistence = alertPersistenceModule;
     voice = voiceModule;
+    quiet = quietCoordinator;
     lastPersistenceSlot = -1;
     lastRenderedOwner_ = RenderOwner::Unknown;
     lastAlertGapRecoverMs = 0;
@@ -151,27 +155,28 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         voiceCtx.isSuppressed = prioritySuppressed;
         voiceCtx.now = nowMs;
 
-        // Speed mute: suppress voice if low-speed mute active & band not overridden
-        if (!voiceCtx.isSuppressed && speedMute) {
-            const auto& smState = speedMute->getState();
-            if (smState.muteActive && hasRenderablePriority) {
-                if (!speedMute->isBandOverridden(priority.band)) {
+        if (quiet) {
+            quiet->applyVoicePresentation(voiceCtx,
+                                          speedMute,
+                                          prioritySuppressed,
+                                          hasRenderablePriority,
+                                          hasRenderablePriority ? priority.band : BAND_NONE);
+        } else {
+            // Legacy fallback for unit-test wiring without the coordinator.
+            if (!voiceCtx.isSuppressed && speedMute) {
+                const auto& smState = speedMute->getState();
+                if (smState.muteActive && hasRenderablePriority &&
+                    !speedMute->isBandOverridden(priority.band)) {
                     voiceCtx.isSuppressed = true;
                 }
             }
-        }
-
-        // Speed mute band override: when speed-mute lowered vol to 0 the parser
-        // sets state.muted = true.  That isMuted flag (and muteVoiceIfVolZero)
-        // would kill voice for ALL bands — including Laser/Ka — before the
-        // isSuppressed band check above is reached.  Clear the false mute for
-        // bands that are overridden so the voice module can announce them.
-        if (speedMute && hasRenderablePriority) {
-            const auto& smState = speedMute->getState();
-            if (smState.muteActive && speedMute->isBandOverridden(priority.band)) {
-                voiceCtx.isMuted = false;
-                if (voiceCtx.mainVolume == 0) {
-                    voiceCtx.mainVolume = 1;   // Prevent muteVoiceIfVolZero kill
+            if (speedMute && hasRenderablePriority) {
+                const auto& smState = speedMute->getState();
+                if (smState.muteActive && speedMute->isBandOverridden(priority.band)) {
+                    voiceCtx.isMuted = false;
+                    if (voiceCtx.mainVolume == 0) {
+                        voiceCtx.mainVolume = 1;
+                    }
                 }
             }
         }

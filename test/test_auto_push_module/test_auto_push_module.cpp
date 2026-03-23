@@ -5,6 +5,7 @@
 #include "../mocks/v1_profiles.h"
 #include "../mocks/ble_client.h"
 #include "../mocks/display.h"
+#include "../mocks/packet_parser.h"
 
 #include "../../src/perf_metrics.h"
 
@@ -19,12 +20,16 @@ PerfExtendedMetrics perfExtended;
 void perfRecordDisplayRenderUs(uint32_t /*us*/) {}
 void perfRecordDisplayScenarioRenderUs(uint32_t /*us*/) {}
 
+#include "../../src/modules/lockout/lockout_runtime_mute_controller.cpp"
+#include "../../src/modules/quiet/quiet_coordinator_module.cpp"
 #include "../../src/modules/auto_push/auto_push_module.cpp"
 
 SettingsManager settingsManager;
 static V1ProfileManager profileManager;
 static V1BLEClient bleClient;
 static V1Display display;
+static PacketParser parser;
+static QuietCoordinatorModule quiet;
 static AutoPushModule module;
 
 static V1Profile makeProfile(const char* name, uint8_t byte0 = 0xFF) {
@@ -61,9 +66,11 @@ void setUp() {
     profileManager.reset();
     bleClient.reset();
     display.reset();
+    parser.reset();
+    quiet.begin(&bleClient, &parser);
 
     module = AutoPushModule{};
-    module.begin(&settingsManager, &profileManager, &bleClient, &display);
+    module.begin(&settingsManager, &profileManager, &bleClient, &display, &quiet);
 }
 
 void tearDown() {}

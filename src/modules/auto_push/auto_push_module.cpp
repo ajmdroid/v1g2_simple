@@ -1,6 +1,7 @@
 #include "auto_push_module.h"
 
 #include "perf_metrics.h"
+#include "../quiet/quiet_coordinator_module.h"
 
 #define AUTO_PUSH_LOGF(...) do { } while (0)
 #define AUTO_PUSH_LOGLN(msg) do { } while (0)
@@ -17,11 +18,13 @@ const char* slotNameForIndex(int slotIndex) {
 void AutoPushModule::begin(SettingsManager* settingsMgr,
                            V1ProfileManager* profileMgr,
                            V1BLEClient* ble,
-                           V1Display* disp) {
+                           V1Display* disp,
+                           QuietCoordinatorModule* quietCoordinator) {
     settings = settingsMgr;
     profiles = profileMgr;
     bleClient = ble;
     display = disp;
+    quiet = quietCoordinator;
 }
 
 void AutoPushModule::armState(int slotIndex,
@@ -296,8 +299,11 @@ void AutoPushModule::process() {
         case Step::Volume: {
             const uint8_t mainVol = settings->getSlotVolume(state.slotIndex);
             const uint8_t muteVol = settings->getSlotMuteVolume(state.slotIndex);
-            if ((mainVol != 0xFF || muteVol != 0xFF) &&
-                !bleClient->setVolume(mainVol, muteVol)) {
+            const bool volumeChangeNeeded = (mainVol != 0xFF || muteVol != 0xFF);
+            const bool volumeSent =
+                !volumeChangeNeeded ||
+                (quiet && quiet->sendVolume(QuietOwner::AutoPush, mainVol, muteVol));
+            if (!volumeSent) {
                 if (schedulePushNowRetry("setVolume")) {
                     return;
                 }

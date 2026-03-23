@@ -12,6 +12,7 @@
 #include "modules/voice/voice_module.h"
 
 class SpeedMuteModule;
+class QuietCoordinatorModule;
 
 class DisplayPipelineModule {
 public:
@@ -21,7 +22,8 @@ public:
                SettingsManager* settingsMgr,
                V1BLEClient* bleClient,
                AlertPersistenceModule* alertPersistenceModule,
-               VoiceModule* voiceModule);
+               VoiceModule* voiceModule,
+               QuietCoordinatorModule* quietCoordinator);
 
     void setSpeedMuteModule(SpeedMuteModule* module) { speedMute = module; }
 
@@ -48,6 +50,7 @@ private:
     AlertPersistenceModule* alertPersistence = nullptr;
     VoiceModule* voice = nullptr;
     SpeedMuteModule* speedMute = nullptr;
+    QuietCoordinatorModule* quiet = nullptr;
 
     // Mute debounce
     bool debouncedMuteState = false;

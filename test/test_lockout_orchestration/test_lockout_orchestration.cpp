@@ -22,6 +22,7 @@ SettingsManager settingsManager;
 #include "../../src/modules/speed/speed_source_selector.h"
 #include "../../src/time_service.h"
 #include "../../src/modules/lockout/lockout_runtime_mute_controller.cpp"
+#include "../../src/modules/quiet/quiet_coordinator_module.cpp"
 #include "../../src/modules/lockout/lockout_pre_quiet_controller.cpp"
 #include "../../src/modules/gps/gps_lockout_safety.cpp"
 
@@ -140,6 +141,7 @@ static SignalCaptureModule sigCapture;
 static SystemEventBus eventBus;
 static PerfCounters perfCounterState;
 static TimeService timeSvc;
+static QuietCoordinatorModule quiet;
 static GpsRuntimeStatus gps;
 SpeedSourceSelector speedSourceSelector;
 
@@ -177,6 +179,7 @@ void setUp() {
     g_fakeEpochMs = 0;
     g_lastEnforcerEpochMs = -1;
     g_lastEnforcerTzOffsetMinutes = -1;
+    quiet.begin(&ble, &parser);
 
     gps = GpsRuntimeStatus{};
     gps.locationValid = false;
@@ -190,7 +193,8 @@ void setUp() {
                  &sigCapture,
                  &eventBus,
                  &perfCounterState,
-                 &timeSvc);
+                 &timeSvc,
+                 &quiet);
 }
 
 void tearDown() {}
@@ -266,7 +270,8 @@ void test_null_time_service_falls_back_to_zero_epoch_and_offset() {
                  &sigCapture,
                  &eventBus,
                  &perfCounterState,
-                 nullptr);
+                 nullptr,
+                 &quiet);
 
     runOnce(1000);
 

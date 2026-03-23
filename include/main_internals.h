@@ -12,6 +12,8 @@
 #include "esp_system.h"      // esp_reset_reason_t
 #include <ArduinoJson.h>     // JsonDocument (for normalizeLegacyLockoutRadiusScale)
 
+class QuietCoordinatorModule;
+
 // ---- Boot helper declarations (main_boot.cpp) ----
 
 /// Map ESP reset reason enum to human-readable string.
@@ -60,7 +62,7 @@ void restorePendingLearnerCandidates();
 void initializeTouchAndDisplayControls();
 
 /// Configure auto-push + touch interaction modules after storage/BLE setup.
-void configureUiInteractionModules();
+void configureUiInteractionModules(QuietCoordinatorModule& quietCoordinator);
 
 /// Emit boot summary and WiFi startup policy logs.
 void logBootSummaryAndWifiStartup(uint32_t bootId, esp_reset_reason_t resetReason);

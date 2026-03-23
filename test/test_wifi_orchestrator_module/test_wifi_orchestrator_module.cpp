@@ -15,6 +15,8 @@ unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
 #endif
 
+#include "../../src/modules/lockout/lockout_runtime_mute_controller.cpp"
+#include "../../src/modules/quiet/quiet_coordinator_module.cpp"
 #include "../../src/modules/wifi/wifi_orchestrator_module.cpp"
 
 String AutoPushModule::getStatusJson() const {
@@ -37,6 +39,7 @@ PacketParser parserMock;
 SettingsManager settingsManagerMock;
 StorageManager storageManagerMock;
 AutoPushModule autoPushModuleMock;
+QuietCoordinatorModule quietCoordinatorMock;
 WifiOrchestrator* orchestrator = nullptr;
 
 void expectCallbacksBoundOnce() {
@@ -59,13 +62,15 @@ void setUp() {
     settingsManagerMock = SettingsManager{};
     storageManagerMock.reset();
     autoPushModuleMock = AutoPushModule{};
+    quietCoordinatorMock.begin(&bleClientMock, &parserMock);
     orchestrator = new WifiOrchestrator(
         wifiManagerMock,
         bleClientMock,
         parserMock,
         settingsManagerMock,
         storageManagerMock,
-        autoPushModuleMock);
+        autoPushModuleMock,
+        quietCoordinatorMock);
 }
 
 void tearDown() {

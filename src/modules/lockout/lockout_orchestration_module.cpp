@@ -10,6 +10,7 @@
 #include "lockout_pre_quiet_controller.h"
 #include "../gps/gps_lockout_safety.h"
 #include "../gps/gps_runtime_module.h"
+#include "../quiet/quiet_coordinator_module.h"
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
 #include "../../packet_parser.h"
@@ -28,7 +29,8 @@ void LockoutOrchestrationModule::begin(V1BLEClient* ble,
                                        SignalCaptureModule* sigCapture,
                                        SystemEventBus* eventBus,
                                        PerfCounters* perfCounters,
-                                       TimeService* timeSvc) {
+                                       TimeService* timeSvc,
+                                       QuietCoordinatorModule* quietCoordinator) {
     ble_ = ble;
     parser_ = parser;
     settings_ = settings;
@@ -39,6 +41,7 @@ void LockoutOrchestrationModule::begin(V1BLEClient* ble,
     eventBus_ = eventBus;
     perfCounters_ = perfCounters;
     timeSvc_ = timeSvc;
+    quiet_ = quietCoordinator;
 }
 
 LockoutOrchestrationResult LockoutOrchestrationModule::process(
@@ -101,54 +104,13 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
         // Feed lockout decision into display indicator before rendering.
         display_->setLockoutIndicator(effectiveLockoutMute);
 
-        const LockoutRuntimeMuteDecision muteDecision =
-            evaluateLockoutRuntimeMute(lockRes,
-                                      lockoutGuard,
-                                      ble_->isConnected(),
-                                      lockoutDisplayState.muted,
-                                      overrideBandActive,
-                                      muteState_);
-
-        if (muteDecision.sendMute) {
-            ble_->setMute(true);
-            Serial.println("[Lockout] ENFORCE: mute sent to V1");
-        }
-        if (muteDecision.sendUnmute) {
-            ble_->setMute(false);
-            Serial.println("[Lockout] ENFORCE: unmute sent to V1");
-        }
-        if (muteDecision.logGuardBlocked) {
-            Serial.printf("[Lockout] ENFORCE blocked by core guard (%s)\n", lockoutGuard.reason);
-        }
-
-        // Safety override: live Ka/Laser must break through mute.
-        // Retry at a low rate until V1 reports unmuted, capped to avoid
-        // flooding a stuck/noisy link forever.
-        constexpr uint32_t OVERRIDE_UNMUTE_RETRY_MS = 400;
-        const bool needsOverrideUnmute =
-            ble_->isConnected() && overrideBandActive && lockoutDisplayState.muted;
-        if (needsOverrideUnmute) {
-            if (overrideUnmuteRetryCount_ >= MAX_OVERRIDE_UNMUTE_RETRIES) {
-                // Exhausted — stop retrying until condition recycles.
-                if (overrideUnmuteActive_) {
-                    Serial.printf("[Safety] Override unmute exhausted after %u retries\n",
-                                  overrideUnmuteRetryCount_);
-                    overrideUnmuteActive_ = false;
-                }
-            } else if (!overrideUnmuteActive_ ||
-                static_cast<uint32_t>(nowMs - overrideUnmuteLastRetryMs_) >= OVERRIDE_UNMUTE_RETRY_MS) {
-                ble_->setMute(false);
-                overrideUnmuteLastRetryMs_ = nowMs;
-                overrideUnmuteRetryCount_++;
-                if (!overrideUnmuteActive_) {
-                    Serial.println("[Safety] Ka/Laser override active: unmute sent to V1");
-                }
-                overrideUnmuteActive_ = true;
-            }
-        } else {
-            overrideUnmuteActive_ = false;
-            overrideUnmuteLastRetryMs_ = 0;
-            overrideUnmuteRetryCount_ = 0;
+        if (quiet_) {
+            quiet_->processLockoutMute(lockRes,
+                                       lockoutGuard,
+                                       ble_->isConnected(),
+                                       lockoutDisplayState.muted,
+                                       overrideBandActive,
+                                       nowMs);
         }
 
         // Pre-quiet: proactively drop volume when GPS is in a lockout zone.
@@ -202,7 +164,11 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
                 result.volumeCommand.volume = pqDecision.volume;
                 result.volumeCommand.muteVolume = pqDecision.muteVolume;
             }
-            display_->setPreQuietActive(preQuietState_.phase == PreQuietPhase::DROPPED);
+            const bool preQuietActive = preQuietState_.phase == PreQuietPhase::DROPPED;
+            display_->setPreQuietActive(preQuietActive);
+            if (quiet_) {
+                quiet_->setPreQuietActive(preQuietActive);
+            }
         }
     } else {
         // Proxy-connected sessions are display-first:
@@ -216,11 +182,11 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
 }
 
 void LockoutOrchestrationModule::reset() {
-    muteState_ = LockoutRuntimeMuteState{};
     preQuietState_ = PreQuietState{};
-    overrideUnmuteActive_ = false;
-    overrideUnmuteLastRetryMs_ = 0;
-    overrideUnmuteRetryCount_ = 0;
     volumeHintMain_ = 0xFF;
     volumeHintMute_ = 0;
+    if (quiet_) {
+        quiet_->resetLockoutChannel();
+        quiet_->setPreQuietActive(false);
+    }
 }

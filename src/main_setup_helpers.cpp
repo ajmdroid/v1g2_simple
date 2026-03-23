@@ -387,12 +387,16 @@ void initializeTouchAndDisplayControls() {
 
 namespace {
 
-void configureUiAutoPushModule() {
+void configureUiAutoPushModule(QuietCoordinatorModule& quietCoordinator) {
     // Initialize auto-push module after settings/profiles are ready
-    autoPushModule.begin(&settingsManager, &v1ProfileManager, &bleClient, &display);
+    autoPushModule.begin(&settingsManager,
+                         &v1ProfileManager,
+                         &bleClient,
+                         &display,
+                         &quietCoordinator);
 }
 
-void configureUiTouchInteractionModules() {
+void configureUiTouchInteractionModules(QuietCoordinatorModule& quietCoordinator) {
     configureTouchUiModule();
 
     tapGestureModule.begin(&touchHandler,
@@ -402,14 +406,15 @@ void configureUiTouchInteractionModules() {
                            &parser,
                            &autoPushModule,
                            &alertPersistenceModule,
-                           &displayMode);
+                           &displayMode,
+                           &quietCoordinator);
 }
 
 }  // namespace
 
-void configureUiInteractionModules() {
-    configureUiAutoPushModule();
-    configureUiTouchInteractionModules();
+void configureUiInteractionModules(QuietCoordinatorModule& quietCoordinator) {
+    configureUiAutoPushModule(quietCoordinator);
+    configureUiTouchInteractionModules(quietCoordinator);
 }
 
 void logBootSummaryAndWifiStartup(uint32_t bootId, esp_reset_reason_t resetReason) {
