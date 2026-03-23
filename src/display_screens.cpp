@@ -110,7 +110,7 @@ void V1Display::showResting(bool forceRedraw) {
         if (currentScreen != ScreenMode::Resting) {
             DISPLAY_LOG("[DISP] Screen mode: %d -> Resting (showResting)\n", (int)currentScreen);
             perfRecordDisplayScreenTransition(
-                static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
+                perfScreenForMode(currentScreen),
                 PerfDisplayScreen::Resting,
                 millis());
         }
@@ -274,7 +274,7 @@ void V1Display::showScanning() {
 
     if (currentScreen != ScreenMode::Scanning) {
         perfRecordDisplayScreenTransition(
-            static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
+            perfScreenForMode(currentScreen),
             PerfDisplayScreen::Scanning,
             millis());
     }

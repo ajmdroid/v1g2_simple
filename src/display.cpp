@@ -44,6 +44,24 @@ DisplayDirtyFlags dirty;  // definition; header declares extern for sub-modules
 // Use centralized constant from display_layout.h
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 
+PerfDisplayScreen V1Display::perfScreenForMode(ScreenMode mode) {
+    switch (mode) {
+        case ScreenMode::Unknown:
+            return PerfDisplayScreen::Unknown;
+        case ScreenMode::Resting:
+            return PerfDisplayScreen::Resting;
+        case ScreenMode::Scanning:
+            return PerfDisplayScreen::Scanning;
+        case ScreenMode::Disconnected:
+            return PerfDisplayScreen::Unknown;
+        case ScreenMode::Live:
+            return PerfDisplayScreen::Live;
+        case ScreenMode::Persisted:
+            return PerfDisplayScreen::Persisted;
+    }
+    return PerfDisplayScreen::Unknown;
+}
+
 // ============================================================================
 // Volume-zero warning state machine
 // Shows a flashing "VOL 0" warning when the V1 volume is 0, no app is

@@ -429,7 +429,7 @@ void V1Display::update(const DisplayState& state) {
 
     if (currentScreen != ScreenMode::Resting) {
         perfRecordDisplayScreenTransition(
-            static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
+            perfScreenForMode(currentScreen),
             PerfDisplayScreen::Resting,
             millis());
     }
@@ -512,7 +512,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     
     if (currentScreen != ScreenMode::Persisted) {
         perfRecordDisplayScreenTransition(
-            static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
+            perfScreenForMode(currentScreen),
             PerfDisplayScreen::Persisted,
             millis());
     }
@@ -609,7 +609,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         DISPLAY_LOG("[DISP] Entering Live mode (was %d), alertCount=%d\n", 
                     (int)currentScreen, alertCount);
         perfRecordDisplayScreenTransition(
-            static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen)),
+            perfScreenForMode(currentScreen),
             PerfDisplayScreen::Live,
             millis());
     }

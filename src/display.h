@@ -24,6 +24,7 @@
 #ifndef DISPLAY_H
 #define DISPLAY_H
 
+#include <cstdint>
 #include <memory>
 
 // Include display driver abstraction (Arduino_GFX only)
@@ -32,6 +33,8 @@
 #include "../include/color_themes.h"
 #include "../include/display_layout.h"  // Centralized layout constants
 #include "../include/display_ble_context.h"
+
+enum class PerfDisplayScreen : uint8_t;
 
 class V1Display {
 public:
@@ -136,6 +139,7 @@ public:
 
 private:
     enum class ScreenMode { Unknown, Resting, Scanning, Disconnected, Live, Persisted };
+    static PerfDisplayScreen perfScreenForMode(ScreenMode mode);
 
     // Display driver (Arduino_GFX)
     std::unique_ptr<Arduino_ESP32QSPI> bus;

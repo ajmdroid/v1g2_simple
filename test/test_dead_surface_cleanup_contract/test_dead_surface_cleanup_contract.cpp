@@ -60,17 +60,33 @@ void test_alert_persistence_update_stays_a_safe_no_op_hook() {
                       source.find("Future: could handle periodic tasks here"));
 }
 
-void test_perf_display_screen_keeps_camera_reserved_and_unemitted() {
+void test_perf_display_screen_uses_explicit_mapping_and_keeps_retired_values_unemitted() {
     const std::string perfHeader = readTextFile("src/perf_metrics.h");
+    const std::string displayHeader = readTextFile("src/display.h");
+    const std::string displayCore = readTextFile("src/display.cpp");
     const std::string displayScreens = readTextFile("src/display_screens.cpp");
     const std::string displayUpdate = readTextFile("src/display_update.cpp");
 
     TEST_ASSERT_FALSE_MESSAGE(perfHeader.empty(), "failed to read src/perf_metrics.h");
+    TEST_ASSERT_FALSE_MESSAGE(displayHeader.empty(), "failed to read src/display.h");
+    TEST_ASSERT_FALSE_MESSAGE(displayCore.empty(), "failed to read src/display.cpp");
     TEST_ASSERT_FALSE_MESSAGE(displayScreens.empty(), "failed to read src/display_screens.cpp");
     TEST_ASSERT_FALSE_MESSAGE(displayUpdate.empty(), "failed to read src/display_update.cpp");
     TEST_ASSERT_NOT_EQUAL(std::string::npos, perfHeader.find("Camera = 6"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos,
                           perfHeader.find("Current producers emit only Unknown,"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                          displayHeader.find("static PerfDisplayScreen perfScreenForMode(ScreenMode mode);"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                          displayCore.find("PerfDisplayScreen V1Display::perfScreenForMode(ScreenMode mode)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                          displayCore.find("case ScreenMode::Disconnected:"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                          displayCore.find("return PerfDisplayScreen::Unknown;"));
+    TEST_ASSERT_EQUAL(std::string::npos,
+                      displayScreens.find("static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen))"));
+    TEST_ASSERT_EQUAL(std::string::npos,
+                      displayUpdate.find("static_cast<PerfDisplayScreen>(static_cast<uint8_t>(currentScreen))"));
     TEST_ASSERT_EQUAL(std::string::npos, displayScreens.find("PerfDisplayScreen::Camera"));
     TEST_ASSERT_EQUAL(std::string::npos, displayUpdate.find("PerfDisplayScreen::Camera"));
     TEST_ASSERT_EQUAL(std::string::npos, displayScreens.find("PerfDisplayScreen::Disconnected"));
@@ -98,7 +114,7 @@ int main() {
     RUN_TEST(test_removed_camera_label_helper_is_no_longer_declared_or_defined);
     RUN_TEST(test_wifi_toggle_setup_mode_stays_a_compatibility_wrapper);
     RUN_TEST(test_alert_persistence_update_stays_a_safe_no_op_hook);
-    RUN_TEST(test_perf_display_screen_keeps_camera_reserved_and_unemitted);
+    RUN_TEST(test_perf_display_screen_uses_explicit_mapping_and_keeps_retired_values_unemitted);
     RUN_TEST(test_bogey_breakdown_has_been_fully_retired);
     return UNITY_END();
 }
