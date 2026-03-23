@@ -167,7 +167,6 @@ public:
 
     bool getFreshSpeed(uint32_t nowMs, float& speedMphOut, uint32_t& tsMsOut) const;
 
-    int8_t getConnectionRssi() const { return rssi_; }
     const char* getSavedAddress() const { return savedAddress_; }
     uint8_t getSavedAddrType() const { return savedAddrType_; }
     const char* getCachedVinPrefix11() const { return cachedVinPrefix11_; }

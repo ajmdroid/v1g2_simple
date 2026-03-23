@@ -69,7 +69,6 @@ public:
     // the single production display path reconnects with a clean redraw state).
     static void resetChangeTracking();
 
-    // Demo mode
     void showDemo();
     void showBootSplash();
     void showShutdown();       // Shutdown screen with goodbye message
@@ -122,7 +121,6 @@ public:
     // BLE context snapshot — populated by the loop orchestration path so display
     // files never depend on extern V1BLEClient. Freshness is tracked internally.
     void setBleContext(const DisplayBleContext& ctx);
-    const DisplayBleContext& getBleContext() const { return bleCtx_; }
 
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
     // receivingData dims the icon when connected but no V1 packets received recently

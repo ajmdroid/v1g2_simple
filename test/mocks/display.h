@@ -220,10 +220,6 @@ public:
         lastBleContext = ctx;
     }
 
-    const DisplayBleContext& getBleContext() const {
-        return lastBleContext;
-    }
-
     void setBLEProxyStatus(bool proxyEnabled, bool proxyConnected, bool receiving) {
         setBLEProxyStatusCalls++;
         lastBleProxyEnabled = proxyEnabled;

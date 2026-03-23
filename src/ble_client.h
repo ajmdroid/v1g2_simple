@@ -131,14 +131,10 @@ public:
     // Check if BLE proxy is enabled
     bool isProxyEnabled() const { return proxyEnabled; }
     
-    // Check if this is a fresh boot after firmware flash
-    bool isFreshFlashBoot() const { return freshFlashBoot; }
-    
     // Check if proxy is actively advertising (only true after V1 connects)
     bool isProxyAdvertising() const;
 
     void setObdBleArbitrationRequest(ObdBleArbitrationRequest request);
-    ObdBleArbitrationRequest getObdBleArbitrationRequest() const { return obdBleArbitrationRequest_; }
     
     // Debug/test control: force proxy advertising on/off at runtime.
     bool forceProxyAdvertising(bool enable, uint8_t reasonCode = 0);
@@ -199,9 +195,6 @@ public:
     
     // Called by main loop when RESP_USER_BYTES received to complete verification
     void onUserBytesReceived(const uint8_t* bytes);
-    
-    // Check if we're waiting for user bytes verification
-    bool isAwaitingVerification() const { return verifyPending; }
     
     // Disconnect and cleanup
     void disconnect();

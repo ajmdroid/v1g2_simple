@@ -66,7 +66,6 @@ class QuietCoordinatorModule {
 public:
     void begin(V1BLEClient* bleClient, PacketParser* parser);
 
-    void reset();
     void resetLockoutChannel();
 
     bool sendMute(QuietOwner owner, bool muted);
@@ -84,7 +83,6 @@ public:
                                     uint32_t nowMs,
                                     VolumeFadeLike* volumeFade);
     bool retryPendingPreQuietRestore(uint32_t nowMs);
-    bool hasPendingPreQuietRestore() const { return pendingPqRestoreVol_ != 0xFF; }
 
     template <typename SpeedMuteLike, typename LockoutLike, typename VolumeFadeLike>
     bool processSpeedVolume(uint32_t nowMs,
@@ -92,7 +90,6 @@ public:
                             LockoutLike* lockout,
                             VolumeFadeLike* volumeFade);
     bool retryPendingSpeedVolRestore(uint32_t nowMs);
-    bool isSpeedVolumeActive() const { return speedVolActive_; }
 
     template <typename VolumeFadeLike>
     bool executeVolumeFade(uint32_t nowMs,
@@ -113,6 +110,7 @@ public:
     const QuietPresentationState& getPresentationState() const { return presentation_; }
 
 private:
+    void reset();
     void syncCommittedState();
     void refreshPendingState();
 

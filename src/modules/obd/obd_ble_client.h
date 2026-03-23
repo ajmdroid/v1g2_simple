@@ -59,7 +59,6 @@ public:
 
     /// True if GATT client is connected.
     bool isConnected() const;
-    bool isConnectPending() const { return connectPending_; }
     bool beginSecurity();
     bool isSecurityReady() const;
     bool isEncrypted() const;
@@ -81,9 +80,6 @@ public:
 
     /// Query cached RSSI. Updates at most every 2 seconds.
     int8_t getRssi(uint32_t nowMs);
-
-    /// True if init() has been called.
-    bool isInitialized() const { return pClient_ != nullptr; }
 
 private:
     friend class ObdClientCallback;

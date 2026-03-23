@@ -122,14 +122,11 @@ public:
     
     // Status
     bool isConnected() const { return !isStopping() && wifiClientState == WIFI_CLIENT_CONNECTED; }
-    bool isAPActive() const { return setupModeState == SETUP_MODE_AP_ON && apInterfaceEnabled; }
     String getIPAddress() const;  // STA IP when connected
     String getAPIPAddress() const;
     
     // WiFi client (STA) control - connect to external network
-    WifiClientState getWifiClientState() const { return wifiClientState; }
     bool startWifiScan();  // Async scan for networks
-    bool isWifiScanRunning() const { return wifiScanRunning; }
     std::vector<ScannedNetwork> getScannedNetworks();  // Get scan results (clears running flag)
     bool connectToNetwork(const String& ssid,
                           const String& password,

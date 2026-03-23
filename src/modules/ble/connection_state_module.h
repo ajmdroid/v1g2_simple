@@ -32,9 +32,6 @@ public:
     // Call once per loop iteration; returns true if connected
     bool process(unsigned long nowMs);
 
-    // Access current connection state
-    bool isConnected() const { return wasConnected; }
-
 private:
     V1BLEClient* ble = nullptr;
     PacketParser* parser = nullptr;

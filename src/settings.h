@@ -978,10 +978,8 @@ public:
                                   SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
     
     // Batch update methods (don't auto-save, call save() after)
-    void updateAPCredentials(const String& ssid, const String& password) { settings.apSSID = ssid; settings.apPassword = password; }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
     void updateVoiceVolume(uint8_t volume) { settings.voiceVolume = volume; }
-    void updateDisplayStyle(DisplayStyle style) { settings.displayStyle = normalizeDisplayStyle(static_cast<int>(style)); }
     
     // Save all settings to flash
     void save();
@@ -996,8 +994,6 @@ public:
     void load();
     
     // WiFi client (STA) settings - connect to external network
-    bool isWifiClientEnabled() const { return settings.wifiClientEnabled; }
-    const String& getWifiClientSSID() const { return settings.wifiClientSSID; }
     String getWifiClientPassword();  // Retrieves from secure NVS namespace
     void setWifiClientEnabled(bool enabled);
     void setWifiClientCredentials(const String& ssid, const String& password);
