@@ -102,7 +102,7 @@ The display has a built-in speaker that announces alerts:
 ### Secondary Alerts (Optional)
 When enabled, non-priority alerts are announced after the priority stabilizes:
 - **Per-band filters:** Choose which bands (Ka, K, X, Laser) to announce as secondary
-- **Threat escalation:** When a secondary alert ramps up to 3+ bars, announces direction breakdown (e.g., "2 bogeys, 1 ahead, 1 behind")
+- **Threat escalation:** When a secondary alert ramps from weak (≤2 bars) to strong (≥4 bars sustained), announces direction breakdown (e.g., "2 bogeys, 1 ahead, 1 behind")
 
 ### General
 - **Auto-disable:** Voice alerts mute when a phone app is connected
@@ -156,7 +156,7 @@ Set up 3 quick-switch slots that automatically configure your V1:
 Customize every color on the display:
 
 1. Go to `http://192.168.35.5/colors`
-2. **Display Style:** Classic (7-segment) or Modern font
+2. **Display Style:** Classic (7-segment) or Serpentine font
 3. **Custom colors:** Click any color swatch to open the color picker:
    - Band indicators (L, Ka, K, X)
    - Direction arrows (Front, Side, Rear)
@@ -185,7 +185,7 @@ Voice alert options:
 - **Enable Voice Alerts:** Toggle spoken announcements on/off
 - **Mute Voice at Volume 0:** Silence alerts when V1 volume is 0 (warning still plays)
 - **Volume Fade:** Reduce V1 volume after initial alert, restore for new threats
-- **Speed-Based Volume:** Boost V1 volume at highway speeds (requires GPS)
+- **Speed-Based Mute:** Mute V1 alerts below a configurable speed threshold (requires GPS or OBD)
 
 ### GPS & Lockouts (/integrations, /lockouts)
 

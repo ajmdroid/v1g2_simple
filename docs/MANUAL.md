@@ -223,7 +223,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 ### Key Features
 
 1. **BLE Client:** Connects to V1 Gen2 (device names starting with "V1G" or "V1-")
-2. **BLE Server (Proxy):** Advertises as "V1C-LE-S3" for companion app compatibility
+2. **BLE Server (Proxy):** Advertises as "V1-Proxy" for companion app compatibility
 3. **Tap-to-Mute:** Single/double tap during alert toggles mute
 4. **Triple-Tap Profile Cycle:** Switch between 3 auto-push slots when idle
 5. **Web Configuration:** AP mode at 192.168.35.5 for settings
@@ -330,7 +330,7 @@ V1 Gen2 (BLE)
 |-----------|--------|--------|
 | Display draw minimum interval | 25ms (~40fps max) | `DISPLAY_DRAW_MIN_MS` in display_pipeline_module.h |
 | Display update check | 50ms | `DISPLAY_UPDATE_MS` in config.h |
-| Status serial print | 1000ms | main.cpp |
+| Perf metrics report | 5000ms | perf_metrics.cpp via periodic_maintenance_module |
 | Band grace period | 100ms | `BAND_GRACE_MS` in display_update.cpp |
 | Touch debounce | 200ms | touch_handler.cpp |
 | Tap window (triple-tap) | 600ms | `TAP_WINDOW_MS` in tap_gesture_module.h |
@@ -1173,7 +1173,7 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 Controls:
 - **AP Name/Password:** Change WiFi network name and password (AP-only, no station mode)
 - **BLE Proxy:** Enable/disable app forwarding
-- **Proxy Name:** Advertised BLE name (default: "V1C-LE-S3")
+- **Proxy Name:** Advertised BLE name (default: "V1-Proxy")
 - **Device Time:** Read-only runtime clock snapshot sourced by the device (GPS/SNTP/RTC when available)
 
 **Backup & Restore:**

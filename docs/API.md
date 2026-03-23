@@ -500,7 +500,9 @@ Get auto-push status and last push info.
 Get current audio and voice-alert configuration.
 
 **Response:** JSON with `voiceAlertMode`, `voiceDirectionEnabled`, `announceBogeyCount`,
-`muteVoiceIfVolZero`, `voiceVolume`, secondary-alert toggles, and volume-fade settings.
+`muteVoiceIfVolZero`, `voiceVolume`, secondary-alert toggles, volume-fade settings,
+and speed-mute settings (`speedMuteEnabled`, `speedMuteThresholdMph`, `speedMuteHysteresisMph`,
+`speedMuteVolume`, `speedMuteRequireObd`).
 
 ### POST /api/audio/settings
 
@@ -509,7 +511,9 @@ Save audio and voice-alert configuration.
 **Request (form data):** Audio-related fields only, including `voiceAlertMode`,
 `voiceDirectionEnabled`, `announceBogeyCount`, `muteVoiceIfVolZero`, `voiceVolume`,
 `announceSecondaryAlerts`, `secondaryLaser`, `secondaryKa`, `secondaryK`, `secondaryX`,
-`alertVolumeFadeEnabled`, `alertVolumeFadeDelaySec`, and `alertVolumeFadeVolume`.
+`alertVolumeFadeEnabled`, `alertVolumeFadeDelaySec`, `alertVolumeFadeVolume`,
+`speedMuteEnabled`, `speedMuteThresholdMph`, `speedMuteHysteresisMph`,
+`speedMuteVolume`, and `speedMuteRequireObd`.
 
 ---
 
@@ -1146,7 +1150,7 @@ Error response body:
 
 ## Rate Limits
 
-- No explicit rate limiting implemented
+- Most mutating endpoints (POST) are rate-limited via `checkRateLimit()` — requests within the cooldown window receive `429 Too Many Requests`
 - BLE operations are serialized (one at a time)
 - GPS updates: 1Hz maximum
 
@@ -1160,4 +1164,4 @@ Check firmware version via:
 
 ---
 
-*Last updated: February 2026*
+*Last updated: March 2026*

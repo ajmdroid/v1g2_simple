@@ -14,8 +14,8 @@ naming, offline derivation, and how test evidence should be interpreted.
 
 The canonical runtime metric store lives in:
 
-- `/Users/ajmedford/v1g2_simple/src/perf_metrics.h`
-- `/Users/ajmedford/v1g2_simple/src/perf_metrics.cpp`
+- `src/perf_metrics.h`
+- `src/perf_metrics.cpp`
 
 Runtime exporters must serialize from the shared runtime metrics snapshot built
 by the perf layer. Exporters must not resample the same concept independently.
@@ -55,8 +55,8 @@ Compatibility aliases are allowed only at the final export boundary.
 
 Shared offline derivation/schema logic lives in:
 
-- `/Users/ajmedford/v1g2_simple/tools/metric_schema.py`
-- `/Users/ajmedford/v1g2_simple/tools/metric_derivation.py`
+- `tools/metric_schema.py`
+- `tools/metric_derivation.py`
 
 These modules own:
 - canonical derived metric names
@@ -66,17 +66,17 @@ These modules own:
 - percentile/window helper logic reused by tooling
 
 Consumers include:
-- `/Users/ajmedford/v1g2_simple/tools/import_perf_csv.py`
-- `/Users/ajmedford/v1g2_simple/tools/import_drive_log.py`
-- `/Users/ajmedford/v1g2_simple/tools/soak_parse_metrics.py`
-- `/Users/ajmedford/v1g2_simple/scripts/run_real_fw_soak.sh`
+- `tools/import_perf_csv.py`
+- `tools/import_drive_log.py`
+- `tools/soak_parse_metrics.py`
+- `scripts/run_real_fw_soak.sh`
 
 ## Threshold / Policy Authority
 
 Thresholds and scoring policy live in:
 
-- `/Users/ajmedford/v1g2_simple/tools/hardware_metric_catalog.json`
-- `/Users/ajmedford/v1g2_simple/tools/perf_slo_thresholds.json`
+- `tools/hardware_metric_catalog.json`
+- `tools/perf_slo_thresholds.json`
 
 Those files define policy. They are not alternate runtime schemas.
 
