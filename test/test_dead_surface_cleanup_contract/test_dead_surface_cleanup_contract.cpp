@@ -56,7 +56,7 @@ void test_alert_persistence_update_is_fully_removed() {
     TEST_ASSERT_EQUAL(std::string::npos, source.find("initialized = true;"));
 }
 
-void test_perf_display_screen_uses_explicit_mapping_and_keeps_retired_values_unemitted() {
+void test_perf_display_screen_uses_explicit_mapping_and_removes_retired_values() {
     const std::string perfHeader = readTextFile("src/perf_metrics.h");
     const std::string displayHeader = readTextFile("src/display.h");
     const std::string displayCore = readTextFile("src/display.cpp");
@@ -68,9 +68,19 @@ void test_perf_display_screen_uses_explicit_mapping_and_keeps_retired_values_une
     TEST_ASSERT_FALSE_MESSAGE(displayCore.empty(), "failed to read src/display.cpp");
     TEST_ASSERT_FALSE_MESSAGE(displayScreens.empty(), "failed to read src/display_screens.cpp");
     TEST_ASSERT_FALSE_MESSAGE(displayUpdate.empty(), "failed to read src/display_update.cpp");
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, perfHeader.find("Camera = 6"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, perfHeader.find("Unknown = 0"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, perfHeader.find("Resting = 1"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, perfHeader.find("Scanning = 2"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, perfHeader.find("Live = 4"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, perfHeader.find("Persisted = 5"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos,
                           perfHeader.find("Current producers emit only Unknown,"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                          perfHeader.find("retired Disconnected"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                          perfHeader.find("retired Camera"));
+    TEST_ASSERT_EQUAL(std::string::npos, perfHeader.find("Disconnected = 3"));
+    TEST_ASSERT_EQUAL(std::string::npos, perfHeader.find("Camera = 6"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos,
                           displayHeader.find("static PerfDisplayScreen perfScreenForMode(ScreenMode mode);"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos,
@@ -110,7 +120,7 @@ int main() {
     RUN_TEST(test_removed_camera_label_helper_is_no_longer_declared_or_defined);
     RUN_TEST(test_wifi_toggle_setup_mode_is_fully_removed);
     RUN_TEST(test_alert_persistence_update_is_fully_removed);
-    RUN_TEST(test_perf_display_screen_uses_explicit_mapping_and_keeps_retired_values_unemitted);
+    RUN_TEST(test_perf_display_screen_uses_explicit_mapping_and_removes_retired_values);
     RUN_TEST(test_bogey_breakdown_has_been_fully_retired);
     return UNITY_END();
 }

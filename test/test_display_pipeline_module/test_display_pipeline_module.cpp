@@ -157,7 +157,6 @@ void play_frequency_voice(AlertBand /*band*/,
                           bool /*includeDirection*/,
                           uint8_t /*bogeyCount*/) {}
 void play_direction_only(AlertDirection /*direction*/, uint8_t /*bogeyCount*/) {}
-void play_bogey_breakdown(uint8_t /*total*/, uint8_t /*ahead*/, uint8_t /*behind*/, uint8_t /*side*/) {}
 void play_threat_escalation(AlertBand /*band*/,
                             uint16_t /*freqMHz*/,
                             AlertDirection /*direction*/,

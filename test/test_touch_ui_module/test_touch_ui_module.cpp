@@ -66,7 +66,6 @@ void play_vol0_beep() {}
 void play_alert_voice(AlertBand, AlertDirection) {}
 void play_frequency_voice(AlertBand, uint16_t, AlertDirection, VoiceAlertMode, bool, uint8_t) {}
 void play_direction_only(AlertDirection, uint8_t) {}
-void play_bogey_breakdown(uint8_t, uint8_t, uint8_t, uint8_t) {}
 void play_threat_escalation(AlertBand, uint16_t, AlertDirection, uint8_t, uint8_t, uint8_t, uint8_t) {}
 void play_band_only(AlertBand) {}
 void audio_init_sd() {}

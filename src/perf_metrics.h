@@ -345,16 +345,15 @@ struct PerfHistogramMs {
 };
 
 // Display-screen perf vocabulary. Current producers emit only Unknown,
-// Resting, Scanning, Live, and Persisted. Disconnected remains a reserved
-// compatibility value, and Camera = 6 is a retired reserved value kept stable.
+// Resting, Scanning, Live, and Persisted. Historical numeric slots 3
+// (retired Disconnected) and 6 (retired Camera) remain intentionally unused
+// so surviving values stay stable.
 enum class PerfDisplayScreen : uint8_t {
     Unknown = 0,
     Resting = 1,
     Scanning = 2,
-    Disconnected = 3,
     Live = 4,
     Persisted = 5,
-    Camera = 6
 };
 
 enum class PerfFadeDecision : uint8_t {
