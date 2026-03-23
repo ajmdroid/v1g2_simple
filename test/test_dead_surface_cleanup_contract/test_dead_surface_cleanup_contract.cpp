@@ -29,35 +29,31 @@ void test_removed_camera_label_helper_is_no_longer_declared_or_defined() {
     TEST_ASSERT_EQUAL(std::string::npos, displayFrequency.find("drawCameraLabel"));
 }
 
-void test_wifi_toggle_setup_mode_stays_a_compatibility_wrapper() {
+void test_wifi_toggle_setup_mode_is_fully_removed() {
     const std::string header = readTextFile("src/wifi_manager.h");
     const std::string source = readTextFile("src/wifi_manager_lifecycle.cpp");
 
     TEST_ASSERT_FALSE_MESSAGE(header.empty(), "failed to read src/wifi_manager.h");
     TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/wifi_manager_lifecycle.cpp");
-    TEST_ASSERT_NOT_EQUAL(std::string::npos,
-                          header.find("Compatibility-retained wrapper for older callers."));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos,
-                          source.find("return stopSetupMode(manual, manual ? \"manual\" : \"toggle\");"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos,
-                          source.find("return startSetupMode(false);"));
+    TEST_ASSERT_EQUAL(std::string::npos, header.find("toggleSetupMode"));
+    TEST_ASSERT_EQUAL(std::string::npos, source.find("toggleSetupMode"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, header.find("bool startSetupMode("));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, header.find("bool stopSetupMode("));
 }
 
-void test_alert_persistence_update_stays_a_safe_no_op_hook() {
+void test_alert_persistence_update_is_fully_removed() {
     const std::string header = readTextFile("src/modules/alert_persistence/alert_persistence_module.h");
     const std::string source = readTextFile("src/modules/alert_persistence/alert_persistence_module.cpp");
 
     TEST_ASSERT_FALSE_MESSAGE(header.empty(), "failed to read alert_persistence_module.h");
     TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read alert_persistence_module.cpp");
-    TEST_ASSERT_EQUAL(std::string::npos, header.find("Main update - call from loop()"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos,
-                          header.find("Compatibility-retained no-op hook."));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos,
-                          source.find("if (!initialized) return;"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos,
-                          source.find("Compatibility-retained no-op: production no longer needs loop work here."));
+    TEST_ASSERT_EQUAL(std::string::npos, header.find("void update("));
+    TEST_ASSERT_EQUAL(std::string::npos, source.find("AlertPersistenceModule::update("));
+    TEST_ASSERT_EQUAL(std::string::npos, header.find("Compatibility-retained no-op hook."));
     TEST_ASSERT_EQUAL(std::string::npos,
-                      source.find("Future: could handle periodic tasks here"));
+                      source.find("Compatibility-retained no-op: production no longer needs loop work here."));
+    TEST_ASSERT_EQUAL(std::string::npos, header.find("initialized = false"));
+    TEST_ASSERT_EQUAL(std::string::npos, source.find("initialized = true;"));
 }
 
 void test_perf_display_screen_uses_explicit_mapping_and_keeps_retired_values_unemitted() {
@@ -112,8 +108,8 @@ void test_bogey_breakdown_has_been_fully_retired() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_removed_camera_label_helper_is_no_longer_declared_or_defined);
-    RUN_TEST(test_wifi_toggle_setup_mode_stays_a_compatibility_wrapper);
-    RUN_TEST(test_alert_persistence_update_stays_a_safe_no_op_hook);
+    RUN_TEST(test_wifi_toggle_setup_mode_is_fully_removed);
+    RUN_TEST(test_alert_persistence_update_is_fully_removed);
     RUN_TEST(test_perf_display_screen_uses_explicit_mapping_and_keeps_retired_values_unemitted);
     RUN_TEST(test_bogey_breakdown_has_been_fully_retired);
     return UNITY_END();

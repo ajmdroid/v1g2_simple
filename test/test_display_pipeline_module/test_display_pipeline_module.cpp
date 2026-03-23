@@ -40,10 +40,7 @@ void AlertPersistenceModule::begin(V1BLEClient* ble,
     parser = parserRef;
     display = displayRef;
     settings = settingsRef;
-    initialized = true;
 }
-
-void AlertPersistenceModule::update() {}
 
 void AlertPersistenceModule::setPersistedAlert(const AlertData& alert) {
     persistedAlert = alert;

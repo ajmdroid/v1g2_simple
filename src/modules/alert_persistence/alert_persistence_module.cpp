@@ -17,14 +17,8 @@ void AlertPersistenceModule::begin(V1BLEClient* ble, PacketParser* pParser, V1Di
     parser = pParser;
     display = disp;
     settings = sett;
-    initialized = true;
 
     Serial.println("[AlertPersistenceModule] Initialized");
-}
-
-void AlertPersistenceModule::update() {
-    if (!initialized) return;
-    // Compatibility-retained no-op: production no longer needs loop work here.
 }
 
 // ============================================================================

@@ -577,15 +577,6 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     return true;
 }
 
-// Compatibility-retained wrapper for older callers. Production BOOT/touch
-// handling uses direct startSetupMode()/stopSetupMode() calls instead.
-bool WiFiManager::toggleSetupMode(bool manual) {
-    if (setupModeState == SETUP_MODE_AP_ON) {
-        return stopSetupMode(manual, manual ? "manual" : "toggle");
-    }
-    return startSetupMode(false);
-}
-
 void WiFiManager::setupAP() {
     // Use saved SSID/password when available; fall back to defaults if missing/too short
     const V1Settings& settings = settingsManager.get();

@@ -26,10 +26,6 @@ public:
     // Initialize with dependencies (call from setup())
     void begin(V1BLEClient* ble, PacketParser* parser, V1Display* display, SettingsManager* settings);
 
-    // Compatibility-retained no-op hook. Production no longer calls this from
-    // the main loop, but older/tests callers may still invoke it safely.
-    void update();
-
     // Alert persistence - shows last alert briefly after V1 clears it
     void setPersistedAlert(const AlertData& alert);
     void startPersistence(unsigned long now);
@@ -44,8 +40,6 @@ private:
     PacketParser* parser = nullptr;
     V1Display* display = nullptr;
     SettingsManager* settings = nullptr;
-
-    bool initialized = false;
 
     // Alert persistence state
     AlertData persistedAlert;
