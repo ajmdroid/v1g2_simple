@@ -301,6 +301,47 @@ static void configureWifiRuntimeModule() {
             wifiStatus.autoStart = wifiAutoStartModule.getLastDecision();
 
             StatusObservabilityPayload::appendStatusObservability(obj, lockoutStatus, wifiStatus);
+
+            const QuietCommittedState quietCommitted = quietCoordinatorModule.getCommittedState();
+            const QuietDesiredState& quietDesired = quietCoordinatorModule.getDesiredState();
+            const QuietPresentationState& quietPresentation =
+                quietCoordinatorModule.getPresentationState();
+
+            JsonObject quietObj = obj["quiet"].to<JsonObject>();
+
+            JsonObject desiredObj = quietObj["desired"].to<JsonObject>();
+            desiredObj["muteOwner"] = quietOwnerName(quietDesired.muteOwner);
+            desiredObj["muteOwnerRaw"] = static_cast<uint8_t>(quietDesired.muteOwner);
+            desiredObj["mutePending"] = quietDesired.mutePending;
+            desiredObj["mute"] = quietDesired.mute;
+            desiredObj["volumeOwner"] = quietOwnerName(quietDesired.volumeOwner);
+            desiredObj["volumeOwnerRaw"] = static_cast<uint8_t>(quietDesired.volumeOwner);
+            desiredObj["volumePending"] = quietDesired.volumePending;
+            desiredObj["volume"] = quietDesired.volume;
+            desiredObj["muteVolume"] = quietDesired.muteVolume;
+
+            JsonObject committedObj = quietObj["committed"].to<JsonObject>();
+            committedObj["connected"] = quietCommitted.connected;
+            committedObj["hasDisplayState"] = quietCommitted.hasDisplayState;
+            committedObj["muted"] = quietCommitted.muted;
+            committedObj["mainVolume"] = quietCommitted.mainVolume;
+            committedObj["muteVolume"] = quietCommitted.muteVolume;
+
+            JsonObject presentationObj = quietObj["presentation"].to<JsonObject>();
+            presentationObj["activeMuteOwner"] =
+                quietOwnerName(quietPresentation.activeMuteOwner);
+            presentationObj["activeMuteOwnerRaw"] =
+                static_cast<uint8_t>(quietPresentation.activeMuteOwner);
+            presentationObj["activeVolumeOwner"] =
+                quietOwnerName(quietPresentation.activeVolumeOwner);
+            presentationObj["activeVolumeOwnerRaw"] =
+                static_cast<uint8_t>(quietPresentation.activeVolumeOwner);
+            presentationObj["preQuietActive"] = quietPresentation.preQuietActive;
+            presentationObj["speedVolZeroActive"] = quietPresentation.speedVolZeroActive;
+            presentationObj["voiceSuppressed"] = quietPresentation.voiceSuppressed;
+            presentationObj["voiceAllowVolZeroBypass"] =
+                quietPresentation.voiceAllowVolZeroBypass;
+            presentationObj["effectiveMuted"] = quietPresentation.effectiveMuted;
         });
         wifiStatusObservabilityCallbackConfigured = true;
     }

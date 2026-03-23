@@ -149,6 +149,37 @@ void test_parsed_frame_skips_pipeline_when_preview_running() {
     TEST_ASSERT_EQUAL(0, volumeFade.processCalls);
 }
 
+void test_parsed_frame_syncs_prequiet_presentation_from_coordinator() {
+    quiet.setPreQuietActive(true);
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 7050;
+    ctx.parsedReady = false;
+    ctx.bootSplashHoldActive = false;
+
+    module.processParsedFrame(ctx);
+
+    TEST_ASSERT_EQUAL(1, display.setPreQuietActiveCalls);
+    TEST_ASSERT_TRUE(display.lastPreQuietActiveValue);
+}
+
+void test_parsed_frame_syncs_speedvol_zero_presentation_from_coordinator() {
+    parser.state.mainVolume = 6;
+    parser.state.muteVolume = 2;
+    speedMute.begin(true, 25, 3, 0);
+    speedMute.state_.muteActive = true;
+
+    DisplayOrchestrationParsedContext ctx;
+    ctx.nowMs = 7800;
+    ctx.parsedReady = true;
+    ctx.bootSplashHoldActive = false;
+
+    module.processParsedFrame(ctx);
+
+    TEST_ASSERT_EQUAL(1, display.setSpeedVolZeroActiveCalls);
+    TEST_ASSERT_TRUE(display.lastSpeedVolZeroActiveValue);
+}
+
 void test_parsed_frame_executes_lockout_restore_through_single_volume_owner() {
     lockout.nextResult.volumeCommand.type = LockoutVolumeCommandType::PreQuietRestore;
     lockout.nextResult.volumeCommand.volume = 7;
@@ -831,6 +862,8 @@ int main() {
     RUN_TEST(test_process_early_updates_preview_or_restore_path);
     RUN_TEST(test_parsed_frame_sets_status_indicators_and_requests_pipeline);
     RUN_TEST(test_parsed_frame_skips_pipeline_when_preview_running);
+    RUN_TEST(test_parsed_frame_syncs_prequiet_presentation_from_coordinator);
+    RUN_TEST(test_parsed_frame_syncs_speedvol_zero_presentation_from_coordinator);
     RUN_TEST(test_parsed_frame_executes_lockout_restore_through_single_volume_owner);
     RUN_TEST(test_parsed_frame_executes_volume_fade_when_pipeline_runs);
     RUN_TEST(test_parsed_frame_skips_volume_fade_when_lockout_volume_command_owns_frame);

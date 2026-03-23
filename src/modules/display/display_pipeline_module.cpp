@@ -161,24 +161,6 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
                                           prioritySuppressed,
                                           hasRenderablePriority,
                                           hasRenderablePriority ? priority.band : BAND_NONE);
-        } else {
-            // Legacy fallback for unit-test wiring without the coordinator.
-            if (!voiceCtx.isSuppressed && speedMute) {
-                const auto& smState = speedMute->getState();
-                if (smState.muteActive && hasRenderablePriority &&
-                    !speedMute->isBandOverridden(priority.band)) {
-                    voiceCtx.isSuppressed = true;
-                }
-            }
-            if (speedMute && hasRenderablePriority) {
-                const auto& smState = speedMute->getState();
-                if (smState.muteActive && speedMute->isBandOverridden(priority.band)) {
-                    voiceCtx.isMuted = false;
-                    if (voiceCtx.mainVolume == 0) {
-                        voiceCtx.mainVolume = 1;
-                    }
-                }
-            }
         }
 
         const unsigned long voiceStartUs = micros();

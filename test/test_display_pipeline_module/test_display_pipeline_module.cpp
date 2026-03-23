@@ -20,6 +20,8 @@ unsigned long mockMicros = 0;
 
 PerfCounters perfCounters;
 PerfExtendedMetrics perfExtended;
+static VoiceContext g_lastVoiceContext;
+static int g_voiceProcessCalls = 0;
 void perfRecordDisplayRenderUs(uint32_t /*us*/) {}
 void perfRecordDisplayScenarioRenderUs(uint32_t /*us*/) {}
 void perfRecordDisplayVoiceUs(uint32_t /*us*/) {}
@@ -71,7 +73,9 @@ void VoiceModule::begin(SettingsManager* settingsRef, V1BLEClient* ble) {
     bleClient = ble;
 }
 
-VoiceAction VoiceModule::process(const VoiceContext& /*ctx*/) {
+VoiceAction VoiceModule::process(const VoiceContext& ctx) {
+    g_lastVoiceContext = ctx;
+    g_voiceProcessCalls++;
     return VoiceAction{};
 }
 
@@ -181,6 +185,7 @@ static V1BLEClient ble;
 static AlertPersistenceModule alertPersistence;
 static VoiceModule voice;
 static QuietCoordinatorModule quiet;
+static SpeedMuteModule speedMute;
 static DisplayPipelineModule module;
 
 static AlertData makeKAlert(uint16_t freq = 24148) {
@@ -204,6 +209,12 @@ static AlertData makeKaAlert(uint16_t freq = 34520) {
     return a;
 }
 
+static void enableSpeedMute(uint8_t targetVolume) {
+    speedMute.begin(true, 25, 3, targetVolume);
+    speedMute.update(10.0f, true, 2000);
+    module.setSpeedMuteModule(&speedMute);
+}
+
 static void beginModule() {
     module.begin(&displayMode,
                  &display,
@@ -223,11 +234,14 @@ void setUp() {
     ble.reset();
     alertPersistence = AlertPersistenceModule{};
     voice = VoiceModule{};
+    speedMute = SpeedMuteModule{};
     module = DisplayPipelineModule{};
     displayMode = DisplayMode::IDLE;
     settingsManager = SettingsManager{};
     perfCounters.reset();
     perfExtended.reset();
+    g_lastVoiceContext = VoiceContext{};
+    g_voiceProcessCalls = 0;
     quiet.begin(&ble, &parser);
     beginModule();
 }
@@ -281,6 +295,38 @@ void test_handle_parsed_defers_secondary_cards_while_connect_burst_settles() {
     TEST_ASSERT_EQUAL(DisplayMode::LIVE, displayMode);
     TEST_ASSERT_EQUAL(1, display.updateCalls);
     TEST_ASSERT_EQUAL(1, display.lastAlertUpdateCount);
+}
+
+void test_handle_parsed_uses_quiet_coordinator_to_suppress_speedmuted_k_voice() {
+    enableSpeedMute(0);
+    parser.state.muted = true;
+    parser.state.mainVolume = 0;
+    parser.setAlerts({makeKAlert()});
+
+    mockMillis = 1000;
+    mockMicros = 1000 * 1000UL;
+    module.handleParsed(1000, false);
+
+    TEST_ASSERT_EQUAL(1, g_voiceProcessCalls);
+    TEST_ASSERT_TRUE(g_lastVoiceContext.isSuppressed);
+    TEST_ASSERT_TRUE(quiet.getPresentationState().voiceSuppressed);
+}
+
+void test_handle_parsed_uses_quiet_coordinator_for_ka_vol_zero_bypass() {
+    enableSpeedMute(0);
+    parser.state.muted = true;
+    parser.state.mainVolume = 0;
+    parser.setAlerts({makeKaAlert()});
+
+    mockMillis = 1000;
+    mockMicros = 1000 * 1000UL;
+    module.handleParsed(1000, false);
+
+    TEST_ASSERT_EQUAL(1, g_voiceProcessCalls);
+    TEST_ASSERT_FALSE(g_lastVoiceContext.isSuppressed);
+    TEST_ASSERT_FALSE(g_lastVoiceContext.isMuted);
+    TEST_ASSERT_EQUAL_UINT8(1, g_lastVoiceContext.mainVolume);
+    TEST_ASSERT_TRUE(quiet.getPresentationState().voiceAllowVolZeroBypass);
 }
 
 void test_restore_current_owner_shows_scanning_when_ble_is_disconnected() {
@@ -347,6 +393,8 @@ int main() {
     RUN_TEST(test_handle_parsed_updates_resting_display_when_idle);
     RUN_TEST(test_handle_parsed_prefers_persisted_alert_when_configured);
     RUN_TEST(test_handle_parsed_defers_secondary_cards_while_connect_burst_settles);
+    RUN_TEST(test_handle_parsed_uses_quiet_coordinator_to_suppress_speedmuted_k_voice);
+    RUN_TEST(test_handle_parsed_uses_quiet_coordinator_for_ka_vol_zero_bypass);
     RUN_TEST(test_restore_current_owner_shows_scanning_when_ble_is_disconnected);
     RUN_TEST(test_restore_current_owner_restores_live_display_when_alerts_present);
     RUN_TEST(test_alert_gap_recovery_throttle_is_instance_owned);

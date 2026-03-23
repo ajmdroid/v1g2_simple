@@ -51,6 +51,16 @@ void DisplayOrchestrationModule::reset() {
     lastCardUiMs = 0;
 }
 
+void DisplayOrchestrationModule::syncQuietPresentation() {
+    if (!display || !quiet) {
+        return;
+    }
+
+    const QuietPresentationState& presentation = quiet->getPresentationState();
+    display->setPreQuietActive(presentation.preQuietActive);
+    display->setSpeedVolZeroActive(presentation.speedVolZeroActive);
+}
+
 bool DisplayOrchestrationModule::executeLockoutVolumeCommand(const LockoutVolumeCommand& command,
                                                              const uint32_t nowMs) {
     return quiet && quiet->handleLockoutVolumeCommand(command, nowMs, volumeFade);
@@ -128,10 +138,7 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         // Defers to pre-quiet when it owns volume. Gates volume fade.
         const bool speedVolBusy = processSpeedVolume(ctx.nowMs);
 
-        // Suppress VOL 0 warning when speed-mute intentionally set volume to 0.
-        if (quiet) {
-            display->setSpeedVolZeroActive(quiet->getPresentationState().speedVolZeroActive);
-        }
+        syncQuietPresentation();
 
         if (lastGpsSatUpdateMs == 0 ||
             (ctx.nowMs - lastGpsSatUpdateMs >= GPS_SAT_UPDATE_INTERVAL_MS)) {
@@ -148,6 +155,8 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         }
         return result;
     }
+
+    syncQuietPresentation();
 
     if (!ctx.bootSplashHoldActive) {
         const uint32_t lastParsedMs = bleQueue->getLastParsedTimestamp();

@@ -165,7 +165,6 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
                 result.volumeCommand.muteVolume = pqDecision.muteVolume;
             }
             const bool preQuietActive = preQuietState_.phase == PreQuietPhase::DROPPED;
-            display_->setPreQuietActive(preQuietActive);
             if (quiet_) {
                 quiet_->setPreQuietActive(preQuietActive);
             }
@@ -174,7 +173,6 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
         // Proxy-connected sessions are display-first:
         // keep learner capture active, but disable runtime lockout enforcement.
         display_->setLockoutIndicator(false);
-        display_->setPreQuietActive(false);
         reset();
     }
 

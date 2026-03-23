@@ -11,6 +11,31 @@
 #include "../voice/voice_module.h"
 #endif
 
+const char* quietOwnerName(const QuietOwner owner) {
+    switch (owner) {
+        case QuietOwner::None:
+            return "none";
+        case QuietOwner::LockoutMute:
+            return "lockout_mute";
+        case QuietOwner::LockoutOverride:
+            return "lockout_override";
+        case QuietOwner::PreQuiet:
+            return "pre_quiet";
+        case QuietOwner::SpeedVolume:
+            return "speed_volume";
+        case QuietOwner::VolumeFade:
+            return "volume_fade";
+        case QuietOwner::TapGesture:
+            return "tap_gesture";
+        case QuietOwner::WifiCommand:
+            return "wifi_command";
+        case QuietOwner::AutoPush:
+            return "auto_push";
+        default:
+            return "unknown";
+    }
+}
+
 void QuietCoordinatorModule::begin(V1BLEClient* bleClient, PacketParser* parser) {
     ble_ = bleClient;
     parser_ = parser;

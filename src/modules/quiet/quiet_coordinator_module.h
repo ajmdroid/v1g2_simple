@@ -22,6 +22,8 @@ enum class QuietOwner : uint8_t {
     AutoPush,
 };
 
+const char* quietOwnerName(QuietOwner owner);
+
 struct QuietIntent {
     QuietOwner owner = QuietOwner::None;
     bool hasMute = false;
@@ -149,4 +151,3 @@ private:
     static constexpr uint32_t SPEED_VOL_RETRY_INTERVAL_MS = 75;
     static constexpr uint32_t SPEED_VOL_RESTORE_TIMEOUT_MS = 2000;
 };
-

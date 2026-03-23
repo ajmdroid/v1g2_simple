@@ -70,6 +70,7 @@ public:
 
 private:
     void reset();
+    void syncQuietPresentation();
     bool executeLockoutVolumeCommand(const LockoutVolumeCommand& command, uint32_t nowMs);
     bool retryPendingPreQuietRestore(uint32_t nowMs);
     void executeVolumeFade(uint32_t nowMs, bool lockoutPrioritySuppressed);
