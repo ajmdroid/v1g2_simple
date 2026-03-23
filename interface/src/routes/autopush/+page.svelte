@@ -14,6 +14,7 @@
 	let loading = $state(true);
 	let message = $state(null);
 	let editingSlot = $state(null);
+	let busy = $state(false);
 	
 	const modeNames = {
 		0: 'Unknown',
@@ -63,6 +64,8 @@
 	}
 	
 	async function activateSlot(slot) {
+		if (busy) return;
+		busy = true;
 		message = { type: 'info', text: `Activating slot ${slot}...` };
 		try {
 			const formData = new FormData();
@@ -83,10 +86,14 @@
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Connection error' };
+		} finally {
+			busy = false;
 		}
 	}
 	
 	async function pushNow(slot) {
+		if (busy) return;
+		busy = true;
 		message = { type: 'info', text: 'Pushing settings to V1...' };
 		try {
 			const formData = new FormData();
@@ -105,10 +112,14 @@
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Connection error' };
+		} finally {
+			busy = false;
 		}
 	}
 	
 	async function saveSlot(slot) {
+		if (busy) return;
+		busy = true;
 		const s = data.slots[slot];
 		message = { type: 'info', text: 'Saving slot...' };
 		const persist = Math.max(0, Math.min(5, Number(s.alertPersist ?? 0)));
@@ -140,6 +151,8 @@
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Connection error' };
+		} finally {
+			busy = false;
 		}
 	}
 	
@@ -195,7 +208,7 @@
 							</div>
 							<div class="flex gap-1">
 								{#if editingSlot === i}
-									<button class="btn btn-success btn-sm" onclick={() => saveSlot(i)}>
+								<button class="btn btn-success btn-sm" onclick={() => saveSlot(i)} disabled={busy}>
 										Save
 									</button>
 									<button class="btn btn-ghost btn-sm" onclick={() => editingSlot = null}>
@@ -330,14 +343,14 @@
 						{#if editingSlot !== i}
 							<div class="card-actions justify-end mt-3">
 								{#if data.activeSlot !== i}
-									<button class="btn btn-outline btn-sm" onclick={() => activateSlot(i)}>
+								<button class="btn btn-outline btn-sm" onclick={() => activateSlot(i)} disabled={busy}>
 										Activate
 									</button>
 								{/if}
 								<button 
 									class="btn btn-primary btn-sm" 
 									onclick={() => pushNow(i)}
-									disabled={!slot.profile}
+									disabled={!slot.profile || busy}
 								>
 									Push Now
 								</button>

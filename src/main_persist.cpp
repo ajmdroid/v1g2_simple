@@ -199,6 +199,10 @@ static constexpr uint32_t V1_DEVICE_STORE_SAVE_INTERVAL_MS = 5000;
 static constexpr uint32_t V1_DEVICE_STORE_SAVE_RETRY_MS = 1000;
 
 static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, uint32_t nowMs) {
+    // Guard: at least one serialisation path must be provided.
+    if (!cfg.saveDirect && !cfg.serialize) {
+        return;
+    }
     uint32_t startUs = PERF_TIMESTAMP_US();
 
     if (cfg.isDirty()) {

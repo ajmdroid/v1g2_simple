@@ -179,7 +179,9 @@
 	}
 
 	async function saveDisplayStyle(event) {
+		if (saving) return;
 		const nextStyle = parseInt(event.currentTarget.value, 10);
+		saving = true;
 		try {
 			const body = new URLSearchParams();
 			body.set('displayStyle', String(nextStyle));
@@ -197,6 +199,8 @@
 			message = { type: 'success', text: 'Display style updated!' };
 		} catch (_) {
 			message = { type: 'error', text: 'Failed to save display style' };
+		} finally {
+			saving = false;
 		}
 	}
 
@@ -242,7 +246,9 @@
 	}
 
 	async function resetDefaults() {
+		if (saving) return;
 		if (!confirm('Reset all colors to defaults?')) return;
+		saving = true;
 		try {
 			const res = await fetchWithTimeout(DISPLAY_SETTINGS_RESET_ENDPOINT, { method: 'POST' });
 			if (!res.ok) {
@@ -253,6 +259,8 @@
 			message = { type: 'success', text: 'Colors reset to defaults!' };
 		} catch (_) {
 			message = { type: 'error', text: 'Failed to reset' };
+		} finally {
+			saving = false;
 		}
 	}
 
@@ -600,8 +608,8 @@
 					Save Colors
 				{/if}
 			</button>
-			<button class="btn btn-secondary" onclick={testColors}>Preview</button>
-			<button class="btn btn-outline" onclick={resetDefaults}>Reset Defaults</button>
+			<button class="btn btn-secondary" onclick={testColors} disabled={saving}>Preview</button>
+			<button class="btn btn-outline" onclick={resetDefaults} disabled={saving}>Reset Defaults</button>
 		</div>
 
 		<div class="copy-micro text-center">
