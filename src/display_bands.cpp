@@ -18,27 +18,6 @@
 #include <algorithm>  // std::max
 
 // ============================================================================
-// Band badge (small overlay for scanning screen)
-// ============================================================================
-void V1Display::drawBandBadge(Band band) {
-    if (band == BAND_NONE) {
-        return;
-    }
-    int bx = 14;
-    int by = 10;
-    int bw = 60;
-    int bh = 22;
-    uint16_t col = getBandColor(band);
-    FILL_ROUND_RECT(bx, by, bw, bh, 4, col);
-    DRAW_ROUND_RECT(bx, by, bw, bh, 4, TFT_WHITE);
-    GFX_setTextDatum(MC_DATUM);
-    TFT_CALL(setTextColor)(TFT_WHITE, col);
-    TFT_CALL(setTextSize)(2);
-    const char* txt = bandToString(band);
-    GFX_drawString(tft, txt, bx + bw/2, by + bh/2 + 1);
-}
-
-// ============================================================================
 // Band indicator stack (vertical L / Ka / K / X on the left)
 // ============================================================================
 void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits) {

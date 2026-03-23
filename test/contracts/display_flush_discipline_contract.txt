@@ -1,7 +1,6 @@
 # Display flush discipline contract (flush call-site snapshot)
 
 kind=BARE_FLUSH file=src/display.cpp line=290 function=setBLEProxyStatus
-kind=BARE_FLUSH file=src/display_screens.cpp line=295 function=showDemo
 kind=DISPLAY_FLUSH file=src/display.cpp line=197 function=begin
 kind=DISPLAY_FLUSH file=src/display.cpp line=255 function=clear
 kind=DISPLAY_FLUSH file=src/display.cpp line=310 function=flush

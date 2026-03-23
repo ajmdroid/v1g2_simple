@@ -1035,7 +1035,6 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
                                          const CheckpointLogger& logBootCheckpoint,
                                          const StageLogger& logBootStage) {
     // ── Storage / SD mount ────────────────────────────────────────────
-    // If you want to show the demo, call display.showDemo() manually elsewhere (e.g., via a button or menu).
     initializeStorageAndProfiles();
 
     const uint32_t bootId = initializeBootPerformanceLoggers();

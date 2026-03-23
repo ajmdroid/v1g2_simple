@@ -69,7 +69,6 @@ public:
     // the single production display path reconnects with a clean redraw state).
     static void resetChangeTracking();
 
-    void showDemo();
     void showBootSplash();
     void showShutdown();       // Shutdown screen with goodbye message
     void showLowBattery();     // Critical low battery warning
@@ -162,7 +161,6 @@ private:
     void drawBLEProxyIndicator();
     void drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits = 0, uint16_t frontColorOverride = 0);
     void drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength, Band band = BAND_KA, bool muted = false);
-    void drawBandBadge(Band band);
     void drawBaseFrame();
     void prepareFullRedrawNoClear();
     void drawTopCounter(char symbol, bool muted, bool showDot);

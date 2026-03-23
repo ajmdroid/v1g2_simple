@@ -285,42 +285,6 @@ void V1Display::showScanning() {
 }
 
 // ============================================================================
-// showDemo
-// ============================================================================
-
-void V1Display::showDemo() {
-    TFT_CALL(fillScreen)(PALETTE_BG); // Clear screen to prevent artifacts
-    clear();
-
-    // Show a MUTED K-band alert to demonstrate the muted color
-    AlertData demoAlert;
-    demoAlert.band = BAND_K;
-    demoAlert.direction = DIR_FRONT;
-    demoAlert.frontStrength = 4;
-    demoAlert.rearStrength = 0;
-    demoAlert.frequency = 24150;  // MHz (24.150 GHz)
-    demoAlert.isValid = true;
-
-    // Create a demo display state
-    DisplayState demoState;
-    demoState.activeBands = BAND_K;
-    demoState.arrows = DIR_FRONT;
-    demoState.signalBars = 4;
-    demoState.muted = true;
-
-    // Draw the alert in MUTED state using multi-alert display
-    update(demoAlert, &demoAlert, 1, demoState);
-    lastState.signalBars = 1;
-    
-    // Also draw profile indicator and WiFi icon during demo so user can see hide toggle effect
-    drawProfileIndicator(0);  // Show slot 0 profile indicator (unless hidden)
-    drawWiFiIndicator();      // Show WiFi icon (unless hidden)
-    
-    // Flush to display
-    flush();
-}
-
-// ============================================================================
 // showBootSplash
 // ============================================================================
 
