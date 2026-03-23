@@ -104,7 +104,7 @@ public:
     void drawBatteryIndicator();
 
     // Lockout indicator — shows "L" badge when enforcer matches a zone.
-    // Call from main.cpp after enforcer runs, before display pipeline.
+    // Called from lockout/display orchestration modules before display pipeline.
     void setLockoutIndicator(bool show);
 
     // GPS satellite indicator — shows "G" + sat count when GPS has fix.
@@ -231,7 +231,7 @@ private:
     int16_t frequencyDirtyW = 0;
     int16_t frequencyDirtyH = 0;
     bool secondaryCardsRenderDirty_ = false; // True when drawSecondaryAlertCards changed card-row pixels
-    bool lockoutIndicatorShown_ = false;  // Current lockout indicator state (set by main.cpp)
+    bool lockoutIndicatorShown_ = false;  // Current lockout indicator state (set by orchestration modules)
     bool preQuietActive_ = false;          // Suppress VOL 0 warning during lockout pre-quiet
     bool speedVolZeroActive_ = false;      // Suppress VOL 0 warning during speed-mute vol 0
     bool gpsSatEnabled_ = false;           // GPS module enabled

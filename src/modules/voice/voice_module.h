@@ -123,7 +123,7 @@ public:
     // Convert V1 Direction bitmask to AlertDirection for audio
     static AlertDirection toAudioDirection(Direction dir);
     
-    // Speed utility - also used by main.cpp for speed-based features
+    // Speed utility
     float getCurrentSpeedMph(unsigned long now);
     bool getCurrentSpeedSample(unsigned long now, float& speedMphOut) const;
     void updateSpeedSample(float speedMph, unsigned long timestampMs);

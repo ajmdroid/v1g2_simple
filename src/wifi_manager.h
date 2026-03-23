@@ -135,7 +135,7 @@ public:
                           const String& password,
                           bool persistCredentialsOnSuccess = true);
     void disconnectFromNetwork();
-    void checkWifiClientStatus();  // Call in loop() to manage STA connection
+    void checkWifiClientStatus();  // Called internally by process() to manage STA connection
     String getConnectedSSID() const;  // Returns empty if not connected
     
     // Callbacks for alert data (to display on web page)

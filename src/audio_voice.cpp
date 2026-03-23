@@ -241,7 +241,7 @@ static void sd_audio_playback_task(void* pvParameters) {
         // Don't disable amp immediately - keep it warm for faster subsequent plays
         // Record when we finished so timeout can disable it later
         amp_last_used_ms = millis();
-        // Amp stays on - will be disabled by audio_process_timeout() after AMP_WARM_TIMEOUT_MS
+        // Amp stays on - will be disabled by audio_process_amp_timeout() after AMP_WARM_TIMEOUT_MS
     }
 
     audioResetTaskState(audio_playing, audioTaskHandle);
