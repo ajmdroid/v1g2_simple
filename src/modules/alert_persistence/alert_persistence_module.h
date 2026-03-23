@@ -26,7 +26,8 @@ public:
     // Initialize with dependencies (call from setup())
     void begin(V1BLEClient* ble, PacketParser* parser, V1Display* display, SettingsManager* settings);
 
-    // Main update - call from loop()
+    // Compatibility-retained no-op hook. Production no longer calls this from
+    // the main loop, but older/tests callers may still invoke it safely.
     void update();
 
     // Alert persistence - shows last alert briefly after V1 clears it

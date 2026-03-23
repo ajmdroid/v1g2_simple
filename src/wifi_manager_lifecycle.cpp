@@ -577,11 +577,13 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     return true;
 }
 
+// Compatibility-retained wrapper for older callers. Production BOOT/touch
+// handling uses direct startSetupMode()/stopSetupMode() calls instead.
 bool WiFiManager::toggleSetupMode(bool manual) {
     if (setupModeState == SETUP_MODE_AP_ON) {
         return stopSetupMode(manual, manual ? "manual" : "toggle");
     }
-    return startSetupMode();
+    return startSetupMode(false);
 }
 
 void WiFiManager::setupAP() {

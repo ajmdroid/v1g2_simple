@@ -24,7 +24,7 @@ void AlertPersistenceModule::begin(V1BLEClient* ble, PacketParser* pParser, V1Di
 
 void AlertPersistenceModule::update() {
     if (!initialized) return;
-    // Future: could handle periodic tasks here
+    // Compatibility-retained no-op: production no longer needs loop work here.
 }
 
 // ============================================================================

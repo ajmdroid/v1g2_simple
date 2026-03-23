@@ -483,8 +483,8 @@ void audio_process_amp_timeout() {
     }
 }
 
-// Play bogey breakdown: "2 bogeys, 1 ahead, 1 behind" (skips directions with 0 count)
-// Note: play_threat_escalation() is preferred as it includes band/freq context
+// Compatibility-retained legacy helper: older/tests callers may still use this,
+// but the current production voice path does not.
 void play_bogey_breakdown(uint8_t total, uint8_t ahead, uint8_t behind, uint8_t side) {
     AUDIO_LOGF("[AUDIO] play_bogey_breakdown() total=%d ahead=%d behind=%d side=%d\n", 
                total, ahead, behind, side);

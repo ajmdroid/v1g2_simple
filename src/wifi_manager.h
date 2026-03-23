@@ -97,7 +97,9 @@ public:
     // AP control (AP-only for configuration)
     bool startSetupMode(bool autoStarted = false);      // Start or re-enable AP for configuration
     bool stopSetupMode(bool manual = false, const char* reason = nullptr); // Stop AP (manual/timeout/low_dma)
-    bool toggleSetupMode(bool manual = false); // Toggle AP state (e.g., via button)
+    // Compatibility-retained wrapper for older callers. The production BOOT/touch
+    // path uses direct startSetupMode()/stopSetupMode() calls instead.
+    bool toggleSetupMode(bool manual = false);
     bool isWifiServiceActive() const { return setupModeState == SETUP_MODE_AP_ON; }
     bool isSetupModeActive() const { return setupModeState == SETUP_MODE_AP_ON && apInterfaceEnabled; }
     bool isStopping() const;

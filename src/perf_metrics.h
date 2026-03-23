@@ -344,6 +344,9 @@ struct PerfHistogramMs {
     }
 };
 
+// Display-screen perf vocabulary. Current producers emit only Unknown,
+// Resting, Scanning, Live, and Persisted. Disconnected remains a reserved
+// compatibility value, and Camera = 6 is a retired reserved value kept stable.
 enum class PerfDisplayScreen : uint8_t {
     Unknown = 0,
     Resting = 1,
@@ -765,6 +768,9 @@ void perfRecordObdDiscoveryCallUs(uint32_t us);
 void perfRecordObdSubscribeCallUs(uint32_t us);
 void perfRecordObdWriteCallUs(uint32_t us);
 void perfRecordObdRssiCallUs(uint32_t us);
+// Records transitions among the actively emitted display states
+// (Unknown/Scanning/Resting/Live/Persisted). Reserved compatibility values
+// remain valid enum members but should not be emitted by current production code.
 void perfRecordDisplayScreenTransition(PerfDisplayScreen from, PerfDisplayScreen to, uint32_t nowMs);
 void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolume, uint8_t originalVolume, uint32_t nowMs);
 void perfRecordPreQuietDrop();
