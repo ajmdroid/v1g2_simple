@@ -504,6 +504,48 @@ def test_peak_diagnostics_surface_named_obd_and_wifi_root_causes(tmpdir: Path) -
     assert_true(wifi_diag["root_cause_hint"] == "WiFi subphase stall: HTTP client handling", f"wifi root cause hint wrong: {wifi_diag}")
 
 
+def test_peak_diagnostics_surface_named_wifi_teardown_root_causes(tmpdir: Path) -> None:
+    csv_path = tmpdir / "named_wifi_teardown_root_causes.csv"
+    out_dir = tmpdir / "named_wifi_teardown_root_causes_out"
+    rows = []
+    for index, millis in enumerate((0, 1000, 2000, 3000, 4000)):
+        row = base_row(millis, connected=True, header_columns=HEADER_COLUMNS)
+        row["rx"] = 120 + (index * 10)
+        row["parseOK"] = 120 + (index * 10)
+        row["bleState"] = 8
+        row["subscribeStep"] = 11
+        rows.append(row)
+
+    rows[3].update(
+        {
+            "wifiMax_us": 194000,
+            "wifiStopModeOffMax_us": 181000,
+            "wifiStopApDisableMax_us": 6000,
+            "loopMax_us": 102000,
+        }
+    )
+
+    write_capture(
+        csv_path,
+        header_columns=HEADER_COLUMNS,
+        sessions=[
+            {
+                "meta": "#session_start,seq=1,bootId=1,uptime_ms=4000,token=CAUSE002,schema=22",
+                "rows": rows,
+            }
+        ],
+    )
+
+    result = run_import(csv_path, out_dir)
+    assert_true(result.returncode != 3, f"wifi teardown fixture import errored: rc={result.returncode} stderr={result.stderr}")
+    diagnostics = json.loads((out_dir / "import_diagnostics.json").read_text(encoding="utf-8"))
+    wifi_diag = diagnostics["peaks"]["wifi_max_peak_us"]
+
+    assert_true(wifi_diag["wifi_dominant_subphase_column"] == "wifiStopModeOffMax_us", f"wifi teardown dominant subphase wrong: {wifi_diag}")
+    assert_true(wifi_diag["wifi_dominant_subphase_label"] == "radio off", f"wifi teardown dominant label wrong: {wifi_diag}")
+    assert_true(wifi_diag["root_cause_hint"] == "WiFi subphase stall: radio off", f"wifi teardown root cause hint wrong: {wifi_diag}")
+
+
 def test_peak_diagnostics_surface_named_connect_burst_root_causes(tmpdir: Path) -> None:
     csv_path = tmpdir / "named_connect_burst_root_causes.csv"
     out_dir = tmpdir / "named_connect_burst_root_causes_out"
@@ -601,6 +643,7 @@ def main() -> int:
         test_reduced_perf_boot_fixture_attributes_obd_and_wifi_stalls(tmpdir)
         test_reduced_connect_burst_fixture_attributes_first_connected_spike(tmpdir)
         test_peak_diagnostics_surface_named_obd_and_wifi_root_causes(tmpdir)
+        test_peak_diagnostics_surface_named_wifi_teardown_root_causes(tmpdir)
         test_peak_diagnostics_surface_named_connect_burst_root_causes(tmpdir)
         test_leading_rows_form_implicit_segment(tmpdir)
 

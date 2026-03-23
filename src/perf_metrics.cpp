@@ -488,6 +488,12 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.wifiTimeoutCheckMaxUs = perfExtended.wifiTimeoutCheckMaxUs;
     flat.wifiHeapGuardMaxUs = perfExtended.wifiHeapGuardMaxUs;
     flat.wifiApStaPollMaxUs = perfExtended.wifiApStaPollMaxUs;
+    flat.wifiStopHttpServerMaxUs = perfExtended.wifiStopHttpServerMaxUs;
+    flat.wifiStopStaDisconnectMaxUs = perfExtended.wifiStopStaDisconnectMaxUs;
+    flat.wifiStopApDisableMaxUs = perfExtended.wifiStopApDisableMaxUs;
+    flat.wifiStopModeOffMaxUs = perfExtended.wifiStopModeOffMaxUs;
+    flat.wifiStartPreflightMaxUs = perfExtended.wifiStartPreflightMaxUs;
+    flat.wifiStartApBringupMaxUs = perfExtended.wifiStartApBringupMaxUs;
     flat.fsMaxUs = perfExtended.fsMaxUs;
     flat.sdMaxUs = perfExtended.sdMaxUs;
     flat.flushMaxUs = perfExtended.flushMaxUs;
@@ -632,6 +638,12 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
         perfExtended.wifiTimeoutCheckMaxUs = 0;
         perfExtended.wifiHeapGuardMaxUs = 0;
         perfExtended.wifiApStaPollMaxUs = 0;
+        perfExtended.wifiStopHttpServerMaxUs = 0;
+        perfExtended.wifiStopStaDisconnectMaxUs = 0;
+        perfExtended.wifiStopApDisableMaxUs = 0;
+        perfExtended.wifiStopModeOffMaxUs = 0;
+        perfExtended.wifiStartPreflightMaxUs = 0;
+        perfExtended.wifiStartApBringupMaxUs = 0;
         perfExtended.fsMaxUs = 0;
         perfExtended.sdMaxUs = 0;
         perfExtended.flushMaxUs = 0;
@@ -957,6 +969,42 @@ void perfRecordWifiHeapGuardUs(uint32_t us) {
 void perfRecordWifiApStaPollUs(uint32_t us) {
     if (us > perfExtended.wifiApStaPollMaxUs) {
         perfExtended.wifiApStaPollMaxUs = us;
+    }
+}
+
+void perfRecordWifiStopHttpServerUs(uint32_t us) {
+    if (us > perfExtended.wifiStopHttpServerMaxUs) {
+        perfExtended.wifiStopHttpServerMaxUs = us;
+    }
+}
+
+void perfRecordWifiStopStaDisconnectUs(uint32_t us) {
+    if (us > perfExtended.wifiStopStaDisconnectMaxUs) {
+        perfExtended.wifiStopStaDisconnectMaxUs = us;
+    }
+}
+
+void perfRecordWifiStopApDisableUs(uint32_t us) {
+    if (us > perfExtended.wifiStopApDisableMaxUs) {
+        perfExtended.wifiStopApDisableMaxUs = us;
+    }
+}
+
+void perfRecordWifiStopModeOffUs(uint32_t us) {
+    if (us > perfExtended.wifiStopModeOffMaxUs) {
+        perfExtended.wifiStopModeOffMaxUs = us;
+    }
+}
+
+void perfRecordWifiStartPreflightUs(uint32_t us) {
+    if (us > perfExtended.wifiStartPreflightMaxUs) {
+        perfExtended.wifiStartPreflightMaxUs = us;
+    }
+}
+
+void perfRecordWifiStartApBringupUs(uint32_t us) {
+    if (us > perfExtended.wifiStartApBringupMaxUs) {
+        perfExtended.wifiStartApBringupMaxUs = us;
     }
 }
 

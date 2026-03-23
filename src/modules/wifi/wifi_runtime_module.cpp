@@ -7,6 +7,11 @@ void WifiRuntimeModule::begin(const Providers& hooks) {
 WifiRuntimeResult WifiRuntimeModule::process(const WifiRuntimeContext& ctx) {
     WifiRuntimeResult result;
     result.wifiAutoStartDone = ctx.wifiAutoStartDone;
+    const bool allowTransitionWork =
+        !ctx.skipLateNonCoreThisLoop &&
+        !ctx.overloadLateThisLoop &&
+        !ctx.bleBackpressure &&
+        !ctx.bleConnectBurstSettling;
 
     if (providers.runWifiAutoStartProcess) {
         providers.runWifiAutoStartProcess(providers.wifiAutoStartContext,
@@ -17,6 +22,12 @@ WifiRuntimeResult WifiRuntimeModule::process(const WifiRuntimeContext& ctx) {
                                           ctx.bleConnected,
                                           ctx.canStartDma,
                                           result.wifiAutoStartDone);
+    }
+
+    if (providers.setWifiTransitionAdmission) {
+        providers.setWifiTransitionAdmission(
+            providers.wifiTransitionAdmissionContext,
+            allowTransitionWork);
     }
 
     if (!ctx.skipLateNonCoreThisLoop &&

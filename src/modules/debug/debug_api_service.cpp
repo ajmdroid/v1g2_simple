@@ -455,6 +455,12 @@ DEBUG_API_NOINLINE void appendFullMetricsDoc(JsonDocument& doc,
     doc["wifiTimeoutCheckMaxUs"] = flat.wifiTimeoutCheckMaxUs;
     doc["wifiHeapGuardMaxUs"] = flat.wifiHeapGuardMaxUs;
     doc["wifiApStaPollMaxUs"] = flat.wifiApStaPollMaxUs;
+    doc["wifiStopHttpServerMaxUs"] = flat.wifiStopHttpServerMaxUs;
+    doc["wifiStopStaDisconnectMaxUs"] = flat.wifiStopStaDisconnectMaxUs;
+    doc["wifiStopApDisableMaxUs"] = flat.wifiStopApDisableMaxUs;
+    doc["wifiStopModeOffMaxUs"] = flat.wifiStopModeOffMaxUs;
+    doc["wifiStartPreflightMaxUs"] = flat.wifiStartPreflightMaxUs;
+    doc["wifiStartApBringupMaxUs"] = flat.wifiStartApBringupMaxUs;
     doc["loopMaxUs"] = flat.loopMaxUs;
     doc["uptimeMs"] = snapshot.uptimeMs;
     doc["wifiMaxUs"] = flat.wifiMaxUs;
@@ -578,6 +584,12 @@ void appendSoakMetricsDoc(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& s
     doc["wifiTimeoutCheckMaxUs"] = flat.wifiTimeoutCheckMaxUs;
     doc["wifiHeapGuardMaxUs"] = flat.wifiHeapGuardMaxUs;
     doc["wifiApStaPollMaxUs"] = flat.wifiApStaPollMaxUs;
+    doc["wifiStopHttpServerMaxUs"] = flat.wifiStopHttpServerMaxUs;
+    doc["wifiStopStaDisconnectMaxUs"] = flat.wifiStopStaDisconnectMaxUs;
+    doc["wifiStopApDisableMaxUs"] = flat.wifiStopApDisableMaxUs;
+    doc["wifiStopModeOffMaxUs"] = flat.wifiStopModeOffMaxUs;
+    doc["wifiStartPreflightMaxUs"] = flat.wifiStartPreflightMaxUs;
+    doc["wifiStartApBringupMaxUs"] = flat.wifiStartApBringupMaxUs;
     doc["loopMaxUs"] = flat.loopMaxUs;
     doc["uptimeMs"] = snapshot.uptimeMs;
     doc["wifiMaxUs"] = flat.wifiMaxUs;

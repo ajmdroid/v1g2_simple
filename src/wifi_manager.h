@@ -49,6 +49,7 @@ struct Runtime;
 enum SetupModeState {
     SETUP_MODE_OFF = 0,
     SETUP_MODE_AP_ON,
+    SETUP_MODE_STOPPING,
 };
 
 // WiFi client (STA) connection state
@@ -99,6 +100,9 @@ public:
     bool toggleSetupMode(bool manual = false); // Toggle AP state (e.g., via button)
     bool isWifiServiceActive() const { return setupModeState == SETUP_MODE_AP_ON; }
     bool isSetupModeActive() const { return setupModeState == SETUP_MODE_AP_ON && apInterfaceEnabled; }
+    bool isStopping() const;
+    bool hasPendingLifecycleWork() const;
+    void setBoundaryTransitionAdmission(bool allow);
     
     // Process web server requests (call in loop)
     void process();
@@ -115,7 +119,7 @@ public:
     void resetReconnectFailures() { wifiReconnectFailures = 0; lastReconnectAttemptMs = 0; }
     
     // Status
-    bool isConnected() const { return wifiClientState == WIFI_CLIENT_CONNECTED; }
+    bool isConnected() const { return !isStopping() && wifiClientState == WIFI_CLIENT_CONNECTED; }
     bool isAPActive() const { return setupModeState == SETUP_MODE_AP_ON && apInterfaceEnabled; }
     String getIPAddress() const;  // STA IP when connected
     String getAPIPAddress() const;
@@ -231,6 +235,7 @@ private:
     bool wifiStopManual = false;
     bool wifiStopHadSta = false;
     bool wifiStopHadAp = false;
+    bool allowBoundaryTransitionWork = false;
     
     // WiFi reconnect failure tracking (prevents memory leak from repeated failed attempts)
     int wifiReconnectFailures = 0;

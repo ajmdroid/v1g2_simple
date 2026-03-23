@@ -134,6 +134,12 @@ struct PerfCounters {
     std::atomic<uint32_t> wifiTimeoutCheckMaxUs{0}; // max checkAutoTimeout() duration
     std::atomic<uint32_t> wifiHeapGuardMaxUs{0}; // max heap guard sampling/evaluation duration
     std::atomic<uint32_t> wifiApStaPollMaxUs{0}; // max softAP station poll duration
+    std::atomic<uint32_t> wifiStopHttpServerMaxUs{0}; // max staged/immediate HTTP stop duration
+    std::atomic<uint32_t> wifiStopStaDisconnectMaxUs{0}; // max staged/immediate STA disconnect duration
+    std::atomic<uint32_t> wifiStopApDisableMaxUs{0}; // max staged/immediate AP disable duration
+    std::atomic<uint32_t> wifiStopModeOffMaxUs{0}; // max staged/immediate radio-off duration
+    std::atomic<uint32_t> wifiStartPreflightMaxUs{0}; // max setup-mode start preflight duration
+    std::atomic<uint32_t> wifiStartApBringupMaxUs{0}; // max AP bring-up/server-start duration
     std::atomic<uint32_t> proxyAdvertisingOnTransitions{0}; // proxy advertising transition marker: off->on
     std::atomic<uint32_t> proxyAdvertisingOffTransitions{0}; // proxy advertising transition marker: on->off
     std::atomic<uint32_t> proxyAdvertisingState{0}; // proxy advertising state marker (1=on, 0=off)
@@ -259,6 +265,12 @@ struct PerfCounters {
         wifiTimeoutCheckMaxUs.store(0, std::memory_order_relaxed);
         wifiHeapGuardMaxUs.store(0, std::memory_order_relaxed);
         wifiApStaPollMaxUs.store(0, std::memory_order_relaxed);
+        wifiStopHttpServerMaxUs.store(0, std::memory_order_relaxed);
+        wifiStopStaDisconnectMaxUs.store(0, std::memory_order_relaxed);
+        wifiStopApDisableMaxUs.store(0, std::memory_order_relaxed);
+        wifiStopModeOffMaxUs.store(0, std::memory_order_relaxed);
+        wifiStartPreflightMaxUs.store(0, std::memory_order_relaxed);
+        wifiStartApBringupMaxUs.store(0, std::memory_order_relaxed);
         proxyAdvertisingOnTransitions.store(0, std::memory_order_relaxed);
         proxyAdvertisingOffTransitions.store(0, std::memory_order_relaxed);
         proxyAdvertisingState.store(0, std::memory_order_relaxed);
@@ -460,6 +472,12 @@ struct PerfExtendedMetrics {
     uint32_t wifiTimeoutCheckMaxUs = 0;
     uint32_t wifiHeapGuardMaxUs = 0;
     uint32_t wifiApStaPollMaxUs = 0;
+    uint32_t wifiStopHttpServerMaxUs = 0;
+    uint32_t wifiStopStaDisconnectMaxUs = 0;
+    uint32_t wifiStopApDisableMaxUs = 0;
+    uint32_t wifiStopModeOffMaxUs = 0;
+    uint32_t wifiStartPreflightMaxUs = 0;
+    uint32_t wifiStartApBringupMaxUs = 0;
     uint32_t fsMaxUs = 0;
     uint32_t sdMaxUs = 0;
     uint32_t flushMaxUs = 0;
@@ -580,6 +598,12 @@ struct PerfExtendedMetrics {
         wifiTimeoutCheckMaxUs = 0;
         wifiHeapGuardMaxUs = 0;
         wifiApStaPollMaxUs = 0;
+        wifiStopHttpServerMaxUs = 0;
+        wifiStopStaDisconnectMaxUs = 0;
+        wifiStopApDisableMaxUs = 0;
+        wifiStopModeOffMaxUs = 0;
+        wifiStartPreflightMaxUs = 0;
+        wifiStartApBringupMaxUs = 0;
         fsMaxUs = 0;
         sdMaxUs = 0;
         flushMaxUs = 0;
@@ -699,6 +723,12 @@ void perfRecordWifiStatusCheckUs(uint32_t us);
 void perfRecordWifiTimeoutCheckUs(uint32_t us);
 void perfRecordWifiHeapGuardUs(uint32_t us);
 void perfRecordWifiApStaPollUs(uint32_t us);
+void perfRecordWifiStopHttpServerUs(uint32_t us);
+void perfRecordWifiStopStaDisconnectUs(uint32_t us);
+void perfRecordWifiStopApDisableUs(uint32_t us);
+void perfRecordWifiStopModeOffUs(uint32_t us);
+void perfRecordWifiStartPreflightUs(uint32_t us);
+void perfRecordWifiStartApBringupUs(uint32_t us);
 void perfRecordFsServeUs(uint32_t us);
 void perfRecordSdFlushUs(uint32_t us);
 void perfRecordFlushUs(uint32_t us, uint32_t areaPx, bool fullFlush);
@@ -1010,6 +1040,12 @@ struct PerfSdSnapshot {
     uint32_t wifiTimeoutCheckMaxUs;        // Window max auto-timeout check duration
     uint32_t wifiHeapGuardMaxUs;           // Window max WiFi heap guard duration
     uint32_t wifiApStaPollMaxUs;           // Window max AP station polling duration
+    uint32_t wifiStopHttpServerMaxUs;      // Window max HTTP stop duration
+    uint32_t wifiStopStaDisconnectMaxUs;   // Window max STA disconnect duration
+    uint32_t wifiStopApDisableMaxUs;       // Window max AP disable duration
+    uint32_t wifiStopModeOffMaxUs;         // Window max radio-off duration
+    uint32_t wifiStartPreflightMaxUs;      // Window max WiFi start preflight duration
+    uint32_t wifiStartApBringupMaxUs;      // Window max AP bring-up duration
     uint32_t freeDmaMin;                   // Min cached internal 8-bit heap free bytes since session start
     uint32_t largestDmaMin;                // Min cached internal 8-bit largest block since session start
     uint8_t bleState;                      // BLE runtime state code

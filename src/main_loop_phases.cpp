@@ -99,6 +99,9 @@ LoopWifiPhaseValues processLoopWifiPhase(
     const bool enableWifiAtBoot,
     const bool currentWifiAutoStartDone,
     const bool skipLateNonCoreThisLoop,
+    const bool bleBackpressure,
+    const bool overloadLateThisLoop,
+    const bool bleConnectBurstSettling,
     const bool bootSplashHoldActive) {
     LoopRuntimeSnapshotContext loopRuntimeSnapshotCtx;
     const LoopRuntimeSnapshotValues loopRuntimeSnapshotValues =
@@ -113,6 +116,9 @@ LoopWifiPhaseValues processLoopWifiPhase(
     wifiRuntimeCtx.canStartDma = loopRuntimeSnapshotValues.canStartDma;
     wifiRuntimeCtx.wifiAutoStartDone = currentWifiAutoStartDone;
     wifiRuntimeCtx.skipLateNonCoreThisLoop = skipLateNonCoreThisLoop;
+    wifiRuntimeCtx.bleBackpressure = bleBackpressure;
+    wifiRuntimeCtx.overloadLateThisLoop = overloadLateThisLoop;
+    wifiRuntimeCtx.bleConnectBurstSettling = bleConnectBurstSettling;
     wifiRuntimeCtx.displayPreviewRunning = loopRuntimeSnapshotValues.displayPreviewRunning;
     wifiRuntimeCtx.bootSplashHoldActive = bootSplashHoldActive;
     const WifiRuntimeResult wifiRuntimeResult = wifiRuntimeModule.process(wifiRuntimeCtx);

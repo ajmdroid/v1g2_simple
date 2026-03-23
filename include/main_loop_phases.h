@@ -77,6 +77,9 @@ LoopWifiPhaseValues processLoopWifiPhase(
     bool enableWifiAtBoot,
     bool currentWifiAutoStartDone,
     bool skipLateNonCoreThisLoop,
+    bool bleBackpressure,
+    bool overloadLateThisLoop,
+    bool bleConnectBurstSettling,
     bool bootSplashHoldActive);
 
 LoopFinalizePhaseValues processLoopFinalizePhase(

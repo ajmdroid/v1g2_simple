@@ -379,6 +379,10 @@ static void configureWifiRuntimeModule() {
     wifiRuntimeProviders.runWifiCadence =
         ProviderCallbackBindings::member<WifiProcessCadenceModule, &WifiProcessCadenceModule::process>;
     wifiRuntimeProviders.wifiCadenceContext = &wifiProcessCadenceModule;
+    wifiRuntimeProviders.setWifiTransitionAdmission = [](void* ctx, bool allowTransitionWork) {
+        static_cast<WiFiManager*>(ctx)->setBoundaryTransitionAdmission(allowTransitionWork);
+    };
+    wifiRuntimeProviders.wifiTransitionAdmissionContext = &wifiManager;
     wifiRuntimeProviders.runWifiManagerProcess =
         ProviderCallbackBindings::member<WiFiManager, &WiFiManager::process>;
     wifiRuntimeProviders.wifiManagerProcessContext = &wifiManager;
@@ -1168,6 +1172,9 @@ void loop() {
         loopSettingsPrepValues.enableWifiAtBoot,
         mainRuntimeState.wifiAutoStartDone,
         skipLateNonCoreThisLoop,
+        bleBackpressure,
+        overloadLateThisLoop,
+        bleClient.isConnectBurstSettling(),
         mainRuntimeState.bootSplashHoldActive);
     const LoopRuntimeSnapshotValues& loopRuntimeSnapshotValues = loopWifiValues.loopRuntimeSnapshotValues;
     mainRuntimeState.wifiAutoStartDone = loopWifiValues.wifiAutoStartDone;

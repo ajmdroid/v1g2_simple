@@ -8,6 +8,7 @@ bool isWifiProcessingEnabledPolicy(const WiFiManager& wifiManager,
                                    bool enableWifiAtBoot,
                                    bool wifiAutoStartDone) {
     return wifiManager.isWifiServiceActive() ||
+           wifiManager.hasPendingLifecycleWork() ||
            wifiManager.isConnected() ||
            (enableWifi && enableWifiAtBoot && !wifiAutoStartDone);
 }

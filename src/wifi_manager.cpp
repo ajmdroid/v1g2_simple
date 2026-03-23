@@ -21,6 +21,18 @@ WiFiManager wifiManager;
 WiFiManager::WiFiManager() : server(80), setupModeState(SETUP_MODE_OFF), apInterfaceEnabled(false), setupModeStartTime(0) {
 }
 
+bool WiFiManager::isStopping() const {
+    return setupModeState == SETUP_MODE_STOPPING;
+}
+
+bool WiFiManager::hasPendingLifecycleWork() const {
+    return wifiStopPhase != WifiStopPhase::IDLE;
+}
+
+void WiFiManager::setBoundaryTransitionAdmission(const bool allow) {
+    allowBoundaryTransitionWork = allow;
+}
+
 // Rate limiting: returns true if request is allowed, false if rate limited
 bool WiFiManager::checkRateLimit() {
     const uint32_t now = millis();

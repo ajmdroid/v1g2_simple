@@ -15,11 +15,12 @@ static WifiRuntimeModule module;
 
 enum CallId {
     CALL_AUTO_START = 1,
-    CALL_POLICY = 2,
-    CALL_CADENCE = 3,
-    CALL_WIFI_PROCESS = 4,
-    CALL_PERF_RECORD = 5,
-    CALL_VISUAL_SYNC = 6,
+    CALL_SET_TRANSITION_ADMISSION = 2,
+    CALL_POLICY = 3,
+    CALL_CADENCE = 4,
+    CALL_WIFI_PROCESS = 5,
+    CALL_PERF_RECORD = 6,
+    CALL_VISUAL_SYNC = 7,
 };
 
 static int callLog[24];
@@ -49,6 +50,8 @@ static bool scriptedCadenceShouldRun = false;
 static int cadenceCalls = 0;
 static WifiProcessCadenceContext lastCadenceCtx;
 static bool haveLastCadenceCtx = false;
+static int transitionAdmissionCalls = 0;
+static bool lastAllowTransitionWork = false;
 
 static int wifiProcessCalls = 0;
 
@@ -130,6 +133,12 @@ static WifiProcessCadenceDecision runWifiCadence(void*, const WifiProcessCadence
     return decision;
 }
 
+static void setWifiTransitionAdmission(void*, bool allowTransitionWork) {
+    noteCall(CALL_SET_TRANSITION_ADMISSION);
+    transitionAdmissionCalls++;
+    lastAllowTransitionWork = allowTransitionWork;
+}
+
 static void runWifiManagerProcess(void*) {
     noteCall(CALL_WIFI_PROCESS);
     wifiProcessCalls++;
@@ -173,6 +182,7 @@ static WifiRuntimeModule::Providers makeDefaultProviders() {
     providers.shouldRunWifiProcessingPolicy = shouldRunWifiProcessingPolicy;
     providers.perfTimestampUs = nextTimestampUs;
     providers.runWifiCadence = runWifiCadence;
+    providers.setWifiTransitionAdmission = setWifiTransitionAdmission;
     providers.runWifiManagerProcess = runWifiManagerProcess;
     providers.recordWifiProcessUs = recordWifiProcessUs;
     providers.readWifiServiceActive = readWifiServiceActive;
@@ -203,6 +213,8 @@ static void resetState() {
     scriptedCadenceShouldRun = false;
     cadenceCalls = 0;
     haveLastCadenceCtx = false;
+    transitionAdmissionCalls = 0;
+    lastAllowTransitionWork = false;
     wifiProcessCalls = 0;
     perfRecordCalls = 0;
     lastPerfElapsedUs = 0;
@@ -257,6 +269,8 @@ void test_process_runs_wifi_path_with_updated_autostart_state_and_perf_recording
     TEST_ASSERT_TRUE(lastAutoStartBleConnected);
     TEST_ASSERT_TRUE(lastAutoStartCanStartDma);
 
+    TEST_ASSERT_EQUAL(1, transitionAdmissionCalls);
+    TEST_ASSERT_TRUE(lastAllowTransitionWork);
     TEST_ASSERT_EQUAL(1, policyCalls);
     TEST_ASSERT_TRUE(lastPolicyEnableWifi);
     TEST_ASSERT_TRUE(lastPolicyEnableWifiAtBoot);
@@ -277,13 +291,14 @@ void test_process_runs_wifi_path_with_updated_autostart_state_and_perf_recording
     TEST_ASSERT_TRUE(lastVisualPreviewRunning);
     TEST_ASSERT_FALSE(lastVisualBootSplashHold);
 
-    TEST_ASSERT_EQUAL(6, callLogCount);
+    TEST_ASSERT_EQUAL(7, callLogCount);
     TEST_ASSERT_EQUAL(CALL_AUTO_START, callLog[0]);
-    TEST_ASSERT_EQUAL(CALL_POLICY, callLog[1]);
-    TEST_ASSERT_EQUAL(CALL_CADENCE, callLog[2]);
-    TEST_ASSERT_EQUAL(CALL_WIFI_PROCESS, callLog[3]);
-    TEST_ASSERT_EQUAL(CALL_PERF_RECORD, callLog[4]);
-    TEST_ASSERT_EQUAL(CALL_VISUAL_SYNC, callLog[5]);
+    TEST_ASSERT_EQUAL(CALL_SET_TRANSITION_ADMISSION, callLog[1]);
+    TEST_ASSERT_EQUAL(CALL_POLICY, callLog[2]);
+    TEST_ASSERT_EQUAL(CALL_CADENCE, callLog[3]);
+    TEST_ASSERT_EQUAL(CALL_WIFI_PROCESS, callLog[4]);
+    TEST_ASSERT_EQUAL(CALL_PERF_RECORD, callLog[5]);
+    TEST_ASSERT_EQUAL(CALL_VISUAL_SYNC, callLog[6]);
 }
 
 void test_skip_non_core_blocks_policy_and_wifi_process_but_keeps_visual_sync() {
@@ -303,6 +318,8 @@ void test_skip_non_core_blocks_policy_and_wifi_process_but_keeps_visual_sync() {
 
     TEST_ASSERT_TRUE(result.wifiAutoStartDone);
     TEST_ASSERT_EQUAL(1, autoStartCalls);
+    TEST_ASSERT_EQUAL(1, transitionAdmissionCalls);
+    TEST_ASSERT_FALSE(lastAllowTransitionWork);
     TEST_ASSERT_EQUAL(0, policyCalls);
     TEST_ASSERT_EQUAL(0, cadenceCalls);
     TEST_ASSERT_EQUAL(0, wifiProcessCalls);
@@ -325,6 +342,8 @@ void test_policy_false_skips_cadence_and_wifi_process() {
 
     module.process(ctx);
 
+    TEST_ASSERT_EQUAL(1, transitionAdmissionCalls);
+    TEST_ASSERT_TRUE(lastAllowTransitionWork);
     TEST_ASSERT_EQUAL(1, policyCalls);
     TEST_ASSERT_EQUAL(0, cadenceCalls);
     TEST_ASSERT_EQUAL(0, wifiProcessCalls);
@@ -346,6 +365,8 @@ void test_cadence_false_skips_wifi_process_and_perf_record() {
 
     module.process(ctx);
 
+    TEST_ASSERT_EQUAL(1, transitionAdmissionCalls);
+    TEST_ASSERT_TRUE(lastAllowTransitionWork);
     TEST_ASSERT_EQUAL(1, policyCalls);
     TEST_ASSERT_EQUAL(1, cadenceCalls);
     TEST_ASSERT_EQUAL(0, wifiProcessCalls);
@@ -367,6 +388,28 @@ void test_visual_uses_ctx_now_when_visual_now_provider_missing() {
     TEST_ASSERT_EQUAL(0, readVisualNowCalls);
     TEST_ASSERT_EQUAL(1, visualSyncCalls);
     TEST_ASSERT_EQUAL(6060u, lastVisualNowMs);
+}
+
+void test_transition_gate_closes_for_connect_burst_pressure_signals() {
+    scriptedPolicyResult = true;
+    scriptedCadenceShouldRun = true;
+
+    WifiRuntimeContext ctx;
+    ctx.nowMs = 1234;
+    ctx.enableWifi = true;
+    ctx.enableWifiAtBoot = true;
+    ctx.wifiAutoStartDone = true;
+    ctx.bleBackpressure = true;
+    ctx.overloadLateThisLoop = true;
+    ctx.bleConnectBurstSettling = true;
+
+    module.process(ctx);
+
+    TEST_ASSERT_EQUAL(1, transitionAdmissionCalls);
+    TEST_ASSERT_FALSE(lastAllowTransitionWork);
+    TEST_ASSERT_EQUAL(1, policyCalls);
+    TEST_ASSERT_EQUAL(1, cadenceCalls);
+    TEST_ASSERT_EQUAL(1, wifiProcessCalls);
 }
 
 void test_empty_providers_is_safe_noop() {
@@ -394,6 +437,7 @@ int main() {
     RUN_TEST(test_policy_false_skips_cadence_and_wifi_process);
     RUN_TEST(test_cadence_false_skips_wifi_process_and_perf_record);
     RUN_TEST(test_visual_uses_ctx_now_when_visual_now_provider_missing);
+    RUN_TEST(test_transition_gate_closes_for_connect_burst_pressure_signals);
     RUN_TEST(test_empty_providers_is_safe_noop);
     return UNITY_END();
 }

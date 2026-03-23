@@ -13,6 +13,9 @@ struct WifiRuntimeContext {
     bool canStartDma = false;
     bool wifiAutoStartDone = false;
     bool skipLateNonCoreThisLoop = false;
+    bool bleBackpressure = false;
+    bool overloadLateThisLoop = false;
+    bool bleConnectBurstSettling = false;
     bool displayPreviewRunning = false;
     bool bootSplashHoldActive = false;
 };
@@ -46,6 +49,8 @@ public:
         WifiProcessCadenceDecision (*runWifiCadence)(
             void* ctx, const WifiProcessCadenceContext& cadenceCtx) = nullptr;
         void* wifiCadenceContext = nullptr;
+        void (*setWifiTransitionAdmission)(void* ctx, bool allowTransitionWork) = nullptr;
+        void* wifiTransitionAdmissionContext = nullptr;
         void (*runWifiManagerProcess)(void* ctx) = nullptr;
         void* wifiManagerProcessContext = nullptr;
         void (*recordWifiProcessUs)(void* ctx, uint32_t elapsedUs) = nullptr;

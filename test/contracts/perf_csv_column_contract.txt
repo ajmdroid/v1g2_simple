@@ -207,6 +207,12 @@ wifiStatusCheckMax_us
 wifiTimeoutCheckMax_us
 wifiHeapGuardMax_us
 wifiApStaPollMax_us
+wifiStopHttpServerMax_us
+wifiStopStaDisconnectMax_us
+wifiStopApDisableMax_us
+wifiStopModeOffMax_us
+wifiStartPreflightMax_us
+wifiStartApBringupMax_us
 freeDmaMin
 largestDmaMin
 bleState

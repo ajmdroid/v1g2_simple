@@ -136,6 +136,12 @@ WIFI_SUBPHASE_COLUMNS = (
     ("wifiTimeoutCheckMax_us", "WiFi timeout check"),
     ("wifiHeapGuardMax_us", "WiFi heap guard"),
     ("wifiApStaPollMax_us", "AP station poll"),
+    ("wifiStopHttpServerMax_us", "HTTP server stop"),
+    ("wifiStopStaDisconnectMax_us", "STA disconnect"),
+    ("wifiStopApDisableMax_us", "AP disable"),
+    ("wifiStopModeOffMax_us", "radio off"),
+    ("wifiStartPreflightMax_us", "WiFi start preflight"),
+    ("wifiStartApBringupMax_us", "AP bring-up"),
 )
 CONNECT_BURST_BLE_COLUMNS = (
     ("bleFollowupRequestAlertMax_us", "followup alert request"),

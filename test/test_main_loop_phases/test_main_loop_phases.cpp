@@ -63,6 +63,7 @@ enum CallId {
     CALL_READ_DISPLAY_PREVIEW,
     CALL_WIFI_AUTO_START,
     CALL_WIFI_POLICY,
+    CALL_WIFI_SET_TRANSITION_ADMISSION,
     CALL_WIFI_CADENCE,
     CALL_WIFI_MANAGER_PROCESS,
     CALL_READ_WIFI_SERVICE_ACTIVE,
@@ -104,6 +105,7 @@ uint32_t lastWifiVisualNowMs = 0;
 bool lastWifiVisualActiveNow = false;
 bool lastWifiDisplayPreviewRunning = false;
 bool lastWifiBootSplashHoldActive = false;
+bool lastWifiAllowTransitionWork = false;
 bool observedTouchBootButton = false;
 uint32_t observedLoopJitterUs = 0;
 uint32_t observedFreeHeap = 0;
@@ -130,6 +132,7 @@ void resetState() {
     lastWifiVisualActiveNow = false;
     lastWifiDisplayPreviewRunning = false;
     lastWifiBootSplashHoldActive = false;
+    lastWifiAllowTransitionWork = false;
     observedTouchBootButton = false;
     observedLoopJitterUs = 0;
     observedFreeHeap = 0;
@@ -302,6 +305,11 @@ void runWifiAutoStartProcess(
 bool shouldRunWifiProcessingPolicy(void*, bool, bool, bool) {
     noteCall(CALL_WIFI_POLICY);
     return true;
+}
+
+void setWifiTransitionAdmission(void*, bool allowTransitionWork) {
+    noteCall(CALL_WIFI_SET_TRANSITION_ADMISSION);
+    lastWifiAllowTransitionWork = allowTransitionWork;
 }
 
 WifiProcessCadenceDecision runWifiCadence(
@@ -507,6 +515,7 @@ void configureModules() {
     wifiProviders.runWifiAutoStartProcess = runWifiAutoStartProcess;
     wifiProviders.shouldRunWifiProcessingPolicy = shouldRunWifiProcessingPolicy;
     wifiProviders.runWifiCadence = runWifiCadence;
+    wifiProviders.setWifiTransitionAdmission = setWifiTransitionAdmission;
     wifiProviders.runWifiManagerProcess = providerWifiManagerProcess;
     wifiProviders.readWifiServiceActive = readWifiServiceActive;
     wifiProviders.readWifiConnected = readWifiConnected;
@@ -601,6 +610,9 @@ void test_main_loop_phases_preserve_expected_order_and_phase_contracts() {
             ingestValues.loopSettingsPrepValues.enableWifiAtBoot,
             false,
             ingestValues.skipLateNonCoreThisLoop,
+            ingestValues.bleBackpressure,
+            ingestValues.overloadLateThisLoop,
+            false,
             earlyValues.bootSplashHoldActive);
 
     TEST_ASSERT_TRUE(wifiValues.loopRuntimeSnapshotValues.bleConnected);
@@ -609,6 +621,7 @@ void test_main_loop_phases_preserve_expected_order_and_phase_contracts() {
     TEST_ASSERT_TRUE(wifiValues.wifiAutoStartDone);
     TEST_ASSERT_EQUAL(2000U, lastWifiCadenceCtx.minIntervalUs);
     TEST_ASSERT_EQUAL(1700U, lastWifiVisualNowMs);
+    TEST_ASSERT_TRUE(lastWifiAllowTransitionWork);
     TEST_ASSERT_TRUE(lastWifiVisualActiveNow);
     TEST_ASSERT_TRUE(lastWifiDisplayPreviewRunning);
     TEST_ASSERT_TRUE(lastWifiBootSplashHoldActive);
@@ -655,6 +668,7 @@ void test_main_loop_phases_preserve_expected_order_and_phase_contracts() {
         CALL_READ_CAN_START_DMA,
         CALL_READ_DISPLAY_PREVIEW,
         CALL_WIFI_AUTO_START,
+        CALL_WIFI_SET_TRANSITION_ADMISSION,
         CALL_WIFI_POLICY,
         CALL_WIFI_CADENCE,
         CALL_WIFI_MANAGER_PROCESS,

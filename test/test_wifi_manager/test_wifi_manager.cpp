@@ -25,6 +25,7 @@
 enum SetupModeState {
     SETUP_MODE_OFF = 0,
     SETUP_MODE_AP_ON,
+    SETUP_MODE_STOPPING,
 };
 
 /**
@@ -70,6 +71,7 @@ const char* setupModeToString(SetupModeState state) {
     switch (state) {
         case SETUP_MODE_OFF: return "OFF";
         case SETUP_MODE_AP_ON: return "AP_ON";
+        case SETUP_MODE_STOPPING: return "STOPPING";
         default: return "UNKNOWN";
     }
 }
@@ -143,11 +145,13 @@ const char* rssiToQuality(int rssi) {
 void test_setup_mode_enum_values() {
     TEST_ASSERT_EQUAL_INT(0, SETUP_MODE_OFF);
     TEST_ASSERT_EQUAL_INT(1, SETUP_MODE_AP_ON);
+    TEST_ASSERT_EQUAL_INT(2, SETUP_MODE_STOPPING);
 }
 
 void test_setup_mode_strings() {
     TEST_ASSERT_EQUAL_STRING("OFF", setupModeToString(SETUP_MODE_OFF));
     TEST_ASSERT_EQUAL_STRING("AP_ON", setupModeToString(SETUP_MODE_AP_ON));
+    TEST_ASSERT_EQUAL_STRING("STOPPING", setupModeToString(SETUP_MODE_STOPPING));
 }
 
 void test_setup_mode_unknown_string() {
