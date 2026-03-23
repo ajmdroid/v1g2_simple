@@ -860,6 +860,77 @@ def main() -> int:
             f"display baseline window should exclude failed run and preserve newest-first ordering: {display_window_compare}",
         )
 
+        baseline_override_path = window_artifact_root / "release" / "baseline_manifest_overrides.json"
+        write_json(
+            baseline_override_path,
+            {
+                "schema_version": 1,
+                "board_id": "release",
+                "previous_run_dir": str(window_seed_4_dir),
+                "steps": {
+                    "device_tests": [
+                        str(window_seed_2_dir / "device_tests" / "manifest.json"),
+                        str(window_seed_1_dir / "device_tests" / "manifest.json"),
+                    ],
+                    "core_soak": [
+                        str(window_seed_2_dir / "core_soak" / "manifest.json"),
+                    ],
+                    "display_soak": [
+                        str(window_seed_3_dir / "display_soak" / "manifest.json"),
+                        str(window_seed_2_dir / "display_soak" / "manifest.json"),
+                    ],
+                },
+            },
+        )
+
+        pinned_probe = run_test_script(
+            {
+                **window_env,
+                "FAKE_DEVICE_RESULT": "PASS",
+                "FAKE_DEVICE_COMPARE_KIND": "run_variance",
+                "FAKE_DEVICE_VALUE": "106",
+                "FAKE_DEVICE_BASELINE": "105",
+                "FAKE_CORE_RESULT": "PASS",
+                "FAKE_CORE_COMPARE_KIND": "run_variance",
+                "FAKE_CORE_VALUE": "206",
+                "FAKE_CORE_BASELINE": "205",
+                "FAKE_DISPLAY_RESULT": "PASS",
+                "FAKE_DISPLAY_COMPARE_KIND": "run_variance",
+                "FAKE_DISPLAY_VALUE": "306",
+                "FAKE_DISPLAY_BASELINE": "305",
+            }
+        )
+        assert_true(pinned_probe.returncode == 0, f"pinned probe failed: {pinned_probe.stdout}\n{pinned_probe.stderr}")
+        pinned_probe_result = json.loads((window_latest / "result.json").read_text(encoding="utf-8"))
+        assert_true(
+            resolved_path_text(pinned_probe_result["previous_run_dir"]) == resolved_path_text(window_seed_4_dir),
+            f"pinned previous_run_dir should be used when baseline override exists: {pinned_probe_result}",
+        )
+
+        device_pinned_compare = read_lines(window_latest / "device_tests" / "received_compare_to.txt")
+        core_pinned_compare = read_lines(window_latest / "core_soak" / "received_compare_to.txt")
+        display_pinned_compare = read_lines(window_latest / "display_soak" / "received_compare_to.txt")
+        assert_true(
+            [resolved_path_text(item) for item in device_pinned_compare] == [
+                resolved_path_text(window_seed_2_dir / "device_tests" / "manifest.json"),
+                resolved_path_text(window_seed_1_dir / "device_tests" / "manifest.json"),
+            ],
+            f"device baseline override should replace automatic window selection: {device_pinned_compare}",
+        )
+        assert_true(
+            [resolved_path_text(item) for item in core_pinned_compare] == [
+                resolved_path_text(window_seed_2_dir / "core_soak" / "manifest.json"),
+            ],
+            f"core baseline override should replace automatic window selection: {core_pinned_compare}",
+        )
+        assert_true(
+            [resolved_path_text(item) for item in display_pinned_compare] == [
+                resolved_path_text(window_seed_3_dir / "display_soak" / "manifest.json"),
+                resolved_path_text(window_seed_2_dir / "display_soak" / "manifest.json"),
+            ],
+            f"display baseline override should replace automatic window selection: {display_pinned_compare}",
+        )
+
         soak_only_failure = run_test_script(
             {
                 **common_env,

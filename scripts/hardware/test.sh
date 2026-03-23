@@ -16,6 +16,7 @@ ARTIFACT_ROOT="${HARDWARE_TEST_ARTIFACT_ROOT:-$ROOT_DIR/.artifacts/hardware/test
 SOAK_DURATION_SECONDS="${HARDWARE_TEST_SOAK_DURATION_SECONDS:-300}"
 STRICT_WARNINGS="${HARDWARE_TEST_STRICT_WARNINGS:-0}"
 STRICT_SOAKS="${HARDWARE_TEST_STRICT_SOAKS:-0}"
+BASELINE_OVERRIDE_PATH="${HARDWARE_TEST_BASELINE_OVERRIDE_PATH:-}"
 HTTP_TIMEOUT_SECONDS="${HARDWARE_TEST_HTTP_TIMEOUT_SECONDS:-5}"
 METRICS_ENDPOINT_ATTEMPTS="${HARDWARE_TEST_METRICS_ENDPOINT_ATTEMPTS:-6}"
 METRICS_ENDPOINT_RETRY_DELAY_SECONDS="${HARDWARE_TEST_METRICS_ENDPOINT_RETRY_DELAY_SECONDS:-2}"
@@ -334,6 +335,9 @@ fi
 
 BOARD_ARTIFACT_ROOT="$ARTIFACT_ROOT/$BOARD_ID"
 mkdir -p "$BOARD_ARTIFACT_ROOT/runs"
+if [[ -z "$BASELINE_OVERRIDE_PATH" ]]; then
+  BASELINE_OVERRIDE_PATH="$BOARD_ARTIFACT_ROOT/baseline_manifest_overrides.json"
+fi
 
 GIT_SHA="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
 GIT_REF="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
@@ -398,7 +402,77 @@ raise SystemExit(0)
 PY
 }
 
+read_baseline_override_previous_run_dir() {
+  local override_path="$1"
+  python3 - "$override_path" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+override_path = Path(sys.argv[1])
+if not override_path.is_file():
+    raise SystemExit(1)
+
+try:
+    payload = json.loads(override_path.read_text(encoding="utf-8"))
+except json.JSONDecodeError:
+    raise SystemExit(1)
+
+candidate = Path(str(payload.get("previous_run_dir") or "")).resolve()
+if not candidate.is_dir():
+    raise SystemExit(1)
+
+print(candidate)
+PY
+}
+
+collect_baseline_override_manifests() {
+  local override_path="$1"
+  local step_name="$2"
+  python3 - "$override_path" "$step_name" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+override_path = Path(sys.argv[1])
+step_name = sys.argv[2]
+if not override_path.is_file():
+    raise SystemExit(1)
+
+try:
+    payload = json.loads(override_path.read_text(encoding="utf-8"))
+except json.JSONDecodeError:
+    raise SystemExit(1)
+
+steps = payload.get("steps")
+if not isinstance(steps, dict):
+    raise SystemExit(1)
+
+manifests = steps.get(step_name)
+if not isinstance(manifests, list):
+    raise SystemExit(1)
+
+printed = False
+for raw_path in manifests:
+    manifest_path = Path(str(raw_path)).resolve()
+    if not manifest_path.is_file():
+        continue
+    print(manifest_path)
+    printed = True
+
+if not printed:
+    raise SystemExit(1)
+PY
+}
+
 find_previous_run_dir() {
+  local override_previous_run_dir=""
+  override_previous_run_dir="$(read_baseline_override_previous_run_dir "$BASELINE_OVERRIDE_PATH" || true)"
+  if [[ -n "$override_previous_run_dir" ]]; then
+    printf '%s\n' "$override_previous_run_dir"
+    return 0
+  fi
+
   local candidate_dir=""
   while IFS= read -r candidate_dir; do
     [[ -z "$candidate_dir" ]] && continue
@@ -412,6 +486,10 @@ find_previous_run_dir() {
 
 collect_previous_step_manifests() {
   local step_name="$1"
+  if collect_baseline_override_manifests "$BASELINE_OVERRIDE_PATH" "$step_name"; then
+    return 0
+  fi
+
   python3 - "$BOARD_ARTIFACT_ROOT/runs" "$RUN_DIR" "$step_name" <<'PY'
 import json
 import sys
