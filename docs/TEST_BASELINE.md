@@ -61,34 +61,30 @@ Known remaining exceptions (intentional, self-contained):
 
 ---
 
-## Architecture Violations Inventoried (Not Yet Fixed)
+## Architecture Violations — Phase 5 Status (updated 2026-03-29)
 
-The following violations were identified during the Phase 4 scan but are NOT
-fixed in this baseline. They represent the Phase 5 work queue.
+### HIGH — Direct global access inside modules ✅ RESOLVED
 
-### HIGH — Direct global access inside modules
+All `main_globals.h` includes have been removed from `src/modules/`. The scan
+confirmed zero remaining violations of this type.
 
-Modules that reach for globals directly instead of receiving dependencies
-through `begin()`. These undermine testability and create hidden coupling.
-
-| File | Globals accessed |
-|---|---|
-| `src/modules/speed/speed_source_selector.cpp` | `gpsRuntimeModule`, `obdRuntimeModule` |
-| `src/modules/obd/obd_runtime_module.cpp` | `obdBleClient` |
-| `src/modules/obd/obd_api_service.cpp` | `obdRuntimeModule`, `settingsManager` |
-| `src/modules/gps/gps_api_service.cpp` | `gpsRuntimeModule` |
-| `src/modules/lockout/lockout_api_service.cpp` | `lockoutIndex`, others |
-| `src/modules/debug/debug_api_service.cpp` | `main_globals.h` (known, flagged) |
-| `src/modules/debug/debug_api_scenario_service.cpp` | `main_globals.h` (known, flagged) |
+| File | Status | Notes |
+|---|---|---|
+| `src/modules/debug/debug_api_service.cpp` | ✅ Fixed | `begin()` injection via `debug_api_service_deps.h` |
+| `src/modules/debug/debug_api_scenario_service.cpp` | ✅ Fixed | Uses same deps header |
+| `src/modules/speed/speed_source_selector.cpp` | ✅ Fixed | `wireSpeedSources()` injection |
+| `src/modules/obd/obd_api_service.cpp` | ✅ Already clean | Passes deps as params |
+| `src/modules/gps/gps_api_service.cpp` | ✅ Already clean | Passes deps as params |
+| `src/modules/lockout/lockout_api_service.cpp` | ✅ Already clean | Passes deps as params |
+| `src/modules/obd/obd_runtime_module.cpp` | ⚠️ Deferred | `obdBleClient` access; all 33 callsites inside `#ifndef UNIT_TEST`. Tests unaffected. Bidirectional dep (`init(this)`) makes clean injection complex. Revisit when OBD BLE path is next reworked. |
 
 ### MEDIUM — `std::function` wiring (retired pattern)
 
-18 files use `std::function` in wiring structs. Heap allocation overhead is
-unacceptable on ESP32. These are to be migrated to `Providers` + `void* ctx`
-when each file is next touched.
+~14 files still use `std::function` in wiring structs. Migrate to
+`Providers` + `void* ctx` when each file is next touched — do not bulk-migrate.
 
-Bulk of the work is in WiFi API services (10 files) and touch/debug services.
-See `ARCHITECTURE.md` for the correct pattern.
+Remaining files: WiFi API services (10 files), OBD/GPS API services,
+debug services. See `ARCHITECTURE.md` for the correct pattern.
 
 ### MEDIUM — `extern` globals exported from module headers
 
@@ -103,27 +99,6 @@ Target for removal as modules are converted to `begin()` injection:
 `lockout_orchestration_module.h` (11 params) exceed the 6-parameter
 guideline. Evaluate grouping related dependencies into a struct when
 those modules are next refactored.
-
----
-
-## Recommended Order for Phase 5 Refactoring
-
-Start with the most isolated modules and work inward toward core:
-
-1. **Debug API services** — known violation, low risk, isolated.
-   Fix `main_globals.h` dependency by injecting globals via `begin()`.
-
-2. **GPS API service** — small file, single global dependency.
-
-3. **OBD API service** — similar to GPS service.
-
-4. **WiFi API services** — bulk `std::function` migration. Do one at a time.
-   Confirm each passes the 1297 baseline before moving to the next.
-
-5. **speed_source_selector** — injecting `gpsRuntimeModule` and
-   `obdRuntimeModule` via `begin()` is the right fix here.
-
-6. **Lockout/OBD orchestration** — tackle last; most coupled.
 
 ---
 
