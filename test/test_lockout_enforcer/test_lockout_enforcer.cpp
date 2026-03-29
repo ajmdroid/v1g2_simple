@@ -11,41 +11,8 @@ SerialClass Serial;
 SettingsManager settingsManager;
 #endif
 
-// GpsRuntimeStatus is a plain struct — define it here to avoid pulling
-// the full GpsRuntimeModule with its UART/hardware dependencies.
-#ifndef GPS_RUNTIME_STATUS_DEFINED
-#define GPS_RUNTIME_STATUS_DEFINED
-struct GpsRuntimeStatus {
-    bool enabled = false;
-    bool sampleValid = false;
-    bool hasFix = false;
-    float speedMph = 0.0f;
-    uint8_t satellites = 0;
-    float hdop = NAN;
-    bool locationValid = false;
-    float latitudeDeg = NAN;
-    float longitudeDeg = NAN;
-    bool courseValid = false;
-    float courseDeg = NAN;
-    uint32_t courseSampleTsMs = 0;
-    uint32_t courseAgeMs = UINT32_MAX;
-    uint32_t sampleTsMs = 0;
-    uint32_t sampleAgeMs = UINT32_MAX;
-    uint32_t fixAgeMs = UINT32_MAX;
-    uint32_t injectedSamples = 0;
-    bool moduleDetected = false;
-    bool detectionTimedOut = false;
-    bool parserActive = false;
-    uint32_t hardwareSamples = 0;
-    uint32_t bytesRead = 0;
-    uint32_t sentencesSeen = 0;
-    uint32_t sentencesParsed = 0;
-    uint32_t parseFailures = 0;
-    uint32_t checksumFailures = 0;
-    uint32_t bufferOverruns = 0;
-    uint32_t lastSentenceTsMs = 0;
-};
-#endif
+// Use the canonical GpsRuntimeStatus definition — pure data, no Arduino dependency.
+#include "../../src/modules/gps/gps_runtime_status.h"
 
 // Pull implementation for UNIT_TEST build.
 #include "../../src/modules/lockout/lockout_entry.h"

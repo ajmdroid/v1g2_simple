@@ -1,24 +1,13 @@
 #pragma once
 
-#include <cstdint>
+// Use the canonical struct definition — never redefine it here.
+// This ensures the mock and real module always agree on the shape of GpsRuntimeStatus.
+#include "../../../../src/modules/gps/gps_runtime_status.h"
 
-struct GpsRuntimeStatus {
-    bool enabled = false;
-    bool hasFix = false;
-    bool stableHasFix = false;
-    uint8_t satellites = 0;
-    uint8_t stableSatellites = 0;
-    bool sampleValid = false;
-    bool locationValid = false;
-    float latitudeDeg = 0.0f;
-    float longitudeDeg = 0.0f;
-    float speedMph = 0.0f;
-    uint16_t hdop = 0;
-    bool courseValid = false;
-    float courseDeg = 0.0f;
-    uint32_t courseAgeMs = 0;
-};
-
+/**
+ * Mock GpsRuntimeModule for native unit testing.
+ * Only the class behavior is mocked; GpsRuntimeStatus is the real struct.
+ */
 class GpsRuntimeModule {
 public:
     int snapshotCalls = 0;
