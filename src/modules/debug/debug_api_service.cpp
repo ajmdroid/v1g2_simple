@@ -25,7 +25,22 @@
 #include "../lockout/lockout_band_policy.h"
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
-#include "../../../include/main_globals.h"
+#include "debug_api_service_deps.h"
+
+// --- Dependency storage (shared with debug_api_scenario_service.cpp via deps header) ---
+namespace DebugApiService {
+namespace deps {
+SystemEventBus* eventBus  = nullptr;
+V1BLEClient*    bleClient = nullptr;
+BleQueueModule* bleQueue  = nullptr;
+}  // namespace deps
+}  // namespace DebugApiService
+
+void DebugApiService::begin(SystemEventBus* eventBus, V1BLEClient* ble, BleQueueModule* bleQueue) {
+    deps::eventBus  = eventBus;
+    deps::bleClient = ble;
+    deps::bleQueue  = bleQueue;
+}
 
 #if defined(__GNUC__)
 #define DEBUG_API_NOINLINE __attribute__((noinline))
@@ -711,8 +726,8 @@ void handleApiDebugEnable(WebServer& server,
 void handleMetricsReset(WebServer& server) {
     // Clear soak-facing counters without touching runtime state/queues.
     perfMetricsReset();
-    systemEventBus.resetStats();
-    bleClient.resetProxyMetrics();
+    deps::eventBus->resetStats();
+    deps::bleClient->resetProxyMetrics();
     DebugApiService::invalidateSoakMetricsCache(gSoakMetricsCache);
     server.send(200, "application/json", "{\"success\":true,\"metricsReset\":true}");
 }
@@ -730,18 +745,18 @@ void handleProxyAdvertisingControl(WebServer& server) {
     }
     const JsonDocument* bodyPtr = hasBody ? &body : nullptr;
     const bool enable = requestBoolArg(server, bodyPtr, "enabled", true);
-    const bool ok = bleClient.forceProxyAdvertising(
+    const bool ok = deps::bleClient->forceProxyAdvertising(
         enable,
         static_cast<uint8_t>(enable ? PerfProxyAdvertisingTransitionReason::StartDirect
                                     : PerfProxyAdvertisingTransitionReason::StopOther));
     WifiJson::Document doc;
     doc["success"] = ok;
     doc["requestedEnabled"] = enable;
-    doc["advertising"] = bleClient.isProxyAdvertising();
-    doc["proxyEnabled"] = bleClient.isProxyEnabled();
-    doc["v1Connected"] = bleClient.isConnected();
-    doc["wifiPriority"] = bleClient.isWifiPriority();
-    doc["proxyClientConnected"] = bleClient.isProxyClientConnected();
+    doc["advertising"] = deps::bleClient->isProxyAdvertising();
+    doc["proxyEnabled"] = deps::bleClient->isProxyEnabled();
+    doc["v1Connected"] = deps::bleClient->isConnected();
+    doc["wifiPriority"] = deps::bleClient->isWifiPriority();
+    doc["proxyClientConnected"] = deps::bleClient->isProxyClientConnected();
     const uint32_t reasonCode = perfGetProxyAdvertisingLastTransitionReason();
     doc["lastTransitionReasonCode"] = reasonCode;
     doc["lastTransitionReason"] = perfProxyAdvertisingTransitionReasonName(reasonCode);

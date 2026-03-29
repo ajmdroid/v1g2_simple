@@ -25,7 +25,7 @@
 #include "../lockout/lockout_band_policy.h"
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
-#include "../../../include/main_globals.h"
+#include "debug_api_service_deps.h"
 namespace {
 
 bool isTruthyArgValue(const String& value) {
@@ -910,7 +910,7 @@ void pumpScenarioPlayback(uint32_t nowMs) {
             break;
         }
         if (!event.bytes.empty() && event.bytes.size() <= 256) {
-            bleQueueModule.onNotify(event.bytes.data(), event.bytes.size(), event.charUuid);
+            deps::bleQueue->onNotify(event.bytes.data(), event.bytes.size(), event.charUuid);
             gScenarioPlayback.emittedPackets++;
         }
         gScenarioPlayback.nextEventIndex++;

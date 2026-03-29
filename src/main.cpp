@@ -1056,6 +1056,7 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
     configureAlertAudioDisplayPipeline();
     configureSystemLoopModules();
     configureRuntimeAndLockoutModules();
+    DebugApiService::begin(&systemEventBus, &bleClient, &bleQueueModule);
 
     configureWifiRuntimeModule();
     finalizeBootReadyAndBleScan(setupStartMs, logBootStage);

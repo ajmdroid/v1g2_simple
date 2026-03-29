@@ -4,7 +4,18 @@
 
 #include <functional>
 
+// Forward declarations for begin() dependencies.
+class SystemEventBus;
+class V1BLEClient;
+class BleQueueModule;
+
 namespace DebugApiService {
+
+/// Wire dependencies. Must be called once during setup() before any handlers
+/// or process() are invoked. All pointers must remain valid for the lifetime
+/// of the service.
+void begin(SystemEventBus* eventBus, V1BLEClient* ble, BleQueueModule* bleQueue);
+
 
 /// GET /api/debug/metrics handler for WiFiManager route delegation.
 void handleApiMetrics(WebServer& server);

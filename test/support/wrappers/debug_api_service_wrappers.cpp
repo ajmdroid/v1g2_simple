@@ -2,6 +2,9 @@
 
 namespace DebugApiService {
 
+// No-op for unit tests — dependencies are never wired in the native test environment.
+void begin(SystemEventBus* /*eventBus*/, V1BLEClient* /*ble*/, BleQueueModule* /*bleQueue*/) {}
+
 #ifdef UNIT_TEST
 void sendMetrics(WebServer& server);
 void sendPanic(WebServer& server);
