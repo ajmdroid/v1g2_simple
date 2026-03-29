@@ -43,6 +43,7 @@ static void resetAll() {
     speedSourceSelector = SpeedSourceSelector();
     gpsRuntimeModule = GpsRuntimeModule();
     obdRuntimeModule = ObdRuntimeModule();
+    speedSourceSelector.wireSpeedSources(&gpsRuntimeModule, &obdRuntimeModule);
 }
 
 void setUp() { resetAll(); }

@@ -7,6 +7,11 @@
 
 SpeedSourceSelector speedSourceSelector;
 
+void SpeedSourceSelector::wireSpeedSources(GpsRuntimeModule* gps, ObdRuntimeModule* obd) {
+    gps_ = gps;
+    obd_ = obd;
+}
+
 void SpeedSourceSelector::begin(bool gpsEnabled, bool obdEnabled) {
     syncEnabledInputs(gpsEnabled, obdEnabled);
     lastSource_ = SpeedSource::NONE;
@@ -34,7 +39,7 @@ SpeedSelectorStatus SpeedSourceSelector::buildStatus(uint32_t nowMs) const {
 
     float gpsSpeed = 0.0f;
     uint32_t gpsTs = 0;
-    if (gpsEnabled_ && gpsRuntimeModule.getFreshSpeed(nowMs, gpsSpeed, gpsTs) &&
+    if (gpsEnabled_ && gps_ && gps_->getFreshSpeed(nowMs, gpsSpeed, gpsTs) &&
         gpsSpeed <= MAX_VALID_SPEED_MPH) {
         status.gpsFresh = true;
         status.gpsSpeedMph = gpsSpeed;
@@ -43,7 +48,7 @@ SpeedSelectorStatus SpeedSourceSelector::buildStatus(uint32_t nowMs) const {
 
     float obdSpeed = 0.0f;
     uint32_t obdTs = 0;
-    if (obdEnabled_ && obdRuntimeModule.getFreshSpeed(nowMs, obdSpeed, obdTs) &&
+    if (obdEnabled_ && obd_ && obd_->getFreshSpeed(nowMs, obdSpeed, obdTs) &&
         obdSpeed <= MAX_VALID_SPEED_MPH) {
         status.obdFresh = true;
         status.obdSpeedMph = obdSpeed;

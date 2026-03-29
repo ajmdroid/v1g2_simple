@@ -810,6 +810,7 @@ static void configureRuntimeSensorModules() {
     gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled,
                               settingsManager.get().obdEnabled);
+    speedSourceSelector.wireSpeedSources(&gpsRuntimeModule, &obdRuntimeModule);
     obdRuntimeModule.begin(
         settingsManager.get().obdEnabled,
         settingsManager.get().obdSavedAddress.c_str(),

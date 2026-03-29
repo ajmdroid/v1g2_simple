@@ -2,6 +2,9 @@
 
 #include <Arduino.h>
 
+class GpsRuntimeModule;
+class ObdRuntimeModule;
+
 enum class SpeedSource : uint8_t {
     NONE = 0,
     GPS = 2,
@@ -42,6 +45,7 @@ public:
     static constexpr float MAX_VALID_SPEED_MPH = 250.0f;
 
     void begin(bool gpsEnabled, bool obdEnabled = false);
+    void wireSpeedSources(GpsRuntimeModule* gps, ObdRuntimeModule* obd);
     void syncEnabledInputs(bool gpsEnabled, bool obdEnabled);
     void update(uint32_t nowMs);
 
@@ -59,6 +63,9 @@ private:
 
     bool gpsEnabled_ = false;
     bool obdEnabled_ = false;
+
+    GpsRuntimeModule* gps_ = nullptr;
+    ObdRuntimeModule* obd_ = nullptr;
 
     SpeedSource lastSource_ = SpeedSource::NONE;
     uint32_t sourceSwitches_ = 0;
