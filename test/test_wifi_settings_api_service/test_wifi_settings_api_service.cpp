@@ -54,14 +54,16 @@ static void applyDeviceSettingsUpdateForTest(FakeRuntime& rt, const DeviceSettin
 }
 
 static WifiSettingsApiService::Runtime makeRuntime(FakeRuntime& rt) {
-    return WifiSettingsApiService::Runtime{
-        [&rt]() -> const V1Settings& {
-            return rt.settings;
-        },
-        [&rt](const DeviceSettingsUpdate& update) {
-            applyDeviceSettingsUpdateForTest(rt, update);
-        },
+    WifiSettingsApiService::Runtime r;
+    r.ctx = &rt;
+    r.getSettings = [](void* ctx) -> const V1Settings& {
+        return static_cast<FakeRuntime*>(ctx)->settings;
     };
+    r.applySettingsUpdate = [](const DeviceSettingsUpdate& update, void* ctx) {
+        applyDeviceSettingsUpdateForTest(*static_cast<FakeRuntime*>(ctx), update);
+    };
+    r.checkRateLimit = [](void* /*ctx*/) { return true; };
+    return r;
 }
 
 void setUp() {
@@ -103,10 +105,7 @@ void test_device_settings_save_rejects_invalid_ap_credentials() {
     server.setArg("ap_ssid", "MyAP");
     server.setArg("ap_password", "short");
 
-    WifiSettingsApiService::handleApiDeviceSettingsSave(
-        server,
-        makeRuntime(rt),
-        []() { return true; });
+    WifiSettingsApiService::handleApiDeviceSettingsSave(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "AP SSID required and password must be at least 8 characters"));
@@ -121,10 +120,7 @@ void test_device_settings_save_uses_existing_password_placeholder() {
     server.setArg("ap_ssid", "RenamedAP");
     server.setArg("ap_password", "********");
 
-    WifiSettingsApiService::handleApiDeviceSettingsSave(
-        server,
-        makeRuntime(rt),
-        []() { return true; });
+    WifiSettingsApiService::handleApiDeviceSettingsSave(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(1, rt.applySettingsUpdateCalls);
@@ -143,10 +139,7 @@ void test_device_settings_save_updates_device_toggles() {
     server.setArg("enableWifiAtBoot", "true");
     server.setArg("enableSignalTraceLogging", "false");
 
-    WifiSettingsApiService::handleApiDeviceSettingsSave(
-        server,
-        makeRuntime(rt),
-        []() { return true; });
+    WifiSettingsApiService::handleApiDeviceSettingsSave(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_FALSE(rt.settings.proxyBLE);

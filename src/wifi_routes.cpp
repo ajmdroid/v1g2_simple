@@ -132,11 +132,8 @@ bool WiFiManager::setupWebServer() {
     server.on("/api/device/settings", HTTP_GET, [this]() {
         WifiSettingsApiService::handleApiDeviceSettingsGet(server, makeSettingsRuntime());
     });
-    server.on("/api/device/settings", HTTP_POST, [this, rateLimitCallback]() {
-        WifiSettingsApiService::handleApiDeviceSettingsSave(
-            server,
-            makeSettingsRuntime(),
-            rateLimitCallback);
+    server.on("/api/device/settings", HTTP_POST, [this]() {
+        WifiSettingsApiService::handleApiDeviceSettingsSave(server, makeSettingsRuntime());
     });
     
     server.on("/darkmode", HTTP_POST, [this, rateLimitCallback]() {

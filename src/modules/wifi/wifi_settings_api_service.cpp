@@ -25,7 +25,7 @@ void handleApiDeviceSettingsGet(WebServer& server, const Runtime& runtime) {
         return;
     }
 
-    const V1Settings& settings = runtime.getSettings();
+    const V1Settings& settings = runtime.getSettings(runtime.ctx);
 
     JsonDocument doc;
     doc["ap_ssid"] = settings.apSSID;
@@ -41,17 +41,15 @@ void handleApiDeviceSettingsGet(WebServer& server, const Runtime& runtime) {
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
-void handleApiDeviceSettingsSave(WebServer& server,
-                                 const Runtime& runtime,
-                                 const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+void handleApiDeviceSettingsSave(WebServer& server, const Runtime& runtime) {
+    if (runtime.checkRateLimit && !runtime.checkRateLimit(runtime.ctx)) return;
 
     if (!runtime.getSettings || !runtime.applySettingsUpdate) {
         sendSettingsUnavailable(server);
         return;
     }
 
-    const V1Settings& currentSettings = runtime.getSettings();
+    const V1Settings& currentSettings = runtime.getSettings(runtime.ctx);
     DeviceSettingsUpdate update;
 
     if (server.hasArg("ap_ssid")) {
@@ -108,7 +106,7 @@ void handleApiDeviceSettingsSave(WebServer& server,
             argIsTrue(server.arg("enableSignalTraceLogging"));
     }
 
-    runtime.applySettingsUpdate(update);
+    runtime.applySettingsUpdate(update, runtime.ctx);
 
     server.send(200, "application/json", "{\"success\":true}");
 }

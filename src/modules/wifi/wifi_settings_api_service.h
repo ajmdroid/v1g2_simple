@@ -4,21 +4,21 @@
 #include <WebServer.h>
 
 #include <cstdint>
-#include <functional>
 
 #include "../../settings.h"
 
 namespace WifiSettingsApiService {
 
 struct Runtime {
-    std::function<const V1Settings&()> getSettings;
-    std::function<void(const DeviceSettingsUpdate&)> applySettingsUpdate;
+    const V1Settings& (*getSettings)(void* ctx)                          = nullptr;
+    void              (*applySettingsUpdate)(const DeviceSettingsUpdate&,
+                                            void* ctx)                   = nullptr;
+    bool              (*checkRateLimit)(void* ctx)                       = nullptr;
+    void* ctx = nullptr;
 };
 
 void handleApiDeviceSettingsGet(WebServer& server, const Runtime& runtime);
 
-void handleApiDeviceSettingsSave(WebServer& server,
-                                 const Runtime& runtime,
-                                 const std::function<bool()>& checkRateLimit);
+void handleApiDeviceSettingsSave(WebServer& server, const Runtime& runtime);
 
 }  // namespace WifiSettingsApiService

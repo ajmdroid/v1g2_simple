@@ -265,14 +265,18 @@ WifiStatusApiService::StatusRuntime WiFiManager::makeStatusRuntime() {
 }
 
 WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
-    return WifiSettingsApiService::Runtime{
-        [this]() -> const V1Settings& {
-            return settingsManager.get();
-        },
-        [this](const DeviceSettingsUpdate& update) {
-            settingsManager.applyDeviceSettingsUpdate(update, SettingsPersistMode::Deferred);
-        },
+    WifiSettingsApiService::Runtime r;
+    r.ctx = this;
+    r.getSettings = [](void* /*ctx*/) -> const V1Settings& {
+        return settingsManager.get();
     };
+    r.applySettingsUpdate = [](const DeviceSettingsUpdate& update, void* /*ctx*/) {
+        settingsManager.applyDeviceSettingsUpdate(update, SettingsPersistMode::Deferred);
+    };
+    r.checkRateLimit = [](void* ctx) {
+        return static_cast<WiFiManager*>(ctx)->checkRateLimit();
+    };
+    return r;
 }
 
 WifiClientApiService::Runtime WiFiManager::makeWifiClientRuntime() {
