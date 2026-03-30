@@ -169,6 +169,27 @@ public:
         }
     }
 
+    size_t print(const char* str) {
+        if (!str) return 0;
+        const size_t len = std::strlen(str);
+        return write(reinterpret_cast<const uint8_t*>(str), len);
+    }
+
+    size_t println(const char* str = "") {
+        size_t n = print(str);
+        n += print("\n");
+        return n;
+    }
+
+    template<typename... Args>
+    size_t printf(const char* fmt, Args... args) {
+        char buf[256];
+        int n = std::snprintf(buf, sizeof(buf), fmt, args...);
+        if (n <= 0) return 0;
+        return write(reinterpret_cast<const uint8_t*>(buf),
+                     static_cast<size_t>(std::min(n, static_cast<int>(sizeof(buf) - 1))));
+    }
+
     void close() {
         if (state_ && !state_->directory && state_->stream.is_open()) {
             state_->stream.close();

@@ -248,3 +248,12 @@ inline void pinMode(int, int) {}
 inline void digitalWrite(int, int) {}
 inline int digitalRead(int) { return 0; }
 inline int analogRead(int) { return 0; }
+
+// ESP object stub
+class EspClass {
+public:
+    void restart() {}
+    uint32_t getFreeHeap() { return 320000u; }
+    uint32_t getHeapSize() { return 520000u; }
+};
+inline EspClass ESP;

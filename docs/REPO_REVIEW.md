@@ -204,4 +204,629 @@ Things that betray the learning curve:
 
 ---
 
-*This review is read-only. No changes were made to the codebase.*
+## Appendix A: Display Rendering Test Plan
+
+**Goal:** Add unit tests for the actual rendering code in `display_*.cpp` files that currently have zero test coverage. The existing `test_display.cpp` (77 tests) tests a simulated `DisplayCacheTracker` — it validates the *logic model* of caching and change detection, but never compiles or calls any real rendering function from `src/`.
+
+**What this plan covers:** Testing real production rendering code paths — cache hit/miss, dirty flag handling, color selection, blink timer logic, layout math, and draw-call correctness.
+
+**What this plan does NOT cover:** Visual pixel verification (screenshot comparison). That requires hardware.
+
+---
+
+### Current State Inventory
+
+**Existing display tests (158 tests across 10 files):**
+
+| Test File | Tests | What It Covers |
+|---|---:|---|
+| `test_display/test_display.cpp` | 77 | Simulated cache tracker (NOT real code) |
+| `test_display_orchestration_module/` | 33 | Module wiring: BLE→display, lockout, volume |
+| `test_wifi_display_colors_api_service/` | 15 | WiFi color API |
+| `test_display_pipeline_module/` | 9 | Pipeline routing: live/idle/persisted paths |
+| `test_ble_display_pipeline/` | 10 | BLE packet→parser→display integration |
+| `test_loop_display_module/` | 5 | Loop-level display dispatch |
+| `test_loop_post_display_module/` | 5 | Post-display context |
+| `test_display_ble_freshness/` | 3 | `DisplayBleFreshness::isFresh()` |
+| `test_display_reset_tracking/` | 4 | Source compliance scanning |
+| `test_display_restore_module/` | 2 | Preview→restore state machine |
+
+**Source files with ZERO test coverage (the rendering code):**
+
+| File | LOC | Key Functions |
+|---|---:|---|
+| `display_bands.cpp` | ~200 | `drawBandIndicators()`, `drawBandBadge()`, `drawVerticalSignalBars()` |
+| `display_arrow.cpp` | ~200 | `drawDirectionArrow()` |
+| `display_frequency.cpp` | ~350 | `drawFrequency()`, `drawFrequencyClassic()`, `drawFrequencySerpentine()` |
+| `display_cards.cpp` | ~400 | `drawSecondaryAlertCards()` |
+| `display_top_counter.cpp` | ~300 | `drawSevenSegmentDigit()`, `draw14SegmentChar()`, `drawTopCounter()`, `drawMuteBadge()` |
+| `display_status_bar.cpp` | ~350 | `drawVolumeIndicator()`, `drawRssiIndicator()`, `drawProfileIndicator()`, `drawBatteryIndicator()`, `drawBLEProxyIndicator()`, `drawWiFiIndicator()` |
+| `display_indicators.cpp` | ~200 | `drawBaseFrame()`, `drawLockoutIndicator()`, `drawGpsIndicator()`, `drawObdIndicator()` |
+| `display_screens.cpp` | ~300 | `showResting()`, `showScanning()`, `showDisconnected()`, `showBootSplash()`, `showShutdown()`, `showLowBattery()` |
+| `display_update.cpp` | ~700 | `update(DisplayState)`, `update(AlertData,...)`, `refreshFrequencyOnly()`, `updatePersisted()` |
+| `display_sliders.cpp` | ~200 | `showSettingsSliders()`, `updateSettingsSliders()`, `getActiveSliderFromTouch()` |
+| `display_font_manager.cpp` | ~250 | `init()`, `prewarmSegment7FrequencyGlyphs()`, `primeTopCounterBoundsCache()` |
+
+---
+
+### Phase 1: Pure Logic Tests (No Infrastructure Changes)
+
+**These headers contain pure functions with zero Arduino dependencies. Test them directly.**
+
+#### Task 1.1: Create `test/test_display_segments/test_display_segments.cpp`
+
+Tests for `include/display_segments.h`. No mocks needed.
+
+```
+Includes: ../../include/display_segments.h
+
+Tests to write (~15 tests):
+- test_segMetrics_scale_1_produces_base_dimensions
+    segMetrics(1.0f) → segLen=8, segThick=3, digitW=14, digitH=19, spacing=3, dot=3
+- test_segMetrics_scale_2_doubles_dimensions
+    segMetrics(2.0f) → segLen=16, segThick=6
+- test_segMetrics_scale_0_clamps_minimums
+    segMetrics(0.01f) → segLen=2 (min), segThick=1 (min)
+- test_segMetrics_fractional_scale_rounds_correctly
+    segMetrics(1.5f) → segLen=12, segThick=5 (verify rounding)
+- test_digit_segments_zero_has_no_middle_bar
+    DIGIT_SEGMENTS[0][6] == false
+- test_digit_segments_eight_has_all_segments
+    all DIGIT_SEGMENTS[8][0..6] == true
+- test_digit_segments_one_has_only_right_verticals
+    DIGIT_SEGMENTS[1] == {false,true,true,false,false,false,false}
+- test_get14SegPattern_digit_zero_matches_outer_segments
+    get14SegPattern('0') == S14_TOP|S14_TR|S14_BR|S14_BOT|S14_BL|S14_TL
+- test_get14SegPattern_dash_is_middle_only
+    get14SegPattern('-') == S14_ML|S14_MR
+- test_get14SegPattern_dot_is_zero_segments
+    get14SegPattern('.') == 0
+- test_get14SegPattern_case_insensitive
+    get14SegPattern('a') == get14SegPattern('A')
+- test_get14SegPattern_unknown_char_returns_zero
+    get14SegPattern('Z') == 0, get14SegPattern('!') == 0
+- test_all_digits_0_through_9_have_nonzero_pattern
+    for each '0'..'9': get14SegPattern(c) != 0
+- test_char14_map_size_matches_expected
+    CHAR14_MAP_SIZE == 25 (0-9, A-E, L-N, P, R-U, -, .)
+- test_segMetrics_digitW_equals_segLen_plus_2_segThick
+    for several scales: m.digitW == m.segLen + 2*m.segThick
+```
+
+#### Task 1.2: Create `test/test_display_slider_math/test_display_slider_math.cpp`
+
+Tests for `include/display_slider_math.h`. No mocks needed.
+
+```
+Includes: ../../include/display_slider_math.h
+
+Tests to write (~10 tests):
+- test_brightness_80_maps_to_zero_fill
+    computeBrightnessSliderFill(80, 200) == 0
+- test_brightness_255_maps_to_full_fill
+    computeBrightnessSliderFill(255, 200) == 200
+- test_brightness_167_maps_to_half_fill
+    computeBrightnessSliderFill(167, 200) == 100 (approx — verify exact math)
+- test_brightness_below_80_clamps_to_zero
+    computeBrightnessSliderFill(0, 200) == 0
+    computeBrightnessSliderFill(79, 200) == 0
+- test_brightness_above_255_clamps_to_slider_width
+    computeBrightnessSliderFill(255, 100) == 100
+- test_brightness_percent_80_is_zero
+    computeBrightnessSliderPercent(80) == 0
+- test_brightness_percent_255_is_100
+    computeBrightnessSliderPercent(255) == 100
+- test_brightness_percent_167_is_approximately_50
+    verify exact value: ((167-80)*100)/175
+- test_brightness_percent_below_80_clamps_to_zero
+    computeBrightnessSliderPercent(0) == 0
+- test_slider_fill_zero_width_returns_zero
+    computeBrightnessSliderFill(200, 0) == 0
+```
+
+#### Task 1.3: Create `test/test_display_dirty_flags/test_display_dirty_flags.cpp`
+
+Tests for `include/display_dirty_flags.h`. No mocks needed.
+
+```
+Includes: ../../include/display_dirty_flags.h
+
+Provide definition: DisplayDirtyFlags dirty;  (satisfies the extern)
+
+Tests to write (~8 tests):
+- test_default_construction_all_false
+    DisplayDirtyFlags f; all 13 bools == false
+- test_setAll_sets_ten_flags_but_not_three
+    f.setAll(); assertTrue(f.frequency, f.battery, f.bands, f.signalBars,
+    f.arrow, f.muteIcon, f.topCounter, f.lockout, f.gpsIndicator, f.obdIndicator)
+    assertFalse(f.multiAlert, f.cards, f.resetTracking)
+- test_setAll_is_idempotent
+    f.setAll(); f.setAll(); same result
+- test_individual_flags_independent
+    f.frequency = true; all others still false
+- test_resetTracking_not_set_by_setAll
+    f.setAll(); assertFalse(f.resetTracking)
+- test_multiAlert_not_set_by_setAll
+    f.setAll(); assertFalse(f.multiAlert)
+- test_cards_not_set_by_setAll
+    f.setAll(); assertFalse(f.cards)
+- test_setAll_after_partial_sets_remaining
+    f.frequency = true; f.setAll(); assertTrue(f.battery) (was false, now true)
+```
+
+#### Task 1.4: Create `test/test_display_color_utils/test_display_color_utils.cpp`
+
+Tests for `dimColor()` from `include/display_draw.h` and `ColorThemes::STANDARD()` from `include/color_themes.h`.
+
+```
+Requires: A thin shim that includes display_draw.h in a way that
+satisfies the display_driver.h dependency. Two approaches:
+  (a) Include test/mocks/display_driver.h first → provides Arduino_GFX stubs
+  (b) Or just extract dimColor() into a standalone test since it's an inline function
+
+Approach (a) — include mock display_driver.h, then display_draw.h:
+  #include "../mocks/Arduino.h"
+  #include "../mocks/display_driver.h"
+  #include "../../include/display_draw.h"
+  #include "../../include/color_themes.h"
+
+Tests to write (~10 tests):
+- test_dimColor_full_white_at_100_percent_unchanged
+    dimColor(0xFFFF, 100) == 0xFFFF
+- test_dimColor_full_white_at_50_percent
+    r=31→15, g=63→31, b=31→15 → (15<<11)|(31<<5)|15 = 0x7BEF
+- test_dimColor_full_white_at_0_percent_is_black
+    dimColor(0xFFFF, 0) == 0x0000
+- test_dimColor_black_at_any_percent_is_black
+    dimColor(0x0000, 50) == 0x0000
+- test_dimColor_pure_red_at_50_percent
+    0xF800 → r=31→15 → (15<<11) = 0x7800
+- test_dimColor_default_param_is_60_percent
+    dimColor(0xFFFF) uses 60% → verify specific value
+- test_standard_palette_bg_is_black
+    ColorThemes::STANDARD().bg == 0x0000
+- test_standard_palette_text_is_white
+    ColorThemes::STANDARD().text == 0xFFFF
+- test_standard_palette_gray_value
+    ColorThemes::STANDARD().colorGray == 0x1082
+- test_dimColor_preserves_channel_independence
+    pure green (0x07E0) at 50%: g=63→31 → 0x03E0
+```
+
+#### Task 1.5: Create `test/test_display_vol_warn/test_display_vol_warn.cpp`
+
+Tests for `VolumeZeroWarning` state machine in `include/display_vol_warn.h`.
+
+```
+Requires: Mock millis() (already in test/mocks/Arduino.h — set via mock_millis_value)
+
+Includes:
+  #include "../mocks/Arduino.h"
+  #include "../../include/display_vol_warn.h"
+
+Provide definition: VolumeZeroWarning volZeroWarn;  (satisfies the extern)
+
+Tests to write (~12 tests):
+- test_evaluate_returns_false_when_volume_nonzero
+    volZero=false → evaluate returns false
+- test_evaluate_returns_false_when_proxy_connected
+    volZero=true, proxyConnected=true → false
+- test_evaluate_returns_false_when_prequiet_active
+    volZero=true, preQuietActive=true → false
+- test_evaluate_returns_false_when_speed_vol_zero_active
+    volZero=true, speedVolZeroActive=true → false
+- test_evaluate_returns_false_during_15s_delay
+    set millis=0, evaluate(volZero=true...) → false
+    set millis=14999, evaluate → false
+- test_evaluate_returns_true_after_15s_delay
+    set millis=0, evaluate → false (starts timer)
+    set millis=15001, evaluate → true (warning active)
+- test_evaluate_calls_beep_on_first_warning
+    static bool beeped; playBeepFn sets beeped=true
+    step through 15s → verify beeped==true on first true return
+- test_evaluate_stops_after_duration_expires
+    start at 0, advance to 15001 (warning starts),
+    advance to 25001 (15000 delay + 10000 duration) → false, acknowledged=true
+- test_reset_clears_all_state
+    run through warning cycle, reset(), verify detectedMs/warningStartMs/shown/acknowledged all zero
+- test_evaluate_resets_on_proxy_connect_mid_warning
+    start warning, then set proxyConnected=true → resets, returns false
+- test_needsFlashRedraw_true_during_active_warning
+    during active warning window → true
+- test_needsFlashRedraw_false_after_acknowledged
+    after duration expires → false
+```
+
+---
+
+### Phase 2: Recording Mock Canvas (Infrastructure)
+
+**Create an enhanced `Arduino_Canvas` mock that records all draw calls into a queryable log. This enables Phase 3.**
+
+#### Task 2.1: Create `test/mocks/recording_canvas.h`
+
+```cpp
+#pragma once
+#include "display_driver.h"  // for Arduino_Canvas base
+#include <vector>
+#include <string>
+#include <cstdint>
+
+struct DrawCall {
+    enum Type {
+        FILL_RECT, DRAW_RECT, FILL_ROUND_RECT, DRAW_ROUND_RECT,
+        FILL_CIRCLE, DRAW_CIRCLE, FILL_TRIANGLE, DRAW_LINE,
+        DRAW_PIXEL, FILL_SCREEN, SET_TEXT_COLOR, SET_TEXT_SIZE,
+        SET_CURSOR, PRINT_STR, FLUSH
+    };
+    Type type;
+    int16_t x, y, w, h, r;
+    uint16_t color;
+    uint16_t bgColor;
+    uint8_t textSize;
+    char text[32];
+};
+
+class RecordingCanvas : public Arduino_Canvas {
+public:
+    std::vector<DrawCall> calls;
+
+    RecordingCanvas() : Arduino_Canvas(172, 640, nullptr) {}
+
+    void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) override {
+        calls.push_back({DrawCall::FILL_RECT, x, y, w, h, 0, color});
+    }
+    void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) override {
+        calls.push_back({DrawCall::DRAW_RECT, x, y, w, h, 0, color});
+    }
+    void fillRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) override {
+        calls.push_back({DrawCall::FILL_ROUND_RECT, x, y, w, h, r, color});
+    }
+    void fillScreen(uint16_t color) override {
+        calls.push_back({DrawCall::FILL_SCREEN, 0, 0, 0, 0, 0, color});
+    }
+    void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
+                       int16_t x2, int16_t y2, uint16_t color) override {
+        calls.push_back({DrawCall::FILL_TRIANGLE, x0, y0, x1, y1, 0, color});
+        // Store x2,y2 in w,h fields for triangle
+    }
+    void flush() override {
+        calls.push_back({DrawCall::FLUSH});
+    }
+    // ... (implement all virtual methods similarly)
+
+    // Query helpers:
+    int countCalls(DrawCall::Type t) const {
+        int n = 0;
+        for (auto& c : calls) if (c.type == t) n++;
+        return n;
+    }
+    bool hasCallWithColor(DrawCall::Type t, uint16_t color) const {
+        for (auto& c : calls) if (c.type == t && c.color == color) return true;
+        return false;
+    }
+    bool hasCallInRegion(DrawCall::Type t, int16_t minX, int16_t minY, int16_t maxX, int16_t maxY) const {
+        for (auto& c : calls) {
+            if (c.type == t && c.x >= minX && c.y >= minY && c.x <= maxX && c.y <= maxY) return true;
+        }
+        return false;
+    }
+    void clear() { calls.clear(); }
+};
+```
+
+**Notes:**
+- `Arduino_Canvas` virtual methods in `test/mocks/display_driver.h` must be made virtual (they already are)
+- `RecordingCanvas` extends `Arduino_Canvas` which extends `Arduino_GFX`
+- All draw methods record to `calls` vector then return
+- Query helpers let tests assert "a fillRect with color X was drawn in region Y"
+
+#### Task 2.2: Create `test/mocks/mock_settings_for_display.h`
+
+A minimal settings mock that provides default V1Settings with known color values for display tests.
+
+```cpp
+#pragma once
+#include "../mocks/settings.h"  // existing SettingsManager mock
+
+// Pre-populate with known display color values matching defaults
+inline void initDisplayTestSettings(SettingsManager& sm) {
+    sm.settings.colorBandL   = 0xF800;  // Red for Laser
+    sm.settings.colorBandKa  = 0x07E0;  // Green for Ka
+    sm.settings.colorBandK   = 0x001F;  // Blue for K
+    sm.settings.colorBandX   = 0xFFE0;  // Yellow for X
+    sm.settings.colorVolumeMain = 0x001F;  // Blue
+    sm.settings.colorVolumeMute = 0xFFE0;  // Yellow
+    sm.settings.colorLockout = 0xF800;     // Red
+    sm.settings.brightness = 200;
+    sm.settings.activeSlot = 1;
+    sm.settings.hideRssiIndicator = false;
+    sm.settings.hideVolumeIndicator = false;
+}
+```
+
+**Note:** The exact field names must match `V1Settings` in `src/settings.h`. Verify field names by reading `src/settings.h` before implementing.
+
+---
+
+### Phase 3: Rendering Logic Tests (Uses Recording Canvas)
+
+**These tests compile the REAL rendering `.cpp` files and call the REAL `V1Display` methods against a `RecordingCanvas`. They verify draw-call correctness, cache behavior, and dirty-flag handling.**
+
+**Key wiring challenge:** Each `display_*.cpp` file includes `display.h` which includes `display_driver.h` (Arduino_GFX). The mock `display_driver.h` already provides the types. The test must:
+1. Include mocks first (`Arduino.h`, `display_driver.h`, `settings.h`)
+2. Provide extern definitions (`dirty`, `settingsManager`, `volZeroWarn`)
+3. Include the real `.cpp` file(s) under test
+4. Construct a `V1Display` with a `RecordingCanvas` as its `tft` member
+
+**This requires `V1Display::tft` to be accessible for test injection.** Two options:
+- (a) Add `#ifdef UNIT_TEST friend class DisplayRenderingTest;` to `display.h`
+- (b) Add a `setCanvas(Arduino_Canvas* c)` method behind `#ifdef UNIT_TEST`
+
+Recommend option (b) — minimal, explicit.
+
+#### Task 3.1: Add test seam to `src/display.h`
+
+```cpp
+// At end of V1Display class, before closing brace:
+#ifdef UNIT_TEST
+public:
+    void setTestCanvas(Arduino_Canvas* canvas) { tft.reset(canvas); }
+    Arduino_Canvas* getTestCanvas() { return tft.get(); }
+#endif
+```
+
+**Wait — `tft` is a `std::unique_ptr<Arduino_Canvas>`. Calling `reset()` with a non-heap pointer is UB. Instead:**
+
+```cpp
+#ifdef UNIT_TEST
+public:
+    // For unit tests: replace tft with a non-owning raw pointer wrapper.
+    // Test must ensure canvas outlives display.
+    Arduino_Canvas* testCanvas_ = nullptr;
+    Arduino_Canvas* getCanvas() { return testCanvas_ ? testCanvas_ : tft.get(); }
+#endif
+```
+
+**Actually, the simplest approach: make the rendering tests NOT construct a full V1Display. Instead, test individual rendering functions by providing the statics they need.**
+
+**Revised approach: Include the `.cpp` file directly (like `test_lockout_enforcer` does) and provide the required globals. The rendering functions access `tft` via the `this->tft` member, so we need a minimal V1Display with an injected canvas.**
+
+**Simplest working approach for `display.h`:**
+
+```cpp
+#ifdef UNIT_TEST
+public:
+    void injectTestCanvas(Arduino_Canvas* canvas);
+#endif
+```
+
+Implementation in a test helper:
+```cpp
+void V1Display::injectTestCanvas(Arduino_Canvas* canvas) {
+    tft.release();  // Release ownership without deleting
+    tft.reset(canvas);  // Take ownership (test must heap-allocate)
+}
+```
+
+Or even simpler: since the recording canvas is heap-allocated in the test with `new RecordingCanvas()`, `unique_ptr` ownership works fine.
+
+#### Task 3.2: Create `test/test_display_rendering_bands/test_display_rendering_bands.cpp`
+
+Tests for real `display_bands.cpp` rendering.
+
+```
+Includes (in order):
+  #include "../mocks/Arduino.h"
+  #include "../mocks/display_driver.h"
+  #include "../mocks/recording_canvas.h"
+  #include "../mocks/settings.h"
+  #include "../mocks/mock_settings_for_display.h"
+
+Extern definitions:
+  SerialClass Serial;
+  SettingsManager settingsManager;
+  DisplayDirtyFlags dirty;
+  // Provide stub for any other externs display_bands.cpp needs
+
+Include real source:
+  #include "../../include/display_dirty_flags.h"
+  #include "../../include/display_draw.h"
+  #include "../../include/display_palette.h"
+  #include "../../include/display_layout.h"
+  #include "../../src/display_bands.cpp"  // Real code under test
+
+setUp():
+  initDisplayTestSettings(settingsManager);
+  dirty = DisplayDirtyFlags{};
+  // Reset static caches in drawBandIndicators by setting dirty.bands = true
+  // Reset millis mock
+
+Tests to write (~12 tests):
+- test_drawBandIndicators_ka_active_draws_green_text
+    Set up V1Display with RecordingCanvas
+    Call drawBandIndicators(BAND_KA, false, 0)
+    Verify canvas has text/rect calls with Ka color at expected Y position
+- test_drawBandIndicators_all_bands_draws_four_labels
+    drawBandIndicators(BAND_LASER|BAND_KA|BAND_K|BAND_X, false, 0)
+    Verify 4 distinct label regions drawn
+- test_drawBandIndicators_muted_uses_muted_color
+    drawBandIndicators(BAND_KA, true, 0)
+    Verify color is PALETTE_MUTED_OR_PERSISTED (gray), not green
+- test_drawBandIndicators_cache_hit_no_redraw
+    Call twice with same args → second call produces zero draw calls
+- test_drawBandIndicators_dirty_flag_forces_redraw
+    Call once, clear canvas, set dirty.bands=true, call again → draws
+- test_drawBandIndicators_flash_bit_hides_band_on_blink_off
+    Set millis to trigger blinkOn=false, set flashBits for Ka
+    Verify Ka not drawn (effectiveBandMask clears Ka)
+- test_drawBandIndicators_no_bands_clears_all_labels
+    drawBandIndicators(0, false, 0) → draws background-colored rects
+- test_drawVerticalSignalBars_draws_correct_bar_count
+    drawVerticalSignalBars(4, 2, false) → verify bar regions drawn
+- test_drawVerticalSignalBars_muted_uses_gray
+    drawVerticalSignalBars(4, 2, true) → verify muted color
+- test_drawVerticalSignalBars_zero_strength_draws_outline_only
+    drawVerticalSignalBars(0, 0, false) → only outlines
+- test_drawVerticalSignalBars_cache_hit_no_redraw
+    Same args twice → no draw calls on second
+- test_drawVerticalSignalBars_dirty_flag_forces_redraw
+    Set dirty.signalBars=true → forces redraw
+```
+
+#### Task 3.3: Create `test/test_display_rendering_arrow/test_display_rendering_arrow.cpp`
+
+Same structure as 3.2 but for `display_arrow.cpp`.
+
+```
+Tests to write (~10 tests):
+- test_drawDirectionArrow_front_draws_upward_triangle
+    dir=DIR_FRONT → verify fillTriangle call with upward-pointing coords
+- test_drawDirectionArrow_rear_draws_downward_triangle
+    dir=DIR_REAR → verify triangle points down
+- test_drawDirectionArrow_all_three_draws_three_shapes
+    dir=DIR_FRONT|DIR_SIDE|DIR_REAR → three distinct triangle/rect regions
+- test_drawDirectionArrow_muted_uses_gray
+    muted=true → verify all shapes use muted color
+- test_drawDirectionArrow_cache_hit_no_redraw
+    Same args twice → no draw calls on second
+- test_drawDirectionArrow_dirty_flag_forces_redraw
+    dirty.arrow=true → forces redraw
+- test_drawDirectionArrow_blink_off_hides_flashing_arrow
+    flashBits=0x20 (front), blink OFF → front not drawn
+- test_drawDirectionArrow_blink_on_shows_flashing_arrow
+    flashBits=0x20 (front), blink ON → front drawn
+- test_drawDirectionArrow_front_color_override
+    frontColorOverride != 0 → front uses override color
+- test_drawDirectionArrow_no_direction_clears_area
+    dir=DIR_NONE → clear rects drawn in arrow region
+```
+
+#### Task 3.4: Create `test/test_display_rendering_indicators/test_display_rendering_indicators.cpp`
+
+Tests for `display_indicators.cpp` (lockout, GPS, OBD badges).
+
+```
+Tests to write (~10 tests):
+- test_drawLockoutIndicator_shown_draws_badge
+    lockoutIndicatorShown_=true → fillRoundRect + text "L"
+- test_drawLockoutIndicator_hidden_clears_area
+    lockoutIndicatorShown_=false → fillRect with BG color at badge position
+- test_drawLockoutIndicator_cache_hit_no_redraw
+    Same state twice → no draw calls on second
+- test_drawLockoutIndicator_dirty_flag_forces_redraw
+    dirty.lockout=true → forces redraw even if state unchanged
+- test_drawLockoutIndicator_uses_settings_color
+    Set colorLockout to specific value → verify badge color matches
+- test_drawGpsIndicator_with_fix_shows_green
+    Set gps fix=true, satellites=8 → verify green-ish indicator
+- test_drawGpsIndicator_no_fix_shows_gray
+    Set gps fix=false → verify gray indicator
+- test_drawObdIndicator_connected_shows_active
+    Set obd connected=true → verify active indicator drawn
+- test_drawObdIndicator_attention_shows_flash
+    Set obd attention=true → verify distinct flash state
+- test_drawBaseFrame_fills_screen_and_sets_all_dirty
+    drawBaseFrame() → fillScreen(BG) + dirty.setAll() called
+```
+
+#### Task 3.5: Create `test/test_display_rendering_status_bar/test_display_rendering_status_bar.cpp`
+
+Tests for battery, RSSI, volume, profile indicators in `display_status_bar.cpp`.
+
+```
+Tests to write (~12 tests):
+- test_drawBatteryIndicator_full_charge_green
+    batteryPercent=100 → verify green color region
+- test_drawBatteryIndicator_low_charge_red
+    batteryPercent=10 → verify red color
+- test_drawBatteryIndicator_usb_power_threshold
+    ADC value in USB hysteresis window (4095-4125) → verify USB icon
+- test_drawRssiIndicator_strong_signal_green
+    rssi=-60 → verify green color (above -75 threshold)
+- test_drawRssiIndicator_weak_signal_red
+    rssi=-95 → verify red color (below -90 threshold)
+- test_drawRssiIndicator_hidden_when_setting_off
+    hideRssiIndicator=true → only BG fill, no signal drawn
+- test_drawRssiIndicator_stale_ble_clears_area
+    hasFreshBleContext returns false → clears RSSI area
+- test_drawVolumeIndicator_draws_main_and_mute
+    mainVol=5, muteVol=0 → verify "5V" and "0M" text drawn
+- test_drawProfileIndicator_draws_slot_number
+    slot=2 → verify text or segment for "2"
+- test_drawProfileIndicator_flash_period_timing
+    Verify profile flash expires after configured duration
+- test_drawWiFiIndicator_draws_when_connected
+    WiFi setup mode active → verify WiFi icon drawn
+- test_drawBLEProxyIndicator_draws_phone_icon_when_connected
+    proxy connected → verify BLE proxy icon region drawn
+```
+
+---
+
+### Phase 4: Update CI Contract (After All Tests Pass)
+
+#### Task 4.1: Update `docs/TEST_BASELINE.md`
+
+Add the new test count to the baseline.
+
+#### Task 4.2: Verify `scripts/ci-test.sh` passes
+
+Run `python3 scripts/run_native_tests_serial.py` to confirm all new suites build and pass on native.
+
+---
+
+### Execution Order & Dependencies
+
+```
+Phase 1 (independent, parallelizable):
+  Task 1.1  test_display_segments         ← pure, no deps
+  Task 1.2  test_display_slider_math      ← pure, no deps
+  Task 1.3  test_display_dirty_flags      ← pure, no deps
+  Task 1.4  test_display_color_utils      ← needs mock display_driver.h (exists)
+  Task 1.5  test_display_vol_warn         ← needs mock Arduino.h millis (exists)
+
+Phase 2 (infrastructure, serial):
+  Task 2.1  recording_canvas.h            ← new mock file
+  Task 2.2  mock_settings_for_display.h   ← new mock helper
+
+Phase 3 (depends on Phase 2, parallelizable):
+  Task 3.1  display.h test seam           ← one-line change
+  Task 3.2  test_display_rendering_bands  ← depends on 2.1, 2.2, 3.1
+  Task 3.3  test_display_rendering_arrow  ← depends on 2.1, 2.2, 3.1
+  Task 3.4  test_display_rendering_indicators ← depends on 2.1, 2.2, 3.1
+  Task 3.5  test_display_rendering_status_bar ← depends on 2.1, 2.2, 3.1
+
+Phase 4 (after all pass):
+  Task 4.1  Update TEST_BASELINE.md
+  Task 4.2  Verify ci-test.sh
+```
+
+### Expected Test Count Increase
+
+| Phase | New Tests | Running Total |
+|---|---:|---:|
+| Phase 1 (pure logic) | ~55 | 1,352 |
+| Phase 3 (rendering) | ~44 | 1,396 |
+| **Total new** | **~99** | |
+
+### Key Risks & Mitigations
+
+1. **Risk:** `display_bands.cpp` includes `settings.h` for `V1Settings` colors → mock `settings.h` must have all color fields.
+   **Mitigation:** Read `src/settings.h` to get exact `V1Settings` field names before writing `mock_settings_for_display.h`.
+
+2. **Risk:** Rendering functions use file-scoped `static` variables for caching. These persist across tests in the same suite.
+   **Mitigation:** Each test must set `dirty.bands = true` (etc.) to force cache invalidation, or the test file must use a fresh process (one test per process via `run_native_tests_serial.py`).
+
+3. **Risk:** Some rendering functions call `settingsManager.get()` → mock must return valid `V1Settings`.
+   **Mitigation:** `initDisplayTestSettings()` sets all display-relevant fields.
+
+4. **Risk:** `display_cards.cpp` uses `settingsManager.getSlotAlertPersistSec()` → mock must implement this.
+   **Mitigation:** Verify mock `settings.h` has this method, or add it.
+
+5. **Risk:** Some files include `battery_manager.h`, `wifi_manager.h`, `perf_metrics.h` → need stubs.
+   **Mitigation:** Check each rendering file's `#include` list. Create minimal stubs for any missing headers. `perf_metrics.h` likely has `PERF_INC()` → already `#ifdef`'d to no-op under `UNIT_TEST`.
+
+---
+
+*This plan is research-only. No changes were made to the codebase.*
