@@ -172,7 +172,7 @@ bool PacketParser::parse(const uint8_t* data, size_t length) {
                     
                     displayState.v1FirmwareVersion = version;
                     displayState.hasV1Version = true;
-                    Serial.printf("[PacketParser] V1 firmware version: %c.%c%c%c%c (v%lu)\\n",
+                    Serial.printf("[PacketParser] V1 firmware version: %c.%c%c%c%c (v%lu)\n",
                                   major, minor, rev1, rev2, ctrl, version);
                 }
             }

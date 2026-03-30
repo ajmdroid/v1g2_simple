@@ -326,7 +326,7 @@ void test_forward_to_proxy_immediate_queues_until_main_loop_send() {
     client.bleNotifyMutex = xSemaphoreCreateMutex();
     const uint8_t data[] = {0xAA, 0x55, 0x10, 0x41, 0x00};
 
-    client.forwardToProxyImmediate(data, sizeof(data), 0xB4E0);
+    client.forwardToProxy(data, sizeof(data), 0xB4E0);
 
     TEST_ASSERT_EQUAL_UINT32(0, g_mock_nimble_state.characteristicNotifyCalls);
     TEST_ASSERT_EQUAL_UINT32(1, client.proxyQueueCount);

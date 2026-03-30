@@ -2,7 +2,8 @@
  * Mock display_driver.h for native unit testing
  * Provides minimal stubs for Arduino_GFX display primitives
  */
-#pragma once
+#ifndef DISPLAY_DRIVER_H
+#define DISPLAY_DRIVER_H
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -89,26 +90,67 @@ public:
 // Mock canvas for double-buffering
 class Arduino_Canvas : public Arduino_GFX {
 public:
+    // GFX call recording — accessible for test assertions
+    struct FillRectCall   { int16_t x, y, w, h; uint16_t color; };
+    struct DrawRectCall   { int16_t x, y, w, h; uint16_t color; };
+    struct FillRoundRectCall { int16_t x, y, w, h, r; uint16_t color; };
+    struct FillCircleCall { int16_t x, y, r; uint16_t color; };
+    struct DrawLineCall   { int16_t x0, y0, x1, y1; uint16_t color; };
+
+    std::vector<FillRectCall>      fillRectCalls;
+    std::vector<DrawRectCall>      drawRectCalls;
+    std::vector<FillRoundRectCall> fillRoundRectCalls;
+    std::vector<FillCircleCall>    fillCircleCalls;
+    std::vector<DrawLineCall>      drawLineCalls;
+
+    void clearRecordedCalls() {
+        fillRectCalls.clear();
+        drawRectCalls.clear();
+        fillRoundRectCalls.clear();
+        fillCircleCalls.clear();
+        drawLineCalls.clear();
+    }
+
     Arduino_Canvas(int16_t w, int16_t h, Arduino_GFX* output, int16_t output_x = 0, int16_t output_y = 0)
         : w_(w), h_(h), output_(output), flushCount_(0), fillScreenCount_(0) {}
-    
+
     void begin(int speed = 0) override {}
-    
+
     void fillScreen(uint16_t color) override {
         lastFillColor_ = color;
         fillScreenCount_++;
     }
-    
+
+    void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) override {
+        fillRectCalls.push_back({x, y, w, h, color});
+    }
+
+    void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) override {
+        drawRectCalls.push_back({x, y, w, h, color});
+    }
+
+    void fillRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) override {
+        fillRoundRectCalls.push_back({x, y, w, h, r, color});
+    }
+
+    void fillCircle(int16_t x, int16_t y, int16_t r, uint16_t color) override {
+        fillCircleCalls.push_back({x, y, r, color});
+    }
+
+    void drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) override {
+        drawLineCalls.push_back({x0, y0, x1, y1, color});
+    }
+
     void flush() override {
         flushCount_++;
     }
-    
+
     // Test helpers
     int getFlushCount() const { return flushCount_; }
     int getFillScreenCount() const { return fillScreenCount_; }
     uint16_t getLastFillColor() const { return lastFillColor_; }
-    void resetCounters() { flushCount_ = 0; fillScreenCount_ = 0; }
-    
+    void resetCounters() { flushCount_ = 0; fillScreenCount_ = 0; clearRecordedCalls(); }
+
 private:
     int16_t w_, h_;
     Arduino_GFX* output_;
@@ -133,3 +175,5 @@ public:
     int16_t getTextWidth(const char* text) { return strlen(text) * 10; }
     int16_t getTextHeight(const char* text) { return 20; }
 };
+
+#endif  // DISPLAY_DRIVER_H

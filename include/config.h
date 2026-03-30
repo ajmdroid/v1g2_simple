@@ -28,6 +28,10 @@
 #define V1_DISPLAY_DATA_LONG_UUID "92A0B4E0-9E05-11E2-AA59-F23C91AEC05E"  // V1 out LONG (notify) - alert data, voltage responses
 #define V1_COMMAND_WRITE_UUID   "92A0B6D4-9E05-11E2-AA59-F23C91AEC05E"  // Client out, V1 in
 #define V1_COMMAND_WRITE_ALT_UUID "92A0BAD4-9E05-11E2-AA59-F23C91AEC05E" // Alternate writable characteristic
+#define V1_COMMAND_WRITE_LONG_UUID "92A0B8D2-9E05-11E2-AA59-F23C91AEC05E" // Long writable characteristic (optional)
+// 16-bit short UUIDs extracted from the V1 128-bit UUIDs above (bytes 4-5 of the string form)
+#define V1_SHORT_UUID_DISPLAY_LONG  ((uint16_t)0xB4E0) // Short UUID for V1_DISPLAY_DATA_LONG_UUID
+#define V1_SHORT_UUID_COMMAND_LONG  ((uint16_t)0xB8D2) // Short UUID for V1_COMMAND_WRITE_LONG_UUID
 #define SCAN_DURATION           10000 // 10-second scan in milliseconds (stops early when V1 found)
 #define RECONNECT_DELAY         100   // 100ms delay between scan attempts
 

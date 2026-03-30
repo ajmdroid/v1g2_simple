@@ -537,12 +537,6 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
     }
 }
 
-// PERFORMANCE: Immediate proxy forwarding - zero latency path
-// Called directly from BLE callback context. Keep callback work to queueing only.
-void V1BLEClient::forwardToProxyImmediate(const uint8_t* data, size_t length, uint16_t sourceCharUUID) {
-    forwardToProxy(data, length, sourceCharUUID);
-}
-
 int V1BLEClient::processProxyQueue() {
     if (!proxyEnabled || !proxyClientConnected || proxyQueueCount == 0) {
         return 0;
@@ -565,7 +559,7 @@ int V1BLEClient::processProxyQueue() {
         }
 
         NimBLECharacteristic* targetChar = nullptr;
-        if (pkt.charUUID == 0xB4E0 && pProxyNotifyLongChar) {
+        if (pkt.charUUID == V1_SHORT_UUID_DISPLAY_LONG && pProxyNotifyLongChar) {
             targetChar = pProxyNotifyLongChar;
         } else if (pProxyNotifyChar) {
             targetChar = pProxyNotifyChar;
@@ -678,7 +672,7 @@ int V1BLEClient::processPhoneCommandQueue() {
             hasPending = true;
             return 0;
         }
-        if (charUUID == 0xB8D2 && pCommandCharLong) {
+        if (charUUID == V1_SHORT_UUID_COMMAND_LONG && pCommandCharLong) {
             // Long characteristic write - same transient failure semantics as sendCommand
             if (pCommandCharLong->writeValue(pktCopy.data, pktCopy.length, false)) {
                 result = SendResult::SENT;
@@ -690,7 +684,7 @@ int V1BLEClient::processPhoneCommandQueue() {
             result = sendCommandWithResult(pktCopy.data, pktCopy.length);
         }
     } else {
-        if (charUUID == 0xB8D2 && pCommandCharLong) {
+        if (charUUID == V1_SHORT_UUID_COMMAND_LONG && pCommandCharLong) {
             if (pCommandCharLong->writeValue(pktCopy.data, pktCopy.length, false)) {
                 result = SendResult::SENT;
             } else {

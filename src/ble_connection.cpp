@@ -628,6 +628,7 @@ bool V1BLEClient::executeSubscribeStep() {
                 if (altCommandChar && (altCommandChar->canWrite() || altCommandChar->canWriteNoResponse())) {
                     pCommandChar = altCommandChar;
                 } else {
+                    pCommandChar = nullptr;
                     Serial.println("[BLE] FAIL command char");
                     return false;
                 }
@@ -637,7 +638,7 @@ bool V1BLEClient::executeSubscribeStep() {
         }
         
         case SubscribeStep::GET_COMMAND_LONG: {
-            pCommandCharLong = pRemoteService->getCharacteristic("92A0B8D2-9E05-11E2-AA59-F23C91AEC05E");
+            pCommandCharLong = pRemoteService->getCharacteristic(V1_COMMAND_WRITE_LONG_UUID);
             // B8D2 is optional - don't log either way
             subscribeStep = SubscribeStep::SUBSCRIBE_DISPLAY;
             return false;
@@ -785,7 +786,7 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
     }
 
     // Forward to proxy via the proxy queue only. Keep BLE callback path notify-free.
-    instancePtr->forwardToProxyImmediate(pData, length, routeCharId);
+    instancePtr->forwardToProxy(pData, length, routeCharId);
 
     if (instancePtr->connected.load(std::memory_order_relaxed) &&
         instancePtr->firstRxAfterConnectMs.load(std::memory_order_relaxed) == 0) {

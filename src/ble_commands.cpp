@@ -9,6 +9,7 @@
 #include "../include/ble_internals.h"
 #include "../include/config.h"
 #include "perf_metrics.h"
+#include <atomic>
 #include <cstring>
 
 // ---- checksum helper (used only by command builders) --------------------
@@ -38,13 +39,14 @@ SendResult V1BLEClient::sendCommandWithResult(const uint8_t* data, size_t length
 
     // Light pacing: non-blocking timestamp gate
     // Return NOT_YET if too soon - caller retains packet for retry
-    static unsigned long lastCommandMs = 0;
-    unsigned long nowMs = millis();
-    if (lastCommandMs != 0 && nowMs - lastCommandMs < 5) {
+    static std::atomic<uint32_t> lastCommandMs{0};
+    uint32_t nowMs = millis();
+    uint32_t last = lastCommandMs.load(std::memory_order_relaxed);
+    if (last != 0 && nowMs - last < 5) {
         PERF_INC(cmdPaceNotYet);
         return SendResult::NOT_YET;
     }
-    lastCommandMs = millis();
+    lastCommandMs.store(nowMs, std::memory_order_relaxed);
     
     bool ok = false;
     if (pCommandChar->canWrite()) {
