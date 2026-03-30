@@ -6,6 +6,7 @@
  * are available without duplicating declarations.
  */
 
+#pragma once
 #ifndef SETTINGS_INTERNALS_H
 #define SETTINGS_INTERNALS_H
 

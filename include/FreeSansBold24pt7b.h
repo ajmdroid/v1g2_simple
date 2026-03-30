@@ -12,6 +12,7 @@
  * @see https://github.com/adafruit/Adafruit-GFX-Library/tree/master/fontconvert
  */
 
+#pragma once
 #ifndef FREESANSBOLD24PT7B_H
 #define FREESANSBOLD24PT7B_H
 

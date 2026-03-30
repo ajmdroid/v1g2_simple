@@ -5,6 +5,7 @@
  * extracted from main.cpp.  Each companion .cpp includes this header.
  */
 
+#pragma once
 #ifndef MAIN_INTERNALS_H
 #define MAIN_INTERNALS_H
 

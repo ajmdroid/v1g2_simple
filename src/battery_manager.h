@@ -7,6 +7,7 @@
  * - Power button handling for battery power on/off
  */
 
+#pragma once
 #ifndef BATTERY_MANAGER_H
 #define BATTERY_MANAGER_H
 

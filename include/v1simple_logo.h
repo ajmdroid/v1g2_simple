@@ -1,3 +1,4 @@
+#pragma once
 #ifndef V1SIMPLE_LOGO_H
 #define V1SIMPLE_LOGO_H
 

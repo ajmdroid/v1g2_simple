@@ -1,3 +1,4 @@
+#pragma once
 #ifndef WIFI_RATE_LIMITER_H
 #define WIFI_RATE_LIMITER_H
 

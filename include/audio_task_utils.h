@@ -1,3 +1,4 @@
+#pragma once
 #ifndef AUDIO_TASK_UTILS_H
 #define AUDIO_TASK_UTILS_H
 

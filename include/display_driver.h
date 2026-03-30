@@ -3,6 +3,7 @@
  * Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, Arduino_GFX)
  */
 
+#pragma once
 #ifndef DISPLAY_DRIVER_H
 #define DISPLAY_DRIVER_H
 

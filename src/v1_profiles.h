@@ -3,6 +3,7 @@
  * Stores and manages V1 Gen2 user settings profiles on SD card
  */
 
+#pragma once
 #ifndef V1_PROFILES_H
 #define V1_PROFILES_H
 

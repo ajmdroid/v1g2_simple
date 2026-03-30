@@ -4,6 +4,7 @@
  * Internal-only surface: not part of the public user/API layer.
  */
 
+#pragma once
 #ifndef AUDIO_I2C_UTILS_H
 #define AUDIO_I2C_UTILS_H
 

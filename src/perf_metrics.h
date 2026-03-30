@@ -22,6 +22,7 @@
  * - PERF_METRICS=1: Debug builds, sampled timing + periodic reports
  */
 
+#pragma once
 #ifndef PERF_METRICS_H
 #define PERF_METRICS_H
 

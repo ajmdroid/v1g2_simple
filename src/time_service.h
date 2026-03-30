@@ -7,6 +7,7 @@
  * - No background sync, no blocking, no dynamic allocation
  */
 
+#pragma once
 #ifndef TIME_SERVICE_H
 #define TIME_SERVICE_H
 

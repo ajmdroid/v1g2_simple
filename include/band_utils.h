@@ -1,3 +1,4 @@
+#pragma once
 #ifndef BAND_UTILS_H
 #define BAND_UTILS_H
 

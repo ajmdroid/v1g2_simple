@@ -19,6 +19,7 @@
  * └────────────────────────────────────────────────────────────────────────────┘
  */
 
+#pragma once
 #ifndef DISPLAY_LAYOUT_H
 #define DISPLAY_LAYOUT_H
 

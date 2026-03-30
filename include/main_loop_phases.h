@@ -4,6 +4,7 @@
  * Keeps setup()/loop() orchestration readable while preserving exact behavior.
  */
 
+#pragma once
 #ifndef MAIN_LOOP_PHASES_H
 #define MAIN_LOOP_PHASES_H
 

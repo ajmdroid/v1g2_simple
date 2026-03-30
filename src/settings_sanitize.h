@@ -6,6 +6,7 @@
  * respective .cpp files.
  */
 
+#pragma once
 #ifndef SETTINGS_SANITIZE_H
 #define SETTINGS_SANITIZE_H
 

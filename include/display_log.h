@@ -3,6 +3,7 @@
  * Currently a no-op; kept as an instrumentation point.
  */
 
+#pragma once
 #ifndef DISPLAY_LOG_H
 #define DISPLAY_LOG_H
 

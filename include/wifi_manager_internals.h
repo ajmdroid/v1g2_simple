@@ -5,6 +5,7 @@
  * Each .cpp includes this plus its own module-specific headers.
  */
 
+#pragma once
 #ifndef WIFI_MANAGER_INTERNALS_H
 #define WIFI_MANAGER_INTERNALS_H
 

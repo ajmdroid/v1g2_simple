@@ -1,3 +1,4 @@
+#pragma once
 #ifndef WIFI_API_RESPONSE_H
 #define WIFI_API_RESPONSE_H
 

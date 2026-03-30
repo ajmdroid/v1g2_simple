@@ -5,6 +5,7 @@
  * Alert logging has been removed - this is just storage management.
  */
 
+#pragma once
 #ifndef STORAGE_MANAGER_H
 #define STORAGE_MANAGER_H
 

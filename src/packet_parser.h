@@ -3,6 +3,7 @@
  * Decodes display data and alert data packets
  */
 
+#pragma once
 #ifndef PACKET_PARSER_H
 #define PACKET_PARSER_H
 

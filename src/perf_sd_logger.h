@@ -7,6 +7,7 @@
  * Uses a dedicated FreeRTOS writer task; enqueue is non-blocking and drops on queue full.
  */
 
+#pragma once
 #ifndef PERF_SD_LOGGER_H
 #define PERF_SD_LOGGER_H
 

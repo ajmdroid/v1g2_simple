@@ -1,3 +1,4 @@
+#pragma once
 #ifndef DISPLAY_BLE_CONTEXT_H
 #define DISPLAY_BLE_CONTEXT_H
 

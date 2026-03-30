@@ -21,6 +21,7 @@
  * so runtime behavior is singleton-oriented even though the API is object-shaped.
  */
 
+#pragma once
 #ifndef DISPLAY_H
 #define DISPLAY_H
 

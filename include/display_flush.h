@@ -1,5 +1,6 @@
 // display_flush.h — Shared DISPLAY_FLUSH macro for display_*.cpp files
 // Wraps tft->flush() with perf instrumentation on Arduino_GFX builds.
+#pragma once
 #ifndef DISPLAY_FLUSH_H
 #define DISPLAY_FLUSH_H
 

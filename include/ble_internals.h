@@ -6,6 +6,7 @@
  *           debug log controls, BLE logging macros, extern declarations.
  */
 
+#pragma once
 #ifndef BLE_INTERNALS_H
 #define BLE_INTERNALS_H
 

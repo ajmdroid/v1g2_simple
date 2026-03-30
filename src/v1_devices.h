@@ -4,6 +4,7 @@
  * default auto-push profile slot selection.
  */
 
+#pragma once
 #ifndef V1_DEVICES_H
 #define V1_DEVICES_H
 

@@ -6,6 +6,7 @@
  * Each companion .cpp includes this plus its own specific headers.
  */
 
+#pragma once
 #ifndef AUDIO_INTERNALS_H
 #define AUDIO_INTERNALS_H
 

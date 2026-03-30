@@ -5,6 +5,7 @@
  * RGB565 format: RRRRR GGGGGG BBBBB (5 bits red, 6 bits green, 5 bits blue)
  */
 
+#pragma once
 #ifndef COLOR_THEMES_H
 #define COLOR_THEMES_H
 

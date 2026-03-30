@@ -7,6 +7,7 @@
  * file only forward-declares enough for the extern statements.
  */
 
+#pragma once
 #ifndef MAIN_GLOBALS_H
 #define MAIN_GLOBALS_H
 

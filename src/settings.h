@@ -17,6 +17,7 @@
  * Thread Safety: Load/save operations should be called from main thread
  */
 
+#pragma once
 #ifndef SETTINGS_H
 #define SETTINGS_H
 

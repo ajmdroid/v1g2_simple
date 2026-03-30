@@ -1,3 +1,4 @@
+#pragma once
 #ifndef SETTINGS_NAMESPACE_IDS_H
 #define SETTINGS_NAMESPACE_IDS_H
 

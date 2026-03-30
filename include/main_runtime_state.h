@@ -1,3 +1,4 @@
+#pragma once
 #ifndef MAIN_RUNTIME_STATE_H
 #define MAIN_RUNTIME_STATE_H
 

@@ -1,3 +1,4 @@
+#pragma once
 #ifndef BLE_FRESH_FLASH_POLICY_H
 #define BLE_FRESH_FLASH_POLICY_H
 

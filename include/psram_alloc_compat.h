@@ -1,3 +1,4 @@
+#pragma once
 #ifndef PSRAM_ALLOC_COMPAT_H
 #define PSRAM_ALLOC_COMPAT_H
 
