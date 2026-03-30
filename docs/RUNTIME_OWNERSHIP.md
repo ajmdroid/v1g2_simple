@@ -11,7 +11,7 @@ Owns early connection-derived decisions such as boot splash hold, connection bac
 Owns BLE ingest, queue drain, GPS runtime refresh, and the loop settings snapshot.
 This phase is the producer for `LoopSettingsPrepValues`.
 
-3. `loop()` in [src/main.cpp](/Users/ajmedford/v1g2_simple/src/main.cpp)
+3. `loop()` in [src/main.cpp](../src/main.cpp)
 Owns the OBD runtime refresh and speed selection refresh.
 `obdRuntimeModule.update(now, ...)` and `speedSourceSelector.update(now)` must run before any display, lockout, or Wi-Fi consumer reads their state.
 
@@ -41,8 +41,8 @@ Owns post-display connection-state dispatch cadence, periodic maintenance, and l
 
 - BLE ingest state: `LoopIngestModule`
 - GPS runtime freshness/state: `LoopIngestModule` via `gpsRuntimeModule.update(nowMs)`
-- OBD runtime freshness/state: `loop()` in [src/main.cpp](/Users/ajmedford/v1g2_simple/src/main.cpp)
-- Speed arbitration/counters: `loop()` in [src/main.cpp](/Users/ajmedford/v1g2_simple/src/main.cpp) via `speedSourceSelector.update(now)`
+- OBD runtime freshness/state: `loop()` in [src/main.cpp](../src/main.cpp)
+- Speed arbitration/counters: `loop()` in [src/main.cpp](../src/main.cpp) via `speedSourceSelector.update(now)`
 - Canonical selected-speed consumption for lockout learning: `LockoutOrchestrationModule` via `speedSourceSelector.selectedSpeed()`
 - Display/lockout refresh: `LoopDisplayModule`
 - Display pipeline throttles and recovery cadence: `DisplayPipelineModule` instance state

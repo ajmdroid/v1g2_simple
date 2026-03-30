@@ -10,7 +10,7 @@ Define concrete, repeatable SLO gates for runtime health that can be scored dire
 
 ## Canonical Threshold Source
 
-- Machine-readable source of truth: [`tools/perf_slo_thresholds.json`](/Users/ajmedford/v1g2_simple/tools/perf_slo_thresholds.json)
+- Machine-readable source of truth: [`tools/perf_slo_thresholds.json`](../tools/perf_slo_thresholds.json)
 - Scorer consumes this file by default (`tools/score_perf_csv.py`).
 - Contract guard enforces doc/json sync in CI:
 
