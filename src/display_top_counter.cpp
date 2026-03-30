@@ -175,19 +175,19 @@ int V1Display::drawSevenSegmentText(const char* text, int x, int y, float scale,
 void V1Display::draw14SegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor) {
     SegMetrics m = segMetrics(scale);
     uint16_t pattern = get14SegPattern(c);
-    
+
     auto drawHSeg = [&](int sx, int sy, int w, bool on) {
         uint16_t col = on ? onColor : offColor;
         if (!on && offColor == PALETTE_BG) return;
         FILL_ROUND_RECT(sx, sy, w, m.segThick, scale, col);
     };
-    
+
     auto drawVSeg = [&](int sx, int sy, int h, bool on) {
         uint16_t col = on ? onColor : offColor;
         if (!on && offColor == PALETTE_BG) return;
         FILL_ROUND_RECT(sx, sy, m.segThick, h, scale, col);
     };
-    
+
     auto drawDiag = [&](int x1, int y1, int x2, int y2, bool on) {
         uint16_t col = on ? onColor : offColor;
         if (!on && offColor == PALETTE_BG) return;
@@ -197,38 +197,38 @@ void V1Display::draw14SegmentDigit(int x, int y, float scale, char c, bool addDo
             DRAW_LINE(x1, y1+t, x2, y2+t, col);
         }
     };
-    
+
     int halfW = m.segLen / 2;
     int centerX = x + m.segThick + halfW;
     int midY = y + m.segLen + m.segThick;
-    
+
     // Horizontal segments
     drawHSeg(x + m.segThick, y, m.segLen, pattern & S14_TOP);                           // Top
     drawHSeg(x + m.segThick, y + 2*m.segLen + 2*m.segThick, m.segLen, pattern & S14_BOT); // Bottom
     drawHSeg(x + m.segThick, midY, halfW - m.segThick/2, pattern & S14_ML);              // Middle-left
     drawHSeg(centerX + m.segThick/2, midY, halfW - m.segThick/2, pattern & S14_MR);      // Middle-right
-    
+
     // Vertical segments - outer
     drawVSeg(x, y + m.segThick, m.segLen, pattern & S14_TL);                             // Top-left
     drawVSeg(x, y + m.segLen + 2*m.segThick, m.segLen, pattern & S14_BL);                // Bottom-left
     drawVSeg(x + m.segLen + m.segThick, y + m.segThick, m.segLen, pattern & S14_TR);     // Top-right
     drawVSeg(x + m.segLen + m.segThick, y + m.segLen + 2*m.segThick, m.segLen, pattern & S14_BR); // Bottom-right
-    
+
     // Center vertical segments
     drawVSeg(centerX, y + m.segThick, m.segLen - m.segThick, pattern & S14_CT);          // Center-top
     drawVSeg(centerX, midY + m.segThick, m.segLen - m.segThick, pattern & S14_CB);       // Center-bottom
-    
+
     // Diagonal segments
     int diagInset = m.segThick;
-    drawDiag(x + diagInset, y + m.segThick + diagInset, 
+    drawDiag(x + diagInset, y + m.segThick + diagInset,
              centerX - diagInset, midY - diagInset, pattern & S14_DTL);                   // Diag top-left
-    drawDiag(centerX + diagInset, y + m.segThick + diagInset, 
+    drawDiag(centerX + diagInset, y + m.segThick + diagInset,
              x + m.segLen + m.segThick - diagInset, midY - diagInset, pattern & S14_DTR); // Diag top-right
-    drawDiag(x + diagInset, y + 2*m.segLen + m.segThick - diagInset, 
+    drawDiag(x + diagInset, y + 2*m.segLen + m.segThick - diagInset,
              centerX - diagInset, midY + m.segThick + diagInset, pattern & S14_DBL);      // Diag bottom-left
-    drawDiag(centerX + diagInset, midY + m.segThick + diagInset, 
+    drawDiag(centerX + diagInset, midY + m.segThick + diagInset,
              x + m.segLen + m.segThick - diagInset, y + 2*m.segLen + m.segThick - diagInset, pattern & S14_DBR); // Diag bottom-right
-    
+
     if (addDot) {
         int dotR = m.dot / 2 + 1;
         int dotX = x + m.digitW + dotR;
@@ -289,7 +289,7 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     } else {
         color = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBogey;
     }
-    
+
     // Build display string
     // Keep numeric glyph placement fixed like an LED cluster by drawing the dot
     // separately at a fixed location instead of appending '.' to the glyph.
@@ -390,38 +390,38 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
 void V1Display::drawMuteIcon(bool muted) {
     // Change detection: skip redraw if nothing changed
     static bool lastMutedState = false;
-    
+
     // Skip redraw if nothing changed (unless forced after screen clear)
     if (!dirty.muteIcon && muted == lastMutedState) {
         return;
     }
     dirty.muteIcon = false;
     lastMutedState = muted;
-    
+
     // Draw badge at fixed top position (top ~10% of screen)
     const int leftMargin = 120;    // After band indicators
     const int rightMargin = 200;   // Before signal bars (at X=440)
     int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
-    
+
     int w = 110;
     int h = 26;
     int x = leftMargin + (maxWidth - w) / 2;  // Center between bands and signal bars
     int y = 5;  // Fixed near top of screen
-    
+
     if (muted) {
         // Draw badge with muted styling
         uint16_t outline = PALETTE_MUTED;
         uint16_t fill = PALETTE_MUTED;
-        
+
         FILL_ROUND_RECT(x, y, w, h, 5, fill);
         DRAW_ROUND_RECT(x, y, w, h, 5, outline);
-        
+
         GFX_setTextDatum(MC_DATUM);
         TFT_CALL(setTextSize)(2);  // Larger text for visibility
         TFT_CALL(setTextColor)(PALETTE_BG, fill);
         int cx = x + w / 2;
         int cy = y + h / 2;
-        
+
         const char* muteText = "MUTED";
         // Pseudo-bold: draw twice with slight offset
         GFX_drawString(tft, muteText, cx, cy);

@@ -1,7 +1,7 @@
 /**
  * Segment7 Font (Modified) - Binary TTF data
  * Auto-generated from segment7 TTF source
- * 
+ *
  * Modified to show laser bars for # and little L for &
  * Size: 15,732 bytes
  */

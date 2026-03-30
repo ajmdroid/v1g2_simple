@@ -101,26 +101,26 @@ public:
     bool isStopping() const;
     bool hasPendingLifecycleWork() const;
     void setBoundaryTransitionAdmission(bool allow);
-    
+
     // Process web server requests (call in loop)
     void process();
-    
+
     // Legacy compatibility (redirects to Setup Mode)
     bool begin() { return startSetupMode(false); }
 
     // Preflight check for setup-mode start admission.
     bool canStartSetupMode(uint32_t* freeInternal = nullptr, uint32_t* largestInternal = nullptr) const;
     unsigned long lowDmaCooldownRemainingMs() const;
-    
+
     // Reset WiFi reconnect failure counter and debounce timer
     // (call when user manually triggers WiFi)
     void resetReconnectFailures() { wifiReconnectFailures = 0; lastReconnectAttemptMs = 0; }
-    
+
     // Status
     bool isConnected() const { return !isStopping() && wifiClientState == WIFI_CLIENT_CONNECTED; }
     String getIPAddress() const;  // STA IP when connected
     String getAPIPAddress() const;
-    
+
     // WiFi client (STA) control - connect to external network
     bool startWifiScan();  // Async scan for networks
     std::vector<ScannedNetwork> getScannedNetworks();  // Get scan results (clears running flag)
@@ -130,7 +130,7 @@ public:
     void disconnectFromNetwork();
     void checkWifiClientStatus();  // Called internally by process() to manage STA connection
     String getConnectedSSID() const;  // Returns empty if not connected
-    
+
     // Callbacks for alert data (to display on web page)
     void setAlertCallback(void (*fn)(JsonObject, void*), void* ctx) { mergeAlert = fn; mergeAlertCtx = ctx; }
     void setStatusCallback(void (*fn)(JsonObject, void*), void* ctx) { mergeStatus = fn; mergeStatusCtx = ctx; }
@@ -138,16 +138,16 @@ public:
         mergeStatus2 = fn;
         mergeStatus2Ctx = ctx;
     }
-    
+
     // Callback for V1 commands (dark mode, mute)
     void setCommandCallback(bool (*fn)(const char*, bool, void*), void* ctx) { sendV1Command = fn; sendV1CommandCtx = ctx; }
-    
+
     // Callback to request a profile push (manual trigger from API)
     void setProfilePushCallback(WifiControlApiService::ProfilePushResult (*fn)(void*), void* ctx) { requestProfilePush = fn; requestProfilePushCtx = ctx; }
-    
+
     // Callback for filesystem access (SD card)
     void setFilesystemCallback(fs::FS* (*fn)(void*), void* ctx) { getFilesystem = fn; getFilesystemCtx = ctx; }
-    
+
     // Callback for push executor status (auto-push)
     void setPushStatusCallback(String (*fn)(void*), void* ctx) { getPushStatusJson = fn; getPushStatusJsonCtx = ctx; }
 
@@ -159,7 +159,7 @@ public:
         queuePushNow = fn;
         queuePushNowCtx = ctx;
     }
-    
+
     // Callback for V1 connection state (used to defer WiFi client operations)
     void setV1ConnectedCallback(bool (*fn)(void*), void* ctx) { isV1Connected = fn; isV1ConnectedCtx = ctx; }
 
@@ -184,7 +184,7 @@ private:
     unsigned long lastMaintenanceFastMs = 0;
     unsigned long lastStatusCheckMs = 0;
     unsigned long lastTimeoutCheckMs = 0;
-    
+
     // WiFi client (STA) state
     WifiClientState wifiClientState = WIFI_CLIENT_DISABLED;
     bool wifiScanRunning = false;
@@ -222,7 +222,7 @@ private:
     bool wifiStopHadSta = false;
     bool wifiStopHadAp = false;
     bool allowBoundaryTransitionWork = false;
-    
+
     // WiFi reconnect failure tracking (prevents memory leak from repeated failed attempts)
     int wifiReconnectFailures = 0;
     unsigned long lastReconnectAttemptMs = 0;  // Moved from static local for proper reset across WiFi sessions
@@ -230,7 +230,7 @@ private:
     static constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 30000;  // 30s between attempts
     static constexpr unsigned long WIFI_RECONNECT_DEFER_NO_V1_MS = 90000;  // Protect BLE acquisition on boot
     bool wifiReconnectDeferredLogged = false;
-    
+
     // Web activity tracking for WiFi priority mode
     unsigned long lastUiActivityMs = 0;
 
@@ -254,13 +254,13 @@ private:
     static constexpr size_t RATE_LIMIT_MAX_REQUESTS = SlidingWindowRateLimiter::MAX_REQUESTS;
     SlidingWindowRateLimiter rateLimiter;
     bool checkRateLimit();  // Returns true if request allowed, false if rate limited
-    
+
     // Status JSON caching (Option 2 optimization)
     static constexpr unsigned long STATUS_CACHE_TTL_MS = 500;  // 500ms cache
     WifiStatusApiService::StatusJsonCache cachedStatusJson;
     unsigned long lastStatusJsonTime = 0;
     BackupApiService::BackupSnapshotCache cachedBackupSnapshot;
-    
+
     void (*mergeAlert)(JsonObject, void* ctx) = nullptr;
     void* mergeAlertCtx = nullptr;
     void (*mergeStatus)(JsonObject, void* ctx) = nullptr;
@@ -280,7 +280,7 @@ private:
     void* queuePushNowCtx = nullptr;
     bool (*isV1Connected)(void* ctx) = nullptr;   // Returns true when V1 is connected (defer WiFi ops until then)
     void* isV1ConnectedCtx = nullptr;
-    
+
     // Setup functions
     void setupAP();
     bool setupWebServer();
@@ -300,10 +300,10 @@ private:
     WifiClientApiService::Runtime makeWifiClientRuntime();
     WifiV1ProfileApiService::Runtime makeV1ProfileRuntime();
     WifiV1DevicesApiService::Runtime makeV1DevicesRuntime();
-    
+
     // API endpoints
     void handleNotFound();
-    
+
     // LittleFS file serving (new UI)
     bool serveLittleFSFile(const char* path, const char* contentType);
 };

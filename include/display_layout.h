@@ -1,10 +1,10 @@
 /**
  * Display Layout Constants for V1 Gen2 Display
  * Waveshare ESP32-S3-Touch-LCD-3.49 (640x172 AMOLED)
- * 
+ *
  * Centralizes all layout-related constants to ensure consistency
  * across display.cpp and tests. Derived from config.h screen dimensions.
- * 
+ *
  * Layout Overview (640x172 landscape):
  * ┌────────────────────────────────────────────────────────────────────────────┐
  * │ [Status Bar: indicators]                                      [WiFi]      │ Y=0-20

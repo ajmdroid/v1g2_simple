@@ -189,7 +189,7 @@ void BleQueueModule::process() {
     UBaseType_t queueDepthBeforeDrain = 0;
     bool parsedEventPending = false;
     uint16_t parsedEventDetail = 0;
-    
+
 #ifdef REPLAY_MODE
     processReplayData();
 #else
@@ -228,7 +228,7 @@ void BleQueueModule::process() {
 
     const size_t MIN_HEADER_SIZE = 6;
     const size_t MAX_PACKET_SIZE = 512;
-    
+
     // Adaptive drain budget: keep a low-latency baseline but accelerate when
     // queue/backlog indicates BLE ingest is falling behind.
     static constexpr size_t BASE_PACKETS_PER_CYCLE = 8;
@@ -272,7 +272,7 @@ void BleQueueModule::process() {
             (PERF_TIMESTAMP_US() - parseCycleStartUs) >= parseBudgetUs) {
             break;
         }
-        
+
         availableBytes = rxBuffer.size() - rxReadPos;
         if (availableBytes == 0) break;
 

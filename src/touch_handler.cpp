@@ -11,7 +11,7 @@
 // AXS15231B touch read command sequence
 static const uint8_t AXS_TOUCH_READ_CMD[] = {0xb5, 0xab, 0xa5, 0x5a, 0x0, 0x0, 0x0, 0x0e, 0x0, 0x0, 0x0};
 
-TouchHandler::TouchHandler() 
+TouchHandler::TouchHandler()
     : i2cAddr(AXS_TOUCH_ADDR)
     , rstPin(-1)
     , touchActive(false)
@@ -30,30 +30,30 @@ bool TouchHandler::begin(int sda, int scl, uint8_t addr, int rst) {
     nextI2cPollAllowedMs = 0;
     lastRecoveryMs = 0;
     consecutiveI2cFailures = 0;
-    
+
     TOUCH_LOGF("[Touch] Initializing AXS15231B touch on I2C SDA=%d SCL=%d addr=0x%02X\n", sda, scl, addr);
-    
+
     // Initialize I2C with specified pins
     configureWireBus();
-    
+
     delay(30);   // Conservative I2C/touch controller settle
-    
+
     // Reset the touch controller if reset pin is available
     if (rstPin >= 0) {
         reset();
     }
-    
+
     // Try to communicate with touch controller
     Wire.beginTransmission(i2cAddr);
     uint8_t error = Wire.endTransmission();
-    
+
     if (error == 0) {
         TOUCH_LOGF("[Touch] Device found at 0x%02X\n", i2cAddr);
-        
+
         // Try to read status register
         uint8_t status = readRegister(AXS_REG_STATUS);
         TOUCH_LOGF("[Touch] Status register: 0x%02X\n", status);
-        
+
         return true;
     } else {
         Serial.printf("[Touch] ERROR: Device not found at 0x%02X (error=%d)\n", i2cAddr, error);
@@ -178,21 +178,21 @@ bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
         noteNoTouch(now);
         return false;
     }
-    
+
     // AXS15231B requires special command sequence to read touch data
     // Send command: {0xb5, 0xab, 0xa5, 0x5a, 0x0, 0x0, 0x0, 0x0e, 0x0, 0x0, 0x0}
     // Then read 32 bytes of response
-    
+
     Wire.beginTransmission(i2cAddr);
     Wire.write(AXS_TOUCH_READ_CMD, sizeof(AXS_TOUCH_READ_CMD));
     uint32_t i2cStart = micros();
     uint8_t err = Wire.endTransmission(false);  // Keep connection open for read
-    
+
     if (err != 0) {
         recordI2cFailure(now, micros() - i2cStart);
         return false;
     }
-    
+
     // Read 32 bytes of touch data
     uint8_t buff[32] = {0};
     const size_t bytesRead = Wire.requestFrom(i2cAddr, static_cast<uint8_t>(32));
@@ -214,33 +214,33 @@ bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
         buff[i] = Wire.read();
     }
     recordI2cSuccess();
-    
+
     // Parse touch data from AXS15231B response
     // buff[0] = gesture (ignored)
     // buff[1] = number of touch points (1-4 = valid touch)
     // buff[2] = X high nibble (bits 3-0)
     // buff[3] = X low byte
-    // buff[4] = Y high nibble (bits 3-0)  
+    // buff[4] = Y high nibble (bits 3-0)
     // buff[5] = Y low byte
-    
+
     uint8_t numPoints = buff[1];
-    
+
     if (numPoints == 0 || numPoints > 4) {
         // No touch - track when finger was released
         noteNoTouch(now);
         return false;
     }
-    
+
     // Extract coordinates
     x = ((buff[2] & 0x0F) << 8) | buff[3];
     y = ((buff[4] & 0x0F) << 8) | buff[5];
-    
+
     // Check if we're still within debounce period from last tap
     if ((long)(now - lastTouchTime) < (long)touchDebounceMs) {
         touchActive = true;  // Keep tracking that finger is down
         return false;  // Still in debounce period
     }
-    
+
     // Detect new touch (rising edge) - require finger to have been lifted
     // for at least releaseDebounceMs to prevent false taps from noisy readings
     if (!touchActive) {
@@ -252,7 +252,7 @@ bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
             return true;  // New touch event
         }
     }
-    
+
     touchActive = true;  // Finger is down
     return false;  // Touch held, not a new tap
 }
@@ -261,12 +261,12 @@ uint8_t TouchHandler::readRegister(uint8_t reg) {
     Wire.beginTransmission(i2cAddr);
     Wire.write(reg);
     uint8_t err = Wire.endTransmission(false);  // Send restart
-    
+
     if (err != 0) {
         TOUCH_LOGF("[Touch] I2C error writing reg 0x%02X: %d\n", reg, err);
         return 0;
     }
-    
+
     Wire.requestFrom(i2cAddr, (uint8_t)1);
     if (Wire.available()) {
         uint8_t val = Wire.read();

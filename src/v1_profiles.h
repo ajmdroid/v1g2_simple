@@ -15,7 +15,7 @@
 // Based on ESP Specification and V19UserSettings from Valentine Research
 struct V1UserSettings {
     uint8_t bytes[6];
-    
+
     // Byte 0 bits
     bool xBandEnabled() const { return bytes[0] & 0x01; }
     bool kBandEnabled() const { return bytes[0] & 0x02; }
@@ -25,7 +25,7 @@ struct V1UserSettings {
     bool bogeyLockLoud() const { return bytes[0] & 0x20; }
     bool muteXKRear() const { return !(bytes[0] & 0x40); }  // Inverted
     bool kuBandEnabled() const { return !(bytes[0] & 0x80); }  // Inverted
-    
+
     // Byte 1 bits
     bool euroMode() const { return !(bytes[1] & 0x01); }  // Inverted
     bool kVerifier() const { return bytes[1] & 0x02; }  // TMF
@@ -34,7 +34,7 @@ struct V1UserSettings {
     bool kaAlwaysPriority() const { return !(bytes[1] & 0x10); }  // Inverted
     bool fastLaserDetect() const { return bytes[1] & 0x20; }
     uint8_t kaSensitivity() const { return (bytes[1] >> 6) & 0x03; }  // 3=Full, 2=Original, 1=Relaxed
-    
+
     // Byte 2 bits
     bool startupSequence() const { return bytes[2] & 0x01; }
     bool restingDisplay() const { return bytes[2] & 0x02; }
@@ -42,7 +42,7 @@ struct V1UserSettings {
     uint8_t autoMute() const { return (bytes[2] >> 3) & 0x03; }  // 3=Off, 1=On, 2=Advanced
     uint8_t kSensitivity() const { return (bytes[2] >> 5) & 0x03; }  // 3=Original, 2=Full, 1=Relaxed
     bool mrct() const { return !(bytes[2] & 0x80); }  // Inverted
-    
+
     // Byte 3 bits
     uint8_t xSensitivity() const { return bytes[3] & 0x03; }  // 3=Original, 2=Full, 1=Relaxed
     bool driveSafe3D() const { return !(bytes[3] & 0x04); }  // Inverted
@@ -51,7 +51,7 @@ struct V1UserSettings {
     bool redflexNK7() const { return !(bytes[3] & 0x20); }  // Inverted
     bool ekin() const { return !(bytes[3] & 0x40); }  // Inverted
     bool photoVerifier() const { return !(bytes[3] & 0x80); }  // Inverted
-    
+
     // Setters
     void setXBandEnabled(bool v) { if (v) bytes[0] |= 0x01; else bytes[0] &= ~0x01; }
     void setKBandEnabled(bool v) { if (v) bytes[0] |= 0x02; else bytes[0] &= ~0x02; }
@@ -61,7 +61,7 @@ struct V1UserSettings {
     void setBogeyLockLoud(bool v) { if (v) bytes[0] |= 0x20; else bytes[0] &= ~0x20; }
     void setMuteXKRear(bool v) { if (v) bytes[0] &= ~0x40; else bytes[0] |= 0x40; }  // Inverted
     void setKuBandEnabled(bool v) { if (v) bytes[0] &= ~0x80; else bytes[0] |= 0x80; }  // Inverted
-    
+
     void setEuroMode(bool v) { if (v) bytes[1] &= ~0x01; else bytes[1] |= 0x01; }  // Inverted
     void setKVerifier(bool v) { if (v) bytes[1] |= 0x02; else bytes[1] &= ~0x02; }
     void setLaserRear(bool v) { if (v) bytes[1] |= 0x04; else bytes[1] &= ~0x04; }
@@ -69,14 +69,14 @@ struct V1UserSettings {
     void setKaAlwaysPriority(bool v) { if (v) bytes[1] &= ~0x10; else bytes[1] |= 0x10; }  // Inverted
     void setFastLaserDetect(bool v) { if (v) bytes[1] |= 0x20; else bytes[1] &= ~0x20; }
     void setKaSensitivity(uint8_t v) { bytes[1] = (bytes[1] & 0x3F) | ((v & 0x03) << 6); }
-    
+
     void setStartupSequence(bool v) { if (v) bytes[2] |= 0x01; else bytes[2] &= ~0x01; }
     void setRestingDisplay(bool v) { if (v) bytes[2] |= 0x02; else bytes[2] &= ~0x02; }
     void setBsmPlus(bool v) { if (v) bytes[2] &= ~0x04; else bytes[2] |= 0x04; }  // Inverted
     void setAutoMute(uint8_t v) { bytes[2] = (bytes[2] & 0xE7) | ((v & 0x03) << 3); }
     void setKSensitivity(uint8_t v) { bytes[2] = (bytes[2] & 0x9F) | ((v & 0x03) << 5); }
     void setMrct(bool v) { if (v) bytes[2] &= ~0x80; else bytes[2] |= 0x80; }  // Inverted
-    
+
     void setXSensitivity(uint8_t v) { bytes[3] = (bytes[3] & 0xFC) | (v & 0x03); }
     void setDriveSafe3D(bool v) { if (v) bytes[3] &= ~0x04; else bytes[3] |= 0x04; }  // Inverted
     void setDriveSafe3DHD(bool v) { if (v) bytes[3] &= ~0x08; else bytes[3] |= 0x08; }  // Inverted
@@ -84,12 +84,12 @@ struct V1UserSettings {
     void setRedflexNK7(bool v) { if (v) bytes[3] &= ~0x20; else bytes[3] |= 0x20; }  // Inverted
     void setEkin(bool v) { if (v) bytes[3] &= ~0x40; else bytes[3] |= 0x40; }  // Inverted
     void setPhotoVerifier(bool v) { if (v) bytes[3] &= ~0x80; else bytes[3] |= 0x80; }  // Inverted
-    
+
     // Initialize to factory defaults (all 0xFF)
     void setDefaults() {
         memset(bytes, 0xFF, 6);
     }
-    
+
     V1UserSettings() {
         setDefaults();
     }
@@ -103,7 +103,7 @@ struct V1Profile {
     bool displayOn;       // V1 main display on/off (dark mode)
     uint8_t mainVolume;   // Main volume 0-9 (0xFF = don't change)
     uint8_t mutedVolume;  // Muted volume 0-9 (0xFF = don't change)
-    
+
     V1Profile() : name("Default"), description(""), displayOn(true), mainVolume(0xFF), mutedVolume(0xFF) {}
     V1Profile(const String& n) : name(n), description(""), displayOn(true), mainVolume(0xFF), mutedVolume(0xFF) {}
     V1Profile(const String& n, const V1UserSettings& s) : name(n), description(""), settings(s), displayOn(true), mainVolume(0xFF), mutedVolume(0xFF) {}
@@ -113,7 +113,7 @@ struct V1Profile {
 struct ProfileSaveResult {
     bool success;
     String error;  // Empty if success, detailed message if failed
-    
+
     ProfileSaveResult() : success(false), error("") {}
     ProfileSaveResult(bool ok) : success(ok), error("") {}
     ProfileSaveResult(bool ok, const String& err) : success(ok), error(err) {}
@@ -122,11 +122,11 @@ struct ProfileSaveResult {
 class V1ProfileManager {
 public:
     V1ProfileManager();
-    
+
     // Initialize with filesystem
     bool begin(fs::FS* filesystem, fs::FS* importFilesystem = nullptr);
     bool isReady() const { return ready; }
-    
+
     // Profile CRUD
     std::vector<String> listProfiles() const;
     bool loadProfile(const String& name, V1Profile& profile) const;
@@ -134,35 +134,35 @@ public:
     bool deleteProfile(const String& name);
     bool renameProfile(const String& oldName, const String& newName);
     uint32_t catalogRevision() const { return catalogRevisionCounter; }
-    
+
     // Get last error message
     const String& getLastError() const { return lastError; }
-    
+
     // Current V1 settings (from last pull)
     bool hasCurrentSettings() const { return currentValid; }
     const V1UserSettings& getCurrentSettings() const { return currentSettings; }
     void setCurrentSettings(const uint8_t* bytes);
-    
+
     // JSON serialization for web API
     String profileToJson(const V1Profile& profile) const;
     String settingsToJson(const V1UserSettings& settings) const;
     bool jsonToSettings(const String& json, V1UserSettings& settings) const;
     bool jsonToSettings(const JsonObject& settingsObj, V1UserSettings& settings) const;
-    
+
 private:
     fs::FS* fs;
     bool ready;
     String profileDir;
     mutable String lastError;  // Last error message for detailed reporting
     uint32_t catalogRevisionCounter = 1;
-    
+
     V1UserSettings currentSettings;
     bool currentValid;
-    
+
     String profilePath(const String& name) const;
     static uint32_t calculateCRC32(const uint8_t* data, size_t length);
     void bumpCatalogRevision();
-    
+
     // Startup recovery for interrupted saves
     void recoverInterruptedSaves();
     size_t migrateProfilesFrom(fs::FS* sourceFs);

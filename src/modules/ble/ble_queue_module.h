@@ -32,7 +32,7 @@ public:
 
     // Returns timestamp of last successfully parsed packet (for display latency tracking)
     uint32_t getLastParsedTimestamp() const { return lastParsedTsMs; }
-    
+
     // Returns true if a packet was successfully parsed since last check (and clears flag)
     bool consumeParsedFlag() { bool had = hadSuccessfulParse; hadSuccessfulParse = false; return had; }
 

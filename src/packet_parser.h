@@ -20,30 +20,30 @@ public:
     static constexpr size_t MAX_ALERTS = 15;  // V1 spec supports up to 15 simultaneous alerts
 
     PacketParser();
-    
+
     // Parse incoming ESP packet
     bool parse(const uint8_t* data, size_t length);
-    
+
     // Get current display state
     const DisplayState& getDisplayState() const { return displayState; }
-    
+
     // Get resolved priority alert (follows V1 priority signal)
     AlertData getPriorityAlert() const;
 
     // Get a renderable priority alert (valid band + usable frequency semantics).
     // Returns true and writes to out when a renderable alert exists.
     bool getRenderablePriorityAlert(AlertData& out) const;
-    
+
     // Get all alerts
     const std::array<AlertData, MAX_ALERTS>& getAllAlerts() const { return alerts; }
-    
+
     // Get number of active alerts
     size_t getAlertCount() const { return alertCount; }
 
     // Check if there are active alerts
     // Only check alertCount - display state can lag behind
     bool hasAlerts() const { return alertCount > 0; }
-    
+
     // Check if V1 firmware supports volume display
     // Show volume if we've received volume data OR confirmed firmware version 4.1028+
     bool supportsVolume() const { return displayState.hasVolumeData || (displayState.hasV1Version && displayState.v1FirmwareVersion >= 41028); }
@@ -78,7 +78,7 @@ private:
     bool validatePacket(const uint8_t* data, size_t length);
     void clearAlertCache();
     void clearAlertCacheForCount(uint8_t count);
-    
+
     // Data extraction
     Band decodeBand(uint8_t bandArrow) const;
     Direction decodeDirection(uint8_t bandArrow) const;

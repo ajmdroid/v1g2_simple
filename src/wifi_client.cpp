@@ -37,64 +37,64 @@ bool WiFiManager::startWifiScan() {
         Serial.println("[WiFiClient] Scan already in progress");
         return false;
     }
-    
+
     Serial.println("[WiFiClient] Starting async network scan...");
     WiFi.scanDelete();  // Clear previous results
-    
+
     // Start async scan (non-blocking)
     int result = WiFi.scanNetworks(true, false, false, 300);  // async=true, show_hidden=false, passive=false, max_ms_per_chan=300
     if (result == WIFI_SCAN_RUNNING) {
         wifiScanRunning = true;
         return true;
     }
-    
+
     Serial.printf("[WiFiClient] Scan failed to start: %d\n", result);
     return false;
 }
 
 std::vector<ScannedNetwork> WiFiManager::getScannedNetworks() {
     std::vector<ScannedNetwork> networks;
-    
+
     int16_t scanResult = WiFi.scanComplete();
     if (scanResult == WIFI_SCAN_RUNNING) {
         // Still scanning
         return networks;  // Empty
     }
-    
+
     wifiScanRunning = false;
-    
+
     if (scanResult == WIFI_SCAN_FAILED || scanResult < 0) {
         Serial.printf("[WiFiClient] Scan failed: %d\n", scanResult);
         return networks;
     }
-    
+
     Serial.printf("[WiFiClient] Scan found %d networks\n", scanResult);
-    
+
     // Deduplicate by SSID (keep strongest signal)
     std::map<String, ScannedNetwork> uniqueNetworks;
-    
+
     for (int i = 0; i < scanResult; i++) {
         String ssid = WiFi.SSID(i);
         if (ssid.length() == 0) continue;  // Skip hidden networks
-        
+
         int32_t rssi = WiFi.RSSI(i);
         uint8_t encType = WiFi.encryptionType(i);
-        
+
         auto it = uniqueNetworks.find(ssid);
         if (it == uniqueNetworks.end() || rssi > it->second.rssi) {
             uniqueNetworks[ssid] = {ssid, rssi, encType};
         }
     }
-    
+
     // Convert to vector and sort by signal strength
     for (const auto& pair : uniqueNetworks) {
         networks.push_back(pair.second);
     }
-    
+
     std::sort(networks.begin(), networks.end(), [](const ScannedNetwork& a, const ScannedNetwork& b) {
         return a.rssi > b.rssi;  // Strongest first
     });
-    
+
     WiFi.scanDelete();  // Free memory
     return networks;
 }
@@ -237,9 +237,9 @@ void WiFiManager::checkWifiClientStatus() {
     if (wifiClientState == WIFI_CLIENT_DISABLED) {
         return;
     }
-    
+
     wl_status_t status = WiFi.status();
-    
+
     switch (wifiClientState) {
         case WIFI_CLIENT_CONNECTING: {
             // Non-blocking mode transition is still in progress.
@@ -257,10 +257,10 @@ void WiFiManager::checkWifiClientStatus() {
                     lastClientSeenMs = millis();
                     Serial.println("[WiFiClient] STA connected; AP idle-retire timer armed");
                 }
-                
+
                 // Reset failure counter on successful connection
                 wifiReconnectFailures = 0;
-                
+
                 // Save credentials on successful connection
                 if (pendingConnectSSID.length() > 0) {
                     if (pendingConnectPersistCredentials) {
@@ -284,7 +284,7 @@ void WiFiManager::checkWifiClientStatus() {
                 wifiClientState = WIFI_CLIENT_FAILED;
                 Serial.printf("[WiFiClient] Connection failed: %d\n", status);
                 wifiConnectStartMs = 0;
-                
+
                 pendingConnectSSID = "";
                 pendingConnectPassword = "";
                 pendingConnectPersistCredentials = true;
@@ -293,23 +293,23 @@ void WiFiManager::checkWifiClientStatus() {
                 Serial.println("[WiFiClient] Connection timeout");
                 WiFi.disconnect(false);
                 wifiConnectStartMs = 0;
-                
+
                 pendingConnectSSID = "";
                 pendingConnectPassword = "";
                 pendingConnectPersistCredentials = true;
             }
             break;
         }
-        
+
         case WIFI_CLIENT_CONNECTED: {
             if (status != WL_CONNECTED) {
                 wifiClientState = WIFI_CLIENT_DISCONNECTED;
                 Serial.println("[WiFiClient] Lost connection");
-                
+
             }
             break;
         }
-        
+
         case WIFI_CLIENT_DISCONNECTED:
         case WIFI_CLIENT_FAILED: {
             if (lowDmaCooldownRemainingMs() > 0) {
@@ -348,21 +348,21 @@ void WiFiManager::checkWifiClientStatus() {
                     // Already gave up - don't log spam, just stay in failed state
                     break;
                 }
-                
+
                 // Only try auto-reconnect every 30 seconds (first attempt is immediate).
                 unsigned long nowMs = millis();
                 if (lastReconnectAttemptMs == 0 || (nowMs - lastReconnectAttemptMs) > WIFI_RECONNECT_INTERVAL_MS) {
                     String savedPassword = settingsManager.getWifiClientPassword();
                     lastReconnectAttemptMs = nowMs;
                     wifiReconnectFailures++;
-                    
+
                     if (wifiReconnectFailures >= WIFI_MAX_RECONNECT_FAILURES) {
                         Serial.printf("[WiFiClient] Giving up after %d failed attempts. Use BOOT button to retry.\n",
                                       wifiReconnectFailures);
                         // Stay in FAILED state, user must toggle WiFi to retry
                         break;
                     }
-                    
+
                     Serial.printf("[WiFiClient] Auto-reconnect attempt %d/%d...\n",
                                   wifiReconnectFailures, WIFI_MAX_RECONNECT_FAILURES);
                     connectToNetwork(settings.wifiClientSSID, savedPassword, false);
@@ -370,7 +370,7 @@ void WiFiManager::checkWifiClientStatus() {
             }
             break;
         }
-        
+
         default:
             break;
     }

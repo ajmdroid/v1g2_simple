@@ -10,7 +10,7 @@ class DisplayPipelineModule;
 
 /**
  * DisplayRestoreModule - Handles display restoration after preview modes end.
- * 
+ *
  * When color preview modes finish, this module:
  * - Forces a full display redraw
  * - Restores the appropriate V1 state (alerts or scanning)

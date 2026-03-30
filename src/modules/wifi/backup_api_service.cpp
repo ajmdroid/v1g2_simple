@@ -77,7 +77,7 @@ void handleApiBackupNow(WebServer& server,
 static void handleRestore(WebServer& server) {
     Serial.println("[HTTP] POST /api/settings/restore");
     static constexpr size_t kMaxRestoreBodyBytes = 16 * 1024;
-    
+
     if (!server.hasArg("plain")) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"No JSON body provided\"}");
         return;
@@ -90,7 +90,7 @@ static void handleRestore(WebServer& server) {
             return;
         }
     }
-    
+
     String body = server.arg("plain");
     if (body.length() > kMaxRestoreBodyBytes) {
         server.send(413, "application/json", "{\"success\":false,\"error\":\"Body too large\"}");
@@ -98,20 +98,20 @@ static void handleRestore(WebServer& server) {
     }
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, body);
-    
+
     if (err) {
         Serial.printf("[Settings] Restore parse error: %s\n", err.c_str());
         server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
         return;
     }
-    
+
     // Verify backup format
     if (!doc["_type"].is<const char*>() ||
         !BackupPayloadBuilder::isRecognizedBackupType(doc["_type"].as<const char*>())) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid backup format\"}");
         return;
     }
-    
+
     const SettingsBackupApplyResult applyResult = settingsManager.applyBackupDocument(doc, true);
     if (!applyResult.success) {
         server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to persist restored settings\"}");
@@ -124,9 +124,9 @@ static void handleRestore(WebServer& server) {
                                                   obdRuntimeModule,
                                                   speedSourceSelector);
     SettingsRuntimeSync::syncGpsLockoutRuntimeSettings(settings, lockoutLearner);
-    
+
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", applyResult.profilesRestored);
-    
+
     // Build response with profile count
     String response = "{\"success\":true,\"message\":\"Settings restored successfully";
     if (applyResult.profilesRestored > 0) {

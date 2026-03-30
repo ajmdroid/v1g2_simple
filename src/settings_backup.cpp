@@ -288,7 +288,7 @@ bool SettingsManager::backupToSD() {
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
         return false;  // SD not available, skip silently
     }
-    
+
     // Acquire SD mutex to protect file I/O.
     // checkDmaHeap=false: backupToSD() is called from save() which runs inside
     // WiFi handlers — WiFi's SRAM buffers reduce DMA heap below the guard
@@ -299,7 +299,7 @@ bool SettingsManager::backupToSD() {
         Serial.println("[Settings] Failed to acquire SD mutex for backup");
         return false;
     }
-    
+
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return false;
 

@@ -36,7 +36,7 @@ void WiFiManager::setBoundaryTransitionAdmission(const bool allow) {
 // Rate limiting: returns true if request is allowed, false if rate limited
 bool WiFiManager::checkRateLimit() {
     const uint32_t now = millis();
-    
+
     // Mark UI activity on every request
     markUiActivity();
 
@@ -50,7 +50,7 @@ bool WiFiManager::checkRateLimit() {
                     "{\"success\":false,\"message\":\"Too many requests\"}");
         return false;
     }
-    
+
     return true;
 }
 

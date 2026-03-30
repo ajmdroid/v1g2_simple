@@ -1,19 +1,19 @@
 /**
  * Settings Storage for V1 Gen2 Display
  * Uses ESP32 Preferences API for persistent flash storage
- * 
+ *
  * Settings Categories:
  * - WiFi: Mode (Off/AP/APSTA), credentials
  * - BLE Proxy: Enable/disable, device name
  * - Display: Brightness, custom colors, resting mode
  * - Auto-Push: 3-slot profile system with modes
- * 
+ *
  * Auto-Push Slots:
  * - Slot 0: Default profile (🏠)
  * - Slot 1: Highway profile (🏎️)
  * - Slot 2: Passenger Comfort profile (👥)
  * Each slot stores: profile name + V1 operating mode
- * 
+ *
  * Thread Safety: Load/save operations should be called from main thread
  */
 
@@ -184,7 +184,7 @@ inline uint8_t clampLockoutManualDemotionMissCountValue(int rawCount) {
 struct AutoPushSlot {
     String profileName;
     V1Mode mode;
-    
+
     AutoPushSlot() : profileName(""), mode(V1_MODE_UNKNOWN) {}
     AutoPushSlot(const String& name, V1Mode m) : profileName(name), mode(m) {}
 };
@@ -196,12 +196,12 @@ struct V1Settings {
     WiFiModeSetting wifiMode;  // V1_WIFI_AP (default) or V1_WIFI_APSTA (with client)
     String apSSID;           // AP mode SSID (device hotspot name)
     String apPassword;       // AP mode password
-    
+
     // WiFi client (STA) settings - connect to external network
     bool wifiClientEnabled;  // Enable WiFi client mode (AP+STA dual mode)
     String wifiClientSSID;   // SSID of network to connect to
     // NOTE: wifiClientPassword stored separately in secure NVS namespace
-    
+
     // BLE proxy settings
     bool proxyBLE;          // Enable BLE proxy for companion app
     String proxyName;       // BLE device name when proxying
@@ -230,7 +230,7 @@ struct V1Settings {
     bool turnOffDisplay;
     uint8_t brightness;
     DisplayStyle displayStyle;  // Active styles: classic 7-segment or serpentine
-    
+
     // Custom display colors (RGB565 format)
     uint16_t colorBogey;         // Bogey counter color
     uint16_t colorFrequency;     // Frequency display color
@@ -262,7 +262,7 @@ struct V1Settings {
     uint16_t colorGps;           // GPS "G" satellite badge color
     uint16_t colorObd;           // OBD "OBD" status text color when connected
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
-    
+
     // Display visibility settings
     bool hideWifiIcon;           // Hide WiFi icon after brief display
     bool hideProfileIndicator;   // Hide profile indicator after brief display
@@ -275,26 +275,26 @@ struct V1Settings {
     // Development settings
     bool enableWifiAtBoot;       // Start WiFi automatically on boot (bypasses BOOT button)
     bool enableSignalTraceLogging; // Log all priority bands to lockout SD CSV for diagnostics
-    
+
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
     bool voiceDirectionEnabled;     // Append direction ("ahead"/"side"/"behind") to voice
     bool announceBogeyCount;        // Announce bogey count after direction ("2 bogeys")
     bool muteVoiceIfVolZero;        // Mute voice alerts (not VOL0 warning) when V1 volume is 0
     uint8_t voiceVolume;            // Voice alert volume (0-100%)
-    
+
     // Secondary alert announcements (non-priority alerts)
     bool announceSecondaryAlerts;   // Master toggle for secondary announcements
     bool secondaryLaser;            // Announce secondary Laser alerts
     bool secondaryKa;               // Announce secondary Ka alerts
     bool secondaryK;                // Announce secondary K alerts
     bool secondaryX;                // Announce secondary X alerts
-    
+
     // Volume fade (reduce V1 volume after initial alert period)
     bool alertVolumeFadeEnabled;    // Enable volume fade feature
     uint8_t alertVolumeFadeDelaySec; // Seconds at full volume before fading (1-10)
     uint8_t alertVolumeFadeVolume;  // Volume to fade to (0-9)
-    
+
     // Speed-aware muting (suppress alerts below speed threshold)
     bool speedMuteEnabled;           // Enable speed-based auto-muting
     uint8_t speedMuteThresholdMph;   // Mute below this speed (5-60 mph)
@@ -356,9 +356,9 @@ struct V1Settings {
         const bool& priorityArrow;
         const AutoPushSlot& config;
     };
-    
+
     String lastV1Address;  // Last known V1 BLE address for fast reconnect
-    
+
     // Auto power-off on V1 disconnect
     uint8_t autoPowerOffMinutes;  // Minutes to wait after V1 disconnect before power off (0=disabled)
     uint8_t apTimeoutMinutes;       // Minutes before AP auto-stops (0=always on, 5-60)
@@ -371,9 +371,9 @@ struct V1Settings {
     int8_t obdMinRssi;           // Minimum RSSI for scan acceptance (dBm)
     String obdCachedVinPrefix11; // Last VIN prefix matched to cached EOT profile
     uint8_t obdCachedEotProfileId; // Cached EOT profile id for same-vehicle fast start
-    
+
     // Default constructor with sensible defaults
-    V1Settings() : 
+    V1Settings() :
         enableWifi(true),
         wifiMode(V1_WIFI_AP),
         apSSID("V1-Simple"),
@@ -880,10 +880,10 @@ struct AutoPushStateUpdate {
 class SettingsManager {
 public:
     SettingsManager();
-    
+
     // Initialize and load settings
     void begin();
-    
+
     // Get current settings (read-only)
     const V1Settings& get() const { return settings; }
 #ifdef UNIT_TEST
@@ -891,7 +891,7 @@ public:
     V1Settings& mutableSettings() { return settings; }
 #endif
     uint32_t backupRevision() const { return backupRevisionCounter; }
-    
+
     // Update settings (calls save automatically)
     void setWiFiEnabled(bool enabled);
     void setAPCredentials(const String& ssid, const String& password);
@@ -942,15 +942,15 @@ public:
     void setAlertVolumeFade(bool enabled, uint8_t delaySec, uint8_t volume);
     void setSpeedMute(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph);
     void setLastV1Address(const String& addr);
-    
+
     // Get active slot configuration
     const AutoPushSlot& getActiveSlot() const;
     const AutoPushSlot& getSlot(int slotNum) const;
-    
+
     // Get slot volume settings (returns 0xFF for "no change")
     uint8_t getSlotVolume(int slotNum) const;
     uint8_t getSlotMuteVolume(int slotNum) const;
-    
+
     // Get slot dark mode and MZ settings
     bool getSlotDarkMode(int slotNum) const;
     bool getSlotMuteToZero(int slotNum) const;
@@ -976,11 +976,11 @@ public:
                                  SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
     bool applyAutoPushStateUpdate(const AutoPushStateUpdate& update,
                                   SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
-    
+
     // Batch update methods (don't auto-save, call save() after)
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
     void updateVoiceVolume(uint8_t volume) { settings.voiceVolume = volume; }
-    
+
     // Save all settings to flash
     void save();
     void saveDeferredBackup();
@@ -992,13 +992,13 @@ public:
 
     // Load settings from flash (public for testing)
     void load();
-    
+
     // WiFi client (STA) settings - connect to external network
     String getWifiClientPassword();  // Retrieves from secure NVS namespace
     void setWifiClientEnabled(bool enabled);
     void setWifiClientCredentials(const String& ssid, const String& password);
     void clearWifiClientCredentials();  // Forget saved network
-    
+
     // SD card backup/restore for display settings
     bool backupToSD();
     void requestDeferredBackupFromCurrentState();
@@ -1010,7 +1010,7 @@ public:
                                                   bool deferBackupRewrite);
     bool restoreFromSD();
     bool checkAndRestoreFromSD();  // Call after storage is mounted to retry restore
-    
+
     // Validate profile references exist - clear invalid ones
     void validateProfileReferences(V1ProfileManager& profileMgr);
 

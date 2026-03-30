@@ -63,14 +63,14 @@ bool WiFiManager::setupWebServer() {
     if (webRoutesInitialized) {
         return true;
     }
-    
+
     // New UI served from LittleFS
     // Serve static assets from _app directory
     server.on("/_app/env.js", HTTP_GET, [this]() { serveLittleFSFile("/_app/env.js", "application/javascript"); });
     server.on("/_app/version.json", HTTP_GET, [this]() { serveLittleFSFile("/_app/version.json", "application/json"); });
-    
+
     // Root serves /index.html (Svelte app)
-    server.on("/", HTTP_GET, [this]() { 
+    server.on("/", HTTP_GET, [this]() {
         markUiActivity();  // Track UI activity
         if (serveLittleFSFile("/index.html", "text/html")) {
             Serial.printf("[HTTP] 200 / -> /index.html\n");
@@ -80,7 +80,7 @@ bool WiFiManager::setupWebServer() {
         Serial.println("[HTTP] 500 / -> LittleFS missing");
         server.send(500, "text/plain", "Web UI not found. Please reflash with ./build.sh --all");
     });
-    
+
     // Catch-all for _app/immutable/* files (if Svelte files are uploaded)
     server.onNotFound([this]() {
         markUiActivity();  // Track UI activity
@@ -91,23 +91,23 @@ bool WiFiManager::setupWebServer() {
             server.send(404, "text/plain", "Not found");
             return;
         }
-        
+
         // Serve _app files from LittleFS
         if (uri.startsWith("/_app/")) {
             String contentType = "application/octet-stream";
             if (uri.endsWith(".js")) contentType = "application/javascript";
             else if (uri.endsWith(".css")) contentType = "text/css";
             else if (uri.endsWith(".json")) contentType = "application/json";
-            
+
             if (serveLittleFSFile(uri.c_str(), contentType.c_str())) {
                 return;
             }
         }
-        
+
         // Fall through to original not found handler
         handleNotFound();
     });
-    
+
     // New API endpoints (PHASE A)
     server.on("/api/status", HTTP_GET, [this]() {
         WifiStatusApiService::handleApiStatus(
@@ -131,7 +131,7 @@ bool WiFiManager::setupWebServer() {
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); },
             this);
     });
-    
+
     // Legacy status endpoint
     server.on("/status", HTTP_GET, [this]() {
         WifiStatusApiService::handleApiLegacyStatus(
@@ -148,7 +148,7 @@ bool WiFiManager::setupWebServer() {
     server.on("/api/device/settings", HTTP_POST, [this]() {
         WifiSettingsApiService::handleApiDeviceSettingsSave(server, makeSettingsRuntime());
     });
-    
+
     server.on("/darkmode", HTTP_POST, [this]() {
         WifiControlApiService::handleApiDarkMode(
             server,
@@ -171,7 +171,7 @@ bool WiFiManager::setupWebServer() {
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); },
             this);
     });
-    
+
     // Lightweight health and captive-portal helpers
     server.on("/ping", HTTP_GET, [this]() {
         WifiPortalApiService::handleApiPing(
@@ -206,7 +206,7 @@ bool WiFiManager::setupWebServer() {
     server.on("/ncsi.txt", HTTP_GET, [this]() {
         WifiPortalApiService::handleApiNcsiTxt(server);
     });
-    
+
     // V1 Settings/Profiles routes
     server.on("/api/v1/profiles", HTTP_GET, [this]() {
         WifiV1ProfileApiService::handleApiProfilesList(server, makeV1ProfileRuntime());
@@ -262,7 +262,7 @@ bool WiFiManager::setupWebServer() {
             makeV1DevicesRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    
+
     // Auto-Push routes
     server.on("/api/autopush/slots", HTTP_GET, [this]() {
         WifiAutoPushApiService::handleApiSlots(server, makeAutoPushRuntime());
@@ -288,7 +288,7 @@ bool WiFiManager::setupWebServer() {
     server.on("/api/autopush/status", HTTP_GET, [this]() {
         WifiAutoPushApiService::handleApiStatus(server, makeAutoPushRuntime());
     });
-    
+
     // Display settings routes
     server.on("/api/display/settings", HTTP_GET, [this]() {
         WifiDisplayColorsApiService::handleApiGet(server, makeDisplayColorsRuntime());
@@ -325,7 +325,7 @@ bool WiFiManager::setupWebServer() {
     server.on("/api/audio/settings", HTTP_POST, [this]() {
         WifiAudioApiService::handleApiSave(server, makeAudioRuntime());
     });
-    
+
     // Settings backup/restore API routes
     server.on("/api/settings/backup", HTTP_GET, [this]() {
         BackupApiService::handleApiBackup(
@@ -346,7 +346,7 @@ bool WiFiManager::setupWebServer() {
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    
+
     // Debug API routes (performance metrics)
     server.on("/api/debug/metrics", HTTP_GET, [this]() {
         DebugApiService::handleApiMetrics(server);
@@ -408,7 +408,7 @@ bool WiFiManager::setupWebServer() {
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    
+
     // WiFi client (STA) API routes - connect to external network
     server.on("/api/wifi/status", HTTP_GET, [this]() {
         WifiClientApiService::handleApiStatus(
@@ -600,7 +600,7 @@ bool WiFiManager::setupWebServer() {
                                       [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
                                       [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    
+
     // Note: onNotFound is set earlier to handle LittleFS static files
     webRoutesInitialized = true;
     return true;

@@ -2,12 +2,12 @@
 
 /**
  * VoiceModule - Voice announcement decision logic
- * 
+ *
  * Responsibilities:
  * - Decide WHEN to announce (cooldowns, mute state, settings)
  * - Decide WHAT to announce (priority, secondary, escalation)
  * - Track announcement state (last announced, throttling)
- * 
+ *
  * Does NOT:
  * - Play audio (returns action for main to execute)
  * - Parse BLE data (receives processed alert data)
@@ -34,20 +34,20 @@ struct VoiceContext {
     const AlertData* alerts;          // Array of all current alerts
     int alertCount;                   // Number of alerts in array
     const AlertData* priority;        // Priority alert (can be nullptr)
-    
+
     // V1 state
     bool isMuted;                     // V1 is currently muted
     bool isProxyConnected;            // Phone app connected via BLE proxy
     uint8_t mainVolume;               // Current V1 main volume (0-9)
-    
-    // Environment  
+
+    // Environment
     bool isSuppressed;                // Priority alert is software-suppressed
-    
+
     // Time
     unsigned long now;                // Current millis() timestamp
-    
+
     // Default constructor
-    VoiceContext() : 
+    VoiceContext() :
         alerts(nullptr), alertCount(0), priority(nullptr),
         isMuted(false), isProxyConnected(false), mainVolume(0),
         isSuppressed(false), now(0) {}
@@ -55,7 +55,7 @@ struct VoiceContext {
 
 /**
  * VoiceAction - Output from process()
- * 
+ *
  * Describes what voice action to take (if any).
  * Main.cpp executes this action by calling the appropriate audio function.
  */
@@ -67,25 +67,25 @@ struct VoiceAction {
         ANNOUNCE_SECONDARY,    // Full announcement for secondary alert
         ANNOUNCE_ESCALATION    // Threat escalation: band + freq + dir + breakdown
     };
-    
+
     Type type = Type::NONE;
-    
+
     // Payload - interpretation depends on type
     AlertBand band;                   // Band to announce
     uint16_t freq;                    // Frequency to announce
     AlertDirection dir;               // Direction to announce
     uint8_t bogeyCount;               // Total bogey count (0 = don't announce count)
-    
+
     // Escalation-specific breakdown
     uint8_t aheadCount;               // Bogeys ahead (ESCALATION only)
     uint8_t behindCount;              // Bogeys behind (ESCALATION only)
     uint8_t sideCount;                // Bogeys to side (ESCALATION only)
-    
+
     // Default constructor - NONE action
-    VoiceAction() : 
+    VoiceAction() :
         type(Type::NONE), band(AlertBand::KA), freq(0), dir(AlertDirection::AHEAD),
         bogeyCount(0), aheadCount(0), behindCount(0), sideCount(0) {}
-    
+
     // Convenience: check if action requires audio
     bool hasAction() const { return type != Type::NONE; }
 };
@@ -96,33 +96,33 @@ struct VoiceAction {
 class VoiceModule {
 public:
     VoiceModule();
-    
+
     // Initialize with dependencies
     void begin(SettingsManager* settings, V1BLEClient* ble = nullptr);
-    
+
     // Main decision method - returns what to announce (if anything)
     VoiceAction process(const VoiceContext& ctx);
-    
+
     // State management - call when all alerts clear
     void reset() { clearAllState(); }  // Alias for consistency with other modules
     void clearAllState();
-    
+
     // =========================================================================
     // Static Utilities
     // =========================================================================
-    
+
     // Get signal bars for alert based on direction
     static uint8_t getAlertBars(const AlertData& alert);
-    
+
     // Create unique alert ID from band and frequency
     static uint32_t makeAlertId(Band band, uint16_t freq);
-    
+
     // Check if band is enabled for secondary alert announcements
     static bool isBandEnabledForSecondary(Band band, const V1Settings& settings);
-    
+
     // Convert V1 Direction bitmask to AlertDirection for audio
     static AlertDirection toAudioDirection(Direction dir);
-    
+
     // Speed utility
     float getCurrentSpeedMph(unsigned long now);
     bool getCurrentSpeedSample(unsigned long now, float& speedMphOut) const;
@@ -134,23 +134,23 @@ private:
     // Dependencies
     SettingsManager* settings = nullptr;
     V1BLEClient* bleClient = nullptr;
-    
+
     // =========================================================================
     // Tracking State
     // =========================================================================
-    
+
     // Announced alert tracking
     static constexpr int MAX_ANNOUNCED_ALERTS = 10;
     uint32_t announcedAlertIds[MAX_ANNOUNCED_ALERTS] = {0};
     uint8_t announcedAlertCount = 0;
-    
+
     // Smart threat escalation tracking
     static constexpr int WEAK_THRESHOLD = 2;
     static constexpr int STRONG_THRESHOLD = 4;
     static constexpr unsigned long SUSTAINED_MS = 500;
     static constexpr unsigned long HISTORY_STALE_MS = 5000;
     static constexpr int MAX_BOGEYS_FOR_ESCALATION = 4;
-    
+
     struct AlertHistory {
         uint32_t alertId;
         uint8_t currentBars;
@@ -159,28 +159,28 @@ private:
         bool wasWeak;
         bool escalationAnnounced;
     };
-    
+
     static constexpr int MAX_ALERT_HISTORIES = 10;
     AlertHistory alertHistories[MAX_ALERT_HISTORIES] = {};
     uint8_t alertHistoryCount = 0;
-    
+
     AlertHistory* findAlertHistory(uint32_t alertId);
     AlertHistory* getOrCreateAlertHistory(uint32_t alertId, unsigned long now);
-    
+
     // Announced alert tracking helpers
     bool isAlertAnnounced(Band band, uint16_t freq);
     void markAlertAnnounced(Band band, uint16_t freq);
     void clearAnnouncedAlerts();
-    
+
     // Direction change throttling
     static constexpr unsigned long DIRECTION_THROTTLE_WINDOW_MS = 10000;
     static constexpr uint8_t DIRECTION_CHANGE_LIMIT = 3;
     uint8_t directionChangeCount = 0;
     unsigned long directionChangeWindowStart = 0;
-    
+
     void resetDirectionThrottle(unsigned long now);
     bool shouldThrottleDirectionChange(unsigned long now);
-    
+
     // Priority stability tracking
     static constexpr unsigned long PRIORITY_STABILITY_MS = 1000;
     static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;
@@ -191,7 +191,7 @@ private:
     void markPriorityAnnounced(unsigned long now);
     void resetPriorityStability();
     bool canAnnounceSecondary(unsigned long now) const;
-    
+
     // Voice alert "last announced" tracking
     static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;
     static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;
@@ -200,7 +200,7 @@ private:
     uint16_t lastVoiceAlertFrequency = 0xFFFF;
     uint8_t lastVoiceAlertBogeyCount = 0;
     unsigned long lastVoiceAlertTime = 0;
-    
+
     bool hasAlertChanged(Band band, uint16_t freq) const;
     bool hasDirectionChanged(Direction dir) const;
     bool hasCooldownPassed(unsigned long now) const;
@@ -212,12 +212,12 @@ private:
     void resetLastAnnounced();
     uint8_t getLastBogeyCount() const { return lastVoiceAlertBogeyCount; }
     uint8_t getDirectionChangeCount() const { return directionChangeCount; }
-    
+
     // Speed helpers (getCurrentSpeedMph is public)
     float cachedSpeedMph = 0.0f;
     unsigned long cachedSpeedTimestamp = 0;
     static constexpr unsigned long SPEED_CACHE_MAX_AGE_MS = 5000;
-    
+
     // Alert history helpers
     void updateAlertHistory(Band band, uint16_t freq, uint8_t bars, unsigned long now);
     void cleanupStaleHistories(unsigned long now);

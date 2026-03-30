@@ -4,7 +4,7 @@
 #include <cstring>
 #include <Arduino.h>
 
-VolumeFadeModule::VolumeFadeModule() 
+VolumeFadeModule::VolumeFadeModule()
     : settings(nullptr)
     , alertStartMs(0)
     , originalVolume(0xFF)
@@ -26,7 +26,7 @@ void VolumeFadeModule::begin(SettingsManager* settings) {
 
 VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
     VolumeFadeAction action;
-    
+
     if (!settings) return action;
     const V1Settings& s = settings->get();
 
@@ -52,13 +52,13 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             hintSetMs = 0;
         }
     }
-    
+
     // If feature disabled, clear any tracking so we don't block speed boost
     if (!s.alertVolumeFadeEnabled) {
         reset();
         return action;
     }
-    
+
     // No active alerts -> restore if needed, retry until V1 confirms
     if (!ctx.hasAlert) {
         const bool restoreInFlight = (pendingRestoreVolume != 0xFF);
@@ -119,7 +119,7 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
         resetSessionState();
         return action;
     }
-    
+
     // Alert muted or suppressed -> restore if we had faded, retry until confirmed
     if (ctx.alertMuted || ctx.alertSuppressed) {
         const bool restoreInFlight = (pendingRestoreVolume != 0xFF);
@@ -168,10 +168,10 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
         resetSessionState();
         return action;
     }
-    
+
     unsigned long now = ctx.now;
     uint16_t freq = ctx.currentFrequency;
-    
+
     // Determine if this is a new frequency during the same alert session
     bool isNewFrequency = freq != 0;
     if (isNewFrequency) {
@@ -182,7 +182,7 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             }
         }
     }
-    
+
     // If we're currently faded and a new frequency shows up, restore and restart timer
     if (fadeActive && isNewFrequency) {
         if (originalVolume != 0xFF) {
@@ -212,7 +212,7 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
         }
         return action;
     }
-    
+
     // First alert in session - capture baseline volumes and start timer
     if (alertStartMs == 0) {
         alertStartMs = now;
@@ -240,7 +240,7 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
             seenFreqs[seenCount++] = freq;
         }
     }
-    
+
     // Check if it's time to fade down
     unsigned long fadeDelayMs = static_cast<unsigned long>(s.alertVolumeFadeDelaySec) * 1000UL;
     if (!commandSent && (now - alertStartMs) >= fadeDelayMs) {
@@ -259,7 +259,7 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
         commandSent = true;  // Do not retry if it fails; mirrors prior behavior
         return action;
     }
-    
+
     return action;
 }
 

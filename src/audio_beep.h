@@ -41,7 +41,7 @@ void play_alert_voice(AlertBand band, AlertDirection direction);
 // bogeyCount appended if > 1: "2 bogeys", "3 bogeys", etc.
 // freqMHz: frequency in MHz (e.g., 34749 for 34.749 GHz)
 // Returns immediately if already playing, audio disabled, or SD not available
-void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direction, 
+void play_frequency_voice(AlertBand band, uint16_t freqMHz, AlertDirection direction,
                           VoiceAlertMode mode, bool includeDirection, uint8_t bogeyCount = 1);
 
 // Play direction-only announcement (used when same alert changes direction)

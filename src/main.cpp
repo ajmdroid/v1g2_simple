@@ -1,7 +1,7 @@
 /**
  * V1 Gen2 Simple Display - Main Application
  * Target: Waveshare ESP32-S3-Touch-LCD-3.49 with Valentine1 Gen2 BLE
- * 
+ *
  * Features:
  * - BLE client for V1 Gen2 radar detector
  * - BLE server proxy for companion app compatibility
@@ -10,12 +10,12 @@
  * - 3-slot auto-push profile system
  * - Tap-to-mute functionality
  * - Multiple color themes
- * 
+ *
  * Architecture:
  * - FreeRTOS queue for BLE data handling
  * - Non-blocking display updates
  * - Persistent settings via Preferences
- * 
+ *
  * Author: Based on Valentine Research ESP protocol
  * License: MIT
  */
@@ -1100,7 +1100,7 @@ void setup() {
                          label,
                          now - setupStartMs);
     };
-    
+
     esp_reset_reason_t resetReason = initializeResetReasonAndCadenceState(logBootCheckpoint);
 
     initializePreflightDisplayAndBootUi(resetReason, logBootCheckpoint, logBootStage);
@@ -1196,7 +1196,7 @@ void loop() {
         mainRuntimeState.bootSplashHoldActive);
     const LoopRuntimeSnapshotValues& loopRuntimeSnapshotValues = loopWifiValues.loopRuntimeSnapshotValues;
     mainRuntimeState.wifiAutoStartDone = loopWifiValues.wifiAutoStartDone;
-    
+
     loopTelemetryModule.process(loopStartUs);
 
     const LoopFinalizePhaseValues loopFinalizeValues = processLoopFinalizePhase(

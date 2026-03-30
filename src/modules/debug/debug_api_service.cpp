@@ -786,7 +786,7 @@ void sendPanic(WebServer& server, bool soakMode) {
         default: break;
     }
     doc["lastResetReason"] = reasonStr;
-    doc["wasCrash"] = (reason == ESP_RST_PANIC || reason == ESP_RST_INT_WDT || 
+    doc["wasCrash"] = (reason == ESP_RST_PANIC || reason == ESP_RST_INT_WDT ||
                        reason == ESP_RST_TASK_WDT || reason == ESP_RST_WDT);
     const PanicFileSnapshot& panicSnapshot = getPanicFileSnapshot();
     doc["hasPanicFile"] = panicSnapshot.hasPanicFile;

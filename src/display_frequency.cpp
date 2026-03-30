@@ -258,13 +258,13 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
 
 void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
-    
+
     // Fall back to Classic style if Serpentine OFR not initialized
     if (!fontMgr.serpentineReady) {
         drawFrequencyClassic(freqMHz, band, muted, isPhotoRadar);
         return;
     }
-    
+
     // Layout constants
     const int fontSize = 65;  // Sized to match display area
     const int leftMargin = 140;   // After band indicators (Ka extends to ~132px)
@@ -276,7 +276,7 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     const int freqY = 35;  // Baseline Y position
     const int clearTop = 20;  // Top of frequency area to clear
     const int clearHeight = effectiveHeight - clearTop;  // Full height from top to bottom of zone
-    
+
     // Cache to avoid expensive OFR work when unchanged
     static char lastText[16] = "";
     static uint16_t lastColor = 0;
@@ -391,7 +391,7 @@ void V1Display::drawVolumeZeroWarning() {
         flashOn = !flashOn;
         lastFlashTime = now;
     }
-    
+
     // Position warning centered in frequency area
     const int leftMargin = 120;
     const int rightMargin = 200;
@@ -399,7 +399,7 @@ void V1Display::drawVolumeZeroWarning() {
     int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
     int centerX = leftMargin + maxWidth / 2;
     int centerY = getEffectiveScreenHeight() / 2 + 10;
-    
+
     // Use default built-in font (NULL) - has all ASCII characters
     // Each char is 6x8 pixels at scale 1, so "VOL 0" = 5 chars * 6 * scale wide
     const char* warningStr = "VOL 0";
@@ -408,10 +408,10 @@ void V1Display::drawVolumeZeroWarning() {
     int textW = 5 * charW;  // 5 characters
     int textX = centerX - textW / 2;
     int textY = centerY - charH / 2;
-    
+
     // Clear the frequency area
     FILL_RECT(leftMargin, textY - 5, maxWidth, charH + 10, PALETTE_BG);
-    
+
     if (flashOn) {
         tft->setFont(NULL);  // Default built-in font
         tft->setTextSize(textScale);
@@ -436,7 +436,7 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPh
     frequencyDirtyY = 0;
     frequencyDirtyW = 0;
     frequencyDirtyH = 0;
-    
+
     // Debug: log which style is being used
     static int lastStyleLogged = -1;
     if (s.displayStyle != lastStyleLogged) {
@@ -444,7 +444,7 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPh
                       s.displayStyle, fontMgr.serpentineReady);
         lastStyleLogged = s.displayStyle;
     }
-    
+
     if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && fontMgr.serpentineReady) {
         drawFrequencySerpentine(freqMHz, band, muted, isPhotoRadar);
     } else {

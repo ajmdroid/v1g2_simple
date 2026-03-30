@@ -666,17 +666,17 @@ bool SettingsManager::checkNeedsRestore() {
     // Check if NVS was likely wiped by looking for the settings version marker
     // If settingsVer is missing (defaults to 1, triggers migration message),
     // that's a strong indicator NVS was erased during a partition table change
-    // 
+    //
     // We use a dedicated "nvsValid" marker that's only set after a successful save
     // If this marker is missing but an SD backup exists, we should restore
-    
+
     String activeNs = getActiveNamespace();
     Preferences checkPrefs;
     if (!checkPrefs.begin(activeNs.c_str(), true)) {
         // Can't even open the namespace - definitely needs restore
         return true;
     }
-    
+
     // Check for our validity marker - set to current version after successful save
     int nvsMarker = checkPrefs.getInt("nvsValid", 0);
     int settingsVer = checkPrefs.getInt("settingsVer", 0);
@@ -698,13 +698,13 @@ bool SettingsManager::checkNeedsRestore() {
         }
     }
     checkPrefs.end();
-    
+
     // If neither marker exists, NVS was likely wiped
     if (nvsMarker == 0 && settingsVer == 0) {
         Serial.println("[Settings] NVS appears empty (no version markers)");
         return true;
     }
-    
+
     // Also check if brightness is still at exact default - common indicator of wipe
     // combined with missing settingsVer (which would be >= 2 if properly saved).
     // Only apply this heuristic when the commit marker is missing.
@@ -730,7 +730,7 @@ bool SettingsManager::checkNeedsRestore() {
         Serial.println("[Settings] NVS appears incomplete (settingsVer present but nvsValid missing)");
         return true;
     }
-    
+
     return false;
 }
 
@@ -740,17 +740,17 @@ bool SettingsManager::restoreFromSD() {
     if (!storageManager.isReady() || !storageManager.isSDCard()) {
         return false;
     }
-    
+
     // Acquire SD mutex to protect file I/O
     StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex());
     if (!sdLock) {
         Serial.println("[Settings] Failed to acquire SD mutex for restore");
         return false;
     }
-    
+
     fs::FS* fs = storageManager.getFilesystem();
     if (!fs) return false;
-    
+
     const char* backupPath = nullptr;
     JsonDocument doc;
     if (!loadBestBackupDocument(fs, doc, &backupPath, true)) {
@@ -763,7 +763,7 @@ bool SettingsManager::restoreFromSD() {
     }
 
     Serial.printf("[Settings] Using backup file: %s\n", backupPath);
-    
+
     int backupVersion = doc["_version"] | doc["version"] | 1;
     Serial.printf("[Settings] Restoring from SD backup (version %d)\n", backupVersion);
     bool backupAutoPush = false;
@@ -810,7 +810,7 @@ void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
     // Validate that profile names in auto-push slots actually exist
     // If not, clear them to prevent repeated "file not found" errors
     bool needsSave = false;
-    
+
     auto validateSlot = [&](AutoPushSlot& slot, const char* slotName) {
         if (slot.profileName.length() > 0) {
             V1Profile testProfile;
@@ -825,11 +825,11 @@ void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
             }
         }
     };
-    
+
     validateSlot(settings.slot0_default, "Slot 0 (Default)");
     validateSlot(settings.slot1_highway, "Slot 1 (Highway)");
     validateSlot(settings.slot2_comfort, "Slot 2 (Comfort)");
-    
+
     if (needsSave) {
         if (persistSettingsAtomically()) {
             bumpBackupRevision();

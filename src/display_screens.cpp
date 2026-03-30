@@ -52,13 +52,13 @@ void V1Display::showResting(bool forceRedraw) {
     // This preserves the mode indicator (A/L/c) when V1 is connected
     char savedBogeyChar = lastState.bogeyCounterChar;
     bool savedBogeyDot = lastState.bogeyCounterDot;
-    
+
     // Avoid redundant full-screen clears/flushes when already resting and nothing changed
     bool paletteChanged = (lastRestingPaletteRevision != paletteRevision);
     bool screenChanged = (currentScreen != ScreenMode::Resting);
     int profileSlot = currentProfileSlot;
     bool profileChanged = (profileSlot != lastRestingProfileSlot);
-    
+
     if (forceRedraw || screenChanged || paletteChanged) {
         perfRecordDisplayRenderPath(restoreRender ? PerfDisplayRenderPath::Restore
                                                   : PerfDisplayRenderPath::RestingFull);
@@ -66,7 +66,7 @@ void V1Display::showResting(bool forceRedraw) {
         recordRenderTiming = true;
         // Full redraw when forced, coming from another screen, or after theme change
         drawBaseFrame();
-        
+
         // Draw idle state: if V1 is connected, show last known mode; otherwise show "0"
         char topChar = '0';
         bool topDot = true;
@@ -76,36 +76,36 @@ void V1Display::showResting(bool forceRedraw) {
         }
         drawTopCounter(topChar, false, topDot);
         // Volume indicator not shown in resting state (no DisplayState available)
-        
+
         // Band indicators all dimmed (no active bands)
         drawBandIndicators(0, false);
-        
+
         // Signal bars all empty
         drawVerticalSignalBars(0, 0, BAND_KA, false);
-        
+
         // Direction arrows all dimmed
         drawDirectionArrow(DIR_NONE, false);
-        
+
         // Frequency display
         drawFrequency(0, BAND_NONE);
-        
+
         // Mute indicator off
         drawMuteIcon(false);
         syncTopIndicators(millis());
         drawLockoutIndicator();
         drawGpsIndicator();
         drawObdIndicator();
-        
+
         // Profile indicator
         drawProfileIndicator(profileSlot);
-        
+
         // Reset secondary alert card state, then draw resting telemetry cards.
         AlertData emptyPriority;
         drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
 
         lastRestingPaletteRevision = paletteRevision;
         lastRestingProfileSlot = profileSlot;
-        
+
         // Log screen mode transition for debugging display refresh issues
         if (currentScreen != ScreenMode::Resting) {
             DISPLAY_LOG("[DISP] Screen mode: %d -> Resting (showResting)\n", (int)currentScreen);
@@ -174,13 +174,13 @@ void V1Display::showScanning() {
     }
     // Always use multi-alert layout positioning
     dirty.multiAlert = true;
-    
+
     // Get settings for display style
     const V1Settings& s = settingsManager.get();
 
     // Clear and draw the base frame
     drawBaseFrame();
-    
+
     // Draw idle state elements
     drawTopCounter('0', false, true);
     // Volume indicator not shown in scanning state (no DisplayState available)
@@ -193,7 +193,7 @@ void V1Display::showScanning() {
     drawGpsIndicator();
     drawObdIndicator();
     drawProfileIndicator(currentProfileSlot);
-    
+
     // Draw "SCAN" in frequency area - match display style
     if (s.displayStyle == DISPLAY_STYLE_SERPENTINE) {
         fontMgr.ensureSerpentineLoaded(tft);
@@ -203,18 +203,18 @@ void V1Display::showScanning() {
         const int fontSize = 65;
         fontMgr.serpentine.setFontColor(s.colorBandKa, PALETTE_BG);
         fontMgr.serpentine.setFontSize(fontSize);
-        
+
         const char* text = "SCAN";
         FT_BBox bbox = fontMgr.serpentine.calculateBoundingBox(0, 0, fontSize, Align::Left, Layout::Horizontal, text);
         int textWidth = bbox.xMax - bbox.xMin;
         int textHeight = bbox.yMax - bbox.yMin;
-        
+
         const int leftMargin = 120;
         const int rightMargin = 200;
         int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
         int x = leftMargin + (maxWidth - textWidth) / 2;
         int y = getEffectiveScreenHeight() - 72;
-        
+
         FILL_RECT(x - 4, y - textHeight - 4, textWidth + 8, textHeight + 12, PALETTE_BG);
         fontMgr.serpentine.setCursor(x, y);
         fontMgr.serpentine.printf("%s", text);
@@ -226,14 +226,14 @@ void V1Display::showScanning() {
         const int muteIconBottom = 33;
         int effectiveHeight = getEffectiveScreenHeight();
         int y = muteIconBottom + (effectiveHeight - muteIconBottom - fontSize) / 2 + 8;
-        
+
         const char* text = "SCAN";
         int approxWidth = 4 * 32;  // 4 chars ~32px each
         int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
         int x = leftMargin + (maxWidth - approxWidth) / 2;
-        
+
         FILL_RECT(x - 5, y - 5, approxWidth + 10, fontSize + 10, PALETTE_BG);
-        
+
         // Convert color for OpenFontRender
         uint8_t bgR = (PALETTE_BG >> 11) << 3;
         uint8_t bgG = ((PALETTE_BG >> 5) & 0x3F) << 2;
@@ -247,29 +247,29 @@ void V1Display::showScanning() {
         // Fallback: software 14-segment display
         const float scale = 2.3f;  // Match frequency scale
         SegMetrics m = segMetrics(scale);
-        
+
         // Position to match frequency display (centered between mute area and bottom)
         const int muteIconBottom = 33;
         int effectiveHeight = getEffectiveScreenHeight();
         int y = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
-        
+
         const char* text = "SCAN";
         int width = measureSevenSegmentText(text, scale);  // Same measurement for 14-seg
-        
+
         // Center between band indicators and signal bars
         const int leftMargin = 120;   // After band indicators
         const int rightMargin = 200;  // Before signal bars
         int maxWidth = SCREEN_WIDTH - leftMargin - rightMargin;
         int x = leftMargin + (maxWidth - width) / 2;
         if (x < leftMargin) x = leftMargin;
-        
+
         FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
         draw14SegmentText(text, x, y, scale, s.colorBandKa, PALETTE_BG);
     }
-    
+
     // Reset lastState
     lastState = DisplayState();
-    
+
     DISPLAY_FLUSH();
 
     if (currentScreen != ScreenMode::Scanning) {
@@ -299,7 +299,7 @@ void V1Display::showBootSplash() {
         TFT_CALL(draw16bitRGBBitmap)(0, sy, rowBuffer, V1SIMPLE_LOGO_WIDTH, 1);
     }
     const unsigned long logoMs = millis() - logoStartMs;
-    
+
     // Draw version number in bottom-right corner
     GFX_setTextDatum(BR_DATUM);  // Bottom-right alignment
     TFT_CALL(setTextSize)(2);
@@ -328,18 +328,18 @@ void V1Display::showBootSplash() {
 void V1Display::showShutdown() {
     // Clear screen
     TFT_CALL(fillScreen)(PALETTE_BG);
-    
+
     // Draw "GOODBYE" message centered
     GFX_setTextDatum(MC_DATUM);
     TFT_CALL(setTextSize)(3);
     TFT_CALL(setTextColor)(PALETTE_TEXT, PALETTE_BG);
     GFX_drawString(tft, "GOODBYE", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 20);
-    
+
     // Draw smaller "Powering off..." below
     TFT_CALL(setTextSize)(2);
     TFT_CALL(setTextColor)(PALETTE_GRAY, PALETTE_BG);
     GFX_drawString(tft, "Powering off...", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20);
-    
+
     // Flush to display
     DISPLAY_FLUSH();
 }
@@ -351,7 +351,7 @@ void V1Display::showShutdown() {
 void V1Display::showLowBattery() {
     // Clear screen
     TFT_CALL(fillScreen)(PALETTE_BG);
-    
+
     // Draw large battery outline in center
     const int battW = 120;
     const int battH = 60;
@@ -359,22 +359,22 @@ void V1Display::showLowBattery() {
     const int battY = (SCREEN_HEIGHT - battH) / 2 - 20;
     const int capW = 12;
     const int capH = 24;
-    
+
     // Draw battery outline in red
     uint16_t redColor = 0xF800;
     DRAW_RECT(battX, battY, battW, battH, redColor);
     FILL_RECT(battX + battW, battY + (battH - capH) / 2, capW, capH, redColor);
-    
+
     // Draw single bar (low)
     const int padding = 8;
     FILL_RECT(battX + padding, battY + padding, 20, battH - 2 * padding, redColor);
-    
+
     // Draw "LOW BATTERY" text below
     GFX_setTextDatum(MC_DATUM);
     TFT_CALL(setTextSize)(2);
     TFT_CALL(setTextColor)(redColor, PALETTE_BG);
     GFX_drawString(tft, "LOW BATTERY", SCREEN_WIDTH / 2, battY + battH + 30);
-    
+
     // Flush to display
     DISPLAY_FLUSH();
 }

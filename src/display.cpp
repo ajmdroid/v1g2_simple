@@ -131,7 +131,7 @@ bool V1Display::begin() {
                       now - beginStartMs);
         stageStartMs = now;
     };
-    
+
     // Ensure restart/re-init paths never leak partially constructed objects.
     tft.reset();
     gfxPanel.reset();
@@ -141,7 +141,7 @@ bool V1Display::begin() {
     // Waveshare 3.49" has INVERTED backlight PWM: 0 = full brightness, 255 = off
     pinMode(LCD_BL, OUTPUT);
     analogWrite(LCD_BL, 255);  // Start with backlight off (inverted: 255=off)
-    
+
     // Manual RST toggle with Waveshare timing BEFORE creating bus
     // This is critical - Waveshare examples do: HIGH(30ms) -> LOW(250ms) -> HIGH(30ms)
     pinMode(LCD_RST, OUTPUT);
@@ -151,7 +151,7 @@ bool V1Display::begin() {
     delay(250);
     digitalWrite(LCD_RST, HIGH);
     delay(30);
-    
+
     // Create QSPI bus
     bus.reset(new (std::nothrow) Arduino_ESP32QSPI(
         LCD_CS,    // CS
@@ -165,7 +165,7 @@ bool V1Display::begin() {
         Serial.println("[Display] ERROR: Failed to create bus!");
         return false;
     }
-    
+
     // Create AXS15231B panel - native 172x640 portrait
     // Pass GFX_NOT_DEFINED for RST since we already did manual reset
     gfxPanel.reset(new (std::nothrow) Arduino_AXS15231B(
@@ -187,17 +187,17 @@ bool V1Display::begin() {
         bus.reset();
         return false;
     }
-    
+
     // Create canvas as 172x640 native with rotation=1 for landscape (90°)
     tft.reset(new (std::nothrow) Arduino_Canvas(172, 640, gfxPanel.get(), 0, 0, 1));
-    
+
     if (!tft) {
         Serial.println("[Display] ERROR: Failed to create canvas!");
         gfxPanel.reset();
         bus.reset();
         return false;
     }
-    
+
     if (!tft->begin()) {
         Serial.println("[Display] ERROR: tft->begin() failed!");
         tft.reset();
@@ -205,23 +205,23 @@ bool V1Display::begin() {
         bus.reset();
         return false;
     }
-    
+
     tft->fillScreen(COLOR_BLACK);
     DISPLAY_FLUSH();
-    
+
     // Turn on backlight (inverted: 0 = full brightness)
     analogWrite(LCD_BL, 0);  // Full brightness (inverted: 0=on)
     delay(30);
-    
+
 
     delay(10); // Give hardware time to settle
-    
+
     tft->setTextColor(PALETTE_TEXT);
     tft->setTextSize(2);
 
     DISPLAY_LOG("[DISPLAY] Initialized successfully %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     logDisplayStage("hw_init");
-    
+
     // Initialize all OpenFontRender instances via the font manager.
     // Segment7 + TopCounter are loaded immediately; Serpentine is deferred.
     fontMgr.init(tft);
@@ -244,11 +244,11 @@ bool V1Display::begin() {
     Serial.printf("[Display] OK %dx%d, fonts(seg7/top/serp)=%d/%d/%d\n",
                   SCREEN_WIDTH, SCREEN_HEIGHT,
                   fontMgr.segment7Ready, fontMgr.topCounterReady, fontMgr.serpentineReady);
-    
+
     // Load color theme from settings
     updateColorTheme();
     logDisplayStage("ready");
-    
+
     return true;
 }
 
@@ -282,13 +282,13 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool 
     if (bleProxyClientConnected && !clientConnected) {
         volZeroWarn.reset();
     }
-    
+
     // Check if proxy client connection changed - update RSSI display
     bool proxyChanged = (clientConnected != bleProxyClientConnected);
-    
+
     // Check if receiving state changed (for heartbeat visual)
     bool receivingChanged = (receivingData != bleReceivingData);
-    
+
     if (bleProxyDrawn &&
         proxyEnabled == bleProxyEnabled &&
         clientConnected == bleProxyClientConnected &&
@@ -300,12 +300,12 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool 
     bleProxyClientConnected = clientConnected;
     bleReceivingData = receivingData;
     drawBLEProxyIndicator();
-    
+
     // Update RSSI display when proxy connection changes
     if (proxyChanged) {
         drawRssiIndicator(bleCtx_.v1Rssi);
     }
-    
+
     flush();
 #endif
 }

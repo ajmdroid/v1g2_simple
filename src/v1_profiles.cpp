@@ -64,7 +64,7 @@ uint32_t V1ProfileManager::calculateCRC32(const uint8_t* data, size_t length) {
     return crc ^ 0xFFFFFFFF;
 }
 
-V1ProfileManager::V1ProfileManager() 
+V1ProfileManager::V1ProfileManager()
     : fs(nullptr)
     , ready(false)
     , profileDir("/v1profiles")
@@ -91,21 +91,21 @@ void V1ProfileManager::recoverInterruptedSaves() {
     // Scan for .tmp and .bak files that indicate interrupted saves
     // .tmp = incomplete new save (delete it)
     // .bak without corresponding .json = interrupted rename (restore it)
-    
+
     File dir = fs->open(profileDir);
     if (!dir || !dir.isDirectory()) {
         return;
     }
-    
+
     std::vector<String> tmpFiles;
     std::vector<String> bakFiles;
     std::vector<String> jsonFiles;
-    
+
     File entry;
     while ((entry = dir.openNextFile())) {
         String name = entry.name();
         entry.close();
-        
+
         if (name.endsWith(".tmp")) {
             tmpFiles.push_back(name);
         } else if (name.endsWith(".bak")) {
@@ -115,19 +115,19 @@ void V1ProfileManager::recoverInterruptedSaves() {
         }
     }
     dir.close();
-    
+
     // Remove incomplete .tmp files (interrupted during write)
     for (const String& tmp : tmpFiles) {
         String fullPath = profileDir + "/" + tmp;
         Serial.printf("[V1Profiles] Removing incomplete temp file: %s\n", fullPath.c_str());
         fs->remove(fullPath);
     }
-    
+
     // Check for orphaned .bak files (main file missing after rename)
     for (const String& bak : bakFiles) {
         // Get the corresponding .json filename
         String jsonName = bak.substring(0, bak.length() - 4);  // Remove .bak
-        
+
         // Check if the main .json file exists
         bool hasJson = false;
         for (const String& json : jsonFiles) {
@@ -136,12 +136,12 @@ void V1ProfileManager::recoverInterruptedSaves() {
                 break;
             }
         }
-        
+
         if (!hasJson) {
             // Main file missing! Restore from backup
             String bakPath = profileDir + "/" + bak;
             String jsonPath = profileDir + "/" + jsonName;
-            Serial.printf("[V1Profiles] RECOVERY: Main file missing, restoring from backup: %s -> %s\n", 
+            Serial.printf("[V1Profiles] RECOVERY: Main file missing, restoring from backup: %s -> %s\n",
                 bakPath.c_str(), jsonPath.c_str());
             if (fs->rename(bakPath, jsonPath)) {
                 Serial.println("[V1Profiles] Recovery successful!");
@@ -157,9 +157,9 @@ bool V1ProfileManager::begin(fs::FS* filesystem, fs::FS* importFilesystem) {
         Serial.println("[V1Profiles] No filesystem provided");;
         return false;
     }
-    
+
     fs = filesystem;
-    
+
     // Create profiles directory if it doesn't exist
     if (!fs->exists(profileDir)) {
         if (!fs->mkdir(profileDir)) {
@@ -176,10 +176,10 @@ bool V1ProfileManager::begin(fs::FS* filesystem, fs::FS* importFilesystem) {
                           static_cast<unsigned>(migrated));
         }
     }
-    
+
     // Run startup integrity check - recover any interrupted saves
     recoverInterruptedSaves();
-    
+
     ready = true;
     Serial.println("[V1Profiles] Initialized");
     return true;
@@ -274,16 +274,16 @@ String V1ProfileManager::profilePath(const String& name) const {
 
 std::vector<String> V1ProfileManager::listProfiles() const {
     std::vector<String> profiles;
-    
+
     if (!ready || !fs) {
         return profiles;
     }
-    
+
     File dir = fs->open(profileDir);
     if (!dir || !dir.isDirectory()) {
         return profiles;
     }
-    
+
     File entry;
     while ((entry = dir.openNextFile())) {
         String name = entry.name();
@@ -294,18 +294,18 @@ std::vector<String> V1ProfileManager::listProfiles() const {
                 name = name.substring(lastSlash + 1);
             }
             name = name.substring(0, name.length() - 5);  // Remove .json
-            
+
             // Filter out system files that aren't user profiles
             if (name.startsWith("_") || name.startsWith(".")) {
                 continue;
             }
-            
+
             profiles.push_back(name);
         }
         entry.close();
     }
     dir.close();
-    
+
     return profiles;
 }
 
@@ -313,10 +313,10 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
     if (!ready || !fs) {
         return false;
     }
-    
+
     String path = profilePath(name);
     String bakPath = path + ".bak";
-    
+
     File file = fs->open(path, FILE_READ);
     if (!file) {
         // Try to recover from backup file
@@ -328,20 +328,20 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
                 file = fs->open(path, FILE_READ);
             }
         }
-        
+
         if (!file) {
             Serial.printf("[V1Profiles] Profile not found: %s (no backup available)\n", path.c_str());
             return false;
         }
     }
-    
+
     // Hard cap JSON size to avoid excessive allocation on small devices
     if (file.size() > 4096) {
         Serial.printf("[V1Profiles] Profile too large (%u bytes), aborting\n", (unsigned)file.size());
         file.close();
         return false;
     }
-    
+
     // Read file content for CRC validation with RAII-managed storage
     // so all early returns remain leak-safe.
     const size_t fileSize = file.size();
@@ -359,20 +359,20 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
         }
     }
     file.close();
-    
+
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, fileContent.data(), fileSize);
-    
+
     if (err) {
         lastError = String("JSON parse error: ") + err.c_str();
         Serial.printf("[V1Profiles] %s\n", lastError.c_str());
         return false;
     }
-    
+
     // Validate CRC32 if present
     if (doc["crc32"].is<uint32_t>()) {
         uint32_t storedCrc = doc["crc32"].as<uint32_t>();
-        
+
         // Calculate CRC of the 6 settings bytes
         JsonArray bytesArr = doc["bytes"];
         if (bytesArr && bytesArr.size() == 6) {
@@ -398,7 +398,7 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
     profile.displayOn = doc["displayOn"] | true;  // Default to on
     profile.mainVolume = doc["mainVolume"] | 0xFF;  // 0xFF = don't change
     profile.mutedVolume = doc["mutedVolume"] | 0xFF;  // 0xFF = don't change
-    
+
     // Parse settings bytes
     JsonArray bytes = doc["bytes"];
     if (bytes && bytes.size() == 6) {
@@ -409,7 +409,7 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
         // Try individual settings (legacy or human-readable format)
         V1UserSettings& s = profile.settings;
         s.setDefaults();
-        
+
         if (!doc["xBand"].isNull()) s.setXBandEnabled(doc["xBand"]);
         if (!doc["kBand"].isNull()) s.setKBandEnabled(doc["kBand"]);
         if (!doc["kaBand"].isNull()) s.setKaBandEnabled(doc["kaBand"]);
@@ -433,7 +433,7 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
         if (!doc["bsmPlus"].isNull()) s.setBsmPlus(doc["bsmPlus"]);
         if (!doc["mrct"].isNull()) s.setMrct(doc["mrct"]);
     }
-    
+
     Serial.printf("[V1Profiles] Loaded profile: %s\n", name.c_str());
     return true;
 }
@@ -444,11 +444,11 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
         Serial.printf("[V1Profiles] Save failed: %s\n", lastError.c_str());
         return ProfileSaveResult(false, lastError);
     }
-    
+
     String path = profilePath(profile.name);
     String tmpPath = path + ".tmp";
     String bakPath = path + ".bak";
-    
+
     // Step 1: Write to temporary file (don't truncate original yet)
     File file = fs->open(tmpPath, FILE_WRITE);
     if (!file) {
@@ -456,24 +456,24 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
         Serial.printf("[V1Profiles] %s\n", lastError.c_str());
         return ProfileSaveResult(false, lastError);
     }
-    
+
     JsonDocument doc;
     const V1UserSettings& s = profile.settings;
-    
+
     // Store metadata
     doc["name"] = profile.name;
     doc["description"] = profile.description;
     doc["displayOn"] = profile.displayOn;
     doc["mainVolume"] = profile.mainVolume;
     doc["mutedVolume"] = profile.mutedVolume;
-    
+
     // Store raw bytes for exact restoration
     JsonArray bytes = doc["bytes"].to<JsonArray>();
     for (int i = 0; i < 6; i++) {
         bytes.add(s.bytes[i]);
     }
 
-    
+
     // Also store human-readable settings
     doc["xBand"] = s.xBandEnabled();
     doc["kBand"] = s.kBandEnabled();
@@ -503,18 +503,18 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
     doc["redflexNK7"] = s.redflexNK7();
     doc["ekin"] = s.ekin();
     doc["photoVerifier"] = s.photoVerifier();
-    
+
     // Calculate and store CRC32 of the settings bytes for integrity checking
     uint32_t crc = calculateCRC32(s.bytes, 6);
     doc["crc32"] = crc;
-    
+
     const size_t expectedPrettyBytes = measureJsonPretty(doc);
     size_t written = serializeJsonPretty(doc, file);
-    
+
     // Step 2: Flush to ensure data is written to SD before closing
     file.flush();
     file.close();
-    
+
     // Step 3: Verify write succeeded and file size matches
     if (written == 0) {
         lastError = "Serialization failed - no data written";
@@ -548,7 +548,7 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
             return ProfileSaveResult(false, lastError);
         }
     }
-    
+
     // Step 4: Create backup of existing file before replacement
     if (fs->exists(path)) {
         // Remove old backup if exists
@@ -563,12 +563,12 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
             Serial.printf("[V1Profiles] Created backup: %s\n", bakPath.c_str());
         }
     }
-    
+
     // Step 5: Rename temp to final
     if (!fs->rename(tmpPath, path)) {
         lastError = "Failed to rename temp to final: " + tmpPath + " -> " + path;
         Serial.printf("[V1Profiles] %s\n", lastError.c_str());
-        
+
         // Try to restore from backup
         if (fs->exists(bakPath)) {
             if (fs->rename(bakPath, path)) {
@@ -578,10 +578,10 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
         fs->remove(tmpPath);
         return ProfileSaveResult(false, lastError);
     }
-    
+
     // Step 6: Remove backup after successful save (optional - keep for extra safety)
     // fs->remove(bakPath);  // Uncomment to remove backup after success
-    
+
     Serial.printf("[V1Profiles] Saved profile: %s (%u bytes, CRC: %08lX)\n",
         profile.name.c_str(), written, static_cast<unsigned long>(crc));
     bumpCatalogRevision();
@@ -592,7 +592,7 @@ bool V1ProfileManager::deleteProfile(const String& name) {
     if (!ready || !fs) {
         return false;
     }
-    
+
     String path = profilePath(name);
     String bakPath = path + ".bak";
     bool removedAny = false;
@@ -659,7 +659,7 @@ bool V1ProfileManager::renameProfile(const String& oldName, const String& newNam
     if (!result.success) {
         return false;
     }
-    
+
     if (!deleteProfile(oldName)) {
         Serial.println("[V1Profiles] Warning: rename saved new but failed to delete old");
     }
@@ -673,13 +673,13 @@ void V1ProfileManager::setCurrentSettings(const uint8_t* bytes) {
 
 String V1ProfileManager::settingsToJson(const V1UserSettings& s) const {
     JsonDocument doc;
-    
+
     // Raw bytes
     JsonArray bytes = doc["bytes"].to<JsonArray>();
     for (int i = 0; i < 6; i++) {
         bytes.add(s.bytes[i]);
     }
-    
+
     // Human-readable
     doc["xBand"] = s.xBandEnabled();
     doc["kBand"] = s.kBandEnabled();
@@ -709,7 +709,7 @@ String V1ProfileManager::settingsToJson(const V1UserSettings& s) const {
     doc["redflexNK7"] = s.redflexNK7();
     doc["ekin"] = s.ekin();
     doc["photoVerifier"] = s.photoVerifier();
-    
+
     String output;
     serializeJson(doc, output);
     return output;
@@ -722,15 +722,15 @@ String V1ProfileManager::profileToJson(const V1Profile& profile) const {
     doc["displayOn"] = profile.displayOn;
     doc["mainVolume"] = profile.mainVolume;
     doc["mutedVolume"] = profile.mutedVolume;
-    
+
     JsonObject settings = doc["settings"].to<JsonObject>();
     const V1UserSettings& s = profile.settings;
-    
+
     JsonArray bytes = settings["bytes"].to<JsonArray>();
     for (int i = 0; i < 6; i++) {
         bytes.add(s.bytes[i]);
     }
-    
+
     settings["xBand"] = s.xBandEnabled();
     settings["kBand"] = s.kBandEnabled();
     settings["kaBand"] = s.kaBandEnabled();
@@ -759,7 +759,7 @@ String V1ProfileManager::profileToJson(const V1Profile& profile) const {
     settings["redflexNK7"] = s.redflexNK7();
     settings["ekin"] = s.ekin();
     settings["photoVerifier"] = s.photoVerifier();
-    
+
     String output;
     serializeJson(doc, output);
     return output;
@@ -776,14 +776,14 @@ bool V1ProfileManager::jsonToSettings(const String& json, V1UserSettings& settin
         Serial.printf("[V1Profiles] JSON parse error: %s\n", err.c_str());
         return false;
     }
-    
+
     // Check if settings are nested inside a "settings" object
     JsonObject settingsObj = doc["settings"].as<JsonObject>();
     if (settingsObj.isNull()) {
         // Settings are at root level
         settingsObj = doc.as<JsonObject>();
     }
-    
+
     return jsonToSettings(settingsObj, settings);
 }
 
@@ -802,7 +802,7 @@ bool V1ProfileManager::jsonToSettings(const JsonObject& settingsObj, V1UserSetti
     settings.setDefaults();
     Serial.println("[V1Profiles] Parsing individual settings");
     bool anyField = false;
-    
+
     if (!settingsObj["xBand"].isNull()) { settings.setXBandEnabled(settingsObj["xBand"]); anyField = true; }
     if (!settingsObj["kBand"].isNull()) { settings.setKBandEnabled(settingsObj["kBand"]); anyField = true; }
     if (!settingsObj["kaBand"].isNull()) { settings.setKaBandEnabled(settingsObj["kaBand"]); anyField = true; }
@@ -836,10 +836,10 @@ bool V1ProfileManager::jsonToSettings(const JsonObject& settingsObj, V1UserSetti
         Serial.println("[V1Profiles] No settings provided");
         return false;
     }
-    
+
     Serial.printf("[V1Profiles] After parse - byte0=%02X byte2=%02X\n", settings.bytes[0], settings.bytes[2]);
-    Serial.printf("[V1Profiles]   xBand=%d, restingDisplay=%d, bsmPlus=%d\n", 
+    Serial.printf("[V1Profiles]   xBand=%d, restingDisplay=%d, bsmPlus=%d\n",
         settings.xBandEnabled(), settings.restingDisplay(), settings.bsmPlus());
-    
+
     return true;
 }

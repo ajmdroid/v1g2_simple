@@ -79,7 +79,7 @@ struct ProxyMetrics {
     uint32_t errorCount = 0;         // Notify failures
     uint32_t queueHighWater = 0;     // Max queue depth seen
     uint32_t lastResetMs = 0;        // When metrics were last reset
-    
+
     void reset() {
         sendCount = 0;
         dropCount = 0;
@@ -108,40 +108,40 @@ public:
 
     V1BLEClient();
     ~V1BLEClient();
-    
+
     // Initialize BLE stack only (no scanning)
     bool initBLE(bool enableProxy = false, const char* proxyName = "V1C-LE-S3");
-    
+
     // Initialize BLE and start scanning
     // If enableProxy is true, also starts BLE server for app connections
     bool begin(bool enableProxy = false, const char* proxyName = "V1C-LE-S3");
-    
+
     // Check connection status
     bool isConnected();
-    
+
     // Get RSSI of connected V1 device (returns 0 if not connected)
     int getConnectionRssi();
-    
+
     // Get RSSI of connected proxy client (app) (returns 0 if not connected)
     int getProxyClientRssi();
-    
+
     // Check if proxy client (app) is connected
     bool isProxyClientConnected();
-    
+
     // Check if BLE proxy is enabled
     bool isProxyEnabled() const { return proxyEnabled; }
-    
+
     // Check if proxy is actively advertising (only true after V1 connects)
     bool isProxyAdvertising() const;
 
     void setObdBleArbitrationRequest(ObdBleArbitrationRequest request);
-    
+
     // Debug/test control: force proxy advertising on/off at runtime.
     bool forceProxyAdvertising(bool enable, uint8_t reasonCode = 0);
 
     // Set proxy client connection status (for internal callback use)
     void setProxyClientConnected(bool connected);
-    
+
     // Register callback for received data
     void onDataReceived(DataCallback callback);
 
@@ -155,68 +155,68 @@ public:
     void noteBleProcessDuration(uint32_t us);
     void noteDisplayPipelineDuration(uint32_t us);
     bool isConnectBurstSettling() const;
-    
+
     // Send command to V1 (e.g., request alert data)
     bool sendCommand(const uint8_t* data, size_t length);
-    
+
     // Send command with detailed result for retry logic
     SendResult sendCommandWithResult(const uint8_t* data, size_t length);
-    
+
     // Request V1 to start sending alert data
     bool requestAlertData();
-    
+
     // Request V1 version information (triggers data on B4E0)
     bool requestVersion();
-    
+
     // Turn V1 display on/off (dark mode)
     bool setDisplayOn(bool on);
-    
+
     // Send mute on/off command
     bool setMute(bool muted);
-    
+
     // Change V1 operating mode (All Bogeys, Logic, Advanced Logic)
     bool setMode(uint8_t mode);
-    
+
     // Set V1 volume settings (0-9 for each, 0xFF to keep current)
     bool setVolume(uint8_t mainVolume, uint8_t mutedVolume);
-    
+
     // Request user settings bytes from V1 (6 bytes)
     bool requestUserBytes();
-    
+
     // Write user settings bytes to V1 (6 bytes)
     bool writeUserBytes(const uint8_t* bytes);
-    
+
     // Write user settings with optional verification (verification disabled - see implementation)
     enum WriteVerifyResult { VERIFY_OK = 0, VERIFY_WRITE_FAILED = 1, VERIFY_TIMEOUT = 2, VERIFY_MISMATCH = 3 };
     WriteVerifyResult writeUserBytesVerified(const uint8_t* bytes, int maxRetries = 2);
 
     // Prepare verification of user bytes on next read-back
     void startUserBytesVerification(const uint8_t* expected);
-    
+
     // Called by main loop when RESP_USER_BYTES received to complete verification
     void onUserBytesReceived(const uint8_t* bytes);
-    
+
     // Disconnect and cleanup
     void disconnect();
-    
+
     // Full cleanup of BLE connection state (clears characteristic refs, unsubscribes)
     void cleanupConnection();
-    
+
     // Hard reset of BLE client stack after repeated failures
     void hardResetBLEClient();
-    
+
     // Process BLE events (call in loop)
     void process();
 
     // Retry deferred bond backup work outside the ingest phase.
     void serviceDeferredBondBackup(uint32_t nowMs);
-    
+
     // Restart scanning for V1
     void startScanning();
 
     // Check if currently scanning
     bool isScanning();
-    
+
     // Get current BLE state (for diagnostics)
     BLEState getBLEState() const { return bleState; }
     uint8_t getBLEStateCode() const { return bleStateToCode(bleState); }
@@ -227,14 +227,14 @@ public:
     }
     uint8_t getSubscribeStepCode() const { return static_cast<uint8_t>(subscribeStep); }
     const char* getSubscribeStepName() const;
-    
+
     // Get the connected V1's BLE address
     NimBLEAddress getConnectedAddress() const;
-    
+
     // Forward data to proxy clients (queues data for async send)
     // sourceCharUUID: last 16-bit of source characteristic UUID (0xB2CE, 0xB4E0, etc)
     void forwardToProxy(const uint8_t* data, size_t length, uint16_t sourceCharUUID);
-    
+
     // Process pending proxy notifications (call from main loop after display update)
     // Returns number of packets sent
     int processProxyQueue();
@@ -244,13 +244,13 @@ public:
     uint32_t getPhoneCmdDropsInvalid() const;  // Malformed packets
     uint32_t getPhoneCmdDropsBleFail() const;  // Hard BLE failures
     uint32_t getPhoneCmdDropsLockBusy() const;
-    
+
     // Get proxy metrics (for instrumentation)
     const ProxyMetrics& getProxyMetrics() const { return proxyMetrics; }
-    
+
     // Reset proxy notify/send metrics only; phone command drop counters reset with perfMetricsReset().
     void resetProxyMetrics() { proxyMetrics.reset(); }
-    
+
     // WiFi priority mode - deprioritize BLE when web UI is active
     void setWifiPriority(bool enabled);  // Enable = suppress BLE activity
     bool isWifiPriority() const { return wifiPriorityMode; }
@@ -267,7 +267,7 @@ private:
         void onDisconnect(NimBLEClient* pClient, int reason) override;
         void onPhyUpdate(NimBLEClient* pClient, uint8_t txPhy, uint8_t rxPhy) override;
     };
-    
+
     // NimBLE 2.x uses NimBLEScanCallbacks
     class ScanCallbacks : public NimBLEScanCallbacks {
     public:
@@ -277,7 +277,7 @@ private:
     private:
         V1BLEClient* bleClient;
     };
-    
+
     class ProxyServerCallbacks : public NimBLEServerCallbacks {
     public:
         ProxyServerCallbacks(V1BLEClient* client) : bleClient(client) {}
@@ -286,7 +286,7 @@ private:
     private:
         V1BLEClient* bleClient;
     };
-    
+
     class ProxyWriteCallbacks : public NimBLECharacteristicCallbacks {
     public:
         ProxyWriteCallbacks(V1BLEClient* client) : bleClient(client) {}
@@ -318,7 +318,7 @@ private:
     std::atomic<uint16_t> notifyShortCharId{0};
     std::atomic<NimBLERemoteCharacteristic*> notifyLongChar{nullptr};
     std::atomic<uint16_t> notifyLongCharId{0};
-    
+
     // BLE Server (proxy) objects
     NimBLEServer* pServer;
     NimBLEService* pProxyService;
@@ -329,12 +329,12 @@ private:
     bool proxyServerInitialized;
     std::atomic<bool> proxyClientConnected{false}; // Atomic for thread safety (set from BLE callbacks)
     String proxyName_;
-    
+
     // Synchronization primitives (mirroring Kenny's approach)
     SemaphoreHandle_t bleMutex = nullptr;
     SemaphoreHandle_t bleNotifyMutex = nullptr;
     SemaphoreHandle_t phoneCmdMutex = nullptr;
-    
+
     // Proxy queue for decoupling notify from hot path
     static constexpr size_t PROXY_QUEUE_SIZE = 8;  // Small queue, drop-oldest on overflow
     static constexpr size_t PROXY_PACKET_MAX = 512; // Max packet size for proxy (handles full V1 packets)
@@ -358,7 +358,7 @@ private:
     volatile size_t proxyQueueTail = 0;  // Next read position
     volatile size_t proxyQueueCount = 0; // Current items in queue
     ProxyMetrics proxyMetrics;
-    
+
     DataCallback dataCallback;
     ConnectionCallback connectImmediateCallback;
     ConnectionCallback connectStableCallback;
@@ -392,7 +392,7 @@ private:
     NimBLEAddress targetAddress;
     uint8_t targetAddressType = BLE_ADDR_PUBLIC;  // Saved from advertisement
     unsigned long lastScanStart;
-    
+
     // BLE State Machine - centralized connection state
     BLEState bleState = BLEState::DISCONNECTED;
     unsigned long stateEnteredMs = 0;       // When current state was entered
@@ -403,11 +403,11 @@ private:
     static constexpr unsigned long SCAN_STOP_SETTLE_MS = 100;        // 100ms settle for reconnects
     static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 200;  // 200ms on cold boot - tuned lower for faster first connect
     bool firstScanAfterBoot = true;  // Use longer settle on first scan
-    
+
     // Connection attempt guard - prevents overlapping attempts
     bool connectInProgress = false;
     unsigned long connectStartMs = 0;  // When connect started (for stuck detection)
-    
+
     // Async connection tracking
     std::atomic<bool> asyncConnectPending{false};   // Async connect in progress
     std::atomic<bool> asyncConnectSuccess{false};   // Result from onConnect callback
@@ -424,7 +424,7 @@ private:
     static constexpr unsigned long DISCOVERY_TIMEOUT_MS = 5000; // 5s for discovery
     static constexpr unsigned long SUBSCRIBE_TIMEOUT_MS = 3000;  // 3s for subscriptions
     uint32_t connectPhaseStartUs = 0;  // For timing individual phases
-    
+
     // Fresh flash detection - set when firmware version changed
     bool freshFlashBoot = false;
     // Tracks the bond-count snapshot that has already been persisted to SD.
@@ -434,7 +434,7 @@ private:
     uint8_t pendingBondBackupCount = 0xFF;
     uint32_t pendingBondBackupRetryAtMs = 0;
     static constexpr uint32_t DEFERRED_BOND_BACKUP_RETRY_MS = 1000;
-    
+
     // Non-blocking subscribe step machine
     // Each step does one BLE operation then yields to loop()
     enum class SubscribeStep {
@@ -480,13 +480,13 @@ private:
     // Async connect step functions
     bool startAsyncConnect();         // Initiate async connect
     void processConnectingWait();     // Handle CONNECTING_WAIT state
-    void processDiscovering();        // Handle DISCOVERING state  
+    void processDiscovering();        // Handle DISCOVERING state
     void processSubscribing();        // Handle SUBSCRIBING state (step machine)
     void processSubscribeYield();     // Handle SUBSCRIBE_YIELD state
     void processConnectedFollowup();  // Spread post-connect work across loop turns
     int tryBackupBondsToSD();         // Non-blocking bond backup for deferred maintenance
     bool executeSubscribeStep();      // Execute one subscribe step, return true if done
-    
+
     // Called from connectToServer() after successful sync connect
     bool finishConnection();
 
@@ -495,17 +495,17 @@ private:
     int processPhoneCommandQueue();
     // Diagnostic helper to log negotiated connection parameters
     void logConnParams(const char* tag);
-    
+
     // State transition helper
     void setBLEState(BLEState newState, const char* reason);
 
     // Defer settings writes from BLE scan callback
     void deferLastV1Address(const char* addr);
-    
+
     // Exponential backoff for connection failures (error 13 = BLE_HS_EBUSY)
     uint8_t consecutiveConnectFailures = 0;
     unsigned long nextConnectAllowedMs = 0;  // Backoff until this time
-    
+
     // Deferred proxy advertising start (non-blocking - avoids stall)
     // Tuned lower to reduce post-connect latency while preserving radio settle margin
     unsigned long proxyAdvertisingStartMs = 0;  // When to start advertising (0 = not pending)
@@ -526,7 +526,7 @@ private:
     bool proxyDisconnectRequestedForObdPreempt_ = false;
     uint8_t proxySuppressedResumeReasonCode_ = 0;
     ObdBleArbitrationRequest obdBleArbitrationRequest_ = ObdBleArbitrationRequest::NONE;
-    
+
     // Write verification state
     bool verifyPending = false;
     uint8_t verifyExpected[6] = {0};
@@ -545,11 +545,11 @@ private:
     std::unique_ptr<ClientCallbacks> pClientCallbacks;
     std::unique_ptr<ProxyServerCallbacks> pProxyServerCallbacks;
     std::unique_ptr<ProxyWriteCallbacks> pProxyWriteCallbacks;
-    
+
     // WiFi priority mode flag
     bool wifiPriorityMode = false;
     bool bootReadyFlag = false;
-    
+
     // Initialize BLE server for proxy mode
     bool initProxyServer(const char* deviceName);
     bool allocateProxyQueues();
@@ -561,16 +561,16 @@ private:
     void clearProxyAdvertisingSchedule();
     void clearProxyAdvertisingWindowState();
     void stopProxyAdvertisingFromMainLoop(uint8_t reasonCode);
-    
+
     // Start advertising proxy service
     void startProxyAdvertising(uint8_t reasonCode = 0, bool ignoreWifiPriority = false);
-    
+
     // Internal callbacks
-    static void notifyCallback(NimBLERemoteCharacteristic* pChar, 
-                               uint8_t* pData, 
-                               size_t length, 
+    static void notifyCallback(NimBLERemoteCharacteristic* pChar,
+                               uint8_t* pData,
+                               size_t length,
                                bool isNotify);
-    
+
     bool connectToServer();
 };
 

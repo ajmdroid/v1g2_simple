@@ -1,6 +1,6 @@
 /**
  * Storage Manager - SD card and LittleFS mounting
- * 
+ *
  * Provides filesystem access for profiles, web files, and caching.
  * Alert logging has been removed - this is just storage management.
  */
@@ -39,22 +39,22 @@ public:
     bool isSDCard() const { return usingSDMMC; }
     bool isLittleFSReady() const { return littlefsReady; }
     String statusText() const;
-    
+
     // Get underlying filesystem
     fs::FS* getFilesystem() const { return fs; }
     // Secondary LittleFS handle (available even when SD is primary)
     fs::FS* getLittleFS() const { return littlefsReady ? &LittleFS : nullptr; }
-    
+
     // Thread-safe SD access mutex - MUST be held during all file operations
     // when multiple cores/tasks may access SD simultaneously
     SemaphoreHandle_t getSDMutex() const { return sdMutex; }
-    
+
     // Atomic try-lock failure counter (cross-core safe for monitoring)
     static inline std::atomic<uint32_t> sdTryLockFailCount{0};
-    
+
     // DMA heap starvation counter (SD ops skipped due to low internal SRAM)
     static inline std::atomic<uint32_t> sdDmaStarvationCount{0};
-    
+
     // =========================================================================
     // DMA HEAP GATING - prevents SD ops when WiFi starves internal SRAM
     // =========================================================================
@@ -65,7 +65,7 @@ public:
     static constexpr uint32_t MIN_DMA_FREE_FOR_SD = 16384;    // 16KB total free
     static constexpr uint32_t MIN_DMA_BLOCK_FOR_SD = 2048;    // 2KB largest block
     static constexpr uint32_t DMA_CHECK_CACHE_MS = 100;       // Cache check for 100ms
-    
+
     // Cached DMA heap state (avoid repeated API calls in hot paths)
     struct DmaHeapCache {
         uint32_t freeDma;
@@ -74,7 +74,7 @@ public:
         bool valid;
     };
     static inline DmaHeapCache dmaCache_ = {0, 0, 0, false};
-    
+
     // Update cached DMA heap state (call from main loop periodically)
     static void updateDmaHeapCache() {
         dmaCache_.freeDma = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -82,7 +82,7 @@ public:
         dmaCache_.lastCheckMs = millis();
         dmaCache_.valid = true;
     }
-    
+
     // Check if there's enough DMA-capable heap for SD operations
     // Uses cached values if recent, otherwise updates cache
     // Returns false if WiFi has starved internal SRAM (free OR fragmented)
@@ -91,7 +91,7 @@ public:
         if (!dmaCache_.valid || (now - dmaCache_.lastCheckMs) > DMA_CHECK_CACHE_MS) {
             updateDmaHeapCache();
         }
-        
+
         bool ok = (dmaCache_.freeDma >= MIN_DMA_FREE_FOR_SD) &&
                   (dmaCache_.largestDma >= MIN_DMA_BLOCK_FOR_SD);
         if (!ok) {
@@ -99,11 +99,11 @@ public:
         }
         return ok;
     }
-    
+
     // Get cached values for metrics (no API call)
     static uint32_t getCachedFreeDma() { return dmaCache_.freeDma; }
     static uint32_t getCachedLargestDma() { return dmaCache_.largestDma; }
-    
+
     // =========================================================================
     // SD ACCESS POLICY - TWO LOCK TYPES ONLY:
     // =========================================================================
@@ -113,7 +113,7 @@ public:
     //   - Safe because Core 0 tasks own SD access and can block
     //   - DEBUG builds warn if used on Core 1
     //
-    // SDTryLock(mutex) - for Core 1 main loop ONLY  
+    // SDTryLock(mutex) - for Core 1 main loop ONLY
     //   - Always uses 0 timeout (instant return)
     //   - Increments sdTryLockFailCount on failure for monitoring
     //   - Never blocks - caller must handle failure (skip/defer)
@@ -121,13 +121,13 @@ public:
     // Rationale: Tier-1 paths (BLE→parse→display) must NEVER block for Tier-7.
     // "Drops OK, blocking NOT OK"
     // =========================================================================
-    
+
     // Blocking lock - for Core 0 writer tasks and runtime ONLY
     // Always blocks forever (portMAX_DELAY) - no timed option
     // Fails fast if DMA heap is too low (WiFi active) - use SDLockBootRetry for boot
     class SDLockBlocking {
     public:
-        explicit SDLockBlocking(SemaphoreHandle_t mutex, bool checkDmaHeap = true) 
+        explicit SDLockBlocking(SemaphoreHandle_t mutex, bool checkDmaHeap = true)
             : mutex_(mutex), acquired_(false), dmaStarved_(false) {
             // Check DMA heap first - fail fast if WiFi has starved internal SRAM
             if (checkDmaHeap && !hasDmaHeapForSD()) {
@@ -142,7 +142,7 @@ public:
         bool acquired() const { return acquired_; }
         bool isDmaStarved() const { return dmaStarved_; }
         operator bool() const { return acquired_; }
-        
+
         void release() {
             if (acquired_ && mutex_) {
                 xSemaphoreGive(mutex_);
@@ -154,7 +154,7 @@ public:
         bool acquired_;
         bool dmaStarved_;
     };
-    
+
     // Boot retry lock - for startup settings load only
     // Retries with backoff if DMA heap is starved (e.g., WiFi starting in parallel)
     // Use sparingly - this blocks the calling task
@@ -162,7 +162,7 @@ public:
     public:
         static constexpr int MAX_RETRIES = 5;
         static constexpr int BACKOFF_MS = 100;  // 100ms between retries
-        
+
         explicit SDLockBootRetry(SemaphoreHandle_t mutex)
             : mutex_(mutex), acquired_(false), retryCount_(0) {
             for (int i = 0; i < MAX_RETRIES; ++i) {
@@ -182,7 +182,7 @@ public:
         bool acquired() const { return acquired_; }
         int retryCount() const { return retryCount_; }
         operator bool() const { return acquired_; }
-        
+
         void release() {
             if (acquired_ && mutex_) {
                 xSemaphoreGive(mutex_);
@@ -194,17 +194,17 @@ public:
         bool acquired_;
         int retryCount_;
     };
-    
+
     // NOTE: No SDLock alias exposed here - forces explicit choice between
     // SDLockBlocking (Core 0/boot) and SDTryLock (Core 1 loop).
     // This prevents accidental misuse by construction.
-    
+
     // Non-blocking try-lock for Core 1 paths - NEVER blocks, returns immediately
     // Use this from main loop to enforce the "no blocking" invariant
     // Fails fast if DMA heap is too low (WiFi active)
     class SDTryLock {
     public:
-        explicit SDTryLock(SemaphoreHandle_t mutex, bool checkDmaHeap = true) 
+        explicit SDTryLock(SemaphoreHandle_t mutex, bool checkDmaHeap = true)
             : mutex_(mutex), acquired_(false), dmaStarved_(false) {
             // Check DMA heap first - fail fast if WiFi has starved internal SRAM
             if (checkDmaHeap && !hasDmaHeapForSD()) {
@@ -222,7 +222,7 @@ public:
         bool acquired() const { return acquired_; }
         bool isDmaStarved() const { return dmaStarved_; }
         operator bool() const { return acquired_; }
-        
+
         void release() {
             if (acquired_ && mutex_) {
                 xSemaphoreGive(mutex_);
@@ -234,7 +234,7 @@ public:
         bool acquired_;
         bool dmaStarved_;
     };
-    
+
     // Promote a temp file to the live path with rollback if promotion fails.
     // Returns true on success.
     static String rollbackPathFor(const char* livePath) {

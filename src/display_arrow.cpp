@@ -32,31 +32,31 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
         cacheValid = false;
         dirty.arrow = false;
     }
-    
+
     // Local blink timer - V1 blinks at ~5Hz, we match that
     static unsigned long lastBlinkTime = 0;
     static bool blinkOn = true;
     const unsigned long BLINK_INTERVAL_MS = 100;  // ~5Hz blink rate
-    
+
     unsigned long now = millis();
     if (now - lastBlinkTime >= BLINK_INTERVAL_MS) {
         blinkOn = !blinkOn;
         lastBlinkTime = now;
     }
-    
+
     // Determine which arrows to actually show
     // If an arrow is in flashBits and blink is OFF, hide it
     bool showFront = (dir & DIR_FRONT) != 0;
     bool showSide = (dir & DIR_SIDE) != 0;
     bool showRear = (dir & DIR_REAR) != 0;
-    
+
     // Apply blink: if flashing bit is set and we're in OFF phase, hide that arrow
     if (!blinkOn) {
         if (flashBits & 0x20) showFront = false;  // Front flash bit
         if (flashBits & 0x40) showSide = false;   // Side flash bit
         if (flashBits & 0x80) showRear = false;   // Rear flash bit
     }
-    
+
     // Stylized stacked arrows sized/positioned to match the real V1 display
     int cx = SCREEN_WIDTH - 70;           // right anchor
     int cy = SCREEN_HEIGHT / 2;           // vertically centered
@@ -71,10 +71,10 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
         cy = 95;
         cx -= 6;
     }
-    
+
     // Use slightly smaller arrows to give profile indicator more room
     float scale = 0.98f;
-    
+
     // Top arrow (FRONT): Taller triangle pointing up - matches V1 proportions
     // Wider/shallower angle to match V1 reference
     const int topW = (int)(125 * scale);      // Width at base
@@ -91,10 +91,10 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     // Calculate positions for equal gaps between arrows
     const int sideBarH = (int)(22 * scale);
     const int gap = (int)(13 * scale);  // gap between arrows
-    
+
     // Top arrow center: above side arrow with gap
     int topArrowCenterY = cy - sideBarH/2 - gap - topH/2;
-    // Bottom arrow center: below side arrow with gap  
+    // Bottom arrow center: below side arrow with gap
     int bottomArrowCenterY = cy + sideBarH/2 + gap + bottomH/2;
 
     const V1Settings& s = settingsManager.get();
@@ -131,7 +131,7 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     if (!anyChanged) {
         return;
     }
-    
+
     // Calculate clear regions for each arrow
     const int maxW = (topW > bottomW) ? topW : bottomW;
     int clearLeft = cx - maxW/2 - 10;
@@ -148,10 +148,10 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
             int arrowHeight = triH + 4;
             FILL_RECT(clearLeft, arrowTop, clearWidth, arrowHeight, PALETTE_BG);
         }
-        
+
         uint16_t fillCol = active ? activeCol : offCol;
         uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
-        
+
         // Triangle points
         int tipX = cx;
         int tipY = centerY + (down ? triH / 2 : -triH / 2);
@@ -165,7 +165,7 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
         // Notch cutout at the base (opposite of tip)
         int notchY = down ? (baseY - notchH) : baseY;
         FILL_RECT(cx - notchW / 2, notchY, notchW, notchH, fillCol);
-        
+
         // Draw outline - triangle edges
         DRAW_LINE(tipX, tipY, baseLeftX, baseY, outlineCol);
         DRAW_LINE(tipX, tipY, baseRightX, baseY, outlineCol);
@@ -193,7 +193,7 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
             int sideHeight = headH * 2 + 4;
             FILL_RECT(clearLeft, sideTop, clearWidth, sideHeight, PALETTE_BG);
         }
-        
+
         uint16_t fillCol = active ? sideCol : offCol;
         uint16_t outlineCol = TFT_BLACK;  // Black outline like V1
         const int barW = (int)(66 * scale);   // Center bar width
@@ -204,12 +204,12 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
 
         // Fill center bar
         FILL_RECT(cx - barW / 2, cy - halfH, barW, barH, fillCol);
-        
+
         // Fill left arrow head
         FILL_TRIANGLE(cx - barW / 2 - headW, cy, cx - barW / 2, cy - headH, cx - barW / 2, cy + headH, fillCol);
         // Fill right arrow head
         FILL_TRIANGLE(cx + barW / 2 + headW, cy, cx + barW / 2, cy - headH, cx + barW / 2, cy + headH, fillCol);
-        
+
         // Outline - top edge
         DRAW_LINE(cx - barW/2, cy - halfH, cx + barW/2, cy - halfH, outlineCol);
         // Outline - bottom edge

@@ -28,7 +28,7 @@
 
 // Include appropriate graphics library
     #include <Arduino_GFX_Library.h>
-    
+
     // Pin definitions with defaults for Waveshare 3.49"
     #ifndef LCD_CS
         #define LCD_CS 9
@@ -54,7 +54,7 @@
     #ifndef LCD_BL
         #define LCD_BL 8
     #endif
-    
+
     // TFT_eSPI compatibility defines for Arduino_GFX
     // Text datum (alignment) constants
     #define TL_DATUM 0  // Top Left
@@ -66,7 +66,7 @@
     #define BL_DATUM 6  // Bottom Left
     #define BC_DATUM 7  // Bottom Center
     #define BR_DATUM 8  // Bottom Right
-    
+
     // Color aliases for compatibility
     #define TFT_BLACK     0x0000
     #define TFT_WHITE     0xFFFF
@@ -77,7 +77,7 @@
     #define TFT_LIGHTGREY 0xC618
     #define TFT_YELLOW    0xFFE0
     #define TFT_ORANGE    0xFD20
-    
+
 
 // Common color definitions (RGB565)
 #define COLOR_BLACK   0x0000

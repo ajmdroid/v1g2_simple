@@ -47,7 +47,7 @@ SendResult V1BLEClient::sendCommandWithResult(const uint8_t* data, size_t length
         return SendResult::NOT_YET;
     }
     lastCommandMs.store(nowMs, std::memory_order_relaxed);
-    
+
     bool ok = false;
     if (pCommandChar->canWrite()) {
         ok = pCommandChar->writeValue(data, length, true);
@@ -56,7 +56,7 @@ SendResult V1BLEClient::sendCommandWithResult(const uint8_t* data, size_t length
     } else {
         return SendResult::FAILED;  // Characteristic doesn't support write
     }
-    
+
     if (!ok) {
         // Write failed after isConnected() check - likely transient (BLE busy/queue full)
         // Return NOT_YET to retry; if connection truly dead, next isConnected() will catch it
@@ -108,11 +108,11 @@ bool V1BLEClient::setDisplayOn(bool on) {
     // For dark mode, we need to use reqTurnOffMainDisplay with proper payload
     // Mode 0 = completely off, Mode 1 = only BT icon visible
     // For "dark mode on" we want display OFF, for "dark mode off" we want display ON
-    // 
+    //
     // Packet format derived from v1g2-t4s3 reference implementation:
     // - reqTurnOnMainDisplay: 7-byte packet with payloadLength=1, no actual payload data
     // - reqTurnOffMainDisplay: 8-byte packet with payloadLength=2, only 1 mode byte in payload
-    
+
     if (on) {
         // Turn display back ON (exit dark mode)
         // Packet: AA DA E4 33 01 [checksum] AB  (7 bytes total)
@@ -125,10 +125,10 @@ bool V1BLEClient::setDisplayOn(bool on) {
             0x00,                                           // [5] checksum placeholder
             ESP_PACKET_END                                  // [6] 0xAB
         };
-        
+
         // Calculate checksum over bytes 0-4 (5 bytes)
         packet[5] = calcV1Checksum(packet, 5);
-        
+
         return sendCommand(packet, sizeof(packet));
     } else {
         // Turn display OFF (enter dark mode)
@@ -146,10 +146,10 @@ bool V1BLEClient::setDisplayOn(bool on) {
             0x00,                                           // [6] checksum placeholder
             ESP_PACKET_END                                  // [7] 0xAB
         };
-        
+
         // Calculate checksum over bytes 0-5 (6 bytes)
         packet[6] = calcV1Checksum(packet, 6);
-        
+
         return sendCommand(packet, sizeof(packet));
     }
 }
@@ -169,7 +169,7 @@ bool V1BLEClient::setMute(bool muted) {
     };
 
     packet[5] = calcV1Checksum(packet, 5);
-    
+
     return sendCommand(packet, sizeof(packet));
 }
 
@@ -186,10 +186,10 @@ bool V1BLEClient::setMode(uint8_t mode) {
         0x00,                                           // [6] checksum placeholder
         ESP_PACKET_END                                  // [7] 0xAB
     };
-    
+
     // Calculate checksum over bytes 0-5 (6 bytes)
     packet[6] = calcV1Checksum(packet, 6);
-    
+
     return sendCommand(packet, sizeof(packet));
 }
 
@@ -197,15 +197,15 @@ bool V1BLEClient::setVolume(uint8_t mainVolume, uint8_t mutedVolume) {
     // 0xFF means "don't change" - skip command entirely if either is undefined
     // V1 REQWRITEVOLUME sets BOTH values, so we need both to be valid (0-9)
     if (mainVolume == 0xFF || mutedVolume == 0xFF) {
-        Serial.printf("setVolume: skipping - main=%d mute=%d (0xFF means not configured)\n", 
+        Serial.printf("setVolume: skipping - main=%d mute=%d (0xFF means not configured)\n",
                       mainVolume, mutedVolume);
         return true;  // Success - nothing to do (user hasn't configured both)
     }
-    
+
     // Clamp to valid range (0-9)
     if (mainVolume > 9) mainVolume = 9;
     if (mutedVolume > 9) mutedVolume = 9;
-    
+
     // Packet ID 0x39 = REQWRITEVOLUME
     // Payload: mainVolume, mutedVolume (currentVolume), aux0
     uint8_t packet[] = {
@@ -215,15 +215,15 @@ bool V1BLEClient::setVolume(uint8_t mainVolume, uint8_t mutedVolume) {
         PACKET_ID_REQ_WRITE_VOLUME,                     // [3] 0x39
         0x04,                                           // [4] payload length = 4 (3 data + checksum)
         mainVolume,                                     // [5] main volume 0-9
-        mutedVolume,                                    // [6] muted volume 0-9  
+        mutedVolume,                                    // [6] muted volume 0-9
         0x00,                                           // [7] aux0 (unused, set to 0)
         0x00,                                           // [8] checksum placeholder
         ESP_PACKET_END                                  // [9] 0xAB
     };
-    
+
     // Calculate checksum over bytes 0-7 (8 bytes)
     packet[8] = calcV1Checksum(packet, 8);
-    
+
     return sendCommand(packet, sizeof(packet));
 }
 
@@ -251,7 +251,7 @@ bool V1BLEClient::writeUserBytes(const uint8_t* bytes) {
     if (!bytes) {
         return false;
     }
-    
+
     // Build packet: AA D0+dest E0+src 13 07 [6 bytes] [checksum] AB
     uint8_t packet[13];
     packet[0] = ESP_PACKET_START;
@@ -260,7 +260,7 @@ bool V1BLEClient::writeUserBytes(const uint8_t* bytes) {
     packet[3] = PACKET_ID_WRITE_USER_BYTES;
     packet[4] = 0x07;  // length = 6 bytes + 1
     memcpy(&packet[5], bytes, 6);
-    
+
     packet[11] = calcV1Checksum(packet, 11);
     packet[12] = ESP_PACKET_END;
 
@@ -277,9 +277,9 @@ V1BLEClient::WriteVerifyResult V1BLEClient::writeUserBytesVerified(const uint8_t
     // Note: Full verification is disabled because BLE responses come async via the main loop queue,
     // but this function blocks. The write typically succeeds - V1 is reliable.
     // We do multiple write attempts for robustness but don't wait for read-back verification.
-    
+
     Serial.println("[VerifyPush] Writing to V1 (async verification not possible in blocking context)");
-    
+
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
         if (writeUserBytes(bytes)) {
             Serial.printf("[VerifyPush] Write command sent successfully (attempt %d/%d)\n", attempt, maxRetries);
@@ -292,7 +292,7 @@ V1BLEClient::WriteVerifyResult V1BLEClient::writeUserBytesVerified(const uint8_t
         // No delay between retries — BLE write failure is immediate (not connected/char null),
         // so retrying instantly is correct. If the link is up, next attempt succeeds immediately.
     }
-    
+
     Serial.println("[VerifyPush] All write attempts failed");
     return VERIFY_WRITE_FAILED;
 }

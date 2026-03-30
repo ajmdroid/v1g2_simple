@@ -38,16 +38,16 @@
 class TouchHandler {
 public:
     TouchHandler();
-    
+
     // Initialize touch controller with I2C
     bool begin(int sda = 17, int scl = 18, uint8_t addr = AXS_TOUCH_ADDR, int rst = -1);
-    
+
     // Check if screen is touched
     bool isTouched();
-    
+
     // Get touch coordinates (returns true if valid touch detected)
     bool getTouchPoint(int16_t& x, int16_t& y);
-    
+
     // Reset the touch controller
     void reset();
 

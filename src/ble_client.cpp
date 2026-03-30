@@ -1,14 +1,14 @@
 /**
  * BLE Client for Valentine1 Gen2
  * With BLE Server proxy support for companion app
- * 
+ *
  * Architecture:
  * - NimBLE 2.3.7 tuned for stable dual-role operation
  * - Client connects to V1 (V1G* device names)
  * - Server advertises as V1C-LE-S3 for companion app
  * - FreeRTOS task manages advertising timing
  * - Thread-safe with mutexes for BLE operations
- * 
+ *
  * Key Features:
  * - Automatic V1 discovery and reconnection
  * - Bidirectional proxy (V1 ↔ app)
@@ -214,7 +214,7 @@ portMUX_TYPE proxyCmdMux = portMUX_INITIALIZER_UNLOCKED;
 // Instance pointer for callbacks (extern in ble_internals.h)
 V1BLEClient* instancePtr = nullptr;
 
-V1BLEClient::V1BLEClient() 
+V1BLEClient::V1BLEClient()
     : pClient(nullptr)
     , pRemoteService(nullptr)
     , pDisplayDataChar(nullptr)
@@ -290,10 +290,10 @@ const char* V1BLEClient::getSubscribeStepName() const {
 void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
     BLEState oldState = bleState;
     if (oldState == newState) return;  // No change
-    
+
     unsigned long now = millis();
     unsigned long stateTime = (oldState != BLEState::DISCONNECTED && stateEnteredMs > 0) ? (now - stateEnteredMs) : 0;
-    
+
     bleState = newState;
     stateEnteredMs = now;
     if (newState == BLEState::SCAN_STOPPING || oldState == BLEState::SCAN_STOPPING) {
@@ -324,12 +324,12 @@ void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
         strstr(reason, "scan ended without finding V1")) {
         PERF_INC(bleScanNoTargetExits);
     }
-    
+
     BLE_SM_LOGF("[BLE_SM][%lu] %s (%lums) -> %s | Reason: %s\n",
                   now,
                   bleStateToString(oldState),
                   stateTime,
-                  bleStateToString(newState), 
+                  bleStateToString(newState),
                   reason);
 }
 
@@ -341,7 +341,7 @@ void V1BLEClient::cleanupConnection() {
     if (pDisplayDataChar && pDisplayDataChar->canNotify()) {
         pDisplayDataChar->unsubscribe();
     }
-    
+
     // 2. Disconnect if connected
     if (pClient && pClient->isConnected()) {
         pClient->disconnect();
@@ -350,7 +350,7 @@ void V1BLEClient::cleanupConnection() {
             nextConnectAllowedMs = now + 300;
         }
     }
-    
+
     // 3. Clear characteristic references (they become invalid after disconnect)
     pDisplayDataChar = nullptr;
     pCommandChar = nullptr;
@@ -361,7 +361,7 @@ void V1BLEClient::cleanupConnection() {
     notifyLongChar.store(nullptr, std::memory_order_relaxed);
     notifyLongCharId.store(0, std::memory_order_relaxed);
     scanStopResultsCleared_ = false;
-    
+
     // 4. Clear connection flags
     {
         SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: disconnect cleanup
@@ -372,10 +372,10 @@ void V1BLEClient::cleanupConnection() {
             targetDevice = NimBLEAdvertisedDevice();
         }
     }
-    
+
     // 5. Clear stale phone command state (prevents sending commands from previous session)
     phoneCmdPendingClear = true;
-    
+
     connectInProgress = false;
     connectedFollowupStep = ConnectedFollowupStep::NONE;
 }
@@ -385,10 +385,10 @@ void V1BLEClient::cleanupConnection() {
 void V1BLEClient::hardResetBLEClient() {
     Serial.println("[BLE] Hard reset...");
     const unsigned long now = millis();
-    
+
     // Full cleanup first
     cleanupConnection();
-    
+
     // Stop any active scanning
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (pScan && pScan->isScanning()) {
@@ -397,7 +397,7 @@ void V1BLEClient::hardResetBLEClient() {
             nextConnectAllowedMs = now + 200;
         }
     }
-    
+
     // Reuse existing client (don't destroy - NimBLE has fixed 3-slot array,
     // nulling without deleteClient leaks a slot permanently)
     if (!pClient) {
@@ -417,11 +417,11 @@ void V1BLEClient::hardResetBLEClient() {
     } else {
         Serial.println("[BLE] ERROR: Failed to create client!");
     }
-    
+
     // Reset failure counter after hard reset
     consecutiveConnectFailures = 0;
     nextConnectAllowedMs = now + 2000;
-    
+
     setBLEState(BLEState::DISCONNECTED, "hard reset complete");
 }
 
@@ -431,13 +431,13 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     if (initialized) {
         return true;  // Already initialized
     }
-    
+
     Serial.print("[BLE] Init...");
-    
+
     proxyEnabled = enableProxy;
     proxyName_ = proxyName ? proxyName : "V1C-LE-S3";
     bool needsFreshFlashBondReset = false;
-    
+
     // Create mutexes for thread-safe BLE operations (only once)
     if (!bleMutex) {
         bleMutex = xSemaphoreCreateMutex();
@@ -448,12 +448,12 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     if (!phoneCmdMutex) {
         phoneCmdMutex = xSemaphoreCreateMutex();
     }
-    
+
     if (!bleMutex || !bleNotifyMutex || !phoneCmdMutex) {
         Serial.println("FAIL");
         return false;
     }
-    
+
     // Fresh-flash detection: stage BLE bond reset if firmware version changed.
     // The actual delete happens only after the normal NimBLE init path so the
     // stack is brought up once per boot.
@@ -465,10 +465,10 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
             blePrefs.end();
         }
     }
-    
+
     // BLE initialization pattern for NimBLE dual-role stability:
     // 1. init() with generic name
-    // 2. setDeviceName() with the actual advertised name  
+    // 2. setDeviceName() with the actual advertised name
     // 3. setPower() and setMTU for better throughput
     // 4. Create proxy server BEFORE scanning (critical for dual-role)
     // 5. Start advertising then stop (initializes BLE stack)
@@ -480,7 +480,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         // 9 dBm is a supported ESP32-S3 step.
         NimBLEDevice::setPower(BLE_TX_POWER_DBM);
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
-        
+
         // Create proxy server before scanning for dual-role stability
         proxyServerInitialized = initProxyServer(proxyName_.c_str());
         if (!proxyServerInitialized) {
@@ -536,7 +536,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         backupBondsToSD();
     }
     lastBondBackupCount = static_cast<uint8_t>(NimBLEDevice::getNumBonds());
-    
+
     // Create client once during init - reuse for all connection attempts
     // Don't delete/recreate on failures - causes callback pointer corruption
     if (!pClient) {
@@ -545,13 +545,13 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
             Serial.println("ERROR: Failed to create BLE client");
             return false;
         }
-        
+
         // Create callbacks once and keep them for the lifetime of the client
         if (!pClientCallbacks) {
             pClientCallbacks.reset(new ClientCallbacks());
         }
         pClient->setClientCallbacks(pClientCallbacks.get());
-        
+
         // Connection parameters: 12-24 (15-30ms interval), balanced for stability
         pClient->setConnectionParams(NIMBLE_CONN_INTERVAL_MIN,
                                      NIMBLE_CONN_INTERVAL_MAX,
@@ -559,7 +559,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
                                      NIMBLE_CONN_SUPERVISION_TIMEOUT);
         pClient->setConnectTimeout(NIMBLE_CONNECT_TIMEOUT_INIT_MS);
     }
-    
+
     initialized = true;
     Serial.printf(" OK proxy=%s\n", proxyEnabled ? "on" : "off");
     return true;
@@ -570,32 +570,32 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     if (!initBLE(enableProxy, proxyName)) {
         return false;
     }
-    
+
     // Start scanning for V1 - optimized for reliable discovery
     NimBLEScan* pScan = NimBLEDevice::getScan();
-    
+
     // Replace scan callbacks atomically; previous handler is released automatically.
     pScanCallbacks.reset(new ScanCallbacks(this));
     pScan->setScanCallbacks(pScanCallbacks.get());
     pScan->setActiveScan(true);  // Request scan response to get device names
     // ESP32-S3 WiFi coexistence: use 75% duty cycle for reliable V1 discovery
     // Higher duty = more BLE radio time = faster discovery, but less WiFi throughput
-    pScan->setInterval(160);  // 100ms interval 
+    pScan->setInterval(160);  // 100ms interval
     pScan->setWindow(120);    // 75ms window - 75% duty cycle (was 50%)
     pScan->setMaxResults(0);  // Unlimited results
     // Reliability first: allow duplicate reports so we don't miss a late name/scan-response
     // update under WiFi coexistence stress.
     pScan->setDuplicateFilter(false);
-    
+
     BLE_SM_LOGF("Scanning for V1 Gen2...\n");
     lastScanStart = millis();
     bool started = pScan->start(SCAN_DURATION, false, false);  // duration, isContinuous, restart
     BLE_SM_LOGF("Scan started: %s\n", started ? "YES" : "NO");
-    
+
     if (started) {
         setBLEState(BLEState::SCANNING, "begin()");
     }
-    
+
     return started;
 }
 
@@ -619,7 +619,7 @@ int V1BLEClient::getConnectionRssi() {
         s_cachedV1Rssi = 0;
         return 0;
     }
-    
+
     // Only query BLE stack every 2 seconds - return cached value otherwise
     unsigned long now = millis();
     if (now - s_lastV1RssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
@@ -639,7 +639,7 @@ int V1BLEClient::getProxyClientRssi() {
         s_cachedProxyRssi = 0;
         return 0;
     }
-    
+
     // Only query BLE stack every 2 seconds
     unsigned long now = millis();
     if (now - s_lastProxyRssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {

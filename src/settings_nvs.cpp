@@ -11,7 +11,7 @@
 // Returns true if space was freed
 bool attemptNvsRecovery(const char* activeNs) {
     Serial.println("[Settings] NVS space low - attempting recovery...");
-    
+
     // Clear the inactive settings namespace to free space
     const char* inactiveNs = nullptr;
     if (strcmp(activeNs, SETTINGS_NS_A) == 0) {
@@ -19,7 +19,7 @@ bool attemptNvsRecovery(const char* activeNs) {
     } else if (strcmp(activeNs, SETTINGS_NS_B) == 0) {
         inactiveNs = SETTINGS_NS_A;
     }
-    
+
     if (inactiveNs) {
         Preferences prefs;
         if (prefs.begin(inactiveNs, false)) {
@@ -28,18 +28,18 @@ bool attemptNvsRecovery(const char* activeNs) {
             Serial.printf("[Settings] Cleared inactive namespace %s\n", inactiveNs);
         }
     }
-    
+
     return true;
 }
 
 // Obfuscate a string using XOR (same function for encode/decode)
 String xorObfuscate(const String& input) {
     if (input.length() == 0) return input;
-    
+
     String output;
     output.reserve(input.length());
     size_t keyLen = strlen(XOR_KEY);
-    
+
     for (size_t i = 0; i < input.length(); i++) {
         output += (char)(input[i] ^ XOR_KEY[i % keyLen]);
     }
@@ -449,7 +449,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putString("lastV1Addr", settings.lastV1Address);
     written += prefs.putUChar("autoPwrOff", settings.autoPowerOffMinutes);
     written += prefs.putUChar("apTimeout", settings.apTimeoutMinutes);
-    
+
     // OBD settings
     written += prefs.putBool("obdEn", settings.obdEnabled);
     written += prefs.putString("obdAddr", settings.obdSavedAddress);
@@ -487,7 +487,7 @@ bool SettingsManager::persistSettingsAtomically() {
         // First attempt failed - try NVS recovery and retry once
         Serial.println("[Settings] First write attempt failed, trying NVS recovery...");
         attemptNvsRecovery(activeNs.c_str());
-        
+
         if (!writeSettingsToNamespace(stagingNs.c_str())) {
             Serial.println("[Settings] ERROR: Failed to write staging settings even after recovery");
             return false;
@@ -641,7 +641,7 @@ void SettingsManager::clearWifiClientCredentials() {
     settings.wifiClientSSID = "";
     settings.wifiClientEnabled = false;
     settings.wifiMode = V1_WIFI_AP;
-    
+
     // Clear the password from secure namespace
     Preferences prefs;
     if (prefs.begin(WIFI_CLIENT_NS, false)) {
@@ -651,6 +651,6 @@ void SettingsManager::clearWifiClientCredentials() {
     }
 
     clearWifiClientSecretFromSD();
-    
+
     save();
 }

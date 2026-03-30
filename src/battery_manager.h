@@ -1,6 +1,6 @@
 /**
  * Battery Manager for Waveshare ESP32-S3-Touch-LCD-3.49
- * 
+ *
  * Handles:
  * - Battery voltage monitoring via ADC
  * - Power control via TCA9554 I/O expander
@@ -39,43 +39,43 @@
 class BatteryManager {
 public:
     BatteryManager();
-    
+
     // Initialize the battery manager (call in setup)
     bool begin();
-    
+
     // Check if running on battery power
     bool isOnBattery() const;
-    
+
     // Check if a battery is present (detects battery even when on USB power)
     bool hasBattery() const;
-    
+
     // Update cached battery readings (call in loop, voltage updates every 30s)
     void update();
-    
+
     // Get cached battery voltage in millivolts (updated every 30s)
     uint16_t getVoltageMillivolts() const;
-    
+
     // Get cached battery percentage (0-100, updated every 30s)
     uint8_t getPercentage() const;
-    
+
     // Check if battery is low (uses cached values)
     bool isLow() const;
-    
+
     // Check if battery is critically low (should shutdown soon)
     bool isCritical() const;
-    
+
     // Keep system powered on (call early in setup when on battery)
     bool latchPowerOn();
-    
+
     // Execute the final hardware-only power-off tail after shutdown prep completes
     bool powerOff();
-    
+
     // Check if power button is pressed
     bool isPowerButtonPressed();
-    
+
     // Process power button (call in loop) - returns true if should power off
     bool processPowerButton();
-    
+
 private:
     bool initialized;
     bool onBattery;
@@ -83,15 +83,15 @@ private:
     unsigned long lastButtonPress;
     unsigned long buttonPressStart;
     bool buttonWasPressed;
-    
+
     // Cached battery state (updated every 30s)
     uint16_t cachedVoltage;
     uint8_t cachedPercent;
     unsigned long lastUpdateMs;
-    
+
     // Debug simulation
     uint16_t simulatedVoltage;
-    
+
     bool initADC();
     bool initTCA9554();
     bool setTCA9554Pin(uint8_t pin, bool high);

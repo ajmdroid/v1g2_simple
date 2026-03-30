@@ -32,20 +32,20 @@ void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
     const int y = 75;
     const int clearW = 75;
     const int clearH = 16;
-    
+
     // Clear the area first - only clear what we need, BLE icon is at y=98
     FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
-    
+
     // Draw main volume in blue, mute volume in yellow (user-configurable colors)
     GFX_setTextDatum(TL_DATUM);  // Top-left alignment
     TFT_CALL(setTextSize)(2);  // Size 2 = ~16px height
-    
+
     // Draw main volume "5V" in main volume color
     char mainBuf[5];  // allow up to three digits plus suffix and null
     snprintf(mainBuf, sizeof(mainBuf), "%dV", mainVol);
     TFT_CALL(setTextColor)(s.colorVolumeMain, PALETTE_BG);
     GFX_drawString(tft, mainBuf, x, y);
-    
+
     // Draw mute volume "0M" in mute volume color, offset to the right
     char muteBuf[5];  // allow up to three digits plus suffix and null
     snprintf(muteBuf, sizeof(muteBuf), "%dM", muteVol);
@@ -81,20 +81,20 @@ void V1Display::drawRssiIndicator(int rssi) {
 
     // Clear the area first
     FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
-    
+
     // Get both RSSIs
     int v1Rssi = rssi;  // V1 RSSI passed in
     int appRssi = bleCtx_.proxyRssi;  // App RSSI
-    
+
     GFX_setTextDatum(TL_DATUM);
     TFT_CALL(setTextSize)(2);  // Match volume text size
-    
+
     // Draw V1 RSSI if connected
     if (v1Rssi != 0) {
         // Draw "V " label with configurable color
         TFT_CALL(setTextColor)(s.colorRssiV1, PALETTE_BG);
         GFX_drawString(tft, "V ", x, y);
-        
+
         // Color code RSSI value: green >= -75, yellow -75 to -90, red < -90
         // Calibrated for ESP-IDF 5.3.x BLE controller on ESP32-S3 which reports
         // ~20-30 dB lower than ESP-IDF 4.4.x at the same physical distance.
@@ -106,19 +106,19 @@ void V1Display::drawRssiIndicator(int rssi) {
         } else {
             rssiColor = COLOR_RED;
         }
-        
+
         TFT_CALL(setTextColor)(rssiColor, PALETTE_BG);
         char buf[8];
         snprintf(buf, sizeof(buf), "%d", v1Rssi);
         GFX_drawString(tft, buf, x + 24, y);  // Offset for "V " width
     }
-    
+
     // Draw app RSSI below V1 RSSI if connected
     if (appRssi != 0) {
         // Draw "P " label with configurable color
         TFT_CALL(setTextColor)(s.colorRssiProxy, PALETTE_BG);
         GFX_drawString(tft, "P ", x, y + lineHeight);
-        
+
         // Color code RSSI value (same calibration as V1 RSSI above)
         uint16_t rssiColor;
         if (appRssi >= -75) {
@@ -128,7 +128,7 @@ void V1Display::drawRssiIndicator(int rssi) {
         } else {
             rssiColor = COLOR_RED;
         }
-        
+
         TFT_CALL(setTextColor)(rssiColor, PALETTE_BG);
         char buf[8];
         snprintf(buf, sizeof(buf), "%d", appRssi);
@@ -157,7 +157,7 @@ void V1Display::drawProfileIndicator(int slot) {
 
     // Check if we're in the "flash" period after a profile change
     bool inFlashPeriod = (millis() - profileChangedTime) < HIDE_TIMEOUT_MS;
-    
+
 #if defined(DISPLAY_WAVESHARE_349)
     // On Waveshare: draw profile indicator under arrows (for autopush profiles)
     // Arrow center X = 564, profile goes below rear arrow
@@ -165,7 +165,7 @@ void V1Display::drawProfileIndicator(int slot) {
     int y = 152;  // Below arrows
     int clearW = 130;  // Wide enough for profile names at size 2
     int clearH = 20;   // Tall enough for size 2 font
-    
+
     // If user explicitly hides the indicator via web UI, only show during flash period
     if (s.hideProfileIndicator && !inFlashPeriod) {
         FILL_RECT(cx - clearW/2, y, clearW, clearH, PALETTE_BG);
@@ -218,7 +218,7 @@ void V1Display::drawBatteryIndicator() {
     extern BatteryManager batteryManager;
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
-    
+
     // Battery icon position - VERTICAL at bottom-right
     // Position to the right of profile indicator area, avoiding direction arrows
     const int battW = 14;   // Battery body width (was height when horizontal)
@@ -227,7 +227,7 @@ void V1Display::drawBatteryIndicator() {
     const int battY = SCREEN_HEIGHT - battH - 8; // Bottom with margin (cap above)
     const int capW = 8;     // Positive terminal cap width (horizontal bar at top)
     const int capH = 3;     // Positive terminal cap height
-    
+
     // Hide battery when on USB power (voltage near max)
     // Use hysteresis to prevent flickering: hide above 4125, show below 4095
     static bool showBatteryOnUSB = true;
@@ -238,10 +238,10 @@ void V1Display::drawBatteryIndicator() {
         showBatteryOnUSB = true;   // On battery, not full
     }
     // Between 4095-4125: keep previous state (hysteresis)
-    
+
     // Get battery percentage for display
     uint8_t pct = batteryManager.getPercentage();
-    
+
     // If percent is enabled, ONLY show percent (never icon)
     if (s.showBatteryPercent && !s.hideBatteryIcon && batteryManager.hasBattery()) {
         // Cache percent drawing to avoid heavy FreeType work every frame
@@ -287,7 +287,7 @@ void V1Display::drawBatteryIndicator() {
         if (!needsRedraw) {
             return;  // Skip expensive render when nothing changed
         }
-        
+
         // Clear force flag - we're handling it
         dirty.battery = false;
 
@@ -312,24 +312,24 @@ void V1Display::drawBatteryIndicator() {
         lastPctDrawMs = nowMs;
         return;  // Never draw icon when percent is enabled
     }
-    
+
     // Percent is disabled, show icon instead
     // Clear percent area (in case it was previously showing)
     FILL_RECT(SCREEN_WIDTH - 50, 0, 48, 30, PALETTE_BG);
-    
+
     // Don't draw icon if no battery, user hides it, or on USB
     if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showBatteryOnUSB) {
         FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
         return;
     }
-    
+
     const int padding = 2;  // Padding inside battery
     const int sections = 5; // Number of charge sections
-    
+
     int filledSections = (pct + 10) / 20;  // 0-20%=1, 21-40%=2, etc. (min 1 if >0)
     if (pct == 0) filledSections = 0;
     if (filledSections > sections) filledSections = sections;
-    
+
     // Choose color based on level
     uint16_t fillColor;
     if (pct <= 20) {
@@ -339,17 +339,17 @@ void V1Display::drawBatteryIndicator() {
     } else {
         fillColor = 0x07E0;  // Green - good
     }
-    
+
     // Clear area (including cap above)
     FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
-    
+
     uint16_t outlineColor = dimColor(PALETTE_TEXT);
 
     // Draw battery outline (dimmed) - vertical orientation
     DRAW_RECT(battX, battY, battW, battH, outlineColor);  // Main body
     // Positive cap at top, centered
     FILL_RECT(battX + (battW - capW) / 2, battY - capH, capW, capH, outlineColor);
-    
+
     // Draw charge sections (vertical - bottom to top, filled from bottom)
     int sectionH = (battH - 2 * padding - (sections - 1)) / sections;  // Height of each section with 1px gap
     for (int i = 0; i < sections; i++) {
@@ -357,7 +357,7 @@ void V1Display::drawBatteryIndicator() {
         int sx = battX + padding;
         int sy = battY + battH - padding - (i + 1) * sectionH - i;  // Bottom-up
         int sw = battW - 2 * padding;
-        
+
         if (i < filledSections) {
             FILL_RECT(sx, sy, sw, sectionH, dimColor(fillColor));
         }
@@ -376,7 +376,7 @@ void V1Display::drawBLEProxyIndicator() {
     const int iconSize = 20;
     const int iconY = 145;  // Moved up 2px from 147
     const int iconGap = 6;  // Gap between icons
-    
+
     const int wifiX = 14;
     const int bleX = wifiX + iconSize + iconGap;  // Right of WiFi icon
     const int bleY = iconY;
@@ -414,25 +414,25 @@ void V1Display::drawBLEProxyIndicator() {
     // Center point of the icon
     int cx = bleX + iconSize / 2;
     int cy = bleY + iconSize / 2;
-    
+
     int h = iconSize - 2;      // Total height
     int top = cy - h / 2;
     int bot = cy + h / 2;
     int mid = cy;
-    
+
     // Right chevron points - where the arrows reach on the right
     int rightX = cx + 5;
     int topChevronY = mid - 4;   // Upper right point
     int botChevronY = mid + 4;   // Lower right point
-    
+
     // Left arrow endpoints
     int leftX = cx - 5;
-    int topArrowY = mid - 4;     // Upper left point  
+    int topArrowY = mid - 4;     // Upper left point
     int botArrowY = mid + 4;     // Lower left point
-    
+
     // Vertical center line (thicker for visibility)
     FILL_RECT(cx - 1, top, 2, h, btColor);
-    
+
     // === RIGHT SIDE: Two chevrons forming the "B" ===
     // Top chevron: top of line → right point → center (draw 3 lines for thickness)
     DRAW_LINE(cx - 1, top, rightX - 1, topChevronY, btColor);
@@ -441,7 +441,7 @@ void V1Display::drawBLEProxyIndicator() {
     DRAW_LINE(rightX - 1, topChevronY, cx - 1, mid, btColor);
     DRAW_LINE(rightX, topChevronY, cx, mid, btColor);
     DRAW_LINE(rightX + 1, topChevronY, cx + 1, mid, btColor);
-    
+
     // Bottom chevron: center → right point → bottom of line (draw 3 lines for thickness)
     DRAW_LINE(cx - 1, mid, rightX - 1, botChevronY, btColor);
     DRAW_LINE(cx, mid, rightX, botChevronY, btColor);
@@ -449,13 +449,13 @@ void V1Display::drawBLEProxyIndicator() {
     DRAW_LINE(rightX - 1, botChevronY, cx - 1, bot, btColor);
     DRAW_LINE(rightX, botChevronY, cx, bot, btColor);
     DRAW_LINE(rightX + 1, botChevronY, cx + 1, bot, btColor);
-    
+
     // === LEFT SIDE: Two arrows forming the "X" through center ===
     // Upper-left arrow (draw 3 lines for thickness)
     DRAW_LINE(leftX - 1, topArrowY, cx - 1, mid, btColor);
     DRAW_LINE(leftX, topArrowY, cx, mid, btColor);
     DRAW_LINE(leftX + 1, topArrowY, cx + 1, mid, btColor);
-    
+
     // Lower-left arrow (draw 3 lines for thickness)
     DRAW_LINE(leftX - 1, botArrowY, cx - 1, mid, btColor);
     DRAW_LINE(leftX, botArrowY, cx, mid, btColor);
@@ -474,18 +474,18 @@ void V1Display::drawWiFiIndicator() {
     extern WiFiManager wifiManager;
     extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
-    
+
     // WiFi icon position - evenly spaced below RSSI
     const int wifiX = 8;
     const int wifiSize = 20;
     const int wifiY = 145;  // Moved up 2px from 147
-    
+
     // Check if user explicitly hides the WiFi icon
     if (s.hideWifiIcon) {
         FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);
         return;
     }
-    
+
     const bool wifiServiceActive = wifiManager.isWifiServiceActive();
     const bool staConnected = wifiManager.isConnected();
     const bool apActive = wifiManager.isSetupModeActive();
@@ -496,25 +496,25 @@ void V1Display::drawWiFiIndicator() {
         FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);
         return;
     }
-    
+
     // Check if any clients are connected to the AP (only when AP is enabled).
     bool hasApClients = apActive && (WiFi.softAPgetStationNum() > 0);
-    
+
     // WiFi icon color: connected vs disconnected (like BLE icon)
     uint16_t wifiColor = (staConnected || hasApClients)
                              ? dimColor(s.colorWiFiConnected, 85)
                              : dimColor(s.colorWiFiIcon, 85);
-    
+
     // Clear area first
     FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);
-    
+
     // Center point for arcs (bottom center of icon area)
     int cx = wifiX + wifiSize / 2;
     int cy = wifiY + wifiSize - 3;
-    
+
     // Draw center dot (the WiFi source point)
     FILL_RECT(cx - 2, cy - 2, 5, 5, wifiColor);
-    
+
     // Draw 3 concentric arcs above the dot
     // Arc 1 (inner) - small arc
     for (int angle = -45; angle <= 45; angle += 15) {
@@ -523,7 +523,7 @@ void V1Display::drawWiFiIndicator() {
         int py = cy - 5 - (int)(5 * cos(rad));
         FILL_RECT(px, py, 2, 2, wifiColor);
     }
-    
+
     // Arc 2 (middle)
     for (int angle = -50; angle <= 50; angle += 12) {
         float rad = angle * 3.14159 / 180.0;
@@ -531,7 +531,7 @@ void V1Display::drawWiFiIndicator() {
         int py = cy - 5 - (int)(9 * cos(rad));
         FILL_RECT(px, py, 2, 2, wifiColor);
     }
-    
+
     // Arc 3 (outer)
     for (int angle = -55; angle <= 55; angle += 10) {
         float rad = angle * 3.14159 / 180.0;

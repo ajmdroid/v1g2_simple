@@ -582,25 +582,25 @@ void WiFiManager::setupAP() {
     const V1Settings& settings = settingsManager.get();
     String apSSID = settings.apSSID.length() ? settings.apSSID : "V1-Simple";
     String apPass = (settings.apPassword.length() >= 8) ? settings.apPassword : "setupv1g2";  // WPA2 requires 8+
-    
+
     WIFI_LOG("[SetupMode] Starting AP: %s (pass: ****)\n", apSSID.c_str());
-    
+
     // Configure AP IP
     IPAddress apIP(192, 168, 35, 5);
     IPAddress gateway(192, 168, 35, 5);
     IPAddress subnet(255, 255, 255, 0);
-    
+
     if (!WiFi.softAPConfig(apIP, gateway, subnet)) {
         // NOTE: Intentional fallthrough - softAP will still work with default IP (192.168.4.1)
         // Device remains functional. Reviewed January 20, 2026.
         WIFI_LOG("[SetupMode] softAPConfig failed! Will use default IP 192.168.4.1\n");
     }
-    
+
     if (!WiFi.softAP(apSSID.c_str(), apPass.c_str())) {
         WIFI_LOG("[SetupMode] softAP failed!\n");
         return;
     }
-    
+
     WIFI_LOG("[SetupMode] AP IP: %s\n", WiFi.softAPIP().toString().c_str());
 }
 
@@ -759,7 +759,7 @@ void WiFiManager::process() {
                       (unsigned long)lowDuration);
         lowDmaSinceMs = 0;
     }
-    
+
     const unsigned long now = millis();
     int apClientCount = 0;
     const bool apInterfaceActive = isSetupModeActive();
@@ -885,7 +885,7 @@ void WiFiManager::handleNotFound() {
         server.send(404, "text/plain", "Not found");
         return;
     }
-    
+
     // Try to serve HTML pages from LittleFS (SvelteKit pre-rendered pages)
     if (uri.endsWith(".html") || uri.indexOf('.') == -1) {
         String path = uri;
@@ -897,7 +897,7 @@ void WiFiManager::handleNotFound() {
             return;
         }
     }
-    
+
     // Try to serve static files (js, css, json, etc.)
     String contentType = "application/octet-stream";
     if (uri.endsWith(".js")) contentType = "application/javascript";
@@ -907,11 +907,11 @@ void WiFiManager::handleNotFound() {
     else if (uri.endsWith(".svg")) contentType = "image/svg+xml";
     else if (uri.endsWith(".png")) contentType = "image/png";
     else if (uri.endsWith(".ico")) contentType = "image/x-icon";
-    
+
     if (serveLittleFSFile(uri.c_str(), contentType.c_str())) {
         return;
     }
-    
+
     Serial.printf("[HTTP] 404 %s\n", uri.c_str());
     server.send(404, "text/plain", "Not found");
 }

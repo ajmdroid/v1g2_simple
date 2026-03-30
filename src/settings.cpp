@@ -1,14 +1,14 @@
 /**
  * Settings storage implementation
- * 
+ *
  * SECURITY NOTE: WiFi passwords are stored with XOR obfuscation, NOT encryption.
  * This is intentional - it prevents casual viewing in hex dumps but is NOT secure
  * against a determined attacker with physical access to the device.
- * 
+ *
  * For this use case (a car accessory on a private network), the trade-off is:
  * - Pro: Simple, no crypto library overhead, recoverable if key changes
  * - Con: Not suitable for high-security applications
- * 
+ *
  * If stronger security is needed, consider ESP32 NVS encryption (requires flash
  * encryption key management) or storing a hash instead of the actual password.
  */
@@ -108,7 +108,7 @@ void SettingsManager::begin() {
     }
 
     load();
-    
+
     // Note: SD card may not be mounted yet during begin().
     // checkAndRestoreFromSD() should be called after storage is ready.
     // We still try here in case storage was already initialized.
@@ -126,15 +126,15 @@ void SettingsManager::load() {
             return;
         }
     }
-    
+
     // Check settings version for migration
     int storedVersion = preferences.getInt("settingsVer", 1);
-    
+
     settings.enableWifi = preferences.getBool("enableWifi", true);
-    
+
     // Handle AP password storage - version 1 was plain text, version 2+ is obfuscated
     String storedApPwd = preferences.getString("apPassword", "");
-    
+
     if (storedVersion >= 2) {
         // Passwords are obfuscated - decode and sanitize them.
         settings.apPassword = sanitizeApPasswordValue(
@@ -144,9 +144,9 @@ void SettingsManager::load() {
         settings.apPassword = sanitizeApPasswordValue(storedApPwd.length() > 0 ? storedApPwd : "setupv1g2");
         Serial.println("[Settings] Migrating from v1 to v2 (password obfuscation)");
     }
-    
+
     settings.apSSID = sanitizeApSsidValue(preferences.getString("apSSID", "V1-Simple"));
-    
+
     // WiFi client (STA) settings
     const bool wifiClientEnabledKeyPresent = preferences.isKey("wifiClientEn");
     const bool wifiClientSsidKeyPresent = preferences.isKey("wifiClSSID");
@@ -164,7 +164,7 @@ void SettingsManager::load() {
 
     // Determine WiFi mode based on client enabled state
     settings.wifiMode = settings.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
-    
+
     // Debug: Log WiFi client settings on load
     Serial.printf("[Settings] WiFi client keys: enabledKey=%s ssidKey=%s\n",
                   wifiClientEnabledKeyPresent ? "yes" : "no",
@@ -172,7 +172,7 @@ void SettingsManager::load() {
     Serial.printf("[Settings] WiFi client: enabled=%s, SSID='%s'\n",
                   settings.wifiClientEnabled ? "true" : "false",
                   settings.wifiClientSSID.c_str());
-    
+
     settings.proxyBLE = preferences.getBool("proxyBLE", true);
     settings.proxyName = sanitizeProxyNameValue(preferences.getString("proxyName", "V1-Proxy"));
     settings.gpsEnabled = preferences.getBool("gpsEn", false);
@@ -255,11 +255,11 @@ void SettingsManager::load() {
     settings.hideBleIcon = preferences.getBool("hideBle", false);
     settings.hideVolumeIndicator = preferences.getBool("hideVol", false);
     settings.hideRssiIndicator = preferences.getBool("hideRssi", false);
-    
+
     // Development settings
     settings.enableWifiAtBoot = preferences.getBool("wifiAtBoot", false);
     settings.enableSignalTraceLogging = preferences.getBool("sigTraceLog", true);
-    
+
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults
     bool needsMigration = preferences.isKey("voiceAlerts");
@@ -272,7 +272,7 @@ void SettingsManager::load() {
         settings.voiceAlertMode = clampVoiceAlertModeValue(preferences.getUChar("voiceMode", VOICE_MODE_BAND_FREQ));
         settings.voiceDirectionEnabled = preferences.getBool("voiceDir", true);
     }
-    
+
     // Close read-only preferences before migration cleanup
     if (needsMigration) {
         preferences.end();
@@ -288,19 +288,19 @@ void SettingsManager::load() {
     settings.announceBogeyCount = preferences.getBool("voiceBogeys", true);
     settings.muteVoiceIfVolZero = preferences.getBool("muteVoiceVol0", false);
     settings.voiceVolume = std::min<uint8_t>(100, preferences.getUChar("voiceVol", 75));  // 0-100%
-    
+
     // Secondary alert settings
     settings.announceSecondaryAlerts = preferences.getBool("secAlerts", false);
     settings.secondaryLaser = preferences.getBool("secLaser", true);
     settings.secondaryKa = preferences.getBool("secKa", true);
     settings.secondaryK = preferences.getBool("secK", false);
     settings.secondaryX = preferences.getBool("secX", false);
-    
+
     // Volume fade settings
     settings.alertVolumeFadeEnabled = preferences.getBool("volFadeEn", false);
     settings.alertVolumeFadeDelaySec = std::clamp<uint8_t>(preferences.getUChar("volFadeSec", 2), 1, 10);  // 1-10 seconds
     settings.alertVolumeFadeVolume = std::min<uint8_t>(9, preferences.getUChar("volFadeVol", 1));  // 0-9 (V1 volume range)
-    
+
     // Speed-aware muting settings
     settings.speedMuteEnabled = preferences.getBool("spdMuteEn", false);
     settings.speedMuteThresholdMph = std::clamp<uint8_t>(preferences.getUChar("spdMuteThr", 25), 5, 60);
@@ -349,7 +349,7 @@ void SettingsManager::load() {
     settings.lastV1Address = sanitizeLastV1AddressValue(preferences.getString("lastV1Addr", ""));
     settings.autoPowerOffMinutes = clampU8(preferences.getUChar("autoPwrOff", 0), 0, 60);
     settings.apTimeoutMinutes = clampApTimeoutValue(preferences.getUChar("apTimeout", 0));
-    
+
     // OBD settings
     settings.obdEnabled = preferences.getBool("obdEn", false);
     settings.obdSavedAddress = preferences.getString("obdAddr", "");
@@ -361,7 +361,7 @@ void SettingsManager::load() {
     settings.obdCachedEotProfileId = preferences.getUChar("obdEotPid", 0);
 
     preferences.end();
-    
+
     Serial.printf("[Settings] OK wifi=%s proxy=%s bright=%d autoPush=%s\n",
                   settings.enableWifi ? "on" : "off",
                   settings.proxyBLE ? "on" : "off",

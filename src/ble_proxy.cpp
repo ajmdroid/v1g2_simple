@@ -189,20 +189,20 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
     if (!pCharacteristic || !bleClient) {
         return;
     }
-    
+
     if (!bleClient->connected.load(std::memory_order_relaxed)) {
         return;
     }
-    
+
     // Get the raw data pointer and length directly
     NimBLEAttValue attrValue = pCharacteristic->getValue();
     const uint8_t* rawData = attrValue.data();
     size_t rawLen = attrValue.size();
-    
+
     if (rawLen == 0 || !rawData || rawLen > 32) {
         return;
     }
-    
+
     // Copy to a safe buffer and forward to V1
     uint16_t sourceChar = shortUuid(pCharacteristic->getUUID());
     uint8_t cmdBuf[32];
@@ -222,7 +222,7 @@ void V1BLEClient::ProxyWriteCallbacks::onWrite(NimBLECharacteristic* pCharacteri
     }
     // Proxy command logging disabled - app uses standard mute (0x34/0x35)
     // Uncomment to debug: snprintf(logBuf, ...) with packet ID at cmdBuf[3]
-    
+
     // Enqueue for main-loop processing to avoid BLE callback blocking
     bleClient->enqueuePhoneCommand(cmdBuf, rawLen, sourceChar);
 }
@@ -309,14 +309,14 @@ bool V1BLEClient::initProxyServer(const char* deviceName) {
     if (!allocateProxyQueues()) {
         return false;
     }
-    
+
     // Kenny's exact order:
     // 1. Create server (no callbacks yet)
     pServer = NimBLEDevice::createServer();
-    
+
     // 2. Create service
     pProxyService = pServer->createService(V1_SERVICE_UUID);
-    
+
     // 3. Create ALL 6 characteristics that the V1 exposes (apps expect all of them)
     // Characteristic UUIDs from V1:
     // 92A0B2CE - Display data SHORT (notify) - primary alert data
@@ -325,83 +325,83 @@ bool V1BLEClient::initProxyServer(const char* deviceName) {
     // 92A0B8D2 - Client write LONG (writeNR)
     // 92A0BCE0 - Notify characteristic
     // 92A0BAD4 - Write with response
-    
+
     // Primary notify characteristic - display/alert data
     pProxyNotifyChar = pProxyService->createCharacteristic(
         "92A0B2CE-9E05-11E2-AA59-F23C91AEC05E",
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
-    
+
     // V1 out LONG - notify (stores responses like voltage)
     pProxyNotifyLongChar = pProxyService->createCharacteristic(
         "92A0B4E0-9E05-11E2-AA59-F23C91AEC05E",
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
-    
+
     // Client write SHORT - primary command input
     pProxyWriteChar = pProxyService->createCharacteristic(
         "92A0B6D4-9E05-11E2-AA59-F23C91AEC05E",
         NIMBLE_PROPERTY::WRITE_NR
     );
-    
+
     // Client write LONG
     NimBLECharacteristic* pWriteLong = pProxyService->createCharacteristic(
         "92A0B8D2-9E05-11E2-AA59-F23C91AEC05E",
         NIMBLE_PROPERTY::WRITE_NR
     );
-    
+
     // Additional notify characteristic
     [[maybe_unused]] NimBLECharacteristic* pNotifyAlt = pProxyService->createCharacteristic(
         "92A0BCE0-9E05-11E2-AA59-F23C91AEC05E",
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
-    
+
     // Alternate write with response
     NimBLECharacteristic* pWriteAlt = pProxyService->createCharacteristic(
         "92A0BAD4-9E05-11E2-AA59-F23C91AEC05E",
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
-    
+
     // 4. Set characteristic callbacks - all write chars forward to V1
     pProxyWriteCallbacks.reset(new ProxyWriteCallbacks(this));
     pProxyWriteChar->setCallbacks(pProxyWriteCallbacks.get());
     pWriteLong->setCallbacks(pProxyWriteCallbacks.get());
     pWriteAlt->setCallbacks(pProxyWriteCallbacks.get());
-    
+
     // 5. Start service
     pProxyService->start();
-    
+
     // 6. Set server callbacks AFTER service start (Kenny's order - critical!)
     pProxyServerCallbacks.reset(new ProxyServerCallbacks(this));
     pServer->setCallbacks(pProxyServerCallbacks.get());
-    
+
     // Configure advertising data with improved Android compatibility
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
     NimBLEAdvertisementData advData;
     NimBLEAdvertisementData scanRespData;
-    
+
     // CRITICAL: Set flags to indicate BLE-only device (0x06 = LE General Discoverable + BR/EDR Not Supported)
     // Without this flag, some Android devices (Motorola G series) may cache the device as "DUAL" (type 3)
     // and attempt BR/EDR connections which fail with GATT_ERROR 133
     advData.setFlags(0x06);
-    
+
     // Include service UUID in advertising data (required for app discovery)
     advData.setCompleteServices(pProxyService->getUUID());
     advData.setAppearance(0x0C80);  // Generic tag appearance
-    
+
     // Put name in both adv data AND scan response for broader compatibility
     // Some Android devices (especially older Motorola) only read one or the other
     advData.setName(deviceName);
     scanRespData.setName(deviceName);
-    
+
     pAdvertising->setAdvertisementData(advData);
     pAdvertising->setScanResponseData(scanRespData);
-    
+
     // Advertising interval: 50-100ms is optimal for Android discovery
     // Some devices (Motorola G series) have trouble with faster intervals
     pAdvertising->setMinInterval(0x50);   // 50ms in 0.625ms units = ~50ms
     pAdvertising->setMaxInterval(0xA0);   // 100ms in 0.625ms units = ~100ms
-    
+
     // Start/stop advertising to initialize the stack cleanly before scanning
     pAdvertising->start();
     delay(25);
@@ -412,7 +412,7 @@ bool V1BLEClient::initProxyServer(const char* deviceName) {
 }
 
 bool V1BLEClient::isProxyAdvertising() const {
-    return proxyEnabled && proxyServerInitialized && 
+    return proxyEnabled && proxyServerInitialized &&
            NimBLEDevice::getAdvertising()->isAdvertising();
 }
 
@@ -465,7 +465,7 @@ void V1BLEClient::startProxyAdvertising(uint8_t reasonCode, bool ignoreWifiPrior
     }
 
     const uint32_t startUs = micros();
-    
+
     // Don't restart if client already connected
     if (pServer->getConnectedCount() > 0) {
         Serial.println("Proxy client already connected, not restarting advertising");
@@ -473,7 +473,7 @@ void V1BLEClient::startProxyAdvertising(uint8_t reasonCode, bool ignoreWifiPrior
         perfRecordBleProxyStartUs(micros() - startUs);
         return;
     }
-    
+
     // Start advertising if not already (simple approach, no task needed)
     if (!NimBLEDevice::getAdvertising()->isAdvertising()) {
         if (NimBLEDevice::startAdvertising()) {
@@ -495,19 +495,19 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
     if (!proxyEnabled || !proxyClientConnected) {
         return;
     }
-    
+
     // Validate packet size
     if (length == 0 || length > PROXY_PACKET_MAX) {
         return;
     }
-    
+
     // Protect queue operations from concurrent access (BLE callback vs main loop)
     if (bleNotifyMutex && xSemaphoreTake(bleNotifyMutex, 0) != pdTRUE) {
         // Queue busy – drop to avoid blocking in callback path
         proxyMetrics.dropCount++;
         return;
     }
-    
+
     // Queue packet for async send (non-blocking)
     // Use simple ring buffer with drop-oldest backpressure
     if (proxyQueueCount >= PROXY_QUEUE_SIZE) {
@@ -516,7 +516,7 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
         proxyQueueCount--;
         proxyMetrics.dropCount++;
     }
-    
+
     // Add packet to queue
     ProxyPacket& pkt = proxyQueue[proxyQueueHead];
     memcpy(pkt.data, data, length);
@@ -525,7 +525,7 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
     pkt.tsMs = millis();
     proxyQueueHead = (proxyQueueHead + 1) % PROXY_QUEUE_SIZE;
     proxyQueueCount++;
-    
+
     // Track high water mark
     if (proxyQueueCount > proxyMetrics.queueHighWater) {
         proxyMetrics.queueHighWater = proxyQueueCount;
@@ -541,15 +541,15 @@ int V1BLEClient::processProxyQueue() {
     if (!proxyEnabled || !proxyClientConnected || proxyQueueCount == 0) {
         return 0;
     }
-    
+
     // HOT PATH: try-lock only, skip if busy (another iteration will process)
     SemaphoreGuard lock(bleNotifyMutex, 0);
     if (!lock.locked()) {
         return 0;  // Skip this cycle, try again next loop (counter incremented in SemaphoreGuard)
     }
-    
+
     int sent = 0;
-    
+
     // Process all queued packets (typically 1-2)
     while (proxyQueueCount > 0) {
         ProxyPacket& pkt = proxyQueue[proxyQueueTail];
@@ -573,11 +573,11 @@ int V1BLEClient::processProxyQueue() {
                 proxyMetrics.errorCount++;
             }
         }
-        
+
         proxyQueueTail = (proxyQueueTail + 1) % PROXY_QUEUE_SIZE;
         proxyQueueCount--;
     }
-    
+
     return sent;
 }
 

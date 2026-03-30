@@ -3,7 +3,7 @@
  *
  * The V1G2 packets are framed with 0xAA ... 0xAB. Packet ID lives at byte 3,
  * payload begins at byte 5 (after dest/src/id/len).
- * 
+ *
  * Protocol reference: v1g2-t4s3 (Kenny's original ESP32/T4 implementation)
  * This code maintains compatibility with the original Valentine Research protocol.
  * Packet IDs: 0x31 = display/update, 0x43 = alert table entries.
@@ -43,7 +43,7 @@ BandArrowData processBandArrow(uint8_t v) {
 // Returns: character to display, hasDot = true if decimal point should show
 char decodeBogeyCounterByte(uint8_t bogeyImage, bool& hasDot) {
     hasDot = (bogeyImage & 0x80) != 0;  // Bit 7 = decimal point
-    
+
     switch (bogeyImage & 0x7F) {
         case 6:   return '1';
         case 7:   return '7';
@@ -121,7 +121,7 @@ bool PacketParser::parse(const uint8_t* data, size_t length) {
             return parseDisplayData(payload, payloadLen);
         case PACKET_ID_ALERT_DATA:
             return parseAlertData(payload, payloadLen);
-        
+
         // ACK responses from V1 to our commands - silently ignore
         case PACKET_ID_WRITE_USER_BYTES:    // 0x13 - ACK for profile write
             return true;  // Acknowledged, no further processing needed
@@ -141,7 +141,7 @@ bool PacketParser::parse(const uint8_t* data, size_t length) {
         case PACKET_ID_REQ_WRITE_VOLUME:    // 0x39 - ACK for volume change
         case PACKET_ID_RESP_USER_BYTES:     // 0x12 - User bytes response
             return true;  // Acknowledged, no further processing needed
-        
+
         case PACKET_ID_VERSION: {           // 0x01 - Version response
             // Parse V1 firmware version from response
             // Payload format: [reserved][versionID][major][minor][rev1][rev2][ctrl]
@@ -162,14 +162,14 @@ bool PacketParser::parse(const uint8_t* data, size_t length) {
                     char rev1 = static_cast<char>(payload[4]);
                     char rev2 = static_cast<char>(payload[5]);
                     char ctrl = static_cast<char>(payload[6]);
-                    
+
                     // Build version number: major * 10000 + minor * 1000 + rev1 * 100 + rev2 * 10 + ctrl
                     uint32_t version = static_cast<uint32_t>(major - '0') * 10000u +
                                        static_cast<uint32_t>(minor - '0') * 1000u +
                                        static_cast<uint32_t>(rev1 - '0') * 100u +
                                        static_cast<uint32_t>(rev2 - '0') * 10u +
                                        static_cast<uint32_t>(ctrl - '0');
-                    
+
                     displayState.v1FirmwareVersion = version;
                     displayState.hasV1Version = true;
                     Serial.printf("[PacketParser] V1 firmware version: %c.%c%c%c%c (v%lu)\n",
@@ -178,7 +178,7 @@ bool PacketParser::parse(const uint8_t* data, size_t length) {
             }
             return true;
         }
-            
+
         default:
             // Unknown packet - silently ignore in hot path
             return false;
@@ -212,7 +212,7 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     // payload[7] = auxData2 (volume: upper=main, lower=mute)
     // Bits in image1 but NOT in image2 = FLASHING
     // V1 hardware handles the actual blink animation internally - we must do the same
-    
+
     // Decode bogey counter byte - shows what V1's display shows (J, P, volume, etc.)
     uint8_t bogeyByte = payload[0];
     bool hasDot = false;
@@ -220,21 +220,21 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     displayState.bogeyCounterByte = bogeyByte;
     displayState.bogeyCounterChar = bogeyChar;
     displayState.bogeyCounterDot = hasDot;
-    
+
     uint8_t image1 = payload[3];
     uint8_t image2 = payload[4];
-    
+
     // band/arrow information from image1
     BandArrowData arrow = processBandArrow(image1);
     decodeMode(payload, length);
-    
+
     // Calculate flash bits: things that are ON (image1) but NOT steady (image2)
     // These bits should blink on our display
     uint8_t flashingBits = image1 & ~image2;
-    
+
     // Band flash bits (lower nibble): L=0x01, Ka=0x02, K=0x04, X=0x08
     displayState.bandFlashBits = flashingBits & 0x0F;
-    
+
     // Arrow flash bits (upper nibble): Front=0x20, Side=0x40, Rear=0x80
     displayState.flashBits = flashingBits & 0xE0;
 
@@ -252,7 +252,7 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     // Always trust display packet's mute flag - V1 logic mute shows here
     // even when individual alert entries don't have mute bit set
     displayState.muted = arrow.mute;
-    
+
     // Extract volume from auxData2 - in raw packet it's at data[12]
     // Since we stripped 5 bytes (header), it's payload[7]
     // mainVol = upper nibble, muteVol = lower nibble
@@ -261,13 +261,13 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
         displayState.mainVolume = (auxData2 & 0xF0) >> 4;
         displayState.muteVolume = auxData2 & 0x0F;
         displayState.hasVolumeData = true;  // Mark that we've received volume data
-        
+
         // Consider muted if mute flag is set OR if main volume is zero
         if (displayState.mainVolume == 0) {
             displayState.muted = true;
         }
     }
-    
+
     // V1 sends LED bar state directly in the display packet at payload[2]
     // This is the authoritative signal strength from V1's own display
     // Bitmap: 0x01=1bar, 0x03=2bars, 0x07=3bars, 0x0F=4bars, 0x1F=5bars, 0x3F=6bars
@@ -279,13 +279,13 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
 
     // AndroidESPLibrary2 treats display aux0 as status flags (soft mute/system/euro/display active),
     // not as a direct alert-table priority index. Priority selection is resolved from alert rows.
-    
+
     // If laser is detected via display data, set full signal bars
     // Laser alerts don't have granular strength - they're on/off
     if (arrow.laser) {
         displayState.signalBars = 6; // Full bars for laser
     }
-    
+
     return true;
 }
 

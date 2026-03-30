@@ -213,7 +213,7 @@ void V1Display::update(const DisplayState& state) {
     bool wasPersistedMode = persistedMode;
     persistedMode = false;  // Not in persisted mode
     const bool requestedTrackingReset = dirty.resetTracking;
-    
+
     // Don't process resting update if we're in Scanning mode - wait for showResting() to be called
     if (currentScreen == ScreenMode::Scanning) {
         return;
@@ -222,7 +222,7 @@ void V1Display::update(const DisplayState& state) {
     // Always use multi-alert layout positioning
     dirty.multiAlert = true;
     multiAlertMode = false;  // No cards to draw in resting state
-    
+
     // Check if profile flash period just expired (needs redraw to clear)
     bool inFlashPeriod = (millis() - profileChangedTime) < HIDE_TIMEOUT_MS;
     bool flashJustExpired = cache.restingWasInFlashPeriod && !inFlashPeriod;
@@ -232,12 +232,12 @@ void V1Display::update(const DisplayState& state) {
     uint8_t restingDebouncedBands = 0;
     const unsigned long BAND_GRACE_MS = 100;  // Reduced from 200ms for snappier response
     unsigned long now = millis();
-    
+
     if (state.activeBands & BAND_LASER) cache.restingBandLastSeen[0] = now;
     if (state.activeBands & BAND_KA)    cache.restingBandLastSeen[1] = now;
     if (state.activeBands & BAND_K)     cache.restingBandLastSeen[2] = now;
     if (state.activeBands & BAND_X)     cache.restingBandLastSeen[3] = now;
-    
+
     restingDebouncedBands = state.activeBands;
     if ((now - cache.restingBandLastSeen[0]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_LASER;
     if ((now - cache.restingBandLastSeen[1]) < BAND_GRACE_MS) restingDebouncedBands |= BAND_KA;
@@ -254,13 +254,13 @@ void V1Display::update(const DisplayState& state) {
         cache.resetRestingTracking();
         // Don't clear the flag here - let the alert update() clear it
     }
-    
+
     // Check if RSSI needs periodic refresh (every 2 seconds)
     bool rssiNeedsUpdate = shouldRefreshRssi(now);
-    
+
     // Check if transitioning from a non-resting visual mode.
     bool leavingLiveMode = (currentScreen == ScreenMode::Live);
-    
+
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
         cache.restingFirstUpdate ||
@@ -269,13 +269,13 @@ void V1Display::update(const DisplayState& state) {
         leavingLiveMode ||   // Force full redraw when alerts end (clear cards/frequency)
         restingDebouncedBands != cache.lastRestingDebouncedBands ||
         effectiveMuted != lastState.muted;
-    
+
     bool arrowsChanged = (state.arrows != cache.lastRestingArrows);
     bool signalBarsChanged = (state.signalBars != cache.lastRestingSignalBars);
     bool volumeChanged = (state.mainVolume != cache.lastRestingMainVol ||
                           state.muteVolume != cache.lastRestingMuteVol);
     bool bogeyCounterChanged = (state.bogeyCounterByte != cache.lastRestingBogeyByte);
-    
+
     // Check if volume zero warning needs a flashing redraw
     const bool bleContextFresh = hasFreshBleContext(now);
     bool currentProxyConnected = bleCtx_.proxyConnected;
@@ -285,11 +285,11 @@ void V1Display::update(const DisplayState& state) {
     } else if (volZeroWarn.needsFlashRedraw(volZero, currentProxyConnected, preQuietActive_, speedVolZeroActive_)) {
         needsFullRedraw = true;
     }
-    
+
     if (!needsFullRedraw && !arrowsChanged && !signalBarsChanged && !volumeChanged && !bogeyCounterChanged && !rssiNeedsUpdate) {
         return;
     }
-    
+
     if (!needsFullRedraw && (arrowsChanged || signalBarsChanged || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
         perfRecordDisplayRenderPath(PerfDisplayRenderPath::RestingIncremental);
         // Incremental update - only redraw what changed
@@ -356,7 +356,7 @@ void V1Display::update(const DisplayState& state) {
     cache.lastRestingMuteVol = state.muteVolume;
     cache.lastRestingBogeyByte = state.bogeyCounterByte;
     markRssiRefreshed(now);  // Reset RSSI timer on full redraw
-    
+
     uint32_t stageStartUs = micros();
     drawBaseFrame();
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::BaseFrame,
@@ -369,14 +369,14 @@ void V1Display::update(const DisplayState& state) {
                                       micros() - stageStartUs);
     drawBandIndicators(restingDebouncedBands, effectiveMuted);
     // BLE proxy status indicator
-    
+
     // Determine primary band for frequency and signal bar coloring
     Band primaryBand = BAND_NONE;
     if (restingDebouncedBands & BAND_LASER) primaryBand = BAND_LASER;
     else if (restingDebouncedBands & BAND_KA) primaryBand = BAND_KA;
     else if (restingDebouncedBands & BAND_K) primaryBand = BAND_K;
     else if (restingDebouncedBands & BAND_X) primaryBand = BAND_X;
-    
+
     // Volume-zero warning: 15s delay → 10s flashing "VOL 0" → acknowledge
     bool proxyConnected = bleCtx_.proxyConnected;
     bool showVolumeWarning = false;
@@ -386,7 +386,7 @@ void V1Display::update(const DisplayState& state) {
         showVolumeWarning = volZeroWarn.evaluate(
             volZero, proxyConnected, preQuietActive_, speedVolZeroActive_, play_vol0_beep);
     }
-    
+
     if (showVolumeWarning) {
         drawVolumeZeroWarning();
     } else {
@@ -412,7 +412,7 @@ void V1Display::update(const DisplayState& state) {
     drawProfileIndicator(currentProfileSlot);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::ArrowsIcons,
                                       micros() - stageStartUs);
-    
+
     // Clear any persisted card slots when entering resting state
     AlertData emptyPriority;
     stageStartUs = micros();
@@ -506,10 +506,10 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
         update(state);  // Fall back to normal resting display
         return;
     }
-    
+
     // Enable persisted mode so draw functions use PALETTE_PERSISTED instead of PALETTE_MUTED
     persistedMode = true;
-    
+
     if (currentScreen != ScreenMode::Persisted) {
         perfRecordDisplayScreenTransition(
             perfScreenForMode(currentScreen),
@@ -518,31 +518,31 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     }
     currentScreen = ScreenMode::Persisted;
     perfRecordDisplayRenderPath(persistedRenderPathForScenario());
-    
+
     // Always use multi-alert layout positioning
     dirty.multiAlert = true;
     multiAlertMode = false;  // No cards to draw
     wasInMultiAlertMode = false;
-    
+
     uint32_t stageStartUs = micros();
     drawBaseFrame();
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::BaseFrame,
                                       micros() - stageStartUs);
-    
+
     // Bogey counter shows V1's decoded display - NOT greyed, always visible
     char topChar = state.bogeyCounterChar;
     stageStartUs = micros();
     drawStatusStrip(state, topChar, false, state.bogeyCounterDot);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::StatusStrip,
                                       micros() - stageStartUs);
-    
+
     // Band indicator in persisted color
     uint8_t bandMask = alert.band;
     stageStartUs = micros();
     drawBandIndicators(bandMask, true);  // muted=true triggers PALETTE_MUTED_OR_PERSISTED
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::BandsBars,
                                       micros() - stageStartUs);
-    
+
     // Frequency in persisted color (pass muted=true)
     const bool isPhotoRadar =
         (alert.photoType != 0) ||
@@ -552,17 +552,17 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     drawFrequency(alert.frequency, alert.band, true, isPhotoRadar);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::Frequency,
                                       micros() - stageStartUs);
-    
+
     // No signal bars - just draw empty
     stageStartUs = micros();
     drawVerticalSignalBars(0, 0, alert.band, true);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::BandsBars,
                                       micros() - stageStartUs);
-    
+
     // Arrows in dark grey
     stageStartUs = micros();
     drawDirectionArrow(alert.direction, true);  // muted=true for grey
-    
+
     // No mute badge
     // drawMuteIcon intentionally skipped
 
@@ -570,7 +570,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     drawProfileIndicator(currentProfileSlot);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::ArrowsIcons,
                                       micros() - stageStartUs);
-    
+
     // Clear card area AND expire all tracked card slots (no cards during persisted state)
     // This prevents stale cards from reappearing when returning to live alerts
     AlertData emptyPriority;
@@ -606,7 +606,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // Track screen mode transitions - force redraw when entering live mode from resting/scanning
     bool enteringLiveMode = (currentScreen != ScreenMode::Live);
     if (enteringLiveMode) {
-        DISPLAY_LOG("[DISP] Entering Live mode (was %d), alertCount=%d\n", 
+        DISPLAY_LOG("[DISP] Entering Live mode (was %d), alertCount=%d\n",
                     (int)currentScreen, alertCount);
         perfRecordDisplayScreenTransition(
             perfScreenForMode(currentScreen),
@@ -624,22 +624,22 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
 
     char liveTopCounterChar = state.bogeyCounterChar;
     bool liveTopCounterDot = state.bogeyCounterDot;
-    
+
     // Check if reset was requested (e.g., on V1 disconnect)
     if (dirty.resetTracking) {
         cache.resetLiveTracking();
         dirty.resetTracking = false;
     }
-    
+
     bool needsRedraw = false;
-    
+
     // Frequency tolerance for V1 jitter (V1 can report ±1-3 MHz variation between packets)
     const uint32_t FREQ_TOLERANCE_MHZ = 5;
     auto freqDifferent = [FREQ_TOLERANCE_MHZ](uint32_t a, uint32_t b) -> bool {
         uint32_t diff = (a > b) ? (a - b) : (b - a);
         return diff > FREQ_TOLERANCE_MHZ;
     };
-    
+
     // Always redraw on first run, entering live mode, or when transitioning from persisted mode
     if (cache.liveFirstRun) { needsRedraw = true; cache.liveFirstRun = false; }
     else if (enteringLiveMode) { needsRedraw = true; }
@@ -649,7 +649,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     else if (priority.band != cache.liveLastPriority.band) { needsRedraw = true; }
     else if (state.muted != cache.liveLastMultiState.muted) { needsRedraw = true; }
     // Note: bogey counter changes are handled via incremental update (bogeyCounterChanged) for rapid response
-    
+
     // Also check if any secondary alert changed (set-based, not order-based)
     // V1 may reorder alerts by signal strength - we only care if the SET of alerts changed
     bool secondarySetChanged = false;
@@ -689,7 +689,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             }
         }
     }
-    
+
     // Track arrow, signal bar, and band changes separately for incremental update
     // Arrow display depends on per-profile priorityArrowOnly setting
     // When priorityArrowOnly is enabled, still respect V1's arrow blinking by masking with state.arrows
@@ -709,11 +709,11 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     // Volume tracking
     bool volumeChanged =
         (state.mainVolume != cache.liveLastMainVol || state.muteVolume != cache.liveLastMuteVol);
-    
+
     // Check if RSSI needs periodic refresh (every 2 seconds)
     unsigned long now = millis();
     bool rssiNeedsUpdate = shouldRefreshRssi(now);
-    
+
     // Force periodic redraw when something is flashing (for blink animation)
     // Check if any arrows or bands are marked as flashing
     bool hasFlashing = (state.flashBits != 0) || (state.bandFlashBits != 0);
@@ -724,7 +724,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             cache.liveLastFlashRedraw = now;
         }
     }
-    
+
     // Frequency-only change: no fillScreen or full subphase redraw needed.
     // drawFrequency() self-clears its bounding box so no ghost pixels.
     const bool freqOnlyChanged = !needsRedraw &&
@@ -742,7 +742,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         }
         return;
     }
-    
+
     if (!needsRedraw && (freqOnlyChanged || arrowsChanged || signalBarsChanged || bandsChanged || needsFlashUpdate || volumeChanged || bogeyCounterChanged || rssiNeedsUpdate)) {
         perfRecordDisplayRenderPath(PerfDisplayRenderPath::Incremental);
         // Incremental update without full redraw — only redraw changed elements.
@@ -829,7 +829,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     for (int i = 0; i < PacketParser::MAX_ALERTS; i++) {
         cache.liveLastSecondary[i] = (i < alertCount) ? allAlerts[i] : AlertData();
     }
-    
+
     DISP_PERF_START();
     uint32_t stageStartUs = micros();
     drawBaseFrame();
@@ -839,14 +839,14 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
 
     // V1 is source of truth - use activeBands directly (allows blinking)
     uint8_t bandMask = state.activeBands;
-    
+
     // Bogey counter - use V1's decoded byte (shows J=Junk, P=Photo, volume, etc.)
     stageStartUs = micros();
     drawStatusStrip(state, liveTopCounterChar, state.muted, liveTopCounterDot);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::StatusStrip,
                                       micros() - stageStartUs);
     DISP_PERF_LOG("counters+vol");
-    
+
     // Main alert display (frequency, bands, arrows, signal bars)
     // Use state.signalBars which is the MAX across ALL alerts (calculated in packet_parser)
     const bool isPhotoRadar =
@@ -864,7 +864,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::BandsBars,
                                       micros() - stageStartUs);
     DISP_PERF_LOG("bands+bars");
-    
+
     // Arrow display: use priority arrow only if setting enabled, otherwise all V1 arrows
     // (arrowsToShow already computed above for change detection)
     stageStartUs = micros();
@@ -877,17 +877,17 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::ArrowsIcons,
                                       micros() - stageStartUs);
     DISP_PERF_LOG("arrows+icons");
-    
+
     // Force card redraw since drawBaseFrame cleared the screen
     dirty.cards = true;
-    
+
     // Draw secondary alert cards at bottom
     stageStartUs = micros();
     drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::Cards,
                                       micros() - stageStartUs);
     DISP_PERF_LOG("cards");
-    
+
     // Keep dirty.multiAlert true while in multi-alert - only reset when going to single-alert mode
 
     stageStartUs = micros();

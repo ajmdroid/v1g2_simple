@@ -2,13 +2,13 @@
 
 /**
  * VolumeFadeModule - V1 volume fade logic
- * 
+ *
  * Responsibilities:
  * - Track when alert starts (for fade delay)
  * - Decide when to fade volume down
  * - Track original volume for restoration
  * - Decide when to restore volume
- * 
+ *
  * Does NOT:
  * - Send BLE commands (returns action for main to execute)
  */
@@ -29,8 +29,8 @@ struct VolumeFadeContext {
     uint8_t currentMuteVolume;  // Current V1 mute volume
     uint16_t currentFrequency;  // Current priority frequency (MHz*10) for dedup
     unsigned long now;          // Current timestamp
-    
-    VolumeFadeContext() : 
+
+    VolumeFadeContext() :
         hasAlert(false), alertMuted(false), alertSuppressed(false),
         currentVolume(0), currentMuteVolume(0), currentFrequency(0),
         now(0) {}
@@ -45,17 +45,17 @@ struct VolumeFadeAction {
         FADE_DOWN,      // Reduce volume
         RESTORE         // Restore original volume
     };
-    
+
     Type type = Type::NONE;
     uint8_t targetVolume;       // Volume to set (FADE_DOWN)
     uint8_t targetMuteVolume;   // Mute volume to set (FADE_DOWN)
     uint8_t restoreVolume;      // Volume to restore to (RESTORE)
     uint8_t restoreMuteVolume;  // Mute volume to restore to (RESTORE)
-    
-    VolumeFadeAction() : 
+
+    VolumeFadeAction() :
         type(Type::NONE), targetVolume(0), targetMuteVolume(0),
         restoreVolume(0), restoreMuteVolume(0) {}
-    
+
     bool hasAction() const { return type != Type::NONE; }
 };
 
@@ -65,9 +65,9 @@ struct VolumeFadeAction {
 class VolumeFadeModule {
 public:
     VolumeFadeModule();
-    
+
     void begin(SettingsManager* settings);
-    
+
     // Main decision method
     VolumeFadeAction process(const VolumeFadeContext& ctx);
 
@@ -76,11 +76,11 @@ public:
     /// echoes back the true volume, VolumeFade uses this hint instead of
     /// the stale DisplayState value.  Cleared after first use or 1.5 s.
     void setBaselineHint(uint8_t mainVol, uint8_t muteVol, uint32_t nowMs);
-    
+
 private:
     void reset();
     SettingsManager* settings;
-    
+
     // Tracking state
     unsigned long alertStartMs;
     uint8_t originalVolume;

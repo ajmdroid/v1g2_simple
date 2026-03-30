@@ -1,18 +1,18 @@
 /**
  * Display Driver for V1 Gen2 Radar Detector Interface
  * Target: Waveshare ESP32-S3-Touch-LCD-3.49 (172x640 AMOLED, AXS15231B)
- * 
+ *
  * Features:
  * - Multiple color themes (Standard/HighContrast/Stealth/Business)
  * - Custom 7-segment and 14-segment displays
  * - Live alert visualization with signal bars
  * - Status indicators (WiFi, BLE proxy, mute)
- * 
+ *
  * Display Modes:
  * - Idle/Resting: Logo or blank screen
  * - Alert: Frequency, band, signal strength, direction
  * - Status: Connection info, bogey count
- * 
+ *
  * Threading: All draw operations must be called from main thread
  * Display updates throttled to ~10 FPS max for performance
  *
@@ -40,10 +40,10 @@ class V1Display {
 public:
     V1Display();
     ~V1Display();
-    
+
     // Initialize display
     bool begin();
-    
+
     // Update display with current state
     void update(const DisplayState& state);
     // Multi-alert display: shows priority alert + secondary alert cards
@@ -53,7 +53,7 @@ public:
     void refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);
     // Lightweight secondary cards-only refresh (minimal redraw)
     void refreshSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);
-    
+
     // Persisted alert display (shows last alert in dark grey after V1 clears it)
     void updatePersisted(const AlertData& alert, const DisplayState& state);
 
@@ -64,10 +64,10 @@ public:
     void showDisconnected();
     void showResting(bool forceRedraw = false); // idle/rest screen
     void showScanning(); // scanning screen (like resting but with SCAN text)
-    
+
     // Force next update() call to fully redraw (use after settings change)
     void forceNextRedraw();
-    
+
     // Reset singleton-scoped render tracking (call on V1 disconnect to ensure
     // the single production display path reconnects with a clean redraw state).
     static void resetChangeTracking();
@@ -75,32 +75,32 @@ public:
     void showBootSplash();
     void showShutdown();       // Shutdown screen with goodbye message
     void showLowBattery();     // Critical low battery warning
-    
+
     // Set brightness (0-255)
     void setBrightness(uint8_t level);
-    
+
     // Settings adjustment overlay (brightness + voice volume)
     void showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel); // Show both sliders
     void updateSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel, int activeSlider);  // Update both sliders
     void hideBrightnessSlider();                                           // Hide slider and restore display
     int getActiveSliderFromTouch(int16_t touchY);                          // Returns 0=brightness, 1=volume, -1=none
-    
+
     // Clear screen
     void clear();
-    
+
     // Utility
     const char* bandToString(Band band);
     uint16_t getBandColor(Band band);
 
-    
+
     // Color theme helpers
     void updateColorTheme();  // Update colors from settings
     const ColorPalette& getCurrentPalette() const { return currentPalette; }
-    
+
     // Profile indicator
     void drawProfileIndicator(int slot);  // 0=Default, 1=Highway, 2=Comfort
     void setProfileIndicatorSlot(int slot);
-    
+
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();
 
@@ -127,12 +127,12 @@ public:
     // BLE proxy indicator (blue = advertising/no client, green = client connected)
     // receivingData dims the icon when connected but no V1 packets received recently
     void setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool receivingData = true);
-    
+
     // WiFi indicator (shows when connected to STA network)
     void drawWiFiIndicator();
     void refreshObdIndicator(uint32_t nowMs);
     void setObdAttention(bool attention);
-    
+
     // Flush canvas to physical display
     void flush();
     void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h);  // Partial flush to reduce SPI traffic
@@ -148,10 +148,10 @@ private:
 
     DisplayState lastState;
     AlertData lastAlert;
-    
+
     // Color palette
     ColorPalette currentPalette;  // Store current theme palette
-    
+
     // Drawing helpers
     void drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits = 0);
 
@@ -198,7 +198,7 @@ private:
     void draw14SegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor);
     int draw14SegmentText(const char* text, int x, int y, float scale, uint16_t onColor, uint16_t offColor);
 
-    
+
     // Multi-alert card row
     void drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);
     // Use centralized constant from display_layout.h
@@ -209,7 +209,7 @@ private:
     uint32_t paletteRevision = 0;                    // Incremented on theme change to trigger redraws
     uint32_t lastRestingPaletteRevision = 0;         // Palette revision last used for resting screen
     int lastRestingProfileSlot = -1;                 // Last profile shown on resting screen
-    
+
     // Visibility timeout tracking
     unsigned long wifiConnectedTime = 0;    // When WiFi became connected
     unsigned long profileChangedTime = 0;   // When profile was last changed
@@ -241,7 +241,7 @@ private:
     bool obdAttention_ = false;            // Temporary UI hold-time attention
     DisplayBleContext bleCtx_;              // BLE state snapshot for display DI
     uint32_t bleCtxUpdatedAtMs_ = 0;        // When setBleContext() last refreshed bleCtx_
-    
+
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 
 #ifdef UNIT_TEST

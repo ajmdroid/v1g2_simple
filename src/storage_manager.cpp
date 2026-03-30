@@ -1,6 +1,6 @@
 /**
  * Storage Manager implementation
- * 
+ *
  * Mounts SD card (SDMMC) or falls back to LittleFS.
  */
 
@@ -28,7 +28,7 @@ bool StorageManager::begin() {
 #if defined(DISPLAY_WAVESHARE_349)
     // Try SD_MMC first on Waveshare 3.49
     Serial.println("[Storage] Attempting SD_MMC mount...");
-    
+
     bool pinsSet = SD_MMC.setPins(SD_MMC_CLK_PIN, SD_MMC_CMD_PIN, SD_MMC_D0_PIN);
     if (!pinsSet) {
         Serial.println("[Storage] SD_MMC.setPins() failed");
@@ -38,7 +38,7 @@ bool StorageManager::begin() {
         usingSDMMC = true;
         uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
         Serial.printf("[Storage] SD card mounted (%lluMB)\n", cardSize);
-        
+
         // Also mount LittleFS as secondary for backups
         // Use begin(false) to avoid auto-formatting existing data on transient errors
         littlefsReady = LittleFS.begin(false, "/littlefs", 10, "storage");

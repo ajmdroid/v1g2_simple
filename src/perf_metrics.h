@@ -1,22 +1,22 @@
 /**
  * Low-Overhead Performance Metrics (Channel A: flight recorder)
- * 
+ *
  * TWO-CHANNEL LOGGING ARCHITECTURE:
  * - Channel A (this file): Always-on numeric counters. RED ZONE SAFE.
  *   Counters only, no strings, no heap, no locks, no I/O.
  *   Emitted periodically from safe zone (once per second max).
- * 
+ *
  * RED ZONE SAFE MACROS (use these everywhere):
  *   PERF_INC(counter)        - Atomic increment, zero overhead
  *   PERF_MAX(counter, value) - Atomic max update, zero overhead
- * 
+ *
  * Design principles:
  * - No heap allocations
  * - No logging in hot paths
  * - Counters/timestamps stored in RAM (std::atomic)
  * - Sampled timing (1/N packets) to reduce overhead
  * - Compile-time gating via PERF_METRICS for extended stats
- * 
+ *
  * Usage:
  * - PERF_METRICS=0: Release builds, only essential counters
  * - PERF_METRICS=1: Debug builds, sampled timing + periodic reports
@@ -83,7 +83,7 @@ struct PerfCounters {
     std::atomic<uint32_t> perfSdHeaderFail{0}; // Perf SD CSV header write failures
     std::atomic<uint32_t> perfSdMarkerFail{0}; // Perf SD session marker write failures
     std::atomic<uint32_t> perfSdWriteFail{0};  // Perf SD data line write failures
-    
+
     // Connection
     std::atomic<uint32_t> reconnects{0};       // BLE reconnection count
     std::atomic<uint32_t> disconnects{0};      // BLE disconnection count
@@ -98,7 +98,7 @@ struct PerfCounters {
     std::atomic<uint32_t> bleScanTargetFound{0}; // SCANNING->SCAN_STOPPING due to target found
     std::atomic<uint32_t> bleScanNoTargetExits{0}; // SCANNING->DISCONNECTED without target
     std::atomic<uint32_t> bleScanDwellMaxMs{0}; // max SCANNING state dwell duration
-    
+
     // Display
     std::atomic<uint32_t> displayUpdates{0};   // Frames drawn
     std::atomic<uint32_t> displaySkips{0};     // Updates skipped (throttled)
@@ -194,11 +194,11 @@ struct PerfCounters {
     // Lockout signal observation SD logger
     std::atomic<uint32_t> sigObsQueueDrops{0};      // Signal observation SD queue full drops
     std::atomic<uint32_t> sigObsWriteFail{0};       // Signal observation SD write failures
-    
+
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
     std::atomic<uint32_t> lastFlushUs{0};      // Timestamp of last flush
-    
+
     void reset() {
         rxPackets.store(0, std::memory_order_relaxed);
         rxBytes.store(0, std::memory_order_relaxed);
@@ -808,12 +808,12 @@ struct PerfLatency {
     std::atomic<uint32_t> maxUs{0};
     std::atomic<uint64_t> totalUs{0};
     std::atomic<uint32_t> sampleCount{0};
-    
+
     // Per-stage breakdown (for debugging bottlenecks)
     std::atomic<uint32_t> notifyToQueueUs{0};    // notify callback → queue send
     std::atomic<uint32_t> queueToParseUs{0};     // queue receive → parse done
     std::atomic<uint32_t> parseToFlushUs{0};     // parse done → display flush
-    
+
     void reset() {
         minUs.store(UINT32_MAX, std::memory_order_relaxed);
         maxUs.store(0, std::memory_order_relaxed);
@@ -823,7 +823,7 @@ struct PerfLatency {
         queueToParseUs.store(0, std::memory_order_relaxed);
         parseToFlushUs.store(0, std::memory_order_relaxed);
     }
-    
+
     uint32_t avgUs() const {
         uint32_t count = sampleCount.load(std::memory_order_relaxed);
         return count > 0 ? static_cast<uint32_t>(totalUs.load(std::memory_order_relaxed) / count) : 0;

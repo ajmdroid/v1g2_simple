@@ -37,28 +37,28 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     // Center two cards in available space
     const int totalCardsWidth = cardW * 2 + cardSpacing;  // 300px
     const int startX = leftMargin + (availableWidth - totalCardsWidth) / 2;  // Center offset
-    
+
     // Get persistence time from profile settings (same as main alert persistence)
     const V1Settings& settings = settingsManager.get();
     uint8_t persistSec = settingsManager.getSlotAlertPersistSec(settings.activeSlot);
     unsigned long gracePeriodMs = persistSec * 1000UL;
-    
+
     // If persistence is disabled (0), cards disappear immediately
     if (gracePeriodMs == 0) {
         gracePeriodMs = 1;  // Minimum 1ms so expiration logic works
     }
-    
+
     unsigned long now = millis();
-    
+
     // Static card slots for persistence tracking
     static struct {
         AlertData alert{};
         unsigned long lastSeen = 0;  // 0 = empty slot
     } cards[2];
-    
+
     // Track previous priority to add as persisted card when it disappears
     static AlertData lastPriorityForCards;
-    
+
     // Track what was drawn at each POSITION (0 or 1) for incremental updates
     static struct {
         // V1 card state
@@ -70,7 +70,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         uint8_t bars = 0;           // Signal strength bars (0-6)
     } lastDrawnPositions[2];
     [[maybe_unused]] static int lastDrawnCount = 0;
-    
+
     // Track profile changes - clear cards when profile rotates
     static int lastCardProfileSlot = -1;
     if (settings.activeSlot != lastCardProfileSlot) {
@@ -86,7 +86,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         lastDrawnCount = 0;
         lastPriorityForCards = AlertData();
     }
-    
+
     // If called with nullptr alerts and count 0, clear V1 card state
     if (alerts == nullptr && alertCount == 0) {
         for (int c = 0; c < 2; c++) {
@@ -94,7 +94,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             cards[c].lastSeen = 0;
         }
         lastPriorityForCards = AlertData();
-        
+
         // Clear the card area
         [[maybe_unused]] const int signalBarsX = SCREEN_WIDTH - 200 - 2;
         const int clearWidth = signalBarsX - startX;
@@ -108,7 +108,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         lastDrawnCount = 0;
         return;
     }
-    
+
     // Helper: check if two alerts match (same band + frequency within tolerance)
     // V1 frequency can jitter by a few MHz between frames - use ±5 MHz tolerance
     auto alertsMatch = [](const AlertData& a, const AlertData& b) -> bool {
@@ -119,19 +119,19 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         uint32_t diff = (a.frequency > b.frequency) ? (a.frequency - b.frequency) : (b.frequency - a.frequency);
         return diff <= FREQ_TOLERANCE_MHZ;
     };
-    
+
     // Helper: check if alert matches priority (returns false if priority is invalid)
     auto isSameAsPriority = [&priority, &alertsMatch](const AlertData& a) -> bool {
         if (!priority.isValid || priority.band == BAND_NONE) return false;
         return alertsMatch(a, priority);
     };
-    
+
     // Step 0: Check if priority changed - add old priority as persisted card
     // This handles the case where laser takes priority, then stops - laser should persist as card
     if (lastPriorityForCards.isValid && lastPriorityForCards.band != BAND_NONE) {
         bool priorityChanged = !alertsMatch(lastPriorityForCards, priority);
         bool oldPriorityGone = true;
-        
+
         // Check if old priority is still in current alerts
         if (alerts != nullptr) {
             for (int i = 0; i < alertCount; i++) {
@@ -141,7 +141,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                 }
             }
         }
-        
+
         // If old priority is gone (not just demoted), add it as persisted card
         if (priorityChanged && oldPriorityGone) {
             // Check if already tracked
@@ -152,7 +152,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                     break;
                 }
             }
-            
+
             // Add to empty slot if not already tracked
             if (!found) {
                 for (int c = 0; c < 2; c++) {
@@ -165,14 +165,14 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             }
         }
     }
-    
+
     // Update last priority tracking
     lastPriorityForCards = priority;
-    
+
     // Step 1: Update existing slots - refresh timestamp if alert still exists
     for (int c = 0; c < 2; c++) {
         if (cards[c].lastSeen == 0) continue;
-        
+
         bool stillExists = false;
         if (alerts != nullptr) {
             for (int i = 0; i < alertCount; i++) {
@@ -184,7 +184,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                 }
             }
         }
-        
+
         // Expire if past grace period
         if (!stillExists) {
             unsigned long age = now - cards[c].lastSeen;
@@ -194,14 +194,14 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             }
         }
     }
-    
+
     // Step 2: Add new non-priority alerts to empty slots
     // Skip priority alert - it's shown in the main display, not as a card
     if (alerts != nullptr) {
         for (int i = 0; i < alertCount; i++) {
             if (!alerts[i].isValid || alerts[i].band == BAND_NONE) continue;
             if (isSameAsPriority(alerts[i])) continue;  // Skip priority - don't waste a card slot
-            
+
             // Check if already tracked
             bool found = false;
             for (int c = 0; c < 2; c++) {
@@ -210,7 +210,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                     break;
                 }
             }
-            
+
             if (!found) {
                 // Find empty slot
                 for (int c = 0; c < 2; c++) {
@@ -223,17 +223,17 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             }
         }
     }
-    
+
     // For debug logging if needed
     [[maybe_unused]] bool doDebug = false;
-    
+
     // Helper: get signal bars for an alert based on direction
     auto getAlertBars = [](const AlertData& a) -> uint8_t {
         if (a.direction & DIR_FRONT) return a.frontStrength;
         if (a.direction & DIR_REAR) return a.rearStrength;
         return (a.frontStrength > a.rearStrength) ? a.frontStrength : a.rearStrength;
     };
-    
+
     // Build list of cards to draw this frame (V1 alerts only)
     struct CardToDraw {
         int slot;           // V1 card slot index
@@ -241,7 +241,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         uint8_t bars;       // Signal strength for V1 cards
     } cardsToDraw[2];
     int cardsToDrawCount = 0;
-    
+
     // Add V1 secondary alerts
     for (int c = 0; c < 2 && cardsToDrawCount < 2; c++) {
         if (cards[c].lastSeen == 0) continue;
@@ -261,31 +261,31 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         cardsToDraw[cardsToDrawCount].isGraced = !isLive;
         cardsToDrawCount++;
     }
-    
+
     // === INCREMENTAL UPDATE LOGIC ===
     // Instead of clearing all cards and redrawing, check each position independently
-    
+
     // Capture dirty.cards before resetting (need it for redraw checks)
     bool doForceRedraw = dirty.cards;
     dirty.cards = false;  // Reset the force flag
-    
+
     // Helper to check if position needs full redraw vs just update
     auto positionNeedsFullRedraw = [&](int pos) -> bool {
         if (pos >= cardsToDrawCount) {
             // Position now empty but had content - needs clear
             return lastDrawnPositions[pos].band != BAND_NONE;
         }
-        
+
         auto& last = lastDrawnPositions[pos];
         auto& curr = cardsToDraw[pos];
-        
+
         // V1 card - check if band/freq/direction changed (needs full card redraw)
         // Use frequency tolerance (±5 MHz) to handle V1 jitter
         const uint32_t FREQ_TOLERANCE_MHZ = 5;
         int slot = curr.slot;
         if (cards[slot].alert.band != last.band) return true;
-        uint32_t freqDiff = (cards[slot].alert.frequency > last.frequency) 
-            ? (cards[slot].alert.frequency - last.frequency) 
+        uint32_t freqDiff = (cards[slot].alert.frequency > last.frequency)
+            ? (cards[slot].alert.frequency - last.frequency)
             : (last.frequency - cards[slot].alert.frequency);
         if (freqDiff > FREQ_TOLERANCE_MHZ) return true;
         if (cards[slot].alert.direction != last.direction) return true;
@@ -293,28 +293,28 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         if (muted != last.wasMuted) return true;
         return false;
     };
-    
+
     // Helper to check if position needs dynamic update (bars only)
     auto positionNeedsDynamicUpdate = [&](int pos) -> bool {
         if (pos >= cardsToDrawCount) return false;
-        
+
         auto& last = lastDrawnPositions[pos];
         auto& curr = cardsToDraw[pos];
-        
+
         // V1 card - check signal bars
         if (curr.bars != last.bars) return true;
         return false;
     };
-    
+
     [[maybe_unused]] const int signalBarsX = SCREEN_WIDTH - 200 - 2;
-    
+
     // Process each card position
     for (int i = 0; i < 2; i++) {
         int cardX = startX + i * (cardW + cardSpacing);
-        
+
         bool needsFullRedraw = positionNeedsFullRedraw(i) || doForceRedraw;
         bool needsDynamicUpdate = !needsFullRedraw && positionNeedsDynamicUpdate(i);
-        
+
         // Clear position if it's now empty
         if (i >= cardsToDrawCount) {
             if (lastDrawnPositions[i].band != BAND_NONE) {
@@ -324,23 +324,23 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             }
             continue;
         }
-        
+
         if (!needsFullRedraw && !needsDynamicUpdate) {
             continue;  // Skip this position - nothing changed
         }
         secondaryCardsRenderDirty_ = true;
-        
+
         // === V1 ALERT CARD ===
         int c = cardsToDraw[i].slot;
         const AlertData& alert = cards[c].alert;
         bool isGraced = cardsToDraw[i].isGraced;
         bool drawMuted = muted || isGraced;
         uint8_t bars = cardsToDraw[i].bars;
-        
+
         // Card background and border colors
         uint16_t bandCol = getBandColor(alert.band);
         uint16_t bgCol, borderCol;
-        
+
         if (isGraced) {
             bgCol = 0x2104;
             borderCol = PALETTE_MUTED;
@@ -354,18 +354,18 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             bgCol = (r << 11) | (g << 5) | b;
             borderCol = bandCol;
         }
-        
+
         uint16_t contentCol = (isGraced || drawMuted) ? PALETTE_MUTED : TFT_WHITE;
         uint16_t bandLabelCol = (isGraced || drawMuted) ? PALETTE_MUTED : bandCol;
-        
+
         if (needsFullRedraw) {
             // === FULL V1 CARD REDRAW ===
             FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
             DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, borderCol);
-            
+
             const int contentCenterY = cardY + 18;
             [[maybe_unused]] int topRowY = cardY + 11;
-            
+
             // Direction arrow
             int arrowX = cardX + 18;
             int arrowCY = contentCenterY;
@@ -376,7 +376,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             } else if (alert.direction & DIR_SIDE) {
                 FILL_RECT(arrowX - 6, arrowCY - 2, 12, 4, contentCol);
             }
-            
+
             // Band + frequency
             int labelX = cardX + 36;
             tft->setTextColor(bandLabelCol);
@@ -388,7 +388,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                 const char* bandStr = bandToString(alert.band);
                 tft->setCursor(labelX, topRowY);
                 tft->print(bandStr);
-                
+
                 tft->setTextColor(contentCol);
                 int freqX = labelX + strlen(bandStr) * 12 + 4;
                 tft->setCursor(freqX, topRowY);
@@ -400,7 +400,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                     tft->print("---");
                 }
             }
-            
+
             // Draw meter background
             const int meterY = cardY + 34;
             const int meterX = cardX + 10;
@@ -408,7 +408,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             const int meterH = 18;
             FILL_RECT(meterX, meterY, meterW, meterH, 0x1082);
         }
-        
+
         // Draw/update signal bars (always after full redraw, or on bars change)
         if (needsFullRedraw || needsDynamicUpdate) {
             const int meterY = cardY + 34;
@@ -418,22 +418,22 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             const int barCount = 6;
             const int barSpacing = 2;
             const int barWidth = (meterW - (barCount - 1) * barSpacing) / barCount;
-            
+
             // Clear meter area for bar update (not full redraw which already did it)
             if (!needsFullRedraw) {
                 FILL_RECT(meterX, meterY, meterW, meterH, 0x1082);
             }
-            
+
             uint16_t barColors[6] = {
                 settings.colorBar1, settings.colorBar2, settings.colorBar3,
                 settings.colorBar4, settings.colorBar5, settings.colorBar6
             };
-            
+
             for (int b = 0; b < barCount; b++) {
                 int barX = meterX + b * (barWidth + barSpacing);
                 int barH = 10;
                 int barY = meterY + (meterH - barH) / 2;
-                
+
                 if (b < bars) {
                     uint16_t fillColor = (isGraced || drawMuted) ? PALETTE_MUTED : barColors[b];
                     FILL_RECT(barX, barY, barWidth, barH, fillColor);
@@ -442,7 +442,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
                 }
             }
         }
-        
+
         // Update position tracking for V1 card
         lastDrawnPositions[i].band = alert.band;
         lastDrawnPositions[i].frequency = alert.frequency;
@@ -451,7 +451,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         lastDrawnPositions[i].wasMuted = muted;
         lastDrawnPositions[i].bars = bars;
     }
-    
+
     // Update global tracking
     lastDrawnCount = cardsToDrawCount;
 #endif
