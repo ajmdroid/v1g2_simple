@@ -3,22 +3,21 @@
 #include <WebServer.h>
 
 #include <cstdint>
-#include <functional>
 
 #include "../../settings.h"
 
 namespace WifiAudioApiService {
 
 struct Runtime {
-    std::function<const V1Settings&()> getSettings;
-    std::function<void(const AudioSettingsUpdate&)> applySettingsUpdate;
-    std::function<void(uint8_t)> setAudioVolume;
+    const V1Settings& (*getSettings)(void* ctx)                        = nullptr;
+    void              (*applySettingsUpdate)(const AudioSettingsUpdate&,
+                                            void* ctx)                 = nullptr;
+    void              (*setAudioVolume)(uint8_t volume, void* ctx)     = nullptr;
+    bool              (*checkRateLimit)(void* ctx)                     = nullptr;
+    void* ctx = nullptr;
 };
 
 void handleApiGet(WebServer& server, const Runtime& runtime);
-
-void handleApiSave(WebServer& server,
-                   const Runtime& runtime,
-                   const std::function<bool()>& checkRateLimit);
+void handleApiSave(WebServer& server, const Runtime& runtime);
 
 }  // namespace WifiAudioApiService

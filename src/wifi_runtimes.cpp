@@ -219,17 +219,21 @@ WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
 }
 
 WifiAudioApiService::Runtime WiFiManager::makeAudioRuntime() {
-    return WifiAudioApiService::Runtime{
-        [this]() -> const V1Settings& {
-            return settingsManager.get();
-        },
-        [this](const AudioSettingsUpdate& update) {
-            settingsManager.applyAudioSettingsUpdate(update, SettingsPersistMode::Deferred);
-        },
-        [](uint8_t volume) {
-            audio_set_volume(volume);
-        },
+    WifiAudioApiService::Runtime r;
+    r.ctx = this;
+    r.getSettings = [](void* /*ctx*/) -> const V1Settings& {
+        return settingsManager.get();
     };
+    r.applySettingsUpdate = [](const AudioSettingsUpdate& update, void* /*ctx*/) {
+        settingsManager.applyAudioSettingsUpdate(update, SettingsPersistMode::Deferred);
+    };
+    r.setAudioVolume = [](uint8_t volume, void* /*ctx*/) {
+        audio_set_volume(volume);
+    };
+    r.checkRateLimit = [](void* ctx) {
+        return static_cast<WiFiManager*>(ctx)->checkRateLimit();
+    };
+    return r;
 }
 
 WifiStatusApiService::StatusRuntime WiFiManager::makeStatusRuntime() {

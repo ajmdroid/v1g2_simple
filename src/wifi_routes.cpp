@@ -295,11 +295,8 @@ bool WiFiManager::setupWebServer() {
     server.on("/api/audio/settings", HTTP_GET, [this]() {
         WifiAudioApiService::handleApiGet(server, makeAudioRuntime());
     });
-    server.on("/api/audio/settings", HTTP_POST, [this, rateLimitCallback]() {
-        WifiAudioApiService::handleApiSave(
-            server,
-            makeAudioRuntime(),
-            rateLimitCallback);
+    server.on("/api/audio/settings", HTTP_POST, [this]() {
+        WifiAudioApiService::handleApiSave(server, makeAudioRuntime());
     });
     
     // Settings backup/restore API routes

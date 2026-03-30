@@ -20,6 +20,7 @@ struct FakeRuntime {
     int setAudioVolumeCalls = 0;
     uint8_t lastAudioVolume = 0;
     int saveDeferredBackupCalls = 0;
+    bool allowRequest = true;
 };
 
 static void applyAudioSettingsUpdateForTest(FakeRuntime& rt, const AudioSettingsUpdate& update) {
@@ -48,18 +49,23 @@ static void applyAudioSettingsUpdateForTest(FakeRuntime& rt, const AudioSettings
 }
 
 static WifiAudioApiService::Runtime makeRuntime(FakeRuntime& rt) {
-    return WifiAudioApiService::Runtime{
-        [&rt]() -> const V1Settings& {
-            return rt.settings;
-        },
-        [&rt](const AudioSettingsUpdate& update) {
-            applyAudioSettingsUpdateForTest(rt, update);
-        },
-        [&rt](uint8_t volume) {
-            rt.setAudioVolumeCalls++;
-            rt.lastAudioVolume = volume;
-        },
+    WifiAudioApiService::Runtime r;
+    r.ctx = &rt;
+    r.getSettings = [](void* ctx) -> const V1Settings& {
+        return static_cast<FakeRuntime*>(ctx)->settings;
     };
+    r.applySettingsUpdate = [](const AudioSettingsUpdate& update, void* ctx) {
+        applyAudioSettingsUpdateForTest(*static_cast<FakeRuntime*>(ctx), update);
+    };
+    r.setAudioVolume = [](uint8_t volume, void* ctx) {
+        auto* rt = static_cast<FakeRuntime*>(ctx);
+        rt->setAudioVolumeCalls++;
+        rt->lastAudioVolume = volume;
+    };
+    r.checkRateLimit = [](void* ctx) {
+        return static_cast<FakeRuntime*>(ctx)->allowRequest;
+    };
+    return r;
 }
 
 void setUp() {
@@ -100,12 +106,10 @@ void test_get_serializes_audio_payload() {
 void test_save_rate_limited_short_circuits() {
     WebServer server(80);
     FakeRuntime rt;
+    rt.allowRequest = false;
     server.setArg("voiceVolume", "55");
 
-    WifiAudioApiService::handleApiSave(
-        server,
-        makeRuntime(rt),
-        []() { return false; });
+    WifiAudioApiService::handleApiSave(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.setAudioVolumeCalls);
@@ -130,10 +134,7 @@ void test_save_updates_audio_settings_and_calls_side_effects() {
     server.setArg("alertVolumeFadeDelaySec", "8");
     server.setArg("alertVolumeFadeVolume", "3");
 
-    WifiAudioApiService::handleApiSave(
-        server,
-        makeRuntime(rt),
-        []() { return true; });
+    WifiAudioApiService::handleApiSave(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -163,10 +164,7 @@ void test_save_clamps_numeric_ranges() {
     server.setArg("alertVolumeFadeDelaySec", "0");
     server.setArg("alertVolumeFadeVolume", "99");
 
-    WifiAudioApiService::handleApiSave(
-        server,
-        makeRuntime(rt),
-        []() { return true; });
+    WifiAudioApiService::handleApiSave(server, makeRuntime(rt));
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(3, static_cast<int>(rt.settings.voiceAlertMode));

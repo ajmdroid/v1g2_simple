@@ -14,7 +14,7 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
         return;
     }
 
-    const V1Settings& settings = runtime.getSettings();
+    const V1Settings& settings = runtime.getSettings(runtime.ctx);
 
     JsonDocument doc;
     doc["voiceAlertMode"] = static_cast<int>(settings.voiceAlertMode);
@@ -39,10 +39,8 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
 
-void handleApiSave(WebServer& server,
-                   const Runtime& runtime,
-                   const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+void handleApiSave(WebServer& server, const Runtime& runtime) {
+    if (runtime.checkRateLimit && !runtime.checkRateLimit(runtime.ctx)) return;
 
     if (!runtime.getSettings || !runtime.applySettingsUpdate) {
         server.send(500, "application/json", "{\"error\":\"Settings unavailable\"}");
@@ -56,7 +54,7 @@ void handleApiSave(WebServer& server,
         return server.arg(key) == "true" || server.arg(key) == "1";
     };
 
-    const V1Settings& settings = runtime.getSettings();
+    const V1Settings& settings = runtime.getSettings(runtime.ctx);
     AudioSettingsUpdate update;
     bool hasVoiceVolume = false;
     uint8_t nextVoiceVolume = settings.voiceVolume;
@@ -157,10 +155,10 @@ void handleApiSave(WebServer& server,
             argBool("speedMuteRequireObd", settings.speedMuteRequireObd);
     }
 
-    runtime.applySettingsUpdate(update);
+    runtime.applySettingsUpdate(update, runtime.ctx);
 
     if (hasVoiceVolume && runtime.setAudioVolume) {
-        runtime.setAudioVolume(nextVoiceVolume);
+        runtime.setAudioVolume(nextVoiceVolume, runtime.ctx);
     }
 
     server.send(200, "application/json", "{\"success\":true}");
