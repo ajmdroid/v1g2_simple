@@ -5,7 +5,6 @@
 #include <WebServer.h>
 
 #include <cstdint>
-#include <functional>
 #include <vector>
 
 namespace WifiV1ProfileApiService {
@@ -17,24 +16,39 @@ struct ProfileSummary {
 };
 
 struct Runtime {
-    std::function<std::vector<String>()> listProfileNames;
-    std::function<bool(const String&, ProfileSummary&)> loadProfileSummary;
-    std::function<bool(const String&, String&)> loadProfileJson;
-    std::function<bool(const String&, uint8_t outBytes[6], bool& displayOn)> loadProfileSettings;
-    std::function<bool(const JsonObject&, uint8_t outBytes[6])> parseSettingsJson;
-    std::function<bool(const String&,
-                       const String&,
-                       bool,
-                       const uint8_t inBytes[6],
-                       String&)> saveProfile;
-    std::function<bool(const String&)> deleteProfile;
-    std::function<bool()> requestUserBytes;
-    std::function<bool(const uint8_t inBytes[6])> writeUserBytes;
-    std::function<void(bool)> setDisplayOn;
-    std::function<bool()> hasCurrentSettings;
-    std::function<String()> currentSettingsJson;
-    std::function<bool()> v1Connected;
-    std::function<void()> backupToSd;
+    std::vector<String> (*listProfileNames)(void* ctx);
+    void* listProfileNamesCtx;
+    bool (*loadProfileSummary)(const String& name, ProfileSummary& summary, void* ctx);
+    void* loadProfileSummaryCtx;
+    bool (*loadProfileJson)(const String& name, String& json, void* ctx);
+    void* loadProfileJsonCtx;
+    bool (*loadProfileSettings)(const String& name, uint8_t outBytes[6], bool& displayOn, void* ctx);
+    void* loadProfileSettingsCtx;
+    bool (*parseSettingsJson)(const JsonObject& settingsObj, uint8_t outBytes[6], void* ctx);
+    void* parseSettingsJsonCtx;
+    bool (*saveProfile)(const String& name,
+                        const String& description,
+                        bool displayOn,
+                        const uint8_t inBytes[6],
+                        String& error,
+                        void* ctx);
+    void* saveProfileCtx;
+    bool (*deleteProfile)(const String& name, void* ctx);
+    void* deleteProfileCtx;
+    bool (*requestUserBytes)(void* ctx);
+    void* requestUserBytesCtx;
+    bool (*writeUserBytes)(const uint8_t inBytes[6], void* ctx);
+    void* writeUserBytesCtx;
+    void (*setDisplayOn)(bool displayOn, void* ctx);
+    void* setDisplayOnCtx;
+    bool (*hasCurrentSettings)(void* ctx);
+    void* hasCurrentSettingsCtx;
+    String (*currentSettingsJson)(void* ctx);
+    void* currentSettingsJsonCtx;
+    bool (*v1Connected)(void* ctx);
+    void* v1ConnectedCtx;
+    void (*backupToSd)(void* ctx);
+    void* backupToSdCtx;
 };
 
 void handleApiProfilesList(WebServer& server, const Runtime& runtime);
@@ -43,20 +57,20 @@ void handleApiProfileGet(WebServer& server, const Runtime& runtime);
 
 void handleApiProfileSave(WebServer& server,
                           const Runtime& runtime,
-                          const std::function<bool()>& checkRateLimit);
+                          bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
 
 void handleApiProfileDelete(WebServer& server,
                             const Runtime& runtime,
-                            const std::function<bool()>& checkRateLimit);
+                            bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
 
 void handleApiCurrentSettings(WebServer& server, const Runtime& runtime);
 
 void handleApiSettingsPull(WebServer& server,
                            const Runtime& runtime,
-                           const std::function<bool()>& checkRateLimit);
+                           bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
 
 void handleApiSettingsPush(WebServer& server,
                            const Runtime& runtime,
-                           const std::function<bool()>& checkRateLimit);
+                           bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
 
 }  // namespace WifiV1ProfileApiService

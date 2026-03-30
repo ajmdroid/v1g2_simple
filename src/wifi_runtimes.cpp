@@ -29,15 +29,8 @@
 #include "../include/config.h"
 
 WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
-    auto applyDeferredSlotUpdate = [this](const AutoPushSlotUpdate& update) {
-        return settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
-    };
-    auto applyDeferredStateUpdate = [this](const AutoPushStateUpdate& update) {
-        return settingsManager.applyAutoPushStateUpdate(update, SettingsPersistMode::Deferred);
-    };
-
     return WifiAutoPushApiService::Runtime{
-        [this](WifiAutoPushApiService::SlotsSnapshot& snapshot) {
+        [](WifiAutoPushApiService::SlotsSnapshot& snapshot, void* /*ctx*/) {
             const V1Settings& s = settingsManager.get();
             snapshot.enabled = s.autoPushEnabled;
             snapshot.activeSlot = s.activeSlot;
@@ -55,15 +48,16 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
                 snapshot.slots[slotIndex].alertPersist = slot.alertPersist;
                 snapshot.slots[slotIndex].priorityArrowOnly = slot.priorityArrow;
             }
-        },
-        [this](String& json) {
-            if (!getPushStatusJson) {
+        }, nullptr,
+        [](String& json, void* ctx) {
+            auto* mgr = static_cast<WiFiManager*>(ctx);
+            if (!mgr->getPushStatusJson) {
                 return false;
             }
-            json = getPushStatusJson();
+            json = mgr->getPushStatusJson();
             return true;
-        },
-        [this, applyDeferredSlotUpdate](const WifiAutoPushApiService::SlotUpdateRequest& request) {
+        }, this,
+        [](const WifiAutoPushApiService::SlotUpdateRequest& request, void* /*ctx*/) {
             AutoPushSlotUpdate update;
             update.slot = request.slot;
             update.hasName = request.hasName;
@@ -86,135 +80,136 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
             update.profileName = request.profile;
             update.hasMode = true;
             update.mode = normalizeV1ModeValue(request.mode);
-            return applyDeferredSlotUpdate(update);
-        },
-        [applyDeferredSlotUpdate](int slot, const String& name) {
+            return settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
+        }, nullptr,
+        [](int slot, const String& name, void* /*ctx*/) {
             AutoPushSlotUpdate update;
             update.slot = slot;
             update.hasName = true;
             update.name = name;
-            (void)applyDeferredSlotUpdate(update);
-        },
-        [applyDeferredSlotUpdate](int slot, uint16_t color) {
+            (void)settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
+        }, nullptr,
+        [](int slot, uint16_t color, void* /*ctx*/) {
             AutoPushSlotUpdate update;
             update.slot = slot;
             update.hasColor = true;
             update.color = color;
-            (void)applyDeferredSlotUpdate(update);
-        },
-        [this](int slot) {
+            (void)settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
+        }, nullptr,
+        [](int slot, void* /*ctx*/) {
             return settingsManager.getSlotVolume(slot);
-        },
-        [this](int slot) {
+        }, nullptr,
+        [](int slot, void* /*ctx*/) {
             return settingsManager.getSlotMuteVolume(slot);
-        },
-        [applyDeferredSlotUpdate](int slot, uint8_t volume, uint8_t muteVolume) {
+        }, nullptr,
+        [](int slot, uint8_t volume, uint8_t muteVolume, void* /*ctx*/) {
             AutoPushSlotUpdate update;
             update.slot = slot;
             update.hasVolume = true;
             update.volume = volume;
             update.hasMuteVolume = true;
             update.muteVolume = muteVolume;
-            (void)applyDeferredSlotUpdate(update);
-        },
-        [applyDeferredSlotUpdate](int slot, bool darkMode) {
+            (void)settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
+        }, nullptr,
+        [](int slot, bool darkMode, void* /*ctx*/) {
             AutoPushSlotUpdate update;
             update.slot = slot;
             update.hasDarkMode = true;
             update.darkMode = darkMode;
-            (void)applyDeferredSlotUpdate(update);
-        },
-        [applyDeferredSlotUpdate](int slot, bool muteToZero) {
+            (void)settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
+        }, nullptr,
+        [](int slot, bool muteToZero, void* /*ctx*/) {
             AutoPushSlotUpdate update;
             update.slot = slot;
             update.hasMuteToZero = true;
             update.muteToZero = muteToZero;
-            (void)applyDeferredSlotUpdate(update);
-        },
-        [applyDeferredSlotUpdate](int slot, uint8_t alertPersistSec) {
+            (void)settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
+        }, nullptr,
+        [](int slot, uint8_t alertPersistSec, void* /*ctx*/) {
             AutoPushSlotUpdate update;
             update.slot = slot;
             update.hasAlertPersist = true;
             update.alertPersist = alertPersistSec;
-            (void)applyDeferredSlotUpdate(update);
-        },
-        [applyDeferredSlotUpdate](int slot, bool priorityArrowOnly) {
+            (void)settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
+        }, nullptr,
+        [](int slot, bool priorityArrowOnly, void* /*ctx*/) {
             AutoPushSlotUpdate update;
             update.slot = slot;
             update.hasPriorityArrowOnly = true;
             update.priorityArrowOnly = priorityArrowOnly;
-            (void)applyDeferredSlotUpdate(update);
-        },
-        [applyDeferredSlotUpdate](int slot, const String& profile, int mode) {
+            (void)settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
+        }, nullptr,
+        [](int slot, const String& profile, int mode, void* /*ctx*/) {
             AutoPushSlotUpdate update;
             update.slot = slot;
             update.hasProfileName = true;
             update.profileName = profile;
             update.hasMode = true;
             update.mode = normalizeV1ModeValue(mode);
-            (void)applyDeferredSlotUpdate(update);
-        },
-        [this]() {
+            (void)settingsManager.applyAutoPushSlotUpdate(update, SettingsPersistMode::Deferred);
+        }, nullptr,
+        [](void* /*ctx*/) {
             return static_cast<int>(settingsManager.get().activeSlot);
-        },
-        [this](int slot) {
+        }, nullptr,
+        [](int slot, void* /*ctx*/) {
             display.drawProfileIndicator(slot);
-        },
-        [this, applyDeferredStateUpdate](const WifiAutoPushApiService::ActivationRequest& request) {
+        }, nullptr,
+        [](const WifiAutoPushApiService::ActivationRequest& request, void* /*ctx*/) {
             AutoPushStateUpdate update;
             update.hasActiveSlot = true;
             update.activeSlot = request.slot;
             update.hasEnabled = true;
             update.enabled = request.enable;
-            return applyDeferredStateUpdate(update);
-        },
-        [applyDeferredStateUpdate](int slot) {
+            return settingsManager.applyAutoPushStateUpdate(update, SettingsPersistMode::Deferred);
+        }, nullptr,
+        [](int slot, void* /*ctx*/) {
             AutoPushStateUpdate update;
             update.hasActiveSlot = true;
             update.activeSlot = slot;
-            (void)applyDeferredStateUpdate(update);
-        },
-        [applyDeferredStateUpdate](bool enabled) {
+            (void)settingsManager.applyAutoPushStateUpdate(update, SettingsPersistMode::Deferred);
+        }, nullptr,
+        [](bool enabled, void* /*ctx*/) {
             AutoPushStateUpdate update;
             update.hasEnabled = true;
             update.enabled = enabled;
-            (void)applyDeferredStateUpdate(update);
-        },
-        [this](const WifiAutoPushApiService::PushNowRequest& request) {
-            if (!queuePushNow) {
+            (void)settingsManager.applyAutoPushStateUpdate(update, SettingsPersistMode::Deferred);
+        }, nullptr,
+        [](const WifiAutoPushApiService::PushNowRequest& request, void* ctx) {
+            auto* mgr = static_cast<WiFiManager*>(ctx);
+            if (!mgr->queuePushNow) {
                 return WifiAutoPushApiService::PushNowQueueResult::PROFILE_LOAD_FAILED;
             }
-            return queuePushNow(request);
-        },
+            return mgr->queuePushNow(request);
+        }, this,
     };
 }
 
 WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
     return WifiDisplayColorsApiService::Runtime{
-        [this]() -> const V1Settings& {
+        [](void* /*ctx*/) -> const V1Settings& {
             return settingsManager.get();
-        },
-        [this](const DisplaySettingsUpdate& update) {
+        }, nullptr,
+        [](const DisplaySettingsUpdate& update, void* /*ctx*/) {
             settingsManager.applyDisplaySettingsUpdate(update, SettingsPersistMode::Deferred);
-        },
-        [this]() {
+        }, nullptr,
+        [](void* /*ctx*/) {
             settingsManager.resetDisplaySettings(SettingsPersistMode::Deferred);
-        },
-        [this](uint8_t brightness) {
+        }, nullptr,
+        [](uint8_t brightness, void* /*ctx*/) {
             display.setBrightness(brightness);
-        },
-        [this]() {
+        }, nullptr,
+        [](void* /*ctx*/) {
             display.forceNextRedraw();
-        },
-        [](uint32_t durationMs) {
+        }, nullptr,
+        [](uint32_t durationMs, void* /*ctx*/) {
             requestColorPreviewHold(durationMs);
-        },
-        []() {
+        }, nullptr,
+        [](void* /*ctx*/) {
             return isColorPreviewRunning();
-        },
-        []() {
+        }, nullptr,
+        [](void* /*ctx*/) {
             cancelColorPreview();
-        },
+        }, nullptr,
     };
 }
 
@@ -326,8 +321,8 @@ WifiClientApiService::Runtime WiFiManager::makeWifiClientRuntime() {
 
 WifiV1ProfileApiService::Runtime WiFiManager::makeV1ProfileRuntime() {
     return WifiV1ProfileApiService::Runtime{
-        []() { return v1ProfileManager.listProfiles(); },
-        [](const String& name, WifiV1ProfileApiService::ProfileSummary& summary) {
+        [](void* /*ctx*/) { return v1ProfileManager.listProfiles(); }, nullptr,
+        [](const String& name, WifiV1ProfileApiService::ProfileSummary& summary, void* /*ctx*/) {
             V1Profile profile;
             if (!v1ProfileManager.loadProfile(name, profile)) {
                 return false;
@@ -336,16 +331,16 @@ WifiV1ProfileApiService::Runtime WiFiManager::makeV1ProfileRuntime() {
             summary.description = profile.description;
             summary.displayOn = profile.displayOn;
             return true;
-        },
-        [](const String& name, String& json) {
+        }, nullptr,
+        [](const String& name, String& json, void* /*ctx*/) {
             V1Profile profile;
             if (!v1ProfileManager.loadProfile(name, profile)) {
                 return false;
             }
             json = v1ProfileManager.profileToJson(profile);
             return true;
-        },
-        [](const String& name, uint8_t outBytes[6], bool& displayOn) {
+        }, nullptr,
+        [](const String& name, uint8_t outBytes[6], bool& displayOn, void* /*ctx*/) {
             V1Profile profile;
             if (!v1ProfileManager.loadProfile(name, profile)) {
                 return false;
@@ -353,20 +348,21 @@ WifiV1ProfileApiService::Runtime WiFiManager::makeV1ProfileRuntime() {
             memcpy(outBytes, profile.settings.bytes, 6);
             displayOn = profile.displayOn;
             return true;
-        },
-        [](const JsonObject& settingsObj, uint8_t outBytes[6]) {
+        }, nullptr,
+        [](const JsonObject& settingsObj, uint8_t outBytes[6], void* /*ctx*/) {
             V1UserSettings settings;
             if (!v1ProfileManager.jsonToSettings(settingsObj, settings)) {
                 return false;
             }
             memcpy(outBytes, settings.bytes, 6);
             return true;
-        },
+        }, nullptr,
         [](const String& name,
            const String& description,
            bool displayOn,
            const uint8_t inBytes[6],
-           String& error) {
+           String& error,
+           void* /*ctx*/) {
             V1Profile profile;
             profile.name = name;
             profile.description = description;
@@ -378,23 +374,23 @@ WifiV1ProfileApiService::Runtime WiFiManager::makeV1ProfileRuntime() {
                 return false;
             }
             return true;
-        },
-        [](const String& name) { return v1ProfileManager.deleteProfile(name); },
-        []() { return bleClient.requestUserBytes(); },
-        [](const uint8_t inBytes[6]) {
+        }, nullptr,
+        [](const String& name, void* /*ctx*/) { return v1ProfileManager.deleteProfile(name); }, nullptr,
+        [](void* /*ctx*/) { return bleClient.requestUserBytes(); }, nullptr,
+        [](const uint8_t inBytes[6], void* /*ctx*/) {
             return bleClient.writeUserBytesVerified(inBytes, 3) == V1BLEClient::VERIFY_OK;
-        },
-        [](bool displayOn) { bleClient.setDisplayOn(displayOn); },
-        []() { return v1ProfileManager.hasCurrentSettings(); },
-        []() { return v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings()); },
-        []() { return bleClient.isConnected(); },
-        [this]() { settingsManager.requestDeferredBackupFromCurrentState(); },
+        }, nullptr,
+        [](bool displayOn, void* /*ctx*/) { bleClient.setDisplayOn(displayOn); }, nullptr,
+        [](void* /*ctx*/) { return v1ProfileManager.hasCurrentSettings(); }, nullptr,
+        [](void* /*ctx*/) { return v1ProfileManager.settingsToJson(v1ProfileManager.getCurrentSettings()); }, nullptr,
+        [](void* /*ctx*/) { return bleClient.isConnected(); }, nullptr,
+        [](void* /*ctx*/) { settingsManager.requestDeferredBackupFromCurrentState(); }, nullptr,
     };
 }
 
 WifiV1DevicesApiService::Runtime WiFiManager::makeV1DevicesRuntime() {
     return WifiV1DevicesApiService::Runtime{
-        [this]() {
+        [](void* /*ctx*/) {
             std::vector<WifiV1DevicesApiService::DeviceInfo> payload;
             if (!v1DeviceStore.isReady()) {
                 return payload;
@@ -440,15 +436,15 @@ WifiV1DevicesApiService::Runtime WiFiManager::makeV1DevicesRuntime() {
                 payload.push_back(info);
             }
             return payload;
-        },
-        [](const String& address, const String& name) {
+        }, nullptr,
+        [](const String& address, const String& name, void* /*ctx*/) {
             return v1DeviceStore.setDeviceName(address, name);
-        },
-        [](const String& address, uint8_t defaultProfile) {
+        }, nullptr,
+        [](const String& address, uint8_t defaultProfile, void* /*ctx*/) {
             return v1DeviceStore.setDeviceDefaultProfile(address, defaultProfile);
-        },
-        [](const String& address) {
+        }, nullptr,
+        [](const String& address, void* /*ctx*/) {
             return v1DeviceStore.removeDevice(address);
-        },
+        }, nullptr,
     };
 }

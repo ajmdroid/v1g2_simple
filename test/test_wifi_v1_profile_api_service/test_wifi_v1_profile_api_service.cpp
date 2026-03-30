@@ -96,28 +96,31 @@ static bool fakeLoadJson(FakeRuntime& rt, const String& name, String& outJson) {
 
 static WifiV1ProfileApiService::Runtime makeRuntime(FakeRuntime& rt) {
     return WifiV1ProfileApiService::Runtime{
-        [&rt]() {
-            rt.listCalls++;
-            return rt.listNames;
-        },
-        [&rt](const String& name, WifiV1ProfileApiService::ProfileSummary& summary) {
-            return fakeLoadSummary(rt, name, summary);
-        },
-        [&rt](const String& name, String& profileJson) {
-            return fakeLoadJson(rt, name, profileJson);
-        },
-        [&rt](const String&, uint8_t outBytes[6], bool& displayOn) {
-            rt.loadProfileSettingsCalls++;
-            if (!rt.loadProfileSettingsResult) {
+        [](void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->listCalls++;
+            return rtp->listNames;
+        }, &rt,
+        [](const String& name, WifiV1ProfileApiService::ProfileSummary& summary, void* ctx) {
+            return fakeLoadSummary(*static_cast<FakeRuntime*>(ctx), name, summary);
+        }, &rt,
+        [](const String& name, String& profileJson, void* ctx) {
+            return fakeLoadJson(*static_cast<FakeRuntime*>(ctx), name, profileJson);
+        }, &rt,
+        [](const String&, uint8_t outBytes[6], bool& displayOn, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->loadProfileSettingsCalls++;
+            if (!rtp->loadProfileSettingsResult) {
                 return false;
             }
-            memcpy(outBytes, rt.storedProfileBytes, sizeof(rt.storedProfileBytes));
-            displayOn = rt.storedProfileDisplayOn;
+            memcpy(outBytes, rtp->storedProfileBytes, sizeof(rtp->storedProfileBytes));
+            displayOn = rtp->storedProfileDisplayOn;
             return true;
-        },
-        [&rt](const JsonObject& settingsObj, uint8_t outBytes[6]) {
-            rt.parseSettingsCalls++;
-            if (!rt.parseSettingsOk) {
+        }, &rt,
+        [](const JsonObject& settingsObj, uint8_t outBytes[6], void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->parseSettingsCalls++;
+            if (!rtp->parseSettingsOk) {
                 return false;
             }
             memset(outBytes, 0xFF, 6);
@@ -125,44 +128,50 @@ static WifiV1ProfileApiService::Runtime makeRuntime(FakeRuntime& rt) {
                 outBytes[0] = static_cast<uint8_t>(settingsObj["byte0"].as<int>());
             }
             return true;
-        },
-        [&rt](const String& name,
-              const String& description,
-              bool displayOn,
-              const uint8_t inBytes[6],
-              String& error) {
-            rt.saveCalls++;
-            rt.lastSaveName = name;
-            rt.lastSaveDescription = description;
-            rt.lastSaveDisplayOn = displayOn;
-            memcpy(rt.lastSaveBytes, inBytes, 6);
-            if (!rt.saveOk) {
-                error = rt.saveError;
+        }, &rt,
+        [](const String& name,
+           const String& description,
+           bool displayOn,
+           const uint8_t inBytes[6],
+           String& error,
+           void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->saveCalls++;
+            rtp->lastSaveName = name;
+            rtp->lastSaveDescription = description;
+            rtp->lastSaveDisplayOn = displayOn;
+            memcpy(rtp->lastSaveBytes, inBytes, 6);
+            if (!rtp->saveOk) {
+                error = rtp->saveError;
                 return false;
             }
             return true;
-        },
-        [&rt](const String& /*name*/) {
-            rt.deleteCalls++;
-            return rt.deleteResult;
-        },
-        [&rt]() {
-            rt.requestUserBytesCalls++;
-            return rt.requestUserBytesResult;
-        },
-        [&rt](const uint8_t inBytes[6]) {
-            rt.writeUserBytesCalls++;
-            memcpy(rt.lastWrittenBytes, inBytes, sizeof(rt.lastWrittenBytes));
-            return rt.writeUserBytesResult;
-        },
-        [&rt](bool displayOn) {
-            rt.setDisplayOnCalls++;
-            rt.lastSetDisplayOn = displayOn;
-        },
-        [&rt]() { return rt.hasCurrent; },
-        [&rt]() { return rt.currentSettingsJson; },
-        [&rt]() { return rt.connected; },
-        [&rt]() { rt.requestDeferredBackupCalls++; },
+        }, &rt,
+        [](const String& /*name*/, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->deleteCalls++;
+            return rtp->deleteResult;
+        }, &rt,
+        [](void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->requestUserBytesCalls++;
+            return rtp->requestUserBytesResult;
+        }, &rt,
+        [](const uint8_t inBytes[6], void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->writeUserBytesCalls++;
+            memcpy(rtp->lastWrittenBytes, inBytes, sizeof(rtp->lastWrittenBytes));
+            return rtp->writeUserBytesResult;
+        }, &rt,
+        [](bool displayOn, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setDisplayOnCalls++;
+            rtp->lastSetDisplayOn = displayOn;
+        }, &rt,
+        [](void* ctx) { return static_cast<FakeRuntime*>(ctx)->hasCurrent; }, &rt,
+        [](void* ctx) { return static_cast<FakeRuntime*>(ctx)->currentSettingsJson; }, &rt,
+        [](void* ctx) { return static_cast<FakeRuntime*>(ctx)->connected; }, &rt,
+        [](void* ctx) { static_cast<FakeRuntime*>(ctx)->requestDeferredBackupCalls++; }, &rt,
     };
 }
 
@@ -233,7 +242,7 @@ void test_profile_save_rate_limited_short_circuits() {
     WifiV1ProfileApiService::handleApiProfileSave(
         server,
         makeRuntime(rt),
-        []() { return false; });
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.saveCalls);
@@ -247,7 +256,7 @@ void test_profile_save_invalid_json_returns_400() {
     WifiV1ProfileApiService::handleApiProfileSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Invalid JSON\""));
@@ -262,7 +271,7 @@ void test_profile_save_invalid_settings_returns_400() {
     WifiV1ProfileApiService::handleApiProfileSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Invalid settings\""));
@@ -278,7 +287,7 @@ void test_profile_save_success_calls_save_and_backup() {
     WifiV1ProfileApiService::handleApiProfileSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -301,7 +310,7 @@ void test_profile_save_failure_returns_500_with_error() {
     WifiV1ProfileApiService::handleApiProfileSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"disk full\""));
@@ -318,7 +327,7 @@ void test_profile_delete_success_calls_backup() {
     WifiV1ProfileApiService::handleApiProfileDelete(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -336,7 +345,7 @@ void test_profile_delete_not_found_returns_404() {
     WifiV1ProfileApiService::handleApiProfileDelete(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(404, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Profile not found\""));
@@ -386,7 +395,7 @@ void test_api_settings_push_raw_bytes_success_uses_wifi_json_allocator() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -405,7 +414,7 @@ void test_api_settings_pull_rate_limited_short_circuits() {
     WifiV1ProfileApiService::handleApiSettingsPull(
         server,
         makeRuntime(rt),
-        []() { return false; });
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
@@ -418,7 +427,7 @@ void test_api_settings_push_rate_limited_short_circuits() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return false; });
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }

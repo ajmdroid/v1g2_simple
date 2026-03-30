@@ -107,32 +107,34 @@ static void resetDisplaySettingsForTest(FakeRuntime& rt) {
 
 static WifiDisplayColorsApiService::Runtime makeRuntime(FakeRuntime& rt) {
     return WifiDisplayColorsApiService::Runtime{
-        [&rt]() -> const V1Settings& {
-            return rt.settings;
-        },
-        [&rt](const DisplaySettingsUpdate& update) {
-            applyDisplaySettingsUpdateForTest(rt, update);
-        },
-        [&rt]() {
-            resetDisplaySettingsForTest(rt);
-        },
-        [&rt](uint8_t brightness) {
-            rt.setDisplayBrightnessCalls++;
-            rt.lastDisplayBrightness = brightness;
-        },
-        [&rt]() {
-            rt.forceDisplayRedrawCalls++;
-        },
-        [&rt](uint32_t holdMs) {
-            rt.requestColorPreviewHoldCalls++;
-            rt.lastPreviewHoldMs = holdMs;
-        },
-        [&rt]() {
-            return rt.isColorPreviewRunning;
-        },
-        [&rt]() {
-            rt.cancelColorPreviewCalls++;
-        },
+        [](void* ctx) -> const V1Settings& {
+            return static_cast<FakeRuntime*>(ctx)->settings;
+        }, &rt,
+        [](const DisplaySettingsUpdate& update, void* ctx) {
+            applyDisplaySettingsUpdateForTest(*static_cast<FakeRuntime*>(ctx), update);
+        }, &rt,
+        [](void* ctx) {
+            resetDisplaySettingsForTest(*static_cast<FakeRuntime*>(ctx));
+        }, &rt,
+        [](uint8_t brightness, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setDisplayBrightnessCalls++;
+            rtp->lastDisplayBrightness = brightness;
+        }, &rt,
+        [](void* ctx) {
+            static_cast<FakeRuntime*>(ctx)->forceDisplayRedrawCalls++;
+        }, &rt,
+        [](uint32_t holdMs, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->requestColorPreviewHoldCalls++;
+            rtp->lastPreviewHoldMs = holdMs;
+        }, &rt,
+        [](void* ctx) {
+            return static_cast<FakeRuntime*>(ctx)->isColorPreviewRunning;
+        }, &rt,
+        [](void* ctx) {
+            static_cast<FakeRuntime*>(ctx)->cancelColorPreviewCalls++;
+        }, &rt,
     };
 }
 
@@ -188,7 +190,7 @@ void test_save_rate_limited_short_circuits() {
     WifiDisplayColorsApiService::handleApiSave(
         server,
         makeRuntime(rt),
-        []() { return false; });
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.saveDeferredBackupCalls);
@@ -209,7 +211,7 @@ void test_save_updates_display_settings_and_calls_side_effects() {
     WifiDisplayColorsApiService::handleApiSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -237,7 +239,7 @@ void test_save_skip_preview_suppresses_preview_request() {
     WifiDisplayColorsApiService::handleApiSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.requestColorPreviewHoldCalls);
@@ -258,7 +260,7 @@ void test_save_ignores_non_display_args() {
     WifiDisplayColorsApiService::handleApiSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_UINT8(67, rt.settings.voiceVolume);
@@ -275,7 +277,7 @@ void test_reset_rate_limited_short_circuits() {
     WifiDisplayColorsApiService::handleApiReset(
         server,
         makeRuntime(rt),
-        []() { return false; });
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_UINT16(123, rt.settings.colorBogey);
@@ -291,7 +293,7 @@ void test_reset_restores_defaults_and_triggers_preview() {
     WifiDisplayColorsApiService::handleApiReset(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -313,7 +315,7 @@ void test_api_preview_rate_limited_short_circuits() {
     WifiDisplayColorsApiService::handleApiPreview(
         server,
         makeRuntime(rt),
-        []() { return false; });
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.requestColorPreviewHoldCalls);
@@ -327,7 +329,7 @@ void test_api_preview_delegates_when_allowed() {
     WifiDisplayColorsApiService::handleApiPreview(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -340,7 +342,7 @@ void test_preview_toggles_off_when_running() {
     FakeRuntime rt;
     rt.isColorPreviewRunning = true;
 
-    WifiDisplayColorsApiService::handleApiPreview(server, makeRuntime(rt), nullptr);
+    WifiDisplayColorsApiService::handleApiPreview(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -354,7 +356,7 @@ void test_preview_starts_when_not_running() {
     FakeRuntime rt;
     rt.isColorPreviewRunning = false;
 
-    WifiDisplayColorsApiService::handleApiPreview(server, makeRuntime(rt), nullptr);
+    WifiDisplayColorsApiService::handleApiPreview(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -371,7 +373,7 @@ void test_api_clear_rate_limited_short_circuits() {
     WifiDisplayColorsApiService::handleApiClear(
         server,
         makeRuntime(rt),
-        []() { return false; });
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.cancelColorPreviewCalls);
@@ -384,7 +386,7 @@ void test_api_clear_delegates_when_allowed() {
     WifiDisplayColorsApiService::handleApiClear(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -396,7 +398,7 @@ void test_clear_cancels_preview_and_returns_inactive() {
     WebServer server(80);
     FakeRuntime rt;
 
-    WifiDisplayColorsApiService::handleApiClear(server, makeRuntime(rt), nullptr);
+    WifiDisplayColorsApiService::handleApiClear(server, makeRuntime(rt), nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));

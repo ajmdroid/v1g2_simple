@@ -10,8 +10,8 @@ namespace WifiDisplayColorsApiService {
 
 void handleApiSave(WebServer& server,
                    const Runtime& runtime,
-                   const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                   bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!runtime.getSettings || !runtime.applySettingsUpdate) {
         server.send(500, "application/json", "{\"error\":\"Settings unavailable\"}");
@@ -26,7 +26,7 @@ void handleApiSave(WebServer& server,
     }
 #endif
 
-    const V1Settings& s = runtime.getSettings();
+    const V1Settings& s = runtime.getSettings(runtime.getSettingsCtx);
     DisplaySettingsUpdate update;
     bool hasBrightness = false;
     uint8_t nextBrightness = s.brightness;
@@ -133,20 +133,20 @@ void handleApiSave(WebServer& server,
         hasDisplayStyle = true;
     }
 
-    runtime.applySettingsUpdate(update);
+    runtime.applySettingsUpdate(update, runtime.applySettingsUpdateCtx);
 
     if (hasBrightness && runtime.setDisplayBrightness) {
-        runtime.setDisplayBrightness(nextBrightness);
+        runtime.setDisplayBrightness(nextBrightness, runtime.setDisplayBrightnessCtx);
     }
     if (hasDisplayStyle && runtime.forceDisplayRedraw) {
-        runtime.forceDisplayRedraw();
+        runtime.forceDisplayRedraw(runtime.forceDisplayRedrawCtx);
     }
 
     // Trigger immediate display preview to show new colors (skip if requested)
     if (!server.hasArg("skipPreview") ||
         (server.arg("skipPreview") != "true" && server.arg("skipPreview") != "1")) {
         if (runtime.requestColorPreviewHoldMs) {
-            runtime.requestColorPreviewHoldMs(5500);  // Hold ~5.5s and cycle bands during preview.
+            runtime.requestColorPreviewHoldMs(5500, runtime.requestColorPreviewHoldMsCtx);  // Hold ~5.5s and cycle bands during preview.
         }
     }
 
@@ -155,19 +155,19 @@ void handleApiSave(WebServer& server,
 
 void handleApiReset(WebServer& server,
                     const Runtime& runtime,
-                    const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                    bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!runtime.resetDisplaySettings) {
         server.send(500, "application/json", "{\"error\":\"Settings unavailable\"}");
         return;
     }
 
-    runtime.resetDisplaySettings();
+    runtime.resetDisplaySettings(runtime.resetDisplaySettingsCtx);
 
     // Trigger immediate display preview to show reset colors.
     if (runtime.requestColorPreviewHoldMs) {
-        runtime.requestColorPreviewHoldMs(5500);
+        runtime.requestColorPreviewHoldMs(5500, runtime.requestColorPreviewHoldMsCtx);
     }
 
     server.send(200, "application/json", "{\"success\":true}");
@@ -175,11 +175,11 @@ void handleApiReset(WebServer& server,
 
 static void handlePreviewImpl(WebServer& server, const Runtime& runtime) {
     const bool previewRunning =
-        runtime.isColorPreviewRunning && runtime.isColorPreviewRunning();
+        runtime.isColorPreviewRunning && runtime.isColorPreviewRunning(runtime.isColorPreviewRunningCtx);
 
     if (previewRunning) {
         if (runtime.cancelColorPreview) {
-            runtime.cancelColorPreview();
+            runtime.cancelColorPreview(runtime.cancelColorPreviewCtx);
         }
         // main.cpp loop handles display restore based on V1 connection state
         server.send(200, "application/json", "{\"success\":true,\"active\":false}");
@@ -190,21 +190,21 @@ static void handlePreviewImpl(WebServer& server, const Runtime& runtime) {
     // (~120ms) inside handleClient(), inflating wifiMaxUs.  The preview module
     // renders the first frame on the very next main-loop display phase.
     if (runtime.requestColorPreviewHoldMs) {
-        runtime.requestColorPreviewHoldMs(5500);
+        runtime.requestColorPreviewHoldMs(5500, runtime.requestColorPreviewHoldMsCtx);
     }
     server.send(200, "application/json", "{\"success\":true,\"active\":true}");
 }
 
 void handleApiPreview(WebServer& server,
                       const Runtime& runtime,
-                      const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                      bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handlePreviewImpl(server, runtime);
 }
 
 static void handleClearImpl(WebServer& server, const Runtime& runtime) {
     if (runtime.cancelColorPreview) {
-        runtime.cancelColorPreview();
+        runtime.cancelColorPreview(runtime.cancelColorPreviewCtx);
     }
     // main.cpp loop handles display restore based on V1 connection state
     server.send(200, "application/json", "{\"success\":true,\"active\":false}");
@@ -212,8 +212,8 @@ static void handleClearImpl(WebServer& server, const Runtime& runtime) {
 
 void handleApiClear(WebServer& server,
                     const Runtime& runtime,
-                    const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                    bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handleClearImpl(server, runtime);
 }
 
@@ -223,7 +223,7 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
         return;
     }
 
-    const V1Settings& s = runtime.getSettings();
+    const V1Settings& s = runtime.getSettings(runtime.getSettingsCtx);
 
     JsonDocument doc;
     doc["bogey"] = s.colorBogey;

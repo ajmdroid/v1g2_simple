@@ -4,7 +4,6 @@
 #include <WebServer.h>
 
 #include <cstdint>
-#include <functional>
 
 namespace WifiAutoPushApiService {
 
@@ -71,25 +70,44 @@ enum class PushNowQueueResult : uint8_t {
 };
 
 struct Runtime {
-    std::function<void(SlotsSnapshot&)> loadSlotsSnapshot;
-    std::function<bool(String&)> loadPushStatusJson;
-    std::function<bool(const SlotUpdateRequest&)> applySlotUpdate;
-    std::function<void(int, const String&)> setSlotName;
-    std::function<void(int, uint16_t)> setSlotColor;
-    std::function<uint8_t(int)> getSlotVolume;
-    std::function<uint8_t(int)> getSlotMuteVolume;
-    std::function<void(int, uint8_t, uint8_t)> setSlotVolumes;
-    std::function<void(int, bool)> setSlotDarkMode;
-    std::function<void(int, bool)> setSlotMuteToZero;
-    std::function<void(int, uint8_t)> setSlotAlertPersistSec;
-    std::function<void(int, bool)> setSlotPriorityArrowOnly;
-    std::function<void(int, const String&, int)> setSlotProfileAndMode;
-    std::function<int()> getActiveSlot;
-    std::function<void(int)> drawProfileIndicator;
-    std::function<bool(const ActivationRequest&)> applyActivation;
-    std::function<void(int)> setActiveSlot;
-    std::function<void(bool)> setAutoPushEnabled;
-    std::function<PushNowQueueResult(const PushNowRequest&)> queuePushNow;
+    void (*loadSlotsSnapshot)(SlotsSnapshot& snapshot, void* ctx);
+    void* loadSlotsSnapshotCtx;
+    bool (*loadPushStatusJson)(String& json, void* ctx);
+    void* loadPushStatusJsonCtx;
+    bool (*applySlotUpdate)(const SlotUpdateRequest& request, void* ctx);
+    void* applySlotUpdateCtx;
+    void (*setSlotName)(int slot, const String& name, void* ctx);
+    void* setSlotNameCtx;
+    void (*setSlotColor)(int slot, uint16_t color, void* ctx);
+    void* setSlotColorCtx;
+    uint8_t (*getSlotVolume)(int slot, void* ctx);
+    void* getSlotVolumeCtx;
+    uint8_t (*getSlotMuteVolume)(int slot, void* ctx);
+    void* getSlotMuteVolumeCtx;
+    void (*setSlotVolumes)(int slot, uint8_t volume, uint8_t muteVolume, void* ctx);
+    void* setSlotVolumesCtx;
+    void (*setSlotDarkMode)(int slot, bool darkMode, void* ctx);
+    void* setSlotDarkModeCtx;
+    void (*setSlotMuteToZero)(int slot, bool muteToZero, void* ctx);
+    void* setSlotMuteToZeroCtx;
+    void (*setSlotAlertPersistSec)(int slot, uint8_t alertPersistSec, void* ctx);
+    void* setSlotAlertPersistSecCtx;
+    void (*setSlotPriorityArrowOnly)(int slot, bool priorityArrowOnly, void* ctx);
+    void* setSlotPriorityArrowOnlyCtx;
+    void (*setSlotProfileAndMode)(int slot, const String& profile, int mode, void* ctx);
+    void* setSlotProfileAndModeCtx;
+    int (*getActiveSlot)(void* ctx);
+    void* getActiveSlotCtx;
+    void (*drawProfileIndicator)(int slot, void* ctx);
+    void* drawProfileIndicatorCtx;
+    bool (*applyActivation)(const ActivationRequest& request, void* ctx);
+    void* applyActivationCtx;
+    void (*setActiveSlot)(int slot, void* ctx);
+    void* setActiveSlotCtx;
+    void (*setAutoPushEnabled)(bool enabled, void* ctx);
+    void* setAutoPushEnabledCtx;
+    PushNowQueueResult (*queuePushNow)(const PushNowRequest& request, void* ctx);
+    void* queuePushNowCtx;
 };
 
 void handleApiSlots(WebServer& server, const Runtime& runtime);
@@ -98,14 +116,14 @@ void handleApiStatus(WebServer& server, const Runtime& runtime);
 
 void handleApiSlotSave(WebServer& server,
                        const Runtime& runtime,
-                       const std::function<bool()>& checkRateLimit);
+                       bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
 
 void handleApiActivate(WebServer& server,
                        const Runtime& runtime,
-                       const std::function<bool()>& checkRateLimit);
+                       bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
 
 void handleApiPushNow(WebServer& server,
                       const Runtime& runtime,
-                      const std::function<bool()>& checkRateLimit);
+                      bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
 
 }  // namespace WifiAutoPushApiService

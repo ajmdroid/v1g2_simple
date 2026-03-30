@@ -11,7 +11,7 @@ void handleApiDevicesList(WebServer& server, const Runtime& runtime) {
 
     std::vector<DeviceInfo> devices;
     if (runtime.listDevices) {
-        devices = runtime.listDevices();
+        devices = runtime.listDevices(runtime.listDevicesCtx);
     }
 
     for (const auto& device : devices) {
@@ -28,8 +28,8 @@ void handleApiDevicesList(WebServer& server, const Runtime& runtime) {
 
 void handleApiDeviceNameSave(WebServer& server,
                              const Runtime& runtime,
-                             const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                             bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!server.hasArg("address")) {
         server.send(400, "application/json", "{\"error\":\"Missing address\"}");
@@ -44,7 +44,7 @@ void handleApiDeviceNameSave(WebServer& server,
     String address = server.arg("address");
     String name = server.hasArg("name") ? server.arg("name") : "";
 
-    if (!runtime.setDeviceName(address, name)) {
+    if (!runtime.setDeviceName(address, name, runtime.setDeviceNameCtx)) {
         server.send(400, "application/json", "{\"error\":\"Invalid address or write failed\"}");
         return;
     }
@@ -54,8 +54,8 @@ void handleApiDeviceNameSave(WebServer& server,
 
 void handleApiDeviceProfileSave(WebServer& server,
                                 const Runtime& runtime,
-                                const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                                bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!server.hasArg("address") || !server.hasArg("profile")) {
         server.send(400, "application/json", "{\"error\":\"Missing address or profile\"}");
@@ -74,7 +74,7 @@ void handleApiDeviceProfileSave(WebServer& server,
         return;
     }
 
-    if (!runtime.setDeviceDefaultProfile(address, static_cast<uint8_t>(profile))) {
+    if (!runtime.setDeviceDefaultProfile(address, static_cast<uint8_t>(profile), runtime.setDeviceDefaultProfileCtx)) {
         server.send(400, "application/json", "{\"error\":\"Invalid address or write failed\"}");
         return;
     }
@@ -84,8 +84,8 @@ void handleApiDeviceProfileSave(WebServer& server,
 
 void handleApiDeviceDelete(WebServer& server,
                            const Runtime& runtime,
-                           const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                           bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!server.hasArg("address")) {
         server.send(400, "application/json", "{\"error\":\"Missing address\"}");
@@ -98,7 +98,7 @@ void handleApiDeviceDelete(WebServer& server,
     }
 
     String address = server.arg("address");
-    if (!runtime.deleteDevice(address)) {
+    if (!runtime.deleteDevice(address, runtime.deleteDeviceCtx)) {
         server.send(400, "application/json", "{\"error\":\"Invalid address or write failed\"}");
         return;
     }

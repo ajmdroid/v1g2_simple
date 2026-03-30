@@ -38,21 +38,23 @@ struct FakeRuntime {
 
 static WifiV1ProfileApiService::Runtime makeRuntime(FakeRuntime& rt) {
     return WifiV1ProfileApiService::Runtime{
-        []() { return std::vector<String>{}; },
-        [](const String&, WifiV1ProfileApiService::ProfileSummary&) { return false; },
-        [](const String&, String&) { return false; },
-        [&rt](const String&, uint8_t outBytes[6], bool& displayOn) {
-            rt.loadProfileSettingsCalls++;
-            if (!rt.profileFound) {
+        [](void* /*ctx*/) { return std::vector<String>{}; }, nullptr,
+        [](const String&, WifiV1ProfileApiService::ProfileSummary&, void* /*ctx*/) { return false; }, nullptr,
+        [](const String&, String&, void* /*ctx*/) { return false; }, nullptr,
+        [](const String&, uint8_t outBytes[6], bool& displayOn, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->loadProfileSettingsCalls++;
+            if (!rtp->profileFound) {
                 return false;
             }
-            memcpy(outBytes, rt.profileBytes, 6);
-            displayOn = rt.profileDisplayOn;
+            memcpy(outBytes, rtp->profileBytes, 6);
+            displayOn = rtp->profileDisplayOn;
             return true;
-        },
-        [&rt](const JsonObject& settingsObj, uint8_t outBytes[6]) {
-            rt.parseSettingsCalls++;
-            if (!rt.parseSettingsOk) {
+        }, &rt,
+        [](const JsonObject& settingsObj, uint8_t outBytes[6], void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->parseSettingsCalls++;
+            if (!rtp->parseSettingsOk) {
                 return false;
             }
             memset(outBytes, 0, 6);
@@ -60,26 +62,29 @@ static WifiV1ProfileApiService::Runtime makeRuntime(FakeRuntime& rt) {
                 outBytes[0] = static_cast<uint8_t>(settingsObj["byte0"].as<int>());
             }
             return true;
-        },
-        [](const String&, const String&, bool, const uint8_t[6], String&) { return false; },
-        [](const String&) { return false; },
-        [&rt]() {
-            rt.requestCalls++;
-            return rt.requestResult;
-        },
-        [&rt](const uint8_t inBytes[6]) {
-            rt.writeCalls++;
-            memcpy(rt.lastWriteBytes, inBytes, 6);
-            return rt.writeResult;
-        },
-        [&rt](bool displayOn) {
-            rt.setDisplayCalls++;
-            rt.lastDisplayOn = displayOn;
-        },
-        []() { return false; },
-        []() { return String("{}"); },
-        [&rt]() { return rt.connected; },
-        []() {},
+        }, &rt,
+        [](const String&, const String&, bool, const uint8_t[6], String&, void* /*ctx*/) { return false; }, nullptr,
+        [](const String&, void* /*ctx*/) { return false; }, nullptr,
+        [](void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->requestCalls++;
+            return rtp->requestResult;
+        }, &rt,
+        [](const uint8_t inBytes[6], void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->writeCalls++;
+            memcpy(rtp->lastWriteBytes, inBytes, 6);
+            return rtp->writeResult;
+        }, &rt,
+        [](bool displayOn, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setDisplayCalls++;
+            rtp->lastDisplayOn = displayOn;
+        }, &rt,
+        [](void* /*ctx*/) { return false; }, nullptr,
+        [](void* /*ctx*/) { return String("{}"); }, nullptr,
+        [](void* ctx) { return static_cast<FakeRuntime*>(ctx)->connected; }, &rt,
+        [](void* /*ctx*/) {}, nullptr,
     };
 }
 
@@ -99,7 +104,7 @@ void test_pull_rate_limited_short_circuits() {
     WifiV1ProfileApiService::handleApiSettingsPull(
         server,
         makeRuntime(rt),
-        []() { return false; });
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.requestCalls);
@@ -113,7 +118,7 @@ void test_pull_requires_connected_v1() {
     WifiV1ProfileApiService::handleApiSettingsPull(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"V1 not connected\""));
@@ -128,7 +133,7 @@ void test_pull_request_failure_returns_500() {
     WifiV1ProfileApiService::handleApiSettingsPull(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Failed to send request\""));
@@ -144,7 +149,7 @@ void test_pull_success_returns_200() {
     WifiV1ProfileApiService::handleApiSettingsPull(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -161,7 +166,7 @@ void test_push_rate_limited_short_circuits() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return false; });
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.writeCalls);
@@ -176,7 +181,7 @@ void test_push_requires_connected_v1() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"V1 not connected\""));
@@ -190,7 +195,7 @@ void test_push_requires_body() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing request body\""));
@@ -205,7 +210,7 @@ void test_push_invalid_json_returns_400() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Invalid JSON\""));
@@ -221,7 +226,7 @@ void test_push_profile_name_not_found_returns_404() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(404, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Profile not found\""));
@@ -240,7 +245,7 @@ void test_push_profile_name_success_writes_and_sets_display() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -261,7 +266,7 @@ void test_push_raw_bytes_requires_six_items() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Invalid bytes array\""));
@@ -276,7 +281,7 @@ void test_push_raw_bytes_success() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -297,7 +302,7 @@ void test_push_settings_parse_failure_returns_400() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Invalid settings\""));
@@ -314,7 +319,7 @@ void test_push_settings_root_fallback_success() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -336,7 +341,7 @@ void test_push_write_failure_returns_500() {
     WifiV1ProfileApiService::handleApiSettingsPush(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Write command failed - check V1 connection\""));

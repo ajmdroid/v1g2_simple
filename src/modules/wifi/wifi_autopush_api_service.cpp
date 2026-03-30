@@ -9,7 +9,7 @@ namespace WifiAutoPushApiService {
 void handleApiSlots(WebServer& server, const Runtime& runtime) {
     SlotsSnapshot snapshot;
     if (runtime.loadSlotsSnapshot) {
-        runtime.loadSlotsSnapshot(snapshot);
+        runtime.loadSlotsSnapshot(snapshot, runtime.loadSlotsSnapshotCtx);
     }
 
     JsonDocument doc;
@@ -36,7 +36,7 @@ void handleApiSlots(WebServer& server, const Runtime& runtime) {
 
 void handleApiStatus(WebServer& server, const Runtime& runtime) {
     String json;
-    if (runtime.loadPushStatusJson && runtime.loadPushStatusJson(json)) {
+    if (runtime.loadPushStatusJson && runtime.loadPushStatusJson(json, runtime.loadPushStatusJsonCtx)) {
         server.send(200, "application/json", json);
         return;
     }
@@ -45,8 +45,8 @@ void handleApiStatus(WebServer& server, const Runtime& runtime) {
 
 void handleApiSlotSave(WebServer& server,
                        const Runtime& runtime,
-                       const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                       bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!server.hasArg("slot") || !server.hasArg("profile") || !server.hasArg("mode")) {
         server.send(400, "application/json", "{\"error\":\"Missing parameters\"}");
@@ -95,58 +95,58 @@ void handleApiSlotSave(WebServer& server,
         request.priorityArrowOnly = server.arg("priorityArrowOnly") == "true";
         request.profile = profile;
         request.mode = mode;
-        changed = runtime.applySlotUpdate(request);
+        changed = runtime.applySlotUpdate(request, runtime.applySlotUpdateCtx);
     } else {
         if (name.length() > 0 && runtime.setSlotName) {
-            runtime.setSlotName(slot, name);
+            runtime.setSlotName(slot, name, runtime.setSlotNameCtx);
             changed = true;
         }
 
         if (color >= 0 && runtime.setSlotColor) {
-            runtime.setSlotColor(slot, static_cast<uint16_t>(color));
+            runtime.setSlotColor(slot, static_cast<uint16_t>(color), runtime.setSlotColorCtx);
             changed = true;
         }
 
-        uint8_t existingVol = runtime.getSlotVolume ? runtime.getSlotVolume(slot) : 0;
-        uint8_t existingMute = runtime.getSlotMuteVolume ? runtime.getSlotMuteVolume(slot) : 0;
+        uint8_t existingVol = runtime.getSlotVolume ? runtime.getSlotVolume(slot, runtime.getSlotVolumeCtx) : 0;
+        uint8_t existingMute = runtime.getSlotMuteVolume ? runtime.getSlotMuteVolume(slot, runtime.getSlotMuteVolumeCtx) : 0;
         uint8_t vol = (volume >= 0) ? static_cast<uint8_t>(volume) : existingVol;
         uint8_t mute = (muteVol >= 0) ? static_cast<uint8_t>(muteVol) : existingMute;
 
         if ((volume >= 0 || muteVol >= 0) && runtime.setSlotVolumes) {
-            runtime.setSlotVolumes(slot, vol, mute);
+            runtime.setSlotVolumes(slot, vol, mute, runtime.setSlotVolumesCtx);
             changed = true;
         }
 
         if (hasDarkMode && runtime.setSlotDarkMode) {
-            runtime.setSlotDarkMode(slot, darkMode);
+            runtime.setSlotDarkMode(slot, darkMode, runtime.setSlotDarkModeCtx);
             changed = true;
         }
         if (hasMuteToZero && runtime.setSlotMuteToZero) {
-            runtime.setSlotMuteToZero(slot, muteToZero);
+            runtime.setSlotMuteToZero(slot, muteToZero, runtime.setSlotMuteToZeroCtx);
             changed = true;
         }
 
         if (hasAlertPersist && alertPersist >= 0 && runtime.setSlotAlertPersistSec) {
             int clamped = std::max(0, std::min(5, alertPersist));
-            runtime.setSlotAlertPersistSec(slot, static_cast<uint8_t>(clamped));
+            runtime.setSlotAlertPersistSec(slot, static_cast<uint8_t>(clamped), runtime.setSlotAlertPersistSecCtx);
             changed = true;
         }
 
         if (server.hasArg("priorityArrowOnly") && runtime.setSlotPriorityArrowOnly) {
             bool prioArrow = server.arg("priorityArrowOnly") == "true";
-            runtime.setSlotPriorityArrowOnly(slot, prioArrow);
+            runtime.setSlotPriorityArrowOnly(slot, prioArrow, runtime.setSlotPriorityArrowOnlyCtx);
             changed = true;
         }
 
         if (runtime.setSlotProfileAndMode) {
-            runtime.setSlotProfileAndMode(slot, profile, mode);
+            runtime.setSlotProfileAndMode(slot, profile, mode, runtime.setSlotProfileAndModeCtx);
             changed = true;
         }
     }
 
     if (changed && runtime.getActiveSlot && runtime.drawProfileIndicator &&
-        slot == runtime.getActiveSlot()) {
-        runtime.drawProfileIndicator(slot);
+        slot == runtime.getActiveSlot(runtime.getActiveSlotCtx)) {
+        runtime.drawProfileIndicator(slot, runtime.drawProfileIndicatorCtx);
     }
 
     server.send(200, "application/json", "{\"success\":true}");
@@ -154,8 +154,8 @@ void handleApiSlotSave(WebServer& server,
 
 void handleApiActivate(WebServer& server,
                        const Runtime& runtime,
-                       const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                       bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!server.hasArg("slot")) {
         server.send(400, "application/json", "{\"error\":\"Missing slot parameter\"}");
@@ -174,13 +174,13 @@ void handleApiActivate(WebServer& server,
         ActivationRequest request;
         request.slot = slot;
         request.enable = enable;
-        runtime.applyActivation(request);
+        runtime.applyActivation(request, runtime.applyActivationCtx);
     } else {
         if (runtime.setActiveSlot) {
-            runtime.setActiveSlot(slot);
+            runtime.setActiveSlot(slot, runtime.setActiveSlotCtx);
         }
         if (runtime.setAutoPushEnabled) {
-            runtime.setAutoPushEnabled(enable);
+            runtime.setAutoPushEnabled(enable, runtime.setAutoPushEnabledCtx);
         }
     }
 
@@ -189,8 +189,8 @@ void handleApiActivate(WebServer& server,
 
 void handleApiPushNow(WebServer& server,
                       const Runtime& runtime,
-                      const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                      bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!server.hasArg("slot")) {
         server.send(400, "application/json", "{\"error\":\"Missing slot parameter\"}");
@@ -219,7 +219,7 @@ void handleApiPushNow(WebServer& server,
         }
     }
 
-    switch (runtime.queuePushNow(request)) {
+    switch (runtime.queuePushNow(request, runtime.queuePushNowCtx)) {
         case PushNowQueueResult::QUEUED:
             server.send(200, "application/json", "{\"success\":true,\"queued\":true}");
             return;

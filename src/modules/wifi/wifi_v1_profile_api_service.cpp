@@ -10,7 +10,7 @@ namespace WifiV1ProfileApiService {
 void handleApiProfilesList(WebServer& server, const Runtime& runtime) {
     std::vector<String> profileNames;
     if (runtime.listProfileNames) {
-        profileNames = runtime.listProfileNames();
+        profileNames = runtime.listProfileNames(runtime.listProfileNamesCtx);
     }
     Serial.printf("[V1Profiles] Listing %d profiles\n", profileNames.size());
 
@@ -19,7 +19,7 @@ void handleApiProfilesList(WebServer& server, const Runtime& runtime) {
 
     for (const String& name : profileNames) {
         ProfileSummary profile;
-        if (runtime.loadProfileSummary && runtime.loadProfileSummary(name, profile)) {
+        if (runtime.loadProfileSummary && runtime.loadProfileSummary(name, profile, runtime.loadProfileSummaryCtx)) {
             JsonObject obj = array.add<JsonObject>();
             obj["name"] = profile.name;
             obj["description"] = profile.description;
@@ -39,7 +39,7 @@ void handleApiProfileGet(WebServer& server, const Runtime& runtime) {
 
     String name = server.arg("name");
     String profileJson;
-    if (!runtime.loadProfileJson || !runtime.loadProfileJson(name, profileJson)) {
+    if (!runtime.loadProfileJson || !runtime.loadProfileJson(name, profileJson, runtime.loadProfileJsonCtx)) {
         server.send(404, "application/json", "{\"error\":\"Profile not found\"}");
         return;
     }
@@ -49,8 +49,8 @@ void handleApiProfileGet(WebServer& server, const Runtime& runtime) {
 
 void handleApiProfileSave(WebServer& server,
                           const Runtime& runtime,
-                          const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                          bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!server.hasArg("plain")) {
         server.send(400, "application/json", "{\"error\":\"Missing request body\"}");
@@ -91,23 +91,23 @@ void handleApiProfileSave(WebServer& server,
     // Parse settings from JSON
     JsonObject settingsObj = doc["settings"];
     if (!settingsObj.isNull()) {
-        if (!runtime.parseSettingsJson(settingsObj, settingsBytes)) {
+        if (!runtime.parseSettingsJson(settingsObj, settingsBytes, runtime.parseSettingsJsonCtx)) {
             server.send(400, "application/json", "{\"error\":\"Invalid settings\"}");
             return;
         }
     } else {
         // Direct settings in root
         JsonObject rootObj = doc.as<JsonObject>();
-        if (!runtime.parseSettingsJson(rootObj, settingsBytes)) {
+        if (!runtime.parseSettingsJson(rootObj, settingsBytes, runtime.parseSettingsJsonCtx)) {
             server.send(400, "application/json", "{\"error\":\"Invalid settings\"}");
             return;
         }
     }
 
     String saveError;
-    if (runtime.saveProfile(name, description, displayOn, settingsBytes, saveError)) {
+    if (runtime.saveProfile(name, description, displayOn, settingsBytes, saveError, runtime.saveProfileCtx)) {
         if (runtime.backupToSd) {
-            runtime.backupToSd();
+            runtime.backupToSd(runtime.backupToSdCtx);
         }
         Serial.printf("[V1Profiles] Profile '%s' saved successfully\n", name.c_str());
         server.send(200, "application/json", "{\"success\":true}");
@@ -120,8 +120,8 @@ void handleApiProfileSave(WebServer& server,
 
 void handleApiProfileDelete(WebServer& server,
                             const Runtime& runtime,
-                            const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                            bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!server.hasArg("plain")) {
         server.send(400, "application/json", "{\"error\":\"Missing request body\"}");
@@ -151,9 +151,9 @@ void handleApiProfileDelete(WebServer& server,
         return;
     }
 
-    if (runtime.deleteProfile(name)) {
+    if (runtime.deleteProfile(name, runtime.deleteProfileCtx)) {
         if (runtime.backupToSd) {
-            runtime.backupToSd();
+            runtime.backupToSd(runtime.backupToSdCtx);
         }
         server.send(200, "application/json", "{\"success\":true}");
     } else {
@@ -163,9 +163,9 @@ void handleApiProfileDelete(WebServer& server,
 
 void handleApiCurrentSettings(WebServer& server, const Runtime& runtime) {
     WifiJson::Document doc;
-    doc["connected"] = runtime.v1Connected ? runtime.v1Connected() : false;
+    doc["connected"] = runtime.v1Connected ? runtime.v1Connected(runtime.v1ConnectedCtx) : false;
 
-    if (!runtime.hasCurrentSettings || !runtime.hasCurrentSettings()) {
+    if (!runtime.hasCurrentSettings || !runtime.hasCurrentSettings(runtime.hasCurrentSettingsCtx)) {
         doc["available"] = false;
         WifiApiResponse::sendJsonDocument(server, 200, doc);
         return;
@@ -175,7 +175,7 @@ void handleApiCurrentSettings(WebServer& server, const Runtime& runtime) {
     // Parse existing settings JSON and embed it
     if (runtime.currentSettingsJson) {
         WifiJson::Document settingsDoc;
-        String settingsJson = runtime.currentSettingsJson();
+        String settingsJson = runtime.currentSettingsJson(runtime.currentSettingsJsonCtx);
         deserializeJson(settingsDoc, settingsJson.c_str());
         doc["settings"] = settingsDoc;
     }
@@ -185,17 +185,17 @@ void handleApiCurrentSettings(WebServer& server, const Runtime& runtime) {
 
 void handleApiSettingsPull(WebServer& server,
                            const Runtime& runtime,
-                           const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                           bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
-    if (!runtime.v1Connected || !runtime.v1Connected()) {
+    if (!runtime.v1Connected || !runtime.v1Connected(runtime.v1ConnectedCtx)) {
         server.send(503, "application/json", "{\"error\":\"V1 not connected\"}");
         return;
     }
 
     bool requested = false;
     if (runtime.requestUserBytes) {
-        requested = runtime.requestUserBytes();
+        requested = runtime.requestUserBytes(runtime.requestUserBytesCtx);
     }
     if (requested) {
         // Response will come async via BLE callback
@@ -207,10 +207,10 @@ void handleApiSettingsPull(WebServer& server,
 
 void handleApiSettingsPush(WebServer& server,
                            const Runtime& runtime,
-                           const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                           bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
-    if (!runtime.v1Connected || !runtime.v1Connected()) {
+    if (!runtime.v1Connected || !runtime.v1Connected(runtime.v1ConnectedCtx)) {
         server.send(503, "application/json", "{\"error\":\"V1 not connected\"}");
         return;
     }
@@ -241,7 +241,7 @@ void handleApiSettingsPush(WebServer& server,
     String profileName = doc["name"] | "";
     if (!profileName.isEmpty()) {
         if (!runtime.loadProfileSettings ||
-            !runtime.loadProfileSettings(profileName, bytes, displayOn)) {
+            !runtime.loadProfileSettings(profileName, bytes, displayOn, runtime.loadProfileSettingsCtx)) {
             server.send(404, "application/json", "{\"error\":\"Profile not found\"}");
             return;
         }
@@ -273,7 +273,7 @@ void handleApiSettingsPush(WebServer& server,
         if (settingsObj.isNull()) {
             settingsObj = doc.as<JsonObject>();
         }
-        if (!runtime.parseSettingsJson || !runtime.parseSettingsJson(settingsObj, bytes)) {
+        if (!runtime.parseSettingsJson || !runtime.parseSettingsJson(settingsObj, bytes, runtime.parseSettingsJsonCtx)) {
             server.send(400, "application/json", "{\"error\":\"Invalid settings\"}");
             return;
         }
@@ -289,12 +289,12 @@ void handleApiSettingsPush(WebServer& server,
 
     bool writeOk = false;
     if (runtime.writeUserBytes) {
-        writeOk = runtime.writeUserBytes(bytes);
+        writeOk = runtime.writeUserBytes(bytes, runtime.writeUserBytesCtx);
     }
     if (writeOk) {
         Serial.println("[V1Settings] Push sent successfully");
         if (runtime.setDisplayOn) {
-            runtime.setDisplayOn(displayOn);
+            runtime.setDisplayOn(displayOn, runtime.setDisplayOnCtx);
         }
         server.send(200, "application/json", "{\"success\":true,\"message\":\"Settings sent to V1\"}");
     } else {

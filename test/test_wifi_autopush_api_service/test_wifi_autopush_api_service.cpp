@@ -147,94 +147,108 @@ static bool applyActivationForTest(FakeRuntime& rt,
 
 static WifiAutoPushApiService::Runtime makeRuntime(FakeRuntime& rt) {
     return WifiAutoPushApiService::Runtime{
-        [&rt](WifiAutoPushApiService::SlotsSnapshot& out) {
-            rt.loadSlotsCalls++;
-            out = rt.snapshot;
-        },
-        [&rt](String& outJson) {
-            rt.loadStatusCalls++;
-            if (!rt.statusAvailable) {
+        [](WifiAutoPushApiService::SlotsSnapshot& out, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->loadSlotsCalls++;
+            out = rtp->snapshot;
+        }, &rt,
+        [](String& outJson, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->loadStatusCalls++;
+            if (!rtp->statusAvailable) {
                 return false;
             }
-            outJson = rt.statusJson;
+            outJson = rtp->statusJson;
             return true;
-        },
-        [&rt](const WifiAutoPushApiService::SlotUpdateRequest& request) {
-            return applySlotUpdateForTest(rt, request);
-        },
-        [&rt](int slot, const String& name) {
-            rt.setSlotNameCalls++;
-            rt.lastSlotIndex = slot;
-            rt.lastSlotName = name;
-        },
-        [&rt](int slot, uint16_t color) {
-            rt.setSlotColorCalls++;
-            rt.lastSlotIndex = slot;
-            rt.lastSlotColor = color;
-        },
-        [&rt](int slot) {
-            return rt.slotVolumes[slot];
-        },
-        [&rt](int slot) {
-            return rt.slotMuteVolumes[slot];
-        },
-        [&rt](int slot, uint8_t volume, uint8_t muteVolume) {
-            rt.setSlotVolumesCalls++;
-            rt.lastSlotIndex = slot;
-            rt.lastSlotVolume = volume;
-            rt.lastSlotMuteVolume = muteVolume;
-            rt.slotVolumes[slot] = volume;
-            rt.slotMuteVolumes[slot] = muteVolume;
-        },
-        [&rt](int slot, bool darkMode) {
-            rt.setSlotDarkModeCalls++;
-            rt.lastSlotIndex = slot;
-            rt.lastDarkMode = darkMode;
-        },
-        [&rt](int slot, bool muteToZero) {
-            rt.setSlotMuteToZeroCalls++;
-            rt.lastSlotIndex = slot;
-            rt.lastMuteToZero = muteToZero;
-        },
-        [&rt](int slot, uint8_t alertPersist) {
-            rt.setSlotAlertPersistCalls++;
-            rt.lastSlotIndex = slot;
-            rt.lastAlertPersist = alertPersist;
-        },
-        [&rt](int slot, bool priorityArrowOnly) {
-            rt.setSlotPriorityArrowOnlyCalls++;
-            rt.lastSlotIndex = slot;
-            rt.lastPriorityArrowOnly = priorityArrowOnly;
-        },
-        [&rt](int slot, const String& profile, int mode) {
-            rt.setSlotProfileAndModeCalls++;
-            rt.lastSlotIndex = slot;
-            rt.lastProfile = profile;
-            rt.lastMode = mode;
-        },
-        [&rt]() {
-            return rt.activeSlot;
-        },
-        [&rt](int slot) {
-            rt.drawProfileIndicatorCalls++;
-            rt.lastSlotIndex = slot;
-        },
-        [&rt](const WifiAutoPushApiService::ActivationRequest& request) {
-            return applyActivationForTest(rt, request);
-        },
-        [&rt](int slot) {
-            rt.setActiveSlotCalls++;
-            rt.activeSlot = slot;
-        },
-        [&rt](bool enabled) {
-            rt.setAutoPushEnabledCalls++;
-            rt.autoPushEnabled = enabled;
-        },
-        [&rt](const WifiAutoPushApiService::PushNowRequest& request) {
-            rt.queuePushNowCalls++;
-            rt.lastPushRequest = request;
-            return rt.queueResult;
-        },
+        }, &rt,
+        [](const WifiAutoPushApiService::SlotUpdateRequest& request, void* ctx) {
+            return applySlotUpdateForTest(*static_cast<FakeRuntime*>(ctx), request);
+        }, &rt,
+        [](int slot, const String& name, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setSlotNameCalls++;
+            rtp->lastSlotIndex = slot;
+            rtp->lastSlotName = name;
+        }, &rt,
+        [](int slot, uint16_t color, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setSlotColorCalls++;
+            rtp->lastSlotIndex = slot;
+            rtp->lastSlotColor = color;
+        }, &rt,
+        [](int slot, void* ctx) {
+            return static_cast<FakeRuntime*>(ctx)->slotVolumes[slot];
+        }, &rt,
+        [](int slot, void* ctx) {
+            return static_cast<FakeRuntime*>(ctx)->slotMuteVolumes[slot];
+        }, &rt,
+        [](int slot, uint8_t volume, uint8_t muteVolume, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setSlotVolumesCalls++;
+            rtp->lastSlotIndex = slot;
+            rtp->lastSlotVolume = volume;
+            rtp->lastSlotMuteVolume = muteVolume;
+            rtp->slotVolumes[slot] = volume;
+            rtp->slotMuteVolumes[slot] = muteVolume;
+        }, &rt,
+        [](int slot, bool darkMode, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setSlotDarkModeCalls++;
+            rtp->lastSlotIndex = slot;
+            rtp->lastDarkMode = darkMode;
+        }, &rt,
+        [](int slot, bool muteToZero, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setSlotMuteToZeroCalls++;
+            rtp->lastSlotIndex = slot;
+            rtp->lastMuteToZero = muteToZero;
+        }, &rt,
+        [](int slot, uint8_t alertPersist, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setSlotAlertPersistCalls++;
+            rtp->lastSlotIndex = slot;
+            rtp->lastAlertPersist = alertPersist;
+        }, &rt,
+        [](int slot, bool priorityArrowOnly, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setSlotPriorityArrowOnlyCalls++;
+            rtp->lastSlotIndex = slot;
+            rtp->lastPriorityArrowOnly = priorityArrowOnly;
+        }, &rt,
+        [](int slot, const String& profile, int mode, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setSlotProfileAndModeCalls++;
+            rtp->lastSlotIndex = slot;
+            rtp->lastProfile = profile;
+            rtp->lastMode = mode;
+        }, &rt,
+        [](void* ctx) {
+            return static_cast<FakeRuntime*>(ctx)->activeSlot;
+        }, &rt,
+        [](int slot, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->drawProfileIndicatorCalls++;
+            rtp->lastSlotIndex = slot;
+        }, &rt,
+        [](const WifiAutoPushApiService::ActivationRequest& request, void* ctx) {
+            return applyActivationForTest(*static_cast<FakeRuntime*>(ctx), request);
+        }, &rt,
+        [](int slot, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setActiveSlotCalls++;
+            rtp->activeSlot = slot;
+        }, &rt,
+        [](bool enabled, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setAutoPushEnabledCalls++;
+            rtp->autoPushEnabled = enabled;
+        }, &rt,
+        [](const WifiAutoPushApiService::PushNowRequest& request, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->queuePushNowCalls++;
+            rtp->lastPushRequest = request;
+            return rtp->queueResult;
+        }, &rt,
     };
 }
 
@@ -342,7 +356,7 @@ void test_slot_save_rate_limited_short_circuits() {
     WifiAutoPushApiService::handleApiSlotSave(
         server,
         makeRuntime(rt),
-        []() { return false; });
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.setSlotProfileAndModeCalls);
@@ -356,7 +370,7 @@ void test_slot_save_missing_params_returns_400() {
     WifiAutoPushApiService::handleApiSlotSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing parameters\""));
@@ -372,7 +386,7 @@ void test_slot_save_invalid_slot_returns_400() {
     WifiAutoPushApiService::handleApiSlotSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Invalid slot\""));
@@ -402,7 +416,7 @@ void test_slot_save_success_updates_slot_runtime() {
     WifiAutoPushApiService::handleApiSlotSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -457,7 +471,7 @@ void test_slot_save_noop_does_not_schedule_persist_or_redraw() {
     WifiAutoPushApiService::handleApiSlotSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(1, rt.applySlotUpdateCalls);
@@ -472,7 +486,7 @@ void test_activate_missing_slot_returns_400() {
     WifiAutoPushApiService::handleApiActivate(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing slot parameter\""));
@@ -486,7 +500,7 @@ void test_activate_invalid_slot_returns_400() {
     WifiAutoPushApiService::handleApiActivate(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Invalid slot\""));
@@ -500,7 +514,7 @@ void test_activate_success_defaults_enable_true() {
     WifiAutoPushApiService::handleApiActivate(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -525,7 +539,7 @@ void test_activate_success_enable_false() {
     WifiAutoPushApiService::handleApiActivate(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(1, rt.applyActivationCalls);
@@ -541,7 +555,7 @@ void test_push_now_rate_limited_short_circuits() {
     WifiAutoPushApiService::handleApiPushNow(
         server,
         makeRuntime(rt),
-        []() { return false; });
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.queuePushNowCalls);
@@ -554,7 +568,7 @@ void test_push_now_missing_slot_returns_400() {
     WifiAutoPushApiService::handleApiPushNow(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Missing slot parameter\""));
@@ -568,7 +582,7 @@ void test_push_now_invalid_slot_returns_400() {
     WifiAutoPushApiService::handleApiPushNow(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Invalid slot\""));
@@ -580,22 +594,22 @@ void test_push_now_maps_runtime_error_states() {
     server.setArg("slot", "0");
 
     rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::V1_NOT_CONNECTED;
-    WifiAutoPushApiService::handleApiPushNow(server, makeRuntime(rt), []() { return true; });
+    WifiAutoPushApiService::handleApiPushNow(server, makeRuntime(rt), [](void* /*ctx*/) { return true; }, nullptr);
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"V1 not connected\""));
 
     rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::ALREADY_IN_PROGRESS;
-    WifiAutoPushApiService::handleApiPushNow(server, makeRuntime(rt), []() { return true; });
+    WifiAutoPushApiService::handleApiPushNow(server, makeRuntime(rt), [](void* /*ctx*/) { return true; }, nullptr);
     TEST_ASSERT_EQUAL_INT(409, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Push already in progress\""));
 
     rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::NO_PROFILE_CONFIGURED;
-    WifiAutoPushApiService::handleApiPushNow(server, makeRuntime(rt), []() { return true; });
+    WifiAutoPushApiService::handleApiPushNow(server, makeRuntime(rt), [](void* /*ctx*/) { return true; }, nullptr);
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"No profile configured for this slot\""));
 
     rt.queueResult = WifiAutoPushApiService::PushNowQueueResult::PROFILE_LOAD_FAILED;
-    WifiAutoPushApiService::handleApiPushNow(server, makeRuntime(rt), []() { return true; });
+    WifiAutoPushApiService::handleApiPushNow(server, makeRuntime(rt), [](void* /*ctx*/) { return true; }, nullptr);
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"Failed to load profile\""));
 }
@@ -611,7 +625,7 @@ void test_push_now_success_with_profile_override() {
     WifiAutoPushApiService::handleApiPushNow(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));

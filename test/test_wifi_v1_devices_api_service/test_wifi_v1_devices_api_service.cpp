@@ -35,27 +35,31 @@ struct FakeRuntime {
 
 static WifiV1DevicesApiService::Runtime makeRuntime(FakeRuntime& rt) {
     return WifiV1DevicesApiService::Runtime{
-        [&rt]() {
-            rt.listCalls++;
-            return rt.devices;
-        },
-        [&rt](const String& address, const String& name) {
-            rt.setNameCalls++;
-            rt.lastAddress = address;
-            rt.lastName = name;
-            return rt.setNameResult;
-        },
-        [&rt](const String& address, uint8_t profile) {
-            rt.setProfileCalls++;
-            rt.lastAddress = address;
-            rt.lastProfile = profile;
-            return rt.setProfileResult;
-        },
-        [&rt](const String& address) {
-            rt.deleteCalls++;
-            rt.lastAddress = address;
-            return rt.deleteResult;
-        },
+        [](void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->listCalls++;
+            return rtp->devices;
+        }, &rt,
+        [](const String& address, const String& name, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setNameCalls++;
+            rtp->lastAddress = address;
+            rtp->lastName = name;
+            return rtp->setNameResult;
+        }, &rt,
+        [](const String& address, uint8_t profile, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->setProfileCalls++;
+            rtp->lastAddress = address;
+            rtp->lastProfile = profile;
+            return rtp->setProfileResult;
+        }, &rt,
+        [](const String& address, void* ctx) {
+            auto* rtp = static_cast<FakeRuntime*>(ctx);
+            rtp->deleteCalls++;
+            rtp->lastAddress = address;
+            return rtp->deleteResult;
+        }, &rt,
     };
 }
 
@@ -93,7 +97,7 @@ void test_device_name_save_missing_address_returns_400() {
     WifiV1DevicesApiService::handleApiDeviceNameSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "Missing address"));
@@ -109,7 +113,7 @@ void test_device_name_save_rate_limited_short_circuits() {
     WifiV1DevicesApiService::handleApiDeviceNameSave(
         server,
         makeRuntime(rt),
-        []() { return false; });
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.setNameCalls);
@@ -124,7 +128,7 @@ void test_device_name_save_success_returns_200() {
     WifiV1DevicesApiService::handleApiDeviceNameSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -142,7 +146,7 @@ void test_device_profile_save_invalid_profile_returns_400() {
     WifiV1DevicesApiService::handleApiDeviceProfileSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "Invalid profile"));
@@ -158,7 +162,7 @@ void test_device_profile_save_success_returns_200() {
     WifiV1DevicesApiService::handleApiDeviceProfileSave(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -174,7 +178,7 @@ void test_device_delete_success_returns_200() {
     WifiV1DevicesApiService::handleApiDeviceDelete(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -190,7 +194,7 @@ void test_device_delete_failure_returns_400() {
     WifiV1DevicesApiService::handleApiDeviceDelete(
         server,
         makeRuntime(rt),
-        []() { return true; });
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "write failed"));

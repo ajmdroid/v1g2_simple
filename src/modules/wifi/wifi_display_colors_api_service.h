@@ -3,39 +3,46 @@
 #include <WebServer.h>
 
 #include <cstdint>
-#include <functional>
 
 #include "../../settings.h"
 
 namespace WifiDisplayColorsApiService {
 
 struct Runtime {
-    std::function<const V1Settings&()> getSettings;
-    std::function<void(const DisplaySettingsUpdate&)> applySettingsUpdate;
-    std::function<void()> resetDisplaySettings;
-    std::function<void(uint8_t)> setDisplayBrightness;
-    std::function<void()> forceDisplayRedraw;
-    std::function<void(uint32_t)> requestColorPreviewHoldMs;
-    std::function<bool()> isColorPreviewRunning;
-    std::function<void()> cancelColorPreview;
+    const V1Settings& (*getSettings)(void* ctx);
+    void* getSettingsCtx;
+    void (*applySettingsUpdate)(const DisplaySettingsUpdate& update, void* ctx);
+    void* applySettingsUpdateCtx;
+    void (*resetDisplaySettings)(void* ctx);
+    void* resetDisplaySettingsCtx;
+    void (*setDisplayBrightness)(uint8_t brightness, void* ctx);
+    void* setDisplayBrightnessCtx;
+    void (*forceDisplayRedraw)(void* ctx);
+    void* forceDisplayRedrawCtx;
+    void (*requestColorPreviewHoldMs)(uint32_t durationMs, void* ctx);
+    void* requestColorPreviewHoldMsCtx;
+    bool (*isColorPreviewRunning)(void* ctx);
+    void* isColorPreviewRunningCtx;
+    void (*cancelColorPreview)(void* ctx);
+    void* cancelColorPreviewCtx;
 };
 
 void handleApiGet(WebServer& server, const Runtime& runtime);
 
 void handleApiSave(WebServer& server,
                    const Runtime& runtime,
-                   const std::function<bool()>& checkRateLimit);
+                   bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
 
 void handleApiReset(WebServer& server,
                     const Runtime& runtime,
-                    const std::function<bool()>& checkRateLimit);
+                    bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
 
 void handleApiPreview(WebServer& server,
                       const Runtime& runtime,
-                      const std::function<bool()>& checkRateLimit);
+                      bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
 
 void handleApiClear(WebServer& server,
                     const Runtime& runtime,
-                    const std::function<bool()>& checkRateLimit);
+                    bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
 
 }  // namespace WifiDisplayColorsApiService

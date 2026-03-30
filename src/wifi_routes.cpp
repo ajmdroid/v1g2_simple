@@ -211,29 +211,29 @@ bool WiFiManager::setupWebServer() {
     server.on("/api/v1/profile", HTTP_GET, [this]() {
         WifiV1ProfileApiService::handleApiProfileGet(server, makeV1ProfileRuntime());
     });
-    server.on("/api/v1/profile", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/v1/profile", HTTP_POST, [this]() {
         WifiV1ProfileApiService::handleApiProfileSave(
             server,
             makeV1ProfileRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/v1/profile/delete", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/v1/profile/delete", HTTP_POST, [this]() {
         WifiV1ProfileApiService::handleApiProfileDelete(
             server,
             makeV1ProfileRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/v1/pull", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/v1/pull", HTTP_POST, [this]() {
         WifiV1ProfileApiService::handleApiSettingsPull(
             server,
             makeV1ProfileRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/v1/push", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/v1/push", HTTP_POST, [this]() {
         WifiV1ProfileApiService::handleApiSettingsPush(
             server,
             makeV1ProfileRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
     server.on("/api/v1/current", HTTP_GET, [this]() {
         WifiV1ProfileApiService::handleApiCurrentSettings(server, makeV1ProfileRuntime());
@@ -241,46 +241,46 @@ bool WiFiManager::setupWebServer() {
     server.on("/api/v1/devices", HTTP_GET, [this]() {
         WifiV1DevicesApiService::handleApiDevicesList(server, makeV1DevicesRuntime());
     });
-    server.on("/api/v1/devices/name", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/v1/devices/name", HTTP_POST, [this]() {
         WifiV1DevicesApiService::handleApiDeviceNameSave(
             server,
             makeV1DevicesRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/v1/devices/profile", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/v1/devices/profile", HTTP_POST, [this]() {
         WifiV1DevicesApiService::handleApiDeviceProfileSave(
             server,
             makeV1DevicesRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/v1/devices/delete", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/v1/devices/delete", HTTP_POST, [this]() {
         WifiV1DevicesApiService::handleApiDeviceDelete(
             server,
             makeV1DevicesRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
     
     // Auto-Push routes
     server.on("/api/autopush/slots", HTTP_GET, [this]() {
         WifiAutoPushApiService::handleApiSlots(server, makeAutoPushRuntime());
     });
-    server.on("/api/autopush/slot", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/autopush/slot", HTTP_POST, [this]() {
         WifiAutoPushApiService::handleApiSlotSave(
             server,
             makeAutoPushRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/autopush/activate", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/autopush/activate", HTTP_POST, [this]() {
         WifiAutoPushApiService::handleApiActivate(
             server,
             makeAutoPushRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/autopush/push", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/autopush/push", HTTP_POST, [this]() {
         WifiAutoPushApiService::handleApiPushNow(
             server,
             makeAutoPushRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
     server.on("/api/autopush/status", HTTP_GET, [this]() {
         WifiAutoPushApiService::handleApiStatus(server, makeAutoPushRuntime());
@@ -290,29 +290,29 @@ bool WiFiManager::setupWebServer() {
     server.on("/api/display/settings", HTTP_GET, [this]() {
         WifiDisplayColorsApiService::handleApiGet(server, makeDisplayColorsRuntime());
     });
-    server.on("/api/display/settings", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/display/settings", HTTP_POST, [this]() {
         WifiDisplayColorsApiService::handleApiSave(
             server,
             makeDisplayColorsRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/display/settings/reset", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/display/settings/reset", HTTP_POST, [this]() {
         WifiDisplayColorsApiService::handleApiReset(
             server,
             makeDisplayColorsRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/display/preview", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/display/preview", HTTP_POST, [this]() {
         WifiDisplayColorsApiService::handleApiPreview(
             server,
             makeDisplayColorsRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/display/preview/clear", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/display/preview/clear", HTTP_POST, [this]() {
         WifiDisplayColorsApiService::handleApiClear(
             server,
             makeDisplayColorsRuntime(),
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
 
     // Audio settings routes
