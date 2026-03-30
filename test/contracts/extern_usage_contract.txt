@@ -60,9 +60,7 @@ kind=header file=include/wifi_manager_internals.h line=16 text=extern V1BLEClien
 kind=header file=include/wifi_manager_internals.h line=17 text=extern SystemEventBus systemEventBus;
 kind=header file=include/wifi_manager_internals.h line=20 text=extern void requestColorPreviewHold(uint32_t durationMs);
 kind=header file=include/wifi_manager_internals.h line=21 text=extern bool isDisplayPreviewRunning();
-kind=header file=include/wifi_manager_internals.h line=22 text=extern bool isColorPreviewRunning();
-kind=header file=include/wifi_manager_internals.h line=23 text=extern void cancelDisplayPreview();
-kind=header file=include/wifi_manager_internals.h line=24 text=extern void cancelColorPreview();
+kind=header file=include/wifi_manager_internals.h line=22 text=extern void cancelDisplayPreview();
 kind=header file=src/battery_manager.h line=102 text=extern BatteryManager batteryManager;
 kind=header file=src/battery_manager.h line=105 text=extern TwoWire tca9554Wire;
 kind=header file=src/battery_manager.h line=106 text=extern SemaphoreHandle_t tca9554WireMutex;

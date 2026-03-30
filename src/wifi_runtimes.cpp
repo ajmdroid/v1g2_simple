@@ -205,10 +205,10 @@ WifiDisplayColorsApiService::Runtime WiFiManager::makeDisplayColorsRuntime() {
             requestColorPreviewHold(durationMs);
         }, nullptr,
         [](void* /*ctx*/) {
-            return isColorPreviewRunning();
+            return isDisplayPreviewRunning();
         }, nullptr,
         [](void* /*ctx*/) {
-            cancelColorPreview();
+            cancelDisplayPreview();
         }, nullptr,
     };
 }

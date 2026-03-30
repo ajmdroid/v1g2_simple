@@ -156,14 +156,8 @@ void requestColorPreviewHold(uint32_t durationMs) {
 bool isDisplayPreviewRunning() {
     return displayPreviewModule.isRunning();
 }
-bool isColorPreviewRunning() {
-    return isDisplayPreviewRunning();
-}
 void cancelDisplayPreview() {
     displayPreviewModule.cancel();
-}
-void cancelColorPreview() {
-    cancelDisplayPreview();
 }
 static void showInitialScanningScreen() {
     if (mainRuntimeState.initialScanningScreenShown) {

@@ -206,6 +206,7 @@ static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, 
     if (!cfg.saveDirect && !cfg.serialize) {
         return;
     }
+    static JsonDocument doc;
     uint32_t startUs = PERF_TIMESTAMP_US();
 
     if (cfg.isDirty()) {
@@ -266,7 +267,7 @@ static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, 
                         if (cfg.saveDirect) {
                             saveOk = cfg.saveDirect(*fs, cfg.filePath);
                         } else {
-                            JsonDocument doc;
+                            doc.clear();
                             cfg.serialize(doc);
                             saveOk = StorageManager::writeJsonFileAtomic(*fs, cfg.filePath, doc);
                         }
@@ -301,7 +302,7 @@ static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, 
                 if (cfg.saveDirect) {
                     saveOk = cfg.saveDirect(*fs, cfg.filePath);
                 } else {
-                    JsonDocument doc;
+                    doc.clear();
                     cfg.serialize(doc);
                     saveOk = StorageManager::writeJsonFileAtomic(*fs, cfg.filePath, doc);
                 }
