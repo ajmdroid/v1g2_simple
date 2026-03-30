@@ -27,5 +27,5 @@ route=HTTP_POST /api/lockouts/zones/create rate_limit=1 ui_activity=1 delegates=
 route=HTTP_POST /api/lockouts/zones/delete rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZoneDelete
 route=HTTP_POST /api/lockouts/zones/import rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZoneImport
 route=HTTP_POST /api/lockouts/zones/update rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZoneUpdate
-route=HTTP_POST /api/settings/backup-now rate_limit=0 ui_activity=1 delegates=BackupApiService::handleApiBackupNow
-route=HTTP_POST /api/settings/restore rate_limit=0 ui_activity=1 delegates=BackupApiService::handleApiRestore
+route=HTTP_POST /api/settings/backup-now rate_limit=1 ui_activity=1 delegates=BackupApiService::handleApiBackupNow
+route=HTTP_POST /api/settings/restore rate_limit=1 ui_activity=1 delegates=BackupApiService::handleApiRestore

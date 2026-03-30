@@ -328,20 +328,20 @@ bool WiFiManager::setupWebServer() {
         BackupApiService::handleApiBackup(
             server,
             cachedBackupSnapshot,
-            [this]() { markUiActivity(); },
-            []() { return static_cast<uint32_t>(millis()); });
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this,
+            [](void* /*ctx*/) { return static_cast<uint32_t>(millis()); }, nullptr);
     });
-    server.on("/api/settings/backup-now", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/settings/backup-now", HTTP_POST, [this]() {
         BackupApiService::handleApiBackupNow(
             server,
-            rateLimitCallback,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/settings/restore", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/settings/restore", HTTP_POST, [this]() {
         BackupApiService::handleApiRestore(
             server,
-            rateLimitCallback,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     
     // Debug API routes (performance metrics)

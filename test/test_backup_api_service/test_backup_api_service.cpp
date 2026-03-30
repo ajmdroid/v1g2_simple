@@ -30,7 +30,7 @@ namespace BackupApiService {
 
 void sendBackup(WebServer& server,
                 BackupSnapshotCache& /*cachedSnapshot*/,
-                const std::function<uint32_t()>& /*millisFn*/) {
+                uint32_t (*/*millisFn*/)(void* ctx), void* /*millisCtx*/) {
     sendBackupCalls++;
     server.sendHeader("Content-Disposition", "attachment; filename=\"v1simple_backup.json\"");
     server.send(200, "application/json", "{\"route\":\"backup\"}");
@@ -39,9 +39,9 @@ void sendBackup(WebServer& server,
 void handleBackupNow(WebServer& server) {
     handleBackupNowCalls++;
     sendBackupNowResponse(server, BackupNowRuntime{
-        []() { return backupNowStorageReady; },
-        []() { return backupNowSdCard; },
-        []() { return backupNowWriteOk; },
+        [](void* /*ctx*/) { return backupNowStorageReady; }, nullptr,
+        [](void* /*ctx*/) { return backupNowSdCard; }, nullptr,
+        [](void* /*ctx*/) { return backupNowWriteOk; }, nullptr,
     });
 }
 
@@ -65,17 +65,40 @@ void setUp() {
 
 void tearDown() {}
 
+namespace {
+
+struct RateLimitCtx {
+    int calls = 0;
+    bool allow = true;
+};
+
+struct UiActivityCtx {
+    int calls = 0;
+};
+
+static bool doRateLimit(void* ctx) {
+    auto* c = static_cast<RateLimitCtx*>(ctx);
+    c->calls++;
+    return c->allow;
+}
+
+static void doUiActivity(void* ctx) {
+    static_cast<UiActivityCtx*>(ctx)->calls++;
+}
+
+}  // namespace
+
 void test_handle_api_backup_marks_ui_activity_and_delegates() {
     WebServer server(80);
     BackupApiService::BackupSnapshotCache cache;
-    int uiActivityCalls = 0;
+    UiActivityCtx uiCtx;
 
     BackupApiService::handleApiBackup(
         server,
         cache,
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, sendBackupCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"backup\""));
@@ -85,53 +108,47 @@ void test_handle_api_backup_marks_ui_activity_and_delegates() {
 
 void test_handle_api_restore_rate_limited_short_circuits() {
     WebServer server(80);
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx{ .allow = false };
+    UiActivityCtx uiCtx;
 
     BackupApiService::handleApiRestore(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return false;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(0, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(0, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(0, handleRestoreCalls);
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
 
 void test_handle_api_backup_now_rate_limited_short_circuits() {
     WebServer server(80);
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx{ .allow = false };
+    UiActivityCtx uiCtx;
 
     BackupApiService::handleApiBackupNow(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return false;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(0, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(0, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(0, handleBackupNowCalls);
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
 
 void test_handle_api_backup_now_returns_503_when_storage_unavailable() {
     WebServer server(80);
-    int uiActivityCalls = 0;
+    UiActivityCtx uiCtx;
     backupNowStorageReady = false;
 
     BackupApiService::handleApiBackupNow(
         server,
-        []() { return true; },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        [](void* /*ctx*/) { return true; }, nullptr,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handleBackupNowCalls);
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "SD card unavailable"));
@@ -139,15 +156,15 @@ void test_handle_api_backup_now_returns_503_when_storage_unavailable() {
 
 void test_handle_api_backup_now_returns_500_when_backup_write_fails() {
     WebServer server(80);
-    int uiActivityCalls = 0;
+    UiActivityCtx uiCtx;
     backupNowWriteOk = false;
 
     BackupApiService::handleApiBackupNow(
         server,
-        []() { return true; },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        [](void* /*ctx*/) { return true; }, nullptr,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handleBackupNowCalls);
     TEST_ASSERT_EQUAL_INT(500, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "Backup write failed"));
@@ -155,14 +172,14 @@ void test_handle_api_backup_now_returns_500_when_backup_write_fails() {
 
 void test_handle_api_backup_now_returns_200_when_backup_succeeds() {
     WebServer server(80);
-    int uiActivityCalls = 0;
+    UiActivityCtx uiCtx;
 
     BackupApiService::handleApiBackupNow(
         server,
-        []() { return true; },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        [](void* /*ctx*/) { return true; }, nullptr,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handleBackupNowCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "Backup written to SD"));
@@ -170,21 +187,16 @@ void test_handle_api_backup_now_returns_200_when_backup_succeeds() {
 
 void test_handle_api_restore_marks_ui_activity_and_delegates_when_allowed() {
     WebServer server(80);
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     BackupApiService::handleApiRestore(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
-    TEST_ASSERT_EQUAL_INT(1, handleRestoreCalls);
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_TRUE(responseContains(server, "\"restore\""));
 }
 

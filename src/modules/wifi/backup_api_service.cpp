@@ -24,17 +24,9 @@ namespace BackupApiService {
 
 static void sendBackup(WebServer& server,
                        BackupSnapshotCache& cachedSnapshot,
-                       const std::function<uint32_t()>& millisFn) {
+                       uint32_t (*millisFn)(void* ctx), void* millisCtx) {
     Serial.println("[HTTP] GET /api/settings/backup");
     server.sendHeader("Content-Disposition", "attachment; filename=\"v1simple_backup.json\"");
-    uint32_t (*millisFnPtr)(void*) = nullptr;
-    void* millisCtx = nullptr;
-    if (millisFn) {
-        millisFnPtr = [](void* ctx) -> uint32_t {
-            return (*static_cast<const std::function<uint32_t()>*>(ctx))();
-        };
-        millisCtx = const_cast<void*>(static_cast<const void*>(&millisFn));
-    }
     sendCachedBackupSnapshot(
         server,
         cachedSnapshot,
@@ -49,35 +41,35 @@ static void sendBackup(WebServer& server,
                 snapshotMs);
         },
         nullptr,
-        millisFnPtr,
+        millisFn,
         millisCtx);
 }
 
 static void handleBackupNow(WebServer& server) {
     Serial.println("[HTTP] POST /api/settings/backup-now");
     sendBackupNowResponse(server, BackupNowRuntime{
-        []() { return storageManager.isReady(); },
-        []() { return storageManager.isSDCard(); },
-        []() { return settingsManager.backupToSD(); },
+        [](void* /*ctx*/) { return storageManager.isReady(); }, nullptr,
+        [](void* /*ctx*/) { return storageManager.isSDCard(); }, nullptr,
+        [](void* /*ctx*/) { return settingsManager.backupToSD(); }, nullptr,
     });
 }
 
 void handleApiBackup(WebServer& server,
                      BackupSnapshotCache& cachedSnapshot,
-                     const std::function<void()>& markUiActivity,
-                     const std::function<uint32_t()>& millisFn) {
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx,
+                     uint32_t (*millisFn)(void* ctx), void* millisCtx) {
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
-    sendBackup(server, cachedSnapshot, millisFn);
+    sendBackup(server, cachedSnapshot, millisFn, millisCtx);
 }
 
 void handleApiBackupNow(WebServer& server,
-                        const std::function<bool()>& checkRateLimit,
-                        const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                        bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                        void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleBackupNow(server);
 }
@@ -145,11 +137,11 @@ static void handleRestore(WebServer& server) {
 }
 
 void handleApiRestore(WebServer& server,
-                      const std::function<bool()>& checkRateLimit,
-                      const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                      bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                      void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleRestore(server);
 }
