@@ -51,18 +51,18 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
 
         if (triggerObdPair) {
             if (callbacks.requestObdManualPairScan) {
-                (void)callbacks.requestObdManualPairScan(nowMs);
+                (void)callbacks.requestObdManualPairScan(nowMs, callbacks.requestObdManualPairScanCtx);
             }
             display->refreshObdIndicator(nowMs);
             display->flushRegion(kObdBadgeFlushX, kObdBadgeFlushY, kObdBadgeFlushW, kObdBadgeFlushH);
         } else if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
             // 4s+ hold: toggle WiFi on release
-            if (callbacks.isWifiSetupActive && callbacks.isWifiSetupActive()) {
-                if (callbacks.stopWifiSetup) callbacks.stopWifiSetup();
+            if (callbacks.isWifiSetupActive && callbacks.isWifiSetupActive(callbacks.isWifiSetupActiveCtx)) {
+                if (callbacks.stopWifiSetup) callbacks.stopWifiSetup(callbacks.stopWifiSetupCtx);
             } else {
-                if (callbacks.startWifi) callbacks.startWifi();
+                if (callbacks.startWifi) callbacks.startWifi(callbacks.startWifiCtx);
             }
-            if (callbacks.drawWifiIndicator) callbacks.drawWifiIndicator();
+            if (callbacks.drawWifiIndicator) callbacks.drawWifiIndicator(callbacks.drawWifiIndicatorCtx);
             display->flush();
         } else if (pressDuration >= BOOT_DEBOUNCE_MS) {
             // Short press: adjust mode toggle
@@ -96,12 +96,12 @@ bool TouchUiModule::canArmObdPairGesture(unsigned long nowMs) const {
         return false;
     }
 
-    const ObdRuntimeStatus status = callbacks.readObdStatus(nowMs);
+    const ObdRuntimeStatus status = callbacks.readObdStatus(nowMs, callbacks.readObdStatusCtx);
     return status.enabled &&
            !status.connected &&
            !status.scanInProgress &&
            !status.manualScanPending &&
-           callbacks.isObdPairGestureSafe(nowMs);
+           callbacks.isObdPairGestureSafe(nowMs, callbacks.isObdPairGestureSafeCtx);
 }
 
 void TouchUiModule::updateObdIndicatorAttention(bool attention, unsigned long nowMs) {
@@ -129,7 +129,7 @@ void TouchUiModule::exitAdjustModeAndSave() {
     settings->save();
     audio_set_volume(volumeAdjustValue);
     display->hideBrightnessSlider();
-    if (callbacks.restoreDisplay) callbacks.restoreDisplay();
+    if (callbacks.restoreDisplay) callbacks.restoreDisplay(callbacks.restoreDisplayCtx);
     Serial.printf("[Settings] Saved brightness: %d, volume: %d\n", brightnessAdjustValue, volumeAdjustValue);
 }
 

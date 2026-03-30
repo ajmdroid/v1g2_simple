@@ -54,7 +54,7 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
             if (!mgr->getPushStatusJson) {
                 return false;
             }
-            json = mgr->getPushStatusJson();
+            json = mgr->getPushStatusJson(mgr->getPushStatusJsonCtx);
             return true;
         }, this,
         [](const WifiAutoPushApiService::SlotUpdateRequest& request, void* /*ctx*/) {
@@ -179,7 +179,7 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
             if (!mgr->queuePushNow) {
                 return WifiAutoPushApiService::PushNowQueueResult::PROFILE_LOAD_FAILED;
             }
-            return mgr->queuePushNow(request);
+            return mgr->queuePushNow(request, mgr->queuePushNowCtx);
         }, this,
     };
 }
@@ -232,35 +232,35 @@ WifiAudioApiService::Runtime WiFiManager::makeAudioRuntime() {
 }
 
 WifiStatusApiService::StatusRuntime WiFiManager::makeStatusRuntime() {
-    WifiStatusApiService::StatusRuntime runtime{
-        [this]() { return isSetupModeActive(); },
-        [this]() { return wifiClientState == WIFI_CLIENT_CONNECTED; },
-        []() { return WiFi.localIP().toString(); },
-        [this]() { return getAPIPAddress(); },
-        []() { return WiFi.SSID(); },
-        []() { return WiFi.RSSI(); },
-        [this]() { return settingsManager.get().wifiClientEnabled; },
-        [this]() { return settingsManager.get().wifiClientSSID; },
-        [this]() { return settingsManager.get().apSSID; },
-        []() { return millis() / 1000; },
-        []() { return ESP.getFreeHeap(); },
-        []() { return String("v1g2"); },
-        []() { return String(FIRMWARE_VERSION); },
-        [this]() { return timeService.timeValid(); },
-        [this]() { return timeService.timeSource(); },
-        [this]() { return timeService.timeConfidence(); },
-        [this]() { return timeService.tzOffsetMinutes(); },
-        [this]() { return timeService.nowEpochMsOr0(); },
-        [this]() { return timeService.epochAgeMsOr0(); },
-        [this]() { return batteryManager.getVoltageMillivolts(); },
-        [this]() { return batteryManager.getPercentage(); },
-        [this]() { return batteryManager.isOnBattery(); },
-        [this]() { return batteryManager.hasBattery(); },
-        [this]() { return bleClient.isConnected(); },
-        mergeStatus,
-        mergeAlert,
+    return WifiStatusApiService::StatusRuntime{
+        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->isSetupModeActive(); }, this,
+        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->wifiClientState == WIFI_CLIENT_CONNECTED; }, this,
+        [](void* /*ctx*/) { return WiFi.localIP().toString(); }, nullptr,
+        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->getAPIPAddress(); }, this,
+        [](void* /*ctx*/) { return WiFi.SSID(); }, nullptr,
+        [](void* /*ctx*/) { return static_cast<int32_t>(WiFi.RSSI()); }, nullptr,
+        [](void* /*ctx*/) { return settingsManager.get().wifiClientEnabled; }, nullptr,
+        [](void* /*ctx*/) { return settingsManager.get().wifiClientSSID; }, nullptr,
+        [](void* /*ctx*/) { return settingsManager.get().apSSID; }, nullptr,
+        [](void* /*ctx*/) -> unsigned long { return millis() / 1000; }, nullptr,
+        [](void* /*ctx*/) { return ESP.getFreeHeap(); }, nullptr,
+        [](void* /*ctx*/) { return String("v1g2"); }, nullptr,
+        [](void* /*ctx*/) { return String(FIRMWARE_VERSION); }, nullptr,
+        [](void* /*ctx*/) { return timeService.timeValid(); }, nullptr,
+        [](void* /*ctx*/) { return timeService.timeSource(); }, nullptr,
+        [](void* /*ctx*/) { return timeService.timeConfidence(); }, nullptr,
+        [](void* /*ctx*/) { return timeService.tzOffsetMinutes(); }, nullptr,
+        [](void* /*ctx*/) { return timeService.nowEpochMsOr0(); }, nullptr,
+        [](void* /*ctx*/) { return timeService.epochAgeMsOr0(); }, nullptr,
+        [](void* /*ctx*/) { return batteryManager.getVoltageMillivolts(); }, nullptr,
+        [](void* /*ctx*/) { return batteryManager.getPercentage(); }, nullptr,
+        [](void* /*ctx*/) { return batteryManager.isOnBattery(); }, nullptr,
+        [](void* /*ctx*/) { return batteryManager.hasBattery(); }, nullptr,
+        [](void* /*ctx*/) { return bleClient.isConnected(); }, nullptr,
+        mergeStatus, mergeStatusCtx,
+        mergeStatus2, mergeStatus2Ctx,
+        mergeAlert, mergeAlertCtx,
     };
-    return runtime;
 }
 
 WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {

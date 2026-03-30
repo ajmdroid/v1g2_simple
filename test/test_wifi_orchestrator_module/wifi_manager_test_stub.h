@@ -1,7 +1,5 @@
 #pragma once
 
-#include <functional>
-
 #include "../mocks/Arduino.h"
 #include "../mocks/FS.h"
 #include <ArduinoJson.h>
@@ -66,14 +64,24 @@ public:
         pushStatusCallbackCalls = 0;
         pushNowCallbackCalls = 0;
         v1ConnectedCallbackCalls = 0;
-        statusCallback = {};
-        alertCallback = {};
-        commandCallback = {};
-        filesystemCallback = {};
-        profilePushCallback = {};
-        pushStatusCallback = {};
-        pushNowCallback = {};
-        v1ConnectedCallback = {};
+        statusCallback = nullptr;
+        statusCallbackCtx = nullptr;
+        statusCallback2 = nullptr;
+        statusCallback2Ctx = nullptr;
+        alertCallback = nullptr;
+        alertCallbackCtx = nullptr;
+        commandCallback = nullptr;
+        commandCallbackCtx = nullptr;
+        filesystemCallback = nullptr;
+        filesystemCallbackCtx = nullptr;
+        profilePushCallback = nullptr;
+        profilePushCallbackCtx = nullptr;
+        pushStatusCallback = nullptr;
+        pushStatusCallbackCtx = nullptr;
+        pushNowCallback = nullptr;
+        pushNowCallbackCtx = nullptr;
+        v1ConnectedCallback = nullptr;
+        v1ConnectedCallbackCtx = nullptr;
     }
 
     bool isSetupModeActive() const { return setupModeActive; }
@@ -84,75 +92,83 @@ public:
         return startSetupModeResult;
     }
 
-    void setStatusCallback(std::function<void(ArduinoJson::JsonObject)> callback) {
+    void setStatusCallback(void (*fn)(ArduinoJson::JsonObject, void*), void* ctx) {
         ++statusCallbackCalls;
-        statusCallback = std::move(callback);
+        statusCallback = fn;
+        statusCallbackCtx = ctx;
     }
 
-    void appendStatusCallback(std::function<void(ArduinoJson::JsonObject)> callback) {
+    void appendStatusCallback(void (*fn)(ArduinoJson::JsonObject, void*), void* ctx) {
         ++statusCallbackCalls;
-        if (!callback) {
-            return;
-        }
-        if (!statusCallback) {
-            statusCallback = std::move(callback);
-            return;
-        }
-        auto previous = std::move(statusCallback);
-        statusCallback = [previous = std::move(previous), callback = std::move(callback)](
-                             ArduinoJson::JsonObject obj) {
-            previous(obj);
-            callback(obj);
-        };
+        statusCallback2 = fn;
+        statusCallback2Ctx = ctx;
     }
 
-    void setAlertCallback(std::function<void(ArduinoJson::JsonObject)> callback) {
+    void setAlertCallback(void (*fn)(ArduinoJson::JsonObject, void*), void* ctx) {
         ++alertCallbackCalls;
-        alertCallback = std::move(callback);
+        alertCallback = fn;
+        alertCallbackCtx = ctx;
     }
 
-    void setCommandCallback(std::function<bool(const char*, bool)> callback) {
+    void setCommandCallback(bool (*fn)(const char*, bool, void*), void* ctx) {
         ++commandCallbackCalls;
-        commandCallback = std::move(callback);
+        commandCallback = fn;
+        commandCallbackCtx = ctx;
     }
 
-    void setFilesystemCallback(std::function<fs::FS*()> callback) {
+    void setFilesystemCallback(fs::FS* (*fn)(void*), void* ctx) {
         ++filesystemCallbackCalls;
-        filesystemCallback = std::move(callback);
+        filesystemCallback = fn;
+        filesystemCallbackCtx = ctx;
     }
 
-    void setProfilePushCallback(std::function<WifiControlApiService::ProfilePushResult()> callback) {
+    void setProfilePushCallback(WifiControlApiService::ProfilePushResult (*fn)(void*), void* ctx) {
         ++profilePushCallbackCalls;
-        profilePushCallback = std::move(callback);
+        profilePushCallback = fn;
+        profilePushCallbackCtx = ctx;
     }
 
-    void setPushStatusCallback(std::function<String()> callback) {
+    void setPushStatusCallback(String (*fn)(void*), void* ctx) {
         ++pushStatusCallbackCalls;
-        pushStatusCallback = std::move(callback);
+        pushStatusCallback = fn;
+        pushStatusCallbackCtx = ctx;
     }
 
     void setPushNowCallback(
-        std::function<WifiAutoPushApiService::PushNowQueueResult(
-            const WifiAutoPushApiService::PushNowRequest&)> callback) {
+        WifiAutoPushApiService::PushNowQueueResult (*fn)(
+            const WifiAutoPushApiService::PushNowRequest&, void*),
+        void* ctx) {
         ++pushNowCallbackCalls;
-        pushNowCallback = std::move(callback);
+        pushNowCallback = fn;
+        pushNowCallbackCtx = ctx;
     }
 
-    void setV1ConnectedCallback(std::function<bool()> callback) {
+    void setV1ConnectedCallback(bool (*fn)(void*), void* ctx) {
         ++v1ConnectedCallbackCalls;
-        v1ConnectedCallback = std::move(callback);
+        v1ConnectedCallback = fn;
+        v1ConnectedCallbackCtx = ctx;
     }
 
 private:
-    std::function<void(ArduinoJson::JsonObject)> statusCallback;
-    std::function<void(ArduinoJson::JsonObject)> alertCallback;
-    std::function<bool(const char*, bool)> commandCallback;
-    std::function<fs::FS*()> filesystemCallback;
-    std::function<WifiControlApiService::ProfilePushResult()> profilePushCallback;
-    std::function<String()> pushStatusCallback;
-    std::function<WifiAutoPushApiService::PushNowQueueResult(
-        const WifiAutoPushApiService::PushNowRequest&)> pushNowCallback;
-    std::function<bool()> v1ConnectedCallback;
+    void (*statusCallback)(ArduinoJson::JsonObject, void*) = nullptr;
+    void* statusCallbackCtx = nullptr;
+    void (*statusCallback2)(ArduinoJson::JsonObject, void*) = nullptr;
+    void* statusCallback2Ctx = nullptr;
+    void (*alertCallback)(ArduinoJson::JsonObject, void*) = nullptr;
+    void* alertCallbackCtx = nullptr;
+    bool (*commandCallback)(const char*, bool, void*) = nullptr;
+    void* commandCallbackCtx = nullptr;
+    fs::FS* (*filesystemCallback)(void*) = nullptr;
+    void* filesystemCallbackCtx = nullptr;
+    WifiControlApiService::ProfilePushResult (*profilePushCallback)(void*) = nullptr;
+    void* profilePushCallbackCtx = nullptr;
+    String (*pushStatusCallback)(void*) = nullptr;
+    void* pushStatusCallbackCtx = nullptr;
+    WifiAutoPushApiService::PushNowQueueResult (*pushNowCallback)(
+        const WifiAutoPushApiService::PushNowRequest&, void*) = nullptr;
+    void* pushNowCallbackCtx = nullptr;
+    bool (*v1ConnectedCallback)(void*) = nullptr;
+    void* v1ConnectedCallbackCtx = nullptr;
 };
 
 #endif  // WIFI_MANAGER_H

@@ -61,9 +61,9 @@ bool allocateSoakCacheBuffer(size_t required,
 bool sendCachedSoakMetrics(WebServer& server,
                            SoakMetricsJsonCache& cache,
                            uint32_t cacheTtlMs,
-                           const SoakMetricsBuildFn& buildMetrics,
-                           const std::function<uint32_t()>& millisFn) {
-    const uint32_t nowMs = millisFn ? millisFn() : static_cast<uint32_t>(millis());
+                           void (*buildMetrics)(JsonDocument&, void*), void* buildMetricsCtx,
+                           uint32_t (*millisFn)(void*), void* millisCtx) {
+    const uint32_t nowMs = millisFn ? millisFn(millisCtx) : static_cast<uint32_t>(millis());
     if (hasFreshSoakMetricsCache(cache, nowMs, cacheTtlMs)) {
         sendSerializedJson(server, cache.data, cache.length);
         return true;
@@ -71,7 +71,7 @@ bool sendCachedSoakMetrics(WebServer& server,
 
     JsonDocument doc;
     if (buildMetrics) {
-        buildMetrics(doc);
+        buildMetrics(doc, buildMetricsCtx);
     }
 
     const size_t required = measureJson(doc) + 1u;

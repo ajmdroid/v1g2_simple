@@ -108,24 +108,25 @@ bool WiFiManager::setupWebServer() {
         handleNotFound();
     });
     
-    auto rateLimitCallback = [this]() { return checkRateLimit(); };
-    auto markUiActivityCallback = [this]() { markUiActivity(); };
     // New API endpoints (PHASE A)
-    server.on("/api/status", HTTP_GET, [this, rateLimitCallback]() {
+    server.on("/api/status", HTTP_GET, [this]() {
         WifiStatusApiService::handleApiStatus(
             server,
             makeStatusRuntime(),
             cachedStatusJson,
             lastStatusJsonTime,
             STATUS_CACHE_TTL_MS,
-            []() { return millis(); },
-            rateLimitCallback);
+            [](void* /*ctx*/) -> unsigned long { return millis(); }, nullptr,
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
     server.on("/api/profile/push", HTTP_POST, [this]() {
         WifiControlApiService::handleApiProfilePush(
             server,
             bleClient.isConnected(),
-            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->requestProfilePush(); },
+            [](void* ctx) -> WifiControlApiService::ProfilePushResult {
+                auto* self = static_cast<WiFiManager*>(ctx);
+                return self->requestProfilePush ? self->requestProfilePush(self->requestProfilePushCtx) : WifiControlApiService::ProfilePushResult::HANDLER_UNAVAILABLE;
+            },
             this,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); },
             this);
@@ -139,7 +140,7 @@ bool WiFiManager::setupWebServer() {
             cachedStatusJson,
             lastStatusJsonTime,
             STATUS_CACHE_TTL_MS,
-            []() { return millis(); });
+            [](void* /*ctx*/) -> unsigned long { return millis(); }, nullptr);
     });
     server.on("/api/device/settings", HTTP_GET, [this]() {
         WifiSettingsApiService::handleApiDeviceSettingsGet(server, makeSettingsRuntime());
@@ -152,7 +153,8 @@ bool WiFiManager::setupWebServer() {
         WifiControlApiService::handleApiDarkMode(
             server,
             [](const char* cmd, bool val, void* ctx) {
-                return static_cast<WiFiManager*>(ctx)->sendV1Command(cmd, val);
+                auto* self = static_cast<WiFiManager*>(ctx);
+                return self->sendV1Command ? self->sendV1Command(cmd, val, self->sendV1CommandCtx) : false;
             },
             this,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); },
@@ -162,7 +164,8 @@ bool WiFiManager::setupWebServer() {
         WifiControlApiService::handleApiMute(
             server,
             [](const char* cmd, bool val, void* ctx) {
-                return static_cast<WiFiManager*>(ctx)->sendV1Command(cmd, val);
+                auto* self = static_cast<WiFiManager*>(ctx);
+                return self->sendV1Command ? self->sendV1Command(cmd, val, self->sendV1CommandCtx) : false;
             },
             this,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); },

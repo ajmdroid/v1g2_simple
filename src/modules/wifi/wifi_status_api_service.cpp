@@ -12,61 +12,63 @@ namespace {
 constexpr size_t STATUS_CACHE_GROWTH_QUANTUM = 256u;
 
 template <typename T>
-T callOr(const std::function<T()>& fn, const T& fallback) {
-    return fn ? fn() : fallback;
+T callOr(T (*fn)(void* ctx), void* ctx, const T& fallback) {
+    return fn ? fn(ctx) : fallback;
 }
 
 void buildStatusDoc(const StatusRuntime& runtime, JsonDocument& doc) {
-    const bool setupModeActive = callOr<bool>(runtime.setupModeActive, false);
-    const bool staConnected = callOr<bool>(runtime.staConnected, false);
+    const bool setupModeActive = callOr<bool>(runtime.setupModeActive, runtime.setupModeActiveCtx, false);
+    const bool staConnected = callOr<bool>(runtime.staConnected, runtime.staConnectedCtx, false);
 
     JsonObject wifi = doc["wifi"].to<JsonObject>();
     wifi["setup_mode"] = setupModeActive;
     wifi["ap_active"] = setupModeActive;
     wifi["sta_connected"] = staConnected;
-    wifi["sta_ip"] = staConnected ? callOr<String>(runtime.staIp, String("")) : "";
-    wifi["ap_ip"] = callOr<String>(runtime.apIp, String(""));
+    wifi["sta_ip"] = staConnected ? callOr<String>(runtime.staIp, runtime.staIpCtx, String("")) : "";
+    wifi["ap_ip"] = callOr<String>(runtime.apIp, runtime.apIpCtx, String(""));
     wifi["ssid"] = staConnected
-        ? callOr<String>(runtime.connectedSsid, String(""))
-        : callOr<String>(runtime.apSsid, String(""));
-    wifi["rssi"] = staConnected ? callOr<int32_t>(runtime.rssi, 0) : 0;
-    wifi["sta_enabled"] = callOr<bool>(runtime.staEnabled, false);
-    wifi["sta_ssid"] = callOr<String>(runtime.staSavedSsid, String(""));
+        ? callOr<String>(runtime.connectedSsid, runtime.connectedSsidCtx, String(""))
+        : callOr<String>(runtime.apSsid, runtime.apSsidCtx, String(""));
+    wifi["rssi"] = staConnected ? callOr<int32_t>(runtime.rssi, runtime.rssiCtx, 0) : 0;
+    wifi["sta_enabled"] = callOr<bool>(runtime.staEnabled, runtime.staEnabledCtx, false);
+    wifi["sta_ssid"] = callOr<String>(runtime.staSavedSsid, runtime.staSavedSsidCtx, String(""));
 
     JsonObject device = doc["device"].to<JsonObject>();
-    device["uptime"] = callOr<unsigned long>(runtime.uptimeSeconds, 0UL);
-    device["heap_free"] = callOr<uint32_t>(runtime.heapFree, 0U);
-    device["hostname"] = callOr<String>(runtime.hostname, String("v1g2"));
-    device["firmware_version"] = callOr<String>(runtime.firmwareVersion, String(""));
+    device["uptime"] = callOr<unsigned long>(runtime.uptimeSeconds, runtime.uptimeSecondsCtx, 0UL);
+    device["heap_free"] = callOr<uint32_t>(runtime.heapFree, runtime.heapFreeCtx, 0U);
+    device["hostname"] = callOr<String>(runtime.hostname, runtime.hostnameCtx, String("v1g2"));
+    device["firmware_version"] = callOr<String>(runtime.firmwareVersion, runtime.firmwareVersionCtx, String(""));
 
     JsonObject time = doc["time"].to<JsonObject>();
-    const bool timeValid = callOr<bool>(runtime.timeValid, false);
+    const bool timeValid = callOr<bool>(runtime.timeValid, runtime.timeValidCtx, false);
     time["valid"] = timeValid;
-    time["source"] = callOr<uint8_t>(runtime.timeSource, 0);
-    time["confidence"] = callOr<uint8_t>(runtime.timeConfidence, 0);
-    const int32_t tzOffsetMin = callOr<int32_t>(runtime.timeTzOffsetMin, 0);
+    time["source"] = callOr<uint8_t>(runtime.timeSource, runtime.timeSourceCtx, 0);
+    time["confidence"] = callOr<uint8_t>(runtime.timeConfidence, runtime.timeConfidenceCtx, 0);
+    const int32_t tzOffsetMin = callOr<int32_t>(runtime.timeTzOffsetMin, runtime.timeTzOffsetMinCtx, 0);
     time["tzOffsetMin"] = tzOffsetMin;
     time["tzOffsetMinutes"] = tzOffsetMin;
     if (timeValid) {
-        time["epochMs"] = callOr<int64_t>(runtime.timeEpochMsOr0, 0);
-        time["ageMs"] = callOr<uint32_t>(runtime.timeEpochAgeMsOr0, 0U);
+        time["epochMs"] = callOr<int64_t>(runtime.timeEpochMsOr0, runtime.timeEpochMsOr0Ctx, 0);
+        time["ageMs"] = callOr<uint32_t>(runtime.timeEpochAgeMsOr0, runtime.timeEpochAgeMsOr0Ctx, 0U);
     }
 
     JsonObject battery = doc["battery"].to<JsonObject>();
-    battery["voltage_mv"] = callOr<uint16_t>(runtime.batteryVoltageMv, 0);
-    battery["percentage"] = callOr<uint8_t>(runtime.batteryPercentage, 0);
-    battery["on_battery"] = callOr<bool>(runtime.batteryOnBattery, false);
-    battery["has_battery"] = callOr<bool>(runtime.batteryHasBattery, false);
+    battery["voltage_mv"] = callOr<uint16_t>(runtime.batteryVoltageMv, runtime.batteryVoltageMvCtx, 0);
+    battery["percentage"] = callOr<uint8_t>(runtime.batteryPercentage, runtime.batteryPercentageCtx, 0);
+    battery["on_battery"] = callOr<bool>(runtime.batteryOnBattery, runtime.batteryOnBatteryCtx, false);
+    battery["has_battery"] = callOr<bool>(runtime.batteryHasBattery, runtime.batteryHasBatteryCtx, false);
 
-    doc["v1_connected"] = callOr<bool>(runtime.v1Connected, false);
+    doc["v1_connected"] = callOr<bool>(runtime.v1Connected, runtime.v1ConnectedCtx, false);
 
     if (runtime.mergeStatus) {
-        runtime.mergeStatus(doc.as<JsonObject>());
+        runtime.mergeStatus(doc.as<JsonObject>(), runtime.mergeStatusCtx);
     }
-
+    if (runtime.mergeStatus2) {
+        runtime.mergeStatus2(doc.as<JsonObject>(), runtime.mergeStatus2Ctx);
+    }
     if (runtime.mergeAlert) {
         JsonObject alert = doc["alert"].to<JsonObject>();
-        runtime.mergeAlert(alert);
+        runtime.mergeAlert(alert, runtime.mergeAlertCtx);
     }
 }
 
@@ -122,8 +124,8 @@ void sendStatus(WebServer& server,
                 StatusJsonCache& cachedStatusJson,
                 unsigned long& lastStatusJsonTime,
                 unsigned long cacheTtlMs,
-                const std::function<unsigned long()>& millisFn) {
-    const unsigned long now = millisFn ? millisFn() : millis();
+                unsigned long (*millisFn)(void* ctx), void* millisCtx) {
+    const unsigned long now = millisFn ? millisFn(millisCtx) : millis();
     const bool cacheValid = cachedStatusJson.data != nullptr &&
                             cachedStatusJson.length > 0 &&
                             (now - lastStatusJsonTime) < cacheTtlMs;
@@ -171,9 +173,9 @@ void handleApiStatus(WebServer& server,
                      StatusJsonCache& cachedStatusJson,
                      unsigned long& lastStatusJsonTime,
                      unsigned long cacheTtlMs,
-                     const std::function<unsigned long()>& millisFn,
-                     const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) {
+                     unsigned long (*millisFn)(void* ctx), void* millisCtx,
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) {
         return;
     }
 
@@ -183,7 +185,8 @@ void handleApiStatus(WebServer& server,
         cachedStatusJson,
         lastStatusJsonTime,
         cacheTtlMs,
-        millisFn);
+        millisFn,
+        millisCtx);
 }
 
 void handleApiLegacyStatus(WebServer& server,
@@ -191,14 +194,15 @@ void handleApiLegacyStatus(WebServer& server,
                            StatusJsonCache& cachedStatusJson,
                            unsigned long& lastStatusJsonTime,
                            unsigned long cacheTtlMs,
-                           const std::function<unsigned long()>& millisFn) {
+                           unsigned long (*millisFn)(void* ctx), void* millisCtx) {
     sendStatus(
         server,
         runtime,
         cachedStatusJson,
         lastStatusJsonTime,
         cacheTtlMs,
-        millisFn);
+        millisFn,
+        millisCtx);
 }
 
 }  // namespace WifiStatusApiService

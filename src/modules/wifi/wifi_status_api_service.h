@@ -5,7 +5,6 @@
 #include <WebServer.h>
 
 #include <cstdint>
-#include <functional>
 
 namespace WifiStatusApiService {
 
@@ -17,36 +16,64 @@ struct StatusJsonCache {
 };
 
 struct StatusRuntime {
-    std::function<bool()> setupModeActive;
-    std::function<bool()> staConnected;
-    std::function<String()> staIp;
-    std::function<String()> apIp;
-    std::function<String()> connectedSsid;
-    std::function<int32_t()> rssi;
-    std::function<bool()> staEnabled;
-    std::function<String()> staSavedSsid;
-    std::function<String()> apSsid;
+    bool (*setupModeActive)(void* ctx) = nullptr;
+    void* setupModeActiveCtx = nullptr;
+    bool (*staConnected)(void* ctx) = nullptr;
+    void* staConnectedCtx = nullptr;
+    String (*staIp)(void* ctx) = nullptr;
+    void* staIpCtx = nullptr;
+    String (*apIp)(void* ctx) = nullptr;
+    void* apIpCtx = nullptr;
+    String (*connectedSsid)(void* ctx) = nullptr;
+    void* connectedSsidCtx = nullptr;
+    int32_t (*rssi)(void* ctx) = nullptr;
+    void* rssiCtx = nullptr;
+    bool (*staEnabled)(void* ctx) = nullptr;
+    void* staEnabledCtx = nullptr;
+    String (*staSavedSsid)(void* ctx) = nullptr;
+    void* staSavedSsidCtx = nullptr;
+    String (*apSsid)(void* ctx) = nullptr;
+    void* apSsidCtx = nullptr;
 
-    std::function<unsigned long()> uptimeSeconds;
-    std::function<uint32_t()> heapFree;
-    std::function<String()> hostname;
-    std::function<String()> firmwareVersion;
+    unsigned long (*uptimeSeconds)(void* ctx) = nullptr;
+    void* uptimeSecondsCtx = nullptr;
+    uint32_t (*heapFree)(void* ctx) = nullptr;
+    void* heapFreeCtx = nullptr;
+    String (*hostname)(void* ctx) = nullptr;
+    void* hostnameCtx = nullptr;
+    String (*firmwareVersion)(void* ctx) = nullptr;
+    void* firmwareVersionCtx = nullptr;
 
-    std::function<bool()> timeValid;
-    std::function<uint8_t()> timeSource;
-    std::function<uint8_t()> timeConfidence;
-    std::function<int32_t()> timeTzOffsetMin;
-    std::function<int64_t()> timeEpochMsOr0;
-    std::function<uint32_t()> timeEpochAgeMsOr0;
+    bool (*timeValid)(void* ctx) = nullptr;
+    void* timeValidCtx = nullptr;
+    uint8_t (*timeSource)(void* ctx) = nullptr;
+    void* timeSourceCtx = nullptr;
+    uint8_t (*timeConfidence)(void* ctx) = nullptr;
+    void* timeConfidenceCtx = nullptr;
+    int32_t (*timeTzOffsetMin)(void* ctx) = nullptr;
+    void* timeTzOffsetMinCtx = nullptr;
+    int64_t (*timeEpochMsOr0)(void* ctx) = nullptr;
+    void* timeEpochMsOr0Ctx = nullptr;
+    uint32_t (*timeEpochAgeMsOr0)(void* ctx) = nullptr;
+    void* timeEpochAgeMsOr0Ctx = nullptr;
 
-    std::function<uint16_t()> batteryVoltageMv;
-    std::function<uint8_t()> batteryPercentage;
-    std::function<bool()> batteryOnBattery;
-    std::function<bool()> batteryHasBattery;
+    uint16_t (*batteryVoltageMv)(void* ctx) = nullptr;
+    void* batteryVoltageMvCtx = nullptr;
+    uint8_t (*batteryPercentage)(void* ctx) = nullptr;
+    void* batteryPercentageCtx = nullptr;
+    bool (*batteryOnBattery)(void* ctx) = nullptr;
+    void* batteryOnBatteryCtx = nullptr;
+    bool (*batteryHasBattery)(void* ctx) = nullptr;
+    void* batteryHasBatteryCtx = nullptr;
 
-    std::function<bool()> v1Connected;
-    std::function<void(JsonObject)> mergeStatus;   // Write fields directly into root doc
-    std::function<void(JsonObject)> mergeAlert;    // Write fields into alert sub-object
+    bool (*v1Connected)(void* ctx) = nullptr;
+    void* v1ConnectedCtx = nullptr;
+    void (*mergeStatus)(JsonObject, void* ctx) = nullptr;   // Write fields directly into root doc
+    void* mergeStatusCtx = nullptr;
+    void (*mergeStatus2)(JsonObject, void* ctx) = nullptr;  // optional second contributor
+    void* mergeStatus2Ctx = nullptr;
+    void (*mergeAlert)(JsonObject, void* ctx) = nullptr;    // Write fields into alert sub-object
+    void* mergeAlertCtx = nullptr;
 };
 
 void invalidateStatusJsonCache(StatusJsonCache& cachedStatusJson,
@@ -60,14 +87,14 @@ void handleApiStatus(WebServer& server,
                      StatusJsonCache& cachedStatusJson,
                      unsigned long& lastStatusJsonTime,
                      unsigned long cacheTtlMs,
-                     const std::function<unsigned long()>& millisFn,
-                     const std::function<bool()>& checkRateLimit);
+                     unsigned long (*millisFn)(void* ctx), void* millisCtx,
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
 
 void handleApiLegacyStatus(WebServer& server,
                            const StatusRuntime& runtime,
                            StatusJsonCache& cachedStatusJson,
                            unsigned long& lastStatusJsonTime,
                            unsigned long cacheTtlMs,
-                           const std::function<unsigned long()>& millisFn);
+                           unsigned long (*millisFn)(void* ctx), void* millisCtx);
 
 }  // namespace WifiStatusApiService

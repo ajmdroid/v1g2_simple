@@ -19,7 +19,6 @@
 #include "modules/wifi/wifi_autopush_api_service.h"
 #include "modules/wifi/wifi_control_api_service.h"
 #include "modules/wifi/wifi_status_api_service.h"
-#include <functional>
 
 namespace WifiDisplayColorsApiService {
 struct Runtime;
@@ -133,45 +132,36 @@ public:
     String getConnectedSSID() const;  // Returns empty if not connected
     
     // Callbacks for alert data (to display on web page)
-    void setAlertCallback(std::function<void(JsonObject)> callback) { mergeAlert = callback; }
-    void setStatusCallback(std::function<void(JsonObject)> callback) { mergeStatus = callback; }
-    void appendStatusCallback(std::function<void(JsonObject)> callback) {
-        if (!callback) {
-            return;
-        }
-        if (!mergeStatus) {
-            mergeStatus = std::move(callback);
-            return;
-        }
-
-        auto previous = std::move(mergeStatus);
-        mergeStatus = [previous = std::move(previous), callback = std::move(callback)](JsonObject obj) {
-            previous(obj);
-            callback(obj);
-        };
+    void setAlertCallback(void (*fn)(JsonObject, void*), void* ctx) { mergeAlert = fn; mergeAlertCtx = ctx; }
+    void setStatusCallback(void (*fn)(JsonObject, void*), void* ctx) { mergeStatus = fn; mergeStatusCtx = ctx; }
+    void appendStatusCallback(void (*fn)(JsonObject, void*), void* ctx) {
+        mergeStatus2 = fn;
+        mergeStatus2Ctx = ctx;
     }
     
     // Callback for V1 commands (dark mode, mute)
-    void setCommandCallback(std::function<bool(const char*, bool)> callback) { sendV1Command = callback; }
+    void setCommandCallback(bool (*fn)(const char*, bool, void*), void* ctx) { sendV1Command = fn; sendV1CommandCtx = ctx; }
     
     // Callback to request a profile push (manual trigger from API)
-    void setProfilePushCallback(std::function<WifiControlApiService::ProfilePushResult()> callback) { requestProfilePush = callback; }
+    void setProfilePushCallback(WifiControlApiService::ProfilePushResult (*fn)(void*), void* ctx) { requestProfilePush = fn; requestProfilePushCtx = ctx; }
     
     // Callback for filesystem access (SD card)
-    void setFilesystemCallback(std::function<fs::FS*()> callback) { getFilesystem = callback; }
+    void setFilesystemCallback(fs::FS* (*fn)(void*), void* ctx) { getFilesystem = fn; getFilesystemCtx = ctx; }
     
     // Callback for push executor status (auto-push)
-    void setPushStatusCallback(std::function<String()> callback) { getPushStatusJson = callback; }
+    void setPushStatusCallback(String (*fn)(void*), void* ctx) { getPushStatusJson = fn; getPushStatusJsonCtx = ctx; }
 
     // Callback for manual push-now requests routed through the shared executor.
     void setPushNowCallback(
-        std::function<WifiAutoPushApiService::PushNowQueueResult(
-            const WifiAutoPushApiService::PushNowRequest&)> callback) {
-        queuePushNow = callback;
+        WifiAutoPushApiService::PushNowQueueResult (*fn)(
+            const WifiAutoPushApiService::PushNowRequest&, void*),
+        void* ctx) {
+        queuePushNow = fn;
+        queuePushNowCtx = ctx;
     }
     
     // Callback for V1 connection state (used to defer WiFi client operations)
-    void setV1ConnectedCallback(std::function<bool()> callback) { isV1Connected = callback; }
+    void setV1ConnectedCallback(bool (*fn)(void*), void* ctx) { isV1Connected = fn; isV1ConnectedCtx = ctx; }
 
     // Web activity tracking (for WiFi priority mode)
     void markUiActivity();  // Call on every HTTP request
@@ -271,15 +261,25 @@ private:
     unsigned long lastStatusJsonTime = 0;
     BackupApiService::BackupSnapshotCache cachedBackupSnapshot;
     
-    std::function<void(JsonObject)> mergeAlert;
-    std::function<void(JsonObject)> mergeStatus;
-    std::function<bool(const char*, bool)> sendV1Command;
-    std::function<WifiControlApiService::ProfilePushResult()> requestProfilePush;
-    std::function<fs::FS*()> getFilesystem;
-    std::function<String()> getPushStatusJson;
-    std::function<WifiAutoPushApiService::PushNowQueueResult(
-        const WifiAutoPushApiService::PushNowRequest&)> queuePushNow;
-    std::function<bool()> isV1Connected;  // Returns true when V1 is connected (defer WiFi ops until then)
+    void (*mergeAlert)(JsonObject, void* ctx) = nullptr;
+    void* mergeAlertCtx = nullptr;
+    void (*mergeStatus)(JsonObject, void* ctx) = nullptr;
+    void* mergeStatusCtx = nullptr;
+    void (*mergeStatus2)(JsonObject, void* ctx) = nullptr;   // appended by appendStatusCallback
+    void* mergeStatus2Ctx = nullptr;
+    bool (*sendV1Command)(const char*, bool, void* ctx) = nullptr;
+    void* sendV1CommandCtx = nullptr;
+    WifiControlApiService::ProfilePushResult (*requestProfilePush)(void* ctx) = nullptr;
+    void* requestProfilePushCtx = nullptr;
+    fs::FS* (*getFilesystem)(void* ctx) = nullptr;
+    void* getFilesystemCtx = nullptr;
+    String (*getPushStatusJson)(void* ctx) = nullptr;
+    void* getPushStatusJsonCtx = nullptr;
+    WifiAutoPushApiService::PushNowQueueResult (*queuePushNow)(
+        const WifiAutoPushApiService::PushNowRequest&, void* ctx) = nullptr;
+    void* queuePushNowCtx = nullptr;
+    bool (*isV1Connected)(void* ctx) = nullptr;   // Returns true when V1 is connected (defer WiFi ops until then)
+    void* isV1ConnectedCtx = nullptr;
     
     // Setup functions
     void setupAP();

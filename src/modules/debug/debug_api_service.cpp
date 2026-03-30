@@ -686,12 +686,12 @@ static void sendMetricsSoak(WebServer& server) {
         server,
         gSoakMetricsCache,
         kSoakMetricsCacheTtlMs,
-        [](JsonDocument& doc) {
+        [](JsonDocument& doc, void* /*ctx*/) {
             buildMetricsSoakDoc(doc);
-        },
-        []() {
+        }, nullptr,
+        [](void* /*ctx*/) -> uint32_t {
             return static_cast<uint32_t>(millis());
-        });
+        }, nullptr);
 }
 void handleApiMetrics(WebServer& server) {
     // Guard: refuse to build the large JSON doc if internal DMA heap is low.

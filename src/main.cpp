@@ -287,7 +287,7 @@ static void configureLoopPostDisplayModule() {
 static void configureWifiRuntimeModule() {
     getWifiOrchestrator().ensureCallbacksConfigured();
     if (!wifiStatusObservabilityCallbackConfigured) {
-        wifiManager.appendStatusCallback([](JsonObject obj) {
+        wifiManager.appendStatusCallback([](JsonObject obj, void* /*ctx*/) {
             const V1Settings& settings = settingsManager.get();
             const GpsLockoutCoreGuardStatus lockoutGuard = gpsLockoutEvaluateCoreGuard(
                 settings.gpsLockoutCoreGuardEnabled,
@@ -362,7 +362,7 @@ static void configureWifiRuntimeModule() {
             presentationObj["voiceAllowVolZeroBypass"] =
                 quietPresentation.voiceAllowVolZeroBypass;
             presentationObj["effectiveMuted"] = quietPresentation.effectiveMuted;
-        });
+        }, nullptr);
         wifiStatusObservabilityCallbackConfigured = true;
     }
 
@@ -746,21 +746,21 @@ void configureTouchUiModule() {
     getWifiOrchestrator().ensureCallbacksConfigured();
 
     TouchUiModule::Callbacks touchCbs{
-        .isWifiSetupActive = [] { return wifiManager.isWifiServiceActive(); },
-        .stopWifiSetup = [] { wifiManager.stopSetupMode(true); },
-        .startWifi = [] { (void)wifiManager.startSetupMode(false); },
-        .drawWifiIndicator = [] { display.drawWiFiIndicator(); },
-        .restoreDisplay = [] {
+        .isWifiSetupActive = [](void* /*ctx*/) { return wifiManager.isWifiServiceActive(); },
+        .stopWifiSetup = [](void* /*ctx*/) { wifiManager.stopSetupMode(true); },
+        .startWifi = [](void* /*ctx*/) { (void)wifiManager.startSetupMode(false); },
+        .drawWifiIndicator = [](void* /*ctx*/) { display.drawWiFiIndicator(); },
+        .restoreDisplay = [](void* /*ctx*/) {
             if (mainRuntimeState.bootSplashHoldActive) {
                 return;
             }
             displayPipelineModule.restoreCurrentOwner(millis());
         },
-        .readObdStatus = [](uint32_t nowMs) { return obdRuntimeModule.snapshot(nowMs); },
-        .requestObdManualPairScan = [](uint32_t nowMs) {
+        .readObdStatus = [](uint32_t nowMs, void* /*ctx*/) { return obdRuntimeModule.snapshot(nowMs); },
+        .requestObdManualPairScan = [](uint32_t nowMs, void* /*ctx*/) {
             return obdRuntimeModule.requestManualPairScan(nowMs);
         },
-        .isObdPairGestureSafe = [](uint32_t nowMs) {
+        .isObdPairGestureSafe = [](uint32_t nowMs, void* /*ctx*/) {
             return displayPipelineModule.allowsObdPairGesture(nowMs);
         }
     };

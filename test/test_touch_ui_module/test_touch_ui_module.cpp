@@ -25,18 +25,18 @@ ObdRuntimeStatus obdStatus;
 
 TouchUiModule::Callbacks makeCallbacks() {
     return TouchUiModule::Callbacks{
-        .isWifiSetupActive = [] { return wifiSetupActive; },
-        .stopWifiSetup = [] { ++wifiStopCalls; wifiSetupActive = false; },
-        .startWifi = [] { ++wifiStartCalls; wifiSetupActive = true; },
-        .drawWifiIndicator = [] { display.drawWiFiIndicator(); },
-        .restoreDisplay = [] {},
-        .readObdStatus = [](uint32_t) { return obdStatus; },
-        .requestObdManualPairScan = [](uint32_t) {
+        .isWifiSetupActive = [](void* /*ctx*/) { return wifiSetupActive; },
+        .stopWifiSetup = [](void* /*ctx*/) { ++wifiStopCalls; wifiSetupActive = false; },
+        .startWifi = [](void* /*ctx*/) { ++wifiStartCalls; wifiSetupActive = true; },
+        .drawWifiIndicator = [](void* /*ctx*/) { display.drawWiFiIndicator(); },
+        .restoreDisplay = [](void* /*ctx*/) {},
+        .readObdStatus = [](uint32_t, void* /*ctx*/) { return obdStatus; },
+        .requestObdManualPairScan = [](uint32_t, void* /*ctx*/) {
             ++manualPairRequests;
             obdStatus.manualScanPending = true;
             return true;
         },
-        .isObdPairGestureSafe = [](uint32_t) { return obdPairSafe; },
+        .isObdPairGestureSafe = [](uint32_t, void* /*ctx*/) { return obdPairSafe; },
     };
 }
 

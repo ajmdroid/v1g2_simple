@@ -318,7 +318,7 @@ void WiFiManager::checkWifiClientStatus() {
 
             // Defer background STA reconnect attempts during early boot until V1 is
             // connected. This protects BLE acquisition from AP+STA mode churn.
-            bool v1Connected = isV1Connected ? isV1Connected() : bleClient.isConnected();
+            bool v1Connected = isV1Connected ? isV1Connected(isV1ConnectedCtx) : bleClient.isConnected();
             bool withinBootGrace = (setupModeStartTime != 0) &&
                                    ((millis() - setupModeStartTime) < WIFI_RECONNECT_DEFER_NO_V1_MS);
             if (!v1Connected && withinBootGrace) {

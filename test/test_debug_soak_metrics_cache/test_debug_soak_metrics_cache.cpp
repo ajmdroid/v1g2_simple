@@ -63,15 +63,14 @@ String buildBlobFittingCacheCap() {
     return String();
 }
 
-DebugApiService::SoakMetricsBuildFn makeBuildFn(FakeMetricsSource& source) {
-    return [&source](JsonDocument& doc) {
-        source.buildCalls++;
-        doc["mode"] = source.mode;
-        doc["counter"] = source.counter;
-        if (source.blob.length() > 0) {
-            doc["blob"] = source.blob;
-        }
-    };
+static void buildFnWrapper(JsonDocument& doc, void* ctx) {
+    auto* source = static_cast<FakeMetricsSource*>(ctx);
+    source->buildCalls++;
+    doc["mode"] = source->mode;
+    doc["counter"] = source->counter;
+    if (source->blob.length() > 0) {
+        doc["blob"] = source->blob;
+    }
 }
 
 void releaseCache(DebugApiService::SoakMetricsJsonCache& cache) {
@@ -98,8 +97,8 @@ void test_first_request_builds_and_caches_soak_metrics() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now);
 
     TEST_ASSERT_TRUE(cached);
     TEST_ASSERT_EQUAL_INT(1, source.buildCalls);
@@ -124,8 +123,8 @@ void test_cache_hit_reuses_cached_payload_within_ttl() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now);
 
     const String firstBody = server.lastBody;
 
@@ -137,8 +136,8 @@ void test_cache_hit_reuses_cached_payload_within_ttl() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now);
 
     TEST_ASSERT_EQUAL_INT(1, source.buildCalls);
     TEST_ASSERT_EQUAL_STRING(firstBody.c_str(), server.lastBody.c_str());
@@ -157,8 +156,8 @@ void test_cache_expiry_rebuilds_payload() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now);
 
     source.mode = "expired";
     source.counter = 7;
@@ -168,8 +167,8 @@ void test_cache_expiry_rebuilds_payload() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now);
 
     TEST_ASSERT_EQUAL_INT(2, source.buildCalls);
     TEST_ASSERT_EQUAL_UINT32(1300, cache.lastBuildMs);
@@ -188,8 +187,8 @@ void test_invalidation_forces_rebuild_within_ttl() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now);
 
     DebugApiService::invalidateSoakMetricsCache(cache);
     source.mode = "reset";
@@ -200,8 +199,8 @@ void test_invalidation_forces_rebuild_within_ttl() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now);
 
     TEST_ASSERT_EQUAL_INT(2, source.buildCalls);
     TEST_ASSERT_TRUE(cache.valid);
@@ -222,8 +221,8 @@ void test_psram_failure_falls_back_to_internal_cache() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now);
 
     TEST_ASSERT_TRUE(cached);
     TEST_ASSERT_EQUAL_UINT32(2, g_mock_heap_caps_malloc_calls);
@@ -243,8 +242,8 @@ void test_allocation_failure_falls_back_to_uncached_send() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now);
 
     TEST_ASSERT_FALSE(cached);
     TEST_ASSERT_EQUAL_INT(1, source.buildCalls);
@@ -270,8 +269,8 @@ void test_oversized_first_payload_streams_uncached_without_allocating() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now);
 
     TEST_ASSERT_FALSE(cached);
     TEST_ASSERT_EQUAL_INT(1, source.buildCalls);
@@ -294,8 +293,8 @@ void test_oversized_payload_invalidates_prior_cache_and_reuses_buffer_later() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; }));
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now));
 
     char* originalData = cache.data;
     const size_t originalCapacity = cache.capacity;
@@ -310,8 +309,8 @@ void test_oversized_payload_invalidates_prior_cache_and_reuses_buffer_later() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; }));
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now));
 
     TEST_ASSERT_EQUAL_INT(2, source.buildCalls);
     TEST_ASSERT_FALSE(cache.valid);
@@ -331,8 +330,8 @@ void test_oversized_payload_invalidates_prior_cache_and_reuses_buffer_later() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; }));
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now));
 
     TEST_ASSERT_EQUAL_INT(3, source.buildCalls);
     TEST_ASSERT_TRUE(cache.valid);
@@ -360,8 +359,8 @@ void test_cached_payload_capacity_never_exceeds_8k_cap() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now);
 
     TEST_ASSERT_TRUE(cached);
     TEST_ASSERT_TRUE(cache.valid);
@@ -380,8 +379,8 @@ void test_release_cache_frees_buffer_and_resets_state() {
         server,
         cache,
         250,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnWrapper, &source,
+        [](void* ctx) -> uint32_t { return *static_cast<uint32_t*>(ctx); }, &now);
 
     TEST_ASSERT_NOT_NULL(cache.data);
     DebugApiService::releaseSoakMetricsCache(cache);

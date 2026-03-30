@@ -5,8 +5,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
-
 namespace DebugApiService {
 
 struct SoakMetricsJsonCache {
@@ -18,13 +16,11 @@ struct SoakMetricsJsonCache {
     bool valid = false;
 };
 
-using SoakMetricsBuildFn = std::function<void(JsonDocument&)>;
-
 bool sendCachedSoakMetrics(WebServer& server,
                            SoakMetricsJsonCache& cache,
                            uint32_t cacheTtlMs,
-                           const SoakMetricsBuildFn& buildMetrics,
-                           const std::function<uint32_t()>& millisFn = nullptr);
+                           void (*buildMetrics)(JsonDocument&, void*), void* buildMetricsCtx,
+                           uint32_t (*millisFn)(void*) = nullptr, void* millisCtx = nullptr);
 
 void invalidateSoakMetricsCache(SoakMetricsJsonCache& cache);
 

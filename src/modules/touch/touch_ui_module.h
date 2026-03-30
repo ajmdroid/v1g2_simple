@@ -3,8 +3,6 @@
 #pragma once
 
 #include <Arduino.h>
-#include <functional>
-
 #include "display.h"
 #include "modules/obd/obd_runtime_module.h"
 #include "settings.h"
@@ -15,14 +13,22 @@ public:
     TouchUiModule() = default;
 
     struct Callbacks {
-        std::function<bool()> isWifiSetupActive;
-        std::function<void()> stopWifiSetup;   // stop AP/setup mode
-        std::function<void()> startWifi;       // start WiFi/AP
-        std::function<void()> drawWifiIndicator;
-        std::function<void()> restoreDisplay;  // refresh display with current state
-        std::function<ObdRuntimeStatus(uint32_t nowMs)> readObdStatus;
-        std::function<bool(uint32_t nowMs)> requestObdManualPairScan;
-        std::function<bool(uint32_t nowMs)> isObdPairGestureSafe;
+        bool (*isWifiSetupActive)(void* ctx) = nullptr;
+        void* isWifiSetupActiveCtx = nullptr;
+        void (*stopWifiSetup)(void* ctx) = nullptr;       // stop AP/setup mode
+        void* stopWifiSetupCtx = nullptr;
+        void (*startWifi)(void* ctx) = nullptr;           // start WiFi/AP
+        void* startWifiCtx = nullptr;
+        void (*drawWifiIndicator)(void* ctx) = nullptr;
+        void* drawWifiIndicatorCtx = nullptr;
+        void (*restoreDisplay)(void* ctx) = nullptr;      // refresh display with current state
+        void* restoreDisplayCtx = nullptr;
+        ObdRuntimeStatus (*readObdStatus)(uint32_t nowMs, void* ctx) = nullptr;
+        void* readObdStatusCtx = nullptr;
+        bool (*requestObdManualPairScan)(uint32_t nowMs, void* ctx) = nullptr;
+        void* requestObdManualPairScanCtx = nullptr;
+        bool (*isObdPairGestureSafe)(uint32_t nowMs, void* ctx) = nullptr;
+        void* isObdPairGestureSafeCtx = nullptr;
     };
 
     void begin(V1Display* disp,

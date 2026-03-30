@@ -58,41 +58,70 @@ struct FakeStatusRuntime {
 };
 
 static WifiStatusApiService::StatusRuntime makeRuntime(FakeStatusRuntime& rt) {
-    return WifiStatusApiService::StatusRuntime{
-        [&rt]() {
-            rt.setupModeActiveCalls++;
-            return rt.setupModeActive;
-        },
-        [&rt]() { return rt.staConnected; },
-        [&rt]() { return rt.staIp; },
-        [&rt]() { return rt.apIp; },
-        [&rt]() { return rt.connectedSsid; },
-        [&rt]() { return rt.rssi; },
-        [&rt]() { return rt.staEnabled; },
-        [&rt]() { return rt.staSavedSsid; },
-        [&rt]() { return rt.apSsid; },
-
-        [&rt]() { return rt.uptimeSeconds; },
-        [&rt]() { return rt.heapFree; },
-        [&rt]() { return rt.hostname; },
-        [&rt]() { return rt.firmwareVersion; },
-
-        [&rt]() { return rt.timeValid; },
-        [&rt]() { return rt.timeSource; },
-        [&rt]() { return rt.timeConfidence; },
-        [&rt]() { return rt.timeTzOffsetMin; },
-        [&rt]() { return rt.timeEpochMs; },
-        [&rt]() { return rt.timeAgeMs; },
-
-        [&rt]() { return rt.batteryVoltageMv; },
-        [&rt]() { return rt.batteryPercentage; },
-        [&rt]() { return rt.batteryOnBattery; },
-        [&rt]() { return rt.batteryHasBattery; },
-
-        [&rt]() { return rt.v1Connected; },
-        [&rt](JsonObject obj) { if (rt.mergeStatus) rt.mergeStatus(obj); },
-        [&rt](JsonObject obj) { if (rt.mergeAlert) rt.mergeAlert(obj); },
+    WifiStatusApiService::StatusRuntime r;
+    r.setupModeActive = [](void* ctx) {
+        auto* rtp = static_cast<FakeStatusRuntime*>(ctx);
+        rtp->setupModeActiveCalls++;
+        return rtp->setupModeActive;
     };
+    r.setupModeActiveCtx = &rt;
+    r.staConnected = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->staConnected; };
+    r.staConnectedCtx = &rt;
+    r.staIp = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->staIp; };
+    r.staIpCtx = &rt;
+    r.apIp = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->apIp; };
+    r.apIpCtx = &rt;
+    r.connectedSsid = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->connectedSsid; };
+    r.connectedSsidCtx = &rt;
+    r.rssi = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->rssi; };
+    r.rssiCtx = &rt;
+    r.staEnabled = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->staEnabled; };
+    r.staEnabledCtx = &rt;
+    r.staSavedSsid = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->staSavedSsid; };
+    r.staSavedSsidCtx = &rt;
+    r.apSsid = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->apSsid; };
+    r.apSsidCtx = &rt;
+    r.uptimeSeconds = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->uptimeSeconds; };
+    r.uptimeSecondsCtx = &rt;
+    r.heapFree = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->heapFree; };
+    r.heapFreeCtx = &rt;
+    r.hostname = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->hostname; };
+    r.hostnameCtx = &rt;
+    r.firmwareVersion = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->firmwareVersion; };
+    r.firmwareVersionCtx = &rt;
+    r.timeValid = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->timeValid; };
+    r.timeValidCtx = &rt;
+    r.timeSource = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->timeSource; };
+    r.timeSourceCtx = &rt;
+    r.timeConfidence = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->timeConfidence; };
+    r.timeConfidenceCtx = &rt;
+    r.timeTzOffsetMin = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->timeTzOffsetMin; };
+    r.timeTzOffsetMinCtx = &rt;
+    r.timeEpochMsOr0 = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->timeEpochMs; };
+    r.timeEpochMsOr0Ctx = &rt;
+    r.timeEpochAgeMsOr0 = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->timeAgeMs; };
+    r.timeEpochAgeMsOr0Ctx = &rt;
+    r.batteryVoltageMv = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->batteryVoltageMv; };
+    r.batteryVoltageMvCtx = &rt;
+    r.batteryPercentage = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->batteryPercentage; };
+    r.batteryPercentageCtx = &rt;
+    r.batteryOnBattery = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->batteryOnBattery; };
+    r.batteryOnBatteryCtx = &rt;
+    r.batteryHasBattery = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->batteryHasBattery; };
+    r.batteryHasBatteryCtx = &rt;
+    r.v1Connected = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->v1Connected; };
+    r.v1ConnectedCtx = &rt;
+    r.mergeStatus = [](JsonObject obj, void* ctx) {
+        auto* rtp = static_cast<FakeStatusRuntime*>(ctx);
+        if (rtp->mergeStatus) rtp->mergeStatus(obj);
+    };
+    r.mergeStatusCtx = &rt;
+    r.mergeAlert = [](JsonObject obj, void* ctx) {
+        auto* rtp = static_cast<FakeStatusRuntime*>(ctx);
+        if (rtp->mergeAlert) rtp->mergeAlert(obj);
+    };
+    r.mergeAlertCtx = &rt;
+    return r;
 }
 
 void setUp() {
@@ -138,8 +167,8 @@ void test_handle_status_builds_core_payload() {
         cache,
         cacheTime,
         500,
-        [&now]() { return now; },
-        []() { return true; });
+        [](void* ctx) -> unsigned long { return *static_cast<unsigned long*>(ctx); }, &now,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"setup_mode\":true"));
@@ -184,8 +213,8 @@ void test_handle_status_merges_legacy_status_and_alert_json() {
         cache,
         cacheTime,
         500,
-        [&now]() { return now; },
-        []() { return true; });
+        [](void* ctx) -> unsigned long { return *static_cast<unsigned long*>(ctx); }, &now,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"foo\":123"));
@@ -216,8 +245,8 @@ void test_handle_status_preserves_nested_wifi_merges() {
         cache,
         cacheTime,
         500,
-        [&now]() { return now; },
-        []() { return true; });
+        [](void* ctx) -> unsigned long { return *static_cast<unsigned long*>(ctx); }, &now,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"low_dma_cooldown_ms\":9000"));
@@ -241,8 +270,8 @@ void test_handle_status_cache_hit_reuses_cached_payload() {
         cache,
         cacheTime,
         500,
-        [&now]() { return now; },
-        []() { return true; });
+        [](void* ctx) -> unsigned long { return *static_cast<unsigned long*>(ctx); }, &now,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     const String firstBody = server.lastBody;
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"InitialAP\""));
@@ -257,8 +286,8 @@ void test_handle_status_cache_hit_reuses_cached_payload() {
         cache,
         cacheTime,
         500,
-        [&now]() { return now; },
-        []() { return true; });
+        [](void* ctx) -> unsigned long { return *static_cast<unsigned long*>(ctx); }, &now,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_STRING(firstBody.c_str(), server.lastBody.c_str());
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"InitialAP\""));
@@ -281,8 +310,8 @@ void test_handle_status_cache_expiry_rebuilds_payload() {
         cache,
         cacheTime,
         500,
-        [&now]() { return now; },
-        []() { return true; });
+        [](void* ctx) -> unsigned long { return *static_cast<unsigned long*>(ctx); }, &now,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"InitialAP\""));
     TEST_ASSERT_EQUAL_INT(1, rt.setupModeActiveCalls);
@@ -296,8 +325,8 @@ void test_handle_status_cache_expiry_rebuilds_payload() {
         cache,
         cacheTime,
         500,
-        [&now]() { return now; },
-        []() { return true; });
+        [](void* ctx) -> unsigned long { return *static_cast<unsigned long*>(ctx); }, &now,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"ChangedAP\""));
     TEST_ASSERT_EQUAL_INT(2, rt.setupModeActiveCalls);
@@ -316,8 +345,8 @@ void test_handle_status_prefers_psram_cache_allocation() {
         cache,
         cacheTime,
         500,
-        []() { return 1000UL; },
-        []() { return true; });
+        [](void* /*ctx*/) -> unsigned long { return 1000UL; }, nullptr,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_UINT32(1, g_mock_heap_caps_malloc_calls);
     TEST_ASSERT_EQUAL_UINT32(MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM, g_mock_heap_caps_last_malloc_caps);
@@ -341,8 +370,8 @@ void test_handle_status_falls_back_to_internal_cache_allocation() {
         cache,
         cacheTime,
         500,
-        []() { return 1000UL; },
-        []() { return true; });
+        [](void* /*ctx*/) -> unsigned long { return 1000UL; }, nullptr,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_UINT32(2, g_mock_heap_caps_malloc_calls);
     TEST_ASSERT_EQUAL_UINT32(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL, g_mock_heap_caps_last_malloc_caps);
@@ -366,8 +395,8 @@ void test_handle_status_allocation_failure_falls_back_to_uncached_send() {
         cache,
         cacheTime,
         500,
-        []() { return 1000UL; },
-        []() { return true; });
+        [](void* /*ctx*/) -> unsigned long { return 1000UL; }, nullptr,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"FallbackAP\""));
@@ -392,8 +421,8 @@ void test_handle_status_invalidation_forces_rebuild_within_ttl() {
         cache,
         cacheTime,
         500,
-        [&now]() { return now; },
-        []() { return true; });
+        [](void* ctx) -> unsigned long { return *static_cast<unsigned long*>(ctx); }, &now,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"InitialAP\""));
     TEST_ASSERT_EQUAL_INT(1, rt.setupModeActiveCalls);
@@ -408,8 +437,8 @@ void test_handle_status_invalidation_forces_rebuild_within_ttl() {
         cache,
         cacheTime,
         500,
-        [&now]() { return now; },
-        []() { return true; });
+        [](void* ctx) -> unsigned long { return *static_cast<unsigned long*>(ctx); }, &now,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"UpdatedAP\""));
     TEST_ASSERT_EQUAL_UINT32(1200, cacheTime);
@@ -429,8 +458,8 @@ void test_release_status_cache_frees_buffer_and_resets_state() {
         cache,
         cacheTime,
         500,
-        []() { return 1000UL; },
-        []() { return true; });
+        [](void* /*ctx*/) -> unsigned long { return 1000UL; }, nullptr,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_NOT_NULL(cache.data);
     WifiStatusApiService::releaseStatusJsonCache(cache, cacheTime);
@@ -455,8 +484,8 @@ void test_handle_api_status_rate_limited_short_circuits() {
         cache,
         cacheTime,
         500,
-        []() { return 1000UL; },
-        []() { return false; });
+        [](void* /*ctx*/) -> unsigned long { return 1000UL; }, nullptr,
+        [](void* /*ctx*/) { return false; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(0, rt.setupModeActiveCalls);
@@ -475,8 +504,8 @@ void test_handle_api_status_delegates_when_allowed() {
         cache,
         cacheTime,
         500,
-        []() { return 2000UL; },
-        []() { return true; });
+        [](void* /*ctx*/) -> unsigned long { return 2000UL; }, nullptr,
+        [](void* /*ctx*/) { return true; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"StatusApiAP\""));
@@ -497,7 +526,7 @@ void test_handle_legacy_status_delegates_without_rate_limit() {
         cache,
         cacheTime,
         500,
-        []() { return 3000UL; });
+        [](void* /*ctx*/) -> unsigned long { return 3000UL; }, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ssid\":\"LegacyAP\""));
