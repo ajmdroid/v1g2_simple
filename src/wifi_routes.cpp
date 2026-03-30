@@ -357,53 +357,53 @@ bool WiFiManager::setupWebServer() {
     server.on("/api/debug/v1-scenario/status", HTTP_GET, [this]() {
         DebugApiService::handleApiV1ScenarioStatus(server);
     });
-    server.on("/api/debug/v1-scenario/load", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/debug/v1-scenario/load", HTTP_POST, [this]() {
         DebugApiService::handleApiV1ScenarioLoad(
             server,
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/debug/v1-scenario/start", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/debug/v1-scenario/start", HTTP_POST, [this]() {
         DebugApiService::handleApiV1ScenarioStart(
             server,
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/debug/v1-scenario/stop", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/debug/v1-scenario/stop", HTTP_POST, [this]() {
         DebugApiService::handleApiV1ScenarioStop(
             server,
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/debug/enable", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/debug/enable", HTTP_POST, [this]() {
         DebugApiService::handleApiDebugEnable(
             server,
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/debug/metrics/reset", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/debug/metrics/reset", HTTP_POST, [this]() {
         DebugApiService::handleApiMetricsReset(
             server,
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/debug/proxy-advertising", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/debug/proxy-advertising", HTTP_POST, [this]() {
         DebugApiService::handleApiProxyAdvertisingControl(
             server,
-            rateLimitCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/debug/perf-files", HTTP_GET, [this, rateLimitCallback]() {
+    server.on("/api/debug/perf-files", HTTP_GET, [this]() {
         DebugApiService::handleApiPerfFilesList(
             server,
-            rateLimitCallback,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/debug/perf-files/download", HTTP_GET, [this, rateLimitCallback]() {
+    server.on("/api/debug/perf-files/download", HTTP_GET, [this]() {
         DebugApiService::handleApiPerfFilesDownload(
             server,
-            rateLimitCallback,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/debug/perf-files/delete", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/debug/perf-files/delete", HTTP_POST, [this]() {
         DebugApiService::handleApiPerfFilesDelete(
             server,
-            rateLimitCallback,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     
     // WiFi client (STA) API routes - connect to external network

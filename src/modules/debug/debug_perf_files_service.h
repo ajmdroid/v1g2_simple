@@ -2,20 +2,18 @@
 
 #include <WebServer.h>
 
-#include <functional>
-
 namespace DebugPerfFilesService {
 
 void handleApiPerfFilesList(WebServer& server,
-                            const std::function<bool()>& checkRateLimit,
-                            const std::function<void()>& markUiActivity);
+                            bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                            void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiPerfFilesDownload(WebServer& server,
-                                const std::function<bool()>& checkRateLimit,
-                                const std::function<void()>& markUiActivity);
+                                bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                                void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiPerfFilesDelete(WebServer& server,
-                              const std::function<bool()>& checkRateLimit,
-                              const std::function<void()>& markUiActivity);
+                              bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                              void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 }  // namespace DebugPerfFilesService

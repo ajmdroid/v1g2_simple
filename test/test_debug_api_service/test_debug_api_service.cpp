@@ -36,6 +36,29 @@ bool responseContains(const WebServer& server, const char* needle) {
 
 }  // namespace
 
+// --- Test context helpers ---
+
+struct RateLimitCtx {
+    int calls = 0;
+    bool allow = true;
+};
+
+struct UiActivityCtx {
+    int calls = 0;
+};
+
+static bool doRateLimit(void* ctx) {
+    auto* c = static_cast<RateLimitCtx*>(ctx);
+    c->calls++;
+    return c->allow;
+}
+
+static void doUiActivity(void* ctx) {
+    static_cast<UiActivityCtx*>(ctx)->calls++;
+}
+
+// ---
+
 namespace DebugApiService {
 
 void sendMetrics(WebServer& server) {
@@ -164,32 +187,26 @@ void test_handle_api_v1_scenario_status_delegates() {
 
 void test_handle_api_debug_enable_rate_limited_short_circuits() {
     WebServer server(80);
-    int rateLimitCalls = 0;
+    RateLimitCtx rlCtx{ .allow = false };
 
     DebugApiService::handleApiDebugEnable(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return false;
-        });
+        doRateLimit, &rlCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
     TEST_ASSERT_EQUAL_INT(0, handleDebugEnableCalls);
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
 
 void test_handle_api_debug_enable_delegates_when_allowed() {
     WebServer server(80);
-    int rateLimitCalls = 0;
+    RateLimitCtx rlCtx;
 
     DebugApiService::handleApiDebugEnable(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        });
+        doRateLimit, &rlCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handleDebugEnableCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"enable\""));
@@ -197,32 +214,26 @@ void test_handle_api_debug_enable_delegates_when_allowed() {
 
 void test_handle_api_metrics_reset_rate_limited_short_circuits() {
     WebServer server(80);
-    int rateLimitCalls = 0;
+    RateLimitCtx rlCtx{ .allow = false };
 
     DebugApiService::handleApiMetricsReset(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return false;
-        });
+        doRateLimit, &rlCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
     TEST_ASSERT_EQUAL_INT(0, handleMetricsResetCalls);
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
 
 void test_handle_api_metrics_reset_delegates_when_allowed() {
     WebServer server(80);
-    int rateLimitCalls = 0;
+    RateLimitCtx rlCtx;
 
     DebugApiService::handleApiMetricsReset(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        });
+        doRateLimit, &rlCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handleMetricsResetCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"metrics-reset\""));
@@ -230,32 +241,26 @@ void test_handle_api_metrics_reset_delegates_when_allowed() {
 
 void test_handle_api_v1_scenario_load_rate_limited_short_circuits() {
     WebServer server(80);
-    int rateLimitCalls = 0;
+    RateLimitCtx rlCtx{ .allow = false };
 
     DebugApiService::handleApiV1ScenarioLoad(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return false;
-        });
+        doRateLimit, &rlCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
     TEST_ASSERT_EQUAL_INT(0, handleV1ScenarioLoadCalls);
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
 
 void test_handle_api_v1_scenario_load_delegates_when_allowed() {
     WebServer server(80);
-    int rateLimitCalls = 0;
+    RateLimitCtx rlCtx;
 
     DebugApiService::handleApiV1ScenarioLoad(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        });
+        doRateLimit, &rlCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handleV1ScenarioLoadCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"v1-scenario-load\""));
@@ -263,16 +268,13 @@ void test_handle_api_v1_scenario_load_delegates_when_allowed() {
 
 void test_handle_api_v1_scenario_start_delegates_when_allowed() {
     WebServer server(80);
-    int rateLimitCalls = 0;
+    RateLimitCtx rlCtx;
 
     DebugApiService::handleApiV1ScenarioStart(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        });
+        doRateLimit, &rlCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handleV1ScenarioStartCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"v1-scenario-start\""));
@@ -280,16 +282,13 @@ void test_handle_api_v1_scenario_start_delegates_when_allowed() {
 
 void test_handle_api_v1_scenario_stop_delegates_when_allowed() {
     WebServer server(80);
-    int rateLimitCalls = 0;
+    RateLimitCtx rlCtx;
 
     DebugApiService::handleApiV1ScenarioStop(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        });
+        doRateLimit, &rlCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handleV1ScenarioStopCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"v1-scenario-stop\""));
@@ -297,38 +296,32 @@ void test_handle_api_v1_scenario_stop_delegates_when_allowed() {
 
 void test_handle_api_perf_files_list_rate_limited_short_circuits() {
     WebServer server(80);
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx{ .allow = false };
+    UiActivityCtx uiCtx;
 
     DebugApiService::handleApiPerfFilesList(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return false;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(0, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(0, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(0, sendPerfFilesListCalls);
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
 
 void test_handle_api_perf_files_list_delegates_when_allowed() {
     WebServer server(80);
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     DebugApiService::handleApiPerfFilesList(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, sendPerfFilesListCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"perf-files\""));
@@ -336,19 +329,16 @@ void test_handle_api_perf_files_list_delegates_when_allowed() {
 
 void test_handle_api_perf_files_download_delegates_when_allowed() {
     WebServer server(80);
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     DebugApiService::handleApiPerfFilesDownload(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handlePerfFileDownloadCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"perf-download\""));
@@ -356,19 +346,16 @@ void test_handle_api_perf_files_download_delegates_when_allowed() {
 
 void test_handle_api_perf_files_delete_delegates_when_allowed() {
     WebServer server(80);
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     DebugApiService::handleApiPerfFilesDelete(
         server,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handlePerfFileDeleteCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"perf-delete\""));

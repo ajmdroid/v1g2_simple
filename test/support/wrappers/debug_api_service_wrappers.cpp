@@ -36,61 +36,61 @@ void handleApiV1ScenarioStatus(WebServer& server) {
 }
 
 void handleApiDebugEnable(WebServer& server,
-                          const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                          bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handleDebugEnable(server);
 }
 
 void handleApiMetricsReset(WebServer& server,
-                           const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                           bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handleMetricsReset(server);
 }
 
 void handleApiV1ScenarioLoad(WebServer& server,
-                             const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                             bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handleV1ScenarioLoad(server);
 }
 
 void handleApiV1ScenarioStart(WebServer& server,
-                              const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                              bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handleV1ScenarioStart(server);
 }
 
 void handleApiV1ScenarioStop(WebServer& server,
-                             const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                             bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handleV1ScenarioStop(server);
 }
 
 void handleApiPerfFilesList(WebServer& server,
-                            const std::function<bool()>& checkRateLimit,
-                            const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                            bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                            void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     sendPerfFilesList(server);
 }
 
 void handleApiPerfFilesDownload(WebServer& server,
-                                const std::function<bool()>& checkRateLimit,
-                                const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                                bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                                void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handlePerfFileDownload(server);
 }
 
 void handleApiPerfFilesDelete(WebServer& server,
-                              const std::function<bool()>& checkRateLimit,
-                              const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                              bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                              void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handlePerfFileDelete(server);
 }

@@ -719,8 +719,8 @@ void handleDebugEnable(WebServer& server) {
     server.send(200, "application/json", "{\"success\":true,\"debugEnabled\":" + String(enable ? "true" : "false") + "}");
 }
 void handleApiDebugEnable(WebServer& server,
-                          const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                          bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handleDebugEnable(server);
 }
 void handleMetricsReset(WebServer& server) {
@@ -732,8 +732,8 @@ void handleMetricsReset(WebServer& server) {
     server.send(200, "application/json", "{\"success\":true,\"metricsReset\":true}");
 }
 void handleApiMetricsReset(WebServer& server,
-                           const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                           bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handleMetricsReset(server);
 }
 void handleProxyAdvertisingControl(WebServer& server) {
@@ -763,8 +763,8 @@ void handleProxyAdvertisingControl(WebServer& server) {
     sendJsonStream(server, doc);
 }
 void handleApiProxyAdvertisingControl(WebServer& server,
-                                      const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                                      bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handleProxyAdvertisingControl(server);
 }
 void sendPanic(WebServer& server, bool soakMode) {
@@ -806,18 +806,18 @@ void handleApiPanic(WebServer& server) {
     sendPanic(server, soakMode);
 }
 void handleApiPerfFilesList(WebServer& server,
-                            const std::function<bool()>& checkRateLimit,
-                            const std::function<void()>& markUiActivity) {
-    DebugPerfFilesService::handleApiPerfFilesList(server, checkRateLimit, markUiActivity);
+                            bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                            void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    DebugPerfFilesService::handleApiPerfFilesList(server, checkRateLimit, rateLimitCtx, markUiActivity, uiActivityCtx);
 }
 void handleApiPerfFilesDownload(WebServer& server,
-                                const std::function<bool()>& checkRateLimit,
-                                const std::function<void()>& markUiActivity) {
-    DebugPerfFilesService::handleApiPerfFilesDownload(server, checkRateLimit, markUiActivity);
+                                bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                                void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    DebugPerfFilesService::handleApiPerfFilesDownload(server, checkRateLimit, rateLimitCtx, markUiActivity, uiActivityCtx);
 }
 void handleApiPerfFilesDelete(WebServer& server,
-                              const std::function<bool()>& checkRateLimit,
-                              const std::function<void()>& markUiActivity) {
-    DebugPerfFilesService::handleApiPerfFilesDelete(server, checkRateLimit, markUiActivity);
+                              bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                              void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    DebugPerfFilesService::handleApiPerfFilesDelete(server, checkRateLimit, rateLimitCtx, markUiActivity, uiActivityCtx);
 }
 }  // namespace DebugApiService

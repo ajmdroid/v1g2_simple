@@ -1108,20 +1108,20 @@ void handleApiV1ScenarioStatus(WebServer& server) {
 }
 
 void handleApiV1ScenarioLoad(WebServer& server,
-                             const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                             bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handleV1ScenarioLoad(server);
 }
 
 void handleApiV1ScenarioStart(WebServer& server,
-                              const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                              bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handleV1ScenarioStart(server);
 }
 
 void handleApiV1ScenarioStop(WebServer& server,
-                             const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                             bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     handleV1ScenarioStop(server);
 }
 void process(uint32_t nowMs) {

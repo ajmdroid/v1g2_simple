@@ -526,31 +526,31 @@ void handlePerfFileDelete(WebServer& server) {
 namespace DebugPerfFilesService {
 
 void handleApiPerfFilesList(WebServer& server,
-                            const std::function<bool()>& checkRateLimit,
-                            const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                            bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                            void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     sendPerfFilesList(server);
 }
 
 void handleApiPerfFilesDownload(WebServer& server,
-                                const std::function<bool()>& checkRateLimit,
-                                const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                                bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                                void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handlePerfFileDownload(server);
 }
 
 void handleApiPerfFilesDelete(WebServer& server,
-                              const std::function<bool()>& checkRateLimit,
-                              const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                              bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                              void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handlePerfFileDelete(server);
 }
