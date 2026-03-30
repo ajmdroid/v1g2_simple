@@ -154,7 +154,54 @@ struct V1Settings {
     uint16_t colorPhoto = 0xF81F;
     uint16_t colorMuted = 0x8410;
     uint16_t colorBogey = 0xFFE0;
-    
+    uint16_t colorPersisted = 0x18C3;
+    // Band indicator colors (match real settings.h defaults)
+    uint16_t colorBandL = 0x001F;    // Blue (laser)
+    uint16_t colorBandKa = 0xF800;   // Red
+    uint16_t colorBandK = 0x001F;    // Blue
+    uint16_t colorBandX = 0x07E0;    // Green
+    // Arrow colors
+    uint16_t colorArrowFront = 0xF800;  // Red
+    uint16_t colorArrowSide  = 0xF800;  // Red
+    uint16_t colorArrowRear  = 0xF800;  // Red
+    // Signal bar colors
+    uint16_t colorBar1 = 0x07E0;  // Green (weakest)
+    uint16_t colorBar2 = 0x07E0;  // Green
+    uint16_t colorBar3 = 0xFFE0;  // Yellow
+    uint16_t colorBar4 = 0xFFE0;  // Yellow
+    uint16_t colorBar5 = 0xF800;  // Red
+    uint16_t colorBar6 = 0xF800;  // Red (strongest)
+    // Indicator badge colors
+    uint16_t colorLockout    = 0x07E0;  // Green lockout badge
+    uint16_t colorGps        = 0x07FF;  // Cyan GPS badge
+    uint16_t colorObd        = 0x001F;  // Blue OBD badge
+    // Volume/RSSI indicator colors
+    uint16_t colorVolumeMain = 0xF800;  // Red main volume
+    uint16_t colorVolumeMute = 0x7BEF;  // Grey muted volume
+    uint16_t colorRssiV1     = 0x07E0;  // Green V1 RSSI label
+    uint16_t colorRssiProxy  = 0x001F;  // Blue proxy RSSI label
+    // BLE icon colors
+    uint16_t colorBleConnected    = 0x07E0;  // Green
+    uint16_t colorBleDisconnected = 0x001F;  // Blue
+    // Visibility flags
+    bool hideProfileIndicator = false;
+    bool hideBatteryIcon      = false;
+    bool showBatteryPercent   = false;
+    bool hideBleIcon          = false;
+    bool hideVolumeIndicator  = false;
+    bool hideRssiIndicator    = false;
+    // Profile slot colors/names
+    String slot0Name = "DEFAULT";
+    String slot1Name = "HIGHWAY";
+    String slot2Name = "COMFORT";
+    uint16_t slot0Color = 0x400A;
+    uint16_t slot1Color = 0xFFE0;
+    uint16_t slot2Color = 0x07E0;
+    // WiFi icon colors
+    uint16_t colorWiFiIcon      = 0x07FF;  // Cyan
+    uint16_t colorWiFiConnected = 0x07E0;  // Green
+    bool hideWifiIcon = false;
+
     // Audio / voice
     uint8_t volume = 5;
     uint8_t voiceVolume = 75;

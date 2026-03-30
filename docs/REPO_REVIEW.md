@@ -830,3 +830,315 @@ Phase 4 (after all pass):
 ---
 
 *This plan is research-only. No changes were made to the codebase.*
+
+---
+
+# Appendix B: Codebase Consistency & Normalization Plan
+
+**Date:** March 30, 2026
+**Scope:** File organization, naming conventions, formatting, comment style, and include hygiene across `src/` and `include/`
+**Goal:** Make the repo look and feel like a single author wrote it — continuous, uniform conventions from top to bottom
+
+---
+
+## Current State Summary
+
+The codebase is architecturally strong but visually inconsistent in ways that signal "first project" rather than "showcase." The code reads like it was written in phases — earlier files use one convention, later files another — and no automated formatter enforces a baseline. None of these issues affect runtime behavior, but they undermine the professional, bulletproof impression the architecture actually deserves.
+
+**Key findings across five audit dimensions:**
+
+| Dimension | Finding | Severity |
+|---|---|---|
+| Header guards | 118 files use `#pragma once`, 43 use `#ifndef` | Medium |
+| Private members | 11 classes (~150+ members) lack trailing underscore | High |
+| Section separators | 8–10 distinct visual separator styles | Low |
+| Log prefixes | 90% use `[Tag]` format; 6% use bare `TAG:` | Low |
+| Trailing whitespace | 1,207 lines across 55 files | Low |
+| Formatting config | No `.clang-format` or `.editorconfig` | High |
+| Header placement | Headers split across `include/`, `src/`, and orphaned `src/include/` | Medium |
+| File header comments | Most files have no file-level docblock; a few have verbose ones | Low |
+
+---
+
+## Phase 1: Automated Formatting Baseline (Zero-Risk)
+
+These changes are mechanical, touch no logic, and can be validated by compilation alone.
+
+### Task 1.1: Add `.editorconfig`
+
+Create `.editorconfig` at repo root:
+
+```ini
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.{h,cpp}]
+indent_size = 4
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+```
+
+**Files:** 1 new file
+**Risk:** None — editor config only
+
+### Task 1.2: Add `.clang-format`
+
+Create `.clang-format` at repo root. Match the existing dominant style rather than imposing a new one:
+
+```yaml
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 120
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+SortIncludes: false
+PointerAlignment: Left
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+```
+
+`SortIncludes: false` is critical — reordering includes on ESP32 can break builds due to Arduino.h dependency ordering.
+
+**Files:** 1 new file
+**Risk:** None until explicitly applied. Add to repo but do NOT run formatter repo-wide in this phase.
+
+### Task 1.3: Strip trailing whitespace
+
+```bash
+find src/ include/ -name '*.h' -o -name '*.cpp' | xargs sed -i 's/[[:blank:]]*$//'
+```
+
+**Files:** ~55 files, 1,207 lines trimmed
+**Risk:** Whitespace-only diff. Verify with `pio run -e native`.
+
+---
+
+## Phase 2: Header Guard Standardization
+
+### Task 2.1: Convert 43 `#ifndef` files to `#pragma once`
+
+The project already uses `#pragma once` in 73% of headers (118/161). Both GCC and Clang support it on all target platforms (ESP32-S3 via xtensa-gcc, native via host GCC/Clang). Standardize on `#pragma once` for uniformity and to eliminate stale guard name bugs.
+
+**Files to convert (43 total):**
+
+`include/` (24 files): `config.h`, `wifi_manager_internals.h`, `main_loop_phases.h`, `main_globals.h`, `main_internals.h`, `display_vol_warn.h`, `ble_internals.h`, `audio_internals.h`, `audio_i2c_utils.h`, `settings_internals.h`, `display_flush.h`, `main_runtime_state.h`, `audio_task_utils.h`, `v1simple_logo.h`, `settings_namespace_ids.h`, `wifi_rate_limiter.h`, `display_log.h`, `display_layout.h`, `display_driver.h`, `display_ble_context.h`, `psram_alloc_compat.h`, `band_utils.h`, `color_themes.h`, `FreeSansBold24pt7b.h`
+
+`src/` (19 files): `ble_client.h`, `wifi_manager.h`, `modules/obd/obd_ble_client.h`, `packet_parser.h`, `perf_metrics.h`, `display.h`, `settings.h`, `modules/quiet/quiet_coordinator_templates.h`, `settings_runtime_sync.h`, `battery_manager.h`, `storage_manager.h`, `touch_handler.h`, `perf_sd_logger.h`, `v1_devices.h`, `ble_fresh_flash_policy.h`, `v1_profiles.h`, `modules/wifi/wifi_api_response.h`, `time_service.h`, `settings_sanitize.h`
+
+**Conversion pattern per file:**
+```cpp
+// Remove:
+#ifndef SOME_HEADER_H
+#define SOME_HEADER_H
+// ... (and matching #endif at bottom)
+
+// Replace with:
+#pragma once
+```
+
+**Risk:** Low. Compilation validates correctness.
+
+### Task 2.2: Update test mock headers
+
+`test/mocks/display_driver.h` currently uses `#ifndef DISPLAY_DRIVER_H`. Convert to `#pragma once` to match.
+
+**Files:** 1 file
+**Risk:** None
+
+---
+
+## Phase 3: Private Member Naming Normalization
+
+This is the highest-value consistency fix. The project convention (per `ARCHITECTURE.md`) is trailing underscore for private members. 11 classes violate this with ~150+ bare members. Newer files already comply — this is purely catching up older code.
+
+### Task 3.1: Normalize `V1BLEClient` (~40 members)
+
+**File:** `src/ble_client.h` (and all `.cpp` files that access these members)
+**Pattern:** `proxyEnabled` → `proxyEnabled_`, `lastScanStart` → `lastScanStart_`, etc.
+**Affected .cpp files:** `ble_client.cpp`, `ble_connection.cpp`, `ble_commands.cpp`, `ble_runtime.cpp`, `ble_proxy.cpp`
+
+### Task 3.2: Normalize `V1Display` (~25 members)
+
+**File:** `src/display.h` (and `src/display*.cpp` files)
+**Pattern:** `currentProfileSlot` → `currentProfileSlot_`, `currentScreen` → `currentScreen_`, etc.
+
+### Task 3.3: Normalize `WiFiManager` (~20 members)
+
+**File:** `src/wifi_manager.h` (and `src/wifi_manager*.cpp`, `src/wifi_client*.cpp`)
+**Pattern:** `setupModeState` → `setupModeState_`, `apInterfaceEnabled` → `apInterfaceEnabled_`, etc.
+
+### Task 3.4: Normalize `BatteryManager` (10 members)
+
+**File:** `src/battery_manager.h` (and `src/battery_manager.cpp`)
+
+### Task 3.5: Normalize `TouchHandler` (11 members)
+
+**File:** `src/touch_handler.h` (and `src/touch_handler.cpp`)
+
+### Task 3.6: Normalize `PacketParser` (7 members)
+
+**File:** `src/packet_parser.h` (and `src/packet_parser.cpp`)
+
+### Task 3.7: Normalize `PerfSdLogger` (10 members)
+
+**File:** `src/perf_sd_logger.h` (and `src/perf_sd_logger.cpp`)
+
+### Task 3.8: Normalize remaining 4 classes
+
+**Files:** `settings.h` (3 members), `storage_manager.h` (4 members), `v1_devices.h` (3 members), `v1_profiles.h` (4 members)
+
+**Risk:** Medium — find-and-replace must be scoped to the class. Use IDE rename-symbol or careful `sed` with word boundaries. Validate with `pio run -e native && pio test -e native`.
+
+**Execution order:** One class per commit. Run full native test suite after each.
+
+---
+
+## Phase 4: Section Separator Standardization
+
+The codebase uses 8–10 different visual separator styles. Standardize on a two-tier hierarchy that matches the dominant existing pattern:
+
+### Chosen standard
+
+**Major section** (top-level groupings like "Public API", "Private Implementation"):
+```cpp
+// ============================================================================
+// Section Name
+// ============================================================================
+```
+
+**Minor section** (subsections within a group):
+```cpp
+// --- Subsection Name ---
+```
+
+No other separator styles. No bare `// ---`, no `// -----`, no `// ==========`, no `// ---- Name ----` with varying dash counts.
+
+### Task 4.1: Normalize separator styles
+
+**Scope:** All `.h` and `.cpp` files in `src/` and `include/`
+**Count:** ~300+ separators across ~296 files
+**Risk:** Zero — comments only. Validation: compilation.
+
+---
+
+## Phase 5: Log Prefix Standardization
+
+The `[Tag]` bracketed format already dominates (90%). Normalize the remaining 10%.
+
+### Chosen standard
+
+```
+[Tag] message                    // Normal
+[Tag] ERROR: message             // Error
+[Tag] WARN: message              // Warning
+```
+
+Rules:
+- Tag is PascalCase, matching the module/subsystem name
+- Severity keyword (`ERROR:`, `WARN:`, `CRITICAL:`) follows the tag, not replaces it
+- No bare `ERROR:` or `WARN:` without a bracketed tag
+- Crash recovery messages (`!!! CRASH RECOVERY !!!`) are exempt — they are intentionally distinctive
+
+### Task 5.1: Audit and fix bare severity prefixes
+
+**Scope:** ~33 occurrences using `ERROR:`, `WARN:`, `WARNING:` without a `[Tag]` prefix
+**Fix:** Add the appropriate `[Tag]` for the file's module
+**Risk:** Zero — log string changes only
+
+### Task 5.2: Normalize `WARNING:` → `WARN:`
+
+Standardize on 4-char severity: `WARN:` not `WARNING:` (13 occurrences to fix).
+
+---
+
+## Phase 6: Header Placement Cleanup
+
+### Task 6.1: Relocate orphaned `src/include/obd_ble_arbitration.h`
+
+This is the only file in `src/include/`. It should move to `src/modules/obd/obd_ble_arbitration.h` to sit with its sibling OBD module headers.
+
+**Fix:** Move file, update `#include` paths in any consumers.
+**Risk:** Low — compiler catches broken includes immediately.
+
+### Task 6.2: Establish header placement rule
+
+Document in `ARCHITECTURE.md`:
+- `include/` — headers consumed by multiple subsystems or needed by tests
+- `src/*.h` — private headers for a single `.cpp` translation unit
+- `src/modules/<category>/` — module-scoped headers
+
+No `src/include/` directory.
+
+---
+
+## Phase 7: File Header Comment Standard (Optional)
+
+Currently ~80% of files have no file-level docblock. The few that do are inconsistent. Two options:
+
+**Option A (Recommended):** No file-level docblocks. The filename and `ARCHITECTURE.md` provide sufficient context. Remove the few existing verbose headers for consistency.
+
+**Option B:** Add a minimal one-liner to every file:
+```cpp
+/// @file display_cards.cpp — Secondary alert card rendering and persistence tracking
+```
+
+This phase is low priority and can be deferred.
+
+---
+
+## Execution Order and Dependencies
+
+| Order | Phase | Tasks | Risk | Validation |
+|---|---|---|---|---|
+| 1 | Phase 1 | 1.1, 1.2, 1.3 | Zero | `pio run -e native` |
+| 2 | Phase 2 | 2.1, 2.2 | Low | `pio run -e native && pio test -e native` |
+| 3 | Phase 3 | 3.1–3.8 | Medium | Full test suite after each class (one commit per class) |
+| 4 | Phase 4 | 4.1 | Zero | `pio run -e native` |
+| 5 | Phase 5 | 5.1, 5.2 | Zero | `pio run -e native` |
+| 6 | Phase 6 | 6.1, 6.2 | Low | `pio run -e native` |
+| 7 | Phase 7 | Optional | Zero | Visual review |
+
+**Total estimated file touches:** ~200+ files across all phases
+**Phase 3 is the most impactful and the most delicate** — do it one class at a time with full test validation between each.
+
+---
+
+## CI Guard Recommendation
+
+After all phases complete, add a CI step to prevent drift:
+
+```bash
+# In scripts/ci-test.sh, add after existing guards:
+
+# --- Consistency guards ---
+echo "=== Trailing whitespace check ==="
+if grep -rn '[[:blank:]]$' --include='*.h' --include='*.cpp' src/ include/; then
+    echo "FAIL: trailing whitespace found"
+    exit 1
+fi
+
+echo "=== #ifndef header guard check ==="
+if grep -rn '#ifndef.*_H$' --include='*.h' src/ include/ | grep -v 'test/'; then
+    echo "FAIL: #ifndef header guard found (use #pragma once)"
+    exit 1
+fi
+```
+
+---
+
+*This plan is research-only. No changes were made to the codebase.*

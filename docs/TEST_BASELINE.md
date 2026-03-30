@@ -10,11 +10,11 @@ architecture refactoring.
 
 | Metric | Value |
 |---|---|
-| Total test cases | 1302 |
-| Passing | 1297 |
+| Total test cases | 1471 |
+| Passing | 1466 |
 | Skipped | 5 |
 | Failing | 0 |
-| Runtime (native) | ~1m39s |
+| Runtime (native) | ~1m20s |
 
 Run with: `pio test -e native`
 
@@ -108,4 +108,4 @@ Before starting any refactor: `pio test -e native` — note the passing count.
 After the refactor: same command. Any regression must be explained and resolved
 before committing.
 
-The baseline is 1297 passing / 0 failing. Do not merge work that reduces this.
+The baseline is 1466 passing / 0 failing / 5 skipped. Do not merge work that reduces this.

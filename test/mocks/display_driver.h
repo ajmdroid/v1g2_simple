@@ -14,9 +14,38 @@
 #include <vector>
 #include <string>
 #include <cstring>
+#include "pgmspace.h"   // PROGMEM (empty on native), pgm_read_*
+
+// Text alignment datum constants (matches Adafruit GFX / Arduino_GFX)
+#define TL_DATUM 0
+#define TC_DATUM 1
+#define TR_DATUM 2
+#define ML_DATUM 3
+#define MC_DATUM 4
+#define MR_DATUM 5
+#define BL_DATUM 6
+#define BC_DATUM 7
+#define BR_DATUM 8
+
+// GFX font types (minimal stubs matching Adafruit GFX ABI)
+struct GFXglyph {
+    uint16_t bitmapOffset;
+    uint8_t  width, height;
+    uint8_t  xAdvance;
+    int8_t   xOffset, yOffset;
+};
+struct GFXfont {
+    uint8_t*  bitmap;
+    GFXglyph* glyph;
+    uint16_t  first, last;
+    uint8_t   yAdvance;
+};
 
 // Color definitions (16-bit RGB565)
 #define TFT_BLACK       0x0000
+#define COLOR_RED       0xF800
+#define COLOR_GREEN     0x07E0
+#define COLOR_YELLOW    0xFFE0
 #define TFT_WHITE       0xFFFF
 #define TFT_RED         0xF800
 #define TFT_GREEN       0x07E0
@@ -57,6 +86,7 @@ public:
 class Arduino_GFX {
 public:
     virtual ~Arduino_GFX() = default;
+    virtual void drawPixel(int16_t x, int16_t y, uint16_t color) {}
     virtual void begin(int speed = 0) {}
     virtual void fillScreen(uint16_t color) {}
     virtual void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {}
@@ -68,6 +98,15 @@ public:
     virtual void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {}
     virtual void drawRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {}
     virtual void fillRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {}
+    virtual void setFont(const GFXfont* f) {}
+    virtual void getTextBounds(const char* str, int16_t x, int16_t y,
+                               int16_t* x1, int16_t* y1, uint16_t* w, uint16_t* h) {
+        if (x1) *x1 = x;
+        if (y1) *y1 = y;
+        if (w)  *w  = static_cast<uint16_t>(strlen(str) * 8);
+        if (h)  *h  = 10;
+    }
+    virtual void setTextWrap(bool wrap) {}
     virtual void setTextColor(uint16_t color) {}
     virtual void setTextColor(uint16_t fg, uint16_t bg) {}
     virtual void setTextSize(uint8_t size) {}
@@ -96,12 +135,14 @@ public:
     struct FillRoundRectCall { int16_t x, y, w, h, r; uint16_t color; };
     struct FillCircleCall { int16_t x, y, r; uint16_t color; };
     struct DrawLineCall   { int16_t x0, y0, x1, y1; uint16_t color; };
+    struct FillTriangleCall { int16_t x0, y0, x1, y1, x2, y2; uint16_t color; };
 
     std::vector<FillRectCall>      fillRectCalls;
     std::vector<DrawRectCall>      drawRectCalls;
     std::vector<FillRoundRectCall> fillRoundRectCalls;
     std::vector<FillCircleCall>    fillCircleCalls;
     std::vector<DrawLineCall>      drawLineCalls;
+    std::vector<FillTriangleCall>  fillTriangleCalls;
 
     void clearRecordedCalls() {
         fillRectCalls.clear();
@@ -109,6 +150,7 @@ public:
         fillRoundRectCalls.clear();
         fillCircleCalls.clear();
         drawLineCalls.clear();
+        fillTriangleCalls.clear();
     }
 
     Arduino_Canvas(int16_t w, int16_t h, Arduino_GFX* output, int16_t output_x = 0, int16_t output_y = 0)
@@ -141,6 +183,11 @@ public:
         drawLineCalls.push_back({x0, y0, x1, y1, color});
     }
 
+    void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
+                      int16_t x2, int16_t y2, uint16_t color) override {
+        fillTriangleCalls.push_back({x0, y0, x1, y1, x2, y2, color});
+    }
+
     void flush() override {
         flushCount_++;
     }
@@ -159,21 +206,7 @@ private:
     uint16_t lastFillColor_ = 0;
 };
 
-// OpenFontRender stub (for TTF fonts)
-class OpenFontRender {
-public:
-    enum Align { ALIGN_LEFT = 0, ALIGN_CENTER = 1, ALIGN_RIGHT = 2 };
-    
-    void loadFont(const uint8_t* fontData, size_t fontDataSize) {}
-    void setDrawer(Arduino_GFX* gfx) {}
-    void setFontColor(uint16_t color) {}
-    void setFontColor(uint16_t fg, uint16_t bg) {}
-    void setFontSize(float size) {}
-    void setAlignment(Align align) {}
-    void setCursor(int16_t x, int16_t y) {}
-    void printf(const char* fmt, ...) {}
-    int16_t getTextWidth(const char* text) { return strlen(text) * 10; }
-    int16_t getTextHeight(const char* text) { return 20; }
-};
+// OpenFontRender stub (for TTF fonts) — defined in OpenFontRender.h
+#include "OpenFontRender.h"
 
 #endif  // DISPLAY_DRIVER_H

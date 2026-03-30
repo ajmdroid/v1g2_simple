@@ -243,6 +243,42 @@ private:
     uint32_t bleCtxUpdatedAtMs_ = 0;        // When setBleContext() last refreshed bleCtx_
     
     static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
+
+#ifdef UNIT_TEST
+public:
+    // Test seam: inject a recording canvas and expose it for assertions.
+    // The display takes ownership; caller must allocate with new.
+    void setTestCanvas(Arduino_Canvas* canvas) { tft.reset(canvas); }
+    Arduino_Canvas* testCanvas() { return tft.get(); }
+    // Public wrappers for private rendering methods (native integration tests only)
+    void ut_drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits = 0) {
+        drawBandIndicators(bandMask, muted, bandFlashBits);
+    }
+    void ut_drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStrength,
+                                    Band band = BAND_KA, bool muted = false) {
+        drawVerticalSignalBars(frontStrength, rearStrength, band, muted);
+    }
+    void ut_drawDirectionArrow(Direction dir, bool muted,
+                               uint8_t flashBits = 0, uint16_t frontColorOverride = 0) {
+        drawDirectionArrow(dir, muted, flashBits, frontColorOverride);
+    }
+    void ut_drawLockoutIndicator() { drawLockoutIndicator(); }
+    void ut_drawGpsIndicator()     { drawGpsIndicator(); }
+    void ut_drawObdIndicator()     { drawObdIndicator(); }
+    void ut_drawBaseFrame()        { drawBaseFrame(); }
+    void ut_setObdStatus(bool enabled, bool connected, bool scanAttention = false) {
+        setObdStatus(enabled, connected, scanAttention);
+    }
+    void ut_drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
+        drawVolumeIndicator(mainVol, muteVol);
+    }
+    void ut_drawRssiIndicator(int rssi) {
+        drawRssiIndicator(rssi);
+    }
+    void ut_drawBatteryIndicator() { drawBatteryIndicator(); }
+    void ut_drawBLEProxyIndicator() { drawBLEProxyIndicator(); }
+    void ut_drawWiFiIndicator() { drawWiFiIndicator(); }
+#endif
 };
 
 // Global display instance (defined in main.cpp)

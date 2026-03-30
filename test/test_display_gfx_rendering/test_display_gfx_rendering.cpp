@@ -26,6 +26,7 @@ unsigned long mockMicros = 0;
 // Pure display utilities under test
 #include "../../include/display_draw.h"
 #include "../../include/display_segments.h"
+#include "../../include/color_themes.h"
 
 // ============================================================================
 // setUp / tearDown
@@ -223,6 +224,59 @@ void test_14seg_unknown_char_returns_zero() {
     TEST_ASSERT_EQUAL_UINT16(0, DisplaySegments::get14SegPattern('?'));
 }
 
+void test_14seg_dash_is_middle_segs_only() {
+    using namespace DisplaySegments;
+    const uint16_t pattern = get14SegPattern('-');
+    TEST_ASSERT_EQUAL_UINT16(S14_ML | S14_MR, pattern);
+}
+
+void test_14seg_dot_returns_zero() {
+    TEST_ASSERT_EQUAL_UINT16(0, DisplaySegments::get14SegPattern('.'));
+}
+
+void test_14seg_all_digits_0_through_9_nonzero() {
+    for (char c = '0'; c <= '9'; c++) {
+        TEST_ASSERT_NOT_EQUAL(0, DisplaySegments::get14SegPattern(c));
+    }
+}
+
+void test_char14_map_size_is_25() {
+    TEST_ASSERT_EQUAL_INT(25, DisplaySegments::CHAR14_MAP_SIZE);
+}
+
+void test_segMetrics_fractional_scale_rounds_correctly() {
+    // scale=1.5: segLen=int(12.0+0.5)=12, segThick=int(4.5+0.5)=5
+    const auto m = DisplaySegments::segMetrics(1.5f);
+    TEST_ASSERT_EQUAL_INT(12, m.segLen);
+    TEST_ASSERT_EQUAL_INT(5,  m.segThick);
+    TEST_ASSERT_EQUAL_INT(22, m.digitW);    // 12 + 2*5
+    TEST_ASSERT_EQUAL_INT(39, m.digitH);    // 2*12 + 3*5
+}
+
+void test_segMetrics_digitW_invariant() {
+    // digitW == segLen + 2*segThick for any scale
+    for (int s = 1; s <= 4; s++) {
+        const auto m = DisplaySegments::segMetrics(static_cast<float>(s));
+        TEST_ASSERT_EQUAL_INT(m.segLen + 2 * m.segThick, m.digitW);
+    }
+}
+
+// ============================================================================
+// ColorThemes palette tests (Task 1.4)
+// ============================================================================
+
+void test_color_themes_standard_bg_is_black() {
+    TEST_ASSERT_EQUAL_UINT16(0x0000, ColorThemes::STANDARD().bg);
+}
+
+void test_color_themes_standard_text_is_white() {
+    TEST_ASSERT_EQUAL_UINT16(0xFFFF, ColorThemes::STANDARD().text);
+}
+
+void test_color_themes_standard_gray_value() {
+    TEST_ASSERT_EQUAL_UINT16(0x1082, ColorThemes::STANDARD().colorGray);
+}
+
 // ============================================================================
 // Arduino_Canvas GFX call recording smoke tests
 // ============================================================================
@@ -309,6 +363,19 @@ int main() {
     RUN_TEST(test_14seg_digit_1_only_right_verticals);
     RUN_TEST(test_14seg_lowercase_matches_uppercase);
     RUN_TEST(test_14seg_unknown_char_returns_zero);
+    RUN_TEST(test_14seg_dash_is_middle_segs_only);
+    RUN_TEST(test_14seg_dot_returns_zero);
+    RUN_TEST(test_14seg_all_digits_0_through_9_nonzero);
+    RUN_TEST(test_char14_map_size_is_25);
+
+    // segMetrics extended
+    RUN_TEST(test_segMetrics_fractional_scale_rounds_correctly);
+    RUN_TEST(test_segMetrics_digitW_invariant);
+
+    // ColorThemes palette
+    RUN_TEST(test_color_themes_standard_bg_is_black);
+    RUN_TEST(test_color_themes_standard_text_is_white);
+    RUN_TEST(test_color_themes_standard_gray_value);
 
     // GFX call recording
     RUN_TEST(test_canvas_records_fill_rect_calls);
