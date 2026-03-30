@@ -15,6 +15,18 @@ static int startCalls = 0;
 static bool wifiAutoStartDone = false;
 static bool lastStartAutoStarted = false;
 
+static bool startWifiSuccess(bool autoStarted, void* /*ctx*/) {
+    startCalls++;
+    lastStartAutoStarted = autoStarted;
+    return true;
+}
+
+static bool startWifiFail(bool autoStarted, void* /*ctx*/) {
+    startCalls++;
+    lastStartAutoStarted = autoStarted;
+    return false;
+}
+
 static void resetState() {
     startCalls = 0;
     wifiAutoStartDone = false;
@@ -44,11 +56,8 @@ void test_noop_when_feature_disabled() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [](bool autoStarted) {
-                                            startCalls++;
-                                            lastStartAutoStarted = autoStarted;
-                                            return true;
-                                        });
+                                        startWifiSuccess,
+                                        nullptr);
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
@@ -67,11 +76,8 @@ void test_noop_when_already_done() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [](bool autoStarted) {
-                                            startCalls++;
-                                            lastStartAutoStarted = autoStarted;
-                                            return true;
-                                        });
+                                        startWifiSuccess,
+                                        nullptr);
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_TRUE(wifiAutoStartDone);
@@ -88,11 +94,8 @@ void test_noop_before_ble_settle_and_timeout() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [](bool autoStarted) {
-                                            startCalls++;
-                                            lastStartAutoStarted = autoStarted;
-                                            return true;
-                                        });
+                                        startWifiSuccess,
+                                        nullptr);
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
@@ -110,11 +113,8 @@ void test_starts_after_ble_settle() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [](bool autoStarted) {
-                                            startCalls++;
-                                            lastStartAutoStarted = autoStarted;
-                                            return true;
-                                        });
+                                        startWifiSuccess,
+                                        nullptr);
 
     TEST_ASSERT_TRUE(started);
     TEST_ASSERT_TRUE(wifiAutoStartDone);
@@ -132,11 +132,8 @@ void test_starts_on_boot_timeout_without_ble() {
                                         false,
                                         true,
                                         wifiAutoStartDone,
-                                        [](bool autoStarted) {
-                                            startCalls++;
-                                            lastStartAutoStarted = autoStarted;
-                                            return true;
-                                        });
+                                        startWifiSuccess,
+                                        nullptr);
 
     TEST_ASSERT_TRUE(started);
     TEST_ASSERT_TRUE(wifiAutoStartDone);
@@ -154,11 +151,8 @@ void test_noop_when_dma_not_available() {
                                         true,
                                         false,
                                         wifiAutoStartDone,
-                                        [](bool autoStarted) {
-                                            startCalls++;
-                                            lastStartAutoStarted = autoStarted;
-                                            return true;
-                                        });
+                                        startWifiSuccess,
+                                        nullptr);
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
@@ -176,11 +170,8 @@ void test_v1_timestamp_ahead_of_now_saturates_elapsed() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [](bool autoStarted) {
-                                            startCalls++;
-                                            lastStartAutoStarted = autoStarted;
-                                            return true;
-                                        });
+                                        startWifiSuccess,
+                                        nullptr);
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
@@ -197,11 +188,8 @@ void test_noop_when_wifi_master_disabled() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [](bool autoStarted) {
-                                            startCalls++;
-                                            lastStartAutoStarted = autoStarted;
-                                            return true;
-                                        });
+                                        startWifiSuccess,
+                                        nullptr);
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
@@ -218,11 +206,8 @@ void test_waits_for_boot_timeout_without_ble_connection() {
                                         false,
                                         true,
                                         wifiAutoStartDone,
-                                        [](bool autoStarted) {
-                                            startCalls++;
-                                            lastStartAutoStarted = autoStarted;
-                                            return true;
-                                        });
+                                        startWifiSuccess,
+                                        nullptr);
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);
@@ -240,11 +225,8 @@ void test_failed_start_does_not_mark_auto_start_done() {
                                         true,
                                         true,
                                         wifiAutoStartDone,
-                                        [](bool autoStarted) {
-                                            startCalls++;
-                                            lastStartAutoStarted = autoStarted;
-                                            return false;
-                                        });
+                                        startWifiFail,
+                                        nullptr);
 
     TEST_ASSERT_FALSE(started);
     TEST_ASSERT_FALSE(wifiAutoStartDone);

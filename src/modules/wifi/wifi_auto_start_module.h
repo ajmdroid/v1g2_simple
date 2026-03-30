@@ -3,7 +3,6 @@
 #include <Arduino.h>
 
 #include <cstdint>
-#include <functional>
 
 enum class WifiAutoStartGate : uint8_t {
     Unknown = 0,
@@ -48,7 +47,8 @@ public:
                  bool bleConnected,
                  bool canStartDma,
                  bool& wifiAutoStartDone,
-                 const std::function<bool(bool autoStarted)>& startWifi);
+                 bool (*startWifi)(bool autoStarted, void* ctx),
+                 void* ctx);
 
     const WifiAutoStartDecisionSnapshot& getLastDecision() const { return lastDecision_; }
 
