@@ -59,17 +59,19 @@ bool sendCachedBackupSnapshot(WebServer& server,
                               BackupSnapshotCache& cache,
                               uint32_t settingsRevision,
                               uint32_t profileRevision,
-                              const BackupSnapshotBuildFn& buildSnapshot,
-                              const std::function<uint32_t()>& millisFn) {
+                              BackupSnapshotBuildFn buildSnapshot,
+                              void* buildCtx,
+                              uint32_t (*millisFn)(void* ctx),
+                              void* millisCtx) {
     if (hasMatchingSnapshot(cache, settingsRevision, profileRevision)) {
         sendSerializedJson(server, cache.data, cache.length);
         return true;
     }
 
     JsonDocument doc;
-    const uint32_t snapshotMs = millisFn ? millisFn() : static_cast<uint32_t>(millis());
+    const uint32_t snapshotMs = millisFn ? millisFn(millisCtx) : static_cast<uint32_t>(millis());
     if (buildSnapshot) {
-        buildSnapshot(doc, snapshotMs);
+        buildSnapshot(doc, snapshotMs, buildCtx);
     }
 
     const size_t required = measureJson(doc) + 1u;

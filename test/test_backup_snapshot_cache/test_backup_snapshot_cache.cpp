@@ -35,14 +35,17 @@ struct FakeSnapshotSource {
     String blob = "tiny";
 };
 
-BackupApiService::BackupSnapshotBuildFn makeBuildFn(FakeSnapshotSource& source) {
-    return [&source](JsonDocument& doc, uint32_t snapshotMs) {
-        source.buildCalls++;
-        doc["_type"] = "v1simple_backup";
-        doc["timestamp"] = snapshotMs;
-        doc["name"] = source.name;
-        doc["blob"] = source.blob;
-    };
+void buildFnImpl(JsonDocument& doc, uint32_t snapshotMs, void* ctx) {
+    auto* source = static_cast<FakeSnapshotSource*>(ctx);
+    source->buildCalls++;
+    doc["_type"] = "v1simple_backup";
+    doc["timestamp"] = snapshotMs;
+    doc["name"] = source->name;
+    doc["blob"] = source->blob;
+}
+
+uint32_t getMillis(void* ctx) {
+    return *static_cast<uint32_t*>(ctx);
 }
 
 void releaseCache(BackupApiService::BackupSnapshotCache& cache) {
@@ -70,8 +73,10 @@ void test_first_get_builds_and_caches_snapshot() {
         cache,
         7,
         9,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnImpl,
+        &source,
+        getMillis,
+        &now);
 
     TEST_ASSERT_TRUE(cached);
     TEST_ASSERT_EQUAL_INT(1, source.buildCalls);
@@ -100,8 +105,10 @@ void test_second_get_with_unchanged_revisions_reuses_cached_bytes() {
         cache,
         1,
         1,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnImpl,
+        &source,
+        getMillis,
+        &now);
     const String firstBody = server.lastBody;
     const uint32_t firstSnapshotMs = cache.snapshotMs;
     const uint32_t mallocCallsAfterFirst = g_mock_heap_caps_malloc_calls;
@@ -115,8 +122,10 @@ void test_second_get_with_unchanged_revisions_reuses_cached_bytes() {
         cache,
         1,
         1,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnImpl,
+        &source,
+        getMillis,
+        &now);
 
     TEST_ASSERT_TRUE(cached);
     TEST_ASSERT_EQUAL_INT(1, source.buildCalls);
@@ -139,8 +148,10 @@ void test_settings_revision_change_forces_rebuild() {
         cache,
         1,
         1,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnImpl,
+        &source,
+        getMillis,
+        &now);
 
     source.name = "settings-rebuild";
     now = 5555;
@@ -150,8 +161,10 @@ void test_settings_revision_change_forces_rebuild() {
         cache,
         2,
         1,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnImpl,
+        &source,
+        getMillis,
+        &now);
 
     TEST_ASSERT_TRUE(cached);
     TEST_ASSERT_EQUAL_INT(2, source.buildCalls);
@@ -173,8 +186,10 @@ void test_profile_revision_change_forces_rebuild() {
         cache,
         1,
         1,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnImpl,
+        &source,
+        getMillis,
+        &now);
 
     source.name = "profile-rebuild";
     now = 7777;
@@ -184,8 +199,10 @@ void test_profile_revision_change_forces_rebuild() {
         cache,
         1,
         2,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnImpl,
+        &source,
+        getMillis,
+        &now);
 
     TEST_ASSERT_TRUE(cached);
     TEST_ASSERT_EQUAL_INT(2, source.buildCalls);
@@ -208,8 +225,10 @@ void test_psram_failure_falls_back_to_internal_cache() {
         cache,
         3,
         4,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnImpl,
+        &source,
+        getMillis,
+        &now);
 
     TEST_ASSERT_TRUE(cached);
     TEST_ASSERT_EQUAL_INT(1, source.buildCalls);
@@ -230,8 +249,10 @@ void test_total_allocation_failure_streams_fresh_doc_without_reusing_stale_cache
         cache,
         1,
         1,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnImpl,
+        &source,
+        getMillis,
+        &now);
 
     const String cachedBody = server.lastBody;
     const uint32_t cachedSnapshotMs = cache.snapshotMs;
@@ -250,8 +271,10 @@ void test_total_allocation_failure_streams_fresh_doc_without_reusing_stale_cache
         cache,
         2,
         1,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnImpl,
+        &source,
+        getMillis,
+        &now);
 
     TEST_ASSERT_FALSE(cachedRefresh);
     TEST_ASSERT_EQUAL_INT(2, source.buildCalls);
@@ -271,8 +294,10 @@ void test_total_allocation_failure_streams_fresh_doc_without_reusing_stale_cache
         cache,
         2,
         1,
-        makeBuildFn(source),
-        [&now]() { return now; });
+        buildFnImpl,
+        &source,
+        getMillis,
+        &now);
 
     TEST_ASSERT_TRUE(cachedRebuild);
     TEST_ASSERT_EQUAL_INT(3, source.buildCalls);

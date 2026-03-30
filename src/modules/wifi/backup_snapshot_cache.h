@@ -5,7 +5,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 
 namespace BackupApiService {
 
@@ -20,14 +19,16 @@ struct BackupSnapshotCache {
     bool valid = false;
 };
 
-using BackupSnapshotBuildFn = std::function<void(JsonDocument&, uint32_t snapshotMs)>;
+using BackupSnapshotBuildFn = void (*)(JsonDocument&, uint32_t snapshotMs, void* ctx);
 
 bool sendCachedBackupSnapshot(WebServer& server,
                               BackupSnapshotCache& cache,
                               uint32_t settingsRevision,
                               uint32_t profileRevision,
-                              const BackupSnapshotBuildFn& buildSnapshot,
-                              const std::function<uint32_t()>& millisFn = nullptr);
+                              BackupSnapshotBuildFn buildSnapshot,
+                              void* buildCtx,
+                              uint32_t (*millisFn)(void* ctx) = nullptr,
+                              void* millisCtx = nullptr);
 
 void releaseBackupSnapshotCache(BackupSnapshotCache& cache);
 

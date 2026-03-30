@@ -22,12 +22,20 @@ static void sendBackup(WebServer& server,
                        const std::function<uint32_t()>& millisFn) {
     Serial.println("[HTTP] GET /api/settings/backup");
     server.sendHeader("Content-Disposition", "attachment; filename=\"v1simple_backup.json\"");
+    uint32_t (*millisFnPtr)(void*) = nullptr;
+    void* millisCtx = nullptr;
+    if (millisFn) {
+        millisFnPtr = [](void* ctx) -> uint32_t {
+            return (*static_cast<const std::function<uint32_t()>*>(ctx))();
+        };
+        millisCtx = const_cast<void*>(static_cast<const void*>(&millisFn));
+    }
     sendCachedBackupSnapshot(
         server,
         cachedSnapshot,
         settingsManager.backupRevision(),
         v1ProfileManager.catalogRevision(),
-        [](JsonDocument& doc, uint32_t snapshotMs) {
+        [](JsonDocument& doc, uint32_t snapshotMs, void* /*ctx*/) {
             BackupPayloadBuilder::buildBackupDocument(
                 doc,
                 settingsManager.get(),
@@ -35,7 +43,9 @@ static void sendBackup(WebServer& server,
                 BackupPayloadBuilder::BackupTransport::HttpDownload,
                 snapshotMs);
         },
-        millisFn);
+        nullptr,
+        millisFnPtr,
+        millisCtx);
 }
 
 static void handleBackupNow(WebServer& server) {
