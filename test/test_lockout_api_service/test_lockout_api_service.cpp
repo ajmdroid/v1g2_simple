@@ -18,6 +18,29 @@ class SignalObservationLog {};
 class SignalObservationSdLogger {};
 class SettingsManager {};
 
+// --- Test context helpers ---
+
+struct RateLimitCtx {
+    int calls = 0;
+    bool allow = true;
+};
+
+struct UiActivityCtx {
+    int calls = 0;
+};
+
+static bool doRateLimit(void* ctx) {
+    auto* c = static_cast<RateLimitCtx*>(ctx);
+    c->calls++;
+    return c->allow;
+}
+
+static void doUiActivity(void* ctx) {
+    static_cast<UiActivityCtx*>(ctx)->calls++;
+}
+
+// ---
+
 namespace {
 
 int sendSummaryCalls = 0;
@@ -54,6 +77,7 @@ void sendEvents(WebServer& server,
 void sendZones(WebServer& server,
                LockoutIndex&,
                LockoutLearner&,
+               LockoutStore&,
                SettingsManager&) {
     sendZonesCalls++;
     server.send(200, "application/json", "{\"route\":\"lockout-zones\"}");
@@ -115,21 +139,18 @@ void test_handle_api_summary_rate_limited_short_circuits() {
     WebServer server(80);
     SignalObservationLog signalLog;
     SignalObservationSdLogger sdLogger;
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx{ .allow = false };
+    UiActivityCtx uiCtx;
 
     LockoutApiService::handleApiSummary(
         server,
         signalLog,
         sdLogger,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return false;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(0, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(0, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(0, sendSummaryCalls);
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
@@ -138,21 +159,18 @@ void test_handle_api_summary_delegates_when_allowed() {
     WebServer server(80);
     SignalObservationLog signalLog;
     SignalObservationSdLogger sdLogger;
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     LockoutApiService::handleApiSummary(
         server,
         signalLog,
         sdLogger,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, sendSummaryCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"lockout-summary\""));
@@ -162,21 +180,18 @@ void test_handle_api_events_delegates_when_allowed() {
     WebServer server(80);
     SignalObservationLog signalLog;
     SignalObservationSdLogger sdLogger;
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     LockoutApiService::handleApiEvents(
         server,
         signalLog,
         sdLogger,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, sendEventsCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"lockout-events\""));
@@ -186,23 +201,22 @@ void test_handle_api_zones_delegates_when_allowed() {
     WebServer server(80);
     LockoutIndex index;
     LockoutLearner learner;
+    LockoutStore store;
     SettingsManager settings;
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     LockoutApiService::handleApiZones(
         server,
         index,
         learner,
+        store,
         settings,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, sendZonesCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"lockout-zones\""));
@@ -212,21 +226,18 @@ void test_handle_api_zone_delete_delegates_when_allowed() {
     WebServer server(80);
     LockoutIndex index;
     LockoutStore store;
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     LockoutApiService::handleApiZoneDelete(
         server,
         index,
         store,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handleZoneDeleteCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"lockout-delete\""));
@@ -236,21 +247,18 @@ void test_handle_api_zone_create_delegates_when_allowed() {
     WebServer server(80);
     LockoutIndex index;
     LockoutStore store;
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     LockoutApiService::handleApiZoneCreate(
         server,
         index,
         store,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handleZoneCreateCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"lockout-create\""));
@@ -260,21 +268,18 @@ void test_handle_api_zone_update_delegates_when_allowed() {
     WebServer server(80);
     LockoutIndex index;
     LockoutStore store;
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     LockoutApiService::handleApiZoneUpdate(
         server,
         index,
         store,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handleZoneUpdateCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"lockout-update\""));
@@ -283,20 +288,17 @@ void test_handle_api_zone_update_delegates_when_allowed() {
 void test_handle_api_zone_export_delegates_when_allowed() {
     WebServer server(80);
     LockoutStore store;
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     LockoutApiService::handleApiZoneExport(
         server,
         store,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, sendZoneExportCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"lockout-export\""));
@@ -306,21 +308,18 @@ void test_handle_api_zone_import_delegates_when_allowed() {
     WebServer server(80);
     LockoutIndex index;
     LockoutStore store;
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     LockoutApiService::handleApiZoneImport(
         server,
         index,
         store,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return true;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(1, handleZoneImportCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"lockout-import\""));
@@ -330,21 +329,18 @@ void test_handle_api_zone_create_rate_limited_short_circuits() {
     WebServer server(80);
     LockoutIndex index;
     LockoutStore store;
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx{ .allow = false };
+    UiActivityCtx uiCtx;
 
     LockoutApiService::handleApiZoneCreate(
         server,
         index,
         store,
-        [&rateLimitCalls]() {
-            rateLimitCalls++;
-            return false;
-        },
-        [&uiActivityCalls]() { uiActivityCalls++; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(0, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(0, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(0, handleZoneCreateCalls);
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }

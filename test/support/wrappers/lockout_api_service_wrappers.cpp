@@ -13,6 +13,7 @@ void sendEvents(WebServer& server,
 void sendZones(WebServer& server,
                LockoutIndex& lockoutIndex,
                LockoutLearner& lockoutLearner,
+               LockoutStore& lockoutStore,
                SettingsManager& settingsManager);
 
 void handleZoneDelete(WebServer& server,
@@ -38,11 +39,11 @@ void handleZoneImport(WebServer& server,
 void handleApiSummary(WebServer& server,
                       SignalObservationLog& signalObservationLog,
                       SignalObservationSdLogger& signalObservationSdLogger,
-                      const std::function<bool()>& checkRateLimit,
-                      const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                      bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                      void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     sendSummary(server, signalObservationLog, signalObservationSdLogger);
 }
@@ -52,11 +53,11 @@ void handleApiSummary(WebServer& server,
 void handleApiEvents(WebServer& server,
                      SignalObservationLog& signalObservationLog,
                      SignalObservationSdLogger& signalObservationSdLogger,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     sendEvents(server, signalObservationLog, signalObservationSdLogger);
 }
@@ -66,14 +67,15 @@ void handleApiEvents(WebServer& server,
 void handleApiZones(WebServer& server,
                     LockoutIndex& lockoutIndex,
                     LockoutLearner& lockoutLearner,
+                    LockoutStore& lockoutStore,
                     SettingsManager& settingsManager,
-                    const std::function<bool()>& checkRateLimit,
-                    const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                    bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                    void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
-    sendZones(server, lockoutIndex, lockoutLearner, settingsManager);
+    sendZones(server, lockoutIndex, lockoutLearner, lockoutStore, settingsManager);
 }
 #endif
 
@@ -81,11 +83,11 @@ void handleApiZones(WebServer& server,
 void handleApiZoneDelete(WebServer& server,
                          LockoutIndex& lockoutIndex,
                          LockoutStore& lockoutStore,
-                         const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                         void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleZoneDelete(server, lockoutIndex, lockoutStore);
 }
@@ -95,11 +97,11 @@ void handleApiZoneDelete(WebServer& server,
 void handleApiZoneCreate(WebServer& server,
                          LockoutIndex& lockoutIndex,
                          LockoutStore& lockoutStore,
-                         const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                         void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleZoneCreate(server, lockoutIndex, lockoutStore);
 }
@@ -109,11 +111,11 @@ void handleApiZoneCreate(WebServer& server,
 void handleApiZoneUpdate(WebServer& server,
                          LockoutIndex& lockoutIndex,
                          LockoutStore& lockoutStore,
-                         const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                         void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleZoneUpdate(server, lockoutIndex, lockoutStore);
 }
@@ -122,11 +124,11 @@ void handleApiZoneUpdate(WebServer& server,
 #ifdef UNIT_TEST
 void handleApiZoneExport(WebServer& server,
                          LockoutStore& lockoutStore,
-                         const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                         void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     sendZoneExport(server, lockoutStore);
 }
@@ -136,11 +138,11 @@ void handleApiZoneExport(WebServer& server,
 void handleApiZoneImport(WebServer& server,
                          LockoutIndex& lockoutIndex,
                          LockoutStore& lockoutStore,
-                         const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                         void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleZoneImport(server, lockoutIndex, lockoutStore);
 }

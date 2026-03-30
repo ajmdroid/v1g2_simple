@@ -488,77 +488,77 @@ bool WiFiManager::setupWebServer() {
             rateLimitCallback,
             markUiActivityCallback);
     });
-    server.on("/api/lockouts/zones", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
+    server.on("/api/lockouts/zones", HTTP_GET, [this]() {
         LockoutApiService::handleApiZones(
             server,
             lockoutIndex,
             lockoutLearner,
             lockoutStore,
             settingsManager,
-            rateLimitCallback,
-            markUiActivityCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/summary", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
+    server.on("/api/lockouts/summary", HTTP_GET, [this]() {
         LockoutApiService::handleApiSummary(
             server,
             signalObservationLog,
             signalObservationSdLogger,
-            rateLimitCallback,
-            markUiActivityCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/events", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
+    server.on("/api/lockouts/events", HTTP_GET, [this]() {
         LockoutApiService::handleApiEvents(
             server,
             signalObservationLog,
             signalObservationSdLogger,
-            rateLimitCallback,
-            markUiActivityCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/zones/delete", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+    server.on("/api/lockouts/zones/delete", HTTP_POST, [this]() {
         LockoutApiService::handleApiZoneDelete(
             server,
             lockoutIndex,
             lockoutStore,
-            rateLimitCallback,
-            markUiActivityCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/zones/create", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+    server.on("/api/lockouts/zones/create", HTTP_POST, [this]() {
         LockoutApiService::handleApiZoneCreate(
             server,
             lockoutIndex,
             lockoutStore,
-            rateLimitCallback,
-            markUiActivityCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/zones/update", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+    server.on("/api/lockouts/zones/update", HTTP_POST, [this]() {
         LockoutApiService::handleApiZoneUpdate(
             server,
             lockoutIndex,
             lockoutStore,
-            rateLimitCallback,
-            markUiActivityCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/zones/export", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
+    server.on("/api/lockouts/zones/export", HTTP_GET, [this]() {
         LockoutApiService::handleApiZoneExport(
             server,
             lockoutStore,
-            rateLimitCallback,
-            markUiActivityCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/zones/import", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+    server.on("/api/lockouts/zones/import", HTTP_POST, [this]() {
         LockoutApiService::handleApiZoneImport(
             server,
             lockoutIndex,
             lockoutStore,
-            rateLimitCallback,
-            markUiActivityCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/pending/clear", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+    server.on("/api/lockouts/pending/clear", HTTP_POST, [this]() {
         LockoutApiService::handleApiPendingClear(
             server,
             lockoutLearner,
-            rateLimitCallback,
-            markUiActivityCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
 
     // OBD API routes

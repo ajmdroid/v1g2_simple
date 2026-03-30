@@ -2,8 +2,6 @@
 
 #include <WebServer.h>
 
-#include <functional>
-
 class LockoutIndex;
 class LockoutStore;
 class LockoutLearner;
@@ -17,15 +15,15 @@ namespace LockoutApiService {
 void handleApiSummary(WebServer& server,
                       SignalObservationLog& signalObservationLog,
                       SignalObservationSdLogger& signalObservationSdLogger,
-                      const std::function<bool()>& checkRateLimit,
-                      const std::function<void()>& markUiActivity);
+                      bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                      void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// GET /api/lockouts/events handler with route-level policy callbacks.
 void handleApiEvents(WebServer& server,
                      SignalObservationLog& signalObservationLog,
                      SignalObservationSdLogger& signalObservationSdLogger,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity);
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// GET /api/lockouts/zones handler with route-level policy callbacks.
 void handleApiZones(WebServer& server,
@@ -33,47 +31,47 @@ void handleApiZones(WebServer& server,
                     LockoutLearner& lockoutLearner,
                     LockoutStore& lockoutStore,
                     SettingsManager& settingsManager,
-                    const std::function<bool()>& checkRateLimit,
-                    const std::function<void()>& markUiActivity);
+                    bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                    void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// POST /api/lockouts/zones/delete handler with route-level policy callbacks.
 void handleApiZoneDelete(WebServer& server,
                          LockoutIndex& lockoutIndex,
                          LockoutStore& lockoutStore,
-                         const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity);
+                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                         void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// POST /api/lockouts/zones/create handler with route-level policy callbacks.
 void handleApiZoneCreate(WebServer& server,
                          LockoutIndex& lockoutIndex,
                          LockoutStore& lockoutStore,
-                         const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity);
+                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                         void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// POST /api/lockouts/zones/update handler with route-level policy callbacks.
 void handleApiZoneUpdate(WebServer& server,
                          LockoutIndex& lockoutIndex,
                          LockoutStore& lockoutStore,
-                         const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity);
+                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                         void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// GET /api/lockouts/zones/export handler with route-level policy callbacks.
 void handleApiZoneExport(WebServer& server,
                          LockoutStore& lockoutStore,
-                         const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity);
+                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                         void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// POST /api/lockouts/zones/import handler with route-level policy callbacks.
 void handleApiZoneImport(WebServer& server,
                          LockoutIndex& lockoutIndex,
                          LockoutStore& lockoutStore,
-                         const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity);
+                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                         void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// POST /api/lockouts/pending/clear handler with route-level policy callbacks.
 void handleApiPendingClear(WebServer& server,
                            LockoutLearner& lockoutLearner,
-                           const std::function<bool()>& checkRateLimit,
-                           const std::function<void()>& markUiActivity);
+                           bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                           void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 }  // namespace LockoutApiService

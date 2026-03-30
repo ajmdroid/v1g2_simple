@@ -308,11 +308,11 @@ namespace LockoutApiService {
 
 void handleApiPendingClear(WebServer& server,
                            LockoutLearner& lockoutLearner,
-                           const std::function<bool()>& checkRateLimit,
-                           const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                           bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                           void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     const uint32_t count = static_cast<uint32_t>(lockoutLearner.activeCandidateCount());
     lockoutLearner.clearCandidates();
