@@ -49,7 +49,7 @@ void test_config_get_returns_persisted_settings() {
     settingsManager.settings.obdEnabled = true;
     settingsManager.settings.obdMinRssi = -62;
 
-    ObdApiService::handleApiConfigGet(server, settingsManager, []() {});
+    ObdApiService::handleApiConfigGet(server, settingsManager, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"enabled\":true"));
@@ -63,7 +63,7 @@ void test_devices_list_returns_saved_obd_device_with_name() {
     settingsManager.settings.obdSavedName = "Truck Adapter";
     obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
 
-    ObdApiService::handleApiDevicesList(server, obdRuntimeModule, settingsManager, []() {});
+    ObdApiService::handleApiDevicesList(server, obdRuntimeModule, settingsManager, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"count\":1"));
@@ -81,8 +81,8 @@ void test_device_name_save_updates_saved_name_and_persists_setting() {
 
     ObdApiService::handleApiDeviceNameSave(server,
                                            settingsManager,
-                                           []() { return true; },
-                                           []() {});
+                                           [](void* /*ctx*/) { return true; }, nullptr,
+                                           [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -101,8 +101,8 @@ void test_device_name_save_rejects_unknown_saved_device() {
 
     ObdApiService::handleApiDeviceNameSave(server,
                                            settingsManager,
-                                           []() { return true; },
-                                           []() {});
+                                           [](void* /*ctx*/) { return true; }, nullptr,
+                                           [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(404, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "Saved OBD device not found"));
@@ -124,8 +124,8 @@ void test_config_updates_runtime_settings_and_selector_inputs() {
                                    obdRuntimeModule,
                                    settingsManager,
                                    speedSourceSelector,
-                                   []() { return true; },
-                                   []() {});
+                                   [](void* /*ctx*/) { return true; }, nullptr,
+                                   [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ok\":true"));
@@ -155,8 +155,8 @@ void test_forget_clears_saved_address_and_persists_setting() {
     ObdApiService::handleApiForget(server,
                                    obdRuntimeModule,
                                    settingsManager,
-                                   []() { return true; },
-                                   []() {});
+                                   [](void* /*ctx*/) { return true; }, nullptr,
+                                   [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ok\":true"));
@@ -180,8 +180,8 @@ void test_config_rejects_missing_json_body() {
                                    obdRuntimeModule,
                                    settingsManager,
                                    speedSourceSelector,
-                                   []() { return true; },
-                                   []() {});
+                                   [](void* /*ctx*/) { return true; }, nullptr,
+                                   [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "Missing JSON body"));
@@ -195,8 +195,8 @@ void test_scan_rejects_when_obd_is_disabled() {
 
     ObdApiService::handleApiScan(server,
                                  obdRuntimeModule,
-                                 []() { return true; },
-                                 []() {});
+                                 [](void* /*ctx*/) { return true; }, nullptr,
+                                 [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(409, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ok\":false"));
@@ -210,8 +210,8 @@ void test_scan_reports_requested_when_obd_is_enabled() {
 
     ObdApiService::handleApiScan(server,
                                  obdRuntimeModule,
-                                 []() { return true; },
-                                 []() {});
+                                 [](void* /*ctx*/) { return true; }, nullptr,
+                                 [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ok\":true"));
@@ -232,8 +232,8 @@ void test_scan_rejects_when_request_already_pending() {
 
     ObdApiService::handleApiScan(server,
                                  obdRuntimeModule,
-                                 []() { return true; },
-                                 []() {});
+                                 [](void* /*ctx*/) { return true; }, nullptr,
+                                 [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(409, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"ok\":false"));
@@ -245,7 +245,7 @@ void test_status_reports_manual_scan_pending() {
     obdRuntimeModule.begin(true, "", 0, -80);
     TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(mockMillis));
 
-    ObdApiService::handleApiStatus(server, obdRuntimeModule, []() {});
+    ObdApiService::handleApiStatus(server, obdRuntimeModule, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"manualScanPending\":true"));

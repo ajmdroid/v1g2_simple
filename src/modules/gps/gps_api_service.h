@@ -2,8 +2,6 @@
 
 #include <WebServer.h>
 
-#include <functional>
-
 class GpsRuntimeModule;
 class GpsObservationLog;
 class SpeedSourceSelector;
@@ -23,18 +21,18 @@ void handleApiStatus(WebServer& server,
                      LockoutLearner& lockoutLearner,
                      PerfCounters& perfCounters,
                      SystemEventBus& systemEventBus,
-                     const std::function<void()>& markUiActivity);
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// GET /api/gps/observations handler with route-level policy callbacks.
 void handleApiObservations(WebServer& server,
                            GpsObservationLog& gpsObservationLog,
-                           const std::function<bool()>& checkRateLimit,
-                           const std::function<void()>& markUiActivity);
+                           bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                           void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// GET /api/gps/config handler with route-level UI activity callback.
 void handleApiConfigGet(WebServer& server,
                         SettingsManager& settingsManager,
-                        const std::function<void()>& markUiActivity);
+                        void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// POST /api/gps/config handler with route-level policy callbacks.
 void handleApiConfig(WebServer& server,
@@ -45,7 +43,7 @@ void handleApiConfig(WebServer& server,
                      GpsObservationLog& gpsObservationLog,
                      PerfCounters& perfCounters,
                      SystemEventBus& systemEventBus,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity);
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 }  // namespace GpsApiService

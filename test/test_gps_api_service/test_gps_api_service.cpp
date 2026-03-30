@@ -355,11 +355,35 @@ void setUp() {
     resetBandPolicyState();
 }
 
+
 void tearDown() {}
+
+namespace {
+
+struct RateLimitCtx {
+    int calls = 0;
+    bool allow = true;
+};
+
+struct UiActivityCtx {
+    int calls = 0;
+};
+
+static bool doRateLimit(void* ctx) {
+    auto* c = static_cast<RateLimitCtx*>(ctx);
+    c->calls++;
+    return c->allow;
+}
+
+static void doUiActivity(void* ctx) {
+    static_cast<UiActivityCtx*>(ctx)->calls++;
+}
+
+}  // namespace
 
 void test_handle_api_status_marks_ui_activity_and_returns_real_status_payload() {
     WebServer server(80);
-    int uiActivityCalls = 0;
+    UiActivityCtx uiCtx;
 
     gpsRuntime.snapshotStatus.enabled = true;
     gpsRuntime.snapshotStatus.sampleValid = true;
@@ -405,9 +429,9 @@ void test_handle_api_status_marks_ui_activity_and_returns_real_status_payload() 
         lockoutLearner,
         perfCounters,
         eventBus,
-        [&uiActivityCalls]() { ++uiActivityCalls; });
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_INT(1, gpsRuntime.snapshotCalls);
     TEST_ASSERT_EQUAL_INT(1, speedSelector.snapshotCalls);
@@ -437,27 +461,24 @@ void test_handle_api_status_marks_ui_activity_and_returns_real_status_payload() 
 
 void test_handle_api_observations_rate_limited_short_circuits() {
     WebServer server(80);
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx{ .allow = false };
+    UiActivityCtx uiCtx;
 
     GpsApiService::handleApiObservations(
         server,
         gpsLog,
-        [&rateLimitCalls]() {
-            ++rateLimitCalls;
-            return false;
-        },
-        [&uiActivityCalls]() { ++uiActivityCalls; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(0, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(0, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
 
 void test_handle_api_observations_returns_real_recent_samples() {
     WebServer server(80);
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx;
+    UiActivityCtx uiCtx;
 
     gpsLog.publish(makeObservation(800, true, 15.0f, 4, 1.5f, false, NAN, NAN));
     gpsLog.publish(makeObservation(900, true, 35.5f, 6, 0.8f, true, 40.1f, -73.2f));
@@ -466,14 +487,11 @@ void test_handle_api_observations_returns_real_recent_samples() {
     GpsApiService::handleApiObservations(
         server,
         gpsLog,
-        [&rateLimitCalls]() {
-            ++rateLimitCalls;
-            return true;
-        },
-        [&uiActivityCalls]() { ++uiActivityCalls; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
 
     JsonDocument doc;
@@ -491,7 +509,7 @@ void test_handle_api_observations_returns_real_recent_samples() {
 
 void test_handle_api_config_get_marks_ui_activity_and_returns_real_config() {
     WebServer server(80);
-    int uiActivityCalls = 0;
+    UiActivityCtx uiCtx;
 
     settingsManager.settings.gpsEnabled = false;
     settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
@@ -504,9 +522,9 @@ void test_handle_api_config_get_marks_ui_activity_and_returns_real_config() {
     GpsApiService::handleApiConfigGet(
         server,
         settingsManager,
-        [&uiActivityCalls]() { ++uiActivityCalls; });
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
 
     JsonDocument doc;
@@ -526,8 +544,8 @@ void test_handle_api_config_get_marks_ui_activity_and_returns_real_config() {
 
 void test_handle_api_config_rate_limited_short_circuits() {
     WebServer server(80);
-    int rateLimitCalls = 0;
-    int uiActivityCalls = 0;
+    RateLimitCtx rlCtx{ .allow = false };
+    UiActivityCtx uiCtx;
 
     GpsApiService::handleApiConfig(
         server,
@@ -538,20 +556,17 @@ void test_handle_api_config_rate_limited_short_circuits() {
         gpsLog,
         perfCounters,
         eventBus,
-        [&rateLimitCalls]() {
-            ++rateLimitCalls;
-            return false;
-        },
-        [&uiActivityCalls]() { ++uiActivityCalls; });
+        doRateLimit, &rlCtx,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, rateLimitCalls);
-    TEST_ASSERT_EQUAL_INT(0, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, rlCtx.calls);
+    TEST_ASSERT_EQUAL_INT(0, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(0, server.lastStatusCode);
 }
 
 void test_handle_api_config_rejects_invalid_json() {
     WebServer server(80);
-    int uiActivityCalls = 0;
+    UiActivityCtx uiCtx;
 
     server.setArg("plain", "{bad json");
 
@@ -564,10 +579,10 @@ void test_handle_api_config_rejects_invalid_json() {
         gpsLog,
         perfCounters,
         eventBus,
-        []() { return true; },
-        [&uiActivityCalls]() { ++uiActivityCalls; });
+        [](void* /*ctx*/) { return true; }, nullptr,
+        doUiActivity, &uiCtx);
 
-    TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
+    TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING("{\"success\":false,\"message\":\"Invalid JSON\"}", server.lastBody.c_str());
     TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
@@ -588,8 +603,8 @@ void test_handle_api_config_requires_enabled_or_lockout_update() {
         gpsLog,
         perfCounters,
         eventBus,
-        []() { return true; },
-        nullptr);
+        [](void* /*ctx*/) { return true; }, nullptr,
+        nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING(
@@ -611,8 +626,8 @@ void test_handle_api_config_rejects_out_of_range_speed() {
         gpsLog,
         perfCounters,
         eventBus,
-        []() { return true; },
-        nullptr);
+        [](void* /*ctx*/) { return true; }, nullptr,
+        nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING("{\"success\":false,\"message\":\"speedMph out of range\"}", server.lastBody.c_str());
@@ -633,8 +648,8 @@ void test_handle_api_config_rejects_partial_coordinates() {
         gpsLog,
         perfCounters,
         eventBus,
-        []() { return true; },
-        nullptr);
+        [](void* /*ctx*/) { return true; }, nullptr,
+        nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING(
@@ -656,8 +671,8 @@ void test_handle_api_config_rejects_out_of_range_coordinates() {
         gpsLog,
         perfCounters,
         eventBus,
-        []() { return true; },
-        nullptr);
+        [](void* /*ctx*/) { return true; }, nullptr,
+        nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING(
@@ -686,8 +701,8 @@ void test_handle_api_config_lockout_only_update_mutates_real_settings_path() {
         gpsLog,
         perfCounters,
         eventBus,
-        []() { return true; },
-        nullptr);
+        [](void* /*ctx*/) { return true; }, nullptr,
+        nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL(LOCKOUT_RUNTIME_ENFORCE, settingsManager.settings.gpsLockoutMode);
@@ -743,8 +758,8 @@ void test_handle_api_config_enabled_scaffold_sample_updates_runtime_and_selector
         gpsLog,
         perfCounters,
         eventBus,
-        []() { return true; },
-        nullptr);
+        [](void* /*ctx*/) { return true; }, nullptr,
+        nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(settingsManager.settings.gpsEnabled);

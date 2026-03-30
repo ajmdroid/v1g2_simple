@@ -450,7 +450,7 @@ bool WiFiManager::setupWebServer() {
     });
 
     // GPS scaffold API routes
-    server.on("/api/gps/status", HTTP_GET, [this, markUiActivityCallback]() {
+    server.on("/api/gps/status", HTTP_GET, [this]() {
         GpsApiService::handleApiStatus(
             server,
             gpsRuntimeModule,
@@ -460,22 +460,22 @@ bool WiFiManager::setupWebServer() {
             lockoutLearner,
             perfCounters,
             systemEventBus,
-            markUiActivityCallback);
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/gps/observations", HTTP_GET, [this, rateLimitCallback, markUiActivityCallback]() {
+    server.on("/api/gps/observations", HTTP_GET, [this]() {
         GpsApiService::handleApiObservations(
             server,
             gpsObservationLog,
-            rateLimitCallback,
-            markUiActivityCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/gps/config", HTTP_GET, [this, markUiActivityCallback]() {
+    server.on("/api/gps/config", HTTP_GET, [this]() {
         GpsApiService::handleApiConfigGet(
             server,
             settingsManager,
-            markUiActivityCallback);
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/gps/config", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+    server.on("/api/gps/config", HTTP_POST, [this]() {
         GpsApiService::handleApiConfig(
             server,
             settingsManager,
@@ -485,8 +485,8 @@ bool WiFiManager::setupWebServer() {
             gpsObservationLog,
             perfCounters,
             systemEventBus,
-            rateLimitCallback,
-            markUiActivityCallback);
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     server.on("/api/lockouts/zones", HTTP_GET, [this]() {
         LockoutApiService::handleApiZones(
@@ -562,31 +562,40 @@ bool WiFiManager::setupWebServer() {
     });
 
     // OBD API routes
-    server.on("/api/obd/status", HTTP_GET, [this, markUiActivityCallback]() {
-        ObdApiService::handleApiStatus(server, obdRuntimeModule, markUiActivityCallback);
+    server.on("/api/obd/status", HTTP_GET, [this]() {
+        ObdApiService::handleApiStatus(server, obdRuntimeModule,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/obd/devices", HTTP_GET, [this, markUiActivityCallback]() {
-        ObdApiService::handleApiDevicesList(server, obdRuntimeModule, settingsManager, markUiActivityCallback);
+    server.on("/api/obd/devices", HTTP_GET, [this]() {
+        ObdApiService::handleApiDevicesList(server, obdRuntimeModule, settingsManager,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/obd/config", HTTP_GET, [this, markUiActivityCallback]() {
-        ObdApiService::handleApiConfigGet(server, settingsManager, markUiActivityCallback);
+    server.on("/api/obd/config", HTTP_GET, [this]() {
+        ObdApiService::handleApiConfigGet(server, settingsManager,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/obd/devices/name", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiDeviceNameSave(server, settingsManager, rateLimitCallback, markUiActivityCallback);
+    server.on("/api/obd/devices/name", HTTP_POST, [this]() {
+        ObdApiService::handleApiDeviceNameSave(server, settingsManager,
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/obd/scan", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiScan(server, obdRuntimeModule, rateLimitCallback, markUiActivityCallback);
+    server.on("/api/obd/scan", HTTP_POST, [this]() {
+        ObdApiService::handleApiScan(server, obdRuntimeModule,
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/obd/forget", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
-        ObdApiService::handleApiForget(server, obdRuntimeModule, settingsManager, rateLimitCallback, markUiActivityCallback);
+    server.on("/api/obd/forget", HTTP_POST, [this]() {
+        ObdApiService::handleApiForget(server, obdRuntimeModule, settingsManager,
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/obd/config", HTTP_POST, [this, rateLimitCallback, markUiActivityCallback]() {
+    server.on("/api/obd/config", HTTP_POST, [this]() {
         ObdApiService::handleApiConfig(server,
                                       obdRuntimeModule,
                                       settingsManager,
                                       speedSourceSelector,
-                                      rateLimitCallback,
-                                      markUiActivityCallback);
+                                      [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+                                      [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     
     // Note: onNotFound is set earlier to handle LittleFS static files

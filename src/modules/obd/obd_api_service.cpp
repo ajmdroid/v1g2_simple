@@ -88,8 +88,8 @@ String sanitizeObdDeviceName(const String& raw) {
 
 void handleApiConfigGet(WebServer& server,
                         SettingsManager& settingsManager,
-                        const std::function<void()>& markUiActivity) {
-    if (markUiActivity) markUiActivity();
+                        void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (markUiActivity) markUiActivity(uiActivityCtx);
     const V1Settings& settings = settingsManager.get();
     JsonDocument doc;
     doc["enabled"] = settings.obdEnabled;
@@ -99,8 +99,8 @@ void handleApiConfigGet(WebServer& server,
 
 void handleApiStatus(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
-                     const std::function<void()>& markUiActivity) {
-    if (markUiActivity) markUiActivity();
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (markUiActivity) markUiActivity(uiActivityCtx);
     ObdRuntimeStatus status = obdRuntime.snapshot(millis());
     JsonDocument doc;
     doc["enabled"] = status.enabled;
@@ -155,8 +155,8 @@ void handleApiStatus(WebServer& server,
 void handleApiDevicesList(WebServer& server,
                           ObdRuntimeModule& obdRuntime,
                           SettingsManager& settingsManager,
-                          const std::function<void()>& markUiActivity) {
-    if (markUiActivity) markUiActivity();
+                          void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (markUiActivity) markUiActivity(uiActivityCtx);
 
     JsonDocument doc;
     JsonArray arr = doc["devices"].to<JsonArray>();
@@ -177,10 +177,10 @@ void handleApiDevicesList(WebServer& server,
 
 void handleApiDeviceNameSave(WebServer& server,
                              SettingsManager& settingsManager,
-                             const std::function<bool()>& checkRateLimit,
-                             const std::function<void()>& markUiActivity) {
-    if (markUiActivity) markUiActivity();
-    if (checkRateLimit && !checkRateLimit()) return;
+                             bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                             void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (markUiActivity) markUiActivity(uiActivityCtx);
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!server.hasArg("address")) {
         server.send(400, "application/json", "{\"error\":\"Missing address\"}");
@@ -204,10 +204,10 @@ void handleApiDeviceNameSave(WebServer& server,
 
 void handleApiScan(WebServer& server,
                    ObdRuntimeModule& obdRuntime,
-                   const std::function<bool()>& checkRateLimit,
-                   const std::function<void()>& markUiActivity) {
-    if (markUiActivity) markUiActivity();
-    if (checkRateLimit && !checkRateLimit()) return;
+                   bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                   void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (markUiActivity) markUiActivity(uiActivityCtx);
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (!obdRuntime.isEnabled()) {
         JsonDocument doc;
         doc["ok"] = false;
@@ -235,10 +235,10 @@ void handleApiScan(WebServer& server,
 void handleApiForget(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
                      SettingsManager& settingsManager,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity) {
-    if (markUiActivity) markUiActivity();
-    if (checkRateLimit && !checkRateLimit()) return;
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (markUiActivity) markUiActivity(uiActivityCtx);
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     obdRuntime.forgetDevice();
     ObdSettingsUpdate update;
     update.hasSavedAddress = true;
@@ -261,10 +261,10 @@ void handleApiConfig(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
                      SettingsManager& settingsManager,
                      SpeedSourceSelector& speedSourceSelector,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity) {
-    if (markUiActivity) markUiActivity();
-    if (checkRateLimit && !checkRateLimit()) return;
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (markUiActivity) markUiActivity(uiActivityCtx);
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!server.hasArg("plain") || server.arg("plain").length() == 0) {
         JsonDocument errDoc;

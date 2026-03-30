@@ -713,9 +713,9 @@ void handleConfig(WebServer& server,
 
 void handleApiConfigGet(WebServer& server,
                         SettingsManager& settingsManager,
-                        const std::function<void()>& markUiActivity) {
+                        void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     sendConfig(server, settingsManager);
 }
@@ -728,11 +728,11 @@ void handleApiConfig(WebServer& server,
                      GpsObservationLog& gpsObservationLog,
                      PerfCounters& perfCounters,
                      SystemEventBus& systemEventBus,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleConfig(server,
                  settingsManager,

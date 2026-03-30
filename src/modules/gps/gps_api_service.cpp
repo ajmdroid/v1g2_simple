@@ -179,9 +179,9 @@ void handleApiStatus(WebServer& server,
                      LockoutLearner& lockoutLearner,
                      PerfCounters& perfCounters,
                      SystemEventBus& systemEventBus,
-                     const std::function<void()>& markUiActivity) {
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     sendStatus(server,
                gpsRuntimeModule,
@@ -243,11 +243,11 @@ void sendObservations(WebServer& server,
 
 void handleApiObservations(WebServer& server,
                            GpsObservationLog& gpsObservationLog,
-                           const std::function<bool()>& checkRateLimit,
-                           const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                           bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                           void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     sendObservations(server, gpsObservationLog);
 }

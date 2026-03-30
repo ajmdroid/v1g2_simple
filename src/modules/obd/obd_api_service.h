@@ -2,8 +2,6 @@
 
 #include <WebServer.h>
 
-#include <functional>
-
 class ObdRuntimeModule;
 class SettingsManager;
 class SpeedSourceSelector;
@@ -12,38 +10,38 @@ namespace ObdApiService {
 
 void handleApiConfigGet(WebServer& server,
                         SettingsManager& settingsManager,
-                        const std::function<void()>& markUiActivity);
+                        void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiStatus(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
-                     const std::function<void()>& markUiActivity);
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiDevicesList(WebServer& server,
                           ObdRuntimeModule& obdRuntime,
                           SettingsManager& settingsManager,
-                          const std::function<void()>& markUiActivity);
+                          void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiDeviceNameSave(WebServer& server,
                              SettingsManager& settingsManager,
-                             const std::function<bool()>& checkRateLimit,
-                             const std::function<void()>& markUiActivity);
+                             bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                             void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiScan(WebServer& server,
                    ObdRuntimeModule& obdRuntime,
-                   const std::function<bool()>& checkRateLimit,
-                   const std::function<void()>& markUiActivity);
+                   bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                   void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiForget(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
                      SettingsManager& settingsManager,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity);
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiConfig(WebServer& server,
                      ObdRuntimeModule& obdRuntime,
                      SettingsManager& settingsManager,
                      SpeedSourceSelector& speedSourceSelector,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity);
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 }  // namespace ObdApiService
