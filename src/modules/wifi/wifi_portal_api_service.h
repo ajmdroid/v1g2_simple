@@ -2,21 +2,15 @@
 
 #include <WebServer.h>
 
-#include <functional>
-
 namespace WifiPortalApiService {
 
-void handleApiPing(WebServer& server,
-                   const std::function<void()>& markUiActivity);
+void handleApiPing(WebServer& server, void (*markUiActivity)(void*), void* ctx);
 
-void handleApiGenerate204(WebServer& server,
-                          const std::function<void()>& markUiActivity);
+void handleApiGenerate204(WebServer& server, void (*markUiActivity)(void*), void* ctx);
 
-void handleApiGen204(WebServer& server,
-                     const std::function<void()>& markUiActivity);
+void handleApiGen204(WebServer& server, void (*markUiActivity)(void*), void* ctx);
 
-void handleApiHotspotDetect(WebServer& server,
-                            const std::function<void()>& markUiActivity);
+void handleApiHotspotDetect(WebServer& server, void (*markUiActivity)(void*), void* ctx);
 
 void handleApiFwlink(WebServer& server);
 

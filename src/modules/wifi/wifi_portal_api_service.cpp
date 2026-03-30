@@ -11,40 +11,28 @@ void applyCaptivePortalNoStoreHeaders(WebServer& server) {
 
 }  // namespace
 
-void handleApiPing(WebServer& server,
-                   const std::function<void()>& markUiActivity) {
-    if (markUiActivity) {
-        markUiActivity();
-    }
+void handleApiPing(WebServer& server, void (*markUiActivity)(void*), void* ctx) {
+    if (markUiActivity) markUiActivity(ctx);
     Serial.println("[HTTP] GET /ping");
     server.send(200, "text/plain", "OK");
 }
 
-void handleApiGenerate204(WebServer& server,
-                          const std::function<void()>& markUiActivity) {
-    if (markUiActivity) {
-        markUiActivity();
-    }
+void handleApiGenerate204(WebServer& server, void (*markUiActivity)(void*), void* ctx) {
+    if (markUiActivity) markUiActivity(ctx);
     Serial.println("[HTTP] GET /generate_204");
     applyCaptivePortalNoStoreHeaders(server);
     server.send(204, "text/plain", "");
 }
 
-void handleApiGen204(WebServer& server,
-                     const std::function<void()>& markUiActivity) {
-    if (markUiActivity) {
-        markUiActivity();
-    }
+void handleApiGen204(WebServer& server, void (*markUiActivity)(void*), void* ctx) {
+    if (markUiActivity) markUiActivity(ctx);
     Serial.println("[HTTP] GET /gen_204");
     applyCaptivePortalNoStoreHeaders(server);
     server.send(204, "text/plain", "");
 }
 
-void handleApiHotspotDetect(WebServer& server,
-                            const std::function<void()>& markUiActivity) {
-    if (markUiActivity) {
-        markUiActivity();
-    }
+void handleApiHotspotDetect(WebServer& server, void (*markUiActivity)(void*), void* ctx) {
+    if (markUiActivity) markUiActivity(ctx);
     Serial.println("[HTTP] GET /hotspot-detect.html");
     applyCaptivePortalNoStoreHeaders(server);
     server.sendHeader("Location", "/settings", true);

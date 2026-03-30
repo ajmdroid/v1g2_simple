@@ -21,6 +21,8 @@ static void assertCaptivePortalNoStoreHeaders(const WebServer& server) {
     TEST_ASSERT_EQUAL_STRING("no-cache", server.sentHeader("Pragma").c_str());
 }
 
+static void incrementCounter(void* ctx) { (*static_cast<int*>(ctx))++; }
+
 void setUp() {
     mockMillis = 1000;
     mockMicros = 1000000;
@@ -32,9 +34,7 @@ void test_ping_marks_ui_activity_and_returns_ok() {
     WebServer server(80);
     int uiActivityCalls = 0;
 
-    WifiPortalApiService::handleApiPing(
-        server,
-        [&uiActivityCalls]() { uiActivityCalls++; });
+    WifiPortalApiService::handleApiPing(server, incrementCounter, &uiActivityCalls);
 
     TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
@@ -48,9 +48,7 @@ void test_generate_204_marks_ui_activity_and_returns_empty_204() {
     WebServer server(80);
     int uiActivityCalls = 0;
 
-    WifiPortalApiService::handleApiGenerate204(
-        server,
-        [&uiActivityCalls]() { uiActivityCalls++; });
+    WifiPortalApiService::handleApiGenerate204(server, incrementCounter, &uiActivityCalls);
 
     TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
     TEST_ASSERT_EQUAL_INT(204, server.lastStatusCode);
@@ -63,9 +61,7 @@ void test_gen_204_marks_ui_activity_and_returns_empty_204() {
     WebServer server(80);
     int uiActivityCalls = 0;
 
-    WifiPortalApiService::handleApiGen204(
-        server,
-        [&uiActivityCalls]() { uiActivityCalls++; });
+    WifiPortalApiService::handleApiGen204(server, incrementCounter, &uiActivityCalls);
 
     TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
     TEST_ASSERT_EQUAL_INT(204, server.lastStatusCode);
@@ -78,9 +74,7 @@ void test_hotspot_detect_marks_ui_activity_and_redirects_to_settings() {
     WebServer server(80);
     int uiActivityCalls = 0;
 
-    WifiPortalApiService::handleApiHotspotDetect(
-        server,
-        [&uiActivityCalls]() { uiActivityCalls++; });
+    WifiPortalApiService::handleApiHotspotDetect(server, incrementCounter, &uiActivityCalls);
 
     TEST_ASSERT_EQUAL_INT(1, uiActivityCalls);
     TEST_ASSERT_EQUAL_STRING("/settings", server.sentHeader("Location").c_str());

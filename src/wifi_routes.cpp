@@ -153,24 +153,28 @@ bool WiFiManager::setupWebServer() {
     server.on("/ping", HTTP_GET, [this]() {
         WifiPortalApiService::handleApiPing(
             server,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); },
+            this);
     });
     // Android/ChromeOS captive portal probes
     server.on("/generate_204", HTTP_GET, [this]() {
         WifiPortalApiService::handleApiGenerate204(
             server,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); },
+            this);
     });
     server.on("/gen_204", HTTP_GET, [this]() {
         WifiPortalApiService::handleApiGen204(
             server,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); },
+            this);
     });
     // iOS/macOS captive portal
     server.on("/hotspot-detect.html", HTTP_GET, [this]() {
         WifiPortalApiService::handleApiHotspotDetect(
             server,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); },
+            this);
     });
     // Windows captive portal variants
     server.on("/fwlink", HTTP_GET, [this]() {
