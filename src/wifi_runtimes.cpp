@@ -285,22 +285,23 @@ WifiSettingsApiService::Runtime WiFiManager::makeSettingsRuntime() {
 
 WifiClientApiService::Runtime WiFiManager::makeWifiClientRuntime() {
     return WifiClientApiService::Runtime{
-        [this]() { return settingsManager.get().wifiClientEnabled; },
-        [this]() { return settingsManager.get().wifiClientSSID; },
-        [this]() { return wifiClientStateApiName(wifiClientState); },
-        [this]() { return wifiScanRunning; },
-        [this]() { return wifiClientState == WIFI_CLIENT_CONNECTED; },
-        []() {
+        [](void* /*ctx*/) { return settingsManager.get().wifiClientEnabled; }, nullptr,
+        [](void* /*ctx*/) { return settingsManager.get().wifiClientSSID; }, nullptr,
+        [](void* ctx) { return wifiClientStateApiName(static_cast<WiFiManager*>(ctx)->wifiClientState); }, this,
+        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->wifiScanRunning; }, this,
+        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->wifiClientState == WIFI_CLIENT_CONNECTED; }, this,
+        [](void* /*ctx*/) {
             WifiClientApiService::ConnectedNetworkPayload payload;
             payload.ssid = WiFi.SSID();
             payload.ip = WiFi.localIP().toString();
             payload.rssi = WiFi.RSSI();
             return payload;
-        },
-        []() { return WiFi.scanComplete() == WIFI_SCAN_RUNNING; },
-        []() { return WiFi.scanComplete() > 0; },
-        [this]() {
-            std::vector<ScannedNetwork> networks = this->getScannedNetworks();
+        }, nullptr,
+        [](void* /*ctx*/) { return WiFi.scanComplete() == WIFI_SCAN_RUNNING; }, nullptr,
+        [](void* /*ctx*/) { return WiFi.scanComplete() > 0; }, nullptr,
+        [](void* ctx) {
+            auto* self = static_cast<WiFiManager*>(ctx);
+            std::vector<ScannedNetwork> networks = self->getScannedNetworks();
             std::vector<WifiClientApiService::ScannedNetworkPayload> payloads;
             payloads.reserve(networks.size());
             for (const auto& net : networks) {
@@ -311,15 +312,15 @@ WifiClientApiService::Runtime WiFiManager::makeWifiClientRuntime() {
                 payloads.push_back(payload);
             }
             return payloads;
-        },
-        [this]() { return startWifiScan(); },
-        [this](const String& ssid, const String& password) {
-            return connectToNetwork(ssid, password);
-        },
-        [this]() { disconnectFromNetwork(); },
-        [this]() { forgetWifiClient(); },
-        [this]() { return enableWifiClientFromSavedCredentials(); },
-        [this]() { disableWifiClient(); },
+        }, this,
+        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->startWifiScan(); }, this,
+        [](const String& ssid, const String& password, void* ctx) {
+            return static_cast<WiFiManager*>(ctx)->connectToNetwork(ssid, password);
+        }, this,
+        [](void* ctx) { static_cast<WiFiManager*>(ctx)->disconnectFromNetwork(); }, this,
+        [](void* ctx) { static_cast<WiFiManager*>(ctx)->forgetWifiClient(); }, this,
+        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->enableWifiClientFromSavedCredentials(); }, this,
+        [](void* ctx) { static_cast<WiFiManager*>(ctx)->disableWifiClient(); }, this,
     };
 }
 

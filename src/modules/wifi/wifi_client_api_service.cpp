@@ -142,13 +142,13 @@ static void handleStatusImpl(WebServer& server, const Runtime& runtime) {
     }
 
     StatusPayload payload;
-    payload.enabled = runtime.isEnabled();
-    payload.savedSsid = runtime.getSavedSsid();
-    payload.state = runtime.getStateName();
-    payload.scanRunning = runtime.isScanRunning();
+    payload.enabled = runtime.isEnabled(runtime.isEnabledCtx);
+    payload.savedSsid = runtime.getSavedSsid(runtime.getSavedSsidCtx);
+    payload.state = runtime.getStateName(runtime.getStateNameCtx);
+    payload.scanRunning = runtime.isScanRunning(runtime.isScanRunningCtx);
 
-    if (runtime.isConnected() && runtime.getConnectedNetwork) {
-        const ConnectedNetworkPayload connected = runtime.getConnectedNetwork();
+    if (runtime.isConnected(runtime.isConnectedCtx) && runtime.getConnectedNetwork) {
+        const ConnectedNetworkPayload connected = runtime.getConnectedNetwork(runtime.getConnectedNetworkCtx);
         payload.includeConnectedFields = true;
         payload.connectedSsid = connected.ssid;
         payload.ip = connected.ip;
@@ -168,17 +168,17 @@ static void handleScanImpl(WebServer& server, const Runtime& runtime) {
 
     Serial.println("[HTTP] POST /api/wifi/scan");
 
-    if (runtime.isScanRunning() && runtime.isScanInProgress()) {
+    if (runtime.isScanRunning(runtime.isScanRunningCtx) && runtime.isScanInProgress(runtime.isScanInProgressCtx)) {
         sendScanInProgress(server);
         return;
     }
 
-    if (runtime.hasCompletedScanResults()) {
-        sendScanResults(server, runtime.getScannedNetworks());
+    if (runtime.hasCompletedScanResults(runtime.hasCompletedScanResultsCtx)) {
+        sendScanResults(server, runtime.getScannedNetworks(runtime.getScannedNetworksCtx));
         return;
     }
 
-    if (runtime.startScan()) {
+    if (runtime.startScan(runtime.startScanCtx)) {
         sendScanInProgress(server);
         return;
     }
@@ -202,7 +202,7 @@ static void handleConnectImpl(WebServer& server, const Runtime& runtime) {
         return;
     }
 
-    if (runtime.connectToNetwork(ssid, password)) {
+    if (runtime.connectToNetwork(ssid, password, runtime.connectToNetworkCtx)) {
         sendConnectStarted(server);
         return;
     }
@@ -218,7 +218,7 @@ static void handleDisconnectImpl(WebServer& server, const Runtime& runtime) {
 
     Serial.println("[HTTP] POST /api/wifi/disconnect");
 
-    runtime.disconnectFromNetwork();
+    runtime.disconnectFromNetwork(runtime.disconnectFromNetworkCtx);
     sendDisconnected(server);
 }
 
@@ -229,7 +229,7 @@ static void handleForgetImpl(WebServer& server, const Runtime& runtime) {
     }
 
     Serial.println("[HTTP] POST /api/wifi/forget");
-    runtime.forgetClient();
+    runtime.forgetClient(runtime.forgetClientCtx);
     sendForgotten(server);
 }
 
@@ -247,7 +247,7 @@ static void handleEnableImpl(WebServer& server, const Runtime& runtime) {
 
     Serial.printf("[HTTP] POST /api/wifi/enable: %s\n", enable ? "true" : "false");
     if (enable) {
-        if (!runtime.enableWithSavedNetwork()) {
+        if (!runtime.enableWithSavedNetwork(runtime.enableWithSavedNetworkCtx)) {
             sendEnableConnectFailed(server);
             return;
         }
@@ -255,70 +255,70 @@ static void handleEnableImpl(WebServer& server, const Runtime& runtime) {
         return;
     }
 
-    runtime.disableClient();
+    runtime.disableClient(runtime.disableClientCtx);
     sendEnableResult(server, false);
 }
 
 void handleApiStatus(WebServer& server,
                      const Runtime& runtime,
-                     const std::function<void()>& markUiActivity) {
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleStatusImpl(server, runtime);
 }
 
 void handleApiScan(WebServer& server,
                    const Runtime& runtime,
-                   const std::function<bool()>& checkRateLimit,
-                   const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                   bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                   void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleScanImpl(server, runtime);
 }
 
 void handleApiConnect(WebServer& server,
                       const Runtime& runtime,
-                      const std::function<bool()>& checkRateLimit,
-                      const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                      bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                      void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleConnectImpl(server, runtime);
 }
 
 void handleApiDisconnect(WebServer& server,
                          const Runtime& runtime,
-                         const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                         void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleDisconnectImpl(server, runtime);
 }
 
 void handleApiForget(WebServer& server,
                      const Runtime& runtime,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleForgetImpl(server, runtime);
 }
 
 void handleApiEnable(WebServer& server,
                      const Runtime& runtime,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
-        markUiActivity();
+        markUiActivity(uiActivityCtx);
     }
     handleEnableImpl(server, runtime);
 }

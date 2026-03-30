@@ -4,7 +4,6 @@
 #include <WebServer.h>
 
 #include <cstdint>
-#include <functional>
 #include <vector>
 
 namespace WifiClientApiService {
@@ -33,52 +32,67 @@ struct ConnectedNetworkPayload {
 };
 
 struct Runtime {
-    std::function<bool()> isEnabled;
-    std::function<String()> getSavedSsid;
-    std::function<const char*()> getStateName;
-    std::function<bool()> isScanRunning;
-    std::function<bool()> isConnected;
-    std::function<ConnectedNetworkPayload()> getConnectedNetwork;
+    bool (*isEnabled)(void* ctx);
+    void* isEnabledCtx;
+    String (*getSavedSsid)(void* ctx);
+    void* getSavedSsidCtx;
+    const char* (*getStateName)(void* ctx);
+    void* getStateNameCtx;
+    bool (*isScanRunning)(void* ctx);
+    void* isScanRunningCtx;
+    bool (*isConnected)(void* ctx);
+    void* isConnectedCtx;
+    ConnectedNetworkPayload (*getConnectedNetwork)(void* ctx);
+    void* getConnectedNetworkCtx;
 
-    std::function<bool()> isScanInProgress;
-    std::function<bool()> hasCompletedScanResults;
-    std::function<std::vector<ScannedNetworkPayload>()> getScannedNetworks;
-    std::function<bool()> startScan;
+    bool (*isScanInProgress)(void* ctx);
+    void* isScanInProgressCtx;
+    bool (*hasCompletedScanResults)(void* ctx);
+    void* hasCompletedScanResultsCtx;
+    std::vector<ScannedNetworkPayload> (*getScannedNetworks)(void* ctx);
+    void* getScannedNetworksCtx;
+    bool (*startScan)(void* ctx);
+    void* startScanCtx;
 
-    std::function<bool(const String&, const String&)> connectToNetwork;
-    std::function<void()> disconnectFromNetwork;
-    std::function<void()> forgetClient;
-    std::function<bool()> enableWithSavedNetwork;
-    std::function<void()> disableClient;
+    bool (*connectToNetwork)(const String& ssid, const String& password, void* ctx);
+    void* connectToNetworkCtx;
+    void (*disconnectFromNetwork)(void* ctx);
+    void* disconnectFromNetworkCtx;
+    void (*forgetClient)(void* ctx);
+    void* forgetClientCtx;
+    bool (*enableWithSavedNetwork)(void* ctx);
+    void* enableWithSavedNetworkCtx;
+    void (*disableClient)(void* ctx);
+    void* disableClientCtx;
 };
 
 void handleApiStatus(WebServer& server,
                      const Runtime& runtime,
-                     const std::function<void()>& markUiActivity);
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiScan(WebServer& server,
                    const Runtime& runtime,
-                   const std::function<bool()>& checkRateLimit,
-                   const std::function<void()>& markUiActivity);
+                   bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                   void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiConnect(WebServer& server,
                       const Runtime& runtime,
-                      const std::function<bool()>& checkRateLimit,
-                      const std::function<void()>& markUiActivity);
+                      bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                      void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiDisconnect(WebServer& server,
                          const Runtime& runtime,
-                         const std::function<bool()>& checkRateLimit,
-                         const std::function<void()>& markUiActivity);
+                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                         void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiForget(WebServer& server,
                      const Runtime& runtime,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity);
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 void handleApiEnable(WebServer& server,
                      const Runtime& runtime,
-                     const std::function<bool()>& checkRateLimit,
-                     const std::function<void()>& markUiActivity);
+                     bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
+                     void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 }  // namespace WifiClientApiService

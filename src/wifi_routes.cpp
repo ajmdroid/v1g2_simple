@@ -411,42 +411,42 @@ bool WiFiManager::setupWebServer() {
         WifiClientApiService::handleApiStatus(
             server,
             makeWifiClientRuntime(),
-            [this]() { markUiActivity(); });
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/wifi/scan", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/wifi/scan", HTTP_POST, [this]() {
         WifiClientApiService::handleApiScan(
             server,
             makeWifiClientRuntime(),
-            rateLimitCallback,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/wifi/connect", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/wifi/connect", HTTP_POST, [this]() {
         WifiClientApiService::handleApiConnect(
             server,
             makeWifiClientRuntime(),
-            rateLimitCallback,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/wifi/disconnect", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/wifi/disconnect", HTTP_POST, [this]() {
         WifiClientApiService::handleApiDisconnect(
             server,
             makeWifiClientRuntime(),
-            rateLimitCallback,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/wifi/forget", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/wifi/forget", HTTP_POST, [this]() {
         WifiClientApiService::handleApiForget(
             server,
             makeWifiClientRuntime(),
-            rateLimitCallback,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/wifi/enable", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/api/wifi/enable", HTTP_POST, [this]() {
         WifiClientApiService::handleApiEnable(
             server,
             makeWifiClientRuntime(),
-            rateLimitCallback,
-            [this]() { markUiActivity(); });
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
+            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
 
     // GPS scaffold API routes
