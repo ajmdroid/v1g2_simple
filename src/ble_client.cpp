@@ -215,35 +215,35 @@ portMUX_TYPE proxyCmdMux = portMUX_INITIALIZER_UNLOCKED;
 V1BLEClient* instancePtr = nullptr;
 
 V1BLEClient::V1BLEClient()
-    : pClient(nullptr)
-    , pRemoteService(nullptr)
-    , pDisplayDataChar(nullptr)
-    , pCommandChar(nullptr)
-    , pCommandCharLong(nullptr)
-    , pServer(nullptr)
-    , pProxyService(nullptr)
-    , pProxyNotifyChar(nullptr)
-    , pProxyNotifyLongChar(nullptr)
-    , pProxyWriteChar(nullptr)
-    , proxyEnabled(false)
-    , proxyServerInitialized(false)
-    // proxyClientConnected - uses default member initializer (atomic)
+    : pClient_(nullptr)
+    , pRemoteService_(nullptr)
+    , pDisplayDataChar_(nullptr)
+    , pCommandChar_(nullptr)
+    , pCommandCharLong_(nullptr)
+    , pServer_(nullptr)
+    , pProxyService_(nullptr)
+    , pProxyNotifyChar_(nullptr)
+    , pProxyNotifyLongChar_(nullptr)
+    , pProxyWriteChar_(nullptr)
+    , proxyEnabled_(false)
+    , proxyServerInitialized_(false)
+    // proxyClientConnected_ - uses default member initializer (atomic)
     , proxyName_("V1-Proxy")
-    , proxyQueue(nullptr)
-    , phone2v1Queue(nullptr)
-    , proxyQueuesInPsram(false)
-    , dataCallback(nullptr)
-    , connectImmediateCallback(nullptr)
-    , connectStableCallback(nullptr)
-    // connected, shouldConnect - use default member initializers (atomic)
-    , hasTargetDevice(false)
-    , targetAddress()
-    , lastScanStart(0)
-    , freshFlashBoot(false)
-    , pScanCallbacks(nullptr)
-    , pClientCallbacks(nullptr)
-    , pProxyServerCallbacks(nullptr)
-    , pProxyWriteCallbacks(nullptr) {
+    , proxyQueue_(nullptr)
+    , phone2v1Queue_(nullptr)
+    , proxyQueuesInPsram_(false)
+    , dataCallback_(nullptr)
+    , connectImmediateCallback_(nullptr)
+    , connectStableCallback_(nullptr)
+    // connected_, shouldConnect_ - use default member initializers (atomic)
+    , hasTargetDevice_(false)
+    , targetAddress_()
+    , lastScanStart_(0)
+    , freshFlashBoot_(false)
+    , pScanCallbacks_(nullptr)
+    , pClientCallbacks_(nullptr)
+    , pProxyServerCallbacks_(nullptr)
+    , pProxyWriteCallbacks_(nullptr) {
     instancePtr = this;
 }
 
@@ -255,7 +255,7 @@ V1BLEClient::~V1BLEClient() {
 }
 
 const char* V1BLEClient::getSubscribeStepName() const {
-    switch (subscribeStep) {
+    switch (subscribeStep_) {
         case SubscribeStep::GET_SERVICE:
             return "GET_SERVICE";
         case SubscribeStep::GET_DISPLAY_CHAR:
@@ -288,14 +288,14 @@ const char* V1BLEClient::getSubscribeStepName() const {
 // ==================== BLE State Machine ====================
 
 void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
-    BLEState oldState = bleState;
+    BLEState oldState = bleState_;
     if (oldState == newState) return;  // No change
 
     unsigned long now = millis();
-    unsigned long stateTime = (oldState != BLEState::DISCONNECTED && stateEnteredMs > 0) ? (now - stateEnteredMs) : 0;
+    unsigned long stateTime = (oldState != BLEState::DISCONNECTED && stateEnteredMs_ > 0) ? (now - stateEnteredMs_) : 0;
 
-    bleState = newState;
-    stateEnteredMs = now;
+    bleState_ = newState;
+    stateEnteredMs_ = now;
     if (newState == BLEState::SCAN_STOPPING || oldState == BLEState::SCAN_STOPPING) {
         scanStopResultsCleared_ = false;
     }
@@ -338,46 +338,46 @@ void V1BLEClient::cleanupConnection() {
     const unsigned long now = millis();
 
     // 1. Unsubscribe from notifications if subscribed
-    if (pDisplayDataChar && pDisplayDataChar->canNotify()) {
-        pDisplayDataChar->unsubscribe();
+    if (pDisplayDataChar_ && pDisplayDataChar_->canNotify()) {
+        pDisplayDataChar_->unsubscribe();
     }
 
-    // 2. Disconnect if connected
-    if (pClient && pClient->isConnected()) {
-        pClient->disconnect();
+    // 2. Disconnect if connected_
+    if (pClient_ && pClient_->isConnected()) {
+        pClient_->disconnect();
         // Let the onDisconnect callback finish cleanup before any reconnect attempt.
-        if (static_cast<int32_t>((now + 300) - nextConnectAllowedMs) > 0) {
-            nextConnectAllowedMs = now + 300;
+        if (static_cast<int32_t>((now + 300) - nextConnectAllowedMs_) > 0) {
+            nextConnectAllowedMs_ = now + 300;
         }
     }
 
     // 3. Clear characteristic references (they become invalid after disconnect)
-    pDisplayDataChar = nullptr;
-    pCommandChar = nullptr;
-    pCommandCharLong = nullptr;
-    pRemoteService = nullptr;
-    notifyShortChar.store(nullptr, std::memory_order_relaxed);
-    notifyShortCharId.store(0, std::memory_order_relaxed);
-    notifyLongChar.store(nullptr, std::memory_order_relaxed);
-    notifyLongCharId.store(0, std::memory_order_relaxed);
+    pDisplayDataChar_ = nullptr;
+    pCommandChar_ = nullptr;
+    pCommandCharLong_ = nullptr;
+    pRemoteService_ = nullptr;
+    notifyShortChar_.store(nullptr, std::memory_order_relaxed);
+    notifyShortCharId_.store(0, std::memory_order_relaxed);
+    notifyLongChar_.store(nullptr, std::memory_order_relaxed);
+    notifyLongCharId_.store(0, std::memory_order_relaxed);
     scanStopResultsCleared_ = false;
 
     // 4. Clear connection flags
     {
-        SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: disconnect cleanup
+        SemaphoreGuard lock(bleMutex_, pdMS_TO_TICKS(20));  // COLD: disconnect cleanup
         if (lock.locked()) {
-            connected.store(false, std::memory_order_relaxed);
-            shouldConnect = false;
-            hasTargetDevice = false;
-            targetDevice = NimBLEAdvertisedDevice();
+            connected_.store(false, std::memory_order_relaxed);
+            shouldConnect_ = false;
+            hasTargetDevice_ = false;
+            targetDevice_ = NimBLEAdvertisedDevice();
         }
     }
 
     // 5. Clear stale phone command state (prevents sending commands from previous session)
-    phoneCmdPendingClear = true;
+    phoneCmdPendingClear_ = true;
 
-    connectInProgress = false;
-    connectedFollowupStep = ConnectedFollowupStep::NONE;
+    connectInProgress_ = false;
+    connectedFollowupStep_ = ConnectedFollowupStep::NONE;
 }
 
 // Hard reset of BLE client stack - use after repeated failures
@@ -393,34 +393,34 @@ void V1BLEClient::hardResetBLEClient() {
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (pScan && pScan->isScanning()) {
         pScan->stop();
-        if (static_cast<int32_t>((now + 200) - nextConnectAllowedMs) > 0) {
-            nextConnectAllowedMs = now + 200;
+        if (static_cast<int32_t>((now + 200) - nextConnectAllowedMs_) > 0) {
+            nextConnectAllowedMs_ = now + 200;
         }
     }
 
     // Reuse existing client (don't destroy - NimBLE has fixed 3-slot array,
     // nulling without deleteClient leaks a slot permanently)
-    if (!pClient) {
-        pClient = NimBLEDevice::createClient();
+    if (!pClient_) {
+        pClient_ = NimBLEDevice::createClient();
     }
-    if (pClient) {
-        if (!pClientCallbacks) {
-            pClientCallbacks.reset(new ClientCallbacks());
+    if (pClient_) {
+        if (!pClientCallbacks_) {
+            pClientCallbacks_.reset(new ClientCallbacks());
         }
-        pClient->setClientCallbacks(pClientCallbacks.get());
+        pClient_->setClientCallbacks(pClientCallbacks_.get());
         // Connection parameters: 12-24 (15-30ms interval), balanced for stability
-        pClient->setConnectionParams(NIMBLE_CONN_INTERVAL_MIN,
+        pClient_->setConnectionParams(NIMBLE_CONN_INTERVAL_MIN,
                                      NIMBLE_CONN_INTERVAL_MAX,
                                      NIMBLE_CONN_LATENCY,
                                      NIMBLE_CONN_SUPERVISION_TIMEOUT);
-        pClient->setConnectTimeout(NIMBLE_CONNECT_TIMEOUT_INIT_MS);
+        pClient_->setConnectTimeout(NIMBLE_CONNECT_TIMEOUT_INIT_MS);
     } else {
         Serial.println("[BLE] ERROR: Failed to create client!");
     }
 
     // Reset failure counter after hard reset
-    consecutiveConnectFailures = 0;
-    nextConnectAllowedMs = now + 2000;
+    consecutiveConnectFailures_ = 0;
+    nextConnectAllowedMs_ = now + 2000;
 
     setBLEState(BLEState::DISCONNECTED, "hard reset complete");
 }
@@ -434,22 +434,22 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
 
     Serial.print("[BLE] Init...");
 
-    proxyEnabled = enableProxy;
+    proxyEnabled_ = enableProxy;
     proxyName_ = proxyName ? proxyName : "V1C-LE-S3";
     bool needsFreshFlashBondReset = false;
 
     // Create mutexes for thread-safe BLE operations (only once)
-    if (!bleMutex) {
-        bleMutex = xSemaphoreCreateMutex();
+    if (!bleMutex_) {
+        bleMutex_ = xSemaphoreCreateMutex();
     }
-    if (!bleNotifyMutex) {
-        bleNotifyMutex = xSemaphoreCreateMutex();
+    if (!bleNotifyMutex_) {
+        bleNotifyMutex_ = xSemaphoreCreateMutex();
     }
-    if (!phoneCmdMutex) {
-        phoneCmdMutex = xSemaphoreCreateMutex();
+    if (!phoneCmdMutex_) {
+        phoneCmdMutex_ = xSemaphoreCreateMutex();
     }
 
-    if (!bleMutex || !bleNotifyMutex || !phoneCmdMutex) {
+    if (!bleMutex_ || !bleNotifyMutex_ || !phoneCmdMutex_) {
         Serial.println("FAIL");
         return false;
     }
@@ -473,7 +473,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     // 4. Create proxy server BEFORE scanning (critical for dual-role)
     // 5. Start advertising then stop (initializes BLE stack)
     // 6. After V1 connects, advertising restarts via startProxyAdvertising()
-    if (proxyEnabled) {
+    if (proxyEnabled_) {
         NimBLEDevice::init("V1 Proxy");
         NimBLEDevice::setDeviceName(proxyName_.c_str());
         // NimBLE-Arduino expects dBm here, not esp_power_level_t enum indices.
@@ -482,8 +482,8 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         NimBLEDevice::setMTU(517);  // Max MTU for BLE 5.x
 
         // Create proxy server before scanning for dual-role stability
-        proxyServerInitialized = initProxyServer(proxyName_.c_str());
-        if (!proxyServerInitialized) {
+        proxyServerInitialized_ = initProxyServer(proxyName_.c_str());
+        if (!proxyServerInitialized_) {
             Serial.println("[BLE] Proxy disabled during init");
         }
     } else {
@@ -520,7 +520,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
             if (resetResult.backedUpBondCount > 0) {
                 Serial.printf(" backed up %d bond(s)...", resetResult.backedUpBondCount);
             }
-            freshFlashBoot = true;
+            freshFlashBoot_ = true;
             blePrefs.end();
         }
     }
@@ -535,33 +535,33 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
         // NVS has bonds — keep SD backup fresh
         backupBondsToSD();
     }
-    lastBondBackupCount = static_cast<uint8_t>(NimBLEDevice::getNumBonds());
+    lastBondBackupCount_ = static_cast<uint8_t>(NimBLEDevice::getNumBonds());
 
     // Create client once during init - reuse for all connection attempts
     // Don't delete/recreate on failures - causes callback pointer corruption
-    if (!pClient) {
-        pClient = NimBLEDevice::createClient();
-        if (!pClient) {
+    if (!pClient_) {
+        pClient_ = NimBLEDevice::createClient();
+        if (!pClient_) {
             Serial.println("ERROR: Failed to create BLE client");
             return false;
         }
 
         // Create callbacks once and keep them for the lifetime of the client
-        if (!pClientCallbacks) {
-            pClientCallbacks.reset(new ClientCallbacks());
+        if (!pClientCallbacks_) {
+            pClientCallbacks_.reset(new ClientCallbacks());
         }
-        pClient->setClientCallbacks(pClientCallbacks.get());
+        pClient_->setClientCallbacks(pClientCallbacks_.get());
 
         // Connection parameters: 12-24 (15-30ms interval), balanced for stability
-        pClient->setConnectionParams(NIMBLE_CONN_INTERVAL_MIN,
+        pClient_->setConnectionParams(NIMBLE_CONN_INTERVAL_MIN,
                                      NIMBLE_CONN_INTERVAL_MAX,
                                      NIMBLE_CONN_LATENCY,
                                      NIMBLE_CONN_SUPERVISION_TIMEOUT);
-        pClient->setConnectTimeout(NIMBLE_CONNECT_TIMEOUT_INIT_MS);
+        pClient_->setConnectTimeout(NIMBLE_CONNECT_TIMEOUT_INIT_MS);
     }
 
     initialized = true;
-    Serial.printf(" OK proxy=%s\n", proxyEnabled ? "on" : "off");
+    Serial.printf(" OK proxy=%s\n", proxyEnabled_ ? "on" : "off");
     return true;
 }
 
@@ -575,8 +575,8 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     NimBLEScan* pScan = NimBLEDevice::getScan();
 
     // Replace scan callbacks atomically; previous handler is released automatically.
-    pScanCallbacks.reset(new ScanCallbacks(this));
-    pScan->setScanCallbacks(pScanCallbacks.get());
+    pScanCallbacks_.reset(new ScanCallbacks(this));
+    pScan->setScanCallbacks(pScanCallbacks_.get());
     pScan->setActiveScan(true);  // Request scan response to get device names
     // ESP32-S3 WiFi coexistence: use 75% duty cycle for reliable V1 discovery
     // Higher duty = more BLE radio time = faster discovery, but less WiFi throughput
@@ -588,7 +588,7 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     pScan->setDuplicateFilter(false);
 
     BLE_SM_LOGF("Scanning for V1 Gen2...\n");
-    lastScanStart = millis();
+    lastScanStart_ = millis();
     bool started = pScan->start(SCAN_DURATION, false, false);  // duration, isContinuous, restart
     BLE_SM_LOGF("Scan started: %s\n", started ? "YES" : "NO");
 
@@ -600,12 +600,12 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
 }
 
 bool V1BLEClient::isConnected() {
-    // Quick check without mutex - the connected flag is atomic enough for reading
-    // and pClient->isConnected() is thread-safe in NimBLE
-    if (!connected.load(std::memory_order_relaxed) || !pClient) {
+    // Quick check without mutex - the connected_ flag is atomic enough for reading
+    // and pClient_->isConnected() is thread-safe in NimBLE
+    if (!connected_.load(std::memory_order_relaxed) || !pClient_) {
         return false;
     }
-    return pClient->isConnected();
+    return pClient_->isConnected();
 }
 
 // RSSI caching - only query BLE stack every 2 seconds to reduce overhead
@@ -614,8 +614,8 @@ static unsigned long s_lastV1RssiQueryMs = 0;
 static constexpr unsigned long RSSI_QUERY_INTERVAL_MS = 2000;
 
 int V1BLEClient::getConnectionRssi() {
-    // Return RSSI of connected V1 device, or 0 if not connected
-    if (!connected.load(std::memory_order_relaxed) || !pClient || !pClient->isConnected()) {
+    // Return RSSI of connected_ V1 device, or 0 if not connected_
+    if (!connected_.load(std::memory_order_relaxed) || !pClient_ || !pClient_->isConnected()) {
         s_cachedV1Rssi = 0;
         return 0;
     }
@@ -623,7 +623,7 @@ int V1BLEClient::getConnectionRssi() {
     // Only query BLE stack every 2 seconds - return cached value otherwise
     unsigned long now = millis();
     if (now - s_lastV1RssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
-        s_cachedV1Rssi = pClient->getRssi();
+        s_cachedV1Rssi = pClient_->getRssi();
         s_lastV1RssiQueryMs = now;
     }
     return s_cachedV1Rssi;
@@ -634,8 +634,8 @@ static int s_cachedProxyRssi = 0;
 static unsigned long s_lastProxyRssiQueryMs = 0;
 
 int V1BLEClient::getProxyClientRssi() {
-    // Return RSSI of connected proxy client (app), or 0 if not connected
-    if (!proxyClientConnected || !pServer || pServer->getConnectedCount() == 0) {
+    // Return RSSI of connected_ proxy client (app), or 0 if not connected_
+    if (!proxyClientConnected_ || !pServer_ || pServer_->getConnectedCount() == 0) {
         s_cachedProxyRssi = 0;
         return 0;
     }
@@ -646,7 +646,7 @@ int V1BLEClient::getProxyClientRssi() {
         // Use getPeerDevices() to get a valid handle safely.
         // getPeerInfo(0) can return conn_handle=0 (V1's handle) if the
         // phone disconnects between the count check and the lookup.
-        std::vector<uint16_t> peers = pServer->getPeerDevices();
+        std::vector<uint16_t> peers = pServer_->getPeerDevices();
         if (!peers.empty()) {
             int8_t rssi = 0;
             if (ble_gap_conn_rssi(peers[0], &rssi) == 0) {
@@ -659,7 +659,7 @@ int V1BLEClient::getProxyClientRssi() {
 }
 
 bool V1BLEClient::isProxyClientConnected() {
-    return proxyClientConnected;
+    return proxyClientConnected_;
 }
 
 void V1BLEClient::setObdBleArbitrationRequest(ObdBleArbitrationRequest request) {
@@ -686,34 +686,34 @@ void V1BLEClient::setObdBleArbitrationRequest(ObdBleArbitrationRequest request) 
     obdBleArbitrationRequest_ = request;
 }
 
-void V1BLEClient::setProxyClientConnected(bool connected) {
-    proxyClientConnected = connected;
-    if (connected) {
-        proxyClientConnectedOnceThisBoot = true;
-        proxyNoClientDeadlineMs = 0;
+void V1BLEClient::setProxyClientConnected(bool connected_) {
+    proxyClientConnected_ = connected_;
+    if (connected_) {
+        proxyClientConnectedOnceThisBoot_ = true;
+        proxyNoClientDeadlineMs_ = 0;
     }
 }
 
 void V1BLEClient::onDataReceived(DataCallback callback) {
-    dataCallback = callback;
+    dataCallback_ = callback;
 }
 
 void V1BLEClient::onV1ConnectImmediate(ConnectionCallback callback) {
-    connectImmediateCallback = callback;
+    connectImmediateCallback_ = callback;
 }
 
 void V1BLEClient::onV1Connected(ConnectionCallback callback) {
-    connectStableCallback = callback;
+    connectStableCallback_ = callback;
 }
 
 void V1BLEClient::noteBleProcessDuration(uint32_t us) {
-    lastBleProcessDurationUs.store(us, std::memory_order_relaxed);
+    lastBleProcessDurationUs_.store(us, std::memory_order_relaxed);
 }
 
 void V1BLEClient::noteDisplayPipelineDuration(uint32_t us) {
-    lastDisplayPipelineDurationUs.store(us, std::memory_order_relaxed);
+    lastDisplayPipelineDurationUs_.store(us, std::memory_order_relaxed);
 }
 
 bool V1BLEClient::isConnectBurstSettling() const {
-    return connectedFollowupStep != ConnectedFollowupStep::NONE;
+    return connectedFollowupStep_ != ConnectedFollowupStep::NONE;
 }

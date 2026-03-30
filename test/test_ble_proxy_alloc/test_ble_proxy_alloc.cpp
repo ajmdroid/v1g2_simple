@@ -68,33 +68,33 @@ void assertPhoneCmdDropMetrics(const V1BLEClient& client,
 }  // namespace
 
 V1BLEClient::V1BLEClient()
-    : pClient(nullptr)
-    , pRemoteService(nullptr)
-    , pDisplayDataChar(nullptr)
-    , pCommandChar(nullptr)
-    , pCommandCharLong(nullptr)
-    , pServer(nullptr)
-    , pProxyService(nullptr)
-    , pProxyNotifyChar(nullptr)
-    , pProxyNotifyLongChar(nullptr)
-    , pProxyWriteChar(nullptr)
-    , proxyEnabled(false)
-    , proxyServerInitialized(false)
+    : pClient_(nullptr)
+    , pRemoteService_(nullptr)
+    , pDisplayDataChar_(nullptr)
+    , pCommandChar_(nullptr)
+    , pCommandCharLong_(nullptr)
+    , pServer_(nullptr)
+    , pProxyService_(nullptr)
+    , pProxyNotifyChar_(nullptr)
+    , pProxyNotifyLongChar_(nullptr)
+    , pProxyWriteChar_(nullptr)
+    , proxyEnabled_(false)
+    , proxyServerInitialized_(false)
     , proxyName_("V1-Proxy")
-    , proxyQueue(nullptr)
-    , phone2v1Queue(nullptr)
-    , proxyQueuesInPsram(false)
-    , dataCallback(nullptr)
-    , connectImmediateCallback(nullptr)
-    , connectStableCallback(nullptr)
-    , hasTargetDevice(false)
-    , targetAddress()
-    , lastScanStart(0)
-    , freshFlashBoot(false)
-    , pScanCallbacks(nullptr)
-    , pClientCallbacks(nullptr)
-    , pProxyServerCallbacks(nullptr)
-    , pProxyWriteCallbacks(nullptr) {
+    , proxyQueue_(nullptr)
+    , phone2v1Queue_(nullptr)
+    , proxyQueuesInPsram_(false)
+    , dataCallback_(nullptr)
+    , connectImmediateCallback_(nullptr)
+    , connectStableCallback_(nullptr)
+    , hasTargetDevice_(false)
+    , targetAddress_()
+    , lastScanStart_(0)
+    , freshFlashBoot_(false)
+    , pScanCallbacks_(nullptr)
+    , pClientCallbacks_(nullptr)
+    , pProxyServerCallbacks_(nullptr)
+    , pProxyWriteCallbacks_(nullptr) {
     instancePtr = this;
 }
 
@@ -103,10 +103,10 @@ V1BLEClient::~V1BLEClient() {
 }
 
 void V1BLEClient::setProxyClientConnected(bool connectedState) {
-    proxyClientConnected = connectedState;
+    proxyClientConnected_ = connectedState;
     if (connectedState) {
-        proxyClientConnectedOnceThisBoot = true;
-        proxyNoClientDeadlineMs = 0;
+        proxyClientConnectedOnceThisBoot_ = true;
+        proxyNoClientDeadlineMs_ = 0;
     }
 }
 
@@ -138,13 +138,13 @@ void test_allocateProxyQueues_prefers_psram_for_both_buffers() {
     V1BLEClient client;
 
     TEST_ASSERT_TRUE(client.allocateProxyQueues());
-    TEST_ASSERT_NOT_NULL(client.proxyQueue);
-    TEST_ASSERT_NOT_NULL(client.phone2v1Queue);
-    TEST_ASSERT_TRUE(client.proxyQueuesInPsram);
+    TEST_ASSERT_NOT_NULL(client.proxyQueue_);
+    TEST_ASSERT_NOT_NULL(client.phone2v1Queue_);
+    TEST_ASSERT_TRUE(client.proxyQueuesInPsram_);
     TEST_ASSERT_EQUAL_UINT32(2, g_mock_heap_caps_malloc_calls);
     TEST_ASSERT_EQUAL_UINT32(MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM, g_mock_heap_caps_last_malloc_caps);
-    TEST_ASSERT_EQUAL_UINT32(0, client.proxyQueueCount);
-    TEST_ASSERT_EQUAL_UINT32(0, client.phone2v1QueueCount);
+    TEST_ASSERT_EQUAL_UINT32(0, client.proxyQueueCount_);
+    TEST_ASSERT_EQUAL_UINT32(0, client.phone2v1QueueCount_);
 }
 
 void test_allocateProxyQueues_falls_back_to_internal_when_psram_misses() {
@@ -152,23 +152,23 @@ void test_allocateProxyQueues_falls_back_to_internal_when_psram_misses() {
     g_mock_heap_caps_fail_on_call = 2u;
 
     TEST_ASSERT_TRUE(client.allocateProxyQueues());
-    TEST_ASSERT_NOT_NULL(client.proxyQueue);
-    TEST_ASSERT_NOT_NULL(client.phone2v1Queue);
-    TEST_ASSERT_FALSE(client.proxyQueuesInPsram);
+    TEST_ASSERT_NOT_NULL(client.proxyQueue_);
+    TEST_ASSERT_NOT_NULL(client.phone2v1Queue_);
+    TEST_ASSERT_FALSE(client.proxyQueuesInPsram_);
     TEST_ASSERT_EQUAL_UINT32(3, g_mock_heap_caps_malloc_calls);
     TEST_ASSERT_EQUAL_UINT32(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL, g_mock_heap_caps_last_malloc_caps);
 }
 
 void test_initProxyServer_full_allocation_failure_disables_proxy_before_server_creation() {
     V1BLEClient client;
-    client.proxyEnabled = true;
+    client.proxyEnabled_ = true;
     g_mock_heap_caps_fail_call_mask = 0x0Fu;
 
     TEST_ASSERT_FALSE(client.initProxyServer("Proxy"));
-    TEST_ASSERT_FALSE(client.proxyEnabled);
-    TEST_ASSERT_NULL(client.proxyQueue);
-    TEST_ASSERT_NULL(client.phone2v1Queue);
-    TEST_ASSERT_FALSE(client.proxyQueuesInPsram);
+    TEST_ASSERT_FALSE(client.proxyEnabled_);
+    TEST_ASSERT_NULL(client.proxyQueue_);
+    TEST_ASSERT_NULL(client.phone2v1Queue_);
+    TEST_ASSERT_FALSE(client.proxyQueuesInPsram_);
     TEST_ASSERT_EQUAL_UINT32(4, g_mock_heap_caps_malloc_calls);
     TEST_ASSERT_EQUAL_UINT32(0, g_mock_nimble_state.createServerCalls);
     TEST_ASSERT_EQUAL_UINT32(0, g_mock_nimble_state.createServiceCalls);
@@ -177,18 +177,18 @@ void test_initProxyServer_full_allocation_failure_disables_proxy_before_server_c
 
 void test_initProxyServer_partial_failure_frees_partial_allocation_and_resets_state() {
     V1BLEClient client;
-    client.proxyEnabled = true;
+    client.proxyEnabled_ = true;
     g_mock_heap_caps_fail_call_mask = (1u << 1) | (1u << 2);
 
     TEST_ASSERT_FALSE(client.initProxyServer("Proxy"));
-    TEST_ASSERT_FALSE(client.proxyEnabled);
-    TEST_ASSERT_NULL(client.proxyQueue);
-    TEST_ASSERT_NULL(client.phone2v1Queue);
-    TEST_ASSERT_FALSE(client.proxyQueuesInPsram);
+    TEST_ASSERT_FALSE(client.proxyEnabled_);
+    TEST_ASSERT_NULL(client.proxyQueue_);
+    TEST_ASSERT_NULL(client.phone2v1Queue_);
+    TEST_ASSERT_FALSE(client.proxyQueuesInPsram_);
     TEST_ASSERT_EQUAL_UINT32(3, g_mock_heap_caps_malloc_calls);
     TEST_ASSERT_EQUAL_UINT32(1, g_mock_heap_caps_free_calls);
-    TEST_ASSERT_EQUAL_UINT32(0, client.proxyQueueCount);
-    TEST_ASSERT_EQUAL_UINT32(0, client.phone2v1QueueCount);
+    TEST_ASSERT_EQUAL_UINT32(0, client.proxyQueueCount_);
+    TEST_ASSERT_EQUAL_UINT32(0, client.phone2v1QueueCount_);
     TEST_ASSERT_EQUAL_UINT32(0, g_mock_nimble_state.createServerCalls);
 }
 
@@ -204,7 +204,7 @@ void test_phone_command_lock_busy_drop_updates_getters_and_metrics_payload() {
     V1BLEClient client;
     const uint8_t cmd[] = {0x11};
 
-    client.phoneCmdMutex = nullptr;
+    client.phoneCmdMutex_ = nullptr;
     TEST_ASSERT_FALSE(client.enqueuePhoneCommand(cmd, sizeof(cmd), 0xB2CE));
 
     assertPhoneCmdDropMetrics(client, 0, 0, 0, 1);
@@ -214,15 +214,15 @@ void test_phone_command_overflow_drops_oldest_and_keeps_newest() {
     V1BLEClient client;
 
     TEST_ASSERT_TRUE(client.allocateProxyQueues());
-    client.phoneCmdMutex = xSemaphoreCreateMutex();
-    client.connected = true;
+    client.phoneCmdMutex_ = xSemaphoreCreateMutex();
+    client.connected_ = true;
 
     for (uint8_t i = 1; i <= V1BLEClient::PHONE_CMD_QUEUE_SIZE + 1; ++i) {
         TEST_ASSERT_TRUE(client.enqueuePhoneCommand(&i, 1, 0xB2CE));
     }
 
     assertPhoneCmdDropMetrics(client, 1, 0, 0, 0);
-    TEST_ASSERT_EQUAL_UINT32(V1BLEClient::PHONE_CMD_QUEUE_SIZE, client.phone2v1QueueCount);
+    TEST_ASSERT_EQUAL_UINT32(V1BLEClient::PHONE_CMD_QUEUE_SIZE, client.phone2v1QueueCount_);
 
     while (client.processPhoneCommandQueue() == 1) {
     }
@@ -237,8 +237,8 @@ void test_phone_command_ble_failure_updates_getters_and_metrics_payload() {
     const uint8_t cmd[] = {0x22};
 
     TEST_ASSERT_TRUE(client.allocateProxyQueues());
-    client.phoneCmdMutex = xSemaphoreCreateMutex();
-    client.connected = true;
+    client.phoneCmdMutex_ = xSemaphoreCreateMutex();
+    client.connected_ = true;
     TEST_ASSERT_TRUE(client.enqueuePhoneCommand(cmd, sizeof(cmd), 0xB2CE));
 
     g_sendCommandResult = SendResult::FAILED;
@@ -252,8 +252,8 @@ void test_phone_command_drop_metrics_reset_zeroes_all_observable_surfaces() {
     const uint8_t cmd[] = {0x33};
 
     TEST_ASSERT_TRUE(client.allocateProxyQueues());
-    client.phoneCmdMutex = xSemaphoreCreateMutex();
-    client.connected = true;
+    client.phoneCmdMutex_ = xSemaphoreCreateMutex();
+    client.connected_ = true;
 
     TEST_ASSERT_FALSE(client.enqueuePhoneCommand(nullptr, 0, 0xB2CE));
     TEST_ASSERT_TRUE(client.enqueuePhoneCommand(cmd, sizeof(cmd), 0xB2CE));
@@ -267,75 +267,75 @@ void test_phone_command_drop_metrics_reset_zeroes_all_observable_surfaces() {
 
 void test_proxy_app_connect_defers_conn_param_update_until_drained() {
     V1BLEClient client;
-    client.proxyEnabled = true;
-    client.proxyServerInitialized = client.initProxyServer("Proxy");
-    TEST_ASSERT_TRUE(client.proxyServerInitialized);
-    TEST_ASSERT_NOT_NULL(client.pServer);
-    client.pServer->setConnectedCount(1);
+    client.proxyEnabled_ = true;
+    client.proxyServerInitialized_ = client.initProxyServer("Proxy");
+    TEST_ASSERT_TRUE(client.proxyServerInitialized_);
+    TEST_ASSERT_NOT_NULL(client.pServer_);
+    client.pServer_->setConnectedCount(1);
 
     V1BLEClient::ProxyServerCallbacks callbacks(&client);
     NimBLEConnInfo connInfo;
-    callbacks.onConnect(client.pServer, connInfo);
+    callbacks.onConnect(client.pServer_, connInfo);
 
     TEST_ASSERT_EQUAL_UINT32(0, g_mock_nimble_state.updateConnParamsCalls);
-    TEST_ASSERT_FALSE(client.proxyClientConnected.load(std::memory_order_relaxed));
+    TEST_ASSERT_FALSE(client.proxyClientConnected_.load(std::memory_order_relaxed));
 
     client.drainProxyCallbackEvents();
 
     TEST_ASSERT_EQUAL_UINT32(1, g_mock_nimble_state.updateConnParamsCalls);
-    TEST_ASSERT_TRUE(client.proxyClientConnected.load(std::memory_order_relaxed));
-    TEST_ASSERT_TRUE(client.proxyClientConnectedOnceThisBoot);
-    TEST_ASSERT_EQUAL_UINT32(0, client.proxyNoClientDeadlineMs);
+    TEST_ASSERT_TRUE(client.proxyClientConnected_.load(std::memory_order_relaxed));
+    TEST_ASSERT_TRUE(client.proxyClientConnectedOnceThisBoot_);
+    TEST_ASSERT_EQUAL_UINT32(0, client.proxyNoClientDeadlineMs_);
 }
 
 void test_proxy_app_disconnect_only_schedules_restart_when_drained() {
     V1BLEClient client;
-    client.proxyEnabled = true;
-    client.proxyServerInitialized = client.initProxyServer("Proxy");
-    TEST_ASSERT_TRUE(client.proxyServerInitialized);
-    client.connected.store(true, std::memory_order_relaxed);
-    client.proxyClientConnected.store(true, std::memory_order_relaxed);
-    client.pServer->setConnectedCount(0);
+    client.proxyEnabled_ = true;
+    client.proxyServerInitialized_ = client.initProxyServer("Proxy");
+    TEST_ASSERT_TRUE(client.proxyServerInitialized_);
+    client.connected_.store(true, std::memory_order_relaxed);
+    client.proxyClientConnected_.store(true, std::memory_order_relaxed);
+    client.pServer_->setConnectedCount(0);
     mockMillis = 1234;
     const uint32_t startAdvertisingCallsBefore = g_mock_nimble_state.startAdvertisingCalls;
 
     V1BLEClient::ProxyServerCallbacks callbacks(&client);
     NimBLEConnInfo connInfo;
-    callbacks.onDisconnect(client.pServer, connInfo, 19);
+    callbacks.onDisconnect(client.pServer_, connInfo, 19);
 
-    TEST_ASSERT_TRUE(client.proxyClientConnected.load(std::memory_order_relaxed));
+    TEST_ASSERT_TRUE(client.proxyClientConnected_.load(std::memory_order_relaxed));
     TEST_ASSERT_EQUAL_UINT32(startAdvertisingCallsBefore, g_mock_nimble_state.startAdvertisingCalls);
-    TEST_ASSERT_EQUAL_UINT32(0, client.proxyAdvertisingStartMs);
+    TEST_ASSERT_EQUAL_UINT32(0, client.proxyAdvertisingStartMs_);
 
     client.drainProxyCallbackEvents();
 
-    TEST_ASSERT_FALSE(client.proxyClientConnected.load(std::memory_order_relaxed));
+    TEST_ASSERT_FALSE(client.proxyClientConnected_.load(std::memory_order_relaxed));
     TEST_ASSERT_EQUAL_UINT32(startAdvertisingCallsBefore, g_mock_nimble_state.startAdvertisingCalls);
-    TEST_ASSERT_EQUAL_UINT32(1234, client.proxyAdvertisingStartMs);
+    TEST_ASSERT_EQUAL_UINT32(1234, client.proxyAdvertisingStartMs_);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartAppDisconnect),
-        client.proxyAdvertisingStartReasonCode);
+        client.proxyAdvertisingStartReasonCode_);
 }
 
 void test_forward_to_proxy_immediate_queues_until_main_loop_send() {
     V1BLEClient client;
-    client.proxyEnabled = true;
-    client.proxyServerInitialized = client.initProxyServer("Proxy");
-    TEST_ASSERT_TRUE(client.proxyServerInitialized);
-    client.proxyClientConnected.store(true, std::memory_order_relaxed);
-    client.bleNotifyMutex = xSemaphoreCreateMutex();
+    client.proxyEnabled_ = true;
+    client.proxyServerInitialized_ = client.initProxyServer("Proxy");
+    TEST_ASSERT_TRUE(client.proxyServerInitialized_);
+    client.proxyClientConnected_.store(true, std::memory_order_relaxed);
+    client.bleNotifyMutex_ = xSemaphoreCreateMutex();
     const uint8_t data[] = {0xAA, 0x55, 0x10, 0x41, 0x00};
 
     client.forwardToProxy(data, sizeof(data), 0xB4E0);
 
     TEST_ASSERT_EQUAL_UINT32(0, g_mock_nimble_state.characteristicNotifyCalls);
-    TEST_ASSERT_EQUAL_UINT32(1, client.proxyQueueCount);
+    TEST_ASSERT_EQUAL_UINT32(1, client.proxyQueueCount_);
 
     TEST_ASSERT_EQUAL_INT(1, client.processProxyQueue());
 
     TEST_ASSERT_EQUAL_UINT32(1, g_mock_nimble_state.characteristicNotifyCalls);
-    TEST_ASSERT_EQUAL_UINT32(0, client.proxyQueueCount);
-    TEST_ASSERT_EQUAL_UINT32(1, client.proxyMetrics.sendCount);
+    TEST_ASSERT_EQUAL_UINT32(0, client.proxyQueueCount_);
+    TEST_ASSERT_EQUAL_UINT32(1, client.proxyMetrics_.sendCount);
 }
 
 int main(int argc, char** argv) {

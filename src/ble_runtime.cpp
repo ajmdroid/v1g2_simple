@@ -15,56 +15,56 @@
 
 void V1BLEClient::process() {
     // Handle deferred BLE callback updates without blocking in callbacks
-    if (pendingConnectStateUpdate) {
-        SemaphoreGuard lock(bleMutex, 0);
+    if (pendingConnectStateUpdate_) {
+        SemaphoreGuard lock(bleMutex_, 0);
         if (lock.locked()) {
-            pendingConnectStateUpdate = false;
-            connected.store(true, std::memory_order_relaxed);
+            pendingConnectStateUpdate_ = false;
+            connected_.store(true, std::memory_order_relaxed);
             // Don't set CONNECTED state here - async state machine handles transitions
-            // Just set the connected flag; state machine will transition via asyncConnectSuccess
+            // Just set the connected_ flag; state machine will transition via asyncConnectSuccess_
         }
     }
-    if (pendingDisconnectCleanup) {
-        SemaphoreGuard lock(bleMutex, 0);
+    if (pendingDisconnectCleanup_) {
+        SemaphoreGuard lock(bleMutex_, 0);
         if (lock.locked()) {
-            pendingDisconnectCleanup = false;
-            connected.store(false, std::memory_order_relaxed);
-            connectInProgress = false;
-            connectStartMs = 0;
-            connectedFollowupStep = ConnectedFollowupStep::NONE;
-            connectCompletedAtMs.store(0, std::memory_order_relaxed);
-            firstRxAfterConnectMs.store(0, std::memory_order_relaxed);
-            lastBleProcessDurationUs.store(0, std::memory_order_relaxed);
-            lastDisplayPipelineDurationUs.store(0, std::memory_order_relaxed);
-            connectBurstStableLoopCount = 0;
-            proxyClientConnected = false;
+            pendingDisconnectCleanup_ = false;
+            connected_.store(false, std::memory_order_relaxed);
+            connectInProgress_ = false;
+            connectStartMs_ = 0;
+            connectedFollowupStep_ = ConnectedFollowupStep::NONE;
+            connectCompletedAtMs_.store(0, std::memory_order_relaxed);
+            firstRxAfterConnectMs_.store(0, std::memory_order_relaxed);
+            lastBleProcessDurationUs_.store(0, std::memory_order_relaxed);
+            lastDisplayPipelineDurationUs_.store(0, std::memory_order_relaxed);
+            connectBurstStableLoopCount_ = 0;
+            proxyClientConnected_ = false;
             proxyDisconnectRequestedForObdPreempt_ = false;
-            pRemoteService = nullptr;
-            pDisplayDataChar = nullptr;
-            pCommandChar = nullptr;
-            pCommandCharLong = nullptr;
-            notifyShortChar.store(nullptr, std::memory_order_relaxed);
-            notifyShortCharId.store(0, std::memory_order_relaxed);
-            notifyLongChar.store(nullptr, std::memory_order_relaxed);
-            notifyLongCharId.store(0, std::memory_order_relaxed);
-            verifyPending = false;
-            verifyComplete = false;
-            verifyMatch = false;
+            pRemoteService_ = nullptr;
+            pDisplayDataChar_ = nullptr;
+            pCommandChar_ = nullptr;
+            pCommandCharLong_ = nullptr;
+            notifyShortChar_.store(nullptr, std::memory_order_relaxed);
+            notifyShortCharId_.store(0, std::memory_order_relaxed);
+            notifyLongChar_.store(nullptr, std::memory_order_relaxed);
+            notifyLongCharId_.store(0, std::memory_order_relaxed);
+            verifyPending_ = false;
+            verifyComplete_ = false;
+            verifyMatch_ = false;
             setBLEState(BLEState::DISCONNECTED, "deferred onDisconnect");
         }
     }
     // Deferred bond deletion (NVS write moved out of BLE callback)
-    if (pendingDeleteBond) {
-        pendingDeleteBond = false;
-        if (NimBLEDevice::isBonded(pendingDeleteBondAddr)) {
-            NimBLEDevice::deleteBond(pendingDeleteBondAddr);
+    if (pendingDeleteBond_) {
+        pendingDeleteBond_ = false;
+        if (NimBLEDevice::isBonded(pendingDeleteBondAddr_)) {
+            NimBLEDevice::deleteBond(pendingDeleteBondAddr_);
         }
     }
-    if (pendingScanEndUpdate) {
-        SemaphoreGuard lock(bleMutex, 0);
+    if (pendingScanEndUpdate_) {
+        SemaphoreGuard lock(bleMutex_, 0);
         if (lock.locked()) {
-            pendingScanEndUpdate = false;
-            if (bleState == BLEState::SCANNING) {
+            pendingScanEndUpdate_ = false;
+            if (bleState_ == BLEState::SCANNING) {
                 setBLEState(BLEState::DISCONNECTED, "scan ended without finding V1 (deferred)");
             }
         }
@@ -72,16 +72,16 @@ void V1BLEClient::process() {
 
     drainProxyCallbackEvents();
 
-    if (proxyCmdPending) {
+    if (proxyCmdPending_) {
         uint8_t packetId = 0;
         uint8_t packetLen = 0;
         uint8_t packetBuf[8] = {0};
         portENTER_CRITICAL(&proxyCmdMux);
-        if (proxyCmdPending) {
-            proxyCmdPending = false;
-            packetId = proxyCmdId;
-            packetLen = proxyCmdLen;
-            memcpy(packetBuf, proxyCmdBuf, sizeof(packetBuf));
+        if (proxyCmdPending_) {
+            proxyCmdPending_ = false;
+            packetId = proxyCmdId_;
+            packetLen = proxyCmdLen_;
+            memcpy(packetBuf, proxyCmdBuf_, sizeof(packetBuf));
         }
         portEXIT_CRITICAL(&proxyCmdMux);
 
@@ -100,38 +100,38 @@ void V1BLEClient::process() {
         }
     }
 
-    if (pendingScanTargetUpdate) {
-        SemaphoreGuard lock(bleMutex, 0);
+    if (pendingScanTargetUpdate_) {
+        SemaphoreGuard lock(bleMutex_, 0);
         if (lock.locked()) {
-            char addrCopy[sizeof(pendingScanTargetAddress)] = {0};
+            char addrCopy[sizeof(pendingScanTargetAddress_)] = {0};
             uint8_t addrTypeCopy = BLE_ADDR_PUBLIC;
             bool havePending = false;
             portENTER_CRITICAL(&pendingAddrMux);
-            if (pendingScanTargetUpdate) {
-                pendingScanTargetUpdate = false;
-                memcpy(addrCopy, pendingScanTargetAddress, sizeof(pendingScanTargetAddress));
+            if (pendingScanTargetUpdate_) {
+                pendingScanTargetUpdate_ = false;
+                memcpy(addrCopy, pendingScanTargetAddress_, sizeof(pendingScanTargetAddress_));
                 addrCopy[sizeof(addrCopy) - 1] = '\0';
-                addrTypeCopy = pendingScanTargetAddressType;
+                addrTypeCopy = pendingScanTargetAddressType_;
                 havePending = true;
             }
             portEXIT_CRITICAL(&pendingAddrMux);
             if (havePending) {
-                targetAddress = NimBLEAddress(std::string(addrCopy), addrTypeCopy);
-                targetAddressType = addrTypeCopy;
-                hasTargetDevice = true;
-                shouldConnect = true;
-                scanStopRequestedMs = millis();
+                targetAddress_ = NimBLEAddress(std::string(addrCopy), addrTypeCopy);
+                targetAddressType_ = addrTypeCopy;
+                hasTargetDevice_ = true;
+                shouldConnect_ = true;
+                scanStopRequestedMs_ = millis();
                 setBLEState(BLEState::SCAN_STOPPING, "V1 found (deferred)");
             }
         }
     }
-    if (pendingLastV1AddressValid) {
-        char addrCopy[sizeof(pendingLastV1Address)] = {0};
+    if (pendingLastV1AddressValid_) {
+        char addrCopy[sizeof(pendingLastV1Address_)] = {0};
         bool shouldWrite = false;
         portENTER_CRITICAL(&pendingAddrMux);
-        if (pendingLastV1AddressValid) {
-            pendingLastV1AddressValid = false;
-            memcpy(addrCopy, pendingLastV1Address, sizeof(pendingLastV1Address));
+        if (pendingLastV1AddressValid_) {
+            pendingLastV1AddressValid_ = false;
+            memcpy(addrCopy, pendingLastV1Address_, sizeof(pendingLastV1Address_));
             addrCopy[sizeof(addrCopy) - 1] = '\0';
             shouldWrite = true;
         }
@@ -147,7 +147,7 @@ void V1BLEClient::process() {
             break;
         }
     }
-    if (connectedFollowupStep != ConnectedFollowupStep::NONE && isConnected()) {
+    if (connectedFollowupStep_ != ConnectedFollowupStep::NONE && isConnected()) {
         processConnectedFollowup();
     }
 
@@ -156,12 +156,12 @@ void V1BLEClient::process() {
     const bool preemptProxyForManualScan =
         obdBleArbitrationRequest_ == ObdBleArbitrationRequest::PREEMPT_PROXY_FOR_MANUAL_SCAN;
     const bool suppressPassiveProxy = holdProxyForAutoObd || preemptProxyForManualScan;
-    const bool proxyConnected = proxyClientConnected.load(std::memory_order_relaxed);
+    const bool proxyConnected = proxyClientConnected_.load(std::memory_order_relaxed);
     NimBLEAdvertising* pProxyAdvertising =
-        (proxyEnabled && proxyServerInitialized) ? NimBLEDevice::getAdvertising() : nullptr;
+        (proxyEnabled_ && proxyServerInitialized_) ? NimBLEDevice::getAdvertising() : nullptr;
     const bool proxyAdvertisingActive = pProxyAdvertising && pProxyAdvertising->isAdvertising();
 
-    if (suppressPassiveProxy && isConnected() && proxyEnabled && proxyServerInitialized) {
+    if (suppressPassiveProxy && isConnected() && proxyEnabled_ && proxyServerInitialized_) {
         if (!proxyConnected && proxyAdvertisingActive) {
             proxySuppressedForObdHold_ = true;
             if (proxySuppressedResumeReasonCode_ ==
@@ -175,8 +175,8 @@ void V1BLEClient::process() {
         if (preemptProxyForManualScan &&
             proxyConnected &&
             !proxyDisconnectRequestedForObdPreempt_ &&
-            pServer &&
-            pServer->getConnectedCount() > 0) {
+            pServer_ &&
+            pServer_->getConnectedCount() > 0) {
             proxyDisconnectRequestedForObdPreempt_ = true;
             proxySuppressedForObdHold_ = true;
             if (proxySuppressedResumeReasonCode_ ==
@@ -189,23 +189,23 @@ void V1BLEClient::process() {
             // check above and the handle lookup, getPeerInfo(0) returns
             // a default NimBLEConnInfo with conn_handle=0 which would
             // inadvertently terminate the V1 client connection.
-            for (uint16_t h : pServer->getPeerDevices()) {
-                pServer->disconnect(h);
+            for (uint16_t h : pServer_->getPeerDevices()) {
+                pServer_->disconnect(h);
             }
         }
     } else if (!suppressPassiveProxy &&
                proxySuppressedForObdHold_ &&
                isConnected() &&
-               proxyEnabled &&
-               proxyServerInitialized &&
-               !wifiPriorityMode &&
-               !proxyNoClientTimeoutLatched &&
+               proxyEnabled_ &&
+               proxyServerInitialized_ &&
+               !wifiPriorityMode_ &&
+               !proxyNoClientTimeoutLatched_ &&
                !proxyConnected &&
                !proxyAdvertisingActive &&
-               proxyAdvertisingStartMs == 0 &&
-               proxyAdvertisingRetryAtMs == 0) {
-        proxyAdvertisingStartMs = millis() + PROXY_STABILIZE_MS;
-        proxyAdvertisingStartReasonCode =
+               proxyAdvertisingStartMs_ == 0 &&
+               proxyAdvertisingRetryAtMs_ == 0) {
+        proxyAdvertisingStartMs_ = millis() + PROXY_STABILIZE_MS;
+        proxyAdvertisingStartReasonCode_ =
             proxySuppressedResumeReasonCode_ == 0
                 ? static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartRetryWindow)
                 : proxySuppressedResumeReasonCode_;
@@ -215,16 +215,16 @@ void V1BLEClient::process() {
     }
 
     // Enforce boot-lifetime proxy no-client timeout.
-    if (proxyEnabled && proxyServerInitialized && !proxyNoClientTimeoutLatched &&
-        !proxyClientConnectedOnceThisBoot && proxyNoClientDeadlineMs != 0) {
+    if (proxyEnabled_ && proxyServerInitialized_ && !proxyNoClientTimeoutLatched_ &&
+        !proxyClientConnectedOnceThisBoot_ && proxyNoClientDeadlineMs_ != 0) {
         const unsigned long nowMs = millis();
-        if (static_cast<int32_t>(nowMs - proxyNoClientDeadlineMs) >= 0) {
-            proxyNoClientTimeoutLatched = true;
-            proxyAdvertisingStartMs = 0;
-            proxyAdvertisingStartReasonCode =
+        if (static_cast<int32_t>(nowMs - proxyNoClientDeadlineMs_) >= 0) {
+            proxyNoClientTimeoutLatched_ = true;
+            proxyAdvertisingStartMs_ = 0;
+            proxyAdvertisingStartReasonCode_ =
                 static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
-            proxyAdvertisingWindowStartMs = 0;
-            proxyAdvertisingRetryAtMs = 0;
+            proxyAdvertisingWindowStartMs_ = 0;
+            proxyAdvertisingRetryAtMs_ = 0;
             NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
             if (pAdv && pAdv->isAdvertising()) {
                 NimBLEDevice::stopAdvertising();
@@ -233,70 +233,70 @@ void V1BLEClient::process() {
                     static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopNoClientTimeout),
                     nowMs);
             }
-            Serial.printf("[BLE] Proxy disabled until reboot (no client connected within %lus)\n",
+            Serial.printf("[BLE] Proxy disabled until reboot (no client connected_ within %lus)\n",
                           static_cast<unsigned long>(PROXY_NO_CLIENT_TIMEOUT_MS / 1000));
         }
     }
 
     // Handle deferred proxy advertising start (non-blocking replacement for delay(1500))
-    if (!proxyNoClientTimeoutLatched &&
-        proxyAdvertisingStartMs != 0 && static_cast<int32_t>(millis() - proxyAdvertisingStartMs) >= 0) {
+    if (!proxyNoClientTimeoutLatched_ &&
+        proxyAdvertisingStartMs_ != 0 && static_cast<int32_t>(millis() - proxyAdvertisingStartMs_) >= 0) {
         if (suppressPassiveProxy && !proxyConnected) {
             proxySuppressedForObdHold_ = true;
             if (proxySuppressedResumeReasonCode_ ==
                 static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown)) {
-                proxySuppressedResumeReasonCode_ = proxyAdvertisingStartReasonCode;
+                proxySuppressedResumeReasonCode_ = proxyAdvertisingStartReasonCode_;
             }
-        } else if (isConnected() && proxyEnabled && proxyServerInitialized) {
-            const uint8_t startReason = proxyAdvertisingStartReasonCode;
-            proxyAdvertisingStartMs = 0;  // Clear pending flag
-            proxyAdvertisingStartReasonCode =
+        } else if (isConnected() && proxyEnabled_ && proxyServerInitialized_) {
+            const uint8_t startReason = proxyAdvertisingStartReasonCode_;
+            proxyAdvertisingStartMs_ = 0;  // Clear pending flag
+            proxyAdvertisingStartReasonCode_ =
                 static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
             // Advertising data already configured in initProxyServer() with proper flags
             startProxyAdvertising(startReason);
         } else {
-            proxyAdvertisingStartMs = 0;
-            proxyAdvertisingStartReasonCode =
+            proxyAdvertisingStartMs_ = 0;
+            proxyAdvertisingStartReasonCode_ =
                 static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
         }
     }
 
-    // Throttle idle proxy advertising while STA is connected:
+    // Throttle idle proxy advertising while STA is connected_:
     // advertise for a bounded window, then pause before retrying.
-    if (isConnected() && proxyEnabled && proxyServerInitialized &&
-        !wifiPriorityMode && !proxyNoClientTimeoutLatched) {
+    if (isConnected() && proxyEnabled_ && proxyServerInitialized_ &&
+        !wifiPriorityMode_ && !proxyNoClientTimeoutLatched_) {
         const bool staConnected = (WiFi.status() == WL_CONNECTED);
         NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
         const bool advertising = pAdv && pAdv->isAdvertising();
 
         if (proxyConnected) {
-            proxyAdvertisingWindowStartMs = 0;
-            proxyAdvertisingRetryAtMs = 0;
+            proxyAdvertisingWindowStartMs_ = 0;
+            proxyAdvertisingRetryAtMs_ = 0;
         } else if (staConnected) {
             const unsigned long nowMs = millis();
             if (advertising) {
-                if (proxyAdvertisingWindowStartMs == 0) {
-                    proxyAdvertisingWindowStartMs = nowMs;
-                } else if ((nowMs - proxyAdvertisingWindowStartMs) >= PROXY_ADVERTISING_WINDOW_MS) {
+                if (proxyAdvertisingWindowStartMs_ == 0) {
+                    proxyAdvertisingWindowStartMs_ = nowMs;
+                } else if ((nowMs - proxyAdvertisingWindowStartMs_) >= PROXY_ADVERTISING_WINDOW_MS) {
                     NimBLEDevice::stopAdvertising();
                     perfRecordProxyAdvertisingTransition(
                         false,
                         static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopIdleWindow),
                         nowMs);
-                    proxyAdvertisingWindowStartMs = 0;
-                    proxyAdvertisingRetryAtMs = nowMs + PROXY_ADVERTISING_RETRY_MS;
+                    proxyAdvertisingWindowStartMs_ = 0;
+                    proxyAdvertisingRetryAtMs_ = nowMs + PROXY_ADVERTISING_RETRY_MS;
                     Serial.println("[BLE] Proxy idle window elapsed; pausing advertising");
                 }
-            } else if (proxyAdvertisingRetryAtMs != 0 && static_cast<int32_t>(nowMs - proxyAdvertisingRetryAtMs) >= 0) {
-                proxyAdvertisingRetryAtMs = 0;
-                proxyAdvertisingStartMs = nowMs + 200;
-                proxyAdvertisingStartReasonCode =
+            } else if (proxyAdvertisingRetryAtMs_ != 0 && static_cast<int32_t>(nowMs - proxyAdvertisingRetryAtMs_) >= 0) {
+                proxyAdvertisingRetryAtMs_ = 0;
+                proxyAdvertisingStartMs_ = nowMs + 200;
+                proxyAdvertisingStartReasonCode_ =
                     static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartRetryWindow);
                 Serial.println("[BLE] Proxy retry window opened; resuming advertising");
             }
         } else {
-            proxyAdvertisingWindowStartMs = 0;
-            proxyAdvertisingRetryAtMs = 0;
+            proxyAdvertisingWindowStartMs_ = 0;
+            proxyAdvertisingRetryAtMs_ = 0;
         }
     }
 
@@ -304,26 +304,26 @@ void V1BLEClient::process() {
     NimBLEScan* pScan = NimBLEDevice::getScan();
 
     // Boot readiness gate: keep state machine idle until setup opens the gate.
-    if (!bootReadyFlag) {
+    if (!bootReadyFlag_) {
         return;
     }
 
     // ========== BLE STATE MACHINE ==========
-    switch (bleState) {
+    switch (bleState_) {
         case BLEState::DISCONNECTED: {
             // Skip scanning if WiFi priority mode is active
-            if (wifiPriorityMode) {
+            if (wifiPriorityMode_) {
                 return;
             }
 
-            // Not connected - start scanning (with backoff check)
-            if (consecutiveConnectFailures > 0 && static_cast<int32_t>(now - nextConnectAllowedMs) < 0) {
+            // Not connected_ - start scanning (with backoff check)
+            if (consecutiveConnectFailures_ > 0 && static_cast<int32_t>(now - nextConnectAllowedMs_) < 0) {
                 // Still in backoff - don't scan yet
                 return;
             }
 
-            if (!pScan->isScanning() && (now - lastScanStart >= RECONNECT_DELAY)) {
-                lastScanStart = now;
+            if (!pScan->isScanning() && (now - lastScanStart_ >= RECONNECT_DELAY)) {
+                lastScanStart_ = now;
                 pScan->clearResults();
                 bool started = pScan->start(SCAN_DURATION, false, false);
                 if (started) {
@@ -334,13 +334,13 @@ void V1BLEClient::process() {
         }
 
         case BLEState::SCANNING: {
-            // Check if scan found a device (shouldConnect flag set by callback)
+            // Check if scan found a device (shouldConnect_ flag set by callback)
             bool wantConnect = false;
             {
                 // HOT PATH: try-lock only, skip if busy
-                SemaphoreGuard lock(bleMutex, 0);
+                SemaphoreGuard lock(bleMutex_, 0);
                 if (lock.locked()) {
-                    wantConnect = shouldConnect;
+                    wantConnect = shouldConnect_;
                 }
             }
 
@@ -348,11 +348,11 @@ void V1BLEClient::process() {
                 // V1 found - stop scan and transition to SCAN_STOPPING
                 if (pScan->isScanning()) {
                     pScan->stop();
-                    scanStopRequestedMs = now;
+                    scanStopRequestedMs_ = now;
                     setBLEState(BLEState::SCAN_STOPPING, "V1 found during scan");
                 } else {
                     // Scan already stopped, proceed directly
-                    scanStopRequestedMs = now;
+                    scanStopRequestedMs_ = now;
                     setBLEState(BLEState::SCAN_STOPPING, "scan already stopped");
                 }
             }
@@ -362,7 +362,7 @@ void V1BLEClient::process() {
 
         case BLEState::SCAN_STOPPING: {
             // Wait for scan to fully stop and radio to settle
-            unsigned long elapsed = now - scanStopRequestedMs;
+            unsigned long elapsed = now - scanStopRequestedMs_;
 
             // Ensure scan is actually stopped
             if (pScan->isScanning()) {
@@ -380,20 +380,20 @@ void V1BLEClient::process() {
 
             // Check if settle time has elapsed
             // Use longer settle on first scan after boot (radio is "cold")
-            unsigned long settleTime = firstScanAfterBoot ? SCAN_STOP_SETTLE_FRESH_MS : SCAN_STOP_SETTLE_MS;
+            unsigned long settleTime = firstScanAfterBoot_ ? SCAN_STOP_SETTLE_FRESH_MS : SCAN_STOP_SETTLE_MS;
             if (elapsed >= settleTime) {
-                if (firstScanAfterBoot) {
+                if (firstScanAfterBoot_) {
                     Serial.println("[BLE] First scan settle complete (extended)");
-                    firstScanAfterBoot = false;
+                    firstScanAfterBoot_ = false;
                 }
                 // Ready to connect
                 bool wantConnect = false;
                 {
                     // HOT PATH: try-lock only, skip if busy
-                    SemaphoreGuard lock(bleMutex, 0);
+                    SemaphoreGuard lock(bleMutex_, 0);
                     if (lock.locked()) {
-                        wantConnect = shouldConnect;
-                        shouldConnect = false;  // Clear flag
+                        wantConnect = shouldConnect_;
+                        shouldConnect_ = false;  // Clear flag
                     }
                 }
 
@@ -407,25 +407,25 @@ void V1BLEClient::process() {
         }
 
         case BLEState::CONNECTING: {
-            if (nextConnectAllowedMs != 0 && static_cast<int32_t>(now - nextConnectAllowedMs) < 0) {
+            if (nextConnectAllowedMs_ != 0 && static_cast<int32_t>(now - nextConnectAllowedMs_) < 0) {
                 break;
             }
 
             // Initiate at most one async connect attempt per loop iteration.
             // startAsyncConnect() transitions to CONNECTING_WAIT on successful initiation.
-            if (!asyncConnectPending && !asyncConnectSuccess) {
+            if (!asyncConnectPending_ && !asyncConnectSuccess_) {
                 startAsyncConnect();
-                if (bleState != BLEState::CONNECTING) {
+                if (bleState_ != BLEState::CONNECTING) {
                     break;
                 }
             }
 
             // If we're stuck here for too long, something is wrong.
-            if (connectStartMs > 0 && (now - connectStartMs) > 5000) {
+            if (connectStartMs_ > 0 && (now - connectStartMs_) > 5000) {
                 Serial.println("[BLE] Connect initiation stuck for 5s - resetting");
-                connectInProgress = false;
-                connectStartMs = 0;
-                asyncConnectPending = false;
+                connectInProgress_ = false;
+                connectStartMs_ = 0;
+                asyncConnectPending_ = false;
                 setBLEState(BLEState::DISCONNECTED, "connect initiation timeout");
             }
             break;
@@ -457,10 +457,10 @@ void V1BLEClient::process() {
 
         case BLEState::CONNECTED: {
             // All good - nothing to do in state machine
-            // Verify we're actually still connected
-            if (!pClient || !pClient->isConnected()) {
-                connected.store(false, std::memory_order_relaxed);
-                connectInProgress = false;
+            // Verify we're actually still connected_
+            if (!pClient_ || !pClient_->isConnected()) {
+                connected_.store(false, std::memory_order_relaxed);
+                connectInProgress_ = false;
                 setBLEState(BLEState::DISCONNECTED, "connection lost");
             }
             break;
@@ -468,7 +468,7 @@ void V1BLEClient::process() {
 
         case BLEState::BACKOFF: {
             // Waiting for backoff period to expire
-            if (static_cast<int32_t>(now - nextConnectAllowedMs) >= 0) {
+            if (static_cast<int32_t>(now - nextConnectAllowedMs_) >= 0) {
                 setBLEState(BLEState::DISCONNECTED, "backoff expired");
             }
             break;
@@ -477,10 +477,10 @@ void V1BLEClient::process() {
 }
 
 void V1BLEClient::startScanning() {
-    if (!isConnected() && bleState == BLEState::DISCONNECTED) {
+    if (!isConnected() && bleState_ == BLEState::DISCONNECTED) {
         NimBLEScan* pScan = NimBLEDevice::getScan();
         if (!pScan->isScanning()) {
-            lastScanStart = millis();
+            lastScanStart_ = millis();
             pScan->clearResults();
             bool started = pScan->start(SCAN_DURATION, false, false);
             if (started) {
@@ -496,15 +496,15 @@ bool V1BLEClient::isScanning() {
 }
 
 NimBLEAddress V1BLEClient::getConnectedAddress() const {
-    if (pClient && pClient->isConnected()) {
-        return pClient->getPeerAddress();
+    if (pClient_ && pClient_->isConnected()) {
+        return pClient_->getPeerAddress();
     }
     return NimBLEAddress();  // Default constructor for empty address
 }
 
 void V1BLEClient::disconnect() {
-    if (pClient && pClient->isConnected()) {
-        pClient->disconnect();
+    if (pClient_ && pClient_->isConnected()) {
+        pClient_->disconnect();
     }
 }
 
@@ -512,13 +512,13 @@ void V1BLEClient::disconnect() {
 // Deprioritize BLE when web UI is active to maximize responsiveness
 
 void V1BLEClient::setBootReady(bool ready) {
-    bootReadyFlag = ready;
+    bootReadyFlag_ = ready;
 }
 
 void V1BLEClient::setWifiPriority(bool enabled) {
-    if (wifiPriorityMode == enabled) return;  // No change
+    if (wifiPriorityMode_ == enabled) return;  // No change
 
-    wifiPriorityMode = enabled;
+    wifiPriorityMode_ = enabled;
 
     // Rate-limit transition logs to avoid serial spam if caller oscillates.
     static unsigned long lastLogMs = 0;
@@ -538,7 +538,7 @@ void V1BLEClient::setWifiPriority(bool enabled) {
         }
 
         // Stop proxy advertising if running
-        if (proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
+        if (proxyEnabled_ && NimBLEDevice::getAdvertising()->isAdvertising()) {
             if (shouldLog) Serial.println("[BLE] Stopping proxy advertising for WiFi priority mode");
             NimBLEDevice::stopAdvertising();
             perfRecordProxyAdvertisingTransition(
@@ -548,29 +548,29 @@ void V1BLEClient::setWifiPriority(bool enabled) {
         }
 
         // Cancel any pending deferred advertising start
-        proxyAdvertisingStartMs = 0;
-        proxyAdvertisingStartReasonCode =
+        proxyAdvertisingStartMs_ = 0;
+        proxyAdvertisingStartReasonCode_ =
             static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
-        proxyAdvertisingWindowStartMs = 0;
+        proxyAdvertisingWindowStartMs_ = 0;
 
-        // Note: We keep existing V1 connection if already connected
+        // Note: We keep existing V1 connection if already connected_
         // to avoid disrupting active radar detection
 
     } else {
         if (shouldLog) Serial.println("[BLE] WiFi priority DISABLED - resuming normal BLE operation");
 
-        // Resume proxy advertising if we're connected and proxy is enabled
-        if (isConnected() && proxyEnabled && proxyServerInitialized && !proxyNoClientTimeoutLatched) {
+        // Resume proxy advertising if we're connected_ and proxy is enabled
+        if (isConnected() && proxyEnabled_ && proxyServerInitialized_ && !proxyNoClientTimeoutLatched_) {
             if (shouldLog) Serial.println("[BLE] Resuming proxy advertising after WiFi priority mode");
             // Defer advertising start by 500ms to avoid stall
-            proxyAdvertisingStartMs = millis() + 500;
-            proxyAdvertisingStartReasonCode =
+            proxyAdvertisingStartMs_ = millis() + 500;
+            proxyAdvertisingStartReasonCode_ =
                 static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartWifiPriorityResume);
-            proxyAdvertisingWindowStartMs = 0;
+            proxyAdvertisingWindowStartMs_ = 0;
         }
 
         // Resume scanning if disconnected
-        if (!isConnected() && bleState == BLEState::DISCONNECTED) {
+        if (!isConnected() && bleState_ == BLEState::DISCONNECTED) {
             Serial.println("[BLE] Resuming scan after WiFi priority mode");
             startScanning();
         }

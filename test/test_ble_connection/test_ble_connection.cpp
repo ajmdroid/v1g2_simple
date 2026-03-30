@@ -56,8 +56,8 @@ void test_disconnect_callback_still_defers_bond_heal() {
     const std::string body =
         extractFunctionBody(text, "void V1BLEClient::ClientCallbacks::onDisconnect");
 
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("pendingDeleteBondAddr"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("pendingDeleteBond = true"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("pendingDeleteBondAddr_"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("pendingDeleteBond_ = true"));
 }
 
 void test_disconnect_callback_no_longer_stops_proxy_advertising_inline() {
@@ -79,7 +79,7 @@ void test_manual_obd_preempt_disconnects_proxy_from_main_loop() {
 
     TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("PREEMPT_PROXY_FOR_MANUAL_SCAN"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("stopProxyAdvertisingFromMainLoop("));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("pServer->disconnect("));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("pServer_->disconnect("));
 }
 
 void test_scan_stopping_uses_instance_owned_results_cleared_state() {
@@ -126,15 +126,15 @@ void test_ble_mutex_trylocks_use_semaphore_guard_in_runtime_and_callbacks() {
     const std::string runtimeText = readFile(runtimeSource);
     const std::string connectionText = readFile(connectionSource);
 
-    TEST_ASSERT_EQUAL(std::string::npos, runtimeText.find("xSemaphoreTake(bleMutex"));
-    TEST_ASSERT_EQUAL(std::string::npos, runtimeText.find("xSemaphoreGive(bleMutex"));
-    TEST_ASSERT_EQUAL(std::string::npos, connectionText.find("xSemaphoreTake(instancePtr->bleMutex"));
-    TEST_ASSERT_EQUAL(std::string::npos, connectionText.find("xSemaphoreGive(instancePtr->bleMutex"));
-    TEST_ASSERT_EQUAL(std::string::npos, connectionText.find("xSemaphoreTake(bleClient->bleMutex"));
-    TEST_ASSERT_EQUAL(std::string::npos, connectionText.find("xSemaphoreGive(bleClient->bleMutex"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, runtimeText.find("SemaphoreGuard lock(bleMutex, 0)"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("SemaphoreGuard lock(instancePtr->bleMutex, 0)"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("SemaphoreGuard lock(bleClient->bleMutex, 0)"));
+    TEST_ASSERT_EQUAL(std::string::npos, runtimeText.find("xSemaphoreTake(bleMutex_"));
+    TEST_ASSERT_EQUAL(std::string::npos, runtimeText.find("xSemaphoreGive(bleMutex_"));
+    TEST_ASSERT_EQUAL(std::string::npos, connectionText.find("xSemaphoreTake(instancePtr->bleMutex_"));
+    TEST_ASSERT_EQUAL(std::string::npos, connectionText.find("xSemaphoreGive(instancePtr->bleMutex_"));
+    TEST_ASSERT_EQUAL(std::string::npos, connectionText.find("xSemaphoreTake(bleClient->bleMutex_"));
+    TEST_ASSERT_EQUAL(std::string::npos, connectionText.find("xSemaphoreGive(bleClient->bleMutex_"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, runtimeText.find("SemaphoreGuard lock(bleMutex_, 0)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("SemaphoreGuard lock(instancePtr->bleMutex_, 0)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("SemaphoreGuard lock(bleClient->bleMutex_, 0)"));
 }
 
 void test_connected_flag_uses_explicit_atomic_load_store() {
@@ -151,12 +151,12 @@ void test_connected_flag_uses_explicit_atomic_load_store() {
     const std::string connectionText = readFile(connectionSource);
     const std::string proxyText = readFile(proxySource);
 
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, clientText.find("connected.load(std::memory_order_relaxed)"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, runtimeText.find("connected.store(false, std::memory_order_relaxed)"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, runtimeText.find("connected.store(true, std::memory_order_relaxed)"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("connected.store(true, std::memory_order_relaxed)"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("connected.store(false, std::memory_order_relaxed)"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, proxyText.find("connected.load(std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, clientText.find("connected_.load(std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, runtimeText.find("connected_.store(false, std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, runtimeText.find("connected_.store(true, std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("connected_.store(true, std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("connected_.store(false, std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, proxyText.find("connected_.load(std::memory_order_relaxed)"));
 }
 
 int main() {

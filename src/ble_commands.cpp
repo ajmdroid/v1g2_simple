@@ -30,7 +30,7 @@ bool V1BLEClient::sendCommand(const uint8_t* data, size_t length) {
 
 SendResult V1BLEClient::sendCommandWithResult(const uint8_t* data, size_t length) {
     // Hard failures first - these should not be retried
-    if (!isConnected() || !pCommandChar) {
+    if (!isConnected() || !pCommandChar_) {
         return SendResult::FAILED;
     }
     if (!data || length == 0 || length > 64) {
@@ -49,10 +49,10 @@ SendResult V1BLEClient::sendCommandWithResult(const uint8_t* data, size_t length
     lastCommandMs.store(nowMs, std::memory_order_relaxed);
 
     bool ok = false;
-    if (pCommandChar->canWrite()) {
-        ok = pCommandChar->writeValue(data, length, true);
-    } else if (pCommandChar->canWriteNoResponse()) {
-        ok = pCommandChar->writeValue(data, length, false);
+    if (pCommandChar_->canWrite()) {
+        ok = pCommandChar_->writeValue(data, length, true);
+    } else if (pCommandChar_->canWriteNoResponse()) {
+        ok = pCommandChar_->writeValue(data, length, false);
     } else {
         return SendResult::FAILED;  // Characteristic doesn't support write
     }
@@ -289,7 +289,7 @@ V1BLEClient::WriteVerifyResult V1BLEClient::writeUserBytesVerified(const uint8_t
             return VERIFY_OK;
         }
         Serial.printf("[VerifyPush] Write attempt %d/%d failed, retrying...\n", attempt, maxRetries);
-        // No delay between retries — BLE write failure is immediate (not connected/char null),
+        // No delay between retries — BLE write failure is immediate (not connected_/char null),
         // so retrying instantly is correct. If the link is up, next attempt succeeds immediately.
     }
 
@@ -303,21 +303,21 @@ void V1BLEClient::startUserBytesVerification(const uint8_t* expected) {
     if (!expected) {
         return;
     }
-    memcpy(verifyExpected, expected, 6);
-    verifyPending = true;
-    verifyComplete = false;
-    verifyMatch = false;
+    memcpy(verifyExpected_, expected, 6);
+    verifyPending_ = true;
+    verifyComplete_ = false;
+    verifyMatch_ = false;
 }
 
 void V1BLEClient::onUserBytesReceived(const uint8_t* bytes) {
-    if (verifyPending && bytes) {
-        memcpy(verifyReceived, bytes, 6);
-        verifyComplete = true;
-        verifyMatch = (memcmp(verifyExpected, verifyReceived, 6) == 0);
+    if (verifyPending_ && bytes) {
+        memcpy(verifyReceived_, bytes, 6);
+        verifyComplete_ = true;
+        verifyMatch_ = (memcmp(verifyExpected_, verifyReceived_, 6) == 0);
         Serial.printf("[VerifyPush] Received user bytes: %02X%02X%02X%02X%02X%02X (match=%s)\n",
-            verifyReceived[0], verifyReceived[1], verifyReceived[2],
-            verifyReceived[3], verifyReceived[4], verifyReceived[5],
-            verifyMatch ? "YES" : "NO");
-        verifyPending = false;
+            verifyReceived_[0], verifyReceived_[1], verifyReceived_[2],
+            verifyReceived_[3], verifyReceived_[4], verifyReceived_[5],
+            verifyMatch_ ? "YES" : "NO");
+        verifyPending_ = false;
     }
 }

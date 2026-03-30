@@ -33,7 +33,7 @@ typedef void (*ConnectionCallback)();
 // Centralized state to prevent overlapping operations and race conditions
 // Connection phases are broken into discrete states for non-blocking operation
 enum class BLEState {
-    DISCONNECTED,      // Not connected, not doing anything
+    DISCONNECTED,      // Not connected_, not doing anything
     SCANNING,          // Actively scanning for V1
     SCAN_STOPPING,     // Scan stop requested, waiting for settle
     CONNECTING,        // Connection attempt initiated (async)
@@ -41,7 +41,7 @@ enum class BLEState {
     DISCOVERING,       // Service discovery in progress (uses cached handles if available)
     SUBSCRIBING,       // Subscribing to characteristics (multi-step, non-blocking)
     SUBSCRIBE_YIELD,   // Yielding between subscribe steps to allow loop() to run
-    CONNECTED,         // Successfully connected to V1
+    CONNECTED,         // Successfully connected_ to V1
     BACKOFF            // Failed connection, waiting before retry
 };
 
@@ -120,17 +120,17 @@ public:
     // Check connection status
     bool isConnected();
 
-    // Get RSSI of connected V1 device (returns 0 if not connected)
+    // Get RSSI of connected_ V1 device (returns 0 if not connected_)
     int getConnectionRssi();
 
-    // Get RSSI of connected proxy client (app) (returns 0 if not connected)
+    // Get RSSI of connected_ proxy client (app) (returns 0 if not connected_)
     int getProxyClientRssi();
 
-    // Check if proxy client (app) is connected
+    // Check if proxy client (app) is connected_
     bool isProxyClientConnected();
 
     // Check if BLE proxy is enabled
-    bool isProxyEnabled() const { return proxyEnabled; }
+    bool isProxyEnabled() const { return proxyEnabled_; }
 
     // Check if proxy is actively advertising (only true after V1 connects)
     bool isProxyAdvertising() const;
@@ -141,7 +141,7 @@ public:
     bool forceProxyAdvertising(bool enable, uint8_t reasonCode = 0);
 
     // Set proxy client connection status (for internal callback use)
-    void setProxyClientConnected(bool connected);
+    void setProxyClientConnected(bool connected_);
 
     // Register callback for received data
     void onDataReceived(DataCallback callback);
@@ -219,17 +219,17 @@ public:
     bool isScanning();
 
     // Get current BLE state (for diagnostics)
-    BLEState getBLEState() const { return bleState; }
-    uint8_t getBLEStateCode() const { return bleStateToCode(bleState); }
-    bool isConnectInProgress() const { return connectInProgress; }
-    bool isAsyncConnectPending() const { return asyncConnectPending.load(std::memory_order_relaxed); }
+    BLEState getBLEState() const { return bleState_; }
+    uint8_t getBLEStateCode() const { return bleStateToCode(bleState_); }
+    bool isConnectInProgress() const { return connectInProgress_; }
+    bool isAsyncConnectPending() const { return asyncConnectPending_.load(std::memory_order_relaxed); }
     bool hasPendingDisconnectCleanup() const {
-        return pendingDisconnectCleanup.load(std::memory_order_relaxed);
+        return pendingDisconnectCleanup_.load(std::memory_order_relaxed);
     }
-    uint8_t getSubscribeStepCode() const { return static_cast<uint8_t>(subscribeStep); }
+    uint8_t getSubscribeStepCode() const { return static_cast<uint8_t>(subscribeStep_); }
     const char* getSubscribeStepName() const;
 
-    // Get the connected V1's BLE address
+    // Get the connected_ V1's BLE address
     NimBLEAddress getConnectedAddress() const;
 
     // Forward data to proxy clients (queues data for async send)
@@ -247,26 +247,26 @@ public:
     uint32_t getPhoneCmdDropsLockBusy() const;
 
     // Get proxy metrics (for instrumentation)
-    const ProxyMetrics& getProxyMetrics() const { return proxyMetrics; }
+    const ProxyMetrics& getProxyMetrics() const { return proxyMetrics_; }
 
     // Reset proxy notify/send metrics only; phone command drop counters reset with perfMetricsReset().
-    void resetProxyMetrics() { proxyMetrics.reset(); }
+    void resetProxyMetrics() { proxyMetrics_.reset(); }
 
     // WiFi priority mode - deprioritize BLE when web UI is active
     void setWifiPriority(bool enabled);  // Enable = suppress BLE activity
-    bool isWifiPriority() const { return wifiPriorityMode; }
+    bool isWifiPriority() const { return wifiPriorityMode_; }
 
     // Boot readiness gate - blocks BLE scan/connect state machine until setup is ready
     void setBootReady(bool ready);
-    bool isBootReady() const { return bootReadyFlag; }
+    bool isBootReady() const { return bootReadyFlag_; }
 
 private:
     // Nested callback classes - defined before member declarations that use them
     class ClientCallbacks : public NimBLEClientCallbacks {
     public:
-        void onConnect(NimBLEClient* pClient) override;
-        void onDisconnect(NimBLEClient* pClient, int reason) override;
-        void onPhyUpdate(NimBLEClient* pClient, uint8_t txPhy, uint8_t rxPhy) override;
+        void onConnect(NimBLEClient* pClient_) override;
+        void onDisconnect(NimBLEClient* pClient_, int reason) override;
+        void onPhyUpdate(NimBLEClient* pClient_, uint8_t txPhy, uint8_t rxPhy) override;
     };
 
     // NimBLE 2.x uses NimBLEScanCallbacks
@@ -282,8 +282,8 @@ private:
     class ProxyServerCallbacks : public NimBLEServerCallbacks {
     public:
         ProxyServerCallbacks(V1BLEClient* client) : bleClient(client) {}
-        void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override;
-        void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override;
+        void onConnect(NimBLEServer* pServer_, NimBLEConnInfo& connInfo) override;
+        void onDisconnect(NimBLEServer* pServer_, NimBLEConnInfo& connInfo, int reason) override;
     private:
         V1BLEClient* bleClient;
     };
@@ -308,33 +308,33 @@ private:
         int reason = 0;
     };
 
-    NimBLEClient* pClient;
-    NimBLERemoteService* pRemoteService;
-    NimBLERemoteCharacteristic* pDisplayDataChar;
-    NimBLERemoteCharacteristic* pCommandChar;
-    NimBLERemoteCharacteristic* pCommandCharLong;  // B8D2 - for long commands like voltage request
+    NimBLEClient* pClient_;
+    NimBLERemoteService* pRemoteService_;
+    NimBLERemoteCharacteristic* pDisplayDataChar_;
+    NimBLERemoteCharacteristic* pCommandChar_;
+    NimBLERemoteCharacteristic* pCommandCharLong_;  // B8D2 - for long commands like voltage request
     // Cached notify characteristic -> short UUID mapping for callback hot path.
     // Written during subscribe steps; read from notify callback without locking.
-    std::atomic<NimBLERemoteCharacteristic*> notifyShortChar{nullptr};
-    std::atomic<uint16_t> notifyShortCharId{0};
-    std::atomic<NimBLERemoteCharacteristic*> notifyLongChar{nullptr};
-    std::atomic<uint16_t> notifyLongCharId{0};
+    std::atomic<NimBLERemoteCharacteristic*> notifyShortChar_{nullptr};
+    std::atomic<uint16_t> notifyShortCharId_{0};
+    std::atomic<NimBLERemoteCharacteristic*> notifyLongChar_{nullptr};
+    std::atomic<uint16_t> notifyLongCharId_{0};
 
     // BLE Server (proxy) objects
-    NimBLEServer* pServer;
-    NimBLEService* pProxyService;
-    NimBLECharacteristic* pProxyNotifyChar;     // B2CE proxy - short display data
-    NimBLECharacteristic* pProxyNotifyLongChar; // B4E0 proxy - long alert/response data
-    NimBLECharacteristic* pProxyWriteChar;
-    bool proxyEnabled;
-    bool proxyServerInitialized;
-    std::atomic<bool> proxyClientConnected{false}; // Atomic for thread safety (set from BLE callbacks)
+    NimBLEServer* pServer_;
+    NimBLEService* pProxyService_;
+    NimBLECharacteristic* pProxyNotifyChar_;     // B2CE proxy - short display data
+    NimBLECharacteristic* pProxyNotifyLongChar_; // B4E0 proxy - long alert/response data
+    NimBLECharacteristic* pProxyWriteChar_;
+    bool proxyEnabled_;
+    bool proxyServerInitialized_;
+    std::atomic<bool> proxyClientConnected_{false}; // Atomic for thread safety (set from BLE callbacks)
     String proxyName_;
 
     // Synchronization primitives (mirroring Kenny's approach)
-    SemaphoreHandle_t bleMutex = nullptr;
-    SemaphoreHandle_t bleNotifyMutex = nullptr;
-    SemaphoreHandle_t phoneCmdMutex = nullptr;
+    SemaphoreHandle_t bleMutex_ = nullptr;
+    SemaphoreHandle_t bleNotifyMutex_ = nullptr;
+    SemaphoreHandle_t phoneCmdMutex_ = nullptr;
 
     // Proxy queue for decoupling notify from hot path
     static constexpr size_t PROXY_QUEUE_SIZE = 8;  // Small queue, drop-oldest on overflow
@@ -345,35 +345,35 @@ private:
         uint16_t charUUID;
         uint32_t tsMs;
     };
-    ProxyPacket* proxyQueue = nullptr;
+    ProxyPacket* proxyQueue_ = nullptr;
 
     // Phone→V1 command queue for safe writes (decoupled from callback context)
     static constexpr size_t PHONE_CMD_QUEUE_SIZE = 16;  // Small burst-tolerant queue for phone commands
     static constexpr size_t MAX_PHONE_CMDS_PER_LOOP = 4;
-    ProxyPacket* phone2v1Queue = nullptr;
-    bool proxyQueuesInPsram = false;
-    volatile size_t phone2v1QueueHead = 0;
-    volatile size_t phone2v1QueueTail = 0;
-    volatile size_t phone2v1QueueCount = 0;
-    volatile size_t proxyQueueHead = 0;  // Next write position
-    volatile size_t proxyQueueTail = 0;  // Next read position
-    volatile size_t proxyQueueCount = 0; // Current items in queue
-    ProxyMetrics proxyMetrics;
+    ProxyPacket* phone2v1Queue_ = nullptr;
+    bool proxyQueuesInPsram_ = false;
+    volatile size_t phone2v1QueueHead_ = 0;
+    volatile size_t phone2v1QueueTail_ = 0;
+    volatile size_t phone2v1QueueCount_ = 0;
+    volatile size_t proxyQueueHead_ = 0;  // Next write position
+    volatile size_t proxyQueueTail_ = 0;  // Next read position
+    volatile size_t proxyQueueCount_ = 0; // Current items in queue
+    ProxyMetrics proxyMetrics_;
 
-    DataCallback dataCallback;
-    ConnectionCallback connectImmediateCallback;
-    ConnectionCallback connectStableCallback;
-    std::atomic<bool> connected{false};      // Standalone connection flag; use atomic load/store for all direct accesses
-    std::atomic<bool> shouldConnect{false};  // Atomic for thread safety (set from BLE callbacks)
-    std::atomic<bool> pendingConnectStateUpdate{false};   // Deferred update from BLE callbacks
-    std::atomic<bool> pendingDisconnectCleanup{false};    // Deferred cleanup from BLE callbacks
-    std::atomic<bool> pendingDeleteBond{false};             // Deferred bond deletion from BLE callback
-    NimBLEAddress pendingDeleteBondAddr;                    // Address to delete bond for
-    std::atomic<bool> pendingLastV1AddressValid{false};    // Deferred settings save from BLE scan callback
-    char pendingLastV1Address[18] = {0};                  // "AA:BB:CC:DD:EE:FF" + null
-    std::atomic<bool> pendingScanEndUpdate{false};         // Deferred scan-end state update from BLE callback
-    std::atomic<bool> pendingScanTargetUpdate{false};      // Deferred target update from BLE scan callback
-    std::atomic<bool> phoneCmdPendingClear{false};         // Clear stale phone cmd state on reconnect
+    DataCallback dataCallback_;
+    ConnectionCallback connectImmediateCallback_;
+    ConnectionCallback connectStableCallback_;
+    std::atomic<bool> connected_{false};      // Standalone connection flag; use atomic load/store for all direct accesses
+    std::atomic<bool> shouldConnect_{false};  // Atomic for thread safety (set from BLE callbacks)
+    std::atomic<bool> pendingConnectStateUpdate_{false};   // Deferred update from BLE callbacks
+    std::atomic<bool> pendingDisconnectCleanup_{false};    // Deferred cleanup from BLE callbacks
+    std::atomic<bool> pendingDeleteBond_{false};             // Deferred bond deletion from BLE callback
+    NimBLEAddress pendingDeleteBondAddr_;                    // Address to delete bond for
+    std::atomic<bool> pendingLastV1AddressValid_{false};    // Deferred settings save from BLE scan callback
+    char pendingLastV1Address_[18] = {0};                  // "AA:BB:CC:DD:EE:FF" + null
+    std::atomic<bool> pendingScanEndUpdate_{false};         // Deferred scan-end state update from BLE callback
+    std::atomic<bool> pendingScanTargetUpdate_{false};      // Deferred target update from BLE scan callback
+    std::atomic<bool> phoneCmdPendingClear_{false};         // Clear stale phone cmd state on reconnect
     static constexpr size_t PROXY_CALLBACK_EVENT_QUEUE_DEPTH = 8;
     std::array<ProxyCallbackEvent, PROXY_CALLBACK_EVENT_QUEUE_DEPTH> proxyCallbackEventQueue_{};
     size_t proxyCallbackEventQueueHead_ = 0;
@@ -381,38 +381,38 @@ private:
     portMUX_TYPE proxyCallbackEventMux_ = portMUX_INITIALIZER_UNLOCKED;
 
     // Async discovery task (avoids ~2s block on main loop)
-    std::atomic<bool> discoveryTaskRunning{false};
-    std::atomic<bool> discoveryTaskDone{false};
-    std::atomic<bool> discoveryTaskResult{false};
+    std::atomic<bool> discoveryTaskRunning_{false};
+    std::atomic<bool> discoveryTaskDone_{false};
+    std::atomic<bool> discoveryTaskResult_{false};
     static void discoveryTaskFunc(void* param);
 
-    char pendingScanTargetAddress[18] = {0};               // "AA:BB:CC:DD:EE:FF" + null
-    uint8_t pendingScanTargetAddressType = BLE_ADDR_PUBLIC;
-    bool hasTargetDevice = false;
-    NimBLEAdvertisedDevice targetDevice;
-    NimBLEAddress targetAddress;
-    uint8_t targetAddressType = BLE_ADDR_PUBLIC;  // Saved from advertisement
-    unsigned long lastScanStart;
+    char pendingScanTargetAddress_[18] = {0};               // "AA:BB:CC:DD:EE:FF" + null
+    uint8_t pendingScanTargetAddressType_ = BLE_ADDR_PUBLIC;
+    bool hasTargetDevice_ = false;
+    NimBLEAdvertisedDevice targetDevice_;
+    NimBLEAddress targetAddress_;
+    uint8_t targetAddressType_ = BLE_ADDR_PUBLIC;  // Saved from advertisement
+    unsigned long lastScanStart_;
 
     // BLE State Machine - centralized connection state
-    BLEState bleState = BLEState::DISCONNECTED;
-    unsigned long stateEnteredMs = 0;       // When current state was entered
-    unsigned long scanStopRequestedMs = 0;  // When scan stop was requested
+    BLEState bleState_ = BLEState::DISCONNECTED;
+    unsigned long stateEnteredMs_ = 0;       // When current state was entered
+    unsigned long scanStopRequestedMs_ = 0;  // When scan stop was requested
     bool scanStopResultsCleared_ = false;   // One-shot clearResults gate for SCAN_STOPPING
     // ESP32-S3 BLE: radio needs time after scan to be ready for connect
     // Cold boot needs significantly more time for NimBLE stack to stabilize
     static constexpr unsigned long SCAN_STOP_SETTLE_MS = 100;        // 100ms settle for reconnects
     static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 200;  // 200ms on cold boot - tuned lower for faster first connect
-    bool firstScanAfterBoot = true;  // Use longer settle on first scan
+    bool firstScanAfterBoot_ = true;  // Use longer settle on first scan
 
     // Connection attempt guard - prevents overlapping attempts
-    bool connectInProgress = false;
-    unsigned long connectStartMs = 0;  // When connect started (for stuck detection)
+    bool connectInProgress_ = false;
+    unsigned long connectStartMs_ = 0;  // When connect started (for stuck detection)
 
     // Async connection tracking
-    std::atomic<bool> asyncConnectPending{false};   // Async connect in progress
-    std::atomic<bool> asyncConnectSuccess{false};   // Result from onConnect callback
-    uint8_t connectAttemptNumber = 0;               // Current attempt (1-based)
+    std::atomic<bool> asyncConnectPending_{false};   // Async connect in progress
+    std::atomic<bool> asyncConnectSuccess_{false};   // Result from onConnect callback
+    uint8_t connectAttemptNumber_ = 0;               // Current attempt (1-based)
     static constexpr uint8_t MAX_CONNECT_ATTEMPTS = 5;          // 5 attempts - more retries
     static constexpr uint16_t NIMBLE_CONN_INTERVAL_MIN = 12;
     static constexpr uint16_t NIMBLE_CONN_INTERVAL_MAX = 24;
@@ -424,16 +424,16 @@ private:
     static constexpr unsigned long NIMBLE_CONNECT_TIMEOUT_ACTIVE_MS = CONNECT_TIMEOUT_MS;
     static constexpr unsigned long DISCOVERY_TIMEOUT_MS = 5000; // 5s for discovery
     static constexpr unsigned long SUBSCRIBE_TIMEOUT_MS = 3000;  // 3s for subscriptions
-    uint32_t connectPhaseStartUs = 0;  // For timing individual phases
+    uint32_t connectPhaseStartUs_ = 0;  // For timing individual phases
 
     // Fresh flash detection - set when firmware version changed
-    bool freshFlashBoot = false;
+    bool freshFlashBoot_ = false;
     // Tracks the bond-count snapshot that has already been persisted to SD.
     // 0xFF means unknown/uninitialized.
-    uint8_t lastBondBackupCount = 0xFF;
-    bool pendingBondBackup = false;
-    uint8_t pendingBondBackupCount = 0xFF;
-    uint32_t pendingBondBackupRetryAtMs = 0;
+    uint8_t lastBondBackupCount_ = 0xFF;
+    bool pendingBondBackup_ = false;
+    uint8_t pendingBondBackupCount_ = 0xFF;
+    uint32_t pendingBondBackupRetryAtMs_ = 0;
     static constexpr uint32_t DEFERRED_BOND_BACKUP_RETRY_MS = 1000;
 
     // Non-blocking subscribe step machine
@@ -461,10 +461,10 @@ private:
         SCHEDULE_PROXY_ADVERTISING,
         BACKUP_BONDS,
     };
-    SubscribeStep subscribeStep = SubscribeStep::GET_SERVICE;
-    ConnectedFollowupStep connectedFollowupStep = ConnectedFollowupStep::NONE;
-    uint32_t subscribeStepStartUs = 0;    // When current step started
-    uint32_t subscribeYieldUntilMs = 0;   // When to resume from SUBSCRIBE_YIELD
+    SubscribeStep subscribeStep_ = SubscribeStep::GET_SERVICE;
+    ConnectedFollowupStep connectedFollowupStep_ = ConnectedFollowupStep::NONE;
+    uint32_t subscribeStepStartUs_ = 0;    // When current step started
+    uint32_t subscribeYieldUntilMs_ = 0;   // When to resume from SUBSCRIBE_YIELD
     static constexpr uint32_t SUBSCRIBE_STEP_BUDGET_US = 50000;  // 50ms per step max
     static constexpr uint32_t SUBSCRIBE_YIELD_MS = 5;            // 5ms yield between steps
     static constexpr uint32_t CONNECT_BURST_STABLE_BLE_MAX_US = 25000;
@@ -472,11 +472,11 @@ private:
     static constexpr uint8_t CONNECT_BURST_STABLE_CONSECUTIVE_LOOPS = 3;
     static constexpr uint32_t CONNECT_BURST_SETTLE_AFTER_FIRST_RX_MS = 1500;
     static constexpr uint32_t CONNECT_BURST_SETTLE_AFTER_CONNECTED_MS = 2500;
-    std::atomic<uint32_t> connectCompletedAtMs{0};
-    std::atomic<uint32_t> firstRxAfterConnectMs{0};
-    std::atomic<uint32_t> lastBleProcessDurationUs{0};
-    std::atomic<uint32_t> lastDisplayPipelineDurationUs{0};
-    uint8_t connectBurstStableLoopCount = 0;
+    std::atomic<uint32_t> connectCompletedAtMs_{0};
+    std::atomic<uint32_t> firstRxAfterConnectMs_{0};
+    std::atomic<uint32_t> lastBleProcessDurationUs_{0};
+    std::atomic<uint32_t> lastDisplayPipelineDurationUs_{0};
+    uint8_t connectBurstStableLoopCount_ = 0;
 
     // Async connect step functions
     bool startAsyncConnect();         // Initiate async connect
@@ -504,52 +504,52 @@ private:
     void deferLastV1Address(const char* addr);
 
     // Exponential backoff for connection failures (error 13 = BLE_HS_EBUSY)
-    uint8_t consecutiveConnectFailures = 0;
-    unsigned long nextConnectAllowedMs = 0;  // Backoff until this time
+    uint8_t consecutiveConnectFailures_ = 0;
+    unsigned long nextConnectAllowedMs_ = 0;  // Backoff until this time
 
     // Deferred proxy advertising start (non-blocking - avoids stall)
     // Tuned lower to reduce post-connect latency while preserving radio settle margin
-    unsigned long proxyAdvertisingStartMs = 0;  // When to start advertising (0 = not pending)
-    uint8_t proxyAdvertisingStartReasonCode = 0; // PerfProxyAdvertisingTransitionReason
+    unsigned long proxyAdvertisingStartMs_ = 0;  // When to start advertising (0 = not pending)
+    uint8_t proxyAdvertisingStartReasonCode_ = 0; // PerfProxyAdvertisingTransitionReason
     static constexpr unsigned long PROXY_STABILIZE_MS = 100;
-    // When STA is connected, limit idle proxy advertising windows to reduce radio churn.
-    unsigned long proxyAdvertisingWindowStartMs = 0;
-    unsigned long proxyAdvertisingRetryAtMs = 0;
+    // When STA is connected_, limit idle proxy advertising windows to reduce radio churn.
+    unsigned long proxyAdvertisingWindowStartMs_ = 0;
+    unsigned long proxyAdvertisingRetryAtMs_ = 0;
     static constexpr unsigned long PROXY_ADVERTISING_WINDOW_MS = 60000;
     static constexpr unsigned long PROXY_ADVERTISING_RETRY_MS = 120000;
     // If no proxy client connects within this boot-time window, disable proxy
     // advertising for the rest of the boot to protect DMA headroom.
     static constexpr unsigned long PROXY_NO_CLIENT_TIMEOUT_MS = 120000;  // 2 minutes
-    unsigned long proxyNoClientDeadlineMs = 0;
-    bool proxyNoClientTimeoutLatched = false;
-    bool proxyClientConnectedOnceThisBoot = false;
+    unsigned long proxyNoClientDeadlineMs_ = 0;
+    bool proxyNoClientTimeoutLatched_ = false;
+    bool proxyClientConnectedOnceThisBoot_ = false;
     bool proxySuppressedForObdHold_ = false;
     bool proxyDisconnectRequestedForObdPreempt_ = false;
     uint8_t proxySuppressedResumeReasonCode_ = 0;
     ObdBleArbitrationRequest obdBleArbitrationRequest_ = ObdBleArbitrationRequest::NONE;
 
     // Write verification state
-    bool verifyPending = false;
-    uint8_t verifyExpected[6] = {0};
-    uint8_t verifyReceived[6] = {0};
-    bool verifyComplete = false;
-    bool verifyMatch = false;
+    bool verifyPending_ = false;
+    uint8_t verifyExpected_[6] = {0};
+    uint8_t verifyReceived_[6] = {0};
+    bool verifyComplete_ = false;
+    bool verifyMatch_ = false;
 
     // Proxy command telemetry (logs in main loop, not in BLE callback)
-    bool proxyCmdPending = false;
-    uint8_t proxyCmdId = 0;
-    uint8_t proxyCmdLen = 0;
-    uint8_t proxyCmdBuf[8] = {0};
+    bool proxyCmdPending_ = false;
+    uint8_t proxyCmdId_ = 0;
+    uint8_t proxyCmdLen_ = 0;
+    uint8_t proxyCmdBuf_[8] = {0};
 
     // Callback handlers are RAII-owned to prevent manual delete mistakes.
-    std::unique_ptr<ScanCallbacks> pScanCallbacks;
-    std::unique_ptr<ClientCallbacks> pClientCallbacks;
-    std::unique_ptr<ProxyServerCallbacks> pProxyServerCallbacks;
-    std::unique_ptr<ProxyWriteCallbacks> pProxyWriteCallbacks;
+    std::unique_ptr<ScanCallbacks> pScanCallbacks_;
+    std::unique_ptr<ClientCallbacks> pClientCallbacks_;
+    std::unique_ptr<ProxyServerCallbacks> pProxyServerCallbacks_;
+    std::unique_ptr<ProxyWriteCallbacks> pProxyWriteCallbacks_;
 
     // WiFi priority mode flag
-    bool wifiPriorityMode = false;
-    bool bootReadyFlag = false;
+    bool wifiPriorityMode_ = false;
+    bool bootReadyFlag_ = false;
 
     // Initialize BLE server for proxy mode
     bool initProxyServer(const char* deviceName);

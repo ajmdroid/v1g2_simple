@@ -27,7 +27,7 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     int rssi = advertisedDevice->getRSSI();
 
     // Ignore our own proxy advertisement to avoid self-connect loops
-    if (bleClient->proxyEnabled) {
+    if (bleClient->proxyEnabled_) {
         NimBLEAddress selfAddr = NimBLEDevice::getAddress();
         if (advertisedDevice->getAddress() == selfAddr) {
             return;
@@ -57,9 +57,9 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     // *** FOUND V1! Stop scan and queue connection ***
     int advAddrType = advertisedDevice->getAddressType();
 
-    // Check if we're already connecting or connected
-    if (bleClient->bleState == BLEState::CONNECTING ||
-        bleClient->bleState == BLEState::CONNECTED) {
+    // Check if we're already connecting or connected_
+    if (bleClient->bleState_ == BLEState::CONNECTING ||
+        bleClient->bleState_ == BLEState::CONNECTED) {
         return;
     }
 
@@ -75,21 +75,21 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
     // Queue connection to this V1 device (non-blocking lock to avoid BLE callback stalls)
     // IMPORTANT: Don't copy full NimBLEAdvertisedDevice - it allocates memory which can fail
     // during heap pressure. Just store the address and type.
-    SemaphoreGuard lock(bleClient->bleMutex, 0);
+    SemaphoreGuard lock(bleClient->bleMutex_, 0);
     if (lock.locked()) {
         // Store just the address (no heap allocation)
-        bleClient->targetAddress = advertisedDevice->getAddress();
-        bleClient->targetAddressType = advAddrType;  // Save for reconnect
-        bleClient->hasTargetDevice = true;
-        bleClient->shouldConnect = true;
-        bleClient->scanStopRequestedMs = millis();
+        bleClient->targetAddress_ = advertisedDevice->getAddress();
+        bleClient->targetAddressType_ = advAddrType;  // Save for reconnect
+        bleClient->hasTargetDevice_ = true;
+        bleClient->shouldConnect_ = true;
+        bleClient->scanStopRequestedMs_ = millis();
         bleClient->setBLEState(BLEState::SCAN_STOPPING, "V1 found");
     } else {
         // Defer update to main loop if mutex is busy
         portENTER_CRITICAL(&pendingAddrMux);
-        snprintf(bleClient->pendingScanTargetAddress, sizeof(bleClient->pendingScanTargetAddress), "%s", addrStr.c_str());
-        bleClient->pendingScanTargetAddressType = static_cast<uint8_t>(advAddrType);
-        bleClient->pendingScanTargetUpdate = true;
+        snprintf(bleClient->pendingScanTargetAddress_, sizeof(bleClient->pendingScanTargetAddress_), "%s", addrStr.c_str());
+        bleClient->pendingScanTargetAddressType_ = static_cast<uint8_t>(advAddrType);
+        bleClient->pendingScanTargetUpdate_ = true;
         portEXIT_CRITICAL(&pendingAddrMux);
     }
 }
@@ -98,46 +98,46 @@ void V1BLEClient::ScanCallbacks::onScanEnd(const NimBLEScanResults& scanResults,
     // If we were SCANNING and scan ended without finding V1, go back to DISCONNECTED
     // to allow process() to restart the scan
     if (instancePtr) {
-        SemaphoreGuard lock(instancePtr->bleMutex, 0);
+        SemaphoreGuard lock(instancePtr->bleMutex_, 0);
         if (lock.locked()) {
-            if (instancePtr->bleState == BLEState::SCANNING) {
+            if (instancePtr->bleState_ == BLEState::SCANNING) {
                 // Scan ended without finding V1, go back to DISCONNECTED
                 instancePtr->setBLEState(BLEState::DISCONNECTED, "scan ended without finding V1");
             }
             // If SCAN_STOPPING, process() will handle the transition
         } else {
-            instancePtr->pendingScanEndUpdate = true;
+            instancePtr->pendingScanEndUpdate_ = true;
         }
     }
 }
 
 // ---- client callbacks -------------------------------------------------
 
-void V1BLEClient::ClientCallbacks::onPhyUpdate(NimBLEClient* pClient, uint8_t txPhy, uint8_t rxPhy) {
+void V1BLEClient::ClientCallbacks::onPhyUpdate(NimBLEClient* pClient_, uint8_t txPhy, uint8_t rxPhy) {
     Serial.printf("[BLE] PHY updated: tx=%s rx=%s\n",
                   txPhy == BLE_GAP_LE_PHY_2M ? "2M" : txPhy == BLE_GAP_LE_PHY_CODED ? "CODED" : "1M",
                   rxPhy == BLE_GAP_LE_PHY_2M ? "2M" : rxPhy == BLE_GAP_LE_PHY_CODED ? "CODED" : "1M");
 }
 
-void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient) {
+void V1BLEClient::ClientCallbacks::onConnect(NimBLEClient* pClient_) {
     // NOTE: BLE callback - keep fast, no blocking operations
     if (instancePtr) {
         // Signal async connect success (non-blocking atomic write)
-        instancePtr->asyncConnectSuccess = true;
-        instancePtr->asyncConnectPending = false;
+        instancePtr->asyncConnectSuccess_ = true;
+        instancePtr->asyncConnectPending_ = false;
 
-        SemaphoreGuard lock(instancePtr->bleMutex, 0);
+        SemaphoreGuard lock(instancePtr->bleMutex_, 0);
         if (lock.locked()) {
-            instancePtr->connected.store(true, std::memory_order_relaxed);
+            instancePtr->connected_.store(true, std::memory_order_relaxed);
             // Don't set CONNECTED state here - let state machine handle it
             // The async state machine will transition through DISCOVERING -> SUBSCRIBING -> CONNECTED
         } else {
-            instancePtr->pendingConnectStateUpdate = true;
+            instancePtr->pendingConnectStateUpdate_ = true;
         }
     }
 }
 
-void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reason) {
+void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient_, int reason) {
     // NOTE: BLE callback - minimize blocking. Log disconnect reason for diagnostics.
     PERF_INC(disconnects);  // Count V1 disconnections
     if (BLE_CALLBACK_LOGS) {
@@ -150,8 +150,8 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
     // blocking NimBLE host task.
     if (reason != 0 && reason != BLE_HS_ETIMEOUT) {
         if (instancePtr) {
-            instancePtr->pendingDeleteBondAddr = pClient->getPeerAddress();
-            instancePtr->pendingDeleteBond = true;
+            instancePtr->pendingDeleteBondAddr_ = pClient_->getPeerAddress();
+            instancePtr->pendingDeleteBond_ = true;
         }
     }
 
@@ -160,29 +160,29 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
         event.type = ProxyCallbackEventType::V1_DISCONNECTED;
         instancePtr->enqueueProxyCallbackEvent(event);
 
-        SemaphoreGuard lock(instancePtr->bleMutex, 0);
+        SemaphoreGuard lock(instancePtr->bleMutex_, 0);
         if (lock.locked()) {
-            instancePtr->connected.store(false, std::memory_order_relaxed);
-            instancePtr->connectInProgress = false;  // Clear connection guard
-            instancePtr->connectStartMs = 0;  // Clear async connect timer
-            instancePtr->connectedFollowupStep = ConnectedFollowupStep::NONE;
-            // Do NOT clear pClient - we reuse it to prevent memory leaks
-            instancePtr->pRemoteService = nullptr;
-            instancePtr->pDisplayDataChar = nullptr;
-            instancePtr->pCommandChar = nullptr;
-            instancePtr->pCommandCharLong = nullptr;
-            instancePtr->notifyShortChar.store(nullptr, std::memory_order_relaxed);
-            instancePtr->notifyShortCharId.store(0, std::memory_order_relaxed);
-            instancePtr->notifyLongChar.store(nullptr, std::memory_order_relaxed);
-            instancePtr->notifyLongCharId.store(0, std::memory_order_relaxed);
+            instancePtr->connected_.store(false, std::memory_order_relaxed);
+            instancePtr->connectInProgress_ = false;  // Clear connection guard
+            instancePtr->connectStartMs_ = 0;  // Clear async connect timer
+            instancePtr->connectedFollowupStep_ = ConnectedFollowupStep::NONE;
+            // Do NOT clear pClient_ - we reuse it to prevent memory leaks
+            instancePtr->pRemoteService_ = nullptr;
+            instancePtr->pDisplayDataChar_ = nullptr;
+            instancePtr->pCommandChar_ = nullptr;
+            instancePtr->pCommandCharLong_ = nullptr;
+            instancePtr->notifyShortChar_.store(nullptr, std::memory_order_relaxed);
+            instancePtr->notifyShortCharId_.store(0, std::memory_order_relaxed);
+            instancePtr->notifyLongChar_.store(nullptr, std::memory_order_relaxed);
+            instancePtr->notifyLongCharId_.store(0, std::memory_order_relaxed);
             // Reset verification state in case a write-verify was in progress
-            instancePtr->verifyPending = false;
-            instancePtr->verifyComplete = false;
-            instancePtr->verifyMatch = false;
+            instancePtr->verifyPending_ = false;
+            instancePtr->verifyComplete_ = false;
+            instancePtr->verifyMatch_ = false;
             // Set state to DISCONNECTED - will trigger scan restart in process()
             instancePtr->setBLEState(BLEState::DISCONNECTED, "onDisconnect callback");
         } else {
-            instancePtr->pendingDisconnectCleanup = true;
+            instancePtr->pendingDisconnectCleanup_ = true;
         }
     }
 }
@@ -190,13 +190,13 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient, int reaso
 // ---- connection state machine -----------------------------------------
 
 bool V1BLEClient::connectToServer() {
-    std::string addrStr = targetAddress.toString();
+    std::string addrStr = targetAddress_.toString();
 
     // ========== CONNECTION GUARDS ==========
     // Prevent overlapping connection attempts which cause EBUSY errors
 
     // Guard 1: Check if already connecting
-    if (connectInProgress) {
+    if (connectInProgress_) {
         return false;
     }
 
@@ -204,17 +204,17 @@ bool V1BLEClient::connectToServer() {
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (pScan && pScan->isScanning()) {
         pScan->stop();
-        scanStopRequestedMs = millis();
+        scanStopRequestedMs_ = millis();
         setBLEState(BLEState::SCAN_STOPPING, "connectToServer guard");
         return false;
     }
 
     // Guard 3: Check exponential backoff
     unsigned long now = millis();
-    if (consecutiveConnectFailures > 0 && static_cast<int32_t>(now - nextConnectAllowedMs) < 0) {
+    if (consecutiveConnectFailures_ > 0 && static_cast<int32_t>(now - nextConnectAllowedMs_) < 0) {
         {
-            SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: backoff check
-            shouldConnect = false;
+            SemaphoreGuard lock(bleMutex_, pdMS_TO_TICKS(20));  // COLD: backoff check
+            shouldConnect_ = false;
         }
         setBLEState(BLEState::BACKOFF, "backoff active");
         return false;
@@ -222,25 +222,25 @@ bool V1BLEClient::connectToServer() {
 
     // Set connection guard; CONNECTING state will initiate one async attempt
     // per loop() pass to avoid monopolizing a single iteration.
-    connectInProgress = true;
-    connectStartMs = millis();
-    connectAttemptNumber = 0;  // Reset for new connection sequence
-    asyncConnectPending = false;
-    asyncConnectSuccess = false;
-    connectPhaseStartUs = micros();  // Start timing connect phase
+    connectInProgress_ = true;
+    connectStartMs_ = millis();
+    connectAttemptNumber_ = 0;  // Reset for new connection sequence
+    asyncConnectPending_ = false;
+    asyncConnectSuccess_ = false;
+    connectPhaseStartUs_ = micros();  // Start timing connect phase
     setBLEState(BLEState::CONNECTING, "connectToServer");
     return true;
 }
 
 bool V1BLEClient::startAsyncConnect() {
-    std::string addrStr = targetAddress.toString();
-    connectAttemptNumber++;
+    std::string addrStr = targetAddress_.toString();
+    connectAttemptNumber_++;
 
     BLE_SM_LOGF("[BLE] Async connect attempt %d/%d to %s\n",
-                connectAttemptNumber, MAX_CONNECT_ATTEMPTS, addrStr.c_str());
+                connectAttemptNumber_, MAX_CONNECT_ATTEMPTS, addrStr.c_str());
 
     // CRITICAL: Stop proxy advertising - this competes with client connect!
-    if (proxyEnabled && NimBLEDevice::getAdvertising()->isAdvertising()) {
+    if (proxyEnabled_ && NimBLEDevice::getAdvertising()->isAdvertising()) {
         BLE_SM_LOGF("[BLE] Stopping proxy advertising before connect\n");
         NimBLEDevice::stopAdvertising();
         perfRecordProxyAdvertisingTransition(
@@ -259,75 +259,75 @@ bool V1BLEClient::startAsyncConnect() {
 
     // DON'T delete/recreate client - causes heap corruption and callback issues
     // Create client only if it doesn't exist
-    if (!pClient) {
-        pClient = NimBLEDevice::createClient();
-        if (!pClient) {
+    if (!pClient_) {
+        pClient_ = NimBLEDevice::createClient();
+        if (!pClient_) {
             Serial.println("[BLE] ERROR: Failed to create client");
-            connectInProgress = false;
-            connectStartMs = 0;
+            connectInProgress_ = false;
+            connectStartMs_ = 0;
             setBLEState(BLEState::DISCONNECTED, "client creation failed");
             return false;
         }
         // Create client callbacks if not already created
-        if (!pClientCallbacks) {
-            pClientCallbacks.reset(new ClientCallbacks());
+        if (!pClientCallbacks_) {
+            pClientCallbacks_.reset(new ClientCallbacks());
         }
-        pClient->setClientCallbacks(pClientCallbacks.get());
+        pClient_->setClientCallbacks(pClientCallbacks_.get());
     }
 
     // Connection parameters: 12-24 (15-30ms interval), balanced for stability
-    pClient->setConnectionParams(NIMBLE_CONN_INTERVAL_MIN,
+    pClient_->setConnectionParams(NIMBLE_CONN_INTERVAL_MIN,
                                  NIMBLE_CONN_INTERVAL_MAX,
                                  NIMBLE_CONN_LATENCY,
                                  NIMBLE_CONN_SUPERVISION_TIMEOUT);
     // Preserve current active-connect timeout behavior.
-    pClient->setConnectTimeout(NIMBLE_CONNECT_TIMEOUT_ACTIVE_MS);
+    pClient_->setConnectTimeout(NIMBLE_CONNECT_TIMEOUT_ACTIVE_MS);
 
     // Ensure client is disconnected before attempting
-    if (pClient->isConnected()) {
+    if (pClient_->isConnected()) {
         // Never block loop() waiting for disconnect. Stage a short retry delay.
-        Serial.println("[BLE] Client thinks it's connected; staging reconnect retry");
-        pClient->disconnect();
-        nextConnectAllowedMs = millis() + 100;
-        connectInProgress = false;
-        connectStartMs = 0;
+        Serial.println("[BLE] Client thinks it's connected_; staging reconnect retry");
+        pClient_->disconnect();
+        nextConnectAllowedMs_ = millis() + 100;
+        connectInProgress_ = false;
+        connectStartMs_ = 0;
         setBLEState(BLEState::BACKOFF, "waiting stale disconnect");
         return false;
     }
 
     // Clear async state before initiating connect
-    asyncConnectPending = true;
-    asyncConnectSuccess = false;
+    asyncConnectPending_ = true;
+    asyncConnectSuccess_ = false;
 
-    // Use ASYNCHRONOUS connect - returns immediately, callback will set asyncConnectSuccess
+    // Use ASYNCHRONOUS connect - returns immediately, callback will set asyncConnectSuccess_
     // NimBLE 2.x: connect(address, deleteAttributes, asyncConnect, exchangeMTU)
-    bool initiated = pClient->connect(targetAddress, true, true);
+    bool initiated = pClient_->connect(targetAddress_, true, true);
 
     if (!initiated) {
-        int err = pClient->getLastError();
+        int err = pClient_->getLastError();
         Serial.printf("[BLE] Async connect initiation failed (error: %d)\n", err);
         BLE_SM_LOGF("[BLE] Async connect initiation failed (error: %d)\n", err);
-        asyncConnectPending = false;
+        asyncConnectPending_ = false;
 
         // Check if we should retry
-        if (connectAttemptNumber < MAX_CONNECT_ATTEMPTS) {
+        if (connectAttemptNumber_ < MAX_CONNECT_ATTEMPTS) {
             // Retry next loop pass; don't spin multiple attempts in one process() call.
             return true;  // Keep state machine going
         }
 
         // All attempts exhausted
-        consecutiveConnectFailures++;
-        perfRecordBleConnectUs(micros() - connectPhaseStartUs);
+        consecutiveConnectFailures_++;
+        perfRecordBleConnectUs(micros() - connectPhaseStartUs_);
 
-        if (hitsV1BleHardResetThreshold(consecutiveConnectFailures)) {
+        if (hitsV1BleHardResetThreshold(consecutiveConnectFailures_)) {
             hardResetBLEClient();
             return false;
         }
 
-        nextConnectAllowedMs = millis() + computeV1BleBackoffMs(consecutiveConnectFailures);
+        nextConnectAllowedMs_ = millis() + computeV1BleBackoffMs(consecutiveConnectFailures_);
 
-        connectInProgress = false;
-        connectStartMs = 0;
+        connectInProgress_ = false;
+        connectStartMs_ = 0;
         setBLEState(BLEState::BACKOFF, "connect initiation failed");
         return false;
     }
@@ -341,21 +341,21 @@ bool V1BLEClient::startAsyncConnect() {
 // Now handles just the post-connect setup before discovery
 bool V1BLEClient::finishConnection() {
     // Success!
-    consecutiveConnectFailures = 0;
-    nextConnectAllowedMs = 0;
+    consecutiveConnectFailures_ = 0;
+    nextConnectAllowedMs_ = 0;
 
     // Record connect phase time
-    perfRecordBleConnectUs(micros() - connectPhaseStartUs);
+    perfRecordBleConnectUs(micros() - connectPhaseStartUs_);
     PERF_INC(reconnects);  // Count successful (re)connections
 
     // Log the negotiated connection parameters (interval units = 1.25ms, timeout units = 10ms)
     logConnParams("post-connect");
 
     // Transition to discovery phase
-    connectPhaseStartUs = micros();  // Reset timer for discovery phase
-    discoveryTaskRunning.store(false);
-    discoveryTaskDone.store(false);
-    discoveryTaskResult.store(false);
+    connectPhaseStartUs_ = micros();  // Reset timer for discovery phase
+    discoveryTaskRunning_.store(false);
+    discoveryTaskDone_.store(false);
+    discoveryTaskResult_.store(false);
     setBLEState(BLEState::DISCOVERING, "ready for discovery");
     return true;
 }
@@ -363,78 +363,78 @@ bool V1BLEClient::finishConnection() {
 // Process CONNECTING_WAIT state - polls for async connect completion
 void V1BLEClient::processConnectingWait() {
     unsigned long now = millis();
-    unsigned long elapsed = now - connectStartMs;
+    unsigned long elapsed = now - connectStartMs_;
 
     // Check for async connect success (set by onConnect callback)
-    if (asyncConnectSuccess) {
+    if (asyncConnectSuccess_) {
         BLE_SM_LOGF("[BLE] Async connect succeeded after %lu ms\n", elapsed);
         finishConnection();
         return;
     }
 
     // Check if still pending
-    if (asyncConnectPending) {
+    if (asyncConnectPending_) {
         // Check for overall timeout
         if (elapsed > CONNECT_TIMEOUT_MS) {
             BLE_SM_LOGF("[BLE] Async connect timeout after %lu ms\n", elapsed);
-            asyncConnectPending = false;
+            asyncConnectPending_ = false;
 
             // Try to abort the pending connect
-            if (pClient) {
-                pClient->disconnect();
+            if (pClient_) {
+                pClient_->disconnect();
             }
 
-            consecutiveConnectFailures++;
-            perfRecordBleConnectUs(micros() - connectPhaseStartUs);
+            consecutiveConnectFailures_++;
+            perfRecordBleConnectUs(micros() - connectPhaseStartUs_);
 
-            if (hitsV1BleHardResetThreshold(consecutiveConnectFailures)) {
+            if (hitsV1BleHardResetThreshold(consecutiveConnectFailures_)) {
                 hardResetBLEClient();
                 return;
             }
 
-            nextConnectAllowedMs = millis() + computeV1BleBackoffMs(consecutiveConnectFailures);
+            nextConnectAllowedMs_ = millis() + computeV1BleBackoffMs(consecutiveConnectFailures_);
 
-            connectInProgress = false;
-            connectStartMs = 0;
+            connectInProgress_ = false;
+            connectStartMs_ = 0;
             setBLEState(BLEState::BACKOFF, "connect timeout");
         }
         return;  // Still waiting
     }
 
-    // Async connect failed (asyncConnectPending cleared without asyncConnectSuccess)
-    int err = pClient ? pClient->getLastError() : -1;
-    Serial.printf("[BLE] Async connect attempt %d failed (error: %d)\n", connectAttemptNumber, err);
-    BLE_SM_LOGF("[BLE] Async connect attempt %d failed (error: %d)\n", connectAttemptNumber, err);
+    // Async connect failed (asyncConnectPending_ cleared without asyncConnectSuccess_)
+    int err = pClient_ ? pClient_->getLastError() : -1;
+    Serial.printf("[BLE] Async connect attempt %d failed (error: %d)\n", connectAttemptNumber_, err);
+    BLE_SM_LOGF("[BLE] Async connect attempt %d failed (error: %d)\n", connectAttemptNumber_, err);
 
     // Check if we should retry
-    if (connectAttemptNumber < MAX_CONNECT_ATTEMPTS) {
+    if (connectAttemptNumber_ < MAX_CONNECT_ATTEMPTS) {
         if (err == 13) {  // EBUSY - defer via backoff instead of blocking main loop
-            nextConnectAllowedMs = millis() + 150;  // 150ms non-blocking deferral
-            connectInProgress = false;
-            connectStartMs = 0;
+            nextConnectAllowedMs_ = millis() + 150;  // 150ms non-blocking deferral
+            connectInProgress_ = false;
+            connectStartMs_ = 0;
             setBLEState(BLEState::BACKOFF, "EBUSY retry");
             return;
         }
 
         // Retry on the next loop iteration to keep each process() slice bounded.
-        nextConnectAllowedMs = millis() + 20;
+        nextConnectAllowedMs_ = millis() + 20;
         setBLEState(BLEState::CONNECTING, "async connect retry");
         return;
     }
 
     // All attempts exhausted
-    consecutiveConnectFailures++;
-    perfRecordBleConnectUs(micros() - connectPhaseStartUs);
+    consecutiveConnectFailures_++;
+    perfRecordBleConnectUs(micros() - connectPhaseStartUs_);
 
-    if (hitsV1BleHardResetThreshold(consecutiveConnectFailures)) {
+    if (hitsV1BleHardResetThreshold(consecutiveConnectFailures_)) {
         hardResetBLEClient();
         return;
     }
 
-    nextConnectAllowedMs = millis() + computeV1BleBackoffMs(consecutiveConnectFailures);
+    nextConnectAllowedMs_ = millis() + computeV1BleBackoffMs(consecutiveConnectFailures_);
 
-    connectInProgress = false;
-    connectStartMs = 0;
+    connectInProgress_ = false;
+    connectStartMs_ = 0;
     setBLEState(BLEState::BACKOFF, "all connect attempts failed");
 }
 
@@ -443,10 +443,10 @@ void V1BLEClient::processConnectingWait() {
 // Static trampoline for async discovery task
 void V1BLEClient::discoveryTaskFunc(void* param) {
     V1BLEClient* self = static_cast<V1BLEClient*>(param);
-    bool result = self->pClient->discoverAttributes();
-    self->discoveryTaskResult.store(result);
-    self->discoveryTaskDone.store(true);
-    self->discoveryTaskRunning.store(false);
+    bool result = self->pClient_->discoverAttributes();
+    self->discoveryTaskResult_.store(result);
+    self->discoveryTaskDone_.store(true);
+    self->discoveryTaskRunning_.store(false);
     // Self-delete: IDF recommends external deletion, but this fire-and-forget
     // task has no external owner.  Deferred cleanup (prvTaskDeleteWithCapsTask)
     // handles the stack free safely.
@@ -456,28 +456,28 @@ void V1BLEClient::discoveryTaskFunc(void* param) {
 // Process DISCOVERING state - spawns discovery in a short-lived task
 // so the main loop stays responsive during the ~2s GATT discovery
 void V1BLEClient::processDiscovering() {
-    unsigned long elapsed = millis() - connectStartMs;
+    unsigned long elapsed = millis() - connectStartMs_;
 
     // Check for timeout
     // Safe even if discovery task is blocked: disconnect() sends HCI terminate,
     // NimBLE host task wakes the blocked task with BLE_HS_ENOTCONN, task exits cleanly
     if (elapsed > CONNECT_TIMEOUT_MS + DISCOVERY_TIMEOUT_MS) {
         Serial.println("[BLE] Discovery timeout");
-        perfRecordBleDiscoveryUs(micros() - connectPhaseStartUs);
+        perfRecordBleDiscoveryUs(micros() - connectPhaseStartUs_);
         disconnect();
-        connectInProgress = false;
-        connectStartMs = 0;
+        connectInProgress_ = false;
+        connectStartMs_ = 0;
         setBLEState(BLEState::DISCONNECTED, "discovery timeout");
         return;
     }
 
     // Spawn discovery task on first entry
     // Guard: wait for any prior discovery task to finish (e.g. after timeout/disconnect)
-    if (discoveryTaskRunning.load()) {
+    if (discoveryTaskRunning_.load()) {
         return;  // Previous task still winding down — yield
     }
-    if (!discoveryTaskDone.load()) {
-        discoveryTaskRunning.store(true);
+    if (!discoveryTaskDone_.load()) {
+        discoveryTaskRunning_.store(true);
         BaseType_t rc = xTaskCreatePinnedToCoreWithCaps(
             discoveryTaskFunc, "disc", 4096, this, 1, nullptr, tskNO_AFFINITY,
             MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
@@ -485,19 +485,19 @@ void V1BLEClient::processDiscovering() {
             // Never run discovery synchronously on the main loop; back off and retry.
             Serial.println("[BLE] disc task create failed - backing off");
             PERF_INC(bleDiscTaskCreateFail);
-            discoveryTaskResult.store(false);
-            discoveryTaskDone.store(true);
-            discoveryTaskRunning.store(false);
-            consecutiveConnectFailures++;
-            if (hitsV1BleHardResetThreshold(consecutiveConnectFailures)) {
+            discoveryTaskResult_.store(false);
+            discoveryTaskDone_.store(true);
+            discoveryTaskRunning_.store(false);
+            consecutiveConnectFailures_++;
+            if (hitsV1BleHardResetThreshold(consecutiveConnectFailures_)) {
                 hardResetBLEClient();
                 return;
             }
 
-            nextConnectAllowedMs = millis() + computeV1BleBackoffMs(consecutiveConnectFailures);
+            nextConnectAllowedMs_ = millis() + computeV1BleBackoffMs(consecutiveConnectFailures_);
 
-            connectInProgress = false;
-            connectStartMs = 0;
+            connectInProgress_ = false;
+            connectStartMs_ = 0;
             disconnect();
             setBLEState(BLEState::BACKOFF, "discovery task create failed");
         }
@@ -505,25 +505,25 @@ void V1BLEClient::processDiscovering() {
     }
 
     // Poll for completion — yield until task finishes
-    if (!discoveryTaskDone.load()) {
+    if (!discoveryTaskDone_.load()) {
         return;
     }
 
-    perfRecordBleDiscoveryUs(micros() - connectPhaseStartUs);
+    perfRecordBleDiscoveryUs(micros() - connectPhaseStartUs_);
 
-    if (!discoveryTaskResult.load()) {
+    if (!discoveryTaskResult_.load()) {
         Serial.println("[BLE] FAIL discovery");
         disconnect();
-        connectInProgress = false;
-        connectStartMs = 0;
+        connectInProgress_ = false;
+        connectStartMs_ = 0;
         setBLEState(BLEState::DISCONNECTED, "discovery failed");
         return;
     }
 
     // Transition to subscribe phase (uses step machine to break up CCCD writes)
-    connectPhaseStartUs = micros();  // Reset timer for subscribe phase
-    subscribeStep = SubscribeStep::GET_SERVICE;
-    subscribeStepStartUs = micros();
+    connectPhaseStartUs_ = micros();  // Reset timer for subscribe phase
+    subscribeStep_ = SubscribeStep::GET_SERVICE;
+    subscribeStepStartUs_ = micros();
     setBLEState(BLEState::SUBSCRIBING, "discovery complete");
 }
 
@@ -532,28 +532,28 @@ void V1BLEClient::processDiscovering() {
 // Process SUBSCRIBING state - non-blocking step machine
 // Each call executes one step then yields to allow loop() to run
 void V1BLEClient::processSubscribing() {
-    unsigned long elapsed = millis() - connectStartMs;
+    unsigned long elapsed = millis() - connectStartMs_;
 
     // Check for overall timeout
     if (elapsed > CONNECT_TIMEOUT_MS + DISCOVERY_TIMEOUT_MS + SUBSCRIBE_TIMEOUT_MS) {
         Serial.println("[BLE] Subscribe timeout");
-        perfRecordBleSubscribeUs(micros() - connectPhaseStartUs);
+        perfRecordBleSubscribeUs(micros() - connectPhaseStartUs_);
         disconnect();
         {
-            SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: subscribe timeout
-            shouldConnect = false;
-            hasTargetDevice = false;
+            SemaphoreGuard lock(bleMutex_, pdMS_TO_TICKS(20));  // COLD: subscribe timeout
+            shouldConnect_ = false;
+            hasTargetDevice_ = false;
         }
-        connectInProgress = false;
-        connectStartMs = 0;
+        connectInProgress_ = false;
+        connectStartMs_ = 0;
         setBLEState(BLEState::DISCONNECTED, "subscribe timeout");
         return;
     }
 
     // Execute one subscribe step
-    subscribeStepStartUs = micros();
+    subscribeStepStartUs_ = micros();
     bool done = executeSubscribeStep();
-    uint32_t stepDuration = micros() - subscribeStepStartUs;
+    uint32_t stepDuration = micros() - subscribeStepStartUs_;
 
     // Record step timing for attribution
     if (perfExtended.bleSubscribeMaxUs < stepDuration) {
@@ -563,105 +563,105 @@ void V1BLEClient::processSubscribing() {
     if (done) {
         // All steps complete - success!
         {
-            SemaphoreGuard lock(bleMutex, pdMS_TO_TICKS(20));  // COLD: subscribe complete
-            connected.store(true, std::memory_order_relaxed);
+            SemaphoreGuard lock(bleMutex_, pdMS_TO_TICKS(20));  // COLD: subscribe complete
+            connected_.store(true, std::memory_order_relaxed);
         }
         const uint32_t connectedNowMs = millis();
-        connectCompletedAtMs.store(connectedNowMs, std::memory_order_relaxed);
-        firstRxAfterConnectMs.store(0, std::memory_order_relaxed);
-        connectBurstStableLoopCount = 0;
-        connectedFollowupStep = ConnectedFollowupStep::REQUEST_ALERT_DATA;
-        perfRecordBleSubscribeUs(micros() - connectPhaseStartUs);
-        connectInProgress = false;
-        connectStartMs = 0;
+        connectCompletedAtMs_.store(connectedNowMs, std::memory_order_relaxed);
+        firstRxAfterConnectMs_.store(0, std::memory_order_relaxed);
+        connectBurstStableLoopCount_ = 0;
+        connectedFollowupStep_ = ConnectedFollowupStep::REQUEST_ALERT_DATA;
+        perfRecordBleSubscribeUs(micros() - connectPhaseStartUs_);
+        connectInProgress_ = false;
+        connectStartMs_ = 0;
         setBLEState(BLEState::CONNECTED, "subscribe complete");
-        if (connectImmediateCallback) {
-            connectImmediateCallback();
+        if (connectImmediateCallback_) {
+            connectImmediateCallback_();
         }
         Serial.println("[BLE] OK");
         return;
     }
 
     // Step completed but more to do - yield to loop()
-    subscribeYieldUntilMs = millis() + SUBSCRIBE_YIELD_MS;
+    subscribeYieldUntilMs_ = millis() + SUBSCRIBE_YIELD_MS;
     setBLEState(BLEState::SUBSCRIBE_YIELD, "yield between steps");
 }
 
 // Process SUBSCRIBE_YIELD state - wait briefly then resume subscribing
 void V1BLEClient::processSubscribeYield() {
-    if (static_cast<int32_t>(millis() - subscribeYieldUntilMs) >= 0) {
+    if (static_cast<int32_t>(millis() - subscribeYieldUntilMs_) >= 0) {
         setBLEState(BLEState::SUBSCRIBING, "resuming subscribe");
     }
 }
 
 // Execute one subscribe step, return true when all steps complete
 bool V1BLEClient::executeSubscribeStep() {
-    switch (subscribeStep) {
+    switch (subscribeStep_) {
         case SubscribeStep::GET_SERVICE: {
-            pRemoteService = pClient->getService(V1_SERVICE_UUID);
-            if (!pRemoteService) {
+            pRemoteService_ = pClient_->getService(V1_SERVICE_UUID);
+            if (!pRemoteService_) {
                 Serial.println("[BLE] FAIL service");
                 return false;  // Will trigger failure handling
             }
-            subscribeStep = SubscribeStep::GET_DISPLAY_CHAR;
+            subscribeStep_ = SubscribeStep::GET_DISPLAY_CHAR;
             return false;  // More steps to do
         }
 
         case SubscribeStep::GET_DISPLAY_CHAR: {
-            pDisplayDataChar = pRemoteService->getCharacteristic(V1_DISPLAY_DATA_UUID);
-            if (!pDisplayDataChar) {
+            pDisplayDataChar_ = pRemoteService_->getCharacteristic(V1_DISPLAY_DATA_UUID);
+            if (!pDisplayDataChar_) {
                 Serial.println("[BLE] FAIL display char");
                 return false;
             }
-            notifyShortChar.store(pDisplayDataChar, std::memory_order_relaxed);
-            notifyShortCharId.store(shortUuid(pDisplayDataChar->getUUID()), std::memory_order_relaxed);
-            subscribeStep = SubscribeStep::GET_COMMAND_CHAR;
+            notifyShortChar_.store(pDisplayDataChar_, std::memory_order_relaxed);
+            notifyShortCharId_.store(shortUuid(pDisplayDataChar_->getUUID()), std::memory_order_relaxed);
+            subscribeStep_ = SubscribeStep::GET_COMMAND_CHAR;
             return false;
         }
 
         case SubscribeStep::GET_COMMAND_CHAR: {
-            pCommandChar = pRemoteService->getCharacteristic(V1_COMMAND_WRITE_UUID);
-            NimBLERemoteCharacteristic* altCommandChar = pRemoteService->getCharacteristic(V1_COMMAND_WRITE_ALT_UUID);
+            pCommandChar_ = pRemoteService_->getCharacteristic(V1_COMMAND_WRITE_UUID);
+            NimBLERemoteCharacteristic* altCommandChar = pRemoteService_->getCharacteristic(V1_COMMAND_WRITE_ALT_UUID);
 
             // Prefer primary, fall back to alt if needed
-            if (!pCommandChar || (!pCommandChar->canWrite() && !pCommandChar->canWriteNoResponse())) {
+            if (!pCommandChar_ || (!pCommandChar_->canWrite() && !pCommandChar_->canWriteNoResponse())) {
                 if (altCommandChar && (altCommandChar->canWrite() || altCommandChar->canWriteNoResponse())) {
-                    pCommandChar = altCommandChar;
+                    pCommandChar_ = altCommandChar;
                 } else {
-                    pCommandChar = nullptr;
+                    pCommandChar_ = nullptr;
                     Serial.println("[BLE] FAIL command char");
                     return false;
                 }
             }
-            subscribeStep = SubscribeStep::GET_COMMAND_LONG;
+            subscribeStep_ = SubscribeStep::GET_COMMAND_LONG;
             return false;
         }
 
         case SubscribeStep::GET_COMMAND_LONG: {
-            pCommandCharLong = pRemoteService->getCharacteristic(V1_COMMAND_WRITE_LONG_UUID);
+            pCommandCharLong_ = pRemoteService_->getCharacteristic(V1_COMMAND_WRITE_LONG_UUID);
             // B8D2 is optional - don't log either way
-            subscribeStep = SubscribeStep::SUBSCRIBE_DISPLAY;
+            subscribeStep_ = SubscribeStep::SUBSCRIBE_DISPLAY;
             return false;
         }
 
         case SubscribeStep::SUBSCRIBE_DISPLAY: {
             bool subscribed = false;
-            if (pDisplayDataChar->canNotify()) {
-                subscribed = pDisplayDataChar->subscribe(true, notifyCallback, true);
-            } else if (pDisplayDataChar->canIndicate()) {
-                subscribed = pDisplayDataChar->subscribe(false, notifyCallback);
+            if (pDisplayDataChar_->canNotify()) {
+                subscribed = pDisplayDataChar_->subscribe(true, notifyCallback, true);
+            } else if (pDisplayDataChar_->canIndicate()) {
+                subscribed = pDisplayDataChar_->subscribe(false, notifyCallback);
             }
 
             if (!subscribed) {
                 Serial.println("[BLE] FAIL subscribe B2CE");
                 return false;
             }
-            subscribeStep = SubscribeStep::GET_DISPLAY_LONG;
+            subscribeStep_ = SubscribeStep::GET_DISPLAY_LONG;
             return false;
         }
 
         case SubscribeStep::WRITE_DISPLAY_CCCD: {
-            NimBLERemoteDescriptor* cccd = pDisplayDataChar->getDescriptor(NimBLEUUID((uint16_t)0x2902));
+            NimBLERemoteDescriptor* cccd = pDisplayDataChar_->getDescriptor(NimBLEUUID((uint16_t)0x2902));
             if (cccd) {
                 uint8_t notifOn[] = {0x01, 0x00};
                 if (!cccd->writeValue(notifOn, sizeof(notifOn), true)) {
@@ -669,36 +669,36 @@ bool V1BLEClient::executeSubscribeStep() {
                     return false;
                 }
             }
-            subscribeStep = SubscribeStep::GET_DISPLAY_LONG;
+            subscribeStep_ = SubscribeStep::GET_DISPLAY_LONG;
             return false;
         }
 
         case SubscribeStep::GET_DISPLAY_LONG: {
             // Get B4E0 characteristic (non-critical, used for voltage passthrough)
-            NimBLERemoteCharacteristic* pDisplayLong = pRemoteService->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
-            notifyLongChar.store(pDisplayLong, std::memory_order_relaxed);
-            notifyLongCharId.store(pDisplayLong ? shortUuid(pDisplayLong->getUUID()) : 0,
+            NimBLERemoteCharacteristic* pDisplayLong = pRemoteService_->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
+            notifyLongChar_.store(pDisplayLong, std::memory_order_relaxed);
+            notifyLongCharId_.store(pDisplayLong ? shortUuid(pDisplayLong->getUUID()) : 0,
                                    std::memory_order_relaxed);
             if (pDisplayLong && pDisplayLong->canNotify()) {
-                subscribeStep = SubscribeStep::SUBSCRIBE_LONG;
+                subscribeStep_ = SubscribeStep::SUBSCRIBE_LONG;
             } else {
-                subscribeStep = SubscribeStep::REQUEST_ALERT_DATA;  // Skip LONG subscribe
+                subscribeStep_ = SubscribeStep::REQUEST_ALERT_DATA;  // Skip LONG subscribe
             }
             return false;
         }
 
         case SubscribeStep::SUBSCRIBE_LONG: {
-            NimBLERemoteCharacteristic* pDisplayLong = pRemoteService->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
+            NimBLERemoteCharacteristic* pDisplayLong = pRemoteService_->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
             if (pDisplayLong && pDisplayLong->subscribe(true, notifyCallback, true)) {
-                subscribeStep = SubscribeStep::REQUEST_ALERT_DATA;
+                subscribeStep_ = SubscribeStep::REQUEST_ALERT_DATA;
             } else {
-                subscribeStep = SubscribeStep::REQUEST_ALERT_DATA;
+                subscribeStep_ = SubscribeStep::REQUEST_ALERT_DATA;
             }
             return false;
         }
 
         case SubscribeStep::WRITE_LONG_CCCD: {
-            NimBLERemoteCharacteristic* pDisplayLong = pRemoteService->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
+            NimBLERemoteCharacteristic* pDisplayLong = pRemoteService_->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
             if (pDisplayLong) {
                 NimBLERemoteDescriptor* cccdLong = pDisplayLong->getDescriptor(NimBLEUUID((uint16_t)0x2902));
                 if (cccdLong) {
@@ -706,17 +706,17 @@ bool V1BLEClient::executeSubscribeStep() {
                     cccdLong->writeValue(notifOn, sizeof(notifOn), true);
                 }
             }
-            subscribeStep = SubscribeStep::REQUEST_ALERT_DATA;
+            subscribeStep_ = SubscribeStep::REQUEST_ALERT_DATA;
             return false;
         }
 
         case SubscribeStep::REQUEST_ALERT_DATA: {
-            subscribeStep = SubscribeStep::REQUEST_VERSION;
+            subscribeStep_ = SubscribeStep::REQUEST_VERSION;
             return false;
         }
 
         case SubscribeStep::REQUEST_VERSION: {
-            subscribeStep = SubscribeStep::COMPLETE;
+            subscribeStep_ = SubscribeStep::COMPLETE;
             return true;  // All done!
         }
 
@@ -730,11 +730,11 @@ bool V1BLEClient::executeSubscribeStep() {
 // ---- helpers ----------------------------------------------------------
 
 void V1BLEClient::logConnParams(const char* tag) {
-    if (!pClient) {
+    if (!pClient_) {
         return;
     }
 
-    NimBLEConnInfo info = pClient->getConnInfo();
+    NimBLEConnInfo info = pClient_->getConnInfo();
     float intervalMs = info.getConnInterval() * 1.25f;
 
     Serial.printf("[BLE] Conn params (%s): interval=%.2f ms latency=%u\\n",
@@ -756,12 +756,12 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
     }
 
     uint16_t charId = 0;
-    NimBLERemoteCharacteristic* shortChar = instancePtr->notifyShortChar.load(std::memory_order_relaxed);
-    NimBLERemoteCharacteristic* longChar = instancePtr->notifyLongChar.load(std::memory_order_relaxed);
+    NimBLERemoteCharacteristic* shortChar = instancePtr->notifyShortChar_.load(std::memory_order_relaxed);
+    NimBLERemoteCharacteristic* longChar = instancePtr->notifyLongChar_.load(std::memory_order_relaxed);
     if (pChar == shortChar) {
-        charId = instancePtr->notifyShortCharId.load(std::memory_order_relaxed);
+        charId = instancePtr->notifyShortCharId_.load(std::memory_order_relaxed);
     } else if (pChar == longChar) {
-        charId = instancePtr->notifyLongCharId.load(std::memory_order_relaxed);
+        charId = instancePtr->notifyLongCharId_.load(std::memory_order_relaxed);
     }
     if (charId == 0) {
         charId = shortUuid(pChar->getUUID());
@@ -788,13 +788,13 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
     // Forward to proxy via the proxy queue only. Keep BLE callback path notify-free.
     instancePtr->forwardToProxy(pData, length, routeCharId);
 
-    if (instancePtr->connected.load(std::memory_order_relaxed) &&
-        instancePtr->firstRxAfterConnectMs.load(std::memory_order_relaxed) == 0) {
-        instancePtr->firstRxAfterConnectMs.store(millis(), std::memory_order_relaxed);
+    if (instancePtr->connected_.load(std::memory_order_relaxed) &&
+        instancePtr->firstRxAfterConnectMs_.load(std::memory_order_relaxed) == 0) {
+        instancePtr->firstRxAfterConnectMs_.store(millis(), std::memory_order_relaxed);
     }
 
     // Call user callback for display processing (queued to main loop for SPI safety)
-    if (instancePtr->dataCallback) {
-        instancePtr->dataCallback(pData, length, charId);
+    if (instancePtr->dataCallback_) {
+        instancePtr->dataCallback_(pData, length, charId);
     }
 }
