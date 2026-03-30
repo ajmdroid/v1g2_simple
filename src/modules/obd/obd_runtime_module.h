@@ -506,5 +506,3 @@ private:
     bool testLastWriteWithResponse_ = true;
 #endif
 };
-
-extern ObdRuntimeModule obdRuntimeModule;

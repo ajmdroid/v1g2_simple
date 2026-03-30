@@ -15,7 +15,7 @@ static void resetRuntime() {
     gpsRuntimeModule = GpsRuntimeModule();
     mockMillis = 1;
     mockMicros = 1000;
-    gpsRuntimeModule.begin(true);
+    gpsRuntimeModule.begin(true, &gpsObservationLog);
 }
 
 void setUp() {

@@ -82,5 +82,3 @@ public:
     bool rotateIfNeededForTest(fs::FS& fs) { return rotateIfNeeded(fs); }
 #endif
 };
-
-extern SignalObservationSdLogger signalObservationSdLogger;

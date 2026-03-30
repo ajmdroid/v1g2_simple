@@ -7,11 +7,15 @@
 #include "../speed/speed_source_selector.h"
 
 class PacketParser;
+class SignalObservationSdLogger;
 struct GpsRuntimeStatus;
 
 // Captures bounded lockout-candidate observations from the current V1 alert set.
 class SignalCaptureModule {
 public:
+    /// Wire dependencies. Must be called once before capturePriorityObservation().
+    /// Both pointers must remain valid for the lifetime of this module.
+    void begin(SignalObservationLog* log, SignalObservationSdLogger* sdLogger);
     void reset();
     // Convenience overload for harnesses that do not supply canonical
     // selected-speed state. Speed remains unavailable in that path.
@@ -41,6 +45,6 @@ private:
 
     RecentBucket recentBuckets_[kRecentBucketCount] = {};
     size_t nextRecentBucketIndex_ = 0;
+    SignalObservationLog*      signalObservationLog_    = nullptr;
+    SignalObservationSdLogger* signalObservationSdLogger_ = nullptr;
 };
-
-extern SignalCaptureModule signalCaptureModule;

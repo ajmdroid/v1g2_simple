@@ -5,7 +5,6 @@ class SignalObservationSdLogger {
 public:
     bool enqueue(const SignalObservation& observation);
 };
-extern SignalObservationSdLogger signalObservationSdLogger;
 #else
 #include "signal_observation_sd_logger.h"
 #endif
@@ -26,6 +25,11 @@ constexpr int32_t SIGNAL_OBS_LOCATION_TOL_E5 = 25;  // ~28m latitude
 }  // namespace
 
 SignalCaptureModule signalCaptureModule;
+
+void SignalCaptureModule::begin(SignalObservationLog* log, SignalObservationSdLogger* sdLogger) {
+    signalObservationLog_      = log;
+    signalObservationSdLogger_ = sdLogger;
+}
 
 void SignalCaptureModule::reset() {
     for (size_t i = 0; i < kRecentBucketCount; ++i) {
@@ -185,10 +189,12 @@ void SignalCaptureModule::capturePriorityObservation(uint32_t nowMs,
             continue;
         }
 
-        if (bandSupportedForLockout) {
-            signalObservationLog.publish(observation);
+        if (bandSupportedForLockout && signalObservationLog_) {
+            signalObservationLog_->publish(observation);
         }
-        signalObservationSdLogger.enqueue(observation);
+        if (signalObservationSdLogger_) {
+            signalObservationSdLogger_->enqueue(observation);
+        }
         if (publishedCount < PacketParser::MAX_ALERTS) {
             publishedObservations[publishedCount] = observation;
             publishedBucketIndices[publishedCount] = matchedBucketIndex;

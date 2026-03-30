@@ -14,6 +14,9 @@
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/obd/obd_runtime_module.h"
 
+extern GpsRuntimeModule gpsRuntimeModule;
+extern ObdRuntimeModule obdRuntimeModule;
+
 // ============================================================================
 // Base frame
 // ============================================================================

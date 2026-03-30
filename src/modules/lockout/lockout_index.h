@@ -169,5 +169,3 @@ private:
 
     LockoutEntry entries_[kCapacity] = {};
 };
-
-extern LockoutIndex lockoutIndex;

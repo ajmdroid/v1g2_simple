@@ -55,6 +55,7 @@ static GpsRuntimeStatus makeGps() {
 
 void setUp() {
     lockoutSetKaLearningEnabled(false);
+    signalCaptureModule.begin(&signalObservationLog, &signalObservationSdLogger);
     signalCaptureModule.reset();
     signalObservationLog.reset();
     sdEnqueueCount = 0;

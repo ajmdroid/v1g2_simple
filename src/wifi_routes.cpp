@@ -36,6 +36,16 @@
 #include "battery_manager.h"
 #include <LittleFS.h>
 
+extern GpsRuntimeModule          gpsRuntimeModule;
+extern GpsObservationLog         gpsObservationLog;
+extern SpeedSourceSelector       speedSourceSelector;
+extern LockoutLearner            lockoutLearner;
+extern LockoutIndex              lockoutIndex;
+extern LockoutStore              lockoutStore;
+extern SignalObservationLog      signalObservationLog;
+extern SignalObservationSdLogger signalObservationSdLogger;
+extern ObdRuntimeModule          obdRuntimeModule;
+
 bool WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
     if (!LittleFS.begin(false, "/littlefs", 10, "storage")) {
@@ -111,12 +121,14 @@ bool WiFiManager::setupWebServer() {
             []() { return millis(); },
             rateLimitCallback);
     });
-    server.on("/api/profile/push", HTTP_POST, [this, rateLimitCallback]() { 
+    server.on("/api/profile/push", HTTP_POST, [this]() {
         WifiControlApiService::handleApiProfilePush(
             server,
             bleClient.isConnected(),
-            requestProfilePush,
-            rateLimitCallback); 
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->requestProfilePush(); },
+            this,
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); },
+            this);
     });
     
     // Legacy status endpoint
@@ -136,17 +148,25 @@ bool WiFiManager::setupWebServer() {
         WifiSettingsApiService::handleApiDeviceSettingsSave(server, makeSettingsRuntime());
     });
     
-    server.on("/darkmode", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/darkmode", HTTP_POST, [this]() {
         WifiControlApiService::handleApiDarkMode(
             server,
-            sendV1Command,
-            rateLimitCallback);
+            [](const char* cmd, bool val, void* ctx) {
+                return static_cast<WiFiManager*>(ctx)->sendV1Command(cmd, val);
+            },
+            this,
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); },
+            this);
     });
-    server.on("/mute", HTTP_POST, [this, rateLimitCallback]() {
+    server.on("/mute", HTTP_POST, [this]() {
         WifiControlApiService::handleApiMute(
             server,
-            sendV1Command,
-            rateLimitCallback);
+            [](const char* cmd, bool val, void* ctx) {
+                return static_cast<WiFiManager*>(ctx)->sendV1Command(cmd, val);
+            },
+            this,
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); },
+            this);
     });
     
     // Lightweight health and captive-portal helpers
@@ -473,6 +493,7 @@ bool WiFiManager::setupWebServer() {
             server,
             lockoutIndex,
             lockoutLearner,
+            lockoutStore,
             settingsManager,
             rateLimitCallback,
             markUiActivityCallback);

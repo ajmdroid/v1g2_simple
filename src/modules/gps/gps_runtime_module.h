@@ -3,12 +3,14 @@
 #include <Arduino.h>
 #include "gps_runtime_status.h"
 
+class GpsObservationLog;
+
 class GpsRuntimeModule {
 public:
     // Freshness budget for GPS sample telemetry.
     static constexpr uint32_t SAMPLE_MAX_AGE_MS = 3000;
 
-    void begin(bool enabled);
+    void begin(bool enabled, GpsObservationLog* log = nullptr);
     void setEnabled(bool enabled);
     bool isEnabled() const { return enabled_; }
 
@@ -74,6 +76,7 @@ private:
     static bool sentenceTypeEquals(const char* type, const char* suffix);
     void tryUpdateGpsTime(const char* timeField, const char* dateField, uint32_t nowMs);
 
+    GpsObservationLog* log_ = nullptr;
     bool enabled_ = false;
     bool sampleValid_ = false;
     bool hasFix_ = false;
@@ -112,5 +115,3 @@ private:
     size_t sentenceLen_ = 0;
     char sentenceBuf_[NMEA_LINE_MAX] = {};
 };
-
-extern GpsRuntimeModule gpsRuntimeModule;

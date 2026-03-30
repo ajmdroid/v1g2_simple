@@ -68,7 +68,7 @@ void setUp() {
     lockoutSetKaLearningEnabled(false);
     testIndex.clear();
     testLog.reset();
-    learner.begin(&testIndex, &testLog);
+    learner.begin(&testIndex, &testLog, nullptr, &roadMapReader);
 }
 
 void tearDown() {}

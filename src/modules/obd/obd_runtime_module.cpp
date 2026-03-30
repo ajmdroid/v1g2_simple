@@ -8,6 +8,8 @@
 #ifndef UNIT_TEST
 #include "ble_client.h"
 #include "obd_ble_client.h"
+extern ObdBleClient obdBleClient;
+extern ObdRuntimeModule obdRuntimeModule;
 
 extern "C" {
 #include "nimble/nimble/host/include/host/ble_att.h"

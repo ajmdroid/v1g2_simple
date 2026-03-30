@@ -5,7 +5,9 @@
 #include <ArduinoJson.h>
 
 class LockoutIndex;
+class LockoutStore;
 class SignalObservationLog;
+class RoadMapReader;
 struct SignalObservation;
 
 /// A proto-lockout zone accumulating evidence from signal observations.
@@ -57,7 +59,7 @@ public:
     static constexpr uint8_t kPersistVersion = 2;
 
     /// Wire dependencies. Must be called once before process().
-    void begin(LockoutIndex* index, SignalObservationLog* log);
+    void begin(LockoutIndex* index, SignalObservationLog* log, LockoutStore* store = nullptr, RoadMapReader* roadMapReader = nullptr);
 
     // Runtime tuning (persisted in SettingsManager and applied at boot/runtime).
     void setTuning(uint8_t promotionHits,
@@ -120,6 +122,8 @@ private:
 
     LockoutIndex*         index_ = nullptr;
     SignalObservationLog* log_   = nullptr;
+    LockoutStore*         store_ = nullptr;
+    RoadMapReader*        roadMapReader_ = nullptr;
 
     LearnerCandidate candidates_[kCandidateCapacity] = {};
     uint32_t lastProcessedPublished_ = 0;
@@ -138,5 +142,3 @@ private:
 
     static constexpr uint32_t LOG_INTERVAL_MS = 10000;
 };
-
-extern LockoutLearner lockoutLearner;

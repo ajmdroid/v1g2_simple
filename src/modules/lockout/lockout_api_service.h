@@ -31,6 +31,7 @@ void handleApiEvents(WebServer& server,
 void handleApiZones(WebServer& server,
                     LockoutIndex& lockoutIndex,
                     LockoutLearner& lockoutLearner,
+                    LockoutStore& lockoutStore,
                     SettingsManager& settingsManager,
                     const std::function<bool()>& checkRateLimit,
                     const std::function<void()>& markUiActivity);

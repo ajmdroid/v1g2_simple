@@ -5,6 +5,7 @@
 
 #include "obd_ble_client.h"
 #include "obd_runtime_module.h"
+extern ObdRuntimeModule obdRuntimeModule;
 #include "obd_scan_policy.h"
 
 #include <cstring>

@@ -2,8 +2,6 @@
 
 #include <WebServer.h>
 
-#include <functional>
-
 namespace WifiControlApiService {
 
 enum class ProfilePushResult : uint8_t {
@@ -14,15 +12,21 @@ enum class ProfilePushResult : uint8_t {
 
 void handleApiProfilePush(WebServer& server,
                           bool v1Connected,
-                          const std::function<ProfilePushResult()>& requestProfilePush,
-                          const std::function<bool()>& checkRateLimit);
+                          ProfilePushResult (*requestProfilePush)(void* ctx),
+                          void* pushCtx,
+                          bool (*checkRateLimit)(void* ctx),
+                          void* rateLimitCtx);
 
 void handleApiDarkMode(WebServer& server,
-                       const std::function<bool(const char*, bool)>& sendV1Command,
-                       const std::function<bool()>& checkRateLimit);
+                       bool (*sendV1Command)(const char* cmd, bool val, void* ctx),
+                       void* cmdCtx,
+                       bool (*checkRateLimit)(void* ctx),
+                       void* rateLimitCtx);
 
 void handleApiMute(WebServer& server,
-                   const std::function<bool(const char*, bool)>& sendV1Command,
-                   const std::function<bool()>& checkRateLimit);
+                   bool (*sendV1Command)(const char* cmd, bool val, void* ctx),
+                   void* cmdCtx,
+                   bool (*checkRateLimit)(void* ctx),
+                   void* rateLimitCtx);
 
 }  // namespace WifiControlApiService

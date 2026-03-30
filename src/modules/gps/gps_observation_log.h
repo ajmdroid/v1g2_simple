@@ -69,5 +69,3 @@ private:
     mutable portMUX_TYPE lockMux_ = portMUX_INITIALIZER_UNLOCKED;
 #endif
 };
-
-extern GpsObservationLog gpsObservationLog;

@@ -114,6 +114,3 @@ private:
     static uint16_t bearingDeg(int32_t aLatE5, int32_t aLonE5,
                                int32_t bLatE5, int32_t bLonE5);
 };
-
-/// Global instance.
-extern RoadMapReader roadMapReader;

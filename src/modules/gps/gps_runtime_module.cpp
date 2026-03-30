@@ -38,7 +38,8 @@ int daysInMonth(int year, int month) {
 }
 }  // namespace
 
-void GpsRuntimeModule::begin(bool enabled) {
+void GpsRuntimeModule::begin(bool enabled, GpsObservationLog* log) {
+    log_ = log;
     setEnabled(enabled);
 }
 
@@ -108,7 +109,7 @@ void GpsRuntimeModule::resetRuntimeState() {
     sentenceActive_ = false;
     sentenceLen_ = 0;
     sentenceBuf_[0] = '\0';
-    gpsObservationLog.reset();
+    if (log_) log_->reset();
 }
 
 void GpsRuntimeModule::invalidateSpeedSample() {
@@ -901,7 +902,7 @@ void GpsRuntimeModule::publishObservation(uint32_t timestampMs) {
     observation.locationValid = locationValid_ && hasFix_;
     observation.latitudeDeg = observation.locationValid ? latitudeDeg_ : NAN;
     observation.longitudeDeg = observation.locationValid ? longitudeDeg_ : NAN;
-    gpsObservationLog.publish(observation);
+    if (log_) log_->publish(observation);
 }
 
 #ifdef UNIT_TEST

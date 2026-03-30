@@ -26,7 +26,12 @@
 // Global instances
 PerfCounters perfCounters;
 PerfExtendedMetrics perfExtended;
-extern SystemEventBus systemEventBus;
+extern SystemEventBus  systemEventBus;
+extern GpsRuntimeModule  gpsRuntimeModule;
+extern GpsObservationLog gpsObservationLog;
+extern ObdRuntimeModule  obdRuntimeModule;
+extern SpeedSourceSelector speedSourceSelector;
+extern LockoutLearner    lockoutLearner;
 
 #if PERF_METRICS
 PerfLatency perfLatency;

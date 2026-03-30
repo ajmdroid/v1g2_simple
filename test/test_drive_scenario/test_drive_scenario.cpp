@@ -164,6 +164,7 @@ void setUp() {
     lockoutSetKaLearningEnabled(false);
 
     parser.reset();
+    signalCaptureModule.begin(&signalObservationLog, &signalObservationSdLogger);
     signalCaptureModule.reset();
     signalObservationLog.reset();
     sdEnqueueCount = 0;
@@ -172,10 +173,10 @@ void setUp() {
     lockoutStore.begin(&lockoutIndex);
     settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
     enforcer.begin(&settingsManager, &lockoutIndex, &lockoutStore);
-    learner.begin(&lockoutIndex, &signalObservationLog);
+    learner.begin(&lockoutIndex, &signalObservationLog, &lockoutStore);
 
     gpsRuntimeModule = GpsRuntimeModule();
-    gpsRuntimeModule.begin(true);
+    gpsRuntimeModule.begin(true, &gpsObservationLog);
 }
 
 void tearDown() {

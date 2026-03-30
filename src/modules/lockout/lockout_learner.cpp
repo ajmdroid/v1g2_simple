@@ -36,9 +36,11 @@ int64_t intervalHoursToMs(uint8_t hours) {
 
 LockoutLearner lockoutLearner;
 
-void LockoutLearner::begin(LockoutIndex* index, SignalObservationLog* log) {
+void LockoutLearner::begin(LockoutIndex* index, SignalObservationLog* log, LockoutStore* store, RoadMapReader* roadMapReader) {
     index_ = index;
     log_   = log;
+    store_ = store;
+    roadMapReader_ = roadMapReader;
     lastProcessedPublished_ = log ? log->stats().published : 0;
     lastPollMs_   = 0;
     lastPruneMs_  = 0;
@@ -421,8 +423,8 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
     // the road gives us an axis (bearing and bearing+180), GPS circular
     // mean tells us which direction along that axis we were actually going.
     // Pure PSRAM pointer math — zero SD I/O, zero DMA, zero locks.
-    if (roadMapReader.isLoaded()) {
-        const RoadSnapResult snap = roadMapReader.snapToRoad(entry.latE5, entry.lonE5);
+    if (roadMapReader_ && roadMapReader_->isLoaded()) {
+        const RoadSnapResult snap = roadMapReader_->snapToRoad(entry.latE5, entry.lonE5);
         if (snap.valid) {
             const int32_t origLat = entry.latE5;
             const int32_t origLon = entry.lonE5;
@@ -473,7 +475,7 @@ void LockoutLearner::promoteCandidate(size_t idx, int64_t epochMs) {
     const int slot = index_->addOrUpdate(entry);
     if (slot >= 0) {
         ++stats_.promotions;
-        lockoutStore.markDirty();
+        if (store_) store_->markDirty();
         Serial.printf("[Learner] PROMOTED slot=%d band=%u freq=%u lat=%ld lon=%ld hits=%u dir=%s hdg=%d\n",
                       slot, c.band, c.freqMHz,
                       static_cast<long>(c.latE5), static_cast<long>(c.lonE5),

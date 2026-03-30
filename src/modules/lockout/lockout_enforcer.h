@@ -116,5 +116,3 @@ private:
     bool visitedSlots_[LockoutIndex::kCapacity] = {};
     int16_t matchedSlots_[kMaxMatchedSlots] = {};
 };
-
-extern LockoutEnforcer lockoutEnforcer;

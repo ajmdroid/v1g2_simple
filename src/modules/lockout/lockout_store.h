@@ -133,5 +133,3 @@ private:
     bool          dirty_ = false;
     mutable Stats stats_ = {};
 };
-
-extern LockoutStore lockoutStore;

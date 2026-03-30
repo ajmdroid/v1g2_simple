@@ -30,7 +30,8 @@ void LockoutOrchestrationModule::begin(V1BLEClient* ble,
                                        SystemEventBus* eventBus,
                                        PerfCounters* perfCounters,
                                        TimeService* timeSvc,
-                                       QuietCoordinatorModule* quietCoordinator) {
+                                       QuietCoordinatorModule* quietCoordinator,
+                                       SpeedSourceSelector* speedSelector) {
     ble_ = ble;
     parser_ = parser;
     settings_ = settings;
@@ -42,6 +43,7 @@ void LockoutOrchestrationModule::begin(V1BLEClient* ble,
     perfCounters_ = perfCounters;
     timeSvc_ = timeSvc;
     quiet_ = quietCoordinator;
+    speedSelector_ = speedSelector;
 }
 
 LockoutOrchestrationResult LockoutOrchestrationModule::process(
@@ -56,7 +58,7 @@ LockoutOrchestrationResult LockoutOrchestrationModule::process(
         return result;
     }
 
-    const SpeedSelection selectedSpeed = speedSourceSelector.selectedSpeed();
+    const SpeedSelection selectedSpeed = speedSelector_ ? speedSelector_->selectedSpeed() : SpeedSelection{};
     const int64_t nowEpochMs = timeSvc_ ? timeSvc_->nowEpochMsOr0() : 0;
     const int32_t tzOffsetMinutes = timeSvc_ ? timeSvc_->tzOffsetMinutes() : 0;
 

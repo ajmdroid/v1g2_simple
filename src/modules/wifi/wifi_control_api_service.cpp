@@ -7,10 +7,12 @@ namespace WifiControlApiService {
 
 static void handleProfilePushImpl(WebServer& server,
                                   bool v1Connected,
-                                  const std::function<ProfilePushResult()>& requestProfilePush,
-                                  const std::function<bool()>& checkRateLimit) {
+                                  ProfilePushResult (*requestProfilePush)(void* ctx),
+                                  void* pushCtx,
+                                  bool (*checkRateLimit)(void* ctx),
+                                  void* rateLimitCtx) {
     // Preserve existing rate-limit behavior for this route.
-    if (checkRateLimit && !checkRateLimit()) return;
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!v1Connected) {
         JsonDocument doc;
@@ -22,7 +24,7 @@ static void handleProfilePushImpl(WebServer& server,
     JsonDocument doc;
     ProfilePushResult result = ProfilePushResult::HANDLER_UNAVAILABLE;
     if (requestProfilePush) {
-        result = requestProfilePush();
+        result = requestProfilePush(pushCtx);
     }
 
     switch (result) {
@@ -47,17 +49,21 @@ static void handleProfilePushImpl(WebServer& server,
 
 void handleApiProfilePush(WebServer& server,
                           bool v1Connected,
-                          const std::function<ProfilePushResult()>& requestProfilePush,
-                          const std::function<bool()>& checkRateLimit) {
+                          ProfilePushResult (*requestProfilePush)(void* ctx),
+                          void* pushCtx,
+                          bool (*checkRateLimit)(void* ctx),
+                          void* rateLimitCtx) {
     // Preserve existing route behavior: route-level guard + delegate-level guard.
-    if (checkRateLimit && !checkRateLimit()) return;
-    handleProfilePushImpl(server, v1Connected, requestProfilePush, checkRateLimit);
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
+    handleProfilePushImpl(server, v1Connected, requestProfilePush, pushCtx, checkRateLimit, rateLimitCtx);
 }
 
 void handleApiDarkMode(WebServer& server,
-                       const std::function<bool(const char*, bool)>& sendV1Command,
-                       const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                       bool (*sendV1Command)(const char* cmd, bool val, void* ctx),
+                       void* cmdCtx,
+                       bool (*checkRateLimit)(void* ctx),
+                       void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!server.hasArg("state")) {
         JsonDocument doc;
@@ -71,7 +77,7 @@ void handleApiDarkMode(WebServer& server,
 
     if (sendV1Command) {
         // Dark mode = display OFF, so invert the command parameter.
-        success = sendV1Command("display", !darkMode);
+        success = sendV1Command("display", !darkMode, cmdCtx);
     }
 
     Serial.printf("Dark mode request: %s, success: %s\n", darkMode ? "ON" : "OFF", success ? "yes" : "no");
@@ -83,9 +89,11 @@ void handleApiDarkMode(WebServer& server,
 }
 
 void handleApiMute(WebServer& server,
-                   const std::function<bool(const char*, bool)>& sendV1Command,
-                   const std::function<bool()>& checkRateLimit) {
-    if (checkRateLimit && !checkRateLimit()) return;
+                   bool (*sendV1Command)(const char* cmd, bool val, void* ctx),
+                   void* cmdCtx,
+                   bool (*checkRateLimit)(void* ctx),
+                   void* rateLimitCtx) {
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     if (!server.hasArg("state")) {
         JsonDocument doc;
@@ -98,7 +106,7 @@ void handleApiMute(WebServer& server,
     bool success = false;
 
     if (sendV1Command) {
-        success = sendV1Command("mute", muted);
+        success = sendV1Command("mute", muted, cmdCtx);
     }
 
     Serial.printf("Mute request: %s, success: %s\n", muted ? "ON" : "OFF", success ? "yes" : "no");

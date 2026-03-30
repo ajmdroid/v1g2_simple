@@ -208,6 +208,7 @@ void handleApiEvents(WebServer& server,
 void sendZones(WebServer& server,
                LockoutIndex& lockoutIndex,
                LockoutLearner& lockoutLearner,
+               LockoutStore& lockoutStore,
                SettingsManager& settingsManager) {
     // Bound endpoint cost (JSON size + serialization time) for embedded web UI.
     uint16_t activeLimit = 24;
@@ -384,6 +385,7 @@ void sendZones(WebServer& server,
 void handleApiZones(WebServer& server,
                     LockoutIndex& lockoutIndex,
                     LockoutLearner& lockoutLearner,
+                    LockoutStore& lockoutStore,
                     SettingsManager& settingsManager,
                     const std::function<bool()>& checkRateLimit,
                     const std::function<void()>& markUiActivity) {
@@ -391,7 +393,7 @@ void handleApiZones(WebServer& server,
     if (markUiActivity) {
         markUiActivity();
     }
-    sendZones(server, lockoutIndex, lockoutLearner, settingsManager);
+    sendZones(server, lockoutIndex, lockoutLearner, lockoutStore, settingsManager);
 }
 
 void handleApiZoneDelete(WebServer& server,

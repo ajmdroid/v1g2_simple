@@ -16,6 +16,9 @@
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 
+extern LockoutStore   lockoutStore;
+extern LockoutLearner lockoutLearner;
+
 #ifndef MALLOC_CAP_DMA
 #define MALLOC_CAP_DMA (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
 #endif

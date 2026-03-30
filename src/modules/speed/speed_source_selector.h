@@ -75,5 +75,3 @@ private:
     SpeedSelectorStatus cachedStatus_ = {};
     SpeedSelection selectedSpeed_ = {};
 };
-
-extern SpeedSourceSelector speedSourceSelector;

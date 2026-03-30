@@ -194,7 +194,8 @@ void setUp() {
                  &eventBus,
                  &perfCounterState,
                  &timeSvc,
-                 &quiet);
+                 &quiet,
+                 &speedSourceSelector);
 }
 
 void tearDown() {}
@@ -271,7 +272,8 @@ void test_null_time_service_falls_back_to_zero_epoch_and_offset() {
                  &eventBus,
                  &perfCounterState,
                  nullptr,
-                 &quiet);
+                 &quiet,
+                 &speedSourceSelector);
 
     runOnce(1000);
 

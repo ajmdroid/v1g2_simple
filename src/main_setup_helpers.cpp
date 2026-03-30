@@ -44,6 +44,11 @@
 
 #include "../include/main_globals.h"
 
+extern LockoutStore              lockoutStore;
+extern LockoutLearner            lockoutLearner;
+extern LockoutIndex              lockoutIndex;
+extern SignalObservationSdLogger signalObservationSdLogger;
+
 namespace {
 
 struct V1ConnectedAutoPushSelection {

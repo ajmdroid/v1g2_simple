@@ -17,6 +17,7 @@ struct PerfCounters;
 class TimeService;
 struct GpsRuntimeStatus;
 class QuietCoordinatorModule;
+class SpeedSourceSelector;
 
 enum class LockoutVolumeCommandType : uint8_t {
     None = 0,
@@ -59,7 +60,8 @@ public:
                SystemEventBus* eventBus,
                PerfCounters* perfCounters,
                TimeService* timeSvc,
-               QuietCoordinatorModule* quietCoordinator);
+               QuietCoordinatorModule* quietCoordinator,
+               SpeedSourceSelector* speedSelector);
 
     /// Run the full lockout pipeline for one parsed BLE frame.
     /// @param nowMs                Current millis() timestamp
@@ -106,4 +108,5 @@ private:
     PerfCounters* perfCounters_ = nullptr;
     TimeService* timeSvc_ = nullptr;
     QuietCoordinatorModule* quiet_ = nullptr;
+    SpeedSourceSelector* speedSelector_ = nullptr;
 };

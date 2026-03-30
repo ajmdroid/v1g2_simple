@@ -75,6 +75,7 @@
 #include "modules/quiet/quiet_coordinator_module.h"
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
+#include "modules/gps/gps_observation_log.h"
 #include "modules/gps/gps_lockout_safety.h"
 #include "modules/lockout/signal_capture_module.h"
 #include "modules/lockout/signal_observation_sd_logger.h"
@@ -89,6 +90,7 @@
 #include "modules/speed/speed_source_selector.h"
 #include "modules/speed_mute/speed_mute_module.h"
 #include "modules/obd/obd_runtime_module.h"
+#include "modules/obd/obd_ble_client.h"
 #include "modules/obd/obd_settings_sync_module.h"
 #include "modules/wifi/wifi_boot_policy.h"
 #include "modules/wifi/wifi_auto_start_module.h"
@@ -105,6 +107,24 @@
 #include <algorithm>
 
 // Global objects
+// Module instance declarations — defined in each module's own .cpp.
+// The extern declarations were removed from module headers to prevent
+// accidental global access from within src/modules/. These src/-level
+// externs allow main.cpp and src/ helpers to wire dependencies.
+extern SignalObservationLog      signalObservationLog;
+extern SignalObservationSdLogger signalObservationSdLogger;
+extern SignalCaptureModule       signalCaptureModule;
+extern LockoutLearner            lockoutLearner;
+extern LockoutStore              lockoutStore;
+extern LockoutIndex              lockoutIndex;
+extern LockoutEnforcer           lockoutEnforcer;
+extern RoadMapReader             roadMapReader;
+extern SpeedSourceSelector       speedSourceSelector;
+extern GpsRuntimeModule          gpsRuntimeModule;
+extern GpsObservationLog         gpsObservationLog;
+extern ObdRuntimeModule          obdRuntimeModule;
+extern ObdBleClient              obdBleClient;
+
 V1BLEClient bleClient;
 PacketParser parser;
 V1Display display;
@@ -809,7 +829,7 @@ static void configureSystemLoopModules() {
 }
 
 static void configureRuntimeSensorModules() {
-    gpsRuntimeModule.begin(settingsManager.get().gpsEnabled);
+    gpsRuntimeModule.begin(settingsManager.get().gpsEnabled, &gpsObservationLog);
     speedSourceSelector.begin(settingsManager.get().gpsEnabled,
                               settingsManager.get().obdEnabled);
     speedSourceSelector.wireSpeedSources(&gpsRuntimeModule, &obdRuntimeModule);
@@ -842,8 +862,9 @@ static void configureLockoutPipelineModules() {
                                      &display, &lockoutEnforcer, &lockoutIndex,
                                      &signalCaptureModule,
                                      &systemEventBus, &perfCounters, &timeService,
-                                     &quietCoordinatorModule);
-    lockoutLearner.begin(&lockoutIndex, &signalObservationLog);
+                                     &quietCoordinatorModule, &speedSourceSelector);
+    lockoutLearner.begin(&lockoutIndex, &signalObservationLog, &lockoutStore, &roadMapReader);
+    signalCaptureModule.begin(&signalObservationLog, &signalObservationSdLogger);
     SettingsRuntimeSync::syncGpsLockoutRuntimeSettings(settingsManager.get(), lockoutLearner);
 }
 

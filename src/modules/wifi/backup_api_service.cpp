@@ -15,6 +15,11 @@
 #include "../speed/speed_source_selector.h"
 #include "json_stream_response.h"
 
+extern GpsRuntimeModule  gpsRuntimeModule;
+extern ObdRuntimeModule  obdRuntimeModule;
+extern SpeedSourceSelector speedSourceSelector;
+extern LockoutLearner    lockoutLearner;
+
 namespace BackupApiService {
 
 static void sendBackup(WebServer& server,
