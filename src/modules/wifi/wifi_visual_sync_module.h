@@ -2,8 +2,6 @@
 
 #include <Arduino.h>
 
-#include <functional>
-
 // Owns WiFi icon refresh cadence/state so main loop keeps no static UI state.
 class WifiVisualSyncModule {
 public:
@@ -13,7 +11,8 @@ public:
                  bool wifiVisualActiveNow,
                  bool displayPreviewRunning,
                  bool bootSplashHoldActive,
-                 const std::function<void()>& drawAndFlush);
+                 void (*drawAndFlush)(void* ctx),
+                 void* ctx);
 
 private:
     bool lastWifiVisualActive_ = false;

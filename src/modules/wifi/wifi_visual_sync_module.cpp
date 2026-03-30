@@ -9,7 +9,8 @@ void WifiVisualSyncModule::process(unsigned long nowMs,
                                    bool wifiVisualActiveNow,
                                    bool displayPreviewRunning,
                                    bool bootSplashHoldActive,
-                                   const std::function<void()>& drawAndFlush) {
+                                   void (*drawAndFlush)(void* ctx),
+                                   void* ctx) {
     bool refreshWifiIcon = false;
     if (wifiVisualActiveNow != lastWifiVisualActive_) {
         refreshWifiIcon = true;
@@ -21,7 +22,7 @@ void WifiVisualSyncModule::process(unsigned long nowMs,
 
     if (refreshWifiIcon && !displayPreviewRunning && !bootSplashHoldActive) {
         if (drawAndFlush) {
-            drawAndFlush();
+            drawAndFlush(ctx);
         }
         lastWifiIconRefreshMs_ = nowMs;
     }

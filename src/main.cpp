@@ -410,12 +410,13 @@ static void configureWifiRuntimeModule() {
                 wifiVisualActiveNow,
                 displayPreviewRunning,
                 bootSplashHoldActive,
-                [] {
+                [](void* /*ctx*/) {
                     display.drawWiFiIndicator();
                     const int leftColWidth = 64;
                     const int leftColHeight = 96;
                     display.flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
-                });
+                },
+                nullptr);
         };
     wifiRuntimeProviders.wifiVisualSyncContext = &wifiVisualSyncModule;
     wifiRuntimeModule.begin(wifiRuntimeProviders);
