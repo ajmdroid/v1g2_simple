@@ -501,6 +501,11 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.wifiStartApBringupMaxUs = perfExtended.wifiStartApBringupMaxUs;
     flat.fsMaxUs = perfExtended.fsMaxUs;
     flat.sdMaxUs = perfExtended.sdMaxUs;
+    flat.sdWriteCount = perfExtended.sdWriteCount;
+    flat.sdWriteLt1msCount = perfExtended.sdWriteLt1msCount;
+    flat.sdWrite1to5msCount = perfExtended.sdWrite1to5msCount;
+    flat.sdWrite5to10msCount = perfExtended.sdWrite5to10msCount;
+    flat.sdWriteGe10msCount = perfExtended.sdWriteGe10msCount;
     flat.flushMaxUs = perfExtended.flushMaxUs;
     flat.bleConnectMaxUs = perfExtended.bleConnectMaxUs;
     flat.bleDiscoveryMaxUs = perfExtended.bleDiscoveryMaxUs;
@@ -1023,6 +1028,16 @@ void perfRecordFsServeUs(uint32_t us) {
 void perfRecordSdFlushUs(uint32_t us) {
     if (us > perfExtended.sdMaxUs) {
         perfExtended.sdMaxUs = us;
+    }
+    perfExtended.sdWriteCount++;
+    if (us < 1000) {
+        perfExtended.sdWriteLt1msCount++;
+    } else if (us < 5000) {
+        perfExtended.sdWrite1to5msCount++;
+    } else if (us < 10000) {
+        perfExtended.sdWrite5to10msCount++;
+    } else {
+        perfExtended.sdWriteGe10msCount++;
     }
 }
 

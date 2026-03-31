@@ -483,6 +483,12 @@ struct PerfExtendedMetrics {
     uint32_t wifiStartApBringupMaxUs = 0;
     uint32_t fsMaxUs = 0;
     uint32_t sdMaxUs = 0;
+    // SD write latency histogram (window totals — reset each reporting window)
+    uint32_t sdWriteCount = 0;         // Total SD data writes recorded
+    uint32_t sdWriteLt1msCount = 0;    // < 1 ms (< 1000 us)
+    uint32_t sdWrite1to5msCount = 0;   // 1–4 ms (1000–4999 us)
+    uint32_t sdWrite5to10msCount = 0;  // 5–9 ms (5000–9999 us)
+    uint32_t sdWriteGe10msCount = 0;   // ≥ 10 ms (≥ 10000 us)
     uint32_t flushMaxUs = 0;
     uint32_t displayRenderMaxUs = 0;  // Full display render time (draw + flush)
     uint32_t bleDrainMaxUs = 0;
@@ -610,6 +616,11 @@ struct PerfExtendedMetrics {
         wifiStartApBringupMaxUs = 0;
         fsMaxUs = 0;
         sdMaxUs = 0;
+        sdWriteCount = 0;
+        sdWriteLt1msCount = 0;
+        sdWrite1to5msCount = 0;
+        sdWrite5to10msCount = 0;
+        sdWriteGe10msCount = 0;
         flushMaxUs = 0;
         displayRenderMaxUs = 0;
         bleDrainMaxUs = 0;
@@ -1001,6 +1012,11 @@ struct PerfSdSnapshot {
     uint32_t minLargestBlock;
     uint32_t fsMaxUs;
     uint32_t sdMaxUs;
+    uint32_t sdWriteCount;
+    uint32_t sdWriteLt1msCount;
+    uint32_t sdWrite1to5msCount;
+    uint32_t sdWrite5to10msCount;
+    uint32_t sdWriteGe10msCount;
     uint32_t flushMaxUs;
     uint32_t bleConnectMaxUs;
     uint32_t bleDiscoveryMaxUs;

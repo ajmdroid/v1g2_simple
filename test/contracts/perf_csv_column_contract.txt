@@ -160,6 +160,11 @@ sigObsWriteFail
 minLargestBlock
 fsMax_us
 sdMax_us
+sdWriteCount
+sdWriteLt1ms
+sdWrite1to5ms
+sdWrite5to10ms
+sdWriteGe10ms
 flushMax_us
 bleConnectMax_us
 bleDiscoveryMax_us
