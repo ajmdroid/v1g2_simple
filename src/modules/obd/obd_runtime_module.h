@@ -6,7 +6,7 @@
 
 #include <freertos/FreeRTOS.h>
 
-#include "../../include/obd_ble_arbitration.h"
+#include "obd_ble_arbitration.h"
 
 enum class ObdConnectionState : uint8_t {
     IDLE = 0,

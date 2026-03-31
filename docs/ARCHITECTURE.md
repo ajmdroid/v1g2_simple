@@ -13,6 +13,18 @@ Dependencies are always injected — never fetched.
 
 ---
 
+## Header Placement
+
+| Directory | Purpose |
+|---|---|
+| `include/` | Headers consumed by multiple subsystems or needed by tests |
+| `src/*.h` | Private headers for a single `.cpp` translation unit |
+| `src/modules/<category>/` | Module-scoped headers (co-located with implementation) |
+
+There is no `src/include/` directory. Do not create one.
+
+---
+
 ## Module Wiring: The Canonical Pattern
 
 ### Default — Direct Pointer Injection via `begin()`

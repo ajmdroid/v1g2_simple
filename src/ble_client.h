@@ -15,7 +15,7 @@
 #include <atomic>
 #include <memory>
 
-#include "include/obd_ble_arbitration.h"
+#include "modules/obd/obd_ble_arbitration.h"
 
 // Forward declarations
 class V1BLEClient;

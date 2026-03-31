@@ -78,3 +78,5 @@ docs/FUNCTION_PRIORITY.local.md
 docs/OBD_MODULE_PLAN.md
 docs/TEST_FAILURE_POINTS.md
 .github/instructions/
+*.docx
+.~lock.*
