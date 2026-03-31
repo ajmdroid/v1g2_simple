@@ -315,10 +315,10 @@ void V1Display::flush() {
 }
 
 void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
-    // Constrain region to framebuffer bounds
+    // Constrain region to logical framebuffer bounds
     if (!tft_ || !gfxPanel_) return;
-    int16_t maxW = tft_->width();
-    int16_t maxH = tft_->height();
+    int16_t maxW = tft_->width();   // 640 (logical landscape width)
+    int16_t maxH = tft_->height();  // 172 (logical landscape height)
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
     if (w <= 0 || h <= 0) return;
@@ -333,19 +333,37 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
         return;
     }
 
+    // Canvas is Arduino_Canvas(172, 640, ..., rotation=1).
+    // The raw (physical) framebuffer is 172 px wide × 640 px tall; stride = 172.
+    // tft_->width() returns the LOGICAL width (640) after rotation — using it as
+    // a stride produces wrong pointer arithmetic and sends garbage to the panel.
+    //
+    // Rotation-1 transform: logical(lx, ly) → physical(px = 171-ly, py = lx)
+    //
+    // Logical rect (x=lx0, y=ly0, w=lw, h=lh) maps to physical rect:
+    //   py0 = lx0 = x           ph = lw = w
+    //   px0 = (CANVAS_WIDTH - ly0 - lh) = (CANVAS_WIDTH - y - h)
+    //   pw  = lh  = h
+    //
+    // Fast path: when pw == CANVAS_WIDTH (i.e. h == 172 and y == 0) the
+    // physical rows are fully contiguous in the framebuffer — one call suffices.
+    const int16_t kRawStride = CANVAS_WIDTH;  // 172
+    const int16_t phys_py0 = x;
+    const int16_t phys_ph  = w;
+    const int16_t phys_px0 = kRawStride - y - h;
+    const int16_t phys_pw  = h;
+
     const uint32_t startUs = PERF_TIMESTAMP_US();
-    int16_t stride = tft_->width();
-    // Fast path: when region spans the full display width the rows are
-    // contiguous in the framebuffer — issue a single draw call instead of h
-    // separate calls to avoid per-row QSPI bus-setup overhead.
-    if (w == stride) {
-        uint16_t* regionStart = fb + static_cast<uint32_t>(y) * static_cast<uint32_t>(stride) + x;
-        gfxPanel_->draw16bitRGBBitmap(x, y, regionStart, w, h);
+
+    if (phys_pw == kRawStride && phys_px0 == 0) {
+        // Full physical width — rows are contiguous in the framebuffer.
+        uint16_t* regionStart = fb + static_cast<uint32_t>(phys_py0) * kRawStride;
+        gfxPanel_->draw16bitRGBBitmap(0, phys_py0, regionStart, kRawStride, phys_ph);
         perfExtended.displayFlushBatchCount++;
     } else {
-        for (int16_t row = 0; row < h; ++row) {
-            uint16_t* rowPtr = fb + (y + row) * stride + x;
-            gfxPanel_->draw16bitRGBBitmap(x, y + row, rowPtr, w, 1);
+        for (int16_t row = 0; row < phys_ph; ++row) {
+            uint16_t* rowPtr = fb + static_cast<uint32_t>(phys_py0 + row) * kRawStride + phys_px0;
+            gfxPanel_->draw16bitRGBBitmap(phys_px0, phys_py0 + row, rowPtr, phys_pw, 1);
         }
     }
     perfRecordFlushUs(PERF_TIMESTAMP_US() - startUs, areaPx, false);
@@ -373,3 +391,5 @@ void V1Display::updateColorTheme() {
     currentPalette_.colorMuted = s.colorMuted;
     currentPalette_.colorPersisted = s.colorPersisted;
 }
+
+// resetChangeTracking() defined in display_screens.cpp (deferred dirty-flag pattern)

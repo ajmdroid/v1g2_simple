@@ -1241,7 +1241,7 @@ Expected result: no matches (aside from this appendix itself).
 
 ---
 
-*This appendix is research-only. No changes were made to the codebase.*
+*All fixes listed above have been applied. No remaining AMOLED references exist outside this appendix.*
 
 ---
 
@@ -1404,6 +1404,186 @@ After the change, confirm that modifying `settings.h` does NOT trigger recompila
 - Display rendering tests (Appendix A Phase 3) should pass without a settings mock
 
 **Files touched:** `include/color_themes.h` (add fields), `include/display_palette.h` (remove settings.h include, remove macros), display orchestration code (populate new fields), each `display_*.cpp` that uses the macros (~6-8 files)
+
+---
+
+*This appendix is research-only. No changes were made to the codebase.*
+
+---
+
+# Appendix E: Full Repo Audit — Corrective and Normalizing Work
+
+**Date:** March 31, 2026
+**Scope:** Five-axis review covering BLE, display/settings, WiFi/storage/main loop, test suite/CI, and include hygiene/build config
+**Method:** Parallel deep audit of all subsystems, cross-referenced against existing REPO_REVIEW.md to report only NEW findings
+
+---
+
+## 1. BLE Subsystem — New Findings
+
+### 1.1 Second Double-Backslash in Log Format String (Low)
+
+**File:** `src/ble_connection.cpp`, line 742
+**Issue:** `Serial.printf("[BLE] Conn params (%s): interval=%.2f ms latency=%u\\n", ...)` prints literal `\n` instead of a newline. This is a second instance beyond the one already documented in `packet_parser.cpp:175`.
+**Fix:** Change `\\n` to `\n`.
+
+### 1.2 TOCTOU Race on pCommandCharLong_ (Medium)
+
+**File:** `src/ble_proxy.cpp`, lines 677–695
+**Issue:** `pCommandCharLong_` is checked for null then dereferenced without holding `bleMutex_`. A concurrent `cleanupConnection()` call (which clears the pointer under the mutex) could set it to null between the check and the `writeValue()` dereference.
+**Fix:** Either snapshot the pointer under `bleMutex_` before use, or hold the mutex across the check-and-dereference sequence.
+
+### 1.3 Magic Number 0x2902 — CCCD Descriptor UUID (Low)
+
+**File:** `src/ble_connection.cpp`, lines 666 and 705
+**Issue:** The standard BLE Client Characteristic Configuration Descriptor UUID `0x2902` appears as a bare magic number in two places.
+**Fix:** Add `#define V1_CCCD_DESCRIPTOR_UUID ((uint16_t)0x2902)` to `include/config.h` and reference it.
+
+---
+
+## 2. Display Subsystem — New Findings
+
+### 2.1 Integer Overflow Risk in Dirty Region Union (Medium)
+
+**File:** `src/display_frequency.cpp`, lines 58–59
+**Issue:** The dirty region union computes `frequencyDirtyX_ + frequencyDirtyW_` on `int16_t` before any widening. If the sum exceeds 32,767, it overflows. The 640px screen width makes this unlikely today but the code is mathematically unsound and fragile against future display hardware.
+**Fix:** Use `int32_t` intermediate calculations for coordinate arithmetic in region union logic.
+
+### 2.2 Unvalidated RGB565 Color Values from NVS (Low)
+
+**File:** `src/settings.cpp`, lines 222–246
+**Issue:** 22 color settings fields (band colors, volume colors, RSSI colors, etc.) are loaded from NVS with no validation that the stored value is a valid RGB565 value. Corrupted NVS entries could produce garbage colors.
+**Fix:** Mask loaded color values with `value & 0xFFFF` after NVS read (or add a `sanitizeColor()` pass in the existing settings sanitization pipeline).
+
+### 2.3 Missing Font Error Handling / OFR Fallback (Medium)
+
+**File:** `src/display_font_manager.cpp`, `src/display.cpp`
+**Issue:** OpenFontRender glyph rasterization has no fallback if it fails under memory pressure. The system continues with missing glyphs rather than degrading to a monospace bitmap font. Already noted in Section 4 of the review but no fix plan existed.
+**Fix:** Add a font degradation strategy — detect rasterization failure (null glyph return) and fall back to a built-in bitmap font for that frame.
+
+### 2.4 Scattered Static Render Caches Not Reset on resetChangeTracking() (Low)
+
+**Files:** `src/display_bands.cpp`, `src/display_arrow.cpp`, `src/display_indicators.cpp`, `src/display_status_bar.cpp`
+**Issue:** File-scoped `static` variables that cache last-drawn state (e.g., `lastBandMask`, `lastArrowDir`) are only reset via the dirty flag system, not by `resetChangeTracking()`. If a new reset path is added that doesn't set all dirty flags, stale caches could prevent redraws.
+**Fix:** Add a `resetAllRenderCaches()` function called from `resetChangeTracking()` that explicitly resets all file-scoped statics, or migrate the caches into the `V1Display` class so they're tied to object lifetime.
+
+---
+
+## 3. WiFi / Storage / Main Loop — New Findings
+
+No new issues beyond those already documented in the main review and Appendix D. The WiFi state machine, storage pipeline, and main loop ordering are all sound. The `static JsonDocument doc` fix in `main_persist.cpp` is confirmed applied.
+
+---
+
+## 4. Test Suite and CI — New Findings
+
+### 4.1 Trivial Assertion in Placeholder Test (Medium)
+
+**File:** `test/test_drive_replay/test_drive_replay.cpp`, line 136
+**Issue:** `TEST_ASSERT_TRUE(true)` — this test always passes and provides no value. It's a scaffold for CSV/JSON fixture loading that was never completed.
+**Fix:** Either complete the replay fixture loading implementation or remove the placeholder test. A test that can't fail is worse than no test — it inflates the count and creates false confidence.
+
+### 4.2 Replay Test Suite Not Integrated into CI (Medium)
+
+**File:** `scripts/ci-test.sh`, `test/test_drive_replay/`
+**Issue:** The replay test environment (`native-replay`) is configured in `platformio.ini` and the scaffold exists, but it's not wired into the CI gate. Captured-log regression tests don't run on every PR.
+**Fix:** Once the replay fixture loading is complete (4.1), add a `run_replay_suite.py` invocation to `ci-test.sh`.
+
+### 4.3 Missing Semantic Guards (Medium)
+
+**File:** `scripts/`
+**Issue:** No CI guard enforces const-correctness violations in module headers or mutable-state escape (e.g., a module accidentally adding an `extern` global). The existing semantic guards cover BLE deletion safety, display flush discipline, SD lock semantics, and main loop call order, but not these two patterns.
+**Fix:** Add two new Python semantic guards:
+1. `check_module_const_correctness.py` — scan `src/modules/**/*.h` for non-const global-scope declarations
+2. `check_extern_escape.py` — scan `src/modules/**/*.h` for `extern` declarations (which violate the DI architecture)
+
+### 4.4 Copy-Paste Tests Not Parameterized (Low)
+
+**Files:** `test/test_audio/test_audio.cpp` (lines 125–293), `test/test_display_color_utils/test_display_color_utils.cpp`
+**Issue:** Enum value tests and boundary tests repeat the same assertion pattern for different inputs (e.g., `test_band_enum_values`, `test_direction_enum_values`, `test_voice_mode_enum_values`). These could use a data-driven approach.
+**Fix:** Extract to helper loops or use Unity parameterized test macros. Lower priority — correctness is fine, this is maintainability.
+
+### 4.5 Mutation Catalog Limited to 10 Critical Mutations (Low)
+
+**File:** `test/mutations/critical_mutations.json`
+**Issue:** Only 10 critical mutations are tracked. The "full" mode resolves to the same 9 items. Secondary mutations (bounds off-by-one, sign errors in non-critical paths) are not systematically tested.
+**Fix:** Add 5–10 secondary mutations covering display coordinate math, WiFi timeout comparisons, and settings range validation.
+
+---
+
+## 5. Include Hygiene and Build Config — New Findings
+
+### 5.1 Redundant Dual Header Guards — 43 Files (Medium)
+
+**Files:** 43 headers across `src/` and `include/`
+**Issue:** These files have both `#pragma once` AND `#ifndef`/`#define`/`#endif` guards. The `#ifndef` guard is redundant now that `#pragma once` is present. This is leftover from the Phase 2 normalization — `#pragma once` was added but the old guard was not removed.
+**Affected files (all 43):**
+
+`include/` (24): `config.h`, `wifi_manager_internals.h`, `main_loop_phases.h`, `main_globals.h`, `main_internals.h`, `display_vol_warn.h`, `ble_internals.h`, `audio_internals.h`, `audio_i2c_utils.h`, `settings_internals.h`, `display_flush.h`, `main_runtime_state.h`, `audio_task_utils.h`, `v1simple_logo.h`, `settings_namespace_ids.h`, `wifi_rate_limiter.h`, `display_log.h`, `display_layout.h`, `display_driver.h`, `display_ble_context.h`, `psram_alloc_compat.h`, `band_utils.h`, `color_themes.h`, `FreeSansBold24pt7b.h`
+
+`src/` (19): `ble_client.h`, `wifi_manager.h`, `modules/obd/obd_ble_client.h`, `packet_parser.h`, `perf_metrics.h`, `display.h`, `settings.h`, `modules/quiet/quiet_coordinator_templates.h`, `settings_runtime_sync.h`, `battery_manager.h`, `storage_manager.h`, `touch_handler.h`, `perf_sd_logger.h`, `v1_devices.h`, `ble_fresh_flash_policy.h`, `v1_profiles.h`, `modules/wifi/wifi_api_response.h`, `time_service.h`, `settings_sanitize.h`
+
+**Fix:** Remove the `#ifndef`/`#define` line and the matching `#endif` at the bottom from each file. Keep only `#pragma once`. This is a safe mechanical transformation — validate with `pio run -e native`.
+
+### 5.2 Duplicate #include in main_setup_helpers.cpp (Low)
+
+**File:** `src/main_setup_helpers.cpp`, lines 9 and 45
+**Issue:** `#include "../include/main_globals.h"` appears twice.
+**Fix:** Remove the duplicate on line 45.
+
+### 5.3 Separator Style Minor Inconsistencies (Low)
+
+**Files:** ~60 files across `src/` and `include/`
+**Issue:** While the dominant separator pattern matches the standard from Appendix B Phase 4, ~15 minor variations remain (inconsistent dash counts, indented separators, `// -----` vs `// ---`).
+**Fix:** Normalize to the two-tier hierarchy in a single pass. Low priority — comments only.
+
+---
+
+## 6. Normalization Status Update (Appendix B Progress)
+
+| Phase | Status | Notes |
+|---|---|---|
+| Phase 1: `.editorconfig`, `.clang-format`, trailing whitespace | **DONE** | All three complete. Zero trailing whitespace. |
+| Phase 2: Header guard standardization | **90% DONE** | `#pragma once` added to all 43 files, but old `#ifndef` guards not removed (5.1 above) |
+| Phase 3: Private member naming | **DONE** | All 11 classes normalized. Spot-checked V1BLEClient, V1Display, WiFiManager — all correct. |
+| Phase 4: Section separators | **MOSTLY DONE** | ~15 minor variations remain (5.3 above) |
+| Phase 5: Log prefixes | **DONE** | 100% `[Tag]` format confirmed. |
+| Phase 6: Header placement | **DONE** | No orphaned `src/include/` directory. |
+| Phase 7: File headers | **SKIPPED** | Optional per plan. Current state adequate. |
+
+---
+
+## 7. Consolidated Action Items (Ordered by Impact)
+
+### Ship-Blocking (Fix before release)
+
+Items from Appendix D remain the top priority:
+1. BLE cleanupConnection() use-after-free (Appendix D, Issue 1)
+2. Display flushRegion() fast path (Appendix D, Issue 2)
+
+### High Priority (Fix in next sprint)
+
+3. **TOCTOU on pCommandCharLong_** (§1.2) — potential null deref under BLE reconnect stress
+4. **Complete replay test fixture loading** (§4.1) and wire into CI (§4.2) — closes the biggest test coverage methodology gap
+5. **Add const-correctness and extern-escape semantic guards** (§4.3) — prevents architecture regressions
+
+### Medium Priority (Planned cleanup)
+
+6. **Remove 43 redundant `#ifndef` guards** (§5.1) — mechanical, safe, completes Phase 2
+7. **Integer overflow in dirty region union** (§2.1) — widen to int32_t intermediates
+8. **Font degradation strategy** (§2.3) — fallback for OFR rasterization failures
+9. **display_palette.h decoupling** (Appendix D, Issue 3) — build isolation improvement
+
+### Low Priority (Polish)
+
+10. **Second double-backslash** in ble_connection.cpp:742 (§1.1) — one-character fix
+11. **CCCD magic number** (§1.3) — add named constant
+12. **Unvalidated RGB565 colors from NVS** (§2.2) — mask on load
+13. **Scattered static render caches** (§2.4) — centralize reset
+14. **Duplicate include** in main_setup_helpers.cpp (§5.2) — remove one line
+15. **Separator style variations** (§5.3) — normalize remaining ~15
+16. **Parameterize copy-paste tests** (§4.4) — maintainability
+17. **Expand mutation catalog** (§4.5) — add secondary mutations
 
 ---
 
