@@ -84,6 +84,7 @@ displayRedrawReasonRssiRefreshCount
 displayRedrawReasonFlashTickCount
 displayFullFlushCount
 displayPartialFlushCount
+displayFlushBatchCount
 displayPartialFlushAreaPeakPx
 displayPartialFlushAreaTotalPx
 displayFlushEquivalentAreaTotalPx

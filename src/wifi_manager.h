@@ -117,6 +117,10 @@ public:
     // (call when user manually triggers WiFi)
     void resetReconnectFailures() { wifiReconnectFailures_ = 0; lastReconnectAttemptMs_ = 0; }
 
+    // Returns true when STA has exhausted all reconnect attempts and given up.
+    // Clears automatically when resetReconnectFailures() is called.
+    bool isReconnectGaveUp() const { return wifiReconnectFailures_ >= WIFI_MAX_RECONNECT_FAILURES; }
+
     // Status
     bool isConnected() const { return !isStopping() && wifiClientState_ == WIFI_CLIENT_CONNECTED; }
     String getIPAddress() const;  // STA IP when connected

@@ -504,10 +504,16 @@ void V1Display::drawWiFiIndicator() {
     // Check if any clients are connected to the AP (only when AP is enabled).
     bool hasApClients = apActive && (WiFi.softAPgetStationNum() > 0);
 
-    // WiFi icon color: connected vs disconnected (like BLE icon)
-    uint16_t wifiColor = (staConnected || hasApClients)
-                             ? dimColor(s.colorWiFiConnected, 85)
-                             : dimColor(s.colorWiFiIcon, 85);
+    // WiFi icon color: gave-up (red) > connected (green) > disconnected (dim)
+    const bool gaveUp = wifiManager.isReconnectGaveUp();
+    uint16_t wifiColor;
+    if (gaveUp && !staConnected) {
+        wifiColor = 0xF800;  // Bright red — STA gave up after max reconnect failures
+    } else if (staConnected || hasApClients) {
+        wifiColor = dimColor(s.colorWiFiConnected, 85);
+    } else {
+        wifiColor = dimColor(s.colorWiFiIcon, 85);
+    }
 
     // Clear area first
     FILL_RECT(wifiX - 2, wifiY - 2, wifiSize + 4, wifiSize + 4, PALETTE_BG);

@@ -258,6 +258,18 @@ void test_drawWifi_hidden_when_setting_off() {
     settingsManager.getMutable().hideWifiIcon = false;
 }
 
+void test_drawWifi_gave_up_uses_red() {
+    wifiManager.setWifiServiceActive(true);
+    wifiManager.setConnected(false);
+    wifiManager.setReconnectGaveUp(true);
+    display.ut_drawWiFiIndicator();
+    // Gave up → clear + center dot + arc pixels; dot color must be red (0xF800)
+    // fillRectCalls[0] is the area clear, [1] is the center dot
+    TEST_ASSERT_GREATER_OR_EQUAL(2u, canvas()->fillRectCalls.size());
+    TEST_ASSERT_EQUAL_UINT16(0xF800u, canvas()->fillRectCalls[1].color);
+    wifiManager.setReconnectGaveUp(false);
+}
+
 // ============================================================================
 // Test runner
 // ============================================================================
@@ -278,5 +290,6 @@ int main(int, char**) {
     RUN_TEST(test_drawWifi_inactive_clears_area);
     RUN_TEST(test_drawWifi_active_draws_arcs);
     RUN_TEST(test_drawWifi_hidden_when_setting_off);
+    RUN_TEST(test_drawWifi_gave_up_uses_red);
     return UNITY_END();
 }

@@ -12,16 +12,19 @@ public:
     bool isWifiServiceActive() const { return wifiServiceActive_; }
     bool isConnected() const         { return staConnected_; }
     bool isSetupModeActive() const   { return apActive_; }
+    bool isReconnectGaveUp() const   { return reconnectGaveUp_; }
 
     // Test helpers
     void setWifiServiceActive(bool v) { wifiServiceActive_ = v; }
     void setConnected(bool v)         { staConnected_ = v; }
     void setSetupModeActive(bool v)   { apActive_ = v; }
+    void setReconnectGaveUp(bool v)   { reconnectGaveUp_ = v; }
 
 private:
     bool wifiServiceActive_ = false;
     bool staConnected_       = false;
     bool apActive_           = false;
+    bool reconnectGaveUp_    = false;
 };
 
 extern WiFiManager wifiManager;
