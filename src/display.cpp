@@ -341,7 +341,7 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
     if (w == stride) {
         uint16_t* regionStart = fb + static_cast<uint32_t>(y) * static_cast<uint32_t>(stride) + x;
         gfxPanel_->draw16bitRGBBitmap(x, y, regionStart, w, h);
-        PERF_INC(displayFlushBatchCount);
+        perfExtended.displayFlushBatchCount++;
     } else {
         for (int16_t row = 0; row < h; ++row) {
             uint16_t* rowPtr = fb + (y + row) * stride + x;

@@ -574,6 +574,7 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.displayRedrawReasonFlashTickCount = perfExtended.displayRedrawReasonFlashTickCount;
     flat.displayFullFlushCount = perfExtended.displayFullFlushCount;
     flat.displayPartialFlushCount = perfExtended.displayPartialFlushCount;
+    flat.displayFlushBatchCount = perfExtended.displayFlushBatchCount;
     flat.displayPartialFlushAreaPeakPx = perfExtended.displayPartialFlushAreaPeakPx;
     flat.displayPartialFlushAreaTotalPx = perfExtended.displayPartialFlushAreaTotalPx;
     flat.displayFlushEquivalentAreaTotalPx = perfExtended.displayFlushEquivalentAreaTotalPx;
