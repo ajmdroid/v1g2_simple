@@ -1,5 +1,6 @@
 #include <unity.h>
 #include <cstring>
+#include <functional>
 
 #include <ArduinoJson.h>
 #include "../mocks/mock_heap_caps_state.h"
