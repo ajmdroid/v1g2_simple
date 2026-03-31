@@ -92,9 +92,9 @@ LOCAL_HANDLER_ROUTE_KEYS: Tuple[str, ...] = (
     "HTTP_POST /api/wifi/enable",
 )
 
-ROUTE_SIGNATURE_RE = re.compile(r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),')
+ROUTE_SIGNATURE_RE = re.compile(r'server_\.on\("([^"]+)",\s*(HTTP_[A-Z]+),')
 ROUTE_LAMBDA_START_RE = re.compile(
-    r'server\.on\("([^"]+)",\s*(HTTP_[A-Z]+),\s*\[[^\]]*\]\(\)\s*\{'
+    r'server_\.on\("([^"]+)",\s*(HTTP_[A-Z]+),\s*\[[^\]]*\]\(\)\s*\{'
 )
 HANDLE_METHOD_START_RE = re.compile(r"void\s+WiFiManager::(handle[A-Za-z0-9_]+)\s*\(\)\s*\{")
 METHOD_START_RE = re.compile(r"(?:void|bool)\s+WiFiManager::([A-Za-z0-9_]+)\s*\([^)]*\)\s*\{")
