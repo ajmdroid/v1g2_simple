@@ -1,9 +1,9 @@
 /**
  * Standalone SD-backed performance CSV logger.
  *
- * Writes compact perf snapshots to /perf/YYYYMMDD_HHMMSS_perf_<bootId>.csv
+ * Writes compact perf snapshots to /perf/YYYYMMDD_HHMMSS_perf_<bootId_>.csv
  * (UTC timestamp) when epoch time is available. Falls back to
- * /perf/perf_boot_<bootId>.csv when time is not yet valid.
+ * /perf/perf_boot_<bootId_>.csv when time is not yet valid.
  * Uses a dedicated FreeRTOS writer task; enqueue is non-blocking and drops on queue full.
  */
 
@@ -26,8 +26,8 @@ public:
     void begin(bool sdAvailable);
     void setBootId(uint32_t id);
     bool enqueue(const PerfSdSnapshot& snapshot);
-    bool isEnabled() const { return enabled; }
-    const char* csvPath() const { return csvPathBuf; }
+    bool isEnabled() const { return enabled_; }
+    const char* csvPath() const { return csvPathBuf_; }
 
     /// Start a new logical session within the current boot file.
     /// Emits a fresh CSV header + #session_start marker so scoring tools
@@ -43,20 +43,20 @@ private:
     bool writeSessionMarker(File& f);
     bool appendSnapshotLine(const PerfSdSnapshot& snapshot);
 
-    bool enabled = false;
-    QueueHandle_t queue = nullptr;
-    TaskHandle_t writerTask = nullptr;
-    PsramQueueAllocation queueAllocation = {};
-    bool queueInPsram = false;
-    bool writerTaskStackInPsram = false;
-    bool perfDirReady = false;
-    bool csvHeaderReady = false;
-    bool sessionMarkerPending = false;
-    uint32_t sessionSeq = 0;
-    uint32_t sessionToken = 0;
-    uint32_t sessionStartMs = 0;
-    uint32_t bootId = 0;
-    char csvPathBuf[64] = {0};
+    bool enabled_ = false;
+    QueueHandle_t queue_ = nullptr;
+    TaskHandle_t writerTask_ = nullptr;
+    PsramQueueAllocation queueAllocation_ = {};
+    bool queueInPsram_ = false;
+    bool writerTaskStackInPsram_ = false;
+    bool perfDirReady_ = false;
+    bool csvHeaderReady_ = false;
+    bool sessionMarkerPending_ = false;
+    uint32_t sessionSeq_ = 0;
+    uint32_t sessionToken_ = 0;
+    uint32_t sessionStartMs_ = 0;
+    uint32_t bootId_ = 0;
+    char csvPathBuf_[64] = {0};
 
 #ifdef UNIT_TEST
 public:

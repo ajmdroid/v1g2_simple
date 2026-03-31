@@ -33,8 +33,8 @@ bool responseContains(const WebServer& server, const char* needle) {
 }
 
 void resetPerfLoggerState() {
-    perfSdLogger.enabled = false;
-    std::memset(perfSdLogger.csvPathBuf, 0, sizeof(perfSdLogger.csvPathBuf));
+    perfSdLogger.enabled_ = false;
+    std::memset(perfSdLogger.csvPathBuf_, 0, sizeof(perfSdLogger.csvPathBuf_));
 }
 
 void clearPerfFileCache() {
@@ -88,10 +88,10 @@ void test_perf_files_list_returns_rows_when_lock_is_free() {
 void test_perf_files_list_marks_file_ops_blocked_while_logging_active() {
     writePerfFile("20260316_020000_perf_7.csv", "ts,val\n1,2\n");
     writePerfFile("20260316_010000_perf_6.csv", "ts,val\n3,4\n");
-    perfSdLogger.enabled = true;
-    std::strncpy(perfSdLogger.csvPathBuf,
+    perfSdLogger.enabled_ = true;
+    std::strncpy(perfSdLogger.csvPathBuf_,
                  "/perf/20260316_020000_perf_7.csv",
-                 sizeof(perfSdLogger.csvPathBuf) - 1);
+                 sizeof(perfSdLogger.csvPathBuf_) - 1);
 
     WebServer server(80);
     DebugPerfFilesService::handleApiPerfFilesList(server, [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
@@ -122,10 +122,10 @@ void test_perf_files_list_returns_503_when_sd_trylock_is_busy() {
 
 void test_perf_file_download_returns_503_while_perf_logging_active() {
     writePerfFile("20260316_020000_perf_7.csv", "ts,val\n1,2\n");
-    perfSdLogger.enabled = true;
-    std::strncpy(perfSdLogger.csvPathBuf,
+    perfSdLogger.enabled_ = true;
+    std::strncpy(perfSdLogger.csvPathBuf_,
                  "/perf/20260316_020000_perf_7.csv",
-                 sizeof(perfSdLogger.csvPathBuf) - 1);
+                 sizeof(perfSdLogger.csvPathBuf_) - 1);
 
     WebServer server(80);
     server.setArg("name", "20260316_020000_perf_7.csv");
@@ -169,10 +169,10 @@ void test_perf_file_delete_returns_503_when_sd_trylock_is_busy() {
 
 void test_perf_file_delete_returns_503_while_perf_logging_active() {
     writePerfFile("20260316_020000_perf_7.csv", "ts,val\n1,2\n");
-    perfSdLogger.enabled = true;
-    std::strncpy(perfSdLogger.csvPathBuf,
+    perfSdLogger.enabled_ = true;
+    std::strncpy(perfSdLogger.csvPathBuf_,
                  "/perf/20260316_020000_perf_7.csv",
-                 sizeof(perfSdLogger.csvPathBuf) - 1);
+                 sizeof(perfSdLogger.csvPathBuf_) - 1);
 
     WebServer server(80);
     server.setArg("name", "20260316_020000_perf_7.csv");
@@ -189,10 +189,10 @@ void test_perf_file_delete_returns_503_while_perf_logging_active() {
 void test_perf_file_delete_allows_inactive_file_while_perf_logging_active() {
     writePerfFile("20260316_020000_perf_7.csv", "ts,val\n1,2\n");
     writePerfFile("20260316_010000_perf_6.csv", "ts,val\n3,4\n");
-    perfSdLogger.enabled = true;
-    std::strncpy(perfSdLogger.csvPathBuf,
+    perfSdLogger.enabled_ = true;
+    std::strncpy(perfSdLogger.csvPathBuf_,
                  "/perf/20260316_020000_perf_7.csv",
-                 sizeof(perfSdLogger.csvPathBuf) - 1);
+                 sizeof(perfSdLogger.csvPathBuf_) - 1);
 
     WebServer server(80);
     server.setArg("name", "20260316_010000_perf_6.csv");

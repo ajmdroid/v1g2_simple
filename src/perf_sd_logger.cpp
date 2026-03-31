@@ -49,11 +49,11 @@ static uint16_t expectedPerfCsvColumns() {
     return kColumns;
 }
 
-static void buildPerfCsvPath(uint32_t bootId, char* out, size_t outLen) {
+static void buildPerfCsvPath(uint32_t bootId_, char* out, size_t outLen) {
     if (!out || outLen == 0) {
         return;
     }
-    if (bootId == 0) {
+    if (bootId_ == 0) {
         snprintf(out, outLen, "%s", PERF_CSV_PATH_FALLBACK);
         return;
     }
@@ -72,12 +72,12 @@ static void buildPerfCsvPath(uint32_t bootId, char* out, size_t outLen) {
             snprintf(out, outLen,
                      "/perf/%04u%02u%02u_%02u%02u%02u_perf_%lu.csv",
                      year, month, day, hour, minute, second,
-                     static_cast<unsigned long>(bootId));
+                     static_cast<unsigned long>(bootId_));
             return;
         }
     }
 
-    snprintf(out, outLen, "/perf/perf_boot_%lu.csv", static_cast<unsigned long>(bootId));
+    snprintf(out, outLen, "/perf/perf_boot_%lu.csv", static_cast<unsigned long>(bootId_));
 }
 
 static bool appendCsvFormat(char* buffer, size_t bufferLen, size_t& offset, const char* fmt, ...) {
@@ -122,70 +122,70 @@ static bool appendCsvUInt8Last(char* buffer, size_t bufferLen, size_t& offset, u
 PerfSdLogger perfSdLogger;
 
 void PerfSdLogger::setBootId(uint32_t id) {
-    bootId = id;
-    buildPerfCsvPath(bootId, csvPathBuf, sizeof(csvPathBuf));
-    csvHeaderReady = false;
-    sessionMarkerPending = true;
+    bootId_ = id;
+    buildPerfCsvPath(bootId_, csvPathBuf_, sizeof(csvPathBuf_));
+    csvHeaderReady_ = false;
+    sessionMarkerPending_ = true;
 }
 
 void PerfSdLogger::begin(bool sdAvailable) {
-    enabled = false;
+    enabled_ = false;
     if (!sdAvailable) {
         return;
     }
 
-    if (csvPathBuf[0] == '\0') {
-        setBootId(bootId);
+    if (csvPathBuf_[0] == '\0') {
+        setBootId(bootId_);
     }
 
     // Reset cached file state for each runtime session and emit a marker on first write.
-    perfDirReady = false;
-    csvHeaderReady = false;
-    sessionMarkerPending = true;
-    sessionStartMs = millis();
-    sessionToken = static_cast<uint32_t>(esp_random());
-    sessionSeq++;
+    perfDirReady_ = false;
+    csvHeaderReady_ = false;
+    sessionMarkerPending_ = true;
+    sessionStartMs_ = millis();
+    sessionToken_ = static_cast<uint32_t>(esp_random());
+    sessionSeq_++;
 
-    if (!queue) {
-        queue = createQueuePreferPsram(PERF_SD_QUEUE_DEPTH,
+    if (!queue_) {
+        queue_ = createQueuePreferPsram(PERF_SD_QUEUE_DEPTH,
                                        sizeof(PerfSdSnapshot),
-                                       queueAllocation,
-                                       &queueInPsram);
-        if (!queue) {
+                                       queueAllocation_,
+                                       &queueInPsram_);
+        if (!queue_) {
             Serial.println("[Perf] ERROR: Failed to create SD logger queue");
             return;
         }
-        if (!queueInPsram) {
+        if (!queueInPsram_) {
             Serial.println("[Perf] WARN: SD logger queue using internal SRAM fallback");
         }
     }
 
-    if (!writerTask) {
+    if (!writerTask_) {
         BaseType_t rc = createTaskPinnedToCorePreferPsram(writerTaskEntry,
                                                           "PerfSdWriter",
                                                           PERF_SD_WRITER_STACK_SIZE,
                                                           this,
                                                           PERF_SD_WRITER_PRIORITY,
-                                                          &writerTask,
+                                                          &writerTask_,
                                                           0,
-                                                          &writerTaskStackInPsram);
+                                                          &writerTaskStackInPsram_);
         if (rc != pdPASS) {
             Serial.println("[Perf] ERROR: Failed to create SD logger task");
             return;
         }
-        if (!writerTaskStackInPsram) {
+        if (!writerTaskStackInPsram_) {
             Serial.println("[Perf] WARN: SD logger task stack using internal SRAM fallback");
         }
     }
 
-    enabled = true;
+    enabled_ = true;
 }
 
 bool PerfSdLogger::enqueue(const PerfSdSnapshot& snapshot) {
-    if (!enabled || !queue) {
+    if (!enabled_ || !queue_) {
         return false;
     }
-    if (xQueueSend(queue, &snapshot, 0) != pdTRUE) {
+    if (xQueueSend(queue_, &snapshot, 0) != pdTRUE) {
         PERF_INC(perfDrop);
         return false;
     }
@@ -193,15 +193,15 @@ bool PerfSdLogger::enqueue(const PerfSdSnapshot& snapshot) {
 }
 
 void PerfSdLogger::startNewSession() {
-    if (!enabled) {
+    if (!enabled_) {
         return;
     }
     // Force next write to emit a fresh header + session marker.
-    csvHeaderReady = false;
-    sessionMarkerPending = true;
-    sessionStartMs = millis();
-    sessionToken = static_cast<uint32_t>(esp_random());
-    sessionSeq++;
+    csvHeaderReady_ = false;
+    sessionMarkerPending_ = true;
+    sessionStartMs_ = millis();
+    sessionToken_ = static_cast<uint32_t>(esp_random());
+    sessionSeq_++;
 }
 
 void PerfSdLogger::writerTaskEntry(void* param) {
@@ -210,10 +210,10 @@ void PerfSdLogger::writerTaskEntry(void* param) {
 }
 
 bool PerfSdLogger::receiveSnapshot(PerfSdSnapshot& snapshot, TickType_t timeoutTicks) {
-    if (!queue) {
+    if (!queue_) {
         return false;
     }
-    return xQueueReceive(queue, &snapshot, timeoutTicks) == pdTRUE;
+    return xQueueReceive(queue_, &snapshot, timeoutTicks) == pdTRUE;
 }
 
 void PerfSdLogger::writerTaskLoop() {
@@ -228,11 +228,11 @@ void PerfSdLogger::writerTaskLoop() {
 }
 
 bool PerfSdLogger::ensurePerfDir(fs::FS& fs) {
-    if (perfDirReady) {
+    if (perfDirReady_) {
         return true;
     }
     if (fs.mkdir(PERF_DIR_PATH) || fs.exists(PERF_DIR_PATH)) {
-        perfDirReady = true;
+        perfDirReady_ = true;
         return true;
     }
     PERF_INC(perfSdDirFail);
@@ -244,11 +244,11 @@ bool PerfSdLogger::writeSessionMarker(File& f) {
     int n = snprintf(
         marker,
         sizeof(marker),
-        "#session_start,seq=%lu,bootId=%lu,uptime_ms=%lu,token=%08lX,schema=%lu\n",
-        static_cast<unsigned long>(sessionSeq),
-        static_cast<unsigned long>(bootId),
-        static_cast<unsigned long>(sessionStartMs),
-        static_cast<unsigned long>(sessionToken),
+        "#session_start,seq=%lu,bootId_=%lu,uptime_ms=%lu,token=%08lX,schema=%lu\n",
+        static_cast<unsigned long>(sessionSeq_),
+        static_cast<unsigned long>(bootId_),
+        static_cast<unsigned long>(sessionStartMs_),
+        static_cast<unsigned long>(sessionToken_),
         static_cast<unsigned long>(PERF_CSV_SCHEMA_VERSION));
     if (n <= 0 || n >= static_cast<int>(sizeof(marker))) {
         return false;
@@ -261,25 +261,25 @@ bool PerfSdLogger::writeSessionMarker(File& f) {
 bool PerfSdLogger::ensureCsvHeaderAndSessionMarker(File& f) {
     // If the file was rotated/deleted while running, size 0 means header must be rewritten.
     if (f.size() == 0) {
-        csvHeaderReady = false;
+        csvHeaderReady_ = false;
     }
 
-    if (!csvHeaderReady) {
+    if (!csvHeaderReady_) {
         size_t headerLen = strlen(PERF_CSV_HEADER);
         size_t headerWritten = f.write(reinterpret_cast<const uint8_t*>(PERF_CSV_HEADER), headerLen);
         if (headerWritten != headerLen) {
             PERF_INC(perfSdHeaderFail);
             return false;
         }
-        csvHeaderReady = true;
+        csvHeaderReady_ = true;
     }
 
-    if (sessionMarkerPending) {
+    if (sessionMarkerPending_) {
         if (!writeSessionMarker(f)) {
             PERF_INC(perfSdMarkerFail);
             return false;
         }
-        sessionMarkerPending = false;
+        sessionMarkerPending_ = false;
     }
 
     return true;
@@ -307,11 +307,11 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         return false;
     }
 
-    const char* csvPath = (csvPathBuf[0] != '\0') ? csvPathBuf : PERF_CSV_PATH_FALLBACK;
+    const char* csvPath = (csvPathBuf_[0] != '\0') ? csvPathBuf_ : PERF_CSV_PATH_FALLBACK;
     File f = fs->open(csvPath, FILE_APPEND, true);
-    if (!f && perfDirReady) {
+    if (!f && perfDirReady_) {
         // Directory can be removed while running; invalidate cache and retry once.
-        perfDirReady = false;
+        perfDirReady_ = false;
         if (ensurePerfDir(*fs)) {
             f = fs->open(csvPath, FILE_APPEND, true);
         }
