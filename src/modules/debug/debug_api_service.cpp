@@ -25,7 +25,7 @@
 #include "../lockout/lockout_band_policy.h"
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
-#include "debug_api_service_deps.h"
+#include "debug_api_service_deps.inc"
 
 // --- Dependency storage (shared with debug_api_scenario_service.cpp via deps header) ---
 namespace DebugApiService {

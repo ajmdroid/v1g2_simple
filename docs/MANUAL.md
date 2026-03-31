@@ -1052,6 +1052,7 @@ Automatically reduces V1's alert volume after the initial announcement period. U
 └── v1settings_backup.json  Settings backup (if SD unavailable)
 
 /sdcard/                    (SD card - optional)
+├── road_map.bin            Road geometry index for lockout road-snapping (see below)
 ├── profiles/               V1 user profiles (JSON)
 │   ├── Default.json
 │   ├── Highway.json
@@ -1219,6 +1220,26 @@ Controls:
 - **Unlearn Interval:** Hours between counted misses (default: 0, disabled)
 
 **Source:** [interface/src/routes/integrations/+page.svelte](../interface/src/routes/integrations/+page.svelte), [interface/src/routes/lockouts/+page.svelte](../interface/src/routes/lockouts/+page.svelte)
+
+### Road Map (Optional SD Card File)
+
+The lockout system can snap learned zones to the nearest road for more accurate matching. This requires a `road_map.bin` file on the SD card, built from OpenStreetMap road geometry. It is entirely optional — without it, lockouts still work using raw GPS coordinates, and the firmware logs `[RoadMap] No road_map.bin on SD — road snap disabled` at boot.
+
+**Setup:**
+
+1. Install the build dependency: `pip install osmium`
+2. Generate the binary (auto-downloads US road data from Geofabrik, ~800 MB PBF):
+   ```bash
+   python scripts/build_road_map.py --download
+   ```
+   Or from a local PBF file:
+   ```bash
+   python scripts/build_road_map.py --pbf us-latest.osm.pbf
+   ```
+3. Copy the resulting `road_map.bin` (~2-5 MB) to the root of the SD card
+4. Reboot the device — the firmware loads the file into PSRAM at boot
+
+The binary contains simplified US motorway, trunk, and primary road geometry in a compact spatial index. The format is documented in [docs/ROAD_MAP_FORMAT.md](ROAD_MAP_FORMAT.md). Regional builds are also supported (e.g., `--pbf colorado-latest.osm.pbf --region test`).
 
 ### Colors Page (`/colors`)
 

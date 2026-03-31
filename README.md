@@ -193,6 +193,7 @@ Speed and location sources:
 
 - **GPS Status:** View current position, speed, heading, and satellite info
 - **Lockout Management:** View/clear learned lockout zones
+- **Road Snapping (optional):** Place `road_map.bin` on the SD card root to snap lockout zones to the nearest road for more accurate matching. Generate it with `python scripts/build_road_map.py --download`. See [docs/MANUAL.md — Road Map](docs/MANUAL.md#road-map-optional-sd-card-file) for details
 
 ---
 

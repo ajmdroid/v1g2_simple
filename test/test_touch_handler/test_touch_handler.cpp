@@ -177,6 +177,56 @@ void test_post_recovery_backoff_skips_bus_access_for_50ms() {
     TEST_ASSERT_EQUAL(requestFromCallsBeforeBackoff, Wire.requestFromCalls);
 }
 
+void test_release_debounce_blocks_retap_within_100ms() {
+    beginTouchHandler();
+
+    // Register a first tap at t=200 (past touch debounce of 200ms from init)
+    Wire.queueEndTransmission(0);
+    Wire.queueRequestFrom(32, makeTouchFrame(100, 200));
+    mockMillis = 200;
+    int16_t x = 0, y = 0;
+    TEST_ASSERT_TRUE(touchHandler.getTouchPoint(x, y));  // First tap registered
+
+    // Release finger at t=400 (numPoints=0)
+    std::vector<uint8_t> noTouch(32, 0);
+    Wire.queueEndTransmission(0);
+    Wire.queueRequestFrom(32, noTouch);
+    mockMillis = 400;
+    TEST_ASSERT_FALSE(touchHandler.getTouchPoint(x, y));  // Release noted
+
+    // At t=499: only 99ms since release — must NOT register a new tap (< 100ms debounce)
+    Wire.queueEndTransmission(0);
+    Wire.queueRequestFrom(32, makeTouchFrame(100, 200));
+    mockMillis = 499;
+    TEST_ASSERT_FALSE(touchHandler.getTouchPoint(x, y));
+}
+
+void test_release_debounce_allows_retap_at_100ms() {
+    beginTouchHandler();
+
+    // Register a first tap at t=200
+    Wire.queueEndTransmission(0);
+    Wire.queueRequestFrom(32, makeTouchFrame(100, 200));
+    mockMillis = 200;
+    int16_t x = 0, y = 0;
+    TEST_ASSERT_TRUE(touchHandler.getTouchPoint(x, y));  // First tap registered
+
+    // Release finger at t=400 (numPoints=0)
+    std::vector<uint8_t> noTouch(32, 0);
+    Wire.queueEndTransmission(0);
+    Wire.queueRequestFrom(32, noTouch);
+    mockMillis = 400;
+    TEST_ASSERT_FALSE(touchHandler.getTouchPoint(x, y));  // Release noted
+
+    // At t=500: exactly 100ms since release — SHOULD register a new tap (>= 100ms debounce)
+    Wire.queueEndTransmission(0);
+    Wire.queueRequestFrom(32, makeTouchFrame(150, 250));
+    mockMillis = 500;
+    TEST_ASSERT_TRUE(touchHandler.getTouchPoint(x, y));
+    TEST_ASSERT_EQUAL(150, x);
+    TEST_ASSERT_EQUAL(250, y);
+}
+
 void test_successful_read_resets_failure_streak() {
     beginTouchHandler();
 
@@ -216,6 +266,8 @@ int main() {
     RUN_TEST(test_recovery_cooldown_blocks_repeat_attempts_inside_250ms);
     RUN_TEST(test_post_recovery_backoff_skips_bus_access_for_50ms);
     RUN_TEST(test_successful_read_resets_failure_streak);
+    RUN_TEST(test_release_debounce_blocks_retap_within_100ms);
+    RUN_TEST(test_release_debounce_allows_retap_at_100ms);
 
     return UNITY_END();
 }

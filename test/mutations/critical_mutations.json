@@ -141,12 +141,12 @@
       },
       {
         "id": "critical-013",
-        "module": "battery_percent_boundary",
-        "description": "<= -> < empty voltage boundary check",
-        "impact": "Battery percentage at exact empty threshold returns 1% instead of 0%",
+        "module": "battery_critical_boundary",
+        "description": "< -> <= critical voltage boundary check",
+        "impact": "Voltage at exact critical threshold incorrectly flagged as critical, premature shutdown warning",
         "file": "include/battery_math.h",
-        "search": "    if (voltageMV <= kEmptyMv) {\n        return 0;\n    }",
-        "replace": "    if (voltageMV < kEmptyMv) {\n        return 0;\n    }",
+        "search": "    return voltageMV < kCriticalMv && voltageMV > 0;",
+        "replace": "    return voltageMV <= kCriticalMv && voltageMV > 0;",
         "tests": [
           "test_battery_manager"
         ]
