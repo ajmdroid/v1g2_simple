@@ -57,7 +57,7 @@ struct GFXfont {
 #define TFT_ORANGE      0xFD20
 #define TFT_GREY        0x8410
 #define TFT_LIGHTGREY   0xC618
-#define TFT_DARKGREY    0x4208
+#define TFT_DARKGREY    0x1082  // Very dark grey (matches production display_driver.h)
 #define TFT_GOLD        0xFEA0
 #define TFT_SILVER      0xC618
 #define TFT_PINK        0xFC18

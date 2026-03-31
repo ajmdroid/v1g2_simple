@@ -5,6 +5,10 @@
 
 namespace {
 
+static std::string projectRoot() {
+    return std::string(PROJECT_DIR);
+}
+
 std::string readFile(const char* path) {
     std::ifstream input(path);
     TEST_ASSERT_TRUE_MESSAGE(input.good(), "failed to open display_update.cpp");
@@ -49,7 +53,7 @@ void setUp() {}
 void tearDown() {}
 
 void test_scanning_early_return_does_not_clear_tracking_reset() {
-    const std::string source = readFile("/Users/ajmedford/v1g2_simple/src/display_update.cpp");
+    const std::string source = readFile((projectRoot() + "/src/display_update.cpp").c_str());
     const std::string restingUpdate = extractBlock(source, "void V1Display::update(const DisplayState& state)");
     const std::string scanningBlock = extractBlock(restingUpdate, "if (currentScreen_ == ScreenMode::Scanning)");
 
@@ -58,7 +62,7 @@ void test_scanning_early_return_does_not_clear_tracking_reset() {
 }
 
 void test_resting_full_redraw_clears_tracking_reset_after_flush() {
-    const std::string source = readFile("/Users/ajmedford/v1g2_simple/src/display_update.cpp");
+    const std::string source = readFile((projectRoot() + "/src/display_update.cpp").c_str());
     const std::string restingUpdate = extractBlock(source, "void V1Display::update(const DisplayState& state)");
 
     const size_t flushPos = restingUpdate.find("DISPLAY_FLUSH();");
@@ -73,7 +77,7 @@ void test_resting_full_redraw_clears_tracking_reset_after_flush() {
 }
 
 void test_display_update_paths_no_longer_hide_persistent_state_in_function_locals() {
-    const std::string source = readFile("/Users/ajmedford/v1g2_simple/src/display_update.cpp");
+    const std::string source = readFile((projectRoot() + "/src/display_update.cpp").c_str());
 
     assertNoFunctionLocalStatic(
         extractBlock(source, "void V1Display::drawStatusStrip"),
@@ -90,8 +94,8 @@ void test_display_update_paths_no_longer_hide_persistent_state_in_function_local
 }
 
 void test_stale_ble_policy_is_wired_into_display_sources() {
-    const std::string updateSource = readFile("/Users/ajmedford/v1g2_simple/src/display_update.cpp");
-    const std::string statusSource = readFile("/Users/ajmedford/v1g2_simple/src/display_status_bar.cpp");
+    const std::string updateSource = readFile((projectRoot() + "/src/display_update.cpp").c_str());
+    const std::string statusSource = readFile((projectRoot() + "/src/display_status_bar.cpp").c_str());
 
     const std::string restingUpdate = extractBlock(updateSource, "void V1Display::update(const DisplayState& state)");
     TEST_ASSERT_NOT_EQUAL(std::string::npos, restingUpdate.find("const bool bleContextFresh = hasFreshBleContext(now);"));

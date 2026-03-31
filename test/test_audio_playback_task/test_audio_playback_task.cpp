@@ -8,6 +8,10 @@
 
 namespace {
 
+static std::string projectRoot() {
+    return std::string(PROJECT_DIR);
+}
+
 std::string readFile(const char* path) {
     std::ifstream input(path);
     TEST_ASSERT_TRUE_MESSAGE(input.good(), "failed to open source file");
@@ -60,7 +64,7 @@ void test_delete_mocks_record_standard_and_caps_calls() {
 }
 
 void test_i2s_init_failure_path_uses_caps_delete() {
-    const std::string source = readFile("/Users/ajmedford/v1g2_simple/src/audio_beep.cpp");
+    const std::string source = readFile((projectRoot() + "/src/audio_beep.cpp").c_str());
     const std::string taskBody = extractBlock(source, "static void audio_playback_task(void* pvParameters)");
     const std::string failureBlock = extractBlock(taskBody, "if (!i2s_initialized)");
 

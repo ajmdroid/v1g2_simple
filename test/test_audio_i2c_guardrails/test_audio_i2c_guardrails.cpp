@@ -5,6 +5,10 @@
 
 namespace {
 
+static std::string projectRoot() {
+    return std::string(PROJECT_DIR);
+}
+
 std::string readFile(const char* path) {
     std::ifstream input(path);
     TEST_ASSERT_TRUE_MESSAGE(input.good(), "failed to open source file");
@@ -43,7 +47,7 @@ void setUp() {}
 void tearDown() {}
 
 void test_audio_process_amp_timeout_uses_nonblocking_disable_and_only_clears_on_success() {
-    const std::string source = readFile("/Users/ajmedford/v1g2_simple/src/audio_voice.cpp");
+    const std::string source = readFile((projectRoot() + "/src/audio_voice.cpp").c_str());
     const std::string body = extractBlock(source, "void audio_process_amp_timeout()");
 
     TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("set_speaker_amp(false, 0)"));
@@ -53,19 +57,19 @@ void test_audio_process_amp_timeout_uses_nonblocking_disable_and_only_clears_on_
 }
 
 void test_audio_tasks_abort_when_codec_init_or_amp_enable_fails() {
-    const std::string beepSource = readFile("/Users/ajmedford/v1g2_simple/src/audio_beep.cpp");
+    const std::string beepSource = readFile((projectRoot() + "/src/audio_beep.cpp").c_str());
     const std::string beepTask = extractBlock(beepSource, "static void audio_playback_task(void* pvParameters)");
     TEST_ASSERT_NOT_EQUAL(std::string::npos, beepTask.find("if (!es8311_init())"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, beepTask.find("if (ampEnableResult != AudioI2cResult::Ok)"));
 
-    const std::string voiceSource = readFile("/Users/ajmedford/v1g2_simple/src/audio_voice.cpp");
+    const std::string voiceSource = readFile((projectRoot() + "/src/audio_voice.cpp").c_str());
     const std::string voiceTask = extractBlock(voiceSource, "static void sd_audio_playback_task(void* pvParameters) {");
     TEST_ASSERT_NOT_EQUAL(std::string::npos, voiceTask.find("if (!es8311_init())"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, voiceTask.find("if (ampEnableResult != AudioI2cResult::Ok)"));
 }
 
 void test_battery_critical_poweroff_checks_latch_drop_failure_with_extended_budget() {
-    const std::string source = readFile("/Users/ajmedford/v1g2_simple/src/battery_manager.cpp");
+    const std::string source = readFile((projectRoot() + "/src/battery_manager.cpp").c_str());
     const std::string powerOffBody = extractBlock(source, "bool BatteryManager::powerOff()");
 
     TEST_ASSERT_NOT_EQUAL(std::string::npos,

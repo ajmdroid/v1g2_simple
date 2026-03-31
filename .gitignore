@@ -30,6 +30,7 @@ artifacts/
 # IDE
 .idea/
 *.iml
+.clangd
 
 # Temporary/development files
 RDF_POST*

@@ -35,6 +35,10 @@ std::string extractFunctionBody(const std::string& text, const std::string& sign
     return {};
 }
 
+static std::string projectRoot() {
+    return std::string(PROJECT_DIR);
+}
+
 }  // namespace
 
 void setUp() {}
@@ -42,7 +46,7 @@ void tearDown() {}
 
 void test_async_connect_does_not_delete_bond() {
     const std::filesystem::path source =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_connection.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_connection.cpp");
     const std::string text = readFile(source);
     const std::string body = extractFunctionBody(text, "bool V1BLEClient::startAsyncConnect()");
 
@@ -51,7 +55,7 @@ void test_async_connect_does_not_delete_bond() {
 
 void test_disconnect_callback_still_defers_bond_heal() {
     const std::filesystem::path source =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_connection.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_connection.cpp");
     const std::string text = readFile(source);
     const std::string body =
         extractFunctionBody(text, "void V1BLEClient::ClientCallbacks::onDisconnect");
@@ -62,7 +66,7 @@ void test_disconnect_callback_still_defers_bond_heal() {
 
 void test_disconnect_callback_no_longer_stops_proxy_advertising_inline() {
     const std::filesystem::path source =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_connection.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_connection.cpp");
     const std::string text = readFile(source);
     const std::string body =
         extractFunctionBody(text, "void V1BLEClient::ClientCallbacks::onDisconnect");
@@ -73,7 +77,7 @@ void test_disconnect_callback_no_longer_stops_proxy_advertising_inline() {
 
 void test_manual_obd_preempt_disconnects_proxy_from_main_loop() {
     const std::filesystem::path source =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_runtime.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_runtime.cpp");
     const std::string text = readFile(source);
     const std::string body = extractFunctionBody(text, "void V1BLEClient::process()");
 
@@ -84,9 +88,9 @@ void test_manual_obd_preempt_disconnects_proxy_from_main_loop() {
 
 void test_scan_stopping_uses_instance_owned_results_cleared_state() {
     const std::filesystem::path runtimeSource =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_runtime.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_runtime.cpp");
     const std::filesystem::path clientSource =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_client.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_client.cpp");
     const std::string runtimeText = readFile(runtimeSource);
     const std::string clientText = readFile(clientSource);
     const std::string processBody = extractFunctionBody(runtimeText, "void V1BLEClient::process()");
@@ -101,7 +105,7 @@ void test_scan_stopping_uses_instance_owned_results_cleared_state() {
 
 void test_destructor_clears_instance_ptr_only_for_active_instance() {
     const std::filesystem::path source =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_client.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_client.cpp");
     const std::string text = readFile(source);
     const std::string body = extractFunctionBody(text, "V1BLEClient::~V1BLEClient()");
 
@@ -111,7 +115,7 @@ void test_destructor_clears_instance_ptr_only_for_active_instance() {
 
 void test_connect_to_server_removes_unused_addr_type_local() {
     const std::filesystem::path source =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_connection.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_connection.cpp");
     const std::string text = readFile(source);
     const std::string body = extractFunctionBody(text, "bool V1BLEClient::connectToServer()");
 
@@ -120,9 +124,9 @@ void test_connect_to_server_removes_unused_addr_type_local() {
 
 void test_ble_mutex_trylocks_use_semaphore_guard_in_runtime_and_callbacks() {
     const std::filesystem::path runtimeSource =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_runtime.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_runtime.cpp");
     const std::filesystem::path connectionSource =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_connection.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_connection.cpp");
     const std::string runtimeText = readFile(runtimeSource);
     const std::string connectionText = readFile(connectionSource);
 
@@ -139,13 +143,13 @@ void test_ble_mutex_trylocks_use_semaphore_guard_in_runtime_and_callbacks() {
 
 void test_connected_flag_uses_explicit_atomic_load_store() {
     const std::filesystem::path clientSource =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_client.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_client.cpp");
     const std::filesystem::path runtimeSource =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_runtime.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_runtime.cpp");
     const std::filesystem::path connectionSource =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_connection.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_connection.cpp");
     const std::filesystem::path proxySource =
-        std::filesystem::path("/Users/ajmedford/v1g2_simple/src/ble_proxy.cpp");
+        std::filesystem::path(projectRoot() + "/src/ble_proxy.cpp");
     const std::string clientText = readFile(clientSource);
     const std::string runtimeText = readFile(runtimeSource);
     const std::string connectionText = readFile(connectionSource);
