@@ -4,9 +4,6 @@
  */
 
 #pragma once
-#ifndef DISPLAY_LOG_H
-#define DISPLAY_LOG_H
 
 #define DISPLAY_LOG(...) do { } while(0)
 
-#endif // DISPLAY_LOG_H

@@ -4,8 +4,6 @@
  */
 
 #pragma once
-#ifndef DISPLAY_DRIVER_H
-#define DISPLAY_DRIVER_H
 
 // Waveshare-only build
 #define DISPLAY_USE_ARDUINO_GFX 1
@@ -91,4 +89,3 @@
 #define COLOR_CYAN    0x07FF
 #define COLOR_MAGENTA 0xF81F
 
-#endif // DISPLAY_DRIVER_H

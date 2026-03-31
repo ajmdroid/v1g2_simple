@@ -8,8 +8,6 @@
  */
 
 #pragma once
-#ifndef MAIN_GLOBALS_H
-#define MAIN_GLOBALS_H
 
 // ============================================================================
 // Forward declarations (avoids pulling in full module headers)
@@ -98,4 +96,3 @@ extern bool perfDebugEnabled;
 
 extern void configureTouchUiModule();
 
-#endif // MAIN_GLOBALS_H

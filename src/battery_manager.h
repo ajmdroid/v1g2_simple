@@ -8,8 +8,6 @@
  */
 
 #pragma once
-#ifndef BATTERY_MANAGER_H
-#define BATTERY_MANAGER_H
 
 #include <Arduino.h>
 #include "../include/battery_math.h"
@@ -106,4 +104,3 @@ extern BatteryManager batteryManager;
 extern TwoWire tca9554Wire;
 extern SemaphoreHandle_t tca9554WireMutex;
 
-#endif // BATTERY_MANAGER_H

@@ -6,8 +6,6 @@
  */
 
 #pragma once
-#ifndef STORAGE_MANAGER_H
-#define STORAGE_MANAGER_H
 
 #include <Arduino.h>
 #include <FS.h>
@@ -305,4 +303,3 @@ private:
 // Global instance
 extern StorageManager storageManager;
 
-#endif // STORAGE_MANAGER_H

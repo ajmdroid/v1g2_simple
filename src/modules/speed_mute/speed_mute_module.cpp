@@ -12,9 +12,7 @@
 // Prevents rapid toggling when speed oscillates near threshold.
 static constexpr uint32_t TRANSITION_DEBOUNCE_MS = 1500;
 
-// ---------------------------------------------------------------------------
-// Pure decision function
-// ---------------------------------------------------------------------------
+// --- Pure decision function ---
 
 SpeedMuteDecision evaluateSpeedMute(
     const SpeedMuteSettings& settings,
@@ -68,9 +66,7 @@ SpeedMuteDecision evaluateSpeedMute(
     return decision;
 }
 
-// ---------------------------------------------------------------------------
-// Module wrapper
-// ---------------------------------------------------------------------------
+// --- Module wrapper ---
 
 void SpeedMuteModule::begin(bool enabled, uint8_t thresholdMph,
                             uint8_t hysteresisMph, uint8_t v1Volume) {

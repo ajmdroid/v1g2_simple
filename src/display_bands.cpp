@@ -18,37 +18,38 @@
 #include <algorithm>  // std::max
 
 // ============================================================================
+// File-scoped static cache variables for drawBandIndicators
+// ============================================================================
+static uint8_t s_bandLastEffectiveMask = 0xFF;
+static bool s_bandLastMuted = false;
+static bool s_bandCacheValid = false;
+static unsigned long s_bandLastBlinkTime = 0;
+static bool s_bandBlinkOn = true;
+
+// ============================================================================
 // Band indicator stack (vertical L / Ka / K / X on the left)
 // ============================================================================
 void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits) {
-    // Cache to avoid redrawing unchanged bands
-    static uint8_t lastEffectiveMask = 0xFF;
-    static bool lastMuted = false;
-    static bool cacheValid = false;
-
-    // Local blink timer — V1 blinks at ~5 Hz, we match that
-    static unsigned long lastBlinkTime = 0;
-    static bool blinkOn = true;
     const unsigned long BLINK_INTERVAL_MS = 100;
 
     unsigned long now = millis();
-    if (now - lastBlinkTime >= BLINK_INTERVAL_MS) {
-        blinkOn = !blinkOn;
-        lastBlinkTime = now;
+    if (now - s_bandLastBlinkTime >= BLINK_INTERVAL_MS) {
+        s_bandBlinkOn = !s_bandBlinkOn;
+        s_bandLastBlinkTime = now;
     }
 
     // Apply blink: if flash bit is set and we're in OFF phase, treat band as inactive
     uint8_t effectiveBandMask = bandMask;
-    if (!blinkOn) {
+    if (!s_bandBlinkOn) {
         effectiveBandMask &= ~bandFlashBits;
     }
 
     if (dirty.bands) {
-        cacheValid = false;
+        s_bandCacheValid = false;
         dirty.bands = false;
     }
 
-    if (cacheValid && effectiveBandMask == lastEffectiveMask && muted == lastMuted) {
+    if (s_bandCacheValid && effectiveBandMask == s_bandLastEffectiveMask && muted == s_bandLastMuted) {
         return;
     }
 
@@ -117,13 +118,31 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
         GFX_drawString(tft_, cells[i].label, x, labelY);
     }
 
-    lastEffectiveMask = effectiveBandMask;
-    lastMuted = muted;
-    cacheValid = true;
+    s_bandLastEffectiveMask = effectiveBandMask;
+    s_bandLastMuted = muted;
+    s_bandCacheValid = true;
 
     TFT_CALL(setFont)(NULL);
     TFT_CALL(setTextSize)(1);
 }
+
+// ============================================================================
+// Reset bands rendering cache
+// ============================================================================
+void V1Display::resetBandsCache() {
+    s_bandLastEffectiveMask = 0xFF;
+    s_bandLastMuted = false;
+    s_bandCacheValid = false;
+    s_bandLastBlinkTime = 0;
+    s_bandBlinkOn = true;
+}
+
+// ============================================================================
+// File-scoped static cache variables for drawVerticalSignalBars
+// ============================================================================
+static uint8_t s_barsLastStrength = 0xFF;
+static bool s_barsLastMuted = false;
+static bool s_barsCacheValid = false;
 
 // ============================================================================
 // Vertical signal bars (right side, 6-bar meter)
@@ -134,16 +153,12 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     uint8_t strength = std::max(frontStrength, rearStrength);
     if (strength > 6) strength = 6;
 
-    static uint8_t lastStrength = 0xFF;
-    static bool lastMuted = false;
-    static bool cacheValid = false;
-
     if (dirty.signalBars) {
-        cacheValid = false;
+        s_barsCacheValid = false;
         dirty.signalBars = false;
     }
 
-    if (cacheValid && strength == lastStrength && muted == lastMuted) {
+    if (s_barsCacheValid && strength == s_barsLastStrength && muted == s_barsLastMuted) {
         return;
     }
 
@@ -165,12 +180,12 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     if (startY < 8) startY = 8;
 
     for (int i = 0; i < barCount; i++) {
-        bool wasLit = cacheValid && (i < lastStrength);
+        bool wasLit = s_barsCacheValid && (i < s_barsLastStrength);
         bool isLit = hasSignal && (i < strength);
-        bool wasMutedLit = cacheValid && wasLit && lastMuted;
+        bool wasMutedLit = s_barsCacheValid && wasLit && s_barsLastMuted;
         bool isMutedLit = isLit && muted;
 
-        if (cacheValid && wasLit == isLit && wasMutedLit == isMutedLit) {
+        if (s_barsCacheValid && wasLit == isLit && wasMutedLit == isMutedLit) {
             continue;
         }
 
@@ -189,7 +204,16 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
         FILL_ROUND_RECT(startX, y, barWidth, barHeight, 2, fillColor);
     }
 
-    lastStrength = strength;
-    lastMuted = muted;
-    cacheValid = true;
+    s_barsLastStrength = strength;
+    s_barsLastMuted = muted;
+    s_barsCacheValid = true;
+}
+
+// ============================================================================
+// Reset signal bars rendering cache
+// ============================================================================
+void V1Display::resetSignalBarsCache() {
+    s_barsLastStrength = 0xFF;
+    s_barsLastMuted = false;
+    s_barsCacheValid = false;
 }

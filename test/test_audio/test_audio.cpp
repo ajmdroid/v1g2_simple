@@ -122,11 +122,19 @@ int getLastTwoDigits(uint16_t freqMHz) {
 // BAND ENUM TESTS
 // ============================================================================
 
+// Helper: Test band enum values using data-driven approach
+static void verify_band_enum(AlertBand band, uint8_t expected_value) {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "AlertBand::%u should equal %u",
+             static_cast<uint8_t>(band), expected_value);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(expected_value, static_cast<uint8_t>(band), msg);
+}
+
 void test_band_enum_values() {
-    TEST_ASSERT_EQUAL_UINT8(0, static_cast<uint8_t>(AlertBand::LASER));
-    TEST_ASSERT_EQUAL_UINT8(1, static_cast<uint8_t>(AlertBand::KA));
-    TEST_ASSERT_EQUAL_UINT8(2, static_cast<uint8_t>(AlertBand::K));
-    TEST_ASSERT_EQUAL_UINT8(3, static_cast<uint8_t>(AlertBand::X));
+    verify_band_enum(AlertBand::LASER, 0);
+    verify_band_enum(AlertBand::KA, 1);
+    verify_band_enum(AlertBand::K, 2);
+    verify_band_enum(AlertBand::X, 3);
 }
 
 void test_band_strings() {
@@ -144,10 +152,18 @@ void test_band_unknown_string() {
 // DIRECTION ENUM TESTS
 // ============================================================================
 
+// Helper: Test direction enum values using data-driven approach
+static void verify_direction_enum(AlertDirection dir, uint8_t expected_value) {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "AlertDirection::%u should equal %u",
+             static_cast<uint8_t>(dir), expected_value);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(expected_value, static_cast<uint8_t>(dir), msg);
+}
+
 void test_direction_enum_values() {
-    TEST_ASSERT_EQUAL_UINT8(0, static_cast<uint8_t>(AlertDirection::AHEAD));
-    TEST_ASSERT_EQUAL_UINT8(1, static_cast<uint8_t>(AlertDirection::BEHIND));
-    TEST_ASSERT_EQUAL_UINT8(2, static_cast<uint8_t>(AlertDirection::SIDE));
+    verify_direction_enum(AlertDirection::AHEAD, 0);
+    verify_direction_enum(AlertDirection::BEHIND, 1);
+    verify_direction_enum(AlertDirection::SIDE, 2);
 }
 
 void test_direction_strings() {
@@ -164,11 +180,18 @@ void test_direction_unknown_string() {
 // VOICE MODE ENUM TESTS
 // ============================================================================
 
+// Helper: Test voice mode enum values
+static void verify_voice_mode(uint8_t mode, uint8_t expected_value, const char* name) {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "VoiceAlertMode::%s should equal %u", name, expected_value);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(expected_value, mode, msg);
+}
+
 void test_voice_mode_enum_values() {
-    TEST_ASSERT_EQUAL_UINT8(0, VOICE_MODE_DISABLED);
-    TEST_ASSERT_EQUAL_UINT8(1, VOICE_MODE_BAND_ONLY);
-    TEST_ASSERT_EQUAL_UINT8(2, VOICE_MODE_FREQ_ONLY);
-    TEST_ASSERT_EQUAL_UINT8(3, VOICE_MODE_BAND_FREQ);
+    verify_voice_mode(VOICE_MODE_DISABLED, 0, "DISABLED");
+    verify_voice_mode(VOICE_MODE_BAND_ONLY, 1, "BAND_ONLY");
+    verify_voice_mode(VOICE_MODE_FREQ_ONLY, 2, "FREQ_ONLY");
+    verify_voice_mode(VOICE_MODE_BAND_FREQ, 3, "BAND_FREQ");
 }
 
 // ============================================================================
@@ -252,44 +275,64 @@ void test_ghz_laser_returns_zero() {
 // FREQUENCY DIGIT EXTRACTION TESTS
 // ============================================================================
 
+// Data-driven test for hundreds digit extraction
+struct FreqDigitTest {
+    uint16_t freqMHz;
+    int expected_hundreds;
+    int expected_last_two;
+    const char* description;
+};
+
+static void verify_hundreds_digit(uint16_t freqMHz, int expected) {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "getHundredsDigit(%u) should equal %d", freqMHz, expected);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(expected, getHundredsDigit(freqMHz), msg);
+}
+
+static void verify_last_two_digits(uint16_t freqMHz, int expected) {
+    char msg[64];
+    snprintf(msg, sizeof(msg), "getLastTwoDigits(%u) should equal %d", freqMHz, expected);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(expected, getLastTwoDigits(freqMHz), msg);
+}
+
 void test_hundreds_digit_34749() {
     // 34749 → 749 → 7
-    TEST_ASSERT_EQUAL_INT(7, getHundredsDigit(34749));
+    verify_hundreds_digit(34749, 7);
 }
 
 void test_hundreds_digit_34500() {
     // 34500 → 500 → 5
-    TEST_ASSERT_EQUAL_INT(5, getHundredsDigit(34500));
+    verify_hundreds_digit(34500, 5);
 }
 
 void test_hundreds_digit_34099() {
     // 34099 → 099 → 0
-    TEST_ASSERT_EQUAL_INT(0, getHundredsDigit(34099));
+    verify_hundreds_digit(34099, 0);
 }
 
 void test_hundreds_digit_24150() {
     // 24150 → 150 → 1
-    TEST_ASSERT_EQUAL_INT(1, getHundredsDigit(24150));
+    verify_hundreds_digit(24150, 1);
 }
 
 void test_last_two_digits_34749() {
     // 34749 → 749 → 49
-    TEST_ASSERT_EQUAL_INT(49, getLastTwoDigits(34749));
+    verify_last_two_digits(34749, 49);
 }
 
 void test_last_two_digits_34700() {
     // 34700 → 700 → 00
-    TEST_ASSERT_EQUAL_INT(0, getLastTwoDigits(34700));
+    verify_last_two_digits(34700, 0);
 }
 
 void test_last_two_digits_34199() {
     // 34199 → 199 → 99
-    TEST_ASSERT_EQUAL_INT(99, getLastTwoDigits(34199));
+    verify_last_two_digits(34199, 99);
 }
 
 void test_last_two_digits_24150() {
     // 24150 → 150 → 50
-    TEST_ASSERT_EQUAL_INT(50, getLastTwoDigits(24150));
+    verify_last_two_digits(24150, 50);
 }
 
 // ============================================================================

@@ -4,8 +4,6 @@
  */
 
 #pragma once
-#ifndef V1_PROFILES_H
-#define V1_PROFILES_H
 
 #include <Arduino.h>
 #include <FS.h>
@@ -172,4 +170,3 @@ private:
 // Global instance
 extern V1ProfileManager v1ProfileManager;
 
-#endif // V1_PROFILES_H

@@ -5,8 +5,6 @@
  */
 
 #pragma once
-#ifndef AUDIO_I2C_UTILS_H
-#define AUDIO_I2C_UTILS_H
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -47,4 +45,3 @@ AudioI2cResult audioI2cSetTca9554Pin(TwoWire& wire,
                                      uint8_t* nextConfig = nullptr,
                                      uint8_t* nextOutput = nullptr);
 
-#endif  // AUDIO_I2C_UTILS_H

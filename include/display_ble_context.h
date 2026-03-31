@@ -1,6 +1,4 @@
 #pragma once
-#ifndef DISPLAY_BLE_CONTEXT_H
-#define DISPLAY_BLE_CONTEXT_H
 
 /**
  * Lightweight snapshot of BLE state consumed by the display layer.
@@ -14,4 +12,3 @@ struct DisplayBleContext {
     int  proxyRssi        = 0;
 };
 
-#endif // DISPLAY_BLE_CONTEXT_H

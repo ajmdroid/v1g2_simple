@@ -14,9 +14,7 @@
 
 #include <cstdint>
 
-// ---------------------------------------------------------------------------
-// Settings snapshot (read from V1Settings each loop)
-// ---------------------------------------------------------------------------
+// --- Settings snapshot (read from V1Settings each loop) ---
 
 struct SpeedMuteSettings {
     bool enabled = false;
@@ -25,9 +23,7 @@ struct SpeedMuteSettings {
     uint8_t v1Volume = 0xFF;         // V1 volume when speed-muted (0-9, 0xFF = no change)
 };
 
-// ---------------------------------------------------------------------------
-// Input context — populated by caller each loop iteration
-// ---------------------------------------------------------------------------
+// --- Input context — populated by caller each loop iteration ---
 
 struct SpeedMuteContext {
     float speedMph = 0.0f;          // Current arbitrated speed (SpeedSourceSelector)
@@ -35,35 +31,27 @@ struct SpeedMuteContext {
     uint32_t nowMs = 0;
 };
 
-// ---------------------------------------------------------------------------
-// Decision output
-// ---------------------------------------------------------------------------
+// --- Decision output ---
 
 struct SpeedMuteDecision {
     bool shouldMute = false;         // True → suppress audio (voice + V1 mute cmd)
 };
 
-// ---------------------------------------------------------------------------
-// Persistent state (owned by module instance, mutated by evaluate())
-// ---------------------------------------------------------------------------
+// --- Persistent state (owned by module instance, mutated by evaluate()) ---
 
 struct SpeedMuteState {
     bool muteActive = false;         // Current muted state (with hysteresis applied)
     uint32_t lastTransitionMs = 0;   // Timestamp of last mute/unmute transition
 };
 
-// ---------------------------------------------------------------------------
-// Pure decision function (testable, no side effects beyond state mutation)
-// ---------------------------------------------------------------------------
+// --- Pure decision function (testable, no side effects beyond state mutation) ---
 
 SpeedMuteDecision evaluateSpeedMute(
     const SpeedMuteSettings& settings,
     const SpeedMuteContext& ctx,
     SpeedMuteState& state);
 
-// ---------------------------------------------------------------------------
-// Module wrapper — convenience for main-loop wiring
-// ---------------------------------------------------------------------------
+// --- Module wrapper — convenience for main-loop wiring ---
 
 class SpeedMuteModule {
 public:

@@ -20,8 +20,6 @@
  */
 
 #pragma once
-#ifndef DISPLAY_LAYOUT_H
-#define DISPLAY_LAYOUT_H
 
 // ============================================================================
 // Screen Dimensions (from platformio.ini build flags)
@@ -94,4 +92,3 @@ inline int getEffectiveScreenHeight() {
     return DisplayLayout::PRIMARY_ZONE_HEIGHT;
 }
 
-#endif // DISPLAY_LAYOUT_H

@@ -1,6 +1,4 @@
 #pragma once
-#ifndef BAND_UTILS_H
-#define BAND_UTILS_H
 
 #include "packet_parser.h"
 
@@ -14,4 +12,3 @@ inline const char* bandName(Band band) {
     }
 }
 
-#endif  // BAND_UTILS_H

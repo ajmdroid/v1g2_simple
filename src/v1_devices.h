@@ -5,8 +5,6 @@
  */
 
 #pragma once
-#ifndef V1_DEVICES_H
-#define V1_DEVICES_H
 
 #include <Arduino.h>
 #include <FS.h>
@@ -72,4 +70,3 @@ private:
 
 extern V1DeviceStore v1DeviceStore;
 
-#endif  // V1_DEVICES_H

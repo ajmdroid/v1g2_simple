@@ -663,7 +663,7 @@ bool V1BLEClient::executeSubscribeStep() {
         }
 
         case SubscribeStep::WRITE_DISPLAY_CCCD: {
-            NimBLERemoteDescriptor* cccd = pDisplayDataChar_->getDescriptor(NimBLEUUID((uint16_t)0x2902));
+            NimBLERemoteDescriptor* cccd = pDisplayDataChar_->getDescriptor(NimBLEUUID(V1_CCCD_DESCRIPTOR_UUID));
             if (cccd) {
                 uint8_t notifOn[] = {0x01, 0x00};
                 if (!cccd->writeValue(notifOn, sizeof(notifOn), true)) {
@@ -702,7 +702,7 @@ bool V1BLEClient::executeSubscribeStep() {
         case SubscribeStep::WRITE_LONG_CCCD: {
             NimBLERemoteCharacteristic* pDisplayLong = pRemoteService_->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
             if (pDisplayLong) {
-                NimBLERemoteDescriptor* cccdLong = pDisplayLong->getDescriptor(NimBLEUUID((uint16_t)0x2902));
+                NimBLERemoteDescriptor* cccdLong = pDisplayLong->getDescriptor(NimBLEUUID(V1_CCCD_DESCRIPTOR_UUID));
                 if (cccdLong) {
                     uint8_t notifOn[] = {0x01, 0x00};
                     cccdLong->writeValue(notifOn, sizeof(notifOn), true);
@@ -739,7 +739,7 @@ void V1BLEClient::logConnParams(const char* tag) {
     NimBLEConnInfo info = pClient_->getConnInfo();
     float intervalMs = info.getConnInterval() * 1.25f;
 
-    Serial.printf("[BLE] Conn params (%s): interval=%.2f ms latency=%u\\n",
+    Serial.printf("[BLE] Conn params (%s): interval=%.2f ms latency=%u\n",
                   tag ? tag : "n/a",
                   intervalMs,
                   info.getConnLatency());

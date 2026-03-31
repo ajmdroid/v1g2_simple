@@ -4,7 +4,6 @@
 /// OBD-owned BLE client and scan callback, fully independent of ble_client.cpp.
 /// Owns its own NimBLEClient. Created once, never deleted (heap-safety rule).
 
-#ifndef UNIT_TEST
 
 #include <NimBLEDevice.h>
 #include <cstdint>
@@ -112,4 +111,3 @@ private:
     static constexpr uint32_t RSSI_QUERY_INTERVAL_MS = 2000;
 };
 
-#endif  // UNIT_TEST

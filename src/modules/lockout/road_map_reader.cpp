@@ -179,9 +179,7 @@ bool RoadMapReader::loadFromBuffer(uint8_t* buf, uint32_t size) {
     return bindBuffer(buf, size, false);
 }
 
-// ---------------------------------------------------------------------------
-// Geometry helpers — all pure math, no I/O
-// ---------------------------------------------------------------------------
+// --- Geometry helpers — all pure math, no I/O ---
 
 float RoadMapReader::pointToSegmentMetres(int32_t px, int32_t py,
                                            int32_t ax, int32_t ay,
@@ -248,9 +246,7 @@ uint16_t RoadMapReader::bearingDeg(int32_t aLatE5, int32_t aLonE5,
     return static_cast<uint16_t>(deg) % 360;
 }
 
-// ---------------------------------------------------------------------------
-// snapToRoad — the main query, pure PSRAM pointer math
-// ---------------------------------------------------------------------------
+// --- snapToRoad — the main query, pure PSRAM pointer math ---
 
 RoadSnapResult RoadMapReader::snapToRoad(int32_t latE5, int32_t lonE5,
                                           uint16_t snapRadiusE5) const {

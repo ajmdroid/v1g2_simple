@@ -6,8 +6,6 @@
  */
 
 #pragma once
-#ifndef COLOR_THEMES_H
-#define COLOR_THEMES_H
 
 #include <cstdint>
 
@@ -32,4 +30,3 @@ namespace ColorThemes {
     }
 }
 
-#endif // COLOR_THEMES_H

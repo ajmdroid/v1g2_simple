@@ -13,8 +13,6 @@
  */
 
 #pragma once
-#ifndef FREESANSBOLD24PT7B_H
-#define FREESANSBOLD24PT7B_H
 
 const uint8_t FreeSansBold24pt7bBitmaps[] PROGMEM = {
   0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -801,4 +799,3 @@ const GFXfont FreeSansBold24pt7b PROGMEM = {
 
 // Approx. 8816 bytes
 
-#endif // FREESANSBOLD24PT7B_H

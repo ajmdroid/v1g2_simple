@@ -2,12 +2,10 @@
 
 #include "settings.h"
 
-#ifndef UNIT_TEST
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/lockout/lockout_learner.h"
 #include "modules/obd/obd_runtime_module.h"
 #include "modules/speed/speed_source_selector.h"
-#endif
 
 // These helpers stay header-only so direct-include native tests can compile
 // the production paths without introducing extra link-time fixtures. Include

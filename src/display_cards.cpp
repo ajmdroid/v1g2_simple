@@ -18,10 +18,28 @@
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 using DisplayLayout::SECONDARY_ROW_HEIGHT;
 
-// ---------------------------------------------------------------------------
-// Secondary alert cards — mini V1 alert cards at screen bottom
-// With persistence: cards stay visible (greyed) for grace period after alert ends
-// ---------------------------------------------------------------------------
+// ============================================================================
+// File-scoped static cache variables for secondary alert cards
+// ============================================================================
+struct CardSlot {
+    AlertData alert{};
+    unsigned long lastSeen = 0;
+};
+
+static CardSlot s_cardsSlots[2];
+static AlertData s_cardsLastPriority;
+static struct {
+    Band band = BAND_NONE;
+    uint32_t frequency = 0;
+    uint8_t direction = 0;
+    bool isGraced = false;
+    bool wasMuted = false;
+    uint8_t bars = 0;
+} s_cardsLastDrawnPositions[2];
+static int s_cardsLastDrawnCount = 0;
+static int s_cardsLastProfileSlot = -1;
+
+// --- Secondary alert cards ---
 
 void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
@@ -50,62 +68,40 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
 
     unsigned long now = millis();
 
-    // Static card slots for persistence tracking
-    static struct {
-        AlertData alert{};
-        unsigned long lastSeen = 0;  // 0 = empty slot
-    } cards[2];
-
-    // Track previous priority to add as persisted card when it disappears
-    static AlertData lastPriorityForCards;
-
-    // Track what was drawn at each POSITION (0 or 1) for incremental updates
-    static struct {
-        // V1 card state
-        Band band = BAND_NONE;
-        uint32_t frequency = 0;
-        uint8_t direction = 0;
-        bool isGraced = false;
-        bool wasMuted = false;
-        uint8_t bars = 0;           // Signal strength bars (0-6)
-    } lastDrawnPositions[2];
-    [[maybe_unused]] static int lastDrawnCount = 0;
-
     // Track profile changes - clear cards when profile rotates
-    static int lastCardProfileSlot = -1;
-    if (settings.activeSlot != lastCardProfileSlot) {
-        lastCardProfileSlot = settings.activeSlot;
+    if (settings.activeSlot != s_cardsLastProfileSlot) {
+        s_cardsLastProfileSlot = settings.activeSlot;
         // Clear all card state on profile change
         for (int c = 0; c < 2; c++) {
-            cards[c].alert = AlertData();
-            cards[c].lastSeen = 0;
-            lastDrawnPositions[c].band = BAND_NONE;
-            lastDrawnPositions[c].frequency = 0;
-            lastDrawnPositions[c].bars = 0;
+            s_cardsSlots[c].alert = AlertData();
+            s_cardsSlots[c].lastSeen = 0;
+            s_cardsLastDrawnPositions[c].band = BAND_NONE;
+            s_cardsLastDrawnPositions[c].frequency = 0;
+            s_cardsLastDrawnPositions[c].bars = 0;
         }
-        lastDrawnCount = 0;
-        lastPriorityForCards = AlertData();
+        s_cardsLastDrawnCount = 0;
+        s_cardsLastPriority = AlertData();
     }
 
     // If called with nullptr alerts and count 0, clear V1 card state
     if (alerts == nullptr && alertCount == 0) {
         for (int c = 0; c < 2; c++) {
-            cards[c].alert = AlertData();
-            cards[c].lastSeen = 0;
+            s_cardsSlots[c].alert = AlertData();
+            s_cardsSlots[c].lastSeen = 0;
         }
-        lastPriorityForCards = AlertData();
+        s_cardsLastPriority = AlertData();
 
         // Clear the card area
         [[maybe_unused]] const int signalBarsX = SCREEN_WIDTH - 200 - 2;
         const int clearWidth = signalBarsX - startX;
         if (clearWidth > 0) {
             FILL_RECT(startX, cardY, clearWidth, cardH, PALETTE_BG);
-            if (lastDrawnCount > 0) {
+            if (s_cardsLastDrawnCount > 0) {
                 secondaryCardsRenderDirty_ = true;
             }
         }
         // Reset last drawn count so next time cards appear, change is detected
-        lastDrawnCount = 0;
+        s_cardsLastDrawnCount = 0;
         return;
     }
 
@@ -128,14 +124,14 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
 
     // Step 0: Check if priority changed - add old priority as persisted card
     // This handles the case where laser takes priority, then stops - laser should persist as card
-    if (lastPriorityForCards.isValid && lastPriorityForCards.band != BAND_NONE) {
-        bool priorityChanged = !alertsMatch(lastPriorityForCards, priority);
+    if (s_cardsLastPriority.isValid && s_cardsLastPriority.band != BAND_NONE) {
+        bool priorityChanged = !alertsMatch(s_cardsLastPriority, priority);
         bool oldPriorityGone = true;
 
         // Check if old priority is still in current alerts
         if (alerts != nullptr) {
             for (int i = 0; i < alertCount; i++) {
-                if (alertsMatch(lastPriorityForCards, alerts[i])) {
+                if (alertsMatch(s_cardsLastPriority, alerts[i])) {
                     oldPriorityGone = false;
                     break;
                 }
@@ -147,7 +143,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             // Check if already tracked
             bool found = false;
             for (int c = 0; c < 2; c++) {
-                if (cards[c].lastSeen > 0 && alertsMatch(cards[c].alert, lastPriorityForCards)) {
+                if (s_cardsSlots[c].lastSeen > 0 && alertsMatch(s_cardsSlots[c].alert, s_cardsLastPriority)) {
                     found = true;
                     break;
                 }
@@ -156,9 +152,9 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             // Add to empty slot if not already tracked
             if (!found) {
                 for (int c = 0; c < 2; c++) {
-                    if (cards[c].lastSeen == 0) {
-                        cards[c].alert = lastPriorityForCards;
-                        cards[c].lastSeen = now;
+                    if (s_cardsSlots[c].lastSeen == 0) {
+                        s_cardsSlots[c].alert = s_cardsLastPriority;
+                        s_cardsSlots[c].lastSeen = now;
                         break;
                     }
                 }
@@ -167,19 +163,19 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     }
 
     // Update last priority tracking
-    lastPriorityForCards = priority;
+    s_cardsLastPriority = priority;
 
     // Step 1: Update existing slots - refresh timestamp if alert still exists
     for (int c = 0; c < 2; c++) {
-        if (cards[c].lastSeen == 0) continue;
+        if (s_cardsSlots[c].lastSeen == 0) continue;
 
         bool stillExists = false;
         if (alerts != nullptr) {
             for (int i = 0; i < alertCount; i++) {
-                if (alertsMatch(cards[c].alert, alerts[i])) {
+                if (alertsMatch(s_cardsSlots[c].alert, alerts[i])) {
                     stillExists = true;
-                    cards[c].alert = alerts[i];  // Update with latest data
-                    cards[c].lastSeen = now;
+                    s_cardsSlots[c].alert = alerts[i];  // Update with latest data
+                    s_cardsSlots[c].lastSeen = now;
                     break;
                 }
             }
@@ -187,10 +183,10 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
 
         // Expire if past grace period
         if (!stillExists) {
-            unsigned long age = now - cards[c].lastSeen;
+            unsigned long age = now - s_cardsSlots[c].lastSeen;
             if (age > gracePeriodMs) {
-                cards[c].alert = AlertData();
-                cards[c].lastSeen = 0;
+                s_cardsSlots[c].alert = AlertData();
+                s_cardsSlots[c].lastSeen = 0;
             }
         }
     }
@@ -205,7 +201,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             // Check if already tracked
             bool found = false;
             for (int c = 0; c < 2; c++) {
-                if (cards[c].lastSeen > 0 && alertsMatch(cards[c].alert, alerts[i])) {
+                if (s_cardsSlots[c].lastSeen > 0 && alertsMatch(s_cardsSlots[c].alert, alerts[i])) {
                     found = true;
                     break;
                 }
@@ -214,9 +210,9 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             if (!found) {
                 // Find empty slot
                 for (int c = 0; c < 2; c++) {
-                    if (cards[c].lastSeen == 0) {
-                        cards[c].alert = alerts[i];
-                        cards[c].lastSeen = now;
+                    if (s_cardsSlots[c].lastSeen == 0) {
+                        s_cardsSlots[c].alert = alerts[i];
+                        s_cardsSlots[c].lastSeen = now;
                         break;
                     }
                 }
@@ -244,15 +240,15 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
 
     // Add V1 secondary alerts
     for (int c = 0; c < 2 && cardsToDrawCount < 2; c++) {
-        if (cards[c].lastSeen == 0) continue;
-        if (isSameAsPriority(cards[c].alert)) continue;
+        if (s_cardsSlots[c].lastSeen == 0) continue;
+        if (isSameAsPriority(s_cardsSlots[c].alert)) continue;
         cardsToDraw[cardsToDrawCount].slot = c;
-        cardsToDraw[cardsToDrawCount].bars = getAlertBars(cards[c].alert);
+        cardsToDraw[cardsToDrawCount].bars = getAlertBars(s_cardsSlots[c].alert);
         // Check if live or graced
         bool isLive = false;
         if (alerts != nullptr) {
             for (int i = 0; i < alertCount; i++) {
-                if (alertsMatch(cards[c].alert, alerts[i])) {
+                if (alertsMatch(s_cardsSlots[c].alert, alerts[i])) {
                     isLive = true;
                     break;
                 }
@@ -275,22 +271,22 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     auto positionNeedsFullRedraw = [&](int pos) -> bool {
         if (pos >= cardsToDrawCount) {
             // Position now empty but had content - needs clear
-            return lastDrawnPositions[pos].band != BAND_NONE;
+            return s_cardsLastDrawnPositions[pos].band != BAND_NONE;
         }
 
-        auto& last = lastDrawnPositions[pos];
+        auto& last = s_cardsLastDrawnPositions[pos];
         auto& curr = cardsToDraw[pos];
 
         // V1 card - check if band/freq/direction changed (needs full card redraw)
         // Use frequency tolerance (±5 MHz) to handle V1 jitter
         const uint32_t FREQ_TOLERANCE_MHZ = 5;
         int slot = curr.slot;
-        if (cards[slot].alert.band != last.band) return true;
-        uint32_t freqDiff = (cards[slot].alert.frequency > last.frequency)
-            ? (cards[slot].alert.frequency - last.frequency)
-            : (last.frequency - cards[slot].alert.frequency);
+        if (s_cardsSlots[slot].alert.band != last.band) return true;
+        uint32_t freqDiff = (s_cardsSlots[slot].alert.frequency > last.frequency)
+            ? (s_cardsSlots[slot].alert.frequency - last.frequency)
+            : (last.frequency - s_cardsSlots[slot].alert.frequency);
         if (freqDiff > FREQ_TOLERANCE_MHZ) return true;
-        if (cards[slot].alert.direction != last.direction) return true;
+        if (s_cardsSlots[slot].alert.direction != last.direction) return true;
         if (curr.isGraced != last.isGraced) return true;
         if (muted != last.wasMuted) return true;
         return false;
@@ -300,7 +296,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     auto positionNeedsDynamicUpdate = [&](int pos) -> bool {
         if (pos >= cardsToDrawCount) return false;
 
-        auto& last = lastDrawnPositions[pos];
+        auto& last = s_cardsLastDrawnPositions[pos];
         auto& curr = cardsToDraw[pos];
 
         // V1 card - check signal bars
@@ -319,9 +315,9 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
 
         // Clear position if it's now empty
         if (i >= cardsToDrawCount) {
-            if (lastDrawnPositions[i].band != BAND_NONE) {
+            if (s_cardsLastDrawnPositions[i].band != BAND_NONE) {
                 FILL_RECT(cardX, cardY, cardW, cardH, PALETTE_BG);
-                lastDrawnPositions[i].band = BAND_NONE;
+                s_cardsLastDrawnPositions[i].band = BAND_NONE;
                 secondaryCardsRenderDirty_ = true;
             }
             continue;
@@ -336,7 +332,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         // V1 ALERT CARD
         // ============================================================================
         int c = cardsToDraw[i].slot;
-        const AlertData& alert = cards[c].alert;
+        const AlertData& alert = s_cardsSlots[c].alert;
         bool isGraced = cardsToDraw[i].isGraced;
         bool drawMuted = muted || isGraced;
         uint8_t bars = cardsToDraw[i].bars;
@@ -450,15 +446,34 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         }
 
         // Update position tracking for V1 card
-        lastDrawnPositions[i].band = alert.band;
-        lastDrawnPositions[i].frequency = alert.frequency;
-        lastDrawnPositions[i].direction = alert.direction;
-        lastDrawnPositions[i].isGraced = isGraced;
-        lastDrawnPositions[i].wasMuted = muted;
-        lastDrawnPositions[i].bars = bars;
+        s_cardsLastDrawnPositions[i].band = alert.band;
+        s_cardsLastDrawnPositions[i].frequency = alert.frequency;
+        s_cardsLastDrawnPositions[i].direction = alert.direction;
+        s_cardsLastDrawnPositions[i].isGraced = isGraced;
+        s_cardsLastDrawnPositions[i].wasMuted = muted;
+        s_cardsLastDrawnPositions[i].bars = bars;
     }
 
     // Update global tracking
-    lastDrawnCount = cardsToDrawCount;
+    s_cardsLastDrawnCount = cardsToDrawCount;
 #endif
+}
+
+// ============================================================================
+// Reset secondary alert cards rendering cache
+// ============================================================================
+void V1Display::resetCardsCache() {
+    for (int c = 0; c < 2; c++) {
+        s_cardsSlots[c].alert = AlertData();
+        s_cardsSlots[c].lastSeen = 0;
+        s_cardsLastDrawnPositions[c].band = BAND_NONE;
+        s_cardsLastDrawnPositions[c].frequency = 0;
+        s_cardsLastDrawnPositions[c].direction = 0;
+        s_cardsLastDrawnPositions[c].isGraced = false;
+        s_cardsLastDrawnPositions[c].wasMuted = false;
+        s_cardsLastDrawnPositions[c].bars = 0;
+    }
+    s_cardsLastDrawnCount = 0;
+    s_cardsLastPriority = AlertData();
+    s_cardsLastProfileSlot = -1;
 }

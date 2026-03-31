@@ -362,14 +362,7 @@ LockoutEnforcerResult LockoutEnforcer::process(uint32_t nowMs,
 
     return lastResult_;
 }
-// ---------------------------------------------------------------------------
-// Clean-pass recording for demotion (ENFORCE only).
-//
-// When no alert is present and we're within range of lockout entries,
-// those entries receive a clean-pass update.  Rate-limited to once
-// per CLEAN_PASS_INTERVAL_MS (~30s) so driving through a 150m zone at
-// 60 mph (5.6s transit) records at most one clean pass per transit.
-// ---------------------------------------------------------------------------
+// --- Clean-pass recording for demotion (ENFORCE only).  When no alert is present and we're within range of lockout entries, those entries receive a clean-pass update.  Rate-limited to once per CLEAN_PASS_INTERVAL_MS (~30s) so driving through a 150m zone at 60 mph (5.6s transit) records at most one clean pass per transit. ---
 
 void LockoutEnforcer::recordCleanPasses(int32_t latE5, int32_t lonE5,
                                         int16_t matchedSlot,

@@ -1,6 +1,4 @@
 #pragma once
-#ifndef AUDIO_TASK_UTILS_H
-#define AUDIO_TASK_UTILS_H
 
 #include <atomic>
 
@@ -38,4 +36,3 @@ inline void audioResetTaskState(std::atomic<bool>& audioPlaying, TaskHandle_t& a
     audioTaskHandle = NULL;
 }
 
-#endif  // AUDIO_TASK_UTILS_H

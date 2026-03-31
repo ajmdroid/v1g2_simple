@@ -19,9 +19,7 @@ bool QuietCoordinatorModule::handleLockoutVolumeCommand(const LockoutVolumeComma
         pendingPqRestoreMuteVol_ = command.muteVolume;
         pendingPqRestoreSetMs_ = nowMs;
         pendingPqRestoreLastRetryMs_ = nowMs;
-#ifndef UNIT_TEST
         perfRecordPreQuietRestore();
-#endif
         Serial.println("[Lockout] PRE-QUIET: volume restored");
         presentation_.activeVolumeOwner = QuietOwner::PreQuiet;
         return true;
@@ -29,9 +27,7 @@ bool QuietCoordinatorModule::handleLockoutVolumeCommand(const LockoutVolumeComma
 
     if (command.type == LockoutVolumeCommandType::PreQuietDrop) {
         pendingPqRestoreVol_ = 0xFF;
-#ifndef UNIT_TEST
         perfRecordPreQuietDrop();
-#endif
         Serial.println("[Lockout] PRE-QUIET: volume dropped in lockout zone");
         presentation_.activeVolumeOwner = QuietOwner::PreQuiet;
     }
@@ -74,9 +70,7 @@ bool QuietCoordinatorModule::processSpeedVolume(const uint32_t nowMs,
             pendingSpeedVolRestoreLastRetryMs_ = nowMs;
             speedVolActive_ = false;
             speedVolSavedOriginal_ = 0xFF;
-#ifndef UNIT_TEST
             perfRecordSpeedVolRestore();
-#endif
         }
         updateSpeedVolPresentation(&speedMute);
         return retryPendingSpeedVolRestore(nowMs);
@@ -107,9 +101,7 @@ bool QuietCoordinatorModule::processSpeedVolume(const uint32_t nowMs,
         speedVolLastRetryMs_ = nowMs;
         sendVolume(QuietOwner::SpeedVolume, smSettings.v1Volume, speedVolSavedMuteVol_);
         if (lockout) lockout->setVolumeHint(speedVolSavedOriginal_, speedVolSavedMuteVol_);
-#ifndef UNIT_TEST
         perfRecordSpeedVolDrop();
-#endif
         Serial.printf("[SpeedVol] DROP: %d -> %d\n", speedVolSavedOriginal_, smSettings.v1Volume);
         updateSpeedVolPresentation(&speedMute);
         return true;
@@ -125,9 +117,7 @@ bool QuietCoordinatorModule::processSpeedVolume(const uint32_t nowMs,
         pendingSpeedVolRestoreMuteVol_ = speedVolSavedMuteVol_;
         pendingSpeedVolRestoreSetMs_ = nowMs;
         pendingSpeedVolRestoreLastRetryMs_ = nowMs;
-#ifndef UNIT_TEST
         perfRecordSpeedVolRestore();
-#endif
         Serial.printf("[SpeedVol] RESTORE: -> %d\n", speedVolSavedOriginal_);
         speedVolActive_ = false;
         speedVolSavedOriginal_ = 0xFF;
@@ -147,9 +137,7 @@ bool QuietCoordinatorModule::processSpeedVolume(const uint32_t nowMs,
         if ((nowMs - speedVolLastRetryMs_) >= SPEED_VOL_RETRY_INTERVAL_MS) {
             speedVolLastRetryMs_ = nowMs;
             sendVolume(QuietOwner::SpeedVolume, smSettings.v1Volume, speedVolSavedMuteVol_);
-#ifndef UNIT_TEST
             perfRecordSpeedVolRetry();
-#endif
         }
         updateSpeedVolPresentation(&speedMute);
         return true;

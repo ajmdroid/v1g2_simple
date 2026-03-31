@@ -5,8 +5,6 @@
  */
 
 #pragma once
-#ifndef MAIN_LOOP_PHASES_H
-#define MAIN_LOOP_PHASES_H
 
 #include <Arduino.h>
 #include "modules/system/loop_connection_early_module.h"
@@ -95,4 +93,3 @@ LoopFinalizePhaseValues processLoopFinalizePhase(
 bool shouldReturnEarlyFromLoopPowerTouchPhase(unsigned long nowMs,
                                               unsigned long loopStartUs);
 
-#endif  // MAIN_LOOP_PHASES_H

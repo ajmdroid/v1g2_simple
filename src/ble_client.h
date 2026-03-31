@@ -5,8 +5,6 @@
  */
 
 #pragma once
-#ifndef BLE_CLIENT_H
-#define BLE_CLIENT_H
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
@@ -579,4 +577,3 @@ private:
 // adds or deletes bond records.
 int refreshBleBondBackup();
 
-#endif // BLE_CLIENT_H

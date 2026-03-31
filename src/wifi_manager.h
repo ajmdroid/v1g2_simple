@@ -6,8 +6,6 @@
  */
 
 #pragma once
-#ifndef WIFI_MANAGER_H
-#define WIFI_MANAGER_H
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -316,4 +314,3 @@ private:
 // Global instance
 extern WiFiManager wifiManager;
 
-#endif // WIFI_MANAGER_H

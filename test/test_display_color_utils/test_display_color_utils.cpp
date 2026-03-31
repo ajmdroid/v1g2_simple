@@ -28,16 +28,30 @@ void tearDown() {}
 // dimColor — channel math
 // ============================================================================
 
-void test_dimColor_pure_green_at_50pct() {
-    // Pure green = 0x07E0 → G channel = 63
-    // After 50%: G = 63*50/100 = 31 → 0x03E0
-    uint16_t result = dimColor(0x07E0, 50);
+// Helper: Extract and verify RGB channels from dimColor result
+static void verify_dimColor_channels(uint16_t color, uint8_t percent,
+                                     uint8_t expected_r, uint8_t expected_g, uint8_t expected_b,
+                                     const char* description) {
+    uint16_t result = dimColor(color, percent);
     uint8_t r = (result >> 11) & 0x1F;
     uint8_t g = (result >>  5) & 0x3F;
     uint8_t b =  result        & 0x1F;
-    TEST_ASSERT_EQUAL_UINT8(0, r);
-    TEST_ASSERT_EQUAL_UINT8(31, g);
-    TEST_ASSERT_EQUAL_UINT8(0, b);
+
+    char msg[96];
+    snprintf(msg, sizeof(msg), "%s: R mismatch at %u%%", description, percent);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(expected_r, r, msg);
+
+    snprintf(msg, sizeof(msg), "%s: G mismatch at %u%%", description, percent);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(expected_g, g, msg);
+
+    snprintf(msg, sizeof(msg), "%s: B mismatch at %u%%", description, percent);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(expected_b, b, msg);
+}
+
+void test_dimColor_pure_green_at_50pct() {
+    // Pure green = 0x07E0 → G channel = 63
+    // After 50%: G = 63*50/100 = 31 → 0x03E0
+    verify_dimColor_channels(0x07E0, 50, 0, 31, 0, "pure_green_50pct");
 }
 
 void test_dimColor_pure_blue_at_25pct() {
@@ -45,45 +59,33 @@ void test_dimColor_pure_blue_at_25pct() {
     // After 25%: B = 31*25/100 = 7 → 0x0007
     uint16_t result = dimColor(0x001F, 25);
     uint8_t b = result & 0x1F;
-    TEST_ASSERT_EQUAL_UINT8(7, b);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(7, b, "pure_blue_25pct: B mismatch");
 }
 
 void test_dimColor_magenta_at_50pct() {
     // Magenta = 0xF81F → R=31, G=0, B=31
     // After 50%: R=15, G=0, B=15 → (15<<11)|(0<<5)|15 = 0x780F
-    uint16_t result = dimColor(0xF81F, 50);
-    uint8_t r = (result >> 11) & 0x1F;
-    uint8_t g = (result >>  5) & 0x3F;
-    uint8_t b =  result        & 0x1F;
-    TEST_ASSERT_EQUAL_UINT8(15, r);
-    TEST_ASSERT_EQUAL_UINT8(0,  g);
-    TEST_ASSERT_EQUAL_UINT8(15, b);
+    verify_dimColor_channels(0xF81F, 50, 15, 0, 15, "magenta_50pct");
 }
 
 void test_dimColor_white_at_0pct_equals_black() {
-    TEST_ASSERT_EQUAL_UINT16(0x0000, dimColor(0xFFFF, 0));
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(0x0000, dimColor(0xFFFF, 0), "white at 0% should be black");
 }
 
 void test_dimColor_white_at_100pct_preserves_all_channels() {
-    uint16_t result = dimColor(0xFFFF, 100);
-    uint8_t r = (result >> 11) & 0x1F;
-    uint8_t g = (result >>  5) & 0x3F;
-    uint8_t b =  result        & 0x1F;
-    TEST_ASSERT_EQUAL_UINT8(31, r);
-    TEST_ASSERT_EQUAL_UINT8(63, g);
-    TEST_ASSERT_EQUAL_UINT8(31, b);
+    verify_dimColor_channels(0xFFFF, 100, 31, 63, 31, "white_100pct");
 }
 
 void test_dimColor_black_unchanged_at_any_percent() {
-    TEST_ASSERT_EQUAL_UINT16(0x0000, dimColor(0x0000, 0));
-    TEST_ASSERT_EQUAL_UINT16(0x0000, dimColor(0x0000, 50));
-    TEST_ASSERT_EQUAL_UINT16(0x0000, dimColor(0x0000, 100));
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(0x0000, dimColor(0x0000, 0),   "black at 0%");
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(0x0000, dimColor(0x0000, 50),  "black at 50%");
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(0x0000, dimColor(0x0000, 100), "black at 100%");
 }
 
 void test_dimColor_default_parameter_is_60pct() {
     // dimColor(c) == dimColor(c, 60) for arbitrary colour
     uint16_t color = 0x8410;  // mid-gray
-    TEST_ASSERT_EQUAL_UINT16(dimColor(color, 60), dimColor(color));
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(dimColor(color, 60), dimColor(color), "default parameter should be 60%");
 }
 
 // ============================================================================

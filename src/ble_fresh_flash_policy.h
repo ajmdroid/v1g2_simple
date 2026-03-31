@@ -1,6 +1,4 @@
 #pragma once
-#ifndef BLE_FRESH_FLASH_POLICY_H
-#define BLE_FRESH_FLASH_POLICY_H
 
 #include <Arduino.h>
 #include <Preferences.h>
@@ -29,4 +27,3 @@ BondResetResult resetBondsForFirmwareVersion(Preferences& prefs,
 
 }  // namespace BleFreshFlashPolicy
 
-#endif  // BLE_FRESH_FLASH_POLICY_H

@@ -1,6 +1,4 @@
 #pragma once
-#ifndef WIFI_RATE_LIMITER_H
-#define WIFI_RATE_LIMITER_H
 
 #include <cstddef>
 #include <cstdint>
@@ -61,4 +59,3 @@ private:
     size_t count_ = 0;
 };
 
-#endif // WIFI_RATE_LIMITER_H

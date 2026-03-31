@@ -8,8 +8,6 @@
  */
 
 #pragma once
-#ifndef PERF_SD_LOGGER_H
-#define PERF_SD_LOGGER_H
 
 #include <Arduino.h>
 #include <FS.h>
@@ -68,4 +66,3 @@ public:
 
 extern PerfSdLogger perfSdLogger;
 
-#endif  // PERF_SD_LOGGER_H

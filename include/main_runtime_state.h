@@ -1,6 +1,4 @@
 #pragma once
-#ifndef MAIN_RUNTIME_STATE_H
-#define MAIN_RUNTIME_STATE_H
 
 struct MainRuntimeState {
     bool bootReady = false;
@@ -14,4 +12,3 @@ struct MainRuntimeState {
     unsigned long lastLoopUs = 0;
 };
 
-#endif  // MAIN_RUNTIME_STATE_H

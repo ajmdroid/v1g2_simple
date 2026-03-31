@@ -133,7 +133,7 @@ void test_replay_fixture_directory_exists(void) {
     // Verify the fixture root is accessible (relative to project root).
     // This test is a build canary — if the replay env compiles and this
     // passes, the harness wiring is intact.
-    TEST_ASSERT_TRUE(true);
+    TEST_IGNORE_MESSAGE("Replay fixture loading not yet implemented");
 }
 
 // =============================================================================

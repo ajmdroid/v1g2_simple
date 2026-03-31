@@ -23,8 +23,6 @@
  */
 
 #pragma once
-#ifndef PERF_METRICS_H
-#define PERF_METRICS_H
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -1436,4 +1434,3 @@ bool perfMetricsEnqueueSnapshotNow();
 // Enable/disable debug prints at runtime
 void perfMetricsSetDebug(bool enabled);
 
-#endif // PERF_METRICS_H

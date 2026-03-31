@@ -8,8 +8,6 @@
  */
 
 #pragma once
-#ifndef TIME_SERVICE_H
-#define TIME_SERVICE_H
 
 #include <Arduino.h>
 #include <atomic>
@@ -68,4 +66,3 @@ private:
 
 extern TimeService timeService;
 
-#endif  // TIME_SERVICE_H

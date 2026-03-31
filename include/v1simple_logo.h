@@ -1,6 +1,4 @@
 #pragma once
-#ifndef V1SIMPLE_LOGO_H
-#define V1SIMPLE_LOGO_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -1090,4 +1088,3 @@ static inline void decodeV1SimpleLogoRow(uint16_t row, uint16_t* dest, size_t de
     }
 }
 
-#endif  // V1SIMPLE_LOGO_H

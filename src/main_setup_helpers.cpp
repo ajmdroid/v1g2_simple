@@ -42,8 +42,6 @@
 #include "modules/touch/tap_gesture_module.h"
 #include <driver/gpio.h>
 
-#include "../include/main_globals.h"
-
 extern LockoutStore              lockoutStore;
 extern LockoutLearner            lockoutLearner;
 extern LockoutIndex              lockoutIndex;

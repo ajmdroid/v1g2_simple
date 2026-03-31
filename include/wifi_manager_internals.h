@@ -6,8 +6,6 @@
  */
 
 #pragma once
-#ifndef WIFI_MANAGER_INTERNALS_H
-#define WIFI_MANAGER_INTERNALS_H
 
 #include "wifi_manager.h"
 #include "ble_client.h"
@@ -39,4 +37,3 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
 /// Dump LittleFS root directory listing (debug diagnostic).
 void dumpLittleFSRoot();
 
-#endif // WIFI_MANAGER_INTERNALS_H

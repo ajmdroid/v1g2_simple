@@ -21,6 +21,15 @@
 using namespace DisplaySegments;
 
 // ============================================================================
+// File-scoped static cache variables for battery indicator
+// ============================================================================
+static bool s_batteryShowOnUSB = true;
+static int s_batteryLastPctDrawn = -1;
+static bool s_batteryLastPctVisible = false;
+static uint16_t s_batteryLastPctColor = 0;
+static unsigned long s_batteryLastPctDrawMs = 0;
+
+// ============================================================================
 // Volume indicator
 // ============================================================================
 
@@ -230,12 +239,11 @@ void V1Display::drawBatteryIndicator() {
 
     // Hide battery when on USB power (voltage near max)
     // Use hysteresis to prevent flickering: hide above 4125, show below 4095
-    static bool showBatteryOnUSB = true;
     uint16_t voltage = batteryManager.getVoltageMillivolts();
     if (voltage > 4125) {
-        showBatteryOnUSB = false;  // On USB or fully charged
+        s_batteryShowOnUSB = false;  // On USB or fully charged
     } else if (voltage < 4095) {
-        showBatteryOnUSB = true;   // On battery, not full
+        s_batteryShowOnUSB = true;   // On battery, not full
     }
     // Between 4095-4125: keep previous state (hysteresis)
 
@@ -244,23 +252,18 @@ void V1Display::drawBatteryIndicator() {
 
     // If percent is enabled, ONLY show percent (never icon)
     if (s.showBatteryPercent && !s.hideBatteryIcon && batteryManager.hasBattery()) {
-        // Cache percent drawing to avoid heavy FreeType work every frame
-        static int lastPctDrawn = -1;
-        static bool lastPctVisible = false;
-        static uint16_t lastPctColor = 0;
-        static unsigned long lastPctDrawMs = 0;
         const unsigned long PCT_FORCE_REDRAW_MS = 60000;  // 60s safety refresh
 
         // Clear battery icon area (we never show icon when percent is enabled)
         FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
 
         // Only draw percent if not on USB
-        if (!showBatteryOnUSB) {
+        if (!s_batteryShowOnUSB) {
             // Clear percent area when not visible
-            if (lastPctVisible) {
+            if (s_batteryLastPctVisible) {
                 FILL_RECT(SCREEN_WIDTH - 50, 0, 48, 30, PALETTE_BG);
-                lastPctVisible = false;
-                lastPctDrawn = -1;
+                s_batteryLastPctVisible = false;
+                s_batteryLastPctDrawn = -1;
             }
             return;  // No percent on USB/fully charged
         }
@@ -279,10 +282,10 @@ void V1Display::drawBatteryIndicator() {
         // Decide if we actually need to redraw
         unsigned long nowMs = millis();
         bool needsRedraw = dirty.battery ||  // Screen was cleared
-                           (!lastPctVisible) ||
-                           (pct != lastPctDrawn) ||
-                           (textColor != lastPctColor) ||
-                           ((nowMs - lastPctDrawMs) >= PCT_FORCE_REDRAW_MS);
+                           (!s_batteryLastPctVisible) ||
+                           (pct != s_batteryLastPctDrawn) ||
+                           (textColor != s_batteryLastPctColor) ||
+                           ((nowMs - s_batteryLastPctDrawMs) >= PCT_FORCE_REDRAW_MS);
 
         if (!needsRedraw) {
             return;  // Skip expensive render when nothing changed
@@ -306,10 +309,10 @@ void V1Display::drawBatteryIndicator() {
         GFX_drawString(tft_, pctStr, SCREEN_WIDTH - 4, 12);
 
         // Update cache
-        lastPctDrawn = pct;
-        lastPctColor = textColor;
-        lastPctVisible = true;
-        lastPctDrawMs = nowMs;
+        s_batteryLastPctDrawn = pct;
+        s_batteryLastPctColor = textColor;
+        s_batteryLastPctVisible = true;
+        s_batteryLastPctDrawMs = nowMs;
         return;  // Never draw icon when percent is enabled
     }
 
@@ -318,7 +321,7 @@ void V1Display::drawBatteryIndicator() {
     FILL_RECT(SCREEN_WIDTH - 50, 0, 48, 30, PALETTE_BG);
 
     // Don't draw icon if no battery, user hides it, or on USB
-    if (!batteryManager.hasBattery() || s.hideBatteryIcon || !showBatteryOnUSB) {
+    if (!batteryManager.hasBattery() || s.hideBatteryIcon || !s_batteryShowOnUSB) {
         FILL_RECT(battX - 2, battY - capH - 4, battW + 4, battH + capH + 6, PALETTE_BG);
         return;
     }
@@ -550,4 +553,15 @@ void V1Display::drawWiFiIndicator() {
         FILL_RECT(px, py, 2, 2, wifiColor);
     }
 #endif
+}
+
+// ============================================================================
+// Reset status bar rendering caches
+// ============================================================================
+void V1Display::resetStatusBarCache() {
+    s_batteryShowOnUSB = true;
+    s_batteryLastPctDrawn = -1;
+    s_batteryLastPctVisible = false;
+    s_batteryLastPctColor = 0;
+    s_batteryLastPctDrawMs = 0;
 }

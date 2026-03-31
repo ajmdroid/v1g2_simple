@@ -207,3 +207,23 @@ bool DisplayFontManager::getTopCounterBounds(
     xMax = static_cast<int>(bbox.xMax);
     return true;
 }
+
+// ============================================================================
+// Font Degradation / Fallback Helpers
+// ============================================================================
+
+bool DisplayFontManager::checkOfrRenderingSuccess(
+        OpenFontRender& renderer,
+        int32_t preCallX, int32_t preCallY) {
+    // After a printf() call, the cursor should have advanced.
+    // If it remains at the pre-call position, rendering likely failed.
+    int32_t postCallX = renderer.getCursorX();
+    int32_t postCallY = renderer.getCursorY();
+
+    // If cursor didn't move in either X or Y, rendering probably failed
+    if (postCallX == preCallX && postCallY == preCallY) {
+        return false;  // Rendering likely failed
+    }
+
+    return true;  // Rendering likely succeeded
+}

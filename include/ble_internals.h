@@ -7,8 +7,6 @@
  */
 
 #pragma once
-#ifndef BLE_INTERNALS_H
-#define BLE_INTERNALS_H
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
@@ -177,4 +175,3 @@ extern portMUX_TYPE proxyCmdMux;
 // Instance pointer for callbacks
 extern V1BLEClient* instancePtr;
 
-#endif // BLE_INTERNALS_H

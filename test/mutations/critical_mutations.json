@@ -113,6 +113,129 @@
         "tests": [
           "test_lockout_pre_quiet"
         ]
+      },
+      {
+        "id": "critical-011",
+        "module": "display_signal_bars",
+        "description": "> 6 -> >= 6 strength clamp",
+        "impact": "Signal bar strength off-by-one causes visual glitch at max bars",
+        "file": "src/display_bands.cpp",
+        "search": "    uint8_t strength = std::max(frontStrength, rearStrength);\n    if (strength > 6) strength = 6;",
+        "replace": "    uint8_t strength = std::max(frontStrength, rearStrength);\n    if (strength >= 6) strength = 6;",
+        "tests": [
+          "test_display_bands",
+          "test_signal_rendering"
+        ]
+      },
+      {
+        "id": "critical-012",
+        "module": "wifi_auto_timeout",
+        "description": ">= -> > inactivity grace timeout",
+        "impact": "WiFi timeout fires one poll early on inactivity threshold",
+        "file": "src/modules/wifi/wifi_auto_timeout_module.cpp",
+        "search": "    result.inactiveEnough = (result.lastActivityMs == 0)\n                                ? ((input.nowMs - input.setupModeStartMs) >= input.inactivityGraceMs)\n                                : ((input.nowMs - result.lastActivityMs) >= input.inactivityGraceMs);",
+        "replace": "    result.inactiveEnough = (result.lastActivityMs == 0)\n                                ? ((input.nowMs - input.setupModeStartMs) > input.inactivityGraceMs)\n                                : ((input.nowMs - result.lastActivityMs) > input.inactivityGraceMs);",
+        "tests": [
+          "test_wifi_auto_timeout"
+        ]
+      },
+      {
+        "id": "critical-013",
+        "module": "battery_percent_boundary",
+        "description": "<= -> < empty voltage boundary check",
+        "impact": "Battery percentage at exact empty threshold returns 1% instead of 0%",
+        "file": "include/battery_math.h",
+        "search": "    if (voltageMV <= kEmptyMv) {\n        return 0;\n    }",
+        "replace": "    if (voltageMV < kEmptyMv) {\n        return 0;\n    }",
+        "tests": [
+          "test_battery_manager"
+        ]
+      },
+      {
+        "id": "critical-014",
+        "module": "battery_low_warning",
+        "description": "< -> <= warning voltage boundary",
+        "impact": "Battery at exact warning threshold misses low-battery warning",
+        "file": "include/battery_math.h",
+        "search": "    return voltageMV < kWarningMv && voltageMV > 0;",
+        "replace": "    return voltageMV <= kWarningMv && voltageMV > 0;",
+        "tests": [
+          "test_battery_manager",
+          "test_battery_warnings"
+        ]
+      },
+      {
+        "id": "critical-015",
+        "module": "display_scan_dwell",
+        "description": "< -> <= scan screen dwell timeout",
+        "impact": "Scan dwell exits one poll early, missing brief reconnect grace period",
+        "file": "src/modules/ble/connection_state_cadence_module.cpp",
+        "search": "    if (scanScreenDwellActive && ctx.bleConnectedNow) {\n        const unsigned long scanDwellMs = ctx.nowMs - scanScreenEnteredMs;\n        decision.holdScanDwell = scanDwellMs < ctx.scanScreenDwellMs;",
+        "replace": "    if (scanScreenDwellActive && ctx.bleConnectedNow) {\n        const unsigned long scanDwellMs = ctx.nowMs - scanScreenEnteredMs;\n        decision.holdScanDwell = scanDwellMs <= ctx.scanScreenDwellMs;",
+        "tests": [
+          "test_connection_state_cadence"
+        ]
+      },
+      {
+        "id": "critical-016",
+        "module": "speed_mute_unmute_boundary",
+        "description": ">= -> > unmute threshold hysteresis",
+        "impact": "Speed mute unmutes one tick early, causing audible glitches near threshold",
+        "file": "src/modules/speed_mute/speed_mute_module.cpp",
+        "search": "    bool wantMute = state.muteActive;\n    if (!state.muteActive && ctx.speedMph < muteBelow) {\n        wantMute = true;\n    } else if (state.muteActive && ctx.speedMph >= unmuteAbove) {\n        wantMute = false;\n    }",
+        "replace": "    bool wantMute = state.muteActive;\n    if (!state.muteActive && ctx.speedMph < muteBelow) {\n        wantMute = true;\n    } else if (state.muteActive && ctx.speedMph > unmuteAbove) {\n        wantMute = false;\n    }",
+        "tests": [
+          "test_speed_mute_module"
+        ]
+      },
+      {
+        "id": "critical-017",
+        "module": "display_bar_position",
+        "description": "signal bar startY 18 -> 17 pixel offset",
+        "impact": "Signal bars render one pixel higher, misaligned with band indicators",
+        "file": "src/display_bands.cpp",
+        "search": "    int startX = SCREEN_WIDTH - 200;\n    int startY = 18;\n    if (startY < 8) startY = 8;",
+        "replace": "    int startX = SCREEN_WIDTH - 200;\n    int startY = 17;\n    if (startY < 8) startY = 8;",
+        "tests": [
+          "test_display_bands",
+          "test_display_layout"
+        ]
+      },
+      {
+        "id": "critical-018",
+        "module": "display_update_interval",
+        "description": "< -> <= display update cadence boundary",
+        "impact": "Display updates one cycle late when elapsed time exactly equals interval",
+        "file": "src/modules/ble/connection_state_cadence_module.cpp",
+        "search": "    if ((ctx.nowMs - lastDisplayUpdateMs) < ctx.displayUpdateIntervalMs) {\n        return decision;\n    }",
+        "replace": "    if ((ctx.nowMs - lastDisplayUpdateMs) <= ctx.displayUpdateIntervalMs) {\n        return decision;\n    }",
+        "tests": [
+          "test_connection_state_cadence"
+        ]
+      },
+      {
+        "id": "critical-019",
+        "module": "touch_release_debounce",
+        "description": "release debounce 100ms -> 99ms constant",
+        "impact": "Touch release bouncing not fully debounced, rapid re-triggers possible",
+        "file": "src/touch_handler.cpp",
+        "search": "    , releaseDebounceMs_(100) // 100ms of no-touch required before new tap can register",
+        "replace": "    , releaseDebounceMs_(99) // 100ms of no-touch required before new tap can register",
+        "tests": [
+          "test_touch_handler"
+        ]
+      },
+      {
+        "id": "critical-020",
+        "module": "ble_data_request_interval",
+        "description": "> -> >= data stale check boundary",
+        "impact": "BLE data request fires one poll too early when stale threshold exactly met",
+        "file": "src/modules/ble/connection_state_module.cpp",
+        "search": "    if (isConnected && bleQueue) {\n        unsigned long lastRx = bleQueue->getLastRxMillis();\n        bool dataStale = (nowMs - lastRx) > DATA_STALE_MS;",
+        "replace": "    if (isConnected && bleQueue) {\n        unsigned long lastRx = bleQueue->getLastRxMillis();\n        bool dataStale = (nowMs - lastRx) >= DATA_STALE_MS;",
+        "tests": [
+          "test_connection_state_module"
+        ]
       }
     ],
     "full": [
@@ -124,7 +247,17 @@
       "critical-006",
       "critical-008",
       "critical-009",
-      "critical-010"
+      "critical-010",
+      "critical-011",
+      "critical-012",
+      "critical-013",
+      "critical-014",
+      "critical-015",
+      "critical-016",
+      "critical-017",
+      "critical-018",
+      "critical-019",
+      "critical-020"
     ]
   }
 }

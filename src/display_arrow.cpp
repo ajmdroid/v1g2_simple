@@ -13,35 +13,37 @@
 #include "settings.h"
 #include "packet_parser.h"   // Direction enum, DIR_FRONT/SIDE/REAR
 
+// ============================================================================
+// File-scoped static cache variables for drawDirectionArrow
+// ============================================================================
+static bool s_arrowLastShowFront = false;
+static bool s_arrowLastShowSide = false;
+static bool s_arrowLastShowRear = false;
+static bool s_arrowLastMuted = false;
+static uint16_t s_arrowLastFrontCol = 0;
+static uint16_t s_arrowLastSideCol = 0;
+static uint16_t s_arrowLastRearCol = 0;
+static bool s_arrowLastRaisedLayout = true;
+static bool s_arrowCacheValid = false;
+static unsigned long s_arrowLastBlinkTime = 0;
+static bool s_arrowBlinkOn = true;
+
 // Draw large direction arrow (t4s3 style)
 // flashBits indicates which arrows should blink (from image1 & ~image2)
 void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits, uint16_t frontColorOverride) {
-    // Cache to avoid redrawing unchanged arrows
-    static bool lastShowFront = false;
-    static bool lastShowSide = false;
-    static bool lastShowRear = false;
-    static bool lastMuted = false;
-    static uint16_t lastFrontCol = 0;
-    static uint16_t lastSideCol = 0;
-    static uint16_t lastRearCol = 0;
-    static bool lastRaisedLayout = true;
-    static bool cacheValid = false;
-
     const bool forceFullRedraw = dirty.arrow;
     if (forceFullRedraw) {
-        cacheValid = false;
+        s_arrowCacheValid = false;
         dirty.arrow = false;
     }
 
     // Local blink timer - V1 blinks at ~5Hz, we match that
-    static unsigned long lastBlinkTime = 0;
-    static bool blinkOn = true;
     const unsigned long BLINK_INTERVAL_MS = 100;  // ~5Hz blink rate
 
     unsigned long now = millis();
-    if (now - lastBlinkTime >= BLINK_INTERVAL_MS) {
-        blinkOn = !blinkOn;
-        lastBlinkTime = now;
+    if (now - s_arrowLastBlinkTime >= BLINK_INTERVAL_MS) {
+        s_arrowBlinkOn = !s_arrowBlinkOn;
+        s_arrowLastBlinkTime = now;
     }
 
     // Determine which arrows to actually show
@@ -51,7 +53,7 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     bool showRear = (dir & DIR_REAR) != 0;
 
     // Apply blink: if flashing bit is set and we're in OFF phase, hide that arrow
-    if (!blinkOn) {
+    if (!s_arrowBlinkOn) {
         if (flashBits & 0x20) showFront = false;  // Front flash bit
         if (flashBits & 0x40) showSide = false;   // Side flash bit
         if (flashBits & 0x80) showRear = false;   // Rear flash bit
@@ -107,19 +109,19 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     uint16_t rearCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowRear;
     uint16_t offCol = 0x1082;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
 
-    const bool frontVisibilityChanged = cacheValid && (showFront != lastShowFront);
-    const bool sideVisibilityChanged = cacheValid && (showSide != lastShowSide);
-    const bool rearVisibilityChanged = cacheValid && (showRear != lastShowRear);
-    const bool mutedChanged = cacheValid && (muted != lastMuted);
-    const bool colorsChanged = cacheValid &&
-                               ((frontCol != lastFrontCol) ||
-                                (sideCol != lastSideCol) ||
-                                (rearCol != lastRearCol));
-    const bool layoutChanged = cacheValid && (raisedLayout != lastRaisedLayout);
+    const bool frontVisibilityChanged = s_arrowCacheValid && (showFront != s_arrowLastShowFront);
+    const bool sideVisibilityChanged = s_arrowCacheValid && (showSide != s_arrowLastShowSide);
+    const bool rearVisibilityChanged = s_arrowCacheValid && (showRear != s_arrowLastShowRear);
+    const bool mutedChanged = s_arrowCacheValid && (muted != s_arrowLastMuted);
+    const bool colorsChanged = s_arrowCacheValid &&
+                               ((frontCol != s_arrowLastFrontCol) ||
+                                (sideCol != s_arrowLastSideCol) ||
+                                (rearCol != s_arrowLastRearCol));
+    const bool layoutChanged = s_arrowCacheValid && (raisedLayout != s_arrowLastRaisedLayout);
     const int visibilityChangeCount = static_cast<int>(frontVisibilityChanged) +
                                       static_cast<int>(sideVisibilityChanged) +
                                       static_cast<int>(rearVisibilityChanged);
-    bool anyChanged = !cacheValid ||
+    bool anyChanged = !s_arrowCacheValid ||
                       frontVisibilityChanged ||
                       sideVisibilityChanged ||
                       rearVisibilityChanged ||
@@ -223,7 +225,7 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     };
 
     const bool canTargetSingleArrow = !forceFullRedraw &&
-                                      cacheValid &&
+                                      s_arrowCacheValid &&
                                       !mutedChanged &&
                                       !colorsChanged &&
                                       !layoutChanged &&
@@ -283,13 +285,30 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     }
 
     // Update cache
-    lastShowFront = showFront;
-    lastShowSide = showSide;
-    lastShowRear = showRear;
-    lastMuted = muted;
-    lastFrontCol = frontCol;
-    lastSideCol = sideCol;
-    lastRearCol = rearCol;
-    lastRaisedLayout = raisedLayout;
-    cacheValid = true;
+    s_arrowLastShowFront = showFront;
+    s_arrowLastShowSide = showSide;
+    s_arrowLastShowRear = showRear;
+    s_arrowLastMuted = muted;
+    s_arrowLastFrontCol = frontCol;
+    s_arrowLastSideCol = sideCol;
+    s_arrowLastRearCol = rearCol;
+    s_arrowLastRaisedLayout = raisedLayout;
+    s_arrowCacheValid = true;
+}
+
+// ============================================================================
+// Reset arrow rendering cache
+// ============================================================================
+void V1Display::resetArrowCache() {
+    s_arrowLastShowFront = false;
+    s_arrowLastShowSide = false;
+    s_arrowLastShowRear = false;
+    s_arrowLastMuted = false;
+    s_arrowLastFrontCol = 0;
+    s_arrowLastSideCol = 0;
+    s_arrowLastRearCol = 0;
+    s_arrowLastRaisedLayout = true;
+    s_arrowCacheValid = false;
+    s_arrowLastBlinkTime = 0;
+    s_arrowBlinkOn = true;
 }

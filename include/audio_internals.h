@@ -7,8 +7,6 @@
  */
 
 #pragma once
-#ifndef AUDIO_INTERNALS_H
-#define AUDIO_INTERNALS_H
 
 #include "audio_beep.h"
 #include "audio_i2c_utils.h"
@@ -75,4 +73,3 @@ void audio_log_i2c_failure(const char* context, AudioI2cResult result);
 // --- Promoted pure function (defined in audio_voice.cpp) ---
 int getGHz(AlertBand band, uint16_t freqMHz);
 
-#endif // AUDIO_INTERNALS_H

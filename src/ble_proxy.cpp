@@ -674,9 +674,12 @@ int V1BLEClient::processPhoneCommandQueue() {
             hasPending = true;
             return 0;
         }
-        if (charUUID == V1_SHORT_UUID_COMMAND_LONG && pCommandCharLong_) {
+        // Snapshot pointer under lock to prevent TOCTOU race with cleanupConnection()
+        NimBLERemoteCharacteristic* pCommandCharLongSnapshot = pCommandCharLong_;
+
+        if (charUUID == V1_SHORT_UUID_COMMAND_LONG && pCommandCharLongSnapshot) {
             // Long characteristic write - same transient failure semantics as sendCommand
-            if (pCommandCharLong_->writeValue(pktCopy.data, pktCopy.length, false)) {
+            if (pCommandCharLongSnapshot->writeValue(pktCopy.data, pktCopy.length, false)) {
                 result = SendResult::SENT;
             } else {
                 PERF_INC(cmdBleBusy);
@@ -686,8 +689,17 @@ int V1BLEClient::processPhoneCommandQueue() {
             result = sendCommandWithResult(pktCopy.data, pktCopy.length);
         }
     } else {
-        if (charUUID == V1_SHORT_UUID_COMMAND_LONG && pCommandCharLong_) {
-            if (pCommandCharLong_->writeValue(pktCopy.data, pktCopy.length, false)) {
+        // Snapshot pointer under bleMutex_ to prevent TOCTOU race with cleanupConnection()
+        NimBLERemoteCharacteristic* pCommandCharLongSnapshot = nullptr;
+        {
+            SemaphoreGuard lock(bleMutex_, 0);
+            if (lock.locked()) {
+                pCommandCharLongSnapshot = pCommandCharLong_;
+            }
+        }
+
+        if (charUUID == V1_SHORT_UUID_COMMAND_LONG && pCommandCharLongSnapshot) {
+            if (pCommandCharLongSnapshot->writeValue(pktCopy.data, pktCopy.length, false)) {
                 result = SendResult::SENT;
             } else {
                 PERF_INC(cmdBleBusy);

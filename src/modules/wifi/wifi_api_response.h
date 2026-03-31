@@ -1,6 +1,4 @@
 #pragma once
-#ifndef WIFI_API_RESPONSE_H
-#define WIFI_API_RESPONSE_H
 
 #include <ArduinoJson.h>
 #include <WebServer.h>
@@ -20,4 +18,3 @@ inline void setErrorAndMessage(JsonDocument& doc, const char* text) {
 
 }  // namespace WifiApiResponse
 
-#endif  // WIFI_API_RESPONSE_H

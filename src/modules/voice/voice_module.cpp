@@ -89,9 +89,7 @@ static bool isValidAnnounceBand(Band band) {
 VoiceAction VoiceModule::process(const VoiceContext& ctx) {
     VoiceAction action;  // Default = NONE
 
-    // ---------------------------------------------------------------------------
-    // Early Exit Checks
-    // ---------------------------------------------------------------------------
+    // --- Early Exit Checks ---
 
     if (!settings) return action;
     const V1Settings& s = settings->get();
@@ -114,9 +112,7 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
     // No valid priority alert
     if (!ctx.priority || ctx.priority->band == BAND_NONE) return action;
 
-    // ---------------------------------------------------------------------------
-    // Priority Alert Logic
-    // ---------------------------------------------------------------------------
+    // --- Priority Alert Logic ---
 
     const AlertData& priority = *ctx.priority;
     uint16_t currentFreq = (uint16_t)priority.frequency;
@@ -195,9 +191,7 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         return action;
     }
 
-    // ---------------------------------------------------------------------------
-    // Secondary Alert Logic
-    // ---------------------------------------------------------------------------
+    // --- Secondary Alert Logic ---
 
     if (s.announceSecondaryAlerts && ctx.alertCount > 1 && canAnnounceSecondary(ctx.now)) {
         for (int i = 0; i < ctx.alertCount; i++) {
@@ -231,9 +225,7 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // Smart Threat Escalation
-    // ---------------------------------------------------------------------------
+    // --- Smart Threat Escalation ---
 
     if (s.announceSecondaryAlerts && ctx.alertCount > 1) {
         // Update all alert histories

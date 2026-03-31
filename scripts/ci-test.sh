@@ -50,6 +50,8 @@ run_step "BLE hot-path semantic guard" python3 scripts/check_ble_hot_path_semant
 run_step "Display flush semantic guard" python3 scripts/check_display_flush_semantic_guard.py
 run_step "SD lock semantic guard" python3 scripts/check_sd_lock_semantic_guard.py
 run_step "Main loop semantic guard" python3 scripts/check_main_loop_semantic_guard.py
+run_step "Module const-correctness semantic guard" python3 scripts/check_module_const_correctness.py
+run_step "Extern-escape semantic guard" python3 scripts/check_extern_escape.py
 run_step "Stabilization manifest contract" python3 scripts/check_stabilization_manifest.py
 run_step "Native unit tests" python3 scripts/run_native_tests_serial.py
 run_step "Functional scenarios" ./scripts/run_functional_tests.sh

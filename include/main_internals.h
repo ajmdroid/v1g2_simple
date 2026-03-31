@@ -6,8 +6,6 @@
  */
 
 #pragma once
-#ifndef MAIN_INTERNALS_H
-#define MAIN_INTERNALS_H
 
 #include <cstdint>
 #include "esp_system.h"      // esp_reset_reason_t
@@ -82,4 +80,3 @@ void processLearnerPendingSave(uint32_t nowMs);
 /// Periodic best-effort save of deferred V1 device-store updates (Tier 7).
 void processV1DeviceStoreSave(uint32_t nowMs);
 
-#endif // MAIN_INTERNALS_H

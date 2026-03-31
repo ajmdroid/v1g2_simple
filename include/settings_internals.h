@@ -7,8 +7,6 @@
  */
 
 #pragma once
-#ifndef SETTINGS_INTERNALS_H
-#define SETTINGS_INTERNALS_H
 
 #include "settings.h"
 #include "settings_namespace_ids.h"
@@ -129,4 +127,3 @@ bool   saveWifiClientSecretToSD(const String& ssid, const String& encodedPasswor
 String loadWifiClientSecretFromSD(const String& expectedSsid);
 void   clearWifiClientSecretFromSD();
 
-#endif // SETTINGS_INTERNALS_H

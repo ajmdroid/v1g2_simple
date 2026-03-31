@@ -49,15 +49,23 @@ void V1Display::setSpeedVolZeroActive(bool active) {
     speedVolZeroActive_ = active;
 }
 
+// ============================================================================
+// File-scoped static cache variables for lockout and GPS indicators
+// ============================================================================
+static bool s_lockoutLastShown = false;
+static bool s_gpsLastShown = false;
+static uint8_t s_gpsLastSats = 0;
+static bool s_obdLastShown = false;
+static bool s_obdLastConnected = false;
+static bool s_obdLastAttention = false;
+
 void V1Display::drawLockoutIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
-    static bool lastShown = false;
-
-    if (!dirty.lockout && lockoutIndicatorShown_ == lastShown) {
+    if (!dirty.lockout && lockoutIndicatorShown_ == s_lockoutLastShown) {
         return;
     }
     dirty.lockout = false;
-    lastShown = lockoutIndicatorShown_;
+    s_lockoutLastShown = lockoutIndicatorShown_;
 
     // Position: right of the mute badge area.
     // Mute badge:  X = 225..335,  Y = 5,  H = 26.
@@ -128,16 +136,13 @@ void V1Display::drawGpsIndicator() {
     const bool wantShow = gpsSatEnabled_ && gpsSatHasFix_;
     const uint8_t curSats = wantShow ? gpsSatCount_ : 0;
 
-    static bool lastShown = false;
-    static uint8_t lastSats = 0;
-
     if (!dirty.gpsIndicator &&
-        wantShow == lastShown && curSats == lastSats) {
+        wantShow == s_gpsLastShown && curSats == s_gpsLastSats) {
         return;
     }
     dirty.gpsIndicator = false;
-    lastShown = wantShow;
-    lastSats  = curSats;
+    s_gpsLastShown = wantShow;
+    s_gpsLastSats  = curSats;
 
     // Position: just right of band column (120), left of MUTED (~225).
     const int x  = 125;
@@ -175,20 +180,16 @@ void V1Display::drawObdIndicator() {
     const bool curConnected = wantShow && obdConnected_;
     const bool curAttention = wantShow && !curConnected && (obdScanAttention_ || obdAttention_);
 
-    static bool lastShown = false;
-    static bool lastConnected = false;
-    static bool lastAttention = false;
-
     if (!dirty.obdIndicator &&
-        wantShow == lastShown &&
-        curConnected == lastConnected &&
-        curAttention == lastAttention) {
+        wantShow == s_obdLastShown &&
+        curConnected == s_obdLastConnected &&
+        curAttention == s_obdLastAttention) {
         return;
     }
     dirty.obdIndicator = false;
-    lastShown = wantShow;
-    lastConnected = curConnected;
-    lastAttention = curAttention;
+    s_obdLastShown = wantShow;
+    s_obdLastConnected = curConnected;
+    s_obdLastAttention = curAttention;
 
     // Position: right of lockout badge, before signal bars.
     const int x = 370;
@@ -220,4 +221,16 @@ void V1Display::drawStatusText(const char* text, uint16_t color) {
     GFX_setTextDatum(MC_DATUM);
     TFT_CALL(setTextSize)(2);
     GFX_drawString(tft_, text, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
+}
+
+// ============================================================================
+// Reset indicator rendering caches
+// ============================================================================
+void V1Display::resetIndicatorsCache() {
+    s_lockoutLastShown = false;
+    s_gpsLastShown = false;
+    s_gpsLastSats = 0;
+    s_obdLastShown = false;
+    s_obdLastConnected = false;
+    s_obdLastAttention = false;
 }

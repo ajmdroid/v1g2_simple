@@ -28,9 +28,16 @@ using DisplayLayout::TOP_COUNTER_TEXT_Y;
 using DisplayLayout::TOP_COUNTER_PAD_RIGHT;
 using DisplayLayout::TOP_COUNTER_FALLBACK_WIDTH;
 
-// ---------------------------------------------------------------------------
-// 7-segment digit rendering
-// ---------------------------------------------------------------------------
+// ============================================================================
+// File-scoped static cache variables for top counter
+// ============================================================================
+static char s_topCounterLastSymbol = '\0';
+static bool s_topCounterLastMuted = false;
+static bool s_topCounterLastShowDot = false;
+static uint16_t s_topCounterLastBogeyColor = 0;
+static bool s_topCounterLastMutedState = false;
+
+// --- 7-segment digit rendering ---
 
 void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor) {
     SegMetrics m = segMetrics(scale);
@@ -133,9 +140,7 @@ void V1Display::drawSevenSegmentDigit(int x, int y, float scale, char c, bool ad
     }
 }
 
-// ---------------------------------------------------------------------------
-// 7-segment text helpers
-// ---------------------------------------------------------------------------
+// --- 7-segment text helpers ---
 
 int V1Display::measureSevenSegmentText(const char* text, float scale) const {
     SegMetrics m = segMetrics(scale);
@@ -168,9 +173,7 @@ int V1Display::drawSevenSegmentText(const char* text, int x, int y, float scale,
     return cursor - x - m.spacing;
 }
 
-// ---------------------------------------------------------------------------
-// 14-segment digit and text rendering
-// ---------------------------------------------------------------------------
+// --- 14-segment digit and text rendering ---
 
 void V1Display::draw14SegmentDigit(int x, int y, float scale, char c, bool addDot, uint16_t onColor, uint16_t offColor) {
     SegMetrics m = segMetrics(scale);
@@ -252,34 +255,26 @@ int V1Display::draw14SegmentText(const char* text, int x, int y, float scale, ui
     return cursor - x - m.spacing;
 }
 
-// ---------------------------------------------------------------------------
-// Top counter (bogey counter) — Classic 7-segment style
-// ---------------------------------------------------------------------------
+// --- Top counter (bogey counter) — Classic 7-segment style ---
 
 // Classic 7-segment bogey counter (original V1 style)
 // Uses Segment7 TTF font if available, falls back to software renderer
 void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
-    // Change detection: skip redraw if nothing changed
-    static char lastSymbol = '\0';
-    static bool lastMuted = false;
-    static bool lastShowDot = false;
-    static uint16_t lastBogeyColor = 0;
-
     const V1Settings& s = settingsManager.get();
 
     // Check if color setting changed
-    bool colorChanged = (s.colorBogey != lastBogeyColor);
+    bool colorChanged = (s.colorBogey != s_topCounterLastBogeyColor);
 
     // Skip redraw if nothing changed (unless forced after screen clear)
     if (!dirty.topCounter && !colorChanged &&
-        symbol == lastSymbol && muted == lastMuted && showDot == lastShowDot) {
+        symbol == s_topCounterLastSymbol && muted == s_topCounterLastMuted && showDot == s_topCounterLastShowDot) {
         return;
     }
     dirty.topCounter = false;
-    lastSymbol = symbol;
-    lastMuted = muted;
-    lastShowDot = showDot;
-    lastBogeyColor = s.colorBogey;
+    s_topCounterLastSymbol = symbol;
+    s_topCounterLastMuted = muted;
+    s_topCounterLastShowDot = showDot;
+    s_topCounterLastBogeyColor = s.colorBogey;
 
     // Use bogey color for digits, muted color if muted, otherwise bogey color
     bool isDigit = (symbol >= '0' && symbol <= '9');
@@ -348,8 +343,18 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
             // Font size already set above (before calculateBoundingBox).
             fontMgr.topCounter.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
             fontMgr.topCounter.setCursor(x, y);
+
+            // Check OFR rendering success and fallback if it fails
+            int32_t preCursorX = fontMgr.topCounter.getCursorX();
+            int32_t preCursorY = fontMgr.topCounter.getCursorY();
             fontMgr.topCounter.printf("%s", buf);
-            drewWithOfr = true;
+
+            if (DisplayFontManager::checkOfrRenderingSuccess(fontMgr.topCounter, preCursorX, preCursorY)) {
+                drewWithOfr = true;
+            } else {
+                Serial.printf("[Display] WARNING: TopCounter OFR rendering failed for '%s', using fallback font\n", buf);
+                // OFR failed, will fall through to software 7-segment fallback below
+            }
         }
     }
 
@@ -383,20 +388,15 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
     drawTopCounterClassic(symbol, muted, showDot);
 }
 
-// ---------------------------------------------------------------------------
-// Mute icon badge
-// ---------------------------------------------------------------------------
+// --- Mute icon badge ---
 
 void V1Display::drawMuteIcon(bool muted) {
-    // Change detection: skip redraw if nothing changed
-    static bool lastMutedState = false;
-
     // Skip redraw if nothing changed (unless forced after screen clear)
-    if (!dirty.muteIcon && muted == lastMutedState) {
+    if (!dirty.muteIcon && muted == s_topCounterLastMutedState) {
         return;
     }
     dirty.muteIcon = false;
-    lastMutedState = muted;
+    s_topCounterLastMutedState = muted;
 
     // Draw badge at fixed top position (top ~10% of screen)
     const int leftMargin = 120;    // After band indicators
@@ -430,4 +430,15 @@ void V1Display::drawMuteIcon(bool muted) {
         // Clear the badge area when not muted.
         FILL_RECT(leftMargin + (maxWidth - w) / 2, y, w, h, PALETTE_BG);
     }
+}
+
+// ============================================================================
+// Reset top counter rendering caches
+// ============================================================================
+void V1Display::resetTopCounterCache() {
+    s_topCounterLastSymbol = '\0';
+    s_topCounterLastMuted = false;
+    s_topCounterLastShowDot = false;
+    s_topCounterLastBogeyColor = 0;
+    s_topCounterLastMutedState = false;
 }

@@ -7,8 +7,6 @@
  */
 
 #pragma once
-#ifndef SETTINGS_SANITIZE_H
-#define SETTINGS_SANITIZE_H
 
 #include <Arduino.h>
 #include <algorithm>
@@ -101,4 +99,30 @@ inline String sanitizeProfileDescriptionValue(const String& raw) {
     return clampStringLength(raw, MAX_PROFILE_DESCRIPTION_LEN);
 }
 
-#endif // SETTINGS_SANITIZE_H
+// ── Color validation ────────────────────────────────────────────────────────
+
+/**
+ * Sanitize RGB565 color values loaded from NVS.
+ *
+ * Ensures color values are valid RGB565 16-bit colors with fallback defaults.
+ * Also detects corrupted colors (e.g., 0x0000 black when they shouldn't be)
+ * and prevents completely dark displays.
+ *
+ * @param raw The color value from NVS (may be corrupted)
+ * @param defaultColor The fallback color if validation fails
+ * @return Valid RGB565 color or defaultColor
+ */
+inline uint16_t sanitizeRgb565Color(uint16_t raw, uint16_t defaultColor) {
+    // Mask to ensure valid RGB565 range (16-bit)
+    // This is primarily defensive - should already be uint16_t.
+    uint16_t masked = raw & 0xFFFF;
+
+    // If completely black (0x0000), it's likely NVS corruption
+    // since it's rarely a valid choice. Return default to prevent unreadable display.
+    if (masked == 0x0000) {
+        return defaultColor;
+    }
+
+    return masked;
+}
+

@@ -1,8 +1,6 @@
 // display_vol_warn.h — VolumeZeroWarning state machine for VOL 0 flashing alert
 // Shared between display.cpp (setBLEProxyStatus reset) and display_update.cpp (evaluate/draw).
 #pragma once
-#ifndef DISPLAY_VOL_WARN_H
-#define DISPLAY_VOL_WARN_H
 
 #include <Arduino.h>
 
@@ -87,4 +85,3 @@ struct VolumeZeroWarning {
 // Single shared instance — defined in display.cpp
 extern VolumeZeroWarning volZeroWarn;
 
-#endif // DISPLAY_VOL_WARN_H

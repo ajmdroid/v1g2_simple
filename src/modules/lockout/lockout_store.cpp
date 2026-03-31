@@ -214,9 +214,7 @@ bool ensureParentDirectory(fs::FS& fs, const char* path) {
 
 }  // namespace
 
-// ---------------------------------------------------------------------------
-// Lifecycle
-// ---------------------------------------------------------------------------
+// --- Lifecycle ---
 
 void LockoutStore::begin(LockoutIndex* index) {
     index_ = index;
@@ -224,9 +222,7 @@ void LockoutStore::begin(LockoutIndex* index) {
     stats_ = Stats{};
 }
 
-// ---------------------------------------------------------------------------
-// Serialization: index → JSON
-// ---------------------------------------------------------------------------
+// --- Serialization: index → JSON ---
 
 void LockoutStore::toJson(JsonDocument& doc) const {
     if (!index_) return;
@@ -285,9 +281,7 @@ void LockoutStore::toJson(JsonDocument& doc) const {
     stats_.entriesSaved = count;
 }
 
-// ---------------------------------------------------------------------------
-// Deserialization: JSON → index
-// ---------------------------------------------------------------------------
+// --- Deserialization: JSON → index ---
 
 bool LockoutStore::fromJson(JsonDocument& doc) {
     if (!index_) {

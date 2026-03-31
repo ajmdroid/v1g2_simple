@@ -1,6 +1,4 @@
 #pragma once
-#ifndef PSRAM_ALLOC_COMPAT_H
-#define PSRAM_ALLOC_COMPAT_H
 
 #if defined(CONFIG_SPIRAM_SUPPORT)
 #include <stddef.h>
@@ -18,4 +16,3 @@ void *ps_realloc(void *ptr, size_t size);
 #endif
 #endif
 
-#endif  // PSRAM_ALLOC_COMPAT_H
