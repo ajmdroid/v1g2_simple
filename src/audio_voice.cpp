@@ -111,7 +111,7 @@ static bool start_sd_audio_task(const SDAudioTaskParams& localParams) {
     );
     audioTaskHandle.store(tempHandle);
 
-    if (audioTaskHandle.load() == NULL) {
+    if (audioTaskHandle.load() == nullptr) {
         Serial.println("[AUDIO] ERROR: Failed to create SD audio task!");
         PERF_INC(audioTaskFail);
         audio_playing = false;
@@ -126,7 +126,7 @@ static bool start_sd_audio_task(const SDAudioTaskParams& localParams) {
 static void sd_audio_playback_task(void* pvParameters) {
     (void)pvParameters;  // Unused - params are in g_sdAudioTaskParams
 
-    if (i2s_tx_chan == NULL) {
+    if (i2s_tx_chan == nullptr) {
         i2s_init();
         vTaskDelay(pdMS_TO_TICKS(30));  // Reduced from 50ms
     }
@@ -134,13 +134,13 @@ static void sd_audio_playback_task(void* pvParameters) {
     if (!i2s_initialized) {
         Serial.println("[AUDIO] ERROR: I2S init failed!");
         audioResetTaskState(audio_playing, audioTaskHandle);
-        vTaskDelete(NULL);
+        vTaskDelete(nullptr);
         return;
     }
 
     if (!es8311_init()) {
         audioResetTaskState(audio_playing, audioTaskHandle);
-        vTaskDelete(NULL);
+        vTaskDelete(nullptr);
         return;
     }
 
@@ -151,7 +151,7 @@ static void sd_audio_playback_task(void* pvParameters) {
         if (ampEnableResult != AudioI2cResult::Ok) {
             audio_log_i2c_failure("sd_audio_playback_task amp enable (cold)", ampEnableResult);
             audioResetTaskState(audio_playing, audioTaskHandle);
-            vTaskDelete(NULL);
+            vTaskDelete(nullptr);
             return;
         }
         vTaskDelay(pdMS_TO_TICKS(50));  // Amp stabilization (only on cold start)
@@ -163,7 +163,7 @@ static void sd_audio_playback_task(void* pvParameters) {
         if (ampEnableResult != AudioI2cResult::Ok) {
             audio_log_i2c_failure("sd_audio_playback_task amp enable (warm)", ampEnableResult);
             audioResetTaskState(audio_playing, audioTaskHandle);
-            vTaskDelete(NULL);
+            vTaskDelete(nullptr);
             return;
         }
         AUDIO_LOGLN("[AUDIO] Amp warm - skipping stabilization");
@@ -174,7 +174,7 @@ static void sd_audio_playback_task(void* pvParameters) {
         Serial.println("[AUDIO] ERROR: audioFS is null!");
         // Don't disable amp here - let timeout handle it
         audioResetTaskState(audio_playing, audioTaskHandle);
-        vTaskDelete(NULL);
+        vTaskDelete(nullptr);
         return;
     }
 
@@ -182,7 +182,7 @@ static void sd_audio_playback_task(void* pvParameters) {
     if (!g_stereoChunkBuffer || !g_mulawChunkBuffer) {
         Serial.println("[AUDIO] ERROR: PSRAM buffers not allocated!");
         audioResetTaskState(audio_playing, audioTaskHandle);
-        vTaskDelete(NULL);
+        vTaskDelete(nullptr);
         return;
     }
     bool writeAborted = false;
@@ -256,7 +256,7 @@ static void sd_audio_playback_task(void* pvParameters) {
     }
 
     audioResetTaskState(audio_playing, audioTaskHandle);
-    vTaskDelete(NULL);
+    vTaskDelete(nullptr);
 }
 
 // Get GHz value for band and frequency

@@ -69,8 +69,8 @@ void test_i2s_init_failure_path_uses_caps_delete() {
     const std::string failureBlock = extractBlock(taskBody, "if (!i2s_initialized)");
 
     TEST_ASSERT_NOT_EQUAL(std::string::npos, failureBlock.find("audioResetTaskState(audio_playing, audioTaskHandle);"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, failureBlock.find("vTaskDeleteWithCaps(NULL);"));
-    TEST_ASSERT_EQUAL(std::string::npos, failureBlock.find("vTaskDelete(NULL);"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, failureBlock.find("vTaskDeleteWithCaps(nullptr);"));
+    TEST_ASSERT_EQUAL(std::string::npos, failureBlock.find("vTaskDelete(nullptr);"));
 }
 
 int main() {

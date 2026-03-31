@@ -36,7 +36,7 @@
 static TwoWire& audioWire = tca9554Wire;
 bool es8311_initialized = false;
 bool i2s_initialized = false;
-i2s_chan_handle_t i2s_tx_chan = NULL;  // New I2S driver handle
+i2s_chan_handle_t i2s_tx_chan = nullptr;  // New I2S driver handle
 
 // Current volume level (0-100%) - must be declared before es8311_init() uses it
 static uint8_t current_volume_percent = 75;
@@ -325,7 +325,7 @@ void i2s_init() {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     chan_cfg.auto_clear = true;  // Auto clear legacy data in DMA buffer
 
-    esp_err_t err = i2s_new_channel(&chan_cfg, &i2s_tx_chan, NULL);  // TX only, no RX
+    esp_err_t err = i2s_new_channel(&chan_cfg, &i2s_tx_chan, nullptr);  // TX only, no RX
     if (err != ESP_OK) {
         AUDIO_LOGF("[AUDIO] i2s_new_channel failed: %d\\n", err);
         return;
@@ -354,7 +354,7 @@ void i2s_init() {
     if (err != ESP_OK) {
         AUDIO_LOGF("[AUDIO] i2s_channel_init_std_mode failed: %d\\n", err);
         i2s_del_channel(i2s_tx_chan);
-        i2s_tx_chan = NULL;
+        i2s_tx_chan = nullptr;
         return;
     }
 
@@ -363,7 +363,7 @@ void i2s_init() {
     if (err != ESP_OK) {
         AUDIO_LOGF("[AUDIO] i2s_channel_enable failed: %d\\n", err);
         i2s_del_channel(i2s_tx_chan);
-        i2s_tx_chan = NULL;
+        i2s_tx_chan = nullptr;
         return;
     }
 
@@ -418,7 +418,7 @@ static struct {
 
 SDAudioTaskParams g_sdAudioTaskParams;
 
-std::atomic<TaskHandle_t> audioTaskHandle{NULL};
+std::atomic<TaskHandle_t> audioTaskHandle{nullptr};
 
 // ============================================================================
 // Static task allocation for SD audio playback.
@@ -445,11 +445,11 @@ static void audio_playback_task(void* pvParameters) {
     if (!g_stereoChunkBuffer) {
         Serial.println("[AUDIO] ERROR: PSRAM buffers not allocated!");
         audioResetTaskState(audio_playing, audioTaskHandle);
-        vTaskDeleteWithCaps(NULL);
+        vTaskDeleteWithCaps(nullptr);
         return;
     }
 
-    if (i2s_tx_chan == NULL) {
+    if (i2s_tx_chan == nullptr) {
         // CRITICAL: Start I2S FIRST so MCLK is running before ES8311 init
         i2s_init();
         vTaskDelay(pdMS_TO_TICKS(50));  // Let clocks stabilize
@@ -458,13 +458,13 @@ static void audio_playback_task(void* pvParameters) {
     if (!i2s_initialized) {
         Serial.println("[AUDIO] ERROR: I2S init failed!");
         audioResetTaskState(audio_playing, audioTaskHandle);
-        vTaskDeleteWithCaps(NULL);
+        vTaskDeleteWithCaps(nullptr);
         return;
     }
 
     if (!es8311_init()) {
         audioResetTaskState(audio_playing, audioTaskHandle);
-        vTaskDeleteWithCaps(NULL);
+        vTaskDeleteWithCaps(nullptr);
         return;
     }
     vTaskDelay(pdMS_TO_TICKS(50));  // Let ES8311 lock to MCLK
@@ -474,7 +474,7 @@ static void audio_playback_task(void* pvParameters) {
     if (ampEnableResult != AudioI2cResult::Ok) {
         audio_log_i2c_failure("audio_playback_task amp enable", ampEnableResult);
         audioResetTaskState(audio_playing, audioTaskHandle);
-        vTaskDeleteWithCaps(NULL);
+        vTaskDeleteWithCaps(nullptr);
         return;
     }
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -530,7 +530,7 @@ static void audio_playback_task(void* pvParameters) {
     // Self-delete: IDF recommends external deletion, but this fire-and-forget
     // task has no external owner.  Deferred cleanup (prvTaskDeleteWithCapsTask)
     // handles the stack free safely.
-    vTaskDeleteWithCaps(NULL);
+    vTaskDeleteWithCaps(nullptr);
 }
 
 // Helper to play any PCM audio (mono input, converts to stereo for I2S)

@@ -615,8 +615,8 @@ bool V1BLEClient::executeSubscribeStep() {
                 Serial.println("[BLE] FAIL display char");
                 return false;
             }
-            notifyShortChar_.store(pDisplayDataChar_, std::memory_order_relaxed);
-            notifyShortCharId_.store(shortUuid(pDisplayDataChar_->getUUID()), std::memory_order_relaxed);
+            notifyShortChar_.store(pDisplayDataChar_, std::memory_order_release);
+            notifyShortCharId_.store(shortUuid(pDisplayDataChar_->getUUID()), std::memory_order_release);
             subscribeStep_ = SubscribeStep::GET_COMMAND_CHAR;
             return false;
         }
@@ -678,9 +678,9 @@ bool V1BLEClient::executeSubscribeStep() {
         case SubscribeStep::GET_DISPLAY_LONG: {
             // Get B4E0 characteristic (non-critical, used for voltage passthrough)
             NimBLERemoteCharacteristic* pDisplayLong = pRemoteService_->getCharacteristic(V1_DISPLAY_DATA_LONG_UUID);
-            notifyLongChar_.store(pDisplayLong, std::memory_order_relaxed);
+            notifyLongChar_.store(pDisplayLong, std::memory_order_release);
             notifyLongCharId_.store(pDisplayLong ? shortUuid(pDisplayLong->getUUID()) : 0,
-                                   std::memory_order_relaxed);
+                                   std::memory_order_release);
             if (pDisplayLong && pDisplayLong->canNotify()) {
                 subscribeStep_ = SubscribeStep::SUBSCRIBE_LONG;
             } else {

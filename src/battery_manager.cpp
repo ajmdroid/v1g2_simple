@@ -20,8 +20,8 @@ BatteryManager batteryManager;
 #define BATTERY_LOGLN(msg) do { } while (0)
 
 // ADC handles
-static adc_oneshot_unit_handle_t adc1_handle = NULL;
-static adc_cali_handle_t adc_cali_handle = NULL;
+static adc_oneshot_unit_handle_t adc1_handle = nullptr;
+static adc_cali_handle_t adc_cali_handle = nullptr;
 
 // I2C for TCA9554 (separate from touch I2C) - also used by ES8311 codec
 TwoWire tca9554Wire(1);  // Use I2C port 1
