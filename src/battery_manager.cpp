@@ -28,16 +28,16 @@ TwoWire tca9554Wire(1);  // Use I2C port 1
 SemaphoreHandle_t tca9554WireMutex = nullptr;
 
 BatteryManager::BatteryManager()
-    : initialized(false)
-    , onBattery(false)
-    , lastVoltage(0)
-    , lastButtonPress(0)
-    , buttonPressStart(0)
-    , buttonWasPressed(false)
-    , cachedVoltage(0)
-    , cachedPercent(0)
-    , lastUpdateMs(0)
-    , simulatedVoltage(0)
+    : initialized_(false)
+    , onBattery_(false)
+    , lastVoltage_(0)
+    , lastButtonPress_(0)
+    , buttonPressStart_(0)
+    , buttonWasPressed_(false)
+    , cachedVoltage_(0)
+    , cachedPercent_(0)
+    , lastUpdateMs_(0)
+    , simulatedVoltage_(0)
 {
 }
 
@@ -92,10 +92,10 @@ bool BatteryManager::begin() {
     }
 
     // Majority vote
-    onBattery = (highCount > samples / 2);
+    onBattery_ = (highCount > samples / 2);
 
     BATTERY_LOGF("[Battery] Power detection: GPIO16 samples=%d/%d (HIGH), decision=%s\n",
-                  highCount, samples, onBattery ? "BATTERY" : "USB");
+                  highCount, samples, onBattery_ ? "BATTERY" : "USB");
 
     // Initialize ADC for battery voltage reading
     if (!initADC()) {
@@ -109,28 +109,28 @@ bool BatteryManager::begin() {
         BATTERY_LOGF("[Battery] Initial voltage reading: %dmV\n", initialVoltage);
 
         // Sanity check: if we think we're on USB but voltage looks like battery
-        if (!onBattery && initialVoltage > BATTERY_EMPTY_MV && initialVoltage < BATTERY_FULL_MV + 500) {
+        if (!onBattery_ && initialVoltage > BATTERY_EMPTY_MV && initialVoltage < BATTERY_FULL_MV + 500) {
             Serial.printf("[Battery] WARNING: USB mode but battery voltage detected (%dmV)\n", initialVoltage);
         }
         // Sanity check: if we think we're on battery but voltage is too low or zero
-        if (onBattery && initialVoltage < BATTERY_EMPTY_MV) {
+        if (onBattery_ && initialVoltage < BATTERY_EMPTY_MV) {
             Serial.printf("[Battery] WARNING: Battery mode but voltage too low (%dmV)\n", initialVoltage);
         }
     }
 
     // TCA9554 already initialized if on battery (done early)
     // Just log the final status
-    if (onBattery && !initialized) {
+    if (onBattery_ && !initialized_) {
         BATTERY_LOGLN("[Battery] Power latch already set (early init)");
     }
 
-    initialized = true;
+    initialized_ = true;
 
     // Do initial cache update to populate voltage reading
     update();
     Serial.printf("[Battery] Init OK (%s, %dmV, %d%%, hasBattery=%d)\n",
-                  onBattery ? "BATTERY" : "USB",
-                  cachedVoltage, cachedPercent, hasBattery());
+                  onBattery_ ? "BATTERY" : "USB",
+                  cachedVoltage_, cachedPercent_, hasBattery());
     return true;
 }
 
@@ -174,7 +174,7 @@ bool BatteryManager::initADC() {
         return false;
     }
 
-    BATTERY_LOGLN("[Battery] ADC initialized for battery monitoring");
+    BATTERY_LOGLN("[Battery] ADC initialized_ for battery monitoring");
     return true;
 }
 
@@ -232,7 +232,7 @@ bool BatteryManager::initTCA9554() {
         return false;
     }
 
-    BATTERY_LOGLN("[Battery] TCA9554 initialized - power latch engaged");
+    BATTERY_LOGLN("[Battery] TCA9554 initialized_ - power latch engaged");
     return true;
 }
 
@@ -319,7 +319,7 @@ uint16_t BatteryManager::readADCMillivolts() {
     int raw = 0;
     esp_err_t ret = adc_oneshot_read(adc1_handle, ADC_CHANNEL_3, &raw);
     if (ret != ESP_OK) {
-        return lastVoltage;  // Return last known value on error
+        return lastVoltage_;  // Return last known value on error
     }
 
     int voltage_mv = 0;
@@ -331,34 +331,34 @@ uint16_t BatteryManager::readADCMillivolts() {
     }
 
     // Apply voltage divider factor (3:1 ratio on the board)
-    lastVoltage = voltage_mv * 3;
-    return lastVoltage;
+    lastVoltage_ = voltage_mv * 3;
+    return lastVoltage_;
 }
 
 bool BatteryManager::isOnBattery() const {
-    return onBattery;
+    return onBattery_;
 }
 
 bool BatteryManager::hasBattery() const {
-    // Debug simulation mode - if simulatedVoltage is set, use it
-    if (simulatedVoltage > 0) {
+    // Debug simulation mode - if simulatedVoltage_ is set, use it
+    if (simulatedVoltage_ > 0) {
         return true;
     }
 
     // Must be initialized with working ADC to detect battery
-    if (!initialized || !adc1_handle) {
+    if (!initialized_ || !adc1_handle) {
         return false;
     }
 
     // Only show battery icon when actually running on battery power
     // When on USB, we don't show the battery icon even if physically present
-    if (!onBattery) {
+    if (!onBattery_) {
         return false;
     }
 
     // Verify with actual voltage - if below minimum, no real battery
     // This catches cases where GPIO16 floats HIGH but no battery is connected
-    if (cachedVoltage < BATTERY_EMPTY_MV) {
+    if (cachedVoltage_ < BATTERY_EMPTY_MV) {
         return false;
     }
 
@@ -366,12 +366,12 @@ bool BatteryManager::hasBattery() const {
 }
 
 void BatteryManager::update() {
-    if (!initialized) {
+    if (!initialized_) {
         return;
     }
 
     // Skip normal updates if in simulation mode
-    if (simulatedVoltage > 0) {
+    if (simulatedVoltage_ > 0) {
         return;
     }
 
@@ -389,40 +389,40 @@ void BatteryManager::update() {
             }
         }
         bool detectedBattery = (highCount > samples / 2);
-        if (detectedBattery != onBattery) {
-            onBattery = detectedBattery;
-            Serial.printf("[Battery] Power source changed: %s\n", onBattery ? "BATTERY" : "USB");
+        if (detectedBattery != onBattery_) {
+            onBattery_ = detectedBattery;
+            Serial.printf("[Battery] Power source changed: %s\n", onBattery_ ? "BATTERY" : "USB");
         }
         lastPowerCheckMs = now;
     }
 
     // Update cached voltage/percentage every 10 seconds
     // Faster polling needed for USB/battery auto-detection via voltage
-    // Force immediate read on first call (cachedVoltage == 0) so battery icon shows at boot
-    if (cachedVoltage == 0 || (now - lastUpdateMs >= 10000)) {
+    // Force immediate read on first call (cachedVoltage_ == 0) so battery icon shows at boot
+    if (cachedVoltage_ == 0 || (now - lastUpdateMs_ >= 10000)) {
         uint16_t voltage = readADCMillivolts();
-        cachedVoltage = voltage;
+        cachedVoltage_ = voltage;
 
-        cachedPercent = battery_math::voltageToPercent(voltage);
+        cachedPercent_ = battery_math::voltageToPercent(voltage);
 
-        lastUpdateMs = now;
+        lastUpdateMs_ = now;
     }
 }
 
 uint16_t BatteryManager::getVoltageMillivolts() const {
-    return cachedVoltage;
+    return cachedVoltage_;
 }
 
 uint8_t BatteryManager::getPercentage() const {
-    return cachedPercent;
+    return cachedPercent_;
 }
 
 bool BatteryManager::isLow() const {
-    return battery_math::isLow(cachedVoltage);
+    return battery_math::isLow(cachedVoltage_);
 }
 
 bool BatteryManager::isCritical() const {
-    return battery_math::isCritical(cachedVoltage);
+    return battery_math::isCritical(cachedVoltage_);
 }
 
 bool BatteryManager::latchPowerOn() {
@@ -512,7 +512,7 @@ bool BatteryManager::isPowerButtonPressed() {
 }
 
 bool BatteryManager::processPowerButton() {
-    // Allow shutdown as long as a battery is present; onBattery can be wrong if button was held during boot.
+    // Allow shutdown as long as a battery is present; onBattery_ can be wrong if button was held during boot.
     if (!hasBattery()) return false;
 
     // Note: GPIO 0 (BOOT pin) cannot be read as GPIO on ESP32 - disabled BOOT+PWR check
@@ -520,19 +520,19 @@ bool BatteryManager::processPowerButton() {
     bool pressed = isPowerButtonPressed();
     unsigned long now = millis();
 
-    if (pressed && !buttonWasPressed) {
+    if (pressed && !buttonWasPressed_) {
         // Button just pressed
-        buttonPressStart = now;
-        buttonWasPressed = true;
-    } else if (pressed && buttonWasPressed) {
+        buttonPressStart_ = now;
+        buttonWasPressed_ = true;
+    } else if (pressed && buttonWasPressed_) {
         // Button held - check for long press (2 seconds)
-        if (now - buttonPressStart >= 2000) {
+        if (now - buttonPressStart_ >= 2000) {
             Serial.println("[Battery] Long press detected - requesting shutdown");
             return true;
         }
-    } else if (!pressed && buttonWasPressed) {
+    } else if (!pressed && buttonWasPressed_) {
         // Button released
-        buttonWasPressed = false;
+        buttonWasPressed_ = false;
     }
 
     return false;

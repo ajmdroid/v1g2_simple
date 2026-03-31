@@ -78,20 +78,20 @@ public:
     bool processPowerButton();
 
 private:
-    bool initialized;
-    bool onBattery;
-    uint16_t lastVoltage;
-    unsigned long lastButtonPress;
-    unsigned long buttonPressStart;
-    bool buttonWasPressed;
+    bool initialized_;
+    bool onBattery_;
+    uint16_t lastVoltage_;
+    unsigned long lastButtonPress_;
+    unsigned long buttonPressStart_;
+    bool buttonWasPressed_;
 
     // Cached battery state (updated every 30s)
-    uint16_t cachedVoltage;
-    uint8_t cachedPercent;
-    unsigned long lastUpdateMs;
+    uint16_t cachedVoltage_;
+    uint8_t cachedPercent_;
+    unsigned long lastUpdateMs_;
 
     // Debug simulation
-    uint16_t simulatedVoltage;
+    uint16_t simulatedVoltage_;
 
     bool initADC();
     bool initTCA9554();
