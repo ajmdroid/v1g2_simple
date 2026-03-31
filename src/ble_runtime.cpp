@@ -43,9 +43,9 @@ void V1BLEClient::process() {
             pDisplayDataChar_ = nullptr;
             pCommandChar_ = nullptr;
             pCommandCharLong_ = nullptr;
-            notifyShortChar_.store(nullptr, std::memory_order_relaxed);
+            notifyShortChar_.store(nullptr, std::memory_order_release);
             notifyShortCharId_.store(0, std::memory_order_relaxed);
-            notifyLongChar_.store(nullptr, std::memory_order_relaxed);
+            notifyLongChar_.store(nullptr, std::memory_order_release);
             notifyLongCharId_.store(0, std::memory_order_relaxed);
             verifyPending_ = false;
             verifyComplete_ = false;

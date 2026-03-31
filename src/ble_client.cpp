@@ -353,22 +353,24 @@ void V1BLEClient::cleanupConnection() {
         }
     }
 
-    // 3. Clear characteristic references (they become invalid after disconnect)
+    // 3+4. Clear characteristic references and connection flags atomically under
+    // bleMutex_ so that any in-flight notifyCallback cannot observe connected_==true
+    // while the characteristic pointers are already null (use-after-free window).
+    // Stores use release ordering so a reader that acquires connected_==false is
+    // guaranteed to also see null characteristic pointers.
     pDisplayDataChar_ = nullptr;
     pCommandChar_ = nullptr;
     pCommandCharLong_ = nullptr;
     pRemoteService_ = nullptr;
-    notifyShortChar_.store(nullptr, std::memory_order_relaxed);
-    notifyShortCharId_.store(0, std::memory_order_relaxed);
-    notifyLongChar_.store(nullptr, std::memory_order_relaxed);
-    notifyLongCharId_.store(0, std::memory_order_relaxed);
     scanStopResultsCleared_ = false;
-
-    // 4. Clear connection flags
     {
         SemaphoreGuard lock(bleMutex_, pdMS_TO_TICKS(20));  // COLD: disconnect cleanup
         if (lock.locked()) {
-            connected_.store(false, std::memory_order_relaxed);
+            notifyShortChar_.store(nullptr, std::memory_order_release);
+            notifyShortCharId_.store(0, std::memory_order_relaxed);
+            notifyLongChar_.store(nullptr, std::memory_order_release);
+            notifyLongCharId_.store(0, std::memory_order_relaxed);
+            connected_.store(false, std::memory_order_release);
             shouldConnect_ = false;
             hasTargetDevice_ = false;
             targetDevice_ = NimBLEAdvertisedDevice();
@@ -602,9 +604,9 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
 }
 
 bool V1BLEClient::isConnected() {
-    // Quick check without mutex - the connected_ flag is atomic enough for reading
-    // and pClient_->isConnected() is thread-safe in NimBLE
-    if (!connected_.load(std::memory_order_relaxed) || !pClient_) {
+    // Acquire ordering ensures that when we observe connected_==false, we also
+    // see the null characteristic pointers written before it (release) in cleanup.
+    if (!connected_.load(std::memory_order_acquire) || !pClient_) {
         return false;
     }
     return pClient_->isConnected();
@@ -697,14 +699,17 @@ void V1BLEClient::setProxyClientConnected(bool connected_) {
 }
 
 void V1BLEClient::onDataReceived(DataCallback callback) {
+    SemaphoreGuard lock(bleMutex_, pdMS_TO_TICKS(20));
     dataCallback_ = callback;
 }
 
 void V1BLEClient::onV1ConnectImmediate(ConnectionCallback callback) {
+    SemaphoreGuard lock(bleMutex_, pdMS_TO_TICKS(20));
     connectImmediateCallback_ = callback;
 }
 
 void V1BLEClient::onV1Connected(ConnectionCallback callback) {
+    SemaphoreGuard lock(bleMutex_, pdMS_TO_TICKS(20));
     connectStableCallback_ = callback;
 }
 

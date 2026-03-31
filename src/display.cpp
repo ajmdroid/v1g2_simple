@@ -335,9 +335,18 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
 
     const uint32_t startUs = PERF_TIMESTAMP_US();
     int16_t stride = tft_->width();
-    for (int16_t row = 0; row < h; ++row) {
-        uint16_t* rowPtr = fb + (y + row) * stride + x;
-        gfxPanel_->draw16bitRGBBitmap(x, y + row, rowPtr, w, 1);
+    // Fast path: when region spans the full display width the rows are
+    // contiguous in the framebuffer — issue a single draw call instead of h
+    // separate calls to avoid per-row QSPI bus-setup overhead.
+    if (w == stride) {
+        uint16_t* regionStart = fb + static_cast<uint32_t>(y) * static_cast<uint32_t>(stride) + x;
+        gfxPanel_->draw16bitRGBBitmap(x, y, regionStart, w, h);
+        PERF_INC(displayFlushBatchCount);
+    } else {
+        for (int16_t row = 0; row < h; ++row) {
+            uint16_t* rowPtr = fb + (y + row) * stride + x;
+            gfxPanel_->draw16bitRGBBitmap(x, y + row, rowPtr, w, 1);
+        }
     }
     perfRecordFlushUs(PERF_TIMESTAMP_US() - startUs, areaPx, false);
 }

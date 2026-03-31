@@ -567,6 +567,7 @@ struct PerfExtendedMetrics {
     uint32_t displayRedrawReasonFlashTickCount = 0;
     uint32_t displayFullFlushCount = 0;          // Full-screen flush count
     uint32_t displayPartialFlushCount = 0;       // Region flush count
+    uint32_t displayFlushBatchCount = 0;          // Region flushes using single batched draw call (full-width fast path)
     uint32_t displayPartialFlushAreaPeakPx = 0;  // Peak partial flush area
     uint32_t displayPartialFlushAreaTotalPx = 0; // Session total partial-flush pixels
     uint32_t displayFlushEquivalentAreaTotalPx = 0; // Full + partial flush pixels
@@ -692,6 +693,7 @@ struct PerfExtendedMetrics {
         displayRedrawReasonFlashTickCount = 0;
         displayFullFlushCount = 0;
         displayPartialFlushCount = 0;
+        displayFlushBatchCount = 0;
         displayPartialFlushAreaPeakPx = 0;
         displayPartialFlushAreaTotalPx = 0;
         displayFlushEquivalentAreaTotalPx = 0;
@@ -921,6 +923,7 @@ struct PerfSdSnapshot {
     uint32_t displayRedrawReasonFlashTickCount;   // Full redraw flash-tick triggers
     uint32_t displayFullFlushCount;         // Session full-screen flushes
     uint32_t displayPartialFlushCount;      // Session region flushes
+    uint32_t displayFlushBatchCount;        // Region flushes taking full-width batch path
     uint32_t displayPartialFlushAreaPeakPx; // Peak region-flush area
     uint32_t displayPartialFlushAreaTotalPx; // Total region-flush pixels
     uint32_t displayFlushEquivalentAreaTotalPx; // Total pixels flushed (full + partial)

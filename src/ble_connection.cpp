@@ -162,7 +162,7 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient_, int reas
 
         SemaphoreGuard lock(instancePtr->bleMutex_, 0);
         if (lock.locked()) {
-            instancePtr->connected_.store(false, std::memory_order_relaxed);
+            instancePtr->connected_.store(false, std::memory_order_release);
             instancePtr->connectInProgress_ = false;  // Clear connection guard
             instancePtr->connectStartMs_ = 0;  // Clear async connect timer
             instancePtr->connectedFollowupStep_ = ConnectedFollowupStep::NONE;
@@ -171,9 +171,9 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient_, int reas
             instancePtr->pDisplayDataChar_ = nullptr;
             instancePtr->pCommandChar_ = nullptr;
             instancePtr->pCommandCharLong_ = nullptr;
-            instancePtr->notifyShortChar_.store(nullptr, std::memory_order_relaxed);
+            instancePtr->notifyShortChar_.store(nullptr, std::memory_order_release);
             instancePtr->notifyShortCharId_.store(0, std::memory_order_relaxed);
-            instancePtr->notifyLongChar_.store(nullptr, std::memory_order_relaxed);
+            instancePtr->notifyLongChar_.store(nullptr, std::memory_order_release);
             instancePtr->notifyLongCharId_.store(0, std::memory_order_relaxed);
             // Reset verification state in case a write-verify was in progress
             instancePtr->verifyPending_ = false;
@@ -758,8 +758,8 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
     }
 
     uint16_t charId = 0;
-    NimBLERemoteCharacteristic* shortChar = instancePtr->notifyShortChar_.load(std::memory_order_relaxed);
-    NimBLERemoteCharacteristic* longChar = instancePtr->notifyLongChar_.load(std::memory_order_relaxed);
+    NimBLERemoteCharacteristic* shortChar = instancePtr->notifyShortChar_.load(std::memory_order_acquire);
+    NimBLERemoteCharacteristic* longChar = instancePtr->notifyLongChar_.load(std::memory_order_acquire);
     if (pChar == shortChar) {
         charId = instancePtr->notifyShortCharId_.load(std::memory_order_relaxed);
     } else if (pChar == longChar) {

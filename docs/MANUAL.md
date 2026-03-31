@@ -6,7 +6,7 @@
 
 
 **Version:** 4.0.0-dev  
-**Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)  
+**Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 LCD)  
 **Last Updated:** March 2026
 
 ---
@@ -211,7 +211,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 |-----------|---------------|
 | Board | Waveshare ESP32-S3-Touch-LCD-3.49 |
 | CPU | ESP32-S3 @ 240MHz, 8MB or 16MB Flash, 8MB PSRAM |
-| Display | AXS15231B QSPI AMOLED, 640×172 pixels |
+| Display | AXS15231B QSPI LCD, 640×172 pixels |
 | Touch | Integrated AXS15231B capacitive touch |
 | Storage | LittleFS (internal), SD card (optional) |
 | Battery | Optional LiPo via TCA9554 power management |

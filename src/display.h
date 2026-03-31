@@ -1,6 +1,6 @@
 /**
  * Display Driver for V1 Gen2 Radar Detector Interface
- * Target: Waveshare ESP32-S3-Touch-LCD-3.49 (172x640 AMOLED, AXS15231B)
+ * Target: Waveshare ESP32-S3-Touch-LCD-3.49 (172x640 LCD, AXS15231B)
  *
  * Features:
  * - Multiple color themes (Standard/HighContrast/Stealth/Business)

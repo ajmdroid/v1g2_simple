@@ -76,7 +76,7 @@ Where it falls short:
 - **Serpentine lazy-load latency**: First Serpentine-style frequency render blocks while the font loads and first glyph rasterizes. No background loading.
 - **No error checking on OFR glyph cache fills**: If glyph rasterization fails under memory pressure, there's no graceful fallback mid-render.
 - **No test coverage for rendering**: Display *modules* (orchestration, pipeline, restore) are well-tested, but actual GFX drawing code has zero unit tests. The pixel-level output, text positioning, color application, and DMA timing are entirely validated by eye. This is the biggest gap.
-- **220KB framebuffer** in PSRAM (172×640×2 bytes) — appropriate for the hardware, but the single-buffer architecture means micro-tearing is possible between row flushes. Not likely noticeable on AMOLED, but worth documenting.
+- **220KB framebuffer** in PSRAM (172×640×2 bytes) — appropriate for the hardware, but the single-buffer architecture means micro-tearing is possible between row flushes. Not likely noticeable on LCD, but worth documenting.
 
 ---
 
@@ -1142,3 +1142,269 @@ fi
 ---
 
 *This plan is research-only. No changes were made to the codebase.*
+
+---
+
+# Appendix C: Documentation Correction — AMOLED → LCD
+
+**Date:** March 30, 2026
+**Scope:** All references to "AMOLED" in docs, source comments, and headers
+**Issue:** The Waveshare ESP32-S3-Touch-LCD-3.49 uses an LCD panel, not AMOLED. Multiple files incorrectly describe the display as AMOLED.
+
+---
+
+## Affected Files (6 total)
+
+### 1. `docs/MANUAL.md` — Line 9
+
+**Current:**
+```
+**Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 AMOLED)
+```
+
+**Fix:**
+```
+**Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 LCD)
+```
+
+### 2. `docs/MANUAL.md` — Line 214
+
+**Current:**
+```
+| Display | AXS15231B QSPI AMOLED, 640×172 pixels |
+```
+
+**Fix:**
+```
+| Display | AXS15231B QSPI LCD, 640×172 pixels |
+```
+
+### 3. `src/main.cpp` — Line 8
+
+**Current:**
+```cpp
+ * - 3.49" AMOLED display with touch support
+```
+
+**Fix:**
+```cpp
+ * - 3.49" LCD display with touch support
+```
+
+### 4. `include/display_layout.h` — Line 3
+
+**Current:**
+```cpp
+ * Waveshare ESP32-S3-Touch-LCD-3.49 (640x172 AMOLED)
+```
+
+**Fix:**
+```cpp
+ * Waveshare ESP32-S3-Touch-LCD-3.49 (640x172 LCD)
+```
+
+### 5. `src/display.h` — Line 3
+
+**Current:**
+```cpp
+ * Target: Waveshare ESP32-S3-Touch-LCD-3.49 (172x640 AMOLED, AXS15231B)
+```
+
+**Fix:**
+```cpp
+ * Target: Waveshare ESP32-S3-Touch-LCD-3.49 (172x640 LCD, AXS15231B)
+```
+
+### 6. `docs/REPO_REVIEW.md` — Line 79
+
+**Current:**
+```
+Not likely noticeable on AMOLED, but worth documenting.
+```
+
+**Fix:**
+```
+Not likely noticeable on LCD, but worth documenting.
+```
+
+---
+
+## Verification
+
+After applying all fixes, confirm no remaining references:
+
+```bash
+grep -rn 'AMOLED\|amoled' --include='*.h' --include='*.cpp' --include='*.md' src/ include/ docs/
+```
+
+Expected result: no matches (aside from this appendix itself).
+
+---
+
+*This appendix is research-only. No changes were made to the codebase.*
+
+---
+
+# Appendix D: Confirmed Issues — BLE Thread Safety, Display Performance, Display Palette Coupling
+
+**Date:** March 31, 2026
+**Scope:** Three issues confirmed through code review with specific reproduction conditions and fix plans
+**Priority:** Issues 1 and 2 are ship-blocking. Issue 3 is build/testability improvement.
+
+---
+
+## Issue 1 — BLE Thread Safety (High Priority, Ship-Blocking)
+
+### Problem
+
+`cleanupConnection()` in `ble_client.cpp` (~line 355) has a use-after-free window between clearing characteristic pointers (step 3) and setting `connected_` to `false` (step 4). A BLE notification callback running between these two steps sees `connected_ == true`, proceeds to dereference the now-null characteristic pointer, and crashes.
+
+The stores to `notifyShortChar_`/`notifyLongChar_` use `memory_order_relaxed`, which provides no cross-thread ordering guarantee. The callback thread can observe `connected_ == true` while the characteristic pointer has already been nulled.
+
+Additionally, the callback setters (`onDataReceived`, `onV1ConnectImmediate`, `onV1Connected`, ~line 697) assign plain `std::function` objects with no synchronization while callbacks can fire from the BLE task. This is a data race per the C++ memory model.
+
+### Fix Plan
+
+**Step 1: Move characteristic clears inside the mutex guard**
+
+The characteristic pointer nulling (step 3) must happen inside the `bleMutex_` lock that already protects step 4. This eliminates the TOCTOU window — the callback cannot observe a state where `connected_` is true but characteristic pointers are null.
+
+```
+Current order in cleanupConnection():
+  step 1: unsubscribe notifications
+  step 2: disconnect
+  step 3: notifyShortChar_.store(nullptr, relaxed)   ← OUTSIDE mutex
+           notifyLongChar_.store(nullptr, relaxed)
+  step 4: lock(bleMutex_); connected_ = false; ...   ← INSIDE mutex
+
+Fixed order:
+  step 1: unsubscribe notifications
+  step 2: disconnect
+  step 3: lock(bleMutex_) {
+             notifyShortChar_.store(nullptr, release)
+             notifyLongChar_.store(nullptr, release)
+             connected_ = false
+             ...remaining cleanup
+           }
+```
+
+**Step 2: Fix memory ordering on atomic characteristic pointers**
+
+Change `notifyShortChar_` and `notifyLongChar_` stores to `memory_order_release`. Change corresponding loads in the notification callback to `memory_order_acquire`. This ensures the callback thread sees the nullptr before or after the store, never a torn intermediate state, and that all preceding writes (the unsubscribe) are visible.
+
+**Step 3: Protect callback registration with bleMutex_**
+
+Wrap assignments to `onDataReceived`, `onV1ConnectImmediate`, and `onV1Connected` in a `bleMutex_` lock. The BLE notification path already acquires `bleMutex_` (or should, after step 1), so this creates a happens-before relationship between registration and invocation.
+
+**Validation:**
+- BLE reconnect stress test: 100 connect/disconnect cycles at 500ms intervals
+- ASan/TSan native build to catch remaining data races
+- Verify no regression in BLE connection latency (P99 should remain under 2s)
+
+**Files touched:** `src/ble_client.cpp`, `src/ble_client.h` (if memory order constants need updating)
+
+---
+
+## Issue 2 — Display Performance (Medium-High Priority)
+
+### Problem
+
+`flushRegion()` in `src/display.cpp` calls `draw16bitRGBBitmap(x, y + row, rowPtr, w, 1)` once per row. On the 640x172 LCD over QSPI, a full-height flush issues 172 separate draw calls, each with bus-setup overhead (chip select, command header, address window configuration).
+
+When the flush region spans the full display width (`w == stride`), the framebuffer rows are contiguous in memory and a single `draw16bitRGBBitmap(x, y, fb + y * stride + x, w, h)` call would work. The current code never takes this fast path.
+
+### Fix Plan
+
+**Step 1: Add a contiguous-buffer fast path in flushRegion()**
+
+Before the existing row-by-row loop, check whether the region is contiguous:
+
+```cpp
+void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
+    if (w <= 0 || h <= 0) return;
+
+    uint16_t* fb = getFramebuffer();
+    const int16_t stride = getStride();  // full display width (172)
+
+    // Fast path: when region width equals stride, rows are contiguous
+    if (w == stride) {
+        uint16_t* regionStart = fb + y * stride + x;
+        tft->draw16bitRGBBitmap(x, y, regionStart, w, h);
+        return;
+    }
+
+    // Slow path: non-contiguous rows, flush row by row (existing code)
+    for (int16_t row = 0; row < h; row++) {
+        uint16_t* rowPtr = fb + (y + row) * stride + x;
+        tft->draw16bitRGBBitmap(x, y + row, rowPtr, w, 1);
+    }
+}
+```
+
+**Step 2: Add a perf counter for flush call count**
+
+Add `PERF_INC(displayFlushCalls)` inside the row-by-row loop and a separate `PERF_INC(displayFlushBatch)` for the fast path. This lets the SLO scorer verify the optimization is actually firing.
+
+**Step 3: Measure before/after**
+
+Use the existing perf CSV pipeline to capture display flush timing across 60 seconds of active alerting. Expected improvement: ~170x fewer QSPI transactions for full-screen redraws, measurable as reduced `displayFlushMs` P99.
+
+**Validation:**
+- Perf CSV comparison: flush call count and display update latency
+- Visual inspection: no tearing or rendering artifacts on hardware
+- Compile check: `pio run -e waveshare-349`
+
+**Files touched:** `src/display.cpp` (flushRegion), `include/perf_metrics.h` (new counter)
+
+---
+
+## Issue 3 — Global State / display_palette.h Coupling (Medium Priority)
+
+### Problem
+
+`include/display_palette.h` includes `settings.h` (1,038 lines) solely to support two macros that call `settingsManager.get()` for `colorMuted` and `colorPersisted` values. Every display sub-module (`display_arrow.cpp`, `display_text.cpp`, `display_bands.cpp`, etc.) that includes `display_palette.h` transitively pulls in the entire settings translation unit.
+
+This creates tight coupling between the display rendering layer and the settings system: any change to `settings.h` triggers a rebuild of all display files, display modules cannot be tested without a full settings mock, and the pattern is inconsistent with the dependency-injection approach used throughout the rest of the codebase.
+
+### Fix Plan
+
+**Step 1: Add color fields to the existing ColorPalette struct**
+
+The `ColorPalette` struct (in `include/color_themes.h`) already carries per-theme color values. Add two fields:
+
+```cpp
+struct ColorPalette {
+    // ... existing fields ...
+    uint16_t colorMuted;
+    uint16_t colorPersisted;
+};
+```
+
+**Step 2: Populate the new fields at palette construction time**
+
+In the code that builds `ColorPalette` (likely in the display orchestration module or at display `begin()`), read the two values from settings once and inject them:
+
+```cpp
+ColorPalette palette = ColorThemes::STANDARD();
+palette.colorMuted = settingsManager.get().colorMuted;
+palette.colorPersisted = settingsManager.get().colorPersisted;
+```
+
+**Step 3: Remove the settings.h include from display_palette.h**
+
+Replace the two macros (`PALETTE_MUTED_COLOR`, `PALETTE_PERSISTED_COLOR`) with references to the palette parameter that rendering functions already receive. Each rendering function that currently calls the macro will instead read `palette.colorMuted` or `palette.colorPersisted`.
+
+**Step 4: Verify build isolation**
+
+After the change, confirm that modifying `settings.h` does NOT trigger recompilation of any `display_*.cpp` file (check with `pio run -e native -v` and inspect the compiler commands).
+
+**Validation:**
+- `pio run -e native && pio test -e native` — full build and test pass
+- Incremental build test: touch `src/settings.h`, rebuild, verify zero display files recompile
+- Display rendering tests (Appendix A Phase 3) should pass without a settings mock
+
+**Files touched:** `include/color_themes.h` (add fields), `include/display_palette.h` (remove settings.h include, remove macros), display orchestration code (populate new fields), each `display_*.cpp` that uses the macros (~6-8 files)
+
+---
+
+*This appendix is research-only. No changes were made to the codebase.*
