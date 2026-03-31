@@ -16,6 +16,8 @@ struct ColorPalette {
     uint16_t bg;            // Background (black)
     uint16_t text;          // Text/foreground (white)
     uint16_t colorGray;     // Resting/inactive state (dark gray)
+    uint16_t colorMuted;    // User-configurable muted-alert color (from settings)
+    uint16_t colorPersisted; // User-configurable persisted-alert color (from settings)
 };
 
 namespace ColorThemes {

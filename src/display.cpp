@@ -369,4 +369,7 @@ uint16_t V1Display::getBandColor(Band band) {
 void V1Display::updateColorTheme() {
     // Always use standard palette - custom colors are per-element in settings
     currentPalette_ = ColorThemes::STANDARD();
+    const V1Settings& s = settingsManager.get();
+    currentPalette_.colorMuted = s.colorMuted;
+    currentPalette_.colorPersisted = s.colorPersisted;
 }

@@ -9,7 +9,6 @@
 // ============================================================================
 
 #include "color_themes.h"  // ColorPalette, ColorThemes
-#include "settings.h"      // settingsManager
 
 // Forward-declare V1Display (full definition not needed for the pointer)
 class V1Display;
@@ -33,8 +32,8 @@ inline const ColorPalette& getColorPalette() {
 #define PALETTE_BG        getColorPalette().bg
 #define PALETTE_TEXT      getColorPalette().text
 #define PALETTE_GRAY      getColorPalette().colorGray
-#define PALETTE_MUTED     settingsManager.get().colorMuted
-#define PALETTE_PERSISTED settingsManager.get().colorPersisted
+#define PALETTE_MUTED     getColorPalette().colorMuted
+#define PALETTE_PERSISTED getColorPalette().colorPersisted
 
 // Returns PALETTE_PERSISTED when in persisted-alert mode, else PALETTE_MUTED.
 #define PALETTE_MUTED_OR_PERSISTED \

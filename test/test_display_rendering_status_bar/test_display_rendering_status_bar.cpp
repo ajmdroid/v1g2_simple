@@ -59,6 +59,8 @@ SettingsManager settingsManager;
 // ---------------------------------------------------------------------------
 V1Display::V1Display() {
     currentPalette_ = ColorThemes::STANDARD();
+    currentPalette_.colorMuted = settingsManager.get().colorMuted;
+    currentPalette_.colorPersisted = settingsManager.get().colorPersisted;
     g_displayInstance = this;
 }
 V1Display::~V1Display() = default;
