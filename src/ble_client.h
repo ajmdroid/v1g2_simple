@@ -75,15 +75,15 @@ enum class SendResult {
 
 // Proxy metrics for monitoring proxy health
 struct ProxyMetrics {
-    uint32_t sendCount = 0;          // Successful notify sends
-    uint32_t dropCount = 0;          // Dropped due to queue full
-    uint32_t errorCount = 0;         // Notify failures
-    uint32_t queueHighWater = 0;     // Max queue depth seen
-    uint32_t lastResetMs = 0;        // When metrics were last reset
+    uint32_t sendCount = 0;                   // Successful notify sends
+    std::atomic<uint32_t> dropCount{0};       // Dropped due to queue full (atomic: incremented outside mutex on fast-fail path)
+    uint32_t errorCount = 0;                  // Notify failures
+    uint32_t queueHighWater = 0;              // Max queue depth seen
+    uint32_t lastResetMs = 0;                 // When metrics were last reset
 
     void reset() {
         sendCount = 0;
-        dropCount = 0;
+        dropCount.store(0, std::memory_order_relaxed);
         errorCount = 0;
         queueHighWater = 0;
         lastResetMs = millis();

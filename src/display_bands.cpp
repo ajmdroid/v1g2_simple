@@ -20,6 +20,8 @@
 // ============================================================================
 // File-scoped static cache variables for drawBandIndicators
 // ============================================================================
+// Thread safety: these caches are read/written only from the main loop
+// (via display update calls). Not safe for concurrent access.
 static uint8_t s_bandLastEffectiveMask = 0xFF;
 static bool s_bandLastMuted = false;
 static bool s_bandCacheValid = false;

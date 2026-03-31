@@ -52,6 +52,8 @@ void V1Display::setSpeedVolZeroActive(bool active) {
 // ============================================================================
 // File-scoped static cache variables for lockout and GPS indicators
 // ============================================================================
+// Thread safety: these caches are read/written only from the main loop
+// (via display update calls). Not safe for concurrent access.
 static bool s_lockoutLastShown = false;
 static bool s_gpsLastShown = false;
 static uint8_t s_gpsLastSats = 0;

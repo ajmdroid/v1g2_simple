@@ -275,7 +275,14 @@ struct RuntimeSnapshotCaptureContext {
     ObdRuntimeStatus obdStatus = {};
     SpeedSelectorStatus speedStatus = {};
     WifiAutoStartDecisionSnapshot wifiAutoStart = {};
-    ProxyMetrics proxyMetrics = {};
+    // Plain-data mirror of ProxyMetrics (no std::atomic) so this struct stays movable.
+    struct {
+        uint32_t sendCount = 0;
+        uint32_t dropCount = 0;
+        uint32_t errorCount = 0;
+        uint32_t queueHighWater = 0;
+        uint32_t lastResetMs = 0;
+    } proxyMetrics;
     uint32_t eventBusPublishCount = 0;
     uint32_t eventBusDropCount = 0;
     uint32_t eventBusSize = 0;
@@ -309,7 +316,15 @@ static RuntimeSnapshotCaptureContext captureRuntimeSnapshotContext() {
     ctx.obdStatus = obdRuntimeModule.snapshot(ctx.nowMs);
     ctx.speedStatus = speedSourceSelector.snapshot();
     ctx.wifiAutoStart = wifiAutoStartModule.getLastDecision();
-    ctx.proxyMetrics = bleClient.getProxyMetrics();
+    // Field-by-field copy: ProxyMetrics contains std::atomic (non-copyable).
+    {
+        const auto& pm = bleClient.getProxyMetrics();
+        ctx.proxyMetrics.sendCount = pm.sendCount;
+        ctx.proxyMetrics.dropCount = pm.dropCount.load(std::memory_order_relaxed);
+        ctx.proxyMetrics.errorCount = pm.errorCount;
+        ctx.proxyMetrics.queueHighWater = pm.queueHighWater;
+        ctx.proxyMetrics.lastResetMs = pm.lastResetMs;
+    }
     ctx.eventBusPublishCount = systemEventBus.getPublishCount();
     ctx.eventBusDropCount = systemEventBus.getDropCount();
     ctx.eventBusSize = static_cast<uint32_t>(systemEventBus.size());

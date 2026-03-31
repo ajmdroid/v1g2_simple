@@ -16,6 +16,8 @@
 // ============================================================================
 // File-scoped static cache variables for drawDirectionArrow
 // ============================================================================
+// Thread safety: these caches are read/written only from the main loop
+// (via display update calls). Not safe for concurrent access.
 static bool s_arrowLastShowFront = false;
 static bool s_arrowLastShowSide = false;
 static bool s_arrowLastShowRear = false;

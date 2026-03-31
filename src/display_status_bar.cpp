@@ -23,6 +23,8 @@ using namespace DisplaySegments;
 // ============================================================================
 // File-scoped static cache variables for battery indicator
 // ============================================================================
+// Thread safety: these caches are read/written only from the main loop
+// (via display update calls). Not safe for concurrent access.
 static bool s_batteryShowOnUSB = true;
 static int s_batteryLastPctDrawn = -1;
 static bool s_batteryLastPctVisible = false;

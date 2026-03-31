@@ -614,35 +614,38 @@ bool V1BLEClient::isConnected() {
     return pClient_->isConnected();
 }
 
-// RSSI caching - only query BLE stack every 2 seconds to reduce overhead
-static int s_cachedV1Rssi = 0;
+// RSSI caching - only query BLE stack every 2 seconds to reduce overhead.
+// Atomic for portability: these are written/read from getConnectionRssi()
+// which is a public method with no explicit threading constraint.
+static std::atomic<int> s_cachedV1Rssi{0};
 static unsigned long s_lastV1RssiQueryMs = 0;
 static constexpr unsigned long RSSI_QUERY_INTERVAL_MS = 2000;
 
 int V1BLEClient::getConnectionRssi() {
     // Return RSSI of connected_ V1 device, or 0 if not connected_
     if (!connected_.load(std::memory_order_relaxed) || !pClient_ || !pClient_->isConnected()) {
-        s_cachedV1Rssi = 0;
+        s_cachedV1Rssi.store(0, std::memory_order_relaxed);
         return 0;
     }
 
     // Only query BLE stack every 2 seconds - return cached value otherwise
     unsigned long now = millis();
     if (now - s_lastV1RssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
-        s_cachedV1Rssi = pClient_->getRssi();
+        s_cachedV1Rssi.store(pClient_->getRssi(), std::memory_order_relaxed);
         s_lastV1RssiQueryMs = now;
     }
-    return s_cachedV1Rssi;
+    return s_cachedV1Rssi.load(std::memory_order_relaxed);
 }
 
-// Proxy client RSSI caching
-static int s_cachedProxyRssi = 0;
+// Proxy client RSSI caching.
+// Atomic for same portability reason as s_cachedV1Rssi above.
+static std::atomic<int> s_cachedProxyRssi{0};
 static unsigned long s_lastProxyRssiQueryMs = 0;
 
 int V1BLEClient::getProxyClientRssi() {
     // Return RSSI of connected_ proxy client (app), or 0 if not connected_
     if (!proxyClientConnected_ || !pServer_ || pServer_->getConnectedCount() == 0) {
-        s_cachedProxyRssi = 0;
+        s_cachedProxyRssi.store(0, std::memory_order_relaxed);
         return 0;
     }
 
@@ -656,12 +659,12 @@ int V1BLEClient::getProxyClientRssi() {
         if (!peers.empty()) {
             int8_t rssi = 0;
             if (ble_gap_conn_rssi(peers[0], &rssi) == 0) {
-                s_cachedProxyRssi = rssi;
+                s_cachedProxyRssi.store(rssi, std::memory_order_relaxed);
             }
         }
         s_lastProxyRssiQueryMs = now;
     }
-    return s_cachedProxyRssi;
+    return s_cachedProxyRssi.load(std::memory_order_relaxed);
 }
 
 bool V1BLEClient::isProxyClientConnected() {

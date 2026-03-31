@@ -31,6 +31,8 @@ using DisplayLayout::TOP_COUNTER_FALLBACK_WIDTH;
 // ============================================================================
 // File-scoped static cache variables for top counter
 // ============================================================================
+// Thread safety: these caches are read/written only from the main loop
+// (via display update calls). Not safe for concurrent access.
 static char s_topCounterLastSymbol = '\0';
 static bool s_topCounterLastMuted = false;
 static bool s_topCounterLastShowDot = false;
