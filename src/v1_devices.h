@@ -30,7 +30,7 @@ public:
     V1DeviceStore();
 
     bool begin(fs::FS* filesystem, fs::FS* importFilesystem = nullptr);
-    bool isReady() const { return ready; }
+    bool isReady() const { return ready_; }
 
     std::vector<V1DeviceRecord> listDevices() const;
 
@@ -39,7 +39,7 @@ public:
     bool setDeviceName(const String& address, const String& name);
     bool setDeviceDefaultProfile(const String& address, uint8_t defaultProfile);
     bool removeDevice(const String& address);
-    bool hasPendingSave() const { return dirty; }
+    bool hasPendingSave() const { return dirty_; }
     bool flushPendingSave();
 
     uint8_t getDeviceDefaultProfile(const String& address) const;
@@ -49,9 +49,9 @@ private:
     static constexpr size_t MAX_NAME_LEN = 32;
     static constexpr size_t MAX_STORE_BYTES = 4096;
 
-    fs::FS* fs = nullptr;
-    bool ready = false;
-    std::vector<V1DeviceRecord> devices;
+    fs::FS* fs_ = nullptr;
+    bool ready_ = false;
+    std::vector<V1DeviceRecord> devices_;
 
     bool loadFromStore();
     bool saveToStore() const;
@@ -67,7 +67,7 @@ private:
     int findDeviceIndex(const String& normalizedAddress) const;
     void sortAndTrim();
 
-    bool dirty = false;
+    bool dirty_ = false;
 };
 
 extern V1DeviceStore v1DeviceStore;

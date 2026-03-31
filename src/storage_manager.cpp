@@ -12,18 +12,18 @@
 StorageManager storageManager;
 
 StorageManager::StorageManager()
-    : fs(nullptr), ready(false), usingSDMMC(false), littlefsReady(false), sdMutex(nullptr) {
+    : fs_(nullptr), ready_(false), usingSDMMC_(false), littlefsReady_(false), sdMutex_(nullptr) {
     // Create SD access mutex - critical for thread safety across cores
-    sdMutex = xSemaphoreCreateMutex();
-    if (!sdMutex) {
+    sdMutex_ = xSemaphoreCreateMutex();
+    if (!sdMutex_) {
         Serial.println("[Storage] CRITICAL: Failed to create SD mutex!");
     }
 }
 
 bool StorageManager::begin() {
-    ready = false;
-    usingSDMMC = false;
-    littlefsReady = false;
+    ready_ = false;
+    usingSDMMC_ = false;
+    littlefsReady_ = false;
 
 #if defined(DISPLAY_WAVESHARE_349)
     // Try SD_MMC first on Waveshare 3.49
@@ -33,16 +33,16 @@ bool StorageManager::begin() {
     if (!pinsSet) {
         Serial.println("[Storage] SD_MMC.setPins() failed");
     } else if (SD_MMC.begin("/sdcard", true)) {  // 1-bit mode
-        fs = &SD_MMC;
-        ready = true;
-        usingSDMMC = true;
+        fs_ = &SD_MMC;
+        ready_ = true;
+        usingSDMMC_ = true;
         uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
         Serial.printf("[Storage] SD card mounted (%lluMB)\n", cardSize);
 
         // Also mount LittleFS as secondary for backups
         // Use begin(false) to avoid auto-formatting existing data on transient errors
-        littlefsReady = LittleFS.begin(false, "/littlefs", 10, "storage");
-        if (!littlefsReady) {
+        littlefsReady_ = LittleFS.begin(false, "/littlefs", 10, "storage");
+        if (!littlefsReady_) {
             Serial.println("[Storage] WARNING: LittleFS secondary mount failed - mirror backups disabled");
         }
 
@@ -55,9 +55,9 @@ bool StorageManager::begin() {
     // Fallback to LittleFS
     Serial.println("[Storage] Trying LittleFS fallback...");
     if (LittleFS.begin(false, "/littlefs", 10, "storage")) {
-        fs = &LittleFS;
-        ready = true;
-        littlefsReady = true;
+        fs_ = &LittleFS;
+        ready_ = true;
+        littlefsReady_ = true;
         Serial.println("[Storage] LittleFS mounted");
         return true;
     }
@@ -68,30 +68,30 @@ bool StorageManager::begin() {
 }
 
 String StorageManager::statusText() const {
-    if (!ready) {
+    if (!ready_) {
         return "No storage available";
     }
-    if (usingSDMMC) {
+    if (usingSDMMC_) {
         uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
         return "SD card (" + String(cardSize) + "MB)";
     }
     return "LittleFS (internal)";
 }
 
-bool StorageManager::writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc) {
+bool StorageManager::writeJsonFileAtomic(fs::FS& fs_, const char* path, JsonDocument& doc) {
     // Ensure parent directory exists (prevents VFS fopen failures)
     if (path && path[0] == '/') {
         String parent(path);
         int slash = parent.lastIndexOf('/');
         if (slash > 0) {
             parent = parent.substring(0, slash);
-            if (!fs.exists(parent)) {
-                fs.mkdir(parent);
+            if (!fs_.exists(parent)) {
+                fs_.mkdir(parent);
             }
         }
     }
     String tmpPath = String(path) + ".tmp";
-    File tmp = fs.open(tmpPath.c_str(), "w");
+    File tmp = fs_.open(tmpPath.c_str(), "w");
     if (!tmp) {
         Serial.printf("[Storage] writeJsonFileAtomic: failed to open %s\n", tmpPath.c_str());
         return false;
@@ -101,11 +101,11 @@ bool StorageManager::writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocum
     tmp.close();
     if (written == 0) {
         Serial.printf("[Storage] writeJsonFileAtomic: wrote 0 bytes to %s\n", tmpPath.c_str());
-        fs.remove(tmpPath.c_str());
+        fs_.remove(tmpPath.c_str());
         return false;
     }
 
-    if (!promoteTempFileWithRollback(fs, tmpPath.c_str(), path)) {
+    if (!promoteTempFileWithRollback(fs_, tmpPath.c_str(), path)) {
         Serial.printf("[Storage] writeJsonFileAtomic: promote failed %s -> %s\n", tmpPath.c_str(), path);
         return false;
     }

@@ -214,7 +214,7 @@ bool writeBackupAtomically(fs::FS* fs, const JsonDocument& doc) {
 }
 
 bool buildSerializedSdBackupPayload(SerializedSettingsBackupPayload& payload,
-                                    const V1Settings& settings,
+                                    const V1Settings& settings_,
                                     const V1ProfileManager& profileManager,
                                     uint32_t snapshotMs) {
     releaseSerializedSettingsBackupPayload(payload);
@@ -223,7 +223,7 @@ bool buildSerializedSdBackupPayload(SerializedSettingsBackupPayload& payload,
     const BackupPayloadBuilder::BuildResult buildResult =
         BackupPayloadBuilder::buildBackupDocument(
             doc,
-            settings,
+            settings_,
             profileManager,
             BackupPayloadBuilder::BackupTransport::SdBackup,
             snapshotMs);
@@ -304,7 +304,7 @@ bool SettingsManager::backupToSD() {
     if (!fs) return false;
 
     SerializedSettingsBackupPayload payload;
-    if (!buildSerializedSdBackupPayload(payload, settings, v1ProfileManager, millis())) {
+    if (!buildSerializedSdBackupPayload(payload, settings_, v1ProfileManager, millis())) {
         return false;
     }
 
@@ -320,6 +320,6 @@ bool SettingsManager::backupToSD() {
     Serial.printf("[Settings] Full backup saved to SD card (%d profiles)\n",
                   profilesBackedUp);
     Serial.printf("[Settings] Backed up: slot0Mode=%d, slot1Mode=%d, slot2Mode=%d\n",
-                  settings.slot0_default.mode, settings.slot1_highway.mode, settings.slot2_comfort.mode);
+                  settings_.slot0_default.mode, settings_.slot1_highway.mode, settings_.slot2_comfort.mode);
     return true;
 }

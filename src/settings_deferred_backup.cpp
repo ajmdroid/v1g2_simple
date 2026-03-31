@@ -233,7 +233,7 @@ void SettingsManager::serviceDeferredBackup(uint32_t nowMs) {
     }
 
     SerializedSettingsBackupPayload payload;
-    if (!buildSerializedSdBackupPayload(payload, settings, v1ProfileManager, nowMs)) {
+    if (!buildSerializedSdBackupPayload(payload, settings_, v1ProfileManager, nowMs)) {
         scheduleDeferredBackupRetry(nowMs);
         return;
     }

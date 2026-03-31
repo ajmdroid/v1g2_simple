@@ -139,8 +139,8 @@ uint8_t V1DeviceStore::clampDefaultProfileValue(int raw) {
 }
 
 int V1DeviceStore::findDeviceIndex(const String& normalizedAddress) const {
-    for (size_t i = 0; i < devices.size(); ++i) {
-        if (devices[i].address.equalsIgnoreCase(normalizedAddress)) {
+    for (size_t i = 0; i < devices_.size(); ++i) {
+        if (devices_[i].address.equalsIgnoreCase(normalizedAddress)) {
             return static_cast<int>(i);
         }
     }
@@ -148,20 +148,20 @@ int V1DeviceStore::findDeviceIndex(const String& normalizedAddress) const {
 }
 
 void V1DeviceStore::sortAndTrim() {
-    std::sort(devices.begin(), devices.end(), [](const V1DeviceRecord& lhs, const V1DeviceRecord& rhs) {
+    std::sort(devices_.begin(), devices_.end(), [](const V1DeviceRecord& lhs, const V1DeviceRecord& rhs) {
         if (lhs.lastSeenMs != rhs.lastSeenMs) {
             return lhs.lastSeenMs > rhs.lastSeenMs;
         }
         return lhs.address < rhs.address;
     });
 
-    if (devices.size() > MAX_DEVICES) {
-        devices.resize(MAX_DEVICES);
+    if (devices_.size() > MAX_DEVICES) {
+        devices_.resize(MAX_DEVICES);
     }
 }
 
 bool V1DeviceStore::saveToStore() const {
-    if (!ready || !fs) {
+    if (!ready_ || !fs_) {
         return false;
     }
 
@@ -169,7 +169,7 @@ bool V1DeviceStore::saveToStore() const {
     doc["version"] = STORE_VERSION;
     JsonArray arr = doc["devices"].to<JsonArray>();
 
-    for (const auto& device : devices) {
+    for (const auto& device : devices_) {
         JsonObject obj = arr.add<JsonObject>();
         obj["address"] = device.address;
         obj["name"] = device.name;
@@ -177,11 +177,11 @@ bool V1DeviceStore::saveToStore() const {
         obj["lastSeenMs"] = device.lastSeenMs;
     }
 
-    if (fs->exists(STORE_TMP_PATH)) {
-        fs->remove(STORE_TMP_PATH);
+    if (fs_->exists(STORE_TMP_PATH)) {
+        fs_->remove(STORE_TMP_PATH);
     }
 
-    File file = fs->open(STORE_TMP_PATH, FILE_WRITE);
+    File file = fs_->open(STORE_TMP_PATH, FILE_WRITE);
     if (!file) {
         return false;
     }
@@ -191,11 +191,11 @@ bool V1DeviceStore::saveToStore() const {
     file.close();
 
     if (written == 0) {
-        fs->remove(STORE_TMP_PATH);
+        fs_->remove(STORE_TMP_PATH);
         return false;
     }
 
-    if (!StorageManager::promoteTempFileWithRollback(*fs, STORE_TMP_PATH, STORE_PATH)) {
+    if (!StorageManager::promoteTempFileWithRollback(*fs_, STORE_TMP_PATH, STORE_PATH)) {
         return false;
     }
 
@@ -203,15 +203,15 @@ bool V1DeviceStore::saveToStore() const {
 }
 
 bool V1DeviceStore::loadFromStore() {
-    devices.clear();
+    devices_.clear();
 
-    if (!ready || !fs) {
+    if (!ready_ || !fs_) {
         return false;
     }
 
     JsonDocument doc;
     const JsonRollbackLoadResult loadResult =
-        loadJsonDocumentWithRollback(*fs, STORE_PATH, MAX_STORE_BYTES, doc);
+        loadJsonDocumentWithRollback(*fs_, STORE_PATH, MAX_STORE_BYTES, doc);
     if (loadResult == JsonRollbackLoadResult::Missing) {
         return true;
     }
@@ -235,24 +235,24 @@ bool V1DeviceStore::loadFromStore() {
         uint32_t lastSeenMs = item["lastSeenMs"] | 0;
 
         int existing = -1;
-        for (size_t i = 0; i < devices.size(); ++i) {
-            if (devices[i].address.equalsIgnoreCase(address)) {
+        for (size_t i = 0; i < devices_.size(); ++i) {
+            if (devices_[i].address.equalsIgnoreCase(address)) {
                 existing = static_cast<int>(i);
                 break;
             }
         }
 
         if (existing >= 0) {
-            devices[existing].name = name;
-            devices[existing].defaultProfile = defaultProfile;
-            devices[existing].lastSeenMs = std::max(devices[existing].lastSeenMs, lastSeenMs);
+            devices_[existing].name = name;
+            devices_[existing].defaultProfile = defaultProfile;
+            devices_[existing].lastSeenMs = std::max(devices_[existing].lastSeenMs, lastSeenMs);
         } else {
             V1DeviceRecord device;
             device.address = address;
             device.name = name;
             device.defaultProfile = defaultProfile;
             device.lastSeenMs = lastSeenMs;
-            devices.push_back(device);
+            devices_.push_back(device);
         }
     }
 
@@ -261,13 +261,13 @@ bool V1DeviceStore::loadFromStore() {
 }
 
 bool V1DeviceStore::migrateStoreFrom(fs::FS* sourceFs) {
-    if (!ready || !fs) {
+    if (!ready_ || !fs_) {
         return false;
     }
-    if (fs->exists(STORE_PATH)) {
+    if (fs_->exists(STORE_PATH)) {
         return false;
     }
-    return copyStoreFile(sourceFs, fs);
+    return copyStoreFile(sourceFs, fs_);
 }
 
 bool V1DeviceStore::migrateLegacyFiles(fs::FS* sourceFs) {
@@ -324,7 +324,7 @@ bool V1DeviceStore::migrateLegacyFiles(fs::FS* sourceFs) {
         return false;
     }
 
-    devices.clear();
+    devices_.clear();
 
     while (addressFile.available()) {
         String line = addressFile.readStringUntil('\n');
@@ -357,12 +357,12 @@ bool V1DeviceStore::migrateLegacyFiles(fs::FS* sourceFs) {
             }
         }
 
-        devices.push_back(device);
+        devices_.push_back(device);
     }
 
     addressFile.close();
 
-    if (devices.empty()) {
+    if (devices_.empty()) {
         return false;
     }
 
@@ -371,12 +371,12 @@ bool V1DeviceStore::migrateLegacyFiles(fs::FS* sourceFs) {
 }
 
 bool V1DeviceStore::begin(fs::FS* filesystem, fs::FS* importFilesystem) {
-    fs = filesystem;
-    ready = fs != nullptr;
-    dirty = false;
-    devices.clear();
+    fs_ = filesystem;
+    ready_ = fs_ != nullptr;
+    dirty_ = false;
+    devices_.clear();
 
-    if (!ready) {
+    if (!ready_) {
         return false;
     }
 
@@ -384,16 +384,16 @@ bool V1DeviceStore::begin(fs::FS* filesystem, fs::FS* importFilesystem) {
     migrateStoreFrom(importFilesystem);
 
     if (!loadFromStore()) {
-        devices.clear();
+        devices_.clear();
     }
 
-    if (devices.empty()) {
-        bool migrated = migrateLegacyFiles(fs);
-        if (!migrated && importFilesystem && importFilesystem != fs) {
+    if (devices_.empty()) {
+        bool migrated = migrateLegacyFiles(fs_);
+        if (!migrated && importFilesystem && importFilesystem != fs_) {
             migrated = migrateLegacyFiles(importFilesystem);
         }
         if (migrated) {
-            dirty = true;
+            dirty_ = true;
             persistDirtyStore();
         }
     }
@@ -402,22 +402,22 @@ bool V1DeviceStore::begin(fs::FS* filesystem, fs::FS* importFilesystem) {
 }
 
 std::vector<V1DeviceRecord> V1DeviceStore::listDevices() const {
-    return devices;
+    return devices_;
 }
 
 bool V1DeviceStore::persistDirtyStore() {
-    if (!dirty) {
+    if (!dirty_) {
         return true;
     }
     if (!saveToStore()) {
         return false;
     }
-    dirty = false;
+    dirty_ = false;
     return true;
 }
 
 bool V1DeviceStore::upsertDeviceInternal(const String& address, bool persistNow) {
-    if (!ready) {
+    if (!ready_) {
         return false;
     }
 
@@ -429,17 +429,17 @@ bool V1DeviceStore::upsertDeviceInternal(const String& address, bool persistNow)
     const uint32_t nowMs = millis();
     int index = findDeviceIndex(normalizedAddress);
     if (index >= 0) {
-        devices[index].address = normalizedAddress;
-        devices[index].lastSeenMs = nowMs;
+        devices_[index].address = normalizedAddress;
+        devices_[index].lastSeenMs = nowMs;
     } else {
         V1DeviceRecord device;
         device.address = normalizedAddress;
         device.lastSeenMs = nowMs;
-        devices.push_back(device);
+        devices_.push_back(device);
     }
 
     sortAndTrim();
-    dirty = true;
+    dirty_ = true;
     if (!persistNow) {
         return true;
     }
@@ -459,7 +459,7 @@ bool V1DeviceStore::flushPendingSave() {
 }
 
 bool V1DeviceStore::setDeviceName(const String& address, const String& name) {
-    if (!ready) {
+    if (!ready_) {
         return false;
     }
 
@@ -474,18 +474,18 @@ bool V1DeviceStore::setDeviceName(const String& address, const String& name) {
         V1DeviceRecord device;
         device.address = normalizedAddress;
         device.lastSeenMs = millis();
-        devices.push_back(device);
-        index = static_cast<int>(devices.size()) - 1;
+        devices_.push_back(device);
+        index = static_cast<int>(devices_.size()) - 1;
     }
 
-    devices[index].name = safeName;
+    devices_[index].name = safeName;
     sortAndTrim();
-    dirty = true;
+    dirty_ = true;
     return persistDirtyStore();
 }
 
 bool V1DeviceStore::setDeviceDefaultProfile(const String& address, uint8_t defaultProfile) {
-    if (!ready) {
+    if (!ready_) {
         return false;
     }
 
@@ -499,18 +499,18 @@ bool V1DeviceStore::setDeviceDefaultProfile(const String& address, uint8_t defau
         V1DeviceRecord device;
         device.address = normalizedAddress;
         device.lastSeenMs = millis();
-        devices.push_back(device);
-        index = static_cast<int>(devices.size()) - 1;
+        devices_.push_back(device);
+        index = static_cast<int>(devices_.size()) - 1;
     }
 
-    devices[index].defaultProfile = clampDefaultProfileValue(defaultProfile);
+    devices_[index].defaultProfile = clampDefaultProfileValue(defaultProfile);
     sortAndTrim();
-    dirty = true;
+    dirty_ = true;
     return persistDirtyStore();
 }
 
 bool V1DeviceStore::removeDevice(const String& address) {
-    if (!ready) {
+    if (!ready_) {
         return false;
     }
 
@@ -519,21 +519,21 @@ bool V1DeviceStore::removeDevice(const String& address) {
         return false;
     }
 
-    const auto it = std::remove_if(devices.begin(), devices.end(), [&](const V1DeviceRecord& device) {
+    const auto it = std::remove_if(devices_.begin(), devices_.end(), [&](const V1DeviceRecord& device) {
         return device.address.equalsIgnoreCase(normalizedAddress);
     });
 
-    if (it == devices.end()) {
+    if (it == devices_.end()) {
         return true;
     }
 
-    devices.erase(it, devices.end());
-    dirty = true;
+    devices_.erase(it, devices_.end());
+    dirty_ = true;
     return persistDirtyStore();
 }
 
 uint8_t V1DeviceStore::getDeviceDefaultProfile(const String& address) const {
-    if (!ready) {
+    if (!ready_) {
         return 0;
     }
 
@@ -547,5 +547,5 @@ uint8_t V1DeviceStore::getDeviceDefaultProfile(const String& address) const {
         return 0;
     }
 
-    return clampDefaultProfileValue(devices[index].defaultProfile);
+    return clampDefaultProfileValue(devices_[index].defaultProfile);
 }

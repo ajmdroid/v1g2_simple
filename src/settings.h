@@ -886,12 +886,12 @@ public:
     void begin();
 
     // Get current settings (read-only)
-    const V1Settings& get() const { return settings; }
+    const V1Settings& get() const { return settings_; }
 #ifdef UNIT_TEST
     // Test-only mutable access for fixture seeding.
-    V1Settings& mutableSettings() { return settings; }
+    V1Settings& mutableSettings() { return settings_; }
 #endif
-    uint32_t backupRevision() const { return backupRevisionCounter; }
+    uint32_t backupRevision() const { return backupRevisionCounter_; }
 
     // Update settings (calls save automatically)
     void setWiFiEnabled(bool enabled);
@@ -901,7 +901,7 @@ public:
     void setGpsEnabled(bool enabled);
     void setAutoPowerOffMinutes(uint8_t minutes);
     void setApTimeoutMinutes(uint8_t minutes);
-    uint8_t getApTimeoutMinutes() const { return settings.apTimeoutMinutes; }
+    uint8_t getApTimeoutMinutes() const { return settings_.apTimeoutMinutes; }
     void setBrightness(uint8_t brightness);
     void setDisplayOff(bool off);
     void setAutoPushEnabled(bool enabled);
@@ -979,8 +979,8 @@ public:
                                   SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
 
     // Batch update methods (don't auto-save, call save() after)
-    void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
-    void updateVoiceVolume(uint8_t volume) { settings.voiceVolume = volume; }
+    void updateBrightness(uint8_t brightness) { settings_.brightness = brightness; }
+    void updateVoiceVolume(uint8_t volume) { settings_.voiceVolume = volume; }
 
     // Save all settings to flash
     void save();
@@ -1016,9 +1016,9 @@ public:
     void validateProfileReferences(V1ProfileManager& profileMgr);
 
 private:
-    V1Settings settings;
-    Preferences preferences;
-    uint32_t backupRevisionCounter = 1;
+    V1Settings settings_;
+    Preferences preferences_;
+    uint32_t backupRevisionCounter_ = 1;
     bool deferredPersistPending_ = false;
     bool deferredPersistRetryScheduled_ = false;
     uint32_t deferredPersistNextAttemptAtMs_ = 0;

@@ -36,19 +36,19 @@ public:
     // Mount storage (SD card preferred, LittleFS fallback)
     bool begin();
 
-    bool isReady() const { return ready; }
-    bool isSDCard() const { return usingSDMMC; }
-    bool isLittleFSReady() const { return littlefsReady; }
+    bool isReady() const { return ready_; }
+    bool isSDCard() const { return usingSDMMC_; }
+    bool isLittleFSReady() const { return littlefsReady_; }
     String statusText() const;
 
     // Get underlying filesystem
-    fs::FS* getFilesystem() const { return fs; }
+    fs::FS* getFilesystem() const { return fs_; }
     // Secondary LittleFS handle (available even when SD is primary)
-    fs::FS* getLittleFS() const { return littlefsReady ? &LittleFS : nullptr; }
+    fs::FS* getLittleFS() const { return littlefsReady_ ? &LittleFS : nullptr; }
 
     // Thread-safe SD access mutex - MUST be held during all file operations
     // when multiple cores/tasks may access SD simultaneously
-    SemaphoreHandle_t getSDMutex() const { return sdMutex; }
+    SemaphoreHandle_t getSDMutex() const { return sdMutex_; }
 
     // Atomic try-lock failure counter (cross-core safe for monitoring)
     static inline std::atomic<uint32_t> sdTryLockFailCount{0};
@@ -245,7 +245,7 @@ public:
         return String(livePath) + ".prev";
     }
 
-    static bool promoteTempFileWithRollback(fs::FS& fs,
+    static bool promoteTempFileWithRollback(fs::FS& fs_,
                                             const char* tempPath,
                                             const char* livePath,
                                             const char* backupPath = nullptr) {
@@ -260,31 +260,31 @@ public:
             backupPathToUse = derivedBackupPath.c_str();
         }
 
-        const bool liveExists = fs.exists(livePath);
+        const bool liveExists = fs_.exists(livePath);
         if (liveExists) {
-            if (backupPathToUse && backupPathToUse[0] != '\0' && fs.exists(backupPathToUse)) {
-                fs.remove(backupPathToUse);
+            if (backupPathToUse && backupPathToUse[0] != '\0' && fs_.exists(backupPathToUse)) {
+                fs_.remove(backupPathToUse);
             }
-            if (!fs.rename(livePath, backupPathToUse)) {
-                fs.remove(tempPath);
+            if (!fs_.rename(livePath, backupPathToUse)) {
+                fs_.remove(tempPath);
                 return false;
             }
         }
 
-        if (!fs.rename(tempPath, livePath)) {
-            if (liveExists && fs.exists(backupPathToUse) && !fs.exists(livePath)) {
-                if (!fs.rename(backupPathToUse, livePath)) {
+        if (!fs_.rename(tempPath, livePath)) {
+            if (liveExists && fs_.exists(backupPathToUse) && !fs_.exists(livePath)) {
+                if (!fs_.rename(backupPathToUse, livePath)) {
                     Serial.printf("[Storage] promoteTempFileWithRollback: rollback failed %s -> %s\n",
                                   backupPathToUse,
                                   livePath);
                 }
             }
-            fs.remove(tempPath);
+            fs_.remove(tempPath);
             return false;
         }
 
-        if (backupPathToUse && backupPathToUse[0] != '\0' && fs.exists(backupPathToUse)) {
-            fs.remove(backupPathToUse);
+        if (backupPathToUse && backupPathToUse[0] != '\0' && fs_.exists(backupPathToUse)) {
+            fs_.remove(backupPathToUse);
         }
 
         return true;
@@ -292,14 +292,14 @@ public:
 
     // Atomic JSON file write utility (write to .tmp, then promote).
     // Returns true on success.
-    static bool writeJsonFileAtomic(fs::FS& fs, const char* path, JsonDocument& doc);
+    static bool writeJsonFileAtomic(fs::FS& fs_, const char* path, JsonDocument& doc);
 
 private:
-    fs::FS* fs;
-    bool ready;
-    bool usingSDMMC;
-    bool littlefsReady;
-    SemaphoreHandle_t sdMutex;
+    fs::FS* fs_;
+    bool ready_;
+    bool usingSDMMC_;
+    bool littlefsReady_;
+    SemaphoreHandle_t sdMutex_;
 };
 
 // Global instance

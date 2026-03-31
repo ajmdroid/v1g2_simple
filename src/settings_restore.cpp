@@ -110,234 +110,234 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
 
     // === WiFi/Network Settings ===
     // AP password is intentionally preserved across backup restores.
-    restoreBool("enableWifi", settings.enableWifi);
-    if (doc["wifiMode"].is<int>()) settings.wifiMode = clampWifiModeValue(doc["wifiMode"].as<int>());
-    if (doc["apSSID"].is<const char*>()) settings.apSSID = sanitizeApSsidValue(doc["apSSID"].as<String>());
-    restoreBool("wifiClientEnabled", settings.wifiClientEnabled);
+    restoreBool("enableWifi", settings_.enableWifi);
+    if (doc["wifiMode"].is<int>()) settings_.wifiMode = clampWifiModeValue(doc["wifiMode"].as<int>());
+    if (doc["apSSID"].is<const char*>()) settings_.apSSID = sanitizeApSsidValue(doc["apSSID"].as<String>());
+    restoreBool("wifiClientEnabled", settings_.wifiClientEnabled);
     if (doc["wifiClientSSID"].is<const char*>()) {
-        settings.wifiClientSSID = sanitizeWifiClientSsidValue(doc["wifiClientSSID"].as<String>());
+        settings_.wifiClientSSID = sanitizeWifiClientSsidValue(doc["wifiClientSSID"].as<String>());
     }
-    if (!settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
-        settings.wifiClientEnabled = true;
+    if (!settings_.wifiClientEnabled && settings_.wifiClientSSID.length() > 0) {
+        settings_.wifiClientEnabled = true;
     }
-    settings.wifiMode = settings.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
-    restoreBool("proxyBLE", settings.proxyBLE);
+    settings_.wifiMode = settings_.wifiClientEnabled ? V1_WIFI_APSTA : V1_WIFI_AP;
+    restoreBool("proxyBLE", settings_.proxyBLE);
     if (doc["proxyName"].is<const char*>()) {
-        settings.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
+        settings_.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
     }
-    restoreBool("gpsEnabled", settings.gpsEnabled);
+    restoreBool("gpsEnabled", settings_.gpsEnabled);
     if (doc["gpsLockoutMode"].is<int>()) {
-        settings.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
+        settings_.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
     } else if (doc["gpsLockoutMode"].is<const char*>()) {
-        settings.gpsLockoutMode = gpsLockoutParseRuntimeModeArg(doc["gpsLockoutMode"].as<String>(),
-                                                                settings.gpsLockoutMode);
+        settings_.gpsLockoutMode = gpsLockoutParseRuntimeModeArg(doc["gpsLockoutMode"].as<String>(),
+                                                                settings_.gpsLockoutMode);
     }
-    restoreBool("gpsLockoutCoreGuardEnabled", settings.gpsLockoutCoreGuardEnabled);
+    restoreBool("gpsLockoutCoreGuardEnabled", settings_.gpsLockoutCoreGuardEnabled);
     if (doc["gpsLockoutMaxQueueDrops"].is<int>()) {
-        settings.gpsLockoutMaxQueueDrops = static_cast<uint16_t>(
+        settings_.gpsLockoutMaxQueueDrops = static_cast<uint16_t>(
             std::max(0, std::min(doc["gpsLockoutMaxQueueDrops"].as<int>(), 65535)));
     }
     if (doc["gpsLockoutMaxPerfDrops"].is<int>()) {
-        settings.gpsLockoutMaxPerfDrops = static_cast<uint16_t>(
+        settings_.gpsLockoutMaxPerfDrops = static_cast<uint16_t>(
             std::max(0, std::min(doc["gpsLockoutMaxPerfDrops"].as<int>(), 65535)));
     }
     if (doc["gpsLockoutMaxEventBusDrops"].is<int>()) {
-        settings.gpsLockoutMaxEventBusDrops = static_cast<uint16_t>(
+        settings_.gpsLockoutMaxEventBusDrops = static_cast<uint16_t>(
             std::max(0, std::min(doc["gpsLockoutMaxEventBusDrops"].as<int>(), 65535)));
     }
     if (doc["gpsLockoutLearnerPromotionHits"].is<int>()) {
-        settings.gpsLockoutLearnerPromotionHits = clampLockoutLearnerHitsValue(
+        settings_.gpsLockoutLearnerPromotionHits = clampLockoutLearnerHitsValue(
             doc["gpsLockoutLearnerPromotionHits"].as<int>());
     }
     if (doc["gpsLockoutLearnerRadiusE5"].is<int>()) {
-        settings.gpsLockoutLearnerRadiusE5 = clampLockoutLearnerRadiusE5Value(
+        settings_.gpsLockoutLearnerRadiusE5 = clampLockoutLearnerRadiusE5Value(
             doc["gpsLockoutLearnerRadiusE5"].as<int>());
     }
     if (doc["gpsLockoutLearnerFreqToleranceMHz"].is<int>()) {
-        settings.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
+        settings_.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
             doc["gpsLockoutLearnerFreqToleranceMHz"].as<int>());
     }
     if (doc["gpsLockoutLearnerLearnIntervalHours"].is<int>()) {
-        settings.gpsLockoutLearnerLearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
+        settings_.gpsLockoutLearnerLearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
             doc["gpsLockoutLearnerLearnIntervalHours"].as<int>());
     }
     if (doc["gpsLockoutLearnerUnlearnIntervalHours"].is<int>()) {
-        settings.gpsLockoutLearnerUnlearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
+        settings_.gpsLockoutLearnerUnlearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
             doc["gpsLockoutLearnerUnlearnIntervalHours"].as<int>());
     }
     if (doc["gpsLockoutLearnerUnlearnCount"].is<int>()) {
-        settings.gpsLockoutLearnerUnlearnCount = clampLockoutLearnerUnlearnCountValue(
+        settings_.gpsLockoutLearnerUnlearnCount = clampLockoutLearnerUnlearnCountValue(
             doc["gpsLockoutLearnerUnlearnCount"].as<int>());
     }
     if (doc["gpsLockoutManualDemotionMissCount"].is<int>()) {
-        settings.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
+        settings_.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
             doc["gpsLockoutManualDemotionMissCount"].as<int>());
     }
-    restoreBool("gpsLockoutKaLearningEnabled", settings.gpsLockoutKaLearningEnabled);
-    restoreBool("gpsLockoutKLearningEnabled", settings.gpsLockoutKLearningEnabled);
-    restoreBool("gpsLockoutXLearningEnabled", settings.gpsLockoutXLearningEnabled);
-    restoreBool("gpsLockoutPreQuiet", settings.gpsLockoutPreQuiet);
+    restoreBool("gpsLockoutKaLearningEnabled", settings_.gpsLockoutKaLearningEnabled);
+    restoreBool("gpsLockoutKLearningEnabled", settings_.gpsLockoutKLearningEnabled);
+    restoreBool("gpsLockoutXLearningEnabled", settings_.gpsLockoutXLearningEnabled);
+    restoreBool("gpsLockoutPreQuiet", settings_.gpsLockoutPreQuiet);
     if (doc["gpsLockoutPreQuietBufferE5"].is<int>()) {
-        settings.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
+        settings_.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
             doc["gpsLockoutPreQuietBufferE5"].as<int>());
     }
     if (doc["gpsLockoutMaxHdopX10"].is<int>()) {
-        settings.gpsLockoutMaxHdopX10 = clampLockoutGpsMaxHdopX10Value(
+        settings_.gpsLockoutMaxHdopX10 = clampLockoutGpsMaxHdopX10Value(
             doc["gpsLockoutMaxHdopX10"].as<int>());
     }
     if (doc["gpsLockoutMinLearnerSpeedMph"].is<int>()) {
-        settings.gpsLockoutMinLearnerSpeedMph = clampLockoutGpsMinLearnerSpeedMphValue(
+        settings_.gpsLockoutMinLearnerSpeedMph = clampLockoutGpsMinLearnerSpeedMphValue(
             doc["gpsLockoutMinLearnerSpeedMph"].as<int>());
     }
     if (doc["lastV1Address"].is<const char*>()) {
-        settings.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
+        settings_.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
     }
     if (doc["autoPowerOffMinutes"].is<int>()) {
-        settings.autoPowerOffMinutes = clampU8(doc["autoPowerOffMinutes"].as<int>(), 0, 60);
+        settings_.autoPowerOffMinutes = clampU8(doc["autoPowerOffMinutes"].as<int>(), 0, 60);
     }
     if (doc["apTimeoutMinutes"].is<int>()) {
-        settings.apTimeoutMinutes = clampApTimeoutValue(doc["apTimeoutMinutes"].as<int>());
+        settings_.apTimeoutMinutes = clampApTimeoutValue(doc["apTimeoutMinutes"].as<int>());
     }
 
     // === Display Settings ===
-    if (doc["brightness"].is<int>()) settings.brightness = clampU8(doc["brightness"].as<int>(), 1, 255);
-    restoreBool("turnOffDisplay", settings.turnOffDisplay);
-    if (doc["displayStyle"].is<int>()) settings.displayStyle = normalizeDisplayStyle(doc["displayStyle"].as<int>());
+    if (doc["brightness"].is<int>()) settings_.brightness = clampU8(doc["brightness"].as<int>(), 1, 255);
+    restoreBool("turnOffDisplay", settings_.turnOffDisplay);
+    if (doc["displayStyle"].is<int>()) settings_.displayStyle = normalizeDisplayStyle(doc["displayStyle"].as<int>());
 
     // === All Colors ===
-    if (doc["colorBogey"].is<int>()) settings.colorBogey = doc["colorBogey"];
-    if (doc["colorFrequency"].is<int>()) settings.colorFrequency = doc["colorFrequency"];
-    if (doc["colorArrowFront"].is<int>()) settings.colorArrowFront = doc["colorArrowFront"];
-    if (doc["colorArrowSide"].is<int>()) settings.colorArrowSide = doc["colorArrowSide"];
-    if (doc["colorArrowRear"].is<int>()) settings.colorArrowRear = doc["colorArrowRear"];
-    if (doc["colorBandL"].is<int>()) settings.colorBandL = doc["colorBandL"];
-    if (doc["colorBandKa"].is<int>()) settings.colorBandKa = doc["colorBandKa"];
-    if (doc["colorBandK"].is<int>()) settings.colorBandK = doc["colorBandK"];
-    if (doc["colorBandX"].is<int>()) settings.colorBandX = doc["colorBandX"];
-    if (doc["colorBandPhoto"].is<int>()) settings.colorBandPhoto = doc["colorBandPhoto"];
-    if (doc["colorWiFiIcon"].is<int>()) settings.colorWiFiIcon = doc["colorWiFiIcon"];
-    if (doc["colorWiFiConnected"].is<int>()) settings.colorWiFiConnected = doc["colorWiFiConnected"];
-    if (doc["colorBleConnected"].is<int>()) settings.colorBleConnected = doc["colorBleConnected"];
-    if (doc["colorBleDisconnected"].is<int>()) settings.colorBleDisconnected = doc["colorBleDisconnected"];
-    if (doc["colorBar1"].is<int>()) settings.colorBar1 = doc["colorBar1"];
-    if (doc["colorBar2"].is<int>()) settings.colorBar2 = doc["colorBar2"];
-    if (doc["colorBar3"].is<int>()) settings.colorBar3 = doc["colorBar3"];
-    if (doc["colorBar4"].is<int>()) settings.colorBar4 = doc["colorBar4"];
-    if (doc["colorBar5"].is<int>()) settings.colorBar5 = doc["colorBar5"];
-    if (doc["colorBar6"].is<int>()) settings.colorBar6 = doc["colorBar6"];
-    if (doc["colorMuted"].is<int>()) settings.colorMuted = doc["colorMuted"];
-    if (doc["colorPersisted"].is<int>()) settings.colorPersisted = doc["colorPersisted"];
-    if (doc["colorVolumeMain"].is<int>()) settings.colorVolumeMain = doc["colorVolumeMain"];
-    if (doc["colorVolumeMute"].is<int>()) settings.colorVolumeMute = doc["colorVolumeMute"];
-    if (doc["colorRssiV1"].is<int>()) settings.colorRssiV1 = doc["colorRssiV1"];
-    if (doc["colorRssiProxy"].is<int>()) settings.colorRssiProxy = doc["colorRssiProxy"];
-    if (doc["colorLockout"].is<int>()) settings.colorLockout = doc["colorLockout"];
-    if (doc["colorGps"].is<int>()) settings.colorGps = doc["colorGps"];
-    if (doc["colorObd"].is<int>()) settings.colorObd = doc["colorObd"];
-    restoreBool("freqUseBandColor", settings.freqUseBandColor);
+    if (doc["colorBogey"].is<int>()) settings_.colorBogey = doc["colorBogey"];
+    if (doc["colorFrequency"].is<int>()) settings_.colorFrequency = doc["colorFrequency"];
+    if (doc["colorArrowFront"].is<int>()) settings_.colorArrowFront = doc["colorArrowFront"];
+    if (doc["colorArrowSide"].is<int>()) settings_.colorArrowSide = doc["colorArrowSide"];
+    if (doc["colorArrowRear"].is<int>()) settings_.colorArrowRear = doc["colorArrowRear"];
+    if (doc["colorBandL"].is<int>()) settings_.colorBandL = doc["colorBandL"];
+    if (doc["colorBandKa"].is<int>()) settings_.colorBandKa = doc["colorBandKa"];
+    if (doc["colorBandK"].is<int>()) settings_.colorBandK = doc["colorBandK"];
+    if (doc["colorBandX"].is<int>()) settings_.colorBandX = doc["colorBandX"];
+    if (doc["colorBandPhoto"].is<int>()) settings_.colorBandPhoto = doc["colorBandPhoto"];
+    if (doc["colorWiFiIcon"].is<int>()) settings_.colorWiFiIcon = doc["colorWiFiIcon"];
+    if (doc["colorWiFiConnected"].is<int>()) settings_.colorWiFiConnected = doc["colorWiFiConnected"];
+    if (doc["colorBleConnected"].is<int>()) settings_.colorBleConnected = doc["colorBleConnected"];
+    if (doc["colorBleDisconnected"].is<int>()) settings_.colorBleDisconnected = doc["colorBleDisconnected"];
+    if (doc["colorBar1"].is<int>()) settings_.colorBar1 = doc["colorBar1"];
+    if (doc["colorBar2"].is<int>()) settings_.colorBar2 = doc["colorBar2"];
+    if (doc["colorBar3"].is<int>()) settings_.colorBar3 = doc["colorBar3"];
+    if (doc["colorBar4"].is<int>()) settings_.colorBar4 = doc["colorBar4"];
+    if (doc["colorBar5"].is<int>()) settings_.colorBar5 = doc["colorBar5"];
+    if (doc["colorBar6"].is<int>()) settings_.colorBar6 = doc["colorBar6"];
+    if (doc["colorMuted"].is<int>()) settings_.colorMuted = doc["colorMuted"];
+    if (doc["colorPersisted"].is<int>()) settings_.colorPersisted = doc["colorPersisted"];
+    if (doc["colorVolumeMain"].is<int>()) settings_.colorVolumeMain = doc["colorVolumeMain"];
+    if (doc["colorVolumeMute"].is<int>()) settings_.colorVolumeMute = doc["colorVolumeMute"];
+    if (doc["colorRssiV1"].is<int>()) settings_.colorRssiV1 = doc["colorRssiV1"];
+    if (doc["colorRssiProxy"].is<int>()) settings_.colorRssiProxy = doc["colorRssiProxy"];
+    if (doc["colorLockout"].is<int>()) settings_.colorLockout = doc["colorLockout"];
+    if (doc["colorGps"].is<int>()) settings_.colorGps = doc["colorGps"];
+    if (doc["colorObd"].is<int>()) settings_.colorObd = doc["colorObd"];
+    restoreBool("freqUseBandColor", settings_.freqUseBandColor);
 
     // === UI Toggles ===
-    restoreBool("hideWifiIcon", settings.hideWifiIcon);
-    restoreBool("hideProfileIndicator", settings.hideProfileIndicator);
-    restoreBool("hideBatteryIcon", settings.hideBatteryIcon);
-    restoreBool("showBatteryPercent", settings.showBatteryPercent);
-    restoreBool("hideBleIcon", settings.hideBleIcon);
-    restoreBool("hideVolumeIndicator", settings.hideVolumeIndicator);
-    restoreBool("hideRssiIndicator", settings.hideRssiIndicator);
-    restoreBool("enableWifiAtBoot", settings.enableWifiAtBoot);
-    restoreBool("enableSignalTraceLogging", settings.enableSignalTraceLogging);
+    restoreBool("hideWifiIcon", settings_.hideWifiIcon);
+    restoreBool("hideProfileIndicator", settings_.hideProfileIndicator);
+    restoreBool("hideBatteryIcon", settings_.hideBatteryIcon);
+    restoreBool("showBatteryPercent", settings_.showBatteryPercent);
+    restoreBool("hideBleIcon", settings_.hideBleIcon);
+    restoreBool("hideVolumeIndicator", settings_.hideVolumeIndicator);
+    restoreBool("hideRssiIndicator", settings_.hideRssiIndicator);
+    restoreBool("enableWifiAtBoot", settings_.enableWifiAtBoot);
+    restoreBool("enableSignalTraceLogging", settings_.enableSignalTraceLogging);
 
     // === Voice Settings ===
     if (doc["voiceAlertMode"].is<int>()) {
-        settings.voiceAlertMode = clampVoiceAlertModeValue(doc["voiceAlertMode"].as<int>());
+        settings_.voiceAlertMode = clampVoiceAlertModeValue(doc["voiceAlertMode"].as<int>());
     } else {
         bool legacyVoiceEnabled = false;
         if (parseBoolVariant(doc["voiceAlertsEnabled"], legacyVoiceEnabled)) {
-            settings.voiceAlertMode = legacyVoiceEnabled ? VOICE_MODE_BAND_FREQ : VOICE_MODE_DISABLED;
+            settings_.voiceAlertMode = legacyVoiceEnabled ? VOICE_MODE_BAND_FREQ : VOICE_MODE_DISABLED;
         }
     }
-    restoreBool("voiceDirectionEnabled", settings.voiceDirectionEnabled);
-    restoreBool("announceBogeyCount", settings.announceBogeyCount);
-    restoreBool("muteVoiceIfVolZero", settings.muteVoiceIfVolZero);
-    if (doc["voiceVolume"].is<int>()) settings.voiceVolume = clampU8(doc["voiceVolume"].as<int>(), 0, 100);
-    restoreBool("announceSecondaryAlerts", settings.announceSecondaryAlerts);
-    restoreBool("secondaryLaser", settings.secondaryLaser);
-    restoreBool("secondaryKa", settings.secondaryKa);
-    restoreBool("secondaryK", settings.secondaryK);
-    restoreBool("secondaryX", settings.secondaryX);
-    restoreBool("alertVolumeFadeEnabled", settings.alertVolumeFadeEnabled);
+    restoreBool("voiceDirectionEnabled", settings_.voiceDirectionEnabled);
+    restoreBool("announceBogeyCount", settings_.announceBogeyCount);
+    restoreBool("muteVoiceIfVolZero", settings_.muteVoiceIfVolZero);
+    if (doc["voiceVolume"].is<int>()) settings_.voiceVolume = clampU8(doc["voiceVolume"].as<int>(), 0, 100);
+    restoreBool("announceSecondaryAlerts", settings_.announceSecondaryAlerts);
+    restoreBool("secondaryLaser", settings_.secondaryLaser);
+    restoreBool("secondaryKa", settings_.secondaryKa);
+    restoreBool("secondaryK", settings_.secondaryK);
+    restoreBool("secondaryX", settings_.secondaryX);
+    restoreBool("alertVolumeFadeEnabled", settings_.alertVolumeFadeEnabled);
     if (doc["alertVolumeFadeDelaySec"].is<int>()) {
-        settings.alertVolumeFadeDelaySec = clampU8(doc["alertVolumeFadeDelaySec"].as<int>(), 1, 10);
+        settings_.alertVolumeFadeDelaySec = clampU8(doc["alertVolumeFadeDelaySec"].as<int>(), 1, 10);
     }
     if (doc["alertVolumeFadeVolume"].is<int>()) {
-        settings.alertVolumeFadeVolume = clampU8(doc["alertVolumeFadeVolume"].as<int>(), 0, 9);
+        settings_.alertVolumeFadeVolume = clampU8(doc["alertVolumeFadeVolume"].as<int>(), 0, 9);
     }
-    restoreBool("speedMuteEnabled", settings.speedMuteEnabled);
+    restoreBool("speedMuteEnabled", settings_.speedMuteEnabled);
     if (doc["speedMuteThresholdMph"].is<int>()) {
-        settings.speedMuteThresholdMph = clampU8(doc["speedMuteThresholdMph"].as<int>(), 5, 60);
+        settings_.speedMuteThresholdMph = clampU8(doc["speedMuteThresholdMph"].as<int>(), 5, 60);
     }
     if (doc["speedMuteHysteresisMph"].is<int>()) {
-        settings.speedMuteHysteresisMph = clampU8(doc["speedMuteHysteresisMph"].as<int>(), 1, 10);
+        settings_.speedMuteHysteresisMph = clampU8(doc["speedMuteHysteresisMph"].as<int>(), 1, 10);
     }
     if (doc["speedMuteVolume"].is<int>()) {
         int raw = doc["speedMuteVolume"].as<int>();
-        settings.speedMuteVolume = (raw >= 0 && raw <= 9) ? static_cast<uint8_t>(raw) : 0xFF;
+        settings_.speedMuteVolume = (raw >= 0 && raw <= 9) ? static_cast<uint8_t>(raw) : 0xFF;
     }
-    restoreBool("speedMuteRequireObd", settings.speedMuteRequireObd);
+    restoreBool("speedMuteRequireObd", settings_.speedMuteRequireObd);
 
     // === Auto-Push Settings ===
-    restoreBool("autoPushEnabled", settings.autoPushEnabled);
-    if (doc["activeSlot"].is<int>()) settings.activeSlot = std::max(0, std::min(doc["activeSlot"].as<int>(), 2));
+    restoreBool("autoPushEnabled", settings_.autoPushEnabled);
+    if (doc["activeSlot"].is<int>()) settings_.activeSlot = std::max(0, std::min(doc["activeSlot"].as<int>(), 2));
 
-    if (doc["slot0Name"].is<const char*>()) settings.slot0Name = sanitizeSlotNameValue(doc["slot0Name"].as<String>());
-    if (doc["slot0Color"].is<int>()) settings.slot0Color = doc["slot0Color"];
-    if (doc["slot0Volume"].is<int>()) settings.slot0Volume = clampSlotVolumeValue(doc["slot0Volume"].as<int>());
-    if (doc["slot0MuteVolume"].is<int>()) settings.slot0MuteVolume = clampSlotVolumeValue(doc["slot0MuteVolume"].as<int>());
-    restoreBool("slot0DarkMode", settings.slot0DarkMode);
-    restoreBool("slot0MuteToZero", settings.slot0MuteToZero);
-    if (doc["slot0AlertPersist"].is<int>()) settings.slot0AlertPersist = clampU8(doc["slot0AlertPersist"].as<int>(), 0, 5);
-    restoreBool("slot0PriorityArrow", settings.slot0PriorityArrow);
-    if (doc["slot0ProfileName"].is<const char*>()) settings.slot0_default.profileName = sanitizeProfileNameValue(doc["slot0ProfileName"].as<String>());
-    if (doc["slot0Mode"].is<int>()) settings.slot0_default.mode = normalizeV1ModeValue(doc["slot0Mode"].as<int>());
+    if (doc["slot0Name"].is<const char*>()) settings_.slot0Name = sanitizeSlotNameValue(doc["slot0Name"].as<String>());
+    if (doc["slot0Color"].is<int>()) settings_.slot0Color = doc["slot0Color"];
+    if (doc["slot0Volume"].is<int>()) settings_.slot0Volume = clampSlotVolumeValue(doc["slot0Volume"].as<int>());
+    if (doc["slot0MuteVolume"].is<int>()) settings_.slot0MuteVolume = clampSlotVolumeValue(doc["slot0MuteVolume"].as<int>());
+    restoreBool("slot0DarkMode", settings_.slot0DarkMode);
+    restoreBool("slot0MuteToZero", settings_.slot0MuteToZero);
+    if (doc["slot0AlertPersist"].is<int>()) settings_.slot0AlertPersist = clampU8(doc["slot0AlertPersist"].as<int>(), 0, 5);
+    restoreBool("slot0PriorityArrow", settings_.slot0PriorityArrow);
+    if (doc["slot0ProfileName"].is<const char*>()) settings_.slot0_default.profileName = sanitizeProfileNameValue(doc["slot0ProfileName"].as<String>());
+    if (doc["slot0Mode"].is<int>()) settings_.slot0_default.mode = normalizeV1ModeValue(doc["slot0Mode"].as<int>());
 
-    if (doc["slot1Name"].is<const char*>()) settings.slot1Name = sanitizeSlotNameValue(doc["slot1Name"].as<String>());
-    if (doc["slot1Color"].is<int>()) settings.slot1Color = doc["slot1Color"];
-    if (doc["slot1Volume"].is<int>()) settings.slot1Volume = clampSlotVolumeValue(doc["slot1Volume"].as<int>());
-    if (doc["slot1MuteVolume"].is<int>()) settings.slot1MuteVolume = clampSlotVolumeValue(doc["slot1MuteVolume"].as<int>());
-    restoreBool("slot1DarkMode", settings.slot1DarkMode);
-    restoreBool("slot1MuteToZero", settings.slot1MuteToZero);
-    if (doc["slot1AlertPersist"].is<int>()) settings.slot1AlertPersist = clampU8(doc["slot1AlertPersist"].as<int>(), 0, 5);
-    restoreBool("slot1PriorityArrow", settings.slot1PriorityArrow);
-    if (doc["slot1ProfileName"].is<const char*>()) settings.slot1_highway.profileName = sanitizeProfileNameValue(doc["slot1ProfileName"].as<String>());
-    if (doc["slot1Mode"].is<int>()) settings.slot1_highway.mode = normalizeV1ModeValue(doc["slot1Mode"].as<int>());
+    if (doc["slot1Name"].is<const char*>()) settings_.slot1Name = sanitizeSlotNameValue(doc["slot1Name"].as<String>());
+    if (doc["slot1Color"].is<int>()) settings_.slot1Color = doc["slot1Color"];
+    if (doc["slot1Volume"].is<int>()) settings_.slot1Volume = clampSlotVolumeValue(doc["slot1Volume"].as<int>());
+    if (doc["slot1MuteVolume"].is<int>()) settings_.slot1MuteVolume = clampSlotVolumeValue(doc["slot1MuteVolume"].as<int>());
+    restoreBool("slot1DarkMode", settings_.slot1DarkMode);
+    restoreBool("slot1MuteToZero", settings_.slot1MuteToZero);
+    if (doc["slot1AlertPersist"].is<int>()) settings_.slot1AlertPersist = clampU8(doc["slot1AlertPersist"].as<int>(), 0, 5);
+    restoreBool("slot1PriorityArrow", settings_.slot1PriorityArrow);
+    if (doc["slot1ProfileName"].is<const char*>()) settings_.slot1_highway.profileName = sanitizeProfileNameValue(doc["slot1ProfileName"].as<String>());
+    if (doc["slot1Mode"].is<int>()) settings_.slot1_highway.mode = normalizeV1ModeValue(doc["slot1Mode"].as<int>());
 
-    if (doc["slot2Name"].is<const char*>()) settings.slot2Name = sanitizeSlotNameValue(doc["slot2Name"].as<String>());
-    if (doc["slot2Color"].is<int>()) settings.slot2Color = doc["slot2Color"];
-    if (doc["slot2Volume"].is<int>()) settings.slot2Volume = clampSlotVolumeValue(doc["slot2Volume"].as<int>());
-    if (doc["slot2MuteVolume"].is<int>()) settings.slot2MuteVolume = clampSlotVolumeValue(doc["slot2MuteVolume"].as<int>());
-    restoreBool("slot2DarkMode", settings.slot2DarkMode);
-    restoreBool("slot2MuteToZero", settings.slot2MuteToZero);
-    if (doc["slot2AlertPersist"].is<int>()) settings.slot2AlertPersist = clampU8(doc["slot2AlertPersist"].as<int>(), 0, 5);
-    restoreBool("slot2PriorityArrow", settings.slot2PriorityArrow);
-    if (doc["slot2ProfileName"].is<const char*>()) settings.slot2_comfort.profileName = sanitizeProfileNameValue(doc["slot2ProfileName"].as<String>());
-    if (doc["slot2Mode"].is<int>()) settings.slot2_comfort.mode = normalizeV1ModeValue(doc["slot2Mode"].as<int>());
+    if (doc["slot2Name"].is<const char*>()) settings_.slot2Name = sanitizeSlotNameValue(doc["slot2Name"].as<String>());
+    if (doc["slot2Color"].is<int>()) settings_.slot2Color = doc["slot2Color"];
+    if (doc["slot2Volume"].is<int>()) settings_.slot2Volume = clampSlotVolumeValue(doc["slot2Volume"].as<int>());
+    if (doc["slot2MuteVolume"].is<int>()) settings_.slot2MuteVolume = clampSlotVolumeValue(doc["slot2MuteVolume"].as<int>());
+    restoreBool("slot2DarkMode", settings_.slot2DarkMode);
+    restoreBool("slot2MuteToZero", settings_.slot2MuteToZero);
+    if (doc["slot2AlertPersist"].is<int>()) settings_.slot2AlertPersist = clampU8(doc["slot2AlertPersist"].as<int>(), 0, 5);
+    restoreBool("slot2PriorityArrow", settings_.slot2PriorityArrow);
+    if (doc["slot2ProfileName"].is<const char*>()) settings_.slot2_comfort.profileName = sanitizeProfileNameValue(doc["slot2ProfileName"].as<String>());
+    if (doc["slot2Mode"].is<int>()) settings_.slot2_comfort.mode = normalizeV1ModeValue(doc["slot2Mode"].as<int>());
 
     // === OBD Settings ===
-    restoreBool("obdEnabled", settings.obdEnabled);
-    if (doc["obdSavedAddress"].is<const char*>()) settings.obdSavedAddress = doc["obdSavedAddress"].as<String>();
-    if (doc["obdSavedName"].is<const char*>()) settings.obdSavedName = sanitizeObdSavedNameValue(doc["obdSavedName"].as<String>());
+    restoreBool("obdEnabled", settings_.obdEnabled);
+    if (doc["obdSavedAddress"].is<const char*>()) settings_.obdSavedAddress = doc["obdSavedAddress"].as<String>();
+    if (doc["obdSavedName"].is<const char*>()) settings_.obdSavedName = sanitizeObdSavedNameValue(doc["obdSavedName"].as<String>());
     if (doc["obdSavedAddrType"].is<int>()) {
-        settings.obdSavedAddrType = static_cast<uint8_t>(std::max(0, std::min(doc["obdSavedAddrType"].as<int>(), 1)));
+        settings_.obdSavedAddrType = static_cast<uint8_t>(std::max(0, std::min(doc["obdSavedAddrType"].as<int>(), 1)));
     }
     if (doc["obdMinRssi"].is<int>()) {
         const int rssi = doc["obdMinRssi"].as<int>();
-        settings.obdMinRssi = static_cast<int8_t>(std::max(-100, std::min(rssi, -40)));
+        settings_.obdMinRssi = static_cast<int8_t>(std::max(-100, std::min(rssi, -40)));
     }
     if (doc["obdCachedVinPrefix11"].is<const char*>()) {
-        settings.obdCachedVinPrefix11 = doc["obdCachedVinPrefix11"].as<String>();
+        settings_.obdCachedVinPrefix11 = doc["obdCachedVinPrefix11"].as<String>();
     }
     if (doc["obdCachedEotProfileId"].is<int>()) {
-        settings.obdCachedEotProfileId = static_cast<uint8_t>(
+        settings_.obdCachedEotProfileId = static_cast<uint8_t>(
             std::max(0, std::min(doc["obdCachedEotProfileId"].as<int>(), 255)));
     }
 
@@ -388,7 +388,7 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
         saveDeferredBackup();
     } else {
         if (!persistSettingsAtomically()) {
-            Serial.println("[Settings] ERROR: Failed to persist restored settings");
+            Serial.println("[Settings] ERROR: Failed to persist restored settings_");
             return result;
         }
         bumpBackupRevision();
@@ -514,7 +514,7 @@ bool SettingsManager::checkAndRestoreFromSD() {
     if (needsRestore) {
         Serial.println("[Settings] Checking for SD backup restore...");
         if (restoreFromSD()) {
-            Serial.println("[Settings] Restored settings from SD backup!");
+            Serial.println("[Settings] Restored settings_ from SD backup!");
             // Immediately re-emit backup in current schema after a successful restore.
             backupToSD();
             cleanupNamespacesIfNeeded(true);
@@ -524,7 +524,7 @@ bool SettingsManager::checkAndRestoreFromSD() {
     } else if (hasSdBackup) {
         // Keep user/NVS state authoritative unless corruption is detected.
         // Slot/profile healing is handled separately by validateProfileReferences().
-        Serial.println("[Settings] NVS healthy; skipping automatic SD settings restore");
+        Serial.println("[Settings] NVS healthy; skipping automatic SD settings_ restore");
     }
 
     if (!needsRestore && storageManager.isReady() && storageManager.isSDCard()) {
@@ -532,12 +532,12 @@ bool SettingsManager::checkAndRestoreFromSD() {
             readWifiClientKeyPresence(getActiveNamespace().c_str());
         const bool wifiKeysMissing =
             !wifiKeyPresence.enabledKeyPresent || !wifiKeyPresence.ssidKeyPresent;
-        const bool missingCurrentSsid = settings.wifiClientSSID.length() == 0;
+        const bool missingCurrentSsid = settings_.wifiClientSSID.length() == 0;
 
         if (wifiKeysMissing && !missingCurrentSsid) {
             // SSID is already present in memory; rewrite namespace to restore missing keys.
-            settings.wifiClientEnabled = true;
-            settings.wifiMode = V1_WIFI_APSTA;
+            settings_.wifiClientEnabled = true;
+            settings_.wifiMode = V1_WIFI_APSTA;
             Serial.println("[Settings] HEAL: repairing missing WiFi client keys from in-memory SSID");
             save();
         } else if (missingCurrentSsid) {
@@ -567,24 +567,24 @@ bool SettingsManager::checkAndRestoreFromSD() {
             // - backup-missing case: recover SSID from SD WiFi secret metadata
             const bool shouldRecoverWifiClient =
                 recoveredSsid.length() > 0 &&
-                (settings.wifiClientEnabled ||
+                (settings_.wifiClientEnabled ||
                  wifiKeysMissing ||
                  (backupEnabledKnown && backupWifiClientEnabled) ||
                  secretHasSsid);
 
             if (shouldRecoverWifiClient) {
-                settings.wifiClientEnabled = true;
-                settings.wifiClientSSID = recoveredSsid;
-                settings.wifiMode = V1_WIFI_APSTA;
+                settings_.wifiClientEnabled = true;
+                settings_.wifiClientSSID = recoveredSsid;
+                settings_.wifiMode = V1_WIFI_APSTA;
                 Serial.printf("[Settings] HEAL: recovered WiFi client config from %s (ssid='%s', keysMissing=%s)\n",
                               recoveredFrom,
-                              settings.wifiClientSSID.c_str(),
+                              settings_.wifiClientSSID.c_str(),
                               wifiKeysMissing ? "yes" : "no");
                 save();
-            } else if (settings.wifiClientEnabled) {
+            } else if (settings_.wifiClientEnabled) {
                 // SSID missing in all recovery sources — disable to avoid inconsistent state.
-                settings.wifiClientEnabled = false;
-                settings.wifiMode = V1_WIFI_AP;
+                settings_.wifiClientEnabled = false;
+                settings_.wifiMode = V1_WIFI_AP;
                 Serial.println("[Settings] HEAL: wifiClientEnabled=true but no SSID anywhere — disabling");
                 save();
             } else if (wifiKeysMissing) {
@@ -596,7 +596,7 @@ bool SettingsManager::checkAndRestoreFromSD() {
     // Keep SD backup schema fresh so newly added settings survive the next reflash.
     if (!needsRestore && storageManager.isReady() && storageManager.isSDCard()) {
         if (!hasSdBackup) {
-            Serial.println("[Settings] No valid SD backup found; creating backup from current settings");
+            Serial.println("[Settings] No valid SD backup found; creating backup from current settings_");
             backupToSD();
         } else {
             const int backupVersion = backupDocumentVersion(bestBackupDoc);
@@ -604,7 +604,7 @@ bool SettingsManager::checkAndRestoreFromSD() {
                 bestBackupDoc["gpsEnabled"].isNull() ||
                 bestBackupDoc["displayStyle"].isNull() ||
                 bestBackupDoc["brightness"].isNull();
-            const bool backupOutOfSync = !backupAppearsInSyncWithNvs(bestBackupDoc, settings);
+            const bool backupOutOfSync = !backupAppearsInSyncWithNvs(bestBackupDoc, settings_);
             if (backupVersion < SD_BACKUP_VERSION || missingCoreFields || backupOutOfSync) {
                 Serial.printf("[Settings] Refreshing SD backup schema (path=%s version=%d)\n",
                               bestBackupPath ? bestBackupPath : "(unknown)",
@@ -708,7 +708,7 @@ bool SettingsManager::checkNeedsRestore() {
     // Also check if brightness is still at exact default - common indicator of wipe
     // combined with missing settingsVer (which would be >= 2 if properly saved).
     // Only apply this heuristic when the commit marker is missing.
-    if (nvsMarker == 0 && settingsVer <= 1 && settings.brightness == 200) {
+    if (nvsMarker == 0 && settingsVer <= 1 && settings_.brightness == 200) {
         Serial.println("[Settings] NVS appears default (v1 migration + default brightness)");
         return true;
     }
@@ -781,9 +781,9 @@ bool SettingsManager::restoreFromSD() {
         return false;
     }
     Serial.printf("[Settings] Restored modes from backup: slot0Mode=%d (in json: %s), slot1Mode=%d (in json: %s), slot2Mode=%d (in json: %s)\n",
-                  settings.slot0_default.mode, doc["slot0Mode"].is<int>() ? "yes" : "NO",
-                  settings.slot1_highway.mode, doc["slot1Mode"].is<int>() ? "yes" : "NO",
-                  settings.slot2_comfort.mode, doc["slot2Mode"].is<int>() ? "yes" : "NO");
+                  settings_.slot0_default.mode, doc["slot0Mode"].is<int>() ? "yes" : "NO",
+                  settings_.slot1_highway.mode, doc["slot1Mode"].is<int>() ? "yes" : "NO",
+                  settings_.slot2_comfort.mode, doc["slot2Mode"].is<int>() ? "yes" : "NO");
     Serial.printf("[Settings] ✅ Full restore from SD backup complete (%d profiles)\n",
                   applyResult.profilesRestored);
     return true;
@@ -797,9 +797,9 @@ void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
     }
 
     const bool hasConfiguredSlotReferences =
-        settings.slot0_default.profileName.length() > 0 ||
-        settings.slot1_highway.profileName.length() > 0 ||
-        settings.slot2_comfort.profileName.length() > 0;
+        settings_.slot0_default.profileName.length() > 0 ||
+        settings_.slot1_highway.profileName.length() > 0 ||
+        settings_.slot2_comfort.profileName.length() > 0;
     const size_t availableProfileCount = profileMgr.listProfiles().size();
     if (shouldSkipProfileReferenceValidation(availableProfileCount,
                                              hasConfiguredSlotReferences)) {
@@ -826,9 +826,9 @@ void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
         }
     };
 
-    validateSlot(settings.slot0_default, "Slot 0 (Default)");
-    validateSlot(settings.slot1_highway, "Slot 1 (Highway)");
-    validateSlot(settings.slot2_comfort, "Slot 2 (Comfort)");
+    validateSlot(settings_.slot0_default, "Slot 0 (Default)");
+    validateSlot(settings_.slot1_highway, "Slot 1 (Highway)");
+    validateSlot(settings_.slot2_comfort, "Slot 2 (Comfort)");
 
     if (needsSave) {
         if (persistSettingsAtomically()) {

@@ -126,7 +126,7 @@ public:
 
     // Initialize with filesystem
     bool begin(fs::FS* filesystem, fs::FS* importFilesystem = nullptr);
-    bool isReady() const { return ready; }
+    bool isReady() const { return ready_; }
 
     // Profile CRUD
     std::vector<String> listProfiles() const;
@@ -134,14 +134,14 @@ public:
     ProfileSaveResult saveProfile(const V1Profile& profile);
     bool deleteProfile(const String& name);
     bool renameProfile(const String& oldName, const String& newName);
-    uint32_t catalogRevision() const { return catalogRevisionCounter; }
+    uint32_t catalogRevision() const { return catalogRevisionCounter_; }
 
     // Get last error message
-    const String& getLastError() const { return lastError; }
+    const String& getLastError() const { return lastError_; }
 
     // Current V1 settings (from last pull)
-    bool hasCurrentSettings() const { return currentValid; }
-    const V1UserSettings& getCurrentSettings() const { return currentSettings; }
+    bool hasCurrentSettings() const { return currentValid_; }
+    const V1UserSettings& getCurrentSettings() const { return currentSettings_; }
     void setCurrentSettings(const uint8_t* bytes);
 
     // JSON serialization for web API
@@ -151,14 +151,14 @@ public:
     bool jsonToSettings(const JsonObject& settingsObj, V1UserSettings& settings) const;
 
 private:
-    fs::FS* fs;
-    bool ready;
-    String profileDir;
-    mutable String lastError;  // Last error message for detailed reporting
-    uint32_t catalogRevisionCounter = 1;
+    fs::FS* fs_;
+    bool ready_;
+    String profileDir_;
+    mutable String lastError_;  // Last error message for detailed reporting
+    uint32_t catalogRevisionCounter_ = 1;
 
-    V1UserSettings currentSettings;
-    bool currentValid;
+    V1UserSettings currentSettings_;
+    bool currentValid_;
 
     String profilePath(const String& name) const;
     static uint32_t calculateCRC32(const uint8_t* data, size_t length);

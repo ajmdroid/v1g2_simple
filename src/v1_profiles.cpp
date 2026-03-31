@@ -65,18 +65,18 @@ uint32_t V1ProfileManager::calculateCRC32(const uint8_t* data, size_t length) {
 }
 
 V1ProfileManager::V1ProfileManager()
-    : fs(nullptr)
-    , ready(false)
-    , profileDir("/v1profiles")
-    , currentValid(false) {
+    : fs_(nullptr)
+    , ready_(false)
+    , profileDir_("/v1profiles")
+    , currentValid_(false) {
 }
 
 void V1ProfileManager::bumpCatalogRevision() {
-    if (catalogRevisionCounter == UINT32_MAX) {
-        catalogRevisionCounter = 1;
+    if (catalogRevisionCounter_ == UINT32_MAX) {
+        catalogRevisionCounter_ = 1;
         return;
     }
-    catalogRevisionCounter++;
+    catalogRevisionCounter_++;
 }
 
 static String basenameFromPath(const String& path) {
@@ -92,7 +92,7 @@ void V1ProfileManager::recoverInterruptedSaves() {
     // .tmp = incomplete new save (delete it)
     // .bak without corresponding .json = interrupted rename (restore it)
 
-    File dir = fs->open(profileDir);
+    File dir = fs_->open(profileDir_);
     if (!dir || !dir.isDirectory()) {
         return;
     }
@@ -118,9 +118,9 @@ void V1ProfileManager::recoverInterruptedSaves() {
 
     // Remove incomplete .tmp files (interrupted during write)
     for (const String& tmp : tmpFiles) {
-        String fullPath = profileDir + "/" + tmp;
+        String fullPath = profileDir_ + "/" + tmp;
         Serial.printf("[V1Profiles] Removing incomplete temp file: %s\n", fullPath.c_str());
-        fs->remove(fullPath);
+        fs_->remove(fullPath);
     }
 
     // Check for orphaned .bak files (main file missing after rename)
@@ -139,11 +139,11 @@ void V1ProfileManager::recoverInterruptedSaves() {
 
         if (!hasJson) {
             // Main file missing! Restore from backup
-            String bakPath = profileDir + "/" + bak;
-            String jsonPath = profileDir + "/" + jsonName;
+            String bakPath = profileDir_ + "/" + bak;
+            String jsonPath = profileDir_ + "/" + jsonName;
             Serial.printf("[V1Profiles] RECOVERY: Main file missing, restoring from backup: %s -> %s\n",
                 bakPath.c_str(), jsonPath.c_str());
-            if (fs->rename(bakPath, jsonPath)) {
+            if (fs_->rename(bakPath, jsonPath)) {
                 Serial.println("[V1Profiles] Recovery successful!");
             } else {
                 Serial.println("[V1Profiles] Recovery FAILED - backup rename failed");
@@ -158,18 +158,18 @@ bool V1ProfileManager::begin(fs::FS* filesystem, fs::FS* importFilesystem) {
         return false;
     }
 
-    fs = filesystem;
+    fs_ = filesystem;
 
     // Create profiles directory if it doesn't exist
-    if (!fs->exists(profileDir)) {
-        if (!fs->mkdir(profileDir)) {
+    if (!fs_->exists(profileDir_)) {
+        if (!fs_->mkdir(profileDir_)) {
             Serial.println("[V1Profiles] Failed to create profiles directory");
             return false;
         }
         Serial.println("[V1Profiles] Created profiles directory");
     }
 
-    if (importFilesystem && importFilesystem != fs) {
+    if (importFilesystem && importFilesystem != fs_) {
         size_t migrated = migrateProfilesFrom(importFilesystem);
         if (migrated > 0) {
             Serial.printf("[V1Profiles] Migrated %u profile(s) from secondary filesystem\n",
@@ -180,20 +180,20 @@ bool V1ProfileManager::begin(fs::FS* filesystem, fs::FS* importFilesystem) {
     // Run startup integrity check - recover any interrupted saves
     recoverInterruptedSaves();
 
-    ready = true;
+    ready_ = true;
     Serial.println("[V1Profiles] Initialized");
     return true;
 }
 
 size_t V1ProfileManager::migrateProfilesFrom(fs::FS* sourceFs) {
-    if (!sourceFs || !fs || sourceFs == fs) {
+    if (!sourceFs || !fs_ || sourceFs == fs_) {
         return 0;
     }
-    if (!sourceFs->exists(profileDir)) {
+    if (!sourceFs->exists(profileDir_)) {
         return 0;
     }
 
-    File dir = sourceFs->open(profileDir);
+    File dir = sourceFs->open(profileDir_);
     if (!dir || !dir.isDirectory()) {
         if (dir) {
             dir.close();
@@ -215,14 +215,14 @@ size_t V1ProfileManager::migrateProfilesFrom(fs::FS* sourceFs) {
             continue;
         }
 
-        String targetPath = profileDir + "/" + sourceName;
-        if (fs->exists(targetPath)) {
+        String targetPath = profileDir_ + "/" + sourceName;
+        if (fs_->exists(targetPath)) {
             entry.close();
             continue;
         }
 
         String tmpPath = targetPath + ".tmpimport";
-        File out = fs->open(tmpPath, FILE_WRITE);
+        File out = fs_->open(tmpPath, FILE_WRITE);
         if (!out) {
             Serial.printf("[V1Profiles] Migration skipped (write open failed): %s\n", targetPath.c_str());
             entry.close();
@@ -246,12 +246,12 @@ size_t V1ProfileManager::migrateProfilesFrom(fs::FS* sourceFs) {
         entry.close();
 
         if (!ok) {
-            fs->remove(tmpPath);
+            fs_->remove(tmpPath);
             Serial.printf("[V1Profiles] Migration skipped (copy failed): %s\n", targetPath.c_str());
             continue;
         }
-        if (!fs->rename(tmpPath, targetPath)) {
-            fs->remove(tmpPath);
+        if (!fs_->rename(tmpPath, targetPath)) {
+            fs_->remove(tmpPath);
             Serial.printf("[V1Profiles] Migration skipped (rename failed): %s\n", targetPath.c_str());
             continue;
         }
@@ -269,17 +269,17 @@ String V1ProfileManager::profilePath(const String& name) const {
     safeName.replace("/", "_");
     safeName.replace("\\", "_");
     safeName.replace("..", "_");
-    return profileDir + "/" + safeName + ".json";
+    return profileDir_ + "/" + safeName + ".json";
 }
 
 std::vector<String> V1ProfileManager::listProfiles() const {
     std::vector<String> profiles;
 
-    if (!ready || !fs) {
+    if (!ready_ || !fs_) {
         return profiles;
     }
 
-    File dir = fs->open(profileDir);
+    File dir = fs_->open(profileDir_);
     if (!dir || !dir.isDirectory()) {
         return profiles;
     }
@@ -310,22 +310,22 @@ std::vector<String> V1ProfileManager::listProfiles() const {
 }
 
 bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const {
-    if (!ready || !fs) {
+    if (!ready_ || !fs_) {
         return false;
     }
 
     String path = profilePath(name);
     String bakPath = path + ".bak";
 
-    File file = fs->open(path, FILE_READ);
+    File file = fs_->open(path, FILE_READ);
     if (!file) {
         // Try to recover from backup file
-        if (fs->exists(bakPath)) {
+        if (fs_->exists(bakPath)) {
             Serial.printf("[V1Profiles] Main file missing, attempting recovery from backup: %s\n", bakPath.c_str());
             // Rename backup to main file
-            if (fs->rename(bakPath, path)) {
+            if (fs_->rename(bakPath, path)) {
                 Serial.println("[V1Profiles] Restored profile from backup!");
-                file = fs->open(path, FILE_READ);
+                file = fs_->open(path, FILE_READ);
             }
         }
 
@@ -349,9 +349,9 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
     if (fileSize > 0) {
         const size_t bytesRead = file.read(fileContent.data(), fileSize);
         if (bytesRead != fileSize) {
-            lastError = "Failed to read complete profile file";
+            lastError_ = "Failed to read complete profile file";
             Serial.printf("[V1Profiles] %s (%u/%u bytes)\n",
-                          lastError.c_str(),
+                          lastError_.c_str(),
                           static_cast<unsigned>(bytesRead),
                           static_cast<unsigned>(fileSize));
             file.close();
@@ -364,8 +364,8 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
     DeserializationError err = deserializeJson(doc, fileContent.data(), fileSize);
 
     if (err) {
-        lastError = String("JSON parse error: ") + err.c_str();
-        Serial.printf("[V1Profiles] %s\n", lastError.c_str());
+        lastError_ = String("JSON parse error: ") + err.c_str();
+        Serial.printf("[V1Profiles] %s\n", lastError_.c_str());
         return false;
     }
 
@@ -382,9 +382,9 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
             }
             uint32_t computedCrc = calculateCRC32(settingsBytes, 6);
             if (storedCrc != computedCrc) {
-                lastError = "CRC mismatch - profile file corrupted";
+                lastError_ = "CRC mismatch - profile file corrupted";
                 Serial.printf("[V1Profiles] %s (stored: %08lX, computed: %08lX)\n",
-                    lastError.c_str(),
+                    lastError_.c_str(),
                     static_cast<unsigned long>(storedCrc),
                     static_cast<unsigned long>(computedCrc));
                 return false;
@@ -439,10 +439,10 @@ bool V1ProfileManager::loadProfile(const String& name, V1Profile& profile) const
 }
 
 ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
-    if (!ready || !fs) {
-        lastError = "Filesystem not ready";
-        Serial.printf("[V1Profiles] Save failed: %s\n", lastError.c_str());
-        return ProfileSaveResult(false, lastError);
+    if (!ready_ || !fs_) {
+        lastError_ = "Filesystem not ready";
+        Serial.printf("[V1Profiles] Save failed: %s\n", lastError_.c_str());
+        return ProfileSaveResult(false, lastError_);
     }
 
     String path = profilePath(profile.name);
@@ -450,11 +450,11 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
     String bakPath = path + ".bak";
 
     // Step 1: Write to temporary file (don't truncate original yet)
-    File file = fs->open(tmpPath, FILE_WRITE);
+    File file = fs_->open(tmpPath, FILE_WRITE);
     if (!file) {
-        lastError = "Failed to create temp file: " + tmpPath;
-        Serial.printf("[V1Profiles] %s\n", lastError.c_str());
-        return ProfileSaveResult(false, lastError);
+        lastError_ = "Failed to create temp file: " + tmpPath;
+        Serial.printf("[V1Profiles] %s\n", lastError_.c_str());
+        return ProfileSaveResult(false, lastError_);
     }
 
     JsonDocument doc;
@@ -517,46 +517,46 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
 
     // Step 3: Verify write succeeded and file size matches
     if (written == 0) {
-        lastError = "Serialization failed - no data written";
-        Serial.printf("[V1Profiles] %s\n", lastError.c_str());
-        fs->remove(tmpPath);
-        return ProfileSaveResult(false, lastError);
+        lastError_ = "Serialization failed - no data written";
+        Serial.printf("[V1Profiles] %s\n", lastError_.c_str());
+        fs_->remove(tmpPath);
+        return ProfileSaveResult(false, lastError_);
     }
     if (written != expectedPrettyBytes) {
-        lastError = "Partial write detected: expected " +
+        lastError_ = "Partial write detected: expected " +
                     String(static_cast<unsigned long>(expectedPrettyBytes)) +
                     " bytes, wrote " +
                     String(static_cast<unsigned long>(written));
-        Serial.printf("[V1Profiles] %s\n", lastError.c_str());
-        fs->remove(tmpPath);
-        return ProfileSaveResult(false, lastError);
+        Serial.printf("[V1Profiles] %s\n", lastError_.c_str());
+        fs_->remove(tmpPath);
+        return ProfileSaveResult(false, lastError_);
     }
     {
-        File verify = fs->open(tmpPath, FILE_READ);
+        File verify = fs_->open(tmpPath, FILE_READ);
         if (!verify) {
-            lastError = "Failed to re-open temp file for verification";
-            Serial.printf("[V1Profiles] %s\n", lastError.c_str());
-            fs->remove(tmpPath);
-            return ProfileSaveResult(false, lastError);
+            lastError_ = "Failed to re-open temp file for verification";
+            Serial.printf("[V1Profiles] %s\n", lastError_.c_str());
+            fs_->remove(tmpPath);
+            return ProfileSaveResult(false, lastError_);
         }
         size_t fileSize = verify.size();
         verify.close();
         if (fileSize != written) {
-            lastError = "Partial write detected: expected " + String(written) + " bytes, got " + String(fileSize);
-            Serial.printf("[V1Profiles] %s\n", lastError.c_str());
-            fs->remove(tmpPath);
-            return ProfileSaveResult(false, lastError);
+            lastError_ = "Partial write detected: expected " + String(written) + " bytes, got " + String(fileSize);
+            Serial.printf("[V1Profiles] %s\n", lastError_.c_str());
+            fs_->remove(tmpPath);
+            return ProfileSaveResult(false, lastError_);
         }
     }
 
     // Step 4: Create backup of existing file before replacement
-    if (fs->exists(path)) {
+    if (fs_->exists(path)) {
         // Remove old backup if exists
-        if (fs->exists(bakPath)) {
-            fs->remove(bakPath);
+        if (fs_->exists(bakPath)) {
+            fs_->remove(bakPath);
         }
         // Rename current to backup (for rollback capability)
-        if (!fs->rename(path, bakPath)) {
+        if (!fs_->rename(path, bakPath)) {
             Serial.printf("[V1Profiles] Warning: Could not create backup: %s\n", bakPath.c_str());
             // Continue anyway - this is not fatal
         } else {
@@ -565,22 +565,22 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
     }
 
     // Step 5: Rename temp to final
-    if (!fs->rename(tmpPath, path)) {
-        lastError = "Failed to rename temp to final: " + tmpPath + " -> " + path;
-        Serial.printf("[V1Profiles] %s\n", lastError.c_str());
+    if (!fs_->rename(tmpPath, path)) {
+        lastError_ = "Failed to rename temp to final: " + tmpPath + " -> " + path;
+        Serial.printf("[V1Profiles] %s\n", lastError_.c_str());
 
         // Try to restore from backup
-        if (fs->exists(bakPath)) {
-            if (fs->rename(bakPath, path)) {
+        if (fs_->exists(bakPath)) {
+            if (fs_->rename(bakPath, path)) {
                 Serial.println("[V1Profiles] Restored from backup after failed save");
             }
         }
-        fs->remove(tmpPath);
-        return ProfileSaveResult(false, lastError);
+        fs_->remove(tmpPath);
+        return ProfileSaveResult(false, lastError_);
     }
 
     // Step 6: Remove backup after successful save (optional - keep for extra safety)
-    // fs->remove(bakPath);  // Uncomment to remove backup after success
+    // fs_->remove(bakPath);  // Uncomment to remove backup after success
 
     Serial.printf("[V1Profiles] Saved profile: %s (%u bytes, CRC: %08lX)\n",
         profile.name.c_str(), written, static_cast<unsigned long>(crc));
@@ -589,7 +589,7 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
 }
 
 bool V1ProfileManager::deleteProfile(const String& name) {
-    if (!ready || !fs) {
+    if (!ready_ || !fs_) {
         return false;
     }
 
@@ -598,16 +598,16 @@ bool V1ProfileManager::deleteProfile(const String& name) {
     bool removedAny = false;
     bool ok = true;
 
-    if (fs->exists(path)) {
-        if (!fs->remove(path)) {
+    if (fs_->exists(path)) {
+        if (!fs_->remove(path)) {
             ok = false;
         } else {
             removedAny = true;
         }
     }
 
-    if (fs->exists(bakPath)) {
-        if (!fs->remove(bakPath)) {
+    if (fs_->exists(bakPath)) {
+        if (!fs_->remove(bakPath)) {
             ok = false;
         } else {
             removedAny = true;
@@ -622,8 +622,8 @@ bool V1ProfileManager::deleteProfile(const String& name) {
 }
 
 bool V1ProfileManager::renameProfile(const String& oldName, const String& newName) {
-    if (!ready || !fs) {
-        lastError = "Filesystem not ready";
+    if (!ready_ || !fs_) {
+        lastError_ = "Filesystem not ready";
         return false;
     }
 
@@ -648,9 +648,9 @@ bool V1ProfileManager::renameProfile(const String& oldName, const String& newNam
     }
 
     // Guard: refuse to overwrite a different existing profile.
-    if (fs->exists(newPath)) {
-        lastError = "Rename target already exists: " + newName;
-        Serial.printf("[V1Profiles] %s\n", lastError.c_str());
+    if (fs_->exists(newPath)) {
+        lastError_ = "Rename target already exists: " + newName;
+        Serial.printf("[V1Profiles] %s\n", lastError_.c_str());
         return false;
     }
 
@@ -667,8 +667,8 @@ bool V1ProfileManager::renameProfile(const String& oldName, const String& newNam
 }
 
 void V1ProfileManager::setCurrentSettings(const uint8_t* bytes) {
-    memcpy(currentSettings.bytes, bytes, 6);
-    currentValid = true;
+    memcpy(currentSettings_.bytes, bytes, 6);
+    currentValid_ = true;
 }
 
 String V1ProfileManager::settingsToJson(const V1UserSettings& s) const {
