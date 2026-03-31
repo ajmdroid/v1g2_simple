@@ -640,6 +640,7 @@ int V1BLEClient::processPhoneCommandQueue() {
     if (phoneCmdPendingClear_) {
         phoneCmdPendingClear_ = false;
         hasPending = false;
+        pendingPkt.length = 0;
     }
 
     ProxyPacket pktCopy;

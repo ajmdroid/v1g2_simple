@@ -665,7 +665,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         } else {
             // Check if any current alert is NOT in last set (set membership test)
             // Use frequency tolerance (±5 MHz) to handle V1 jitter
-            const uint32_t FREQ_TOLERANCE_MHZ = 5;
             for (int i = 0; i < alertCount && i < PacketParser::MAX_ALERTS && !needsRedraw; i++) {
                 bool foundInLast = false;
                 for (int j = 0; j < PacketParser::MAX_ALERTS; j++) {

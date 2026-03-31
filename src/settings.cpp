@@ -283,7 +283,10 @@ void SettingsManager::load() {
             preferences_.end();
         }
         // Re-open in read-only to continue loading
-        preferences_.begin(activeNs.c_str(), true);
+        if (!preferences_.begin(activeNs.c_str(), true)) {
+            Serial.println("[Settings] WARN: Failed to reopen namespace after migration");
+            return;
+        }
     }
     settings_.announceBogeyCount = preferences_.getBool("voiceBogeys", true);
     settings_.muteVoiceIfVolZero = preferences_.getBool("muteVoiceVol0", false);

@@ -421,6 +421,8 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             const int barSpacing = 2;
             const int barWidth = (meterW - (barCount - 1) * barSpacing) / barCount;
 
+            if (barWidth <= 0) return;
+
             // Clear meter area for bar update (not full redraw which already did it)
             if (!needsFullRedraw) {
                 FILL_RECT(meterX, meterY, meterW, meterH, 0x1082);
