@@ -97,7 +97,7 @@ static bool start_sd_audio_task(const SDAudioTaskParams& localParams) {
     // Use static task creation - stack is .bss (internal SRAM, always valid).
     // This avoids heap allocation failures when heap is low during alerts.
     // Stack MUST be internal (not PSRAM) because this task reads LittleFS.
-    audioTaskHandle = xTaskCreateStaticPinnedToCore(
+    TaskHandle_t tempHandle = xTaskCreateStaticPinnedToCore(
         sd_audio_playback_task,
         "sd_audio",
         SD_AUDIO_TASK_STACK_SIZE,
@@ -107,8 +107,9 @@ static bool start_sd_audio_task(const SDAudioTaskParams& localParams) {
         &g_sdAudioTaskTCB,
         1         // Core 1
     );
+    audioTaskHandle.store(tempHandle);
 
-    if (audioTaskHandle == NULL) {
+    if (audioTaskHandle.load() == NULL) {
         Serial.println("[AUDIO] ERROR: Failed to create SD audio task!");
         PERF_INC(audioTaskFail);
         audio_playing = false;

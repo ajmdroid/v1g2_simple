@@ -176,8 +176,10 @@ void handleApiCurrentSettings(WebServer& server, const Runtime& runtime) {
     if (runtime.currentSettingsJson) {
         WifiJson::Document settingsDoc;
         String settingsJson = runtime.currentSettingsJson(runtime.currentSettingsJsonCtx);
-        deserializeJson(settingsDoc, settingsJson.c_str());
-        doc["settings"] = settingsDoc;
+        DeserializationError parseErr = deserializeJson(settingsDoc, settingsJson.c_str());
+        if (!parseErr) {
+            doc["settings"] = settingsDoc;
+        }
     }
 
     WifiApiResponse::sendJsonDocument(server, 200, doc);

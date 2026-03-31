@@ -49,12 +49,12 @@ void test_audio_write_with_timeout_maps_non_timeout_errors() {
 
 void test_audio_reset_task_state_clears_busy_flag_and_handle() {
     std::atomic<bool> audioPlaying{true};
-    TaskHandle_t handle = reinterpret_cast<TaskHandle_t>(0x1234);
+    std::atomic<TaskHandle_t> handle{reinterpret_cast<TaskHandle_t>(0x1234)};
 
     audioResetTaskState(audioPlaying, handle);
 
     TEST_ASSERT_FALSE(audioPlaying.load());
-    TEST_ASSERT_NULL(handle);
+    TEST_ASSERT_NULL(handle.load());
 }
 
 int main() {

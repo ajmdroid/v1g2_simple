@@ -418,7 +418,7 @@ static struct {
 
 SDAudioTaskParams g_sdAudioTaskParams;
 
-TaskHandle_t audioTaskHandle = NULL;
+std::atomic<TaskHandle_t> audioTaskHandle{NULL};
 
 // ============================================================================
 // Static task allocation for SD audio playback.
@@ -552,16 +552,20 @@ static void play_pcm_audio(const int16_t* pcm_data, int num_samples, int duratio
     // Create task on core 1 (core 0 is for WiFi/BLE) with adequate stack
     // Stack allocated in PSRAM via WithCaps API to reduce internal SRAM fragmentation.
     // Task params are passed via g_pcmTaskParams global (no malloc needed)
+    TaskHandle_t tempHandle;
     BaseType_t result = xTaskCreatePinnedToCoreWithCaps(
         audio_playback_task,
         "audio_play",
         4096,           // Stack size
         nullptr,        // Params passed via global struct
         1,              // Priority (low)
-        &audioTaskHandle,
+        &tempHandle,
         1,              // Core 1
         MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM
     );
+    if (result == pdPASS) {
+        audioTaskHandle.store(tempHandle);
+    }
 
     if (result != pdPASS) {
         Serial.println("[AUDIO] ERROR: Failed to create audio task!");

@@ -127,6 +127,7 @@ bool serveLittleFSFileHelper(WebServer& server_, const char* path, const char* c
                 const bool streamOk = streamOpenFile(server_, file, path, contentType, fileSize, true);
                 file.close();
                 if (!streamOk) {
+                    server_.send(500, "text/plain", "Stream error");
                     return true;
                 }
                 perfRecordFsServeUs(PERF_TIMESTAMP_US() - startUs);
@@ -152,6 +153,7 @@ bool serveLittleFSFileHelper(WebServer& server_, const char* path, const char* c
     const bool streamOk = streamOpenFile(server_, file, path, contentType, fileSize, false);
     file.close();
     if (!streamOk) {
+        server_.send(500, "text/plain", "Stream error");
         return true;
     }
     perfRecordFsServeUs(PERF_TIMESTAMP_US() - startUs);

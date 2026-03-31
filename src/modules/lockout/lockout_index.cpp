@@ -380,7 +380,7 @@ size_t LockoutIndex::findNearbyDirectional(int32_t latE5,
 
         if (e.directionMode == LockoutEntry::DIRECTION_ALL ||
             e.headingDeg == LockoutEntry::HEADING_INVALID ||
-            e.headingDeg >= 360) {
+            e.headingDeg > 360) {
             // Omni-directional or no heading data → symmetric inflation.
             hit = withinInflatedRadius(latE5, lonE5, e, bufferE5);
         } else {
@@ -570,7 +570,7 @@ bool LockoutIndex::courseMatches(bool courseValid, float courseDeg, const Lockou
         return false;
     }
 
-    if (entry.headingDeg == LockoutEntry::HEADING_INVALID || entry.headingDeg >= 360) {
+    if (entry.headingDeg == LockoutEntry::HEADING_INVALID || entry.headingDeg > 360) {
         return false;
     }
 

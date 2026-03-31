@@ -76,7 +76,7 @@ void handleApiBackupNow(WebServer& server,
 
 static void handleRestore(WebServer& server) {
     Serial.println("[HTTP] POST /api/settings/restore");
-    static constexpr size_t kMaxRestoreBodyBytes = 16 * 1024;
+    static constexpr size_t kMaxRestoreBodyBytes = 128 * 1024;
 
     if (!server.hasArg("plain")) {
         server.send(400, "application/json", "{\"success\":false,\"error\":\"No JSON body provided\"}");

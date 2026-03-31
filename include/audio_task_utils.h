@@ -31,8 +31,8 @@ inline AudioWriteResult audioWriteWithTimeout(WriteFn&& writeFn) {
     return {AudioWriteStatus::Error, err};
 }
 
-inline void audioResetTaskState(std::atomic<bool>& audioPlaying, TaskHandle_t& audioTaskHandle) {
-    audioPlaying = false;
-    audioTaskHandle = NULL;
+inline void audioResetTaskState(std::atomic<bool>& audioPlaying, std::atomic<TaskHandle_t>& audioTaskHandle) {
+    audioPlaying.store(false);
+    audioTaskHandle.store(NULL);
 }
 

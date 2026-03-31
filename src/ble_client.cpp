@@ -363,14 +363,16 @@ void V1BLEClient::cleanupConnection() {
     pCommandCharLong_ = nullptr;
     pRemoteService_ = nullptr;
     scanStopResultsCleared_ = false;
+    // Atomic stores do not require the mutex — publish immediately so any
+    // in-flight notifyCallback sees null pointers before we touch non-atomics.
+    notifyShortChar_.store(nullptr, std::memory_order_release);
+    notifyShortCharId_.store(0, std::memory_order_relaxed);
+    notifyLongChar_.store(nullptr, std::memory_order_release);
+    notifyLongCharId_.store(0, std::memory_order_relaxed);
+    connected_.store(false, std::memory_order_release);
     {
         SemaphoreGuard lock(bleMutex_, pdMS_TO_TICKS(20));  // COLD: disconnect cleanup
         if (lock.locked()) {
-            notifyShortChar_.store(nullptr, std::memory_order_release);
-            notifyShortCharId_.store(0, std::memory_order_relaxed);
-            notifyLongChar_.store(nullptr, std::memory_order_release);
-            notifyLongCharId_.store(0, std::memory_order_relaxed);
-            connected_.store(false, std::memory_order_release);
             shouldConnect_ = false;
             hasTargetDevice_ = false;
             targetDevice_ = NimBLEAdvertisedDevice();

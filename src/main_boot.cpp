@@ -137,7 +137,7 @@ void logPanicBreadcrumbs() {
             f.close();
             Serial.println("[PANIC] Wrote /panic.txt to LittleFS");
         }
-        // Don't end LittleFS - let storage manager handle it
+        LittleFS.end();  // Release mount before storage manager takes ownership
     }
 }
 

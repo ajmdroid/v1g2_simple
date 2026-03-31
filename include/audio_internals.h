@@ -41,7 +41,7 @@ struct SDAudioTaskParams {
 extern bool es8311_initialized;
 extern bool i2s_initialized;
 extern i2s_chan_handle_t i2s_tx_chan;
-extern TaskHandle_t audioTaskHandle;
+extern std::atomic<TaskHandle_t> audioTaskHandle;
 
 // --- Shared atomic state (defined in audio_beep.cpp) ---
 extern std::atomic<bool> audio_playing;
