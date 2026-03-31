@@ -15,7 +15,7 @@
 
 class QuietCoordinatorModule;
 
-// ---- Boot helper declarations (main_boot.cpp) ----
+// --- Boot helper declarations (main_boot.cpp) ---
 
 /// Map ESP reset reason enum to human-readable string.
 const char* resetReasonToString(esp_reset_reason_t reason);
@@ -36,7 +36,7 @@ uint32_t nextBootId();
 /// Show fatal error on display (if available), wait, then restart.
 void fatalBootError(const char* message, bool displayAvailable);
 
-// ---- Setup orchestration helper declarations (main_setup_helpers.cpp) ----
+// --- Setup orchestration helper declarations (main_setup_helpers.cpp) ---
 
 /// Callback invoked immediately when BLE subscribe completes.
 void onV1ConnectImmediate();
@@ -71,7 +71,7 @@ void logBootSummaryAndWifiStartup(uint32_t bootId, esp_reset_reason_t resetReaso
 /// Early setup diagnostics: serial settle, GPIO hold release, panic/NVS checks.
 void initializeEarlyBootDiagnostics();
 
-// ---- Persistence helper declarations (main_persist.cpp) ----
+// --- Persistence helper declarations (main_persist.cpp) ---
 
 /// Periodic best-effort save of lockout zones to SD/LittleFS (Tier 7).
 void processLockoutStoreSave(uint32_t nowMs);

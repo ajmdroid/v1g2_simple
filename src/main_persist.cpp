@@ -173,7 +173,7 @@ void maybeLogSaveDiag(const char* tag, SaveDiagStats& stats, uint32_t nowMs) {
 }
 }  // namespace
 
-// ---- Generic dirty-save state machine ----
+// --- Generic dirty-save state machine ---
 
 struct DirtySaveConfig {
     const char* tag;           // Log prefix, e.g. "Lockout" or "Learner"
@@ -349,7 +349,7 @@ static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, 
     cfg.recordPerfUs(PERF_TIMESTAMP_US() - startUs);
 }
 
-// ---- Lockout and Learner save instances ----
+// --- Lockout and Learner save instances ---
 
 static const DirtySaveConfig lockoutSaveConfig = {
     .tag = "Lockout",

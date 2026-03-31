@@ -33,7 +33,9 @@ void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel
     tft_->setCursor((SCREEN_WIDTH - 120) / 2, 5);
     tft_->print("SETTINGS");
 
-    // === Brightness slider ===
+    // ============================================================================
+    // Brightness slider
+    // ============================================================================
     tft_->setTextSize(1);
     tft_->setTextColor(0xFFFF);
     tft_->setCursor(sliderMargin, brightnessY - 16);
@@ -60,7 +62,9 @@ void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel
     tft_->setCursor(sliderX + sliderWidth + 8, brightnessY);
     tft_->print(brightStr);
 
-    // === Voice volume slider ===
+    // ============================================================================
+    // Voice volume slider
+    // ============================================================================
     tft_->setTextColor(0xFFFF);
     tft_->setCursor(sliderMargin, volumeY - 16);
     tft_->print("VOICE VOLUME");

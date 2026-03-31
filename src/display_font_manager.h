@@ -19,31 +19,31 @@ class Arduino_Canvas;
 
 struct DisplayFontManager {
 
-    // ----- Layout constant shared with display drawing code ---------------
+    // --- Layout constant shared with display drawing code ---
     static constexpr int TOP_COUNTER_FONT_SIZE = 60;
 
-    // ----- Renderers (3 instances) -------------------------------------
+    // --- Renderers (3 instances) ---
     OpenFontRender segment7;    // Classic style (Segment7)
     OpenFontRender topCounter;  // Dedicated Segment7 renderer for top counter
     OpenFontRender serpentine;  // Serpentine style (lazy-loaded on first demand)
 
-    // ----- Init flags -----------------------------------------------------
+    // --- Init flags ---
     bool segment7Ready    = false;
     bool topCounterReady  = false;
     bool serpentineReady  = false;
 
-    // ----- Font cache budget (set once during init) -----------------------
+    // --- Font cache budget (set once during init) ---
     uint32_t numericCacheBytes      = 8192u;
     bool     serpentineLoadAttempted = false;
 
-    // ----- Top-counter glyph bounds cache ---------------------------------
+    // --- Top-counter glyph bounds cache ---
     static constexpr int16_t BOUNDS_INVALID =
         static_cast<int16_t>(-32768);
     int16_t topCounterXMin[128][2];
     int16_t topCounterXMax[128][2];
     bool    topCounterBoundsReady = false;
 
-    // ----- Lifecycle ------------------------------------------------------
+    // --- Lifecycle ---
 
     /// Load Segment7 + TopCounter fonts, prime the top-counter bounds cache.
     /// Serpentine is deferred until ensureSerpentineLoaded().
@@ -62,13 +62,13 @@ struct DisplayFontManager {
         return ensureSerpentineLoaded(canvas.get());
     }
 
-    // ----- Top-counter bounds helpers -------------------------------------
+    // --- Top-counter bounds helpers ---
 
     void resetTopCounterBoundsCache();
     void primeTopCounterBoundsCache();
     bool getTopCounterBounds(char symbol, bool showDot, int& xMin, int& xMax);
 
-    // ----- Text width cache -----------------------------------------------
+    // --- Text width cache ---
 
     /// Small fixed-size LRU cache for OFR text widths.  Re-used by every
     /// drawFrequency* variant that needs cached bounding-box queries.

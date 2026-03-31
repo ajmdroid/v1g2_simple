@@ -39,9 +39,9 @@ extern "C" {
 #include "nimble/nimble/host/include/host/ble_sm.h"
 }
 
-// =========================================================================
+// ============================================================================
 // BLE Bond Backup/Restore (SD card)
-// =========================================================================
+// ============================================================================
 // NimBLE stores bonds in NVS ("nimble_bond" namespace). NVS is volatile —
 // brownouts, partition changes, and flash erases lose all bonds. This backs
 // up bond key material to SD so it can be restored automatically.
@@ -52,7 +52,7 @@ extern "C" {
 //   [4 bytes]  uint32_t  peerSecCount
 //   [N * sizeof(ble_store_value_sec)]  our_sec entries
 //   [M * sizeof(ble_store_value_sec)]  peer_sec entries
-// =========================================================================
+// ============================================================================
 
 static constexpr const char* BLE_BOND_BACKUP_PATH = "/v1simple_ble_bonds.bin";
 // Max TX power (21 dBm) to maximize BLE range.
@@ -285,7 +285,9 @@ const char* V1BLEClient::getSubscribeStepName() const {
     }
 }
 
-// ==================== BLE State Machine ====================
+// ============================================================================
+// BLE State Machine
+// ============================================================================
 
 void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
     BLEState oldState = bleState_;

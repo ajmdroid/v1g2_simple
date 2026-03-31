@@ -396,7 +396,7 @@ std::atomic<unsigned long> amp_last_used_ms{0};
 int16_t* g_stereoChunkBuffer = nullptr;
 uint8_t* g_mulawChunkBuffer = nullptr;
 
-// ---- PSRAM buffer allocation (call once from setup, before audio_init_sd) ---
+// --- PSRAM buffer allocation (call once from setup, before audio_init_sd) ---
 void audio_init_buffers() {
     g_stereoChunkBuffer = static_cast<int16_t*>(
         heap_caps_malloc(AUDIO_STEREO_CHUNK_SIZE * sizeof(int16_t),

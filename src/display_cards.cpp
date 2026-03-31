@@ -262,7 +262,9 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         cardsToDrawCount++;
     }
 
-    // === INCREMENTAL UPDATE LOGIC ===
+    // ============================================================================
+    // INCREMENTAL UPDATE LOGIC
+    // ============================================================================
     // Instead of clearing all cards and redrawing, check each position independently
 
     // Capture dirty.cards before resetting (need it for redraw checks)
@@ -330,7 +332,9 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         }
         secondaryCardsRenderDirty_ = true;
 
-        // === V1 ALERT CARD ===
+        // ============================================================================
+        // V1 ALERT CARD
+        // ============================================================================
         int c = cardsToDraw[i].slot;
         const AlertData& alert = cards[c].alert;
         bool isGraced = cardsToDraw[i].isGraced;
@@ -359,7 +363,9 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         uint16_t bandLabelCol = (isGraced || drawMuted) ? PALETTE_MUTED : bandCol;
 
         if (needsFullRedraw) {
-            // === FULL V1 CARD REDRAW ===
+            // ============================================================================
+            // FULL V1 CARD REDRAW
+            // ============================================================================
             FILL_ROUND_RECT(cardX, cardY, cardW, cardH, 5, bgCol);
             DRAW_ROUND_RECT(cardX, cardY, cardW, cardH, 5, borderCol);
 

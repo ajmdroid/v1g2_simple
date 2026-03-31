@@ -12,7 +12,7 @@
 #include <atomic>
 #include <cstring>
 
-// ---- checksum helper (used only by command builders) --------------------
+// --- checksum helper (used only by command builders) ---
 
 static inline uint8_t calcV1Checksum(const uint8_t* data, size_t len) {
     uint8_t sum = 0;
@@ -22,7 +22,7 @@ static inline uint8_t calcV1Checksum(const uint8_t* data, size_t len) {
     return sum;
 }
 
-// ---- command send primitives -------------------------------------------
+// --- command send primitives ---
 
 bool V1BLEClient::sendCommand(const uint8_t* data, size_t length) {
     return sendCommandWithResult(data, length) == SendResult::SENT;
@@ -66,7 +66,7 @@ SendResult V1BLEClient::sendCommandWithResult(const uint8_t* data, size_t length
     return SendResult::SENT;
 }
 
-// ---- V1 protocol command builders -------------------------------------
+// --- V1 protocol command builders ---
 
 bool V1BLEClient::requestAlertData() {
     // NOTE: Packet structure intentionally explicit (not abstracted) - January 20, 2026 review.
@@ -227,7 +227,7 @@ bool V1BLEClient::setVolume(uint8_t mainVolume, uint8_t mutedVolume) {
     return sendCommand(packet, sizeof(packet));
 }
 
-// ---- user bytes read/write -------------------------------------------
+// --- user bytes read/write ---
 
 bool V1BLEClient::requestUserBytes() {
     // Build packet: AA D0+dest E0+src 11 01 [checksum] AB
@@ -297,7 +297,7 @@ V1BLEClient::WriteVerifyResult V1BLEClient::writeUserBytesVerified(const uint8_t
     return VERIFY_WRITE_FAILED;
 }
 
-// ---- user bytes verification -----------------------------------------
+// --- user bytes verification ---
 
 void V1BLEClient::startUserBytesVerification(const uint8_t* expected) {
     if (!expected) {

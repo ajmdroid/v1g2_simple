@@ -107,9 +107,9 @@ public:
     void reset() { clearAllState(); }  // Alias for consistency with other modules
     void clearAllState();
 
-    // =========================================================================
+    // ============================================================================
     // Static Utilities
-    // =========================================================================
+    // ============================================================================
 
     // Get signal bars for alert based on direction
     static uint8_t getAlertBars(const AlertData& alert);
@@ -135,9 +135,9 @@ private:
     SettingsManager* settings = nullptr;
     V1BLEClient* bleClient = nullptr;
 
-    // =========================================================================
+    // ============================================================================
     // Tracking State
-    // =========================================================================
+    // ============================================================================
 
     // Announced alert tracking
     static constexpr int MAX_ANNOUNCED_ALERTS = 10;

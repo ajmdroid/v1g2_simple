@@ -15,7 +15,7 @@
 // Bond backup helper defined in ble_client.cpp (non-static)
 extern int backupBondsToSD();
 
-// ---- scan callbacks ---------------------------------------------------
+// --- scan callbacks ---
 
 void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertisedDevice) {
     if (!bleClient) {
@@ -111,7 +111,7 @@ void V1BLEClient::ScanCallbacks::onScanEnd(const NimBLEScanResults& scanResults,
     }
 }
 
-// ---- client callbacks -------------------------------------------------
+// --- client callbacks ---
 
 void V1BLEClient::ClientCallbacks::onPhyUpdate(NimBLEClient* pClient_, uint8_t txPhy, uint8_t rxPhy) {
     Serial.printf("[BLE] PHY updated: tx=%s rx=%s\n",
@@ -187,12 +187,14 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient_, int reas
     }
 }
 
-// ---- connection state machine -----------------------------------------
+// --- connection state machine ---
 
 bool V1BLEClient::connectToServer() {
     std::string addrStr = targetAddress_.toString();
 
-    // ========== CONNECTION GUARDS ==========
+    // ============================================================================
+    // CONNECTION GUARDS
+    // ============================================================================
     // Prevent overlapping connection attempts which cause EBUSY errors
 
     // Guard 1: Check if already connecting
@@ -438,7 +440,7 @@ void V1BLEClient::processConnectingWait() {
     setBLEState(BLEState::BACKOFF, "all connect attempts failed");
 }
 
-// ---- discovery --------------------------------------------------------
+// --- discovery ---
 
 // Static trampoline for async discovery task
 void V1BLEClient::discoveryTaskFunc(void* param) {
@@ -527,7 +529,7 @@ void V1BLEClient::processDiscovering() {
     setBLEState(BLEState::SUBSCRIBING, "discovery complete");
 }
 
-// ---- subscribe step machine -------------------------------------------
+// --- subscribe step machine ---
 
 // Process SUBSCRIBING state - non-blocking step machine
 // Each call executes one step then yields to allow loop() to run
@@ -727,7 +729,7 @@ bool V1BLEClient::executeSubscribeStep() {
     return true;  // Shouldn't reach here
 }
 
-// ---- helpers ----------------------------------------------------------
+// --- helpers ---
 
 void V1BLEClient::logConnParams(const char* tag) {
     if (!pClient_) {
@@ -743,7 +745,7 @@ void V1BLEClient::logConnParams(const char* tag) {
                   info.getConnLatency());
 }
 
-// ---- notify callback --------------------------------------------------
+// --- notify callback ---
 
 // Subscription setup now runs through the non-blocking executeSubscribeStep()
 // state machine instead of a single monolithic helper.

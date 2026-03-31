@@ -56,9 +56,9 @@ public:
     // DMA heap starvation counter (SD ops skipped due to low internal SRAM)
     static inline std::atomic<uint32_t> sdDmaStarvationCount{0};
 
-    // =========================================================================
+    // ============================================================================
     // DMA HEAP GATING - prevents SD ops when WiFi starves internal SRAM
-    // =========================================================================
+    // ============================================================================
     // Conservative thresholds based on field evidence:
     // - WiFi uses ~50-80KB of DMA-capable internal SRAM
     // - SD_MMC needs contiguous DMA buffers for each operation
@@ -105,9 +105,9 @@ public:
     static uint32_t getCachedFreeDma() { return dmaCache_.freeDma; }
     static uint32_t getCachedLargestDma() { return dmaCache_.largestDma; }
 
-    // =========================================================================
+    // ============================================================================
     // SD ACCESS POLICY - TWO LOCK TYPES ONLY:
-    // =========================================================================
+    // ============================================================================
     //
     // SDLockBlocking(mutex) - for Core 0 writer tasks and boot/shutdown ONLY
     //   - Always uses portMAX_DELAY (blocks forever until acquired)
@@ -121,7 +121,7 @@ public:
     //
     // Rationale: Tier-1 paths (BLE→parse→display) must NEVER block for Tier-7.
     // "Drops OK, blocking NOT OK"
-    // =========================================================================
+    // ============================================================================
 
     // Blocking lock - for Core 0 writer tasks and runtime ONLY
     // Always blocks forever (portMAX_DELAY) - no timed option

@@ -327,7 +327,7 @@ struct PerfCounters {
 
 // ============================================================================
 // Extended metrics for p95/max latency, loop jitter, heap stats
-// ==========================================================================
+// ============================================================================
 struct PerfHistogramMs {
     static constexpr size_t kBucketCount = 10;
     uint32_t buckets[kBucketCount] = {0};

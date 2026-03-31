@@ -11,9 +11,9 @@
 #ifndef MAIN_GLOBALS_H
 #define MAIN_GLOBALS_H
 
-// =========================================================================
+// ============================================================================
 // Forward declarations (avoids pulling in full module headers)
-// =========================================================================
+// ============================================================================
 
 // Loop phase modules (src/modules/system/)
 class LoopConnectionEarlyModule;
@@ -51,9 +51,9 @@ class DisplayPipelineModule;
 struct PerfLatency;
 #endif
 
-// =========================================================================
+// ============================================================================
 // Extern declarations — loop phase modules
-// =========================================================================
+// ============================================================================
 
 extern LoopConnectionEarlyModule loopConnectionEarlyModule;
 extern LoopSettingsPrepModule loopSettingsPrepModule;
@@ -68,9 +68,9 @@ extern PeriodicMaintenanceModule periodicMaintenanceModule;
 extern LoopTailModule loopTailModule;
 extern LoopPowerTouchModule loopPowerTouchModule;
 
-// =========================================================================
+// ============================================================================
 // Extern declarations — core subsystem instances
-// =========================================================================
+// ============================================================================
 
 extern V1BLEClient bleClient;
 extern PacketParser parser;
@@ -92,9 +92,9 @@ extern PerfLatency perfLatency;
 extern bool perfDebugEnabled;
 #endif
 
-// =========================================================================
+// ============================================================================
 // Extern function declarations
-// =========================================================================
+// ============================================================================
 
 extern void configureTouchUiModule();
 

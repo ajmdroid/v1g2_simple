@@ -19,38 +19,38 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-// ---- Debug / logging infrastructure ----
+// --- Debug / logging infrastructure ---
 static constexpr bool AUDIO_DEBUG_LOGS = false;
 
 #define AUDIO_LOGF(...) do { } while(0)
 #define AUDIO_LOGLN(msg) do { } while(0)
 
-// ---- Shared constants ----
+// --- Shared constants ---
 static constexpr int AUDIO_CHUNK_SAMPLES = 1024;
 static constexpr int AUDIO_STEREO_CHUNK_SIZE = AUDIO_CHUNK_SAMPLES * 2;
 static constexpr int SD_AUDIO_TASK_STACK_SIZE = 4096;  // Reduced from 6144 to reclaim 2 KiB BSS
 static constexpr int MAX_AUDIO_CLIPS = 12;
 static constexpr unsigned long AMP_WARM_TIMEOUT_MS = 3000;
 
-// ---- Shared struct for SD audio task params ----
+// --- Shared struct for SD audio task params ---
 // Unified type: used both as local preparation buffer and pre-allocated global.
 struct SDAudioTaskParams {
     char filePaths[MAX_AUDIO_CLIPS][48];
     int numClips;
 };
 
-// ---- Shared hardware state (defined in audio_beep.cpp) ----
+// --- Shared hardware state (defined in audio_beep.cpp) ---
 extern bool es8311_initialized;
 extern bool i2s_initialized;
 extern i2s_chan_handle_t i2s_tx_chan;
 extern TaskHandle_t audioTaskHandle;
 
-// ---- Shared atomic state (defined in audio_beep.cpp) ----
+// --- Shared atomic state (defined in audio_beep.cpp) ---
 extern std::atomic<bool> audio_playing;
 extern std::atomic<bool> amp_is_warm;
 extern std::atomic<unsigned long> amp_last_used_ms;
 
-// ---- Shared pre-allocated buffers (defined in audio_beep.cpp) ----
+// --- Shared pre-allocated buffers (defined in audio_beep.cpp) ---
 // Allocated in PSRAM via audio_init_buffers() to free ~5 KiB internal .bss.
 // i2s_channel_write() copies from src to its internal DMA ring, so the
 // source buffers can safely reside in PSRAM.
@@ -66,13 +66,13 @@ extern SDAudioTaskParams g_sdAudioTaskParams;
 extern StackType_t g_sdAudioTaskStack[SD_AUDIO_TASK_STACK_SIZE];
 extern StaticTask_t g_sdAudioTaskTCB;
 
-// ---- Promoted hardware helper declarations (defined in audio_beep.cpp) ----
+// --- Promoted hardware helper declarations (defined in audio_beep.cpp) ---
 bool es8311_init();
 void i2s_init();
 AudioI2cResult set_speaker_amp(bool enable, TickType_t timeoutTicks = pdMS_TO_TICKS(50));
 void audio_log_i2c_failure(const char* context, AudioI2cResult result);
 
-// ---- Promoted pure function (defined in audio_voice.cpp) ----
+// --- Promoted pure function (defined in audio_voice.cpp) ---
 int getGHz(AlertBand band, uint16_t freqMHz);
 
 #endif // AUDIO_INTERNALS_H

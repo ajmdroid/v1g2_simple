@@ -433,7 +433,9 @@ void V1Display::drawBLEProxyIndicator() {
     // Vertical center line (thicker for visibility)
     FILL_RECT(cx - 1, top, 2, h, btColor);
 
-    // === RIGHT SIDE: Two chevrons forming the "B" ===
+    // ============================================================================
+    // RIGHT SIDE: Two chevrons forming the "B"
+    // ============================================================================
     // Top chevron: top of line → right point → center (draw 3 lines for thickness)
     DRAW_LINE(cx - 1, top, rightX - 1, topChevronY, btColor);
     DRAW_LINE(cx, top, rightX, topChevronY, btColor);
@@ -450,7 +452,9 @@ void V1Display::drawBLEProxyIndicator() {
     DRAW_LINE(rightX, botChevronY, cx, bot, btColor);
     DRAW_LINE(rightX + 1, botChevronY, cx + 1, bot, btColor);
 
-    // === LEFT SIDE: Two arrows forming the "X" through center ===
+    // ============================================================================
+    // LEFT SIDE: Two arrows forming the "X" through center
+    // ============================================================================
     // Upper-left arrow (draw 3 lines for thickness)
     DRAW_LINE(leftX - 1, topArrowY, cx - 1, mid, btColor);
     DRAW_LINE(leftX, topArrowY, cx, mid, btColor);

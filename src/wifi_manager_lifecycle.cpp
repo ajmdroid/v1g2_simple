@@ -17,7 +17,7 @@
 static constexpr unsigned long WIFI_AP_AUTO_TIMEOUT_MS = 0;            // e.g., 10 * 60 * 1000 for 10 minutes
 static constexpr unsigned long WIFI_AP_INACTIVITY_GRACE_MS = 60 * 1000; // Require no UI activity/clients for this long before stopping
 
-// ---- Static helpers (used only in this TU) ----
+// --- Static helpers (used only in this TU) ---
 
 static bool shouldUseApSta(const V1Settings& settings) {
     return settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0;
@@ -370,7 +370,9 @@ void WiFiManager::finalizeStopSetupMode() {
     const bool stopManual = wifiStopManual_;
     const uint32_t stopDurMs = millis() - wifiStopStartMs_;
 
-    // ========== RESET ALL STATE ==========
+    // ============================================================================
+    // RESET ALL STATE
+    // ============================================================================
     setupModeState_ = SETUP_MODE_OFF;
     apInterfaceEnabled_ = false;
     perfRecordWifiApTransition(false, wifiApStopReasonCode(stopReason, stopManual), millis());
@@ -405,7 +407,9 @@ void WiFiManager::finalizeStopSetupMode() {
     BackupApiService::releaseBackupSnapshotCache(cachedBackupSnapshot_);
     WifiStatusApiService::releaseStatusJsonCache(cachedStatusJson_, lastStatusJsonTime_);
 
-    // ========== OBSERVABILITY ==========
+    // ============================================================================
+    // OBSERVABILITY
+    // ============================================================================
     uint32_t freeInternalAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     uint32_t largestInternalAfter = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     Serial.printf("[SetupMode] WiFi OFF: reason=%s manual=%d radio=%d http=%d freeDma=%lu largestDma=%lu durMs=%lu\n",
@@ -875,7 +879,9 @@ void WiFiManager::process() {
 
     finalizeProcessTiming();
 }
-// ==================== API Endpoints ====================
+// ============================================================================
+// API Endpoints
+// ============================================================================
 
 void WiFiManager::handleNotFound() {
     String uri = server_.uri();
@@ -921,6 +927,10 @@ bool WiFiManager::serveLittleFSFile(const char* path, const char* contentType) {
 }
 
 
-// ============= Auto-Push Handlers =============
+// ============================================================================
+// Auto-Push Handlers
+// ============================================================================
 
-// ============= Display Colors Handlers =============
+// ============================================================================
+// Display Colors Handlers
+// ============================================================================

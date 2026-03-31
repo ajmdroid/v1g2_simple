@@ -17,9 +17,9 @@
 // Forward declaration
 class V1BLEClient;
 
-// =========================================================================
+// ============================================================================
 // SemaphoreGuard - RAII mutex wrapper for BLE operations
-// =========================================================================
+// ============================================================================
 // RED ZONE SAFE: All semaphore takes use bounded timeouts, never portMAX_DELAY
 // Default = 0 (try-lock) so HOT paths are safe-by-default
 // COLD paths must explicitly pass pdMS_TO_TICKS(20)
@@ -54,9 +54,9 @@ private:
     bool locked_;
 };
 
-// =========================================================================
+// ============================================================================
 // UUID Utilities
-// =========================================================================
+// ============================================================================
 
 // Extract 16-bit short UUID from V1's 128-bit custom UUID
 inline bool extractV1ShortUuidFrom128(const NimBLEUUID& uuid, uint16_t& out) {
@@ -103,9 +103,9 @@ inline uint16_t shortUuid(const NimBLEUUID& uuid) {
     return 0;
 }
 
-// =========================================================================
+// ============================================================================
 // Exponential Backoff Calculator
-// =========================================================================
+// ============================================================================
 
 constexpr uint8_t V1_BLE_MAX_BACKOFF_FAILURES = 5;
 // The V1 peripheral is expected to be nearby and continuously advertising, so
@@ -138,11 +138,13 @@ inline bool hitsV1BleHardResetThreshold(uint8_t consecutiveFailures) {
     return consecutiveFailures >= V1_BLE_MAX_BACKOFF_FAILURES;
 }
 
-// =========================================================================
+// ============================================================================
 // Debug Log Controls
-// =========================================================================
+// ============================================================================
 
-// ===== BLE CLIENT DELETION RULE (CI-enforced) =====
+// ============================================================================
+// BLE CLIENT DELETION RULE (CI-enforced)
+// ============================================================================
 // NimBLE maintains a fixed 3-slot internal client array. Deleting a client
 // at runtime (NimBLEDevice::deleteClient) corrupts the heap — the slot is
 // freed but internal bookkeeping is not updated, leading to use-after-free.
@@ -154,7 +156,7 @@ inline bool hitsV1BleHardResetThreshold(uint8_t consecutiveFailures) {
 //              at runtime destabilizes the fixed-client NimBLE internals.
 //
 // Enforced by: scripts/check_ble_deletion_contract.py (CI gate)
-// =================================================================
+// ============================================================================
 
 constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default OFF - RED ZONE VIOLATION if enabled!)
 
@@ -164,9 +166,9 @@ constexpr bool BLE_CALLBACK_LOGS = false;        // BLE callback logs (default O
 #define BLE_LOGLN(msg) do { } while (0)
 #define BLE_SM_LOGF(...) do { } while (0)
 
-// =========================================================================
+// ============================================================================
 // Shared State (defined in ble_client.cpp)
-// =========================================================================
+// ============================================================================
 
 // Spinlock for deferring settings writes from BLE scan callbacks
 extern portMUX_TYPE pendingAddrMux;

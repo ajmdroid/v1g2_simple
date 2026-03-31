@@ -108,7 +108,9 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
         }
     };
 
-    // === WiFi/Network Settings ===
+    // ============================================================================
+    // WiFi/Network Settings
+    // ============================================================================
     // AP password is intentionally preserved across backup restores.
     restoreBool("enableWifi", settings_.enableWifi);
     if (doc["wifiMode"].is<int>()) settings_.wifiMode = clampWifiModeValue(doc["wifiMode"].as<int>());
@@ -199,12 +201,16 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
         settings_.apTimeoutMinutes = clampApTimeoutValue(doc["apTimeoutMinutes"].as<int>());
     }
 
-    // === Display Settings ===
+    // ============================================================================
+    // Display Settings
+    // ============================================================================
     if (doc["brightness"].is<int>()) settings_.brightness = clampU8(doc["brightness"].as<int>(), 1, 255);
     restoreBool("turnOffDisplay", settings_.turnOffDisplay);
     if (doc["displayStyle"].is<int>()) settings_.displayStyle = normalizeDisplayStyle(doc["displayStyle"].as<int>());
 
-    // === All Colors ===
+    // ============================================================================
+    // All Colors
+    // ============================================================================
     if (doc["colorBogey"].is<int>()) settings_.colorBogey = doc["colorBogey"];
     if (doc["colorFrequency"].is<int>()) settings_.colorFrequency = doc["colorFrequency"];
     if (doc["colorArrowFront"].is<int>()) settings_.colorArrowFront = doc["colorArrowFront"];
@@ -236,7 +242,9 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["colorObd"].is<int>()) settings_.colorObd = doc["colorObd"];
     restoreBool("freqUseBandColor", settings_.freqUseBandColor);
 
-    // === UI Toggles ===
+    // ============================================================================
+    // UI Toggles
+    // ============================================================================
     restoreBool("hideWifiIcon", settings_.hideWifiIcon);
     restoreBool("hideProfileIndicator", settings_.hideProfileIndicator);
     restoreBool("hideBatteryIcon", settings_.hideBatteryIcon);
@@ -247,7 +255,9 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     restoreBool("enableWifiAtBoot", settings_.enableWifiAtBoot);
     restoreBool("enableSignalTraceLogging", settings_.enableSignalTraceLogging);
 
-    // === Voice Settings ===
+    // ============================================================================
+    // Voice Settings
+    // ============================================================================
     if (doc["voiceAlertMode"].is<int>()) {
         settings_.voiceAlertMode = clampVoiceAlertModeValue(doc["voiceAlertMode"].as<int>());
     } else {
@@ -285,7 +295,9 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     }
     restoreBool("speedMuteRequireObd", settings_.speedMuteRequireObd);
 
-    // === Auto-Push Settings ===
+    // ============================================================================
+    // Auto-Push Settings
+    // ============================================================================
     restoreBool("autoPushEnabled", settings_.autoPushEnabled);
     if (doc["activeSlot"].is<int>()) settings_.activeSlot = std::max(0, std::min(doc["activeSlot"].as<int>(), 2));
 
@@ -322,7 +334,9 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["slot2ProfileName"].is<const char*>()) settings_.slot2_comfort.profileName = sanitizeProfileNameValue(doc["slot2ProfileName"].as<String>());
     if (doc["slot2Mode"].is<int>()) settings_.slot2_comfort.mode = normalizeV1ModeValue(doc["slot2Mode"].as<int>());
 
-    // === OBD Settings ===
+    // ============================================================================
+    // OBD Settings
+    // ============================================================================
     restoreBool("obdEnabled", settings_.obdEnabled);
     if (doc["obdSavedAddress"].is<const char*>()) settings_.obdSavedAddress = doc["obdSavedAddress"].as<String>();
     if (doc["obdSavedName"].is<const char*>()) settings_.obdSavedName = sanitizeObdSavedNameValue(doc["obdSavedName"].as<String>());

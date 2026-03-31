@@ -308,7 +308,9 @@ void V1BLEClient::process() {
         return;
     }
 
-    // ========== BLE STATE MACHINE ==========
+    // ============================================================================
+    // BLE STATE MACHINE
+    // ============================================================================
     switch (bleState_) {
         case BLEState::DISCONNECTED: {
             // Skip scanning if WiFi priority mode is active
@@ -508,7 +510,9 @@ void V1BLEClient::disconnect() {
     }
 }
 
-// ==================== WiFi Priority Mode ====================
+// ============================================================================
+// WiFi Priority Mode
+// ============================================================================
 // Deprioritize BLE when web UI is active to maximize responsiveness
 
 void V1BLEClient::setBootReady(bool ready) {

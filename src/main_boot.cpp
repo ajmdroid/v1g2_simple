@@ -21,7 +21,7 @@
 // Display is defined in main.cpp; needed by fatalBootError().
 extern V1Display display;
 
-// ---- resetReasonToString ----
+// --- resetReasonToString ---
 
 const char* resetReasonToString(esp_reset_reason_t reason) {
     switch (reason) {
@@ -38,7 +38,7 @@ const char* resetReasonToString(esp_reset_reason_t reason) {
     }
 }
 
-// ---- normalizeLegacyLockoutRadiusScale ----
+// --- normalizeLegacyLockoutRadiusScale ---
 
 uint32_t normalizeLegacyLockoutRadiusScale(JsonDocument& doc) {
     JsonArray zones = doc["zones"].as<JsonArray>();
@@ -68,7 +68,7 @@ uint32_t normalizeLegacyLockoutRadiusScale(JsonDocument& doc) {
     return migrated;
 }
 
-// ---- logPanicBreadcrumbs ----
+// --- logPanicBreadcrumbs ---
 
 // PANIC BREADCRUMBS: Log heap stats + coredump info on crash recovery
 void logPanicBreadcrumbs() {
@@ -141,7 +141,7 @@ void logPanicBreadcrumbs() {
     }
 }
 
-// ---- nvsHealthCheck ----
+// --- nvsHealthCheck ---
 
 // Log NVS statistics without mutating settings namespaces during early boot.
 void nvsHealthCheck() {
@@ -163,7 +163,7 @@ void nvsHealthCheck() {
     }
 }
 
-// ---- nextBootId ----
+// --- nextBootId ---
 
 uint32_t nextBootId() {
     Preferences prefs;
@@ -176,7 +176,7 @@ uint32_t nextBootId() {
     return bootId;
 }
 
-// ---- fatalBootError ----
+// --- fatalBootError ---
 
 // Helper for fatal boot errors - shows message, waits, then restarts
 // displayAvailable: true if display.begin() succeeded and we can show on-screen error

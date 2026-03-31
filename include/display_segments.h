@@ -10,7 +10,7 @@
 
 namespace DisplaySegments {
 
-// ---- Geometry ------------------------------------------------------------
+// --- Geometry ---
 
 struct SegMetrics {
     int segLen;
@@ -37,7 +37,7 @@ inline SegMetrics segMetrics(float scale) {
     };
 }
 
-// ---- 7-segment lookup ----------------------------------------------------
+// --- 7-segment lookup ---
 
 /// Standard 7-segment patterns (a–g) for digits 0–9.
 constexpr bool DIGIT_SEGMENTS[10][7] = {
@@ -54,7 +54,7 @@ constexpr bool DIGIT_SEGMENTS[10][7] = {
     {true,  true,  true,  true,  false, true,  true }  // 9
 };
 
-// ---- 14-segment lookup ---------------------------------------------------
+// --- 14-segment lookup ---
 // Segments: 0=top, 1=top-right, 2=bottom-right, 3=bottom, 4=bottom-left,
 //           5=top-left, 6=middle-left, 7=middle-right, 8=diag-top-left,
 //           9=diag-top-right, 10=center-top, 11=center-bottom,

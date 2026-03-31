@@ -14,7 +14,9 @@
 #include <algorithm>
 #include <cstring>
 
-// ==================== BLE Proxy Server Functions ====================
+// ============================================================================
+// BLE Proxy Server Functions
+// ============================================================================
 
 void V1BLEClient::ProxyServerCallbacks::onConnect(NimBLEServer* pServer_, NimBLEConnInfo& connInfo) {
     // NOTE: BLE callback - keep fast
