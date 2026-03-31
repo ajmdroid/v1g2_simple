@@ -9,6 +9,7 @@
 #include <string>
 #include <algorithm>
 #include <cctype>
+#include "pgmspace.h"
 
 // Basic Arduino types
 typedef uint8_t byte;
@@ -248,6 +249,13 @@ inline void pinMode(int, int) {}
 inline void digitalWrite(int, int) {}
 inline int digitalRead(int) { return 0; }
 inline int analogRead(int) { return 0; }
+inline void analogWrite(int, int) {}
+
+// ESP-IDF timer stub — only defined here if a test hasn't already provided it
+#ifndef ESP_TIMER_GET_TIME_DEFINED
+#define ESP_TIMER_GET_TIME_DEFINED
+extern "C" int64_t esp_timer_get_time() { return 0; }
+#endif
 
 // ESP object stub
 class EspClass {
@@ -255,5 +263,14 @@ public:
     void restart() {}
     uint32_t getFreeHeap() { return 320000u; }
     uint32_t getHeapSize() { return 520000u; }
+    uint32_t getPsramSize() { return 0u; }
 };
 inline EspClass ESP;
+
+// Arduino min/max — use namespace injection rather than macros to avoid
+// breaking std::min/std::max qualified calls in other headers.
+using std::min;
+using std::max;
+
+// PSRAM detection helpers
+inline bool psramFound() { return false; }

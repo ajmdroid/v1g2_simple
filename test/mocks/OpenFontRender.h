@@ -8,7 +8,15 @@
 #ifndef OPENFONTRENDERH_H
 #define OPENFONTRENDERH_H
 
+#include <cstdint>
+#include <cstddef>
 #include <cstring>
+
+// FreeType error code
+typedef int FT_Error;
+
+// Forward-declare Arduino_GFX so setDrawer can accept a reference
+class Arduino_GFX;
 
 // Minimal FreeType bounding box stub
 struct FT_BBox {
@@ -26,10 +34,13 @@ class OpenFontRender {
 public:
     enum AlignEnum { ALIGN_LEFT = 0, ALIGN_CENTER = 1, ALIGN_RIGHT = 2 };
 
-    void loadFont(const uint8_t* /*fontData*/, size_t /*fontDataSize*/) {}
-    void setDrawer(void* /*gfx*/) {}
+    FT_Error loadFont(const uint8_t* /*fontData*/, size_t /*fontDataSize*/) { return 0; }
+    void setDrawer(Arduino_GFX& /*gfx*/) {}
+    void setCacheSize(int /*glyphN*/, int /*cacheN*/, size_t /*bytes*/) {}
     void setFontColor(uint16_t /*color*/) {}
     void setFontColor(uint16_t /*fg*/, uint16_t /*bg*/) {}
+    void setFontColor(uint8_t /*r*/, uint8_t /*g*/, uint8_t /*b*/) {}
+    void setBackgroundColor(uint8_t /*r*/, uint8_t /*g*/, uint8_t /*b*/) {}
     void setFontSize(float /*size*/) {}
     void setAlignment(AlignEnum /*align*/) {}
     void setCursor(int16_t /*x*/, int16_t /*y*/) {}

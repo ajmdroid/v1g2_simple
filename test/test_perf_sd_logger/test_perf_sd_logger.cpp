@@ -9,10 +9,6 @@ unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
 #endif
 
-extern "C" int64_t esp_timer_get_time() {
-    return 0;
-}
-
 #include "../../src/perf_metrics.h"
 #include "../../src/time_service.h"
 

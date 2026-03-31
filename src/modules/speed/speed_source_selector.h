@@ -1,4 +1,6 @@
 #pragma once
+#ifndef SPEED_SOURCE_SELECTOR_H
+#define SPEED_SOURCE_SELECTOR_H
 
 #include <Arduino.h>
 
@@ -75,3 +77,4 @@ private:
     SpeedSelectorStatus cachedStatus_ = {};
     SpeedSelection selectedSpeed_ = {};
 };
+#endif // SPEED_SOURCE_SELECTOR_H

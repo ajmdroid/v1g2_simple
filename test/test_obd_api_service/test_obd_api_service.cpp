@@ -3,6 +3,11 @@
 
 #include "../mocks/settings.h"
 #include "../../src/modules/obd/obd_runtime_module.h"
+
+// Guard prevents real speed_source_selector.h from being included by the .cpp
+// files below; the inline mock class (below) is the only definition.
+#define SPEED_SOURCE_SELECTOR_H
+
 #include "../../src/modules/obd/obd_elm327_parser.cpp"
 #include "../../src/modules/obd/obd_runtime_module.cpp"
 #include "../../src/modules/obd/obd_api_service.cpp"

@@ -1,4 +1,6 @@
 #pragma once
+#ifndef LOCKOUT_LEARNER_H
+#define LOCKOUT_LEARNER_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -142,3 +144,4 @@ private:
 
     static constexpr uint32_t LOG_INTERVAL_MS = 10000;
 };
+#endif // LOCKOUT_LEARNER_H

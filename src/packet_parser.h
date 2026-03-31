@@ -4,6 +4,8 @@
  */
 
 #pragma once
+#ifndef PACKET_PARSER_H
+#define PACKET_PARSER_H
 
 #include <Arduino.h>
 #include <array>
@@ -85,4 +87,4 @@ private:
     uint8_t mapStrengthToBars(Band band, uint8_t raw) const;  // Fallback if LED bitmap unavailable
     void decodeMode(const uint8_t* payload, size_t length);
 };
-
+#endif // PACKET_PARSER_H

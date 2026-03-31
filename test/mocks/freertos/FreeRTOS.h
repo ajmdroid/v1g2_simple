@@ -33,6 +33,18 @@ typedef unsigned int UBaseType_t;
 #define pdMS_TO_TICKS(ms) (ms)
 #endif
 
+// Critical section stubs (ESP32 portMUX_TYPE)
+typedef struct { int dummy; } portMUX_TYPE;
+#define portMUX_INITIALIZER_UNLOCKED { 0 }
+#define portENTER_CRITICAL(mux) ((void)(mux))
+#define portEXIT_CRITICAL(mux)  ((void)(mux))
+#define portENTER_CRITICAL_ISR(mux) ((void)(mux))
+#define portEXIT_CRITICAL_ISR(mux)  ((void)(mux))
+
+#ifndef configASSERT
+#define configASSERT(x) ((void)(x))
+#endif
+
 // Semaphore stubs
 struct MockSemaphoreState {
     uint32_t takeCalls = 0;
@@ -185,13 +197,9 @@ inline void mock_reset_task_delete_state() {
 inline void vTaskDelay(TickType_t) {}
 inline TaskHandle_t xTaskGetCurrentTaskHandle() { return nullptr; }
 
-// Critical section stubs
-typedef int portMUX_TYPE;
-#define portMUX_INITIALIZER_UNLOCKED 0
-inline void portENTER_CRITICAL(portMUX_TYPE*) {}
-inline void portEXIT_CRITICAL(portMUX_TYPE*) {}
-inline void taskENTER_CRITICAL(portMUX_TYPE*) {}
-inline void taskEXIT_CRITICAL(portMUX_TYPE*) {}
+// taskENTER/EXIT_CRITICAL convenience aliases used by some IDF headers
+#define taskENTER_CRITICAL(mux) portENTER_CRITICAL(mux)
+#define taskEXIT_CRITICAL(mux)  portEXIT_CRITICAL(mux)
 
 // ESP-specific
 inline uint32_t esp_get_free_heap_size() { return 320000; }
@@ -202,3 +210,20 @@ inline uint32_t heap_caps_get_free_size(int) { return g_mock_heap_caps_free_size
 #ifndef MALLOC_CAP_8BIT
 #define MALLOC_CAP_8BIT 0
 #endif
+#ifndef MALLOC_CAP_SPIRAM
+#define MALLOC_CAP_SPIRAM 0
+#endif
+#ifndef tskNO_AFFINITY
+#define tskNO_AFFINITY (-1)
+#endif
+#ifndef pdPASS
+#define pdPASS 1
+#endif
+
+// Task stack and static-task types
+typedef uint8_t StackType_t;
+typedef struct { uint8_t unused; } StaticTask_t;
+
+// Pull in task creation/deletion stubs so any TU that only includes FreeRTOS.h
+// still gets xTaskCreatePinnedToCoreWithCaps, vTaskDeleteWithCaps, etc.
+#include "task.h"

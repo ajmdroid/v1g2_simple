@@ -13,6 +13,7 @@
 #include <Arduino.h>
 #endif
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 
 // ============================================================================

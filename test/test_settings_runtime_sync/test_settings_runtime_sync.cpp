@@ -6,6 +6,13 @@
 SerialClass Serial;
 #endif
 
+// Guard macros prevent the real module headers (included via settings_runtime_sync.h)
+// from redefining these mock classes.
+#define GPS_RUNTIME_MODULE_H
+#define OBD_RUNTIME_MODULE_H
+#define SPEED_SOURCE_SELECTOR_H
+#define LOCKOUT_LEARNER_H
+
 class GpsRuntimeModule {
 public:
     void setEnabled(bool enabled) {

@@ -218,22 +218,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         fontMgr.segment7.setFontSize(fontSize);
         fontMgr.segment7.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
         fontMgr.segment7.setCursor(x, y);
-
-        // Check OFR rendering success and fallback to built-in font if it fails
-        int32_t preCursorX = fontMgr.segment7.getCursorX();
-        int32_t preCursorY = fontMgr.segment7.getCursorY();
         fontMgr.segment7.printf("%s", textBuf);
-
-        if (!DisplayFontManager::checkOfrRenderingSuccess(fontMgr.segment7, preCursorX, preCursorY)) {
-            Serial.printf("[Display] WARNING: Segment7 OFR rendering failed for '%s', using fallback font\n", textBuf);
-            // Fallback: use built-in bitmap font
-            FILL_RECT(clearLeft, clearY, clearW, clearH, PALETTE_BG);
-            tft_->setFont(NULL);
-            tft_->setTextSize(2);
-            tft_->setTextColor(freqColor, PALETTE_BG);
-            tft_->setCursor(x, y);
-            tft_->print(textBuf);
-        }
 
         s_freqClassicLastDrawX = x;
         s_freqClassicLastDrawWidth = textWidth;
@@ -378,22 +363,7 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     fontMgr.serpentine.setFontColor((freqColor >> 11) << 3, ((freqColor >> 5) & 0x3F) << 2, (freqColor & 0x1F) << 3);
 
     fontMgr.serpentine.setCursor(x, freqY);
-
-    // Check OFR rendering success and fallback to built-in font if it fails
-    int32_t preCursorX = fontMgr.serpentine.getCursorX();
-    int32_t preCursorY = fontMgr.serpentine.getCursorY();
     fontMgr.serpentine.printf("%s", textBuf);
-
-    if (!DisplayFontManager::checkOfrRenderingSuccess(fontMgr.serpentine, preCursorX, preCursorY)) {
-        Serial.printf("[Display] WARNING: Serpentine OFR rendering failed for '%s', using fallback font\n", textBuf);
-        // Fallback: use built-in bitmap font
-        FILL_RECT(clearX, clearTop, clearW, clearHeight, PALETTE_BG);
-        tft_->setFont(NULL);
-        tft_->setTextSize(2);
-        tft_->setTextColor(freqColor, PALETTE_BG);
-        tft_->setCursor(x, freqY);
-        tft_->print(textBuf);
-    }
 
     // Update cache
     strncpy(s_freqSerpentineLastText, textBuf, sizeof(s_freqSerpentineLastText));

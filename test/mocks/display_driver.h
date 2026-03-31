@@ -64,6 +64,16 @@ struct GFXfont {
 #define TFT_PURPLE      0x8010
 #define TFT_BROWN       0x8200
 
+// Sentinel value for unconnected pins
+#ifndef GFX_NOT_DEFINED
+#define GFX_NOT_DEFINED (-1)
+#endif
+
+// AXS15231B panel init operations placeholder (native tests never execute it)
+#ifndef axs15231b_180640_init_operations
+static const uint8_t axs15231b_180640_init_operations[] = { 0x00 };
+#endif
+
 // Screen dimensions (Waveshare 3.49" rotated)
 #ifndef SCREEN_WIDTH
 #define SCREEN_WIDTH 640
@@ -99,6 +109,8 @@ public:
     virtual void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {}
     virtual void drawRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {}
     virtual void fillRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {}
+    virtual void drawBitmap(int16_t, int16_t, const uint8_t*, int16_t, int16_t, uint16_t) {}
+    virtual void draw16bitRGBBitmap(int16_t, int16_t, uint16_t*, int16_t, int16_t) {}
     virtual void setFont(const GFXfont* f) {}
     virtual void getTextBounds(const char* str, int16_t x, int16_t y,
                                int16_t* x1, int16_t* y1, uint16_t* w, uint16_t* h) {
@@ -121,10 +133,12 @@ public:
     virtual void flush() {}
 };
 
-// Mock AXS15231B display panel
+// Mock AXS15231B display panel (12-arg ctor matching display.cpp usage)
 class Arduino_AXS15231B : public Arduino_GFX {
 public:
-    Arduino_AXS15231B(Arduino_DataBus* bus, int rst, int rotation, bool ips, int w, int h) {}
+    Arduino_AXS15231B(Arduino_DataBus*, int, int, bool, int, int,
+                      int = 0, int = 0, int = 0, int = 0,
+                      const uint8_t* = nullptr, size_t = 0) {}
 };
 
 // Mock canvas for double-buffering
@@ -192,6 +206,8 @@ public:
     void flush() override {
         flushCount_++;
     }
+
+    uint16_t* getFramebuffer() { return nullptr; }
 
     // Test helpers
     int getFlushCount() const { return flushCount_; }

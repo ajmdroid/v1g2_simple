@@ -2,11 +2,20 @@
 
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
-typedef void* SemaphoreHandle_t;
+// Pull in FreeRTOS mock so headers that include <NimBLEDevice.h> get
+// TickType_t, portMUX_TYPE, pdTRUE, xSemaphoreTake etc. automatically
+#include "freertos/FreeRTOS.h"
+
+// BLE security / pairing constants
+static constexpr int BLE_HS_ETIMEOUT            = 5;
+static constexpr int BLE_SM_IO_CAP_NO_IO        = 3;
+static constexpr int BLE_SM_PAIR_KEY_DIST_ENC   = 0x01;
+static constexpr int BLE_SM_PAIR_KEY_DIST_ID    = 0x02;
 
 static constexpr uint8_t BLE_ADDR_PUBLIC = 0;
 static constexpr int BLE_UUID_TYPE_16 = 16;
@@ -54,6 +63,8 @@ public:
     explicit NimBLEAddress(const std::string&, uint8_t = BLE_ADDR_PUBLIC) {}
     bool isNull() const { return false; }
     std::string toString() const { return ""; }
+    bool operator==(const NimBLEAddress&) const { return false; }
+    bool operator!=(const NimBLEAddress&) const { return true; }
 };
 
 class NimBLEUUID {
@@ -61,6 +72,8 @@ public:
     NimBLEUUID() = default;
     explicit NimBLEUUID(const char* uuid)
         : value_(uuid ? uuid : "") {}
+    explicit NimBLEUUID(uint16_t uuid)
+        : value_(std::to_string(uuid)) {}
 
     int bitSize() const { return BLE_UUID_TYPE_128; }
     const uint8_t* getValue() const { return raw_; }
@@ -78,13 +91,41 @@ public:
     uint16_t getConnLatency() const { return 0; }
 };
 
-class NimBLEAdvertisedDevice {};
+class NimBLEAdvertisedDevice {
+public:
+    std::string getName() const { return ""; }
+    NimBLEAddress getAddress() const { return NimBLEAddress(); }
+    int getRSSI() const { return -70; }
+    bool isAdvertisingService(const NimBLEUUID&) const { return false; }
+    int getAddressType() const { return BLE_ADDR_PUBLIC; }
+};
 class NimBLEScanResults {};
-class NimBLERemoteService {};
+
+// Forward declaration needed by NimBLERemoteService
+class NimBLERemoteCharacteristic;
+
+class NimBLERemoteService {
+public:
+    NimBLERemoteCharacteristic* getCharacteristic(const NimBLEUUID&) { return nullptr; }
+    NimBLERemoteCharacteristic* getCharacteristic(const char*) { return nullptr; }
+};
+
+class NimBLERemoteDescriptor {
+public:
+    bool writeValue(const uint8_t*, size_t, bool = false) { return true; }
+};
 
 class NimBLERemoteCharacteristic {
 public:
     bool writeValue(const uint8_t*, size_t, bool) { return true; }
+    bool canWrite() const { return true; }
+    bool canWriteNoResponse() const { return false; }
+    bool canNotify() const { return true; }
+    bool canIndicate() const { return false; }
+    bool unsubscribe() { return true; }
+    bool subscribe(bool, std::function<void(NimBLERemoteCharacteristic*, uint8_t*, size_t, bool)>, bool = false) { return true; }
+    NimBLEUUID getUUID() const { return NimBLEUUID(""); }
+    NimBLERemoteDescriptor* getDescriptor(const NimBLEUUID&) { return nullptr; }
 };
 
 class NimBLEAttValue {
@@ -161,6 +202,7 @@ public:
     }
     int getConnectedCount() const { return connectedCount_; }
     NimBLEConnInfo getPeerInfo(int) const { return NimBLEConnInfo(); }
+    std::vector<uint16_t> getPeerDevices() const { return {}; }
     void setConnectedCount(int count) { connectedCount_ = count; }
     bool disconnect(uint16_t, uint8_t = 0) {
         g_mock_nimble_state.serverDisconnectCalls++;
@@ -190,6 +232,12 @@ public:
     void disconnect() { connected_ = false; }
     int getRssi() const { return -60; }
     NimBLEConnInfo getConnInfo() const { return NimBLEConnInfo(); }
+    NimBLEAddress getPeerAddress() const { return NimBLEAddress(); }
+    bool connect(const NimBLEAddress&, bool = false, bool = false) { connected_ = true; return true; }
+    int getLastError() const { return 0; }
+    bool discoverAttributes() { return true; }
+    NimBLERemoteService* getService(const NimBLEUUID&) { return nullptr; }
+    NimBLERemoteService* getService(const char*) { return nullptr; }
 
 private:
     bool connected_ = false;
@@ -277,6 +325,11 @@ public:
     static void deleteAllBonds() {}
     static bool isBonded(const NimBLEAddress&) { return false; }
     static void deleteBond(const NimBLEAddress&) {}
+    static NimBLEAddress getAddress() { return NimBLEAddress(); }
+    static void setSecurityAuth(bool, bool, bool) {}
+    static void setSecurityIOCap(int) {}
+    static void setSecurityInitKey(int) {}
+    static void setSecurityRespKey(int) {}
 };
 
 class NimBLEClientCallbacks {

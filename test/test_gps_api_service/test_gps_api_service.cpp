@@ -29,6 +29,11 @@ struct PerfCounters {
 // Use the canonical GpsRuntimeStatus definition — pure data, no Arduino dependency.
 #include "../../src/modules/gps/gps_runtime_status.h"
 
+// Guard macros prevent real module headers from redefining these mock classes.
+#define GPS_RUNTIME_MODULE_H
+#define SPEED_SOURCE_SELECTOR_H
+#define LOCKOUT_LEARNER_H
+
 class GpsRuntimeModule {
 public:
     void setEnabled(bool enabled) {

@@ -5,6 +5,8 @@
  */
 
 #pragma once
+#ifndef BLE_CLIENT_H
+#define BLE_CLIENT_H
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
@@ -576,4 +578,4 @@ private:
 // Refresh the shared NimBLE bond backup snapshot after an external module
 // adds or deletes bond records.
 int refreshBleBondBackup();
-
+#endif // BLE_CLIENT_H

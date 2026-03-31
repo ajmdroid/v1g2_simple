@@ -13,6 +13,15 @@ unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
 #endif
 
+// Perf stubs — quiet_coordinator_templates.h calls these but perf_metrics.h
+// is excluded in UNIT_TEST builds.
+void perfRecordPreQuietRestore() {}
+void perfRecordPreQuietDrop() {}
+void perfRecordPreQuietRestoreRetry() {}
+void perfRecordSpeedVolDrop() {}
+void perfRecordSpeedVolRestore() {}
+void perfRecordSpeedVolRetry() {}
+
 #include "../../src/modules/voice/voice_module.h"
 #include "../../src/modules/lockout/lockout_runtime_mute_controller.cpp"
 #include "../../src/modules/quiet/quiet_coordinator_module.cpp"

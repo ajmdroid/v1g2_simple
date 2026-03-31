@@ -2,24 +2,8 @@
 
 #include "FreeRTOS.h"
 
-typedef int BaseType_t;
-typedef unsigned int UBaseType_t;
-
-#ifndef pdPASS
-#define pdPASS 1
-#endif
-
-#ifndef pdTRUE
-#define pdTRUE 1
-#endif
-
-#ifndef pdFALSE
-#define pdFALSE 0
-#endif
-
-#ifndef pdMS_TO_TICKS
-#define pdMS_TO_TICKS(ms) (ms)
-#endif
+// BaseType_t/UBaseType_t come from FreeRTOS.h
+// pdPASS/pdTRUE/pdFALSE/pdMS_TO_TICKS come from FreeRTOS.h
 
 inline BaseType_t xTaskCreatePinnedToCore(void (*)(void*),
                                           const char*,
@@ -66,3 +50,17 @@ inline void vTaskDeleteWithCaps(void*) {
 inline uint32_t ulTaskNotifyTake(BaseType_t, TickType_t) { return 0; }
 inline void xTaskNotifyGive(TaskHandle_t) {}
 inline void taskYIELD() {}
+
+inline TaskHandle_t xTaskCreateStaticPinnedToCore(
+    void (*pxTaskCode)(void*),
+    const char* /*pcName*/,
+    uint32_t /*usStackDepth*/,
+    void* pvParameters,
+    UBaseType_t /*uxPriority*/,
+    StackType_t* /*puxStackBuffer*/,
+    StaticTask_t* /*pxTaskBuffer*/,
+    BaseType_t /*xCoreID*/) {
+    (void)pxTaskCode; (void)pvParameters;
+    g_mock_task_create_state.standardCalls++;
+    return (TaskHandle_t)1;
+}

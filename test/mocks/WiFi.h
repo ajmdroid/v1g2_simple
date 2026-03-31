@@ -5,11 +5,46 @@
 
 #include "Arduino.h"
 
+// WiFi status codes
+#ifndef WL_CONNECTED
+#define WL_CONNECTED    3
+#endif
+#ifndef WL_DISCONNECTED
+#define WL_DISCONNECTED 6
+#endif
+#ifndef WL_IDLE_STATUS
+#define WL_IDLE_STATUS  0
+#endif
+
+// WiFi auth types
+#ifndef WIFI_AUTH_OPEN
+#define WIFI_AUTH_OPEN 0
+#endif
+
+// WiFi mode type
+#ifndef WIFI_MODE_T_DEFINED
+#define WIFI_MODE_T_DEFINED
+typedef enum {
+    WIFI_MODE_NULL  = 0,
+    WIFI_MODE_STA   = 1,
+    WIFI_MODE_AP    = 2,
+    WIFI_MODE_APSTA = 3,
+} wifi_mode_t;
+#endif
+#ifndef WIFI_STA
+#define WIFI_STA    WIFI_MODE_STA
+#endif
+#ifndef WIFI_AP_STA
+#define WIFI_AP_STA WIFI_MODE_APSTA
+#endif
+
 // Minimal WiFi stub for native tests
 class WiFiClass {
 public:
     uint16_t softAPgetStationNum() const { return apStationCount_; }
     void setApStationCount(uint16_t n) { apStationCount_ = n; }
+    int status() const { return WL_DISCONNECTED; }
+    wifi_mode_t getMode() const { return WIFI_MODE_NULL; }
 private:
     uint16_t apStationCount_ = 0;
 };

@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GPS_RUNTIME_MODULE_H
+#define GPS_RUNTIME_MODULE_H
 
 #include <Arduino.h>
 #include "gps_runtime_status.h"
@@ -115,3 +117,4 @@ private:
     size_t sentenceLen_ = 0;
     char sentenceBuf_[NMEA_LINE_MAX] = {};
 };
+#endif // GPS_RUNTIME_MODULE_H

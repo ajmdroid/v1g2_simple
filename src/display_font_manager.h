@@ -87,17 +87,6 @@ struct DisplayFontManager {
                                WidthCacheEntry (&cache)[N],
                                uint8_t& nextSlot);
 
-    // --- Font degradation / fallback helpers ---
-
-    /// Detect if OFR rendering likely failed (e.g., due to memory pressure).
-    /// Checks if cursor advanced after a printf() call.
-    /// @param renderer OFR instance that was just used
-    /// @param preCallX cursor X position before printf()
-    /// @param preCallY cursor Y position before printf()
-    /// @return true if rendering likely succeeded, false if it appears to have failed
-    static bool checkOfrRenderingSuccess(
-        OpenFontRender& renderer,
-        int32_t preCallX, int32_t preCallY);
 };
 
 // --- Template implementation (must be visible to all callers) ---

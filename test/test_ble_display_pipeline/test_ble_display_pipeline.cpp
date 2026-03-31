@@ -1,5 +1,13 @@
 #include <unity.h>
 
+// Override esp_timer_get_time with mockMicros BEFORE Arduino.h defines its default.
+// Forward-declare the variable so the function body can reference it.
+extern unsigned long mockMicros;
+#define ESP_TIMER_GET_TIME_DEFINED
+extern "C" int64_t esp_timer_get_time(void) {
+    return static_cast<int64_t>(mockMicros);
+}
+
 #include "../mocks/Arduino.h"
 #include "../mocks/ble_client.h"
 #include "../mocks/display.h"
@@ -12,10 +20,6 @@ SerialClass Serial;
 unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
 #endif
-
-extern "C" uint64_t esp_timer_get_time(void) {
-    return static_cast<uint64_t>(mockMicros);
-}
 
 #include "../../src/perf_metrics.h"
 PerfCounters perfCounters;

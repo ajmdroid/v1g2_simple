@@ -343,18 +343,8 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
             // Font size already set above (before calculateBoundingBox).
             fontMgr.topCounter.setFontColor((color >> 11) << 3, ((color >> 5) & 0x3F) << 2, (color & 0x1F) << 3);
             fontMgr.topCounter.setCursor(x, y);
-
-            // Check OFR rendering success and fallback if it fails
-            int32_t preCursorX = fontMgr.topCounter.getCursorX();
-            int32_t preCursorY = fontMgr.topCounter.getCursorY();
             fontMgr.topCounter.printf("%s", buf);
-
-            if (DisplayFontManager::checkOfrRenderingSuccess(fontMgr.topCounter, preCursorX, preCursorY)) {
-                drewWithOfr = true;
-            } else {
-                Serial.printf("[Display] WARNING: TopCounter OFR rendering failed for '%s', using fallback font\n", buf);
-                // OFR failed, will fall through to software 7-segment fallback below
-            }
+            drewWithOfr = true;
         }
     }
 

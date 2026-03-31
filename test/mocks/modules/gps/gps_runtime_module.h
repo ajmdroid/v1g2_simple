@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GPS_RUNTIME_MODULE_H
+#define GPS_RUNTIME_MODULE_H
 
 // Use the canonical struct definition — never redefine it here.
 // This ensures the mock and real module always agree on the shape of GpsRuntimeStatus.
@@ -18,3 +20,5 @@ public:
         return nextSnapshot;
     }
 };
+
+#endif // GPS_RUNTIME_MODULE_H

@@ -7,6 +7,8 @@
 
 class TwoWire {
 public:
+    TwoWire() = default;
+    explicit TwoWire(int /*port*/) {}
     struct TransmissionRecord {
         uint8_t address = 0;
         std::vector<uint8_t> data;

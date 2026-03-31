@@ -18,6 +18,8 @@
  */
 
 #pragma once
+#ifndef SETTINGS_H
+#define SETTINGS_H
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -1032,4 +1034,4 @@ private:
 
 // Global settings instance
 extern SettingsManager settingsManager;
-
+#endif // SETTINGS_H

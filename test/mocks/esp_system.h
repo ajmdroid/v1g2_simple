@@ -23,3 +23,6 @@ inline esp_reset_reason_t esp_reset_reason() {
 extern "C" inline uint32_t esp_random() {
     return 0x12345678u;
 }
+
+// High-resolution timer — defined in Arduino.h mock to avoid multiple definitions
+// extern "C" int64_t esp_timer_get_time();  // stub in Arduino.h

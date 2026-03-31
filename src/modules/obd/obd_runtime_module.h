@@ -1,4 +1,6 @@
 #pragma once
+#ifndef OBD_RUNTIME_MODULE_H
+#define OBD_RUNTIME_MODULE_H
 
 #include <array>
 #include <cstddef>
@@ -506,3 +508,4 @@ private:
     bool testLastWriteWithResponse_ = true;
 #endif
 };
+#endif // OBD_RUNTIME_MODULE_H

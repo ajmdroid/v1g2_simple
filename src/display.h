@@ -22,6 +22,8 @@
  */
 
 #pragma once
+#ifndef DISPLAY_H
+#define DISPLAY_H
 
 #include <cstdint>
 #include <memory>
@@ -292,4 +294,4 @@ public:
 
 // Global display instance (defined in main.cpp)
 extern V1Display display;
-
+#endif // DISPLAY_H
