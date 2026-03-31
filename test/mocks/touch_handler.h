@@ -1,3 +1,4 @@
+#pragma once
 #ifndef TOUCH_HANDLER_H
 #define TOUCH_HANDLER_H
 

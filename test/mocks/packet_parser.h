@@ -1,5 +1,6 @@
 // Mock packet_parser.h for native unit testing.
 // Uses same include guard as real packet_parser.h to intercept the include.
+#pragma once
 #ifndef PACKET_PARSER_H
 #define PACKET_PARSER_H
 

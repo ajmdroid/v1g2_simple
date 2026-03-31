@@ -2,6 +2,7 @@
  * Mock BatteryManager for native unit tests.
  * Provides test helpers to control battery state.
  */
+#pragma once
 #ifndef BATTERY_MANAGER_H
 #define BATTERY_MANAGER_H
 

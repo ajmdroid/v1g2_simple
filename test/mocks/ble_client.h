@@ -1,3 +1,4 @@
+#pragma once
 #ifndef BLE_CLIENT_H
 #define BLE_CLIENT_H
 

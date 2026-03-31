@@ -1,4 +1,5 @@
 // Mock display.h for native unit testing
+#pragma once
 #ifndef DISPLAY_H
 #define DISPLAY_H
 

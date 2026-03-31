@@ -2,6 +2,7 @@
  * Mock display_driver.h for native unit testing
  * Provides minimal stubs for Arduino_GFX display primitives
  */
+#pragma once
 #ifndef DISPLAY_DRIVER_H
 #define DISPLAY_DRIVER_H
 

@@ -1,3 +1,4 @@
+#pragma once
 #ifndef NVS_H
 #define NVS_H
 
