@@ -53,27 +53,27 @@ public:
     void reset();
 
 private:
-    uint8_t i2cAddr;
-    int rstPin;
-    bool touchActive;
-    unsigned long lastTouchTime;
-    unsigned long lastReleaseTime;      // When finger was last released
-    unsigned long touchDebounceMs;
-    unsigned long releaseDebounceMs;    // Time finger must be lifted before new tap
+    uint8_t i2cAddr_;
+    int rstPin_;
+    bool touchActive_;
+    unsigned long lastTouchTime_;
+    unsigned long lastReleaseTime_;      // When finger was last released
+    unsigned long touchDebounceMs_;
+    unsigned long releaseDebounceMs_;    // Time finger must be lifted before new tap
 
     // I2C stall tracking
-    uint32_t i2cStallCount = 0;          // Transactions that returned error
-    uint32_t i2cMaxUs = 0;               // Longest I2C transaction observed
+    uint32_t i2cStallCount_ = 0;          // Transactions that returned error
+    uint32_t i2cMaxUs_ = 0;               // Longest I2C transaction observed
 
 public:
-    uint32_t getI2cStallCount() const { return i2cStallCount; }
-    uint32_t getI2cMaxUs() const { return i2cMaxUs; }
-    uint32_t getI2cRecoveryCount() const { return i2cRecoveryCount; }
+    uint32_t getI2cStallCount() const { return i2cStallCount_; }
+    uint32_t getI2cMaxUs() const { return i2cMaxUs_; }
+    uint32_t getI2cRecoveryCount() const { return i2cRecoveryCount_; }
     void resetI2cStats() {
-        i2cStallCount = 0;
-        i2cMaxUs = 0;
-        i2cRecoveryCount = 0;
-        consecutiveI2cFailures = 0;
+        i2cStallCount_ = 0;
+        i2cMaxUs_ = 0;
+        i2cRecoveryCount_ = 0;
+        consecutiveI2cFailures_ = 0;
     }
 
 private:
@@ -85,8 +85,8 @@ private:
     static constexpr uint32_t I2C_CLOCK_HZ = 400000;
     static constexpr uint16_t I2C_TIMEOUT_MS = 5;
 
-    int sdaPin = 17;
-    int sclPin = 18;
+    int sdaPin_ = 17;
+    int sclPin_ = 18;
     // I2C communication
     void configureWireBus();
     void noteNoTouch(unsigned long now);
@@ -97,10 +97,10 @@ private:
     bool isI2cPollBackoffActive(unsigned long now) const;
     uint8_t readRegister(uint8_t reg);
 
-    unsigned long lastRecoveryMs = 0;
-    unsigned long nextI2cPollAllowedMs = 0;
-    uint8_t consecutiveI2cFailures = 0;
-    uint32_t i2cRecoveryCount = 0;
+    unsigned long lastRecoveryMs_ = 0;
+    unsigned long nextI2cPollAllowedMs_ = 0;
+    uint8_t consecutiveI2cFailures_ = 0;
+    uint32_t i2cRecoveryCount_ = 0;
 };
 
 #endif // TOUCH_HANDLER_H
