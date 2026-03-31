@@ -160,7 +160,7 @@ void prepareForShutdown(void* /*context*/) {
             if (storageManager.isSDCard()) {
                 StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
                 if (!sdLock) {
-                    Serial.println("[Battery] WARNING: Could not acquire SD mutex for shutdown flush");
+                    Serial.println("[Battery] WARN: Could not acquire SD mutex for shutdown flush");
                 } else {
                     flushDirtyLockoutData();
                 }
@@ -196,7 +196,7 @@ void onV1Connected() {
                      slot.profileName.c_str(),
                      static_cast<int>(slot.mode));
     if (selection.activeSlotIndex != s.activeSlot) {
-        AUTO_PUSH_LOGF("[AutoPush] WARNING: activeSlot out of range (%d). Using slot %d instead.\n",
+        AUTO_PUSH_LOGF("[AutoPush] WARN: activeSlot out of range (%d). Using slot %d instead.\n",
                        s.activeSlot, selection.activeSlotIndex);
     }
 
@@ -378,7 +378,7 @@ void initializeTouchAndDisplayControls() {
     if (touchHandler.begin(17, 18, AXS_TOUCH_ADDR, -1)) {
         SerialLog.println("Touch handler initialized successfully");
     } else {
-        SerialLog.println("WARNING: Touch handler failed to initialize - continuing anyway");
+        SerialLog.println("[Touch] WARN: Touch handler failed to initialize - continuing anyway");
     }
 
     // Initialize BOOT button (GPIO 0) for brightness adjustment

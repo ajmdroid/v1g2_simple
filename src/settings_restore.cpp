@@ -829,7 +829,7 @@ void SettingsManager::validateProfileReferences(V1ProfileManager& profileMgr) {
         if (slot.profileName.length() > 0) {
             V1Profile testProfile;
             if (!profileMgr.loadProfile(slot.profileName, testProfile)) {
-                Serial.printf("[Settings] WARNING: Profile '%s' for %s does not exist - clearing reference\n",
+                Serial.printf("[Settings] WARN: Profile '%s' for %s does not exist - clearing reference\n",
                              slot.profileName.c_str(), slotName);
                 slot.profileName = "";
                 needsSave = true;

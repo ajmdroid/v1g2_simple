@@ -156,10 +156,10 @@ void nvsHealthCheck() {
                       (unsigned long)stats.free_entries);
 
         if (usedPct > 80) {
-            Serial.println("[NVS] WARNING: NVS >80% full; deferring namespace cleanup until settings load resolves the active namespace");
+            Serial.println("[NVS] WARN: NVS >80% full; deferring namespace cleanup until settings load resolves the active namespace");
         }
     } else {
-        Serial.println("[NVS] WARNING: Could not get NVS stats");
+        Serial.println("[NVS] WARN: Could not get NVS stats");
     }
 }
 

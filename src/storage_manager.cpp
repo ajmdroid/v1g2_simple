@@ -43,7 +43,7 @@ bool StorageManager::begin() {
         // Use begin(false) to avoid auto-formatting existing data on transient errors
         littlefsReady_ = LittleFS.begin(false, "/littlefs", 10, "storage");
         if (!littlefsReady_) {
-            Serial.println("[Storage] WARNING: LittleFS secondary mount failed - mirror backups disabled");
+            Serial.println("[Storage] WARN: LittleFS secondary mount failed - mirror backups disabled");
         }
 
         return true;

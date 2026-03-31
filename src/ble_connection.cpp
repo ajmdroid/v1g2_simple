@@ -255,7 +255,7 @@ bool V1BLEClient::startAsyncConnect() {
     // Extra verify scan is stopped (should already be from SCAN_STOPPING state)
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (pScan && pScan->isScanning()) {
-        BLE_SM_LOGF("[BLE] WARNING: Scan still active, stopping\n");
+        BLE_SM_LOGF("[BLE] WARN: Scan still active, stopping\n");
         pScan->stop();
     }
 

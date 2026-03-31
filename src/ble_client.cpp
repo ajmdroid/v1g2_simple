@@ -544,7 +544,7 @@ bool V1BLEClient::initBLE(bool enableProxy, const char* proxyName) {
     if (!pClient_) {
         pClient_ = NimBLEDevice::createClient();
         if (!pClient_) {
-            Serial.println("ERROR: Failed to create BLE client");
+            Serial.println("[BLE] ERROR: Failed to create BLE client");
             return false;
         }
 

@@ -122,7 +122,7 @@ void SettingsManager::load() {
         Serial.printf("[Settings] WARN: Failed to open namespace %s, falling back to legacy\n", activeNs.c_str());
         activeNs = SETTINGS_NS_LEGACY;
         if (!preferences_.begin(activeNs.c_str(), true)) {
-            Serial.println("ERROR: Failed to open preferences_ for reading!");
+            Serial.println("[Settings] ERROR: Failed to open preferences for reading!");
             return;
         }
     }

@@ -57,12 +57,12 @@ bool BatteryManager::begin() {
     // During button boot, GPIO16 is LOW (button pressed) but we still need the latch
     BATTERY_LOGLN("[Battery] Initializing power latch (required for battery operation)...");
     if (!initTCA9554()) {
-        Serial.println("[Battery] WARNING: TCA9554 init failed - power latch unavailable");
+        Serial.println("[Battery] WARN: TCA9554 init failed - power latch unavailable");
     } else {
         if (latchPowerOn()) {
             BATTERY_LOGLN("[Battery] Power latch engaged - device will stay on after button release");
         } else {
-            Serial.println("[Battery] WARNING: Power latch verification failed!");
+            Serial.println("[Battery] WARN: Power latch verification failed!");
         }
     }
 
@@ -99,7 +99,7 @@ bool BatteryManager::begin() {
 
     // Initialize ADC for battery voltage reading
     if (!initADC()) {
-        Serial.println("[Battery] WARNING: ADC init failed, voltage monitoring disabled");
+        Serial.println("[Battery] WARN: ADC init failed, voltage monitoring disabled");
     }
 
     // Read initial voltage for diagnostics
@@ -110,11 +110,11 @@ bool BatteryManager::begin() {
 
         // Sanity check: if we think we're on USB but voltage looks like battery
         if (!onBattery_ && initialVoltage > BATTERY_EMPTY_MV && initialVoltage < BATTERY_FULL_MV + 500) {
-            Serial.printf("[Battery] WARNING: USB mode but battery voltage detected (%dmV)\n", initialVoltage);
+            Serial.printf("[Battery] WARN: USB mode but battery voltage detected (%dmV)\n", initialVoltage);
         }
         // Sanity check: if we think we're on battery but voltage is too low or zero
         if (onBattery_ && initialVoltage < BATTERY_EMPTY_MV) {
-            Serial.printf("[Battery] WARNING: Battery mode but voltage too low (%dmV)\n", initialVoltage);
+            Serial.printf("[Battery] WARN: Battery mode but voltage too low (%dmV)\n", initialVoltage);
         }
     }
 
@@ -447,7 +447,7 @@ bool BatteryManager::latchPowerOn() {
                  latchHigh ? "HIGH" : "LOW", current);
 
     if (!latchHigh) {
-        Serial.println("[Battery] WARNING: Latch is LOW - forcing HIGH!");
+        Serial.println("[Battery] WARN: Latch is LOW - forcing HIGH!");
         return setTCA9554Pin(TCA9554_PWR_LATCH_PIN, true);
     }
 

@@ -301,7 +301,7 @@ void BleQueueModule::process() {
 
         size_t packetSize = 6 + lenField;
         if (packetSize > MAX_PACKET_SIZE) {
-            Serial.printf("WARNING: BLE packet too large (%u bytes) - resyncing\n", (unsigned)packetSize);
+            Serial.printf("[BLE] WARN: BLE packet too large (%u bytes) - resyncing\n", (unsigned)packetSize);
             rxReadPos++;
             continue;
         }
@@ -309,7 +309,7 @@ void BleQueueModule::process() {
             break;
         }
         if (rxBuffer[rxReadPos + packetSize - 1] != ESP_PACKET_END) {
-            Serial.println("WARNING: Packet missing end marker - resyncing");
+            Serial.println("[BLE] WARN: Packet missing end marker - resyncing");
             rxReadPos++;
             continue;
         }
