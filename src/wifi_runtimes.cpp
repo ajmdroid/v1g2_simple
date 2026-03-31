@@ -51,10 +51,10 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
         }, nullptr,
         [](String& json, void* ctx) {
             auto* mgr = static_cast<WiFiManager*>(ctx);
-            if (!mgr->getPushStatusJson) {
+            if (!mgr->getPushStatusJson_) {
                 return false;
             }
-            json = mgr->getPushStatusJson(mgr->getPushStatusJsonCtx);
+            json = mgr->getPushStatusJson_(mgr->getPushStatusJsonCtx_);
             return true;
         }, this,
         [](const WifiAutoPushApiService::SlotUpdateRequest& request, void* /*ctx*/) {
@@ -176,10 +176,10 @@ WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
         }, nullptr,
         [](const WifiAutoPushApiService::PushNowRequest& request, void* ctx) {
             auto* mgr = static_cast<WiFiManager*>(ctx);
-            if (!mgr->queuePushNow) {
+            if (!mgr->queuePushNow_) {
                 return WifiAutoPushApiService::PushNowQueueResult::PROFILE_LOAD_FAILED;
             }
-            return mgr->queuePushNow(request, mgr->queuePushNowCtx);
+            return mgr->queuePushNow_(request, mgr->queuePushNowCtx_);
         }, this,
     };
 }
@@ -234,7 +234,7 @@ WifiAudioApiService::Runtime WiFiManager::makeAudioRuntime() {
 WifiStatusApiService::StatusRuntime WiFiManager::makeStatusRuntime() {
     return WifiStatusApiService::StatusRuntime{
         [](void* ctx) { return static_cast<WiFiManager*>(ctx)->isSetupModeActive(); }, this,
-        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->wifiClientState == WIFI_CLIENT_CONNECTED; }, this,
+        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->wifiClientState_ == WIFI_CLIENT_CONNECTED; }, this,
         [](void* /*ctx*/) { return WiFi.localIP().toString(); }, nullptr,
         [](void* ctx) { return static_cast<WiFiManager*>(ctx)->getAPIPAddress(); }, this,
         [](void* /*ctx*/) { return WiFi.SSID(); }, nullptr,
@@ -257,9 +257,9 @@ WifiStatusApiService::StatusRuntime WiFiManager::makeStatusRuntime() {
         [](void* /*ctx*/) { return batteryManager.isOnBattery(); }, nullptr,
         [](void* /*ctx*/) { return batteryManager.hasBattery(); }, nullptr,
         [](void* /*ctx*/) { return bleClient.isConnected(); }, nullptr,
-        mergeStatus, mergeStatusCtx,
-        mergeStatus2, mergeStatus2Ctx,
-        mergeAlert, mergeAlertCtx,
+        mergeStatus_, mergeStatusCtx_,
+        mergeStatus2_, mergeStatus2Ctx_,
+        mergeAlert_, mergeAlertCtx_,
     };
 }
 
@@ -282,9 +282,9 @@ WifiClientApiService::Runtime WiFiManager::makeWifiClientRuntime() {
     return WifiClientApiService::Runtime{
         [](void* /*ctx*/) { return settingsManager.get().wifiClientEnabled; }, nullptr,
         [](void* /*ctx*/) { return settingsManager.get().wifiClientSSID; }, nullptr,
-        [](void* ctx) { return wifiClientStateApiName(static_cast<WiFiManager*>(ctx)->wifiClientState); }, this,
-        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->wifiScanRunning; }, this,
-        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->wifiClientState == WIFI_CLIENT_CONNECTED; }, this,
+        [](void* ctx) { return wifiClientStateApiName(static_cast<WiFiManager*>(ctx)->wifiClientState_); }, this,
+        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->wifiScanRunning_; }, this,
+        [](void* ctx) { return static_cast<WiFiManager*>(ctx)->wifiClientState_ == WIFI_CLIENT_CONNECTED; }, this,
         [](void* /*ctx*/) {
             WifiClientApiService::ConnectedNetworkPayload payload;
             payload.ssid = WiFi.SSID();

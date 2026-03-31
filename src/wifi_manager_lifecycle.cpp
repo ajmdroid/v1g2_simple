@@ -79,12 +79,12 @@ static WifiHeapGuardModule sWifiHeapGuardModule;
 static WifiAutoTimeoutModule sWifiAutoTimeoutModule;
 
 unsigned long WiFiManager::lowDmaCooldownRemainingMs() const {
-    if (lowDmaCooldownUntilMs == 0) {
+    if (lowDmaCooldownUntilMs_ == 0) {
         return 0;
     }
 
     unsigned long now = millis();
-    long remaining = static_cast<long>(lowDmaCooldownUntilMs - now);
+    long remaining = static_cast<long>(lowDmaCooldownUntilMs_ - now);
     return (remaining > 0) ? static_cast<unsigned long>(remaining) : 0;
 }
 
@@ -125,26 +125,26 @@ bool WiFiManager::startSetupMode(const bool autoStarted) {
         PERF_MAX(wifiStartApBringupMaxUs, elapsedUs);
         perfRecordWifiStartApBringupUs(elapsedUs);
     };
-    const bool restartingFromStopping = (setupModeState == SETUP_MODE_STOPPING);
+    const bool restartingFromStopping = (setupModeState_ == SETUP_MODE_STOPPING);
     const auto cancelDeferredStopForRestart = [this]() {
-        setupModeState = SETUP_MODE_OFF;
-        apInterfaceEnabled = false;
-        wifiStopPhase = WifiStopPhase::IDLE;
-        wifiStopPhaseStartMs = 0;
-        wifiStopStartMs = 0;
-        wifiStopReason = "";
-        wifiStopManual = false;
-        wifiStopHadSta = false;
-        wifiStopHadAp = false;
-        allowBoundaryTransitionWork = false;
+        setupModeState_ = SETUP_MODE_OFF;
+        apInterfaceEnabled_ = false;
+        wifiStopPhase_ = WifiStopPhase::IDLE;
+        wifiStopPhaseStartMs_ = 0;
+        wifiStopStartMs_ = 0;
+        wifiStopReason_ = "";
+        wifiStopManual_ = false;
+        wifiStopHadSta_ = false;
+        wifiStopHadAp_ = false;
+        allowBoundaryTransitionWork_ = false;
     };
 
     if (restartingFromStopping) {
         WIFI_LOG("[SetupMode] Cancelling deferred stop and restarting WiFi service\n");
     }
 
-    if (setupModeState == SETUP_MODE_AP_ON) {
-        if (apInterfaceEnabled) {
+    if (setupModeState_ == SETUP_MODE_AP_ON) {
+        if (apInterfaceEnabled_) {
             WIFI_LOG("[SetupMode] Already active\n");
             return true;
         }
@@ -157,18 +157,18 @@ bool WiFiManager::startSetupMode(const bool autoStarted) {
             }
         } else if (WiFi.getMode() != WIFI_AP) {
             WiFi.mode(WIFI_AP);
-            wifiClientState = WIFI_CLIENT_DISABLED;
+            wifiClientState_ = WIFI_CLIENT_DISABLED;
         }
 
         resetReconnectFailures();
         WiFi.setTxPower(WIFI_POWER_5dBm);
         setupAP();
-        apInterfaceEnabled = true;
-        lastClientSeenMs = millis();
-        lastAnyClientSeenMs = lastClientSeenMs;
-        lastApStaCountPollMs = 0;
-        cachedApStaCount = 0;
-        wasAutoStarted = autoStarted;
+        apInterfaceEnabled_ = true;
+        lastClientSeenMs_ = millis();
+        lastAnyClientSeenMs_ = lastClientSeenMs_;
+        lastApStaCountPollMs_ = 0;
+        cachedApStaCount_ = 0;
+        wasAutoStarted_ = autoStarted;
         perfRecordWifiApTransition(
             true,
             static_cast<uint8_t>(PerfWifiApTransitionReason::Startup),
@@ -229,26 +229,26 @@ bool WiFiManager::startSetupMode(const bool autoStarted) {
         cancelDeferredStopForRestart();
     }
 
-    setupModeStartTime = millis();
-    lastClientSeenMs = setupModeStartTime;
-    lastAnyClientSeenMs = setupModeStartTime;
-    lastApStaCountPollMs = 0;
-    cachedApStaCount = 0;
-    lastMaintenanceFastMs = 0;
-    lastStatusCheckMs = 0;
-    lastTimeoutCheckMs = 0;
-    lowDmaSinceMs = 0;
-    lowDmaCooldownUntilMs = 0;
+    setupModeStartTime_ = millis();
+    lastClientSeenMs_ = setupModeStartTime_;
+    lastAnyClientSeenMs_ = setupModeStartTime_;
+    lastApStaCountPollMs_ = 0;
+    cachedApStaCount_ = 0;
+    lastMaintenanceFastMs_ = 0;
+    lastStatusCheckMs_ = 0;
+    lastTimeoutCheckMs_ = 0;
+    lowDmaSinceMs_ = 0;
+    lowDmaCooldownUntilMs_ = 0;
     resetReconnectFailures();
 
     // Check if WiFi client is enabled - use AP+STA mode
     if (apStaMode) {
         WIFI_LOG("[SetupMode] WiFi client enabled, using AP+STA mode\n");
         WiFi.mode(WIFI_AP_STA);
-        wifiClientState = WIFI_CLIENT_DISCONNECTED;
+        wifiClientState_ = WIFI_CLIENT_DISCONNECTED;
     } else {
         WiFi.mode(WIFI_AP);
-        wifiClientState = WIFI_CLIENT_DISABLED;
+        wifiClientState_ = WIFI_CLIENT_DISABLED;
     }
     WiFi.setTxPower(WIFI_POWER_5dBm);
     Serial.println("[WiFi] TX power 5dBm (low RF for BLE coex)");
@@ -264,12 +264,12 @@ bool WiFiManager::startSetupMode(const bool autoStarted) {
 
     // Collect headers for GZIP support and caching
     const char* headerKeys[] = {"Accept-Encoding", "If-None-Match"};
-    server.collectHeaders(headerKeys, 2);
+    server_.collectHeaders(headerKeys, 2);
 
-    server.begin();
-    setupModeState = SETUP_MODE_AP_ON;
-    apInterfaceEnabled = true;
-    wasAutoStarted = autoStarted;
+    server_.begin();
+    setupModeState_ = SETUP_MODE_AP_ON;
+    apInterfaceEnabled_ = true;
+    wasAutoStarted_ = autoStarted;
     perfRecordWifiApTransition(
         true,
         static_cast<uint8_t>(PerfWifiApTransitionReason::Startup),
@@ -318,9 +318,9 @@ bool WiFiManager::stopSetupModeImmediate(bool emergencyLowDma) {
     if (emergencyLowDma) {
         // Emergency path: prioritize low-latency return to BLE/display loop.
         WIFI_LOG("[SetupMode] Emergency low_dma shutdown (fast path)\n");
-        lowDmaCooldownUntilMs = millis() + WIFI_LOW_DMA_RETRY_COOLDOWN_MS;
+        lowDmaCooldownUntilMs_ = millis() + WIFI_LOW_DMA_RETRY_COOLDOWN_MS;
         const uint32_t httpStopStartUs = PERF_TIMESTAMP_US();
-        server.stop();
+        server_.stop();
         recordHttpStop(PERF_TIMESTAMP_US() - httpStopStartUs);
         const uint32_t modeOffStartUs = PERF_TIMESTAMP_US();
         WiFi.mode(WIFI_OFF);
@@ -334,21 +334,21 @@ bool WiFiManager::stopSetupModeImmediate(bool emergencyLowDma) {
     const bool modeHasSta = (currentMode == WIFI_AP_STA || currentMode == WIFI_STA);
     const bool modeHasAp = (currentMode == WIFI_AP_STA || currentMode == WIFI_AP);
 
-    // Stop server first, then release STA/AP without erasing configured credentials.
+    // Stop server_ first, then release STA/AP without erasing configured credentials.
     const uint32_t httpStopStartUs = PERF_TIMESTAMP_US();
-    server.stop();
+    server_.stop();
     recordHttpStop(PERF_TIMESTAMP_US() - httpStopStartUs);
-    WIFI_LOG("[SetupMode] HTTP server stopped\n");
+    WIFI_LOG("[SetupMode] HTTP server_ stopped\n");
     if (modeHasSta &&
-        (wifiClientState == WIFI_CLIENT_CONNECTED ||
-         wifiClientState == WIFI_CLIENT_CONNECTING ||
+        (wifiClientState_ == WIFI_CLIENT_CONNECTED ||
+         wifiClientState_ == WIFI_CLIENT_CONNECTING ||
          WiFi.status() == WL_CONNECTED)) {
         const uint32_t staDisconnectStartUs = PERF_TIMESTAMP_US();
         WiFi.disconnect(false, false);
         recordStaDisconnect(PERF_TIMESTAMP_US() - staDisconnectStartUs);
         WIFI_LOG("[SetupMode] STA disconnected\n");
     }
-    if (modeHasAp || apInterfaceEnabled) {
+    if (modeHasAp || apInterfaceEnabled_) {
         const uint32_t apDisableStartUs = PERF_TIMESTAMP_US();
         if (!WiFi.enableAP(false)) {
             WiFi.softAPdisconnect(true);
@@ -366,44 +366,44 @@ bool WiFiManager::stopSetupModeImmediate(bool emergencyLowDma) {
 }
 
 void WiFiManager::finalizeStopSetupMode() {
-    const String stopReason = wifiStopReason;
-    const bool stopManual = wifiStopManual;
-    const uint32_t stopDurMs = millis() - wifiStopStartMs;
+    const String stopReason = wifiStopReason_;
+    const bool stopManual = wifiStopManual_;
+    const uint32_t stopDurMs = millis() - wifiStopStartMs_;
 
     // ========== RESET ALL STATE ==========
-    setupModeState = SETUP_MODE_OFF;
-    apInterfaceEnabled = false;
+    setupModeState_ = SETUP_MODE_OFF;
+    apInterfaceEnabled_ = false;
     perfRecordWifiApTransition(false, wifiApStopReasonCode(stopReason, stopManual), millis());
-    wifiClientState = WIFI_CLIENT_DISABLED;
-    wifiScanRunning = false;
-    wifiConnectStartMs = 0;
-    wifiConnectPhase = WifiConnectPhase::IDLE;
-    wifiConnectPhaseStartMs = 0;
-    pendingConnectSSID = "";
-    pendingConnectPassword = "";
-    pendingConnectPersistCredentials = true;
-    lastUiActivityMs = 0;
-    lastClientSeenMs = 0;
-    lastAnyClientSeenMs = 0;
-    lastApStaCountPollMs = 0;
-    cachedApStaCount = 0;
-    lastMaintenanceFastMs = 0;
-    lastStatusCheckMs = 0;
-    lastTimeoutCheckMs = 0;
-    lastReconnectAttemptMs = 0;
-    wifiReconnectDeferredLogged = false;
-    wasAutoStarted = false;
-    lowDmaSinceMs = 0;
-    allowBoundaryTransitionWork = false;
-    wifiStopPhase = WifiStopPhase::IDLE;
-    wifiStopPhaseStartMs = 0;
-    wifiStopStartMs = 0;
-    wifiStopReason = "";
-    wifiStopManual = false;
-    wifiStopHadSta = false;
-    wifiStopHadAp = false;
-    BackupApiService::releaseBackupSnapshotCache(cachedBackupSnapshot);
-    WifiStatusApiService::releaseStatusJsonCache(cachedStatusJson, lastStatusJsonTime);
+    wifiClientState_ = WIFI_CLIENT_DISABLED;
+    wifiScanRunning_ = false;
+    wifiConnectStartMs_ = 0;
+    wifiConnectPhase_ = WifiConnectPhase::IDLE;
+    wifiConnectPhaseStartMs_ = 0;
+    pendingConnectSSID_ = "";
+    pendingConnectPassword_ = "";
+    pendingConnectPersistCredentials_ = true;
+    lastUiActivityMs_ = 0;
+    lastClientSeenMs_ = 0;
+    lastAnyClientSeenMs_ = 0;
+    lastApStaCountPollMs_ = 0;
+    cachedApStaCount_ = 0;
+    lastMaintenanceFastMs_ = 0;
+    lastStatusCheckMs_ = 0;
+    lastTimeoutCheckMs_ = 0;
+    lastReconnectAttemptMs_ = 0;
+    wifiReconnectDeferredLogged_ = false;
+    wasAutoStarted_ = false;
+    lowDmaSinceMs_ = 0;
+    allowBoundaryTransitionWork_ = false;
+    wifiStopPhase_ = WifiStopPhase::IDLE;
+    wifiStopPhaseStartMs_ = 0;
+    wifiStopStartMs_ = 0;
+    wifiStopReason_ = "";
+    wifiStopManual_ = false;
+    wifiStopHadSta_ = false;
+    wifiStopHadAp_ = false;
+    BackupApiService::releaseBackupSnapshotCache(cachedBackupSnapshot_);
+    WifiStatusApiService::releaseStatusJsonCache(cachedStatusJson_, lastStatusJsonTime_);
 
     // ========== OBSERVABILITY ==========
     uint32_t freeInternalAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -419,38 +419,38 @@ void WiFiManager::finalizeStopSetupMode() {
 }
 
 void WiFiManager::processStopSetupModePhase() {
-    if (wifiStopPhase == WifiStopPhase::IDLE) {
+    if (wifiStopPhase_ == WifiStopPhase::IDLE) {
         return;
     }
 
     const unsigned long now = millis();
-    if (wifiStopPhase != WifiStopPhase::STOP_HTTP_SERVER &&
-        (now - wifiStopPhaseStartMs) < WIFI_STOP_PHASE_SETTLE_MS) {
+    if (wifiStopPhase_ != WifiStopPhase::STOP_HTTP_SERVER &&
+        (now - wifiStopPhaseStartMs_) < WIFI_STOP_PHASE_SETTLE_MS) {
         return;
     }
-    if (wifiStopPhase != WifiStopPhase::FINALIZE && !allowBoundaryTransitionWork) {
+    if (wifiStopPhase_ != WifiStopPhase::FINALIZE && !allowBoundaryTransitionWork_) {
         return;
     }
 
-    switch (wifiStopPhase) {
+    switch (wifiStopPhase_) {
         case WifiStopPhase::STOP_HTTP_SERVER:
         {
             const uint32_t phaseStartUs = PERF_TIMESTAMP_US();
-            server.stop();
+            server_.stop();
             const uint32_t phaseUs = PERF_TIMESTAMP_US() - phaseStartUs;
             PERF_MAX(wifiStopHttpServerMaxUs, phaseUs);
             perfRecordWifiStopHttpServerUs(phaseUs);
-            WIFI_LOG("[SetupMode] Graceful stop phase: HTTP server stopped\n");
-            wifiStopPhase = WifiStopPhase::DISCONNECT_STA;
-            wifiStopPhaseStartMs = now;
+            WIFI_LOG("[SetupMode] Graceful stop phase: HTTP server_ stopped\n");
+            wifiStopPhase_ = WifiStopPhase::DISCONNECT_STA;
+            wifiStopPhaseStartMs_ = now;
             break;
         }
 
         case WifiStopPhase::DISCONNECT_STA:
         {
-            if (wifiStopHadSta &&
-                (wifiClientState == WIFI_CLIENT_CONNECTED ||
-                 wifiClientState == WIFI_CLIENT_CONNECTING ||
+            if (wifiStopHadSta_ &&
+                (wifiClientState_ == WIFI_CLIENT_CONNECTED ||
+                 wifiClientState_ == WIFI_CLIENT_CONNECTING ||
                  WiFi.status() == WL_CONNECTED)) {
                 const uint32_t phaseStartUs = PERF_TIMESTAMP_US();
                 WiFi.disconnect(false, false);
@@ -459,14 +459,14 @@ void WiFiManager::processStopSetupModePhase() {
                 perfRecordWifiStopStaDisconnectUs(phaseUs);
                 WIFI_LOG("[SetupMode] Graceful stop phase: STA disconnected\n");
             }
-            wifiStopPhase = WifiStopPhase::DISABLE_AP;
-            wifiStopPhaseStartMs = now;
+            wifiStopPhase_ = WifiStopPhase::DISABLE_AP;
+            wifiStopPhaseStartMs_ = now;
             break;
         }
 
         case WifiStopPhase::DISABLE_AP:
         {
-            if (wifiStopHadAp || apInterfaceEnabled) {
+            if (wifiStopHadAp_ || apInterfaceEnabled_) {
                 const uint32_t phaseStartUs = PERF_TIMESTAMP_US();
                 if (!WiFi.enableAP(false)) {
                     WiFi.softAPdisconnect(true);
@@ -474,17 +474,17 @@ void WiFiManager::processStopSetupModePhase() {
                 const uint32_t phaseUs = PERF_TIMESTAMP_US() - phaseStartUs;
                 PERF_MAX(wifiStopApDisableMaxUs, phaseUs);
                 perfRecordWifiStopApDisableUs(phaseUs);
-                apInterfaceEnabled = false;
+                apInterfaceEnabled_ = false;
                 perfRecordWifiApTransition(
                     false,
-                    wifiApStopReasonCode(wifiStopReason, wifiStopManual),
+                    wifiApStopReasonCode(wifiStopReason_, wifiStopManual_),
                     now);
-                cachedApStaCount = 0;
-                lastApStaCountPollMs = 0;
+                cachedApStaCount_ = 0;
+                lastApStaCountPollMs_ = 0;
                 WIFI_LOG("[SetupMode] Graceful stop phase: AP disabled\n");
             }
-            wifiStopPhase = WifiStopPhase::MODE_OFF;
-            wifiStopPhaseStartMs = now;
+            wifiStopPhase_ = WifiStopPhase::MODE_OFF;
+            wifiStopPhaseStartMs_ = now;
             break;
         }
 
@@ -496,8 +496,8 @@ void WiFiManager::processStopSetupModePhase() {
             PERF_MAX(wifiStopModeOffMaxUs, phaseUs);
             perfRecordWifiStopModeOffUs(phaseUs);
             WIFI_LOG("[SetupMode] Graceful stop phase: radio OFF\n");
-            wifiStopPhase = WifiStopPhase::FINALIZE;
-            wifiStopPhaseStartMs = now;
+            wifiStopPhase_ = WifiStopPhase::FINALIZE;
+            wifiStopPhaseStartMs_ = now;
             break;
         }
 
@@ -512,8 +512,8 @@ void WiFiManager::processStopSetupModePhase() {
 }
 
 bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
-    if (setupModeState != SETUP_MODE_AP_ON &&
-        setupModeState != SETUP_MODE_STOPPING) {
+    if (setupModeState_ != SETUP_MODE_AP_ON &&
+        setupModeState_ != SETUP_MODE_STOPPING) {
         return false;
     }
 
@@ -533,12 +533,12 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
                   (unsigned long)freeInternalBefore,
                   (unsigned long)largestInternalBefore);
 
-    if (wifiStopPhase != WifiStopPhase::IDLE) {
+    if (wifiStopPhase_ != WifiStopPhase::IDLE) {
         if (forceImmediate) {
             sWifiStopReasonModule.recordStopRequest(stopReason, manual, true);
-            wifiStopReason = stopReason;
-            wifiStopManual = manual;
-            wifiStopStartMs = stopStartMs;
+            wifiStopReason_ = stopReason;
+            wifiStopManual_ = manual;
+            wifiStopStartMs_ = stopStartMs;
             return stopSetupModeImmediate(emergencyLowDma);
         }
         WIFI_LOG("[SetupMode] stopSetupMode ignored (already stopping)\n");
@@ -546,34 +546,34 @@ bool WiFiManager::stopSetupMode(bool manual, const char* reason) {
     }
 
     sWifiStopReasonModule.recordStopRequest(stopReason, manual, forceImmediate);
-    lowDmaSinceMs = 0;
-    wifiStopReason = stopReason;
-    wifiStopManual = manual;
-    wifiStopStartMs = stopStartMs;
+    lowDmaSinceMs_ = 0;
+    wifiStopReason_ = stopReason;
+    wifiStopManual_ = manual;
+    wifiStopStartMs_ = stopStartMs;
 
     if (forceImmediate) {
         return stopSetupModeImmediate(emergencyLowDma);
     }
 
-    setupModeState = SETUP_MODE_STOPPING;
-    lastUiActivityMs = 0;
-    allowBoundaryTransitionWork = false;
-    wifiConnectStartMs = 0;
-    wifiConnectPhase = WifiConnectPhase::IDLE;
-    wifiConnectPhaseStartMs = 0;
-    pendingConnectSSID = "";
-    pendingConnectPassword = "";
-    pendingConnectPersistCredentials = true;
+    setupModeState_ = SETUP_MODE_STOPPING;
+    lastUiActivityMs_ = 0;
+    allowBoundaryTransitionWork_ = false;
+    wifiConnectStartMs_ = 0;
+    wifiConnectPhase_ = WifiConnectPhase::IDLE;
+    wifiConnectPhaseStartMs_ = 0;
+    pendingConnectSSID_ = "";
+    pendingConnectPassword_ = "";
+    pendingConnectPersistCredentials_ = true;
 
     const wifi_mode_t currentMode = WiFi.getMode();
-    wifiStopHadSta = (currentMode == WIFI_AP_STA || currentMode == WIFI_STA);
-    wifiStopHadAp = (currentMode == WIFI_AP_STA || currentMode == WIFI_AP || apInterfaceEnabled);
-    wifiStopPhase = WifiStopPhase::STOP_HTTP_SERVER;
-    wifiStopPhaseStartMs = stopStartMs;
+    wifiStopHadSta_ = (currentMode == WIFI_AP_STA || currentMode == WIFI_STA);
+    wifiStopHadAp_ = (currentMode == WIFI_AP_STA || currentMode == WIFI_AP || apInterfaceEnabled_);
+    wifiStopPhase_ = WifiStopPhase::STOP_HTTP_SERVER;
+    wifiStopPhaseStartMs_ = stopStartMs;
     WIFI_LOG("[SetupMode] Graceful stop scheduled: reason=%s hasSta=%d hasAp=%d\n",
              stopReason,
-             wifiStopHadSta ? 1 : 0,
-             wifiStopHadAp ? 1 : 0);
+             wifiStopHadSta_ ? 1 : 0,
+             wifiStopHadAp_ ? 1 : 0);
     return true;
 }
 
@@ -610,26 +610,26 @@ void WiFiManager::checkAutoTimeout() {
     if (!isSetupModeActive()) return;
 
     unsigned long now = millis();
-    int staCount = cachedApStaCount;
-    if (lastApStaCountPollMs == 0 ||
-        (now - lastApStaCountPollMs) >= AP_STA_COUNT_POLL_MS) {
+    int staCount = cachedApStaCount_;
+    if (lastApStaCountPollMs_ == 0 ||
+        (now - lastApStaCountPollMs_) >= AP_STA_COUNT_POLL_MS) {
         // softAPgetStationNum() can be slow on some loops; cache short-term to
         // reduce loop jitter without changing timeout semantics materially.
         staCount = WiFi.softAPgetStationNum();
-        cachedApStaCount = staCount;
-        lastApStaCountPollMs = now;
+        cachedApStaCount_ = staCount;
+        lastApStaCountPollMs_ = now;
     }
     if (staCount > 0) {
-        lastClientSeenMs = now;
+        lastClientSeenMs_ = now;
     }
 
     WifiAutoTimeoutInput timeoutInput;
     timeoutInput.timeoutMins = timeoutMins;
     timeoutInput.setupModeActive = isSetupModeActive();
     timeoutInput.nowMs = now;
-    timeoutInput.setupModeStartMs = setupModeStartTime;
-    timeoutInput.lastClientSeenMs = lastClientSeenMs;
-    timeoutInput.lastUiActivityMs = lastUiActivityMs;
+    timeoutInput.setupModeStartMs = setupModeStartTime_;
+    timeoutInput.lastClientSeenMs = lastClientSeenMs_;
+    timeoutInput.lastUiActivityMs = lastUiActivityMs_;
     timeoutInput.staCount = staCount;
     timeoutInput.inactivityGraceMs = WIFI_AP_INACTIVITY_GRACE_MS;
     const WifiAutoTimeoutResult timeoutResult = sWifiAutoTimeoutModule.evaluate(timeoutInput);
@@ -641,9 +641,9 @@ void WiFiManager::checkAutoTimeout() {
 }
 
 void WiFiManager::process() {
-    if (setupModeState != SETUP_MODE_AP_ON &&
-        setupModeState != SETUP_MODE_STOPPING) {
-        lowDmaSinceMs = 0;
+    if (setupModeState_ != SETUP_MODE_AP_ON &&
+        setupModeState_ != SETUP_MODE_STOPPING) {
+        lowDmaSinceMs_ = 0;
         return;  // No WiFi processing when Setup Mode is off
     }
 
@@ -653,13 +653,13 @@ void WiFiManager::process() {
     };
 
     // Graceful shutdown runs as a staged sequence to avoid long stop-time stalls.
-    if (wifiStopPhase != WifiStopPhase::IDLE) {
+    if (wifiStopPhase_ != WifiStopPhase::IDLE) {
         processStopSetupModePhase();
         finalizeProcessTiming();
         return;
     }
-    if (setupModeState == SETUP_MODE_STOPPING) {
-        lowDmaSinceMs = 0;
+    if (setupModeState_ == SETUP_MODE_STOPPING) {
+        lowDmaSinceMs_ = 0;
         finalizeProcessTiming();
         return;
     }
@@ -695,8 +695,8 @@ void WiFiManager::process() {
 
     if (lowHeap) {
         const unsigned long now = millis();
-        if (lowDmaSinceMs == 0) {
-            lowDmaSinceMs = now;
+        if (lowDmaSinceMs_ == 0) {
+            lowDmaSinceMs_ = now;
             Serial.printf("[WiFi] WARN: Internal SRAM low (mode=%s free=%lu block=%lu need>=%lu/%lu) - grace %lu ms\n",
                           heapGuard.modeLabel,
                           (unsigned long)freeInternal,
@@ -704,13 +704,13 @@ void WiFiManager::process() {
                           (unsigned long)criticalFree,
                           (unsigned long)criticalBlock,
                           (unsigned long)WIFI_LOW_DMA_PERSIST_MS);
-        } else if ((now - lowDmaSinceMs) >= WIFI_LOW_DMA_PERSIST_MS) {
+        } else if ((now - lowDmaSinceMs_) >= WIFI_LOW_DMA_PERSIST_MS) {
             WIFI_LOG("[WiFi] CRITICAL: Internal SRAM low for %lu ms (free=%lu, block=%lu) - emergency shutdown\n",
-                     (unsigned long)(now - lowDmaSinceMs),
+                     (unsigned long)(now - lowDmaSinceMs_),
                      (unsigned long)freeInternal,
                      (unsigned long)largestInternal);
             Serial.printf("[WiFi] CRITICAL: Internal SRAM low for %lu ms (free=%lu block=%lu) - stopping WiFi\n",
-                          (unsigned long)(now - lowDmaSinceMs),
+                          (unsigned long)(now - lowDmaSinceMs_),
                           (unsigned long)freeInternal,
                           (unsigned long)largestInternal);
 
@@ -722,7 +722,7 @@ void WiFiManager::process() {
                     Serial.println("[WiFi] WARN: enableAP(false) failed during low-SRAM AP drop; falling back to softAPdisconnect");
                     WiFi.softAPdisconnect(true);
                 }
-                apInterfaceEnabled = false;
+                apInterfaceEnabled_ = false;
                 perfRecordWifiApTransition(
                     false,
                     static_cast<uint8_t>(PerfWifiApTransitionReason::DropLowDma),
@@ -730,21 +730,21 @@ void WiFiManager::process() {
 
                 const wl_status_t staStatus = WiFi.status();
                 if (staStatus == WL_CONNECTED) {
-                    wifiClientState = WIFI_CLIENT_CONNECTED;
-                    wifiReconnectFailures = 0;
-                } else if (wifiClientState == WIFI_CLIENT_CONNECTING) {
+                    wifiClientState_ = WIFI_CLIENT_CONNECTED;
+                    wifiReconnectFailures_ = 0;
+                } else if (wifiClientState_ == WIFI_CLIENT_CONNECTING) {
                     // Keep connect workflow active and let status polling settle.
-                    wifiClientState = WIFI_CLIENT_CONNECTING;
+                    wifiClientState_ = WIFI_CLIENT_CONNECTING;
                 } else {
-                    wifiClientState = WIFI_CLIENT_DISCONNECTED;
+                    wifiClientState_ = WIFI_CLIENT_DISCONNECTED;
                 }
 
                 // Cancel staged mode-switch workflow; reconnect logic can resume normally.
-                wifiConnectPhase = WifiConnectPhase::IDLE;
-                wifiConnectPhaseStartMs = 0;
-                lowDmaCooldownUntilMs = now + WIFI_LOW_DMA_RETRY_COOLDOWN_MS;
-                lowDmaSinceMs = 0;
-                Serial.printf("[WiFi] AP dropped; STA status=%s\n", wifiClientStateApiName(wifiClientState));
+                wifiConnectPhase_ = WifiConnectPhase::IDLE;
+                wifiConnectPhaseStartMs_ = 0;
+                lowDmaCooldownUntilMs_ = now + WIFI_LOW_DMA_RETRY_COOLDOWN_MS;
+                lowDmaSinceMs_ = 0;
+                Serial.printf("[WiFi] AP dropped; STA status=%s\n", wifiClientStateApiName(wifiClientState_));
                 finalizeProcessTiming();
                 return;
             }
@@ -753,42 +753,42 @@ void WiFiManager::process() {
             finalizeProcessTiming();
             return;
         }
-    } else if (lowDmaSinceMs != 0) {
-        const unsigned long lowDuration = millis() - lowDmaSinceMs;
+    } else if (lowDmaSinceMs_ != 0) {
+        const unsigned long lowDuration = millis() - lowDmaSinceMs_;
         Serial.printf("[WiFi] RECOVERED: Internal SRAM back above threshold after %lu ms\n",
                       (unsigned long)lowDuration);
-        lowDmaSinceMs = 0;
+        lowDmaSinceMs_ = 0;
     }
 
     const unsigned long now = millis();
     int apClientCount = 0;
     const bool apInterfaceActive = isSetupModeActive();
     if (apInterfaceActive) {
-        if (lastApStaCountPollMs == 0 ||
-            (now - lastApStaCountPollMs) >= AP_STA_COUNT_POLL_MS) {
+        if (lastApStaCountPollMs_ == 0 ||
+            (now - lastApStaCountPollMs_) >= AP_STA_COUNT_POLL_MS) {
             const uint32_t apStaPollStartUs = PERF_TIMESTAMP_US();
-            cachedApStaCount = WiFi.softAPgetStationNum();
-            lastApStaCountPollMs = now;
+            cachedApStaCount_ = WiFi.softAPgetStationNum();
+            lastApStaCountPollMs_ = now;
             const uint32_t apStaPollUs = PERF_TIMESTAMP_US() - apStaPollStartUs;
             PERF_MAX(wifiApStaPollMaxUs, apStaPollUs);
             perfRecordWifiApStaPollUs(apStaPollUs);
         }
-        apClientCount = cachedApStaCount;
+        apClientCount = cachedApStaCount_;
     } else {
-        cachedApStaCount = 0;
+        cachedApStaCount_ = 0;
     }
 
     const bool staConnectedNow =
-        (wifiClientState == WIFI_CLIENT_CONNECTED) || (WiFi.status() == WL_CONNECTED);
+        (wifiClientState_ == WIFI_CLIENT_CONNECTED) || (WiFi.status() == WL_CONNECTED);
     if (apInterfaceActive && apClientCount > 0) {
-        lastClientSeenMs = now;
+        lastClientSeenMs_ = now;
     }
 
     if (apInterfaceActive &&
         staConnectedNow &&
         apClientCount == 0 &&
-        lastClientSeenMs != 0 &&
-        (now - lastClientSeenMs) >= WIFI_AP_IDLE_DROP_AFTER_STA_MS) {
+        lastClientSeenMs_ != 0 &&
+        (now - lastClientSeenMs_) >= WIFI_AP_IDLE_DROP_AFTER_STA_MS) {
         sWifiStopReasonModule.recordApDropIdleSta();
         Serial.printf("[WiFi] STA connected and AP idle for %lu ms - dropping AP\n",
                       static_cast<unsigned long>(WIFI_AP_IDLE_DROP_AFTER_STA_MS));
@@ -797,16 +797,16 @@ void WiFiManager::process() {
             Serial.println("[WiFi] WARN: enableAP(false) failed during idle AP retire; falling back to softAPdisconnect");
             WiFi.softAPdisconnect(true);
         }
-        apInterfaceEnabled = false;
+        apInterfaceEnabled_ = false;
         perfRecordWifiApTransition(
             false,
             static_cast<uint8_t>(PerfWifiApTransitionReason::DropIdleSta),
             now);
-        cachedApStaCount = 0;
-        lastApStaCountPollMs = 0;
+        cachedApStaCount_ = 0;
+        lastApStaCountPollMs_ = 0;
         if (staWasConnected && WiFi.status() != WL_CONNECTED) {
             Serial.println("[WiFi] WARN: STA dropped during AP retire; reconnecting");
-            wifiClientState = WIFI_CLIENT_DISCONNECTED;
+            wifiClientState_ = WIFI_CLIENT_DISCONNECTED;
             const V1Settings& settings = settingsManager.get();
             if (settings.wifiClientEnabled && settings.wifiClientSSID.length() > 0) {
                 String savedPassword = settingsManager.getWifiClientPassword();
@@ -818,16 +818,16 @@ void WiFiManager::process() {
     }
 
     if (staConnectedNow || apClientCount > 0) {
-        lastAnyClientSeenMs = now;
-    } else if (lastAnyClientSeenMs != 0) {
-        const unsigned long noClientLimit = wasAutoStarted
+        lastAnyClientSeenMs_ = now;
+    } else if (lastAnyClientSeenMs_ != 0) {
+        const unsigned long noClientLimit = wasAutoStarted_
             ? WIFI_NO_CLIENT_SHUTDOWN_AUTO_MS
             : WIFI_NO_CLIENT_SHUTDOWN_MS;
-        if ((now - lastAnyClientSeenMs) >= noClientLimit) {
+        if ((now - lastAnyClientSeenMs_) >= noClientLimit) {
             Serial.printf("[WiFi] No AP/STA clients for %lu ms (%s) - stopping WiFi\n",
                           static_cast<unsigned long>(noClientLimit),
-                          wasAutoStarted ? "auto-start" : "manual");
-            stopSetupMode(false, wasAutoStarted ? "no_clients_auto" : "no_clients");
+                          wasAutoStarted_ ? "auto-start" : "manual");
+            stopSetupMode(false, wasAutoStarted_ ? "no_clients_auto" : "no_clients");
             finalizeProcessTiming();
             return;
         }
@@ -836,26 +836,26 @@ void WiFiManager::process() {
     // Continue serving HTTP while STA remains online even after AP is retired.
     if (isWifiServiceActive()) {
         const uint32_t handleClientStartUs = PERF_TIMESTAMP_US();
-        server.handleClient();
+        server_.handleClient();
         const uint32_t handleClientUs = PERF_TIMESTAMP_US() - handleClientStartUs;
         PERF_MAX(wifiHandleClientMaxUs, handleClientUs);
         perfRecordWifiHandleClientUs(handleClientUs);
     }
 
-    if (lastMaintenanceFastMs == 0 ||
-        (now - lastMaintenanceFastMs) >= WIFI_MAINTENANCE_FAST_MS) {
+    if (lastMaintenanceFastMs_ == 0 ||
+        (now - lastMaintenanceFastMs_) >= WIFI_MAINTENANCE_FAST_MS) {
         const uint32_t maintenanceStartUs = PERF_TIMESTAMP_US();
         processWifiClientConnectPhase();
-        lastMaintenanceFastMs = now;
+        lastMaintenanceFastMs_ = now;
         const uint32_t maintenanceUs = PERF_TIMESTAMP_US() - maintenanceStartUs;
         PERF_MAX(wifiMaintenanceMaxUs, maintenanceUs);
         perfRecordWifiMaintenanceUs(maintenanceUs);
     }
-    if (lastTimeoutCheckMs == 0 ||
-        (now - lastTimeoutCheckMs) >= WIFI_TIMEOUT_CHECK_MS) {
+    if (lastTimeoutCheckMs_ == 0 ||
+        (now - lastTimeoutCheckMs_) >= WIFI_TIMEOUT_CHECK_MS) {
         const uint32_t timeoutCheckStartUs = PERF_TIMESTAMP_US();
         checkAutoTimeout();
-        lastTimeoutCheckMs = now;
+        lastTimeoutCheckMs_ = now;
         const uint32_t timeoutCheckUs = PERF_TIMESTAMP_US() - timeoutCheckStartUs;
         PERF_MAX(wifiTimeoutCheckMaxUs, timeoutCheckUs);
         perfRecordWifiTimeoutCheckUs(timeoutCheckUs);
@@ -863,11 +863,11 @@ void WiFiManager::process() {
 
     // Check WiFi client (STA) status at a moderate cadence to avoid tight-loop
     // status polling jitter while preserving reconnect responsiveness.
-    if (lastStatusCheckMs == 0 ||
-        (now - lastStatusCheckMs) >= WIFI_STATUS_CHECK_MS) {
+    if (lastStatusCheckMs_ == 0 ||
+        (now - lastStatusCheckMs_) >= WIFI_STATUS_CHECK_MS) {
         const uint32_t statusCheckStartUs = PERF_TIMESTAMP_US();
         checkWifiClientStatus();
-        lastStatusCheckMs = now;
+        lastStatusCheckMs_ = now;
         const uint32_t statusCheckUs = PERF_TIMESTAMP_US() - statusCheckStartUs;
         PERF_MAX(wifiStatusCheckMaxUs, statusCheckUs);
         perfRecordWifiStatusCheckUs(statusCheckUs);
@@ -878,11 +878,11 @@ void WiFiManager::process() {
 // ==================== API Endpoints ====================
 
 void WiFiManager::handleNotFound() {
-    String uri = server.uri();
+    String uri = server_.uri();
 
     if (!WifiStaticPathGuard::isSafe(uri.c_str())) {
         Serial.printf("[HTTP] REJECT unsafe path %s\n", uri.c_str());
-        server.send(404, "text/plain", "Not found");
+        server_.send(404, "text/plain", "Not found");
         return;
     }
 
@@ -913,11 +913,11 @@ void WiFiManager::handleNotFound() {
     }
 
     Serial.printf("[HTTP] 404 %s\n", uri.c_str());
-    server.send(404, "text/plain", "Not found");
+    server_.send(404, "text/plain", "Not found");
 }
 
 bool WiFiManager::serveLittleFSFile(const char* path, const char* contentType) {
-    return serveLittleFSFileHelper(server, path, contentType);
+    return serveLittleFSFileHelper(server_, path, contentType);
 }
 
 

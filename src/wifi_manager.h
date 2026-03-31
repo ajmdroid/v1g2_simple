@@ -97,8 +97,8 @@ public:
     // AP control (AP-only for configuration)
     bool startSetupMode(bool autoStarted = false);      // Start or re-enable AP for configuration
     bool stopSetupMode(bool manual = false, const char* reason = nullptr); // Stop AP (manual/timeout/low_dma)
-    bool isWifiServiceActive() const { return setupModeState == SETUP_MODE_AP_ON; }
-    bool isSetupModeActive() const { return setupModeState == SETUP_MODE_AP_ON && apInterfaceEnabled; }
+    bool isWifiServiceActive() const { return setupModeState_ == SETUP_MODE_AP_ON; }
+    bool isSetupModeActive() const { return setupModeState_ == SETUP_MODE_AP_ON && apInterfaceEnabled_; }
     bool isStopping() const;
     bool hasPendingLifecycleWork() const;
     void setBoundaryTransitionAdmission(bool allow);
@@ -115,10 +115,10 @@ public:
 
     // Reset WiFi reconnect failure counter and debounce timer
     // (call when user manually triggers WiFi)
-    void resetReconnectFailures() { wifiReconnectFailures = 0; lastReconnectAttemptMs = 0; }
+    void resetReconnectFailures() { wifiReconnectFailures_ = 0; lastReconnectAttemptMs_ = 0; }
 
     // Status
-    bool isConnected() const { return !isStopping() && wifiClientState == WIFI_CLIENT_CONNECTED; }
+    bool isConnected() const { return !isStopping() && wifiClientState_ == WIFI_CLIENT_CONNECTED; }
     String getIPAddress() const;  // STA IP when connected
     String getAPIPAddress() const;
 
@@ -133,69 +133,69 @@ public:
     String getConnectedSSID() const;  // Returns empty if not connected
 
     // Callbacks for alert data (to display on web page)
-    void setAlertCallback(void (*fn)(JsonObject, void*), void* ctx) { mergeAlert = fn; mergeAlertCtx = ctx; }
-    void setStatusCallback(void (*fn)(JsonObject, void*), void* ctx) { mergeStatus = fn; mergeStatusCtx = ctx; }
+    void setAlertCallback(void (*fn)(JsonObject, void*), void* ctx) { mergeAlert_ = fn; mergeAlertCtx_ = ctx; }
+    void setStatusCallback(void (*fn)(JsonObject, void*), void* ctx) { mergeStatus_ = fn; mergeStatusCtx_ = ctx; }
     void appendStatusCallback(void (*fn)(JsonObject, void*), void* ctx) {
-        mergeStatus2 = fn;
-        mergeStatus2Ctx = ctx;
+        mergeStatus2_ = fn;
+        mergeStatus2Ctx_ = ctx;
     }
 
     // Callback for V1 commands (dark mode, mute)
-    void setCommandCallback(bool (*fn)(const char*, bool, void*), void* ctx) { sendV1Command = fn; sendV1CommandCtx = ctx; }
+    void setCommandCallback(bool (*fn)(const char*, bool, void*), void* ctx) { sendV1Command_ = fn; sendV1CommandCtx_ = ctx; }
 
     // Callback to request a profile push (manual trigger from API)
-    void setProfilePushCallback(WifiControlApiService::ProfilePushResult (*fn)(void*), void* ctx) { requestProfilePush = fn; requestProfilePushCtx = ctx; }
+    void setProfilePushCallback(WifiControlApiService::ProfilePushResult (*fn)(void*), void* ctx) { requestProfilePush_ = fn; requestProfilePushCtx_ = ctx; }
 
     // Callback for filesystem access (SD card)
-    void setFilesystemCallback(fs::FS* (*fn)(void*), void* ctx) { getFilesystem = fn; getFilesystemCtx = ctx; }
+    void setFilesystemCallback(fs::FS* (*fn)(void*), void* ctx) { getFilesystem_ = fn; getFilesystemCtx_ = ctx; }
 
     // Callback for push executor status (auto-push)
-    void setPushStatusCallback(String (*fn)(void*), void* ctx) { getPushStatusJson = fn; getPushStatusJsonCtx = ctx; }
+    void setPushStatusCallback(String (*fn)(void*), void* ctx) { getPushStatusJson_ = fn; getPushStatusJsonCtx_ = ctx; }
 
     // Callback for manual push-now requests routed through the shared executor.
     void setPushNowCallback(
         WifiAutoPushApiService::PushNowQueueResult (*fn)(
             const WifiAutoPushApiService::PushNowRequest&, void*),
         void* ctx) {
-        queuePushNow = fn;
-        queuePushNowCtx = ctx;
+        queuePushNow_ = fn;
+        queuePushNowCtx_ = ctx;
     }
 
     // Callback for V1 connection state (used to defer WiFi client operations)
-    void setV1ConnectedCallback(bool (*fn)(void*), void* ctx) { isV1Connected = fn; isV1ConnectedCtx = ctx; }
+    void setV1ConnectedCallback(bool (*fn)(void*), void* ctx) { isV1Connected_ = fn; isV1ConnectedCtx_ = ctx; }
 
     // Web activity tracking (for WiFi priority mode)
     void markUiActivity();  // Call on every HTTP request
     bool isUiActive(unsigned long timeoutMs = 30000) const;  // True if request within timeout
 
 private:
-    WebServer server;
-    bool webRoutesInitialized = false;
-    SetupModeState setupModeState;
-    bool apInterfaceEnabled = false;  // True only when softAP interface is enabled
-    unsigned long setupModeStartTime;
-    unsigned long lastClientSeenMs = 0;  // Tracks last STA presence for timeout
-    unsigned long lastApStaCountPollMs = 0;
-    int cachedApStaCount = 0;
+    WebServer server_;
+    bool webRoutesInitialized_ = false;
+    SetupModeState setupModeState_;
+    bool apInterfaceEnabled_ = false;  // True only when softAP interface is enabled
+    unsigned long setupModeStartTime_;
+    unsigned long lastClientSeenMs_ = 0;  // Tracks last STA presence for timeout
+    unsigned long lastApStaCountPollMs_ = 0;
+    int cachedApStaCount_ = 0;
     static constexpr unsigned long AP_STA_COUNT_POLL_MS = 250;
     // Keep request handling hot while amortizing lower-priority maintenance work.
     static constexpr unsigned long WIFI_MAINTENANCE_FAST_MS = 10;
     static constexpr unsigned long WIFI_STATUS_CHECK_MS = 50;
     static constexpr unsigned long WIFI_TIMEOUT_CHECK_MS = 250;
-    unsigned long lastMaintenanceFastMs = 0;
-    unsigned long lastStatusCheckMs = 0;
-    unsigned long lastTimeoutCheckMs = 0;
+    unsigned long lastMaintenanceFastMs_ = 0;
+    unsigned long lastStatusCheckMs_ = 0;
+    unsigned long lastTimeoutCheckMs_ = 0;
 
     // WiFi client (STA) state
-    WifiClientState wifiClientState = WIFI_CLIENT_DISABLED;
-    bool wifiScanRunning = false;
-    unsigned long wifiConnectStartMs = 0;
+    WifiClientState wifiClientState_ = WIFI_CLIENT_DISABLED;
+    bool wifiScanRunning_ = false;
+    unsigned long wifiConnectStartMs_ = 0;
     static constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 15000;  // 15s connection timeout
     static constexpr unsigned long WIFI_MODE_SWITCH_SETTLE_MS = 100;  // Preserve existing settle windows, non-blocking
     static constexpr unsigned long WIFI_STOP_PHASE_SETTLE_MS = 8;      // Spread teardown work over loop ticks
-    String pendingConnectSSID;
-    String pendingConnectPassword;
-    bool pendingConnectPersistCredentials = true;
+    String pendingConnectSSID_;
+    String pendingConnectPassword_;
+    bool pendingConnectPersistCredentials_ = true;
     enum class WifiConnectPhase : uint8_t {
         IDLE = 0,
         PREPARE_OFF,
@@ -204,8 +204,8 @@ private:
         WAIT_AP_STA,
         BEGIN_CONNECT,
     };
-    WifiConnectPhase wifiConnectPhase = WifiConnectPhase::IDLE;
-    unsigned long wifiConnectPhaseStartMs = 0;
+    WifiConnectPhase wifiConnectPhase_ = WifiConnectPhase::IDLE;
+    unsigned long wifiConnectPhaseStartMs_ = 0;
 
     enum class WifiStopPhase : uint8_t {
         IDLE = 0,
@@ -215,29 +215,29 @@ private:
         MODE_OFF,
         FINALIZE,
     };
-    WifiStopPhase wifiStopPhase = WifiStopPhase::IDLE;
-    unsigned long wifiStopPhaseStartMs = 0;
-    unsigned long wifiStopStartMs = 0;
-    String wifiStopReason;
-    bool wifiStopManual = false;
-    bool wifiStopHadSta = false;
-    bool wifiStopHadAp = false;
-    bool allowBoundaryTransitionWork = false;
+    WifiStopPhase wifiStopPhase_ = WifiStopPhase::IDLE;
+    unsigned long wifiStopPhaseStartMs_ = 0;
+    unsigned long wifiStopStartMs_ = 0;
+    String wifiStopReason_;
+    bool wifiStopManual_ = false;
+    bool wifiStopHadSta_ = false;
+    bool wifiStopHadAp_ = false;
+    bool allowBoundaryTransitionWork_ = false;
 
     // WiFi reconnect failure tracking (prevents memory leak from repeated failed attempts)
-    int wifiReconnectFailures = 0;
-    unsigned long lastReconnectAttemptMs = 0;  // Moved from static local for proper reset across WiFi sessions
+    int wifiReconnectFailures_ = 0;
+    unsigned long lastReconnectAttemptMs_ = 0;  // Moved from static local for proper reset across WiFi sessions
     static constexpr int WIFI_MAX_RECONNECT_FAILURES = 5;  // Give up after 5 failures
     static constexpr unsigned long WIFI_RECONNECT_INTERVAL_MS = 30000;  // 30s between attempts
     static constexpr unsigned long WIFI_RECONNECT_DEFER_NO_V1_MS = 90000;  // Protect BLE acquisition on boot
-    bool wifiReconnectDeferredLogged = false;
+    bool wifiReconnectDeferredLogged_ = false;
 
     // Web activity tracking for WiFi priority mode
-    unsigned long lastUiActivityMs = 0;
+    unsigned long lastUiActivityMs_ = 0;
 
     // Low-DMA protection state (prevents rapid restart loops under heap pressure)
-    unsigned long lowDmaCooldownUntilMs = 0;
-    unsigned long lowDmaSinceMs = 0;
+    unsigned long lowDmaCooldownUntilMs_ = 0;
+    unsigned long lowDmaSinceMs_ = 0;
     // If neither STA nor AP has any connected client for long enough, shut WiFi
     // down until manual restart to preserve core runtime headroom.
     static constexpr unsigned long WIFI_NO_CLIENT_SHUTDOWN_MS = 60000;
@@ -247,40 +247,40 @@ private:
     // When STA is connected, keep AP alive briefly for setup-page races, then
     // retire AP once no AP clients have been seen for this long.
     static constexpr unsigned long WIFI_AP_IDLE_DROP_AFTER_STA_MS = 60000;
-    unsigned long lastAnyClientSeenMs = 0;
-    bool wasAutoStarted = false;  // True when WiFi was started by boot auto-start (not manual)
+    unsigned long lastAnyClientSeenMs_ = 0;
+    bool wasAutoStarted_ = false;  // True when WiFi was started by boot auto-start (not manual)
 
     // Rate limiting
     static constexpr unsigned long RATE_LIMIT_WINDOW_MS = SlidingWindowRateLimiter::WINDOW_MS;
     static constexpr size_t RATE_LIMIT_MAX_REQUESTS = SlidingWindowRateLimiter::MAX_REQUESTS;
-    SlidingWindowRateLimiter rateLimiter;
+    SlidingWindowRateLimiter rateLimiter_;
     bool checkRateLimit();  // Returns true if request allowed, false if rate limited
 
     // Status JSON caching (Option 2 optimization)
     static constexpr unsigned long STATUS_CACHE_TTL_MS = 500;  // 500ms cache
-    WifiStatusApiService::StatusJsonCache cachedStatusJson;
-    unsigned long lastStatusJsonTime = 0;
-    BackupApiService::BackupSnapshotCache cachedBackupSnapshot;
+    WifiStatusApiService::StatusJsonCache cachedStatusJson_;
+    unsigned long lastStatusJsonTime_ = 0;
+    BackupApiService::BackupSnapshotCache cachedBackupSnapshot_;
 
-    void (*mergeAlert)(JsonObject, void* ctx) = nullptr;
-    void* mergeAlertCtx = nullptr;
-    void (*mergeStatus)(JsonObject, void* ctx) = nullptr;
-    void* mergeStatusCtx = nullptr;
-    void (*mergeStatus2)(JsonObject, void* ctx) = nullptr;   // appended by appendStatusCallback
-    void* mergeStatus2Ctx = nullptr;
-    bool (*sendV1Command)(const char*, bool, void* ctx) = nullptr;
-    void* sendV1CommandCtx = nullptr;
-    WifiControlApiService::ProfilePushResult (*requestProfilePush)(void* ctx) = nullptr;
-    void* requestProfilePushCtx = nullptr;
-    fs::FS* (*getFilesystem)(void* ctx) = nullptr;
-    void* getFilesystemCtx = nullptr;
-    String (*getPushStatusJson)(void* ctx) = nullptr;
-    void* getPushStatusJsonCtx = nullptr;
-    WifiAutoPushApiService::PushNowQueueResult (*queuePushNow)(
+    void (*mergeAlert_)(JsonObject, void* ctx) = nullptr;
+    void* mergeAlertCtx_ = nullptr;
+    void (*mergeStatus_)(JsonObject, void* ctx) = nullptr;
+    void* mergeStatusCtx_ = nullptr;
+    void (*mergeStatus2_)(JsonObject, void* ctx) = nullptr;   // appended by appendStatusCallback
+    void* mergeStatus2Ctx_ = nullptr;
+    bool (*sendV1Command_)(const char*, bool, void* ctx) = nullptr;
+    void* sendV1CommandCtx_ = nullptr;
+    WifiControlApiService::ProfilePushResult (*requestProfilePush_)(void* ctx) = nullptr;
+    void* requestProfilePushCtx_ = nullptr;
+    fs::FS* (*getFilesystem_)(void* ctx) = nullptr;
+    void* getFilesystemCtx_ = nullptr;
+    String (*getPushStatusJson_)(void* ctx) = nullptr;
+    void* getPushStatusJsonCtx_ = nullptr;
+    WifiAutoPushApiService::PushNowQueueResult (*queuePushNow_)(
         const WifiAutoPushApiService::PushNowRequest&, void* ctx) = nullptr;
-    void* queuePushNowCtx = nullptr;
-    bool (*isV1Connected)(void* ctx) = nullptr;   // Returns true when V1 is connected (defer WiFi ops until then)
-    void* isV1ConnectedCtx = nullptr;
+    void* queuePushNowCtx_ = nullptr;
+    bool (*isV1Connected_)(void* ctx) = nullptr;   // Returns true when V1 is connected (defer WiFi ops until then)
+    void* isV1ConnectedCtx_ = nullptr;
 
     // Setup functions
     void setupAP();

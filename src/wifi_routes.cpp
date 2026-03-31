@@ -60,17 +60,17 @@ bool WiFiManager::setupWebServer() {
 
     // WebServer::stop() only closes the listening socket; registered handlers
     // persist on the server instance across WiFi restarts.
-    if (webRoutesInitialized) {
+    if (webRoutesInitialized_) {
         return true;
     }
 
     // New UI served from LittleFS
     // Serve static assets from _app directory
-    server.on("/_app/env.js", HTTP_GET, [this]() { serveLittleFSFile("/_app/env.js", "application/javascript"); });
-    server.on("/_app/version.json", HTTP_GET, [this]() { serveLittleFSFile("/_app/version.json", "application/json"); });
+    server_.on("/_app/env.js", HTTP_GET, [this]() { serveLittleFSFile("/_app/env.js", "application/javascript"); });
+    server_.on("/_app/version.json", HTTP_GET, [this]() { serveLittleFSFile("/_app/version.json", "application/json"); });
 
     // Root serves /index.html (Svelte app)
-    server.on("/", HTTP_GET, [this]() {
+    server_.on("/", HTTP_GET, [this]() {
         markUiActivity();  // Track UI activity
         if (serveLittleFSFile("/index.html", "text/html")) {
             Serial.printf("[HTTP] 200 / -> /index.html\n");
@@ -78,17 +78,17 @@ bool WiFiManager::setupWebServer() {
         }
         // LittleFS missing - tell user to reflash
         Serial.println("[HTTP] 500 / -> LittleFS missing");
-        server.send(500, "text/plain", "Web UI not found. Please reflash with ./build.sh --all");
+        server_.send(500, "text/plain", "Web UI not found. Please reflash with ./build.sh --all");
     });
 
     // Catch-all for _app/immutable/* files (if Svelte files are uploaded)
-    server.onNotFound([this]() {
+    server_.onNotFound([this]() {
         markUiActivity();  // Track UI activity
-        String uri = server.uri();
+        String uri = server_.uri();
 
         if (!WifiStaticPathGuard::isSafe(uri.c_str())) {
             Serial.printf("[HTTP] REJECT unsafe path %s\n", uri.c_str());
-            server.send(404, "text/plain", "Not found");
+            server_.send(404, "text/plain", "Not found");
             return;
         }
 
@@ -109,23 +109,23 @@ bool WiFiManager::setupWebServer() {
     });
 
     // New API endpoints (PHASE A)
-    server.on("/api/status", HTTP_GET, [this]() {
+    server_.on("/api/status", HTTP_GET, [this]() {
         WifiStatusApiService::handleApiStatus(
-            server,
+            server_,
             makeStatusRuntime(),
-            cachedStatusJson,
-            lastStatusJsonTime,
+            cachedStatusJson_,
+            lastStatusJsonTime_,
             STATUS_CACHE_TTL_MS,
             [](void* /*ctx*/) -> unsigned long { return millis(); }, nullptr,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/profile/push", HTTP_POST, [this]() {
+    server_.on("/api/profile/push", HTTP_POST, [this]() {
         WifiControlApiService::handleApiProfilePush(
-            server,
+            server_,
             bleClient.isConnected(),
             [](void* ctx) -> WifiControlApiService::ProfilePushResult {
                 auto* self = static_cast<WiFiManager*>(ctx);
-                return self->requestProfilePush ? self->requestProfilePush(self->requestProfilePushCtx) : WifiControlApiService::ProfilePushResult::HANDLER_UNAVAILABLE;
+                return self->requestProfilePush_ ? self->requestProfilePush_(self->requestProfilePushCtx_) : WifiControlApiService::ProfilePushResult::HANDLER_UNAVAILABLE;
             },
             this,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); },
@@ -133,39 +133,39 @@ bool WiFiManager::setupWebServer() {
     });
 
     // Legacy status endpoint
-    server.on("/status", HTTP_GET, [this]() {
+    server_.on("/status", HTTP_GET, [this]() {
         WifiStatusApiService::handleApiLegacyStatus(
-            server,
+            server_,
             makeStatusRuntime(),
-            cachedStatusJson,
-            lastStatusJsonTime,
+            cachedStatusJson_,
+            lastStatusJsonTime_,
             STATUS_CACHE_TTL_MS,
             [](void* /*ctx*/) -> unsigned long { return millis(); }, nullptr);
     });
-    server.on("/api/device/settings", HTTP_GET, [this]() {
-        WifiSettingsApiService::handleApiDeviceSettingsGet(server, makeSettingsRuntime());
+    server_.on("/api/device/settings", HTTP_GET, [this]() {
+        WifiSettingsApiService::handleApiDeviceSettingsGet(server_, makeSettingsRuntime());
     });
-    server.on("/api/device/settings", HTTP_POST, [this]() {
-        WifiSettingsApiService::handleApiDeviceSettingsSave(server, makeSettingsRuntime());
+    server_.on("/api/device/settings", HTTP_POST, [this]() {
+        WifiSettingsApiService::handleApiDeviceSettingsSave(server_, makeSettingsRuntime());
     });
 
-    server.on("/darkmode", HTTP_POST, [this]() {
+    server_.on("/darkmode", HTTP_POST, [this]() {
         WifiControlApiService::handleApiDarkMode(
-            server,
+            server_,
             [](const char* cmd, bool val, void* ctx) {
                 auto* self = static_cast<WiFiManager*>(ctx);
-                return self->sendV1Command ? self->sendV1Command(cmd, val, self->sendV1CommandCtx) : false;
+                return self->sendV1Command_ ? self->sendV1Command_(cmd, val, self->sendV1CommandCtx_) : false;
             },
             this,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); },
             this);
     });
-    server.on("/mute", HTTP_POST, [this]() {
+    server_.on("/mute", HTTP_POST, [this]() {
         WifiControlApiService::handleApiMute(
-            server,
+            server_,
             [](const char* cmd, bool val, void* ctx) {
                 auto* self = static_cast<WiFiManager*>(ctx);
-                return self->sendV1Command ? self->sendV1Command(cmd, val, self->sendV1CommandCtx) : false;
+                return self->sendV1Command_ ? self->sendV1Command_(cmd, val, self->sendV1CommandCtx_) : false;
             },
             this,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); },
@@ -173,289 +173,289 @@ bool WiFiManager::setupWebServer() {
     });
 
     // Lightweight health and captive-portal helpers
-    server.on("/ping", HTTP_GET, [this]() {
+    server_.on("/ping", HTTP_GET, [this]() {
         WifiPortalApiService::handleApiPing(
-            server,
+            server_,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); },
             this);
     });
     // Android/ChromeOS captive portal probes
-    server.on("/generate_204", HTTP_GET, [this]() {
+    server_.on("/generate_204", HTTP_GET, [this]() {
         WifiPortalApiService::handleApiGenerate204(
-            server,
+            server_,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); },
             this);
     });
-    server.on("/gen_204", HTTP_GET, [this]() {
+    server_.on("/gen_204", HTTP_GET, [this]() {
         WifiPortalApiService::handleApiGen204(
-            server,
+            server_,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); },
             this);
     });
     // iOS/macOS captive portal
-    server.on("/hotspot-detect.html", HTTP_GET, [this]() {
+    server_.on("/hotspot-detect.html", HTTP_GET, [this]() {
         WifiPortalApiService::handleApiHotspotDetect(
-            server,
+            server_,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); },
             this);
     });
     // Windows captive portal variants
-    server.on("/fwlink", HTTP_GET, [this]() {
-        WifiPortalApiService::handleApiFwlink(server);
+    server_.on("/fwlink", HTTP_GET, [this]() {
+        WifiPortalApiService::handleApiFwlink(server_);
     });
-    server.on("/ncsi.txt", HTTP_GET, [this]() {
-        WifiPortalApiService::handleApiNcsiTxt(server);
+    server_.on("/ncsi.txt", HTTP_GET, [this]() {
+        WifiPortalApiService::handleApiNcsiTxt(server_);
     });
 
     // V1 Settings/Profiles routes
-    server.on("/api/v1/profiles", HTTP_GET, [this]() {
-        WifiV1ProfileApiService::handleApiProfilesList(server, makeV1ProfileRuntime());
+    server_.on("/api/v1/profiles", HTTP_GET, [this]() {
+        WifiV1ProfileApiService::handleApiProfilesList(server_, makeV1ProfileRuntime());
     });
-    server.on("/api/v1/profile", HTTP_GET, [this]() {
-        WifiV1ProfileApiService::handleApiProfileGet(server, makeV1ProfileRuntime());
+    server_.on("/api/v1/profile", HTTP_GET, [this]() {
+        WifiV1ProfileApiService::handleApiProfileGet(server_, makeV1ProfileRuntime());
     });
-    server.on("/api/v1/profile", HTTP_POST, [this]() {
+    server_.on("/api/v1/profile", HTTP_POST, [this]() {
         WifiV1ProfileApiService::handleApiProfileSave(
-            server,
+            server_,
             makeV1ProfileRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/v1/profile/delete", HTTP_POST, [this]() {
+    server_.on("/api/v1/profile/delete", HTTP_POST, [this]() {
         WifiV1ProfileApiService::handleApiProfileDelete(
-            server,
+            server_,
             makeV1ProfileRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/v1/pull", HTTP_POST, [this]() {
+    server_.on("/api/v1/pull", HTTP_POST, [this]() {
         WifiV1ProfileApiService::handleApiSettingsPull(
-            server,
+            server_,
             makeV1ProfileRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/v1/push", HTTP_POST, [this]() {
+    server_.on("/api/v1/push", HTTP_POST, [this]() {
         WifiV1ProfileApiService::handleApiSettingsPush(
-            server,
+            server_,
             makeV1ProfileRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/v1/current", HTTP_GET, [this]() {
-        WifiV1ProfileApiService::handleApiCurrentSettings(server, makeV1ProfileRuntime());
+    server_.on("/api/v1/current", HTTP_GET, [this]() {
+        WifiV1ProfileApiService::handleApiCurrentSettings(server_, makeV1ProfileRuntime());
     });
-    server.on("/api/v1/devices", HTTP_GET, [this]() {
-        WifiV1DevicesApiService::handleApiDevicesList(server, makeV1DevicesRuntime());
+    server_.on("/api/v1/devices", HTTP_GET, [this]() {
+        WifiV1DevicesApiService::handleApiDevicesList(server_, makeV1DevicesRuntime());
     });
-    server.on("/api/v1/devices/name", HTTP_POST, [this]() {
+    server_.on("/api/v1/devices/name", HTTP_POST, [this]() {
         WifiV1DevicesApiService::handleApiDeviceNameSave(
-            server,
+            server_,
             makeV1DevicesRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/v1/devices/profile", HTTP_POST, [this]() {
+    server_.on("/api/v1/devices/profile", HTTP_POST, [this]() {
         WifiV1DevicesApiService::handleApiDeviceProfileSave(
-            server,
+            server_,
             makeV1DevicesRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/v1/devices/delete", HTTP_POST, [this]() {
+    server_.on("/api/v1/devices/delete", HTTP_POST, [this]() {
         WifiV1DevicesApiService::handleApiDeviceDelete(
-            server,
+            server_,
             makeV1DevicesRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
 
     // Auto-Push routes
-    server.on("/api/autopush/slots", HTTP_GET, [this]() {
-        WifiAutoPushApiService::handleApiSlots(server, makeAutoPushRuntime());
+    server_.on("/api/autopush/slots", HTTP_GET, [this]() {
+        WifiAutoPushApiService::handleApiSlots(server_, makeAutoPushRuntime());
     });
-    server.on("/api/autopush/slot", HTTP_POST, [this]() {
+    server_.on("/api/autopush/slot", HTTP_POST, [this]() {
         WifiAutoPushApiService::handleApiSlotSave(
-            server,
+            server_,
             makeAutoPushRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/autopush/activate", HTTP_POST, [this]() {
+    server_.on("/api/autopush/activate", HTTP_POST, [this]() {
         WifiAutoPushApiService::handleApiActivate(
-            server,
+            server_,
             makeAutoPushRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/autopush/push", HTTP_POST, [this]() {
+    server_.on("/api/autopush/push", HTTP_POST, [this]() {
         WifiAutoPushApiService::handleApiPushNow(
-            server,
+            server_,
             makeAutoPushRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/autopush/status", HTTP_GET, [this]() {
-        WifiAutoPushApiService::handleApiStatus(server, makeAutoPushRuntime());
+    server_.on("/api/autopush/status", HTTP_GET, [this]() {
+        WifiAutoPushApiService::handleApiStatus(server_, makeAutoPushRuntime());
     });
 
     // Display settings routes
-    server.on("/api/display/settings", HTTP_GET, [this]() {
-        WifiDisplayColorsApiService::handleApiGet(server, makeDisplayColorsRuntime());
+    server_.on("/api/display/settings", HTTP_GET, [this]() {
+        WifiDisplayColorsApiService::handleApiGet(server_, makeDisplayColorsRuntime());
     });
-    server.on("/api/display/settings", HTTP_POST, [this]() {
+    server_.on("/api/display/settings", HTTP_POST, [this]() {
         WifiDisplayColorsApiService::handleApiSave(
-            server,
+            server_,
             makeDisplayColorsRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/display/settings/reset", HTTP_POST, [this]() {
+    server_.on("/api/display/settings/reset", HTTP_POST, [this]() {
         WifiDisplayColorsApiService::handleApiReset(
-            server,
+            server_,
             makeDisplayColorsRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/display/preview", HTTP_POST, [this]() {
+    server_.on("/api/display/preview", HTTP_POST, [this]() {
         WifiDisplayColorsApiService::handleApiPreview(
-            server,
+            server_,
             makeDisplayColorsRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/display/preview/clear", HTTP_POST, [this]() {
+    server_.on("/api/display/preview/clear", HTTP_POST, [this]() {
         WifiDisplayColorsApiService::handleApiClear(
-            server,
+            server_,
             makeDisplayColorsRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
 
     // Audio settings routes
-    server.on("/api/audio/settings", HTTP_GET, [this]() {
-        WifiAudioApiService::handleApiGet(server, makeAudioRuntime());
+    server_.on("/api/audio/settings", HTTP_GET, [this]() {
+        WifiAudioApiService::handleApiGet(server_, makeAudioRuntime());
     });
-    server.on("/api/audio/settings", HTTP_POST, [this]() {
-        WifiAudioApiService::handleApiSave(server, makeAudioRuntime());
+    server_.on("/api/audio/settings", HTTP_POST, [this]() {
+        WifiAudioApiService::handleApiSave(server_, makeAudioRuntime());
     });
 
     // Settings backup/restore API routes
-    server.on("/api/settings/backup", HTTP_GET, [this]() {
+    server_.on("/api/settings/backup", HTTP_GET, [this]() {
         BackupApiService::handleApiBackup(
-            server,
-            cachedBackupSnapshot,
+            server_,
+            cachedBackupSnapshot_,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this,
             [](void* /*ctx*/) { return static_cast<uint32_t>(millis()); }, nullptr);
     });
-    server.on("/api/settings/backup-now", HTTP_POST, [this]() {
+    server_.on("/api/settings/backup-now", HTTP_POST, [this]() {
         BackupApiService::handleApiBackupNow(
-            server,
+            server_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/settings/restore", HTTP_POST, [this]() {
+    server_.on("/api/settings/restore", HTTP_POST, [this]() {
         BackupApiService::handleApiRestore(
-            server,
+            server_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
 
     // Debug API routes (performance metrics)
-    server.on("/api/debug/metrics", HTTP_GET, [this]() {
-        DebugApiService::handleApiMetrics(server);
+    server_.on("/api/debug/metrics", HTTP_GET, [this]() {
+        DebugApiService::handleApiMetrics(server_);
     });
-    server.on("/api/debug/panic", HTTP_GET, [this]() {
-        DebugApiService::handleApiPanic(server);
+    server_.on("/api/debug/panic", HTTP_GET, [this]() {
+        DebugApiService::handleApiPanic(server_);
     });
-    server.on("/api/debug/v1-scenario/list", HTTP_GET, [this]() {
-        DebugApiService::handleApiV1ScenarioList(server);
+    server_.on("/api/debug/v1-scenario/list", HTTP_GET, [this]() {
+        DebugApiService::handleApiV1ScenarioList(server_);
     });
-    server.on("/api/debug/v1-scenario/status", HTTP_GET, [this]() {
-        DebugApiService::handleApiV1ScenarioStatus(server);
+    server_.on("/api/debug/v1-scenario/status", HTTP_GET, [this]() {
+        DebugApiService::handleApiV1ScenarioStatus(server_);
     });
-    server.on("/api/debug/v1-scenario/load", HTTP_POST, [this]() {
+    server_.on("/api/debug/v1-scenario/load", HTTP_POST, [this]() {
         DebugApiService::handleApiV1ScenarioLoad(
-            server,
+            server_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/debug/v1-scenario/start", HTTP_POST, [this]() {
+    server_.on("/api/debug/v1-scenario/start", HTTP_POST, [this]() {
         DebugApiService::handleApiV1ScenarioStart(
-            server,
+            server_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/debug/v1-scenario/stop", HTTP_POST, [this]() {
+    server_.on("/api/debug/v1-scenario/stop", HTTP_POST, [this]() {
         DebugApiService::handleApiV1ScenarioStop(
-            server,
+            server_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/debug/enable", HTTP_POST, [this]() {
+    server_.on("/api/debug/enable", HTTP_POST, [this]() {
         DebugApiService::handleApiDebugEnable(
-            server,
+            server_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/debug/metrics/reset", HTTP_POST, [this]() {
+    server_.on("/api/debug/metrics/reset", HTTP_POST, [this]() {
         DebugApiService::handleApiMetricsReset(
-            server,
+            server_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/debug/proxy-advertising", HTTP_POST, [this]() {
+    server_.on("/api/debug/proxy-advertising", HTTP_POST, [this]() {
         DebugApiService::handleApiProxyAdvertisingControl(
-            server,
+            server_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
-    server.on("/api/debug/perf-files", HTTP_GET, [this]() {
+    server_.on("/api/debug/perf-files", HTTP_GET, [this]() {
         DebugApiService::handleApiPerfFilesList(
-            server,
+            server_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/debug/perf-files/download", HTTP_GET, [this]() {
+    server_.on("/api/debug/perf-files/download", HTTP_GET, [this]() {
         DebugApiService::handleApiPerfFilesDownload(
-            server,
+            server_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/debug/perf-files/delete", HTTP_POST, [this]() {
+    server_.on("/api/debug/perf-files/delete", HTTP_POST, [this]() {
         DebugApiService::handleApiPerfFilesDelete(
-            server,
+            server_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
 
     // WiFi client (STA) API routes - connect to external network
-    server.on("/api/wifi/status", HTTP_GET, [this]() {
+    server_.on("/api/wifi/status", HTTP_GET, [this]() {
         WifiClientApiService::handleApiStatus(
-            server,
+            server_,
             makeWifiClientRuntime(),
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/wifi/scan", HTTP_POST, [this]() {
+    server_.on("/api/wifi/scan", HTTP_POST, [this]() {
         WifiClientApiService::handleApiScan(
-            server,
+            server_,
             makeWifiClientRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/wifi/connect", HTTP_POST, [this]() {
+    server_.on("/api/wifi/connect", HTTP_POST, [this]() {
         WifiClientApiService::handleApiConnect(
-            server,
+            server_,
             makeWifiClientRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/wifi/disconnect", HTTP_POST, [this]() {
+    server_.on("/api/wifi/disconnect", HTTP_POST, [this]() {
         WifiClientApiService::handleApiDisconnect(
-            server,
+            server_,
             makeWifiClientRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/wifi/forget", HTTP_POST, [this]() {
+    server_.on("/api/wifi/forget", HTTP_POST, [this]() {
         WifiClientApiService::handleApiForget(
-            server,
+            server_,
             makeWifiClientRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/wifi/enable", HTTP_POST, [this]() {
+    server_.on("/api/wifi/enable", HTTP_POST, [this]() {
         WifiClientApiService::handleApiEnable(
-            server,
+            server_,
             makeWifiClientRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
 
     // GPS scaffold API routes
-    server.on("/api/gps/status", HTTP_GET, [this]() {
+    server_.on("/api/gps/status", HTTP_GET, [this]() {
         GpsApiService::handleApiStatus(
-            server,
+            server_,
             gpsRuntimeModule,
             speedSourceSelector,
             settingsManager,
@@ -465,22 +465,22 @@ bool WiFiManager::setupWebServer() {
             systemEventBus,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/gps/observations", HTTP_GET, [this]() {
+    server_.on("/api/gps/observations", HTTP_GET, [this]() {
         GpsApiService::handleApiObservations(
-            server,
+            server_,
             gpsObservationLog,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/gps/config", HTTP_GET, [this]() {
+    server_.on("/api/gps/config", HTTP_GET, [this]() {
         GpsApiService::handleApiConfigGet(
-            server,
+            server_,
             settingsManager,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/gps/config", HTTP_POST, [this]() {
+    server_.on("/api/gps/config", HTTP_POST, [this]() {
         GpsApiService::handleApiConfig(
-            server,
+            server_,
             settingsManager,
             gpsRuntimeModule,
             speedSourceSelector,
@@ -491,9 +491,9 @@ bool WiFiManager::setupWebServer() {
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/zones", HTTP_GET, [this]() {
+    server_.on("/api/lockouts/zones", HTTP_GET, [this]() {
         LockoutApiService::handleApiZones(
-            server,
+            server_,
             lockoutIndex,
             lockoutLearner,
             lockoutStore,
@@ -501,99 +501,99 @@ bool WiFiManager::setupWebServer() {
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/summary", HTTP_GET, [this]() {
+    server_.on("/api/lockouts/summary", HTTP_GET, [this]() {
         LockoutApiService::handleApiSummary(
-            server,
+            server_,
             signalObservationLog,
             signalObservationSdLogger,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/events", HTTP_GET, [this]() {
+    server_.on("/api/lockouts/events", HTTP_GET, [this]() {
         LockoutApiService::handleApiEvents(
-            server,
+            server_,
             signalObservationLog,
             signalObservationSdLogger,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/zones/delete", HTTP_POST, [this]() {
+    server_.on("/api/lockouts/zones/delete", HTTP_POST, [this]() {
         LockoutApiService::handleApiZoneDelete(
-            server,
+            server_,
             lockoutIndex,
             lockoutStore,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/zones/create", HTTP_POST, [this]() {
+    server_.on("/api/lockouts/zones/create", HTTP_POST, [this]() {
         LockoutApiService::handleApiZoneCreate(
-            server,
+            server_,
             lockoutIndex,
             lockoutStore,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/zones/update", HTTP_POST, [this]() {
+    server_.on("/api/lockouts/zones/update", HTTP_POST, [this]() {
         LockoutApiService::handleApiZoneUpdate(
-            server,
+            server_,
             lockoutIndex,
             lockoutStore,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/zones/export", HTTP_GET, [this]() {
+    server_.on("/api/lockouts/zones/export", HTTP_GET, [this]() {
         LockoutApiService::handleApiZoneExport(
-            server,
+            server_,
             lockoutStore,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/zones/import", HTTP_POST, [this]() {
+    server_.on("/api/lockouts/zones/import", HTTP_POST, [this]() {
         LockoutApiService::handleApiZoneImport(
-            server,
+            server_,
             lockoutIndex,
             lockoutStore,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/lockouts/pending/clear", HTTP_POST, [this]() {
+    server_.on("/api/lockouts/pending/clear", HTTP_POST, [this]() {
         LockoutApiService::handleApiPendingClear(
-            server,
+            server_,
             lockoutLearner,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
 
     // OBD API routes
-    server.on("/api/obd/status", HTTP_GET, [this]() {
-        ObdApiService::handleApiStatus(server, obdRuntimeModule,
+    server_.on("/api/obd/status", HTTP_GET, [this]() {
+        ObdApiService::handleApiStatus(server_, obdRuntimeModule,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/obd/devices", HTTP_GET, [this]() {
-        ObdApiService::handleApiDevicesList(server, obdRuntimeModule, settingsManager,
+    server_.on("/api/obd/devices", HTTP_GET, [this]() {
+        ObdApiService::handleApiDevicesList(server_, obdRuntimeModule, settingsManager,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/obd/config", HTTP_GET, [this]() {
-        ObdApiService::handleApiConfigGet(server, settingsManager,
+    server_.on("/api/obd/config", HTTP_GET, [this]() {
+        ObdApiService::handleApiConfigGet(server_, settingsManager,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/obd/devices/name", HTTP_POST, [this]() {
-        ObdApiService::handleApiDeviceNameSave(server, settingsManager,
+    server_.on("/api/obd/devices/name", HTTP_POST, [this]() {
+        ObdApiService::handleApiDeviceNameSave(server_, settingsManager,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/obd/scan", HTTP_POST, [this]() {
-        ObdApiService::handleApiScan(server, obdRuntimeModule,
+    server_.on("/api/obd/scan", HTTP_POST, [this]() {
+        ObdApiService::handleApiScan(server_, obdRuntimeModule,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/obd/forget", HTTP_POST, [this]() {
-        ObdApiService::handleApiForget(server, obdRuntimeModule, settingsManager,
+    server_.on("/api/obd/forget", HTTP_POST, [this]() {
+        ObdApiService::handleApiForget(server_, obdRuntimeModule, settingsManager,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server.on("/api/obd/config", HTTP_POST, [this]() {
-        ObdApiService::handleApiConfig(server,
+    server_.on("/api/obd/config", HTTP_POST, [this]() {
+        ObdApiService::handleApiConfig(server_,
                                       obdRuntimeModule,
                                       settingsManager,
                                       speedSourceSelector,
@@ -602,6 +602,6 @@ bool WiFiManager::setupWebServer() {
     });
 
     // Note: onNotFound is set earlier to handle LittleFS static files
-    webRoutesInitialized = true;
+    webRoutesInitialized_ = true;
     return true;
 }

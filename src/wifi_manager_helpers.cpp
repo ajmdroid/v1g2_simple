@@ -54,23 +54,23 @@ const char* wifiClientStateApiName(WifiClientState state) {
 
 namespace {
 
-bool streamOpenFile(WebServer& server,
+bool streamOpenFile(WebServer& server_,
                     File& file,
                     const char* path,
                     const char* contentType,
                     size_t fileSize,
                     bool gzip) {
     constexpr size_t kStreamChunkBytes = 256;
-    server.setContentLength(fileSize);
+    server_.setContentLength(fileSize);
     if (gzip) {
-        server.sendHeader("Content-Encoding", "gzip");
+        server_.sendHeader("Content-Encoding", "gzip");
     }
-    server.sendHeader("Cache-Control", "max-age=86400");
-    server.sendHeader("ETag",
+    server_.sendHeader("Cache-Control", "max-age=86400");
+    server_.sendHeader("ETag",
                       String("\"") + String(path) + (gzip ? ".gz-" : "-") + String(fileSize) + String("\""));
-    server.send(200, contentType, "");
+    server_.send(200, contentType, "");
 
-    auto client = server.client();
+    auto client = server_.client();
     // WiFi static-file serving is Tier 5. Prefer smaller loopTask chunks over
     // a large transient stack buffer on the WebServer path.
     uint8_t buf[kStreamChunkBytes];
@@ -105,9 +105,9 @@ bool streamOpenFile(WebServer& server,
 
 }  // namespace
 
-bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* contentType) {
+bool serveLittleFSFileHelper(WebServer& server_, const char* path, const char* contentType) {
     uint32_t startUs = PERF_TIMESTAMP_US();
-    String acceptEncoding = server.header("Accept-Encoding");
+    String acceptEncoding = server_.header("Accept-Encoding");
     bool clientAcceptsGzip = acceptEncoding.indexOf("gzip") >= 0;
 
     if (clientAcceptsGzip) {
@@ -117,14 +117,14 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
             if (file) {
                 size_t fileSize = file.size();
                 String etag = String("\"") + String(path) + ".gz-" + String(fileSize) + String("\"");
-                if (server.header("If-None-Match") == etag) {
-                    server.sendHeader("ETag", etag);
-                    server.send(304, contentType, "");
+                if (server_.header("If-None-Match") == etag) {
+                    server_.sendHeader("ETag", etag);
+                    server_.send(304, contentType, "");
                     file.close();
                     return true;
                 }
                 Serial.printf("[HTTP] 200 %s -> %s.gz (%u bytes)\n", path, path, fileSize);
-                const bool streamOk = streamOpenFile(server, file, path, contentType, fileSize, true);
+                const bool streamOk = streamOpenFile(server_, file, path, contentType, fileSize, true);
                 file.close();
                 if (!streamOk) {
                     return true;
@@ -142,14 +142,14 @@ bool serveLittleFSFileHelper(WebServer& server, const char* path, const char* co
     }
     size_t fileSize = file.size();
     String etag = String("\"") + String(path) + "-" + String(fileSize) + String("\"");
-    if (server.header("If-None-Match") == etag) {
-        server.sendHeader("ETag", etag);
-        server.send(304, contentType, "");
+    if (server_.header("If-None-Match") == etag) {
+        server_.sendHeader("ETag", etag);
+        server_.send(304, contentType, "");
         file.close();
         return true;
     }
     Serial.printf("[HTTP] 200 %s (%u bytes)\n", path, fileSize);
-    const bool streamOk = streamOpenFile(server, file, path, contentType, fileSize, false);
+    const bool streamOk = streamOpenFile(server_, file, path, contentType, fileSize, false);
     file.close();
     if (!streamOk) {
         return true;
