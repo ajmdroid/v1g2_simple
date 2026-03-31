@@ -26,7 +26,7 @@ public:
     bool parse(const uint8_t* data, size_t length);
 
     // Get current display state
-    const DisplayState& getDisplayState() const { return displayState; }
+    const DisplayState& getDisplayState() const { return displayState_; }
 
     // Get resolved priority alert (follows V1 priority signal)
     AlertData getPriorityAlert() const;
@@ -36,18 +36,18 @@ public:
     bool getRenderablePriorityAlert(AlertData& out) const;
 
     // Get all alerts
-    const std::array<AlertData, MAX_ALERTS>& getAllAlerts() const { return alerts; }
+    const std::array<AlertData, MAX_ALERTS>& getAllAlerts() const { return alerts_; }
 
     // Get number of active alerts
-    size_t getAlertCount() const { return alertCount; }
+    size_t getAlertCount() const { return alertCount_; }
 
     // Check if there are active alerts
-    // Only check alertCount - display state can lag behind
-    bool hasAlerts() const { return alertCount > 0; }
+    // Only check alertCount_ - display state can lag behind
+    bool hasAlerts() const { return alertCount_ > 0; }
 
     // Check if V1 firmware supports volume display
     // Show volume if we've received volume data OR confirmed firmware version 4.1028+
-    bool supportsVolume() const { return displayState.hasVolumeData || (displayState.hasV1Version && displayState.v1FirmwareVersion >= 41028); }
+    bool supportsVolume() const { return displayState_.hasVolumeData || (displayState_.hasV1Version && displayState_.v1FirmwareVersion >= 41028); }
 
     // Clear any partially assembled alert chunks (used when we re-request alert data)
     void resetAlertAssembly();
@@ -64,14 +64,14 @@ public:
 private:
     static constexpr size_t RAW_ALERT_INDEX_SLOTS = MAX_ALERTS + 1;  // raw indexes 0..15
 
-    DisplayState displayState;
-    std::array<AlertData, MAX_ALERTS> alerts;
-    size_t alertCount;
-    std::array<std::array<uint8_t, 8>, RAW_ALERT_INDEX_SLOTS> alertChunks;  // raw alert rows by payload index
-    std::array<bool, RAW_ALERT_INDEX_SLOTS> alertChunkPresent;
-    std::array<uint8_t, RAW_ALERT_INDEX_SLOTS> alertChunkCountTag;
-    std::array<uint32_t, RAW_ALERT_INDEX_SLOTS> alertChunkRxMs;
-    std::array<uint32_t, MAX_ALERTS + 1> alertTableFirstSeenMs;
+    DisplayState displayState_;
+    std::array<AlertData, MAX_ALERTS> alerts_;
+    size_t alertCount_;
+    std::array<std::array<uint8_t, 8>, RAW_ALERT_INDEX_SLOTS> alertChunks_;  // raw alert rows by payload index
+    std::array<bool, RAW_ALERT_INDEX_SLOTS> alertChunkPresent_;
+    std::array<uint8_t, RAW_ALERT_INDEX_SLOTS> alertChunkCountTag_;
+    std::array<uint32_t, RAW_ALERT_INDEX_SLOTS> alertChunkRxMs_;
+    std::array<uint32_t, MAX_ALERTS + 1> alertTableFirstSeenMs_;
 
     // Packet parsing helpers
     bool parseDisplayData(const uint8_t* payload, size_t length);

@@ -80,11 +80,11 @@ bool isAsciiDigit(uint8_t v) {
 } // namespace
 
 PacketParser::PacketParser()
-    : alertCount(0) {
-    alertChunkPresent.fill(false);
-    alertChunkCountTag.fill(0);
-    alertChunkRxMs.fill(0);
-    alertTableFirstSeenMs.fill(0);
+    : alertCount_(0) {
+    alertChunkPresent_.fill(false);
+    alertChunkCountTag_.fill(0);
+    alertChunkRxMs_.fill(0);
+    alertTableFirstSeenMs_.fill(0);
 }
 
 bool PacketParser::parse(const uint8_t* data, size_t length) {
@@ -127,13 +127,13 @@ bool PacketParser::parse(const uint8_t* data, size_t length) {
             return true;  // Acknowledged, no further processing needed
         case PACKET_ID_TURN_OFF_DISPLAY:    // 0x32 - ACK for display off
             // Update display power state (dark mode enabled)
-            displayState.displayOn = false;
-            displayState.hasDisplayOn = true;
+            displayState_.displayOn = false;
+            displayState_.hasDisplayOn = true;
             return true;
         case PACKET_ID_TURN_ON_DISPLAY:     // 0x33 - ACK for display on
             // Update display power state (dark mode disabled)
-            displayState.displayOn = true;
-            displayState.hasDisplayOn = true;
+            displayState_.displayOn = true;
+            displayState_.hasDisplayOn = true;
             return true;
         case PACKET_ID_MUTE_ON:             // 0x34 - ACK for mute on
         case PACKET_ID_MUTE_OFF:            // 0x35 - ACK for mute off
@@ -170,8 +170,8 @@ bool PacketParser::parse(const uint8_t* data, size_t length) {
                                        static_cast<uint32_t>(rev2 - '0') * 10u +
                                        static_cast<uint32_t>(ctrl - '0');
 
-                    displayState.v1FirmwareVersion = version;
-                    displayState.hasV1Version = true;
+                    displayState_.v1FirmwareVersion = version;
+                    displayState_.hasV1Version = true;
                     Serial.printf("[PacketParser] V1 firmware version: %c.%c%c%c%c (v%lu)\n",
                                   major, minor, rev1, rev2, ctrl, version);
                 }
@@ -217,9 +217,9 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     uint8_t bogeyByte = payload[0];
     bool hasDot = false;
     char bogeyChar = decodeBogeyCounterByte(bogeyByte, hasDot);
-    displayState.bogeyCounterByte = bogeyByte;
-    displayState.bogeyCounterChar = bogeyChar;
-    displayState.bogeyCounterDot = hasDot;
+    displayState_.bogeyCounterByte = bogeyByte;
+    displayState_.bogeyCounterChar = bogeyChar;
+    displayState_.bogeyCounterDot = hasDot;
 
     uint8_t image1 = payload[3];
     uint8_t image2 = payload[4];
@@ -233,38 +233,38 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     uint8_t flashingBits = image1 & ~image2;
 
     // Band flash bits (lower nibble): L=0x01, Ka=0x02, K=0x04, X=0x08
-    displayState.bandFlashBits = flashingBits & 0x0F;
+    displayState_.bandFlashBits = flashingBits & 0x0F;
 
     // Arrow flash bits (upper nibble): Front=0x20, Side=0x40, Rear=0x80
-    displayState.flashBits = flashingBits & 0xE0;
+    displayState_.flashBits = flashingBits & 0xE0;
 
-    displayState.activeBands = BAND_NONE;
-    if (arrow.laser) displayState.activeBands |= BAND_LASER;
-    if (arrow.ka)    displayState.activeBands |= BAND_KA;
-    if (arrow.k)     displayState.activeBands |= BAND_K;
-    if (arrow.x)     displayState.activeBands |= BAND_X;
+    displayState_.activeBands = BAND_NONE;
+    if (arrow.laser) displayState_.activeBands |= BAND_LASER;
+    if (arrow.ka)    displayState_.activeBands |= BAND_KA;
+    if (arrow.k)     displayState_.activeBands |= BAND_K;
+    if (arrow.x)     displayState_.activeBands |= BAND_X;
 
-    displayState.arrows = DIR_NONE;
-    if (arrow.front) displayState.arrows = static_cast<Direction>(displayState.arrows | DIR_FRONT);
-    if (arrow.side)  displayState.arrows = static_cast<Direction>(displayState.arrows | DIR_SIDE);
-    if (arrow.rear)  displayState.arrows = static_cast<Direction>(displayState.arrows | DIR_REAR);
+    displayState_.arrows = DIR_NONE;
+    if (arrow.front) displayState_.arrows = static_cast<Direction>(displayState_.arrows | DIR_FRONT);
+    if (arrow.side)  displayState_.arrows = static_cast<Direction>(displayState_.arrows | DIR_SIDE);
+    if (arrow.rear)  displayState_.arrows = static_cast<Direction>(displayState_.arrows | DIR_REAR);
 
     // Always trust display packet's mute flag - V1 logic mute shows here
     // even when individual alert entries don't have mute bit set
-    displayState.muted = arrow.mute;
+    displayState_.muted = arrow.mute;
 
     // Extract volume from auxData2 - in raw packet it's at data[12]
     // Since we stripped 5 bytes (header), it's payload[7]
     // mainVol = upper nibble, muteVol = lower nibble
     if (length > 7) {
         uint8_t auxData2 = payload[7];
-        displayState.mainVolume = (auxData2 & 0xF0) >> 4;
-        displayState.muteVolume = auxData2 & 0x0F;
-        displayState.hasVolumeData = true;  // Mark that we've received volume data
+        displayState_.mainVolume = (auxData2 & 0xF0) >> 4;
+        displayState_.muteVolume = auxData2 & 0x0F;
+        displayState_.hasVolumeData = true;  // Mark that we've received volume data
 
         // Consider muted if mute flag is set OR if main volume is zero
-        if (displayState.mainVolume == 0) {
-            displayState.muted = true;
+        if (displayState_.mainVolume == 0) {
+            displayState_.muted = true;
         }
     }
 
@@ -274,7 +274,7 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     // Pass through directly - no filtering needed (matches arrow behavior)
     if (length > 2) {
         uint8_t ledBitmap = payload[2];
-        displayState.signalBars = decodeLEDBitmap(ledBitmap);
+        displayState_.signalBars = decodeLEDBitmap(ledBitmap);
     }
 
     // AndroidESPLibrary2 treats display aux0 as status flags (soft mute/system/euro/display active),
@@ -283,7 +283,7 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     // If laser is detected via display data, set full signal bars
     // Laser alerts don't have granular strength - they're on/off
     if (arrow.laser) {
-        displayState.signalBars = 6; // Full bars for laser
+        displayState_.signalBars = 6; // Full bars for laser
     }
 
     return true;
@@ -319,10 +319,10 @@ void PacketParser::decodeMode(const uint8_t* payload, size_t length) {
     uint8_t aux1 = payload[6];
     uint8_t mode = (aux1 >> 2) & 0x03;
     switch (mode) {
-        case 1: displayState.modeChar = 'A'; break;
-        case 2: displayState.modeChar = 'l'; break;
-        case 3: displayState.modeChar = 'L'; break;
-        default: displayState.modeChar = 0; break;
+        case 1: displayState_.modeChar = 'A'; break;
+        case 2: displayState_.modeChar = 'l'; break;
+        case 3: displayState_.modeChar = 'L'; break;
+        default: displayState_.modeChar = 0; break;
     }
-    displayState.hasMode = displayState.modeChar != 0;
+    displayState_.hasMode = displayState_.modeChar != 0;
 }
