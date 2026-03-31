@@ -151,11 +151,11 @@ void test_connected_flag_uses_explicit_atomic_load_store() {
     const std::string connectionText = readFile(connectionSource);
     const std::string proxyText = readFile(proxySource);
 
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, clientText.find("connected_.load(std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, clientText.find("connected_.load(std::memory_order_acquire)"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, runtimeText.find("connected_.store(false, std::memory_order_relaxed)"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, runtimeText.find("connected_.store(true, std::memory_order_relaxed)"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("connected_.store(true, std::memory_order_relaxed)"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("connected_.store(false, std::memory_order_relaxed)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, connectionText.find("connected_.store(false, std::memory_order_release)"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, proxyText.find("connected_.load(std::memory_order_relaxed)"));
 }
 
