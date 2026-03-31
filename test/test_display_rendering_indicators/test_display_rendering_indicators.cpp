@@ -48,7 +48,7 @@ SettingsManager settingsManager;
 // Minimal V1Display constructor / destructor stubs
 // ---------------------------------------------------------------------------
 V1Display::V1Display() {
-    currentPalette = ColorThemes::STANDARD();
+    currentPalette_ = ColorThemes::STANDARD();
     g_displayInstance = this;
 }
 V1Display::~V1Display() = default;

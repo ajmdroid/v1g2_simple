@@ -41,7 +41,7 @@ SettingsManager settingsManager;
 // (avoids pulling in all of display.cpp with its hardware dependencies)
 // ---------------------------------------------------------------------------
 V1Display::V1Display() {
-    currentPalette = ColorThemes::STANDARD();
+    currentPalette_ = ColorThemes::STANDARD();
     g_displayInstance = this;
 }
 V1Display::~V1Display() = default;

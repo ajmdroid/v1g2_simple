@@ -6,9 +6,9 @@
 // These macros wrap the Arduino_GFX / TFT_eSPI drawing API with coordinate
 // transforms and provide a portable abstraction used by all display code.
 //
-// REQUIREMENT: a variable named 'tft' (Arduino_Canvas* or TFT_eSPI&) must
+// REQUIREMENT: a variable named 'tft_' (Arduino_Canvas* or TFT_eSPI&) must
 // be in scope at every call site.  Inside V1Display methods this is the
-// 'this->tft' member; in extracted free functions it is a parameter.
+// 'this->tft_' member; in extracted free functions it is a parameter.
 // ============================================================================
 
 #include "display_driver.h"   // DISPLAY_USE_ARDUINO_GFX, Arduino_Canvas, etc.
@@ -29,8 +29,8 @@ inline uint16_t dimColor(uint16_t c, uint8_t scalePercent = 60) {
 // ---------------------------------------------------------------------------
 // TFT access layer — pointer (Arduino_GFX) vs object (TFT_eSPI)
 // ---------------------------------------------------------------------------
-    #define TFT_CALL(method) tft->method
-    #define TFT_PTR tft
+    #define TFT_CALL(method) tft_->method
+    #define TFT_PTR tft_
 
 // ---------------------------------------------------------------------------
 // Coordinate transforms (identity — hardware handles rotation)

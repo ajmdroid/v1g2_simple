@@ -59,7 +59,7 @@ public:
     void updatePersisted(const AlertData& alert, const DisplayState& state);
 
     // Check if currently in persisted mode (for color selection)
-    bool isPersistedMode() const { return persistedMode; }
+    bool isPersistedMode() const { return persistedMode_; }
 
     // Show connection status
     void showDisconnected();
@@ -96,7 +96,7 @@ public:
 
     // Color theme helpers
     void updateColorTheme();  // Update colors from settings
-    const ColorPalette& getCurrentPalette() const { return currentPalette; }
+    const ColorPalette& getCurrentPalette() const { return currentPalette_; }
 
     // Profile indicator
     void drawProfileIndicator(int slot);  // 0=Default, 1=Highway, 2=Comfort
@@ -143,15 +143,15 @@ private:
     static PerfDisplayScreen perfScreenForMode(ScreenMode mode);
 
     // Display driver (Arduino_GFX)
-    std::unique_ptr<Arduino_ESP32QSPI> bus;
-    std::unique_ptr<Arduino_AXS15231B> gfxPanel;
-    std::unique_ptr<Arduino_Canvas> tft;  // Canvas for rotation/buffering
+    std::unique_ptr<Arduino_ESP32QSPI> bus_;
+    std::unique_ptr<Arduino_AXS15231B> gfxPanel_;
+    std::unique_ptr<Arduino_Canvas> tft_;  // Canvas for rotation/buffering
 
-    DisplayState lastState;
-    AlertData lastAlert;
+    DisplayState lastState_;
+    AlertData lastAlert_;
 
     // Color palette
-    ColorPalette currentPalette;  // Store current theme palette
+    ColorPalette currentPalette_;  // Store current theme palette
 
     // Drawing helpers
     void drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits = 0);
@@ -205,30 +205,30 @@ private:
     // Use centralized constant from display_layout.h
     static constexpr int SECONDARY_ROW_HEIGHT = DisplayLayout::SECONDARY_ROW_HEIGHT;
 
-    int currentProfileSlot = 0;  // Track current profile for display
-    ScreenMode currentScreen = ScreenMode::Unknown;  // Track current screen to avoid redundant full redraws
-    uint32_t paletteRevision = 0;                    // Incremented on theme change to trigger redraws
-    uint32_t lastRestingPaletteRevision = 0;         // Palette revision last used for resting screen
-    int lastRestingProfileSlot = -1;                 // Last profile shown on resting screen
+    int currentProfileSlot_ = 0;  // Track current profile for display
+    ScreenMode currentScreen_ = ScreenMode::Unknown;  // Track current screen to avoid redundant full redraws
+    uint32_t paletteRevision_ = 0;                    // Incremented on theme change to trigger redraws
+    uint32_t lastRestingPaletteRevision_ = 0;         // Palette revision last used for resting screen
+    int lastRestingProfileSlot_ = -1;                 // Last profile shown on resting screen
 
     // Visibility timeout tracking
-    unsigned long wifiConnectedTime = 0;    // When WiFi became connected
-    unsigned long profileChangedTime = 0;   // When profile was last changed
-    bool wifiWasConnected = false;          // Track WiFi connection state changes
-    int lastProfileSlot = -1;               // Track profile changes
-    bool bleProxyEnabled = false;           // BLE proxy enabled flag
-    bool bleProxyClientConnected = false;   // BLE proxy client connection flag
-    bool bleReceivingData = true;           // True when V1 packets received recently (heartbeat)
-    bool bleProxyDrawn = false;             // Track if icon has been drawn at least once
-    bool multiAlertMode = false;            // True when showing secondary alert cards (reduces main area)
-    bool persistedMode = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
-    bool wasInMultiAlertMode = false;       // Track mode transitions for change detection
-    bool frequencyRenderDirty = false;      // Set when drawFrequency changed pixels this call
-    bool frequencyDirtyValid = false;       // True when a minimal dirty region is available
-    int16_t frequencyDirtyX = 0;
-    int16_t frequencyDirtyY = 0;
-    int16_t frequencyDirtyW = 0;
-    int16_t frequencyDirtyH = 0;
+    unsigned long wifiConnectedTime_ = 0;    // When WiFi became connected
+    unsigned long profileChangedTime_ = 0;   // When profile was last changed
+    bool wifiWasConnected_ = false;          // Track WiFi connection state changes
+    int lastProfileSlot_ = -1;               // Track profile changes
+    bool bleProxyEnabled_ = false;           // BLE proxy enabled flag
+    bool bleProxyClientConnected_ = false;   // BLE proxy client connection flag
+    bool bleReceivingData_ = true;           // True when V1 packets received recently (heartbeat)
+    bool bleProxyDrawn_ = false;             // Track if icon has been drawn at least once
+    bool multiAlertMode_ = false;            // True when showing secondary alert cards (reduces main area)
+    bool persistedMode_ = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
+    bool wasInMultiAlertMode_ = false;       // Track mode transitions for change detection
+    bool frequencyRenderDirty_ = false;      // Set when drawFrequency changed pixels this call
+    bool frequencyDirtyValid_ = false;       // True when a minimal dirty region is available
+    int16_t frequencyDirtyX_ = 0;
+    int16_t frequencyDirtyY_ = 0;
+    int16_t frequencyDirtyW_ = 0;
+    int16_t frequencyDirtyH_ = 0;
     bool secondaryCardsRenderDirty_ = false; // True when drawSecondaryAlertCards changed card-row pixels
     bool lockoutIndicatorShown_ = false;  // Current lockout indicator state (set by orchestration modules)
     bool preQuietActive_ = false;          // Suppress VOL 0 warning during lockout pre-quiet
@@ -249,8 +249,8 @@ private:
 public:
     // Test seam: inject a recording canvas and expose it for assertions.
     // The display takes ownership; caller must allocate with new.
-    void setTestCanvas(Arduino_Canvas* canvas) { tft.reset(canvas); }
-    Arduino_Canvas* testCanvas() { return tft.get(); }
+    void setTestCanvas(Arduino_Canvas* canvas) { tft_.reset(canvas); }
+    Arduino_Canvas* testCanvas() { return tft_.get(); }
     // Public wrappers for private rendering methods (native integration tests only)
     void ut_drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFlashBits = 0) {
         drawBandIndicators(bandMask, muted, bandFlashBits);

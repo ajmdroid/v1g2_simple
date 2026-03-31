@@ -58,7 +58,7 @@ SettingsManager settingsManager;
 // Minimal V1Display constructor / destructor stubs
 // ---------------------------------------------------------------------------
 V1Display::V1Display() {
-    currentPalette = ColorThemes::STANDARD();
+    currentPalette_ = ColorThemes::STANDARD();
     g_displayInstance = this;
 }
 V1Display::~V1Display() = default;
@@ -68,9 +68,9 @@ V1Display::~V1Display() = default;
 // other translation units (display.cpp, display_indicators.cpp, etc.)
 // ---------------------------------------------------------------------------
 void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool receivingData) {
-    bleProxyEnabled = proxyEnabled;
-    bleProxyClientConnected = clientConnected;
-    bleReceivingData = receivingData;
+    bleProxyEnabled_ = proxyEnabled;
+    bleProxyClientConnected_ = clientConnected;
+    bleReceivingData_ = receivingData;
 }
 
 void V1Display::setBleContext(const DisplayBleContext& ctx) {

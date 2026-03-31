@@ -51,7 +51,7 @@ void tearDown() {}
 void test_scanning_early_return_does_not_clear_tracking_reset() {
     const std::string source = readFile("/Users/ajmedford/v1g2_simple/src/display_update.cpp");
     const std::string restingUpdate = extractBlock(source, "void V1Display::update(const DisplayState& state)");
-    const std::string scanningBlock = extractBlock(restingUpdate, "if (currentScreen == ScreenMode::Scanning)");
+    const std::string scanningBlock = extractBlock(restingUpdate, "if (currentScreen_ == ScreenMode::Scanning)");
 
     TEST_ASSERT_NOT_EQUAL(std::string::npos, scanningBlock.find("return;"));
     TEST_ASSERT_EQUAL(std::string::npos, scanningBlock.find("dirty.resetTracking = false;"));
@@ -63,7 +63,7 @@ void test_resting_full_redraw_clears_tracking_reset_after_flush() {
 
     const size_t flushPos = restingUpdate.find("DISPLAY_FLUSH();");
     const size_t clearPos = restingUpdate.find("dirty.resetTracking = false;");
-    const size_t screenPos = restingUpdate.find("currentScreen = ScreenMode::Resting;");
+    const size_t screenPos = restingUpdate.find("currentScreen_ = ScreenMode::Resting;");
 
     TEST_ASSERT_NOT_EQUAL(std::string::npos, flushPos);
     TEST_ASSERT_NOT_EQUAL(std::string::npos, clearPos);
@@ -104,7 +104,7 @@ void test_stale_ble_policy_is_wired_into_display_sources() {
 
     const std::string bleBlock = extractBlock(statusSource, "void V1Display::drawBLEProxyIndicator()");
     TEST_ASSERT_NOT_EQUAL(std::string::npos, bleBlock.find("const bool bleContextFresh = hasFreshBleContext(millis());"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, bleBlock.find("const bool receivingData = bleReceivingData && bleContextFresh;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, bleBlock.find("const bool receivingData = bleReceivingData_ && bleContextFresh;"));
 }
 
 int main() {

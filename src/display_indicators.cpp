@@ -28,7 +28,7 @@ void V1Display::drawBaseFrame() {
 }
 
 void V1Display::prepareFullRedrawNoClear() {
-    bleProxyDrawn = false;  // Force indicator redraw after full clears
+    bleProxyDrawn_ = false;  // Force indicator redraw after full clears
     dirty.setAll();         // Invalidate every element cache after screen clear
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
@@ -76,7 +76,7 @@ void V1Display::drawLockoutIndicator() {
         GFX_setTextDatum(MC_DATUM);
         TFT_CALL(setTextSize)(2);
         TFT_CALL(setTextColor)(textColor, fillColor);
-        GFX_drawString(tft, "L", x + sz / 2, y + sz / 2);
+        GFX_drawString(tft_, "L", x + sz / 2, y + sz / 2);
     } else {
         FILL_RECT(x, y, sz, sz, PALETTE_BG);
     }
@@ -158,7 +158,7 @@ void V1Display::drawGpsIndicator() {
         GFX_setTextDatum(MC_DATUM);
         TFT_CALL(setTextSize)(2);
         TFT_CALL(setTextColor)(textColor, PALETTE_BG);
-        GFX_drawString(tft, buf, x + w / 2, y + h / 2);
+        GFX_drawString(tft_, buf, x + w / 2, y + h / 2);
     } else {
         FILL_RECT(x, y, w, h, PALETTE_BG);
     }
@@ -207,7 +207,7 @@ void V1Display::drawObdIndicator() {
     GFX_setTextDatum(MC_DATUM);
     TFT_CALL(setTextSize)(2);
     TFT_CALL(setTextColor)(textColor, PALETTE_BG);
-    GFX_drawString(tft, "OBD", x + w / 2, y + h / 2);
+    GFX_drawString(tft_, "OBD", x + w / 2, y + h / 2);
 #endif
 }
 
@@ -219,5 +219,5 @@ void V1Display::drawStatusText(const char* text, uint16_t color) {
     TFT_CALL(setTextColor)(color, PALETTE_BG);
     GFX_setTextDatum(MC_DATUM);
     TFT_CALL(setTextSize)(2);
-    GFX_drawString(tft, text, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
+    GFX_drawString(tft_, text, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
 }

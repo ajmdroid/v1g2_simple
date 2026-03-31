@@ -107,14 +107,14 @@ using DisplayLayout::TOP_COUNTER_FALLBACK_WIDTH;
 
 V1Display::V1Display() {
     // Initialize with standard theme by default
-    currentPalette = ColorThemes::STANDARD();
+    currentPalette_ = ColorThemes::STANDARD();
     // Set global instance for color palette access
     g_displayInstance = this;
 
-    currentScreen = ScreenMode::Unknown;
-    paletteRevision = 0;
-    lastRestingPaletteRevision = 0;
-    lastRestingProfileSlot = -1;
+    currentScreen_ = ScreenMode::Unknown;
+    paletteRevision_ = 0;
+    lastRestingPaletteRevision_ = 0;
+    lastRestingProfileSlot_ = -1;
 }
 
 V1Display::~V1Display() = default;
@@ -133,9 +133,9 @@ bool V1Display::begin() {
     };
 
     // Ensure restart/re-init paths never leak partially constructed objects.
-    tft.reset();
-    gfxPanel.reset();
-    bus.reset();
+    tft_.reset();
+    gfxPanel_.reset();
+    bus_.reset();
 
     // Arduino_GFX initialization for Waveshare 3.49"
     // Waveshare 3.49" has INVERTED backlight PWM: 0 = full brightness, 255 = off
@@ -153,7 +153,7 @@ bool V1Display::begin() {
     delay(30);
 
     // Create QSPI bus
-    bus.reset(new (std::nothrow) Arduino_ESP32QSPI(
+    bus_.reset(new (std::nothrow) Arduino_ESP32QSPI(
         LCD_CS,    // CS
         LCD_SCLK,  // SCK
         LCD_DATA0, // D0
@@ -161,15 +161,15 @@ bool V1Display::begin() {
         LCD_DATA2, // D2
         LCD_DATA3  // D3
     ));
-    if (!bus) {
+    if (!bus_) {
         Serial.println("[Display] ERROR: Failed to create bus!");
         return false;
     }
 
     // Create AXS15231B panel - native 172x640 portrait
     // Pass GFX_NOT_DEFINED for RST since we already did manual reset
-    gfxPanel.reset(new (std::nothrow) Arduino_AXS15231B(
-        bus.get(),         // bus
+    gfxPanel_.reset(new (std::nothrow) Arduino_AXS15231B(
+        bus_.get(),         // bus
         GFX_NOT_DEFINED,   // RST - we already did manual reset
         0,                 // rotation (0 = no panel rotation)
         false,             // IPS
@@ -182,31 +182,31 @@ bool V1Display::begin() {
         axs15231b_180640_init_operations,   // init operations for this panel type
         sizeof(axs15231b_180640_init_operations)
     ));
-    if (!gfxPanel) {
+    if (!gfxPanel_) {
         Serial.println("[Display] ERROR: Failed to create panel!");
-        bus.reset();
+        bus_.reset();
         return false;
     }
 
     // Create canvas as 172x640 native with rotation=1 for landscape (90°)
-    tft.reset(new (std::nothrow) Arduino_Canvas(172, 640, gfxPanel.get(), 0, 0, 1));
+    tft_.reset(new (std::nothrow) Arduino_Canvas(172, 640, gfxPanel_.get(), 0, 0, 1));
 
-    if (!tft) {
+    if (!tft_) {
         Serial.println("[Display] ERROR: Failed to create canvas!");
-        gfxPanel.reset();
-        bus.reset();
+        gfxPanel_.reset();
+        bus_.reset();
         return false;
     }
 
-    if (!tft->begin()) {
+    if (!tft_->begin()) {
         Serial.println("[Display] ERROR: tft->begin() failed!");
-        tft.reset();
-        gfxPanel.reset();
-        bus.reset();
+        tft_.reset();
+        gfxPanel_.reset();
+        bus_.reset();
         return false;
     }
 
-    tft->fillScreen(COLOR_BLACK);
+    tft_->fillScreen(COLOR_BLACK);
     DISPLAY_FLUSH();
 
     // Turn on backlight (inverted: 0 = full brightness)
@@ -216,15 +216,15 @@ bool V1Display::begin() {
 
     delay(10); // Give hardware time to settle
 
-    tft->setTextColor(PALETTE_TEXT);
-    tft->setTextSize(2);
+    tft_->setTextColor(PALETTE_TEXT);
+    tft_->setTextSize(2);
 
     DISPLAY_LOG("[DISPLAY] Initialized successfully %dx%d\n", SCREEN_WIDTH, SCREEN_HEIGHT);
     logDisplayStage("hw_init");
 
     // Initialize all OpenFontRender instances via the font manager.
     // Segment7 + TopCounter are loaded immediately; Serpentine is deferred.
-    fontMgr.init(tft);
+    fontMgr.init(tft_);
     logDisplayStage("font_init");
 
     // Debug: dump top-counter glyph bounds for a few reference digits.
@@ -261,9 +261,9 @@ void V1Display::setBrightness(uint8_t level) {
 }
 
 void V1Display::clear() {
-    tft->fillScreen(PALETTE_BG);
+    tft_->fillScreen(PALETTE_BG);
     DISPLAY_FLUSH();
-    bleProxyDrawn = false;
+    bleProxyDrawn_ = false;
 }
 
 void V1Display::setBleContext(const DisplayBleContext& ctx) {
@@ -279,26 +279,26 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool 
 #if defined(DISPLAY_WAVESHARE_349)
     // Detect app disconnect - was connected, now isn't
     // Reset VOL 0 warning state immediately so it can trigger again
-    if (bleProxyClientConnected && !clientConnected) {
+    if (bleProxyClientConnected_ && !clientConnected) {
         volZeroWarn.reset();
     }
 
     // Check if proxy client connection changed - update RSSI display
-    bool proxyChanged = (clientConnected != bleProxyClientConnected);
+    bool proxyChanged = (clientConnected != bleProxyClientConnected_);
 
     // Check if receiving state changed (for heartbeat visual)
-    bool receivingChanged = (receivingData != bleReceivingData);
+    bool receivingChanged = (receivingData != bleReceivingData_);
 
-    if (bleProxyDrawn &&
-        proxyEnabled == bleProxyEnabled &&
-        clientConnected == bleProxyClientConnected &&
+    if (bleProxyDrawn_ &&
+        proxyEnabled == bleProxyEnabled_ &&
+        clientConnected == bleProxyClientConnected_ &&
         !receivingChanged) {
         return;  // No visual change needed
     }
 
-    bleProxyEnabled = proxyEnabled;
-    bleProxyClientConnected = clientConnected;
-    bleReceivingData = receivingData;
+    bleProxyEnabled_ = proxyEnabled;
+    bleProxyClientConnected_ = clientConnected;
+    bleReceivingData_ = receivingData;
     drawBLEProxyIndicator();
 
     // Update RSSI display when proxy connection changes
@@ -316,9 +316,9 @@ void V1Display::flush() {
 
 void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
     // Constrain region to framebuffer bounds
-    if (!tft || !gfxPanel) return;
-    int16_t maxW = tft->width();
-    int16_t maxH = tft->height();
+    if (!tft_ || !gfxPanel_) return;
+    int16_t maxW = tft_->width();
+    int16_t maxH = tft_->height();
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
     if (w <= 0 || h <= 0) return;
@@ -327,17 +327,17 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
     if (y + h > maxH) h = maxH - y;
     const uint32_t areaPx = static_cast<uint32_t>(w) * static_cast<uint32_t>(h);
 
-    uint16_t* fb = tft->getFramebuffer();
+    uint16_t* fb = tft_->getFramebuffer();
     if (!fb) {
         DISPLAY_FLUSH();
         return;
     }
 
     const uint32_t startUs = PERF_TIMESTAMP_US();
-    int16_t stride = tft->width();
+    int16_t stride = tft_->width();
     for (int16_t row = 0; row < h; ++row) {
         uint16_t* rowPtr = fb + (y + row) * stride + x;
-        gfxPanel->draw16bitRGBBitmap(x, y + row, rowPtr, w, 1);
+        gfxPanel_->draw16bitRGBBitmap(x, y + row, rowPtr, w, 1);
     }
     perfRecordFlushUs(PERF_TIMESTAMP_US() - startUs, areaPx, false);
 }
@@ -359,5 +359,5 @@ uint16_t V1Display::getBandColor(Band band) {
 
 void V1Display::updateColorTheme() {
     // Always use standard palette - custom colors are per-element in settings
-    currentPalette = ColorThemes::STANDARD();
+    currentPalette_ = ColorThemes::STANDARD();
 }

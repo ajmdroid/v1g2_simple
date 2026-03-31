@@ -46,18 +46,18 @@ void V1Display::showResting(bool forceRedraw) {
     bool recordRenderTiming = false;
     // Always use multi-alert layout positioning
     dirty.multiAlert = true;
-    multiAlertMode = false;
+    multiAlertMode_ = false;
 
     // Save the last known bogey counter before potentially resetting
     // This preserves the mode indicator (A/L/c) when V1 is connected
-    char savedBogeyChar = lastState.bogeyCounterChar;
-    bool savedBogeyDot = lastState.bogeyCounterDot;
+    char savedBogeyChar = lastState_.bogeyCounterChar;
+    bool savedBogeyDot = lastState_.bogeyCounterDot;
 
     // Avoid redundant full-screen clears/flushes when already resting and nothing changed
-    bool paletteChanged = (lastRestingPaletteRevision != paletteRevision);
-    bool screenChanged = (currentScreen != ScreenMode::Resting);
-    int profileSlot = currentProfileSlot;
-    bool profileChanged = (profileSlot != lastRestingProfileSlot);
+    bool paletteChanged = (lastRestingPaletteRevision_ != paletteRevision_);
+    bool screenChanged = (currentScreen_ != ScreenMode::Resting);
+    int profileSlot = currentProfileSlot_;
+    bool profileChanged = (profileSlot != lastRestingProfileSlot_);
 
     if (forceRedraw || screenChanged || paletteChanged) {
         perfRecordDisplayRenderPath(restoreRender ? PerfDisplayRenderPath::Restore
@@ -103,18 +103,18 @@ void V1Display::showResting(bool forceRedraw) {
         AlertData emptyPriority;
         drawSecondaryAlertCards(nullptr, 0, emptyPriority, false);
 
-        lastRestingPaletteRevision = paletteRevision;
-        lastRestingProfileSlot = profileSlot;
+        lastRestingPaletteRevision_ = paletteRevision_;
+        lastRestingProfileSlot_ = profileSlot;
 
         // Log screen mode transition for debugging display refresh issues
-        if (currentScreen != ScreenMode::Resting) {
-            DISPLAY_LOG("[DISP] Screen mode: %d -> Resting (showResting)\n", (int)currentScreen);
+        if (currentScreen_ != ScreenMode::Resting) {
+            DISPLAY_LOG("[DISP] Screen mode: %d -> Resting (showResting)\n", (int)currentScreen_);
             perfRecordDisplayScreenTransition(
-                perfScreenForMode(currentScreen),
+                perfScreenForMode(currentScreen_),
                 PerfDisplayScreen::Resting,
                 millis());
         }
-        currentScreen = ScreenMode::Resting;
+        currentScreen_ = ScreenMode::Resting;
 
     DISPLAY_FLUSH();
     } else if (profileChanged) {
@@ -124,7 +124,7 @@ void V1Display::showResting(bool forceRedraw) {
         recordRenderTiming = true;
         // Only the profile changed while already resting; redraw just the indicator
         drawProfileIndicator(profileSlot);
-        lastRestingProfileSlot = profileSlot;
+        lastRestingProfileSlot_ = profileSlot;
         // Push only the regions touched by profile/WiFi/BLE/battery indicators
         const int profileFlushY = 8;
         const int profileFlushH = 36;
@@ -135,8 +135,8 @@ void V1Display::showResting(bool forceRedraw) {
         flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
     }
 
-    // Reset lastState so next update() detects changes from this "resting" state
-    lastState = DisplayState();  // All defaults: bands=0, arrows=0, bars=0, hasMode=false, modeChar=0
+    // Reset lastState_ so next update() detects changes from this "resting" state
+    lastState_ = DisplayState();  // All defaults: bands=0, arrows=0, bars=0, hasMode=false, modeChar=0
 
     if (recordRenderTiming) {
         perfRecordDisplayScenarioRenderUs(micros() - renderStartUs);
@@ -148,10 +148,10 @@ void V1Display::showResting(bool forceRedraw) {
 // ============================================================================
 
 void V1Display::forceNextRedraw() {
-    // Reset lastState to force next update() to detect all changes and redraw
-    lastState = DisplayState();
+    // Reset lastState_ to force next update() to detect all changes and redraw
+    lastState_ = DisplayState();
     // Set screen mode to Unknown so any next update/showResting detects a screen change
-    currentScreen = ScreenMode::Unknown;
+    currentScreen_ = ScreenMode::Unknown;
     // Reset the singleton-scoped render tracking variables (volume, mode,
     // arrows, etc.) so the single production display path fully redraws.
     resetChangeTracking();
@@ -192,11 +192,11 @@ void V1Display::showScanning() {
     drawLockoutIndicator();
     drawGpsIndicator();
     drawObdIndicator();
-    drawProfileIndicator(currentProfileSlot);
+    drawProfileIndicator(currentProfileSlot_);
 
     // Draw "SCAN" in frequency area - match display style
     if (s.displayStyle == DISPLAY_STYLE_SERPENTINE) {
-        fontMgr.ensureSerpentineLoaded(tft);
+        fontMgr.ensureSerpentineLoaded(tft_);
     }
     if (s.displayStyle == DISPLAY_STYLE_SERPENTINE && fontMgr.serpentineReady) {
         // Serpentine style font
@@ -267,19 +267,19 @@ void V1Display::showScanning() {
         draw14SegmentText(text, x, y, scale, s.colorBandKa, PALETTE_BG);
     }
 
-    // Reset lastState
-    lastState = DisplayState();
+    // Reset lastState_
+    lastState_ = DisplayState();
 
     DISPLAY_FLUSH();
 
-    if (currentScreen != ScreenMode::Scanning) {
+    if (currentScreen_ != ScreenMode::Scanning) {
         perfRecordDisplayScreenTransition(
-            perfScreenForMode(currentScreen),
+            perfScreenForMode(currentScreen_),
             PerfDisplayScreen::Scanning,
             millis());
     }
-    currentScreen = ScreenMode::Scanning;
-    lastRestingProfileSlot = -1;
+    currentScreen_ = ScreenMode::Scanning;
+    lastRestingProfileSlot_ = -1;
     perfRecordDisplayScenarioRenderUs(micros() - renderStartUs);
 }
 
@@ -304,7 +304,7 @@ void V1Display::showBootSplash() {
     GFX_setTextDatum(BR_DATUM);  // Bottom-right alignment
     TFT_CALL(setTextSize)(2);
     TFT_CALL(setTextColor)(0x7BEF, PALETTE_BG);  // Gray text (mid-gray RGB565)
-    GFX_drawString(tft, "v" FIRMWARE_VERSION, SCREEN_WIDTH - 8, SCREEN_HEIGHT - 6);
+    GFX_drawString(tft_, "v" FIRMWARE_VERSION, SCREEN_WIDTH - 8, SCREEN_HEIGHT - 6);
 
     // Flush canvas to display before enabling backlight
     const unsigned long flushStartMs = millis();
@@ -333,12 +333,12 @@ void V1Display::showShutdown() {
     GFX_setTextDatum(MC_DATUM);
     TFT_CALL(setTextSize)(3);
     TFT_CALL(setTextColor)(PALETTE_TEXT, PALETTE_BG);
-    GFX_drawString(tft, "GOODBYE", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 20);
+    GFX_drawString(tft_, "GOODBYE", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 20);
 
     // Draw smaller "Powering off..." below
     TFT_CALL(setTextSize)(2);
     TFT_CALL(setTextColor)(PALETTE_GRAY, PALETTE_BG);
-    GFX_drawString(tft, "Powering off...", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20);
+    GFX_drawString(tft_, "Powering off...", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20);
 
     // Flush to display
     DISPLAY_FLUSH();
@@ -373,7 +373,7 @@ void V1Display::showLowBattery() {
     GFX_setTextDatum(MC_DATUM);
     TFT_CALL(setTextSize)(2);
     TFT_CALL(setTextColor)(redColor, PALETTE_BG);
-    GFX_drawString(tft, "LOW BATTERY", SCREEN_WIDTH / 2, battY + battH + 30);
+    GFX_drawString(tft_, "LOW BATTERY", SCREEN_WIDTH / 2, battY + battH + 30);
 
     // Flush to display
     DISPLAY_FLUSH();

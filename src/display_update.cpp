@@ -210,21 +210,21 @@ void V1Display::update(const DisplayState& state) {
     DisplayRenderCache& cache = s_displayRenderCache;
 
     // Track if we're transitioning FROM persisted mode (need full redraw)
-    bool wasPersistedMode = persistedMode;
-    persistedMode = false;  // Not in persisted mode
+    bool wasPersistedMode = persistedMode_;
+    persistedMode_ = false;  // Not in persisted mode
     const bool requestedTrackingReset = dirty.resetTracking;
 
     // Don't process resting update if we're in Scanning mode - wait for showResting() to be called
-    if (currentScreen == ScreenMode::Scanning) {
+    if (currentScreen_ == ScreenMode::Scanning) {
         return;
     }
 
     // Always use multi-alert layout positioning
     dirty.multiAlert = true;
-    multiAlertMode = false;  // No cards to draw in resting state
+    multiAlertMode_ = false;  // No cards to draw in resting state
 
     // Check if profile flash period just expired (needs redraw to clear)
-    bool inFlashPeriod = (millis() - profileChangedTime) < HIDE_TIMEOUT_MS;
+    bool inFlashPeriod = (millis() - profileChangedTime_) < HIDE_TIMEOUT_MS;
     bool flashJustExpired = cache.restingWasInFlashPeriod && !inFlashPeriod;
     cache.restingWasInFlashPeriod = inFlashPeriod;
 
@@ -259,7 +259,7 @@ void V1Display::update(const DisplayState& state) {
     bool rssiNeedsUpdate = shouldRefreshRssi(now);
 
     // Check if transitioning from a non-resting visual mode.
-    bool leavingLiveMode = (currentScreen == ScreenMode::Live);
+    bool leavingLiveMode = (currentScreen_ == ScreenMode::Live);
 
     // Separate full redraw triggers from incremental updates
     bool needsFullRedraw =
@@ -268,7 +268,7 @@ void V1Display::update(const DisplayState& state) {
         wasPersistedMode ||  // Force full redraw when leaving persisted mode
         leavingLiveMode ||   // Force full redraw when alerts end (clear cards/frequency)
         restingDebouncedBands != cache.lastRestingDebouncedBands ||
-        effectiveMuted != lastState.muted;
+        effectiveMuted != lastState_.muted;
 
     bool arrowsChanged = (state.arrows != cache.lastRestingArrows);
     bool signalBarsChanged = (state.signalBars != cache.lastRestingSignalBars);
@@ -327,7 +327,7 @@ void V1Display::update(const DisplayState& state) {
         (void)flushLeftStrip;
         (void)flushRightStrip;
         DISPLAY_FLUSH();
-        lastState = state;
+        lastState_ = state;
         return;
     }
 
@@ -344,7 +344,7 @@ void V1Display::update(const DisplayState& state) {
                                 PerfDisplayRedrawReason::BogeyCounterChange);
     recordDisplayRedrawReasonIf(rssiNeedsUpdate, PerfDisplayRedrawReason::RssiRefresh);
     recordDisplayRedrawReasonIf(flashJustExpired, PerfDisplayRedrawReason::FlashTick);
-    recordDisplayRedrawReasonIf(requestedTrackingReset || (effectiveMuted != lastState.muted),
+    recordDisplayRedrawReasonIf(requestedTrackingReset || (effectiveMuted != lastState_.muted),
                                 PerfDisplayRedrawReason::ForceRedraw);
 
     // Full redraw needed
@@ -409,7 +409,7 @@ void V1Display::update(const DisplayState& state) {
     drawLockoutIndicator();
     drawGpsIndicator();
     drawObdIndicator();
-    drawProfileIndicator(currentProfileSlot);
+    drawProfileIndicator(currentProfileSlot_);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::ArrowsIcons,
                                       micros() - stageStartUs);
 
@@ -427,14 +427,14 @@ void V1Display::update(const DisplayState& state) {
 
     dirty.resetTracking = false;
 
-    if (currentScreen != ScreenMode::Resting) {
+    if (currentScreen_ != ScreenMode::Resting) {
         perfRecordDisplayScreenTransition(
-            perfScreenForMode(currentScreen),
+            perfScreenForMode(currentScreen_),
             PerfDisplayScreen::Resting,
             millis());
     }
-    currentScreen = ScreenMode::Resting;  // Set screen mode after redraw complete
-    lastState = state;
+    currentScreen_ = ScreenMode::Resting;  // Set screen mode after redraw complete
+    lastState_ = state;
 }
 
 void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
@@ -476,9 +476,9 @@ void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bo
         cache.lastObdConnected = obdConnected;
     }
 
-    if (frequencyRenderDirty) {
-        if (frequencyDirtyValid) {
-            flushRegion(frequencyDirtyX, frequencyDirtyY, frequencyDirtyW, frequencyDirtyH);
+    if (frequencyRenderDirty_) {
+        if (frequencyDirtyValid_) {
+            flushRegion(frequencyDirtyX_, frequencyDirtyY_, frequencyDirtyW_, frequencyDirtyH_);
         } else {
             // Conservative fallback when no precise dirty region was captured.
             flushRegion(DisplayLayout::CONTENT_LEFT_MARGIN,
@@ -502,27 +502,27 @@ void V1Display::refreshSecondaryAlertCards(const AlertData* alerts, int alertCou
 // Bogey counter shows V1 mode (from state), not "1"
 void V1Display::updatePersisted(const AlertData& alert, const DisplayState& state) {
     if (!alert.isValid) {
-        persistedMode = false;
+        persistedMode_ = false;
         update(state);  // Fall back to normal resting display
         return;
     }
 
     // Enable persisted mode so draw functions use PALETTE_PERSISTED instead of PALETTE_MUTED
-    persistedMode = true;
+    persistedMode_ = true;
 
-    if (currentScreen != ScreenMode::Persisted) {
+    if (currentScreen_ != ScreenMode::Persisted) {
         perfRecordDisplayScreenTransition(
-            perfScreenForMode(currentScreen),
+            perfScreenForMode(currentScreen_),
             PerfDisplayScreen::Persisted,
             millis());
     }
-    currentScreen = ScreenMode::Persisted;
+    currentScreen_ = ScreenMode::Persisted;
     perfRecordDisplayRenderPath(persistedRenderPathForScenario());
 
     // Always use multi-alert layout positioning
     dirty.multiAlert = true;
-    multiAlertMode = false;  // No cards to draw
-    wasInMultiAlertMode = false;
+    multiAlertMode_ = false;  // No cards to draw
+    wasInMultiAlertMode_ = false;
 
     uint32_t stageStartUs = micros();
     drawBaseFrame();
@@ -567,7 +567,7 @@ void V1Display::updatePersisted(const AlertData& alert, const DisplayState& stat
     // drawMuteIcon intentionally skipped
 
     // Profile indicator still shown
-    drawProfileIndicator(currentProfileSlot);
+    drawProfileIndicator(currentProfileSlot_);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::ArrowsIcons,
                                       micros() - stageStartUs);
 
@@ -590,8 +590,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     DisplayRenderCache& cache = s_displayRenderCache;
 
     // Check if we're transitioning FROM persisted mode (need full redraw to restore colors)
-    bool wasPersistedMode = persistedMode;
-    persistedMode = false;  // Not in persisted mode
+    bool wasPersistedMode = persistedMode_;
+    persistedMode_ = false;  // Not in persisted mode
     const bool requestedTrackingReset = dirty.resetTracking;
 
     // Get settings reference for priorityArrowOnly
@@ -604,20 +604,20 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     }
 
     // Track screen mode transitions - force redraw when entering live mode from resting/scanning
-    bool enteringLiveMode = (currentScreen != ScreenMode::Live);
+    bool enteringLiveMode = (currentScreen_ != ScreenMode::Live);
     if (enteringLiveMode) {
         DISPLAY_LOG("[DISP] Entering Live mode (was %d), alertCount=%d\n",
-                    (int)currentScreen, alertCount);
+                    (int)currentScreen_, alertCount);
         perfRecordDisplayScreenTransition(
-            perfScreenForMode(currentScreen),
+            perfScreenForMode(currentScreen_),
             PerfDisplayScreen::Live,
             millis());
     }
-    currentScreen = ScreenMode::Live;
+    currentScreen_ = ScreenMode::Live;
 
     // Always use multi-alert mode (raised layout for cards)
     dirty.multiAlert = true;
-    multiAlertMode = true;
+    multiAlertMode_ = true;
 
     // V1 is source of truth - use activeBands directly, no debouncing
     // This allows V1's native blinking to come through
@@ -873,7 +873,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     drawLockoutIndicator();
     drawGpsIndicator();
     drawObdIndicator();
-    drawProfileIndicator(currentProfileSlot);
+    drawProfileIndicator(currentProfileSlot_);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::ArrowsIcons,
                                       micros() - stageStartUs);
     DISP_PERF_LOG("arrows+icons");
@@ -896,6 +896,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
                                       micros() - stageStartUs);
     DISP_PERF_LOG("flush");
 
-    lastAlert = priority;
-    lastState = state;
+    lastAlert_ = priority;
+    lastState_ = state;
 }

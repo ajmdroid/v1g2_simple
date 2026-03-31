@@ -424,8 +424,8 @@ void V1Display::drawMuteIcon(bool muted) {
 
         const char* muteText = "MUTED";
         // Pseudo-bold: draw twice with slight offset
-        GFX_drawString(tft, muteText, cx, cy);
-        GFX_drawString(tft, muteText, cx + 1, cy);
+        GFX_drawString(tft_, muteText, cx, cy);
+        GFX_drawString(tft_, muteText, cx + 1, cy);
     } else {
         // Clear the badge area when not muted.
         FILL_RECT(leftMargin + (maxWidth - w) / 2, y, w, h, PALETTE_BG);

@@ -114,7 +114,7 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
         labelY += s_bandBaselineAdjust;
         uint16_t col = isActive ? (muted ? PALETTE_MUTED_OR_PERSISTED : cells[i].color) : TFT_DARKGREY;
         TFT_CALL(setTextColor)(col, PALETTE_BG);
-        GFX_drawString(tft, cells[i].label, x, labelY);
+        GFX_drawString(tft_, cells[i].label, x, labelY);
     }
 
     lastEffectiveMask = effectiveBandMask;

@@ -370,34 +370,34 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             int arrowX = cardX + 18;
             int arrowCY = contentCenterY;
             if (alert.direction & DIR_FRONT) {
-                tft->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, contentCol);
+                tft_->fillTriangle(arrowX, arrowCY - 7, arrowX - 6, arrowCY + 5, arrowX + 6, arrowCY + 5, contentCol);
             } else if (alert.direction & DIR_REAR) {
-                tft->fillTriangle(arrowX, arrowCY + 7, arrowX - 6, arrowCY - 5, arrowX + 6, arrowCY - 5, contentCol);
+                tft_->fillTriangle(arrowX, arrowCY + 7, arrowX - 6, arrowCY - 5, arrowX + 6, arrowCY - 5, contentCol);
             } else if (alert.direction & DIR_SIDE) {
                 FILL_RECT(arrowX - 6, arrowCY - 2, 12, 4, contentCol);
             }
 
             // Band + frequency
             int labelX = cardX + 36;
-            tft->setTextColor(bandLabelCol);
-            tft->setTextSize(2);
+            tft_->setTextColor(bandLabelCol);
+            tft_->setTextSize(2);
             if (alert.band == BAND_LASER) {
-                tft->setCursor(labelX, topRowY);
-                tft->print("LASER");
+                tft_->setCursor(labelX, topRowY);
+                tft_->print("LASER");
             } else {
                 const char* bandStr = bandToString(alert.band);
-                tft->setCursor(labelX, topRowY);
-                tft->print(bandStr);
+                tft_->setCursor(labelX, topRowY);
+                tft_->print(bandStr);
 
-                tft->setTextColor(contentCol);
+                tft_->setTextColor(contentCol);
                 int freqX = labelX + strlen(bandStr) * 12 + 4;
-                tft->setCursor(freqX, topRowY);
+                tft_->setCursor(freqX, topRowY);
                 if (alert.frequency > 0) {
                     char freqStr[10];
                     snprintf(freqStr, sizeof(freqStr), "%.3f", alert.frequency / 1000.0f);
-                    tft->print(freqStr);
+                    tft_->print(freqStr);
                 } else {
-                    tft->print("---");
+                    tft_->print("---");
                 }
             }
 

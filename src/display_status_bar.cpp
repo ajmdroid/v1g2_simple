@@ -44,13 +44,13 @@ void V1Display::drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol) {
     char mainBuf[5];  // allow up to three digits plus suffix and null
     snprintf(mainBuf, sizeof(mainBuf), "%dV", mainVol);
     TFT_CALL(setTextColor)(s.colorVolumeMain, PALETTE_BG);
-    GFX_drawString(tft, mainBuf, x, y);
+    GFX_drawString(tft_, mainBuf, x, y);
 
     // Draw mute volume "0M" in mute volume color, offset to the right
     char muteBuf[5];  // allow up to three digits plus suffix and null
     snprintf(muteBuf, sizeof(muteBuf), "%dM", muteVol);
     TFT_CALL(setTextColor)(s.colorVolumeMute, PALETTE_BG);
-    GFX_drawString(tft, muteBuf, x + 36, y);  // Aligned with RSSI number
+    GFX_drawString(tft_, muteBuf, x + 36, y);  // Aligned with RSSI number
 }
 
 // ============================================================================
@@ -93,7 +93,7 @@ void V1Display::drawRssiIndicator(int rssi) {
     if (v1Rssi != 0) {
         // Draw "V " label with configurable color
         TFT_CALL(setTextColor)(s.colorRssiV1, PALETTE_BG);
-        GFX_drawString(tft, "V ", x, y);
+        GFX_drawString(tft_, "V ", x, y);
 
         // Color code RSSI value: green >= -75, yellow -75 to -90, red < -90
         // Calibrated for ESP-IDF 5.3.x BLE controller on ESP32-S3 which reports
@@ -110,14 +110,14 @@ void V1Display::drawRssiIndicator(int rssi) {
         TFT_CALL(setTextColor)(rssiColor, PALETTE_BG);
         char buf[8];
         snprintf(buf, sizeof(buf), "%d", v1Rssi);
-        GFX_drawString(tft, buf, x + 24, y);  // Offset for "V " width
+        GFX_drawString(tft_, buf, x + 24, y);  // Offset for "V " width
     }
 
     // Draw app RSSI below V1 RSSI if connected
     if (appRssi != 0) {
         // Draw "P " label with configurable color
         TFT_CALL(setTextColor)(s.colorRssiProxy, PALETTE_BG);
-        GFX_drawString(tft, "P ", x, y + lineHeight);
+        GFX_drawString(tft_, "P ", x, y + lineHeight);
 
         // Color code RSSI value (same calibration as V1 RSSI above)
         uint16_t rssiColor;
@@ -132,7 +132,7 @@ void V1Display::drawRssiIndicator(int rssi) {
         TFT_CALL(setTextColor)(rssiColor, PALETTE_BG);
         char buf[8];
         snprintf(buf, sizeof(buf), "%d", appRssi);
-        GFX_drawString(tft, buf, x + 24, y + lineHeight);  // Offset for "P " width
+        GFX_drawString(tft_, buf, x + 24, y + lineHeight);  // Offset for "P " width
     }
 }
 
@@ -141,11 +141,11 @@ void V1Display::drawRssiIndicator(int rssi) {
 // ============================================================================
 
 void V1Display::setProfileIndicatorSlot(int slot) {
-    if (slot != lastProfileSlot) {
-        lastProfileSlot = slot;
-        profileChangedTime = millis();
+    if (slot != lastProfileSlot_) {
+        lastProfileSlot_ = slot;
+        profileChangedTime_ = millis();
     }
-    currentProfileSlot = slot;
+    currentProfileSlot_ = slot;
 }
 
 void V1Display::drawProfileIndicator(int slot) {
@@ -156,7 +156,7 @@ void V1Display::drawProfileIndicator(int slot) {
     setProfileIndicatorSlot(slot);
 
     // Check if we're in the "flash" period after a profile change
-    bool inFlashPeriod = (millis() - profileChangedTime) < HIDE_TIMEOUT_MS;
+    bool inFlashPeriod = (millis() - profileChangedTime_) < HIDE_TIMEOUT_MS;
 
 #if defined(DISPLAY_WAVESHARE_349)
     // On Waveshare: draw profile indicator under arrows (for autopush profiles)
@@ -201,11 +201,11 @@ void V1Display::drawProfileIndicator(int slot) {
     int16_t nameWidth = strlen(name) * 12;  // size 2 = ~12px per char
     int textX = cx - nameWidth / 2;
     GFX_setTextDatum(TL_DATUM);
-    GFX_drawString(tft, name, textX, y);
+    GFX_drawString(tft_, name, textX, y);
 
     drawWiFiIndicator();
     drawBatteryIndicator();
-    setBLEProxyStatus(bleProxyEnabled, bleProxyClientConnected, bleReceivingData);
+    setBLEProxyStatus(bleProxyEnabled_, bleProxyClientConnected_, bleReceivingData_);
 #endif
 }
 
@@ -303,7 +303,7 @@ void V1Display::drawBatteryIndicator() {
         GFX_setTextDatum(TR_DATUM);
         TFT_CALL(setTextSize)(2);  // Larger for better visibility
         TFT_CALL(setTextColor)(textColor, PALETTE_BG);
-        GFX_drawString(tft, pctStr, SCREEN_WIDTH - 4, 12);
+        GFX_drawString(tft_, pctStr, SCREEN_WIDTH - 4, 12);
 
         // Update cache
         lastPctDrawn = pct;
@@ -384,15 +384,15 @@ void V1Display::drawBLEProxyIndicator() {
     // Always clear the area before drawing
     FILL_RECT(bleX - 2, bleY - 2, iconSize + 4, iconSize + 4, PALETTE_BG);
 
-    if (!bleProxyEnabled) {
-        bleProxyDrawn = false;
+    if (!bleProxyEnabled_) {
+        bleProxyDrawn_ = false;
         return;
     }
 
     // Check if BLE icon should be hidden
     const V1Settings& s = settingsManager.get();
     if (s.hideBleIcon) {
-        bleProxyDrawn = false;
+        bleProxyDrawn_ = false;
         return;
     }
 
@@ -401,9 +401,9 @@ void V1Display::drawBLEProxyIndicator() {
     // Icon color from settings: connected vs disconnected
     // When connected but not receiving data, dim further to show "stale" state
     uint16_t btColor;
-    if (bleProxyClientConnected) {
+    if (bleProxyClientConnected_) {
         // Connected: bright green when receiving, dimmed when stale
-        const bool receivingData = bleReceivingData && bleContextFresh;
+        const bool receivingData = bleReceivingData_ && bleContextFresh;
         btColor = receivingData ? dimColor(s.colorBleConnected, 85)
                                 : dimColor(s.colorBleConnected, 40);  // Much dimmer when no data
     } else {
@@ -461,7 +461,7 @@ void V1Display::drawBLEProxyIndicator() {
     DRAW_LINE(leftX, botArrowY, cx, mid, btColor);
     DRAW_LINE(leftX + 1, botArrowY, cx + 1, mid, btColor);
 
-    bleProxyDrawn = true;
+    bleProxyDrawn_ = true;
 #endif
 }
 

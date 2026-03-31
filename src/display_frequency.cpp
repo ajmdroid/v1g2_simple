@@ -46,24 +46,24 @@ void V1Display::markFrequencyDirtyRegion(int16_t x, int16_t y, int16_t w, int16_
     if (y + h > SCREEN_HEIGHT) h = SCREEN_HEIGHT - y;
     if (w <= 0 || h <= 0) return;
 
-    if (!frequencyDirtyValid) {
-        frequencyDirtyX = x;
-        frequencyDirtyY = y;
-        frequencyDirtyW = w;
-        frequencyDirtyH = h;
-        frequencyDirtyValid = true;
+    if (!frequencyDirtyValid_) {
+        frequencyDirtyX_ = x;
+        frequencyDirtyY_ = y;
+        frequencyDirtyW_ = w;
+        frequencyDirtyH_ = h;
+        frequencyDirtyValid_ = true;
     } else {
-        const int16_t x1 = min(frequencyDirtyX, x);
-        const int16_t y1 = min(frequencyDirtyY, y);
-        const int16_t x2 = max(static_cast<int16_t>(frequencyDirtyX + frequencyDirtyW), static_cast<int16_t>(x + w));
-        const int16_t y2 = max(static_cast<int16_t>(frequencyDirtyY + frequencyDirtyH), static_cast<int16_t>(y + h));
-        frequencyDirtyX = x1;
-        frequencyDirtyY = y1;
-        frequencyDirtyW = x2 - x1;
-        frequencyDirtyH = y2 - y1;
+        const int16_t x1 = min(frequencyDirtyX_, x);
+        const int16_t y1 = min(frequencyDirtyY_, y);
+        const int16_t x2 = max(static_cast<int16_t>(frequencyDirtyX_ + frequencyDirtyW_), static_cast<int16_t>(x + w));
+        const int16_t y2 = max(static_cast<int16_t>(frequencyDirtyY_ + frequencyDirtyH_), static_cast<int16_t>(y + h));
+        frequencyDirtyX_ = x1;
+        frequencyDirtyY_ = y1;
+        frequencyDirtyW_ = x2 - x1;
+        frequencyDirtyH_ = y2 - y1;
     }
 
-    frequencyRenderDirty = true;
+    frequencyRenderDirty_ = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -413,11 +413,11 @@ void V1Display::drawVolumeZeroWarning() {
     FILL_RECT(leftMargin, textY - 5, maxWidth, charH + 10, PALETTE_BG);
 
     if (flashOn) {
-        tft->setFont(NULL);  // Default built-in font
-        tft->setTextSize(textScale);
-        tft->setTextColor(0xF800, PALETTE_BG);  // Bright red on background
-        tft->setCursor(textX, textY);
-        tft->print(warningStr);
+        tft_->setFont(NULL);  // Default built-in font
+        tft_->setTextSize(textScale);
+        tft_->setTextColor(0xF800, PALETTE_BG);  // Bright red on background
+        tft_->setCursor(textX, textY);
+        tft_->print(warningStr);
     }
 }
 
@@ -428,14 +428,14 @@ void V1Display::drawVolumeZeroWarning() {
 void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
     if (s.displayStyle == DISPLAY_STYLE_SERPENTINE) {
-        fontMgr.ensureSerpentineLoaded(tft);
+        fontMgr.ensureSerpentineLoaded(tft_);
     }
-    frequencyRenderDirty = false;
-    frequencyDirtyValid = false;
-    frequencyDirtyX = 0;
-    frequencyDirtyY = 0;
-    frequencyDirtyW = 0;
-    frequencyDirtyH = 0;
+    frequencyRenderDirty_ = false;
+    frequencyDirtyValid_ = false;
+    frequencyDirtyX_ = 0;
+    frequencyDirtyY_ = 0;
+    frequencyDirtyW_ = 0;
+    frequencyDirtyH_ = 0;
 
     // Debug: log which style is being used
     static int lastStyleLogged = -1;
