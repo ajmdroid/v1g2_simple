@@ -147,6 +147,10 @@ void logPanicBreadcrumbs() {
 void nvsHealthCheck() {
     nvs_stats_t stats;
     if (nvs_get_stats(NULL, &stats) == ESP_OK) {
+        if (stats.total_entries == 0) {
+            Serial.println("[NVS] WARN: NVS reports zero total entries — partition may be corrupt");
+            return;
+        }
         uint32_t usedPct = (stats.used_entries * 100) / stats.total_entries;
         Serial.printf("[NVS] Entries: %lu/%lu used (%lu%%), namespaces: %lu, free: %lu\n",
                       (unsigned long)stats.used_entries,

@@ -57,7 +57,7 @@ bool courseMatchesEntry(bool courseValid, float courseDeg, const LockoutEntry& e
     if (!courseValid || !std::isfinite(courseDeg)) {
         return false;
     }
-    if (entry.headingDeg == LockoutEntry::HEADING_INVALID || entry.headingDeg >= 360) {
+    if (entry.headingDeg == LockoutEntry::HEADING_INVALID || entry.headingDeg > 360) {
         return false;
     }
     const float tolerance = static_cast<float>(std::min<uint8_t>(entry.headingTolDeg, 90));

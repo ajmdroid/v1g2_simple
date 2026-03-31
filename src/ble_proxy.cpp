@@ -510,6 +510,12 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
         return;
     }
 
+    if (!proxyQueue_) {
+        proxyMetrics_.dropCount++;
+        if (bleNotifyMutex_) xSemaphoreGive(bleNotifyMutex_);
+        return;
+    }
+
     // Queue packet for async send (non-blocking)
     // Use simple ring buffer with drop-oldest backpressure
     if (proxyQueueCount_ >= PROXY_QUEUE_SIZE) {
@@ -591,6 +597,12 @@ bool V1BLEClient::enqueuePhoneCommand(const uint8_t* data, size_t length, uint16
 
     if (!phoneCmdMutex_ || xSemaphoreTake(phoneCmdMutex_, 0) != pdTRUE) {
         PERF_INC(phoneCmdDropsLockBusy);
+        return false;
+    }
+
+    if (!phone2v1Queue_) {
+        PERF_INC(phoneCmdDropsInvalid);
+        xSemaphoreGive(phoneCmdMutex_);
         return false;
     }
 

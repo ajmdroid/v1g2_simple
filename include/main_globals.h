@@ -31,7 +31,7 @@ class WifiAutoStartModule;
 class V1BLEClient;
 class PacketParser;
 class TouchHandler;
-#include "../src/display_mode.h"  // enum class — cannot forward-declare
+#include "display_mode.h"  // enum class — cannot forward-declare
 #include "main_runtime_state.h"
 class AutoPushModule;
 class TapGestureModule;

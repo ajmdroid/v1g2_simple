@@ -16,6 +16,8 @@
 static bool sd_audio_ready = false;
 static const char* AUDIO_PATH = "/audio";
 static fs::FS* audioFS = nullptr;  // Filesystem containing audio files
+static uint8_t amp_disable_fail_count = 0;
+static constexpr uint8_t AMP_DISABLE_MAX_RETRIES = 5;
 
 // Initialize filesystem audio system
 // Audio files are stored in LittleFS (uploaded with firmware)
@@ -230,10 +232,18 @@ static void sd_audio_playback_task(void* pvParameters) {
         const AudioI2cResult ampDisableResult = set_speaker_amp(false);
         if (ampDisableResult != AudioI2cResult::Ok) {
             audio_log_i2c_failure("sd_audio_playback_task amp disable", ampDisableResult);
-            amp_is_warm = true;
-            amp_last_used_ms = millis();
+            amp_disable_fail_count++;
+            if (amp_disable_fail_count >= AMP_DISABLE_MAX_RETRIES) {
+                Serial.println("[AUDIO] ERROR: Amp disable failed after max retries — giving up");
+                amp_is_warm = false;
+                amp_disable_fail_count = 0;
+            } else {
+                amp_is_warm = true;
+                amp_last_used_ms = millis();
+            }
         } else {
             amp_is_warm = false;
+            amp_disable_fail_count = 0;
         }
     } else {
         // Brief delay for DMA buffer to flush
@@ -476,9 +486,16 @@ void audio_process_amp_timeout() {
             const AudioI2cResult result = set_speaker_amp(false, 0);
             if (result == AudioI2cResult::Ok) {
                 amp_is_warm = false;
+                amp_disable_fail_count = 0;
                 AUDIO_LOGLN("[AUDIO] Amp timeout - disabled to save power");
             } else if (result != AudioI2cResult::Busy) {
                 audio_log_i2c_failure("audio_process_amp_timeout", result);
+                amp_disable_fail_count++;
+                if (amp_disable_fail_count >= AMP_DISABLE_MAX_RETRIES) {
+                    Serial.println("[AUDIO] ERROR: Amp timeout disable failed after max retries — giving up");
+                    amp_is_warm = false;
+                    amp_disable_fail_count = 0;
+                }
             }
         }
     }

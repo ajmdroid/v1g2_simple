@@ -352,12 +352,12 @@ private:
     static constexpr size_t MAX_PHONE_CMDS_PER_LOOP = 4;
     ProxyPacket* phone2v1Queue_ = nullptr;
     bool proxyQueuesInPsram_ = false;
-    volatile size_t phone2v1QueueHead_ = 0;
-    volatile size_t phone2v1QueueTail_ = 0;
-    volatile size_t phone2v1QueueCount_ = 0;
-    volatile size_t proxyQueueHead_ = 0;  // Next write position
-    volatile size_t proxyQueueTail_ = 0;  // Next read position
-    volatile size_t proxyQueueCount_ = 0; // Current items in queue
+    std::atomic<size_t> phone2v1QueueHead_{0};
+    std::atomic<size_t> phone2v1QueueTail_{0};
+    std::atomic<size_t> phone2v1QueueCount_{0};
+    std::atomic<size_t> proxyQueueHead_{0};   // Next write position
+    std::atomic<size_t> proxyQueueTail_{0};   // Next read position
+    std::atomic<size_t> proxyQueueCount_{0};  // Current items in queue
     ProxyMetrics proxyMetrics_;
 
     DataCallback dataCallback_;
