@@ -8,11 +8,6 @@
 
 namespace {
 
-const char* slotNameForIndex(int slotIndex) {
-    static const char* kSlotNames[] = {"Default", "Highway", "Passenger Comfort"};
-    return kSlotNames[std::max(0, std::min(2, slotIndex))];
-}
-
 }  // namespace
 
 void AutoPushModule::begin(SettingsManager* settingsMgr,

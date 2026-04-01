@@ -174,23 +174,7 @@ static void addLatencySample(PerfHistogramMs& hist, uint32_t ms) {
         }
     }
     // Value exceeds all buckets - counted in total but not in any bucket
-    // calcP95 will return maxMs for these overflow cases
     hist.overflow++;
-}
-
-static uint32_t calcP95(const PerfHistogramMs& hist) {
-    if (hist.total == 0) {
-        return 0;
-    }
-    uint32_t target = (hist.total * 95 + 99) / 100;
-    uint32_t cumulative = 0;
-    for (size_t i = 0; i < PerfHistogramMs::kBucketCount; ++i) {
-        cumulative += hist.buckets[i];
-        if (cumulative >= target) {
-            return kLatencyBucketsMs[i];
-        }
-    }
-    return hist.maxMs;
 }
 
 static const char* wifiApTransitionReasonNameInternal(uint32_t reasonCode) {

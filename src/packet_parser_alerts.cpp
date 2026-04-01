@@ -28,15 +28,6 @@ const char* bandToString(Band band) {
     return bandName(band);
 }
 
-const char* directionToString(Direction dir) {
-    switch (dir) {
-        case DIR_FRONT: return "Front";
-        case DIR_SIDE:  return "Side";
-        case DIR_REAR:  return "Rear";
-        default:        return "None";
-    }
-}
-
 // Static flag to signal alert count tracker reset on next parseAlertData() call
 // Used on V1 disconnect to ensure clean state on reconnect.
 bool s_resetAlertCountFlag = false;

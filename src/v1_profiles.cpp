@@ -580,7 +580,6 @@ ProfileSaveResult V1ProfileManager::saveProfile(const V1Profile& profile) {
     }
 
     // Step 6: Remove backup after successful save (optional - keep for extra safety)
-    // fs_->remove(bakPath);  // Uncomment to remove backup after success
 
     Serial.printf("[V1Profiles] Saved profile: %s (%u bytes, CRC: %08lX)\n",
         profile.name.c_str(), written, static_cast<unsigned long>(crc));
