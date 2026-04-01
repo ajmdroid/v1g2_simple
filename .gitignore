@@ -74,10 +74,8 @@ bench_testing/
 .vite/
 
 # Local research docs (not tracked)
-docs/Cam_PLAN.md
 docs/FUNCTION_PRIORITY.local.md
 docs/OBD_MODULE_PLAN.md
-docs/TEST_FAILURE_POINTS.md
 .github/instructions/
 *.docx
 .~lock.*

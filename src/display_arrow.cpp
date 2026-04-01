@@ -109,7 +109,7 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     }
     uint16_t sideCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowSide;
     uint16_t rearCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowRear;
-    uint16_t offCol = 0x1082;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
+    uint16_t offCol = TFT_DARKGREY;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
 
     const bool frontVisibilityChanged = s_arrowCacheValid && (showFront != s_arrowLastShowFront);
     const bool sideVisibilityChanged = s_arrowCacheValid && (showSide != s_arrowLastShowSide);

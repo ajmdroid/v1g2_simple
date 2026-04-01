@@ -92,21 +92,6 @@ struct ProxyMetrics {
 
 class V1BLEClient {
 public:
-    enum class SubscribeStepCode : uint8_t {
-        GET_SERVICE = 0,
-        GET_DISPLAY_CHAR = 1,
-        GET_COMMAND_CHAR = 2,
-        GET_COMMAND_LONG = 3,
-        SUBSCRIBE_DISPLAY = 4,
-        WRITE_DISPLAY_CCCD = 5,
-        GET_DISPLAY_LONG = 6,
-        SUBSCRIBE_LONG = 7,
-        WRITE_LONG_CCCD = 8,
-        REQUEST_ALERT_DATA = 9,
-        REQUEST_VERSION = 10,
-        COMPLETE = 11,
-    };
-
     V1BLEClient();
     ~V1BLEClient();
 

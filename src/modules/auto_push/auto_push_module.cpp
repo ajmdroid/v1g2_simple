@@ -6,10 +6,6 @@
 #define AUTO_PUSH_LOGF(...) do { } while (0)
 #define AUTO_PUSH_LOGLN(msg) do { } while (0)
 
-namespace {
-
-}  // namespace
-
 void AutoPushModule::begin(SettingsManager* settingsMgr,
                            V1ProfileManager* profileMgr,
                            V1BLEClient* ble,

@@ -395,16 +395,6 @@ enum class PerfProxyAdvertisingTransitionReason : uint8_t {
     StopOther = 12
 };
 
-enum class PerfObdSyncCall : uint8_t {
-    None = 0,
-    Connect = 1,
-    SecurityStart = 2,
-    Discovery = 3,
-    Subscribe = 4,
-    Write = 5,
-    RssiRead = 6,
-};
-
 enum class PerfDisplayRenderPath : uint8_t {
     Full = 0,
     Incremental = 1,

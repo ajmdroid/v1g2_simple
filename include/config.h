@@ -17,10 +17,6 @@
 // Firmware Version
 #define FIRMWARE_VERSION "4.0.0"
 
-// Board-specific Display
-// Waveshare ESP32-S3-Touch-LCD-3.49
-#define DISPLAY_ROTATION    1     // Landscape mode (90 degree rotation)
-
 // BLE Configuration
 #define V1_SERVICE_UUID         "92A0AFF4-9E05-11E2-AA59-F23C91AEC05E"
 #define V1_DISPLAY_DATA_UUID    "92A0B2CE-9E05-11E2-AA59-F23C91AEC05E"  // V1 out SHORT (notify) - display data

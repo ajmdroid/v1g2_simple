@@ -11,7 +11,6 @@ static constexpr const char* DEVICE_NAME_CX = "OBDLink CX";
 // ── Direct-connect (saved address) ──────────────────────────────
 static constexpr uint32_t CONNECT_TIMEOUT_MS = 5000;
 static constexpr uint32_t RECONNECT_BACKOFF_MS = 5000;
-static constexpr uint32_t RECONNECT_BACKOFF_HARD_MS = 60000;
 static constexpr uint8_t MAX_DIRECT_CONNECT_FAILURES = 3;
 
 // ── Post-connect settle (DA14531 BLE 4.2 needs time before GATT) ─
@@ -44,9 +43,6 @@ static constexpr uint32_t CORE_READY_MIN_CONNECTED_MS = 5000;
 
 // ── RSSI ────────────────────────────────────────────────────────
 static constexpr int8_t DEFAULT_MIN_RSSI = -80;
-
-// ── RSSI cache refresh ─────────────────────────────────────────
-static constexpr uint32_t RSSI_REFRESH_INTERVAL_MS = 2000;
 
 // ── AT init sequence ────────────────────────────────────────────
 static constexpr const char* COLD_INIT_COMMANDS[] = {
