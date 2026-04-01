@@ -12,7 +12,6 @@
 #include "v1_devices.h"
 #include "audio_beep.h"
 #include "battery_manager.h"
-#include "modules/gps/gps_runtime_module.h"
 #include "modules/wifi/wifi_autopush_api_service.h"
 #include "modules/wifi/wifi_audio_api_service.h"
 #include "modules/wifi/wifi_display_colors_api_service.h"
