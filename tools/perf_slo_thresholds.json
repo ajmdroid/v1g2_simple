@@ -31,7 +31,6 @@
     { "metric": "cmdPaceNotYetPerMin", "source": "computed", "op": "<=", "limit": 25 },
     { "metric": "displaySkipPct", "source": "computed", "op": "<=", "limit": 20 },
     { "metric": "displaySkipsPerMin", "source": "computed", "op": "<=", "limit": 120 },
-    { "metric": "gpsObsDropsPerMin", "source": "computed", "op": "<=", "limit": 200 },
     { "metric": "audioPlayBusyPerMin", "source": "computed", "op": "<=", "limit": 2 },
     { "metric": "reconn", "source": "final", "op": "<=", "limit": 2 },
     { "metric": "disc", "source": "final", "op": "<=", "limit": 2 }

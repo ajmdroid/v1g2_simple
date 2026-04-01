@@ -18,8 +18,6 @@
 #include "../../storage_manager.h"
 #include "../../perf_sd_logger.h"
 #include "../ble/ble_queue_module.h"
-#include "../gps/gps_runtime_module.h"
-#include "../gps/gps_observation_log.h"
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
 #include "debug_api_service_deps.inc"
@@ -247,81 +245,9 @@ void appendDisplayAttributionMetrics(JsonDocument& doc, const PerfSdSnapshot& fl
     doc["displayPreviewSteadyRenderMaxUs"] = flat.displayPreviewSteadyRenderMaxUs;
 }
 
-void appendGpsMetrics(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& snapshot) {
-    JsonObject gpsObj = doc["gps"].to<JsonObject>();
-    gpsObj["enabled"] = snapshot.gps.enabled;
-    gpsObj["mode"] = snapshot.gps.mode;
-    gpsObj["sampleValid"] = snapshot.gps.sampleValid;
-    gpsObj["hasFix"] = snapshot.gps.hasFix;
-    gpsObj["satellites"] = snapshot.gps.satellites;
-    gpsObj["injectedSamples"] = snapshot.gps.injectedSamples;
-    gpsObj["moduleDetected"] = snapshot.gps.moduleDetected;
-    gpsObj["detectionTimedOut"] = snapshot.gps.detectionTimedOut;
-    gpsObj["parserActive"] = snapshot.gps.parserActive;
-    gpsObj["hardwareSamples"] = snapshot.gps.hardwareSamples;
-    gpsObj["bytesRead"] = snapshot.gps.bytesRead;
-    gpsObj["sentencesSeen"] = snapshot.gps.sentencesSeen;
-    gpsObj["sentencesParsed"] = snapshot.gps.sentencesParsed;
-    gpsObj["parseFailures"] = snapshot.gps.parseFailures;
-    gpsObj["checksumFailures"] = snapshot.gps.checksumFailures;
-    gpsObj["bufferOverruns"] = snapshot.gps.bufferOverruns;
-    if (!snapshot.gps.hdopValid) {
-        gpsObj["hdop"] = nullptr;
-    } else {
-        gpsObj["hdop"] = snapshot.gps.hdop;
-    }
-    gpsObj["locationValid"] = snapshot.gps.locationValid;
-    if (snapshot.gps.locationValid) {
-        gpsObj["latitude"] = snapshot.gps.latitudeDeg;
-        gpsObj["longitude"] = snapshot.gps.longitudeDeg;
-    } else {
-        gpsObj["latitude"] = nullptr;
-        gpsObj["longitude"] = nullptr;
-    }
-    gpsObj["courseValid"] = snapshot.gps.courseValid;
-    if (snapshot.gps.courseValid) {
-        gpsObj["courseDeg"] = snapshot.gps.courseDeg;
-        gpsObj["courseSampleTsMs"] = snapshot.gps.courseSampleTsMs;
-    } else {
-        gpsObj["courseDeg"] = nullptr;
-        gpsObj["courseSampleTsMs"] = nullptr;
-    }
-    if (snapshot.gps.sampleValid) {
-        gpsObj["speedMph"] = snapshot.gps.speedMph;
-        gpsObj["sampleTsMs"] = snapshot.gps.sampleTsMs;
-    } else {
-        gpsObj["speedMph"] = nullptr;
-        gpsObj["sampleTsMs"] = nullptr;
-    }
-    if (!snapshot.gps.sampleAgeValid) {
-        gpsObj["sampleAgeMs"] = nullptr;
-    } else {
-        gpsObj["sampleAgeMs"] = snapshot.gps.sampleAgeMs;
-    }
-    if (!snapshot.gps.courseAgeValid) {
-        gpsObj["courseAgeMs"] = nullptr;
-    } else {
-        gpsObj["courseAgeMs"] = snapshot.gps.courseAgeMs;
-    }
-    if (!snapshot.gps.lastSentenceTsValid) {
-        gpsObj["lastSentenceTsMs"] = nullptr;
-    } else {
-        gpsObj["lastSentenceTsMs"] = snapshot.gps.lastSentenceTsMs;
-    }
-}
-
-void appendGpsLogMetrics(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& snapshot) {
-    JsonObject gpsLogObj = doc["gpsLog"].to<JsonObject>();
-    gpsLogObj["published"] = snapshot.gpsLog.published;
-    gpsLogObj["drops"] = snapshot.gpsLog.drops;
-    gpsLogObj["size"] = snapshot.gpsLog.size;
-    gpsLogObj["capacity"] = snapshot.gpsLog.capacity;
-}
-
 void appendSpeedSourceMetrics(JsonDocument& doc,
                               const PerfRuntimeMetricsSnapshot& snapshot) {
     JsonObject speedObj = doc["speedSource"].to<JsonObject>();
-    speedObj["gpsEnabled"] = snapshot.speedSource.gpsEnabled;
     speedObj["selected"] = snapshot.speedSource.selected;
     if (!snapshot.speedSource.selectedValueValid) {
         speedObj["selectedMph"] = nullptr;
@@ -330,15 +256,7 @@ void appendSpeedSourceMetrics(JsonDocument& doc,
         speedObj["selectedMph"] = snapshot.speedSource.selectedMph;
         speedObj["selectedAgeMs"] = snapshot.speedSource.selectedAgeMs;
     }
-    speedObj["gpsFresh"] = snapshot.speedSource.gpsFresh;
-    speedObj["gpsMph"] = snapshot.speedSource.gpsMph;
-    if (!snapshot.speedSource.gpsAgeValid) {
-        speedObj["gpsAgeMs"] = nullptr;
-    } else {
-        speedObj["gpsAgeMs"] = snapshot.speedSource.gpsAgeMs;
-    }
     speedObj["sourceSwitches"] = snapshot.speedSource.sourceSwitches;
-    speedObj["gpsSelections"] = snapshot.speedSource.gpsSelections;
     speedObj["noSourceSelections"] = snapshot.speedSource.noSourceSelections;
 }
 
@@ -482,9 +400,6 @@ DEBUG_API_NOINLINE void appendFullMetricsDoc(JsonDocument& doc,
     doc["wifiApLastTransitionMs"] = snapshot.wifiApLastTransitionMs;
     doc["wifiApLastTransitionReasonCode"] = snapshot.wifiApLastTransitionReasonCode;
     doc["wifiApLastTransitionReason"] = snapshot.wifiApLastTransitionReason;
-    appendGpsMetrics(doc, snapshot);
-    appendGpsLogMetrics(doc, snapshot);
-    doc["gpsObsDrops"] = snapshot.gpsLog.drops;
     appendSettingsPersistenceMetrics(doc, snapshot);
     appendSpeedSourceMetrics(doc, snapshot);
     doc["heapFree"] = snapshot.heap.heapFree;
@@ -613,7 +528,6 @@ void appendSoakMetricsDoc(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& s
     doc["proxyAdvertisingOnTransitions"] = snapshot.proxyAdvertisingOnTransitions;
     doc["proxyAdvertisingOffTransitions"] = snapshot.proxyAdvertisingOffTransitions;
     doc["proxyAdvertisingLastTransitionMs"] = snapshot.proxyAdvertisingLastTransitionMs;
-    doc["gpsObsDrops"] = snapshot.gpsLog.drops;
     doc["heapFree"] = snapshot.heap.heapFree;
     doc["heapMinFree"] = snapshot.heap.heapMinFree;
     doc["heapDma"] = snapshot.heap.heapInternalFree;

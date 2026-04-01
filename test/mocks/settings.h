@@ -69,7 +69,6 @@ struct V1Settings {
     uint16_t colorBar5 = 0xF800;  // Red
     uint16_t colorBar6 = 0xF800;  // Red (strongest)
     // Indicator badge colors
-    uint16_t colorGps        = 0x07FF;  // Cyan GPS badge
     uint16_t colorObd        = 0x001F;  // Blue OBD badge
     // Volume/RSSI indicator colors
     uint16_t colorVolumeMain = 0xF800;  // Red main volume
@@ -123,10 +122,8 @@ struct V1Settings {
     uint8_t speedMuteThresholdMph = 25;
     uint8_t speedMuteHysteresisMph = 3;
     uint8_t speedMuteVolume = 0xFF;
-    bool speedMuteRequireObd = false;
     
     // Misc flags retained for compatibility
-    bool gpsEnabled = true;
     bool obdEnabled = false;
     uint8_t autoPowerOffMinutes = 10;
     String obdSavedAddress = "";
@@ -147,16 +144,6 @@ using Settings = V1Settings;
 enum class SettingsPersistMode : uint8_t {
     Immediate,
     Deferred,
-};
-
-struct GpsSettingsUpdate {
-    bool hasEnabled = false;
-    bool enabled = false;
-};
-
-struct GpsSettingsApplyResult {
-    bool changed = false;
-    bool enabledChanged = false;
 };
 
 struct ObdSettingsUpdate {
@@ -213,7 +200,6 @@ class SettingsManager {
 public:
     V1Settings settings;
     int saveCalls = 0;
-    int setGpsEnabledCalls = 0;
     int saveDeferredBackupCalls = 0;
     int requestDeferredPersistCalls = 0;
     int applyAutoPushSlotUpdateCalls = 0;
@@ -233,10 +219,6 @@ public:
     
     void load() {}
     void save() { ++saveCalls; }
-    void setGpsEnabled(bool enabled) {
-        settings.gpsEnabled = enabled;
-        ++setGpsEnabledCalls;
-    }
     void updateBrightness(uint8_t brightness) { settings.brightness = brightness; }
     void updateVoiceVolume(uint8_t volume) { settings.voiceVolume = volume; }
     void saveDeferredBackup() { ++saveDeferredBackupCalls; }
@@ -296,26 +278,6 @@ public:
     const V1Settings& get() const { return settings; }
     V1Settings& getMutable() { return settings; }
     V1Settings& mutableSettings() { return settings; }
-    GpsSettingsApplyResult applyGpsSettingsUpdate(const GpsSettingsUpdate& update,
-                                                  SettingsPersistMode persistMode = SettingsPersistMode::Immediate) {
-        GpsSettingsApplyResult result;
-        if (update.hasEnabled) {
-            ++setGpsEnabledCalls;
-            if (settings.gpsEnabled != update.enabled) {
-                settings.gpsEnabled = update.enabled;
-                result.changed = true;
-                result.enabledChanged = true;
-            }
-        }
-        if (result.changed) {
-            if (persistMode == SettingsPersistMode::Deferred) {
-                ++requestDeferredPersistCalls;
-            } else {
-                ++saveCalls;
-            }
-        }
-        return result;
-    }
     bool applyObdSettingsUpdate(const ObdSettingsUpdate& update,
                                 SettingsPersistMode persistMode = SettingsPersistMode::Immediate) {
         (void)persistMode;

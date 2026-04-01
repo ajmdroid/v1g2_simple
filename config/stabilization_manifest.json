@@ -25,11 +25,6 @@
       "id": "power_module_production_test",
       "path": "test/test_power_module/test_power_module.cpp",
       "purpose": "Production-path characterization coverage for power module warning, shutdown, and auto power-off behavior."
-    },
-    {
-      "id": "gps_api_production_test",
-      "path": "test/test_gps_api_service/test_gps_api_service.cpp",
-      "purpose": "Production-path characterization coverage for GPS status, observations, and config/update handlers, including validation and runtime mutation seams."
     }
   ],
   "remaining_gaps": [
@@ -201,7 +196,6 @@
       "tests": [
         "test/test_obd_speed_source/test_obd_speed_source.cpp",
         "test/test_main_loop_phases/test_main_loop_phases.cpp",
-        "test/test_gps_api_service/test_gps_api_service.cpp",
         "test/test_obd_api_service/test_obd_api_service.cpp",
         "test/test_wifi_settings_api_service/test_wifi_settings_api_service.cpp"
       ]
@@ -353,7 +347,6 @@
       "preserved_negative_semantics": "Config and restore writes still update enable inputs immediately for pure snapshotAt/status reads, but they do not re-arbitrate the committed source in-place; consumers still see committed selection only after the loop-owned update() pass and may not fall back to raw GPS or OBD runtime data.",
       "tests": [
         "test/test_obd_speed_source/test_obd_speed_source.cpp",
-        "test/test_gps_api_service/test_gps_api_service.cpp",
         "test/test_obd_api_service/test_obd_api_service.cpp",
         "test/test_wifi_settings_api_service/test_wifi_settings_api_service.cpp",
         "test/test_main_loop_phases/test_main_loop_phases.cpp",
@@ -368,7 +361,6 @@
       "replacement_or_deadness_proof": "The legacy POST /api/settings catch-all route and WifiSettingsApiService::handleApiSettingsSave() have been removed. Existing Svelte clients already saved device settings through POST /api/device/settings, while GPS/lockout clients save through POST /api/gps/config. The shared UI helper no longer defaults to /api/settings, and the WiFi route contracts/docs are updated to reject drift back to the catch-all surface.",
       "preserved_negative_semantics": "GPS/lockout validation, rate-limit, and runtime-mutation semantics remain under GpsApiService::handleApiConfig(); AP credential validation and device-setting persistence remain under WifiSettingsApiService::handleApiDeviceSettingsSave(); cleanup does not silently drop writes or weaken protected rejection behavior.",
       "tests": [
-        "test/test_gps_api_service/test_gps_api_service.cpp",
         "test/test_wifi_settings_api_service/test_wifi_settings_api_service.cpp",
         "interface/src/routes/integrations/page.test.js",
         "interface/src/routes/lockouts/page.test.js",

@@ -365,9 +365,9 @@ void TimeService::periodicSave(uint32_t nowMs) {
         return;
     }
     const uint8_t source = source_.load(std::memory_order_relaxed);
-    // GPS/SNTP sources already persist via setEpochBaseMs() material-change logic.
+    // SNTP source already persists via setEpochBaseMs() material-change logic.
     // Skipping periodic writes here reduces NVS churn under WiFi+BLE coexistence.
-    if (source == SOURCE_GPS || source == SOURCE_SNTP_STA) {
+    if (source == SOURCE_SNTP_STA) {
         return;
     }
     if (nowMs - lastPeriodicSaveMs_ < PERIODIC_SAVE_INTERVAL_MS) {

@@ -9,8 +9,6 @@
 #include "time_service.h"
 #include "settings.h"
 #include "../include/main_globals.h"
-#include "modules/gps/gps_runtime_module.h"
-#include "modules/gps/gps_observation_log.h"
 #include "modules/obd/obd_runtime_module.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/system/system_event_bus.h"
@@ -24,8 +22,6 @@
 PerfCounters perfCounters;
 PerfExtendedMetrics perfExtended;
 extern SystemEventBus  systemEventBus;
-extern GpsRuntimeModule  gpsRuntimeModule;
-extern GpsObservationLog gpsObservationLog;
 extern ObdRuntimeModule  obdRuntimeModule;
 extern SpeedSourceSelector speedSourceSelector;
 
@@ -266,8 +262,6 @@ struct RuntimeSnapshotCaptureContext {
     uint32_t psramTotal = 0;
     uint32_t psramFree = 0;
     uint32_t psramLargest = 0;
-    GpsRuntimeStatus gpsStatus = {};
-    GpsObservationLogStats gpsLogStats = {};
     ObdRuntimeStatus obdStatus = {};
     SpeedSelectorStatus speedStatus = {};
     WifiAutoStartDecisionSnapshot wifiAutoStart = {};
@@ -306,8 +300,6 @@ static RuntimeSnapshotCaptureContext captureRuntimeSnapshotContext() {
     ctx.psramTotal = static_cast<uint32_t>(ESP.getPsramSize());
     ctx.psramFree = static_cast<uint32_t>(ESP.getFreePsram());
     ctx.psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
-    ctx.gpsStatus = gpsRuntimeModule.snapshot(ctx.nowMs);
-    ctx.gpsLogStats = gpsObservationLog.stats();
     ctx.obdStatus = obdRuntimeModule.snapshot(ctx.nowMs);
     ctx.speedStatus = speedSourceSelector.snapshot();
     ctx.wifiAutoStart = wifiAutoStartModule.getLastDecision();
@@ -397,26 +389,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.powerCriticalWarn = perfCounters.powerCriticalWarn.load(std::memory_order_relaxed);
     flat.powerCriticalShutdown = perfCounters.powerCriticalShutdown.load(std::memory_order_relaxed);
     flat.cmdBleBusy = perfCounters.cmdBleBusy.load(std::memory_order_relaxed);
-    flat.gpsEnabled = ctx.gpsStatus.enabled ? 1 : 0;
-    flat.gpsHasFix = ctx.gpsStatus.hasFix ? 1 : 0;
-    flat.gpsLocationValid = ctx.gpsStatus.locationValid ? 1 : 0;
-    flat.gpsSatellites = ctx.gpsStatus.satellites;
-    flat.gpsParserActive = ctx.gpsStatus.parserActive ? 1 : 0;
-    flat.gpsModuleDetected = ctx.gpsStatus.moduleDetected ? 1 : 0;
-    flat.gpsDetectionTimedOut = ctx.gpsStatus.detectionTimedOut ? 1 : 0;
-    flat.gpsSpeedMphX10 =
-        (ctx.gpsStatus.sampleValid && std::isfinite(ctx.gpsStatus.speedMph))
-            ? static_cast<int32_t>(std::lround(ctx.gpsStatus.speedMph * 10.0f))
-            : -1;
-    flat.gpsHdopX10 =
-        std::isfinite(ctx.gpsStatus.hdop)
-            ? static_cast<uint16_t>(std::lround(((ctx.gpsStatus.hdop < 0.0f) ? 0.0f : ctx.gpsStatus.hdop) * 10.0f))
-            : UINT16_MAX;
-    flat.gpsSampleAgeMs = ctx.gpsStatus.sampleAgeMs;
-    flat.gpsObsDrops = ctx.gpsLogStats.drops;
-    flat.gpsObsSize = static_cast<uint32_t>(ctx.gpsLogStats.size);
-    flat.gpsObsPublished = ctx.gpsLogStats.published;
-
     flat.rxBytes = perfCounters.rxBytes.load(std::memory_order_relaxed);
     flat.oversizeDrops = perfCounters.oversizeDrops.load(std::memory_order_relaxed);
     flat.queueHighWater = perfCounters.queueHighWater.load(std::memory_order_relaxed);
@@ -484,7 +456,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.obdEotAgeMs = ctx.obdStatus.eotValid ? ctx.obdStatus.eotAgeMs : UINT32_MAX;
     flat.obdEotProfileId = static_cast<uint8_t>(ctx.obdStatus.eotProfileId);
     flat.obdEotProbeFailures = ctx.obdStatus.eotProbeFailures;
-    flat.gpsMaxUs = perfExtended.gpsMaxUs;
     flat.wifiMaxUs = perfExtended.wifiMaxUs;
     flat.wifiHandleClientMaxUs = perfExtended.wifiHandleClientMaxUs;
     flat.wifiMaintenanceMaxUs = perfExtended.wifiMaintenanceMaxUs;
@@ -634,7 +605,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
         perfExtended.obdSubscribeCallMaxUs = 0;
         perfExtended.obdWriteCallMaxUs = 0;
         perfExtended.obdRssiCallMaxUs = 0;
-        perfExtended.gpsMaxUs = 0;
         perfExtended.wifiMaxUs = 0;
         perfExtended.wifiHandleClientMaxUs = 0;
         perfExtended.wifiMaintenanceMaxUs = 0;
@@ -778,58 +748,11 @@ static void populateRuntimeSnapshot(PerfRuntimeMetricsSnapshot& snapshot,
     snapshot.settingsPersistence.perfLoggingEnabled = ctx.perfLoggingEnabled;
     snapshot.settingsPersistence.perfLoggingPath = ctx.perfLoggingPath;
 
-    snapshot.gps.enabled = ctx.gpsStatus.enabled;
-    snapshot.gps.mode =
-        (ctx.gpsStatus.parserActive || ctx.gpsStatus.moduleDetected || ctx.gpsStatus.hardwareSamples > 0)
-            ? "runtime"
-            : "scaffold";
-    snapshot.gps.sampleValid = ctx.gpsStatus.sampleValid;
-    snapshot.gps.hasFix = ctx.gpsStatus.hasFix;
-    snapshot.gps.satellites = ctx.gpsStatus.satellites;
-    snapshot.gps.injectedSamples = ctx.gpsStatus.injectedSamples > 0;
-    snapshot.gps.moduleDetected = ctx.gpsStatus.moduleDetected;
-    snapshot.gps.detectionTimedOut = ctx.gpsStatus.detectionTimedOut;
-    snapshot.gps.parserActive = ctx.gpsStatus.parserActive;
-    snapshot.gps.hardwareSamples = ctx.gpsStatus.hardwareSamples;
-    snapshot.gps.bytesRead = ctx.gpsStatus.bytesRead;
-    snapshot.gps.sentencesSeen = ctx.gpsStatus.sentencesSeen;
-    snapshot.gps.sentencesParsed = ctx.gpsStatus.sentencesParsed;
-    snapshot.gps.parseFailures = ctx.gpsStatus.parseFailures;
-    snapshot.gps.checksumFailures = ctx.gpsStatus.checksumFailures;
-    snapshot.gps.bufferOverruns = ctx.gpsStatus.bufferOverruns;
-    snapshot.gps.hdopValid = std::isfinite(ctx.gpsStatus.hdop);
-    snapshot.gps.hdop = snapshot.gps.hdopValid ? ctx.gpsStatus.hdop : 0.0f;
-    snapshot.gps.locationValid = ctx.gpsStatus.locationValid;
-    snapshot.gps.latitudeDeg = ctx.gpsStatus.locationValid ? ctx.gpsStatus.latitudeDeg : 0.0;
-    snapshot.gps.longitudeDeg = ctx.gpsStatus.locationValid ? ctx.gpsStatus.longitudeDeg : 0.0;
-    snapshot.gps.courseValid = ctx.gpsStatus.courseValid;
-    snapshot.gps.courseDeg = ctx.gpsStatus.courseValid ? ctx.gpsStatus.courseDeg : 0.0f;
-    snapshot.gps.courseSampleTsMs = ctx.gpsStatus.courseValid ? ctx.gpsStatus.courseSampleTsMs : 0;
-    snapshot.gps.speedMph = ctx.gpsStatus.sampleValid ? ctx.gpsStatus.speedMph : 0.0f;
-    snapshot.gps.sampleTsMs = ctx.gpsStatus.sampleValid ? ctx.gpsStatus.sampleTsMs : 0;
-    snapshot.gps.sampleAgeValid = ctx.gpsStatus.sampleAgeMs != UINT32_MAX;
-    snapshot.gps.sampleAgeMs = snapshot.gps.sampleAgeValid ? ctx.gpsStatus.sampleAgeMs : 0;
-    snapshot.gps.courseAgeValid = ctx.gpsStatus.courseAgeMs != UINT32_MAX;
-    snapshot.gps.courseAgeMs = snapshot.gps.courseAgeValid ? ctx.gpsStatus.courseAgeMs : 0;
-    snapshot.gps.lastSentenceTsValid = ctx.gpsStatus.lastSentenceTsMs != 0;
-    snapshot.gps.lastSentenceTsMs = snapshot.gps.lastSentenceTsValid ? ctx.gpsStatus.lastSentenceTsMs : 0;
-
-    snapshot.gpsLog.published = ctx.gpsLogStats.published;
-    snapshot.gpsLog.drops = ctx.gpsLogStats.drops;
-    snapshot.gpsLog.size = static_cast<uint32_t>(ctx.gpsLogStats.size);
-    snapshot.gpsLog.capacity = static_cast<uint32_t>(GpsObservationLog::kCapacity);
-
-    snapshot.speedSource.gpsEnabled = ctx.speedStatus.gpsEnabled;
     snapshot.speedSource.selected = SpeedSourceSelector::sourceName(ctx.speedStatus.selectedSource);
     snapshot.speedSource.selectedValueValid = ctx.speedStatus.selectedSource != SpeedSource::NONE;
     snapshot.speedSource.selectedMph = snapshot.speedSource.selectedValueValid ? ctx.speedStatus.selectedSpeedMph : 0.0f;
     snapshot.speedSource.selectedAgeMs = snapshot.speedSource.selectedValueValid ? ctx.speedStatus.selectedAgeMs : 0;
-    snapshot.speedSource.gpsFresh = ctx.speedStatus.gpsFresh;
-    snapshot.speedSource.gpsMph = ctx.speedStatus.gpsSpeedMph;
-    snapshot.speedSource.gpsAgeValid = ctx.speedStatus.gpsAgeMs != UINT32_MAX;
-    snapshot.speedSource.gpsAgeMs = snapshot.speedSource.gpsAgeValid ? ctx.speedStatus.gpsAgeMs : 0;
     snapshot.speedSource.sourceSwitches = ctx.speedStatus.sourceSwitches;
-    snapshot.speedSource.gpsSelections = ctx.speedStatus.gpsSelections;
     snapshot.speedSource.noSourceSelections = ctx.speedStatus.noSourceSelections;
 
     snapshot.heap.heapFree = ctx.freeHeap;
@@ -1250,12 +1173,6 @@ void perfRecordDisplayGapRecoverUs(uint32_t us) {
 void perfRecordTouchUs(uint32_t us) {
     if (us > perfExtended.touchMaxUs) {
         perfExtended.touchMaxUs = us;
-    }
-}
-
-void perfRecordGpsUs(uint32_t us) {
-    if (us > perfExtended.gpsMaxUs) {
-        perfExtended.gpsMaxUs = us;
     }
 }
 

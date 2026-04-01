@@ -18,7 +18,6 @@ public:
     enum Source : uint8_t {
         SOURCE_NONE = 0,
         SOURCE_CLIENT_AP = 1,
-        SOURCE_GPS = 2,
         SOURCE_SNTP_STA = 3,
         SOURCE_RTC = 4
     };

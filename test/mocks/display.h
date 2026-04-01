@@ -60,10 +60,6 @@ public:
     bool lastBleProxyEnabled = false;
     bool lastBleProxyConnected = false;
     bool lastBleReceiving = true;
-    int setGpsSatellitesCalls = 0;
-    bool lastGpsEnabled = false;
-    bool lastGpsHasFix = false;
-    uint8_t lastGpsSatellites = 0;
     int setObdStatusCalls = 0;
     bool lastObdEnabled = false;
     bool lastObdConnected = false;
@@ -120,10 +116,6 @@ public:
         lastBleProxyEnabled = false;
         lastBleProxyConnected = false;
         lastBleReceiving = true;
-        setGpsSatellitesCalls = 0;
-        lastGpsEnabled = false;
-        lastGpsHasFix = false;
-        lastGpsSatellites = 0;
         setObdStatusCalls = 0;
         lastObdEnabled = false;
         lastObdConnected = false;
@@ -199,13 +191,6 @@ public:
         lastBleProxyEnabled = proxyEnabled;
         lastBleProxyConnected = proxyConnected;
         lastBleReceiving = receiving;
-    }
-
-    void setGpsSatellites(bool enabled, bool hasFix, uint8_t satellites) {
-        setGpsSatellitesCalls++;
-        lastGpsEnabled = enabled;
-        lastGpsHasFix = hasFix;
-        lastGpsSatellites = satellites;
     }
 
     void setObdStatus(bool enabled, bool connected, bool scanAttention = false) {

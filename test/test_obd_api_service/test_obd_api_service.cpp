@@ -21,14 +21,12 @@ unsigned long mockMicros = 1000000;
 
 class SpeedSourceSelector {
 public:
-    void syncEnabledInputs(bool gpsEnabled, bool obdEnabled) {
+    void syncEnabledInputs(bool obdEnabled) {
         ++syncEnabledInputsCalls;
-        lastGpsEnabled = gpsEnabled;
         lastObdEnabled = obdEnabled;
     }
 
     int syncEnabledInputsCalls = 0;
-    bool lastGpsEnabled = false;
     bool lastObdEnabled = false;
 };
 
@@ -120,7 +118,6 @@ void test_config_updates_runtime_settings_and_selector_inputs() {
     WebServer server(80);
     SettingsManager settingsManager;
     SpeedSourceSelector speedSourceSelector;
-    settingsManager.settings.gpsEnabled = true;
 
     obdRuntimeModule.begin(false, "", 0, -80);
     server.setArg("plain", "{\"enabled\":true,\"minRssi\":-55}");
@@ -138,7 +135,6 @@ void test_config_updates_runtime_settings_and_selector_inputs() {
     TEST_ASSERT_EQUAL_INT8(-55, settingsManager.settings.obdMinRssi);
     TEST_ASSERT_TRUE(obdRuntimeModule.isEnabled());
     TEST_ASSERT_EQUAL_INT(1, speedSourceSelector.syncEnabledInputsCalls);
-    TEST_ASSERT_TRUE(speedSourceSelector.lastGpsEnabled);
     TEST_ASSERT_TRUE(speedSourceSelector.lastObdEnabled);
     TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
     TEST_ASSERT_EQUAL_INT(1, settingsManager.requestDeferredPersistCalls);

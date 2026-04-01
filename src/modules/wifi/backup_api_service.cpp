@@ -7,12 +7,10 @@
 #include "../../storage_manager.h"
 #include "../../v1_profiles.h"
 #include "../../backup_payload_builder.h"
-#include "../gps/gps_runtime_module.h"
 #include "../obd/obd_runtime_module.h"
 #include "../speed/speed_source_selector.h"
 #include "json_stream_response.h"
 
-extern GpsRuntimeModule  gpsRuntimeModule;
 extern ObdRuntimeModule  obdRuntimeModule;
 extern SpeedSourceSelector speedSourceSelector;
 
@@ -116,7 +114,6 @@ static void handleRestore(WebServer& server) {
 
     const V1Settings& settings = settingsManager.get();
     SettingsRuntimeSync::syncVehicleRuntimeInputs(settings,
-                                                  gpsRuntimeModule,
                                                   obdRuntimeModule,
                                                   speedSourceSelector);
 

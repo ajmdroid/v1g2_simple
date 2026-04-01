@@ -1,7 +1,7 @@
 /**
  * Indicator badges & frame — extracted from display.cpp (Phase 2P)
  *
- * Contains drawBaseFrame, drawGpsIndicator, drawStatusText, and associated setters.
+ * Contains drawBaseFrame, drawStatusText, and associated setters.
  */
 
 #include "display.h"
@@ -10,10 +10,8 @@
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
 #include "settings.h"
-#include "modules/gps/gps_runtime_module.h"
 #include "modules/obd/obd_runtime_module.h"
 
-extern GpsRuntimeModule gpsRuntimeModule;
 extern ObdRuntimeModule obdRuntimeModule;
 
 // ============================================================================
@@ -37,12 +35,10 @@ void V1Display::setSpeedVolZeroActive(bool active) {
 }
 
 // ============================================================================
-// File-scoped static cache variables for GPS and OBD indicators
+// File-scoped static cache variables for OBD indicator
 // ============================================================================
 // Thread safety: these caches are read/written only from the main loop
 // (via display update calls). Not safe for concurrent access.
-static bool s_gpsLastShown = false;
-static uint8_t s_gpsLastSats = 0;
 static bool s_obdLastShown = false;
 static bool s_obdLastConnected = false;
 static bool s_obdLastAttention = false;
@@ -50,12 +46,6 @@ static bool s_obdLastAttention = false;
 // ============================================================================
 // GPS satellite indicator ("G" + sat count badge, left of MUTED)
 // ============================================================================
-
-void V1Display::setGpsSatellites(bool enabled, bool hasFix, uint8_t satellites) {
-    gpsSatEnabled_ = enabled;
-    gpsSatHasFix_  = hasFix;
-    gpsSatCount_   = satellites;
-}
 
 void V1Display::setObdStatus(bool enabled, bool connected, bool scanAttention) {
     obdEnabled_ = enabled;
@@ -77,53 +67,10 @@ void V1Display::refreshObdIndicator(uint32_t nowMs) {
 }
 
 void V1Display::syncTopIndicators(uint32_t nowMs) {
-    const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
-    setGpsSatellites(gpsStatus.enabled, gpsStatus.stableHasFix, gpsStatus.stableSatellites);
-
     const ObdRuntimeStatus obdStatus = obdRuntimeModule.snapshot(nowMs);
     setObdStatus(obdStatus.enabled,
                  obdStatus.connected,
                  obdStatus.scanInProgress || obdStatus.manualScanPending);
-}
-
-void V1Display::drawGpsIndicator() {
-#if defined(DISPLAY_WAVESHARE_349)
-    // Build current desired state: show when GPS enabled and has fix.
-    const bool wantShow = gpsSatEnabled_ && gpsSatHasFix_;
-    const uint8_t curSats = wantShow ? gpsSatCount_ : 0;
-
-    if (!dirty.gpsIndicator &&
-        wantShow == s_gpsLastShown && curSats == s_gpsLastSats) {
-        return;
-    }
-    dirty.gpsIndicator = false;
-    s_gpsLastShown = wantShow;
-    s_gpsLastSats  = curSats;
-
-    // Position: just right of band column (120), left of MUTED (~225).
-    const int x  = 125;
-    const int y  = 5;
-    const int h  = 26;
-    const int w  = 50;  // Wide enough for "G" + 2-digit sat count
-
-    if (wantShow) {
-        // User-configurable GPS text colour (no background/border).
-        const V1Settings& s = settingsManager.get();
-        const uint16_t textColor = s.colorGps;
-
-        FILL_RECT(x, y, w, h, PALETTE_BG);
-
-        char buf[6];
-        snprintf(buf, sizeof(buf), "G%u", curSats);
-
-        GFX_setTextDatum(MC_DATUM);
-        TFT_CALL(setTextSize)(2);
-        TFT_CALL(setTextColor)(textColor, PALETTE_BG);
-        GFX_drawString(tft_, buf, x + w / 2, y + h / 2);
-    } else {
-        FILL_RECT(x, y, w, h, PALETTE_BG);
-    }
-#endif
 }
 
 // ============================================================================
@@ -147,7 +94,7 @@ void V1Display::drawObdIndicator() {
     s_obdLastConnected = curConnected;
     s_obdLastAttention = curAttention;
 
-    // Position: right of GPS badge, before signal bars.
+    // Position: before signal bars.
     const int x = 370;
     const int y = 5;
     const int h = 26;
@@ -183,8 +130,6 @@ void V1Display::drawStatusText(const char* text, uint16_t color) {
 // Reset indicator rendering caches
 // ============================================================================
 void V1Display::resetIndicatorsCache() {
-    s_gpsLastShown = false;
-    s_gpsLastSats = 0;
     s_obdLastShown = false;
     s_obdLastConnected = false;
     s_obdLastAttention = false;

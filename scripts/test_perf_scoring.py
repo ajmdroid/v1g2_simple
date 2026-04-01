@@ -56,7 +56,6 @@ def base_row(millis: int, *, connected: bool, duration_ready: bool = False) -> d
             "displayUpdates": 0,
             "displaySkips": 0,
             "cmdPaceNotYet": 0,
-            "gpsObsDrops": 0,
             "audioPlayBusy": 0,
             "reconn": 0,
             "disc": 0,

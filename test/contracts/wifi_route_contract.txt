@@ -6,9 +6,6 @@ HTTP_GET /api/debug/perf-files
 HTTP_GET /api/debug/perf-files/download
 HTTP_GET /api/debug/v1-scenario/list
 HTTP_GET /api/debug/v1-scenario/status
-HTTP_GET /api/gps/config
-HTTP_GET /api/gps/observations
-HTTP_GET /api/gps/status
 HTTP_GET /api/settings/backup
 HTTP_POST /api/debug/enable
 HTTP_POST /api/debug/metrics/reset
@@ -17,6 +14,5 @@ HTTP_POST /api/debug/proxy-advertising
 HTTP_POST /api/debug/v1-scenario/load
 HTTP_POST /api/debug/v1-scenario/start
 HTTP_POST /api/debug/v1-scenario/stop
-HTTP_POST /api/gps/config
 HTTP_POST /api/settings/backup-now
 HTTP_POST /api/settings/restore

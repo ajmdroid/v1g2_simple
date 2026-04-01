@@ -37,17 +37,5 @@ LoopIngestResult LoopIngestModule::process(const LoopIngestContext& ctx) {
     result.skipLateNonCoreThisLoop = ctx.skipNonCoreThisLoop || result.bleBackpressure;
     result.overloadLateThisLoop = ctx.overloadThisLoop || result.bleBackpressure;
 
-    if (providers.runGpsRuntimeUpdate) {
-        if (providers.timestampUs && providers.recordGpsUs) {
-            const uint32_t startUs = providers.timestampUs(providers.timestampContext);
-            providers.runGpsRuntimeUpdate(providers.gpsRuntimeContext, ctx.nowMs);
-            providers.recordGpsUs(
-                providers.gpsPerfContext,
-                providers.timestampUs(providers.timestampContext) - startUs);
-        } else {
-            providers.runGpsRuntimeUpdate(providers.gpsRuntimeContext, ctx.nowMs);
-        }
-    }
-
     return result;
 }

@@ -115,10 +115,6 @@ public:
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();
 
-    // GPS satellite indicator — shows "G" + sat count when GPS has fix.
-    // State is refreshed by display lightweight update paths.
-    void setGpsSatellites(bool enabled, bool hasFix, uint8_t satellites);
-
     // Speed-vol zero active flag — suppresses VOL 0 warning when speed mute
     // intentionally set the V1 volume to 0.
     void setSpeedVolZeroActive(bool active);
@@ -189,7 +185,6 @@ private:
     void drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol);              // "5V  0M" style
     void drawRssiIndicator(int rssi);                                         // BLE RSSI in dBm
     void drawMuteIcon(bool muted);
-    void drawGpsIndicator();
     void drawObdIndicator();
     void syncTopIndicators(uint32_t nowMs);
     void setObdStatus(bool enabled, bool connected, bool scanAttention = false);
@@ -232,9 +227,6 @@ private:
     int16_t frequencyDirtyH_ = 0;
     bool secondaryCardsRenderDirty_ = false; // True when drawSecondaryAlertCards changed card-row pixels
     bool speedVolZeroActive_ = false;      // Suppress VOL 0 warning during speed-mute vol 0
-    bool gpsSatEnabled_ = false;           // GPS module enabled
-    bool gpsSatHasFix_ = false;            // GPS has satellite fix
-    uint8_t gpsSatCount_ = 0;              // Satellite count for display
     bool obdEnabled_ = false;              // OBD module enabled
     bool obdConnected_ = false;            // OBD adapter connected
     bool obdScanAttention_ = false;        // Runtime manual scan / scan-pending state
@@ -262,7 +254,6 @@ public:
                                uint8_t flashBits = 0, uint16_t frontColorOverride = 0) {
         drawDirectionArrow(dir, muted, flashBits, frontColorOverride);
     }
-    void ut_drawGpsIndicator()     { drawGpsIndicator(); }
     void ut_drawObdIndicator()     { drawObdIndicator(); }
     void ut_drawBaseFrame()        { drawBaseFrame(); }
     void ut_setObdStatus(bool enabled, bool connected, bool scanAttention = false) {

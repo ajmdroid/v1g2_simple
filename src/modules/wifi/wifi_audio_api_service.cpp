@@ -34,7 +34,6 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["speedMuteThresholdMph"] = settings.speedMuteThresholdMph;
     doc["speedMuteHysteresisMph"] = settings.speedMuteHysteresisMph;
     doc["speedMuteVolume"] = settings.speedMuteVolume;
-    doc["speedMuteRequireObd"] = settings.speedMuteRequireObd;
 
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
@@ -148,11 +147,6 @@ void handleApiSave(WebServer& server, const Runtime& runtime) {
         update.hasSpeedMuteVolume = true;
         update.speedMuteVolume =
             (vol >= 0 && vol <= 9) ? static_cast<uint8_t>(vol) : 0xFF;
-    }
-    if (server.hasArg("speedMuteRequireObd")) {
-        update.hasSpeedMuteRequireObd = true;
-        update.speedMuteRequireObd =
-            argBool("speedMuteRequireObd", settings.speedMuteRequireObd);
     }
 
     runtime.applySettingsUpdate(update, runtime.ctx);

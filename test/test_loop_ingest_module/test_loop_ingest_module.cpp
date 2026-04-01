@@ -18,8 +18,6 @@ enum CallId {
     CALL_RECORD_BLE_PROCESS = 2,
     CALL_PROVIDER_BLE_DRAIN = 3,
     CALL_RECORD_BLE_DRAIN = 4,
-    CALL_GPS = 5,
-    CALL_RECORD_GPS = 6,
 };
 
 static int callLog[32];
@@ -33,15 +31,10 @@ static int providerBleProcessCalls = 0;
 static int providerBleDrainCalls = 0;
 static bool scriptedBackpressure = false;
 
-static int gpsCalls = 0;
-static uint32_t lastGpsNowMs = 0;
-
 static int recordBleProcessCalls = 0;
 static uint32_t bleProcessElapsedUs = 0;
 static int recordBleDrainCalls = 0;
 static uint32_t bleDrainElapsedUs = 0;
-static int recordGpsCalls = 0;
-static uint32_t gpsElapsedUs = 0;
 
 static void noteCall(int id) {
     if (callLogCount < (sizeof(callLog) / sizeof(callLog[0]))) {
@@ -94,18 +87,6 @@ static bool readBleBackpressure(void*) {
     return scriptedBackpressure;
 }
 
-static void runGpsUpdate(void*, uint32_t nowMs) {
-    gpsCalls++;
-    lastGpsNowMs = nowMs;
-    noteCall(CALL_GPS);
-}
-
-static void recordGpsUs(void*, uint32_t elapsedUs) {
-    recordGpsCalls++;
-    gpsElapsedUs = elapsedUs;
-    noteCall(CALL_RECORD_GPS);
-}
-
 static LoopIngestModule::Providers makeDefaultProviders() {
     LoopIngestModule::Providers providers;
     providers.timestampUs = nextTimestampUs;
@@ -114,8 +95,6 @@ static LoopIngestModule::Providers makeDefaultProviders() {
     providers.runBleDrain = providerRunBleDrain;
     providers.recordBleDrainUs = recordBleDrainUs;
     providers.readBleBackpressure = readBleBackpressure;
-    providers.runGpsRuntimeUpdate = runGpsUpdate;
-    providers.recordGpsUs = recordGpsUs;
     return providers;
 }
 
@@ -126,14 +105,10 @@ static void resetState() {
     providerBleProcessCalls = 0;
     providerBleDrainCalls = 0;
     scriptedBackpressure = false;
-    gpsCalls = 0;
-    lastGpsNowMs = 0;
     recordBleProcessCalls = 0;
     bleProcessElapsedUs = 0;
     recordBleDrainCalls = 0;
     bleDrainElapsedUs = 0;
-    recordGpsCalls = 0;
-    gpsElapsedUs = 0;
 }
 
 void setUp() {
@@ -145,7 +120,7 @@ void tearDown() {}
 
 void test_process_runs_provider_pipeline_and_perf_records() {
     scriptedBackpressure = true;
-    setTimestampSequence({100, 130, 200, 260, 400, 430});
+    setTimestampSequence({100, 130, 200, 260});
 
     LoopIngestContext ctx;
     ctx.nowMs = 5000;
@@ -159,22 +134,16 @@ void test_process_runs_provider_pipeline_and_perf_records() {
     TEST_ASSERT_EQUAL(30u, bleProcessElapsedUs);
     TEST_ASSERT_EQUAL(1, recordBleDrainCalls);
     TEST_ASSERT_EQUAL(60u, bleDrainElapsedUs);
-    TEST_ASSERT_EQUAL(1, gpsCalls);
-    TEST_ASSERT_EQUAL(5000u, lastGpsNowMs);
-    TEST_ASSERT_EQUAL(1, recordGpsCalls);
-    TEST_ASSERT_EQUAL(30u, gpsElapsedUs);
 
     TEST_ASSERT_TRUE(result.bleBackpressure);
     TEST_ASSERT_TRUE(result.skipLateNonCoreThisLoop);
     TEST_ASSERT_TRUE(result.overloadLateThisLoop);
 
-    TEST_ASSERT_EQUAL(6, callLogCount);
+    TEST_ASSERT_EQUAL(4, callLogCount);
     TEST_ASSERT_EQUAL(CALL_PROVIDER_BLE_PROCESS, callLog[0]);
     TEST_ASSERT_EQUAL(CALL_RECORD_BLE_PROCESS, callLog[1]);
     TEST_ASSERT_EQUAL(CALL_PROVIDER_BLE_DRAIN, callLog[2]);
     TEST_ASSERT_EQUAL(CALL_RECORD_BLE_DRAIN, callLog[3]);
-    TEST_ASSERT_EQUAL(CALL_GPS, callLog[4]);
-    TEST_ASSERT_EQUAL(CALL_RECORD_GPS, callLog[5]);
 }
 
 void test_ble_process_disabled_skips_ble_process_only() {
@@ -190,7 +159,6 @@ void test_ble_process_disabled_skips_ble_process_only() {
     TEST_ASSERT_EQUAL(1, providerBleDrainCalls);
     TEST_ASSERT_EQUAL(0, recordBleProcessCalls);
     TEST_ASSERT_EQUAL(1, recordBleDrainCalls);
-    TEST_ASSERT_EQUAL(1, gpsCalls);
 }
 
 void test_missing_timing_hooks_still_runs_operations() {
@@ -205,10 +173,8 @@ void test_missing_timing_hooks_still_runs_operations() {
 
     TEST_ASSERT_EQUAL(1, providerBleProcessCalls);
     TEST_ASSERT_EQUAL(1, providerBleDrainCalls);
-    TEST_ASSERT_EQUAL(1, gpsCalls);
     TEST_ASSERT_EQUAL(0, recordBleProcessCalls);
     TEST_ASSERT_EQUAL(0, recordBleDrainCalls);
-    TEST_ASSERT_EQUAL(0, recordGpsCalls);
 }
 
 void test_empty_providers_is_safe_and_merges_flags() {

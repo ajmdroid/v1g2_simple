@@ -29,8 +29,7 @@ function installDefaultFetch(overrides = []) {
 				method: 'GET',
 				match: '/api/device/settings',
 				respond: jsonResponse({
-					enableWifiAtBoot: true,
-					enableSignalTraceLogging: false
+					enableWifiAtBoot: true
 				})
 			},
 			{

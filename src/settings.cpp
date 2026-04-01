@@ -175,7 +175,6 @@ void SettingsManager::load() {
 
     settings_.proxyBLE = preferences_.getBool("proxyBLE", true);
     settings_.proxyName = sanitizeProxyNameValue(preferences_.getString("proxyName", "V1-Proxy"));
-    settings_.gpsEnabled = preferences_.getBool("gpsEn", false);
     settings_.turnOffDisplay = preferences_.getBool("displayOff", false);
     settings_.brightness = std::max<uint8_t>(1, preferences_.getUChar("brightness", 200));  // Min 1 to avoid blank screen
     settings_.displayStyle = normalizeDisplayStyle(preferences_.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
@@ -205,7 +204,6 @@ void SettingsManager::load() {
     settings_.colorVolumeMute = sanitizeRgb565Color(preferences_.getUShort("colorVolMute", 0x7BEF), 0x7BEF);  // Grey for mute volume
     settings_.colorRssiV1 = sanitizeRgb565Color(preferences_.getUShort("colorRssiV1", 0x07E0), 0x07E0);       // Green for V1 RSSI label
     settings_.colorRssiProxy = sanitizeRgb565Color(preferences_.getUShort("colorRssiPrx", 0x001F), 0x001F);   // Blue for Proxy RSSI label
-    settings_.colorGps = sanitizeRgb565Color(preferences_.getUShort("colorGps", 0x07FF), 0x07FF);              // Cyan GPS badge color
     settings_.colorObd = sanitizeRgb565Color(preferences_.getUShort("colorObd", 0x001F), 0x001F);              // Blue OBD badge color
     settings_.freqUseBandColor = preferences_.getBool("freqBandCol", false);  // Use custom freq color by default
     settings_.hideWifiIcon = preferences_.getBool("hideWifi", false);
@@ -271,7 +269,6 @@ void SettingsManager::load() {
         const uint8_t raw = preferences_.getUChar("spdMuteVol", 0xFF);
         settings_.speedMuteVolume = (raw <= 9 || raw == 0xFF) ? raw : 0xFF;
     }
-    settings_.speedMuteRequireObd = preferences_.getBool("spdMuteObd", false);
 
     settings_.autoPushEnabled = preferences_.getBool("autoPush", true);  // Default to enabled for profiles to work
     settings_.activeSlot = preferences_.getInt("activeSlot", 0);

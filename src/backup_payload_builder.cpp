@@ -57,7 +57,6 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["wifiClientSSID"] = settings.wifiClientSSID;
     doc["proxyBLE"] = settings.proxyBLE;
     doc["proxyName"] = settings.proxyName;
-    doc["gpsEnabled"] = settings.gpsEnabled;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -101,7 +100,6 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["colorVolumeMute"] = settings.colorVolumeMute;
     doc["colorRssiV1"] = settings.colorRssiV1;
     doc["colorRssiProxy"] = settings.colorRssiProxy;
-    doc["colorGps"] = settings.colorGps;
     doc["colorObd"] = settings.colorObd;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
 
@@ -131,7 +129,6 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["speedMuteThresholdMph"] = settings.speedMuteThresholdMph;
     doc["speedMuteHysteresisMph"] = settings.speedMuteHysteresisMph;
     doc["speedMuteVolume"] = settings.speedMuteVolume;
-    doc["speedMuteRequireObd"] = settings.speedMuteRequireObd;
 
     doc["autoPushEnabled"] = settings.autoPushEnabled;
     doc["activeSlot"] = settings.activeSlot;

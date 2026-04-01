@@ -18,8 +18,6 @@
 #include "../../perf_sd_logger.h"
 #include "../display/display_pipeline_module.h"
 #include "../ble/ble_queue_module.h"
-#include "../gps/gps_runtime_module.h"
-#include "../gps/gps_observation_log.h"
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
 #include "debug_api_service_deps.inc"

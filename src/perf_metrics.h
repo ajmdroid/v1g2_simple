@@ -498,7 +498,6 @@ struct PerfExtendedMetrics {
     uint32_t obdSubscribeCallMaxUs = 0;
     uint32_t obdWriteCallMaxUs = 0;
     uint32_t obdRssiCallMaxUs = 0;
-    uint32_t gpsMaxUs = 0;             // gpsRuntimeModule.update() duration
     uint32_t timeSaveMaxUs = 0;        // timeService.periodicSave NVS write
     uint32_t perfReportMaxUs = 0;      // perfMetricsCheckReport snapshot + enqueue
     uint32_t uiToScanCount = 0;       // Screen transitions -> Scanning
@@ -623,7 +622,6 @@ struct PerfExtendedMetrics {
         obdSubscribeCallMaxUs = 0;
         obdWriteCallMaxUs = 0;
         obdRssiCallMaxUs = 0;
-        gpsMaxUs = 0;
         timeSaveMaxUs = 0;
         perfReportMaxUs = 0;
         uiToScanCount = 0;
@@ -749,7 +747,6 @@ void perfRecordDispPipeUs(uint32_t us);
 void perfRecordDisplayVoiceUs(uint32_t us);
 void perfRecordDisplayGapRecoverUs(uint32_t us);
 void perfRecordTouchUs(uint32_t us);
-void perfRecordGpsUs(uint32_t us);
 void perfRecordTimeSaveUs(uint32_t us);
 void perfRecordPerfReportUs(uint32_t us);
 void perfRecordObdConnectCallUs(uint32_t us);
@@ -845,7 +842,6 @@ struct PerfSdSnapshot {
     uint32_t dmaLargestMin;   // Min MALLOC_CAP_DMA largest block since session start
     uint32_t bleProcessMaxUs; // Window max bleClient.process() duration
     uint32_t touchMaxUs;      // Window max touchUiModule.process() duration
-    uint32_t gpsMaxUs;         // Window max gpsRuntimeModule.update() duration
     uint32_t wifiMaxUs;        // Window max wifiManager.process() duration
     uint32_t uiToScanCount;   // Screen transitions to scanning
     uint32_t uiToRestCount;   // Screen transitions to resting
@@ -947,19 +943,6 @@ struct PerfSdSnapshot {
     uint32_t powerCriticalWarn;       // Critical-battery warning shown
     uint32_t powerCriticalShutdown;   // Critical-battery shutdown triggered
     uint32_t cmdBleBusy;              // BLE command write transient failures/retries
-    uint8_t gpsEnabled;               // GPS runtime enabled flag
-    uint8_t gpsHasFix;                // GPS currently has fix
-    uint8_t gpsLocationValid;         // GPS location fields are valid
-    uint8_t gpsSatellites;            // Current satellite count
-    uint8_t gpsParserActive;          // GPS parser active flag
-    uint8_t gpsModuleDetected;        // UART/NMEA module detected
-    uint8_t gpsDetectionTimedOut;     // Detection timeout latched
-    int32_t gpsSpeedMphX10;           // GPS speed mph * 10 (-1 when unavailable)
-    uint16_t gpsHdopX10;              // GPS HDOP * 10 (UINT16_MAX when unavailable)
-    uint32_t gpsSampleAgeMs;          // GPS speed sample age (UINT32_MAX when unavailable)
-    uint32_t gpsObsDrops;             // GPS observation ring dropped samples
-    uint32_t gpsObsSize;              // GPS observation ring current size
-    uint32_t gpsObsPublished;         // GPS observation ring lifetime published samples
 
     // CSV schema v6 additions (kept at tail for backwards column stability)
     uint32_t rxBytes;
@@ -1084,60 +1067,12 @@ struct PerfRuntimeSettingsPersistenceSnapshot {
     const char* perfLoggingPath = "";
 };
 
-struct PerfRuntimeGpsSnapshot {
-    bool enabled = false;
-    const char* mode = "scaffold";
-    bool sampleValid = false;
-    bool hasFix = false;
-    uint8_t satellites = 0;
-    bool injectedSamples = false;
-    bool moduleDetected = false;
-    bool detectionTimedOut = false;
-    bool parserActive = false;
-    uint32_t hardwareSamples = 0;
-    uint32_t bytesRead = 0;
-    uint32_t sentencesSeen = 0;
-    uint32_t sentencesParsed = 0;
-    uint32_t parseFailures = 0;
-    uint32_t checksumFailures = 0;
-    uint32_t bufferOverruns = 0;
-    bool hdopValid = false;
-    float hdop = 0.0f;
-    bool locationValid = false;
-    double latitudeDeg = 0.0;
-    double longitudeDeg = 0.0;
-    bool courseValid = false;
-    float courseDeg = 0.0f;
-    uint32_t courseSampleTsMs = 0;
-    float speedMph = 0.0f;
-    uint32_t sampleTsMs = 0;
-    bool sampleAgeValid = false;
-    uint32_t sampleAgeMs = 0;
-    bool courseAgeValid = false;
-    uint32_t courseAgeMs = 0;
-    bool lastSentenceTsValid = false;
-    uint32_t lastSentenceTsMs = 0;
-};
-
-struct PerfRuntimeGpsLogSnapshot {
-    uint32_t published = 0;
-    uint32_t drops = 0;
-    uint32_t size = 0;
-    uint32_t capacity = 0;
-};
-
 struct PerfRuntimeSpeedSourceSnapshot {
-    bool gpsEnabled = false;
     const char* selected = "none";
     bool selectedValueValid = false;
     float selectedMph = 0.0f;
     uint32_t selectedAgeMs = 0;
-    bool gpsFresh = false;
-    float gpsMph = 0.0f;
-    bool gpsAgeValid = false;
-    uint32_t gpsAgeMs = 0;
     uint32_t sourceSwitches = 0;
-    uint32_t gpsSelections = 0;
     uint32_t noSourceSelections = 0;
 };
 
@@ -1260,8 +1195,6 @@ struct PerfRuntimeMetricsSnapshot {
     uint32_t latencySamples = 0;
     PerfRuntimeWifiAutoStartSnapshot wifiAutoStart;
     PerfRuntimeSettingsPersistenceSnapshot settingsPersistence;
-    PerfRuntimeGpsSnapshot gps;
-    PerfRuntimeGpsLogSnapshot gpsLog;
     PerfRuntimeSpeedSourceSnapshot speedSource;
     PerfRuntimeHeapSnapshot heap;
     PerfRuntimePsramSnapshot psram;

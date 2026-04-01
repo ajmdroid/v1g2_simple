@@ -2,7 +2,7 @@
  * test_display_rendering_indicators.cpp
  *
  * Phase 3 Task 3.4 — integration tests for display_indicators.cpp
- * (drawGpsIndicator, drawObdIndicator, drawBaseFrame).
+ * (drawObdIndicator, drawBaseFrame).
  *
  * Includes the real rendering source so that GFX call-recording assertions
  * on the injected Arduino_Canvas verify actual draw behaviour.
@@ -60,7 +60,7 @@ V1Display display;
 
 // ---------------------------------------------------------------------------
 // Real rendering code under test.
-// display_indicators.cpp includes the GPS/OBD module headers from src/ — those
+// display_indicators.cpp includes the OBD module headers from src/ — those
 // compile fine on native because FreeRTOS is mocked in test/mocks/freertos/.
 // ---------------------------------------------------------------------------
 #include "../../src/display_indicators.cpp"
@@ -76,14 +76,10 @@ void V1Display::drawBLEProxyIndicator() {}
 // snapshot() is never called in these tests so the implementations are not
 // needed; only the type definition from the headers is required.
 // ---------------------------------------------------------------------------
-GpsRuntimeModule gpsRuntimeModule;
 ObdRuntimeModule obdRuntimeModule;
 
-// Stub snapshot() implementations so the linker satisfies syncTopIndicators()
+// Stub snapshot() implementation so the linker satisfies syncTopIndicators()
 // references even though syncTopIndicators() is never called in these tests.
-GpsRuntimeStatus GpsRuntimeModule::snapshot(uint32_t /*nowMs*/) const {
-    return GpsRuntimeStatus{};
-}
 ObdRuntimeStatus ObdRuntimeModule::snapshot(uint32_t /*nowMs*/) const {
     return ObdRuntimeStatus{};
 }
@@ -106,7 +102,6 @@ void setUp() {
     resetCanvas();
     dirty = DisplayDirtyFlags{};
     // Invalidate all static caches in each indicator function
-    dirty.gpsIndicator = true;
     dirty.obdIndicator = true;
 }
 
@@ -129,44 +124,6 @@ void test_drawBaseFrame_sets_all_dirty_flags() {
     display.ut_drawBaseFrame();
     TEST_ASSERT_TRUE(dirty.bands);
     TEST_ASSERT_TRUE(dirty.arrow);
-}
-
-// ============================================================================
-// drawGpsIndicator tests
-// ============================================================================
-
-void test_drawGpsIndicator_with_fix_clears_then_draws_text() {
-    display.setGpsSatellites(true, true, 8);
-    display.ut_drawGpsIndicator();
-
-    // Draws one fillRect for the background clear
-    TEST_ASSERT_GREATER_OR_EQUAL(1u, canvas()->fillRectCalls.size());
-}
-
-void test_drawGpsIndicator_no_fix_clears_area() {
-    display.setGpsSatellites(true, false, 0);
-    display.ut_drawGpsIndicator();
-
-    // No fix → just clear the area
-    TEST_ASSERT_GREATER_OR_EQUAL(1u, canvas()->fillRectCalls.size());
-    TEST_ASSERT_EQUAL_UINT16(ColorThemes::STANDARD().bg, canvas()->fillRectCalls[0].color);
-}
-
-void test_drawGpsIndicator_disabled_clears_area() {
-    display.setGpsSatellites(false, false, 0);
-    display.ut_drawGpsIndicator();
-
-    TEST_ASSERT_GREATER_OR_EQUAL(1u, canvas()->fillRectCalls.size());
-    TEST_ASSERT_EQUAL_UINT16(ColorThemes::STANDARD().bg, canvas()->fillRectCalls[0].color);
-}
-
-void test_drawGpsIndicator_cache_hit_skips_redraw() {
-    display.setGpsSatellites(true, true, 8);
-    display.ut_drawGpsIndicator();  // primes cache
-    resetCanvas();
-
-    display.ut_drawGpsIndicator();  // same state, no dirty → cache hit
-    TEST_ASSERT_EQUAL_UINT(0u, canvas()->fillRectCalls.size());
 }
 
 // ============================================================================
@@ -208,10 +165,6 @@ int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_drawBaseFrame_fills_screen_with_bg_color);
     RUN_TEST(test_drawBaseFrame_sets_all_dirty_flags);
-    RUN_TEST(test_drawGpsIndicator_with_fix_clears_then_draws_text);
-    RUN_TEST(test_drawGpsIndicator_no_fix_clears_area);
-    RUN_TEST(test_drawGpsIndicator_disabled_clears_area);
-    RUN_TEST(test_drawGpsIndicator_cache_hit_skips_redraw);
     RUN_TEST(test_drawObdIndicator_enabled_connected_draws_text);
     RUN_TEST(test_drawObdIndicator_disabled_clears_area);
     RUN_TEST(test_drawObdIndicator_cache_hit_skips_redraw);

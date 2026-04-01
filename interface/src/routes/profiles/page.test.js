@@ -12,7 +12,7 @@ function installDefaultFetch(overrides = []) {
 			{
 				method: 'GET',
 				match: '/api/v1/current',
-				respond: jsonResponse({ connected: true, settings: { lockoutsEnabled: true } })
+				respond: jsonResponse({ connected: true, settings: {} })
 			},
 			{ method: 'POST', match: '/api/v1/pull', respond: jsonResponse({ success: true }) },
 			{ method: 'POST', match: '/api/v1/profile', respond: jsonResponse({ success: true }) },

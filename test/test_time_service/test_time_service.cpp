@@ -151,12 +151,6 @@ void test_normalize_source_valid_client_ap_unchanged() {
     TEST_ASSERT_EQUAL_UINT8(TimeService::SOURCE_CLIENT_AP, src);
 }
 
-void test_normalize_source_valid_gps_unchanged() {
-    uint8_t src = TimeService::SOURCE_GPS;
-    TEST_ASSERT_TRUE(normalizeSource(src));
-    TEST_ASSERT_EQUAL_UINT8(TimeService::SOURCE_GPS, src);
-}
-
 void test_normalize_source_valid_rtc_unchanged() {
     uint8_t src = TimeService::SOURCE_RTC;
     TEST_ASSERT_TRUE(normalizeSource(src));
@@ -193,11 +187,11 @@ void test_material_change_tz_changed() {
         VALID_EPOCH_MS, 60, TimeService::SOURCE_CLIENT_AP));
 }
 
-// Source changed → material
+// Source changed from CLIENT_AP to RTC → material
 void test_material_change_source_changed() {
     TEST_ASSERT_TRUE(hasMaterialPersistChange(
         true, VALID_EPOCH_MS, 0, TimeService::SOURCE_CLIENT_AP,
-        VALID_EPOCH_MS, 0, TimeService::SOURCE_GPS));
+        VALID_EPOCH_MS, 0, TimeService::SOURCE_RTC));
 }
 
 // Delta > 5 minutes → material
@@ -216,11 +210,11 @@ void test_no_material_change_small_delta() {
         VALID_EPOCH_MS + twoMinMs, 0, TimeService::SOURCE_CLIENT_AP));
 }
 
-// Same epoch, same TZ, same source → NOT material
+// Same epoch, same TZ, same source (RTC) → NOT material
 void test_no_material_change_identical() {
     TEST_ASSERT_FALSE(hasMaterialPersistChange(
-        true, VALID_EPOCH_MS, 60, TimeService::SOURCE_GPS,
-        VALID_EPOCH_MS, 60, TimeService::SOURCE_GPS));
+        true, VALID_EPOCH_MS, 60, TimeService::SOURCE_RTC,
+        VALID_EPOCH_MS, 60, TimeService::SOURCE_RTC));
 }
 
 // -----------------------------------------------------------------------
@@ -263,7 +257,6 @@ int main() {
     // normalizeSource
     RUN_TEST(test_normalize_source_none_becomes_client_ap);
     RUN_TEST(test_normalize_source_valid_client_ap_unchanged);
-    RUN_TEST(test_normalize_source_valid_gps_unchanged);
     RUN_TEST(test_normalize_source_valid_rtc_unchanged);
     RUN_TEST(test_normalize_source_out_of_range_fails);
 

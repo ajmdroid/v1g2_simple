@@ -52,7 +52,6 @@ enum CallId {
     CALL_DEBUG_API_PROCESS,
     CALL_BLE_PROCESS,
     CALL_BLE_DRAIN,
-    CALL_GPS_RUNTIME_UPDATE,
     CALL_COLLECT_PARSED_SIGNAL,
     CALL_RUN_PARSED_FRAME,
     CALL_RUN_LIGHTWEIGHT_REFRESH,
@@ -223,10 +222,6 @@ void providerBleDrain(void*) {
 
 bool readBleBackpressure(void*) {
     return false;
-}
-
-void runGpsRuntimeUpdate(void*, uint32_t) {
-    noteCall(CALL_GPS_RUNTIME_UPDATE);
 }
 
 uint32_t readDisplayNowMs(void*) {
@@ -463,7 +458,6 @@ void configureModules() {
     ingestProviders.runBleProcess = providerBleProcess;
     ingestProviders.runBleDrain = providerBleDrain;
     ingestProviders.readBleBackpressure = readBleBackpressure;
-    ingestProviders.runGpsRuntimeUpdate = runGpsRuntimeUpdate;
     loopIngestModule.begin(ingestProviders);
 
     LoopDisplayModule::Providers displayProviders;
@@ -627,7 +621,6 @@ void test_main_loop_phases_preserve_expected_order_and_phase_contracts() {
         CALL_DEBUG_API_PROCESS,
         CALL_BLE_PROCESS,
         CALL_BLE_DRAIN,
-        CALL_GPS_RUNTIME_UPDATE,
         CALL_COLLECT_PARSED_SIGNAL,
         CALL_RUN_PARSED_FRAME,
         CALL_DISPLAY_PIPELINE,

@@ -10,7 +10,6 @@ class DisplayPreviewModule;
 class DisplayRestoreModule;
 class PacketParser;
 class SettingsManager;
-class GpsRuntimeModule;
 class VolumeFadeModule;
 class SpeedMuteModule;
 class QuietCoordinatorModule;
@@ -53,7 +52,6 @@ public:
                DisplayRestoreModule* restoreModule,
                PacketParser* parserPtr,
                SettingsManager* settingsManager,
-               GpsRuntimeModule* gpsModule,
                VolumeFadeModule* volumeFadeModule,
                SpeedMuteModule* speedMuteModule,
                QuietCoordinatorModule* quietCoordinator);
@@ -76,16 +74,13 @@ private:
     DisplayRestoreModule* restore = nullptr;
     PacketParser* parser = nullptr;
     SettingsManager* settings = nullptr;
-    GpsRuntimeModule* gpsRuntime = nullptr;
     VolumeFadeModule* volumeFade = nullptr;
     SpeedMuteModule* speedMute = nullptr;
     QuietCoordinatorModule* quiet = nullptr;
 
-    uint32_t lastGpsSatUpdateMs = 0;
     unsigned long lastFreqUiMs = 0;
     unsigned long lastCardUiMs = 0;
 
-    static constexpr uint32_t GPS_SAT_UPDATE_INTERVAL_MS = 90000;
     static constexpr uint32_t PARSED_STALE_MS = 2000;
     static constexpr unsigned long FREQ_UI_MAX_MS = 75;
     static constexpr unsigned long FREQ_UI_PREVIEW_MAX_MS = 250;

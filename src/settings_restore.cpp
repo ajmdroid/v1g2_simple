@@ -126,7 +126,6 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["proxyName"].is<const char*>()) {
         settings_.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
     }
-    restoreBool("gpsEnabled", settings_.gpsEnabled);
     if (doc["lastV1Address"].is<const char*>()) {
         settings_.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
     }
@@ -173,7 +172,6 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["colorVolumeMute"].is<int>()) settings_.colorVolumeMute = doc["colorVolumeMute"];
     if (doc["colorRssiV1"].is<int>()) settings_.colorRssiV1 = doc["colorRssiV1"];
     if (doc["colorRssiProxy"].is<int>()) settings_.colorRssiProxy = doc["colorRssiProxy"];
-    if (doc["colorGps"].is<int>()) settings_.colorGps = doc["colorGps"];
     if (doc["colorObd"].is<int>()) settings_.colorObd = doc["colorObd"];
     restoreBool("freqUseBandColor", settings_.freqUseBandColor);
 
@@ -227,7 +225,6 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
         int raw = doc["speedMuteVolume"].as<int>();
         settings_.speedMuteVolume = (raw >= 0 && raw <= 9) ? static_cast<uint8_t>(raw) : 0xFF;
     }
-    restoreBool("speedMuteRequireObd", settings_.speedMuteRequireObd);
 
     // ============================================================================
     // Auto-Push Settings
@@ -369,7 +366,6 @@ bool backupAppearsInSyncWithNvs(const JsonDocument& doc, const V1Settings& curre
         backupFieldMatchesString(doc, "wifiClientSSID", current.wifiClientSSID) &&
         backupFieldMatchesBool(doc, "proxyBLE", current.proxyBLE) &&
         backupFieldMatchesString(doc, "proxyName", current.proxyName) &&
-        backupFieldMatchesBool(doc, "gpsEnabled", current.gpsEnabled) &&
         backupFieldMatchesInt(doc, "brightness", current.brightness) &&
         backupFieldMatchesInt(doc, "displayStyle", static_cast<int>(current.displayStyle)) &&
         backupFieldMatchesBool(doc, "autoPushEnabled", current.autoPushEnabled) &&
@@ -549,7 +545,6 @@ bool SettingsManager::checkAndRestoreFromSD() {
         } else {
             const int backupVersion = backupDocumentVersion(bestBackupDoc);
             const bool missingCoreFields =
-                bestBackupDoc["gpsEnabled"].isNull() ||
                 bestBackupDoc["displayStyle"].isNull() ||
                 bestBackupDoc["brightness"].isNull();
             const bool backupOutOfSync = !backupAppearsInSyncWithNvs(bestBackupDoc, settings_);

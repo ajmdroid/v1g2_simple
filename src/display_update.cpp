@@ -52,8 +52,6 @@ struct DisplayRenderCache {
     uint8_t lastRestingBogeyByte = 0;
 
     bool badgeCacheValid = false;
-    bool lastGpsShown = false;
-    uint8_t lastGpsSats = 0;
     bool lastObdShown = false;
     bool lastObdConnected = false;
 
@@ -200,7 +198,6 @@ void V1Display::updateStatusStripIncremental(const DisplayState& state,
         flushLeftStrip = true;
     }
 
-    drawGpsIndicator();
     drawObdIndicator();
 }
 
@@ -404,7 +401,6 @@ void V1Display::update(const DisplayState& state) {
     stageStartUs = micros();
     drawDirectionArrow(DIR_NONE, effectiveMuted, 0);
     drawMuteIcon(effectiveMuted);
-    drawGpsIndicator();
     drawObdIndicator();
     drawProfileIndicator(currentProfileSlot_);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::ArrowsIcons,
@@ -442,30 +438,23 @@ void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bo
     const uint32_t nowMs = millis();
     syncTopIndicators(nowMs);
 
-    const bool gpsShow = gpsSatEnabled_ && gpsSatHasFix_;
-    const uint8_t gpsSats = gpsShow ? gpsSatCount_ : 0;
     const bool obdShow = obdEnabled_;
     const bool obdConnected = obdShow && obdConnected_;
 
-    const bool forceBadgeFlush = dirty.gpsIndicator || dirty.obdIndicator;
+    const bool forceBadgeFlush = dirty.obdIndicator;
 
-    drawGpsIndicator();
     drawObdIndicator();
 
     const bool badgeStripChanged =
         !cache.badgeCacheValid ||
         forceBadgeFlush ||
-        (gpsShow != cache.lastGpsShown) ||
-        (gpsSats != cache.lastGpsSats) ||
         (obdShow != cache.lastObdShown) ||
         (obdConnected != cache.lastObdConnected);
 
     if (badgeStripChanged) {
-        // Top status strip containing GPS / OBD badges.
+        // Top status strip containing OBD badge.
         flushRegion(120, 0, 320, 36);
         cache.badgeCacheValid = true;
-        cache.lastGpsShown = gpsShow;
-        cache.lastGpsSats = gpsSats;
         cache.lastObdShown = obdShow;
         cache.lastObdConnected = obdConnected;
     }
@@ -863,7 +852,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     stageStartUs = micros();
     drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
     drawMuteIcon(state.muted);
-    drawGpsIndicator();
     drawObdIndicator();
     drawProfileIndicator(currentProfileSlot_);
     perfRecordDisplayRenderSubphaseUs(PerfDisplayRenderSubphase::ArrowsIcons,

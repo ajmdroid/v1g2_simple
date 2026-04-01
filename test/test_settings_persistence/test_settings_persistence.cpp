@@ -119,12 +119,10 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     settings.wifiClientSSID = "GarageNet";
     settings.proxyBLE = false;
     settings.proxyName = "Proxy-Rig";
-    settings.gpsEnabled = true;
     settings.turnOffDisplay = true;
     settings.brightness = 123;
     settings.displayStyle = DISPLAY_STYLE_SERPENTINE;
     settings.colorBogey = 0x1234;
-    settings.colorGps = 0x4567;
     settings.colorObd = 0x6789;
     settings.hideWifiIcon = true;
     settings.enableWifiAtBoot = true;
@@ -192,12 +190,10 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_EQUAL_STRING("GarageNet", loaded.wifiClientSSID.c_str());
     TEST_ASSERT_FALSE(loaded.proxyBLE);
     TEST_ASSERT_EQUAL_STRING("Proxy-Rig", loaded.proxyName.c_str());
-    TEST_ASSERT_TRUE(loaded.gpsEnabled);
     TEST_ASSERT_TRUE(loaded.turnOffDisplay);
     TEST_ASSERT_EQUAL_UINT8(123, loaded.brightness);
     TEST_ASSERT_EQUAL_INT(DISPLAY_STYLE_SERPENTINE, loaded.displayStyle);
     TEST_ASSERT_EQUAL_HEX16(0x1234, loaded.colorBogey);
-    TEST_ASSERT_EQUAL_HEX16(0x4567, loaded.colorGps);
     TEST_ASSERT_EQUAL_HEX16(0x6789, loaded.colorObd);
     TEST_ASSERT_TRUE(loaded.hideWifiIcon);
     TEST_ASSERT_TRUE(loaded.enableWifiAtBoot);
@@ -269,7 +265,6 @@ void test_apply_backup_document_unifies_restore_field_coverage_and_profile_resto
     JsonDocument doc;
     doc["_type"] = "v1simple_http_backup";
     doc["apSSID"] = "RestoredSSID";
-    doc["gpsEnabled"] = true;
     doc["brightness"] = 77;
     doc["colorObd"] = 0x2468;
     doc["voiceVolume"] = 42;
@@ -298,7 +293,6 @@ void test_apply_backup_document_unifies_restore_field_coverage_and_profile_resto
     const V1Settings& restored = manager.get();
     TEST_ASSERT_EQUAL_STRING("RestoredSSID", restored.apSSID.c_str());
     TEST_ASSERT_EQUAL_STRING("preserved-pass", restored.apPassword.c_str());
-    TEST_ASSERT_TRUE(restored.gpsEnabled);
     TEST_ASSERT_EQUAL_UINT8(77, restored.brightness);
     TEST_ASSERT_EQUAL_HEX16(0x2468, restored.colorObd);
     TEST_ASSERT_EQUAL_UINT8(42, restored.voiceVolume);
@@ -427,37 +421,6 @@ void test_display_batch_update_skips_noop_persist_and_saves_once_on_change() {
     TEST_ASSERT_TRUE(activeNamespaceOrEmpty().length() > 0);
 }
 
-void test_gps_batch_update_skips_noop_persist_and_defers_one_save_on_change() {
-    SettingsManager manager;
-
-    GpsSettingsUpdate emptyUpdate;
-    manager.applyGpsSettingsUpdate(emptyUpdate, SettingsPersistMode::Deferred);
-    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
-    TEST_ASSERT_FALSE(manager.deferredPersistPending());
-    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
-
-    GpsSettingsUpdate sameValueUpdate;
-    sameValueUpdate.hasEnabled = true;
-    sameValueUpdate.enabled = manager.get().gpsEnabled;
-    manager.applyGpsSettingsUpdate(sameValueUpdate, SettingsPersistMode::Deferred);
-    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
-    TEST_ASSERT_FALSE(manager.deferredPersistPending());
-    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
-
-    GpsSettingsUpdate changedUpdate;
-    changedUpdate.hasEnabled = true;
-    changedUpdate.enabled = !manager.get().gpsEnabled;
-    manager.applyGpsSettingsUpdate(changedUpdate, SettingsPersistMode::Deferred);
-    TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
-    TEST_ASSERT_TRUE(manager.deferredPersistPending());
-    TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
-
-    manager.serviceDeferredPersist(manager.deferredPersistNextAttemptAtMs());
-    TEST_ASSERT_EQUAL_UINT32(2u, manager.backupRevision());
-    TEST_ASSERT_FALSE(manager.deferredPersistPending());
-    TEST_ASSERT_TRUE(activeNamespaceOrEmpty().length() > 0);
-}
-
 void test_obd_batch_update_skips_noop_persist_and_defers_one_save_on_change() {
     SettingsManager manager;
 
@@ -555,7 +518,6 @@ int main() {
     RUN_TEST(test_device_batch_update_skips_noop_persist_and_saves_once_on_change);
     RUN_TEST(test_audio_batch_update_skips_noop_persist_and_saves_once_on_change);
     RUN_TEST(test_display_batch_update_skips_noop_persist_and_saves_once_on_change);
-    RUN_TEST(test_gps_batch_update_skips_noop_persist_and_defers_one_save_on_change);
     RUN_TEST(test_obd_batch_update_skips_noop_persist_and_defers_one_save_on_change);
     RUN_TEST(test_autopush_slot_batch_update_skips_noop_persist_and_saves_once_on_change);
     RUN_TEST(test_autopush_state_batch_update_skips_noop_persist_and_saves_once_on_change);

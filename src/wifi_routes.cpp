@@ -7,9 +7,6 @@
 #include "perf_metrics.h"
 #include "settings.h"
 #include "storage_manager.h"
-#include "modules/gps/gps_api_service.h"
-#include "modules/gps/gps_runtime_module.h"
-#include "modules/gps/gps_observation_log.h"
 #include "modules/debug/debug_api_service.h"
 #include "modules/wifi/backup_api_service.h"
 #include "modules/wifi/wifi_audio_api_service.h"
@@ -31,8 +28,6 @@
 #include "time_service.h"
 #include <LittleFS.h>
 
-extern GpsRuntimeModule    gpsRuntimeModule;
-extern GpsObservationLog   gpsObservationLog;
 extern SpeedSourceSelector speedSourceSelector;
 extern ObdRuntimeModule    obdRuntimeModule;
 
@@ -453,39 +448,6 @@ bool WiFiManager::setupWebServer() {
             nullptr);
     });
 
-    // GPS scaffold API routes
-    server_.on("/api/gps/status", HTTP_GET, [this]() {
-        GpsApiService::handleApiStatus(
-            server_,
-            gpsRuntimeModule,
-            speedSourceSelector,
-            settingsManager,
-            gpsObservationLog,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-    server_.on("/api/gps/observations", HTTP_GET, [this]() {
-        GpsApiService::handleApiObservations(
-            server_,
-            gpsObservationLog,
-            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-    server_.on("/api/gps/config", HTTP_GET, [this]() {
-        GpsApiService::handleApiConfigGet(
-            server_,
-            settingsManager,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-    server_.on("/api/gps/config", HTTP_POST, [this]() {
-        GpsApiService::handleApiConfig(
-            server_,
-            settingsManager,
-            gpsRuntimeModule,
-            speedSourceSelector,
-            gpsObservationLog,
-            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
     // OBD API routes
     server_.on("/api/obd/status", HTTP_GET, [this]() {
         ObdApiService::handleApiStatus(server_, obdRuntimeModule,

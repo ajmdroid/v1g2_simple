@@ -845,20 +845,6 @@
       "regress_pct": 0.25
     },
     {
-      "metric": "gps_obs_drops_delta",
-      "run_kind": "real_fw_soak",
-      "selector": {},
-      "unit": "count",
-      "aggregation": "last",
-      "direction": "lower_better",
-      "score_level": "hard",
-      "required": true,
-      "absolute_min": 0,
-      "absolute_max": null,
-      "regress_abs": 5,
-      "regress_pct": 0.25
-    },
-    {
       "metric": "wifi_p95_us",
       "run_kind": "real_fw_soak",
       "selector": {},

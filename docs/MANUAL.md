@@ -271,7 +271,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 | `packet_parser.cpp` + `packet_parser_alerts.cpp` | ~883 | ESP packet framing and decoding |
 | `storage_manager.cpp` | ~118 | SD/LittleFS mount abstraction |
 | `touch_handler.cpp` | ~178 | AXS15231B I2C touch polling |
-| `src/modules/` (68 .cpp files, 15 dirs) | ~17k | Runtime modules for GPS, lockout, display pipeline, voice, power, WiFi API services, etc. |
+| `src/modules/` (68 .cpp files, 15 dirs) | ~17k | Runtime modules for GPS, display pipeline, voice, power, WiFi API services, etc. |
 | `perf_metrics.cpp` | ~698 | Latency tracking (ArduinoJson) |
 
 ### Data Flow

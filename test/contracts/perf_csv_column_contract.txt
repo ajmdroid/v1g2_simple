@@ -21,7 +21,6 @@ dmaFreeMin
 dmaLargestMin
 bleProcessMax_us
 touchMax_us
-gpsMax_us
 wifiMax_us
 uiToScan
 uiToRest
@@ -123,19 +122,6 @@ powerAutoPowerTimerExpire
 powerCriticalWarn
 powerCriticalShutdown
 cmdBleBusy
-gpsEnabled
-gpsHasFix
-gpsLocationValid
-gpsSatellites
-gpsParserActive
-gpsModuleDetected
-gpsDetectionTimedOut
-gpsSpeedMph_x10
-gpsHdop_x10
-gpsSampleAgeMs
-gpsObsDrops
-gpsObsSize
-gpsObsPublished
 rxBytes
 oversizeDrops
 queueHighWater

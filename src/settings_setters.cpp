@@ -49,14 +49,6 @@ void SettingsManager::setProxyName(const String& name) {
     save();
 }
 
-void SettingsManager::setGpsEnabled(bool enabled) {
-    if (settings_.gpsEnabled == enabled) {
-        return;
-    }
-    settings_.gpsEnabled = enabled;
-    save();
-}
-
 void SettingsManager::setAutoPowerOffMinutes(uint8_t minutes) {
     settings_.autoPowerOffMinutes = clampU8(minutes, 0, 60);
     save();
@@ -513,9 +505,6 @@ void SettingsManager::applyAudioSettingsUpdate(const AudioSettingsUpdate& update
         const uint8_t val = (update.speedMuteVolume <= 9) ? update.speedMuteVolume : 0xFF;
         changed |= assignIfChanged(settings_.speedMuteVolume, val);
     }
-    if (update.hasSpeedMuteRequireObd) {
-        changed |= assignIfChanged(settings_.speedMuteRequireObd, update.speedMuteRequireObd);
-    }
 
     if (changed) {
         persistSettingsByMode(*this, persistMode);
@@ -556,7 +545,6 @@ void SettingsManager::applyDisplaySettingsUpdate(const DisplaySettingsUpdate& up
     if (update.hasColorVolumeMute) changed |= assignIfChanged(settings_.colorVolumeMute, update.colorVolumeMute);
     if (update.hasColorRssiV1) changed |= assignIfChanged(settings_.colorRssiV1, update.colorRssiV1);
     if (update.hasColorRssiProxy) changed |= assignIfChanged(settings_.colorRssiProxy, update.colorRssiProxy);
-    if (update.hasColorGps) changed |= assignIfChanged(settings_.colorGps, update.colorGps);
     if (update.hasColorObd) changed |= assignIfChanged(settings_.colorObd, update.colorObd);
     if (update.hasFreqUseBandColor) changed |= assignIfChanged(settings_.freqUseBandColor, update.freqUseBandColor);
     if (update.hasHideWifiIcon) changed |= assignIfChanged(settings_.hideWifiIcon, update.hideWifiIcon);
@@ -608,27 +596,10 @@ void SettingsManager::resetDisplaySettings(SettingsPersistMode persistMode) {
     settings_.colorVolumeMute = 0xFFE0;
     settings_.colorRssiV1 = 0x07E0;
     settings_.colorRssiProxy = 0x001F;
-    settings_.colorGps = 0x07FF;
     settings_.colorObd = 0x001F;
     settings_.freqUseBandColor = false;
 
     persistSettingsByMode(*this, persistMode);
-}
-
-GpsSettingsApplyResult SettingsManager::applyGpsSettingsUpdate(const GpsSettingsUpdate& update,
-                                                              SettingsPersistMode persistMode) {
-    GpsSettingsApplyResult result;
-
-    if (update.hasEnabled && assignIfChanged(settings_.gpsEnabled, update.enabled)) {
-        result.changed = true;
-        result.enabledChanged = true;
-    }
-
-    if (result.changed) {
-        persistSettingsByMode(*this, persistMode);
-    }
-
-    return result;
 }
 
 bool SettingsManager::applyObdSettingsUpdate(const ObdSettingsUpdate& update,

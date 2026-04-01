@@ -344,8 +344,6 @@ def compute_value(rows: List[Dict[str, int]], metric: str) -> float:
         return skips * 100.0 / total
     if metric == "displaySkipsPerMin":
         return final_of(rows, "displaySkips") * 60.0 / dur
-    if metric == "gpsObsDropsPerMin":
-        return final_of(rows, "gpsObsDrops") * 60.0 / dur
     if metric == "audioPlayBusyPerMin":
         return final_of(rows, "audioPlayBusy") * 60.0 / dur
     raise KeyError(f"Unknown computed metric: {metric}")

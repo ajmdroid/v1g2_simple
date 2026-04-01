@@ -11,7 +11,6 @@
 #include "modules/speed_mute/speed_mute_module.h"
 #include "packet_parser.h"
 #include "settings.h"
-#include "modules/gps/gps_runtime_module.h"
 #include "perf_metrics.h"
 #endif
 
@@ -24,7 +23,6 @@ void DisplayOrchestrationModule::begin(V1Display* displayPtr,
                                        DisplayRestoreModule* restoreModule,
                                        PacketParser* parserPtr,
                                        SettingsManager* settingsManager,
-                                       GpsRuntimeModule* gpsModule,
                                        VolumeFadeModule* volumeFadeModule,
                                        SpeedMuteModule* speedMuteModule,
                                        QuietCoordinatorModule* quietCoordinator) {
@@ -35,7 +33,6 @@ void DisplayOrchestrationModule::begin(V1Display* displayPtr,
     restore = restoreModule;
     parser = parserPtr;
     settings = settingsManager;
-    gpsRuntime = gpsModule;
     volumeFade = volumeFadeModule;
     speedMute = speedMuteModule;
     quiet = quietCoordinator;
@@ -43,7 +40,6 @@ void DisplayOrchestrationModule::begin(V1Display* displayPtr,
 }
 
 void DisplayOrchestrationModule::reset() {
-    lastGpsSatUpdateMs = 0;
     lastFreqUiMs = 0;
     lastCardUiMs = 0;
 }
@@ -98,26 +94,16 @@ void DisplayOrchestrationModule::processEarly(const DisplayOrchestrationEarlyCon
 DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         const DisplayOrchestrationParsedContext& ctx) {
     DisplayOrchestrationParsedResult result;
-    if (!display || !ble || !bleQueue || !preview || !parser || !settings || !gpsRuntime) {
+    if (!display || !ble || !bleQueue || !preview || !parser || !settings) {
         return result;
     }
 
     if (ctx.parsedReady && !ctx.bootSplashHoldActive) {
-        const GpsRuntimeStatus gpsStatus = gpsRuntime->snapshot(ctx.nowMs);
-
         // Speed volume: lower/restore V1 volume based on speed mute state.
         // Gates volume fade.
         const bool speedVolBusy = processSpeedVolume(ctx.nowMs);
 
         syncQuietPresentation();
-
-        if (lastGpsSatUpdateMs == 0 ||
-            (ctx.nowMs - lastGpsSatUpdateMs >= GPS_SAT_UPDATE_INTERVAL_MS)) {
-            display->setGpsSatellites(gpsStatus.enabled,
-                                      gpsStatus.stableHasFix,
-                                      gpsStatus.stableSatellites);
-            lastGpsSatUpdateMs = ctx.nowMs;
-        }
 
         result.runDisplayPipeline = !preview->isRunning();
         if (result.runDisplayPipeline && !speedVolBusy) {

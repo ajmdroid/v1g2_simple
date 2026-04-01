@@ -85,7 +85,6 @@ Use `./scripts/run_functional_tests.sh` when you want behavior-level coverage
 in addition to broad `native` unit coverage. The functional gate runs:
 
 - `test_drive_scenario` (cross-module drive flows)
-- `test_lockout_enforcer` (enforcement decisions)
 - `test_wifi_boot_policy` (WiFi startup gating)
 - `test_wifi_manager` (WiFi state behavior)
 
@@ -105,7 +104,7 @@ python3 scripts/sanitize_replay_capture.py \
   --raw-dir /path/to/raw_capture \
   --out-dir test/fixtures/replay/my_scenario \
   --scenario-id my_scenario \
-  --owner lockout \
+  --owner replay \
   --lane pr
 
 # Validate the resulting fixture before replay execution

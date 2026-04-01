@@ -16,7 +16,6 @@ REQUIRED_ARTIFACT_IDS = {
     "main_loop_phases_harness",
     "tap_gesture_production_test",
     "power_module_production_test",
-    "gps_api_production_test",
 }
 REQUIRED_GAP_IDS = {
     "native_test_lane_determinism",

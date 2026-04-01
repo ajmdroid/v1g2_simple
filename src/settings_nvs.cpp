@@ -333,7 +333,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putString("wifiClSSID", settings_.wifiClientSSID);
     written += prefs.putBool("proxyBLE", settings_.proxyBLE);
     written += prefs.putString("proxyName", settings_.proxyName);
-    written += prefs.putBool("gpsEn", settings_.gpsEnabled);
     written += prefs.putBool("displayOff", settings_.turnOffDisplay);
     written += prefs.putUChar("brightness", settings_.brightness);
     written += prefs.putInt("dispStyle", settings_.displayStyle);
@@ -363,7 +362,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("colorVolMute", settings_.colorVolumeMute);
     written += prefs.putUShort("colorRssiV1", settings_.colorRssiV1);
     written += prefs.putUShort("colorRssiPrx", settings_.colorRssiProxy);
-    written += prefs.putUShort("colorGps", settings_.colorGps);
     written += prefs.putUShort("colorObd", settings_.colorObd);
     written += prefs.putBool("freqBandCol", settings_.freqUseBandColor);
     written += prefs.putBool("hideWifi", settings_.hideWifiIcon);
@@ -391,7 +389,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUChar("spdMuteThr", settings_.speedMuteThresholdMph);
     written += prefs.putUChar("spdMuteHys", settings_.speedMuteHysteresisMph);
     written += prefs.putUChar("spdMuteVol", settings_.speedMuteVolume);
-    written += prefs.putBool("spdMuteObd", settings_.speedMuteRequireObd);
     written += prefs.putBool("autoPush", settings_.autoPushEnabled);
     written += prefs.putInt("activeSlot", settings_.activeSlot);
     written += prefs.putString("slot0name", settings_.slot0Name);

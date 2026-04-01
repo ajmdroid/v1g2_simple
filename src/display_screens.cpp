@@ -92,7 +92,6 @@ void V1Display::showResting(bool forceRedraw) {
         // Mute indicator off
         drawMuteIcon(false);
         syncTopIndicators(millis());
-        drawGpsIndicator();
         drawObdIndicator();
 
         // Profile indicator
@@ -188,7 +187,6 @@ void V1Display::showScanning() {
     drawDirectionArrow(DIR_NONE, false);
     drawMuteIcon(false);
     syncTopIndicators(millis());
-    drawGpsIndicator();
     drawObdIndicator();
     drawProfileIndicator(currentProfileSlot_);
 

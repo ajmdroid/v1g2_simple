@@ -8,7 +8,6 @@
 #include "../mocks/modules/display/display_restore_module.h"
 #include "../mocks/packet_parser.h"
 #include "../mocks/settings.h"
-#include "../mocks/modules/gps/gps_runtime_module.h"
 #include "../mocks/modules/volume_fade/volume_fade_module.h"
 #include "../mocks/modules/speed_mute/speed_mute_module.h"
 
@@ -34,7 +33,6 @@ static BleQueueModule bleQueue;
 static DisplayPreviewModule preview;
 static DisplayRestoreModule restore;
 static PacketParser parser;
-static GpsRuntimeModule gpsRuntime;
 static VolumeFadeModule volumeFade;
 static SpeedMuteModule speedMute;
 static QuietCoordinatorModule quiet;
@@ -49,7 +47,6 @@ static void beginModule() {
                  &restore,
                  &parser,
                  &settingsManager,
-                 &gpsRuntime,
                  &volumeFade,
                  &speedMute,
                  &quiet);
@@ -62,7 +59,6 @@ void setUp() {
     preview = DisplayPreviewModule{};
     restore = DisplayRestoreModule{};
     parser.reset();
-    gpsRuntime = GpsRuntimeModule{};
     volumeFade = VolumeFadeModule{};
     speedMute = SpeedMuteModule{};
     settingsManager = SettingsManager{};
@@ -111,11 +107,6 @@ void test_process_early_updates_preview_or_restore_path() {
 void test_parsed_frame_sets_status_indicators_and_requests_pipeline() {
     ble.setConnected(true);
     ble.setProxyConnected(false);
-    gpsRuntime.nextSnapshot.enabled = true;
-    gpsRuntime.nextSnapshot.hasFix = true;
-    gpsRuntime.nextSnapshot.stableHasFix = true;
-    gpsRuntime.nextSnapshot.satellites = 9;
-    gpsRuntime.nextSnapshot.stableSatellites = 9;
 
     DisplayOrchestrationParsedContext ctx;
     ctx.nowMs = 5000;
@@ -125,10 +116,6 @@ void test_parsed_frame_sets_status_indicators_and_requests_pipeline() {
     const auto result = module.processParsedFrame(ctx);
 
     TEST_ASSERT_TRUE(result.runDisplayPipeline);
-    TEST_ASSERT_EQUAL(1, display.setGpsSatellitesCalls);
-    TEST_ASSERT_TRUE(display.lastGpsEnabled);
-    TEST_ASSERT_TRUE(display.lastGpsHasFix);
-    TEST_ASSERT_EQUAL(9, display.lastGpsSatellites);
 }
 
 void test_parsed_frame_skips_pipeline_when_preview_running() {

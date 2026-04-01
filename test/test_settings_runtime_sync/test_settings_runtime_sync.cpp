@@ -6,22 +6,9 @@
 SerialClass Serial;
 #endif
 
-// Guard macros prevent the real module headers (included via settings_runtime_sync.h)
-// from redefining these mock classes.
-#define GPS_RUNTIME_MODULE_H
+// Guard macros prevent real module headers from redefining these mock classes.
 #define OBD_RUNTIME_MODULE_H
 #define SPEED_SOURCE_SELECTOR_H
-
-class GpsRuntimeModule {
-public:
-    void setEnabled(bool enabled) {
-        ++setEnabledCalls;
-        lastEnabled = enabled;
-    }
-
-    int setEnabledCalls = 0;
-    bool lastEnabled = false;
-};
 
 class ObdRuntimeModule {
 public:
@@ -43,51 +30,19 @@ public:
 
 class SpeedSourceSelector {
 public:
-    void syncEnabledInputs(bool gpsEnabled, bool obdEnabled) {
+    void syncEnabledInputs(bool obdEnabled) {
         ++syncEnabledInputsCalls;
-        lastGpsEnabled = gpsEnabled;
         lastObdEnabled = obdEnabled;
     }
 
     int syncEnabledInputsCalls = 0;
-    bool lastGpsEnabled = false;
     bool lastObdEnabled = false;
 };
 
 #include "../../src/settings_runtime_sync.h"
 
 void setUp() {}
-
 void tearDown() {}
-
-void test_sync_gps_runtime_enabled_uses_persisted_flag() {
-    V1Settings settings;
-    settings.gpsEnabled = true;
-    GpsRuntimeModule gpsRuntime;
-
-    SettingsRuntimeSync::syncGpsRuntimeEnabled(settings, gpsRuntime);
-
-    TEST_ASSERT_EQUAL_INT(1, gpsRuntime.setEnabledCalls);
-    TEST_ASSERT_TRUE(gpsRuntime.lastEnabled);
-}
-
-void test_sync_gps_vehicle_runtime_settings_updates_gps_and_selector() {
-    V1Settings settings;
-    settings.gpsEnabled = true;
-    settings.obdEnabled = false;
-    GpsRuntimeModule gpsRuntime;
-    SpeedSourceSelector speedSourceSelector;
-
-    SettingsRuntimeSync::syncGpsVehicleRuntimeSettings(settings,
-                                                       gpsRuntime,
-                                                       speedSourceSelector);
-
-    TEST_ASSERT_EQUAL_INT(1, gpsRuntime.setEnabledCalls);
-    TEST_ASSERT_TRUE(gpsRuntime.lastEnabled);
-    TEST_ASSERT_EQUAL_INT(1, speedSourceSelector.syncEnabledInputsCalls);
-    TEST_ASSERT_TRUE(speedSourceSelector.lastGpsEnabled);
-    TEST_ASSERT_FALSE(speedSourceSelector.lastObdEnabled);
-}
 
 void test_sync_obd_runtime_settings_applies_enabled_and_min_rssi() {
     V1Settings settings;
@@ -105,7 +60,6 @@ void test_sync_obd_runtime_settings_applies_enabled_and_min_rssi() {
 
 void test_sync_obd_vehicle_runtime_settings_updates_obd_and_selector() {
     V1Settings settings;
-    settings.gpsEnabled = true;
     settings.obdEnabled = true;
     settings.obdMinRssi = -63;
     ObdRuntimeModule obdRuntime;
@@ -120,55 +74,44 @@ void test_sync_obd_vehicle_runtime_settings_updates_obd_and_selector() {
     TEST_ASSERT_EQUAL_INT(1, obdRuntime.setMinRssiCalls);
     TEST_ASSERT_EQUAL_INT8(-63, obdRuntime.lastMinRssi);
     TEST_ASSERT_EQUAL_INT(1, speedSourceSelector.syncEnabledInputsCalls);
-    TEST_ASSERT_TRUE(speedSourceSelector.lastGpsEnabled);
     TEST_ASSERT_TRUE(speedSourceSelector.lastObdEnabled);
 }
 
 void test_sync_speed_source_selector_inputs_uses_persisted_inputs() {
     V1Settings settings;
-    settings.gpsEnabled = true;
-    settings.obdEnabled = false;
+    settings.obdEnabled = true;
     SpeedSourceSelector speedSourceSelector;
 
     SettingsRuntimeSync::syncSpeedSourceSelectorInputs(settings, speedSourceSelector);
 
     TEST_ASSERT_EQUAL_INT(1, speedSourceSelector.syncEnabledInputsCalls);
-    TEST_ASSERT_TRUE(speedSourceSelector.lastGpsEnabled);
-    TEST_ASSERT_FALSE(speedSourceSelector.lastObdEnabled);
+    TEST_ASSERT_TRUE(speedSourceSelector.lastObdEnabled);
 }
 
-void test_sync_vehicle_runtime_inputs_applies_gps_obd_and_selector() {
+void test_sync_vehicle_runtime_inputs_applies_obd_and_selector() {
     V1Settings settings;
-    settings.gpsEnabled = true;
     settings.obdEnabled = true;
     settings.obdMinRssi = -58;
-    GpsRuntimeModule gpsRuntime;
     ObdRuntimeModule obdRuntime;
     SpeedSourceSelector speedSourceSelector;
 
     SettingsRuntimeSync::syncVehicleRuntimeInputs(settings,
-                                                  gpsRuntime,
                                                   obdRuntime,
                                                   speedSourceSelector);
 
-    TEST_ASSERT_EQUAL_INT(1, gpsRuntime.setEnabledCalls);
-    TEST_ASSERT_TRUE(gpsRuntime.lastEnabled);
     TEST_ASSERT_EQUAL_INT(1, obdRuntime.setEnabledCalls);
     TEST_ASSERT_TRUE(obdRuntime.lastEnabled);
     TEST_ASSERT_EQUAL_INT(1, obdRuntime.setMinRssiCalls);
     TEST_ASSERT_EQUAL_INT8(-58, obdRuntime.lastMinRssi);
     TEST_ASSERT_EQUAL_INT(1, speedSourceSelector.syncEnabledInputsCalls);
-    TEST_ASSERT_TRUE(speedSourceSelector.lastGpsEnabled);
     TEST_ASSERT_TRUE(speedSourceSelector.lastObdEnabled);
 }
 
 int main() {
     UNITY_BEGIN();
-    RUN_TEST(test_sync_gps_runtime_enabled_uses_persisted_flag);
-    RUN_TEST(test_sync_gps_vehicle_runtime_settings_updates_gps_and_selector);
     RUN_TEST(test_sync_obd_runtime_settings_applies_enabled_and_min_rssi);
     RUN_TEST(test_sync_obd_vehicle_runtime_settings_updates_obd_and_selector);
     RUN_TEST(test_sync_speed_source_selector_inputs_uses_persisted_inputs);
-    RUN_TEST(test_sync_vehicle_runtime_inputs_applies_gps_obd_and_selector);
+    RUN_TEST(test_sync_vehicle_runtime_inputs_applies_obd_and_selector);
     return UNITY_END();
 }

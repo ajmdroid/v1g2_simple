@@ -17,7 +17,6 @@ struct DisplayDirtyFlags {
     bool arrow          = false;  // Force direction arrow redraw
     bool muteIcon       = false;  // Force mute icon redraw
     bool topCounter     = false;  // Force top counter (bogey symbol) redraw
-    bool gpsIndicator   = false;  // Force GPS indicator redraw
     bool obdIndicator   = false;  // Force OBD indicator redraw
     bool resetTracking  = false;  // Signal to reset change-tracking statics
 
@@ -32,7 +31,6 @@ struct DisplayDirtyFlags {
         arrow        = true;
         muteIcon     = true;
         topCounter   = true;
-        gpsIndicator = true;
         obdIndicator = true;
     }
 };

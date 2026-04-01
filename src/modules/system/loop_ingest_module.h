@@ -15,7 +15,7 @@ struct LoopIngestResult {
     bool overloadLateThisLoop = false;
 };
 
-// Orchestrates BLE ingest, GPS update, and backpressure merge.
+// Orchestrates BLE ingest and backpressure merge.
 class LoopIngestModule {
 public:
     struct Providers {
@@ -33,11 +33,6 @@ public:
         void* bleDrainPerfContext = nullptr;
         bool (*readBleBackpressure)(void* ctx) = nullptr;
         void* bleBackpressureContext = nullptr;
-
-        void (*runGpsRuntimeUpdate)(void* ctx, uint32_t nowMs) = nullptr;
-        void* gpsRuntimeContext = nullptr;
-        void (*recordGpsUs)(void* ctx, uint32_t elapsedUs) = nullptr;
-        void* gpsPerfContext = nullptr;
     };
 
     void begin(const Providers& hooks);

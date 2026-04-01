@@ -93,7 +93,6 @@ struct V1Settings {
     // BLE proxy settings
     bool proxyBLE;          // Enable BLE proxy for companion app
     String proxyName;       // BLE device name when proxying
-    bool gpsEnabled;        // Enable GPS runtime module (optional hardware)
 
     // Display settings
     bool turnOffDisplay;
@@ -127,7 +126,6 @@ struct V1Settings {
     uint16_t colorVolumeMute;    // Volume indicator muted volume color
     uint16_t colorRssiV1;        // RSSI indicator V1 label color
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
-    uint16_t colorGps;           // GPS "G" satellite badge color
     uint16_t colorObd;           // OBD "OBD" status text color when connected
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
 
@@ -167,7 +165,6 @@ struct V1Settings {
     uint8_t speedMuteThresholdMph;   // Mute below this speed (5-60 mph)
     uint8_t speedMuteHysteresisMph;  // Unmute at threshold + hysteresis (1-10 mph)
     uint8_t speedMuteVolume;         // V1 volume when speed-muted (0-9, 0xFF = voice-only)
-    bool speedMuteRequireObd;        // Require OBD speed source (ignore GPS for speed mute)
 
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -249,7 +246,6 @@ struct V1Settings {
         wifiClientSSID(""),        // No saved network
         proxyBLE(true),
         proxyName("V1-Proxy"),  // Must match NVS load() default
-        gpsEnabled(false),      // GPS disabled by default until module is installed
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment
@@ -279,7 +275,6 @@ struct V1Settings {
         colorVolumeMute(0x7BEF), // Grey (muted volume) — matches NVS default
         colorRssiV1(0x07E0),     // Green (V1 RSSI label) — matches NVS default
         colorRssiProxy(0x001F),  // Blue (proxy RSSI label) — matches NVS default
-        colorGps(0x07FF),         // Cyan GPS badge (matches existing GPS indicator default)
         colorObd(0x001F),         // Blue OBD badge (matches existing BLE disconnected icon default)
         freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
@@ -307,7 +302,6 @@ struct V1Settings {
         speedMuteThresholdMph(25),       // 25 mph default (city driving)
         speedMuteHysteresisMph(3),       // 3 mph hysteresis band
         speedMuteVolume(0xFF),           // Voice-only by default (no V1 volume change)
-        speedMuteRequireObd(false),      // Allow GPS fallback by default
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -517,9 +511,6 @@ struct AudioSettingsUpdate {
 
     bool hasSpeedMuteVolume = false;
     uint8_t speedMuteVolume = 0xFF;      // 0xFF = voice-only (no V1 volume change)
-
-    bool hasSpeedMuteRequireObd = false;
-    bool speedMuteRequireObd = false;
 };
 
 struct DisplaySettingsUpdate {
@@ -575,8 +566,6 @@ struct DisplaySettingsUpdate {
     uint16_t colorRssiV1 = 0;
     bool hasColorRssiProxy = false;
     uint16_t colorRssiProxy = 0;
-    bool hasColorGps = false;
-    uint16_t colorGps = 0;
     bool hasColorObd = false;
     uint16_t colorObd = 0;
     bool hasFreqUseBandColor = false;
@@ -599,16 +588,6 @@ struct DisplaySettingsUpdate {
     uint8_t brightness = 0;
     bool hasDisplayStyle = false;
     DisplayStyle displayStyle = DISPLAY_STYLE_CLASSIC;
-};
-
-struct GpsSettingsUpdate {
-    bool hasEnabled = false;
-    bool enabled = false;
-};
-
-struct GpsSettingsApplyResult {
-    bool changed = false;
-    bool enabledChanged = false;
 };
 
 struct ObdSettingsUpdate {
@@ -698,7 +677,6 @@ public:
     void setAPCredentials(const String& ssid, const String& password);
     void setProxyBLE(bool enabled);
     void setProxyName(const String& name);
-    void setGpsEnabled(bool enabled);
     void setAutoPowerOffMinutes(uint8_t minutes);
     void setApTimeoutMinutes(uint8_t minutes);
     uint8_t getApTimeoutMinutes() const { return settings_.apTimeoutMinutes; }
@@ -769,8 +747,6 @@ public:
     void applyDisplaySettingsUpdate(const DisplaySettingsUpdate& update,
                                     SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
     void resetDisplaySettings(SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
-    GpsSettingsApplyResult applyGpsSettingsUpdate(const GpsSettingsUpdate& update,
-                                                  SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
     bool applyObdSettingsUpdate(const ObdSettingsUpdate& update,
                                 SettingsPersistMode persistMode = SettingsPersistMode::Immediate);
     bool applyAutoPushSlotUpdate(const AutoPushSlotUpdate& update,

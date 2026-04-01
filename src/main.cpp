@@ -74,8 +74,6 @@
 #include "modules/volume_fade/volume_fade_module.h"
 #include "modules/quiet/quiet_coordinator_module.h"
 #include "modules/display/display_restore_module.h"
-#include "modules/gps/gps_runtime_module.h"
-#include "modules/gps/gps_observation_log.h"
 
 #include "modules/debug/debug_api_service.h"
 #include "modules/speed/speed_source_selector.h"
@@ -104,8 +102,6 @@
 // externs allow main.cpp and src/ helpers to wire dependencies.
 
 extern SpeedSourceSelector       speedSourceSelector;
-extern GpsRuntimeModule          gpsRuntimeModule;
-extern GpsObservationLog         gpsObservationLog;
 extern ObdRuntimeModule          obdRuntimeModule;
 extern ObdBleClient              obdBleClient;
 
@@ -630,12 +626,6 @@ static void configureLoopIngestModule() {
     loopIngestProviders.readBleBackpressure =
         ProviderCallbackBindings::member<BleQueueModule, &BleQueueModule::isBackpressured>;
     loopIngestProviders.bleBackpressureContext = &bleQueueModule;
-    loopIngestProviders.runGpsRuntimeUpdate =
-        ProviderCallbackBindings::member<GpsRuntimeModule, &GpsRuntimeModule::update>;
-    loopIngestProviders.gpsRuntimeContext = &gpsRuntimeModule;
-    loopIngestProviders.recordGpsUs = [](void*, uint32_t elapsedUs) {
-        perfRecordGpsUs(elapsedUs);
-    };
     loopIngestModule.begin(loopIngestProviders);
 }
 
@@ -741,7 +731,6 @@ static void configureSystemLoopCoreModules() {
                                      &displayRestoreModule,
                                      &parser,
                                      &settingsManager,
-                                     &gpsRuntimeModule,
                                      &volumeFadeModule,
                                      &speedMuteModule,
                                      &quietCoordinatorModule);
@@ -763,10 +752,8 @@ static void configureSystemLoopModules() {
 }
 
 static void configureRuntimeSensorModules() {
-    gpsRuntimeModule.begin(settingsManager.get().gpsEnabled, &gpsObservationLog);
-    speedSourceSelector.begin(settingsManager.get().gpsEnabled,
-                              settingsManager.get().obdEnabled);
-    speedSourceSelector.wireSpeedSources(&gpsRuntimeModule, &obdRuntimeModule);
+    speedSourceSelector.begin(settingsManager.get().obdEnabled);
+    speedSourceSelector.wireSpeedSources(&obdRuntimeModule);
     obdRuntimeModule.begin(
         settingsManager.get().obdEnabled,
         settingsManager.get().obdSavedAddress.c_str(),
@@ -1089,8 +1076,7 @@ void loop() {
                                      s.speedMuteHysteresisMph,
                                      s.speedMuteVolume);
         const SpeedSelection speed = speedSourceSelector.selectedSpeed();
-        const bool speedValid = speed.valid &&
-            (!s.speedMuteRequireObd || speed.source == SpeedSource::OBD);
+        const bool speedValid = speed.valid;
         speedMuteModule.update(speed.speedMph, speedValid, now);
     }
 

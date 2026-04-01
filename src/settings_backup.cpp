@@ -169,7 +169,6 @@ int backupDocumentVersion(const JsonDocument& doc) {
 
 int backupCriticalFieldScore(const JsonDocument& doc) {
     int score = 0;
-    if (!doc["gpsEnabled"].isNull()) score++;
     if (!doc["brightness"].isNull()) score++;
     if (!doc["displayStyle"].isNull()) score++;
     if (!doc["proxyBLE"].isNull()) score++;

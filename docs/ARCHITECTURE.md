@@ -34,19 +34,14 @@ startup via a `begin()` call. Pointers are stored as private members and
 used for the lifetime of the module.
 
 ```cpp
-// lockout_enforcer.h
-class LockoutEnforcer {
+// alert_persistence.h
+class AlertPersistence {
 public:
-    void begin(const SettingsManager* settings,
-               LockoutIndex* index,
-               LockoutStore* store = nullptr);
+    void begin(const SettingsManager* settings);
 
-    LockoutEnforcerResult process(uint32_t nowMs, const PacketParser& parser,
-                                  const GpsRuntimeStatus& gps);
+    bool shouldKeepAlert(uint32_t nowMs, uint32_t clearedAtMs) const;
 private:
     const SettingsManager* settings_ = nullptr;
-    LockoutIndex*          index_    = nullptr;
-    LockoutStore*          store_    = nullptr;
 };
 ```
 
@@ -171,20 +166,20 @@ settingsManager.get().enableWifi;
 // Forward-declare all dependencies — do not include full headers
 // unless the type must be complete (e.g. embedded by value, not pointer).
 class SettingsManager;
-class LockoutIndex;
+class ObdRuntimeModule;
 
 class MyModule {
 public:
     /// Wire dependencies. Must be called once before process().
     /// All pointers must remain valid for the lifetime of this module.
-    void begin(SettingsManager* settings, LockoutIndex* index);
+    void begin(SettingsManager* settings, ObdRuntimeModule* obd);
 
     /// Brief description of what process() does and when to call it.
     void process(uint32_t nowMs);
 
 private:
-    SettingsManager* settings_ = nullptr;
-    LockoutIndex*    index_    = nullptr;
+    SettingsManager*    settings_ = nullptr;
+    ObdRuntimeModule*   obd_      = nullptr;
 };
 ```
 
@@ -198,16 +193,16 @@ private:
 ```cpp
 #include "my_module.h"
 #include "settings.h"       // Full include in .cpp is fine
-#include "lockout_index.h"
+#include "obd_runtime_module.h"
 
-void MyModule::begin(SettingsManager* settings, LockoutIndex* index) {
+void MyModule::begin(SettingsManager* settings, ObdRuntimeModule* obd) {
     settings_ = settings;
-    index_    = index;
+    obd_      = obd;
 }
 
 void MyModule::process(uint32_t nowMs) {
     // Guard is optional but recommended for debug builds
-    // settings_ and index_ are guaranteed non-null by contract
+    // settings_ and obd_ are guaranteed non-null by contract
 }
 ```
 

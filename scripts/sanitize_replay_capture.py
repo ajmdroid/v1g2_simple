@@ -12,7 +12,7 @@ Usage:
         --raw-dir /path/to/raw_capture/ \\
         --out-dir test/fixtures/replay/my_scenario/ \\
         --scenario-id my_scenario \\
-        --owner lockout \\
+        --owner replay \\
         --lane pr
 
 Input directory expects:
@@ -145,7 +145,6 @@ def main() -> int:
             "_comment": "Fill in assertions for this replay scenario",
             "alerts": [],
             "mute_windows": [],
-            "lockout_transitions": [],
         }
         with open(expected_path, "w") as f:
             json.dump(placeholder, f, indent=2)
