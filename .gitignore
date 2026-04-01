@@ -81,3 +81,4 @@ docs/TEST_FAILURE_POINTS.md
 .github/instructions/
 *.docx
 .~lock.*
+CLAUDE.md
