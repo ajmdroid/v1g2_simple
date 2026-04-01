@@ -138,10 +138,13 @@ def main() -> int:
     scoring = None
     scoring_path = Path(args.trend_scoring_json) if args.trend_scoring_json else None
     if not args.trend_skipped and scoring_path and scoring_path.exists():
-        try:
-            scoring = load_json(scoring_path)
-        except json.JSONDecodeError as exc:
-            args.trend_error_detail = f"Invalid scoring.json payload: {exc}"
+        if scoring_path.stat().st_size == 0:
+            args.trend_error_detail = "scoring.json is empty (0 bytes) — scorer produced no output"
+        else:
+            try:
+                scoring = load_json(scoring_path)
+            except json.JSONDecodeError as exc:
+                args.trend_error_detail = f"Invalid scoring.json payload: {exc}"
 
     resolved = resolve_result(
         runtime_result=args.runtime_result,

@@ -766,6 +766,17 @@ def main() -> int:
         result = score_run(manifest_path, catalog_path, baseline_paths)
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
+        # Emit minimal valid JSON to stdout so shell redirection never
+        # leaves scoring.json as a 0-byte file (which breaks trend
+        # comparison downstream).
+        if args.json:
+            error_payload = {
+                "schema_version": 1,
+                "result": "ERROR",
+                "comparison_kind": "error",
+                "summary": {"reason": str(exc)},
+            }
+            print(json.dumps(error_payload, indent=2))
         return 3
 
     if args.json:

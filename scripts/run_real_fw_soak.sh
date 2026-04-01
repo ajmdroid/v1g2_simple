@@ -3621,6 +3621,10 @@ else
     if [[ -z "$trend_error_detail" ]]; then
       trend_error_detail="Trend scorer exited ${trend_scorer_exit} before producing a usable result."
     fi
+  elif [[ ! -s "$TREND_SCORING_JSON" ]]; then
+    # Scorer exited <=2 but produced no output — guard against silent
+    # empty-file failures that break trend comparison downstream.
+    trend_error_detail="Scorer exited ${trend_scorer_exit} but scoring.json is empty (0 bytes)."
   fi
 fi
 
