@@ -5,14 +5,13 @@
 template <typename SpeedMuteLike>
 void QuietCoordinatorModule::applyVoicePresentation(VoiceContext& voiceCtx,
                                                     const SpeedMuteLike* speedMute,
-                                                    const bool prioritySuppressed,
                                                     const bool hasRenderablePriority,
                                                     const uint8_t priorityBand) {
     syncCommittedState();
 
-    presentation_.voiceSuppressed = prioritySuppressed;
+    presentation_.voiceSuppressed = false;
     presentation_.voiceAllowVolZeroBypass = false;
-    voiceCtx.isSuppressed = prioritySuppressed;
+    voiceCtx.isSuppressed = false;
 
     if (!voiceCtx.isSuppressed && speedMute) {
         const auto& smState = speedMute->getState();

@@ -115,17 +115,9 @@ public:
     // Battery indicator (only shows when on battery power)
     void drawBatteryIndicator();
 
-    // Lockout indicator — shows "L" badge when enforcer matches a zone.
-    // Called from lockout/display orchestration modules before display pipeline.
-    void setLockoutIndicator(bool show);
-
     // GPS satellite indicator — shows "G" + sat count when GPS has fix.
     // State is refreshed by display lightweight update paths.
     void setGpsSatellites(bool enabled, bool hasFix, uint8_t satellites);
-
-    // Pre-quiet active flag — suppresses VOL 0 warning when volume was
-    // intentionally dropped by the lockout pre-quiet feature.
-    void setPreQuietActive(bool active);
 
     // Speed-vol zero active flag — suppresses VOL 0 warning when speed mute
     // intentionally set the V1 volume to 0.
@@ -197,7 +189,6 @@ private:
     void drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol);              // "5V  0M" style
     void drawRssiIndicator(int rssi);                                         // BLE RSSI in dBm
     void drawMuteIcon(bool muted);
-    void drawLockoutIndicator();
     void drawGpsIndicator();
     void drawObdIndicator();
     void syncTopIndicators(uint32_t nowMs);
@@ -240,8 +231,6 @@ private:
     int16_t frequencyDirtyW_ = 0;
     int16_t frequencyDirtyH_ = 0;
     bool secondaryCardsRenderDirty_ = false; // True when drawSecondaryAlertCards changed card-row pixels
-    bool lockoutIndicatorShown_ = false;  // Current lockout indicator state (set by orchestration modules)
-    bool preQuietActive_ = false;          // Suppress VOL 0 warning during lockout pre-quiet
     bool speedVolZeroActive_ = false;      // Suppress VOL 0 warning during speed-mute vol 0
     bool gpsSatEnabled_ = false;           // GPS module enabled
     bool gpsSatHasFix_ = false;            // GPS has satellite fix
@@ -273,7 +262,6 @@ public:
                                uint8_t flashBits = 0, uint16_t frontColorOverride = 0) {
         drawDirectionArrow(dir, muted, flashBits, frontColorOverride);
     }
-    void ut_drawLockoutIndicator() { drawLockoutIndicator(); }
     void ut_drawGpsIndicator()     { drawGpsIndicator(); }
     void ut_drawObdIndicator()     { drawObdIndicator(); }
     void ut_drawBaseFrame()        { drawBaseFrame(); }

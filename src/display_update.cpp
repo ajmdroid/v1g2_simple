@@ -52,7 +52,6 @@ struct DisplayRenderCache {
     uint8_t lastRestingBogeyByte = 0;
 
     bool badgeCacheValid = false;
-    bool lastLockoutShown = false;
     bool lastGpsShown = false;
     uint8_t lastGpsSats = 0;
     bool lastObdShown = false;
@@ -201,7 +200,6 @@ void V1Display::updateStatusStripIncremental(const DisplayState& state,
         flushLeftStrip = true;
     }
 
-    drawLockoutIndicator();
     drawGpsIndicator();
     drawObdIndicator();
 }
@@ -282,7 +280,7 @@ void V1Display::update(const DisplayState& state) {
     bool volZero = (state.mainVolume == 0 && state.hasVolumeData);
     if (!bleContextFresh) {
         volZeroWarn.reset();
-    } else if (volZeroWarn.needsFlashRedraw(volZero, currentProxyConnected, preQuietActive_, speedVolZeroActive_)) {
+    } else if (volZeroWarn.needsFlashRedraw(volZero, currentProxyConnected, speedVolZeroActive_)) {
         needsFullRedraw = true;
     }
 
@@ -384,7 +382,7 @@ void V1Display::update(const DisplayState& state) {
         volZeroWarn.reset();
     } else {
         showVolumeWarning = volZeroWarn.evaluate(
-            volZero, proxyConnected, preQuietActive_, speedVolZeroActive_, play_vol0_beep);
+            volZero, proxyConnected, speedVolZeroActive_, play_vol0_beep);
     }
 
     if (showVolumeWarning) {
@@ -406,7 +404,6 @@ void V1Display::update(const DisplayState& state) {
     stageStartUs = micros();
     drawDirectionArrow(DIR_NONE, effectiveMuted, 0);
     drawMuteIcon(effectiveMuted);
-    drawLockoutIndicator();
     drawGpsIndicator();
     drawObdIndicator();
     drawProfileIndicator(currentProfileSlot_);
@@ -450,26 +447,23 @@ void V1Display::refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bo
     const bool obdShow = obdEnabled_;
     const bool obdConnected = obdShow && obdConnected_;
 
-    const bool forceBadgeFlush = dirty.lockout || dirty.gpsIndicator || dirty.obdIndicator;
+    const bool forceBadgeFlush = dirty.gpsIndicator || dirty.obdIndicator;
 
-    drawLockoutIndicator();
     drawGpsIndicator();
     drawObdIndicator();
 
     const bool badgeStripChanged =
         !cache.badgeCacheValid ||
         forceBadgeFlush ||
-        (lockoutIndicatorShown_ != cache.lastLockoutShown) ||
         (gpsShow != cache.lastGpsShown) ||
         (gpsSats != cache.lastGpsSats) ||
         (obdShow != cache.lastObdShown) ||
         (obdConnected != cache.lastObdConnected);
 
     if (badgeStripChanged) {
-        // Top status strip containing GPS / lockout / OBD badges.
+        // Top status strip containing GPS / OBD badges.
         flushRegion(120, 0, 320, 36);
         cache.badgeCacheValid = true;
-        cache.lastLockoutShown = lockoutIndicatorShown_;
         cache.lastGpsShown = gpsShow;
         cache.lastGpsSats = gpsSats;
         cache.lastObdShown = obdShow;
@@ -869,7 +863,6 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
     stageStartUs = micros();
     drawDirectionArrow(arrowsToShow, state.muted, state.flashBits);
     drawMuteIcon(state.muted);
-    drawLockoutIndicator();
     drawGpsIndicator();
     drawObdIndicator();
     drawProfileIndicator(currentProfileSlot_);

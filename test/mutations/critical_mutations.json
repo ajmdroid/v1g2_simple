@@ -3,20 +3,6 @@
   "modes": {
     "critical": [
       {
-        "id": "critical-001",
-        "module": "lockout_index",
-        "description": "<= -> < radius check",
-        "impact": "Boundary alerts slip through lockout zones",
-        "file": "src/modules/lockout/lockout_index.cpp",
-        "search": "    // Squared-distance check with cos(lat)-scaled longitude.\n    // Scale dLon to equivalent latitude distance units before squaring.\n    const int64_t dLat64 = static_cast<int64_t>(dLat);\n    const int64_t dLonScaled = static_cast<int64_t>(lroundf(static_cast<float>(dLon) * cosLatClamped));\n    const int64_t r64    = static_cast<int64_t>(radius);\n    return (dLat64 * dLat64 + dLonScaled * dLonScaled) <= (r64 * r64);\n}",
-        "replace": "    // Squared-distance check with cos(lat)-scaled longitude.\n    // Scale dLon to equivalent latitude distance units before squaring.\n    const int64_t dLat64 = static_cast<int64_t>(dLat);\n    const int64_t dLonScaled = static_cast<int64_t>(lroundf(static_cast<float>(dLon) * cosLatClamped));\n    const int64_t r64    = static_cast<int64_t>(radius);\n    return (dLat64 * dLat64 + dLonScaled * dLonScaled) < (r64 * r64);\n}",
-        "tests": [
-          "test_lockout_index",
-          "test_lockout_area_safety",
-          "test_drive_scenario"
-        ]
-      },
-      {
         "id": "critical-002",
         "module": "battery_manager",
         "description": "- EMPTY -> + EMPTY percentage math",
@@ -41,18 +27,6 @@
         ]
       },
       {
-        "id": "critical-004",
-        "module": "lockout_learner",
-        "description": ">= -> > promotion threshold",
-        "impact": "Learner requires one extra hit before promotion",
-        "file": "src/modules/lockout/lockout_learner.cpp",
-        "search": "                if (c.hitCount >= promotionHits_) {\n                    promoteCandidate(static_cast<size_t>(idx), epochMs);\n                }\n",
-        "replace": "                if (c.hitCount > promotionHits_) {\n                    promoteCandidate(static_cast<size_t>(idx), epochMs);\n                }\n",
-        "tests": [
-          "test_lockout_learner"
-        ]
-      },
-      {
         "id": "critical-005",
         "module": "wifi_boot_policy",
         "description": ">= -> > BLE settle boundary",
@@ -65,20 +39,6 @@
         ]
       },
       {
-        "id": "critical-006",
-        "module": "lockout_index",
-        "description": "> 0 -> >= 0 confidence decrement",
-        "impact": "Zero-confidence lockouts underflow to 255 and become permanent",
-        "file": "src/modules/lockout/lockout_index.cpp",
-        "search": "    if (e.confidence > 0) {\n        --e.confidence;\n    }\n",
-        "replace": "    if (e.confidence >= 0) {\n        --e.confidence;\n    }\n",
-        "tests": [
-          "test_lockout_index",
-          "test_lockout_area_safety",
-          "test_drive_scenario"
-        ]
-      },
-      {
         "id": "critical-008",
         "module": "volume_fade",
         "description": ">= -> > fade delay boundary",
@@ -88,30 +48,6 @@
         "replace": "    if (!commandSent && (now - alertStartMs) > fadeDelayMs) {\n",
         "tests": [
           "test_volume_fade"
-        ]
-      },
-      {
-        "id": "critical-009",
-        "module": "gps_lockout_safety",
-        "description": "> -> >= guard threshold",
-        "impact": "Core guard trips one drop too early",
-        "file": "src/modules/gps/gps_lockout_safety.cpp",
-        "search": "    if (queueDrops > maxQueueDrops) {\n        status.tripped = true;\n        status.reason = \"queueDrops\";\n        return status;\n    }\n",
-        "replace": "    if (queueDrops >= maxQueueDrops) {\n        status.tripped = true;\n        status.reason = \"queueDrops\";\n        return status;\n    }\n",
-        "tests": [
-          "test_gps_lockout_safety"
-        ]
-      },
-      {
-        "id": "critical-010",
-        "module": "lockout_pre_quiet",
-        "description": "entry debounce 100 -> 0",
-        "impact": "GPS noise causes immediate pre-quiet volume drops",
-        "file": "src/modules/lockout/lockout_pre_quiet_controller.cpp",
-        "search": "static constexpr uint32_t ENTRY_DEBOUNCE_MS = 100;\n",
-        "replace": "static constexpr uint32_t ENTRY_DEBOUNCE_MS = 0;\n",
-        "tests": [
-          "test_lockout_pre_quiet"
         ]
       },
       {

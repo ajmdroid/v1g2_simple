@@ -159,9 +159,7 @@
       "intended_single_owner": "DisplayOrchestrationModule remains the sole BLE volume executor; LockoutOrchestrationModule and VolumeFadeModule may only emit explicit decisions for it to arbitrate and execute.",
       "preserved_negative_semantics": "Pre-quiet drop/restore and alert fade/recovery semantics stay explicit, BLE pacing failures remain visible, and the loop must not issue competing or duplicate setVolume() commands in the same alert path.",
       "tests": [
-        "test/test_display_orchestration_module/test_display_orchestration_module.cpp",
-        "test/test_lockout_orchestration/test_lockout_orchestration.cpp",
-        "test/test_lockout_pre_quiet/test_lockout_pre_quiet.cpp"
+        "test/test_display_orchestration_module/test_display_orchestration_module.cpp"
       ]
     },
     {
@@ -203,8 +201,6 @@
       "tests": [
         "test/test_obd_speed_source/test_obd_speed_source.cpp",
         "test/test_main_loop_phases/test_main_loop_phases.cpp",
-        "test/test_lockout_orchestration/test_lockout_orchestration.cpp",
-        "test/test_signal_capture_module/test_signal_capture_module.cpp",
         "test/test_gps_api_service/test_gps_api_service.cpp",
         "test/test_obd_api_service/test_obd_api_service.cpp",
         "test/test_wifi_settings_api_service/test_wifi_settings_api_service.cpp"

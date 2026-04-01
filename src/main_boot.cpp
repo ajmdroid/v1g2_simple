@@ -8,7 +8,7 @@
 
 #include "main_internals.h"
 #include "display.h"
-#include "settings.h"               // clampLockoutLearnerRadiusE5Value
+#include "settings.h"
 #include "modules/perf/debug_macros.h"  // SerialLog
 #include "esp_heap_caps.h"
 #include "esp_core_dump.h"
@@ -36,36 +36,6 @@ const char* resetReasonToString(esp_reset_reason_t reason) {
         case ESP_RST_SDIO: return "SDIO";
         default: return "UNKNOWN";
     }
-}
-
-// --- normalizeLegacyLockoutRadiusScale ---
-
-uint32_t normalizeLegacyLockoutRadiusScale(JsonDocument& doc) {
-    JsonArray zones = doc["zones"].as<JsonArray>();
-    if (zones.isNull()) {
-        return 0;
-    }
-
-    // Legacy lockout files stored radiusE5 in a 10x scale.
-    // Heuristic is safe: legacy valid range started at 450.
-    static constexpr uint16_t LEGACY_RADIUS_MIN_E5 = 450;
-    uint32_t migrated = 0;
-    for (JsonObject zone : zones) {
-        if (zone["rad"].isNull()) {
-            continue;
-        }
-        const uint16_t raw = zone["rad"].as<uint16_t>();
-        if (raw < LEGACY_RADIUS_MIN_E5) {
-            continue;
-        }
-        const uint16_t normalized = clampLockoutLearnerRadiusE5Value(
-            static_cast<int>((raw + 5u) / 10u));
-        if (normalized != raw) {
-            zone["rad"] = normalized;
-            ++migrated;
-        }
-    }
-    return migrated;
 }
 
 // --- logPanicBreadcrumbs ---

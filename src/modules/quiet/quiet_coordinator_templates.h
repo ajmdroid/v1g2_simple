@@ -2,39 +2,6 @@
 
 #include "quiet_coordinator_module.h"
 
-template <typename VolumeFadeLike>
-bool QuietCoordinatorModule::handleLockoutVolumeCommand(const LockoutVolumeCommand& command,
-                                                        const uint32_t nowMs,
-                                                        VolumeFadeLike* volumeFade) {
-    if (!command.hasAction()) {
-        return false;
-    }
-
-    sendVolume(QuietOwner::PreQuiet, command.volume, command.muteVolume);
-    if (command.type == LockoutVolumeCommandType::PreQuietRestore) {
-        if (volumeFade) {
-            volumeFade->setBaselineHint(command.volume, command.muteVolume, nowMs);
-        }
-        pendingPqRestoreVol_ = command.volume;
-        pendingPqRestoreMuteVol_ = command.muteVolume;
-        pendingPqRestoreSetMs_ = nowMs;
-        pendingPqRestoreLastRetryMs_ = nowMs;
-        perfRecordPreQuietRestore();
-        Serial.println("[Lockout] PRE-QUIET: volume restored");
-        presentation_.activeVolumeOwner = QuietOwner::PreQuiet;
-        return true;
-    }
-
-    if (command.type == LockoutVolumeCommandType::PreQuietDrop) {
-        pendingPqRestoreVol_ = 0xFF;
-        perfRecordPreQuietDrop();
-        Serial.println("[Lockout] PRE-QUIET: volume dropped in lockout zone");
-        presentation_.activeVolumeOwner = QuietOwner::PreQuiet;
-    }
-
-    return true;
-}
-
 template <typename SpeedMuteLike>
 void QuietCoordinatorModule::updateSpeedVolPresentation(const SpeedMuteLike* speedMute) {
     presentation_.speedVolZeroActive =
@@ -42,15 +9,13 @@ void QuietCoordinatorModule::updateSpeedVolPresentation(const SpeedMuteLike* spe
     if (speedVolActive_ || pendingSpeedVolRestoreVol_ != 0xFF) {
         presentation_.activeVolumeOwner = QuietOwner::SpeedVolume;
     } else if (presentation_.activeVolumeOwner == QuietOwner::SpeedVolume) {
-        presentation_.activeVolumeOwner = presentation_.preQuietActive ? QuietOwner::PreQuiet
-                                                                        : QuietOwner::None;
+        presentation_.activeVolumeOwner = QuietOwner::None;
     }
 }
 
-template <typename SpeedMuteLike, typename LockoutLike, typename VolumeFadeLike>
+template <typename SpeedMuteLike, typename VolumeFadeLike>
 bool QuietCoordinatorModule::processSpeedVolume(const uint32_t nowMs,
                                                 const SpeedMuteLike& speedMute,
-                                                LockoutLike* lockout,
                                                 VolumeFadeLike* volumeFade) {
     syncCommittedState();
 
@@ -63,7 +28,6 @@ bool QuietCoordinatorModule::processSpeedVolume(const uint32_t nowMs,
             if (volumeFade) {
                 volumeFade->setBaselineHint(speedVolSavedOriginal_, speedVolSavedMuteVol_, nowMs);
             }
-            if (lockout) lockout->clearVolumeHint();
             pendingSpeedVolRestoreVol_ = speedVolSavedOriginal_;
             pendingSpeedVolRestoreMuteVol_ = speedVolSavedMuteVol_;
             pendingSpeedVolRestoreSetMs_ = nowMs;
@@ -85,14 +49,7 @@ bool QuietCoordinatorModule::processSpeedVolume(const uint32_t nowMs,
         }
     }
 
-    const bool pqBusy = (lockout && lockout->isPreQuietActive()) || pendingPqRestoreVol_ != 0xFF;
-
     if (wantsActive && !speedVolActive_) {
-        if (pqBusy) {
-            updateSpeedVolPresentation(&speedMute);
-            return false;
-        }
-
         pendingSpeedVolRestoreVol_ = 0xFF;
         const DisplayState& ds = parser_->getDisplayState();
         speedVolSavedOriginal_ = ds.mainVolume;
@@ -100,7 +57,6 @@ bool QuietCoordinatorModule::processSpeedVolume(const uint32_t nowMs,
         speedVolActive_ = true;
         speedVolLastRetryMs_ = nowMs;
         sendVolume(QuietOwner::SpeedVolume, smSettings.v1Volume, speedVolSavedMuteVol_);
-        if (lockout) lockout->setVolumeHint(speedVolSavedOriginal_, speedVolSavedMuteVol_);
         perfRecordSpeedVolDrop();
         Serial.printf("[SpeedVol] DROP: %d -> %d\n", speedVolSavedOriginal_, smSettings.v1Volume);
         updateSpeedVolPresentation(&speedMute);
@@ -112,7 +68,6 @@ bool QuietCoordinatorModule::processSpeedVolume(const uint32_t nowMs,
         if (volumeFade) {
             volumeFade->setBaselineHint(speedVolSavedOriginal_, speedVolSavedMuteVol_, nowMs);
         }
-        if (lockout) lockout->clearVolumeHint();
         pendingSpeedVolRestoreVol_ = speedVolSavedOriginal_;
         pendingSpeedVolRestoreMuteVol_ = speedVolSavedMuteVol_;
         pendingSpeedVolRestoreSetMs_ = nowMs;
@@ -126,10 +81,6 @@ bool QuietCoordinatorModule::processSpeedVolume(const uint32_t nowMs,
     }
 
     if (speedVolActive_) {
-        if (pqBusy) {
-            updateSpeedVolPresentation(&speedMute);
-            return true;
-        }
         if (committed_.mainVolume == smSettings.v1Volume) {
             updateSpeedVolPresentation(&speedMute);
             return true;
@@ -149,7 +100,6 @@ bool QuietCoordinatorModule::processSpeedVolume(const uint32_t nowMs,
 
 template <typename VolumeFadeLike>
 bool QuietCoordinatorModule::executeVolumeFade(const uint32_t nowMs,
-                                               const bool lockoutPrioritySuppressed,
                                                VolumeFadeLike* volumeFade) {
     syncCommittedState();
     if (!volumeFade || !parser_) {
@@ -168,7 +118,7 @@ bool QuietCoordinatorModule::executeVolumeFade(const uint32_t nowMs,
     fadeCtx.now = nowMs;
     if (hasAlerts) {
         fadeCtx.alertMuted = committed_.muted;
-        fadeCtx.alertSuppressed = lockoutPrioritySuppressed;
+        fadeCtx.alertSuppressed = false;
         fadeCtx.currentFrequency =
             hasRenderablePriority ? static_cast<uint16_t>(priority.frequency) : 0;
     }

@@ -232,8 +232,6 @@ void test_handle_status_preserves_nested_wifi_merges() {
         wifi["low_dma_cooldown_ms"] = 9000;
         JsonObject autoStart = wifi["auto_start"].to<JsonObject>();
         autoStart["gate"] = "waiting_dma";
-        JsonObject lockout = obj["lockout"].to<JsonObject>();
-        lockout["coreGuardTripped"] = true;
     };
 
     WifiStatusApiService::StatusJsonCache cache;
@@ -252,7 +250,6 @@ void test_handle_status_preserves_nested_wifi_merges() {
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"low_dma_cooldown_ms\":9000"));
     TEST_ASSERT_TRUE(responseContains(server, "\"auto_start\":{\"gate\":\"waiting_dma\"}"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"lockout\":{\"coreGuardTripped\":true}"));
     releaseCache(cache, cacheTime);
 }
 

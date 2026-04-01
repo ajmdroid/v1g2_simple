@@ -76,16 +76,7 @@
 #include "modules/display/display_restore_module.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_observation_log.h"
-#include "modules/gps/gps_lockout_safety.h"
-#include "modules/lockout/signal_capture_module.h"
-#include "modules/lockout/signal_observation_sd_logger.h"
-#include "modules/lockout/lockout_enforcer.h"
-#include "modules/lockout/lockout_learner.h"
-#include "modules/lockout/lockout_store.h"
-#include "modules/lockout/lockout_runtime_mute_controller.h"
-#include "modules/lockout/lockout_pre_quiet_controller.h"
-#include "modules/lockout/road_map_reader.h"
-#include "modules/lockout/lockout_orchestration_module.h"
+
 #include "modules/debug/debug_api_service.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/speed_mute/speed_mute_module.h"
@@ -111,14 +102,7 @@
 // The extern declarations were removed from module headers to prevent
 // accidental global access from within src/modules/. These src/-level
 // externs allow main.cpp and src/ helpers to wire dependencies.
-extern SignalObservationLog      signalObservationLog;
-extern SignalObservationSdLogger signalObservationSdLogger;
-extern SignalCaptureModule       signalCaptureModule;
-extern LockoutLearner            lockoutLearner;
-extern LockoutStore              lockoutStore;
-extern LockoutIndex              lockoutIndex;
-extern LockoutEnforcer           lockoutEnforcer;
-extern RoadMapReader             roadMapReader;
+
 extern SpeedSourceSelector       speedSourceSelector;
 extern GpsRuntimeModule          gpsRuntimeModule;
 extern GpsObservationLog         gpsObservationLog;
@@ -147,8 +131,6 @@ static bool wifiStatusObservabilityCallbackConfigured = false;
 DisplayPreviewModule displayPreviewModule;
 static ConnectionStateCadenceModule connectionStateCadenceModule;
 
-// Lockout orchestration (enforcement + mute + pre-quiet pipeline)
-LockoutOrchestrationModule lockoutOrchestrationModule;
 
 void requestColorPreviewHold(uint32_t durationMs) {
     displayPreviewModule.requestHold(durationMs);
@@ -238,7 +220,6 @@ static void configureLoopSettingsPrepModule() {
         LoopSettingsPrepValues values;
         values.enableWifi = settings.enableWifi;
         values.enableWifiAtBoot = settings.enableWifiAtBoot;
-        values.enableSignalTraceLogging = settings.enableSignalTraceLogging;
         return values;
     };
     loopSettingsPrepProviders.settingsContext = &settingsManager;
@@ -282,31 +263,6 @@ static void configureWifiRuntimeModule() {
     getWifiOrchestrator().ensureCallbacksConfigured();
     if (!wifiStatusObservabilityCallbackConfigured) {
         wifiManager.appendStatusCallback([](JsonObject obj, void* /*ctx*/) {
-            const V1Settings& settings = settingsManager.get();
-            const GpsLockoutCoreGuardStatus lockoutGuard = gpsLockoutEvaluateCoreGuard(
-                settings.gpsLockoutCoreGuardEnabled,
-                settings.gpsLockoutMaxQueueDrops,
-                settings.gpsLockoutMaxPerfDrops,
-                settings.gpsLockoutMaxEventBusDrops,
-                perfCounters.queueDrops.load(),
-                perfCounters.perfDrop.load(),
-                systemEventBus.getDropCount());
-
-            StatusObservabilityPayload::LockoutStatusSnapshot lockoutStatus;
-            lockoutStatus.mode = lockoutRuntimeModeName(settings.gpsLockoutMode);
-            lockoutStatus.modeRaw = static_cast<uint8_t>(settings.gpsLockoutMode);
-            lockoutStatus.coreGuardEnabled = settings.gpsLockoutCoreGuardEnabled;
-            lockoutStatus.coreGuardTripped = lockoutGuard.tripped;
-            lockoutStatus.coreGuardReason = lockoutGuard.reason;
-            lockoutStatus.maxQueueDrops = settings.gpsLockoutMaxQueueDrops;
-            lockoutStatus.maxPerfDrops = settings.gpsLockoutMaxPerfDrops;
-            lockoutStatus.maxEventBusDrops = settings.gpsLockoutMaxEventBusDrops;
-            lockoutStatus.queueDrops = perfCounters.queueDrops.load();
-            lockoutStatus.perfDrops = perfCounters.perfDrop.load();
-            lockoutStatus.eventBusDrops = systemEventBus.getDropCount();
-            lockoutStatus.enforceRequested = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE);
-            lockoutStatus.enforceAllowed = lockoutStatus.enforceRequested && !lockoutGuard.tripped;
-
             StatusObservabilityPayload::WifiStatusSnapshot wifiStatus;
             wifiStatus.apLastTransitionReasonCode = perfGetWifiApLastTransitionReason();
             wifiStatus.apLastTransitionReason =
@@ -314,7 +270,7 @@ static void configureWifiRuntimeModule() {
             wifiStatus.lowDmaCooldownRemainingMs = wifiManager.lowDmaCooldownRemainingMs();
             wifiStatus.autoStart = wifiAutoStartModule.getLastDecision();
 
-            StatusObservabilityPayload::appendStatusObservability(obj, lockoutStatus, wifiStatus);
+            StatusObservabilityPayload::appendStatusObservability(obj, wifiStatus);
 
             const QuietCommittedState quietCommitted = quietCoordinatorModule.getCommittedState();
             const QuietDesiredState& quietDesired = quietCoordinatorModule.getDesiredState();
@@ -350,7 +306,6 @@ static void configureWifiRuntimeModule() {
                 quietOwnerName(quietPresentation.activeVolumeOwner);
             presentationObj["activeVolumeOwnerRaw"] =
                 static_cast<uint8_t>(quietPresentation.activeVolumeOwner);
-            presentationObj["preQuietActive"] = quietPresentation.preQuietActive;
             presentationObj["speedVolZeroActive"] = quietPresentation.speedVolZeroActive;
             presentationObj["voiceSuppressed"] = quietPresentation.voiceSuppressed;
             presentationObj["voiceAllowVolZeroBypass"] =
@@ -610,19 +565,8 @@ static void configurePeriodicMaintenanceModule() {
     periodicMaintenanceProviders.runDeferredBleBondBackup =
         ProviderCallbackBindings::member<V1BLEClient, &V1BLEClient::serviceDeferredBondBackup>;
     periodicMaintenanceProviders.deferredBleBondBackupContext = &bleClient;
-    periodicMaintenanceProviders.nowEpochMsOr0 =
-        ProviderCallbackBindings::member<TimeService, &TimeService::nowEpochMsOr0>;
-    periodicMaintenanceProviders.epochContext = &timeService;
-    periodicMaintenanceProviders.runLockoutLearner = [](void* ctx, uint32_t nowMs, int64_t epochMs) {
-        static_cast<LockoutLearner*>(ctx)->process(nowMs, epochMs, timeService.tzOffsetMinutes());
-    };
-    periodicMaintenanceProviders.lockoutLearnerContext = &lockoutLearner;
-    periodicMaintenanceProviders.runLockoutStoreSave = [](void*, uint32_t nowMs) {
-        processLockoutStoreSave(nowMs);
+    periodicMaintenanceProviders.runStoreSave = [](void*, uint32_t nowMs) {
         processV1DeviceStoreSave(nowMs);
-    };
-    periodicMaintenanceProviders.runLearnerPendingSave = [](void*, uint32_t nowMs) {
-        processLearnerPendingSave(nowMs);
     };
     periodicMaintenanceModule.begin(periodicMaintenanceProviders);
 }
@@ -722,9 +666,6 @@ static void configureLoopDisplayModule() {
     loopDisplayProviders.timestampUs = [](void*) -> uint32_t {
         return PERF_TIMESTAMP_US();
     };
-    loopDisplayProviders.recordLockoutUs = [](void*, uint32_t elapsedUs) {
-        perfRecordLockoutUs(elapsedUs);
-    };
     loopDisplayProviders.recordDispPipeUs = [](void* ctx, uint32_t elapsedUs) {
         perfRecordDispPipeUs(elapsedUs);
         static_cast<V1BLEClient*>(ctx)->noteDisplayPipelineDuration(elapsedUs);
@@ -801,7 +742,6 @@ static void configureSystemLoopCoreModules() {
                                      &parser,
                                      &settingsManager,
                                      &gpsRuntimeModule,
-                                     &lockoutOrchestrationModule,
                                      &volumeFadeModule,
                                      &speedMuteModule,
                                      &quietCoordinatorModule);
@@ -845,32 +785,13 @@ static void configureRuntimeCoreModules() {
     configureRuntimeSensorModules();
 }
 
-static void configureLockoutPipelineModules() {
-    // Wire lockout store only if not already done during zone-load above.
-    // Calling begin() again would reset the dirty flag set by legacy migration.
-    if (!lockoutStore.isInitialized()) {
-        lockoutStore.begin(&lockoutIndex);
-    }
-    lockoutEnforcer.begin(&settingsManager, &lockoutIndex, &lockoutStore);
-    lockoutOrchestrationModule.begin(&bleClient, &parser, &settingsManager,
-                                     &display, &lockoutEnforcer, &lockoutIndex,
-                                     &signalCaptureModule,
-                                     &systemEventBus, &perfCounters, &timeService,
-                                     &quietCoordinatorModule, &speedSourceSelector);
-    lockoutLearner.begin(&lockoutIndex, &signalObservationLog, &lockoutStore, &roadMapReader);
-    signalCaptureModule.begin(&signalObservationLog, &signalObservationSdLogger);
-    SettingsRuntimeSync::syncGpsLockoutRuntimeSettings(settingsManager.get(), lockoutLearner);
-}
-
-static void configureRuntimeAndLockoutModules() {
+static void configureRuntimeModules() {
     configureRuntimeCoreModules();
-    configureLockoutPipelineModules();
 }
 
 template <typename StageLogger>
 static void finalizeBootReadyAndBleScan(const unsigned long setupStartMs,
                                         const StageLogger& logBootStage) {
-    restorePendingLearnerCandidates();
     mainRuntimeState.bootReady = true;
     bleClient.setBootReady(true);
     SerialLog.printf("[Boot] Ready gate opened at %lu ms\n", millis());
@@ -1057,8 +978,6 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
 
     const uint32_t bootId = initializeBootPerformanceLoggers();
 
-    applyLockoutPolicyAndLoadZonesFromStorage();
-    roadMapReader.begin();
     logBootStage("storage");
 
     initializeBlePreInitAndScan(logBootCheckpoint, logBootStage);
@@ -1073,7 +992,7 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
 
     configureAlertAudioDisplayPipeline();
     configureSystemLoopModules();
-    configureRuntimeAndLockoutModules();
+    configureRuntimeModules();
     DebugApiService::begin(&systemEventBus, &bleClient, &bleQueueModule);
 
     configureWifiRuntimeModule();
@@ -1147,7 +1066,7 @@ void loop() {
     const bool skipLateNonCoreThisLoop = loopIngestValues.skipLateNonCoreThisLoop;
     const bool overloadLateThisLoop = loopIngestValues.overloadLateThisLoop;
 
-    // Refresh speed inputs before display/lockout so the current loop sees the latest OBD/GPS state.
+    // Refresh speed inputs before display so the current loop sees the latest OBD/GPS state.
     {
         const uint32_t obdStartUs = micros();
         const ObdBleContext obdBleContext{
@@ -1180,8 +1099,7 @@ void loop() {
     processLoopDisplayPreWifiPhase(
         now,
         mainRuntimeState.bootSplashHoldActive,
-        overloadLateThisLoop,
-        loopSettingsPrepValues.enableSignalTraceLogging);
+        overloadLateThisLoop);
 
     const LoopWifiPhaseValues loopWifiValues = processLoopWifiPhase(
         now,

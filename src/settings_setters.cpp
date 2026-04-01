@@ -446,9 +446,6 @@ void SettingsManager::applyDeviceSettingsUpdate(const DeviceSettingsUpdate& upda
     if (update.hasEnableWifiAtBoot) {
         changed |= assignIfChanged(settings_.enableWifiAtBoot, update.enableWifiAtBoot);
     }
-    if (update.hasEnableSignalTraceLogging) {
-        changed |= assignIfChanged(settings_.enableSignalTraceLogging, update.enableSignalTraceLogging);
-    }
 
     if (changed) {
         persistSettingsByMode(*this, persistMode);
@@ -559,7 +556,6 @@ void SettingsManager::applyDisplaySettingsUpdate(const DisplaySettingsUpdate& up
     if (update.hasColorVolumeMute) changed |= assignIfChanged(settings_.colorVolumeMute, update.colorVolumeMute);
     if (update.hasColorRssiV1) changed |= assignIfChanged(settings_.colorRssiV1, update.colorRssiV1);
     if (update.hasColorRssiProxy) changed |= assignIfChanged(settings_.colorRssiProxy, update.colorRssiProxy);
-    if (update.hasColorLockout) changed |= assignIfChanged(settings_.colorLockout, update.colorLockout);
     if (update.hasColorGps) changed |= assignIfChanged(settings_.colorGps, update.colorGps);
     if (update.hasColorObd) changed |= assignIfChanged(settings_.colorObd, update.colorObd);
     if (update.hasFreqUseBandColor) changed |= assignIfChanged(settings_.freqUseBandColor, update.freqUseBandColor);
@@ -612,7 +608,6 @@ void SettingsManager::resetDisplaySettings(SettingsPersistMode persistMode) {
     settings_.colorVolumeMute = 0xFFE0;
     settings_.colorRssiV1 = 0x07E0;
     settings_.colorRssiProxy = 0x001F;
-    settings_.colorLockout = 0x07E0;
     settings_.colorGps = 0x07FF;
     settings_.colorObd = 0x001F;
     settings_.freqUseBandColor = false;
@@ -627,98 +622,6 @@ GpsSettingsApplyResult SettingsManager::applyGpsSettingsUpdate(const GpsSettings
     if (update.hasEnabled && assignIfChanged(settings_.gpsEnabled, update.enabled)) {
         result.changed = true;
         result.enabledChanged = true;
-    }
-    if (update.hasLockoutMode &&
-        assignIfChanged(settings_.gpsLockoutMode,
-                        clampLockoutRuntimeModeValue(static_cast<int>(update.lockoutMode)))) {
-        result.changed = true;
-    }
-    if (update.hasCoreGuardEnabled &&
-        assignIfChanged(settings_.gpsLockoutCoreGuardEnabled, update.coreGuardEnabled)) {
-        result.changed = true;
-    }
-    if (update.hasMaxQueueDrops && assignIfChanged(settings_.gpsLockoutMaxQueueDrops, update.maxQueueDrops)) {
-        result.changed = true;
-    }
-    if (update.hasMaxPerfDrops && assignIfChanged(settings_.gpsLockoutMaxPerfDrops, update.maxPerfDrops)) {
-        result.changed = true;
-    }
-    if (update.hasMaxEventBusDrops && assignIfChanged(settings_.gpsLockoutMaxEventBusDrops, update.maxEventBusDrops)) {
-        result.changed = true;
-    }
-    if (update.hasLearnerPromotionHits &&
-        assignIfChanged(settings_.gpsLockoutLearnerPromotionHits,
-                        clampLockoutLearnerHitsValue(update.learnerPromotionHits))) {
-        result.changed = true;
-        result.learnerTuningChanged = true;
-    }
-    if (update.hasLearnerRadiusE5 &&
-        assignIfChanged(settings_.gpsLockoutLearnerRadiusE5,
-                        clampLockoutLearnerRadiusE5Value(update.learnerRadiusE5))) {
-        result.changed = true;
-        result.learnerTuningChanged = true;
-    }
-    if (update.hasLearnerFreqToleranceMHz &&
-        assignIfChanged(settings_.gpsLockoutLearnerFreqToleranceMHz,
-                        clampLockoutLearnerFreqTolValue(update.learnerFreqToleranceMHz))) {
-        result.changed = true;
-        result.learnerTuningChanged = true;
-    }
-    if (update.hasLearnerLearnIntervalHours &&
-        assignIfChanged(settings_.gpsLockoutLearnerLearnIntervalHours,
-                        clampLockoutLearnerIntervalHoursValue(update.learnerLearnIntervalHours))) {
-        result.changed = true;
-        result.learnerTuningChanged = true;
-    }
-    if (update.hasLearnerUnlearnIntervalHours &&
-        assignIfChanged(settings_.gpsLockoutLearnerUnlearnIntervalHours,
-                        clampLockoutLearnerIntervalHoursValue(update.learnerUnlearnIntervalHours))) {
-        result.changed = true;
-    }
-    if (update.hasLearnerUnlearnCount &&
-        assignIfChanged(settings_.gpsLockoutLearnerUnlearnCount,
-                        clampLockoutLearnerUnlearnCountValue(update.learnerUnlearnCount))) {
-        result.changed = true;
-    }
-    if (update.hasManualDemotionMissCount &&
-        assignIfChanged(settings_.gpsLockoutManualDemotionMissCount,
-                        clampLockoutManualDemotionMissCountValue(update.manualDemotionMissCount))) {
-        result.changed = true;
-    }
-    if (update.hasKaLearningEnabled &&
-        assignIfChanged(settings_.gpsLockoutKaLearningEnabled, update.kaLearningEnabled)) {
-        result.changed = true;
-        result.bandLearningPolicyChanged = true;
-    }
-    if (update.hasKLearningEnabled &&
-        assignIfChanged(settings_.gpsLockoutKLearningEnabled, update.kLearningEnabled)) {
-        result.changed = true;
-        result.bandLearningPolicyChanged = true;
-    }
-    if (update.hasXLearningEnabled &&
-        assignIfChanged(settings_.gpsLockoutXLearningEnabled, update.xLearningEnabled)) {
-        result.changed = true;
-        result.bandLearningPolicyChanged = true;
-    }
-    if (update.hasPreQuiet && assignIfChanged(settings_.gpsLockoutPreQuiet, update.preQuiet)) {
-        result.changed = true;
-    }
-    if (update.hasPreQuietBufferE5 &&
-        assignIfChanged(settings_.gpsLockoutPreQuietBufferE5,
-                        clampLockoutPreQuietBufferE5Value(update.preQuietBufferE5))) {
-        result.changed = true;
-    }
-    if (update.hasMaxHdopX10 &&
-        assignIfChanged(settings_.gpsLockoutMaxHdopX10,
-                        clampLockoutGpsMaxHdopX10Value(update.maxHdopX10))) {
-        result.changed = true;
-        result.learnerTuningChanged = true;
-    }
-    if (update.hasMinLearnerSpeedMph &&
-        assignIfChanged(settings_.gpsLockoutMinLearnerSpeedMph,
-                        clampLockoutGpsMinLearnerSpeedMphValue(update.minLearnerSpeedMph))) {
-        result.changed = true;
-        result.learnerTuningChanged = true;
     }
 
     if (result.changed) {

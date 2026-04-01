@@ -20,9 +20,6 @@
 #include "../ble/ble_queue_module.h"
 #include "../gps/gps_runtime_module.h"
 #include "../gps/gps_observation_log.h"
-#include "../gps/gps_lockout_safety.h"
-#include "../lockout/lockout_learner.h"
-#include "../lockout/lockout_band_policy.h"
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
 #include "debug_api_service_deps.inc"
@@ -369,28 +366,6 @@ void appendEventBusMetrics(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& 
     eventBusObj["size"] = snapshot.eventBus.size;
 }
 
-void appendLockoutMetrics(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& snapshot) {
-    JsonObject lockoutObj = doc["lockout"].to<JsonObject>();
-    lockoutObj["mode"] = snapshot.lockout.mode;
-    lockoutObj["modeRaw"] = snapshot.lockout.modeRaw;
-    lockoutObj["coreGuardEnabled"] = snapshot.lockout.coreGuardEnabled;
-    lockoutObj["coreGuardTripped"] = snapshot.lockout.coreGuardTripped;
-    lockoutObj["coreGuardReason"] = snapshot.lockout.coreGuardReason;
-    lockoutObj["maxQueueDrops"] = snapshot.lockout.maxQueueDrops;
-    lockoutObj["maxPerfDrops"] = snapshot.lockout.maxPerfDrops;
-    lockoutObj["maxEventBusDrops"] = snapshot.lockout.maxEventBusDrops;
-    lockoutObj["learnerPromotionHits"] = snapshot.lockout.learnerPromotionHits;
-    lockoutObj["learnerRadiusE5"] = snapshot.lockout.learnerRadiusE5;
-    lockoutObj["learnerFreqToleranceMHz"] = snapshot.lockout.learnerFreqToleranceMHz;
-    lockoutObj["learnerLearnIntervalHours"] = snapshot.lockout.learnerLearnIntervalHours;
-    lockoutObj["learnerUnlearnIntervalHours"] = snapshot.lockout.learnerUnlearnIntervalHours;
-    lockoutObj["learnerUnlearnCount"] = snapshot.lockout.learnerUnlearnCount;
-    lockoutObj["manualDemotionMissCount"] = snapshot.lockout.manualDemotionMissCount;
-    lockoutObj["kaLearningEnabled"] = snapshot.lockout.kaLearningEnabled;
-    lockoutObj["enforceRequested"] = snapshot.lockout.enforceRequested;
-    lockoutObj["enforceAllowed"] = snapshot.lockout.enforceAllowed;
-}
-
 DEBUG_API_NOINLINE void appendFullMetricsDoc(JsonDocument& doc,
                                              const PerfRuntimeMetricsSnapshot& snapshot) {
     const PerfSdSnapshot& flat = snapshot.flat;
@@ -536,7 +511,6 @@ DEBUG_API_NOINLINE void appendFullMetricsDoc(JsonDocument& doc,
     }
     appendProxyMetrics(doc, snapshot);
     appendEventBusMetrics(doc, snapshot);
-    appendLockoutMetrics(doc, snapshot);
 }
 
 void appendSoakMetricsDoc(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& snapshot) {

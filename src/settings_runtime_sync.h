@@ -3,7 +3,6 @@
 #include "settings.h"
 
 #include "modules/gps/gps_runtime_module.h"
-#include "modules/lockout/lockout_learner.h"
 #include "modules/obd/obd_runtime_module.h"
 #include "modules/speed/speed_source_selector.h"
 
@@ -11,10 +10,6 @@
 // the production paths without introducing extra link-time fixtures. Include
 // this header only after the relevant runtime class definitions are visible in
 // UNIT_TEST builds where mocks replace the production classes.
-
-void lockoutSetKaLearningEnabled(bool enabled);
-void lockoutSetKLearningEnabled(bool enabled);
-void lockoutSetXLearningEnabled(bool enabled);
 
 namespace SettingsRuntimeSync {
 
@@ -63,30 +58,6 @@ inline void syncVehicleRuntimeInputs(const V1Settings& settings,
     syncGpsRuntimeEnabled(settings, gpsRuntimeModule);
     syncObdRuntimeSettings(settings, obdRuntimeModule);
     syncSpeedSourceSelectorInputs(settings, speedSourceSelector);
-}
-
-inline void syncLockoutBandLearningPolicy(const V1Settings& settings) {
-    lockoutSetKaLearningEnabled(settings.gpsLockoutKaLearningEnabled);
-    lockoutSetKLearningEnabled(settings.gpsLockoutKLearningEnabled);
-    lockoutSetXLearningEnabled(settings.gpsLockoutXLearningEnabled);
-}
-
-template <typename TLockoutLearner>
-inline void syncLockoutLearnerTuning(const V1Settings& settings,
-                                     TLockoutLearner& lockoutLearner) {
-    lockoutLearner.setTuning(settings.gpsLockoutLearnerPromotionHits,
-                             settings.gpsLockoutLearnerRadiusE5,
-                             settings.gpsLockoutLearnerFreqToleranceMHz,
-                             settings.gpsLockoutLearnerLearnIntervalHours,
-                             settings.gpsLockoutMaxHdopX10,
-                             settings.gpsLockoutMinLearnerSpeedMph);
-}
-
-template <typename TLockoutLearner>
-inline void syncGpsLockoutRuntimeSettings(const V1Settings& settings,
-                                          TLockoutLearner& lockoutLearner) {
-    syncLockoutBandLearningPolicy(settings);
-    syncLockoutLearnerTuning(settings, lockoutLearner);
 }
 
 }  // namespace SettingsRuntimeSync

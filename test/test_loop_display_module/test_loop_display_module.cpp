@@ -16,11 +16,10 @@ static LoopDisplayModule module;
 enum CallId {
     CALL_COLLECT = 1,
     CALL_PARSED = 2,
-    CALL_LOCKOUT_PERF = 3,
-    CALL_NOTIFY_PERF = 4,
-    CALL_PIPELINE = 5,
-    CALL_DISP_PIPE_PERF = 6,
-    CALL_REFRESH = 7,
+    CALL_NOTIFY_PERF = 3,
+    CALL_PIPELINE = 4,
+    CALL_DISP_PIPE_PERF = 5,
+    CALL_REFRESH = 6,
 };
 
 static int callLog[32];
@@ -38,9 +37,7 @@ static DisplayOrchestrationRefreshResult refreshResult;
 static DisplayOrchestrationParsedContext lastParsedCtx;
 static DisplayOrchestrationRefreshContext lastRefreshCtx;
 static uint32_t lastPipelineNowMs = 0;
-static bool lastPipelineSuppressed = false;
 
-static uint32_t lockoutElapsedUs = 0;
 static uint32_t dispPipeElapsedUs = 0;
 static uint32_t notifyElapsedMs = 0;
 
@@ -76,8 +73,6 @@ static void resetState() {
     lastParsedCtx = DisplayOrchestrationParsedContext{};
     lastRefreshCtx = DisplayOrchestrationRefreshContext{};
     lastPipelineNowMs = 0;
-    lastPipelineSuppressed = false;
-    lockoutElapsedUs = 0;
     dispPipeElapsedUs = 0;
     notifyElapsedMs = 0;
     collectCalls = 0;
@@ -114,10 +109,9 @@ static DisplayOrchestrationRefreshResult runRefresh(
     return refreshResult;
 }
 
-static void runProviderPipeline(void*, uint32_t nowMs, bool lockoutPrioritySuppressed) {
+static void runProviderPipeline(void*, uint32_t nowMs) {
     providerPipelineCalls++;
     lastPipelineNowMs = nowMs;
-    lastPipelineSuppressed = lockoutPrioritySuppressed;
     noteCall(CALL_PIPELINE);
 }
 
@@ -129,11 +123,6 @@ static uint32_t nextPerfTs(void*) {
         return perfTsSequence[perfTsCount - 1];
     }
     return perfTsSequence[perfTsIndex++];
-}
-
-static void recordLockoutUs(void*, uint32_t elapsedUs) {
-    lockoutElapsedUs = elapsedUs;
-    noteCall(CALL_LOCKOUT_PERF);
 }
 
 static void recordDispPipeUs(void*, uint32_t elapsedUs) {
@@ -154,7 +143,6 @@ static LoopDisplayModule::Providers makeDefaultProviders() {
     providers.runLightweightRefresh = runRefresh;
     providers.runDisplayPipeline = runProviderPipeline;
     providers.timestampUs = nextPerfTs;
-    providers.recordLockoutUs = recordLockoutUs;
     providers.recordDispPipeUs = recordDispPipeUs;
     providers.recordNotifyToDisplayMs = recordNotifyToDisplayMs;
     return providers;
@@ -171,15 +159,14 @@ void test_process_full_pipeline_with_provider_pipeline_and_perf_records() {
 
     displayNowMs = 1300;
     parsedSignal = ParsedFrameSignal{true, 1200};
-    parsedResult = DisplayOrchestrationParsedResult{true, true, true};
+    parsedResult = DisplayOrchestrationParsedResult{true};
     refreshResult.signalPriorityActive = true;
-    setPerfTsSequence({100, 155, 200, 260});
+    setPerfTsSequence({200, 260});
 
     LoopDisplayContext ctx;
     ctx.nowMs = 900;
     ctx.bootSplashHoldActive = false;
     ctx.overloadLateThisLoop = true;
-    ctx.enableSignalTraceLogging = true;
 
     module.process(ctx);
 
@@ -187,30 +174,26 @@ void test_process_full_pipeline_with_provider_pipeline_and_perf_records() {
     TEST_ASSERT_EQUAL(1, parsedCalls);
     TEST_ASSERT_EQUAL(1, refreshCalls);
     TEST_ASSERT_EQUAL(1, providerPipelineCalls);
-    TEST_ASSERT_EQUAL(55u, lockoutElapsedUs);
     TEST_ASSERT_EQUAL(60u, dispPipeElapsedUs);
     TEST_ASSERT_EQUAL(100u, notifyElapsedMs);
     TEST_ASSERT_EQUAL(1300u, lastPipelineNowMs);
-    TEST_ASSERT_TRUE(lastPipelineSuppressed);
 
     TEST_ASSERT_TRUE(lastParsedCtx.parsedReady);
     TEST_ASSERT_EQUAL(1300u, lastParsedCtx.nowMs);
     TEST_ASSERT_FALSE(lastParsedCtx.bootSplashHoldActive);
-    TEST_ASSERT_TRUE(lastParsedCtx.enableSignalTraceLogging);
 
     TEST_ASSERT_EQUAL(1300u, lastRefreshCtx.nowMs);
     TEST_ASSERT_FALSE(lastRefreshCtx.bootSplashHoldActive);
     TEST_ASSERT_TRUE(lastRefreshCtx.overloadLateThisLoop);
     TEST_ASSERT_TRUE(lastRefreshCtx.pipelineRanThisLoop);
 
-    TEST_ASSERT_EQUAL(7, callLogCount);
+    TEST_ASSERT_EQUAL(6, callLogCount);
     TEST_ASSERT_EQUAL(CALL_COLLECT, callLog[0]);
     TEST_ASSERT_EQUAL(CALL_PARSED, callLog[1]);
-    TEST_ASSERT_EQUAL(CALL_LOCKOUT_PERF, callLog[2]);
-    TEST_ASSERT_EQUAL(CALL_NOTIFY_PERF, callLog[3]);
-    TEST_ASSERT_EQUAL(CALL_PIPELINE, callLog[4]);
-    TEST_ASSERT_EQUAL(CALL_DISP_PIPE_PERF, callLog[5]);
-    TEST_ASSERT_EQUAL(CALL_REFRESH, callLog[6]);
+    TEST_ASSERT_EQUAL(CALL_NOTIFY_PERF, callLog[2]);
+    TEST_ASSERT_EQUAL(CALL_PIPELINE, callLog[3]);
+    TEST_ASSERT_EQUAL(CALL_DISP_PIPE_PERF, callLog[4]);
+    TEST_ASSERT_EQUAL(CALL_REFRESH, callLog[5]);
 }
 
 void test_process_skips_pipeline_when_parsed_result_disables_pipeline() {
@@ -218,9 +201,8 @@ void test_process_skips_pipeline_when_parsed_result_disables_pipeline() {
 
     displayNowMs = 5000;
     parsedSignal = ParsedFrameSignal{true, 4900};
-    parsedResult = DisplayOrchestrationParsedResult{true, true, false};
+    parsedResult = DisplayOrchestrationParsedResult{false};
     refreshResult.signalPriorityActive = true;
-    setPerfTsSequence({1000, 1100});
 
     LoopDisplayContext ctx;
     ctx.nowMs = 5000;
@@ -230,7 +212,6 @@ void test_process_skips_pipeline_when_parsed_result_disables_pipeline() {
     TEST_ASSERT_EQUAL(1, parsedCalls);
     TEST_ASSERT_EQUAL(1, refreshCalls);
     TEST_ASSERT_EQUAL(0, providerPipelineCalls);
-    TEST_ASSERT_EQUAL(100u, lockoutElapsedUs);
     TEST_ASSERT_EQUAL(0u, dispPipeElapsedUs);
     TEST_ASSERT_EQUAL(0u, notifyElapsedMs);
     TEST_ASSERT_FALSE(lastRefreshCtx.pipelineRanThisLoop);
@@ -241,7 +222,7 @@ void test_notify_to_display_skips_for_zero_or_future_timestamp() {
 
     displayNowMs = 3000;
     parsedSignal = ParsedFrameSignal{true, 0};
-    parsedResult = DisplayOrchestrationParsedResult{false, false, true};
+    parsedResult = DisplayOrchestrationParsedResult{true};
     module.process(LoopDisplayContext{});
     TEST_ASSERT_EQUAL(0u, notifyElapsedMs);
 
@@ -249,22 +230,21 @@ void test_notify_to_display_skips_for_zero_or_future_timestamp() {
     module.begin(makeDefaultProviders());
     displayNowMs = 3000;
     parsedSignal = ParsedFrameSignal{true, 3200};
-    parsedResult = DisplayOrchestrationParsedResult{false, false, true};
+    parsedResult = DisplayOrchestrationParsedResult{true};
     module.process(LoopDisplayContext{});
     TEST_ASSERT_EQUAL(0u, notifyElapsedMs);
 }
 
-void test_wrap_safe_perf_elapsed_for_lockout_and_pipeline() {
+void test_wrap_safe_perf_elapsed_for_pipeline() {
     module.begin(makeDefaultProviders());
 
     displayNowMs = 1000;
     parsedSignal = ParsedFrameSignal{true, 900};
-    parsedResult = DisplayOrchestrationParsedResult{true, false, true};
-    setPerfTsSequence({0xFFFFFFF0u, 0x00000010u, 0xFFFFFF00u, 0x00000020u});
+    parsedResult = DisplayOrchestrationParsedResult{true};
+    setPerfTsSequence({0xFFFFFF00u, 0x00000020u});
 
     module.process(LoopDisplayContext{});
 
-    TEST_ASSERT_EQUAL(0x20u, lockoutElapsedUs);
     TEST_ASSERT_EQUAL(0x120u, dispPipeElapsedUs);
 }
 
@@ -285,7 +265,7 @@ int main() {
     RUN_TEST(test_process_full_pipeline_with_provider_pipeline_and_perf_records);
     RUN_TEST(test_process_skips_pipeline_when_parsed_result_disables_pipeline);
     RUN_TEST(test_notify_to_display_skips_for_zero_or_future_timestamp);
-    RUN_TEST(test_wrap_safe_perf_elapsed_for_lockout_and_pipeline);
+    RUN_TEST(test_wrap_safe_perf_elapsed_for_pipeline);
     RUN_TEST(test_empty_providers_is_safe_noop);
     return UNITY_END();
 }

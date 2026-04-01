@@ -2,7 +2,7 @@
  * test_display_rendering_indicators.cpp
  *
  * Phase 3 Task 3.4 — integration tests for display_indicators.cpp
- * (drawLockoutIndicator, drawGpsIndicator, drawObdIndicator, drawBaseFrame).
+ * (drawGpsIndicator, drawObdIndicator, drawBaseFrame).
  *
  * Includes the real rendering source so that GFX call-recording assertions
  * on the injected Arduino_Canvas verify actual draw behaviour.
@@ -106,7 +106,6 @@ void setUp() {
     resetCanvas();
     dirty = DisplayDirtyFlags{};
     // Invalidate all static caches in each indicator function
-    dirty.lockout      = true;
     dirty.gpsIndicator = true;
     dirty.obdIndicator = true;
 }
@@ -130,57 +129,6 @@ void test_drawBaseFrame_sets_all_dirty_flags() {
     display.ut_drawBaseFrame();
     TEST_ASSERT_TRUE(dirty.bands);
     TEST_ASSERT_TRUE(dirty.arrow);
-}
-
-// ============================================================================
-// drawLockoutIndicator tests
-// ============================================================================
-
-void test_drawLockoutIndicator_shown_draws_badge() {
-    display.setLockoutIndicator(true);
-    display.ut_drawLockoutIndicator();
-
-    // Should draw at least one fillRoundRect (the badge fill)
-    TEST_ASSERT_GREATER_OR_EQUAL(1u, canvas()->fillRoundRectCalls.size());
-}
-
-void test_drawLockoutIndicator_shown_badge_uses_lockout_color() {
-    display.setLockoutIndicator(true);
-    display.ut_drawLockoutIndicator();
-
-    // The badge fill color is dimColor(colorLockout, 45) — a dimmed version of 0x07E0.
-    // We just check that the first fillRoundRect color is NOT PALETTE_BG (it's the badge).
-    uint16_t bg = ColorThemes::STANDARD().bg;
-    TEST_ASSERT_NOT_EQUAL(bg, canvas()->fillRoundRectCalls[0].color);
-}
-
-void test_drawLockoutIndicator_hidden_clears_area() {
-    display.setLockoutIndicator(false);
-    display.ut_drawLockoutIndicator();
-
-    // Hidden state: clears the badge area with BG color
-    TEST_ASSERT_GREATER_OR_EQUAL(1u, canvas()->fillRectCalls.size());
-    TEST_ASSERT_EQUAL_UINT16(ColorThemes::STANDARD().bg, canvas()->fillRectCalls[0].color);
-}
-
-void test_drawLockoutIndicator_cache_hit_skips_redraw() {
-    display.setLockoutIndicator(true);
-    display.ut_drawLockoutIndicator();  // primes cache
-    resetCanvas();
-
-    // Same state, no dirty flag → return early
-    display.ut_drawLockoutIndicator();
-    TEST_ASSERT_EQUAL_UINT(0u, canvas()->fillRoundRectCalls.size());
-}
-
-void test_drawLockoutIndicator_dirty_flag_forces_redraw() {
-    display.setLockoutIndicator(true);
-    display.ut_drawLockoutIndicator();  // primes cache
-    resetCanvas();
-
-    dirty.lockout = true;   // invalidate
-    display.ut_drawLockoutIndicator();
-    TEST_ASSERT_GREATER_OR_EQUAL(1u, canvas()->fillRoundRectCalls.size());
 }
 
 // ============================================================================
@@ -260,11 +208,6 @@ int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_drawBaseFrame_fills_screen_with_bg_color);
     RUN_TEST(test_drawBaseFrame_sets_all_dirty_flags);
-    RUN_TEST(test_drawLockoutIndicator_shown_draws_badge);
-    RUN_TEST(test_drawLockoutIndicator_shown_badge_uses_lockout_color);
-    RUN_TEST(test_drawLockoutIndicator_hidden_clears_area);
-    RUN_TEST(test_drawLockoutIndicator_cache_hit_skips_redraw);
-    RUN_TEST(test_drawLockoutIndicator_dirty_flag_forces_redraw);
     RUN_TEST(test_drawGpsIndicator_with_fix_clears_then_draws_text);
     RUN_TEST(test_drawGpsIndicator_no_fix_clears_area);
     RUN_TEST(test_drawGpsIndicator_disabled_clears_area);

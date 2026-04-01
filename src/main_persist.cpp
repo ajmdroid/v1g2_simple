@@ -1,8 +1,7 @@
 /**
  * main_persist.cpp — Periodic persistence helpers extracted from loop().
  *
- * These are self-contained save state machines for lockout zones and
- * learner candidates.  They use rate-limiting, dirty flags, and
+ * Self-contained save state machines using rate-limiting, dirty flags, and
  * non-blocking SD try-locks (Tier 7 — best-effort, never block).
  */
 
@@ -11,13 +10,8 @@
 #include "storage_manager.h"
 #include "wifi_manager.h"
 #include "v1_devices.h"
-#include "modules/lockout/lockout_store.h"
-#include "modules/lockout/lockout_learner.h"
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
-
-extern LockoutStore   lockoutStore;
-extern LockoutLearner lockoutLearner;
 
 #ifndef MALLOC_CAP_DMA
 #define MALLOC_CAP_DMA (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
@@ -27,9 +21,9 @@ namespace {
 // If dirty data remains unsaved for too long, allow a cautious retry using a
 // lower free-heap floor tuned to observed AP+STA steady-state with a stricter
 // largest-block guard.
-static constexpr uint32_t LOCKOUT_SAVE_AGED_DMA_FREE = 16896;
-static constexpr uint32_t LOCKOUT_SAVE_AGED_DMA_BLOCK = 10240;
-static constexpr uint32_t LOCKOUT_SAVE_MAX_DIRTY_AGE_MS = 90000;  // 90 seconds
+static constexpr uint32_t BACKGROUND_SAVE_AGED_DMA_FREE = 16896;
+static constexpr uint32_t BACKGROUND_SAVE_AGED_DMA_BLOCK = 10240;
+static constexpr uint32_t BACKGROUND_SAVE_MAX_DIRTY_AGE_MS = 90000;  // 90 seconds
 static constexpr uint32_t SAVE_DIAG_REPORT_INTERVAL_MS = 60000;    // 60 seconds
 
 struct SaveDmaThresholds {
@@ -79,8 +73,8 @@ SaveDmaThresholds getSaveDmaThresholds() {
         thresholds.minBlock = WiFiManager::WIFI_RUNTIME_MIN_BLOCK_AP_STA;
         thresholds.freeJitterTolerance = WiFiManager::WIFI_RUNTIME_AP_STA_FREE_JITTER_TOLERANCE;
         thresholds.blockJitterTolerance = 0;
-        thresholds.agedFree = LOCKOUT_SAVE_AGED_DMA_FREE;
-        thresholds.agedBlock = LOCKOUT_SAVE_AGED_DMA_BLOCK;
+        thresholds.agedFree = BACKGROUND_SAVE_AGED_DMA_FREE;
+        thresholds.agedBlock = BACKGROUND_SAVE_AGED_DMA_BLOCK;
         thresholds.allowAgedRetry = true;
         thresholds.modeLabel = "AP+STA";
         return thresholds;
@@ -176,7 +170,7 @@ void maybeLogSaveDiag(const char* tag, SaveDiagStats& stats, uint32_t nowMs) {
 // --- Generic dirty-save state machine ---
 
 struct DirtySaveConfig {
-    const char* tag;           // Log prefix, e.g. "Lockout" or "Learner"
+    const char* tag;           // Log prefix, e.g. "V1DeviceStore"
     const char* filePath;      // Destination file path
     uint32_t saveIntervalMs;   // Minimum interval between successful saves
     uint32_t retryMs;          // Minimum interval between attempts
@@ -185,7 +179,6 @@ struct DirtySaveConfig {
     bool (*isDirty)();
     void (*clearDirty)();
     bool (*saveDirect)(fs::FS& fs, const char* path);
-    void (*serialize)(JsonDocument& doc);
     void (*logSuccess)(const char* path);
     void (*recordPerfUs)(uint32_t us);
 };
@@ -202,11 +195,9 @@ static constexpr uint32_t V1_DEVICE_STORE_SAVE_INTERVAL_MS = 5000;
 static constexpr uint32_t V1_DEVICE_STORE_SAVE_RETRY_MS = 1000;
 
 static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, uint32_t nowMs) {
-    // Guard: at least one serialisation path must be provided.
-    if (!cfg.saveDirect && !cfg.serialize) {
+    if (!cfg.saveDirect) {
         return;
     }
-    static JsonDocument doc;
     uint32_t startUs = PERF_TIMESTAMP_US();
 
     if (cfg.isDirty()) {
@@ -241,7 +232,7 @@ static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, 
                 const bool allowAgedRetry =
                     thresholds.allowAgedRetry &&
                     !normalHeadroom &&
-                    (dirtyAgeMs >= LOCKOUT_SAVE_MAX_DIRTY_AGE_MS) &&
+                    (dirtyAgeMs >= BACKGROUND_SAVE_MAX_DIRTY_AGE_MS) &&
                     hasAgedDmaHeadroomForBackgroundSave(freeDma, largestDma, thresholds);
                 hadDmaSample = true;
                 sampledFreeDma = freeDma;
@@ -264,13 +255,7 @@ static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, 
                     }
                     StorageManager::SDTryLock sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
                     if (sdLock) {
-                        if (cfg.saveDirect) {
-                            saveOk = cfg.saveDirect(*fs, cfg.filePath);
-                        } else {
-                            doc.clear();
-                            cfg.serialize(doc);
-                            saveOk = StorageManager::writeJsonFileAtomic(*fs, cfg.filePath, doc);
-                        }
+                        saveOk = cfg.saveDirect(*fs, cfg.filePath);
                     } else {
                         saveDeferred = true;
                         state.diag.deferSdBusy++;
@@ -299,13 +284,7 @@ static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, 
                     }
                 }
             } else {
-                if (cfg.saveDirect) {
-                    saveOk = cfg.saveDirect(*fs, cfg.filePath);
-                } else {
-                    doc.clear();
-                    cfg.serialize(doc);
-                    saveOk = StorageManager::writeJsonFileAtomic(*fs, cfg.filePath, doc);
-                }
+                saveOk = cfg.saveDirect(*fs, cfg.filePath);
             }
         }
 
@@ -349,39 +328,7 @@ static void processDirtySave(const DirtySaveConfig& cfg, DirtySaveState& state, 
     cfg.recordPerfUs(PERF_TIMESTAMP_US() - startUs);
 }
 
-// --- Lockout and Learner save instances ---
-
-static const DirtySaveConfig lockoutSaveConfig = {
-    .tag = "Lockout",
-    .filePath = LockoutStore::kBinaryPath,
-    .saveIntervalMs = 60000,
-    .retryMs = 15000,
-    .isDirty = []() { return lockoutStore.isDirty(); },
-    .clearDirty = []() { lockoutStore.clearDirty(); },
-    .saveDirect = [](fs::FS& fs, const char* path) { return lockoutStore.saveBinary(fs, path); },
-    .serialize = nullptr,
-    .logSuccess = [](const char* path) {
-        Serial.printf("[Lockout] Saved %lu zones to %s\n",
-                      static_cast<unsigned long>(lockoutStore.stats().entriesSaved), path);
-    },
-    .recordPerfUs = [](uint32_t us) { perfRecordLockoutSaveUs(us); },
-};
-
-static const DirtySaveConfig learnerSaveConfig = {
-    .tag = "Learner",
-    .filePath = "/v1simple_lockout_pending.json",
-    .saveIntervalMs = 15000,
-    .retryMs = 15000,
-    .isDirty = []() { return lockoutLearner.isDirty(); },
-    .clearDirty = []() { lockoutLearner.clearDirty(); },
-    .saveDirect = nullptr,
-    .serialize = [](JsonDocument& doc) { lockoutLearner.toJson(doc); },
-    .logSuccess = [](const char* path) {
-        Serial.printf("[Learner] Saved %u pending candidates to %s\n",
-                      static_cast<unsigned>(lockoutLearner.activeCandidateCount()), path);
-    },
-    .recordPerfUs = [](uint32_t us) { perfRecordLearnerSaveUs(us); },
-};
+// --- V1DeviceStore save instance ---
 
 static const DirtySaveConfig v1DeviceStoreSaveConfig = {
     .tag = "V1DeviceStore",
@@ -391,22 +338,11 @@ static const DirtySaveConfig v1DeviceStoreSaveConfig = {
     .isDirty = []() { return v1DeviceStore.hasPendingSave(); },
     .clearDirty = []() {},
     .saveDirect = [](fs::FS& /*fs*/, const char* /*path*/) { return v1DeviceStore.flushPendingSave(); },
-    .serialize = nullptr,
     .logSuccess = [](const char* /*path*/) {},
     .recordPerfUs = [](uint32_t /*us*/) {},
 };
 
-static DirtySaveState lockoutSaveState;
-static DirtySaveState learnerSaveState;
 static DirtySaveState v1DeviceStoreSaveState;
-
-void processLockoutStoreSave(uint32_t nowMs) {
-    processDirtySave(lockoutSaveConfig, lockoutSaveState, nowMs);
-}
-
-void processLearnerPendingSave(uint32_t nowMs) {
-    processDirtySave(learnerSaveConfig, learnerSaveState, nowMs);
-}
 
 void processV1DeviceStoreSave(uint32_t nowMs) {
     processDirtySave(v1DeviceStoreSaveConfig, v1DeviceStoreSaveState, nowMs);

@@ -187,19 +187,17 @@ Voice alert options:
 - **Volume Fade:** Reduce V1 volume after initial alert, restore for new threats
 - **Speed-Based Mute:** Mute V1 alerts below a configurable speed threshold (requires GPS or OBD)
 
-### GPS & Lockouts (/integrations, /lockouts)
+### GPS (/integrations)
 
 Speed and location sources:
 
 - **GPS Status:** View current position, speed, heading, and satellite info
-- **Lockout Management:** View/clear learned lockout zones
-- **Road Snapping (optional):** Place `road_map.bin` on the SD card root to snap lockout zones to the nearest road for more accurate matching. Generate it with `python scripts/build_road_map.py --download`. See [docs/MANUAL.md — Road Map](docs/MANUAL.md#road-map-optional-sd-card-file) for details
 
 ---
 
 ## Troubleshooting
 
-For comprehensive troubleshooting (connection, display, GPS, lockouts, audio,
+For comprehensive troubleshooting (connection, display, GPS, audio,
 performance, factory reset), see [docs/MANUAL.md Section J](docs/MANUAL.md#j-troubleshooting).
 
 **Quick fixes:**

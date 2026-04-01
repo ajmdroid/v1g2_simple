@@ -9,11 +9,7 @@
 #include "storage_manager.h"
 #include "modules/gps/gps_api_service.h"
 #include "modules/gps/gps_runtime_module.h"
-#include "modules/gps/gps_lockout_safety.h"
 #include "modules/gps/gps_observation_log.h"
-#include "modules/lockout/lockout_api_service.h"
-#include "modules/lockout/lockout_index.h"
-#include "modules/lockout/lockout_learner.h"
 #include "modules/debug/debug_api_service.h"
 #include "modules/wifi/backup_api_service.h"
 #include "modules/wifi/wifi_audio_api_service.h"
@@ -25,26 +21,20 @@
 #include "modules/wifi/wifi_status_api_service.h"
 #include "modules/wifi/wifi_autopush_api_service.h"
 #include "modules/wifi/wifi_static_path_guard.h"
+#include "modules/wifi/wifi_time_api_service.h"
 #include "modules/wifi/wifi_v1_profile_api_service.h"
 #include "modules/wifi/wifi_v1_devices_api_service.h"
-#include "modules/lockout/lockout_store.h"
-#include "modules/lockout/signal_observation_log.h"
-#include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/obd/obd_api_service.h"
 #include "modules/obd/obd_runtime_module.h"
 #include "battery_manager.h"
+#include "time_service.h"
 #include <LittleFS.h>
 
-extern GpsRuntimeModule          gpsRuntimeModule;
-extern GpsObservationLog         gpsObservationLog;
-extern SpeedSourceSelector       speedSourceSelector;
-extern LockoutLearner            lockoutLearner;
-extern LockoutIndex              lockoutIndex;
-extern LockoutStore              lockoutStore;
-extern SignalObservationLog      signalObservationLog;
-extern SignalObservationSdLogger signalObservationSdLogger;
-extern ObdRuntimeModule          obdRuntimeModule;
+extern GpsRuntimeModule    gpsRuntimeModule;
+extern GpsObservationLog   gpsObservationLog;
+extern SpeedSourceSelector speedSourceSelector;
+extern ObdRuntimeModule    obdRuntimeModule;
 
 bool WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
@@ -452,6 +442,17 @@ bool WiFiManager::setupWebServer() {
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
 
+    // Time sync — browser sets device clock on first UI connection
+    server_.on("/api/time/sync", HTTP_POST, [this]() {
+        WifiTimeApiService::handleApiTimeSync(
+            server_,
+            [](int64_t epochMs, int32_t tzOffsetMinutes, void* /*ctx*/) {
+                timeService.setEpochBaseMs(epochMs, tzOffsetMinutes, TimeService::SOURCE_CLIENT_AP);
+                return true;
+            },
+            nullptr);
+    });
+
     // GPS scaffold API routes
     server_.on("/api/gps/status", HTTP_GET, [this]() {
         GpsApiService::handleApiStatus(
@@ -460,9 +461,6 @@ bool WiFiManager::setupWebServer() {
             speedSourceSelector,
             settingsManager,
             gpsObservationLog,
-            lockoutLearner,
-            perfCounters,
-            systemEventBus,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     server_.on("/api/gps/observations", HTTP_GET, [this]() {
@@ -484,86 +482,10 @@ bool WiFiManager::setupWebServer() {
             settingsManager,
             gpsRuntimeModule,
             speedSourceSelector,
-            lockoutLearner,
             gpsObservationLog,
-            perfCounters,
-            systemEventBus,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
-    server_.on("/api/lockouts/zones", HTTP_GET, [this]() {
-        LockoutApiService::handleApiZones(
-            server_,
-            lockoutIndex,
-            lockoutLearner,
-            lockoutStore,
-            settingsManager,
-            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-    server_.on("/api/lockouts/summary", HTTP_GET, [this]() {
-        LockoutApiService::handleApiSummary(
-            server_,
-            signalObservationLog,
-            signalObservationSdLogger,
-            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-    server_.on("/api/lockouts/events", HTTP_GET, [this]() {
-        LockoutApiService::handleApiEvents(
-            server_,
-            signalObservationLog,
-            signalObservationSdLogger,
-            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-    server_.on("/api/lockouts/zones/delete", HTTP_POST, [this]() {
-        LockoutApiService::handleApiZoneDelete(
-            server_,
-            lockoutIndex,
-            lockoutStore,
-            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-    server_.on("/api/lockouts/zones/create", HTTP_POST, [this]() {
-        LockoutApiService::handleApiZoneCreate(
-            server_,
-            lockoutIndex,
-            lockoutStore,
-            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-    server_.on("/api/lockouts/zones/update", HTTP_POST, [this]() {
-        LockoutApiService::handleApiZoneUpdate(
-            server_,
-            lockoutIndex,
-            lockoutStore,
-            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-    server_.on("/api/lockouts/zones/export", HTTP_GET, [this]() {
-        LockoutApiService::handleApiZoneExport(
-            server_,
-            lockoutStore,
-            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-    server_.on("/api/lockouts/zones/import", HTTP_POST, [this]() {
-        LockoutApiService::handleApiZoneImport(
-            server_,
-            lockoutIndex,
-            lockoutStore,
-            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-    server_.on("/api/lockouts/pending/clear", HTTP_POST, [this]() {
-        LockoutApiService::handleApiPendingClear(
-            server_,
-            lockoutLearner,
-            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
-            [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-
     // OBD API routes
     server_.on("/api/obd/status", HTTP_GET, [this]() {
         ObdApiService::handleApiStatus(server_, obdRuntimeModule,

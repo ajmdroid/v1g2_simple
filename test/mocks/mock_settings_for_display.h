@@ -23,7 +23,6 @@ inline void initDisplayTestSettings(SettingsManager& sm) {
     sm.settings.colorBandX    = 0xFFE0;  // Yellow for X
     sm.settings.colorVolumeMain = 0x001F;  // Blue
     sm.settings.colorVolumeMute = 0xFFE0;  // Yellow
-    sm.settings.colorLockout   = 0xF800;   // Red
     sm.settings.brightness     = 200;
     sm.settings.activeSlot     = 1;
     sm.settings.hideRssiIndicator   = false;

@@ -233,8 +233,7 @@ int namespaceHealthScore(const char* ns) {
         "proxyName",
         "brightness",
         "dispStyle",
-        "autoPush",
-        "gpsLkMode"
+        "autoPush"
     };
     for (const char* key : kCriticalKeys) {
         if (prefs.isKey(key)) {
@@ -335,25 +334,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("proxyBLE", settings_.proxyBLE);
     written += prefs.putString("proxyName", settings_.proxyName);
     written += prefs.putBool("gpsEn", settings_.gpsEnabled);
-    written += prefs.putUChar("gpsLkMode", static_cast<uint8_t>(settings_.gpsLockoutMode));
-    written += prefs.putBool("gpsLkGuard", settings_.gpsLockoutCoreGuardEnabled);
-    written += prefs.putUShort("gpsLkQDrop", settings_.gpsLockoutMaxQueueDrops);
-    written += prefs.putUShort("gpsLkPDrop", settings_.gpsLockoutMaxPerfDrops);
-    written += prefs.putUShort("gpsLkEBDrop", settings_.gpsLockoutMaxEventBusDrops);
-    written += prefs.putUChar("gpsLkHits", settings_.gpsLockoutLearnerPromotionHits);
-    written += prefs.putUShort("gpsLkRad", settings_.gpsLockoutLearnerRadiusE5);
-    written += prefs.putUShort("gpsLkFtol", settings_.gpsLockoutLearnerFreqToleranceMHz);
-    written += prefs.putUChar("gpsLkLInt", settings_.gpsLockoutLearnerLearnIntervalHours);
-    written += prefs.putUChar("gpsLkUInt", settings_.gpsLockoutLearnerUnlearnIntervalHours);
-    written += prefs.putUChar("gpsLkUCnt", settings_.gpsLockoutLearnerUnlearnCount);
-    written += prefs.putUChar("gpsLkMDCnt", settings_.gpsLockoutManualDemotionMissCount);
-    written += prefs.putBool("gpsLkKa", settings_.gpsLockoutKaLearningEnabled);
-    written += prefs.putBool("gpsLkK", settings_.gpsLockoutKLearningEnabled);
-    written += prefs.putBool("gpsLkX", settings_.gpsLockoutXLearningEnabled);
-    written += prefs.putBool("gpsLkPQ", settings_.gpsLockoutPreQuiet);
-    written += prefs.putUShort("gpsLkPQBuf", settings_.gpsLockoutPreQuietBufferE5);
-    written += prefs.putUShort("gpsLkHdop", settings_.gpsLockoutMaxHdopX10);
-    written += prefs.putUChar("gpsLkMinSpd", settings_.gpsLockoutMinLearnerSpeedMph);
     written += prefs.putBool("displayOff", settings_.turnOffDisplay);
     written += prefs.putUChar("brightness", settings_.brightness);
     written += prefs.putInt("dispStyle", settings_.displayStyle);
@@ -383,7 +363,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort("colorVolMute", settings_.colorVolumeMute);
     written += prefs.putUShort("colorRssiV1", settings_.colorRssiV1);
     written += prefs.putUShort("colorRssiPrx", settings_.colorRssiProxy);
-    written += prefs.putUShort("colorLockL", settings_.colorLockout);
     written += prefs.putUShort("colorGps", settings_.colorGps);
     written += prefs.putUShort("colorObd", settings_.colorObd);
     written += prefs.putBool("freqBandCol", settings_.freqUseBandColor);
@@ -395,7 +374,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool("hideVol", settings_.hideVolumeIndicator);
     written += prefs.putBool("hideRssi", settings_.hideRssiIndicator);
     written += prefs.putBool("wifiAtBoot", settings_.enableWifiAtBoot);
-    written += prefs.putBool("sigTraceLog", settings_.enableSignalTraceLogging);
     written += prefs.putUChar("voiceMode", (uint8_t)settings_.voiceAlertMode);
     written += prefs.putBool("voiceDir", settings_.voiceDirectionEnabled);
     written += prefs.putBool("voiceBogeys", settings_.announceBogeyCount);

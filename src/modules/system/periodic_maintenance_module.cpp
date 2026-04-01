@@ -51,20 +51,7 @@ void PeriodicMaintenanceModule::process(uint32_t nowMs) {
         providers.runDeferredBleBondBackup(providers.deferredBleBondBackupContext, nowMs);
     }
 
-    int64_t epochMs = 0;
-    if (providers.nowEpochMsOr0) {
-        epochMs = providers.nowEpochMsOr0(providers.epochContext);
-    }
-
-    if (providers.runLockoutLearner) {
-        providers.runLockoutLearner(providers.lockoutLearnerContext, nowMs, epochMs);
-    }
-
-    if (providers.runLockoutStoreSave) {
-        providers.runLockoutStoreSave(providers.lockoutStoreSaveContext, nowMs);
-    }
-
-    if (providers.runLearnerPendingSave) {
-        providers.runLearnerPendingSave(providers.learnerPendingSaveContext, nowMs);
+    if (providers.runStoreSave) {
+        providers.runStoreSave(providers.storeSaveContext, nowMs);
     }
 }

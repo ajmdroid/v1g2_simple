@@ -11,9 +11,6 @@
 #include "../include/main_globals.h"
 #include "modules/gps/gps_runtime_module.h"
 #include "modules/gps/gps_observation_log.h"
-#include "modules/gps/gps_lockout_safety.h"
-#include "modules/lockout/lockout_band_policy.h"
-#include "modules/lockout/lockout_learner.h"
 #include "modules/obd/obd_runtime_module.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/system/system_event_bus.h"
@@ -31,7 +28,6 @@ extern GpsRuntimeModule  gpsRuntimeModule;
 extern GpsObservationLog gpsObservationLog;
 extern ObdRuntimeModule  obdRuntimeModule;
 extern SpeedSourceSelector speedSourceSelector;
-extern LockoutLearner    lockoutLearner;
 
 #if PERF_METRICS
 PerfLatency perfLatency;
@@ -288,7 +284,6 @@ struct RuntimeSnapshotCaptureContext {
     uint32_t eventBusSize = 0;
     PhoneCmdDropMetricsSnapshot phoneCmdDropMetrics = {};
     const V1Settings* settings = nullptr;
-    GpsLockoutCoreGuardStatus lockoutGuard = {};
     uint32_t backupRevision = 0;
     bool deferredBackupPending = false;
     bool deferredBackupRetryScheduled = false;
@@ -330,14 +325,6 @@ static RuntimeSnapshotCaptureContext captureRuntimeSnapshotContext() {
     ctx.eventBusSize = static_cast<uint32_t>(systemEventBus.size());
     ctx.phoneCmdDropMetrics = perfPhoneCmdDropMetricsSnapshot();
     ctx.settings = &settingsManager.get();
-    ctx.lockoutGuard = gpsLockoutEvaluateCoreGuard(
-        ctx.settings->gpsLockoutCoreGuardEnabled,
-        ctx.settings->gpsLockoutMaxQueueDrops,
-        ctx.settings->gpsLockoutMaxPerfDrops,
-        ctx.settings->gpsLockoutMaxEventBusDrops,
-        perfCounters.queueDrops.load(std::memory_order_relaxed),
-        perfCounters.perfDrop.load(std::memory_order_relaxed),
-        ctx.eventBusDropCount);
     ctx.backupRevision = settingsManager.backupRevision();
     ctx.deferredBackupPending = settingsManager.deferredBackupPending();
     ctx.deferredBackupRetryScheduled = settingsManager.deferredBackupRetryScheduled();
@@ -445,8 +432,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.audioPlayCount = perfCounters.audioPlayCount.load(std::memory_order_relaxed);
     flat.audioPlayBusy = perfCounters.audioPlayBusy.load(std::memory_order_relaxed);
     flat.audioTaskFail = perfCounters.audioTaskFail.load(std::memory_order_relaxed);
-    flat.sigObsQueueDrops = perfCounters.sigObsQueueDrops.load(std::memory_order_relaxed);
-    flat.sigObsWriteFail = perfCounters.sigObsWriteFail.load(std::memory_order_relaxed);
     flat.freeDmaMin = (perfExtended.minFreeDma == UINT32_MAX) ? ctx.freeDma : perfExtended.minFreeDma;
     flat.largestDmaMin =
         (perfExtended.minLargestDma == UINT32_MAX) ? ctx.largestDma : perfExtended.minLargestDma;
@@ -500,7 +485,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.obdEotProfileId = static_cast<uint8_t>(ctx.obdStatus.eotProfileId);
     flat.obdEotProbeFailures = ctx.obdStatus.eotProbeFailures;
     flat.gpsMaxUs = perfExtended.gpsMaxUs;
-    flat.lockoutMaxUs = perfExtended.lockoutMaxUs;
     flat.wifiMaxUs = perfExtended.wifiMaxUs;
     flat.wifiHandleClientMaxUs = perfExtended.wifiHandleClientMaxUs;
     flat.wifiMaintenanceMaxUs = perfExtended.wifiMaintenanceMaxUs;
@@ -526,8 +510,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.bleDiscoveryMaxUs = perfExtended.bleDiscoveryMaxUs;
     flat.bleSubscribeMaxUs = perfExtended.bleSubscribeMaxUs;
     flat.dispPipeMaxUs = perfExtended.dispPipeMaxUs;
-    flat.lockoutSaveMaxUs = perfExtended.lockoutSaveMaxUs;
-    flat.learnerSaveMaxUs = perfExtended.learnerSaveMaxUs;
     flat.timeSaveMaxUs = perfExtended.timeSaveMaxUs;
     flat.perfReportMaxUs = perfExtended.perfReportMaxUs;
     flat.minLargestBlock =
@@ -549,9 +531,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.fadeLastCurrentVol = perfExtended.fadeLastCurrentVol;
     flat.fadeLastOriginalVol = perfExtended.fadeLastOriginalVol;
     flat.fadeLastDecisionMs = perfExtended.fadeLastDecisionMs;
-    flat.preQuietDropCount = perfExtended.preQuietDropCount;
-    flat.preQuietRestoreCount = perfExtended.preQuietRestoreCount;
-    flat.preQuietRestoreRetryCount = perfExtended.preQuietRestoreRetryCount;
     flat.speedVolDropCount = perfExtended.speedVolDropCount;
     flat.speedVolRestoreCount = perfExtended.speedVolRestoreCount;
     flat.speedVolRetryCount = perfExtended.speedVolRetryCount;
@@ -656,7 +635,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
         perfExtended.obdWriteCallMaxUs = 0;
         perfExtended.obdRssiCallMaxUs = 0;
         perfExtended.gpsMaxUs = 0;
-        perfExtended.lockoutMaxUs = 0;
         perfExtended.wifiMaxUs = 0;
         perfExtended.wifiHandleClientMaxUs = 0;
         perfExtended.wifiMaintenanceMaxUs = 0;
@@ -676,8 +654,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
         perfExtended.bleConnectMaxUs = 0;
         perfExtended.bleDiscoveryMaxUs = 0;
         perfExtended.bleSubscribeMaxUs = 0;
-        perfExtended.lockoutSaveMaxUs = 0;
-        perfExtended.learnerSaveMaxUs = 0;
         perfExtended.timeSaveMaxUs = 0;
         perfExtended.perfReportMaxUs = 0;
         perfExtended.minLargestBlock = UINT32_MAX;
@@ -890,25 +866,6 @@ static void populateRuntimeSnapshot(PerfRuntimeMetricsSnapshot& snapshot,
     snapshot.eventBus.publishCount = ctx.eventBusPublishCount;
     snapshot.eventBus.dropCount = ctx.eventBusDropCount;
     snapshot.eventBus.size = ctx.eventBusSize;
-
-    snapshot.lockout.mode = lockoutRuntimeModeName(ctx.settings->gpsLockoutMode);
-    snapshot.lockout.modeRaw = static_cast<int>(ctx.settings->gpsLockoutMode);
-    snapshot.lockout.coreGuardEnabled = ctx.settings->gpsLockoutCoreGuardEnabled;
-    snapshot.lockout.coreGuardTripped = ctx.lockoutGuard.tripped;
-    snapshot.lockout.coreGuardReason = ctx.lockoutGuard.reason;
-    snapshot.lockout.maxQueueDrops = ctx.settings->gpsLockoutMaxQueueDrops;
-    snapshot.lockout.maxPerfDrops = ctx.settings->gpsLockoutMaxPerfDrops;
-    snapshot.lockout.maxEventBusDrops = ctx.settings->gpsLockoutMaxEventBusDrops;
-    snapshot.lockout.learnerPromotionHits = static_cast<uint32_t>(lockoutLearner.promotionHits());
-    snapshot.lockout.learnerRadiusE5 = static_cast<uint32_t>(lockoutLearner.radiusE5());
-    snapshot.lockout.learnerFreqToleranceMHz = static_cast<uint32_t>(lockoutLearner.freqToleranceMHz());
-    snapshot.lockout.learnerLearnIntervalHours = static_cast<uint32_t>(lockoutLearner.learnIntervalHours());
-    snapshot.lockout.learnerUnlearnIntervalHours = static_cast<uint32_t>(ctx.settings->gpsLockoutLearnerUnlearnIntervalHours);
-    snapshot.lockout.learnerUnlearnCount = static_cast<uint32_t>(ctx.settings->gpsLockoutLearnerUnlearnCount);
-    snapshot.lockout.manualDemotionMissCount = static_cast<uint32_t>(ctx.settings->gpsLockoutManualDemotionMissCount);
-    snapshot.lockout.kaLearningEnabled = ctx.settings->gpsLockoutKaLearningEnabled;
-    snapshot.lockout.enforceRequested = (ctx.settings->gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE);
-    snapshot.lockout.enforceAllowed = snapshot.lockout.enforceRequested && !ctx.lockoutGuard.tripped;
 }
 
 static void captureSdSnapshot(PerfSdSnapshot& snapshot) {
@@ -1344,24 +1301,6 @@ void perfRecordObdRssiCallUs(uint32_t us) {
     }
 }
 
-void perfRecordLockoutUs(uint32_t us) {
-    if (us > perfExtended.lockoutMaxUs) {
-        perfExtended.lockoutMaxUs = us;
-    }
-}
-
-void perfRecordLockoutSaveUs(uint32_t us) {
-    if (us > perfExtended.lockoutSaveMaxUs) {
-        perfExtended.lockoutSaveMaxUs = us;
-    }
-}
-
-void perfRecordLearnerSaveUs(uint32_t us) {
-    if (us > perfExtended.learnerSaveMaxUs) {
-        perfExtended.learnerSaveMaxUs = us;
-    }
-}
-
 void perfRecordTimeSaveUs(uint32_t us) {
     if (us > perfExtended.timeSaveMaxUs) {
         perfExtended.timeSaveMaxUs = us;
@@ -1438,23 +1377,6 @@ void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolu
     portEXIT_CRITICAL(&sPerfSnapshotMux);
 }
 
-void perfRecordPreQuietDrop() {
-    portENTER_CRITICAL(&sPerfSnapshotMux);
-    perfExtended.preQuietDropCount++;
-    portEXIT_CRITICAL(&sPerfSnapshotMux);
-}
-
-void perfRecordPreQuietRestore() {
-    portENTER_CRITICAL(&sPerfSnapshotMux);
-    perfExtended.preQuietRestoreCount++;
-    portEXIT_CRITICAL(&sPerfSnapshotMux);
-}
-
-void perfRecordPreQuietRestoreRetry() {
-    portENTER_CRITICAL(&sPerfSnapshotMux);
-    perfExtended.preQuietRestoreRetryCount++;
-    portEXIT_CRITICAL(&sPerfSnapshotMux);
-}
 
 void perfRecordSpeedVolDrop() {
     portENTER_CRITICAL(&sPerfSnapshotMux);

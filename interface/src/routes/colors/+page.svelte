@@ -45,7 +45,6 @@
 	];
 
 	const BADGE_FIELDS = [
-		{ key: 'lockout', id: 'lockout-color', label: 'Lockout L Badge', pickerLabel: 'Lockout Badge', preview: 'L' },
 		{ key: 'gps', id: 'gps-color', label: 'GPS G Badge', pickerLabel: 'GPS Badge', preview: 'G' },
 		{ key: 'obd', id: 'obd-color', label: 'OBD Badge', pickerLabel: 'OBD Badge', preview: 'OBD' }
 	];
@@ -486,7 +485,7 @@
 
 		<div class="surface-card">
 			<div class="card-body">
-				<CardSectionHead title="Lockout, GPS & OBD" subtitle="Lockout badge plus GPS and OBD status text colors." />
+				<CardSectionHead title="GPS & OBD" subtitle="GPS and OBD status text colors." />
 				<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 					{#each BADGE_FIELDS as field}
 						<ColorControl

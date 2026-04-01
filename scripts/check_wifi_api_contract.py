@@ -85,6 +85,7 @@ LOCAL_HANDLER_ROUTE_KEYS: Tuple[str, ...] = (
     "HTTP_POST /api/obd/forget",
     "HTTP_POST /api/obd/config",
     "HTTP_GET /api/wifi/status",
+    "HTTP_POST /api/time/sync",
     "HTTP_POST /api/wifi/scan",
     "HTTP_POST /api/wifi/connect",
     "HTTP_POST /api/wifi/disconnect",

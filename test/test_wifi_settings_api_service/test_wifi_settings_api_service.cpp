@@ -11,15 +11,6 @@ SerialClass Serial;
 unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
 
-LockoutRuntimeMode gpsLockoutParseRuntimeModeArg(const String& raw,
-                                                 LockoutRuntimeMode fallback) {
-    if (raw == "0" || raw == "off") return LOCKOUT_RUNTIME_OFF;
-    if (raw == "1" || raw == "shadow") return LOCKOUT_RUNTIME_SHADOW;
-    if (raw == "2" || raw == "advisory") return LOCKOUT_RUNTIME_ADVISORY;
-    if (raw == "3" || raw == "enforce") return LOCKOUT_RUNTIME_ENFORCE;
-    return fallback;
-}
-
 static bool responseContains(const WebServer& server, const char* needle) {
     return std::strstr(server.lastBody.c_str(), needle) != nullptr;
 }
@@ -48,9 +39,6 @@ static void applyDeviceSettingsUpdateForTest(FakeRuntime& rt, const DeviceSettin
     if (update.hasAutoPowerOffMinutes) rt.settings.autoPowerOffMinutes = update.autoPowerOffMinutes;
     if (update.hasApTimeoutMinutes) rt.settings.apTimeoutMinutes = update.apTimeoutMinutes;
     if (update.hasEnableWifiAtBoot) rt.settings.enableWifiAtBoot = update.enableWifiAtBoot;
-    if (update.hasEnableSignalTraceLogging) {
-        rt.settings.enableSignalTraceLogging = update.enableSignalTraceLogging;
-    }
 }
 
 static WifiSettingsApiService::Runtime makeRuntime(FakeRuntime& rt) {
@@ -83,7 +71,6 @@ void test_device_settings_get_serializes_expected_payload() {
     rt.settings.autoPowerOffMinutes = 12;
     rt.settings.apTimeoutMinutes = 25;
     rt.settings.enableWifiAtBoot = true;
-    rt.settings.enableSignalTraceLogging = false;
 
     WifiSettingsApiService::handleApiDeviceSettingsGet(server, makeRuntime(rt));
 
@@ -96,7 +83,6 @@ void test_device_settings_get_serializes_expected_payload() {
     TEST_ASSERT_TRUE(responseContains(server, "\"autoPowerOffMinutes\":12"));
     TEST_ASSERT_TRUE(responseContains(server, "\"apTimeoutMinutes\":25"));
     TEST_ASSERT_TRUE(responseContains(server, "\"enableWifiAtBoot\":true"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"enableSignalTraceLogging\":false"));
 }
 
 void test_device_settings_save_rejects_invalid_ap_credentials() {
@@ -137,7 +123,6 @@ void test_device_settings_save_updates_device_toggles() {
     server.setArg("autoPowerOffMinutes", "19");
     server.setArg("apTimeoutMinutes", "14");
     server.setArg("enableWifiAtBoot", "true");
-    server.setArg("enableSignalTraceLogging", "false");
 
     WifiSettingsApiService::handleApiDeviceSettingsSave(server, makeRuntime(rt));
 
@@ -147,7 +132,6 @@ void test_device_settings_save_updates_device_toggles() {
     TEST_ASSERT_EQUAL_UINT8(19, rt.settings.autoPowerOffMinutes);
     TEST_ASSERT_EQUAL_UINT8(14, rt.settings.apTimeoutMinutes);
     TEST_ASSERT_TRUE(rt.settings.enableWifiAtBoot);
-    TEST_ASSERT_FALSE(rt.settings.enableSignalTraceLogging);
     TEST_ASSERT_EQUAL_INT(1, rt.saveDeferredBackupCalls);
 }
 

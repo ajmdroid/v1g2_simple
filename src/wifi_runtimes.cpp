@@ -13,8 +13,6 @@
 #include "audio_beep.h"
 #include "battery_manager.h"
 #include "modules/gps/gps_runtime_module.h"
-#include "modules/gps/gps_lockout_safety.h"
-#include "modules/lockout/lockout_band_policy.h"
 #include "modules/wifi/wifi_autopush_api_service.h"
 #include "modules/wifi/wifi_audio_api_service.h"
 #include "modules/wifi/wifi_display_colors_api_service.h"

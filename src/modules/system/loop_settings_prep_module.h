@@ -5,7 +5,6 @@
 struct LoopSettingsPrepValues {
     bool enableWifi = true;
     bool enableWifiAtBoot = false;
-    bool enableSignalTraceLogging = false;
 };
 
 struct LoopSettingsPrepContext {

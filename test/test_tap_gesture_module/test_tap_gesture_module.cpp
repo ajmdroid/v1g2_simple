@@ -17,7 +17,6 @@ unsigned long mockMicros = 0;
 
 SettingsManager settingsManager;
 
-#include "../../src/modules/lockout/lockout_runtime_mute_controller.cpp"
 #include "../../src/modules/quiet/quiet_coordinator_module.cpp"
 #include "../../src/modules/touch/tap_gesture_module.cpp"
 

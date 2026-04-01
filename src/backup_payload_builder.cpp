@@ -58,25 +58,6 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["proxyBLE"] = settings.proxyBLE;
     doc["proxyName"] = settings.proxyName;
     doc["gpsEnabled"] = settings.gpsEnabled;
-    doc["gpsLockoutMode"] = static_cast<int>(settings.gpsLockoutMode);
-    doc["gpsLockoutCoreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
-    doc["gpsLockoutMaxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
-    doc["gpsLockoutMaxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
-    doc["gpsLockoutMaxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
-    doc["gpsLockoutLearnerPromotionHits"] = settings.gpsLockoutLearnerPromotionHits;
-    doc["gpsLockoutLearnerRadiusE5"] = settings.gpsLockoutLearnerRadiusE5;
-    doc["gpsLockoutLearnerFreqToleranceMHz"] = settings.gpsLockoutLearnerFreqToleranceMHz;
-    doc["gpsLockoutLearnerLearnIntervalHours"] = settings.gpsLockoutLearnerLearnIntervalHours;
-    doc["gpsLockoutLearnerUnlearnIntervalHours"] = settings.gpsLockoutLearnerUnlearnIntervalHours;
-    doc["gpsLockoutLearnerUnlearnCount"] = settings.gpsLockoutLearnerUnlearnCount;
-    doc["gpsLockoutManualDemotionMissCount"] = settings.gpsLockoutManualDemotionMissCount;
-    doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
-    doc["gpsLockoutKLearningEnabled"] = settings.gpsLockoutKLearningEnabled;
-    doc["gpsLockoutXLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
-    doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
-    doc["gpsLockoutPreQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
-    doc["gpsLockoutMaxHdopX10"] = settings.gpsLockoutMaxHdopX10;
-    doc["gpsLockoutMinLearnerSpeedMph"] = settings.gpsLockoutMinLearnerSpeedMph;
     doc["lastV1Address"] = settings.lastV1Address;
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
@@ -120,7 +101,6 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["colorVolumeMute"] = settings.colorVolumeMute;
     doc["colorRssiV1"] = settings.colorRssiV1;
     doc["colorRssiProxy"] = settings.colorRssiProxy;
-    doc["colorLockout"] = settings.colorLockout;
     doc["colorGps"] = settings.colorGps;
     doc["colorObd"] = settings.colorObd;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
@@ -133,7 +113,6 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["hideVolumeIndicator"] = settings.hideVolumeIndicator;
     doc["hideRssiIndicator"] = settings.hideRssiIndicator;
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
-    doc["enableSignalTraceLogging"] = settings.enableSignalTraceLogging;
 
     doc["voiceAlertMode"] = static_cast<int>(settings.voiceAlertMode);
     doc["voiceDirectionEnabled"] = settings.voiceDirectionEnabled;

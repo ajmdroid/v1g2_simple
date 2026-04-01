@@ -79,7 +79,7 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
     lastRenderedOwner_ = RenderOwner::Resting;
 }
 
-void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppressed) {
+void DisplayPipelineModule::handleParsed(uint32_t nowMs) {
     if (!display || !parser || !settings || !ble || !alertPersistence ||
         !voice || !displayMode) {
         return;
@@ -152,13 +152,12 @@ void DisplayPipelineModule::handleParsed(unsigned long nowMs, bool prioritySuppr
         voiceCtx.isMuted = state.muted;
         voiceCtx.isProxyConnected = ble->isProxyClientConnected();
         voiceCtx.mainVolume = state.mainVolume;
-        voiceCtx.isSuppressed = prioritySuppressed;
+        voiceCtx.isSuppressed = false;
         voiceCtx.now = nowMs;
 
         if (quiet) {
             quiet->applyVoicePresentation(voiceCtx,
                                           speedMute,
-                                          prioritySuppressed,
                                           hasRenderablePriority,
                                           hasRenderablePriority ? priority.band : BAND_NONE);
         }

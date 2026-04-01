@@ -36,7 +36,6 @@ void handleApiDeviceSettingsGet(WebServer& server, const Runtime& runtime) {
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
-    doc["enableSignalTraceLogging"] = settings.enableSignalTraceLogging;
 
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
@@ -100,12 +99,6 @@ void handleApiDeviceSettingsSave(WebServer& server, const Runtime& runtime) {
         update.hasEnableWifiAtBoot = true;
         update.enableWifiAtBoot = argIsTrue(server.arg("enableWifiAtBoot"));
     }
-    if (server.hasArg("enableSignalTraceLogging")) {
-        update.hasEnableSignalTraceLogging = true;
-        update.enableSignalTraceLogging =
-            argIsTrue(server.arg("enableSignalTraceLogging"));
-    }
-
     runtime.applySettingsUpdate(update, runtime.ctx);
 
     server.send(200, "application/json", "{\"success\":true}");

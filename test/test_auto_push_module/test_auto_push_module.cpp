@@ -20,7 +20,6 @@ PerfExtendedMetrics perfExtended;
 void perfRecordDisplayRenderUs(uint32_t /*us*/) {}
 void perfRecordDisplayScenarioRenderUs(uint32_t /*us*/) {}
 
-#include "../../src/modules/lockout/lockout_runtime_mute_controller.cpp"
 #include "../../src/modules/quiet/quiet_coordinator_module.cpp"
 #include "../../src/modules/auto_push/auto_push_module.cpp"
 

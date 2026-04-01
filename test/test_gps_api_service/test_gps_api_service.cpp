@@ -16,23 +16,12 @@ unsigned long mockMicros = 0;
 
 SettingsManager settingsManager;
 
-struct PerfCounters {
-    std::atomic<uint32_t> queueDrops{0};
-    std::atomic<uint32_t> perfDrop{0};
-
-    void reset() {
-        queueDrops.store(0, std::memory_order_relaxed);
-        perfDrop.store(0, std::memory_order_relaxed);
-    }
-};
-
 // Use the canonical GpsRuntimeStatus definition — pure data, no Arduino dependency.
 #include "../../src/modules/gps/gps_runtime_status.h"
 
 // Guard macros prevent real module headers from redefining these mock classes.
 #define GPS_RUNTIME_MODULE_H
 #define SPEED_SOURCE_SELECTOR_H
-#define LOCKOUT_LEARNER_H
 
 class GpsRuntimeModule {
 public:
@@ -162,82 +151,14 @@ public:
     SpeedSelectorStatus snapshotStatus = {};
 };
 
-class LockoutLearner {
-public:
-    void setTuning(uint8_t promotionHits,
-                   uint16_t radiusE5,
-                   uint16_t freqToleranceMHz,
-                   uint8_t learnIntervalHours = 0,
-                   uint16_t maxHdopX10 = 0,
-                   uint8_t minLearnerSpeedMph = 0) {
-        ++setTuningCalls;
-        promotionHits_ = promotionHits;
-        radiusE5_ = radiusE5;
-        freqToleranceMHz_ = freqToleranceMHz;
-        learnIntervalHours_ = learnIntervalHours;
-        lastMaxHdopX10 = maxHdopX10;
-        lastMinLearnerSpeedMph = minLearnerSpeedMph;
-    }
-
-    uint8_t promotionHits() const { return promotionHits_; }
-    uint16_t radiusE5() const { return radiusE5_; }
-    uint16_t freqToleranceMHz() const { return freqToleranceMHz_; }
-    uint8_t learnIntervalHours() const { return learnIntervalHours_; }
-
-    void reset(uint8_t promotionHits,
-               uint16_t radiusE5,
-               uint16_t freqToleranceMHz,
-               uint8_t learnIntervalHours) {
-        setTuningCalls = 0;
-        promotionHits_ = promotionHits;
-        radiusE5_ = radiusE5;
-        freqToleranceMHz_ = freqToleranceMHz;
-        learnIntervalHours_ = learnIntervalHours;
-        lastMaxHdopX10 = 0;
-        lastMinLearnerSpeedMph = 0;
-    }
-
-    int setTuningCalls = 0;
-    uint16_t lastMaxHdopX10 = 0;
-    uint8_t lastMinLearnerSpeedMph = 0;
-
-private:
-    uint8_t promotionHits_ = LOCKOUT_LEARNER_HITS_DEFAULT;
-    uint16_t radiusE5_ = LOCKOUT_LEARNER_RADIUS_E5_DEFAULT;
-    uint16_t freqToleranceMHz_ = LOCKOUT_LEARNER_FREQ_TOL_DEFAULT;
-    uint8_t learnIntervalHours_ = LOCKOUT_LEARNER_LEARN_INTERVAL_HOURS_DEFAULT;
-};
-
-#include "../../src/modules/gps/gps_lockout_safety.h"
-#include "../../src/modules/gps/gps_lockout_safety.cpp"
 #include "../../src/modules/gps/gps_observation_log.h"
 #include "../../src/modules/gps/gps_observation_log.cpp"
-#include "../../src/modules/system/system_event_bus.h"
 
 namespace {
 
-bool lockoutKaLearningEnabledState = false;
-bool lockoutKLearningEnabledState = true;
-bool lockoutXLearningEnabledState = true;
-int lockoutSetKaLearningEnabledCalls = 0;
-int lockoutSetKLearningEnabledCalls = 0;
-int lockoutSetXLearningEnabledCalls = 0;
-
-void resetBandPolicyState() {
-    lockoutKaLearningEnabledState = false;
-    lockoutKLearningEnabledState = true;
-    lockoutXLearningEnabledState = true;
-    lockoutSetKaLearningEnabledCalls = 0;
-    lockoutSetKLearningEnabledCalls = 0;
-    lockoutSetXLearningEnabledCalls = 0;
-}
-
 GpsRuntimeModule gpsRuntime;
 SpeedSourceSelector speedSelector;
-LockoutLearner lockoutLearner;
 GpsObservationLog gpsLog;
-PerfCounters perfCounters;
-SystemEventBus eventBus;
 
 void setTime(unsigned long nowMs) {
     mockMillis = nowMs;
@@ -284,45 +205,6 @@ GpsObservation makeObservation(uint32_t tsMs,
 
 }  // namespace
 
-uint8_t lockoutSupportedBandMask() {
-    return static_cast<uint8_t>(0x02 | 0x04 | 0x08);
-}
-
-bool lockoutKaLearningEnabled() {
-    return lockoutKaLearningEnabledState;
-}
-
-bool lockoutKLearningEnabled() {
-    return lockoutKLearningEnabledState;
-}
-
-bool lockoutXLearningEnabled() {
-    return lockoutXLearningEnabledState;
-}
-
-void lockoutSetKaLearningEnabled(bool enabled) {
-    ++lockoutSetKaLearningEnabledCalls;
-    lockoutKaLearningEnabledState = enabled;
-}
-
-void lockoutSetKLearningEnabled(bool enabled) {
-    ++lockoutSetKLearningEnabledCalls;
-    lockoutKLearningEnabledState = enabled;
-}
-
-void lockoutSetXLearningEnabled(bool enabled) {
-    ++lockoutSetXLearningEnabledCalls;
-    lockoutXLearningEnabledState = enabled;
-}
-
-uint8_t lockoutSanitizeBandMask(uint8_t bandMask) {
-    return bandMask & lockoutSupportedBandMask();
-}
-
-bool lockoutBandSupported(uint8_t bandMask) {
-    return (bandMask & lockoutSupportedBandMask()) != 0;
-}
-
 #include "../../src/modules/gps/gps_api_service.cpp"
 #include "../../src/modules/gps/gps_api_config_service.cpp"
 
@@ -331,33 +213,10 @@ void setUp() {
 
     settingsManager = SettingsManager{};
     settingsManager.settings.gpsEnabled = true;
-    settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_SHADOW;
-    settingsManager.settings.gpsLockoutCoreGuardEnabled = true;
-    settingsManager.settings.gpsLockoutMaxQueueDrops = 1;
-    settingsManager.settings.gpsLockoutMaxPerfDrops = 2;
-    settingsManager.settings.gpsLockoutMaxEventBusDrops = 3;
-    settingsManager.settings.gpsLockoutLearnerPromotionHits = LOCKOUT_LEARNER_HITS_DEFAULT;
-    settingsManager.settings.gpsLockoutLearnerRadiusE5 = LOCKOUT_LEARNER_RADIUS_E5_DEFAULT;
-    settingsManager.settings.gpsLockoutLearnerFreqToleranceMHz = LOCKOUT_LEARNER_FREQ_TOL_DEFAULT;
-    settingsManager.settings.gpsLockoutLearnerLearnIntervalHours = LOCKOUT_LEARNER_LEARN_INTERVAL_HOURS_DEFAULT;
-    settingsManager.settings.gpsLockoutKaLearningEnabled = false;
-    settingsManager.settings.gpsLockoutKLearningEnabled = true;
-    settingsManager.settings.gpsLockoutXLearningEnabled = true;
-    settingsManager.settings.gpsLockoutPreQuiet = false;
-    settingsManager.settings.gpsLockoutPreQuietBufferE5 = LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT;
-    settingsManager.settings.gpsLockoutMaxHdopX10 = LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT;
-    settingsManager.settings.gpsLockoutMinLearnerSpeedMph = LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT;
 
     resetGpsRuntimeStatus();
     speedSelector = SpeedSourceSelector{};
-    lockoutLearner.reset(settingsManager.settings.gpsLockoutLearnerPromotionHits,
-                         settingsManager.settings.gpsLockoutLearnerRadiusE5,
-                         settingsManager.settings.gpsLockoutLearnerFreqToleranceMHz,
-                         settingsManager.settings.gpsLockoutLearnerLearnIntervalHours);
     gpsLog.reset();
-    perfCounters.reset();
-    eventBus.reset();
-    resetBandPolicyState();
 }
 
 
@@ -421,7 +280,6 @@ void test_handle_api_status_marks_ui_activity_and_returns_real_status_payload() 
     speedSelector.snapshotStatus.gpsAgeMs = 25;
     speedSelector.snapshotStatus.sourceSwitches = 2;
 
-    perfCounters.queueDrops.store(2, std::memory_order_relaxed);
     gpsLog.publish(makeObservation(900, true, 30.0f, 5, 1.2f, true, 41.0f, -70.0f));
     gpsLog.publish(makeObservation(950, true, 42.5f, 7, 0.9f, true, 42.1234f, -71.5678f));
 
@@ -431,9 +289,6 @@ void test_handle_api_status_marks_ui_activity_and_returns_real_status_payload() 
         speedSelector,
         settingsManager,
         gpsLog,
-        lockoutLearner,
-        perfCounters,
-        eventBus,
         doUiActivity, &uiCtx);
 
     TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
@@ -458,10 +313,6 @@ void test_handle_api_status_marks_ui_activity_and_returns_real_status_payload() 
     TEST_ASSERT_EQUAL_UINT32(2, doc["observations"]["published"].as<uint32_t>());
     TEST_ASSERT_EQUAL_UINT32(2, doc["observations"]["size"].as<uint32_t>());
     TEST_ASSERT_EQUAL_STRING("gps", doc["speedSource"]["selected"].as<const char*>());
-    TEST_ASSERT_TRUE(doc["lockout"]["coreGuardTripped"].as<bool>());
-    TEST_ASSERT_EQUAL_STRING("queueDrops", doc["lockout"]["coreGuardReason"].as<const char*>());
-    TEST_ASSERT_FALSE(doc["gpsLockoutKaLearningEnabled"].as<bool>());
-    TEST_ASSERT_FALSE(doc["gpsLockoutPreQuiet"].as<bool>());
 }
 
 void test_handle_api_observations_rate_limited_short_circuits() {
@@ -517,12 +368,6 @@ void test_handle_api_config_get_marks_ui_activity_and_returns_real_config() {
     UiActivityCtx uiCtx;
 
     settingsManager.settings.gpsEnabled = false;
-    settingsManager.settings.gpsLockoutMode = LOCKOUT_RUNTIME_ENFORCE;
-    settingsManager.settings.gpsLockoutPreQuiet = true;
-    settingsManager.settings.gpsLockoutLearnerPromotionHits = 4;
-    settingsManager.settings.gpsLockoutLearnerRadiusE5 = 200;
-    settingsManager.settings.gpsLockoutLearnerFreqToleranceMHz = 12;
-    settingsManager.settings.gpsLockoutKLearningEnabled = false;
 
     GpsApiService::handleApiConfigGet(
         server,
@@ -537,14 +382,6 @@ void test_handle_api_config_get_marks_ui_activity_and_returns_real_config() {
 
     TEST_ASSERT_TRUE(doc["success"].as<bool>());
     TEST_ASSERT_FALSE(doc["enabled"].as<bool>());
-    TEST_ASSERT_FALSE(doc["gpsEnabled"].as<bool>());
-    TEST_ASSERT_EQUAL_STRING("ENFORCE", doc["lockout"]["mode"].as<const char*>());
-    TEST_ASSERT_EQUAL_INT(static_cast<int>(LOCKOUT_RUNTIME_ENFORCE), doc["gpsLockoutMode"].as<int>());
-    TEST_ASSERT_EQUAL_UINT32(4, doc["lockout"]["learnerPromotionHits"].as<uint32_t>());
-    TEST_ASSERT_EQUAL_UINT32(200, doc["lockout"]["learnerRadiusE5"].as<uint32_t>());
-    TEST_ASSERT_EQUAL_UINT32(12, doc["lockout"]["learnerFreqToleranceMHz"].as<uint32_t>());
-    TEST_ASSERT_FALSE(doc["lockout"]["kLearningEnabled"].as<bool>());
-    TEST_ASSERT_TRUE(doc["lockout"]["preQuiet"].as<bool>());
 }
 
 void test_handle_api_config_rate_limited_short_circuits() {
@@ -557,10 +394,7 @@ void test_handle_api_config_rate_limited_short_circuits() {
         settingsManager,
         gpsRuntime,
         speedSelector,
-        lockoutLearner,
         gpsLog,
-        perfCounters,
-        eventBus,
         doRateLimit, &rlCtx,
         doUiActivity, &uiCtx);
 
@@ -580,10 +414,7 @@ void test_handle_api_config_rejects_invalid_json() {
         settingsManager,
         gpsRuntime,
         speedSelector,
-        lockoutLearner,
         gpsLog,
-        perfCounters,
-        eventBus,
         [](void* /*ctx*/) { return true; }, nullptr,
         doUiActivity, &uiCtx);
 
@@ -594,7 +425,7 @@ void test_handle_api_config_rejects_invalid_json() {
     TEST_ASSERT_EQUAL_INT(0, settingsManager.requestDeferredPersistCalls);
 }
 
-void test_handle_api_config_requires_enabled_or_lockout_update() {
+void test_handle_api_config_requires_enabled() {
     WebServer server(80);
 
     server.setArg("plain", "{}");
@@ -604,16 +435,13 @@ void test_handle_api_config_requires_enabled_or_lockout_update() {
         settingsManager,
         gpsRuntime,
         speedSelector,
-        lockoutLearner,
         gpsLog,
-        perfCounters,
-        eventBus,
         [](void* /*ctx*/) { return true; }, nullptr,
         nullptr, nullptr);
 
     TEST_ASSERT_EQUAL_INT(400, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING(
-        "{\"success\":false,\"message\":\"Missing enabled or lockout settings\"}",
+        "{\"success\":false,\"message\":\"Missing enabled\"}",
         server.lastBody.c_str());
 }
 
@@ -627,10 +455,7 @@ void test_handle_api_config_rejects_out_of_range_speed() {
         settingsManager,
         gpsRuntime,
         speedSelector,
-        lockoutLearner,
         gpsLog,
-        perfCounters,
-        eventBus,
         [](void* /*ctx*/) { return true; }, nullptr,
         nullptr, nullptr);
 
@@ -649,10 +474,7 @@ void test_handle_api_config_rejects_partial_coordinates() {
         settingsManager,
         gpsRuntime,
         speedSelector,
-        lockoutLearner,
         gpsLog,
-        perfCounters,
-        eventBus,
         [](void* /*ctx*/) { return true; }, nullptr,
         nullptr, nullptr);
 
@@ -672,10 +494,7 @@ void test_handle_api_config_rejects_out_of_range_coordinates() {
         settingsManager,
         gpsRuntime,
         speedSelector,
-        lockoutLearner,
         gpsLog,
-        perfCounters,
-        eventBus,
         [](void* /*ctx*/) { return true; }, nullptr,
         nullptr, nullptr);
 
@@ -683,62 +502,6 @@ void test_handle_api_config_rejects_out_of_range_coordinates() {
     TEST_ASSERT_EQUAL_STRING(
         "{\"success\":false,\"message\":\"latitude/longitude out of range\"}",
         server.lastBody.c_str());
-}
-
-void test_handle_api_config_lockout_only_update_mutates_real_settings_path() {
-    WebServer server(80);
-
-    server.setArg(
-        "plain",
-        "{\"gpsLockoutMode\":\"enforce\",\"gpsLockoutLearnerPromotionHits\":4,"
-        "\"gpsLockoutLearnerRadiusE5\":200,\"gpsLockoutLearnerFreqToleranceMHz\":12,"
-        "\"gpsLockoutLearnerLearnIntervalHours\":4,\"gpsLockoutMaxHdopX10\":80,"
-        "\"gpsLockoutMinLearnerSpeedMph\":7,\"gpsLockoutKaLearningEnabled\":true,"
-        "\"gpsLockoutKLearningEnabled\":false,\"gpsLockoutXLearningEnabled\":false,"
-        "\"gpsLockoutPreQuiet\":true}");
-
-    GpsApiService::handleApiConfig(
-        server,
-        settingsManager,
-        gpsRuntime,
-        speedSelector,
-        lockoutLearner,
-        gpsLog,
-        perfCounters,
-        eventBus,
-        [](void* /*ctx*/) { return true; }, nullptr,
-        nullptr, nullptr);
-
-    TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
-    TEST_ASSERT_EQUAL(LOCKOUT_RUNTIME_ENFORCE, settingsManager.settings.gpsLockoutMode);
-    TEST_ASSERT_EQUAL_UINT8(4, settingsManager.settings.gpsLockoutLearnerPromotionHits);
-    TEST_ASSERT_EQUAL_UINT16(200, settingsManager.settings.gpsLockoutLearnerRadiusE5);
-    TEST_ASSERT_EQUAL_UINT16(12, settingsManager.settings.gpsLockoutLearnerFreqToleranceMHz);
-    TEST_ASSERT_EQUAL_UINT8(4, settingsManager.settings.gpsLockoutLearnerLearnIntervalHours);
-    TEST_ASSERT_TRUE(settingsManager.settings.gpsLockoutKaLearningEnabled);
-    TEST_ASSERT_FALSE(settingsManager.settings.gpsLockoutKLearningEnabled);
-    TEST_ASSERT_FALSE(settingsManager.settings.gpsLockoutXLearningEnabled);
-    TEST_ASSERT_TRUE(settingsManager.settings.gpsLockoutPreQuiet);
-    TEST_ASSERT_EQUAL_INT(0, settingsManager.saveCalls);
-    TEST_ASSERT_EQUAL_INT(1, settingsManager.requestDeferredPersistCalls);
-    TEST_ASSERT_EQUAL_INT(0, settingsManager.setGpsEnabledCalls);
-    TEST_ASSERT_EQUAL_INT(0, gpsRuntime.setEnabledCalls);
-    TEST_ASSERT_EQUAL_INT(0, speedSelector.syncEnabledInputsCalls);
-    TEST_ASSERT_EQUAL_INT(1, lockoutLearner.setTuningCalls);
-    TEST_ASSERT_EQUAL_UINT16(80, lockoutLearner.lastMaxHdopX10);
-    TEST_ASSERT_EQUAL_UINT8(7, lockoutLearner.lastMinLearnerSpeedMph);
-    TEST_ASSERT_EQUAL_INT(1, lockoutSetKaLearningEnabledCalls);
-    TEST_ASSERT_EQUAL_INT(1, lockoutSetKLearningEnabledCalls);
-    TEST_ASSERT_EQUAL_INT(1, lockoutSetXLearningEnabledCalls);
-
-    JsonDocument doc;
-    parseBody(server, doc);
-    TEST_ASSERT_TRUE(doc["success"].as<bool>());
-    TEST_ASSERT_EQUAL_STRING("ENFORCE", doc["lockout"]["mode"].as<const char*>());
-    TEST_ASSERT_TRUE(doc["lockout"]["kaLearningEnabled"].as<bool>());
-    TEST_ASSERT_FALSE(doc["lockout"]["kLearningEnabled"].as<bool>());
-    TEST_ASSERT_FALSE(doc["lockout"]["xLearningEnabled"].as<bool>());
-    TEST_ASSERT_TRUE(doc["lockout"]["preQuiet"].as<bool>());
 }
 
 void test_handle_api_config_enabled_scaffold_sample_updates_runtime_and_selector() {
@@ -759,10 +522,7 @@ void test_handle_api_config_enabled_scaffold_sample_updates_runtime_and_selector
         settingsManager,
         gpsRuntime,
         speedSelector,
-        lockoutLearner,
         gpsLog,
-        perfCounters,
-        eventBus,
         [](void* /*ctx*/) { return true; }, nullptr,
         nullptr, nullptr);
 
@@ -805,11 +565,10 @@ int main() {
     RUN_TEST(test_handle_api_config_get_marks_ui_activity_and_returns_real_config);
     RUN_TEST(test_handle_api_config_rate_limited_short_circuits);
     RUN_TEST(test_handle_api_config_rejects_invalid_json);
-    RUN_TEST(test_handle_api_config_requires_enabled_or_lockout_update);
+    RUN_TEST(test_handle_api_config_requires_enabled);
     RUN_TEST(test_handle_api_config_rejects_out_of_range_speed);
     RUN_TEST(test_handle_api_config_rejects_partial_coordinates);
     RUN_TEST(test_handle_api_config_rejects_out_of_range_coordinates);
-    RUN_TEST(test_handle_api_config_lockout_only_update_mutates_real_settings_path);
     RUN_TEST(test_handle_api_config_enabled_scaffold_sample_updates_runtime_and_selector);
     return UNITY_END();
 }

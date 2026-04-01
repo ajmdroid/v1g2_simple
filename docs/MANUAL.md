@@ -16,7 +16,6 @@
 Feature-by-feature release history is maintained in `CHANGELOG.md`.
 
 Current train (`v4.0.0-dev`) highlights:
-- GPS lockout runtime stack (enforcer + learner + store/index) and lockout configuration controls.
 - SD-backed perf CSV snapshots (`/perf/perf_boot_<id>.csv`) and runtime metrics correlation.
 - Settings backup/restore hardening and display/runtime stability fixes.
 
@@ -366,9 +365,7 @@ V1 Gen2 (BLE)
 | **DisplayPreviewModule** | Color preview overlay lifecycle |
 | **DisplayRestoreModule** | Restores display state after preview/settings overlay ends |
 | **GpsRuntimeModule** | GPS ingest and fix/course/speed runtime state |
-| **GpsApiService** | GPS lockout REST API endpoints |
-| **Lockout stack** | Capture/observe/store/enforce/learn lockout state with best-effort persistence |
-| **LockoutApiService + LockoutOrchestrationModule** | Lockout REST API + zone CRUD + pre-quiet controller |
+| **GpsApiService** | GPS REST API endpoints |
 | **PowerModule** | Battery monitoring, power button, sleep |
 | **SpeedSourceSelector** | Runtime speed source arbitration (GPS + OBD policy) |
 | **ObdRuntimeModule** | OBD-II BLE adapter connection state machine (scan/connect/poll) |
@@ -376,7 +373,7 @@ V1 Gen2 (BLE)
 | **ObdApiService** | OBD REST API endpoints (status, scan, forget) |
 | **SystemEventBus** | Thread-safe bounded ring buffer for cross-module event coordination |
 | **ParsedFrameEventModule** | Collects parsed-frame signal from BLE queue for display orchestration |
-| **PeriodicMaintenanceModule** | Rate-limited perf reporting, time saves, lockout learner ticks, persistence |
+| **PeriodicMaintenanceModule** | Rate-limited perf reporting, time saves, persistence |
 | **Loop phase modules** | `loop_connection_early`, `loop_power_touch`, `loop_pre_ingest`, `loop_settings_prep`, `loop_ingest`, `loop_display`, `loop_post_display`, `loop_runtime_snapshot`, `loop_tail`, `loop_telemetry` — each owns one phase of the main loop |
 | **TouchUiModule** | Touch-based settings UI overlay |
 | **TapGestureModule** | Triple-tap mute and other gestures |
@@ -1052,7 +1049,6 @@ Automatically reduces V1's alert volume after the initial announcement period. U
 └── v1settings_backup.json  Settings backup (if SD unavailable)
 
 /sdcard/                    (SD card - optional)
-├── road_map.bin            Road geometry index for lockout road-snapping (see below)
 ├── profiles/               V1 user profiles (JSON)
 │   ├── Default.json
 │   ├── Highway.json
@@ -1163,7 +1159,6 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 | `/autopush` | `autopush/+page.svelte` | Auto-push slot configuration |
 | `/profiles` | `profiles/+page.svelte` | V1 profile management |
 | `/devices` | `devices/+page.svelte` | Known V1 device management |
-| `/lockouts` | `lockouts/+page.svelte` | GPS lockout zone management and observation log |
 | `/integrations` | `integrations/+page.svelte` | GPS and external integration settings |
 | `/dev` | `dev/+page.svelte` | Debug tools: metrics, perf files, V1 scenarios, panic log |
 
@@ -1204,42 +1199,12 @@ Voice alerts announce through the built-in speaker when no phone app is connecte
 
 **Source:** [interface/src/routes/audio/+page.svelte](../interface/src/routes/audio/+page.svelte)
 
-### GPS / Lockout Settings (`/integrations` and `/lockouts`)
+### GPS Settings (`/integrations`)
 
 Controls:
 - **GPS Module:** Enable/disable GPS for location-based features (auto-detects within 60s)
 
-**Auto-Lockout Settings:**
-- **Enable Auto-Lockout:** Master toggle for automatic false alert learning
-- **Ka Protection:** Never auto-learn Ka band (real threats, default: on)
-- **Frequency Tolerance:** MHz tolerance for lockout matching (default: 10)
-- **Learn Count:** Hits needed to promote to lockout (default: 3; moving alerts still need 4)
-- **Unlearn Count:** Passes without alert to demote auto-lockout (default: 0, legacy decay)
-- **Manual Delete Count:** Passes to demote manual lockouts (default: 0, never auto-delete)
-- **Learn Interval:** Hours between counted hits (default: 0, disabled)
-- **Unlearn Interval:** Hours between counted misses (default: 0, disabled)
-
-**Source:** [interface/src/routes/integrations/+page.svelte](../interface/src/routes/integrations/+page.svelte), [interface/src/routes/lockouts/+page.svelte](../interface/src/routes/lockouts/+page.svelte)
-
-### Road Map (Optional SD Card File)
-
-The lockout system can snap learned zones to the nearest road for more accurate matching. This requires a `road_map.bin` file on the SD card, built from OpenStreetMap road geometry. It is entirely optional — without it, lockouts still work using raw GPS coordinates, and the firmware logs `[RoadMap] No road_map.bin on SD — road snap disabled` at boot.
-
-**Setup:**
-
-1. Install the build dependency: `pip install osmium`
-2. Generate the binary (auto-downloads US road data from Geofabrik, ~800 MB PBF):
-   ```bash
-   python scripts/build_road_map.py --download
-   ```
-   Or from a local PBF file:
-   ```bash
-   python scripts/build_road_map.py --pbf us-latest.osm.pbf
-   ```
-3. Copy the resulting `road_map.bin` (~2-5 MB) to the root of the SD card
-4. Reboot the device — the firmware loads the file into PSRAM at boot
-
-The binary contains simplified US motorway, trunk, and primary road geometry in a compact spatial index. The format is documented in [docs/ROAD_MAP_FORMAT.md](ROAD_MAP_FORMAT.md). Regional builds are also supported (e.g., `--pbf colorado-latest.osm.pbf --region test`).
+**Source:** [interface/src/routes/integrations/+page.svelte](../interface/src/routes/integrations/+page.svelte)
 
 ### Colors Page (`/colors`)
 
@@ -1272,7 +1237,7 @@ Controls:
 - **Scan Now:** Triggers a 5-second BLE scan for nearby OBDLink devices
 - **Forget Device:** Clears the saved OBD adapter address and disconnects
 
-When OBD is enabled and connected, the speed source selector prefers OBD speed over GPS speed for lockout mute/unmute decisions.
+When OBD is enabled and connected, the speed source selector prefers OBD speed over GPS speed for speed-based mute decisions.
 
 **Source:** [interface/src/lib/features/settings/SettingsObdCard.svelte](../interface/src/lib/features/settings/SettingsObdCard.svelte)
 
@@ -1601,24 +1566,10 @@ Connect at 115200 baud. Key prefixes:
 2. Reduce distance between V1-Simple and the OBD adapter
 3. After 5 consecutive poll errors the module enters a 60-second backoff before reconnecting
 
-**OBD speed not used for lockout muting:**
+**OBD speed not used for speed-based mute:**
 1. Verify OBD is enabled in Settings and the status shows "POLLING"
 2. Speed readings older than 3 seconds are considered stale and ignored
 3. The speed source selector prefers OBD over GPS — if OBD speed is valid, it will be used
-
-### Auto-Lockout Issues
-
-**Lockouts not learning:**
-1. Check `gpsLockoutMode` is not set to `off`
-2. Default requires 3 passes (`gpsLockoutLearnerPromotionHits`)
-3. Must be within lockout learner radius and frequency tolerance
-4. Ka band learning is disabled by default (`gpsLockoutKaLearningEnabled`)
-
-**Lockouts learning too aggressively:**
-1. Increase `gpsLockoutLearnerPromotionHits` (default is 3)
-2. Decrease `gpsLockoutLearnerRadiusE5` for tighter geo-match
-3. Decrease `gpsLockoutLearnerFreqToleranceMHz`
-4. Disable Ka learning: set `gpsLockoutKaLearningEnabled` to false
 
 ### Audio Problems
 
@@ -1692,8 +1643,8 @@ For the full API reference with request/response schemas and examples, see [API.
 | GET | `/api/status` | BLE connection state, V1 info |
 | GET | `/api/device/settings` | AP/proxy/power/dev settings |
 | POST | `/api/device/settings` | Save AP/proxy/power/dev settings |
-| GET | `/api/gps/config` | GPS/lockout settings |
-| POST | `/api/gps/config` | Save GPS/lockout settings |
+| GET | `/api/gps/config` | GPS settings |
+| POST | `/api/gps/config` | Save GPS settings |
 | GET | `/api/settings/backup` | Download settings as JSON |
 | POST | `/api/settings/restore` | Restore settings from JSON |
 | GET | `/api/v1/profiles` | List saved profiles |
@@ -2015,7 +1966,7 @@ The trusted local/code gate. It runs:
 
 Runs the PR gate plus:
 - full replay corpus
-- sanitizer lane (ASan + UBSan) for parser, replay, lockout, volume_fade
+- sanitizer lane (ASan + UBSan) for parser, replay, volume_fade
 - expanded mutation catalog with tier thresholds
 - device soak (if hardware available)
 

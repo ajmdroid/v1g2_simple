@@ -92,7 +92,6 @@ void V1Display::showResting(bool forceRedraw) {
         // Mute indicator off
         drawMuteIcon(false);
         syncTopIndicators(millis());
-        drawLockoutIndicator();
         drawGpsIndicator();
         drawObdIndicator();
 
@@ -189,7 +188,6 @@ void V1Display::showScanning() {
     drawDirectionArrow(DIR_NONE, false);
     drawMuteIcon(false);
     syncTopIndicators(millis());
-    drawLockoutIndicator();
     drawGpsIndicator();
     drawObdIndicator();
     drawProfileIndicator(currentProfileSlot_);

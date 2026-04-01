@@ -9,7 +9,6 @@ struct LoopDisplayContext {
     uint32_t nowMs = 0;
     bool bootSplashHoldActive = false;
     bool overloadLateThisLoop = false;
-    bool enableSignalTraceLogging = false;
 };
 
 // Orchestrates parsed-frame signal collection, display pipeline dispatch, and
@@ -33,14 +32,11 @@ public:
             const DisplayOrchestrationRefreshContext& refreshCtx) = nullptr;
         void* lightweightRefreshContext = nullptr;
 
-        void (*runDisplayPipeline)(void* ctx, uint32_t nowMs, bool lockoutPrioritySuppressed) = nullptr;
+        void (*runDisplayPipeline)(void* ctx, uint32_t nowMs) = nullptr;
         void* displayPipelineContext = nullptr;
 
         uint32_t (*timestampUs)(void* ctx) = nullptr;
         void* timestampContext = nullptr;
-
-        void (*recordLockoutUs)(void* ctx, uint32_t elapsedUs) = nullptr;
-        void* lockoutPerfContext = nullptr;
 
         void (*recordDispPipeUs)(void* ctx, uint32_t elapsedUs) = nullptr;
         void* dispPipePerfContext = nullptr;

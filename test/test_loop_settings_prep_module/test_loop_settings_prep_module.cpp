@@ -65,7 +65,6 @@ void test_provider_path_runs_tap_then_reads_settings() {
     module.begin(providers);
 
     providerValues.enableWifiAtBoot = true;
-    providerValues.enableSignalTraceLogging = true;
     providerValues.enableWifi = false;
 
     LoopSettingsPrepContext ctx;
@@ -78,7 +77,6 @@ void test_provider_path_runs_tap_then_reads_settings() {
     TEST_ASSERT_EQUAL(456u, tapNowMs);
 
     TEST_ASSERT_TRUE(result.enableWifiAtBoot);
-    TEST_ASSERT_TRUE(result.enableSignalTraceLogging);
     TEST_ASSERT_FALSE(result.enableWifi);
 
     TEST_ASSERT_EQUAL(2, callLogCount);
@@ -92,7 +90,6 @@ void test_missing_tap_provider_still_reads_settings_snapshot() {
     module.begin(providers);
 
     providerValues.enableWifiAtBoot = false;
-    providerValues.enableSignalTraceLogging = true;
     providerValues.enableWifi = false;
 
     const LoopSettingsPrepValues result = module.process(LoopSettingsPrepContext{});
@@ -100,7 +97,6 @@ void test_missing_tap_provider_still_reads_settings_snapshot() {
     TEST_ASSERT_EQUAL(0, providerTapCalls);
     TEST_ASSERT_EQUAL(1, providerSettingsCalls);
     TEST_ASSERT_FALSE(result.enableWifiAtBoot);
-    TEST_ASSERT_TRUE(result.enableSignalTraceLogging);
     TEST_ASSERT_FALSE(result.enableWifi);
     TEST_ASSERT_EQUAL(1, callLogCount);
     TEST_ASSERT_EQUAL(CALL_SETTINGS, callLog[0]);
@@ -114,7 +110,6 @@ void test_empty_providers_and_context_returns_defaults() {
 
     TEST_ASSERT_TRUE(result.enableWifi);
     TEST_ASSERT_FALSE(result.enableWifiAtBoot);
-    TEST_ASSERT_FALSE(result.enableSignalTraceLogging);
     TEST_ASSERT_EQUAL(0, providerTapCalls);
     TEST_ASSERT_EQUAL(0, providerSettingsCalls);
 }

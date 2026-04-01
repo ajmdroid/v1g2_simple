@@ -20,9 +20,7 @@ enum CallId {
     CALL_DEFERRED_SETTINGS_PERSIST = 4,
     CALL_DEFERRED_SETTINGS_BACKUP = 5,
     CALL_DEFERRED_BLE_BOND_BACKUP = 6,
-    CALL_LEARNER = 7,
-    CALL_LOCKOUT_SAVE = 8,
-    CALL_PENDING_SAVE = 9,
+    CALL_STORE_SAVE = 7,
 };
 
 static int callLog[16];
@@ -41,11 +39,7 @@ static uint32_t obdSettingsSyncNowMs = 0;
 static uint32_t deferredSettingsPersistNowMs = 0;
 static uint32_t deferredSettingsBackupNowMs = 0;
 static uint32_t deferredBleBondBackupNowMs = 0;
-static int64_t epochNowMs = 0;
-static int64_t learnerEpochMs = -1;
-static uint32_t learnerNowMs = 0;
-static uint32_t lockoutSaveNowMs = 0;
-static uint32_t pendingSaveNowMs = 0;
+static uint32_t storeSaveNowMs = 0;
 
 static void noteCall(int id) {
     if (callLogCount < (sizeof(callLog) / sizeof(callLog[0]))) {
@@ -111,24 +105,9 @@ static void runDeferredBleBondBackup(void*, uint32_t nowMs) {
     deferredBleBondBackupNowMs = nowMs;
 }
 
-static int64_t nowEpochMsOr0(void*) {
-    return epochNowMs;
-}
-
-static void runLockoutLearner(void*, uint32_t nowMs, int64_t epochMs) {
-    noteCall(CALL_LEARNER);
-    learnerNowMs = nowMs;
-    learnerEpochMs = epochMs;
-}
-
-static void runLockoutStoreSave(void*, uint32_t nowMs) {
-    noteCall(CALL_LOCKOUT_SAVE);
-    lockoutSaveNowMs = nowMs;
-}
-
-static void runLearnerPendingSave(void*, uint32_t nowMs) {
-    noteCall(CALL_PENDING_SAVE);
-    pendingSaveNowMs = nowMs;
+static void runStoreSave(void*, uint32_t nowMs) {
+    noteCall(CALL_STORE_SAVE);
+    storeSaveNowMs = nowMs;
 }
 
 static void resetState() {
@@ -144,11 +123,7 @@ static void resetState() {
     deferredSettingsPersistNowMs = 0;
     deferredSettingsBackupNowMs = 0;
     deferredBleBondBackupNowMs = 0;
-    epochNowMs = 0;
-    learnerEpochMs = -1;
-    learnerNowMs = 0;
-    lockoutSaveNowMs = 0;
-    pendingSaveNowMs = 0;
+    storeSaveNowMs = 0;
 }
 
 void setUp() {
@@ -168,26 +143,20 @@ void test_process_runs_full_bundle_in_order_with_timing_records() {
     providers.runDeferredSettingsPersist = runDeferredSettingsPersist;
     providers.runDeferredSettingsBackup = runDeferredSettingsBackup;
     providers.runDeferredBleBondBackup = runDeferredBleBondBackup;
-    providers.nowEpochMsOr0 = nowEpochMsOr0;
-    providers.runLockoutLearner = runLockoutLearner;
-    providers.runLockoutStoreSave = runLockoutStoreSave;
-    providers.runLearnerPendingSave = runLearnerPendingSave;
+    providers.runStoreSave = runStoreSave;
     module.begin(providers);
 
     setTimestampSequence({100, 130, 200, 245});
-    epochNowMs = 456789;
     module.process(5000);
 
-    TEST_ASSERT_EQUAL(9, callLogCount);
+    TEST_ASSERT_EQUAL(7, callLogCount);
     TEST_ASSERT_EQUAL(CALL_PERF, callLog[0]);
     TEST_ASSERT_EQUAL(CALL_TIME_SAVE, callLog[1]);
     TEST_ASSERT_EQUAL(CALL_OBD_SETTINGS_SYNC, callLog[2]);
     TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_PERSIST, callLog[3]);
     TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_BACKUP, callLog[4]);
     TEST_ASSERT_EQUAL(CALL_DEFERRED_BLE_BOND_BACKUP, callLog[5]);
-    TEST_ASSERT_EQUAL(CALL_LEARNER, callLog[6]);
-    TEST_ASSERT_EQUAL(CALL_LOCKOUT_SAVE, callLog[7]);
-    TEST_ASSERT_EQUAL(CALL_PENDING_SAVE, callLog[8]);
+    TEST_ASSERT_EQUAL(CALL_STORE_SAVE, callLog[6]);
 
     TEST_ASSERT_EQUAL(1, perfRecordCalls);
     TEST_ASSERT_EQUAL(30u, perfElapsedUs);
@@ -199,13 +168,10 @@ void test_process_runs_full_bundle_in_order_with_timing_records() {
     TEST_ASSERT_EQUAL(5000u, deferredSettingsPersistNowMs);
     TEST_ASSERT_EQUAL(5000u, deferredSettingsBackupNowMs);
     TEST_ASSERT_EQUAL(5000u, deferredBleBondBackupNowMs);
-    TEST_ASSERT_EQUAL(5000u, learnerNowMs);
-    TEST_ASSERT_EQUAL_INT64(456789, learnerEpochMs);
-    TEST_ASSERT_EQUAL(5000u, lockoutSaveNowMs);
-    TEST_ASSERT_EQUAL(5000u, pendingSaveNowMs);
+    TEST_ASSERT_EQUAL(5000u, storeSaveNowMs);
 }
 
-void test_process_defaults_epoch_to_zero_when_provider_missing() {
+void test_process_skips_missing_providers_gracefully() {
     PeriodicMaintenanceModule::Providers providers;
     providers.runPerfReport = runPerfReport;
     providers.runTimeSave = runTimeSave;
@@ -213,27 +179,22 @@ void test_process_defaults_epoch_to_zero_when_provider_missing() {
     providers.runDeferredSettingsPersist = runDeferredSettingsPersist;
     providers.runDeferredSettingsBackup = runDeferredSettingsBackup;
     providers.runDeferredBleBondBackup = runDeferredBleBondBackup;
-    providers.runLockoutLearner = runLockoutLearner;
-    providers.runLockoutStoreSave = runLockoutStoreSave;
-    providers.runLearnerPendingSave = runLearnerPendingSave;
+    providers.runStoreSave = runStoreSave;
     module.begin(providers);
 
     module.process(1200);
 
-    TEST_ASSERT_EQUAL(9, callLogCount);
+    TEST_ASSERT_EQUAL(7, callLogCount);
     TEST_ASSERT_EQUAL(CALL_PERF, callLog[0]);
     TEST_ASSERT_EQUAL(CALL_TIME_SAVE, callLog[1]);
     TEST_ASSERT_EQUAL(CALL_OBD_SETTINGS_SYNC, callLog[2]);
     TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_PERSIST, callLog[3]);
     TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_BACKUP, callLog[4]);
     TEST_ASSERT_EQUAL(CALL_DEFERRED_BLE_BOND_BACKUP, callLog[5]);
-    TEST_ASSERT_EQUAL(CALL_LEARNER, callLog[6]);
-    TEST_ASSERT_EQUAL(CALL_LOCKOUT_SAVE, callLog[7]);
-    TEST_ASSERT_EQUAL(CALL_PENDING_SAVE, callLog[8]);
+    TEST_ASSERT_EQUAL(CALL_STORE_SAVE, callLog[6]);
 
     TEST_ASSERT_EQUAL(0, perfRecordCalls);
     TEST_ASSERT_EQUAL(0, timeRecordCalls);
-    TEST_ASSERT_EQUAL_INT64(0, learnerEpochMs);
 }
 
 void test_perf_elapsed_is_wrap_safe() {
@@ -266,7 +227,7 @@ void test_empty_providers_is_safe_noop() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_process_runs_full_bundle_in_order_with_timing_records);
-    RUN_TEST(test_process_defaults_epoch_to_zero_when_provider_missing);
+    RUN_TEST(test_process_skips_missing_providers_gracefully);
     RUN_TEST(test_perf_elapsed_is_wrap_safe);
     RUN_TEST(test_empty_providers_is_safe_noop);
     return UNITY_END();

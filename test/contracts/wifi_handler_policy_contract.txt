@@ -9,10 +9,6 @@ route=HTTP_GET /api/debug/v1-scenario/status rate_limit=0 ui_activity=0 delegate
 route=HTTP_GET /api/gps/config rate_limit=0 ui_activity=1 delegates=GpsApiService::handleApiConfigGet
 route=HTTP_GET /api/gps/observations rate_limit=1 ui_activity=1 delegates=GpsApiService::handleApiObservations
 route=HTTP_GET /api/gps/status rate_limit=0 ui_activity=1 delegates=GpsApiService::handleApiStatus
-route=HTTP_GET /api/lockouts/events rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiEvents
-route=HTTP_GET /api/lockouts/summary rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiSummary
-route=HTTP_GET /api/lockouts/zones rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZones
-route=HTTP_GET /api/lockouts/zones/export rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZoneExport
 route=HTTP_GET /api/settings/backup rate_limit=0 ui_activity=1 delegates=BackupApiService::handleApiBackup
 route=HTTP_POST /api/debug/enable rate_limit=1 ui_activity=0 delegates=DebugApiService::handleApiDebugEnable
 route=HTTP_POST /api/debug/metrics/reset rate_limit=1 ui_activity=0 delegates=DebugApiService::handleApiMetricsReset
@@ -22,10 +18,5 @@ route=HTTP_POST /api/debug/v1-scenario/load rate_limit=1 ui_activity=0 delegates
 route=HTTP_POST /api/debug/v1-scenario/start rate_limit=1 ui_activity=0 delegates=DebugApiService::handleApiV1ScenarioStart
 route=HTTP_POST /api/debug/v1-scenario/stop rate_limit=1 ui_activity=0 delegates=DebugApiService::handleApiV1ScenarioStop
 route=HTTP_POST /api/gps/config rate_limit=1 ui_activity=1 delegates=GpsApiService::handleApiConfig
-route=HTTP_POST /api/lockouts/pending/clear rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiPendingClear
-route=HTTP_POST /api/lockouts/zones/create rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZoneCreate
-route=HTTP_POST /api/lockouts/zones/delete rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZoneDelete
-route=HTTP_POST /api/lockouts/zones/import rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZoneImport
-route=HTTP_POST /api/lockouts/zones/update rate_limit=1 ui_activity=1 delegates=LockoutApiService::handleApiZoneUpdate
 route=HTTP_POST /api/settings/backup-now rate_limit=1 ui_activity=1 delegates=BackupApiService::handleApiBackupNow
 route=HTTP_POST /api/settings/restore rate_limit=1 ui_activity=1 delegates=BackupApiService::handleApiRestore

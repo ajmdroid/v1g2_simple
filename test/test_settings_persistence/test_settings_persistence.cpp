@@ -39,7 +39,6 @@ inline bool canConvertFromJson(JsonVariantConst src, const ::String&) {
 #include "../../src/settings_nvs.cpp"
 #include "../../src/settings_backup.cpp"
 #include "../../src/settings_deferred_backup.cpp"
-#include "../../src/modules/gps/gps_lockout_safety.cpp"
 #include "../../src/settings_restore.cpp"
 
 namespace {
@@ -121,9 +120,6 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     settings.proxyBLE = false;
     settings.proxyName = "Proxy-Rig";
     settings.gpsEnabled = true;
-    settings.gpsLockoutMode = LOCKOUT_RUNTIME_ADVISORY;
-    settings.gpsLockoutLearnerRadiusE5 = 200;
-    settings.gpsLockoutKaLearningEnabled = true;
     settings.turnOffDisplay = true;
     settings.brightness = 123;
     settings.displayStyle = DISPLAY_STYLE_SERPENTINE;
@@ -132,7 +128,6 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     settings.colorObd = 0x6789;
     settings.hideWifiIcon = true;
     settings.enableWifiAtBoot = true;
-    settings.enableSignalTraceLogging = false;
     settings.voiceAlertMode = VOICE_MODE_FREQ_ONLY;
     settings.voiceDirectionEnabled = false;
     settings.announceBogeyCount = false;
@@ -198,9 +193,6 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_FALSE(loaded.proxyBLE);
     TEST_ASSERT_EQUAL_STRING("Proxy-Rig", loaded.proxyName.c_str());
     TEST_ASSERT_TRUE(loaded.gpsEnabled);
-    TEST_ASSERT_EQUAL_INT(LOCKOUT_RUNTIME_ADVISORY, loaded.gpsLockoutMode);
-    TEST_ASSERT_EQUAL_UINT16(200u, loaded.gpsLockoutLearnerRadiusE5);
-    TEST_ASSERT_TRUE(loaded.gpsLockoutKaLearningEnabled);
     TEST_ASSERT_TRUE(loaded.turnOffDisplay);
     TEST_ASSERT_EQUAL_UINT8(123, loaded.brightness);
     TEST_ASSERT_EQUAL_INT(DISPLAY_STYLE_SERPENTINE, loaded.displayStyle);
@@ -209,7 +201,6 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_EQUAL_HEX16(0x6789, loaded.colorObd);
     TEST_ASSERT_TRUE(loaded.hideWifiIcon);
     TEST_ASSERT_TRUE(loaded.enableWifiAtBoot);
-    TEST_ASSERT_FALSE(loaded.enableSignalTraceLogging);
     TEST_ASSERT_EQUAL_INT(VOICE_MODE_FREQ_ONLY, loaded.voiceAlertMode);
     TEST_ASSERT_FALSE(loaded.voiceDirectionEnabled);
     TEST_ASSERT_FALSE(loaded.announceBogeyCount);
@@ -254,7 +245,6 @@ void test_save_load_and_backup_round_trip_current_shape_fields() {
     TEST_ASSERT_EQUAL_STRING("RoadRig", backupDoc["apSSID"].as<const char*>());
     TEST_ASSERT_TRUE(backupDoc["wifiClientEnabled"].as<bool>());
     TEST_ASSERT_EQUAL_STRING("GarageNet", backupDoc["wifiClientSSID"].as<const char*>());
-    TEST_ASSERT_EQUAL_INT(LOCKOUT_RUNTIME_ADVISORY, backupDoc["gpsLockoutMode"].as<int>());
     TEST_ASSERT_TRUE(backupDoc["cameraAlertsEnabled"].isNull());
     TEST_ASSERT_TRUE(backupDoc["cameraAlertRangeCm"].isNull());
     TEST_ASSERT_EQUAL_INT(123, backupDoc["brightness"].as<int>());
@@ -275,16 +265,11 @@ void test_apply_backup_document_unifies_restore_field_coverage_and_profile_resto
 
     SettingsManager manager;
     manager.mutableSettings().apPassword = "preserved-pass";
-    manager.mutableSettings().gpsLockoutKLearningEnabled = false;
-    manager.mutableSettings().gpsLockoutXLearningEnabled = true;
 
     JsonDocument doc;
     doc["_type"] = "v1simple_http_backup";
     doc["apSSID"] = "RestoredSSID";
     doc["gpsEnabled"] = true;
-    doc["gpsLockoutKaLearningEnabled"] = true;
-    doc["gpsLockoutKLearningEnabled"] = true;
-    doc["gpsLockoutXLearningEnabled"] = false;
     doc["brightness"] = 77;
     doc["colorObd"] = 0x2468;
     doc["voiceVolume"] = 42;
@@ -314,9 +299,6 @@ void test_apply_backup_document_unifies_restore_field_coverage_and_profile_resto
     TEST_ASSERT_EQUAL_STRING("RestoredSSID", restored.apSSID.c_str());
     TEST_ASSERT_EQUAL_STRING("preserved-pass", restored.apPassword.c_str());
     TEST_ASSERT_TRUE(restored.gpsEnabled);
-    TEST_ASSERT_TRUE(restored.gpsLockoutKaLearningEnabled);
-    TEST_ASSERT_TRUE(restored.gpsLockoutKLearningEnabled);
-    TEST_ASSERT_FALSE(restored.gpsLockoutXLearningEnabled);
     TEST_ASSERT_EQUAL_UINT8(77, restored.brightness);
     TEST_ASSERT_EQUAL_HEX16(0x2468, restored.colorObd);
     TEST_ASSERT_EQUAL_UINT8(42, restored.voiceVolume);
@@ -463,8 +445,8 @@ void test_gps_batch_update_skips_noop_persist_and_defers_one_save_on_change() {
     TEST_ASSERT_EQUAL_STRING("", activeNamespaceOrEmpty().c_str());
 
     GpsSettingsUpdate changedUpdate;
-    changedUpdate.hasLockoutMode = true;
-    changedUpdate.lockoutMode = LOCKOUT_RUNTIME_ENFORCE;
+    changedUpdate.hasEnabled = true;
+    changedUpdate.enabled = !manager.get().gpsEnabled;
     manager.applyGpsSettingsUpdate(changedUpdate, SettingsPersistMode::Deferred);
     TEST_ASSERT_EQUAL_UINT32(1u, manager.backupRevision());
     TEST_ASSERT_TRUE(manager.deferredPersistPending());

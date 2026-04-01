@@ -15,23 +15,7 @@ JsonObject ensureObject(JsonObject root, const char* key) {
 }  // namespace
 
 void appendStatusObservability(JsonObject root,
-                               const LockoutStatusSnapshot& lockoutSnapshot,
                                const WifiStatusSnapshot& wifiSnapshot) {
-    JsonObject lockout = ensureObject(root, "lockout");
-    lockout["mode"] = lockoutSnapshot.mode;
-    lockout["modeRaw"] = lockoutSnapshot.modeRaw;
-    lockout["coreGuardEnabled"] = lockoutSnapshot.coreGuardEnabled;
-    lockout["coreGuardTripped"] = lockoutSnapshot.coreGuardTripped;
-    lockout["coreGuardReason"] = lockoutSnapshot.coreGuardReason;
-    lockout["maxQueueDrops"] = lockoutSnapshot.maxQueueDrops;
-    lockout["maxPerfDrops"] = lockoutSnapshot.maxPerfDrops;
-    lockout["maxEventBusDrops"] = lockoutSnapshot.maxEventBusDrops;
-    lockout["queueDrops"] = lockoutSnapshot.queueDrops;
-    lockout["perfDrops"] = lockoutSnapshot.perfDrops;
-    lockout["eventBusDrops"] = lockoutSnapshot.eventBusDrops;
-    lockout["enforceRequested"] = lockoutSnapshot.enforceRequested;
-    lockout["enforceAllowed"] = lockoutSnapshot.enforceAllowed;
-
     JsonObject wifi = ensureObject(root, "wifi");
     wifi["ap_last_transition_reason_code"] = wifiSnapshot.apLastTransitionReasonCode;
     wifi["ap_last_transition_reason"] = wifiSnapshot.apLastTransitionReason;

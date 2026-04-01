@@ -104,7 +104,6 @@ void handleApiSave(WebServer& server,
     if (server.hasArg("volumeMute")) { update.hasColorVolumeMute = true; update.colorVolumeMute = server.arg("volumeMute").toInt(); }
     if (server.hasArg("rssiV1")) { update.hasColorRssiV1 = true; update.colorRssiV1 = server.arg("rssiV1").toInt(); }
     if (server.hasArg("rssiProxy")) { update.hasColorRssiProxy = true; update.colorRssiProxy = server.arg("rssiProxy").toInt(); }
-    if (server.hasArg("lockout")) { update.hasColorLockout = true; update.colorLockout = server.arg("lockout").toInt(); }
     if (server.hasArg("gps")) { update.hasColorGps = true; update.colorGps = server.arg("gps").toInt(); }
     if (server.hasArg("obd")) { update.hasColorObd = true; update.colorObd = server.arg("obd").toInt(); }
 
@@ -252,7 +251,6 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["volumeMute"] = s.colorVolumeMute;
     doc["rssiV1"] = s.colorRssiV1;
     doc["rssiProxy"] = s.colorRssiProxy;
-    doc["lockout"] = s.colorLockout;
     doc["gps"] = s.colorGps;
     doc["obd"] = s.colorObd;
     doc["freqUseBandColor"] = s.freqUseBandColor;

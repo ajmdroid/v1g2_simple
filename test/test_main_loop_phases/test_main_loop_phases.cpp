@@ -79,10 +79,7 @@ enum CallId {
     CALL_DEFERRED_SETTINGS_PERSIST,
     CALL_DEFERRED_SETTINGS_BACKUP,
     CALL_DEFERRED_BLE_BOND_BACKUP,
-    CALL_READ_EPOCH,
-    CALL_LOCKOUT_LEARNER,
-    CALL_LOCKOUT_STORE_SAVE,
-    CALL_LEARNER_PENDING_SAVE,
+    CALL_STORE_SAVE,
     CALL_YIELD_ONE_TICK,
     CALL_POWER_PROCESS,
     CALL_TOUCH_UI_PROCESS,
@@ -100,7 +97,6 @@ DisplayOrchestrationRefreshContext lastRefreshCtx;
 ConnectionStateDispatchContext lastDispatchCtx;
 WifiProcessCadenceContext lastWifiCadenceCtx;
 uint32_t lastDisplayPipelineNowMs = 0;
-bool lastDisplayPipelineSuppressed = false;
 uint32_t lastWifiVisualNowMs = 0;
 bool lastWifiVisualActiveNow = false;
 bool lastWifiDisplayPreviewRunning = false;
@@ -127,7 +123,6 @@ void resetState() {
     lastDispatchCtx = ConnectionStateDispatchContext{};
     lastWifiCadenceCtx = WifiProcessCadenceContext{};
     lastDisplayPipelineNowMs = 0;
-    lastDisplayPipelineSuppressed = false;
     lastWifiVisualNowMs = 0;
     lastWifiVisualActiveNow = false;
     lastWifiDisplayPreviewRunning = false;
@@ -195,7 +190,6 @@ LoopSettingsPrepValues readSettingsValues(void*) {
     LoopSettingsPrepValues values;
     values.enableWifi = false;
     values.enableWifiAtBoot = true;
-    values.enableSignalTraceLogging = true;
     return values;
 }
 
@@ -249,7 +243,7 @@ DisplayOrchestrationParsedResult runParsedFrame(
     const DisplayOrchestrationParsedContext& ctx) {
     noteCall(CALL_RUN_PARSED_FRAME);
     lastParsedCtx = ctx;
-    return DisplayOrchestrationParsedResult{true, true, true};
+    return DisplayOrchestrationParsedResult{true};
 }
 
 DisplayOrchestrationRefreshResult runLightweightRefresh(
@@ -260,14 +254,9 @@ DisplayOrchestrationRefreshResult runLightweightRefresh(
     return DisplayOrchestrationRefreshResult{true};
 }
 
-void runtimeDisplayPipeline(uint32_t nowMs, bool lockoutPrioritySuppressed) {
+void providerDisplayPipeline(void*, uint32_t nowMs) {
     noteCall(CALL_DISPLAY_PIPELINE);
     lastDisplayPipelineNowMs = nowMs;
-    lastDisplayPipelineSuppressed = lockoutPrioritySuppressed;
-}
-
-void providerDisplayPipeline(void*, uint32_t nowMs, bool lockoutPrioritySuppressed) {
-    runtimeDisplayPipeline(nowMs, lockoutPrioritySuppressed);
 }
 
 void runAutoPush(void*) {
@@ -390,21 +379,8 @@ void runDeferredBleBondBackup(void*, uint32_t) {
     noteCall(CALL_DEFERRED_BLE_BOND_BACKUP);
 }
 
-int64_t readEpoch(void*) {
-    noteCall(CALL_READ_EPOCH);
-    return 424242;
-}
-
-void runLockoutLearner(void*, uint32_t, int64_t) {
-    noteCall(CALL_LOCKOUT_LEARNER);
-}
-
-void runLockoutStoreSave(void*, uint32_t) {
-    noteCall(CALL_LOCKOUT_STORE_SAVE);
-}
-
-void runLearnerPendingSave(void*, uint32_t) {
-    noteCall(CALL_LEARNER_PENDING_SAVE);
+void runStoreSave(void*, uint32_t) {
+    noteCall(CALL_STORE_SAVE);
 }
 
 uint32_t loopMicrosUs(void*) {
@@ -530,10 +506,7 @@ void configureModules() {
     maintenanceProviders.runDeferredSettingsPersist = runDeferredSettingsPersist;
     maintenanceProviders.runDeferredSettingsBackup = runDeferredSettingsBackup;
     maintenanceProviders.runDeferredBleBondBackup = runDeferredBleBondBackup;
-    maintenanceProviders.nowEpochMsOr0 = readEpoch;
-    maintenanceProviders.runLockoutLearner = runLockoutLearner;
-    maintenanceProviders.runLockoutStoreSave = runLockoutStoreSave;
-    maintenanceProviders.runLearnerPendingSave = runLearnerPendingSave;
+    maintenanceProviders.runStoreSave = runStoreSave;
     periodicMaintenanceModule.begin(maintenanceProviders);
 
     LoopTailModule::Providers tailProviders;
@@ -586,21 +559,17 @@ void test_main_loop_phases_preserve_expected_order_and_phase_contracts() {
     TEST_ASSERT_FALSE(ingestValues.overloadLateThisLoop);
     TEST_ASSERT_FALSE(ingestValues.loopSettingsPrepValues.enableWifi);
     TEST_ASSERT_TRUE(ingestValues.loopSettingsPrepValues.enableWifiAtBoot);
-    TEST_ASSERT_TRUE(ingestValues.loopSettingsPrepValues.enableSignalTraceLogging);
 
     processLoopDisplayPreWifiPhase(
         1000,
         earlyValues.bootSplashHoldActive,
-        ingestValues.overloadLateThisLoop,
-        ingestValues.loopSettingsPrepValues.enableSignalTraceLogging);
+        ingestValues.overloadLateThisLoop);
 
     TEST_ASSERT_EQUAL(1500U, lastParsedCtx.nowMs);
     TEST_ASSERT_TRUE(lastParsedCtx.bootSplashHoldActive);
-    TEST_ASSERT_TRUE(lastParsedCtx.enableSignalTraceLogging);
     TEST_ASSERT_EQUAL(1500U, lastRefreshCtx.nowMs);
     TEST_ASSERT_FALSE(lastRefreshCtx.overloadLateThisLoop);
     TEST_ASSERT_EQUAL(1500U, lastDisplayPipelineNowMs);
-    TEST_ASSERT_TRUE(lastDisplayPipelineSuppressed);
 
     const LoopWifiPhaseValues wifiValues =
         processLoopWifiPhase(
@@ -685,10 +654,7 @@ void test_main_loop_phases_preserve_expected_order_and_phase_contracts() {
         CALL_DEFERRED_SETTINGS_PERSIST,
         CALL_DEFERRED_SETTINGS_BACKUP,
         CALL_DEFERRED_BLE_BOND_BACKUP,
-        CALL_READ_EPOCH,
-        CALL_LOCKOUT_LEARNER,
-        CALL_LOCKOUT_STORE_SAVE,
-        CALL_LEARNER_PENDING_SAVE,
+        CALL_STORE_SAVE,
         CALL_YIELD_ONE_TICK,
     };
 

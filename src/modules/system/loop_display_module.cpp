@@ -18,20 +18,9 @@ void LoopDisplayModule::process(const LoopDisplayContext& ctx) {
     parsedCtx.nowMs = displayNowMs;
     parsedCtx.parsedReady = parsedSignal.parsedReady;
     parsedCtx.bootSplashHoldActive = ctx.bootSplashHoldActive;
-    parsedCtx.enableSignalTraceLogging = ctx.enableSignalTraceLogging;
 
     if (providers.runParsedFrame) {
-        if (providers.timestampUs && providers.recordLockoutUs) {
-            const uint32_t startUs = providers.timestampUs(providers.timestampContext);
-            parsedResult = providers.runParsedFrame(providers.parsedFrameContext, parsedCtx);
-            if (parsedResult.lockoutEvaluated) {
-                providers.recordLockoutUs(
-                    providers.lockoutPerfContext,
-                    providers.timestampUs(providers.timestampContext) - startUs);
-            }
-        } else {
-            parsedResult = providers.runParsedFrame(providers.parsedFrameContext, parsedCtx);
-        }
+        parsedResult = providers.runParsedFrame(providers.parsedFrameContext, parsedCtx);
     }
 
     bool pipelineRanThisLoop = false;
@@ -49,16 +38,14 @@ void LoopDisplayModule::process(const LoopDisplayContext& ctx) {
                 const uint32_t startUs = providers.timestampUs(providers.timestampContext);
                 providers.runDisplayPipeline(
                     providers.displayPipelineContext,
-                    displayNowMs,
-                    parsedResult.lockoutPrioritySuppressed);
+                    displayNowMs);
                 providers.recordDispPipeUs(
                     providers.dispPipePerfContext,
                     providers.timestampUs(providers.timestampContext) - startUs);
             } else {
                 providers.runDisplayPipeline(
                     providers.displayPipelineContext,
-                    displayNowMs,
-                    parsedResult.lockoutPrioritySuppressed);
+                    displayNowMs);
             }
         }
         pipelineRanThisLoop = true;

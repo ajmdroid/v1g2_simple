@@ -56,22 +56,12 @@ void test_volWarn_suppressed_when_proxy_connected() {
     TEST_ASSERT_EQUAL_UINT(0u, volZeroWarn.detectedMs);
 }
 
-void test_volWarn_suppressed_when_preQuiet_active() {
+void test_volWarn_suppressed_when_speedVolZero_active() {
     const unsigned long t0 = mockMillis;
     volZeroWarn.evaluate(true, false, false);   // detectedMs = t0
     mockMillis = t0 + VolumeZeroWarning::DELAY_MS + 1;
 
-    const bool active = volZeroWarn.evaluate(true, false, /*preQuietActive=*/true);
-    TEST_ASSERT_FALSE(active);
-    TEST_ASSERT_EQUAL_UINT(0u, volZeroWarn.detectedMs);
-}
-
-void test_volWarn_suppressed_when_speedVolZero_active() {
-    const unsigned long t0 = mockMillis;
-    volZeroWarn.evaluate(true, false, false, /*speedVolZeroActive=*/false);   // detectedMs = t0
-    mockMillis = t0 + VolumeZeroWarning::DELAY_MS + 1;
-
-    const bool active = volZeroWarn.evaluate(true, false, false, /*speedVolZeroActive=*/true);
+    const bool active = volZeroWarn.evaluate(true, false, /*speedVolZeroActive=*/true);
     TEST_ASSERT_FALSE(active);
     TEST_ASSERT_EQUAL_UINT(0u, volZeroWarn.detectedMs);
 }
@@ -146,16 +136,16 @@ void test_volWarn_acknowledged_prevents_reshowing() {
 
 void test_volWarn_beep_called_exactly_once_when_warning_appears() {
     const unsigned long t0 = mockMillis;
-    volZeroWarn.evaluate(true, false, false, false, testBeep);   // detectedMs = t0
+    volZeroWarn.evaluate(true, false, false, testBeep);   // detectedMs = t0
 
     mockMillis = t0 + VolumeZeroWarning::DELAY_MS;
-    volZeroWarn.evaluate(true, false, false, false, testBeep);   // first active call → beep fires
+    volZeroWarn.evaluate(true, false, false, testBeep);   // first active call → beep fires
 
     // Extra calls during duration — beep must not fire again
     mockMillis += 500;
-    volZeroWarn.evaluate(true, false, false, false, testBeep);
+    volZeroWarn.evaluate(true, false, false, testBeep);
     mockMillis += 500;
-    volZeroWarn.evaluate(true, false, false, false, testBeep);
+    volZeroWarn.evaluate(true, false, false, testBeep);
 
     TEST_ASSERT_EQUAL_INT(1, s_beepCallCount);
 }
@@ -182,7 +172,6 @@ int main() {
 
     RUN_TEST(test_volWarn_not_shown_when_vol_nonzero);
     RUN_TEST(test_volWarn_suppressed_when_proxy_connected);
-    RUN_TEST(test_volWarn_suppressed_when_preQuiet_active);
     RUN_TEST(test_volWarn_suppressed_when_speedVolZero_active);
     RUN_TEST(test_volWarn_not_shown_before_delay_expires);
     RUN_TEST(test_volWarn_shown_after_delay);

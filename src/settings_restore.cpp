@@ -5,7 +5,6 @@
 
 #include "settings_internals.h"
 #include <nvs.h>
-#include "modules/gps/gps_lockout_safety.h"
 
 bool shouldSkipProfileReferenceValidation(size_t availableProfileCount,
                                           bool hasConfiguredSlotReferences) {
@@ -128,69 +127,6 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
         settings_.proxyName = sanitizeProxyNameValue(doc["proxyName"].as<String>());
     }
     restoreBool("gpsEnabled", settings_.gpsEnabled);
-    if (doc["gpsLockoutMode"].is<int>()) {
-        settings_.gpsLockoutMode = clampLockoutRuntimeModeValue(doc["gpsLockoutMode"].as<int>());
-    } else if (doc["gpsLockoutMode"].is<const char*>()) {
-        settings_.gpsLockoutMode = gpsLockoutParseRuntimeModeArg(doc["gpsLockoutMode"].as<String>(),
-                                                                settings_.gpsLockoutMode);
-    }
-    restoreBool("gpsLockoutCoreGuardEnabled", settings_.gpsLockoutCoreGuardEnabled);
-    if (doc["gpsLockoutMaxQueueDrops"].is<int>()) {
-        settings_.gpsLockoutMaxQueueDrops = static_cast<uint16_t>(
-            std::max(0, std::min(doc["gpsLockoutMaxQueueDrops"].as<int>(), 65535)));
-    }
-    if (doc["gpsLockoutMaxPerfDrops"].is<int>()) {
-        settings_.gpsLockoutMaxPerfDrops = static_cast<uint16_t>(
-            std::max(0, std::min(doc["gpsLockoutMaxPerfDrops"].as<int>(), 65535)));
-    }
-    if (doc["gpsLockoutMaxEventBusDrops"].is<int>()) {
-        settings_.gpsLockoutMaxEventBusDrops = static_cast<uint16_t>(
-            std::max(0, std::min(doc["gpsLockoutMaxEventBusDrops"].as<int>(), 65535)));
-    }
-    if (doc["gpsLockoutLearnerPromotionHits"].is<int>()) {
-        settings_.gpsLockoutLearnerPromotionHits = clampLockoutLearnerHitsValue(
-            doc["gpsLockoutLearnerPromotionHits"].as<int>());
-    }
-    if (doc["gpsLockoutLearnerRadiusE5"].is<int>()) {
-        settings_.gpsLockoutLearnerRadiusE5 = clampLockoutLearnerRadiusE5Value(
-            doc["gpsLockoutLearnerRadiusE5"].as<int>());
-    }
-    if (doc["gpsLockoutLearnerFreqToleranceMHz"].is<int>()) {
-        settings_.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
-            doc["gpsLockoutLearnerFreqToleranceMHz"].as<int>());
-    }
-    if (doc["gpsLockoutLearnerLearnIntervalHours"].is<int>()) {
-        settings_.gpsLockoutLearnerLearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
-            doc["gpsLockoutLearnerLearnIntervalHours"].as<int>());
-    }
-    if (doc["gpsLockoutLearnerUnlearnIntervalHours"].is<int>()) {
-        settings_.gpsLockoutLearnerUnlearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
-            doc["gpsLockoutLearnerUnlearnIntervalHours"].as<int>());
-    }
-    if (doc["gpsLockoutLearnerUnlearnCount"].is<int>()) {
-        settings_.gpsLockoutLearnerUnlearnCount = clampLockoutLearnerUnlearnCountValue(
-            doc["gpsLockoutLearnerUnlearnCount"].as<int>());
-    }
-    if (doc["gpsLockoutManualDemotionMissCount"].is<int>()) {
-        settings_.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
-            doc["gpsLockoutManualDemotionMissCount"].as<int>());
-    }
-    restoreBool("gpsLockoutKaLearningEnabled", settings_.gpsLockoutKaLearningEnabled);
-    restoreBool("gpsLockoutKLearningEnabled", settings_.gpsLockoutKLearningEnabled);
-    restoreBool("gpsLockoutXLearningEnabled", settings_.gpsLockoutXLearningEnabled);
-    restoreBool("gpsLockoutPreQuiet", settings_.gpsLockoutPreQuiet);
-    if (doc["gpsLockoutPreQuietBufferE5"].is<int>()) {
-        settings_.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
-            doc["gpsLockoutPreQuietBufferE5"].as<int>());
-    }
-    if (doc["gpsLockoutMaxHdopX10"].is<int>()) {
-        settings_.gpsLockoutMaxHdopX10 = clampLockoutGpsMaxHdopX10Value(
-            doc["gpsLockoutMaxHdopX10"].as<int>());
-    }
-    if (doc["gpsLockoutMinLearnerSpeedMph"].is<int>()) {
-        settings_.gpsLockoutMinLearnerSpeedMph = clampLockoutGpsMinLearnerSpeedMphValue(
-            doc["gpsLockoutMinLearnerSpeedMph"].as<int>());
-    }
     if (doc["lastV1Address"].is<const char*>()) {
         settings_.lastV1Address = sanitizeLastV1AddressValue(doc["lastV1Address"].as<String>());
     }
@@ -237,7 +173,6 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["colorVolumeMute"].is<int>()) settings_.colorVolumeMute = doc["colorVolumeMute"];
     if (doc["colorRssiV1"].is<int>()) settings_.colorRssiV1 = doc["colorRssiV1"];
     if (doc["colorRssiProxy"].is<int>()) settings_.colorRssiProxy = doc["colorRssiProxy"];
-    if (doc["colorLockout"].is<int>()) settings_.colorLockout = doc["colorLockout"];
     if (doc["colorGps"].is<int>()) settings_.colorGps = doc["colorGps"];
     if (doc["colorObd"].is<int>()) settings_.colorObd = doc["colorObd"];
     restoreBool("freqUseBandColor", settings_.freqUseBandColor);
@@ -253,7 +188,6 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     restoreBool("hideVolumeIndicator", settings_.hideVolumeIndicator);
     restoreBool("hideRssiIndicator", settings_.hideRssiIndicator);
     restoreBool("enableWifiAtBoot", settings_.enableWifiAtBoot);
-    restoreBool("enableSignalTraceLogging", settings_.enableSignalTraceLogging);
 
     // ============================================================================
     // Voice Settings

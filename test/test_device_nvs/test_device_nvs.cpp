@@ -343,7 +343,7 @@ void test_nvs_has_free_entries() {
                       (unsigned long)stats.used_entries,
                       (unsigned long)stats.free_entries,
                       (unsigned long)stats.namespace_count);
-        // Should have at least 100 free entries for settings + lockouts
+        // Should have at least 100 free entries for settings
         TEST_ASSERT_GREATER_THAN_UINT32(100, stats.free_entries);
     } else {
         TEST_IGNORE_MESSAGE("nvs_get_stats not available on this IDF version");

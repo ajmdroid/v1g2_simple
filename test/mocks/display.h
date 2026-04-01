@@ -52,12 +52,6 @@ public:
     int lastProfileIndicatorSlot = -1;
     int showLowBatteryCalls = 0;
     int showShutdownCalls = 0;
-    int setLockoutMutedCalls = 0;
-    bool lastLockoutMutedValue = false;
-    int setLockoutIndicatorCalls = 0;
-    bool lastLockoutIndicatorValue = false;
-    int setPreQuietActiveCalls = 0;
-    bool lastPreQuietActiveValue = false;
     int setSpeedVolZeroActiveCalls = 0;
     bool lastSpeedVolZeroActiveValue = false;
     int setBleContextCalls = 0;
@@ -118,12 +112,6 @@ public:
         lastProfileIndicatorSlot = -1;
         showLowBatteryCalls = 0;
         showShutdownCalls = 0;
-        setLockoutMutedCalls = 0;
-        lastLockoutMutedValue = false;
-        setLockoutIndicatorCalls = 0;
-        lastLockoutIndicatorValue = false;
-        setPreQuietActiveCalls = 0;
-        lastPreQuietActiveValue = false;
         setSpeedVolZeroActiveCalls = 0;
         lastSpeedVolZeroActiveValue = false;
         setBleContextCalls = 0;
@@ -196,21 +184,6 @@ public:
         lastProfileIndicatorSlot = slot;
     }
     
-    void setLockoutMuted(bool muted) { 
-        setLockoutMutedCalls++; 
-        lastLockoutMutedValue = muted;
-    }
-
-    void setLockoutIndicator(bool show) {
-        setLockoutIndicatorCalls++;
-        lastLockoutIndicatorValue = show;
-    }
-
-    void setPreQuietActive(bool active) {
-        setPreQuietActiveCalls++;
-        lastPreQuietActiveValue = active;
-    }
-
     void setSpeedVolZeroActive(bool active) {
         setSpeedVolZeroActiveCalls++;
         lastSpeedVolZeroActiveValue = active;

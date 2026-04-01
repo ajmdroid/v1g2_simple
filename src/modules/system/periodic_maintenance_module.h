@@ -31,15 +31,8 @@ public:
         void (*runDeferredBleBondBackup)(void* ctx, uint32_t nowMs) = nullptr;
         void* deferredBleBondBackupContext = nullptr;
 
-        int64_t (*nowEpochMsOr0)(void* ctx) = nullptr;
-        void* epochContext = nullptr;
-        void (*runLockoutLearner)(void* ctx, uint32_t nowMs, int64_t epochMs) = nullptr;
-        void* lockoutLearnerContext = nullptr;
-
-        void (*runLockoutStoreSave)(void* ctx, uint32_t nowMs) = nullptr;
-        void* lockoutStoreSaveContext = nullptr;
-        void (*runLearnerPendingSave)(void* ctx, uint32_t nowMs) = nullptr;
-        void* learnerPendingSaveContext = nullptr;
+        void (*runStoreSave)(void* ctx, uint32_t nowMs) = nullptr;
+        void* storeSaveContext = nullptr;
     };
 
     void begin(const Providers& hooks);

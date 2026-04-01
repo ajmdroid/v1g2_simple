@@ -75,14 +75,12 @@ LoopIngestPhaseValues processLoopIngestPhase(
 void processLoopDisplayPreWifiPhase(
     const unsigned long nowMs,
     const bool bootSplashHoldActive,
-    const bool overloadLateThisLoop,
-    const bool enableSignalTraceLogging) {
+    const bool overloadLateThisLoop) {
 
     LoopDisplayContext loopDisplayCtx;
     loopDisplayCtx.nowMs = nowMs;
     loopDisplayCtx.bootSplashHoldActive = bootSplashHoldActive;
     loopDisplayCtx.overloadLateThisLoop = overloadLateThisLoop;
-    loopDisplayCtx.enableSignalTraceLogging = enableSignalTraceLogging;
     loopDisplayModule.process(loopDisplayCtx);
 
     LoopPostDisplayContext loopPostDisplayPreWifiCtx;

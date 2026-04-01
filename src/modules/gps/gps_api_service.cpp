@@ -5,10 +5,7 @@
 
 #ifndef UNIT_TEST
 #include "gps_runtime_module.h"
-#include "gps_lockout_safety.h"
 #include "gps_observation_log.h"
-#include "../lockout/lockout_learner.h"
-#include "../lockout/lockout_band_policy.h"
 #include "../speed/speed_source_selector.h"
 #include "../system/system_event_bus.h"
 #include "../../settings.h"
@@ -23,10 +20,7 @@ void sendStatus(WebServer& server,
                 GpsRuntimeModule& gpsRuntimeModule,
                 SpeedSourceSelector& speedSourceSelector,
                 SettingsManager& settingsManager,
-                GpsObservationLog& gpsObservationLog,
-                LockoutLearner& lockoutLearner,
-                PerfCounters& perfCounters,
-                SystemEventBus& systemEventBus) {
+                GpsObservationLog& gpsObservationLog) {
     const uint32_t nowMs = millis();
     const GpsRuntimeStatus gpsStatus = gpsRuntimeModule.snapshot(nowMs);
     const SpeedSelectorStatus speedStatus = speedSourceSelector.snapshot();
@@ -129,45 +123,6 @@ void sendStatus(WebServer& server,
         speedObj["gpsAgeMs"] = speedStatus.gpsAgeMs;
     }
 
-    const V1Settings& settings = settingsManager.get();
-    const GpsLockoutCoreGuardStatus lockoutGuard = gpsLockoutEvaluateCoreGuard(
-        settings.gpsLockoutCoreGuardEnabled,
-        settings.gpsLockoutMaxQueueDrops,
-        settings.gpsLockoutMaxPerfDrops,
-        settings.gpsLockoutMaxEventBusDrops,
-        perfCounters.queueDrops.load(),
-        perfCounters.perfDrop.load(),
-        systemEventBus.getDropCount());
-    JsonObject lockoutObj = doc["lockout"].to<JsonObject>();
-    lockoutObj["mode"] = lockoutRuntimeModeName(settings.gpsLockoutMode);
-    lockoutObj["modeRaw"] = static_cast<int>(settings.gpsLockoutMode);
-    lockoutObj["coreGuardEnabled"] = settings.gpsLockoutCoreGuardEnabled;
-    lockoutObj["maxQueueDrops"] = settings.gpsLockoutMaxQueueDrops;
-    lockoutObj["maxPerfDrops"] = settings.gpsLockoutMaxPerfDrops;
-    lockoutObj["maxEventBusDrops"] = settings.gpsLockoutMaxEventBusDrops;
-    lockoutObj["coreGuardTripped"] = lockoutGuard.tripped;
-    lockoutObj["coreGuardReason"] = lockoutGuard.reason;
-    lockoutObj["learnerPromotionHits"] = static_cast<uint32_t>(lockoutLearner.promotionHits());
-    lockoutObj["learnerRadiusE5"] = static_cast<uint32_t>(lockoutLearner.radiusE5());
-    lockoutObj["learnerFreqToleranceMHz"] = static_cast<uint32_t>(lockoutLearner.freqToleranceMHz());
-    lockoutObj["learnerLearnIntervalHours"] = static_cast<uint32_t>(lockoutLearner.learnIntervalHours());
-    lockoutObj["learnerUnlearnIntervalHours"] = static_cast<uint32_t>(settings.gpsLockoutLearnerUnlearnIntervalHours);
-    lockoutObj["learnerUnlearnCount"] = static_cast<uint32_t>(settings.gpsLockoutLearnerUnlearnCount);
-    lockoutObj["manualDemotionMissCount"] = static_cast<uint32_t>(settings.gpsLockoutManualDemotionMissCount);
-    lockoutObj["kaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
-    lockoutObj["kLearningEnabled"] = settings.gpsLockoutKLearningEnabled;
-    lockoutObj["xLearningEnabled"] = settings.gpsLockoutXLearningEnabled;
-    lockoutObj["preQuiet"] = settings.gpsLockoutPreQuiet;
-    lockoutObj["preQuietBufferE5"] = settings.gpsLockoutPreQuietBufferE5;
-    lockoutObj["maxHdopX10"] = settings.gpsLockoutMaxHdopX10;
-    lockoutObj["minLearnerSpeedMph"] = settings.gpsLockoutMinLearnerSpeedMph;
-    lockoutObj["minSatellites"] = LOCKOUT_GPS_MIN_SATELLITES;
-    lockoutObj["enforceAllowed"] = (settings.gpsLockoutMode == LOCKOUT_RUNTIME_ENFORCE) &&
-                                   !lockoutGuard.tripped;
-    // Backward-compatible top-level aliases used by older web clients.
-    doc["gpsLockoutKaLearningEnabled"] = settings.gpsLockoutKaLearningEnabled;
-    doc["gpsLockoutPreQuiet"] = settings.gpsLockoutPreQuiet;
-
     sendJsonStream(server, doc);
 }
 
@@ -176,9 +131,6 @@ void handleApiStatus(WebServer& server,
                      SpeedSourceSelector& speedSourceSelector,
                      SettingsManager& settingsManager,
                      GpsObservationLog& gpsObservationLog,
-                     LockoutLearner& lockoutLearner,
-                     PerfCounters& perfCounters,
-                     SystemEventBus& systemEventBus,
                      void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (markUiActivity) {
         markUiActivity(uiActivityCtx);
@@ -187,10 +139,7 @@ void handleApiStatus(WebServer& server,
                gpsRuntimeModule,
                speedSourceSelector,
                settingsManager,
-               gpsObservationLog,
-               lockoutLearner,
-               perfCounters,
-               systemEventBus);
+               gpsObservationLog);
 }
 
 void sendObservations(WebServer& server,

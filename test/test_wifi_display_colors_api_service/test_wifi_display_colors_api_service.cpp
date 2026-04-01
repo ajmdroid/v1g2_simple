@@ -56,7 +56,6 @@ static void applyDisplaySettingsUpdateForTest(FakeRuntime& rt, const DisplaySett
     if (update.hasColorVolumeMute) rt.settings.colorVolumeMute = update.colorVolumeMute;
     if (update.hasColorRssiV1) rt.settings.colorRssiV1 = update.colorRssiV1;
     if (update.hasColorRssiProxy) rt.settings.colorRssiProxy = update.colorRssiProxy;
-    if (update.hasColorLockout) rt.settings.colorLockout = update.colorLockout;
     if (update.hasColorGps) rt.settings.colorGps = update.colorGps;
     if (update.hasColorObd) rt.settings.colorObd = update.colorObd;
     if (update.hasFreqUseBandColor) rt.settings.freqUseBandColor = update.freqUseBandColor;
@@ -99,7 +98,6 @@ static void resetDisplaySettingsForTest(FakeRuntime& rt) {
     rt.settings.colorVolumeMute = 0xFFE0;
     rt.settings.colorRssiV1 = 0x07E0;
     rt.settings.colorRssiProxy = 0x001F;
-    rt.settings.colorLockout = 0x07E0;
     rt.settings.colorGps = 0x07FF;
     rt.settings.colorObd = 0x001F;
     rt.settings.freqUseBandColor = false;
@@ -165,7 +163,6 @@ void test_get_serializes_display_payload_only() {
     rt.settings.brightness = 67;
     rt.settings.displayStyle = DISPLAY_STYLE_SERPENTINE;
     rt.settings.voiceVolume = 55;
-    rt.settings.enableSignalTraceLogging = false;
     rt.settings.gpsEnabled = true;
 
     WifiDisplayColorsApiService::handleApiGet(server, makeRuntime(rt));
@@ -178,7 +175,6 @@ void test_get_serializes_display_payload_only() {
     TEST_ASSERT_TRUE(responseContains(server, "\"brightness\":67"));
     TEST_ASSERT_TRUE(responseContains(server, "\"displayStyle\":3"));
     TEST_ASSERT_FALSE(responseContains(server, "\"voiceVolume\":"));
-    TEST_ASSERT_FALSE(responseContains(server, "\"enableSignalTraceLogging\":"));
     TEST_ASSERT_FALSE(responseContains(server, "\"gpsEnabled\":"));
 }
 
@@ -250,12 +246,10 @@ void test_save_ignores_non_display_args() {
     WebServer server(80);
     FakeRuntime rt;
     rt.settings.voiceVolume = 67;
-    rt.settings.enableSignalTraceLogging = false;
     rt.settings.gpsEnabled = true;
 
     server.setArg("voiceVolume", "71");
     server.setArg("gpsEnabled", "false");
-    server.setArg("enableSignalTraceLogging", "true");
 
     WifiDisplayColorsApiService::handleApiSave(
         server,
@@ -264,7 +258,6 @@ void test_save_ignores_non_display_args() {
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_UINT8(67, rt.settings.voiceVolume);
-    TEST_ASSERT_FALSE(rt.settings.enableSignalTraceLogging);
     TEST_ASSERT_TRUE(rt.settings.gpsEnabled);
     TEST_ASSERT_EQUAL_INT(0, rt.setDisplayBrightnessCalls);
 }
@@ -299,7 +292,6 @@ void test_reset_restores_defaults_and_triggers_preview() {
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
     TEST_ASSERT_EQUAL_UINT16(0xF800, rt.settings.colorBogey);
     TEST_ASSERT_EQUAL_UINT16(0x001F, rt.settings.colorBandL);
-    TEST_ASSERT_EQUAL_UINT16(0x07E0, rt.settings.colorLockout);
     TEST_ASSERT_EQUAL_UINT16(0x07FF, rt.settings.colorGps);
     TEST_ASSERT_EQUAL_UINT16(0x001F, rt.settings.colorObd);
     TEST_ASSERT_FALSE(rt.settings.freqUseBandColor);

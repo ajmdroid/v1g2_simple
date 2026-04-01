@@ -65,7 +65,7 @@ PerfDisplayScreen V1Display::perfScreenForMode(ScreenMode mode) {
 // ============================================================================
 // Volume-zero warning state machine
 // Shows a flashing "VOL 0" warning when the V1 volume is 0, no app is
-// connected, and the lockout pre-quiet feature is not active.
+// connected, and speed-mute has not intentionally set volume to 0.
 // ============================================================================
 // VolumeZeroWarning struct — see include/display_vol_warn.h
 #include "../include/display_vol_warn.h"

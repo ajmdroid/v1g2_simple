@@ -22,7 +22,6 @@ dmaLargestMin
 bleProcessMax_us
 touchMax_us
 gpsMax_us
-lockoutMax_us
 wifiMax_us
 uiToScan
 uiToRest
@@ -39,9 +38,6 @@ fadeLastDecision
 fadeLastCurrentVol
 fadeLastOriginalVol
 fadeLastDecisionMs
-preQuietDrop
-preQuietRestore
-preQuietRestoreRetry
 speedVolDrop
 speedVolRestore
 speedVolRetry
@@ -155,8 +151,6 @@ pushNowFailures
 audioPlayCount
 audioPlayBusy
 audioTaskFail
-sigObsQueueDrops
-sigObsWriteFail
 minLargestBlock
 fsMax_us
 sdMax_us
@@ -170,8 +164,6 @@ bleConnectMax_us
 bleDiscoveryMax_us
 bleSubscribeMax_us
 dispPipeMax_us
-lockoutSaveMax_us
-learnerSaveMax_us
 timeSaveMax_us
 perfReportMax_us
 prioritySelectDisplayIndex

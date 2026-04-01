@@ -12,7 +12,6 @@
 #include "packet_parser.h"
 #include "settings.h"
 #include "modules/gps/gps_runtime_module.h"
-#include "modules/lockout/lockout_orchestration_module.h"
 #include "perf_metrics.h"
 #endif
 
@@ -26,7 +25,6 @@ void DisplayOrchestrationModule::begin(V1Display* displayPtr,
                                        PacketParser* parserPtr,
                                        SettingsManager* settingsManager,
                                        GpsRuntimeModule* gpsModule,
-                                       LockoutOrchestrationModule* lockoutModule,
                                        VolumeFadeModule* volumeFadeModule,
                                        SpeedMuteModule* speedMuteModule,
                                        QuietCoordinatorModule* quietCoordinator) {
@@ -38,7 +36,6 @@ void DisplayOrchestrationModule::begin(V1Display* displayPtr,
     parser = parserPtr;
     settings = settingsManager;
     gpsRuntime = gpsModule;
-    lockout = lockoutModule;
     volumeFade = volumeFadeModule;
     speedMute = speedMuteModule;
     quiet = quietCoordinator;
@@ -57,34 +54,23 @@ void DisplayOrchestrationModule::syncQuietPresentation() {
     }
 
     const QuietPresentationState& presentation = quiet->getPresentationState();
-    display->setPreQuietActive(presentation.preQuietActive);
     display->setSpeedVolZeroActive(presentation.speedVolZeroActive);
-}
-
-bool DisplayOrchestrationModule::executeLockoutVolumeCommand(const LockoutVolumeCommand& command,
-                                                             const uint32_t nowMs) {
-    return quiet && quiet->handleLockoutVolumeCommand(command, nowMs, volumeFade);
-}
-
-bool DisplayOrchestrationModule::retryPendingPreQuietRestore(const uint32_t nowMs) {
-    return quiet && quiet->retryPendingPreQuietRestore(nowMs);
 }
 
 bool DisplayOrchestrationModule::processSpeedVolume(const uint32_t nowMs) {
     if (!quiet || !speedMute) {
         return false;
     }
-    return quiet->processSpeedVolume(nowMs, *speedMute, lockout, volumeFade);
+    return quiet->processSpeedVolume(nowMs, *speedMute, volumeFade);
 }
 
 bool DisplayOrchestrationModule::retryPendingSpeedVolRestore(const uint32_t nowMs) {
     return quiet && quiet->retryPendingSpeedVolRestore(nowMs);
 }
 
-void DisplayOrchestrationModule::executeVolumeFade(const uint32_t nowMs,
-                                                   const bool lockoutPrioritySuppressed) {
+void DisplayOrchestrationModule::executeVolumeFade(const uint32_t nowMs) {
     if (quiet) {
-        (void)quiet->executeVolumeFade(nowMs, lockoutPrioritySuppressed, volumeFade);
+        (void)quiet->executeVolumeFade(nowMs, volumeFade);
     }
 }
 
@@ -112,30 +98,15 @@ void DisplayOrchestrationModule::processEarly(const DisplayOrchestrationEarlyCon
 DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         const DisplayOrchestrationParsedContext& ctx) {
     DisplayOrchestrationParsedResult result;
-    if (!display || !ble || !bleQueue || !preview || !parser || !settings ||
-        !gpsRuntime || !lockout) {
+    if (!display || !ble || !bleQueue || !preview || !parser || !settings || !gpsRuntime) {
         return result;
     }
 
     if (ctx.parsedReady && !ctx.bootSplashHoldActive) {
         const GpsRuntimeStatus gpsStatus = gpsRuntime->snapshot(ctx.nowMs);
-        const bool proxyClientConnected = ble->isProxyClientConnected();
-        const auto lockoutResult = lockout->process(
-            ctx.nowMs,
-            gpsStatus,
-            proxyClientConnected,
-            ctx.enableSignalTraceLogging);
-
-        result.lockoutEvaluated = true;
-        result.lockoutPrioritySuppressed = lockoutResult.prioritySuppressed;
-        const bool lockoutVolumeCommandExecuted =
-            executeLockoutVolumeCommand(lockoutResult.volumeCommand, ctx.nowMs);
-
-        // Retry any pending pre-quiet restore that hasn't been confirmed yet.
-        const bool pqRestorePending = retryPendingPreQuietRestore(ctx.nowMs);
 
         // Speed volume: lower/restore V1 volume based on speed mute state.
-        // Defers to pre-quiet when it owns volume. Gates volume fade.
+        // Gates volume fade.
         const bool speedVolBusy = processSpeedVolume(ctx.nowMs);
 
         syncQuietPresentation();
@@ -149,23 +120,13 @@ DisplayOrchestrationParsedResult DisplayOrchestrationModule::processParsedFrame(
         }
 
         result.runDisplayPipeline = !preview->isRunning();
-        if (result.runDisplayPipeline && !lockoutVolumeCommandExecuted &&
-            !pqRestorePending && !speedVolBusy) {
-            executeVolumeFade(ctx.nowMs, result.lockoutPrioritySuppressed);
+        if (result.runDisplayPipeline && !speedVolBusy) {
+            executeVolumeFade(ctx.nowMs);
         }
         return result;
     }
 
     syncQuietPresentation();
-
-    if (!ctx.bootSplashHoldActive) {
-        const uint32_t lastParsedMs = bleQueue->getLastParsedTimestamp();
-        if (!ble->isConnected() ||
-            lastParsedMs == 0 ||
-            static_cast<uint32_t>(ctx.nowMs - lastParsedMs) > LOCKOUT_INDICATOR_STALE_MS) {
-            display->setLockoutIndicator(false);
-        }
-    }
 
     return result;
 }

@@ -68,119 +68,6 @@ enum VoiceAlertMode {
     VOICE_MODE_BAND_FREQ = 3     // Band + frequency ("Ka 34.7")
 };
 
-// GPS lockout runtime behavior used by the active lockout runtime stack.
-enum LockoutRuntimeMode : uint8_t {
-    LOCKOUT_RUNTIME_OFF = 0,       // No lockout evaluation or suppression
-    LOCKOUT_RUNTIME_SHADOW = 1,    // Evaluate only; never suppress
-    LOCKOUT_RUNTIME_ADVISORY = 2,  // Advisory-only decisions; never suppress
-    LOCKOUT_RUNTIME_ENFORCE = 3    // Enforcement allowed (subject to guardrails)
-};
-
-inline LockoutRuntimeMode clampLockoutRuntimeModeValue(int rawMode) {
-    int clamped = std::max(static_cast<int>(LOCKOUT_RUNTIME_OFF),
-                           std::min(rawMode, static_cast<int>(LOCKOUT_RUNTIME_ENFORCE)));
-    return static_cast<LockoutRuntimeMode>(clamped);
-}
-
-inline const char* lockoutRuntimeModeName(LockoutRuntimeMode mode) {
-    switch (mode) {
-        case LOCKOUT_RUNTIME_SHADOW:
-            return "shadow";
-        case LOCKOUT_RUNTIME_ADVISORY:
-            return "advisory";
-        case LOCKOUT_RUNTIME_ENFORCE:
-            return "enforce";
-        case LOCKOUT_RUNTIME_OFF:
-        default:
-            return "off";
-    }
-}
-
-// Lockout learner runtime tuning limits (safety-clamped).
-static constexpr uint8_t LOCKOUT_LEARNER_HITS_DEFAULT = 3;
-static constexpr uint8_t LOCKOUT_LEARNER_HITS_MIN = 2;
-static constexpr uint8_t LOCKOUT_LEARNER_HITS_MAX = 6;
-static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_DEFAULT = 135;  // ~150m / ~492ft
-static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_MIN = 45;       // ~50m / ~164ft
-static constexpr uint16_t LOCKOUT_LEARNER_RADIUS_E5_MAX = 360;      // ~400m / ~1312ft
-static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_DEFAULT = 10;     // MHz
-static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_MIN = 2;          // MHz
-static constexpr uint16_t LOCKOUT_LEARNER_FREQ_TOL_MAX = 20;         // MHz
-static constexpr uint8_t LOCKOUT_LEARNER_LEARN_INTERVAL_HOURS_DEFAULT = 0;   // 0 = disabled
-static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_INTERVAL_HOURS_DEFAULT = 0; // 0 = disabled
-static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT = 0;          // 0 = legacy decay
-static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MIN = 0;
-static constexpr uint8_t LOCKOUT_LEARNER_UNLEARN_COUNT_MAX = 10;
-static constexpr uint8_t LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT = 0;     // 0 = never auto-delete
-
-// Pre-quiet approach buffer: extra radius (E5) added to zone radius for early volume drop.
-static constexpr uint16_t LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT = 0;     // 0 = same as zone
-static constexpr uint16_t LOCKOUT_PRE_QUIET_BUFFER_E5_MAX = 135;       // ~150m / ~500ft
-
-// GPS quality gates for lockout evaluation and learning.
-static constexpr uint8_t  LOCKOUT_GPS_MIN_SATELLITES = 4;                      // Minimum sats for 3D fix
-static constexpr uint16_t LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT = 50;               // 5.0 HDOP (stored as ×10)
-static constexpr uint16_t LOCKOUT_GPS_MAX_HDOP_X10_MIN = 10;                   // 1.0 HDOP
-static constexpr uint16_t LOCKOUT_GPS_MAX_HDOP_X10_MAX = 100;                  // 10.0 HDOP
-static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT = 5;       // Minimum speed for learner
-static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MIN = 0;           // 0 = disabled
-static constexpr uint8_t  LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MAX = 20;          // 20 mph ceiling
-
-// Maximum age of GPS course before treating it as invalid for directional matching.
-// Fail-open: stale course → directional entries don't match → alert plays.
-static constexpr uint32_t LOCKOUT_GPS_COURSE_MAX_AGE_MS = 5000;                // 5 seconds
-
-inline uint16_t clampLockoutPreQuietBufferE5Value(int rawBuffer) {
-    return static_cast<uint16_t>(std::max(0,
-                                          std::min(rawBuffer, static_cast<int>(LOCKOUT_PRE_QUIET_BUFFER_E5_MAX))));
-}
-
-inline uint16_t clampLockoutGpsMaxHdopX10Value(int rawHdopX10) {
-    return static_cast<uint16_t>(std::max(static_cast<int>(LOCKOUT_GPS_MAX_HDOP_X10_MIN),
-                                          std::min(rawHdopX10, static_cast<int>(LOCKOUT_GPS_MAX_HDOP_X10_MAX))));
-}
-
-inline uint8_t clampLockoutGpsMinLearnerSpeedMphValue(int rawSpeed) {
-    return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MIN),
-                                         std::min(rawSpeed, static_cast<int>(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_MAX))));
-}
-
-inline uint8_t clampLockoutLearnerHitsValue(int rawHits) {
-    return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_HITS_MIN),
-                                         std::min(rawHits, static_cast<int>(LOCKOUT_LEARNER_HITS_MAX))));
-}
-
-inline uint16_t clampLockoutLearnerRadiusE5Value(int rawRadiusE5) {
-    return static_cast<uint16_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_RADIUS_E5_MIN),
-                                          std::min(rawRadiusE5, static_cast<int>(LOCKOUT_LEARNER_RADIUS_E5_MAX))));
-}
-
-inline uint16_t clampLockoutLearnerFreqTolValue(int rawFreqTol) {
-    return static_cast<uint16_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_FREQ_TOL_MIN),
-                                          std::min(rawFreqTol, static_cast<int>(LOCKOUT_LEARNER_FREQ_TOL_MAX))));
-}
-
-inline uint8_t clampLockoutLearnerIntervalHoursValue(int rawHours) {
-    if (rawHours <= 0) return 0;
-    if (rawHours <= 1) return 1;
-    if (rawHours <= 4) return 4;
-    if (rawHours <= 12) return 12;
-    return 24;
-}
-
-inline uint8_t clampLockoutLearnerUnlearnCountValue(int rawCount) {
-    return static_cast<uint8_t>(std::max(static_cast<int>(LOCKOUT_LEARNER_UNLEARN_COUNT_MIN),
-                                         std::min(rawCount,
-                                                  static_cast<int>(LOCKOUT_LEARNER_UNLEARN_COUNT_MAX))));
-}
-
-inline uint8_t clampLockoutManualDemotionMissCountValue(int rawCount) {
-    if (rawCount <= 0) return 0;
-    if (rawCount <= 10) return 10;
-    if (rawCount <= 25) return 25;
-    return 50;
-}
-
 // Auto-push profile slot
 struct AutoPushSlot {
     String profileName;
@@ -207,25 +94,6 @@ struct V1Settings {
     bool proxyBLE;          // Enable BLE proxy for companion app
     String proxyName;       // BLE device name when proxying
     bool gpsEnabled;        // Enable GPS runtime module (optional hardware)
-    LockoutRuntimeMode gpsLockoutMode;    // Lockout runtime mode (off/shadow/advisory/enforce)
-    bool gpsLockoutCoreGuardEnabled;      // Block lockout enforcement if core health degrades
-    uint16_t gpsLockoutMaxQueueDrops;     // Max allowed queue drops before guard trips
-    uint16_t gpsLockoutMaxPerfDrops;      // Max allowed perf snapshot drops before guard trips
-    uint16_t gpsLockoutMaxEventBusDrops;  // Max allowed system-event-bus drops before guard trips
-    uint8_t gpsLockoutLearnerPromotionHits;     // Candidate hits required before promotion
-    uint16_t gpsLockoutLearnerRadiusE5;         // Promotion radius in E5 units
-    uint16_t gpsLockoutLearnerFreqToleranceMHz; // Promotion frequency tolerance in MHz
-    uint8_t gpsLockoutLearnerLearnIntervalHours;   // 0/1/4/12/24h between counted learner hits
-    uint8_t gpsLockoutLearnerUnlearnIntervalHours; // 0/1/4/12/24h between counted clean passes
-    uint8_t gpsLockoutLearnerUnlearnCount;         // Misses to auto-remove learned lockouts (0=legacy)
-    uint8_t gpsLockoutManualDemotionMissCount;     // Misses to auto-remove manual lockouts (0=disabled)
-    bool gpsLockoutKaLearningEnabled;              // Allow Ka lockout learning/enforcement (default: false)
-    bool gpsLockoutKLearningEnabled;               // Allow K lockout learning/enforcement (default: true)
-    bool gpsLockoutXLearningEnabled;               // Allow X lockout learning/enforcement (default: true)
-    bool gpsLockoutPreQuiet;                          // Pre-drop to muted volume in lockout zones (default: false)
-    uint16_t gpsLockoutPreQuietBufferE5;                // Extra radius for pre-quiet approach zone (0 = same as zone)
-    uint16_t gpsLockoutMaxHdopX10;                    // Max HDOP ×10 for lockout eval/learn (50 = 5.0, 0 = disabled)
-    uint8_t gpsLockoutMinLearnerSpeedMph;             // Min speed (mph) for learner ingestion (0 = disabled)
 
     // Display settings
     bool turnOffDisplay;
@@ -259,7 +127,6 @@ struct V1Settings {
     uint16_t colorVolumeMute;    // Volume indicator muted volume color
     uint16_t colorRssiV1;        // RSSI indicator V1 label color
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
-    uint16_t colorLockout;       // Lockout "L" badge color
     uint16_t colorGps;           // GPS "G" satellite badge color
     uint16_t colorObd;           // OBD "OBD" status text color when connected
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
@@ -275,7 +142,6 @@ struct V1Settings {
 
     // Development settings
     bool enableWifiAtBoot;       // Start WiFi automatically on boot (bypasses BOOT button)
-    bool enableSignalTraceLogging; // Log all priority bands to lockout SD CSV for diagnostics
 
     // Voice alerts (when no app connected)
     VoiceAlertMode voiceAlertMode;  // What content to speak (disabled/band/freq/band+freq)
@@ -384,25 +250,6 @@ struct V1Settings {
         proxyBLE(true),
         proxyName("V1-Proxy"),  // Must match NVS load() default
         gpsEnabled(false),      // GPS disabled by default until module is installed
-        gpsLockoutMode(LOCKOUT_RUNTIME_OFF), // Lockout runtime disabled by default
-        gpsLockoutCoreGuardEnabled(true),    // Guardrail ON by default (safety-first)
-        gpsLockoutMaxQueueDrops(0),          // Any core drop trips guard by default
-        gpsLockoutMaxPerfDrops(0),           // Any core drop trips guard by default
-        gpsLockoutMaxEventBusDrops(0),       // Any core drop trips guard by default
-        gpsLockoutLearnerPromotionHits(LOCKOUT_LEARNER_HITS_DEFAULT),
-        gpsLockoutLearnerRadiusE5(LOCKOUT_LEARNER_RADIUS_E5_DEFAULT),
-        gpsLockoutLearnerFreqToleranceMHz(LOCKOUT_LEARNER_FREQ_TOL_DEFAULT),
-        gpsLockoutLearnerLearnIntervalHours(LOCKOUT_LEARNER_LEARN_INTERVAL_HOURS_DEFAULT),
-        gpsLockoutLearnerUnlearnIntervalHours(LOCKOUT_LEARNER_UNLEARN_INTERVAL_HOURS_DEFAULT),
-        gpsLockoutLearnerUnlearnCount(LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT),
-        gpsLockoutManualDemotionMissCount(LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT),
-        gpsLockoutKaLearningEnabled(false),
-        gpsLockoutKLearningEnabled(true),
-        gpsLockoutXLearningEnabled(true),
-        gpsLockoutPreQuiet(false),
-        gpsLockoutPreQuietBufferE5(LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT),
-        gpsLockoutMaxHdopX10(LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT),
-        gpsLockoutMinLearnerSpeedMph(LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT),
         turnOffDisplay(false),
         brightness(200),
         displayStyle(DISPLAY_STYLE_CLASSIC),  // Default to classic 7-segment
@@ -432,7 +279,6 @@ struct V1Settings {
         colorVolumeMute(0x7BEF), // Grey (muted volume) — matches NVS default
         colorRssiV1(0x07E0),     // Green (V1 RSSI label) — matches NVS default
         colorRssiProxy(0x001F),  // Blue (proxy RSSI label) — matches NVS default
-        colorLockout(0x07E0),     // Green lockout badge (matches existing lockout default)
         colorGps(0x07FF),         // Cyan GPS badge (matches existing GPS indicator default)
         colorObd(0x001F),         // Blue OBD badge (matches existing BLE disconnected icon default)
         freqUseBandColor(false), // Use custom freq color by default
@@ -444,7 +290,6 @@ struct V1Settings {
         hideVolumeIndicator(false), // Show volume indicator by default
         hideRssiIndicator(false),   // Show RSSI indicator by default — matches NVS default
         enableWifiAtBoot(false),    // WiFi off at boot by default — matches NVS default
-        enableSignalTraceLogging(true), // Keep diagnostic signal trace logging on by default
         voiceAlertMode(VOICE_MODE_BAND_FREQ),  // Full band+freq announcements by default
         voiceDirectionEnabled(true),           // Include direction by default
         announceBogeyCount(true),              // Announce bogey count by default
@@ -619,9 +464,6 @@ struct DeviceSettingsUpdate {
 
     bool hasEnableWifiAtBoot = false;
     bool enableWifiAtBoot = false;
-
-    bool hasEnableSignalTraceLogging = false;
-    bool enableSignalTraceLogging = false;
 };
 
 struct AudioSettingsUpdate {
@@ -733,8 +575,6 @@ struct DisplaySettingsUpdate {
     uint16_t colorRssiV1 = 0;
     bool hasColorRssiProxy = false;
     uint16_t colorRssiProxy = 0;
-    bool hasColorLockout = false;
-    uint16_t colorLockout = 0;
     bool hasColorGps = false;
     uint16_t colorGps = 0;
     bool hasColorObd = false;
@@ -764,51 +604,11 @@ struct DisplaySettingsUpdate {
 struct GpsSettingsUpdate {
     bool hasEnabled = false;
     bool enabled = false;
-    bool hasLockoutMode = false;
-    LockoutRuntimeMode lockoutMode = LOCKOUT_RUNTIME_OFF;
-    bool hasCoreGuardEnabled = false;
-    bool coreGuardEnabled = false;
-    bool hasMaxQueueDrops = false;
-    uint16_t maxQueueDrops = 0;
-    bool hasMaxPerfDrops = false;
-    uint16_t maxPerfDrops = 0;
-    bool hasMaxEventBusDrops = false;
-    uint16_t maxEventBusDrops = 0;
-    bool hasLearnerPromotionHits = false;
-    uint8_t learnerPromotionHits = LOCKOUT_LEARNER_HITS_DEFAULT;
-    bool hasLearnerRadiusE5 = false;
-    uint16_t learnerRadiusE5 = LOCKOUT_LEARNER_RADIUS_E5_DEFAULT;
-    bool hasLearnerFreqToleranceMHz = false;
-    uint16_t learnerFreqToleranceMHz = LOCKOUT_LEARNER_FREQ_TOL_DEFAULT;
-    bool hasLearnerLearnIntervalHours = false;
-    uint8_t learnerLearnIntervalHours = LOCKOUT_LEARNER_LEARN_INTERVAL_HOURS_DEFAULT;
-    bool hasLearnerUnlearnIntervalHours = false;
-    uint8_t learnerUnlearnIntervalHours = LOCKOUT_LEARNER_UNLEARN_INTERVAL_HOURS_DEFAULT;
-    bool hasLearnerUnlearnCount = false;
-    uint8_t learnerUnlearnCount = LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT;
-    bool hasManualDemotionMissCount = false;
-    uint8_t manualDemotionMissCount = LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT;
-    bool hasKaLearningEnabled = false;
-    bool kaLearningEnabled = false;
-    bool hasKLearningEnabled = false;
-    bool kLearningEnabled = false;
-    bool hasXLearningEnabled = false;
-    bool xLearningEnabled = false;
-    bool hasPreQuiet = false;
-    bool preQuiet = false;
-    bool hasPreQuietBufferE5 = false;
-    uint16_t preQuietBufferE5 = LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT;
-    bool hasMaxHdopX10 = false;
-    uint16_t maxHdopX10 = LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT;
-    bool hasMinLearnerSpeedMph = false;
-    uint8_t minLearnerSpeedMph = LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT;
 };
 
 struct GpsSettingsApplyResult {
     bool changed = false;
     bool enabledChanged = false;
-    bool bandLearningPolicyChanged = false;
-    bool learnerTuningChanged = false;
 };
 
 struct ObdSettingsUpdate {

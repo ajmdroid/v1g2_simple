@@ -15,7 +15,6 @@ unsigned long mockMillis = 0;
 unsigned long mockMicros = 0;
 #endif
 
-#include "../../src/modules/lockout/lockout_runtime_mute_controller.cpp"
 #include "../../src/modules/quiet/quiet_coordinator_module.cpp"
 #include "../../src/modules/wifi/wifi_orchestrator_module.cpp"
 

@@ -17,7 +17,6 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 - [Auto-Push](#auto-push)
 - [Audio Settings](#audio-settings)
 - [Display Colors](#display-colors)
-- [Lockouts](#lockouts)
 - [GPS](#gps)
 - [WiFi Client](#wifi-client)
 - [Debug](#debug)
@@ -65,21 +64,6 @@ Get device status including V1 connection, WiFi, GPS, and alerts.
       "startSucceeded": false
     }
   },
-  "lockout": {
-    "mode": "enforce",
-    "modeRaw": 3,
-    "coreGuardEnabled": true,
-    "coreGuardTripped": false,
-    "coreGuardReason": "none",
-    "maxQueueDrops": 10,
-    "maxPerfDrops": 10,
-    "maxEventBusDrops": 10,
-    "queueDrops": 0,
-    "perfDrops": 0,
-    "eventBusDrops": 0,
-    "enforceRequested": true,
-    "enforceAllowed": true
-  },
   "device": {
     "uptime": 3600,
     "heap_free": 180000,
@@ -111,7 +95,7 @@ Get device status including V1 connection, WiFi, GPS, and alerts.
 }
 ```
 
-`lockout` surfaces GPS lockout core-guard state so enforcement fail-open decisions are visible in the main status response. `wifi.ap_last_transition_reason*`, `wifi.low_dma_cooldown_ms`, and `wifi.auto_start` expose WiFi safety gating and deferred auto-start state without requiring the debug metrics surface.
+`wifi.ap_last_transition_reason*`, `wifi.low_dma_cooldown_ms`, and `wifi.auto_start` expose WiFi safety gating and deferred auto-start state without requiring the debug metrics surface.
 
 ### GET /ping
 
@@ -153,8 +137,7 @@ Get device-owned settings for the Settings and Development pages.
   "proxy_name": "",
   "autoPowerOffMinutes": 0,
   "apTimeoutMinutes": 0,
-  "enableWifiAtBoot": false,
-  "enableSignalTraceLogging": true
+  "enableWifiAtBoot": false
 }
 ```
 
@@ -168,7 +151,6 @@ Get device-owned settings for the Settings and Development pages.
 | `autoPowerOffMinutes` | int | 0-60 | Auto power off after V1 disconnect (0=disabled) |
 | `apTimeoutMinutes` | int | 0,5-60 | AP auto-off after inactivity (0=always on) |
 | `enableWifiAtBoot` | boolean | - | Boot with AP enabled instead of BOOT long-press |
-| `enableSignalTraceLogging` | boolean | - | Log all active V1 alert bands to lockout CSV for diagnostics (best-effort) |
 
 ### POST /api/device/settings
 
@@ -186,37 +168,13 @@ ap_ssid=MyV1&ap_password=newpassword123&proxy_ble=true&autoPowerOffMinutes=15
 
 ### GET /api/gps/config
 
-Get persisted GPS/lockout configuration from the GPS-owned settings surface.
+Get persisted GPS configuration.
 
 **Response:**
 ```json
 {
   "success": true,
-  "enabled": false,
-  "gpsEnabled": false,
-  "lockout": {
-    "mode": "enforce",
-    "modeRaw": 3,
-    "coreGuardEnabled": true,
-    "maxQueueDrops": 0,
-    "maxPerfDrops": 0,
-    "maxEventBusDrops": 0,
-    "learnerPromotionHits": 3,
-    "learnerRadiusE5": 45,
-    "learnerFreqToleranceMHz": 8,
-    "learnerLearnIntervalHours": 12,
-    "learnerUnlearnIntervalHours": 0,
-    "learnerUnlearnCount": 0,
-    "manualDemotionMissCount": 12,
-    "kaLearningEnabled": false,
-    "kLearningEnabled": true,
-    "xLearningEnabled": false,
-    "preQuiet": false,
-    "preQuietBufferE5": 0,
-    "maxHdopX10": 20,
-    "minLearnerSpeedMph": 2,
-    "minSatellites": 4
-  }
+  "enabled": false
 }
 ```
 
@@ -525,7 +483,7 @@ Get current display color configuration.
 
 **Response:** JSON with RGB565 integer color values, display visibility toggles, `brightness`, and `displayStyle`.
 
-Key color fields: `bogey`, `freq`, `arrowFront`, `arrowSide`, `arrowRear`, `bandL`, `bandKa`, `bandK`, `bandX`, `bandPhoto`, `wifiIcon`, `wifiConnected`, `bleConnected`, `bleDisconnected`, `bar1`..`bar6`, `muted`, `persisted`, `volumeMain`, `volumeMute`, `rssiV1`, `rssiProxy`, `lockout`, `gps`.
+Key color fields: `bogey`, `freq`, `arrowFront`, `arrowSide`, `arrowRear`, `bandL`, `bandKa`, `bandK`, `bandX`, `bandPhoto`, `wifiIcon`, `wifiConnected`, `bleConnected`, `bleDisconnected`, `bar1`..`bar6`, `muted`, `persisted`, `volumeMain`, `volumeMute`, `rssiV1`, `rssiProxy`, `gps`.
 
 Also includes boolean display toggles plus `brightness` and `displayStyle`.
 
@@ -560,125 +518,15 @@ Clear preview and restore saved colors.
 
 ---
 
-## Lockouts
-
-### GET /api/lockouts/summary
-
-Get read-only lockout candidate telemetry summary from the in-memory ring buffer.
-
-**Response fields:**
-- `published`: Total observations published since boot
-- `drops`: Number of oldest entries overwritten when buffer was full
-- `size`: Current entries in buffer
-- `capacity`: Fixed ring capacity
-- `latest`: Most recent observation (or `null`)
-- `sd`: SD persistence counters and path (`enabled`, `path`, `enqueued`, `queueDrops`, `deduped`, `written`, `writeFail`, `rotations`)
-
-### GET /api/lockouts/events
-
-Get recent lockout candidate observations (newest first).
-
-**Query Parameters:**
-- `limit` (optional): Number of entries (1-96, default 24)
-
-**Notes:**
-- Candidate events are persisted to SD (when available) at `/lockout/lockout_candidates_boot_<bootId>.csv`.
-- Supported lockout observations are captured from the full active V1 alert set, not only the current priority alert.
-- `enableSignalTraceLogging` (default `true`) also captures unsupported lockout bands from that same alert set for diagnostics.
-- SD writes apply a dedupe gate (~15s minimum repeat per same signal bucket) to reduce long-run growth.
-
-### GET /api/lockouts/zones
-
-Get active zones + pending learner candidates.
-
-**Query Parameters:**
-- `activeLimit` (optional): `1..96` (default `24`)
-- `pendingLimit` (optional): `1..48` (default `24`)
-- `activeOffset` (optional): Pagination offset for active zones (default `0`)
-- `pendingOffset` (optional): Pagination offset for pending zones (default `0`)
-- `details` (optional): `1` or `true` to include timing fields
-
-### POST /api/lockouts/zones/delete
-
-Delete a learned zone by slot index.
-
-**Request (JSON or form):**
-```json
-{
-  "slot": 3
-}
-```
-
-**Notes:**
-- Both manual and learned zones are deletable.
-
-### POST /api/lockouts/zones/create
-
-Create a new lockout zone manually.
-
-**Request (JSON body):**
-```json
-{
-  "latitude": 35.10000,
-  "longitude": -80.80000,
-  "radiusE5": 135,
-  "bandMask": 4,
-  "frequencyMHz": 24100,
-  "frequencyToleranceMHz": 10,
-  "confidence": 100,
-  "directionMode": "all",
-  "headingDeg": null,
-  "headingToleranceDeg": 45
-}
-```
-
-**Notes:**
-- `latitude`, `longitude`, `bandMask`, and `frequencyMHz` are required.
-- Successful creates are stored as active manual zones (`manual=true`, `learned=false`).
-- The endpoint rejects duplicate zone signatures with `409` and includes the conflicting `slot`.
-
-### POST /api/lockouts/zones/update
-
-Update an existing lockout zone by slot index.
-
-**Request (JSON body):** Slot index plus any updated zone fields.
-
-**Notes:**
-- `slot` is required.
-- The resulting zone must still have a valid `frequencyMHz`.
-- Existing `manual`/`learned` flags are preserved on update.
-- Updates that would duplicate another active zone are rejected with `409` and include the conflicting `slot`.
-
-### GET /api/lockouts/zones/export
-
-Export all lockout zones as a JSON download.
-
-### POST /api/lockouts/zones/import
-
-Import lockout zones from JSON.
-
-**Request (JSON body):** Array of zone definitions.
-
-### POST /api/lockouts/pending/clear
-
-Clear all pending learner candidates.
-
-**Response:**
-```json
-{"success": true, "cleared": 3}
-```
-
----
-
 ## GPS
 
 ### GET /api/gps/status
 
 Get GPS module status and current position.
 
-**Response:** Large JSON object with GPS fix, satellite, and lockout state.
+**Response:** Large JSON object with GPS fix, satellite, and speed-source state.
 
-Key fields include: `enabled`, `runtimeEnabled`, `sampleValid`, `hasFix`, `stableHasFix`, `satellites`, `stableSatellites`, `hdop`, `locationValid`, `latitude`, `longitude`, `courseValid`, `courseDeg`, `speedMph`, `moduleDetected`, `parserActive`. Also includes nested `lockout`, `observations`, and `speedSource` objects with detailed counters.
+Key fields include: `enabled`, `runtimeEnabled`, `sampleValid`, `hasFix`, `stableHasFix`, `satellites`, `stableSatellites`, `hdop`, `locationValid`, `latitude`, `longitude`, `courseValid`, `courseDeg`, `speedMph`, `moduleDetected`, `parserActive`. Also includes nested `observations` and `speedSource` objects with detailed counters.
 
 ### GET /api/gps/observations
 
@@ -689,7 +537,7 @@ Get recent GPS observation ring samples.
 
 ### POST /api/gps/config
 
-Update GPS/lockout runtime config and optional scaffold samples.
+Update GPS runtime config and optional scaffold samples.
 
 ---
 

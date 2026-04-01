@@ -34,7 +34,6 @@ void test_dirty_flags_default_all_false() {
     TEST_ASSERT_FALSE(f.arrow);
     TEST_ASSERT_FALSE(f.muteIcon);
     TEST_ASSERT_FALSE(f.topCounter);
-    TEST_ASSERT_FALSE(f.lockout);
     TEST_ASSERT_FALSE(f.gpsIndicator);
     TEST_ASSERT_FALSE(f.obdIndicator);
     TEST_ASSERT_FALSE(f.resetTracking);
@@ -54,7 +53,6 @@ void test_dirty_setAll_sets_primary_frame_flags() {
     TEST_ASSERT_TRUE(f.arrow);
     TEST_ASSERT_TRUE(f.muteIcon);
     TEST_ASSERT_TRUE(f.topCounter);
-    TEST_ASSERT_TRUE(f.lockout);
     TEST_ASSERT_TRUE(f.gpsIndicator);
     TEST_ASSERT_TRUE(f.obdIndicator);
 }

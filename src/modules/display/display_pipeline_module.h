@@ -28,8 +28,7 @@ public:
     void setSpeedMuteModule(SpeedMuteModule* module) { speedMute = module; }
 
     // Process after a successful parser.parse(); expects parser state already updated.
-    // prioritySuppressed is a per-frame software suppression flag (e.g. lockout ENFORCE match).
-    void handleParsed(unsigned long nowMs, bool prioritySuppressed);
+    void handleParsed(uint32_t nowMs);
     void restoreCurrentOwner(uint32_t nowMs);
     bool allowsObdPairGesture(uint32_t nowMs) const;
 

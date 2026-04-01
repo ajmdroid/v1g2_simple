@@ -176,45 +176,6 @@ void SettingsManager::load() {
     settings_.proxyBLE = preferences_.getBool("proxyBLE", true);
     settings_.proxyName = sanitizeProxyNameValue(preferences_.getString("proxyName", "V1-Proxy"));
     settings_.gpsEnabled = preferences_.getBool("gpsEn", false);
-    settings_.gpsLockoutMode = clampLockoutRuntimeModeValue(
-        preferences_.getUChar("gpsLkMode", static_cast<uint8_t>(LOCKOUT_RUNTIME_OFF)));
-    settings_.gpsLockoutCoreGuardEnabled = preferences_.getBool("gpsLkGuard", true);
-    settings_.gpsLockoutMaxQueueDrops = preferences_.getUShort("gpsLkQDrop", 0);
-    settings_.gpsLockoutMaxPerfDrops = preferences_.getUShort("gpsLkPDrop", 0);
-    settings_.gpsLockoutMaxEventBusDrops = preferences_.getUShort("gpsLkEBDrop", 0);
-    settings_.gpsLockoutLearnerPromotionHits = clampLockoutLearnerHitsValue(
-        preferences_.getUChar("gpsLkHits", LOCKOUT_LEARNER_HITS_DEFAULT));
-    uint16_t learnerRadiusRaw = preferences_.getUShort("gpsLkRad", LOCKOUT_LEARNER_RADIUS_E5_DEFAULT);
-    // Legacy radius values were written in a 10x scale (450..3600 intended as 50..400 m).
-    // Normalize in-memory during load to preserve intended behavior without immediate NVS rewrite.
-    if (storedVersion <= 2 && learnerRadiusRaw >= 450) {
-        const uint16_t converted = static_cast<uint16_t>((learnerRadiusRaw + 5u) / 10u);
-        Serial.printf("[Settings] Migrated legacy lockout radius %u -> %u\n",
-                      static_cast<unsigned>(learnerRadiusRaw),
-                      static_cast<unsigned>(converted));
-        learnerRadiusRaw = converted;
-    }
-    settings_.gpsLockoutLearnerRadiusE5 = clampLockoutLearnerRadiusE5Value(learnerRadiusRaw);
-    settings_.gpsLockoutLearnerFreqToleranceMHz = clampLockoutLearnerFreqTolValue(
-        preferences_.getUShort("gpsLkFtol", LOCKOUT_LEARNER_FREQ_TOL_DEFAULT));
-    settings_.gpsLockoutLearnerLearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
-        preferences_.getUChar("gpsLkLInt", LOCKOUT_LEARNER_LEARN_INTERVAL_HOURS_DEFAULT));
-    settings_.gpsLockoutLearnerUnlearnIntervalHours = clampLockoutLearnerIntervalHoursValue(
-        preferences_.getUChar("gpsLkUInt", LOCKOUT_LEARNER_UNLEARN_INTERVAL_HOURS_DEFAULT));
-    settings_.gpsLockoutLearnerUnlearnCount = clampLockoutLearnerUnlearnCountValue(
-        preferences_.getUChar("gpsLkUCnt", LOCKOUT_LEARNER_UNLEARN_COUNT_DEFAULT));
-    settings_.gpsLockoutManualDemotionMissCount = clampLockoutManualDemotionMissCountValue(
-        preferences_.getUChar("gpsLkMDCnt", LOCKOUT_MANUAL_DEMOTION_MISS_COUNT_DEFAULT));
-    settings_.gpsLockoutKaLearningEnabled = preferences_.getBool("gpsLkKa", false);
-    settings_.gpsLockoutKLearningEnabled = preferences_.getBool("gpsLkK", true);
-    settings_.gpsLockoutXLearningEnabled = preferences_.getBool("gpsLkX", true);
-    settings_.gpsLockoutPreQuiet = preferences_.getBool("gpsLkPQ", false);
-    settings_.gpsLockoutPreQuietBufferE5 = clampLockoutPreQuietBufferE5Value(
-        preferences_.getUShort("gpsLkPQBuf", LOCKOUT_PRE_QUIET_BUFFER_E5_DEFAULT));
-    settings_.gpsLockoutMaxHdopX10 = clampLockoutGpsMaxHdopX10Value(
-        preferences_.getUShort("gpsLkHdop", LOCKOUT_GPS_MAX_HDOP_X10_DEFAULT));
-    settings_.gpsLockoutMinLearnerSpeedMph = clampLockoutGpsMinLearnerSpeedMphValue(
-        preferences_.getUChar("gpsLkMinSpd", LOCKOUT_GPS_MIN_LEARNER_SPEED_MPH_DEFAULT));
     settings_.turnOffDisplay = preferences_.getBool("displayOff", false);
     settings_.brightness = std::max<uint8_t>(1, preferences_.getUChar("brightness", 200));  // Min 1 to avoid blank screen
     settings_.displayStyle = normalizeDisplayStyle(preferences_.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
@@ -244,7 +205,6 @@ void SettingsManager::load() {
     settings_.colorVolumeMute = sanitizeRgb565Color(preferences_.getUShort("colorVolMute", 0x7BEF), 0x7BEF);  // Grey for mute volume
     settings_.colorRssiV1 = sanitizeRgb565Color(preferences_.getUShort("colorRssiV1", 0x07E0), 0x07E0);       // Green for V1 RSSI label
     settings_.colorRssiProxy = sanitizeRgb565Color(preferences_.getUShort("colorRssiPrx", 0x001F), 0x001F);   // Blue for Proxy RSSI label
-    settings_.colorLockout = sanitizeRgb565Color(preferences_.getUShort("colorLockL", 0x07E0), 0x07E0);        // Green lockout badge color
     settings_.colorGps = sanitizeRgb565Color(preferences_.getUShort("colorGps", 0x07FF), 0x07FF);              // Cyan GPS badge color
     settings_.colorObd = sanitizeRgb565Color(preferences_.getUShort("colorObd", 0x001F), 0x001F);              // Blue OBD badge color
     settings_.freqUseBandColor = preferences_.getBool("freqBandCol", false);  // Use custom freq color by default
@@ -258,7 +218,6 @@ void SettingsManager::load() {
 
     // Development settings
     settings_.enableWifiAtBoot = preferences_.getBool("wifiAtBoot", false);
-    settings_.enableSignalTraceLogging = preferences_.getBool("sigTraceLog", true);
 
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults

@@ -31,21 +31,9 @@
 #include "wifi_manager.h"
 #include "modules/auto_push/auto_push_module.h"
 #include "modules/alert_persistence/alert_persistence_module.h"
-#include "modules/lockout/lockout_boot_storage.h"
-#include "modules/lockout/lockout_index.h"
-#include "modules/lockout/lockout_learner.h"
-#include "modules/lockout/lockout_pending_store.h"
-#include "modules/lockout/lockout_store.h"
-#include "modules/lockout/road_map_reader.h"
-#include "modules/lockout/signal_observation_sd_logger.h"
 #include "modules/perf/debug_macros.h"
 #include "modules/touch/tap_gesture_module.h"
 #include <driver/gpio.h>
-
-extern LockoutStore              lockoutStore;
-extern LockoutLearner            lockoutLearner;
-extern LockoutIndex              lockoutIndex;
-extern SignalObservationSdLogger signalObservationSdLogger;
 
 namespace {
 
@@ -80,39 +68,6 @@ V1ConnectedAutoPushSelection resolveV1ConnectedAutoPushSelection(const V1Setting
     return selection;
 }
 
-static constexpr const char* LOCKOUT_ZONES_PATH = "/v1simple_lockout_zones.json";
-static constexpr const char* LOCKOUT_ZONES_BINARY_PATH = LockoutStore::kBinaryPath;
-static constexpr const char* LOCKOUT_PENDING_PATH = lockout_pending_store::kPendingLearnerPath;
-
-bool loadPendingLearnerJsonDocument(JsonDocument& outDoc, String* loadedPath = nullptr) {
-    if (!storageManager.isReady()) {
-        return false;
-    }
-
-    fs::FS* fs = storageManager.getFilesystem();
-    if (!fs) {
-        SerialLog.println("[Learner] No saved pending candidate file found");
-        return false;
-    }
-
-    String errorMessage;
-    const JsonRollbackLoadResult result =
-        lockout_pending_store::loadPendingLearnerJsonDocument(*fs, outDoc, &errorMessage, loadedPath);
-    switch (result) {
-        case JsonRollbackLoadResult::LoadedLive:
-        case JsonRollbackLoadResult::LoadedRollback:
-            return true;
-        case JsonRollbackLoadResult::Missing:
-            SerialLog.println("[Learner] No saved pending candidate file found");
-            return false;
-        case JsonRollbackLoadResult::Invalid:
-        default:
-            SerialLog.printf("[Learner] Pending JSON parse error: %s\n",
-                             errorMessage.length() > 0 ? errorMessage.c_str() : "invalid");
-            return false;
-    }
-}
-
 }  // namespace
 
 void prepareForShutdown(void* /*context*/) {
@@ -127,46 +82,6 @@ void prepareForShutdown(void* /*context*/) {
 
     Serial.println("[Battery] Forcing final SD settings backup...");
     settingsManager.backupToSD();
-
-    if (storageManager.isReady()) {
-        fs::FS* fs = storageManager.getFilesystem();
-        if (fs) {
-            auto flushDirtyLockoutData = [&]() {
-                if (lockoutStore.isDirty()) {
-                    if (lockoutStore.saveBinary(*fs, LockoutStore::kBinaryPath)) {
-                        lockoutStore.clearDirty();
-                        Serial.printf("[Battery] Flushed %lu lockout zones\n",
-                                      static_cast<unsigned long>(lockoutStore.stats().entriesSaved));
-                    } else {
-                        Serial.println("[Battery] Lockout zone flush failed");
-                    }
-                }
-
-                if (lockoutLearner.isDirty()) {
-                    JsonDocument doc;
-                    lockoutLearner.toJson(doc);
-                    if (StorageManager::writeJsonFileAtomic(*fs, LOCKOUT_PENDING_PATH, doc)) {
-                        lockoutLearner.clearDirty();
-                        Serial.printf("[Battery] Flushed %u pending candidates\n",
-                                      static_cast<unsigned>(lockoutLearner.activeCandidateCount()));
-                    } else {
-                        Serial.println("[Battery] Learner candidate flush failed");
-                    }
-                }
-            };
-
-            if (storageManager.isSDCard()) {
-                StorageManager::SDLockBlocking sdLock(storageManager.getSDMutex(), /*checkDmaHeap=*/false);
-                if (!sdLock) {
-                    Serial.println("[Battery] WARN: Could not acquire SD mutex for shutdown flush");
-                } else {
-                    flushDirtyLockoutData();
-                }
-            } else {
-                flushDirtyLockoutData();
-            }
-        }
-    }
 
     Serial.println("[Battery] Persisting time to NVS...");
     timeService.persistCurrentTime();
@@ -251,88 +166,9 @@ void initializeStorageAndProfiles() {
     }
 }
 
-void applyLockoutPolicyAndLoadZonesFromStorage() {
-    // Apply persisted Ka lockout policy before loading/sanitizing lockout zones.
-    SettingsRuntimeSync::syncLockoutBandLearningPolicy(settingsManager.get());
-
-    lockoutStore.begin(&lockoutIndex);
-
-    if (!storageManager.isReady()) {
-        return;
-    }
-
-    fs::FS* fs = storageManager.getFilesystem();
-    if (!fs) {
-        return;
-    }
-
-    LockoutBootLoadResult loadResult;
-    if (!loadLockoutZonesBinaryFirst(*fs,
-                                     lockoutStore,
-                                     LOCKOUT_ZONES_BINARY_PATH,
-                                     LOCKOUT_ZONES_PATH,
-                                     LockoutStore::kJsonMigratedBackupPath,
-                                     normalizeLegacyLockoutRadiusScale,
-                                     &loadResult)) {
-        switch (loadResult.outcome) {
-            case LockoutBootLoadOutcome::NoneFound:
-                SerialLog.println("[Lockout] No saved zones file found");
-                break;
-            case LockoutBootLoadOutcome::BinaryFailedNoJson:
-                SerialLog.printf("[Lockout] Binary load failed and no JSON migration source remains: %s\n",
-                                 LOCKOUT_ZONES_BINARY_PATH);
-                break;
-            case LockoutBootLoadOutcome::JsonInvalid:
-                SerialLog.printf("[Lockout] JSON migration source invalid: %s\n", LOCKOUT_ZONES_PATH);
-                break;
-            case LockoutBootLoadOutcome::LoadedBinary:
-            case LockoutBootLoadOutcome::MigratedJson:
-            case LockoutBootLoadOutcome::LoadedJsonSavePending:
-                break;
-        }
-        return;
-    }
-
-    switch (loadResult.outcome) {
-        case LockoutBootLoadOutcome::LoadedBinary:
-            SerialLog.printf("[Lockout] Loaded %lu zones from %s\n",
-                             static_cast<unsigned long>(lockoutStore.stats().entriesLoaded),
-                             LOCKOUT_ZONES_BINARY_PATH);
-            break;
-        case LockoutBootLoadOutcome::MigratedJson:
-        case LockoutBootLoadOutcome::LoadedJsonSavePending:
-            SerialLog.printf("[Lockout] Loaded %lu zones from %s\n",
-                             static_cast<unsigned long>(lockoutStore.stats().entriesLoaded),
-                             LOCKOUT_ZONES_PATH);
-            if (loadResult.legacyRadiusMigrations > 0) {
-                SerialLog.printf("[Lockout] Normalized %lu legacy zone radius values (x10->x1 scale)\n",
-                                 static_cast<unsigned long>(loadResult.legacyRadiusMigrations));
-            }
-            if (loadResult.outcome == LockoutBootLoadOutcome::MigratedJson) {
-                SerialLog.printf("[Lockout] Migrated zones to %s\n", LOCKOUT_ZONES_BINARY_PATH);
-                if (loadResult.archivedJson) {
-                    SerialLog.printf("[Lockout] Archived migrated JSON to %s\n",
-                                     LockoutStore::kJsonMigratedBackupPath);
-                } else {
-                    SerialLog.printf("[Lockout] WARN: Failed to archive migrated JSON from %s\n",
-                                     LOCKOUT_ZONES_PATH);
-                }
-            } else {
-                SerialLog.printf("[Lockout] WARN: Failed to migrate zones to %s; will retry later\n",
-                                 LOCKOUT_ZONES_BINARY_PATH);
-            }
-            break;
-        case LockoutBootLoadOutcome::NoneFound:
-        case LockoutBootLoadOutcome::BinaryFailedNoJson:
-        case LockoutBootLoadOutcome::JsonInvalid:
-            break;
-    }
-}
-
 uint32_t initializeBootPerformanceLoggers() {
     const uint32_t bootId = nextBootId();
     perfSdLogger.setBootId(bootId);
-    signalObservationSdLogger.setBootId(bootId);
 
     // Standalone perf CSV loggers (SD only).
     const bool sdEnabled = storageManager.isReady() && storageManager.isSDCard();
@@ -342,32 +178,8 @@ uint32_t initializeBootPerformanceLoggers() {
     } else {
         SerialLog.println("[PERF] SD logger disabled (no SD)");
     }
-    signalObservationSdLogger.begin(sdEnabled);
-    if (signalObservationSdLogger.isEnabled()) {
-        SerialLog.printf("[LockoutSD] Candidate logger enabled (%s)\n", signalObservationSdLogger.csvPath());
-    } else {
-        SerialLog.println("[LockoutSD] Candidate logger disabled (no SD)");
-    }
 
     return bootId;
-}
-
-void restorePendingLearnerCandidates() {
-    JsonDocument doc;
-    String loadedPath;
-    if (!loadPendingLearnerJsonDocument(doc, &loadedPath)) {
-        return;
-    }
-
-    const char* sourcePath = loadedPath.length() > 0 ? loadedPath.c_str() : LOCKOUT_PENDING_PATH;
-    if (lockoutLearner.fromJson(doc, timeService.nowEpochMsOr0())) {
-        SerialLog.printf("[Learner] Restored %u pending candidates from %s\n",
-                         static_cast<unsigned>(lockoutLearner.activeCandidateCount()),
-                         sourcePath);
-    } else {
-        SerialLog.printf("[Learner] Ignoring invalid pending file format: %s\n",
-                         sourcePath);
-    }
 }
 
 void initializeTouchAndDisplayControls() {

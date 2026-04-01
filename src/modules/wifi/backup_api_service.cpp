@@ -8,9 +8,6 @@
 #include "../../v1_profiles.h"
 #include "../../backup_payload_builder.h"
 #include "../gps/gps_runtime_module.h"
-#include "../gps/gps_lockout_safety.h"
-#include "../lockout/lockout_band_policy.h"
-#include "../lockout/lockout_learner.h"
 #include "../obd/obd_runtime_module.h"
 #include "../speed/speed_source_selector.h"
 #include "json_stream_response.h"
@@ -18,7 +15,6 @@
 extern GpsRuntimeModule  gpsRuntimeModule;
 extern ObdRuntimeModule  obdRuntimeModule;
 extern SpeedSourceSelector speedSourceSelector;
-extern LockoutLearner    lockoutLearner;
 
 namespace BackupApiService {
 
@@ -123,7 +119,6 @@ static void handleRestore(WebServer& server) {
                                                   gpsRuntimeModule,
                                                   obdRuntimeModule,
                                                   speedSourceSelector);
-    SettingsRuntimeSync::syncGpsLockoutRuntimeSettings(settings, lockoutLearner);
 
     Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", applyResult.profilesRestored);
 

@@ -170,7 +170,6 @@ void audio_init_buffers() {}
 void audio_process_amp_timeout() {}
 
 #include "../../src/modules/speed_mute/speed_mute_module.cpp"
-#include "../../src/modules/lockout/lockout_runtime_mute_controller.cpp"
 #include "../../src/modules/quiet/quiet_coordinator_module.cpp"
 #include "../../src/modules/display/display_pipeline_module.cpp"
 
@@ -249,7 +248,7 @@ void test_handle_parsed_updates_live_display_when_alert_present() {
 
     mockMillis = 1000;
     mockMicros = 1000 * 1000UL;
-    module.handleParsed(1000, false);
+    module.handleParsed(1000);
 
     TEST_ASSERT_EQUAL(DisplayMode::LIVE, displayMode);
     TEST_ASSERT_EQUAL(1, display.updateCalls);
@@ -260,7 +259,7 @@ void test_handle_parsed_updates_live_display_when_alert_present() {
 void test_handle_parsed_updates_resting_display_when_idle() {
     mockMillis = 1000;
     mockMicros = 1000 * 1000UL;
-    module.handleParsed(1000, false);
+    module.handleParsed(1000);
 
     TEST_ASSERT_EQUAL(DisplayMode::IDLE, displayMode);
     TEST_ASSERT_EQUAL(1, display.updateCalls);
@@ -273,7 +272,7 @@ void test_handle_parsed_prefers_persisted_alert_when_configured() {
 
     mockMillis = 1000;
     mockMicros = 1000 * 1000UL;
-    module.handleParsed(1000, false);
+    module.handleParsed(1000);
 
     TEST_ASSERT_EQUAL(DisplayMode::IDLE, displayMode);
     TEST_ASSERT_EQUAL(0, display.updateCalls);
@@ -286,7 +285,7 @@ void test_handle_parsed_defers_secondary_cards_while_connect_burst_settles() {
 
     mockMillis = 1000;
     mockMicros = 1000 * 1000UL;
-    module.handleParsed(1000, false);
+    module.handleParsed(1000);
 
     TEST_ASSERT_EQUAL(DisplayMode::LIVE, displayMode);
     TEST_ASSERT_EQUAL(1, display.updateCalls);
@@ -301,7 +300,7 @@ void test_handle_parsed_uses_quiet_coordinator_to_suppress_speedmuted_k_voice() 
 
     mockMillis = 1000;
     mockMicros = 1000 * 1000UL;
-    module.handleParsed(1000, false);
+    module.handleParsed(1000);
 
     TEST_ASSERT_EQUAL(1, g_voiceProcessCalls);
     TEST_ASSERT_TRUE(g_lastVoiceContext.isSuppressed);
@@ -316,7 +315,7 @@ void test_handle_parsed_uses_quiet_coordinator_for_ka_vol_zero_bypass() {
 
     mockMillis = 1000;
     mockMicros = 1000 * 1000UL;
-    module.handleParsed(1000, false);
+    module.handleParsed(1000);
 
     TEST_ASSERT_EQUAL(1, g_voiceProcessCalls);
     TEST_ASSERT_FALSE(g_lastVoiceContext.isSuppressed);
@@ -376,8 +375,8 @@ void test_alert_gap_recovery_throttle_is_instance_owned() {
 
     mockMillis = 1000;
     mockMicros = 1000 * 1000UL;
-    moduleA.handleParsed(1000, false);
-    moduleB.handleParsed(1000, false);
+    moduleA.handleParsed(1000);
+    moduleB.handleParsed(1000);
 
     TEST_ASSERT_EQUAL(1, bleA.requestAlertDataCalls);
     TEST_ASSERT_EQUAL(1, bleB.requestAlertDataCalls);

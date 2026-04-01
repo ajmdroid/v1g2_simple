@@ -66,8 +66,7 @@ LoopIngestPhaseValues processLoopIngestPhase(
 void processLoopDisplayPreWifiPhase(
     unsigned long nowMs,
     bool bootSplashHoldActive,
-    bool overloadLateThisLoop,
-    bool enableSignalTraceLogging);
+    bool overloadLateThisLoop);
 
 LoopWifiPhaseValues processLoopWifiPhase(
     unsigned long nowMs,

@@ -65,11 +65,7 @@
 </script>
 
 <div class="page-stack">
-	<PageHeader title="Integrations" subtitle="GPS runtime controls and connectivity status.">
-		<div class="flex items-center gap-2">
-			<a href="/lockouts" class="btn btn-outline btn-sm">Open Lockouts</a>
-		</div>
-	</PageHeader>
+	<PageHeader title="Integrations" subtitle="GPS runtime controls and connectivity status." />
 
 	<StatusAlert {message} />
 	<StatusAlert message={$runtimeGpsError ? { type: 'error', text: $runtimeGpsError } : null} />

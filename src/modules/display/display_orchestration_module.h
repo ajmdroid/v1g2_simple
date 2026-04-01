@@ -11,8 +11,6 @@ class DisplayRestoreModule;
 class PacketParser;
 class SettingsManager;
 class GpsRuntimeModule;
-class LockoutOrchestrationModule;
-struct LockoutVolumeCommand;
 class VolumeFadeModule;
 class SpeedMuteModule;
 class QuietCoordinatorModule;
@@ -29,12 +27,9 @@ struct DisplayOrchestrationParsedContext {
     uint32_t nowMs = 0;
     bool parsedReady = false;
     bool bootSplashHoldActive = false;
-    bool enableSignalTraceLogging = false;
 };
 
 struct DisplayOrchestrationParsedResult {
-    bool lockoutEvaluated = false;
-    bool lockoutPrioritySuppressed = false;
     bool runDisplayPipeline = false;
 };
 
@@ -59,7 +54,6 @@ public:
                PacketParser* parserPtr,
                SettingsManager* settingsManager,
                GpsRuntimeModule* gpsModule,
-               LockoutOrchestrationModule* lockoutModule,
                VolumeFadeModule* volumeFadeModule,
                SpeedMuteModule* speedMuteModule,
                QuietCoordinatorModule* quietCoordinator);
@@ -71,9 +65,7 @@ public:
 private:
     void reset();
     void syncQuietPresentation();
-    bool executeLockoutVolumeCommand(const LockoutVolumeCommand& command, uint32_t nowMs);
-    bool retryPendingPreQuietRestore(uint32_t nowMs);
-    void executeVolumeFade(uint32_t nowMs, bool lockoutPrioritySuppressed);
+    void executeVolumeFade(uint32_t nowMs);
     bool processSpeedVolume(uint32_t nowMs);
     bool retryPendingSpeedVolRestore(uint32_t nowMs);
 
@@ -85,7 +77,6 @@ private:
     PacketParser* parser = nullptr;
     SettingsManager* settings = nullptr;
     GpsRuntimeModule* gpsRuntime = nullptr;
-    LockoutOrchestrationModule* lockout = nullptr;
     VolumeFadeModule* volumeFade = nullptr;
     SpeedMuteModule* speedMute = nullptr;
     QuietCoordinatorModule* quiet = nullptr;
@@ -95,7 +86,7 @@ private:
     unsigned long lastCardUiMs = 0;
 
     static constexpr uint32_t GPS_SAT_UPDATE_INTERVAL_MS = 90000;
-    static constexpr uint32_t LOCKOUT_INDICATOR_STALE_MS = 2000;
+    static constexpr uint32_t PARSED_STALE_MS = 2000;
     static constexpr unsigned long FREQ_UI_MAX_MS = 75;
     static constexpr unsigned long FREQ_UI_PREVIEW_MAX_MS = 250;
     static constexpr unsigned long CARD_UI_MAX_MS = 100;

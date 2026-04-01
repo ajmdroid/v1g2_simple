@@ -190,10 +190,6 @@ struct PerfCounters {
     std::atomic<uint32_t> audioPlayBusy{0};          // Audio plays rejected (already playing)
     std::atomic<uint32_t> audioTaskFail{0};          // Audio task creation failures
 
-    // Lockout signal observation SD logger
-    std::atomic<uint32_t> sigObsQueueDrops{0};      // Signal observation SD queue full drops
-    std::atomic<uint32_t> sigObsWriteFail{0};       // Signal observation SD write failures
-
     // Timing (microseconds for precision)
     std::atomic<uint32_t> lastNotifyUs{0};     // Timestamp of last notify
     std::atomic<uint32_t> lastFlushUs{0};      // Timestamp of last flush
@@ -318,8 +314,6 @@ struct PerfCounters {
         audioPlayCount.store(0, std::memory_order_relaxed);
         audioPlayBusy.store(0, std::memory_order_relaxed);
         audioTaskFail.store(0, std::memory_order_relaxed);
-        sigObsQueueDrops.store(0, std::memory_order_relaxed);
-        sigObsWriteFail.store(0, std::memory_order_relaxed);
     }
 };
 
@@ -505,9 +499,6 @@ struct PerfExtendedMetrics {
     uint32_t obdWriteCallMaxUs = 0;
     uint32_t obdRssiCallMaxUs = 0;
     uint32_t gpsMaxUs = 0;             // gpsRuntimeModule.update() duration
-    uint32_t lockoutMaxUs = 0;         // lockoutEnforcer.process() + signalCapture duration
-    uint32_t lockoutSaveMaxUs = 0;     // lockout zone JSON serialize + SD write
-    uint32_t learnerSaveMaxUs = 0;     // learner pending JSON serialize + SD write
     uint32_t timeSaveMaxUs = 0;        // timeService.periodicSave NVS write
     uint32_t perfReportMaxUs = 0;      // perfMetricsCheckReport snapshot + enqueue
     uint32_t uiToScanCount = 0;       // Screen transitions -> Scanning
@@ -526,9 +517,6 @@ struct PerfExtendedMetrics {
     uint8_t fadeLastCurrentVol = 0xFF;
     uint8_t fadeLastOriginalVol = 0xFF;
     uint32_t fadeLastDecisionMs = 0;
-    uint32_t preQuietDropCount = 0;         // Pre-quiet volume drops
-    uint32_t preQuietRestoreCount = 0;      // Pre-quiet restores issued
-    uint32_t preQuietRestoreRetryCount = 0; // Pre-quiet restore retries
     uint32_t speedVolDropCount = 0;         // Speed volume drops
     uint32_t speedVolRestoreCount = 0;      // Speed volume restores issued
     uint32_t speedVolRetryCount = 0;        // Speed volume retries
@@ -636,9 +624,6 @@ struct PerfExtendedMetrics {
         obdWriteCallMaxUs = 0;
         obdRssiCallMaxUs = 0;
         gpsMaxUs = 0;
-        lockoutMaxUs = 0;
-        lockoutSaveMaxUs = 0;
-        learnerSaveMaxUs = 0;
         timeSaveMaxUs = 0;
         perfReportMaxUs = 0;
         uiToScanCount = 0;
@@ -657,9 +642,6 @@ struct PerfExtendedMetrics {
         fadeLastCurrentVol = 0xFF;
         fadeLastOriginalVol = 0xFF;
         fadeLastDecisionMs = 0;
-        preQuietDropCount = 0;
-        preQuietRestoreCount = 0;
-        preQuietRestoreRetryCount = 0;
         speedVolDropCount = 0;
         speedVolRestoreCount = 0;
         speedVolRetryCount = 0;
@@ -768,9 +750,6 @@ void perfRecordDisplayVoiceUs(uint32_t us);
 void perfRecordDisplayGapRecoverUs(uint32_t us);
 void perfRecordTouchUs(uint32_t us);
 void perfRecordGpsUs(uint32_t us);
-void perfRecordLockoutUs(uint32_t us);
-void perfRecordLockoutSaveUs(uint32_t us);
-void perfRecordLearnerSaveUs(uint32_t us);
 void perfRecordTimeSaveUs(uint32_t us);
 void perfRecordPerfReportUs(uint32_t us);
 void perfRecordObdConnectCallUs(uint32_t us);
@@ -784,9 +763,6 @@ void perfRecordObdRssiCallUs(uint32_t us);
 // remain valid enum members but should not be emitted by current production code.
 void perfRecordDisplayScreenTransition(PerfDisplayScreen from, PerfDisplayScreen to, uint32_t nowMs);
 void perfRecordVolumeFadeDecision(PerfFadeDecision decision, uint8_t currentVolume, uint8_t originalVolume, uint32_t nowMs);
-void perfRecordPreQuietDrop();
-void perfRecordPreQuietRestore();
-void perfRecordPreQuietRestoreRetry();
 void perfRecordSpeedVolDrop();
 void perfRecordSpeedVolRestore();
 void perfRecordSpeedVolRetry();
@@ -870,7 +846,6 @@ struct PerfSdSnapshot {
     uint32_t bleProcessMaxUs; // Window max bleClient.process() duration
     uint32_t touchMaxUs;      // Window max touchUiModule.process() duration
     uint32_t gpsMaxUs;         // Window max gpsRuntimeModule.update() duration
-    uint32_t lockoutMaxUs;     // Window max lockoutEnforcer.process() + signalCapture duration
     uint32_t wifiMaxUs;        // Window max wifiManager.process() duration
     uint32_t uiToScanCount;   // Screen transitions to scanning
     uint32_t uiToRestCount;   // Screen transitions to resting
@@ -887,9 +862,6 @@ struct PerfSdSnapshot {
     uint8_t fadeLastCurrentVol;   // Last observed current volume
     uint8_t fadeLastOriginalVol;  // Last observed baseline/original volume
     uint32_t fadeLastDecisionMs;  // Last fade decision timestamp
-    uint32_t preQuietDropCount;         // Pre-quiet volume drops
-    uint32_t preQuietRestoreCount;      // Pre-quiet restores issued
-    uint32_t preQuietRestoreRetryCount; // Pre-quiet restore retries
     uint32_t speedVolDropCount;         // Speed volume drops
     uint32_t speedVolRestoreCount;      // Speed volume restores issued
     uint32_t speedVolRetryCount;        // Speed volume retries
@@ -1005,8 +977,6 @@ struct PerfSdSnapshot {
     uint32_t audioPlayCount;
     uint32_t audioPlayBusy;
     uint32_t audioTaskFail;
-    uint32_t sigObsQueueDrops;
-    uint32_t sigObsWriteFail;
     uint32_t minLargestBlock;
     uint32_t fsMaxUs;
     uint32_t sdMaxUs;
@@ -1020,8 +990,6 @@ struct PerfSdSnapshot {
     uint32_t bleDiscoveryMaxUs;
     uint32_t bleSubscribeMaxUs;
     uint32_t dispPipeMaxUs;
-    uint32_t lockoutSaveMaxUs;   // Window max lockout zone JSON+SD write
-    uint32_t learnerSaveMaxUs;   // Window max learner pending JSON+SD write
     uint32_t timeSaveMaxUs;      // Window max timeService.periodicSave NVS write
     uint32_t perfReportMaxUs;    // Window max perfMetricsCheckReport snapshot+enqueue
     uint32_t prioritySelectDisplayIndex; // Legacy display-aux0 priority path (compat-only)
@@ -1218,27 +1186,6 @@ struct PerfRuntimeEventBusSnapshot {
     uint32_t size = 0;
 };
 
-struct PerfRuntimeLockoutSnapshot {
-    const char* mode = "off";
-    int modeRaw = 0;
-    bool coreGuardEnabled = false;
-    bool coreGuardTripped = false;
-    const char* coreGuardReason = "none";
-    uint16_t maxQueueDrops = 0;
-    uint16_t maxPerfDrops = 0;
-    uint16_t maxEventBusDrops = 0;
-    uint32_t learnerPromotionHits = 0;
-    uint32_t learnerRadiusE5 = 0;
-    uint32_t learnerFreqToleranceMHz = 0;
-    uint32_t learnerLearnIntervalHours = 0;
-    uint32_t learnerUnlearnIntervalHours = 0;
-    uint32_t learnerUnlearnCount = 0;
-    uint32_t manualDemotionMissCount = 0;
-    bool kaLearningEnabled = false;
-    bool enforceRequested = false;
-    bool enforceAllowed = false;
-};
-
 struct PhoneCmdDropMetricsSnapshot {
     uint32_t overflow = 0;
     uint32_t invalid = 0;
@@ -1321,7 +1268,6 @@ struct PerfRuntimeMetricsSnapshot {
     PerfRuntimeSdContentionSnapshot sdContention;
     PerfRuntimeProxySnapshot proxy;
     PerfRuntimeEventBusSnapshot eventBus;
-    PerfRuntimeLockoutSnapshot lockout;
 };
 
 void perfCaptureRuntimeMetricsSnapshot(

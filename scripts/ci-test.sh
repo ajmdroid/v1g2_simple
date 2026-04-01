@@ -48,7 +48,6 @@ run_step "BLE deletion semantic guard" python3 scripts/check_ble_deletion_contra
 run_step "Frontend HTTP resilience semantic guard" python3 scripts/check_frontend_http_resilience_contract.py
 run_step "BLE hot-path semantic guard" python3 scripts/check_ble_hot_path_semantic_guard.py
 run_step "Display flush semantic guard" python3 scripts/check_display_flush_semantic_guard.py
-run_step "SD lock semantic guard" python3 scripts/check_sd_lock_semantic_guard.py
 run_step "Main loop semantic guard" python3 scripts/check_main_loop_semantic_guard.py
 run_step "Module const-correctness semantic guard" python3 scripts/check_module_const_correctness.py
 run_step "Extern-escape semantic guard" python3 scripts/check_extern_escape.py
@@ -68,7 +67,6 @@ run_step "Perf CSV import regression tests" python3 scripts/test_perf_csv_import
 run_step "Soak metrics parser regression tests" python3 scripts/test_soak_parse_metrics.py
 run_step "Single hardware test script regression tests" python3 scripts/test_hardware_test_script.py
 run_step "Real firmware soak regression tests" python3 scripts/test_real_fw_soak_script.py
-run_step "Road map builder regression tests" python3 scripts/test_build_road_map.py
 
 section "Compatibility Guards"
 run_step "WiFi API contracts" python3 scripts/check_wifi_api_contract.py
@@ -77,7 +75,6 @@ run_step "Quiet coordinator contract" python3 scripts/check_quiet_coordinator_co
 run_step "BLE hot-path snapshot contract" python3 scripts/check_ble_hot_path_contract.py
 run_step "Perf CSV column contract" python3 scripts/check_perf_csv_column_contract.py
 run_step "Display flush discipline contract" python3 scripts/check_display_flush_discipline_contract.py
-run_step "SD lock discipline contract" python3 scripts/check_sd_lock_discipline_contract.py
 run_step "Main loop call-order contract" python3 scripts/check_main_loop_call_order_contract.py
 run_step "OBD boot-safety contract" python3 scripts/check_obd_boot_safety_contract.py
 run_step "Extern/global usage contract" python3 scripts/check_extern_usage_contract.py

@@ -15,12 +15,6 @@ const char* quietOwnerName(const QuietOwner owner) {
     switch (owner) {
         case QuietOwner::None:
             return "none";
-        case QuietOwner::LockoutMute:
-            return "lockout_mute";
-        case QuietOwner::LockoutOverride:
-            return "lockout_override";
-        case QuietOwner::PreQuiet:
-            return "pre_quiet";
         case QuietOwner::SpeedVolume:
             return "speed_volume";
         case QuietOwner::VolumeFade:
@@ -46,12 +40,6 @@ void QuietCoordinatorModule::reset() {
     desired_ = QuietDesiredState{};
     committed_ = QuietCommittedState{};
     presentation_ = QuietPresentationState{};
-    resetLockoutChannel();
-
-    pendingPqRestoreVol_ = 0xFF;
-    pendingPqRestoreMuteVol_ = 0;
-    pendingPqRestoreSetMs_ = 0;
-    pendingPqRestoreLastRetryMs_ = 0;
 
     speedVolActive_ = false;
     speedVolSavedOriginal_ = 0xFF;
@@ -63,17 +51,6 @@ void QuietCoordinatorModule::reset() {
     speedVolLastRetryMs_ = 0;
 
     syncCommittedState();
-}
-
-void QuietCoordinatorModule::resetLockoutChannel() {
-    lockoutMuteState_ = LockoutRuntimeMuteState{};
-    overrideUnmuteActive_ = false;
-    overrideUnmuteLastRetryMs_ = 0;
-    overrideUnmuteRetryCount_ = 0;
-    if (presentation_.activeMuteOwner == QuietOwner::LockoutMute ||
-        presentation_.activeMuteOwner == QuietOwner::LockoutOverride) {
-        presentation_.activeMuteOwner = QuietOwner::None;
-    }
 }
 
 void QuietCoordinatorModule::syncCommittedState() {
@@ -148,103 +125,6 @@ bool QuietCoordinatorModule::sendVolume(QuietOwner owner, uint8_t volume, uint8_
     return sent;
 }
 
-bool QuietCoordinatorModule::processLockoutMute(const LockoutEnforcerResult& lockRes,
-                                                const GpsLockoutCoreGuardStatus& lockoutGuard,
-                                                bool bleConnected,
-                                                bool v1Muted,
-                                                bool overrideBandActive,
-                                                uint32_t nowMs) {
-    const LockoutRuntimeMuteDecision muteDecision =
-        evaluateLockoutRuntimeMute(lockRes,
-                                   lockoutGuard,
-                                   bleConnected,
-                                   v1Muted,
-                                   overrideBandActive,
-                                   lockoutMuteState_);
-
-    if (muteDecision.sendMute) {
-        sendMute(QuietOwner::LockoutMute, true);
-        Serial.println("[Lockout] ENFORCE: mute sent to V1");
-    }
-    if (muteDecision.sendUnmute) {
-        sendMute(QuietOwner::LockoutMute, false);
-        Serial.println("[Lockout] ENFORCE: unmute sent to V1");
-    }
-    if (muteDecision.logGuardBlocked) {
-        Serial.printf("[Lockout] ENFORCE blocked by core guard (%s)\n", lockoutGuard.reason);
-    }
-
-    const bool needsOverrideUnmute = bleConnected && overrideBandActive && v1Muted;
-    if (needsOverrideUnmute) {
-        if (overrideUnmuteRetryCount_ >= MAX_OVERRIDE_UNMUTE_RETRIES) {
-            if (overrideUnmuteActive_) {
-                Serial.printf("[Safety] Override unmute exhausted after %u retries\n",
-                              overrideUnmuteRetryCount_);
-                overrideUnmuteActive_ = false;
-            }
-        } else if (!overrideUnmuteActive_ ||
-                   static_cast<uint32_t>(nowMs - overrideUnmuteLastRetryMs_) >=
-                       OVERRIDE_UNMUTE_RETRY_MS) {
-            sendMute(QuietOwner::LockoutOverride, false);
-            overrideUnmuteLastRetryMs_ = nowMs;
-            overrideUnmuteRetryCount_++;
-            if (!overrideUnmuteActive_) {
-                Serial.println("[Safety] Ka/Laser override active: unmute sent to V1");
-            }
-            overrideUnmuteActive_ = true;
-        }
-    } else {
-        overrideUnmuteActive_ = false;
-        overrideUnmuteLastRetryMs_ = 0;
-        overrideUnmuteRetryCount_ = 0;
-    }
-
-    if (overrideBandActive || overrideUnmuteActive_) {
-        presentation_.activeMuteOwner = QuietOwner::None;
-    } else if (lockoutMuteState_.lockoutMuteActive) {
-        presentation_.activeMuteOwner = QuietOwner::LockoutMute;
-    } else if (presentation_.activeMuteOwner == QuietOwner::LockoutMute) {
-        presentation_.activeMuteOwner = QuietOwner::None;
-    }
-
-    return muteDecision.sendMute || muteDecision.sendUnmute || overrideUnmuteActive_;
-}
-
-bool QuietCoordinatorModule::retryPendingPreQuietRestore(const uint32_t nowMs) {
-    syncCommittedState();
-    if (pendingPqRestoreVol_ == 0xFF || !ble_ || !parser_) {
-        return false;
-    }
-
-    if ((nowMs - pendingPqRestoreSetMs_) >= PQ_RESTORE_TIMEOUT_MS) {
-        Serial.println("[Lockout] PRE-QUIET: restore retry timeout");
-        pendingPqRestoreVol_ = 0xFF;
-        if (presentation_.activeVolumeOwner == QuietOwner::PreQuiet && !presentation_.preQuietActive) {
-            presentation_.activeVolumeOwner = QuietOwner::None;
-        }
-        return false;
-    }
-
-    if (committed_.mainVolume == pendingPqRestoreVol_) {
-        pendingPqRestoreVol_ = 0xFF;
-        if (!presentation_.preQuietActive && presentation_.activeVolumeOwner == QuietOwner::PreQuiet) {
-            presentation_.activeVolumeOwner = QuietOwner::None;
-        }
-        return false;
-    }
-
-    if ((nowMs - pendingPqRestoreLastRetryMs_) < PQ_RESTORE_RETRY_INTERVAL_MS) {
-        return true;
-    }
-
-    pendingPqRestoreLastRetryMs_ = nowMs;
-    sendVolume(QuietOwner::PreQuiet, pendingPqRestoreVol_, pendingPqRestoreMuteVol_);
-#ifndef UNIT_TEST
-    perfRecordPreQuietRestoreRetry();
-#endif
-    return true;
-}
-
 bool QuietCoordinatorModule::retryPendingSpeedVolRestore(const uint32_t nowMs) {
     syncCommittedState();
     if (pendingSpeedVolRestoreVol_ == 0xFF || !ble_ || !parser_) {
@@ -255,8 +135,7 @@ bool QuietCoordinatorModule::retryPendingSpeedVolRestore(const uint32_t nowMs) {
         Serial.println("[SpeedVol] restore retry timeout");
         pendingSpeedVolRestoreVol_ = 0xFF;
         if (presentation_.activeVolumeOwner == QuietOwner::SpeedVolume) {
-            presentation_.activeVolumeOwner = presentation_.preQuietActive ? QuietOwner::PreQuiet
-                                                                            : QuietOwner::None;
+            presentation_.activeVolumeOwner = QuietOwner::None;
         }
         presentation_.speedVolZeroActive = false;
         return false;
@@ -265,8 +144,7 @@ bool QuietCoordinatorModule::retryPendingSpeedVolRestore(const uint32_t nowMs) {
     if (committed_.mainVolume == pendingSpeedVolRestoreVol_) {
         pendingSpeedVolRestoreVol_ = 0xFF;
         if (!speedVolActive_ && presentation_.activeVolumeOwner == QuietOwner::SpeedVolume) {
-            presentation_.activeVolumeOwner = presentation_.preQuietActive ? QuietOwner::PreQuiet
-                                                                            : QuietOwner::None;
+            presentation_.activeVolumeOwner = QuietOwner::None;
         }
         presentation_.speedVolZeroActive = false;
         return false;
@@ -284,15 +162,4 @@ bool QuietCoordinatorModule::retryPendingSpeedVolRestore(const uint32_t nowMs) {
     perfRecordSpeedVolRetry();
 #endif
     return true;
-}
-
-void QuietCoordinatorModule::setPreQuietActive(const bool active) {
-    presentation_.preQuietActive = active;
-    if (active) {
-        presentation_.activeVolumeOwner = QuietOwner::PreQuiet;
-    } else if (!speedVolActive_ && pendingSpeedVolRestoreVol_ == 0xFF &&
-               pendingPqRestoreVol_ == 0xFF &&
-               presentation_.activeVolumeOwner == QuietOwner::PreQuiet) {
-        presentation_.activeVolumeOwner = QuietOwner::None;
-    }
 }

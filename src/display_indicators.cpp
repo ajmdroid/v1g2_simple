@@ -1,8 +1,7 @@
 /**
  * Indicator badges & frame — extracted from display.cpp (Phase 2P)
  *
- * Contains drawBaseFrame, drawLockoutIndicator, drawGpsIndicator,
- * drawStatusText, and associated setters.
+ * Contains drawBaseFrame, drawGpsIndicator, drawStatusText, and associated setters.
  */
 
 #include "display.h"
@@ -33,65 +32,20 @@ void V1Display::prepareFullRedrawNoClear() {
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
-// ============================================================================
-// Lockout indicator
-// ============================================================================
-
-void V1Display::setLockoutIndicator(bool show) {
-    lockoutIndicatorShown_ = show;
-}
-
-void V1Display::setPreQuietActive(bool active) {
-    preQuietActive_ = active;
-}
-
 void V1Display::setSpeedVolZeroActive(bool active) {
     speedVolZeroActive_ = active;
 }
 
 // ============================================================================
-// File-scoped static cache variables for lockout and GPS indicators
+// File-scoped static cache variables for GPS and OBD indicators
 // ============================================================================
 // Thread safety: these caches are read/written only from the main loop
 // (via display update calls). Not safe for concurrent access.
-static bool s_lockoutLastShown = false;
 static bool s_gpsLastShown = false;
 static uint8_t s_gpsLastSats = 0;
 static bool s_obdLastShown = false;
 static bool s_obdLastConnected = false;
 static bool s_obdLastAttention = false;
-
-void V1Display::drawLockoutIndicator() {
-#if defined(DISPLAY_WAVESHARE_349)
-    if (!dirty.lockout && lockoutIndicatorShown_ == s_lockoutLastShown) {
-        return;
-    }
-    dirty.lockout = false;
-    s_lockoutLastShown = lockoutIndicatorShown_;
-
-    // Position: right of the mute badge area.
-    // Mute badge:  X = 225..335,  Y = 5,  H = 26.
-    // Lockout "L":  X = 340,  Y = 5,  26×26 square badge.
-    const int x = 340;
-    const int y = 5;
-    const int sz = 26;
-
-    if (lockoutIndicatorShown_) {
-        // Draw a rounded-rect badge with configurable lockout color.
-        const V1Settings& s = settingsManager.get();
-        const uint16_t textColor = s.colorLockout;
-        const uint16_t fillColor = dimColor(textColor, 45);
-        FILL_ROUND_RECT(x, y, sz, sz, 5, fillColor);
-        DRAW_ROUND_RECT(x, y, sz, sz, 5, textColor);
-        GFX_setTextDatum(MC_DATUM);
-        TFT_CALL(setTextSize)(2);
-        TFT_CALL(setTextColor)(textColor, fillColor);
-        GFX_drawString(tft_, "L", x + sz / 2, y + sz / 2);
-    } else {
-        FILL_RECT(x, y, sz, sz, PALETTE_BG);
-    }
-#endif
-}
 
 // ============================================================================
 // GPS satellite indicator ("G" + sat count badge, left of MUTED)
@@ -173,7 +127,7 @@ void V1Display::drawGpsIndicator() {
 }
 
 // ============================================================================
-// OBD indicator ("OBD" text, right of lockout badge)
+// OBD indicator ("OBD" text badge)
 // ============================================================================
 
 void V1Display::drawObdIndicator() {
@@ -193,7 +147,7 @@ void V1Display::drawObdIndicator() {
     s_obdLastConnected = curConnected;
     s_obdLastAttention = curAttention;
 
-    // Position: right of lockout badge, before signal bars.
+    // Position: right of GPS badge, before signal bars.
     const int x = 370;
     const int y = 5;
     const int h = 26;
@@ -229,7 +183,6 @@ void V1Display::drawStatusText(const char* text, uint16_t color) {
 // Reset indicator rendering caches
 // ============================================================================
 void V1Display::resetIndicatorsCache() {
-    s_lockoutLastShown = false;
     s_gpsLastShown = false;
     s_gpsLastSats = 0;
     s_obdLastShown = false;

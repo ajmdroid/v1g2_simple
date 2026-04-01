@@ -20,8 +20,7 @@
 	});
 
 	let settings = $state({
-		enableWifiAtBoot: false,
-		enableSignalTraceLogging: true
+		enableWifiAtBoot: false
 	});
 	let loading = $state(true);
 	let saving = $state(false);
@@ -110,7 +109,6 @@
 			const response = await fetchWithTimeout('/api/device/settings');
 			const data = await response.json();
 			settings.enableWifiAtBoot = data.enableWifiAtBoot || false;
-			settings.enableSignalTraceLogging = data.enableSignalTraceLogging ?? true;
 			loading = false;
 		} catch (error) {
 			console.error('Failed to load settings:', error);
@@ -131,7 +129,6 @@
 		try {
 			const formData = new FormData();
 			formData.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
-			formData.append('enableSignalTraceLogging', settings.enableSignalTraceLogging.toString());
 
 			const response = await postSettingsForm(formData, '/api/device/settings');
 
@@ -158,7 +155,6 @@
 		if (!confirm('Reset all development settings to defaults?')) return;
 
 		settings.enableWifiAtBoot = false;
-		settings.enableSignalTraceLogging = true;
 		await saveSettings();
 	}
 
@@ -407,23 +403,7 @@
 					</label>
 				</div>
 
-				<div class="form-control">
-					<label class="label cursor-pointer">
-						<div>
-							<span class="label-text font-semibold">Signal Trace Logging (All Bands)</span>
-							<p class="copy-caption-soft mt-1">
-								Default ON. Best-effort logging of all active V1 alerts (including Ka) to lockout CSV for bench analysis.
-							</p>
-						</div>
-						<input
-							type="checkbox"
-							class="toggle toggle-primary"
-							bind:checked={settings.enableSignalTraceLogging}
-							disabled={!acknowledged}
-						/>
-					</label>
-				</div>
-			</div>
+		</div>
 		</div>
 
 		<!-- Performance Metrics -->
