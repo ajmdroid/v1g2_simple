@@ -49,6 +49,7 @@ enum class ObdEotProfileId : uint8_t {
     VW_2230F9 = 5,
     VW_2230DB = 6,
     VW_223A59 = 7,
+    FORD_2203F3 = 8,    // Ford PCM inferred oil temp (2.3L EcoBoost, 2020+)
 };
 
 enum class ObdFailureReason : uint8_t {

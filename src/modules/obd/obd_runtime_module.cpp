@@ -44,6 +44,8 @@ constexpr ObdEotProfile kEotProfiles[] = {
      Elm327TempDecodeFormat::U8_OFFSET40, 1, 50},
     {ObdEotProfileId::FORD_221310, ObdVehicleFamily::FORD, "221310\r", 0x62, 0x10, 0x1310,
      Elm327TempDecodeFormat::U16_RAW_OFFSET40, 2, 50},
+    {ObdEotProfileId::FORD_2203F3, ObdVehicleFamily::FORD, "2203F3\r", 0x62, 0xF3, 0x03F3,
+     Elm327TempDecodeFormat::U8_OFFSET40, 1, 50},
     {ObdEotProfileId::FCA_21E8, ObdVehicleFamily::FCA, "21E8\r", 0x61, 0xE8, 0x0000,
      Elm327TempDecodeFormat::U8_OFFSET40, 1, 50},
     {ObdEotProfileId::VW_2230F9, ObdVehicleFamily::VW_AUDI_PORSCHE, "2230F9\r", 0x62, 0xF9, 0x30F9,
@@ -1585,8 +1587,9 @@ ObdEotProfileId ObdRuntimeModule::nextProbeProfile() const {
 
     switch (vehicleFamily_) {
         case ObdVehicleFamily::FORD: {
-            const ObdEotProfileId order[] = {ObdEotProfileId::FORD_22F45C,
-                                             ObdEotProfileId::FORD_221310};
+            const ObdEotProfileId order[] = {ObdEotProfileId::FORD_2203F3,   // PCM inferred (2020+ EcoBoost)
+                                             ObdEotProfileId::FORD_22F45C,   // Physical sensor DID
+                                             ObdEotProfileId::FORD_221310};  // Physical sensor DID
             for (const auto profileId : order) {
                 if (!isProfileUnsupported(profileId)) return profileId;
             }
