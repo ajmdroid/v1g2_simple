@@ -65,7 +65,7 @@ kind=header file=src/battery_manager.h line=103 text=extern BatteryManager batte
 kind=header file=src/battery_manager.h line=106 text=extern TwoWire tca9554Wire;
 kind=header file=src/battery_manager.h line=107 text=extern SemaphoreHandle_t tca9554WireMutex;
 kind=source file=src/ble_connection.cpp line=16 text=extern int backupBondsToSD();
-kind=header file=src/display.h line=275 text=extern V1Display display;
+kind=header file=src/display.h line=276 text=extern V1Display display;
 kind=header file=src/display_font_manager.h line=120 text=extern DisplayFontManager fontMgr;
 kind=source file=src/display_indicators.cpp line=15 text=extern ObdRuntimeModule obdRuntimeModule;
 kind=source file=src/display_status_bar.cpp line=164 text=extern SettingsManager settingsManager;
@@ -83,14 +83,15 @@ kind=source file=src/modules/obd/obd_runtime_module.cpp line=11 text=extern ObdB
 kind=source file=src/modules/obd/obd_runtime_module.cpp line=12 text=extern ObdRuntimeModule obdRuntimeModule;
 kind=source file=src/modules/wifi/backup_api_service.cpp line=14 text=extern ObdRuntimeModule obdRuntimeModule;
 kind=source file=src/modules/wifi/backup_api_service.cpp line=15 text=extern SpeedSourceSelector speedSourceSelector;
-kind=source file=src/perf_metrics.cpp line=24 text=extern SystemEventBus systemEventBus;
-kind=source file=src/perf_metrics.cpp line=25 text=extern ObdRuntimeModule obdRuntimeModule;
-kind=source file=src/perf_metrics.cpp line=26 text=extern SpeedSourceSelector speedSourceSelector;
-kind=header file=src/perf_metrics.h line=707 text=extern PerfExtendedMetrics perfExtended;
-kind=header file=src/perf_metrics.h line=821 text=extern PerfCounters perfCounters;
-kind=header file=src/perf_metrics.h line=1228 text=extern PerfLatency perfLatency;
-kind=header file=src/perf_metrics.h line=1232 text=extern bool perfDebugEnabled; // Runtime debug print enable
-kind=header file=src/perf_metrics.h line=1233 text=extern uint32_t perfLastReportMs; // Last report timestamp
+kind=source file=src/perf_metrics.cpp line=25 text=extern SystemEventBus systemEventBus;
+kind=source file=src/perf_metrics.cpp line=26 text=extern ObdRuntimeModule obdRuntimeModule;
+kind=source file=src/perf_metrics.cpp line=27 text=extern SpeedSourceSelector speedSourceSelector;
+kind=source file=src/perf_metrics.cpp line=32 text=extern std::atomic<TaskHandle_t> audioTaskHandle;
+kind=header file=src/perf_metrics.h line=697 text=extern PerfExtendedMetrics perfExtended;
+kind=header file=src/perf_metrics.h line=811 text=extern PerfCounters perfCounters;
+kind=header file=src/perf_metrics.h line=1218 text=extern PerfLatency perfLatency;
+kind=header file=src/perf_metrics.h line=1222 text=extern bool perfDebugEnabled; // Runtime debug print enable
+kind=header file=src/perf_metrics.h line=1223 text=extern uint32_t perfLastReportMs; // Last report timestamp
 kind=header file=src/perf_sd_logger.h line=67 text=extern PerfSdLogger perfSdLogger;
 kind=header file=src/settings.h line=812 text=extern SettingsManager settingsManager;
 kind=header file=src/storage_manager.h line=306 text=extern StorageManager storageManager;

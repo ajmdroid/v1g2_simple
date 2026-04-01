@@ -16,6 +16,7 @@
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <cmath>
 
 // Global instances
@@ -24,6 +25,12 @@ PerfExtendedMetrics perfExtended;
 extern SystemEventBus  systemEventBus;
 extern ObdRuntimeModule  obdRuntimeModule;
 extern SpeedSourceSelector speedSourceSelector;
+
+#if PERF_METRICS && PERF_MONITORING
+// Audio task handle for stack high-water-mark monitoring.
+// Defined in audio_beep.cpp; used here for observability only.
+extern std::atomic<TaskHandle_t> audioTaskHandle;
+#endif
 
 #if PERF_METRICS
 PerfLatency perfLatency;
@@ -1396,6 +1403,20 @@ const char* perfProxyAdvertisingTransitionReasonName(uint32_t reasonCode) {
 }
 
 #if PERF_METRICS && PERF_MONITORING
+static void reportTaskStackHighWaterMarks() {
+    // Monitor accessible task handles for stack overflow risk.
+    // Log warning if HWM drops below 64 words (256 bytes).
+
+    // Audio task — extern declared at file scope above.
+    TaskHandle_t audioHandle = audioTaskHandle.load(std::memory_order_relaxed);
+    if (audioHandle != nullptr) {
+        UBaseType_t hwm = uxTaskGetStackHighWaterMark(audioHandle);
+        if (hwm < 64) {
+            Serial.printf("[STACK] WARNING: audio task HWM critically low: %u words\n", hwm);
+        }
+    }
+}
+
 bool perfMetricsCheckReport() {
     uint32_t now = millis();
     constexpr uint32_t STABILITY_REPORT_INTERVAL_MS = 5000;
@@ -1413,6 +1434,16 @@ bool perfMetricsCheckReport() {
     // accumulate as max-ever instead of per-window when SD is absent.
     PerfSdSnapshot snapshot{};
     captureSdSnapshot(snapshot);
+
+    // Report stack high water marks for accessible tasks
+    reportTaskStackHighWaterMarks();
+
+    // Check DMA free threshold
+    if (snapshot.freeDmaCap < 8192) {
+        Serial.printf("[HEAP] WARNING: DMA free critically low: %lu bytes\n",
+                      (unsigned long)snapshot.freeDmaCap);
+    }
+
     if (perfSdLogger.isEnabled()) {
         perfSdLogger.enqueue(snapshot);
     }

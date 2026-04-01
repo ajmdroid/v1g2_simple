@@ -206,6 +206,19 @@ bool V1Display::begin() {
         return false;
     }
 
+    // PSRAM verification: Check where the 220 KiB framebuffer landed
+    if (tft_) {
+        void* canvasPtr = tft_->getFramebuffer();
+        if (canvasPtr) {
+            bool isPsram = esp_ptr_external_ram(canvasPtr);
+            Serial.printf("[Display] Canvas framebuffer: %s (%p, ~220 KiB)\n",
+                          isPsram ? "PSRAM" : "INTERNAL SRAM", canvasPtr);
+            if (!isPsram) {
+                Serial.println("[Display] WARNING: 220 KiB canvas in internal SRAM!");
+            }
+        }
+    }
+
     tft_->fillScreen(COLOR_BLACK);
     DISPLAY_FLUSH();
 
