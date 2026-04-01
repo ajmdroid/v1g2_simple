@@ -228,7 +228,6 @@ int namespaceHealthScore(const char* ns) {
     if (settingsVer > 0) score += settingsVer * 10;
 
     static constexpr const char* kCriticalKeys[] = {
-        "gpsEn",
         "proxyBLE",
         "proxyName",
         "brightness",

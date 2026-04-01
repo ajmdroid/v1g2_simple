@@ -26,7 +26,6 @@
 		speedMuteThresholdMph: 25,
 		speedMuteHysteresisMph: 3,
 		speedMuteVolume: 255,
-		speedMuteRequireObd: false
 	});
 	
 	let loading = $state(true);
@@ -71,7 +70,6 @@
 				settings.speedMuteThresholdMph = data.speedMuteThresholdMph ?? 25;
 				settings.speedMuteHysteresisMph = data.speedMuteHysteresisMph ?? 3;
 				settings.speedMuteVolume = data.speedMuteVolume ?? 255;
-				settings.speedMuteRequireObd = data.speedMuteRequireObd ?? false;
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load settings' };
@@ -106,7 +104,6 @@
 			params.append('speedMuteThresholdMph', settings.speedMuteThresholdMph);
 			params.append('speedMuteHysteresisMph', settings.speedMuteHysteresisMph);
 			params.append('speedMuteVolume', settings.speedMuteVolume);
-			params.append('speedMuteRequireObd', settings.speedMuteRequireObd);
 			
 			const res = await fetchWithTimeout('/api/audio/settings', {
 				method: 'POST',
@@ -392,7 +389,7 @@
 			<div class="card-body">
 				<CardSectionHead
 					title="Speed-Aware Muting"
-					subtitle="Suppress voice alerts below a speed threshold (requires OBD or GPS speed source)."
+					subtitle="Suppress voice alerts below a speed threshold (requires OBD speed source)."
 				/>
 				
 				<div class="space-y-4">
@@ -464,21 +461,6 @@
 									{/each}
 								</select>
 								<p class="copy-caption-soft mt-1">Also lower V1 hardware alert volume when speed-muted</p>
-							</div>
-
-							<!-- Require OBD -->
-							<div class="form-control mt-4">
-								<label class="label cursor-pointer">
-									<div>
-										<span class="label-text font-medium">Require OBD Speed</span>
-										<p class="copy-caption-soft">Only use OBD speed data (ignore GPS) — more accurate at low speeds</p>
-									</div>
-									<input 
-										type="checkbox" 
-										class="toggle toggle-primary" 
-										bind:checked={settings.speedMuteRequireObd}
-									/>
-								</label>
 							</div>
 
 							<!-- Preview -->

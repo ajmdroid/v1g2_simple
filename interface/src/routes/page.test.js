@@ -29,22 +29,6 @@ function installDefaultFetch(overrides = []) {
 					v1_connected: true,
 					alert: null
 				})
-			},
-			{
-				method: 'GET',
-				match: '/api/gps/status',
-				respond: jsonResponse({
-					enabled: true,
-					runtimeEnabled: true,
-					mode: 'drive',
-					hasFix: true,
-					stableHasFix: true,
-					satellites: 9,
-					stableSatellites: 9,
-					hdop: 0.8,
-					moduleDetected: true,
-					detectionTimedOut: false
-				})
 			}
 		],
 		jsonResponse({})
@@ -61,53 +45,30 @@ describe('dashboard route page', () => {
 		vi.restoreAllMocks();
 	});
 
-	it('loads shared runtime status and gps state on mount', async () => {
+	it('loads shared runtime status on mount', async () => {
 		const fetchMock = installDefaultFetch();
 		const { unmount } = render(Page);
 
 		await screen.findByText('Connected');
 		await screen.findByText('GarageNet • -54 dBm');
-		await screen.findByText('9 sats');
 		await waitFor(() => {
 			expect(countCalls(fetchMock, '/api/status')).toBeGreaterThanOrEqual(1);
-			expect(countCalls(fetchMock, '/api/gps/status')).toBeGreaterThanOrEqual(1);
 		});
 
 		unmount();
 	});
 
-	it('polls status every 3s and gps every 9s through the shared runtime module', async () => {
+	it('polls status every 3s through the shared runtime module', async () => {
 		vi.useFakeTimers();
 		const fetchMock = installDefaultFetch();
 		const { unmount } = render(Page);
 
 		await Promise.resolve();
 		expect(countCalls(fetchMock, '/api/status')).toBe(1);
-		expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
 
 		await vi.advanceTimersByTimeAsync(9000);
 
 		expect(countCalls(fetchMock, '/api/status')).toBe(4);
-		expect(countCalls(fetchMock, '/api/gps/status')).toBe(2);
-
-		unmount();
-	});
-
-	it('does not show a gps error banner on dashboard when gps polling fails', async () => {
-		const fetchMock = installDefaultFetch([
-			{
-				method: 'GET',
-				match: '/api/gps/status',
-				respond: jsonResponse({ error: 'gps unavailable' }, 503)
-			}
-		]);
-		const { unmount } = render(Page);
-
-		await screen.findByText('Connected');
-		await waitFor(() => {
-			expect(screen.queryByText('GPS status unavailable')).not.toBeInTheDocument();
-			expect(countCalls(fetchMock, '/api/gps/status')).toBeGreaterThanOrEqual(1);
-		});
 
 		unmount();
 	});
@@ -137,22 +98,6 @@ describe('dashboard route page', () => {
 					respond: () => {
 						throw new Error('network down');
 					}
-				},
-				{
-					method: 'GET',
-					match: '/api/gps/status',
-					respond: jsonResponse({
-						enabled: true,
-						runtimeEnabled: true,
-						mode: 'drive',
-						hasFix: true,
-						stableHasFix: true,
-						satellites: 9,
-						stableSatellites: 9,
-						hdop: 0.8,
-						moduleDetected: true,
-						detectionTimedOut: false
-					})
 				}
 			],
 			jsonResponse({})

@@ -626,13 +626,11 @@ bool SettingsManager::checkNeedsRestore() {
     bool missingCriticalKey = false;
     // These keys exist in all modern schemas and should never disappear in a healthy namespace.
     static constexpr const char* kCriticalKeys[] = {
-        "gpsEn",
         "proxyBLE",
         "proxyName",
         "brightness",
         "dispStyle",
-        "autoPush",
-        "gpsLkMode"
+        "autoPush"
     };
     for (const char* key : kCriticalKeys) {
         if (!checkPrefs.isKey(key)) {

@@ -14,8 +14,6 @@ export function getTimeSourceLabel(source) {
 	switch (source) {
 		case 1:
 			return 'CLIENT_AP';
-		case 2:
-			return 'GPS';
 		case 3:
 			return 'SNTP';
 		case 4:

@@ -45,7 +45,6 @@
 	];
 
 	const BADGE_FIELDS = [
-		{ key: 'gps', id: 'gps-color', label: 'GPS G Badge', pickerLabel: 'GPS Badge', preview: 'G' },
 		{ key: 'obd', id: 'obd-color', label: 'OBD Badge', pickerLabel: 'OBD Badge', preview: 'OBD' }
 	];
 
@@ -485,7 +484,7 @@
 
 		<div class="surface-card">
 			<div class="card-body">
-				<CardSectionHead title="GPS & OBD" subtitle="GPS and OBD status text colors." />
+				<CardSectionHead title="OBD" subtitle="OBD status text color." />
 				<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 					{#each BADGE_FIELDS as field}
 						<ColorControl

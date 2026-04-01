@@ -5,20 +5,12 @@
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	import {
 		retainRuntimeStatus,
-		runtimeGpsStatus,
 		runtimeStatus,
 		runtimeStatusError,
 		runtimeStatusLoading
 	} from '$lib/stores/runtimeStatus.svelte.js';
 
-	const DASHBOARD_GPS_POLL_INTERVAL_MS = 9000;
-
-	onMount(() =>
-		retainRuntimeStatus({
-			needsStatus: true,
-			gpsPollIntervalMs: DASHBOARD_GPS_POLL_INTERVAL_MS
-		})
-	);
+	onMount(() => retainRuntimeStatus({ needsStatus: true }));
 
 	function formatUptime(seconds) {
 		const d = Math.floor(seconds / 86400);
@@ -33,15 +25,6 @@
 		if (rssi >= -50) return 'text-success';
 		if (rssi >= -70) return 'text-warning';
 		return 'text-error';
-	}
-
-	function gpsHasFixStable() {
-		return (typeof $runtimeGpsStatus.stableHasFix === 'boolean') ? $runtimeGpsStatus.stableHasFix : !!$runtimeGpsStatus.hasFix;
-	}
-
-	function gpsSatCountStable() {
-		if (typeof $runtimeGpsStatus.stableSatellites === 'number') return $runtimeGpsStatus.stableSatellites;
-		return $runtimeGpsStatus.satellites || 0;
 	}
 </script>
 
@@ -72,7 +55,7 @@
 		</div>
 	</div>
 
-	<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
+	<div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
 		<div class="surface-card">
 			<div class="card-body">
 				<div class="copy-mini-title">Valentine One</div>
@@ -134,34 +117,6 @@
 				{:else}
 					<div class="status-heading-success">Clear</div>
 					<div class="copy-caption">No threats</div>
-				{/if}
-			</div>
-		</div>
-
-		<div class="surface-card">
-			<div class="card-body">
-				<div class="copy-mini-title">GPS</div>
-				{#if $runtimeStatusLoading}
-					<span class="loading loading-spinner loading-sm"></span>
-				{:else if !$runtimeGpsStatus.enabled}
-					<div class="status-heading-muted">Disabled</div>
-					<div class="copy-caption">Enable in Integrations</div>
-				{:else if $runtimeGpsStatus.detectionTimedOut}
-					<div class="status-heading-warning">Not Found</div>
-					<div class="copy-caption">Module timeout</div>
-					{:else if gpsHasFixStable()}
-						<div class="status-heading-success">
-							{gpsSatCountStable()} sats
-						</div>
-					<div class="copy-caption">
-						{typeof $runtimeGpsStatus.hdop === 'number' ? `HDOP ${$runtimeGpsStatus.hdop.toFixed(1)}` : 'Fix acquired'}
-					</div>
-				{:else if $runtimeGpsStatus.moduleDetected}
-					<div class="status-heading-info">Searching</div>
-					<div class="copy-caption">No fix yet</div>
-				{:else}
-					<div class="status-heading-muted">Idle</div>
-					<div class="copy-caption">{$runtimeGpsStatus.mode}</div>
 				{/if}
 			</div>
 		</div>

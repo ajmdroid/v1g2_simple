@@ -9,108 +9,8 @@ function countCalls(fetchMock, url) {
 }
 
 function installDefaultFetch() {
-	let gpsEnabled = true;
-
 	return installFetchMock(
 		[
-			{
-				method: 'GET',
-				match: '/api/gps/status',
-				respond: () =>
-					jsonResponse({
-						enabled: gpsEnabled,
-						runtimeEnabled: gpsEnabled,
-						mode: 'drive',
-						hasFix: true,
-						stableHasFix: true,
-						satellites: 7,
-						stableSatellites: 7,
-						sampleAgeMs: 1900,
-						moduleDetected: true,
-						detectionTimedOut: false,
-						parserActive: true
-					})
-			},
-			{
-				method: 'POST',
-				match: '/api/gps/config',
-				respond: async ({ init }) => {
-					const body = JSON.parse(init.body);
-					gpsEnabled = body.enabled === true;
-					return jsonResponse({ success: true });
-				}
-			},
-			{
-				method: 'GET',
-				match: '/api/obd/config',
-				respond: jsonResponse({ enabled: false, minRssi: -80 })
-			},
-			{
-				method: 'GET',
-				match: '/api/obd/devices',
-				respond: jsonResponse({
-					devices: [{ address: 'A4:C1:38:00:11:22', name: 'Truck Adapter', connected: false, active: true }]
-				})
-			},
-			{
-				method: 'GET',
-				match: '/api/obd/status',
-				respond: jsonResponse({
-					enabled: false,
-					connected: false,
-					pollCount: 0,
-					pollErrors: 0,
-					savedAddress: 'A4:C1:38:00:11:22'
-				})
-			},
-			{ method: 'POST', match: '/api/obd/config', respond: jsonResponse({ success: true }) },
-			{ method: 'POST', match: '/api/obd/devices/name', respond: jsonResponse({ success: true }) },
-			{ method: 'POST', match: '/api/obd/scan', respond: jsonResponse({ success: true }) },
-			{ method: 'POST', match: '/api/obd/forget', respond: jsonResponse({ success: true }) }
-		],
-		jsonResponse({})
-	);
-}
-
-function installGpsRecoveryFetch() {
-	let gpsEnabled = true;
-	let gpsRequestCount = 0;
-
-	return installFetchMock(
-		[
-			{
-				method: 'GET',
-				match: '/api/gps/status',
-				respond: () => {
-					gpsRequestCount += 1;
-					if (gpsRequestCount === 1) {
-						return jsonResponse({ error: 'gps unavailable' }, 503);
-					}
-
-					return jsonResponse({
-						enabled: gpsEnabled,
-						runtimeEnabled: gpsEnabled,
-						mode: 'drive',
-						hasFix: true,
-						stableHasFix: true,
-						satellites: 7,
-						stableSatellites: 7,
-						sampleAgeMs: 1900,
-						moduleDetected: true,
-						detectionTimedOut: false,
-						parserActive: true
-					});
-				}
-			},
-			{
-				method: 'POST',
-				match: '/api/gps/config',
-				respond: async ({ init }) => {
-					const body = JSON.parse(init.body);
-					gpsEnabled = body.enabled === true;
-					return jsonResponse({ success: true });
-				}
-			},
 			{
 				method: 'GET',
 				match: '/api/obd/config',
@@ -149,117 +49,10 @@ describe('integrations route page', () => {
 		vi.restoreAllMocks();
 	});
 
-	it('loads gps runtime data from the shared runtime module', async () => {
-		const fetchMock = installDefaultFetch();
-		const { unmount } = render(Page);
-
-		await screen.findByText('drive');
-		await screen.findByText('7');
-		await screen.findByText('2s');
-		await waitFor(() => {
-			expect(countCalls(fetchMock, '/api/gps/status')).toBeGreaterThanOrEqual(1);
-		});
-
-		unmount();
-	});
-
-	it('polls gps every 2.5s and refreshes after toggling gps', async () => {
-		vi.useFakeTimers();
-		const fetchMock = installDefaultFetch();
-		const { unmount } = render(Page);
-
-		await Promise.resolve();
-		expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
-
-		await vi.advanceTimersByTimeAsync(2500);
-		expect(countCalls(fetchMock, '/api/gps/status')).toBe(2);
-
-		const toggle = await screen.findByRole('checkbox', { name: /enabled/i });
-		await fireEvent.click(toggle);
-
-		await screen.findByText('GPS disabled');
-		expect(
-			fetchMock.mock.calls.some(
-				([url, init]) => url === '/api/gps/config' && init?.method === 'POST'
-			)
-		).toBe(true);
-		expect(countCalls(fetchMock, '/api/gps/status')).toBe(3);
-
-		unmount();
-	});
-
-	it('shows a shared gps polling error when gps status fails on mount', async () => {
-		const fetchMock = installFetchMock(
-			[
-				{
-					method: 'GET',
-					match: '/api/gps/status',
-					respond: jsonResponse({ error: 'gps unavailable' }, 503)
-				},
-				{
-					method: 'GET',
-					match: '/api/obd/config',
-					respond: jsonResponse({ enabled: false, minRssi: -80 })
-				},
-				{
-					method: 'GET',
-					match: '/api/obd/status',
-					respond: jsonResponse({ enabled: false, connected: false, pollCount: 0, pollErrors: 0 })
-				},
-				{ method: 'POST', match: '/api/obd/config', respond: jsonResponse({ success: true }) },
-				{ method: 'POST', match: '/api/obd/scan', respond: jsonResponse({ success: true }) },
-				{ method: 'POST', match: '/api/obd/forget', respond: jsonResponse({ success: true }) }
-			],
-			jsonResponse({})
-		);
-		const { unmount } = render(Page);
-
-		await screen.findByText('GPS status unavailable');
-		expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
-
-		unmount();
-	});
-
-	it('clears the shared gps polling error after the next successful poll', async () => {
-		vi.useFakeTimers();
-		const fetchMock = installGpsRecoveryFetch();
-		const { unmount } = render(Page);
-
-		await screen.findByText('GPS status unavailable');
-		expect(countCalls(fetchMock, '/api/gps/status')).toBe(1);
-
-		await vi.advanceTimersByTimeAsync(2500);
-
-		await screen.findByText('drive');
-		await waitFor(() => {
-			expect(screen.queryByText('GPS status unavailable')).not.toBeInTheDocument();
-		});
-		expect(countCalls(fetchMock, '/api/gps/status')).toBe(2);
-
-		unmount();
-	});
-
 	it('shows an OBD settings error when the OBD settings fetch fails on mount', async () => {
 		const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 		installFetchMock(
 			[
-				{
-					method: 'GET',
-					match: '/api/gps/status',
-					respond: jsonResponse({
-						enabled: true,
-						runtimeEnabled: true,
-						mode: 'drive',
-						hasFix: true,
-						stableHasFix: true,
-						satellites: 7,
-						stableSatellites: 7,
-						sampleAgeMs: 1900,
-						moduleDetected: true,
-						detectionTimedOut: false,
-						parserActive: true
-					})
-				},
 				{
 					method: 'GET',
 					match: '/api/obd/config',
@@ -313,23 +106,6 @@ describe('integrations route page', () => {
 			[
 				{
 					method: 'GET',
-					match: '/api/gps/status',
-					respond: jsonResponse({
-						enabled: true,
-						runtimeEnabled: true,
-						mode: 'drive',
-						hasFix: true,
-						stableHasFix: true,
-						satellites: 7,
-						stableSatellites: 7,
-						sampleAgeMs: 1900,
-						moduleDetected: true,
-						detectionTimedOut: false,
-						parserActive: true
-					})
-				},
-				{
-					method: 'GET',
 					match: '/api/obd/config',
 					respond: jsonResponse({ enabled: true, minRssi: -80 })
 				},
@@ -372,23 +148,6 @@ describe('integrations route page', () => {
 			[
 				{
 					method: 'GET',
-					match: '/api/gps/status',
-					respond: jsonResponse({
-						enabled: true,
-						runtimeEnabled: true,
-						mode: 'drive',
-						hasFix: true,
-						stableHasFix: true,
-						satellites: 7,
-						stableSatellites: 7,
-						sampleAgeMs: 1900,
-						moduleDetected: true,
-						detectionTimedOut: false,
-						parserActive: true
-					})
-				},
-				{
-					method: 'GET',
 					match: '/api/obd/config',
 					respond: jsonResponse({ enabled: false, minRssi: -80 })
 				},
@@ -424,23 +183,6 @@ describe('integrations route page', () => {
 	it('reconciles the OBD min RSSI input after a failed save', async () => {
 		installFetchMock(
 			[
-				{
-					method: 'GET',
-					match: '/api/gps/status',
-					respond: jsonResponse({
-						enabled: true,
-						runtimeEnabled: true,
-						mode: 'drive',
-						hasFix: true,
-						stableHasFix: true,
-						satellites: 7,
-						stableSatellites: 7,
-						sampleAgeMs: 1900,
-						moduleDetected: true,
-						detectionTimedOut: false,
-						parserActive: true
-					})
-				},
 				{
 					method: 'GET',
 					match: '/api/obd/config',
@@ -489,23 +231,6 @@ describe('integrations route page', () => {
 		let obdStatus = { enabled: false, connected: false, pollCount: 0, pollErrors: 0, state: 0 };
 		const fetchMock = installFetchMock(
 			[
-				{
-					method: 'GET',
-					match: '/api/gps/status',
-					respond: jsonResponse({
-						enabled: true,
-						runtimeEnabled: true,
-						mode: 'drive',
-						hasFix: true,
-						stableHasFix: true,
-						satellites: 7,
-						stableSatellites: 7,
-						sampleAgeMs: 1900,
-						moduleDetected: true,
-						detectionTimedOut: false,
-						parserActive: true
-					})
-				},
 				{
 					method: 'GET',
 					match: '/api/obd/config',
