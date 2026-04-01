@@ -185,19 +185,13 @@ Voice alert options:
 - **Enable Voice Alerts:** Toggle spoken announcements on/off
 - **Mute Voice at Volume 0:** Silence alerts when V1 volume is 0 (warning still plays)
 - **Volume Fade:** Reduce V1 volume after initial alert, restore for new threats
-- **Speed-Based Mute:** Mute V1 alerts below a configurable speed threshold (requires GPS or OBD)
-
-### GPS (/integrations)
-
-Speed and location sources:
-
-- **GPS Status:** View current position, speed, heading, and satellite info
+- **Speed-Based Mute:** Mute V1 alerts below a configurable speed threshold (requires OBD)
 
 ---
 
 ## Troubleshooting
 
-For comprehensive troubleshooting (connection, display, GPS, audio,
+For comprehensive troubleshooting (connection, display, audio,
 performance, factory reset), see [docs/MANUAL.md Section J](docs/MANUAL.md#j-troubleshooting).
 
 **Quick fixes:**
@@ -215,7 +209,6 @@ performance, factory reset), see [docs/MANUAL.md Section J](docs/MANUAL.md#j-tro
 | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | **Authoritative.** Observability surfaces, metric naming, offline derivation, and test-evidence interpretation |
 | [docs/PERF_SLOS.md](docs/PERF_SLOS.md) | Perf thresholds and scoring rules |
 | [docs/API.md](docs/API.md) | Full HTTP REST API reference with request/response schemas |
-| [docs/ROAD_MAP_FORMAT.md](docs/ROAD_MAP_FORMAT.md) | GPS road-map binary format specification |
 
 Observability/testing authority lives in `docs/OBSERVABILITY.md`. Each topic has ONE home.
 

@@ -190,7 +190,6 @@ or SD backups. `_type` must be `v1simple_backup` or `v1simple_sd_backup`.
   "enableWifi": true,
   "proxyBLE": true,
   "proxyName": "V1C-LE-S3",
-  "gpsEnabled": true,
   "obdEnabled": false,
   "profiles": [
     {
@@ -206,8 +205,7 @@ or SD backups. `_type` must be `v1simple_backup` or `v1simple_sd_backup`.
 ```
 
 The envelope includes the top-level metadata fields above plus the full saved
-settings payload. Note: `gpsEnabled` may appear in older backups but is no longer
-used (GPS system has been removed).
+settings payload.
 
 **Response:**
 ```json
@@ -770,7 +768,7 @@ Get runtime performance counters and subsystem health snapshots.
   `bleProxyStartMaxUs`, `displayVoiceMaxUs`, and `displayGapRecoverMaxUs`.
 - `dispMaxUs` now reports display render time, while `dispPipeMaxUs` remains the
   full `DisplayPipelineModule::handleParsed()` path.
-- GPS-related metrics have been removed; speed-based muting now uses OBD only.
+- Speed-based muting uses OBD only.
 
 ### POST /api/debug/enable
 

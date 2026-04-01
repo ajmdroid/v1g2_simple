@@ -2,10 +2,10 @@
 """Validate a replay fixture directory against the required schema.
 
 Checks:
-  - Required files exist: meta.json, packets.csv, gps.csv, expected.json
+  - Required files exist: meta.json, packets.csv, expected.json
   - meta.json has required keys and valid lane tag
   - CSV timestamps are monotonically non-decreasing
-  - packets.csv and gps.csv have required columns
+  - packets.csv has required columns
   - expected.json is valid JSON
 
 Usage:
@@ -23,11 +23,10 @@ import json
 import sys
 from pathlib import Path
 
-REQUIRED_FILES = ["meta.json", "packets.csv", "gps.csv", "expected.json"]
+REQUIRED_FILES = ["meta.json", "packets.csv", "expected.json"]
 REQUIRED_META_KEYS = ["scenario_id", "owner", "lane", "sanitization_version"]
 VALID_LANES = {"pr", "nightly"}
 PACKETS_COLS = {"timestamp_ms", "frame_hex"}
-GPS_COLS = {"timestamp_ms", "lat", "lon", "speed_mph", "course_deg", "has_fix"}
 
 
 def check_monotonic_timestamps(path: Path) -> list[str]:
@@ -97,19 +96,8 @@ def validate_fixture(fixture_dir: Path) -> list[str]:
             if missing:
                 errors.append(f"packets.csv: missing columns: {missing}")
 
-    # Validate gps.csv columns
-    with open(fixture_dir / "gps.csv", newline="") as f:
-        reader = csv.DictReader(f)
-        if reader.fieldnames is None:
-            errors.append("gps.csv: empty file")
-        else:
-            missing = GPS_COLS - set(reader.fieldnames)
-            if missing:
-                errors.append(f"gps.csv: missing columns: {missing}")
-
     # Check monotonic timestamps
     errors.extend(check_monotonic_timestamps(fixture_dir / "packets.csv"))
-    errors.extend(check_monotonic_timestamps(fixture_dir / "gps.csv"))
 
     return errors
 

@@ -38,13 +38,13 @@
       "id": "post_api_settings_route_cleanup",
       "wave": 5,
       "status": "resolved",
-      "description": "Legacy POST /api/settings has been removed. GPS/lockout writes are owned by POST /api/gps/config, device/AP/proxy/dev writes remain on POST /api/device/settings, the UI helper no longer defaults to /api/settings, and the route/doc contracts fail CI if the catch-all surface returns."
+      "description": "Legacy POST /api/settings has been removed. Device/AP/proxy/dev writes remain on POST /api/device/settings, the UI helper no longer defaults to /api/settings, and the route/doc contracts fail CI if the catch-all surface returns."
     },
     {
       "id": "wrapper_primary_risky_seam_tests",
       "wave": 1,
       "status": "resolved",
-      "description": "Risky seams previously covered only by wrappers or extracted harnesses now execute production code directly for power, touch, main-loop phase ordering, and GPS status/config/update behavior."
+      "description": "Risky seams previously covered only by wrappers or extracted harnesses now execute production code directly for power, touch, and main-loop phase ordering."
     },
     {
       "id": "main_loop_phases_harness",
@@ -78,15 +78,6 @@
       "preserved_negative_semantics": "DELETE and download operations reject while PerfSdLogger owns the active CSV file; the guard remains explicit and the API continues surfacing a machine-readable failure instead of silently succeeding.",
       "tests": [
         "test/test_debug_perf_files_service/test_debug_perf_files_service.cpp"
-      ]
-    },
-    {
-      "id": "lockout_fail_open_paths",
-      "current_owner": "Lockout runtime and orchestration modules",
-      "preserved_negative_semantics": "Lockout logic must degrade visibly when required GPS/runtime confidence is unavailable rather than silently enforcing stale or partial state.",
-      "tests": [
-        "test/test_gps_lockout_safety/test_gps_lockout_safety.cpp",
-        "test/test_lockout_runtime_mute/test_lockout_runtime_mute.cpp"
       ]
     },
     {
@@ -145,14 +136,13 @@
       "wave": 4,
       "classification": "duplicate",
       "consolidation_status": "resolved",
-      "behavior": "Alert-time BLE volume transitions spanning lockout pre-quiet and alert fade/restore decisions.",
+      "behavior": "Alert-time BLE volume transitions for alert fade/restore decisions.",
       "current_owner_candidates": [
-        "src/modules/lockout/lockout_orchestration_module.cpp emits LockoutVolumeCommand pre-quiet decisions",
         "src/modules/volume_fade/volume_fade_module.cpp emits alert fade and restore actions",
-        "src/modules/display/display_orchestration_module.cpp executes BLE setVolume() for both decision sources"
+        "src/modules/display/display_orchestration_module.cpp executes BLE setVolume() for volume fade decisions"
       ],
-      "intended_single_owner": "DisplayOrchestrationModule remains the sole BLE volume executor; LockoutOrchestrationModule and VolumeFadeModule may only emit explicit decisions for it to arbitrate and execute.",
-      "preserved_negative_semantics": "Pre-quiet drop/restore and alert fade/recovery semantics stay explicit, BLE pacing failures remain visible, and the loop must not issue competing or duplicate setVolume() commands in the same alert path.",
+      "intended_single_owner": "DisplayOrchestrationModule remains the sole BLE volume executor; VolumeFadeModule may only emit explicit decisions for it to arbitrate and execute.",
+      "preserved_negative_semantics": "Alert fade/recovery semantics stay explicit, BLE pacing failures remain visible, and the loop must not issue competing or duplicate setVolume() commands in the same alert path.",
       "tests": [
         "test/test_display_orchestration_module/test_display_orchestration_module.cpp"
       ]
@@ -185,14 +175,14 @@
       "wave": 4,
       "classification": "duplicate",
       "consolidation_status": "resolved",
-      "behavior": "Selection of the committed current-loop speed source and status consumed by lockout, display, and Wi-Fi surfaces.",
+      "behavior": "Selection of the committed current-loop speed source (OBD only) and status consumed by display and Wi-Fi surfaces.",
       "current_owner_candidates": [
         "src/main.cpp loop() -> speedSourceSelector.update(now)",
-        "src/modules/gps/gps_api_config_service.cpp, src/modules/obd/obd_api_service.cpp, src/modules/wifi/wifi_settings_api_service.cpp, and src/modules/wifi/backup_api_service.cpp sync selector enable inputs only via speedSourceSelector.syncEnabledInputs(gpsEnabled, obdEnabled)",
-        "Downstream consumers such as src/modules/lockout/lockout_orchestration_module.cpp may only read selectedSpeed()/snapshot() and must not reinterpret raw GPS or OBD runtime state as a fallback selector"
+        "src/modules/obd/obd_api_service.cpp and src/modules/wifi/backup_api_service.cpp sync selector enable inputs only via speedSourceSelector.syncEnabledInputs(obdEnabled)",
+        "Downstream consumers such as display and Wi-Fi modules may only read selectedSpeed()/snapshot() and must not reinterpret raw OBD runtime state as a fallback selector"
       ],
-      "intended_single_owner": "speedSourceSelector.update(now) remains the sole mutating speed-selection owner; config and restore writes may only sync selector enable inputs through speedSourceSelector.syncEnabledInputs(gpsEnabled, obdEnabled), and downstream modules consume selectedSpeed()/snapshot() or pure snapshotAt(nowMs) reads without reinterpreting source state.",
-      "preserved_negative_semantics": "Current-loop selection still happens before every consumer read, unavailable speed stays explicit instead of falling back to stale raw runtime data, and config/restore writes update the full selector input pair without re-arbitrating committed selection in-place.",
+      "intended_single_owner": "speedSourceSelector.update(now) remains the sole mutating speed-selection owner; config and restore writes may only sync selector enable inputs through speedSourceSelector.syncEnabledInputs(obdEnabled), and downstream modules consume selectedSpeed()/snapshot() or pure snapshotAt(nowMs) reads without reinterpreting source state.",
+      "preserved_negative_semantics": "Current-loop selection still happens before every consumer read, unavailable speed stays explicit instead of falling back to stale raw runtime data, and config/restore writes update the selector input without re-arbitrating committed selection in-place.",
       "tests": [
         "test/test_obd_speed_source/test_obd_speed_source.cpp",
         "test/test_main_loop_phases/test_main_loop_phases.cpp",
@@ -262,7 +252,7 @@
       "classification": "duplicate",
       "current_owner": "LoopIngestModule Providers",
       "replacement_or_deadness_proof": "BLE process and queue drain execution are now provider-owned through begin()-configured hooks; the per-call runBleProcess and runBleDrain fields in LoopIngestContext duplicated production execution without a separate owner.",
-      "preserved_negative_semantics": "Disabling BLE process for a loop still skips only the process step while drain, GPS update, and backpressure merge behavior remain explicit and test-covered.",
+      "preserved_negative_semantics": "Disabling BLE process for a loop still skips only the process step while drain and backpressure merge behavior remain explicit and test-covered.",
       "tests": [
         "test/test_loop_ingest_module/test_loop_ingest_module.cpp",
         "test/test_main_loop_phases/test_main_loop_phases.cpp"
@@ -318,12 +308,10 @@
       "path": "src/modules/display/display_orchestration_module.cpp",
       "classification": "duplicate",
       "current_owner": "DisplayOrchestrationModule parsed-frame volume arbitration",
-      "replacement_or_deadness_proof": "Lockout pre-quiet and alert volume-fade decisions still flow into DisplayOrchestrationModule, but a parsed-frame lockout volume command now claims the frame's BLE volume owner slot and suppresses volumeFade.process() for that pass. This removes the duplicate competing setVolume() execution path while keeping DisplayOrchestrationModule as the sole BLE executor.",
-      "preserved_negative_semantics": "Pre-quiet drop/restore remains explicit, restore still seeds VolumeFadeModule baseline hints, fade/restore logic still runs on frames without a lockout volume command, and the alert path can no longer issue duplicate BLE volume writes in the same parsed-frame pass.",
+      "replacement_or_deadness_proof": "Alert volume-fade decisions flow into DisplayOrchestrationModule for BLE volume execution. DisplayOrchestrationModule remains the sole BLE volume executor.",
+      "preserved_negative_semantics": "Fade/restore logic remains explicit and independent, and the alert path can no longer issue duplicate BLE volume writes in the same parsed-frame pass.",
       "tests": [
-        "test/test_display_orchestration_module/test_display_orchestration_module.cpp",
-        "test/test_lockout_orchestration/test_lockout_orchestration.cpp",
-        "test/test_lockout_pre_quiet/test_lockout_pre_quiet.cpp"
+        "test/test_display_orchestration_module/test_display_orchestration_module.cpp"
       ]
     },
     {
@@ -343,27 +331,25 @@
       "path": "src/modules/speed/speed_source_selector.h",
       "classification": "duplicate",
       "current_owner": "SpeedSourceSelector enabled-input sync via syncEnabledInputs() plus SpeedSourceSelector::update() committed selection",
-      "replacement_or_deadness_proof": "Production write paths no longer poke GPS and OBD selector inputs independently. GPS config, OBD config, legacy Wi-Fi settings, and backup restore now all sync the full selector input pair through speedSourceSelector.syncEnabledInputs(gpsEnabled, obdEnabled), while speedSourceSelector.update(now) remains the only committed arbitration step.",
-      "preserved_negative_semantics": "Config and restore writes still update enable inputs immediately for pure snapshotAt/status reads, but they do not re-arbitrate the committed source in-place; consumers still see committed selection only after the loop-owned update() pass and may not fall back to raw GPS or OBD runtime data.",
+      "replacement_or_deadness_proof": "Production write paths now only sync OBD selector input. OBD config and backup restore now sync the selector input through speedSourceSelector.syncEnabledInputs(obdEnabled), while speedSourceSelector.update(now) remains the only committed arbitration step.",
+      "preserved_negative_semantics": "Config and restore writes still update enable inputs immediately for pure snapshotAt/status reads, but they do not re-arbitrate the committed source in-place; consumers still see committed selection only after the loop-owned update() pass and may not fall back to raw OBD runtime data.",
       "tests": [
         "test/test_obd_speed_source/test_obd_speed_source.cpp",
         "test/test_obd_api_service/test_obd_api_service.cpp",
         "test/test_wifi_settings_api_service/test_wifi_settings_api_service.cpp",
         "test/test_main_loop_phases/test_main_loop_phases.cpp",
-        "test/test_signal_capture_module/test_signal_capture_module.cpp",
-        "test/test_lockout_orchestration/test_lockout_orchestration.cpp"
+        "test/test_signal_capture_module/test_signal_capture_module.cpp"
       ]
     },
     {
       "path": "src/modules/wifi/wifi_settings_api_service.cpp",
       "classification": "duplicate",
-      "current_owner": "GpsApiService::handleApiConfig() for GPS/lockout writes plus WifiSettingsApiService::handleApiDeviceSettingsSave() for AP/proxy/power/dev writes",
-      "replacement_or_deadness_proof": "The legacy POST /api/settings catch-all route and WifiSettingsApiService::handleApiSettingsSave() have been removed. Existing Svelte clients already saved device settings through POST /api/device/settings, while GPS/lockout clients save through POST /api/gps/config. The shared UI helper no longer defaults to /api/settings, and the WiFi route contracts/docs are updated to reject drift back to the catch-all surface.",
-      "preserved_negative_semantics": "GPS/lockout validation, rate-limit, and runtime-mutation semantics remain under GpsApiService::handleApiConfig(); AP credential validation and device-setting persistence remain under WifiSettingsApiService::handleApiDeviceSettingsSave(); cleanup does not silently drop writes or weaken protected rejection behavior.",
+      "current_owner": "WifiSettingsApiService::handleApiDeviceSettingsSave() for AP/proxy/power/dev writes",
+      "replacement_or_deadness_proof": "The legacy POST /api/settings catch-all route and WifiSettingsApiService::handleApiSettingsSave() have been removed. Existing Svelte clients already saved device settings through POST /api/device/settings. The shared UI helper no longer defaults to /api/settings, and the WiFi route contracts/docs are updated to reject drift back to the catch-all surface.",
+      "preserved_negative_semantics": "AP credential validation and device-setting persistence remain under WifiSettingsApiService::handleApiDeviceSettingsSave(); cleanup does not silently drop writes or weaken protected rejection behavior.",
       "tests": [
         "test/test_wifi_settings_api_service/test_wifi_settings_api_service.cpp",
         "interface/src/routes/integrations/page.test.js",
-        "interface/src/routes/lockouts/page.test.js",
         "interface/src/routes/settings/page.test.js"
       ]
     }

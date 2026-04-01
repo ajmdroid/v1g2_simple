@@ -27,7 +27,6 @@ REQUIRED_GAP_IDS = {
 }
 REQUIRED_PROTECTIVE_IDS = {
     "perf_active_file_delete_guard",
-    "lockout_fail_open_paths",
     "wifi_fail_open_paths",
     "runtime_null_guards",
     "busy_mutation_rejections",

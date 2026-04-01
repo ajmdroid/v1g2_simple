@@ -212,11 +212,11 @@ void MyModule::process(uint32_t nowMs) {
 
 | Thing | Convention | Example |
 |---|---|---|
-| Module class | `PascalCase` + `Module` suffix | `LockoutOrchestrationModule` |
+| Module class | `PascalCase` + `Module` suffix | `DisplayOrchestrationModule` |
 | Service (stateless namespace) | `PascalCase` + `Service` suffix | `WifiSettingsApiService` |
 | Private member | trailing underscore | `settings_`, `index_` |
 | `begin()` parameter | no prefix/suffix | `settings`, `index` |
-| Result struct | `<Module>Result` | `LockoutEnforcerResult` |
+| Result struct | `<Module>Result` | `DisplayOrchestrationResult` |
 | Providers struct | nested `Providers` inside class | `LoopTailModule::Providers` |
 
 ---
