@@ -15,7 +15,7 @@
 #include "display_driver.h"
 
 // Firmware Version
-#define FIRMWARE_VERSION "4.0.0-dev"
+#define FIRMWARE_VERSION "4.0.0"
 
 // Board-specific Display
 // Waveshare ESP32-S3-Touch-LCD-3.49

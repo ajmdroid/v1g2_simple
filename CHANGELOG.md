@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [4.0.0-dev] - 2026-02-25
+## [4.0.0] - 2026-04-01
 
-> Note: no tagged releases were published between `3.0.7` and `4.0.0-dev`;
+> Note: no tagged releases were published between `3.0.7` and `4.0.0`;
 > ongoing work during that gap landed directly in the dev cycle summarized here.
 
 ### Added
@@ -90,7 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| 4.0.0-dev | 2026-02-25 | Modular architecture, 141 module files, 960 tests, CI contracts |
+| 4.0.0 | 2026-04-01 | Modular architecture, 141 module files, 960 tests, CI contracts |
 | 3.0.7 | 2026 | Quality baseline before 4.x refactors |
 | 3.0.x | 2024 | Speed source improvements |
 | 2.x.x | 2024 | Profiles, display themes |
@@ -100,9 +100,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Upgrade Notes
 
-### From 3.x to 4.0.0-dev
+### From 3.x to 4.0.0
 
-**Pre-release build.** API/behavior changes exist versus 3.0.7; validate integrations before production use.
+API/behavior changes exist versus 3.0.7; validate integrations before production use.
 
 Recommended post-upgrade actions:
 1. Change default WiFi password if not already done
