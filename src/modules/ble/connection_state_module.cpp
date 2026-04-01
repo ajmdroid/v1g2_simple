@@ -77,14 +77,13 @@ bool ConnectionStateModule::process(unsigned long nowMs) {
         }
     }
 
-    // When disconnected, refresh indicators periodically
+    // When disconnected, refresh indicators in the canvas.
+    // No flush here — the display pipeline owns all strip flushing.
+    // Left strip is always flushed; battery (right strip) will flush
+    // when the pipeline next updates the right strip.
     if (!isConnected) {
         display->drawWiFiIndicator();
         display->drawBatteryIndicator();
-        display->flushRegion(DisplayLayout::STRIP_LEFT_X, DisplayLayout::STRIP_Y,
-                             DisplayLayout::STRIP_LEFT_W, DisplayLayout::STRIP_H);
-        display->flushRegion(DisplayLayout::STRIP_RIGHT_X, DisplayLayout::STRIP_Y,
-                             DisplayLayout::STRIP_RIGHT_W, DisplayLayout::STRIP_H);
     }
 
     return isConnected;

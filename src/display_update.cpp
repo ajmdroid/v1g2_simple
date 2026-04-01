@@ -199,14 +199,11 @@ void V1Display::updateStatusStripIncremental(const DisplayState& state,
         flushLeftStrip = true;
     }
 
-    // OBD indicator at x=370 → CENTER strip
-    bool obdBefore = obdEnabled_;
-    bool obdConnBefore = obdConnected_;
-    bool obdAttnBefore = obdScanAttention_;
+    // OBD indicator at x=370 → CENTER strip.
+    // Check dirty flag BEFORE drawObdIndicator() clears it.
+    const bool obdWasDirty = dirty.obdIndicator;
     drawObdIndicator();
-    if (obdEnabled_ != obdBefore ||
-        obdConnected_ != obdConnBefore ||
-        obdScanAttention_ != obdAttnBefore) {
+    if (obdWasDirty) {
         flushCenterStrip = true;
     }
 }
@@ -332,7 +329,11 @@ void V1Display::update(const DisplayState& state) {
                                      flushCenterStrip,
                                      flushRightStrip);
         using namespace DisplayLayout;
-        if (flushLeftStrip)   flushRegion(STRIP_LEFT_X,   STRIP_Y, STRIP_LEFT_W,   STRIP_H);
+        // Always flush left strip — it's small (19% of screen) and ensures
+        // RSSI, volume, bogey counter, WiFi, and BLE icons stay current.
+        // External callers (setBLEProxyStatus, connection_state_module) draw
+        // to the canvas without flushing; the pipeline owns all strip flushes.
+        flushRegion(STRIP_LEFT_X,   STRIP_Y, STRIP_LEFT_W,   STRIP_H);
         if (flushCenterStrip) flushRegion(STRIP_CENTER_X, STRIP_Y, STRIP_CENTER_W, STRIP_H);
         if (flushRightStrip)  flushRegion(STRIP_RIGHT_X,  STRIP_Y, STRIP_RIGHT_W,  STRIP_H);
         lastState_ = state;
@@ -790,7 +791,8 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
             flushCenterStrip = true;
         }
         using namespace DisplayLayout;
-        if (flushLeftStrip)   flushRegion(STRIP_LEFT_X,   STRIP_Y, STRIP_LEFT_W,   STRIP_H);
+        // Always flush left strip (see resting incremental for rationale)
+        flushRegion(STRIP_LEFT_X,   STRIP_Y, STRIP_LEFT_W,   STRIP_H);
         if (flushCenterStrip) flushRegion(STRIP_CENTER_X, STRIP_Y, STRIP_CENTER_W, STRIP_H);
         if (flushRightStrip)  flushRegion(STRIP_RIGHT_X,  STRIP_Y, STRIP_RIGHT_W,  STRIP_H);
         return;

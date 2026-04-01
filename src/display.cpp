@@ -306,9 +306,9 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool 
         drawRssiIndicator(bleCtx_.v1Rssi);
     }
 
-    // BLE and RSSI icons are both in the LEFT strip (x=8..60, y=99..170)
-    flushRegion(DisplayLayout::STRIP_LEFT_X, DisplayLayout::STRIP_Y,
-                DisplayLayout::STRIP_LEFT_W, DisplayLayout::STRIP_H);
+    // No flush here — the display pipeline owns strip flushing.
+    // Drawing to the canvas is safe; the next pipeline iteration
+    // will include the left strip in its flush.
 #endif
 }
 
