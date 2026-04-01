@@ -2,7 +2,6 @@
 
 > This is the primary technical reference document for the project.
 > For observability/testing authority see `OBSERVABILITY.md`. For perf thresholds see `PERF_SLOS.md`. For the full REST API see `API.md`.
-> For the GPS road-map binary format see `ROAD_MAP_FORMAT.md`.
 
 
 **Version:** 4.0.0-dev  
@@ -271,7 +270,7 @@ A touchscreen remote display for the Valentine One Gen2 radar detector. Connects
 | `packet_parser.cpp` + `packet_parser_alerts.cpp` | ~883 | ESP packet framing and decoding |
 | `storage_manager.cpp` | ~118 | SD/LittleFS mount abstraction |
 | `touch_handler.cpp` | ~178 | AXS15231B I2C touch polling |
-| `src/modules/` (68 .cpp files, 15 dirs) | ~17k | Runtime modules for GPS, display pipeline, voice, power, WiFi API services, etc. |
+| `src/modules/` (65 .cpp files, 14 dirs) | ~16k | Runtime modules for display pipeline, voice, power, WiFi API services, OBD, etc. |
 | `perf_metrics.cpp` | ~698 | Latency tracking (ArduinoJson) |
 
 ### Data Flow
@@ -364,10 +363,8 @@ V1 Gen2 (BLE)
 | **DisplayOrchestrationModule** | Coordinates parsed-frame rendering, lightweight refresh, and early-loop display |
 | **DisplayPreviewModule** | Color preview overlay lifecycle |
 | **DisplayRestoreModule** | Restores display state after preview/settings overlay ends |
-| **GpsRuntimeModule** | GPS ingest and fix/course/speed runtime state |
-| **GpsApiService** | GPS REST API endpoints |
 | **PowerModule** | Battery monitoring, power button, sleep |
-| **SpeedSourceSelector** | Runtime speed source arbitration (GPS + OBD policy) |
+| **SpeedSourceSelector** | Runtime speed source arbitration (OBD-only) |
 | **ObdRuntimeModule** | OBD-II BLE adapter connection state machine (scan/connect/poll) |
 | **ObdBleClient** | NimBLE client for OBDLink CX adapter communication |
 | **ObdApiService** | OBD REST API endpoints (status, scan, forget) |
@@ -1159,7 +1156,7 @@ The web interface is built with SvelteKit and daisyUI (TailwindCSS). Source is i
 | `/autopush` | `autopush/+page.svelte` | Auto-push slot configuration |
 | `/profiles` | `profiles/+page.svelte` | V1 profile management |
 | `/devices` | `devices/+page.svelte` | Known V1 device management |
-| `/integrations` | `integrations/+page.svelte` | GPS and external integration settings |
+| `/integrations` | `integrations/+page.svelte` | External integration settings (OBD) |
 | `/dev` | `dev/+page.svelte` | Debug tools: metrics, perf files, V1 scenarios, panic log |
 
 ### Settings Page (`/settings`)
@@ -1168,7 +1165,7 @@ Controls:
 - **AP Name/Password:** Change WiFi network name and password (AP-only, no station mode)
 - **BLE Proxy:** Enable/disable app forwarding
 - **Proxy Name:** Advertised BLE name (default: "V1-Proxy")
-- **Device Time:** Read-only runtime clock snapshot sourced by the device (GPS/SNTP/RTC when available)
+- **Device Time:** Read-only runtime clock snapshot sourced by the device (WiFi sync / SNTP when available)
 
 **Backup & Restore:**
 - **Download Backup:** Export all settings (colors, slot configs, voice settings) and V1 profiles to a JSON file
@@ -1198,13 +1195,6 @@ Controls:
 Voice alerts announce through the built-in speaker when no phone app is connected via BLE proxy. Priority alerts are announced immediately; secondary alerts wait for priority to stabilize. Smart threat escalation detects when secondary alerts ramp up from weak (≤2 bars) to strong (≥4 bars sustained) and announces with full context.
 
 **Source:** [interface/src/routes/audio/+page.svelte](../interface/src/routes/audio/+page.svelte)
-
-### GPS Settings (`/integrations`)
-
-Controls:
-- **GPS Module:** Enable/disable GPS for location-based features (auto-detects within 60s)
-
-**Source:** [interface/src/routes/integrations/+page.svelte](../interface/src/routes/integrations/+page.svelte)
 
 ### Colors Page (`/colors`)
 
@@ -1237,7 +1227,7 @@ Controls:
 - **Scan Now:** Triggers a 5-second BLE scan for nearby OBDLink devices
 - **Forget Device:** Clears the saved OBD adapter address and disconnects
 
-When OBD is enabled and connected, the speed source selector prefers OBD speed over GPS speed for speed-based mute decisions.
+When OBD is enabled and connected, it provides speed for speed-based mute decisions. If OBD is unavailable, speed muting does not operate.
 
 **Source:** [interface/src/lib/features/settings/SettingsObdCard.svelte](../interface/src/lib/features/settings/SettingsObdCard.svelte)
 
@@ -1539,16 +1529,6 @@ Connect at 115200 baud. Key prefixes:
 2. Restart device — touch controller may need reset
 3. Check serial for "[Touch] ERROR"
 
-### GPS Issues
-
-**GPS shows "No Fix":**
-1. Wait longer — first fix can take 2-5 minutes (cold start)
-2. Go outside — GPS needs clear sky view
-3. Not all units have GPS installed
-
-**Speed doesn't match speedometer:**
-- Vehicle speedometers typically read 2-5% high — this is normal
-
 ### OBD Issues
 
 **OBD scan finds no devices:**
@@ -1569,7 +1549,7 @@ Connect at 115200 baud. Key prefixes:
 **OBD speed not used for speed-based mute:**
 1. Verify OBD is enabled in Settings and the status shows "POLLING"
 2. Speed readings older than 3 seconds are considered stale and ignored
-3. The speed source selector prefers OBD over GPS — if OBD speed is valid, it will be used
+3. OBD is the only speed source — if no OBD speed is available, speed muting will not operate
 
 ### Audio Problems
 
@@ -1643,8 +1623,6 @@ For the full API reference with request/response schemas and examples, see [API.
 | GET | `/api/status` | BLE connection state, V1 info |
 | GET | `/api/device/settings` | AP/proxy/power/dev settings |
 | POST | `/api/device/settings` | Save AP/proxy/power/dev settings |
-| GET | `/api/gps/config` | GPS settings |
-| POST | `/api/gps/config` | Save GPS settings |
 | GET | `/api/settings/backup` | Download settings as JSON |
 | POST | `/api/settings/restore` | Restore settings from JSON |
 | GET | `/api/v1/profiles` | List saved profiles |

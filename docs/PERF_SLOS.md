@@ -55,7 +55,6 @@ These do not fail the run by themselves but should be monitored for regression.
 | `cmdPaceNotYetPerMin` | computed <= | `25` | BLE command pacing pressure |
 | `displaySkipPct` | computed <= | `20` | Display throttle ratio (skips / (updates + skips)) |
 | `displaySkipsPerMin` | computed <= | `120` | UI draw-throttle pressure |
-| `gpsObsDropsPerMin` | computed <= | `200` | GPS observation consumer lag |
 | `audioPlayBusyPerMin` | computed <= | `2` | Audio contention signal |
 | `reconn` | final <= | `2` | Connection stability trend |
 | `disc` | final <= | `2` | Disconnect trend |

@@ -17,7 +17,7 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 - [Auto-Push](#auto-push)
 - [Audio Settings](#audio-settings)
 - [Display Colors](#display-colors)
-- [GPS](#gps)
+- [OBD](#obd)
 - [WiFi Client](#wifi-client)
 - [Debug](#debug)
 
@@ -27,7 +27,7 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 
 ### GET /api/status
 
-Get device status including V1 connection, WiFi, GPS, and alerts.
+Get device status including V1 connection, WiFi, and alerts.
 
 **Response:**
 ```json
@@ -166,17 +166,6 @@ ap_ssid=MyV1&ap_password=newpassword123&proxy_ble=true&autoPowerOffMinutes=15
 {"success": true}
 ```
 
-### GET /api/gps/config
-
-Get persisted GPS configuration.
-
-**Response:**
-```json
-{
-  "success": true,
-  "enabled": false
-}
-```
 
 ### GET /api/settings/backup
 
@@ -217,7 +206,8 @@ or SD backups. `_type` must be `v1simple_backup` or `v1simple_sd_backup`.
 ```
 
 The envelope includes the top-level metadata fields above plus the full saved
-settings payload.
+settings payload. Note: `gpsEnabled` may appear in older backups but is no longer
+used (GPS system has been removed).
 
 **Response:**
 ```json
@@ -483,7 +473,7 @@ Get current display color configuration.
 
 **Response:** JSON with RGB565 integer color values, display visibility toggles, `brightness`, and `displayStyle`.
 
-Key color fields: `bogey`, `freq`, `arrowFront`, `arrowSide`, `arrowRear`, `bandL`, `bandKa`, `bandK`, `bandX`, `bandPhoto`, `wifiIcon`, `wifiConnected`, `bleConnected`, `bleDisconnected`, `bar1`..`bar6`, `muted`, `persisted`, `volumeMain`, `volumeMute`, `rssiV1`, `rssiProxy`, `gps`.
+Key color fields: `bogey`, `freq`, `arrowFront`, `arrowSide`, `arrowRear`, `bandL`, `bandKa`, `bandK`, `bandX`, `bandPhoto`, `wifiIcon`, `wifiConnected`, `bleConnected`, `bleDisconnected`, `bar1`..`bar6`, `muted`, `persisted`, `volumeMain`, `volumeMute`, `rssiV1`, `rssiProxy`.
 
 Also includes boolean display toggles plus `brightness` and `displayStyle`.
 
@@ -518,28 +508,6 @@ Clear preview and restore saved colors.
 
 ---
 
-## GPS
-
-### GET /api/gps/status
-
-Get GPS module status and current position.
-
-**Response:** Large JSON object with GPS fix, satellite, and speed-source state.
-
-Key fields include: `enabled`, `runtimeEnabled`, `sampleValid`, `hasFix`, `stableHasFix`, `satellites`, `stableSatellites`, `hdop`, `locationValid`, `latitude`, `longitude`, `courseValid`, `courseDeg`, `speedMph`, `moduleDetected`, `parserActive`. Also includes nested `observations` and `speedSource` objects with detailed counters.
-
-### GET /api/gps/observations
-
-Get recent GPS observation ring samples.
-
-**Query Parameters:**
-- `limit` (optional): `1..32` (default `16`)
-
-### POST /api/gps/config
-
-Update GPS runtime config and optional scaffold samples.
-
----
 
 ## OBD
 
@@ -802,6 +770,7 @@ Get runtime performance counters and subsystem health snapshots.
   `bleProxyStartMaxUs`, `displayVoiceMaxUs`, and `displayGapRecoverMaxUs`.
 - `dispMaxUs` now reports display render time, while `dispPipeMaxUs` remains the
   full `DisplayPipelineModule::handleParsed()` path.
+- GPS-related metrics have been removed; speed-based muting now uses OBD only.
 
 ### POST /api/debug/enable
 
@@ -1000,7 +969,6 @@ Error response body:
 
 - Most mutating endpoints (POST) are rate-limited via `checkRateLimit()` — requests within the cooldown window receive `429 Too Many Requests`
 - BLE operations are serialized (one at a time)
-- GPS updates: 1Hz maximum
 
 ---
 

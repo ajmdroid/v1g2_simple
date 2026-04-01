@@ -8,7 +8,7 @@ This repo’s main loop is split into a small set of ownership phases so state m
 Owns early connection-derived decisions such as boot splash hold, connection backpressure, and whether the loop should shed non-core work.
 
 2. `processLoopIngestPhase(...)`
-Owns BLE ingest, queue drain, GPS runtime refresh, and the loop settings snapshot.
+Owns BLE ingest, queue drain, OBD runtime refresh, and the loop settings snapshot.
 This phase is the producer for `LoopSettingsPrepValues`.
 
 3. `loop()` in [src/main.cpp](../src/main.cpp)
@@ -48,8 +48,8 @@ Owns post-display connection-state dispatch cadence, periodic maintenance, and l
 - Parsed-frame BLE volume execution: `DisplayOrchestrationModule`
 - Wi-Fi runtime progression: `WifiRuntimeModule`
 - Connection-state dispatch cadence: `LoopPostDisplayModule`
-- Domain-specific settings writes: `WifiSettingsApiService::handleApiDeviceSettingsSave()` owns AP/proxy/power/dev writes on `POST /api/device/settings`, while `GpsApiService::handleApiConfig()` owns GPS writes on `POST /api/gps/config`.
-- Runtime reapply after persisted settings changes: `SettingsRuntimeSync` helper bundles own the shared GPS/OBD/selector reapply groupings so restore and config writes do not hand-roll divergent apply paths.
+- Domain-specific settings writes: `WifiSettingsApiService::handleApiDeviceSettingsSave()` owns AP/proxy/power/dev writes on `POST /api/device/settings`.
+- Runtime reapply after persisted settings changes: `SettingsRuntimeSync` helper bundles own the shared OBD/selector reapply groupings so restore and config writes do not hand-roll divergent apply paths.
 
 Speed consumers must not derive fallback speed from raw OBD runtime state. If the selector did not publish a committed speed for the current loop, speed is treated as unavailable.
 
