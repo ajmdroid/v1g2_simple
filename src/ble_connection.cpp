@@ -171,10 +171,12 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient_, int reas
             instancePtr->pDisplayDataChar_ = nullptr;
             instancePtr->pCommandChar_ = nullptr;
             instancePtr->pCommandCharLong_ = nullptr;
+            // Store IDs before pointers: a reader that sees null pointer is guaranteed
+            // to also see the zeroed ID (release ordering on both).
+            instancePtr->notifyShortCharId_.store(0, std::memory_order_release);
             instancePtr->notifyShortChar_.store(nullptr, std::memory_order_release);
-            instancePtr->notifyShortCharId_.store(0, std::memory_order_relaxed);
+            instancePtr->notifyLongCharId_.store(0, std::memory_order_release);
             instancePtr->notifyLongChar_.store(nullptr, std::memory_order_release);
-            instancePtr->notifyLongCharId_.store(0, std::memory_order_relaxed);
             // Reset verification state in case a write-verify was in progress
             instancePtr->verifyPending_ = false;
             instancePtr->verifyComplete_ = false;
@@ -761,9 +763,9 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
     NimBLERemoteCharacteristic* shortChar = instancePtr->notifyShortChar_.load(std::memory_order_acquire);
     NimBLERemoteCharacteristic* longChar = instancePtr->notifyLongChar_.load(std::memory_order_acquire);
     if (pChar == shortChar) {
-        charId = instancePtr->notifyShortCharId_.load(std::memory_order_relaxed);
+        charId = instancePtr->notifyShortCharId_.load(std::memory_order_acquire);
     } else if (pChar == longChar) {
-        charId = instancePtr->notifyLongCharId_.load(std::memory_order_relaxed);
+        charId = instancePtr->notifyLongCharId_.load(std::memory_order_acquire);
     }
     if (charId == 0) {
         charId = shortUuid(pChar->getUUID());

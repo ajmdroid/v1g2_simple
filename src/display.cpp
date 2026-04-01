@@ -353,6 +353,16 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
     const int16_t phys_px0 = kRawStride - y - h;
     const int16_t phys_pw  = h;
 
+    // Safety: input clamping above guarantees y+h ∈ [1, CANVAS_WIDTH], so
+    // phys_px0 ∈ [0, 171]. Assert to catch any future clamping regression.
+    if (phys_px0 < 0 || phys_px0 + phys_pw > kRawStride) {
+        // Clamping invariant violated — skip flush to prevent buffer overrun.
+        // This should never fire; if it does, the input clamping logic has a bug.
+        Serial.printf("[Display] WARN flushRegion phys bounds: px0=%d pw=%d stride=%d (logical x=%d y=%d w=%d h=%d)\n",
+                      phys_px0, phys_pw, kRawStride, x, y, w, h);
+        return;
+    }
+
     const uint32_t startUs = PERF_TIMESTAMP_US();
 
     if (phys_pw == kRawStride && phys_px0 == 0) {

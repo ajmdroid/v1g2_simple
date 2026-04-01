@@ -365,10 +365,12 @@ void V1BLEClient::cleanupConnection() {
     scanStopResultsCleared_ = false;
     // Atomic stores do not require the mutex — publish immediately so any
     // in-flight notifyCallback sees null pointers before we touch non-atomics.
+    // Store IDs before pointers: a reader that sees null pointer is guaranteed
+    // to also see the zeroed ID (release ordering on both).
+    notifyShortCharId_.store(0, std::memory_order_release);
     notifyShortChar_.store(nullptr, std::memory_order_release);
-    notifyShortCharId_.store(0, std::memory_order_relaxed);
+    notifyLongCharId_.store(0, std::memory_order_release);
     notifyLongChar_.store(nullptr, std::memory_order_release);
-    notifyLongCharId_.store(0, std::memory_order_relaxed);
     connected_.store(false, std::memory_order_release);
     {
         SemaphoreGuard lock(bleMutex_, pdMS_TO_TICKS(20));  // COLD: disconnect cleanup
@@ -391,6 +393,22 @@ void V1BLEClient::cleanupConnection() {
 void V1BLEClient::hardResetBLEClient() {
     Serial.println("[BLE] Hard reset...");
     const unsigned long now = millis();
+
+    // Wait for any in-flight discovery task to finish before touching pClient_.
+    // The task only calls pClient_->discoverAttributes() which completes quickly
+    // once disconnect() fires the HCI terminate. Budget 500ms — if it hasn't
+    // finished by then, proceed anyway (the task will see ENOTCONN and exit).
+    if (discoveryTaskRunning_.load(std::memory_order_acquire)) {
+        Serial.println("[BLE] Hard reset: waiting for discovery task...");
+        const unsigned long waitStart = millis();
+        while (discoveryTaskRunning_.load(std::memory_order_acquire) &&
+               (millis() - waitStart) < 500) {
+            vTaskDelay(pdMS_TO_TICKS(5));
+        }
+        if (discoveryTaskRunning_.load(std::memory_order_acquire)) {
+            Serial.println("[BLE] Hard reset: discovery task still running after 500ms - proceeding");
+        }
+    }
 
     // Full cleanup first
     cleanupConnection();
