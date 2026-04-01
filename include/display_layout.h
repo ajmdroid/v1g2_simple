@@ -85,6 +85,26 @@ constexpr int TOP_COUNTER_TEXT_Y = 8;
 constexpr int TOP_COUNTER_PAD_RIGHT = 2;
 constexpr int TOP_COUNTER_FALLBACK_WIDTH = 28;
 
+// ============================================================================
+// Flush Strip Regions
+// ============================================================================
+// Three full-height vertical strips covering the entire screen.
+// All use h=SCREEN_HEIGHT so flushRegion() hits the fast path
+// (phys_pw == CANVAS_WIDTH → single contiguous blit).
+
+constexpr int STRIP_LEFT_X  = 0;
+constexpr int STRIP_LEFT_W  = BAND_COLUMN_WIDTH;         // 120
+
+constexpr int STRIP_CENTER_X = BAND_COLUMN_WIDTH;         // 120
+constexpr int STRIP_CENTER_W = CONTENT_AVAILABLE_WIDTH;    // 320
+
+constexpr int STRIP_RIGHT_X  = SCREEN_WIDTH - SIGNAL_COLUMN_WIDTH; // 440
+constexpr int STRIP_RIGHT_W  = SIGNAL_COLUMN_WIDTH;        // 200
+
+// Full height for all strips — required for flushRegion fast path
+constexpr int STRIP_H = SCREEN_HEIGHT;                     // 172
+constexpr int STRIP_Y = 0;
+
 } // namespace DisplayLayout
 
 // Convenience: effective screen height for primary zone rendering

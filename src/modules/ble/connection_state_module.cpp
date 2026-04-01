@@ -2,6 +2,7 @@
 #include "ble_client.h"
 #include "packet_parser.h"
 #include "display.h"
+#include "../include/display_layout.h"
 #include "modules/power/power_module.h"
 #include "modules/ble/ble_queue_module.h"
 #include "modules/system/system_event_bus.h"
@@ -80,7 +81,10 @@ bool ConnectionStateModule::process(unsigned long nowMs) {
     if (!isConnected) {
         display->drawWiFiIndicator();
         display->drawBatteryIndicator();
-        display->flush();
+        display->flushRegion(DisplayLayout::STRIP_LEFT_X, DisplayLayout::STRIP_Y,
+                             DisplayLayout::STRIP_LEFT_W, DisplayLayout::STRIP_H);
+        display->flushRegion(DisplayLayout::STRIP_RIGHT_X, DisplayLayout::STRIP_Y,
+                             DisplayLayout::STRIP_RIGHT_W, DisplayLayout::STRIP_H);
     }
 
     return isConnected;

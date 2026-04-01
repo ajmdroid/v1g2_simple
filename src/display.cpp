@@ -306,7 +306,9 @@ void V1Display::setBLEProxyStatus(bool proxyEnabled, bool clientConnected, bool 
         drawRssiIndicator(bleCtx_.v1Rssi);
     }
 
-    flush();
+    // BLE and RSSI icons are both in the LEFT strip (x=8..60, y=99..170)
+    flushRegion(DisplayLayout::STRIP_LEFT_X, DisplayLayout::STRIP_Y,
+                DisplayLayout::STRIP_LEFT_W, DisplayLayout::STRIP_H);
 #endif
 }
 

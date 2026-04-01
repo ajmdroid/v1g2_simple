@@ -39,7 +39,7 @@ namespace {
 struct DisplayRenderCache {
     static constexpr unsigned long RSSI_UPDATE_INTERVAL_MS = 2000;
 
-    bool rightStripCleared = false;
+    bool leftVolRssiCleared = false;
 
     bool restingFirstUpdate = true;
     bool restingWasInFlashPeriod = false;
@@ -151,12 +151,12 @@ void V1Display::drawStatusStrip(const DisplayState& state,
     if (showVolumeAndRssi) {
         drawVolumeIndicator(state.mainVolume, state.muteVolume);
         drawRssiIndicator(bleCtx_.v1Rssi);
-        cache.rightStripCleared = false;
+        cache.leftVolRssiCleared = false;
     } else {
         // Clear once on transition into hidden/unsupported state.
-        if (!cache.rightStripCleared) {
+        if (!cache.leftVolRssiCleared) {
             FILL_RECT(8, 75, 75, 68, PALETTE_BG);
-            cache.rightStripCleared = true;
+            cache.leftVolRssiCleared = true;
         }
     }
 }
@@ -173,6 +173,7 @@ void V1Display::updateStatusStripIncremental(const DisplayState& state,
                                              uint8_t& lastBogeyByte,
                                              unsigned long now,
                                              bool& flushLeftStrip,
+                                             bool& flushCenterStrip,
                                              bool& flushRightStrip) {
     syncTopIndicators(now);
     const V1Settings& s = settingsManager.get();
@@ -184,12 +185,12 @@ void V1Display::updateStatusStripIncremental(const DisplayState& state,
         drawVolumeIndicator(state.mainVolume, state.muteVolume);
         drawRssiIndicator(bleCtx_.v1Rssi);
         markRssiRefreshed(now);  // Reset RSSI timer when we update with volume
-        flushRightStrip = true;
+        flushLeftStrip = true;
     } else if (rssiNeedsUpdate && showVolumeAndRssi) {
         // Periodic RSSI-only update
         drawRssiIndicator(bleCtx_.v1Rssi);
         markRssiRefreshed(now);
-        flushRightStrip = true;
+        flushLeftStrip = true;
     }
 
     if (bogeyCounterChanged) {
@@ -198,7 +199,16 @@ void V1Display::updateStatusStripIncremental(const DisplayState& state,
         flushLeftStrip = true;
     }
 
+    // OBD indicator at x=370 → CENTER strip
+    bool obdBefore = obdEnabled_;
+    bool obdConnBefore = obdConnected_;
+    bool obdAttnBefore = obdScanAttention_;
     drawObdIndicator();
+    if (obdEnabled_ != obdBefore ||
+        obdConnected_ != obdConnBefore ||
+        obdScanAttention_ != obdAttnBefore) {
+        flushCenterStrip = true;
+    }
 }
 
 void V1Display::update(const DisplayState& state) {
@@ -289,6 +299,7 @@ void V1Display::update(const DisplayState& state) {
         perfRecordDisplayRenderPath(PerfDisplayRenderPath::RestingIncremental);
         // Incremental update - only redraw what changed
         bool flushLeftStrip = false;
+        bool flushCenterStrip = false;
         bool flushRightStrip = false;
 
         if (arrowsChanged) {
@@ -318,10 +329,12 @@ void V1Display::update(const DisplayState& state) {
                                      cache.lastRestingBogeyByte,
                                      now,
                                      flushLeftStrip,
+                                     flushCenterStrip,
                                      flushRightStrip);
-        (void)flushLeftStrip;
-        (void)flushRightStrip;
-        DISPLAY_FLUSH();
+        using namespace DisplayLayout;
+        if (flushLeftStrip)   flushRegion(STRIP_LEFT_X,   STRIP_Y, STRIP_LEFT_W,   STRIP_H);
+        if (flushCenterStrip) flushRegion(STRIP_CENTER_X, STRIP_Y, STRIP_CENTER_W, STRIP_H);
+        if (flushRightStrip)  flushRegion(STRIP_RIGHT_X,  STRIP_Y, STRIP_RIGHT_W,  STRIP_H);
         lastState_ = state;
         return;
     }
@@ -729,6 +742,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
         perfRecordDisplayRenderPath(PerfDisplayRenderPath::Incremental);
         // Incremental update without full redraw — only redraw changed elements.
         bool flushLeftStrip = false;
+        bool flushCenterStrip = false;
         bool flushRightStrip = false;
 
         if (freqOnlyChanged) {
@@ -738,6 +752,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
                 state.hasPhotoAlert ||
                 (liveTopCounterChar == 'P');
             drawFrequency(priority.frequency, priority.band, state.muted, isPhotoRadar);
+            flushCenterStrip = true;
         }
 
         if (arrowsChanged || (needsFlashUpdate && state.flashBits != 0)) {
@@ -767,12 +782,17 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
                                      cache.liveLastBogeyByte,
                                      now,
                                      flushLeftStrip,
+                                     flushCenterStrip,
                                      flushRightStrip);
         // Still process cards so they can expire and be cleared
         drawSecondaryAlertCards(allAlerts, alertCount, priority, state.muted);
-        (void)flushLeftStrip;
-        (void)flushRightStrip;
-        DISPLAY_FLUSH();
+        if (secondaryCardsRenderDirty_) {
+            flushCenterStrip = true;
+        }
+        using namespace DisplayLayout;
+        if (flushLeftStrip)   flushRegion(STRIP_LEFT_X,   STRIP_Y, STRIP_LEFT_W,   STRIP_H);
+        if (flushCenterStrip) flushRegion(STRIP_CENTER_X, STRIP_Y, STRIP_CENTER_W, STRIP_H);
+        if (flushRightStrip)  flushRegion(STRIP_RIGHT_X,  STRIP_Y, STRIP_RIGHT_W,  STRIP_H);
         return;
     }
 

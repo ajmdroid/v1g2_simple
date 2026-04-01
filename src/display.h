@@ -181,6 +181,7 @@ private:
                                       uint8_t& lastBogeyByte,
                                       unsigned long now,
                                       bool& flushLeftStrip,
+                                      bool& flushCenterStrip,
                                       bool& flushRightStrip);
     void drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol);              // "5V  0M" style
     void drawRssiIndicator(int rssi);                                         // BLE RSSI in dBm
