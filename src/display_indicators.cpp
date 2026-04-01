@@ -44,7 +44,7 @@ static bool s_obdLastConnected = false;
 static bool s_obdLastAttention = false;
 
 // ============================================================================
-// GPS satellite indicator ("G" + sat count badge, left of MUTED)
+// Status indicators
 // ============================================================================
 
 void V1Display::setObdStatus(bool enabled, bool connected, bool scanAttention) {

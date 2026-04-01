@@ -73,7 +73,7 @@ void test_device_bus_overflow_drops_frame_first() {
 
     // Overflow: should drop oldest frame, preserve control
     SystemEvent overflow;
-    overflow.type = SystemEventType::GPS_UPDATED;
+    overflow.type = SystemEventType::BLE_DISCONNECTED;
     overflow.seq  = 999;
     bus.publish(overflow);
 
@@ -230,28 +230,28 @@ void test_device_bus_consume_by_type_correctness() {
         bus.publish(ev);
     }
 
-    SystemEvent gps;
-    gps.type = SystemEventType::GPS_UPDATED;
-    gps.seq  = 100;
-    bus.publish(gps);
+    SystemEvent disc;
+    disc.type = SystemEventType::BLE_DISCONNECTED;
+    disc.seq  = 100;
+    bus.publish(disc);
 
     SystemEvent conn;
     conn.type = SystemEventType::BLE_CONNECTED;
     conn.seq  = 200;
     bus.publish(conn);
 
-    // Selectively consume GPS event
+    // Selectively consume DISCONNECTED event
     SystemEvent out;
-    TEST_ASSERT_TRUE(bus.consumeByType(SystemEventType::GPS_UPDATED, out));
+    TEST_ASSERT_TRUE(bus.consumeByType(SystemEventType::BLE_DISCONNECTED, out));
     TEST_ASSERT_EQUAL_UINT32(100, out.seq);
 
     // Selectively consume CONNECTED event
     TEST_ASSERT_TRUE(bus.consumeByType(SystemEventType::BLE_CONNECTED, out));
     TEST_ASSERT_EQUAL_UINT32(200, out.seq);
 
-    // GPS and CONNECTED gone; 10 frame events remain
+    // DISCONNECTED and CONNECTED gone; 10 frame events remain
     TEST_ASSERT_EQUAL_UINT32(10, bus.size());
-    TEST_ASSERT_FALSE(bus.consumeByType(SystemEventType::GPS_UPDATED, out));
+    TEST_ASSERT_FALSE(bus.consumeByType(SystemEventType::BLE_DISCONNECTED, out));
     deviceTestMetricU32("consume_by_type_remaining_events", "typed_consume", bus.size(), "count");
 }
 
@@ -302,7 +302,7 @@ void test_device_bus_dual_producer_no_corruption() {
 
     TaskHandle_t self = xTaskGetCurrentTaskHandle();
     DualProducerArgs args1 = {&bus, PER_PRODUCER, SystemEventType::BLE_FRAME_PARSED, startSem, self};
-    DualProducerArgs args2 = {&bus, PER_PRODUCER, SystemEventType::GPS_UPDATED,      startSem, self};
+    DualProducerArgs args2 = {&bus, PER_PRODUCER, SystemEventType::BLE_DISCONNECTED,      startSem, self};
 
     TaskHandle_t t1 = NULL, t2 = NULL;
     BaseType_t c1 = xTaskCreatePinnedToCore(dualProducerTask, "prod1", 4096, &args1, 2, &t1, 0);
@@ -342,10 +342,10 @@ void test_device_bus_dual_producer_no_corruption() {
 
     // All events should be valid types (no corruption)
     SystemEvent out;
-    uint32_t frameCount = 0, gpsCount = 0, otherCount = 0;
+    uint32_t frameCount = 0, disconnectCount = 0, otherCount = 0;
     while (bus.consume(out)) {
         if (out.type == SystemEventType::BLE_FRAME_PARSED) frameCount++;
-        else if (out.type == SystemEventType::GPS_UPDATED)  gpsCount++;
+        else if (out.type == SystemEventType::BLE_DISCONNECTED)  disconnectCount++;
         else otherCount++;
     }
     deviceTestMetricU32("dual_producer_published_total", "dual_producer", published, "count");
@@ -354,7 +354,7 @@ void test_device_bus_dual_producer_no_corruption() {
     deviceTestMetricU32("dual_producer_duration_ms", "dual_producer", durationMs, "ms");
 
     TEST_ASSERT_EQUAL_UINT32(0, otherCount);
-    TEST_ASSERT_EQUAL_UINT32(published - dropped, frameCount + gpsCount);
+    TEST_ASSERT_EQUAL_UINT32(published - dropped, frameCount + disconnectCount);
 }
 
 // ===========================================================================

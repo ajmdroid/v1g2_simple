@@ -3,7 +3,7 @@
  *
  * Provides POST /api/time/sync — sets device epoch time from the browser clock.
  * Called automatically by the web UI on first page load so the perf CSV logger
- * gets a timestamped filename even without GPS or SNTP.
+ * gets a timestamped filename even without SNTP.
  */
 
 #pragma once

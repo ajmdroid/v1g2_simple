@@ -60,7 +60,7 @@ LoopIngestPhaseValues processLoopIngestPhase(
     bool overloadThisLoop);
 
 // Loop ownership contract:
-// - Ingest phase mutates BLE/GPS runtime and returns the settings snapshot.
+// - Ingest phase mutates BLE runtime and returns the settings snapshot.
 // - loop() owns the OBD runtime refresh and speed selection update.
 // - Display/Wi-Fi/finalize phases consume snapshots and run only their owned side effects.
 void processLoopDisplayPreWifiPhase(

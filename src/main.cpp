@@ -1053,7 +1053,7 @@ void loop() {
     const bool skipLateNonCoreThisLoop = loopIngestValues.skipLateNonCoreThisLoop;
     const bool overloadLateThisLoop = loopIngestValues.overloadLateThisLoop;
 
-    // Refresh speed inputs before display so the current loop sees the latest OBD/GPS state.
+    // Refresh speed inputs before display so the current loop sees the latest OBD state.
     {
         const uint32_t obdStartUs = micros();
         const ObdBleContext obdBleContext{
