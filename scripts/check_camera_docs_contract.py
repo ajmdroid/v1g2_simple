@@ -36,7 +36,7 @@ def main() -> int:
     assert_not_contains(road_map_text, "ALPR overlay", "docs/ROAD_MAP_FORMAT.md")
     assert_contains(road_map_text, "Legacy reserved field, currently `0`", "docs/ROAD_MAP_FORMAT.md")
 
-    assert_not_contains(manual_text, "lockout, camera, volume_fade", "docs/MANUAL.md")
+    assert_not_contains(manual_text, "camera, volume_fade", "docs/MANUAL.md")
     assert_not_contains(manual_text, "camera-overlap coverage", "docs/MANUAL.md")
 
     print("[contract] retired camera docs surfaces removed from tracked docs")

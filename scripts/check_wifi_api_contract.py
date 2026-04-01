@@ -42,13 +42,8 @@ ROUTE_PREFIXES = (
     "/api/settings/backup",
     "/api/settings/restore",
     "/api/debug/",
-    "/api/gps/",
-    "/api/lockouts/",
 )
-POLICY_CALLBACK_PREFIXES = (
-    "/api/gps/",
-    "/api/lockouts/",
-)
+POLICY_CALLBACK_PREFIXES: Tuple[str, ...] = ()
 LOCAL_HANDLER_ROUTE_KEYS: Tuple[str, ...] = (
     "HTTP_GET /api/status",
     "HTTP_GET /api/device/settings",

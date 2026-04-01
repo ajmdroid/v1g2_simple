@@ -21,7 +21,6 @@ CANONICAL_METRIC_UNITS: dict[str, str] = {
     "display_skips_delta": "count",
     "reconnects_delta": "count",
     "disconnects_delta": "count",
-    "gps_obs_drops_delta": "count",
     "ble_mutex_timeout_delta": "count",
     "wifi_connect_deferred_delta": "count",
     "loop_max_peak_us": "us",
@@ -90,7 +89,6 @@ CSV_DELTA_COLUMNS = {
     "display_skips_delta": "displaySkips",
     "reconnects_delta": "reconn",
     "disconnects_delta": "disc",
-    "gps_obs_drops_delta": "gpsObsDrops",
     "ble_mutex_timeout_delta": "bleMutexTimeout",
     "wifi_connect_deferred_delta": "wifiConnectDeferred",
 }
@@ -182,7 +180,6 @@ SOAK_TREND_METRIC_NAMES = (
     "display_skips_delta",
     "reconnects_delta",
     "disconnects_delta",
-    "gps_obs_drops_delta",
     "flush_max_peak_us",
     "loop_max_peak_us",
     "wifi_max_peak_us",

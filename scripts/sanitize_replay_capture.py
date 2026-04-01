@@ -2,7 +2,6 @@
 """Sanitize a raw captured log into a committed replay fixture.
 
 Transforms raw capture data so it can be committed safely:
-  - Translates GPS coordinates to a local origin (preserves distances/headings)
   - Converts absolute timestamps to relative offsets from first sample
   - Strips device/user identifiers
   - Emits meta.json with sanitization_version
@@ -17,7 +16,6 @@ Usage:
 
 Input directory expects:
     packets.csv   – timestamp_ms,frame_hex[,device_id,...]
-    gps.csv       – timestamp_ms,lat,lon,speed_mph,course_deg,has_fix[,device_id,...]
 
 Extra columns beyond the required ones are silently dropped.
 """
@@ -33,18 +31,6 @@ from pathlib import Path
 SANITIZATION_VERSION = 1
 
 PACKETS_REQUIRED_COLS = ["timestamp_ms", "frame_hex"]
-GPS_REQUIRED_COLS = ["timestamp_ms", "lat", "lon", "speed_mph", "course_deg", "has_fix"]
-
-
-def translate_coords(
-    rows: list[dict], origin_lat: float, origin_lon: float
-) -> list[dict]:
-    """Shift all lat/lon values so the first sample becomes (0,0) while
-    preserving inter-sample distances and headings."""
-    for row in rows:
-        row["lat"] = str(float(row["lat"]) - origin_lat)
-        row["lon"] = str(float(row["lon"]) - origin_lon)
-    return rows
 
 
 def relativize_timestamps(rows: list[dict]) -> list[dict]:
@@ -90,33 +76,17 @@ def main() -> int:
     parser.add_argument("--scenario-id", required=True)
     parser.add_argument("--source-capture-id", default="unknown")
     parser.add_argument("--owner", required=True,
-                        help="Owning subsystem (e.g. lockout, replay, parser)")
+                        help="Owning subsystem (e.g. replay, parser)")
     parser.add_argument("--lane", required=True, choices=["pr", "nightly"])
     args = parser.parse_args()
 
     raw_packets = args.raw_dir / "packets.csv"
-    raw_gps = args.raw_dir / "gps.csv"
 
     if not raw_packets.exists():
         print(f"Missing {raw_packets}", file=sys.stderr)
         return 2
-    if not raw_gps.exists():
-        print(f"Missing {raw_gps}", file=sys.stderr)
-        return 2
 
     packets = read_csv(raw_packets, PACKETS_REQUIRED_COLS)
-    gps = read_csv(raw_gps, GPS_REQUIRED_COLS)
-
-    # Sanitize GPS
-    if gps:
-        origin_lat = float(gps[0]["lat"])
-        origin_lon = float(gps[0]["lon"])
-    else:
-        origin_lat = origin_lon = 0.0
-
-    gps = strip_extra_columns(gps, GPS_REQUIRED_COLS)
-    gps = translate_coords(gps, origin_lat, origin_lon)
-    gps = relativize_timestamps(gps)
 
     # Sanitize packets
     packets = strip_extra_columns(packets, PACKETS_REQUIRED_COLS)
@@ -125,7 +95,6 @@ def main() -> int:
     # Write outputs
     args.out_dir.mkdir(parents=True, exist_ok=True)
     write_csv(args.out_dir / "packets.csv", packets, PACKETS_REQUIRED_COLS)
-    write_csv(args.out_dir / "gps.csv", gps, GPS_REQUIRED_COLS)
 
     meta = {
         "scenario_id": args.scenario_id,

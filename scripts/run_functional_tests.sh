@@ -26,8 +26,6 @@ mkdir -p "$OUT_DIR"
 
 FILTERS=(
   -f test_drive_scenario
-  -f test_lockout_area_safety
-  -f test_lockout_enforcer
   -f test_wifi_boot_policy
   -f test_wifi_manager
 )

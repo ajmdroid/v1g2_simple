@@ -66,7 +66,6 @@ LATENCY_ROBUST_MIN_SAMPLES="${REAL_FW_LATENCY_ROBUST_MIN_SAMPLES:-8}"
 LATENCY_ROBUST_MAX_EXCEED_PCT="${REAL_FW_LATENCY_ROBUST_MAX_EXCEED_PCT:-5}"
 WIFI_ROBUST_SKIP_FIRST_SAMPLES="${REAL_FW_WIFI_ROBUST_SKIP_FIRST_SAMPLES:-2}"
 MINIMA_TAIL_EXCLUDE_SAMPLES="${REAL_FW_MINIMA_TAIL_EXCLUDE_SAMPLES:-0}"
-IGNORE_GPS_ERRORS="${REAL_FW_IGNORE_GPS_ERRORS:-0}"
 CLI_OVERRIDE_MAX_FLUSH_MAX_US=0
 CLI_OVERRIDE_MAX_LOOP_MAX_US=0
 CLI_OVERRIDE_MAX_WIFI_MAX_US=0
@@ -535,9 +534,6 @@ while [[ $# -gt 0 ]]; do
       COMPARE_TO_MANIFESTS+=("$2")
       shift
       ;;
-    --ignore-gps-errors)
-      IGNORE_GPS_ERRORS=1
-      ;;
     --dry-run)
       DRY_RUN=1
       ;;
@@ -737,7 +733,6 @@ Options:
                         Display preview endpoint URL (default: derived from metrics URL)
   --min-display-updates-delta N
                         Fail when parsed displayUpdates delta is below N (default: 1)
-  --ignore-gps-errors   Suppress gpsObsDrops advisory warnings
   --drive-transition-flaps
                         Toggle proxy BLE advertising off/on during soak
                         using /api/debug/proxy-advertising for transition
@@ -1007,11 +1002,6 @@ fi
 
 if ! [[ "$METRICS_SOAK_MODE" =~ ^[01]$ ]]; then
   echo "Invalid REAL_FW_METRICS_SOAK_MODE value '$METRICS_SOAK_MODE' (expected 0 or 1)." >&2
-  exit 2
-fi
-
-if ! [[ "$IGNORE_GPS_ERRORS" =~ ^[01]$ ]]; then
-  echo "Invalid ignore-gps flag value '$IGNORE_GPS_ERRORS' (expected 0 or 1)." >&2
   exit 2
 fi
 
@@ -1422,7 +1412,6 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)"
   echo "    minima floor tail exclusion: ${MINIMA_TAIL_EXCLUDE_SAMPLES} sample(s)"
   echo "    transition gates: maxTimeToStableApDownMs=${MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN} maxTimeToStableProxyOffMs=${MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF} maxSamplesToStable=${MAX_SAMPLES_TO_STABLE} maxApTransitionChurn=${MAX_AP_TRANSITION_CHURN_DELTA} maxProxyAdvTransitionChurn=${MAX_PROXY_ADV_TRANSITION_CHURN_DELTA} minApDownTransitions=${MIN_AP_DOWN_TRANSITIONS} minProxyAdvOffTransitions=${MIN_PROXY_ADV_OFF_TRANSITIONS}"
-  echo "    gps advisory suppression: ${IGNORE_GPS_ERRORS}"
   echo "    display drive: enabled=${DISPLAY_DRIVE_ENABLED} url=${DISPLAY_PREVIEW_URL:-disabled} interval=${DISPLAY_DRIVE_INTERVAL_SECONDS}s minDisplayUpdatesDelta=${DISPLAY_MIN_UPDATES_DELTA}"
   echo "    transition drive: enabled=${TRANSITION_DRIVE_ENABLED} controlUrl=${TRANSITION_CONTROL_URL:-disabled} interval=${TRANSITION_DRIVE_INTERVAL_SECONDS}s cycles=${TRANSITION_FLAP_CYCLES} stableConsecutiveSamples=${TRANSITION_STABLE_CONSECUTIVE_SAMPLES}"
   echo "    out dir: $OUT_DIR"
@@ -1773,7 +1762,6 @@ echo "    counter gates: maxBleMutexTimeoutDelta=${MAX_BLE_MUTEX_TIMEOUT_DELTA}"
 echo "    resource gates: maxQueueHighWater=${MAX_QUEUE_HIGH_WATER} maxWifiConnDeferred=${MAX_WIFI_CONNECT_DEFERRED} minDmaFree=${MIN_DMA_FREE} minDmaLargest=${MIN_DMA_LARGEST} (0 disables except drive_wifi_off requires 0)" | tee -a "$RUN_LOG"
 echo "    minima floor tail exclusion: ${MINIMA_TAIL_EXCLUDE_SAMPLES} sample(s)" | tee -a "$RUN_LOG"
 echo "    transition gates: maxTimeToStableApDownMs=${MAX_TIME_TO_STABLE_MS_AFTER_AP_DOWN} maxTimeToStableProxyOffMs=${MAX_TIME_TO_STABLE_MS_AFTER_PROXY_ADV_OFF} maxSamplesToStable=${MAX_SAMPLES_TO_STABLE} maxApTransitionChurn=${MAX_AP_TRANSITION_CHURN_DELTA} maxProxyAdvTransitionChurn=${MAX_PROXY_ADV_TRANSITION_CHURN_DELTA} minApDownTransitions=${MIN_AP_DOWN_TRANSITIONS} minProxyAdvOffTransitions=${MIN_PROXY_ADV_OFF_TRANSITIONS}" | tee -a "$RUN_LOG"
-echo "    gps advisory suppression: ${IGNORE_GPS_ERRORS}" | tee -a "$RUN_LOG"
 if [[ "$BASELINE_GATES_APPLIED" -eq 1 ]]; then
   echo "    baseline csv: ${BASELINE_PERF_CSV} (profile=${BASELINE_PROFILE}, stressClass=${BASELINE_STRESS_CLASS}, runStressClass=${RUN_STRESS_CLASS}, session=${BASELINE_SELECTED_SESSION}, rows=${BASELINE_SELECTED_ROWS}, durationMs=${BASELINE_SELECTED_DURATION_MS})" | tee -a "$RUN_LOG"
   echo "    baseline factors: latency x${BASELINE_LATENCY_FACTOR}, throughput x${BASELINE_THROUGHPUT_FACTOR}; rates rx=${BASELINE_RX_RATE_PER_SEC}/s parse=${BASELINE_PARSE_RATE_PER_SEC}/s" | tee -a "$RUN_LOG"
@@ -2254,7 +2242,6 @@ disp_pipe_sample_count=""
 disp_pipe_p95=""
 disp_pipe_over_limit_count=""
 ble_mutex_timeout_delta=""
-gps_obs_drops_delta=""
 wifi_ap_up_transitions_delta=""
 wifi_ap_down_transitions_delta=""
 proxy_adv_on_transitions_delta=""
@@ -2411,7 +2398,6 @@ while IFS='=' read -r key value; do
     disp_pipe_p95) disp_pipe_p95="$value" ;;
     disp_pipe_over_limit_count) disp_pipe_over_limit_count="$value" ;;
     ble_mutex_timeout_delta) ble_mutex_timeout_delta="$value" ;;
-    gps_obs_drops_delta) gps_obs_drops_delta="$value" ;;
     wifi_ap_up_transitions_delta) wifi_ap_up_transitions_delta="$value" ;;
     wifi_ap_down_transitions_delta) wifi_ap_down_transitions_delta="$value" ;;
     proxy_adv_on_transitions_delta) proxy_adv_on_transitions_delta="$value" ;;
@@ -3100,9 +3086,6 @@ if [[ "$reboot_evidence_detected" -eq 0 ]]; then
     if is_uint "$disconnects_delta" && [[ "$disconnects_delta" -gt 2 ]]; then
       advisory_warnings+=("disconnects delta=${disconnects_delta} exceeds advisory limit of 2.")
     fi
-    if [[ "$IGNORE_GPS_ERRORS" -eq 0 ]] && is_uint "$gps_obs_drops_delta" && [[ "$gps_obs_drops_delta" -gt 0 ]]; then
-      advisory_warnings+=("gpsObsDrops delta=${gps_obs_drops_delta} indicates dropped GPS observations.")
-    fi
     fi
   fi
 else
@@ -3309,7 +3292,6 @@ fi
   echo "- Inherited counter suspect: ${inherited_counter_suspect:-n/a}"
   echo "- wifiConnectDeferred delta: ${wifi_connect_deferred_delta:-n/a} (max ${MAX_WIFI_CONNECT_DEFERRED}; drive_wifi_off requires 0)"
   echo "- bleMutexTimeout delta: ${ble_mutex_timeout_delta:-n/a} (max ${MAX_BLE_MUTEX_TIMEOUT_DELTA})"
-  echo "- gpsObsDrops delta: ${gps_obs_drops_delta:-n/a} (advisory report-only)"
   echo "- Min heapDmaMin (SLO): ${dma_free_min_parsed:-n/a} (floor ${MIN_DMA_FREE}; raw ${dma_free_min_raw_parsed:-n/a}; tailExcluded ${minima_tail_samples_excluded:-0}; samplesUsed ${minima_samples_considered:-n/a})"
   echo "- Min heapDmaLargestMin (SLO): ${dma_largest_min_parsed:-n/a} (floor ${MIN_DMA_LARGEST}; raw ${dma_largest_min_raw_parsed:-n/a}; tailExcluded ${minima_tail_samples_excluded:-0}; samplesUsed ${minima_samples_considered:-n/a})"
   echo "- DMA largest current below-floor samples/total: ${dma_largest_below_floor_samples:-n/a}/${dma_largest_current_sample_count:-n/a} (pct ${dma_largest_below_floor_pct:-n/a}%, longest streak ${dma_largest_below_floor_longest_streak:-n/a})"
@@ -3318,7 +3300,7 @@ fi
   echo "- reconnects delta: ${reconnects_delta:-n/a}"
   echo "- disconnects delta: ${disconnects_delta:-n/a}"
   echo "- Proxy drop peak: ${proxy_drop_peak:-n/a}"
-  echo "- Lockout core guard tripped count: ${core_guard_tripped_count:-n/a}"
+  echo "- Core guard tripped count: ${core_guard_tripped_count:-n/a}"
   echo ""
   echo "## Advisory SLO Warnings"
   echo ""
@@ -3426,7 +3408,6 @@ display_updates_delta=${display_updates_delta}
 display_skips_delta=${display_skips_delta}
 reconnects_delta=${reconnects_delta}
 disconnects_delta=${disconnects_delta}
-gps_obs_drops_delta=${gps_obs_drops_delta}
 flush_max_peak_us=${flush_max_peak}
 loop_max_peak_us=${loop_max_peak}
 wifi_max_peak_us=${wifi_peak_gate_value}

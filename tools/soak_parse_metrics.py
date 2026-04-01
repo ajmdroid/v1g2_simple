@@ -225,8 +225,6 @@ def main() -> int:
     disp_pipe_max_peak = None
     ble_mutex_timeout_first = None
     ble_mutex_timeout_last = None
-    gps_obs_drops_first = None
-    gps_obs_drops_last = None
     wifi_samples = []
     disp_pipe_samples = []
     wifi_ap_up_first = None
@@ -453,10 +451,6 @@ def main() -> int:
                         event_drop_last = drp
                     event_size_peak = update_max(event_size_peak, siz)
 
-                lockout = data.get("lockout")
-                if isinstance(lockout, dict) and lockout.get("coreGuardTripped") is True:
-                    core_guard_tripped_count += 1
-
                 # Additional SLO-aligned metrics
                 oversize_drops = num(data.get("oversizeDrops"))
                 if oversize_drops_first is None and oversize_drops is not None:
@@ -528,12 +522,6 @@ def main() -> int:
                     ble_mutex_timeout_first = ble_mutex_timeout
                 if ble_mutex_timeout is not None:
                     ble_mutex_timeout_last = ble_mutex_timeout
-
-                gps_obs_drops = num(data.get("gpsObsDrops"))
-                if gps_obs_drops_first is None and gps_obs_drops is not None:
-                    gps_obs_drops_first = gps_obs_drops
-                if gps_obs_drops is not None:
-                    gps_obs_drops_last = gps_obs_drops
 
                 update_counter_windows(
                     data,
@@ -1171,11 +1159,6 @@ def main() -> int:
         print("proxy_adv_off_transitions_delta=")
     else:
         print(f"proxy_adv_off_transitions_delta={proxy_adv_off_last - proxy_adv_off_first}")
-
-    if gps_obs_drops_first is None or gps_obs_drops_last is None:
-        print("gps_obs_drops_delta=")
-    else:
-        print(f"gps_obs_drops_delta={gps_obs_drops_last - gps_obs_drops_first}")
 
     if event_publish_first is None or event_publish_last is None:
         print("event_publish_delta=")

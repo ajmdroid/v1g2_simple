@@ -37,7 +37,6 @@ def build_rows() -> list[dict[str, int]]:
     end["displayUpdates"] = 100
     end["displaySkips"] = 30
     end["cmdPaceNotYet"] = 5
-    end["gpsObsDrops"] = 10
     end["audioPlayBusy"] = 2
 
     return [start, end]

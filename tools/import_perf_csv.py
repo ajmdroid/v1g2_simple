@@ -41,7 +41,6 @@ TOP_ROW_FIELDS = (
     "rx",
     "parseOK",
     "displayUpdates",
-    "gpsSpeedMph_x10",
 )
 ATTRIBUTION_COLUMNS = (
     "bleState",
@@ -203,7 +202,6 @@ class SessionSummary:
     duration_s: float
     rx_delta: int
     speed_active_rows: int
-    gps_valid_rows: int
     connected: bool
     drive_like: bool
     has_marker: bool
@@ -218,7 +216,6 @@ class SessionSummary:
             "duration_s": self.duration_s,
             "rx_delta": self.rx_delta,
             "speed_active_rows": self.speed_active_rows,
-            "gps_valid_rows": self.gps_valid_rows,
             "connected": self.connected,
             "drive_like": self.drive_like,
             "has_marker": self.has_marker,
@@ -386,10 +383,7 @@ def summarize_sessions(
     summaries: list[SessionSummary] = []
     for index, (meta, rows) in enumerate(sessions, start=1):
         rx_delta = _rx_delta(rows)
-        speed_active_rows = sum(1 for row in rows if int(row.get("gpsSpeedMph_x10", 0)) > 0)
-        gps_valid_rows = sum(
-            1 for row in rows if int(row.get("gpsHasFix", 0)) == 1 and int(row.get("gpsLocationValid", 0)) == 1
-        )
+        speed_active_rows = sum(1 for row in rows if int(row.get("obdSpeedMph_x10", 0)) > 0)
         connected = bool(rows) and (rx_delta > 0 or int(rows[-1].get("rx", 0)) > 0)
         summaries.append(
             SessionSummary(
@@ -401,9 +395,8 @@ def summarize_sessions(
                 duration_s=score_perf_csv.duration_s(rows) if rows else 0.0,
                 rx_delta=rx_delta,
                 speed_active_rows=speed_active_rows,
-                gps_valid_rows=gps_valid_rows,
                 connected=connected,
-                drive_like=(speed_active_rows > 0 or gps_valid_rows > 0),
+                drive_like=(speed_active_rows > 0),
                 has_marker=meta is not None,
             )
         )
@@ -426,7 +419,6 @@ def select_segment(
                 drive_candidates,
                 key=lambda item: (
                     item.speed_active_rows,
-                    item.gps_valid_rows,
                     item.rx_delta,
                     item.duration_ms,
                     item.session_index,
@@ -458,12 +450,11 @@ def render_segment_listing(
             f"{summary.duration_s:.1f}",
             str(summary.rx_delta),
             str(summary.speed_active_rows),
-            str(summary.gps_valid_rows),
             "yes" if summary.drive_like else "no",
         ]
         for summary in summaries
     ]
-    widths = [len(label) for label in ["SEL", "SEG", "TOKEN", "SCHEMA", "ROWS", "DUR_S", "RX_DELTA", "SPEED_ROWS", "GPS_ROWS", "DRIVE"]]
+    widths = [len(label) for label in ["SEL", "SEG", "TOKEN", "SCHEMA", "ROWS", "DUR_S", "RX_DELTA", "SPEED_ROWS", "DRIVE"]]
     for row in rows:
         for idx, value in enumerate(row):
             widths[idx] = max(widths[idx], len(value))
@@ -475,8 +466,8 @@ def render_segment_listing(
         f"source: {csv_path}",
         f"selector: {selector}",
         "",
-        fmt(["SEL", "SEG", "TOKEN", "SCHEMA", "ROWS", "DUR_S", "RX_DELTA", "SPEED_ROWS", "GPS_ROWS", "DRIVE"]),
-        fmt(["-" * widths[0], "-" * widths[1], "-" * widths[2], "-" * widths[3], "-" * widths[4], "-" * widths[5], "-" * widths[6], "-" * widths[7], "-" * widths[8], "-" * widths[9]]),
+        fmt(["SEL", "SEG", "TOKEN", "SCHEMA", "ROWS", "DUR_S", "RX_DELTA", "SPEED_ROWS", "DRIVE"]),
+        fmt(["-" * widths[0], "-" * widths[1], "-" * widths[2], "-" * widths[3], "-" * widths[4], "-" * widths[5], "-" * widths[6], "-" * widths[7], "-" * widths[8]]),
     ]
     lines.extend(fmt(row) for row in rows)
     return "\n".join(lines) + "\n"
@@ -1078,7 +1069,7 @@ def append_import_sections(
         f"- Selected segment: `{selected_segment['session_index']}`"
         + (f" token={selected_segment['token']}" if selected_segment.get("token") else ""),
         f"- Segment rows/duration: {selected_segment['row_count']} rows / {selected_segment['duration_s']:.1f}s",
-        f"- Segment drive evidence: speed_rows={selected_segment['speed_active_rows']}, gps_rows={selected_segment['gps_valid_rows']}, rx_delta={selected_segment['rx_delta']}",
+        f"- Segment drive evidence: speed_rows={selected_segment['speed_active_rows']}, rx_delta={selected_segment['rx_delta']}",
         f"- Unsupported metrics: {', '.join(unsupported_metrics) if unsupported_metrics else 'none'}",
         f"- Panic log: {'present' if panic_summary.get('present') else 'missing'} `{panic_summary.get('path', 'n/a')}`",
         f"- Panic runtime crash detected: {'yes' if panic_summary.get('runtime_crash_detected') else 'no'}",

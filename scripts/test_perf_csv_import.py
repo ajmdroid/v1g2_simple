@@ -60,15 +60,11 @@ def base_row(millis: int, *, connected: bool, header_columns: list[str]) -> dict
             "displayUpdates": 0,
             "displaySkips": 0,
             "cmdPaceNotYet": 0,
-            "gpsObsDrops": 0,
             "audioPlayBusy": 0,
             "reconn": 0,
             "disc": 0,
             "rx": 0,
             "parseOK": 0,
-            "gpsHasFix": 0,
-            "gpsLocationValid": 0,
-            "gpsSpeedMph_x10": 0,
         }
     )
     if "freeDmaMin" in row:
@@ -109,10 +105,6 @@ def make_session(
             row["rx"] = 100 + 50 * index
             row["parseOK"] = 100 + 50 * index
             row["displayUpdates"] = 8 * index
-        if drive_like:
-            row["gpsHasFix"] = 1
-            row["gpsLocationValid"] = 1
-            row["gpsSpeedMph_x10"] = 250 + 10 * index
         rows.append(row)
     if end_overrides:
         rows[-1].update(end_overrides)
@@ -610,9 +602,6 @@ def test_leading_rows_form_implicit_segment(tmpdir: Path) -> None:
     leading_row = base_row(5000, connected=True, header_columns=HEADER_COLUMNS)
     leading_row["rx"] = 150
     leading_row["parseOK"] = 150
-    leading_row["gpsHasFix"] = 1
-    leading_row["gpsLocationValid"] = 1
-    leading_row["gpsSpeedMph_x10"] = 300
     later_session = make_session(
         seq=2,
         token="LATER002",

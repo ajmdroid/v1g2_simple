@@ -267,10 +267,8 @@ def write_metrics_jsonl(path: Path, *, include_display_counters: bool = True) ->
             "heapDmaLargestMin": 15000,
             "bleProcessMaxUs": 30000,
             "bleMutexTimeout": 0,
-            "gpsObsDrops": 0,
             "proxy": {"dropCount": 0, "advertising": 1},
             "eventBus": {"publishCount": 0, "dropCount": 0, "size": 64},
-            "lockout": {"coreGuardTripped": False},
         },
         {
             "heapFree": 205000,
@@ -312,10 +310,8 @@ def write_metrics_jsonl(path: Path, *, include_display_counters: bool = True) ->
             "heapDmaLargestMin": 14500,
             "bleProcessMaxUs": 35000,
             "bleMutexTimeout": 0,
-            "gpsObsDrops": 0,
             "proxy": {"dropCount": 0, "advertising": 1},
             "eventBus": {"publishCount": 10, "dropCount": 0, "size": 64},
-            "lockout": {"coreGuardTripped": False},
         },
         {
             "heapFree": 200000,
@@ -357,10 +353,8 @@ def write_metrics_jsonl(path: Path, *, include_display_counters: bool = True) ->
             "heapDmaLargestMin": 14000,
             "bleProcessMaxUs": 40000,
             "bleMutexTimeout": 0,
-            "gpsObsDrops": 0,
             "proxy": {"dropCount": 0, "advertising": 1},
             "eventBus": {"publishCount": 20, "dropCount": 0, "size": 64},
-            "lockout": {"coreGuardTripped": False},
         },
     ]
     for index, data in enumerate(samples):
@@ -442,9 +436,6 @@ def _base_csv_row(millis: int, *, header_columns: list[str], connected: bool = T
             "wifiMax_us": 500,
             "rx": 0,
             "parseOK": 0,
-            "gpsHasFix": 0,
-            "gpsLocationValid": 0,
-            "gpsSpeedMph_x10": 0,
         }
     )
     if "freeDmaMin" in row:
@@ -458,10 +449,6 @@ def _base_csv_row(millis: int, *, header_columns: list[str], connected: bool = T
     if connected:
         row["rx"] = 120
         row["parseOK"] = 120
-    if drive_like:
-        row["gpsHasFix"] = 1
-        row["gpsLocationValid"] = 1
-        row["gpsSpeedMph_x10"] = 250
     return row
 
 

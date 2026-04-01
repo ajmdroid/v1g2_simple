@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Loop phase orchestration extracted to `main_loop_phases.cpp` (~190 lines) with 10 phase-router modules (`LoopIngestModule`, `LoopConnectionEarlyModule`, `LoopDisplayModule`, etc.).
 - Core service splits: `ble_runtime.cpp` (511 lines), `packet_parser_alerts.cpp` (582 lines), `settings_restore.cpp` (782 lines).
 - Boot-time helpers extracted to `main_boot.cpp` (248 lines).
-- Lockout/learner save state machines extracted to `main_persist.cpp` (445 lines).
+- Persist save state machines extracted to `main_persist.cpp` (445 lines).
 - WiFi subsystem modularized into dedicated runtime, policy, cadence, and visual-sync modules.
 - BLE connection runtime and state dispatch modules extracted with Providers DI pattern.
 - Speed-volume runtime, speaker-quiet sync, and voice-speed sync modules added.
@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Quality + Runtime Hardening**
 - Expanded to 76 native test suites, 960 test cases (`pio test -e native`).
 - Drive-scenario integration tests (15 scenarios).
-- Lockout runtime stack fully integrated (capture, learner, enforcer, store/index, zone APIs).
+- OBD runtime module integrated (speed polling, reconnect, scan-from-UI).
 - Heap safety hardened with RAII ownership and teardown guards.
 
 - **Security Warning**: Default password warning banner in web UI
@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Maintains AP mode for device access while connected
 
 **Performance**
-- Perf CSV schema expanded with subsystem timing (GPS, lockout).
+- Perf CSV schema expanded with subsystem timing (OBD, display, BLE).
 - Audio play/busy/fail counters, signal-observation queue drop counters wired.
 - Perf CSV SLO scorecard tooling added.
 
@@ -60,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - WiFi STA config recovery when NVS keys are missing (SD secret fallback).
 - Display flush contract stabilized against line-offset drift.
-- Dirty lockout zones and learner candidates flushed on shutdown.
+- Settings flushed reliably on shutdown.
 
 ### Security
 - Default password warning encourages users to change factory credentials
@@ -71,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 - Full V1 BLE connectivity with packet parsing
-- Auto-lockout with GPS geofencing
+- OBD-II speed source via BLE
 - V1 profile management with auto-push
 - Custom display themes and colors
 - SD card backup functionality
@@ -92,8 +92,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 |---------|------|------------|
 | 4.0.0-dev | 2026-02-25 | Modular architecture, 141 module files, 960 tests, CI contracts |
 | 3.0.7 | 2026 | Quality baseline before 4.x refactors |
-| 3.0.x | 2024 | Auto-lockout improvements |
-| 2.x.x | 2024 | Auto-lockout, profiles |
+| 3.0.x | 2024 | Speed source improvements |
+| 2.x.x | 2024 | Profiles, display themes |
 | 1.x.x | 2023 | Initial release, basic V1 display |
 
 ---
