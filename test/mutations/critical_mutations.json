@@ -44,8 +44,8 @@
         "description": ">= -> > fade delay boundary",
         "impact": "Fade-down command fires one poll late",
         "file": "src/modules/volume_fade/volume_fade_module.cpp",
-        "search": "    if (!commandSent && (now - alertStartMs) >= fadeDelayMs) {\n",
-        "replace": "    if (!commandSent && (now - alertStartMs) > fadeDelayMs) {\n",
+        "search": "    if (!commandSent_ && (now - alertStartMs_) >= fadeDelayMs) {\n",
+        "replace": "    if (!commandSent_ && (now - alertStartMs_) > fadeDelayMs) {\n",
         "tests": [
           "test_volume_fade"
         ]
@@ -106,8 +106,8 @@
         "description": "< -> <= scan screen dwell timeout",
         "impact": "Scan dwell exits one poll early, missing brief reconnect grace period",
         "file": "src/modules/ble/connection_state_cadence_module.cpp",
-        "search": "    if (scanScreenDwellActive && ctx.bleConnectedNow) {\n        const unsigned long scanDwellMs = ctx.nowMs - scanScreenEnteredMs;\n        decision.holdScanDwell = scanDwellMs < ctx.scanScreenDwellMs;",
-        "replace": "    if (scanScreenDwellActive && ctx.bleConnectedNow) {\n        const unsigned long scanDwellMs = ctx.nowMs - scanScreenEnteredMs;\n        decision.holdScanDwell = scanDwellMs <= ctx.scanScreenDwellMs;",
+        "search": "    if (scanScreenDwellActive_ && ctx.bleConnectedNow) {\n        const unsigned long scanDwellMs = ctx.nowMs - scanScreenEnteredMs_;\n        decision.holdScanDwell = scanDwellMs < ctx.scanScreenDwellMs;",
+        "replace": "    if (scanScreenDwellActive_ && ctx.bleConnectedNow) {\n        const unsigned long scanDwellMs = ctx.nowMs - scanScreenEnteredMs_;\n        decision.holdScanDwell = scanDwellMs <= ctx.scanScreenDwellMs;",
         "tests": [
           "test_connection_state_cadence"
         ]
@@ -143,8 +143,8 @@
         "description": "< -> <= display update cadence boundary",
         "impact": "Display updates one cycle late when elapsed time exactly equals interval",
         "file": "src/modules/ble/connection_state_cadence_module.cpp",
-        "search": "    if ((ctx.nowMs - lastDisplayUpdateMs) < ctx.displayUpdateIntervalMs) {\n        return decision;\n    }",
-        "replace": "    if ((ctx.nowMs - lastDisplayUpdateMs) <= ctx.displayUpdateIntervalMs) {\n        return decision;\n    }",
+        "search": "    if ((ctx.nowMs - lastDisplayUpdateMs_) < ctx.displayUpdateIntervalMs) {\n        return decision;\n",
+        "replace": "    if ((ctx.nowMs - lastDisplayUpdateMs_) <= ctx.displayUpdateIntervalMs) {\n        return decision;\n    }",
         "tests": [
           "test_connection_state_cadence"
         ]
@@ -167,8 +167,8 @@
         "description": "> -> >= data stale check boundary",
         "impact": "BLE data request fires one poll too early when stale threshold exactly met",
         "file": "src/modules/ble/connection_state_module.cpp",
-        "search": "    if (isConnected && bleQueue) {\n        unsigned long lastRx = bleQueue->getLastRxMillis();\n        bool dataStale = (nowMs - lastRx) > DATA_STALE_MS;",
-        "replace": "    if (isConnected && bleQueue) {\n        unsigned long lastRx = bleQueue->getLastRxMillis();\n        bool dataStale = (nowMs - lastRx) >= DATA_STALE_MS;",
+        "search": "    if (isConnected && bleQueue_) {\n        unsigned long lastRx = bleQueue_->getLastRxMillis();\n        bool dataStale = (nowMs - lastRx) > DATA_STALE_MS;",
+        "replace": "    if (isConnected && bleQueue_) {\n        unsigned long lastRx = bleQueue_->getLastRxMillis();\n        bool dataStale = (nowMs - lastRx) >= DATA_STALE_MS;",
         "tests": [
           "test_connection_state_module"
         ]

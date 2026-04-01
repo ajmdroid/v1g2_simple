@@ -102,4 +102,4 @@ private:
     uint8_t consecutiveI2cFailures_ = 0;
     uint32_t i2cRecoveryCount_ = 0;
 };
-#endif // TOUCH_HANDLER_H
+#endif  // TOUCH_HANDLER_H

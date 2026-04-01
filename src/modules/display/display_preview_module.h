@@ -26,7 +26,7 @@ public:
     void cancel();
 
     // State queries
-    bool isRunning() const { return previewActive; }
+    bool isRunning() const { return previewActive_; }
     // Returns true once when a preview has ended (cancel or elapsed), then resets the flag
     bool consumeEnded();
 
@@ -57,12 +57,12 @@ private:
     static constexpr int STEP_COUNT = sizeof(STEPS) / sizeof(STEPS[0]);
     static constexpr uint32_t PREVIEW_TAIL_MS = 600;  // Extra time after last step to keep frame visible
 
-    V1Display* display = nullptr;
+    V1Display* display_ = nullptr;
 
-    PreviewMode previewMode = PreviewMode::ALERT;
-    bool previewActive = false;
-    bool previewEnded = false;
-    unsigned long previewStartMs = 0;
-    unsigned long previewDurationMs = 0;
-    int previewStep = 0;
+    PreviewMode previewMode_ = PreviewMode::ALERT;
+    bool previewActive_ = false;
+    bool previewEnded_ = false;
+    unsigned long previewStartMs_ = 0;
+    unsigned long previewDurationMs_ = 0;
+    int previewStep_ = 0;
 };

@@ -44,6 +44,6 @@ private:
     void reset();
     Providers providers{};
     Config config;
-    unsigned long lastAudioTickUs = 0;
-    bool runStartLogged = false;
+    unsigned long lastAudioTickUs_ = 0;
+    bool runStartLogged_ = false;
 };

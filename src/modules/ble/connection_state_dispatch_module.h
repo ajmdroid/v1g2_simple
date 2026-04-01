@@ -41,7 +41,7 @@ public:
     ConnectionStateDispatchDecision process(const ConnectionStateDispatchContext& ctx);
 
 private:
-    Providers providers{};
-    uint32_t lastProcessRunMs = 0;
-    bool hasRunProcess = false;
+    Providers providers_{};
+    uint32_t lastProcessRunMs_ = 0;
+    bool hasRunProcess_ = false;
 };

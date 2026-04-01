@@ -44,7 +44,8 @@ public:
     void init(ObdRuntimeModule* parent);
 
     /// Start a BLE scan filtered for OBDLink devices. Returns false if scanner busy.
-    bool startScan(int8_t minRssi);
+    /// @param parent Callback target for device discovery events.
+    bool startScan(ObdRuntimeModule* parent, int8_t minRssi);
 
     /// Stop any in-progress OBD scan.
     void stopScan();

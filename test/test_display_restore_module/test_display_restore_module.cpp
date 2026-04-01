@@ -32,21 +32,21 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
 DisplayPreviewModule::DisplayPreviewModule() = default;
 
 void DisplayPreviewModule::begin(V1Display* displayPtr) {
-    display = displayPtr;
+    display_ = displayPtr;
 }
 
 void DisplayPreviewModule::requestHold(uint32_t durationMs) {
-    previewActive = (durationMs != 0);
+    previewActive_ = (durationMs != 0);
 }
 
 void DisplayPreviewModule::cancel() {
-    previewActive = false;
-    previewEnded = true;
+    previewActive_ = false;
+    previewEnded_ = true;
 }
 
 bool DisplayPreviewModule::consumeEnded() {
-    const bool ended = previewEnded;
-    previewEnded = false;
+    const bool ended = previewEnded_;
+    previewEnded_ = false;
     return ended;
 }
 

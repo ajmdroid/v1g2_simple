@@ -79,32 +79,32 @@ public:
 
 private:
     void reset();
-    SettingsManager* settings;
+    SettingsManager* settings_ = nullptr;
 
     // Tracking state
-    unsigned long alertStartMs;
-    uint8_t originalVolume;
-    uint8_t originalMuteVolume;
-    bool fadeActive;
-    bool commandSent;
-    bool restoreLogEmitted;
-    int seenCount;
+    unsigned long alertStartMs_ = 0;
+    uint8_t originalVolume_ = 0;
+    uint8_t originalMuteVolume_ = 0;
+    bool fadeActive_ = false;
+    bool commandSent_ = false;
+    bool restoreLogEmitted_ = false;
+    int seenCount_ = 0;
     static constexpr int MAX_FADE_SEEN_FREQS = 12;
-    uint16_t seenFreqs[MAX_FADE_SEEN_FREQS];
+    uint16_t seenFreqs_[MAX_FADE_SEEN_FREQS] = {};
 
     // Short-lived carry-over after issuing RESTORE: if a new alert arrives before
     // V1 applies the restore command, don't recapture the faded volume as baseline.
-    uint8_t pendingRestoreVolume;
-    uint8_t pendingRestoreMuteVolume;
-    unsigned long pendingRestoreSetMs;
-    unsigned long lastRestoreAttemptMs;
+    uint8_t pendingRestoreVolume_ = 0;
+    uint8_t pendingRestoreMuteVolume_ = 0;
+    unsigned long pendingRestoreSetMs_ = 0;
+    unsigned long lastRestoreAttemptMs_ = 0;
     static constexpr unsigned long PENDING_RESTORE_WINDOW_MS = 1500;
     static constexpr unsigned long RESTORE_RETRY_MIN_INTERVAL_MS = 75;
 
     // External baseline hint from an external volume owner.
-    uint8_t hintBaselineVolume = 0xFF;     // 0xFF = no hint
-    uint8_t hintBaselineMuteVolume = 0;
-    unsigned long hintSetMs = 0;
+    uint8_t hintBaselineVolume_ = 0xFF;     // 0xFF = no hint
+    uint8_t hintBaselineMuteVolume_ = 0;
+    unsigned long hintSetMs_ = 0;
     static constexpr unsigned long HINT_WINDOW_MS = 1500;
 
     void resetSessionState();

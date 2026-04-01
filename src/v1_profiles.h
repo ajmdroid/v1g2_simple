@@ -171,6 +171,4 @@ private:
 
 // Global instance
 extern V1ProfileManager v1ProfileManager;
-
-
-#endif // V1_PROFILES_H
+#endif  // V1_PROFILES_H

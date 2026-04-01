@@ -77,7 +77,7 @@ void test_critical_battery_shows_warning_before_shutdown() {
     module.process(1000);
 
     TEST_ASSERT_EQUAL(1, display.showLowBatteryCalls);
-    TEST_ASSERT_TRUE(module.lowBatteryWarningShown);
+    TEST_ASSERT_TRUE(module.lowBatteryWarningShown_);
     TEST_ASSERT_FALSE(battery.powerOffCalled);
 }
 
@@ -141,7 +141,7 @@ void test_critical_battery_recovery_clears_warning_without_shutdown() {
     module.process(3000);
     module.process(7000);
 
-    TEST_ASSERT_FALSE(module.lowBatteryWarningShown);
+    TEST_ASSERT_FALSE(module.lowBatteryWarningShown_);
     TEST_ASSERT_FALSE(battery.powerOffCalled);
 }
 
@@ -157,11 +157,11 @@ void test_usb_power_skips_critical_battery_shutdown_path() {
 }
 
 void test_v1_data_arms_auto_power_off() {
-    TEST_ASSERT_FALSE(module.autoPowerOffArmed);
+    TEST_ASSERT_FALSE(module.autoPowerOffArmed_);
 
     module.onV1DataReceived();
 
-    TEST_ASSERT_TRUE(module.autoPowerOffArmed);
+    TEST_ASSERT_TRUE(module.autoPowerOffArmed_);
 }
 
 void test_disconnect_starts_auto_power_timer_when_armed() {
@@ -170,29 +170,29 @@ void test_disconnect_starts_auto_power_timer_when_armed() {
 
     module.onV1ConnectionChange(false);
 
-    TEST_ASSERT_EQUAL(5000UL, module.autoPowerOffTimerStart);
+    TEST_ASSERT_EQUAL(5000UL, module.autoPowerOffTimerStart_);
 }
 
 void test_disconnect_does_not_start_timer_when_not_armed_or_disabled() {
     module.onV1ConnectionChange(false);
-    TEST_ASSERT_EQUAL(0UL, module.autoPowerOffTimerStart);
+    TEST_ASSERT_EQUAL(0UL, module.autoPowerOffTimerStart_);
 
     module.onV1DataReceived();
     testSettings.settings.autoPowerOffMinutes = 0;
     module.onV1ConnectionChange(false);
 
-    TEST_ASSERT_EQUAL(0UL, module.autoPowerOffTimerStart);
+    TEST_ASSERT_EQUAL(0UL, module.autoPowerOffTimerStart_);
 }
 
 void test_reconnect_cancels_running_auto_power_timer() {
     module.onV1DataReceived();
     setTime(1000);
     module.onV1ConnectionChange(false);
-    TEST_ASSERT_EQUAL(1000UL, module.autoPowerOffTimerStart);
+    TEST_ASSERT_EQUAL(1000UL, module.autoPowerOffTimerStart_);
 
     module.onV1ConnectionChange(true);
 
-    TEST_ASSERT_EQUAL(0UL, module.autoPowerOffTimerStart);
+    TEST_ASSERT_EQUAL(0UL, module.autoPowerOffTimerStart_);
 }
 
 void test_auto_power_off_shuts_down_after_timeout() {

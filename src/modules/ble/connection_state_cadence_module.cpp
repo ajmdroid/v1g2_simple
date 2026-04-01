@@ -1,46 +1,46 @@
 #include "connection_state_cadence_module.h"
 
 void ConnectionStateCadenceModule::reset() {
-    lastDisplayUpdateMs = 0;
-    scanScreenEnteredMs = 0;
-    scanScreenDwellActive = false;
-    lastBleConnectedForScanDwell = false;
+    lastDisplayUpdateMs_ = 0;
+    scanScreenEnteredMs_ = 0;
+    scanScreenDwellActive_ = false;
+    lastBleConnectedForScanDwell_ = false;
 }
 
 void ConnectionStateCadenceModule::onScanningScreenShown(unsigned long nowMs) {
-    scanScreenEnteredMs = nowMs;
-    scanScreenDwellActive = true;
+    scanScreenEnteredMs_ = nowMs;
+    scanScreenDwellActive_ = true;
 }
 
 ConnectionStateCadenceDecision ConnectionStateCadenceModule::process(
         const ConnectionStateCadenceContext& ctx) {
     ConnectionStateCadenceDecision decision;
 
-    if (lastBleConnectedForScanDwell && !ctx.bleConnectedNow && !ctx.bootSplashHoldActive) {
-        scanScreenEnteredMs = ctx.nowMs;
-        scanScreenDwellActive = true;
+    if (lastBleConnectedForScanDwell_ && !ctx.bleConnectedNow && !ctx.bootSplashHoldActive) {
+        scanScreenEnteredMs_ = ctx.nowMs;
+        scanScreenDwellActive_ = true;
     }
-    lastBleConnectedForScanDwell = ctx.bleConnectedNow;
+    lastBleConnectedForScanDwell_ = ctx.bleConnectedNow;
 
-    if ((ctx.nowMs - lastDisplayUpdateMs) < ctx.displayUpdateIntervalMs) {
+    if ((ctx.nowMs - lastDisplayUpdateMs_) < ctx.displayUpdateIntervalMs) {
         return decision;
     }
-    lastDisplayUpdateMs = ctx.nowMs;
+    lastDisplayUpdateMs_ = ctx.nowMs;
     decision.displayUpdateDue = true;
 
     if (ctx.displayPreviewRunning || ctx.bootSplashHoldActive) {
         return decision;
     }
 
-    if (scanScreenDwellActive && ctx.bleConnectedNow) {
-        const unsigned long scanDwellMs = ctx.nowMs - scanScreenEnteredMs;
+    if (scanScreenDwellActive_ && ctx.bleConnectedNow) {
+        const unsigned long scanDwellMs = ctx.nowMs - scanScreenEnteredMs_;
         decision.holdScanDwell = scanDwellMs < ctx.scanScreenDwellMs;
     }
 
     if (!decision.holdScanDwell) {
         decision.shouldRunConnectionStateProcess = true;
         if (ctx.bleConnectedNow) {
-            scanScreenDwellActive = false;
+            scanScreenDwellActive_ = false;
         }
     }
 

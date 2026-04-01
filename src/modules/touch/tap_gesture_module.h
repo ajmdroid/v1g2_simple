@@ -28,18 +28,18 @@ public:
     void process(unsigned long nowMs);
 
 private:
-    TouchHandler* touch = nullptr;
-    SettingsManager* settings = nullptr;
-    V1Display* display = nullptr;
-    V1BLEClient* ble = nullptr;
-    PacketParser* parser = nullptr;
-    AutoPushModule* autoPush = nullptr;
-    AlertPersistenceModule* alertPersistence = nullptr;
-    DisplayMode* displayMode = nullptr;
-    QuietCoordinatorModule* quiet = nullptr;
+    TouchHandler* touch_ = nullptr;
+    SettingsManager* settings_ = nullptr;
+    V1Display* display_ = nullptr;
+    V1BLEClient* ble_ = nullptr;
+    PacketParser* parser_ = nullptr;
+    AutoPushModule* autoPush_ = nullptr;
+    AlertPersistenceModule* alertPersistence_ = nullptr;
+    DisplayMode* displayMode_ = nullptr;
+    QuietCoordinatorModule* quiet_ = nullptr;
 
-    unsigned long lastTapTime = 0;
-    int tapCount = 0;
+    unsigned long lastTapTime_ = 0;
+    int tapCount_ = 0;
     static constexpr int PROFILE_CHANGE_TAP_COUNT = 3;
     static constexpr unsigned long TAP_WINDOW_MS = 600;
     static constexpr unsigned long TAP_DEBOUNCE_MS = 150;

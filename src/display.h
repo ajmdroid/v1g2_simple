@@ -274,4 +274,4 @@ public:
 
 // Global display instance (defined in main.cpp)
 extern V1Display display;
-#endif // DISPLAY_H
+#endif  // DISPLAY_H

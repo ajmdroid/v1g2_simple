@@ -47,21 +47,21 @@ private:
     void updateObdIndicatorAttention(bool attention, unsigned long nowMs);
 
     // State
-    V1Display* display = nullptr;
-    TouchHandler* touchHandler = nullptr;
-    SettingsManager* settings = nullptr;
-    Callbacks callbacks{};
+    V1Display* display_ = nullptr;
+    TouchHandler* touchHandler_ = nullptr;
+    SettingsManager* settings_ = nullptr;
+    Callbacks callbacks_{};
 
-    bool brightnessAdjustMode = false;
-    uint8_t brightnessAdjustValue = 200;
-    uint8_t volumeAdjustValue = 75;
-    int activeSlider = 0;
-    unsigned long lastVolumeChangeMs = 0;
-    unsigned long lastSliderRedrawMs = 0;
+    bool brightnessAdjustMode_ = false;
+    uint8_t brightnessAdjustValue_ = 200;
+    uint8_t volumeAdjustValue_ = 75;
+    int activeSlider_ = 0;
+    unsigned long lastVolumeChangeMs_ = 0;
+    unsigned long lastSliderRedrawMs_ = 0;
 
-    unsigned long bootPressStart = 0;
-    bool bootWasPressed = false;
-    bool obdPairGestureArmed = false;
+    unsigned long bootPressStart_ = 0;
+    bool bootWasPressed_ = false;
+    bool obdPairGestureArmed_ = false;
 
     // Timing constants (mirrors previous inline logic)
     static constexpr unsigned long BOOT_DEBOUNCE_MS = 300;

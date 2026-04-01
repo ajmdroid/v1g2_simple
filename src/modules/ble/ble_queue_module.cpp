@@ -134,22 +134,22 @@ void BleQueueModule::begin(V1BLEClient* bleClient,
                            PowerModule* powerModule,
                            SystemEventBus* eventBus,
                            Config cfg) {
-    ble = bleClient;
-    parser = parserPtr;
-    profiles = profileMgr;
-    preview = previewModule;
-    power = powerModule;
-    bus = eventBus;
-    config = cfg;
+    ble_ = bleClient;
+    parser_ = parserPtr;
+    profiles_ = profileMgr;
+    preview_ = previewModule;
+    power_ = powerModule;
+    bus_ = eventBus;
+    config_ = cfg;
 
-    queueHandle = xQueueCreate(config.queueDepth, sizeof(BLEDataPacket));
-    rxReadPos = 0;
-    rxBuffer.reserve(std::max(config.rxBufferCap, RX_BUFFER_MAX));
-    backpressureActive = false;
+    queueHandle_ = xQueueCreate(config_.queueDepth, sizeof(BLEDataPacket));
+    rxReadPos_ = 0;
+    rxBuffer_.reserve(std::max(config_.rxBufferCap, RX_BUFFER_MAX));
+    backpressureActive_ = false;
 }
 
 void BleQueueModule::onNotify(const uint8_t* data, size_t length, uint16_t charUUID) {
-    if (!queueHandle) return;
+    if (!queueHandle_) return;
 
     if (length > 0 && length <= sizeof(BLEDataPacket::data)) {
         PERF_INC(rxPackets);
@@ -160,14 +160,14 @@ void BleQueueModule::onNotify(const uint8_t* data, size_t length, uint16_t charU
         pkt.charUUID = charUUID;
         pkt.tsMs = millis();
 
-        BaseType_t result = xQueueSend(queueHandle, &pkt, 0);
+        BaseType_t result = xQueueSend(queueHandle_, &pkt, 0);
         if (result != pdTRUE) {
             PERF_INC(queueDrops);
             BLEDataPacket dropped;
-            xQueueReceive(queueHandle, &dropped, 0);
-            xQueueSend(queueHandle, &pkt, 0);
+            xQueueReceive(queueHandle_, &dropped, 0);
+            xQueueSend(queueHandle_, &pkt, 0);
         }
-        UBaseType_t depth = uxQueueMessagesWaiting(queueHandle);
+        UBaseType_t depth = uxQueueMessagesWaiting(queueHandle_);
         PERF_MAX(queueHighWater, depth);
     } else if (length > sizeof(BLEDataPacket::data)) {
         PERF_INC(oversizeDrops);
@@ -175,17 +175,17 @@ void BleQueueModule::onNotify(const uint8_t* data, size_t length, uint16_t charU
 }
 
 void BleQueueModule::refreshBackpressureState() {
-    const size_t unreadBytes = (rxReadPos < rxBuffer.size()) ? (rxBuffer.size() - rxReadPos) : 0;
-    const UBaseType_t queueDepth = queueHandle ? uxQueueMessagesWaiting(queueHandle) : 0;
-    const size_t queuePressureThreshold = std::max<size_t>(4, config.queueDepth / 4);
+    const size_t unreadBytes = (rxReadPos_ < rxBuffer_.size()) ? (rxBuffer_.size() - rxReadPos_) : 0;
+    const UBaseType_t queueDepth = queueHandle_ ? uxQueueMessagesWaiting(queueHandle_) : 0;
+    const size_t queuePressureThreshold = std::max<size_t>(4, config_.queueDepth / 4);
     static constexpr size_t RX_BACKPRESSURE_BYTES = 192;
-    backpressureActive =
+    backpressureActive_ =
         (unreadBytes >= RX_BACKPRESSURE_BYTES) ||
         (static_cast<size_t>(queueDepth) >= queuePressureThreshold);
 }
 
 void BleQueueModule::process() {
-    bool previewActive = preview && preview->isRunning();
+    bool previewActive = preview_ && preview_->isRunning();
     UBaseType_t queueDepthBeforeDrain = 0;
     bool parsedEventPending = false;
     uint16_t parsedEventDetail = 0;
@@ -195,32 +195,32 @@ void BleQueueModule::process() {
 #else
     BLEDataPacket pkt;
     uint32_t latestPktTs = 0;
-    queueDepthBeforeDrain = queueHandle ? uxQueueMessagesWaiting(queueHandle) : 0;
+    queueDepthBeforeDrain = queueHandle_ ? uxQueueMessagesWaiting(queueHandle_) : 0;
 
-    while (queueHandle && xQueueReceive(queueHandle, &pkt, 0) == pdTRUE) {
-        appendRxClamped(rxBuffer, rxReadPos, pkt.data, pkt.length);
+    while (queueHandle_ && xQueueReceive(queueHandle_, &pkt, 0) == pdTRUE) {
+        appendRxClamped(rxBuffer_, rxReadPos_, pkt.data, pkt.length);
         latestPktTs = pkt.tsMs;
     }
 
-    if (ble) {
-        ble->processProxyQueue();
+    if (ble_) {
+        ble_->processProxyQueue();
     }
 
     if (latestPktTs != 0) {
-        lastRxMillis = latestPktTs;
-        lastNotifyTsMs = latestPktTs;
+        lastRxMillis_ = latestPktTs;
+        lastNotifyTsMs_ = latestPktTs;
         perfRecordBleTimelineEvent(PerfBleTimelineEvent::FirstRx, latestPktTs);
     }
 #endif
 
-    if (rxReadPos >= rxBuffer.size()) {
-        rxBuffer.clear();
-        rxReadPos = 0;
+    if (rxReadPos_ >= rxBuffer_.size()) {
+        rxBuffer_.clear();
+        rxReadPos_ = 0;
         refreshBackpressureState();
         return;
     }
 
-    size_t availableBytes = rxBuffer.size() - rxReadPos;
+    size_t availableBytes = rxBuffer_.size() - rxReadPos_;
     if (availableBytes == 0) {
         refreshBackpressureState();
         return;
@@ -242,8 +242,8 @@ void BleQueueModule::process() {
     static constexpr size_t MAX_BACKLOG_BYTES = 448;
 
     const size_t queueDepthSnapshot = static_cast<size_t>(queueDepthBeforeDrain);
-    const size_t queueHalfThreshold = std::max<size_t>(4, config.queueDepth / 2);
-    const size_t queueHighThreshold = std::max<size_t>(6, (config.queueDepth * 3) / 4);
+    const size_t queueHalfThreshold = std::max<size_t>(4, config_.queueDepth / 2);
+    const size_t queueHighThreshold = std::max<size_t>(6, (config_.queueDepth * 3) / 4);
 
     size_t maxPacketsPerCycle = BASE_PACKETS_PER_CYCLE;
     if (availableBytes >= MID_BACKLOG_BYTES || queueDepthSnapshot >= queueHalfThreshold) {
@@ -273,63 +273,63 @@ void BleQueueModule::process() {
             break;
         }
 
-        availableBytes = rxBuffer.size() - rxReadPos;
+        availableBytes = rxBuffer_.size() - rxReadPos_;
         if (availableBytes == 0) break;
 
-        const uint8_t* dataBegin = rxBuffer.data() + rxReadPos;
-        const uint8_t* startPtr = (rxBuffer[rxReadPos] == ESP_PACKET_START)
+        const uint8_t* dataBegin = rxBuffer_.data() + rxReadPos_;
+        const uint8_t* startPtr = (rxBuffer_[rxReadPos_] == ESP_PACKET_START)
             ? dataBegin
             : static_cast<const uint8_t*>(memchr(dataBegin, ESP_PACKET_START, availableBytes));
         if (startPtr == nullptr) {
-            rxBuffer.clear();
-            rxReadPos = 0;
+            rxBuffer_.clear();
+            rxReadPos_ = 0;
             break;
         }
         if (startPtr != dataBegin) {
-            rxReadPos = static_cast<size_t>(startPtr - rxBuffer.data());
+            rxReadPos_ = static_cast<size_t>(startPtr - rxBuffer_.data());
             continue;
         }
         if (availableBytes < MIN_HEADER_SIZE) {
             break;
         }
 
-        uint8_t lenField = rxBuffer[rxReadPos + 4];
+        uint8_t lenField = rxBuffer_[rxReadPos_ + 4];
         if (lenField == 0) {
-            rxReadPos++;
+            rxReadPos_++;
             continue;
         }
 
         size_t packetSize = 6 + lenField;
         if (packetSize > MAX_PACKET_SIZE) {
             Serial.printf("[BLE] WARN: BLE packet too large (%u bytes) - resyncing\n", (unsigned)packetSize);
-            rxReadPos++;
+            rxReadPos_++;
             continue;
         }
         if (availableBytes < packetSize) {
             break;
         }
-        if (rxBuffer[rxReadPos + packetSize - 1] != ESP_PACKET_END) {
+        if (rxBuffer_[rxReadPos_ + packetSize - 1] != ESP_PACKET_END) {
             Serial.println("[BLE] WARN: Packet missing end marker - resyncing");
-            rxReadPos++;
+            rxReadPos_++;
             continue;
         }
 
-        const uint8_t* packetPtr = rxBuffer.data() + rxReadPos;
+        const uint8_t* packetPtr = rxBuffer_.data() + rxReadPos_;
 
-        lastRxMillis = millis();
+        lastRxMillis_ = millis();
 
-        if (packetSize >= 12 && packetPtr[3] == PACKET_ID_RESP_USER_BYTES && profiles) {
+        if (packetSize >= 12 && packetPtr[3] == PACKET_ID_RESP_USER_BYTES && profiles_) {
             uint8_t userBytes[6];
             memcpy(userBytes, &packetPtr[5], 6);
-            ble->onUserBytesReceived(userBytes);
-            profiles->setCurrentSettings(userBytes);
-            rxReadPos += packetSize;
+            ble_->onUserBytesReceived(userBytes);
+            profiles_->setCurrentSettings(userBytes);
+            rxReadPos_ += packetSize;
             packetsProcessedThisCycle++;
             continue;
         }
 
         uint8_t packetId = packetPtr[3];
-        bool parseOk = parser->parse(packetPtr, packetSize);
+        bool parseOk = parser_->parse(packetPtr, packetSize);
 
         if (packetId == PACKET_ID_DISPLAY_DATA || packetId == PACKET_ID_ALERT_DATA) {
             if (parseOk) {
@@ -339,42 +339,42 @@ void BleQueueModule::process() {
             }
         }
 
-        rxReadPos += packetSize;
+        rxReadPos_ += packetSize;
         packetsProcessedThisCycle++;
 
         if (parseOk) {
-            if (power) {
-                power->onV1DataReceived();
+            if (power_) {
+                power_->onV1DataReceived();
             }
             // Only cancel preview when V1 has an actual alert (not on every packet)
             // This allows color preview to run while V1 is connected but resting
-            if (previewActive && preview && parser->getAlertCount() > 0) {
-                preview->cancel();
+            if (previewActive && preview_ && parser_->getAlertCount() > 0) {
+                preview_->cancel();
                 previewActive = false;
             }
             // Set flag and timestamp for main loop to drive display pipeline
             // This decouples BLE processing from slow display updates
-            hadSuccessfulParse = true;
-            lastParsedTsMs = lastNotifyTsMs;
+            hadSuccessfulParse_ = true;
+            lastParsedTsMs_ = lastNotifyTsMs_;
             parsedEventPending = true;
             parsedEventDetail = packetId;
         }
     }
 
-    if (parsedEventPending && bus) {
+    if (parsedEventPending && bus_) {
         SystemEvent event;
         event.type = SystemEventType::BLE_FRAME_PARSED;
-        event.tsMs = lastParsedTsMs;
-        event.seq = ++parsedEventSeq;
+        event.tsMs = lastParsedTsMs_;
+        event.seq = ++parsedEventSeq_;
         event.detail = parsedEventDetail;
-        bus->publish(event);
+        bus_->publish(event);
     }
 
-    if (rxReadPos >= rxBuffer.size()) {
-        rxBuffer.clear();
-        rxReadPos = 0;
-    } else if (rxReadPos >= RX_COMPACT_THRESHOLD) {
-        compactRxBuffer(rxBuffer, rxReadPos);
+    if (rxReadPos_ >= rxBuffer_.size()) {
+        rxBuffer_.clear();
+        rxReadPos_ = 0;
+    } else if (rxReadPos_ >= RX_COMPACT_THRESHOLD) {
+        compactRxBuffer(rxBuffer_, rxReadPos_);
     }
 
     refreshBackpressureState();
@@ -383,16 +383,16 @@ void BleQueueModule::process() {
 #ifdef REPLAY_MODE
 void BleQueueModule::processReplayData() {
     unsigned long now = millis();
-    const ReplayPacket& pkt = REPLAY_SEQUENCE[replayIndex];
-    if (now - lastReplayTime < pkt.delayMs) {
+    const ReplayPacket& pkt = REPLAY_SEQUENCE[replayIndex_];
+    if (now - lastReplayTime_ < pkt.delayMs) {
         return;
     }
 
-    appendRxClamped(rxBuffer, rxReadPos, pkt.data, pkt.length);
+    appendRxClamped(rxBuffer_, rxReadPos_, pkt.data, pkt.length);
     Serial.printf("[REPLAY] Injected packet %d/%d (%d bytes)\n",
-                  (int)(replayIndex + 1), (int)REPLAY_SEQUENCE_LENGTH, (int)pkt.length);
+                  (int)(replayIndex_ + 1), (int)REPLAY_SEQUENCE_LENGTH, (int)pkt.length);
 
-    lastReplayTime = now;
-    replayIndex = (replayIndex + 1) % REPLAY_SEQUENCE_LENGTH;
+    lastReplayTime_ = now;
+    replayIndex_ = (replayIndex_ + 1) % REPLAY_SEQUENCE_LENGTH;
 }
 #endif

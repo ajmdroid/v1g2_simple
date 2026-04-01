@@ -152,7 +152,8 @@ struct ObdBleContext {
 
 class ObdRuntimeModule {
 public:
-    void begin(bool enabled,
+    void begin(class ObdBleClient* bleClient,
+               bool enabled,
                const char* savedAddress,
                uint8_t savedAddrType,
                int8_t minRssi,
@@ -386,6 +387,8 @@ private:
     bool popBleEvent(BleEvent& event);
     void applyBleEvent(const BleEvent& event);
 
+    class ObdBleClient* bleClient_ = nullptr;
+
     bool enabled_ = false;
     ObdConnectionState state_ = ObdConnectionState::IDLE;
     uint32_t stateEnteredMs_ = 0;
@@ -509,4 +512,4 @@ private:
     bool testLastWriteWithResponse_ = true;
 #endif
 };
-#endif // OBD_RUNTIME_MODULE_H
+#endif  // OBD_RUNTIME_MODULE_H

@@ -14,8 +14,8 @@ void ConnectionRuntimeModule::begin(const Providers& hooks,
 }
 
 void ConnectionRuntimeModule::reset() {
-    lastAudioTickUs = 0;
-    runStartLogged = false;
+    lastAudioTickUs_ = 0;
+    runStartLogged_ = false;
 }
 
 ConnectionRuntimeSnapshot ConnectionRuntimeModule::process(unsigned long nowMs,
@@ -43,8 +43,8 @@ ConnectionRuntimeSnapshot ConnectionRuntimeModule::process(unsigned long nowMs,
 
     snapshot.connected = connectedNow;
 
-    const unsigned long sinceAudioUs = nowUs - lastAudioTickUs;
-    lastAudioTickUs = nowUs;
+    const unsigned long sinceAudioUs = nowUs - lastAudioTickUs_;
+    lastAudioTickUs_ = nowUs;
 
     snapshot.backpressured =
         providers.isBackpressured ? providers.isBackpressured(providers.queueContext) : false;
@@ -55,11 +55,11 @@ ConnectionRuntimeSnapshot ConnectionRuntimeModule::process(unsigned long nowMs,
         providers.getLastRxMillis ? providers.getLastRxMillis(providers.queueContext) : 0;
     snapshot.receiving = (nowMs - lastRxMs) < config.receivingHeartbeatMs;
 
-    if (!runStartLogged) {
+    if (!runStartLogged_) {
         const bool bleReady = snapshot.connected;
         const bool timeReady = (nowMs >= config.runStartTimeoutMs);
         if (bleReady || timeReady) {
-            runStartLogged = true;
+            runStartLogged_ = true;
             const char* trigger = bleReady ? "ble_connected" : "timeout_30s";
             SerialLog.printf("RUN_START trigger=%s millis=%lu\n", trigger, nowMs);
         }

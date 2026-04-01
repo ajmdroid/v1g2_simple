@@ -13,10 +13,10 @@ AlertPersistenceModule::AlertPersistenceModule() {
 }
 
 void AlertPersistenceModule::begin(V1BLEClient* ble, PacketParser* pParser, V1Display* disp, SettingsManager* sett) {
-    bleClient = ble;
-    parser = pParser;
-    display = disp;
-    settings = sett;
+    bleClient_ = ble;
+    parser_ = pParser;
+    display_ = disp;
+    settings_ = sett;
 
     Serial.println("[AlertPersistenceModule] Initialized");
 }
@@ -26,29 +26,29 @@ void AlertPersistenceModule::begin(V1BLEClient* ble, PacketParser* pParser, V1Di
 // ============================================================================
 
 void AlertPersistenceModule::setPersistedAlert(const AlertData& alert) {
-    persistedAlert = alert;
-    alertPersistenceActive = false;
-    alertClearedTime = 0;
+    persistedAlert_ = alert;
+    alertPersistenceActive_ = false;
+    alertClearedTime_ = 0;
 }
 
 void AlertPersistenceModule::startPersistence(unsigned long now) {
-    if (persistedAlert.isValid && alertClearedTime == 0) {
-        alertClearedTime = now;
-        alertPersistenceActive = true;
+    if (persistedAlert_.isValid && alertClearedTime_ == 0) {
+        alertClearedTime_ = now;
+        alertPersistenceActive_ = true;
         PERF_INC(alertPersistStarts);
     }
 }
 
 void AlertPersistenceModule::clearPersistence() {
-    const bool hadState = alertPersistenceActive || persistedAlert.isValid || (alertClearedTime != 0);
+    const bool hadState = alertPersistenceActive_ || persistedAlert_.isValid || (alertClearedTime_ != 0);
     if (hadState) {
         PERF_INC(alertPersistClears);
     }
-    persistedAlert = AlertData();
-    alertPersistenceActive = false;
-    alertClearedTime = 0;
+    persistedAlert_ = AlertData();
+    alertPersistenceActive_ = false;
+    alertClearedTime_ = 0;
 }
 
 bool AlertPersistenceModule::shouldShowPersisted(unsigned long now, unsigned long persistMs) const {
-    return alertPersistenceActive && (now - alertClearedTime) < persistMs;
+    return alertPersistenceActive_ && (now - alertClearedTime_) < persistMs;
 }

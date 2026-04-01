@@ -132,8 +132,8 @@ public:
 
 private:
     // Dependencies
-    SettingsManager* settings = nullptr;
-    V1BLEClient* bleClient = nullptr;
+    SettingsManager* settings_ = nullptr;
+    V1BLEClient* bleClient_ = nullptr;
 
     // ============================================================================
     // Tracking State
@@ -141,8 +141,8 @@ private:
 
     // Announced alert tracking
     static constexpr int MAX_ANNOUNCED_ALERTS = 10;
-    uint32_t announcedAlertIds[MAX_ANNOUNCED_ALERTS] = {0};
-    uint8_t announcedAlertCount = 0;
+    uint32_t announcedAlertIds_[MAX_ANNOUNCED_ALERTS] = {0};
+    uint8_t announcedAlertCount_ = 0;
 
     // Smart threat escalation tracking
     static constexpr int WEAK_THRESHOLD = 2;
@@ -161,8 +161,8 @@ private:
     };
 
     static constexpr int MAX_ALERT_HISTORIES = 10;
-    AlertHistory alertHistories[MAX_ALERT_HISTORIES] = {};
-    uint8_t alertHistoryCount = 0;
+    AlertHistory alertHistories_[MAX_ALERT_HISTORIES] = {};
+    uint8_t alertHistoryCount_ = 0;
 
     AlertHistory* findAlertHistory(uint32_t alertId);
     AlertHistory* getOrCreateAlertHistory(uint32_t alertId, unsigned long now);
@@ -175,8 +175,8 @@ private:
     // Direction change throttling
     static constexpr unsigned long DIRECTION_THROTTLE_WINDOW_MS = 10000;
     static constexpr uint8_t DIRECTION_CHANGE_LIMIT = 3;
-    uint8_t directionChangeCount = 0;
-    unsigned long directionChangeWindowStart = 0;
+    uint8_t directionChangeCount_ = 0;
+    unsigned long directionChangeWindowStart_ = 0;
 
     void resetDirectionThrottle(unsigned long now);
     bool shouldThrottleDirectionChange(unsigned long now);
@@ -184,9 +184,9 @@ private:
     // Priority stability tracking
     static constexpr unsigned long PRIORITY_STABILITY_MS = 1000;
     static constexpr unsigned long POST_PRIORITY_GAP_MS = 1500;
-    unsigned long lastPriorityAnnouncementTime = 0;
-    unsigned long priorityStableSince = 0;
-    uint32_t lastPriorityAlertId = 0xFFFFFFFF;
+    unsigned long lastPriorityAnnouncementTime_ = 0;
+    unsigned long priorityStableSince_ = 0;
+    uint32_t lastPriorityAlertId_ = 0xFFFFFFFF;
     void updatePriorityStability(uint32_t currentAlertId, unsigned long now);
     void markPriorityAnnounced(unsigned long now);
     void resetPriorityStability();
@@ -195,11 +195,11 @@ private:
     // Voice alert "last announced" tracking
     static constexpr unsigned long VOICE_ALERT_COOLDOWN_MS = 5000;
     static constexpr unsigned long BOGEY_COUNT_COOLDOWN_MS = 2000;
-    Band lastVoiceAlertBand = BAND_NONE;
-    Direction lastVoiceAlertDirection = DIR_NONE;
-    uint16_t lastVoiceAlertFrequency = 0xFFFF;
-    uint8_t lastVoiceAlertBogeyCount = 0;
-    unsigned long lastVoiceAlertTime = 0;
+    Band lastVoiceAlertBand_ = BAND_NONE;
+    Direction lastVoiceAlertDirection_ = DIR_NONE;
+    uint16_t lastVoiceAlertFrequency_ = 0xFFFF;
+    uint8_t lastVoiceAlertBogeyCount_ = 0;
+    unsigned long lastVoiceAlertTime_ = 0;
 
     bool hasAlertChanged(Band band, uint16_t freq) const;
     bool hasDirectionChanged(Direction dir) const;
@@ -210,12 +210,12 @@ private:
     void updateLastAnnouncedDirection(Direction dir, uint8_t bogeyCount);
     void updateLastAnnouncedTime(unsigned long now);
     void resetLastAnnounced();
-    uint8_t getLastBogeyCount() const { return lastVoiceAlertBogeyCount; }
-    uint8_t getDirectionChangeCount() const { return directionChangeCount; }
+    uint8_t getLastBogeyCount() const { return lastVoiceAlertBogeyCount_; }
+    uint8_t getDirectionChangeCount() const { return directionChangeCount_; }
 
     // Speed helpers (getCurrentSpeedMph is public)
-    float cachedSpeedMph = 0.0f;
-    unsigned long cachedSpeedTimestamp = 0;
+    float cachedSpeedMph_ = 0.0f;
+    unsigned long cachedSpeedTimestamp_ = 0;
     static constexpr unsigned long SPEED_CACHE_MAX_AGE_MS = 5000;
 
     // Alert history helpers
@@ -227,9 +227,9 @@ private:
 
 #ifdef UNIT_TEST
 public:
-    using AlertHistoryArray = decltype(alertHistories);
-    AlertHistoryArray& getAlertHistories() { return alertHistories; }
-    uint8_t& getAlertHistoryCount() { return alertHistoryCount; }
+    using AlertHistoryArray = decltype(alertHistories_);
+    AlertHistoryArray& getAlertHistories() { return alertHistories_; }
+    uint8_t& getAlertHistoryCount() { return alertHistoryCount_; }
     static constexpr int TEST_MAX_ALERT_HISTORIES = MAX_ALERT_HISTORIES;
     void testUpdateAlertHistory(Band band, uint16_t freq, uint8_t bars, unsigned long now) {
         updateAlertHistory(band, freq, bars, now);

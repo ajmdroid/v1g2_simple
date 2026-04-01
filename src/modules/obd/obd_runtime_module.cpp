@@ -8,8 +8,6 @@
 #ifndef UNIT_TEST
 #include "ble_client.h"
 #include "obd_ble_client.h"
-extern ObdBleClient obdBleClient;
-extern ObdRuntimeModule obdRuntimeModule;
 
 extern "C" {
 #include "nimble/nimble/host/include/host/ble_att.h"
@@ -134,6 +132,11 @@ struct ObdTransportRequest {
     bool withResponse = false;
 };
 
+struct ObdTransportContext {
+    ObdBleClient* bleClient = nullptr;
+    ObdRuntimeModule* runtime = nullptr;
+};
+
 struct ObdTransportRuntime {
     QueueHandle_t requestQueue = nullptr;
     QueueHandle_t resultQueue = nullptr;
@@ -143,11 +146,18 @@ struct ObdTransportRuntime {
     bool requestQueueInPsram = false;
     bool resultQueueInPsram = false;
     bool taskStackInPsram = false;
+    ObdTransportContext context = {};
 };
 
 ObdTransportRuntime sObdTransport;
 
-void obdTransportTaskEntry(void* /*param*/) {
+void obdTransportTaskEntry(void* param) {
+    auto* context = static_cast<ObdTransportContext*>(param);
+    if (!context || !context->bleClient || !context->runtime) {
+        vTaskDelete(nullptr);
+        return;
+    }
+
     while (true) {
         ObdTransportRequest request{};
         if (!sObdTransport.requestQueue ||
@@ -165,41 +175,43 @@ void obdTransportTaskEntry(void* /*param*/) {
 
         switch (request.op) {
             case ObdTransportOp::CONNECT:
-                result.success = obdBleClient.connect(
+                result.success = context->bleClient->connect(
                     request.address,
                     request.addrType,
                     request.timeoutMs,
                     request.preferCachedAttributes);
-                result.bleError = obdBleClient.getLastBleError();
+                result.bleError = context->bleClient->getLastBleError();
                 break;
             case ObdTransportOp::DISCONNECT:
-                obdBleClient.disconnect();
+                context->bleClient->disconnect();
                 result.success = true;
-                result.bleError = obdBleClient.getLastBleError();
+                result.bleError = context->bleClient->getLastBleError();
                 break;
             case ObdTransportOp::SECURITY_START:
-                result.success = obdBleClient.beginSecurity();
-                result.bleError = obdBleClient.getLastBleError();
-                result.securityError = obdBleClient.getLastSecurityError();
+                result.success = context->bleClient->beginSecurity();
+                result.bleError = context->bleClient->getLastBleError();
+                result.securityError = context->bleClient->getLastSecurityError();
                 break;
             case ObdTransportOp::DISCOVER:
-                result.success = obdBleClient.discoverServices();
-                result.bleError = obdBleClient.getLastBleError();
+                result.success = context->bleClient->discoverServices();
+                result.bleError = context->bleClient->getLastBleError();
                 break;
             case ObdTransportOp::SUBSCRIBE:
-                result.success = obdBleClient.subscribeNotify([](const uint8_t* data, size_t len) {
-                    obdRuntimeModule.onBleData(data, len);
+                result.success = context->bleClient->subscribeNotify([](const uint8_t* data, size_t len) {
+                    if (sObdTransport.context.runtime) {
+                        sObdTransport.context.runtime->onBleData(data, len);
+                    }
                 });
-                result.bleError = obdBleClient.getLastBleError();
+                result.bleError = context->bleClient->getLastBleError();
                 break;
             case ObdTransportOp::WRITE:
-                result.success = obdBleClient.writeCommand(request.cmd, request.withResponse);
-                result.bleError = obdBleClient.getLastBleError();
+                result.success = context->bleClient->writeCommand(request.cmd, request.withResponse);
+                result.bleError = context->bleClient->getLastBleError();
                 break;
             case ObdTransportOp::RSSI_READ:
                 result.success = true;
-                result.rssi = obdBleClient.getRssi(request.nowMs);
-                result.bleError = obdBleClient.getLastBleError();
+                result.rssi = context->bleClient->getRssi(request.nowMs);
+                result.bleError = context->bleClient->getLastBleError();
                 break;
             case ObdTransportOp::NONE:
             default:
@@ -214,7 +226,12 @@ void obdTransportTaskEntry(void* /*param*/) {
     }
 }
 
-bool ensureObdTransportRuntime() {
+bool ensureObdTransportRuntime(ObdBleClient* bleClient, ObdRuntimeModule* runtime) {
+    if (!bleClient || !runtime) {
+        Serial.println("[OBD] ERROR: transport dependencies not provided");
+        return false;
+    }
+
     if (!sObdTransport.requestQueue) {
         sObdTransport.requestQueue = createQueuePreferPsram(
             OBD_TRANSPORT_QUEUE_DEPTH,
@@ -238,11 +255,14 @@ bool ensureObdTransportRuntime() {
         }
     }
     if (!sObdTransport.task) {
+        sObdTransport.context.bleClient = bleClient;
+        sObdTransport.context.runtime = runtime;
+
         const BaseType_t rc = createTaskPinnedToCorePreferPsram(
             obdTransportTaskEntry,
             "ObdTransport",
             OBD_TRANSPORT_STACK_SIZE,
-            nullptr,
+            &sObdTransport.context,
             OBD_TRANSPORT_PRIORITY,
             &sObdTransport.task,
             0,
@@ -349,12 +369,14 @@ void ObdRuntimeModule::resetForBegin() {
 #endif
 }
 
-void ObdRuntimeModule::begin(bool enabled,
+void ObdRuntimeModule::begin(ObdBleClient* bleClient,
+                             bool enabled,
                              const char* savedAddress,
                              uint8_t savedAddrType,
                              int8_t minRssi,
                              const char* cachedVinPrefix11,
                              uint8_t cachedEotProfileId) {
+    bleClient_ = bleClient;
     enabled_ = enabled;
     resetForBegin();
     setMinRssi(minRssi);
@@ -364,8 +386,10 @@ void ObdRuntimeModule::begin(bool enabled,
     setCachedProfile(cachedVinPrefix11, static_cast<ObdEotProfileId>(cachedEotProfileId));
 
 #ifndef UNIT_TEST
-    obdBleClient.init(this);
-    (void)ensureObdTransportRuntime();
+    if (bleClient_) {
+        bleClient_->init(this);
+    }
+    (void)ensureObdTransportRuntime(bleClient_, this);
 #endif
 
     if (!enabled_) {
@@ -715,7 +739,7 @@ void ObdRuntimeModule::commitManualScanCandidate() {
 
 bool ObdRuntimeModule::startBleScan() {
 #ifndef UNIT_TEST
-    return obdBleClient.startScan(minRssi_);
+    return bleClient_ ? bleClient_->startScan(this, minRssi_) : false;
 #else
     testStartScanCalls_++;
     return testStartScanResult_;
@@ -727,7 +751,7 @@ bool ObdRuntimeModule::connectBle(uint32_t timeoutMs, bool preferCachedAttribute
     const uint8_t addrType = connectAddress_[0] != '\0' ? connectAddrType_ : savedAddrType_;
 #ifndef UNIT_TEST
     const uint32_t startUs = PERF_TIMESTAMP_US();
-    const bool connected = obdBleClient.connect(address, addrType, timeoutMs, preferCachedAttributes);
+    const bool connected = bleClient_->connect(address, addrType, timeoutMs, preferCachedAttributes);
     perfRecordObdConnectCallUs(PERF_TIMESTAMP_US() - startUs);
     return connected;
 #else
@@ -742,7 +766,7 @@ bool ObdRuntimeModule::connectBle(uint32_t timeoutMs, bool preferCachedAttribute
 
 bool ObdRuntimeModule::isBleConnected() const {
 #ifndef UNIT_TEST
-    return obdBleClient.isConnected();
+    return bleClient_->isConnected();
 #else
     return testBleConnected_;
 #endif
@@ -751,7 +775,7 @@ bool ObdRuntimeModule::isBleConnected() const {
 bool ObdRuntimeModule::beginBleSecurity() {
 #ifndef UNIT_TEST
     const uint32_t startUs = PERF_TIMESTAMP_US();
-    const bool started = obdBleClient.beginSecurity();
+    const bool started = bleClient_->beginSecurity();
     perfRecordObdSecurityStartCallUs(PERF_TIMESTAMP_US() - startUs);
     return started;
 #else
@@ -762,7 +786,7 @@ bool ObdRuntimeModule::beginBleSecurity() {
 
 bool ObdRuntimeModule::isBleSecurityReady() const {
 #ifndef UNIT_TEST
-    return obdBleClient.isSecurityReady();
+    return bleClient_->isSecurityReady();
 #else
     return testSecurityReady_;
 #endif
@@ -770,7 +794,7 @@ bool ObdRuntimeModule::isBleSecurityReady() const {
 
 bool ObdRuntimeModule::isBleEncrypted() const {
 #ifndef UNIT_TEST
-    return obdBleClient.isEncrypted();
+    return bleClient_->isEncrypted();
 #else
     return testSecurityEncrypted_;
 #endif
@@ -778,7 +802,7 @@ bool ObdRuntimeModule::isBleEncrypted() const {
 
 bool ObdRuntimeModule::isBleBonded() const {
 #ifndef UNIT_TEST
-    return obdBleClient.isBonded();
+    return bleClient_->isBonded();
 #else
     return testSecurityBonded_;
 #endif
@@ -786,7 +810,7 @@ bool ObdRuntimeModule::isBleBonded() const {
 
 bool ObdRuntimeModule::isBleAuthenticated() const {
 #ifndef UNIT_TEST
-    return obdBleClient.isAuthenticated();
+    return bleClient_->isAuthenticated();
 #else
     return testSecurityAuthenticated_;
 #endif
@@ -794,7 +818,7 @@ bool ObdRuntimeModule::isBleAuthenticated() const {
 
 int ObdRuntimeModule::getBleLastError() const {
 #ifndef UNIT_TEST
-    return obdBleClient.getLastBleError();
+    return bleClient_->getLastBleError();
 #else
     return testLastBleError_;
 #endif
@@ -802,7 +826,7 @@ int ObdRuntimeModule::getBleLastError() const {
 
 int ObdRuntimeModule::getBleSecurityFailure() const {
 #ifndef UNIT_TEST
-    return obdBleClient.getLastSecurityError();
+    return bleClient_->getLastSecurityError();
 #else
     return testLastSecurityError_;
 #endif
@@ -811,7 +835,7 @@ int ObdRuntimeModule::getBleSecurityFailure() const {
 bool ObdRuntimeModule::discoverBleServices() {
 #ifndef UNIT_TEST
     const uint32_t startUs = PERF_TIMESTAMP_US();
-    const bool discovered = obdBleClient.discoverServices();
+    const bool discovered = bleClient_->discoverServices();
     perfRecordObdDiscoveryCallUs(PERF_TIMESTAMP_US() - startUs);
     return discovered;
 #else
@@ -823,7 +847,7 @@ bool ObdRuntimeModule::discoverBleServices() {
 bool ObdRuntimeModule::subscribeBleNotifications() {
 #ifndef UNIT_TEST
     const uint32_t startUs = PERF_TIMESTAMP_US();
-    const bool subscribed = obdBleClient.subscribeNotify([](const uint8_t* data, size_t len) {
+    const bool subscribed = bleClient_->subscribeNotify([](const uint8_t* data, size_t len) {
         obdRuntimeModule.onBleData(data, len);
     });
     perfRecordObdSubscribeCallUs(PERF_TIMESTAMP_US() - startUs);
@@ -836,7 +860,7 @@ bool ObdRuntimeModule::subscribeBleNotifications() {
 bool ObdRuntimeModule::writeBleCommand(const char* cmd, bool withResponse) {
 #ifndef UNIT_TEST
     const uint32_t startUs = PERF_TIMESTAMP_US();
-    const bool wrote = obdBleClient.writeCommand(cmd, withResponse);
+    const bool wrote = bleClient_->writeCommand(cmd, withResponse);
     perfRecordObdWriteCallUs(PERF_TIMESTAMP_US() - startUs);
     return wrote;
 #else
@@ -851,7 +875,7 @@ bool ObdRuntimeModule::deleteBleBond() {
     const char* const address = connectAddress_[0] != '\0' ? connectAddress_ : savedAddress_;
     const uint8_t addrType = connectAddress_[0] != '\0' ? connectAddrType_ : savedAddrType_;
 #ifndef UNIT_TEST
-    return obdBleClient.deleteBond(address, addrType);
+    return bleClient_->deleteBond(address, addrType);
 #else
     (void)address;
     (void)addrType;
@@ -870,7 +894,7 @@ void ObdRuntimeModule::refreshBleBondBackup() {
 
 void ObdRuntimeModule::disconnectBle() {
 #ifndef UNIT_TEST
-    obdBleClient.disconnect();
+    bleClient_->disconnect();
 #else
     testDisconnectCalls_++;
     testBleConnected_ = false;
@@ -879,14 +903,14 @@ void ObdRuntimeModule::disconnectBle() {
 
 void ObdRuntimeModule::stopBleScan() {
 #ifndef UNIT_TEST
-    obdBleClient.stopScan();
+    bleClient_->stopScan();
 #endif
 }
 
 int8_t ObdRuntimeModule::readBleRssi(uint32_t nowMs) {
 #ifndef UNIT_TEST
     const uint32_t startUs = PERF_TIMESTAMP_US();
-    const int8_t rssi = obdBleClient.getRssi(nowMs);
+    const int8_t rssi = bleClient_->getRssi(nowMs);
     perfRecordObdRssiCallUs(PERF_TIMESTAMP_US() - startUs);
     return rssi;
 #else
@@ -916,7 +940,7 @@ bool ObdRuntimeModule::beginTransportRequest(ObdTransportOp op,
     readyTransportResult_ = {};
 
 #ifndef UNIT_TEST
-    if (!ensureObdTransportRuntime() || !sObdTransport.requestQueue) {
+    if (!ensureObdTransportRuntime(bleClient_, this) || !sObdTransport.requestQueue) {
         return false;
     }
 

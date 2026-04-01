@@ -53,7 +53,7 @@ public:
     // Status for web API/debugging
     String getStatusJson() const;
 
-    bool isActive() const { return state.step != Step::Idle; }
+    bool isActive() const { return state_.step != Step::Idle; }
 
 private:
     static constexpr uint8_t kMaxProfileWriteRetries = 5;
@@ -97,11 +97,11 @@ private:
                   bool isPushNow,
                   bool updateProfileIndicator);
 
-    SettingsManager* settings = nullptr;
-    V1ProfileManager* profiles = nullptr;
-    V1BLEClient* bleClient = nullptr;
-    V1Display* display = nullptr;
-    QuietCoordinatorModule* quiet = nullptr;
+    SettingsManager* settings_ = nullptr;
+    V1ProfileManager* profiles_ = nullptr;
+    V1BLEClient* bleClient_ = nullptr;
+    V1Display* display_ = nullptr;
+    QuietCoordinatorModule* quiet_ = nullptr;
 
-    State state;
+    State state_;
 };

@@ -36,38 +36,38 @@ void AlertPersistenceModule::begin(V1BLEClient* ble,
                                    PacketParser* parserRef,
                                    V1Display* displayRef,
                                    SettingsManager* settingsRef) {
-    bleClient = ble;
-    parser = parserRef;
-    display = displayRef;
-    settings = settingsRef;
+    bleClient_ = ble;
+    parser_ = parserRef;
+    display_ = displayRef;
+    settings_ = settingsRef;
 }
 
 void AlertPersistenceModule::setPersistedAlert(const AlertData& alert) {
-    persistedAlert = alert;
+    persistedAlert_ = alert;
 }
 
 void AlertPersistenceModule::startPersistence(unsigned long now) {
-    if (!alertPersistenceActive) {
-        alertClearedTime = now;
-        alertPersistenceActive = true;
+    if (!alertPersistenceActive_) {
+        alertClearedTime_ = now;
+        alertPersistenceActive_ = true;
     }
 }
 
 void AlertPersistenceModule::clearPersistence() {
-    alertPersistenceActive = false;
+    alertPersistenceActive_ = false;
 }
 
 bool AlertPersistenceModule::shouldShowPersisted(unsigned long now, unsigned long persistMs) const {
-    return alertPersistenceActive &&
-           persistedAlert.isValid &&
-           (now - alertClearedTime) < persistMs;
+    return alertPersistenceActive_ &&
+           persistedAlert_.isValid &&
+           (now - alertClearedTime_) < persistMs;
 }
 
 VoiceModule::VoiceModule() = default;
 
 void VoiceModule::begin(SettingsManager* settingsRef, V1BLEClient* ble) {
-    settings = settingsRef;
-    bleClient = ble;
+    settings_ = settingsRef;
+    bleClient_ = ble;
 }
 
 VoiceAction VoiceModule::process(const VoiceContext& ctx) {
@@ -91,21 +91,21 @@ float VoiceModule::getCurrentSpeedMph(unsigned long now) {
 }
 
 bool VoiceModule::getCurrentSpeedSample(unsigned long now, float& speedMphOut) const {
-    if (cachedSpeedTimestamp == 0 || (now - cachedSpeedTimestamp) > SPEED_CACHE_MAX_AGE_MS) {
+    if (cachedSpeedTimestamp_ == 0 || (now - cachedSpeedTimestamp_) > SPEED_CACHE_MAX_AGE_MS) {
         return false;
     }
-    speedMphOut = cachedSpeedMph;
+    speedMphOut = cachedSpeedMph_;
     return true;
 }
 
 void VoiceModule::updateSpeedSample(float speedMph, unsigned long timestampMs) {
-    cachedSpeedMph = speedMph;
-    cachedSpeedTimestamp = timestampMs;
+    cachedSpeedMph_ = speedMph;
+    cachedSpeedTimestamp_ = timestampMs;
 }
 
 void VoiceModule::clearSpeedSample() {
-    cachedSpeedMph = 0.0f;
-    cachedSpeedTimestamp = 0;
+    cachedSpeedMph_ = 0.0f;
+    cachedSpeedTimestamp_ = 0;
 }
 
 bool VoiceModule::hasValidSpeedSource(unsigned long now) const {
@@ -114,36 +114,36 @@ bool VoiceModule::hasValidSpeedSource(unsigned long now) const {
 }
 
 void VoiceModule::clearAnnouncedAlerts() {
-    announcedAlertCount = 0;
-    for (uint32_t& id : announcedAlertIds) {
+    announcedAlertCount_ = 0;
+    for (uint32_t& id : announcedAlertIds_) {
         id = 0;
     }
 }
 
 void VoiceModule::clearAlertHistories() {
-    alertHistoryCount = 0;
-    for (AlertHistory& history : alertHistories) {
+    alertHistoryCount_ = 0;
+    for (AlertHistory& history : alertHistories_) {
         history = AlertHistory{};
     }
 }
 
 void VoiceModule::resetDirectionThrottle(unsigned long now) {
-    directionChangeCount = 0;
-    directionChangeWindowStart = now;
+    directionChangeCount_ = 0;
+    directionChangeWindowStart_ = now;
 }
 
 void VoiceModule::resetPriorityStability() {
-    lastPriorityAnnouncementTime = 0;
-    priorityStableSince = 0;
-    lastPriorityAlertId = 0xFFFFFFFF;
+    lastPriorityAnnouncementTime_ = 0;
+    priorityStableSince_ = 0;
+    lastPriorityAlertId_ = 0xFFFFFFFF;
 }
 
 void VoiceModule::resetLastAnnounced() {
-    lastVoiceAlertBand = BAND_NONE;
-    lastVoiceAlertDirection = DIR_NONE;
-    lastVoiceAlertFrequency = 0xFFFF;
-    lastVoiceAlertBogeyCount = 0;
-    lastVoiceAlertTime = 0;
+    lastVoiceAlertBand_ = BAND_NONE;
+    lastVoiceAlertDirection_ = DIR_NONE;
+    lastVoiceAlertFrequency_ = 0xFFFF;
+    lastVoiceAlertBogeyCount_ = 0;
+    lastVoiceAlertTime_ = 0;
 }
 
 void audio_set_volume(uint8_t /*volumePercent*/) {}

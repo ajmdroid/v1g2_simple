@@ -11,9 +11,6 @@
 #include "../speed/speed_source_selector.h"
 #include "json_stream_response.h"
 
-extern ObdRuntimeModule  obdRuntimeModule;
-extern SpeedSourceSelector speedSourceSelector;
-
 namespace BackupApiService {
 
 static void sendBackup(WebServer& server,
@@ -68,7 +65,9 @@ void handleApiBackupNow(WebServer& server,
     handleBackupNow(server);
 }
 
-static void handleRestore(WebServer& server) {
+static void handleRestore(WebServer& server,
+                          ObdRuntimeModule& obdRuntimeModule,
+                          SpeedSourceSelector& speedSourceSelector) {
     Serial.println("[HTTP] POST /api/settings/restore");
     static constexpr size_t kMaxRestoreBodyBytes = 128 * 1024;
 
@@ -129,13 +128,15 @@ static void handleRestore(WebServer& server) {
 }
 
 void handleApiRestore(WebServer& server,
+                      ObdRuntimeModule& obdRuntimeModule,
+                      SpeedSourceSelector& speedSourceSelector,
                       bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                       void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
         markUiActivity(uiActivityCtx);
     }
-    handleRestore(server);
+    handleRestore(server, obdRuntimeModule, speedSourceSelector);
 }
 
 }  // namespace BackupApiService

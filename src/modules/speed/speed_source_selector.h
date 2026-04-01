@@ -66,4 +66,4 @@ private:
     SpeedSelectorStatus cachedStatus_ = {};
     SpeedSelection selectedSpeed_ = {};
 };
-#endif // SPEED_SOURCE_SELECTOR_H
+#endif  // SPEED_SOURCE_SELECTOR_H

@@ -15,24 +15,24 @@ void TapGestureModule::begin(TouchHandler* touchHandler,
                              AlertPersistenceModule* alertPersistenceModule,
                              DisplayMode* displayModePtr,
                              QuietCoordinatorModule* quietCoordinator) {
-    touch = touchHandler;
-    settings = settingsMgr;
-    display = displayPtr;
-    ble = bleClient;
-    parser = parserPtr;
-    autoPush = autoPushModule;
-    alertPersistence = alertPersistenceModule;
-    displayMode = displayModePtr;
-    quiet = quietCoordinator;
+    touch_ = touchHandler;
+    settings_ = settingsMgr;
+    display_ = displayPtr;
+    ble_ = bleClient;
+    parser_ = parserPtr;
+    autoPush_ = autoPushModule;
+    alertPersistence_ = alertPersistenceModule;
+    displayMode_ = displayModePtr;
+    quiet_ = quietCoordinator;
 }
 
 void TapGestureModule::process(unsigned long nowMs) {
-    if (!touch || !settings || !display || !ble || !parser || !autoPush || !alertPersistence || !displayMode) {
+    if (!touch_ || !settings_ || !display_ || !ble_ || !parser_ || !autoPush_ || !alertPersistence_ || !displayMode_) {
         return;
     }
 
     int16_t touchX, touchY;
-    bool hasActiveAlert = parser->hasAlerts();
+    bool hasActiveAlert = parser_->hasAlerts();
 
     auto performMuteToggle = [&](const char* reason) {
         if (!hasActiveAlert) {
@@ -40,7 +40,7 @@ void TapGestureModule::process(unsigned long nowMs) {
             return;
         }
 
-        DisplayState state = parser->getDisplayState();
+        DisplayState state = parser_->getDisplayState();
         bool currentMuted = state.muted;
         bool newMuted = !currentMuted;
 
@@ -49,56 +49,56 @@ void TapGestureModule::process(unsigned long nowMs) {
                       newMuted ? "MUTE_ON" : "MUTE_OFF",
                       reason);
 
-        const bool cmdSent = quiet && quiet->sendMute(QuietOwner::TapGesture, newMuted);
+        const bool cmdSent = quiet_ && quiet_->sendMute(QuietOwner::TapGesture, newMuted);
         Serial.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
     };
 
     auto performProfileCycle = [&]() {
-        const V1Settings& s = settings->get();
+        const V1Settings& s = settings_->get();
         int newSlot = (s.activeSlot + 1) % 3;
-        settings->setActiveSlot(newSlot);
-        *displayMode = DisplayMode::IDLE;
+        settings_->setActiveSlot(newSlot);
+        *displayMode_ = DisplayMode::IDLE;
 
-        alertPersistence->clearPersistence();
+        alertPersistence_->clearPersistence();
 
         const char* slotNames[] = {"Default", "Highway", "Comfort"};
         Serial.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
 
-        display->drawProfileIndicator(newSlot);
+        display_->drawProfileIndicator(newSlot);
 
-        if (ble->isConnected() && s.autoPushEnabled) {
+        if (ble_->isConnected() && s.autoPushEnabled) {
             Serial.println("Pushing new profile to V1...");
-            const auto queueResult = autoPush->queueSlotPush(newSlot);
+            const auto queueResult = autoPush_->queueSlotPush(newSlot);
             if (queueResult != AutoPushModule::QueueResult::QUEUED) {
                 Serial.printf("Profile push skipped: %d\n", static_cast<int>(queueResult));
             }
         }
     };
 
-    if (touch->getTouchPoint(touchX, touchY)) {
-        if (nowMs - lastTapTime >= TAP_DEBOUNCE_MS) {
-            if (nowMs - lastTapTime <= TAP_WINDOW_MS) {
-                tapCount++;
+    if (touch_->getTouchPoint(touchX, touchY)) {
+        if (nowMs - lastTapTime_ >= TAP_DEBOUNCE_MS) {
+            if (nowMs - lastTapTime_ <= TAP_WINDOW_MS) {
+                tapCount_++;
             } else {
-                tapCount = 1;
+                tapCount_ = 1;
             }
-            lastTapTime = nowMs;
+            lastTapTime_ = nowMs;
 
-            Serial.printf("Tap detected: count=%d, x=%d, y=%d, hasAlert=%d\n", tapCount, touchX, touchY, hasActiveAlert);
+            Serial.printf("Tap detected: count=%d, x=%d, y=%d, hasAlert=%d\n", tapCount_, touchX, touchY, hasActiveAlert);
 
-            if (hasActiveAlert && tapCount == 1) {
+            if (hasActiveAlert && tapCount_ == 1) {
                 performMuteToggle("immediate tap");
-                tapCount = 0;
+                tapCount_ = 0;
                 return;
             }
 
-            if (!hasActiveAlert && tapCount >= PROFILE_CHANGE_TAP_COUNT) {
+            if (!hasActiveAlert && tapCount_ >= PROFILE_CHANGE_TAP_COUNT) {
                 performProfileCycle();
-                tapCount = 0;
+                tapCount_ = 0;
             } else if (hasActiveAlert) {
-                Serial.printf("Processing %d tap(s) as mute toggle\n", tapCount);
+                Serial.printf("Processing %d tap(s) as mute toggle\n", tapCount_);
                 performMuteToggle("deferred tap");
-                tapCount = 0;
+                tapCount_ = 0;
             }
         }
     }

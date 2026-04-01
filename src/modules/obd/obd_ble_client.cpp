@@ -5,7 +5,6 @@
 
 #include "obd_ble_client.h"
 #include "obd_runtime_module.h"
-extern ObdRuntimeModule obdRuntimeModule;
 #include "obd_scan_policy.h"
 
 #include <cstring>
@@ -200,13 +199,13 @@ void ObdBleClient::init(ObdRuntimeModule* parent) {
     pClient_->setConnectTimeout(obd::CONNECT_TIMEOUT_MS);
 }
 
-bool ObdBleClient::startScan(int8_t minRssi) {
+bool ObdBleClient::startScan(ObdRuntimeModule* parent, int8_t minRssi) {
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (pScan->isScanning()) return false;
 
     ble_hs_pvcy_set_resolve_enabled(0);
 
-    scanCallback_.configure(&obdRuntimeModule, minRssi);
+    scanCallback_.configure(parent, minRssi);
     pScan->setScanCallbacks(&scanCallback_);
     pScan->setActiveScan(true);
     pScan->setInterval(100);

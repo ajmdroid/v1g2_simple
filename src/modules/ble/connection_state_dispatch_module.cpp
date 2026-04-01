@@ -1,20 +1,20 @@
 #include "connection_state_dispatch_module.h"
 
 void ConnectionStateDispatchModule::begin(const Providers& hooks) {
-    providers = hooks;
+    providers_ = hooks;
     reset();
 }
 
 void ConnectionStateDispatchModule::reset() {
-    lastProcessRunMs = 0;
-    hasRunProcess = false;
+    lastProcessRunMs_ = 0;
+    hasRunProcess_ = false;
 }
 
 ConnectionStateDispatchDecision ConnectionStateDispatchModule::process(
         const ConnectionStateDispatchContext& ctx) {
     ConnectionStateDispatchDecision decision;
 
-    if (providers.runCadence) {
+    if (providers_.runCadence) {
         ConnectionStateCadenceContext cadenceCtx;
         cadenceCtx.nowMs = ctx.nowMs;
         cadenceCtx.displayUpdateIntervalMs = ctx.displayUpdateIntervalMs;
@@ -22,18 +22,18 @@ ConnectionStateDispatchDecision ConnectionStateDispatchModule::process(
         cadenceCtx.bleConnectedNow = ctx.bleConnectedNow;
         cadenceCtx.bootSplashHoldActive = ctx.bootSplashHoldActive;
         cadenceCtx.displayPreviewRunning = ctx.displayPreviewRunning;
-        decision.cadence = providers.runCadence(providers.cadenceContext, cadenceCtx);
+        decision.cadence = providers_.runCadence(providers_.cadenceContext, cadenceCtx);
     }
 
     bool shouldRunConnectionStateProcess = decision.cadence.shouldRunConnectionStateProcess;
     const bool watchdogEligible = !ctx.bootSplashHoldActive && !ctx.displayPreviewRunning;
-    if (hasRunProcess) {
+    if (hasRunProcess_) {
         decision.elapsedSinceLastProcessMs =
-            static_cast<uint32_t>(ctx.nowMs - lastProcessRunMs);
+            static_cast<uint32_t>(ctx.nowMs - lastProcessRunMs_);
     }
     if (!shouldRunConnectionStateProcess &&
         watchdogEligible &&
-        hasRunProcess &&
+        hasRunProcess_ &&
         ctx.maxProcessGapMs > 0) {
         const uint32_t elapsedSinceProcessMs = decision.elapsedSinceLastProcessMs;
         if (elapsedSinceProcessMs >= ctx.maxProcessGapMs) {
@@ -42,15 +42,15 @@ ConnectionStateDispatchDecision ConnectionStateDispatchModule::process(
         }
     }
 
-    if (shouldRunConnectionStateProcess && providers.runConnectionStateProcess) {
-        providers.runConnectionStateProcess(providers.connectionStateContext, ctx.nowMs);
+    if (shouldRunConnectionStateProcess && providers_.runConnectionStateProcess) {
+        providers_.runConnectionStateProcess(providers_.connectionStateContext, ctx.nowMs);
         decision.ranConnectionStateProcess = true;
-        lastProcessRunMs = ctx.nowMs;
-        hasRunProcess = true;
+        lastProcessRunMs_ = ctx.nowMs;
+        hasRunProcess_ = true;
     }
 
-    if (providers.recordDecision) {
-        providers.recordDecision(providers.decisionContext, decision);
+    if (providers_.recordDecision) {
+        providers_.recordDecision(providers_.decisionContext, decision);
     }
 
     return decision;

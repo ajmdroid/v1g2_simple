@@ -64,7 +64,7 @@ void test_devices_list_returns_saved_obd_device_with_name() {
     SettingsManager settingsManager;
     settingsManager.settings.obdSavedAddress = "A4:C1:38:00:11:22";
     settingsManager.settings.obdSavedName = "Truck Adapter";
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
 
     ObdApiService::handleApiDevicesList(server, obdRuntimeModule, settingsManager, [](void* /*ctx*/) {}, nullptr);
 
@@ -119,7 +119,7 @@ void test_config_updates_runtime_settings_and_selector_inputs() {
     SettingsManager settingsManager;
     SpeedSourceSelector speedSourceSelector;
 
-    obdRuntimeModule.begin(false, "", 0, -80);
+    obdRuntimeModule.begin(nullptr, false, "", 0, -80);
     server.setArg("plain", "{\"enabled\":true,\"minRssi\":-55}");
 
     ObdApiService::handleApiConfig(server,
@@ -151,7 +151,7 @@ void test_forget_clears_saved_address_and_persists_setting() {
     SettingsManager settingsManager;
     settingsManager.settings.obdSavedAddress = "A4:C1:38:00:11:22";
     settingsManager.settings.obdSavedName = "Truck Adapter";
-    obdRuntimeModule.begin(true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
 
     ObdApiService::handleApiForget(server,
                                    obdRuntimeModule,
@@ -175,7 +175,7 @@ void test_config_rejects_missing_json_body() {
     WebServer server(80);
     SettingsManager settingsManager;
     SpeedSourceSelector speedSourceSelector;
-    obdRuntimeModule.begin(false, "", 0, -80);
+    obdRuntimeModule.begin(nullptr, false, "", 0, -80);
 
     ObdApiService::handleApiConfig(server,
                                    obdRuntimeModule,
@@ -192,7 +192,7 @@ void test_config_rejects_missing_json_body() {
 
 void test_scan_rejects_when_obd_is_disabled() {
     WebServer server(80);
-    obdRuntimeModule.begin(false, "", 0, -80);
+    obdRuntimeModule.begin(nullptr, false, "", 0, -80);
 
     ObdApiService::handleApiScan(server,
                                  obdRuntimeModule,
@@ -207,7 +207,7 @@ void test_scan_rejects_when_obd_is_disabled() {
 
 void test_scan_reports_requested_when_obd_is_enabled() {
     WebServer server(80);
-    obdRuntimeModule.begin(true, "", 0, -80);
+    obdRuntimeModule.begin(nullptr, true, "", 0, -80);
 
     ObdApiService::handleApiScan(server,
                                  obdRuntimeModule,
@@ -228,7 +228,7 @@ void test_scan_reports_requested_when_obd_is_enabled() {
 
 void test_scan_rejects_when_request_already_pending() {
     WebServer server(80);
-    obdRuntimeModule.begin(true, "", 0, -80);
+    obdRuntimeModule.begin(nullptr, true, "", 0, -80);
     TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(mockMillis));
 
     ObdApiService::handleApiScan(server,
@@ -243,7 +243,7 @@ void test_scan_rejects_when_request_already_pending() {
 
 void test_status_reports_manual_scan_pending() {
     WebServer server(80);
-    obdRuntimeModule.begin(true, "", 0, -80);
+    obdRuntimeModule.begin(nullptr, true, "", 0, -80);
     TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(mockMillis));
 
     ObdApiService::handleApiStatus(server, obdRuntimeModule, [](void* /*ctx*/) {}, nullptr);

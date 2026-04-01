@@ -6,43 +6,43 @@ DisplayPreviewModule::DisplayPreviewModule() {
 }
 
 void DisplayPreviewModule::begin(V1Display* disp) {
-    display = disp;
+    display_ = disp;
 }
 
 void DisplayPreviewModule::requestHold(uint32_t durationMs) {
-    previewMode = PreviewMode::ALERT;
-    previewActive = true;
-    previewStartMs = millis();
-    previewDurationMs = durationMs + PREVIEW_TAIL_MS;
-    previewStep = 0;
-    previewEnded = false;
+    previewMode_ = PreviewMode::ALERT;
+    previewActive_ = true;
+    previewStartMs_ = millis();
+    previewDurationMs_ = durationMs + PREVIEW_TAIL_MS;
+    previewStep_ = 0;
+    previewEnded_ = false;
 }
 
 void DisplayPreviewModule::cancel() {
-    if (previewActive) {
-        previewActive = false;
-        previewEnded = true;  // signal caller to restore display
+    if (previewActive_) {
+        previewActive_ = false;
+        previewEnded_ = true;  // signal caller to restore display
     }
 }
 
 bool DisplayPreviewModule::consumeEnded() {
-    if (previewEnded) {
-        previewEnded = false;
+    if (previewEnded_) {
+        previewEnded_ = false;
         return true;
     }
     return false;
 }
 
 void DisplayPreviewModule::update() {
-    if (!previewActive || !display) return;
+    if (!previewActive_ || !display_) return;
 
     unsigned long now = millis();
-    unsigned long elapsed = now - previewStartMs;
+    unsigned long elapsed = now - previewStartMs_;
 
-    if (previewMode == PreviewMode::ALERT) {
+    if (previewMode_ == PreviewMode::ALERT) {
         // Advance through at most one band sample per update to avoid multiple flushes in one loop.
-        if (previewStep < STEP_COUNT && elapsed >= STEPS[previewStep].offsetMs) {
-            const auto& step = STEPS[previewStep];
+        if (previewStep_ < STEP_COUNT && elapsed >= STEPS[previewStep_].offsetMs) {
+            const auto& step = STEPS[previewStep_];
 
             AlertData previewAlert{};
             previewAlert.band = step.band;
@@ -64,7 +64,7 @@ void DisplayPreviewModule::update() {
             allAlerts[0] = previewAlert;
             previewState.activeBands = static_cast<Band>(previewState.activeBands);
 
-            if (previewStep >= 2) {
+            if (previewStep_ >= 2) {
                 // Add X band as secondary card.
                 allAlerts[alertCount].band = BAND_X;
                 allAlerts[alertCount].direction = DIR_FRONT;
@@ -74,7 +74,7 @@ void DisplayPreviewModule::update() {
                 previewState.activeBands = static_cast<Band>(previewState.activeBands | BAND_X);
                 alertCount++;
             }
-            if (previewStep >= 3) {
+            if (previewStep_ >= 3) {
                 // Add K band as secondary card.
                 allAlerts[alertCount].band = BAND_K;
                 allAlerts[alertCount].direction = DIR_REAR;
@@ -87,19 +87,19 @@ void DisplayPreviewModule::update() {
             }
 
             perfSetDisplayRenderScenario(
-                (previewStep == 0)
+                (previewStep_ == 0)
                     ? PerfDisplayRenderScenario::PreviewFirstFrame
                     : PerfDisplayRenderScenario::PreviewSteadyFrame);
             const unsigned long renderStartUs = micros();
-            display->update(previewAlert, allAlerts, alertCount, previewState);
+            display_->update(previewAlert, allAlerts, alertCount, previewState);
             perfRecordDisplayScenarioRenderUs(micros() - renderStartUs);
             perfClearDisplayRenderScenario();
-            previewStep++;
+            previewStep_++;
         }
     }
 
-    if (elapsed >= previewDurationMs) {
-        previewActive = false;
-        previewEnded = true;
+    if (elapsed >= previewDurationMs_) {
+        previewActive_ = false;
+        previewEnded_ = true;
     }
 }

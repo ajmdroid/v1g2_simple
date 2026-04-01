@@ -67,19 +67,19 @@ private:
     bool processSpeedVolume(uint32_t nowMs);
     bool retryPendingSpeedVolRestore(uint32_t nowMs);
 
-    V1Display* display = nullptr;
-    V1BLEClient* ble = nullptr;
-    BleQueueModule* bleQueue = nullptr;
-    DisplayPreviewModule* preview = nullptr;
-    DisplayRestoreModule* restore = nullptr;
-    PacketParser* parser = nullptr;
-    SettingsManager* settings = nullptr;
-    VolumeFadeModule* volumeFade = nullptr;
-    SpeedMuteModule* speedMute = nullptr;
-    QuietCoordinatorModule* quiet = nullptr;
+    V1Display* display_ = nullptr;
+    V1BLEClient* ble_ = nullptr;
+    BleQueueModule* bleQueue_ = nullptr;
+    DisplayPreviewModule* preview_ = nullptr;
+    DisplayRestoreModule* restore_ = nullptr;
+    PacketParser* parser_ = nullptr;
+    SettingsManager* settings_ = nullptr;
+    VolumeFadeModule* volumeFade_ = nullptr;
+    SpeedMuteModule* speedMute_ = nullptr;
+    QuietCoordinatorModule* quiet_ = nullptr;
 
-    unsigned long lastFreqUiMs = 0;
-    unsigned long lastCardUiMs = 0;
+    unsigned long lastFreqUiMs_ = 0;
+    unsigned long lastCardUiMs_ = 0;
 
     static constexpr uint32_t PARSED_STALE_MS = 2000;
     static constexpr unsigned long FREQ_UI_MAX_MS = 75;

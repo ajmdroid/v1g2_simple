@@ -33,15 +33,15 @@ public:
     bool process(unsigned long nowMs);
 
 private:
-    V1BLEClient* ble = nullptr;
-    PacketParser* parser = nullptr;
-    V1Display* display = nullptr;
-    PowerModule* power = nullptr;
-    BleQueueModule* bleQueue = nullptr;
-    SystemEventBus* bus = nullptr;
+    V1BLEClient* ble_ = nullptr;
+    PacketParser* parser_ = nullptr;
+    V1Display* display_ = nullptr;
+    PowerModule* power_ = nullptr;
+    BleQueueModule* bleQueue_ = nullptr;
+    SystemEventBus* bus_ = nullptr;
 
-    bool wasConnected = false;
-    unsigned long lastDataRequestMs = 0;
+    bool wasConnected_ = false;
+    unsigned long lastDataRequestMs_ = 0;
 
     static constexpr unsigned long DATA_STALE_MS = 2000;      // Consider data stale after 2s
     static constexpr unsigned long DATA_REQUEST_INTERVAL_MS = 1000;  // Re-request every 1s when stale

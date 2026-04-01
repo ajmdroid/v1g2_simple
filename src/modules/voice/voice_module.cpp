@@ -24,8 +24,8 @@ VoiceModule::VoiceModule() {
 }
 
 void VoiceModule::begin(SettingsManager* sett, V1BLEClient* ble) {
-    settings = sett;
-    bleClient = ble;
+    settings_ = sett;
+    bleClient_ = ble;
 
     Serial.println("[VoiceModule] Initialized");
 }
@@ -91,8 +91,8 @@ VoiceAction VoiceModule::process(const VoiceContext& ctx) {
 
     // --- Early Exit Checks ---
 
-    if (!settings) return action;
-    const V1Settings& s = settings->get();
+    if (!settings_) return action;
+    const V1Settings& s = settings_->get();
 
     // Voice alerts disabled
     if (s.voiceAlertMode == VOICE_MODE_DISABLED) return action;
@@ -311,22 +311,22 @@ void VoiceModule::clearAllState() {
 
 bool VoiceModule::isAlertAnnounced(Band band, uint16_t freq) {
     uint32_t id = makeAlertId(band, freq);
-    for (int i = 0; i < announcedAlertCount; i++) {
-        if (announcedAlertIds[i] == id) return true;
+    for (int i = 0; i < announcedAlertCount_; i++) {
+        if (announcedAlertIds_[i] == id) return true;
     }
     return false;
 }
 
 void VoiceModule::markAlertAnnounced(Band band, uint16_t freq) {
     uint32_t id = makeAlertId(band, freq);
-    if (announcedAlertCount < MAX_ANNOUNCED_ALERTS && !isAlertAnnounced(band, freq)) {
-        announcedAlertIds[announcedAlertCount++] = id;
+    if (announcedAlertCount_ < MAX_ANNOUNCED_ALERTS && !isAlertAnnounced(band, freq)) {
+        announcedAlertIds_[announcedAlertCount_++] = id;
     }
 }
 
 void VoiceModule::clearAnnouncedAlerts() {
-    announcedAlertCount = 0;
-    memset(announcedAlertIds, 0, sizeof(announcedAlertIds));
+    announcedAlertCount_ = 0;
+    memset(announcedAlertIds_, 0, sizeof(announcedAlertIds_));
 }
 
 // ============================================================================
@@ -334,9 +334,9 @@ void VoiceModule::clearAnnouncedAlerts() {
 // ============================================================================
 
 VoiceModule::AlertHistory* VoiceModule::findAlertHistory(uint32_t alertId) {
-    for (int i = 0; i < alertHistoryCount; i++) {
-        if (alertHistories[i].alertId == alertId) {
-            return &alertHistories[i];
+    for (int i = 0; i < alertHistoryCount_; i++) {
+        if (alertHistories_[i].alertId == alertId) {
+            return &alertHistories_[i];
         }
     }
     return nullptr;
@@ -346,8 +346,8 @@ VoiceModule::AlertHistory* VoiceModule::getOrCreateAlertHistory(uint32_t alertId
     AlertHistory* h = findAlertHistory(alertId);
     if (h) return h;
 
-    if (alertHistoryCount < MAX_ALERT_HISTORIES) {
-        h = &alertHistories[alertHistoryCount++];
+    if (alertHistoryCount_ < MAX_ALERT_HISTORIES) {
+        h = &alertHistories_[alertHistoryCount_++];
         h->alertId = alertId;
         h->currentBars = 0;
         h->lastUpdateMs = now;
@@ -360,15 +360,15 @@ VoiceModule::AlertHistory* VoiceModule::getOrCreateAlertHistory(uint32_t alertId
     // Recycle oldest (by elapsed time, handles millis() wraparound)
     unsigned long oldestElapsed = 0;
     int oldestIdx = -1;
-    for (int i = 0; i < alertHistoryCount; i++) {
-        unsigned long elapsed = now - alertHistories[i].lastUpdateMs;
+    for (int i = 0; i < alertHistoryCount_; i++) {
+        unsigned long elapsed = now - alertHistories_[i].lastUpdateMs;
         if (elapsed > oldestElapsed) {
             oldestElapsed = elapsed;
             oldestIdx = i;
         }
     }
     if (oldestIdx >= 0) {
-        h = &alertHistories[oldestIdx];
+        h = &alertHistories_[oldestIdx];
         h->alertId = alertId;
         h->currentBars = 0;
         h->lastUpdateMs = now;
@@ -401,12 +401,12 @@ void VoiceModule::updateAlertHistory(Band band, uint16_t freq, uint8_t bars, uns
 }
 
 void VoiceModule::cleanupStaleHistories(unsigned long now) {
-    for (int i = alertHistoryCount - 1; i >= 0; i--) {
-        if (now - alertHistories[i].lastUpdateMs > HISTORY_STALE_MS) {
-            for (int j = i; j < alertHistoryCount - 1; j++) {
-                alertHistories[j] = alertHistories[j + 1];
+    for (int i = alertHistoryCount_ - 1; i >= 0; i--) {
+        if (now - alertHistories_[i].lastUpdateMs > HISTORY_STALE_MS) {
+            for (int j = i; j < alertHistoryCount_ - 1; j++) {
+                alertHistories_[j] = alertHistories_[j + 1];
             }
-            alertHistoryCount--;
+            alertHistoryCount_--;
         }
     }
 }
@@ -437,8 +437,8 @@ void VoiceModule::markThreatEscalationAnnounced(Band band, uint16_t freq) {
 }
 
 void VoiceModule::clearAlertHistories() {
-    alertHistoryCount = 0;
-    memset(alertHistories, 0, sizeof(alertHistories));
+    alertHistoryCount_ = 0;
+    memset(alertHistories_, 0, sizeof(alertHistories_));
 }
 
 // ============================================================================
@@ -446,17 +446,17 @@ void VoiceModule::clearAlertHistories() {
 // ============================================================================
 
 void VoiceModule::resetDirectionThrottle(unsigned long now) {
-    directionChangeCount = 0;
-    directionChangeWindowStart = now;
+    directionChangeCount_ = 0;
+    directionChangeWindowStart_ = now;
 }
 
 bool VoiceModule::shouldThrottleDirectionChange(unsigned long now) {
-    if (now - directionChangeWindowStart > DIRECTION_THROTTLE_WINDOW_MS) {
-        directionChangeCount = 0;
-        directionChangeWindowStart = now;
+    if (now - directionChangeWindowStart_ > DIRECTION_THROTTLE_WINDOW_MS) {
+        directionChangeCount_ = 0;
+        directionChangeWindowStart_ = now;
     }
-    directionChangeCount++;
-    return directionChangeCount > DIRECTION_CHANGE_LIMIT;
+    directionChangeCount_++;
+    return directionChangeCount_ > DIRECTION_CHANGE_LIMIT;
 }
 
 // ============================================================================
@@ -464,25 +464,25 @@ bool VoiceModule::shouldThrottleDirectionChange(unsigned long now) {
 // ============================================================================
 
 void VoiceModule::updatePriorityStability(uint32_t currentAlertId, unsigned long now) {
-    if (currentAlertId != lastPriorityAlertId) {
-        lastPriorityAlertId = currentAlertId;
-        priorityStableSince = now;
+    if (currentAlertId != lastPriorityAlertId_) {
+        lastPriorityAlertId_ = currentAlertId;
+        priorityStableSince_ = now;
     }
 }
 
 void VoiceModule::markPriorityAnnounced(unsigned long now) {
-    lastPriorityAnnouncementTime = now;
+    lastPriorityAnnouncementTime_ = now;
 }
 
 void VoiceModule::resetPriorityStability() {
-    priorityStableSince = 0;
-    lastPriorityAlertId = 0xFFFFFFFF;
+    priorityStableSince_ = 0;
+    lastPriorityAlertId_ = 0xFFFFFFFF;
 }
 
 bool VoiceModule::canAnnounceSecondary(unsigned long now) const {
-    return (priorityStableSince > 0) &&
-           (now - priorityStableSince >= PRIORITY_STABILITY_MS) &&
-           (now - lastPriorityAnnouncementTime >= POST_PRIORITY_GAP_MS);
+    return (priorityStableSince_ > 0) &&
+           (now - priorityStableSince_ >= PRIORITY_STABILITY_MS) &&
+           (now - lastPriorityAnnouncementTime_ >= POST_PRIORITY_GAP_MS);
 }
 
 // ============================================================================
@@ -490,48 +490,48 @@ bool VoiceModule::canAnnounceSecondary(unsigned long now) const {
 // ============================================================================
 
 bool VoiceModule::hasAlertChanged(Band band, uint16_t freq) const {
-    return (band != lastVoiceAlertBand) || (freq != lastVoiceAlertFrequency);
+    return (band != lastVoiceAlertBand_) || (freq != lastVoiceAlertFrequency_);
 }
 
 bool VoiceModule::hasDirectionChanged(Direction dir) const {
-    return dir != lastVoiceAlertDirection;
+    return dir != lastVoiceAlertDirection_;
 }
 
 bool VoiceModule::hasCooldownPassed(unsigned long now) const {
-    return (now - lastVoiceAlertTime >= VOICE_ALERT_COOLDOWN_MS);
+    return (now - lastVoiceAlertTime_ >= VOICE_ALERT_COOLDOWN_MS);
 }
 
 bool VoiceModule::hasBogeyCountCooldownPassed(unsigned long now) const {
-    return (now - lastVoiceAlertTime >= BOGEY_COUNT_COOLDOWN_MS);
+    return (now - lastVoiceAlertTime_ >= BOGEY_COUNT_COOLDOWN_MS);
 }
 
 bool VoiceModule::hasBogeyCountChanged(uint8_t count) const {
-    return count != lastVoiceAlertBogeyCount;
+    return count != lastVoiceAlertBogeyCount_;
 }
 
 void VoiceModule::updateLastAnnounced(Band band, Direction dir, uint16_t freq, uint8_t bogeyCount, unsigned long now) {
-    lastVoiceAlertBand = band;
-    lastVoiceAlertDirection = dir;
-    lastVoiceAlertFrequency = freq;
-    lastVoiceAlertBogeyCount = bogeyCount;
-    lastVoiceAlertTime = now;
+    lastVoiceAlertBand_ = band;
+    lastVoiceAlertDirection_ = dir;
+    lastVoiceAlertFrequency_ = freq;
+    lastVoiceAlertBogeyCount_ = bogeyCount;
+    lastVoiceAlertTime_ = now;
 }
 
 void VoiceModule::updateLastAnnouncedDirection(Direction dir, uint8_t bogeyCount) {
-    lastVoiceAlertDirection = dir;
-    lastVoiceAlertBogeyCount = bogeyCount;
+    lastVoiceAlertDirection_ = dir;
+    lastVoiceAlertBogeyCount_ = bogeyCount;
 }
 
 void VoiceModule::updateLastAnnouncedTime(unsigned long now) {
-    lastVoiceAlertTime = now;
+    lastVoiceAlertTime_ = now;
 }
 
 void VoiceModule::resetLastAnnounced() {
-    lastVoiceAlertBand = BAND_NONE;
-    lastVoiceAlertDirection = DIR_NONE;
-    lastVoiceAlertFrequency = 0xFFFF;
-    lastVoiceAlertBogeyCount = 0;
-    lastVoiceAlertTime = 0;
+    lastVoiceAlertBand_ = BAND_NONE;
+    lastVoiceAlertDirection_ = DIR_NONE;
+    lastVoiceAlertFrequency_ = 0xFFFF;
+    lastVoiceAlertBogeyCount_ = 0;
+    lastVoiceAlertTime_ = 0;
 }
 
 // ============================================================================
@@ -539,13 +539,13 @@ void VoiceModule::resetLastAnnounced() {
 // ============================================================================
 
 bool VoiceModule::getCurrentSpeedSample(unsigned long now, float& speedMphOut) const {
-    if (cachedSpeedTimestamp == 0) {
+    if (cachedSpeedTimestamp_ == 0) {
         return false;
     }
-    if ((now - cachedSpeedTimestamp) >= SPEED_CACHE_MAX_AGE_MS) {
+    if ((now - cachedSpeedTimestamp_) >= SPEED_CACHE_MAX_AGE_MS) {
         return false;
     }
-    speedMphOut = cachedSpeedMph;
+    speedMphOut = cachedSpeedMph_;
     return true;
 }
 
@@ -563,13 +563,13 @@ void VoiceModule::updateSpeedSample(float speedMph, unsigned long timestampMs) {
     if (!(speedMph >= 0.0f)) {
         return;
     }
-    cachedSpeedMph = speedMph;
-    cachedSpeedTimestamp = timestampMs;
+    cachedSpeedMph_ = speedMph;
+    cachedSpeedTimestamp_ = timestampMs;
 }
 
 void VoiceModule::clearSpeedSample() {
-    cachedSpeedMph = 0.0f;
-    cachedSpeedTimestamp = 0;
+    cachedSpeedMph_ = 0.0f;
+    cachedSpeedTimestamp_ = 0;
 }
 
 bool VoiceModule::hasValidSpeedSource(unsigned long now) const {

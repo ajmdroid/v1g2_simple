@@ -304,4 +304,4 @@ private:
 
 // Global instance
 extern StorageManager storageManager;
-#endif // STORAGE_MANAGER_H
+#endif  // STORAGE_MANAGER_H

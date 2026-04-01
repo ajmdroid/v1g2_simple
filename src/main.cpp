@@ -755,6 +755,7 @@ static void configureRuntimeSensorModules() {
     speedSourceSelector.begin(settingsManager.get().obdEnabled);
     speedSourceSelector.wireSpeedSources(&obdRuntimeModule);
     obdRuntimeModule.begin(
+        &obdBleClient,
         settingsManager.get().obdEnabled,
         settingsManager.get().obdSavedAddress.c_str(),
         settingsManager.get().obdSavedAddrType,

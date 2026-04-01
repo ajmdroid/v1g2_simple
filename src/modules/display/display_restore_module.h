@@ -30,9 +30,9 @@ public:
     bool process();
 
 private:
-    V1Display* display = nullptr;
-    PacketParser* parser = nullptr;
-    V1BLEClient* bleClient = nullptr;
-    DisplayPreviewModule* previewModule = nullptr;
-    DisplayPipelineModule* displayPipelineModule = nullptr;
+    V1Display* display_ = nullptr;
+    PacketParser* parser_ = nullptr;
+    V1BLEClient* bleClient_ = nullptr;
+    DisplayPreviewModule* previewModule_ = nullptr;
+    DisplayPipelineModule* displayPipelineModule_ = nullptr;
 };

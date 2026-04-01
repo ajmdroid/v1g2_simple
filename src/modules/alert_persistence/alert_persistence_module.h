@@ -31,18 +31,18 @@ public:
     void startPersistence(unsigned long now);
     void clearPersistence();
     bool shouldShowPersisted(unsigned long now, unsigned long persistMs) const;
-    const AlertData& getPersistedAlert() const { return persistedAlert; }
-    bool isPersistenceActive() const { return alertPersistenceActive; }
+    const AlertData& getPersistedAlert() const { return persistedAlert_; }
+    bool isPersistenceActive() const { return alertPersistenceActive_; }
 
 private:
     // Dependencies
-    V1BLEClient* bleClient = nullptr;
-    PacketParser* parser = nullptr;
-    V1Display* display = nullptr;
-    SettingsManager* settings = nullptr;
+    V1BLEClient* bleClient_ = nullptr;
+    PacketParser* parser_ = nullptr;
+    V1Display* display_ = nullptr;
+    SettingsManager* settings_ = nullptr;
 
     // Alert persistence state
-    AlertData persistedAlert;
-    unsigned long alertClearedTime = 0;
-    bool alertPersistenceActive = false;
+    AlertData persistedAlert_;
+    unsigned long alertClearedTime_ = 0;
+    bool alertPersistenceActive_ = false;
 };

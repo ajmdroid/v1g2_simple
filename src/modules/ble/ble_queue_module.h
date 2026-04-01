@@ -31,10 +31,10 @@ public:
                Config cfg = Config());
 
     // Returns timestamp of last successfully parsed packet (for display latency tracking)
-    uint32_t getLastParsedTimestamp() const { return lastParsedTsMs; }
+    uint32_t getLastParsedTimestamp() const { return lastParsedTsMs_; }
 
     // Returns true if a packet was successfully parsed since last check (and clears flag)
-    bool consumeParsedFlag() { bool had = hadSuccessfulParse; hadSuccessfulParse = false; return had; }
+    bool consumeParsedFlag() { bool had = hadSuccessfulParse_; hadSuccessfulParse_ = false; return had; }
 
     // Callback entry from BLE notifications.
     void onNotify(const uint8_t* data, size_t length, uint16_t charUUID);
@@ -42,8 +42,8 @@ public:
     // Drain queue, frame packets, parse, and forward to display pipeline.
     void process();
 
-    unsigned long getLastRxMillis() const { return lastRxMillis; }
-    bool isBackpressured() const { return backpressureActive; }
+    unsigned long getLastRxMillis() const { return lastRxMillis_; }
+    bool isBackpressured() const { return backpressureActive_; }
 
 private:
     struct BLEDataPacket {
@@ -53,29 +53,29 @@ private:
         uint32_t tsMs;
     };
 
-    V1BLEClient* ble = nullptr;
-    PacketParser* parser = nullptr;
-    V1ProfileManager* profiles = nullptr;
-    DisplayPreviewModule* preview = nullptr;
-    PowerModule* power = nullptr;
-    SystemEventBus* bus = nullptr;
-    QueueHandle_t queueHandle = nullptr;
+    V1BLEClient* ble_ = nullptr;
+    PacketParser* parser_ = nullptr;
+    V1ProfileManager* profiles_ = nullptr;
+    DisplayPreviewModule* preview_ = nullptr;
+    PowerModule* power_ = nullptr;
+    SystemEventBus* bus_ = nullptr;
+    QueueHandle_t queueHandle_ = nullptr;
 
-    std::vector<uint8_t> rxBuffer;
-    size_t rxReadPos = 0;  // Logical read pointer into rxBuffer (avoids front erases)
-    unsigned long lastRxMillis = 0;
-    uint32_t lastNotifyTsMs = 0;
-    uint32_t lastParsedTsMs = 0;      // Timestamp of last successful parse (for display latency)
-    bool hadSuccessfulParse = false;  // Flag: at least one packet parsed since last check
-    uint32_t parsedEventSeq = 0;
-    bool backpressureActive = false;
+    std::vector<uint8_t> rxBuffer_;
+    size_t rxReadPos_ = 0;  // Logical read pointer into rxBuffer (avoids front erases)
+    unsigned long lastRxMillis_ = 0;
+    uint32_t lastNotifyTsMs_ = 0;
+    uint32_t lastParsedTsMs_ = 0;      // Timestamp of last successful parse (for display latency)
+    bool hadSuccessfulParse_ = false;  // Flag: at least one packet parsed since last check
+    uint32_t parsedEventSeq_ = 0;
+    bool backpressureActive_ = false;
 
-    Config config;
+    Config config_;
     void refreshBackpressureState();
 
 #ifdef REPLAY_MODE
     void processReplayData();
-    unsigned long lastReplayTime = 0;
-    size_t replayIndex = 0;
+    unsigned long lastReplayTime_ = 0;
+    size_t replayIndex_ = 0;
 #endif
 };

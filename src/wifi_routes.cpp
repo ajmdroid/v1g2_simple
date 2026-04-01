@@ -328,6 +328,8 @@ bool WiFiManager::setupWebServer() {
     server_.on("/api/settings/restore", HTTP_POST, [this]() {
         BackupApiService::handleApiRestore(
             server_,
+            obdRuntimeModule,
+            speedSourceSelector,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });

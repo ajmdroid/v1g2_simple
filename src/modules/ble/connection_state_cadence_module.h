@@ -25,8 +25,8 @@ public:
     ConnectionStateCadenceDecision process(const ConnectionStateCadenceContext& ctx);
 
 private:
-    unsigned long lastDisplayUpdateMs = 0;
-    unsigned long scanScreenEnteredMs = 0;
-    bool scanScreenDwellActive = false;
-    bool lastBleConnectedForScanDwell = false;
+    unsigned long lastDisplayUpdateMs_ = 0;
+    unsigned long scanScreenEnteredMs_ = 0;
+    bool scanScreenDwellActive_ = false;
+    bool lastBleConnectedForScanDwell_ = false;
 };

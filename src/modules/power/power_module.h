@@ -31,15 +31,15 @@ public:
 private:
     void performShutdownRequest();
 
-    BatteryManager* battery = nullptr;
-    V1Display* display = nullptr;
-    SettingsManager* settings = nullptr;
-    ShutdownPreparationCallback shutdownPreparationCallback = nullptr;
-    void* shutdownPreparationContext = nullptr;
+    BatteryManager* battery_ = nullptr;
+    V1Display* display_ = nullptr;
+    SettingsManager* settings_ = nullptr;
+    ShutdownPreparationCallback shutdownPreparationCallback_ = nullptr;
+    void* shutdownPreparationContext_ = nullptr;
 
-    bool lowBatteryWarningShown = false;
-    unsigned long criticalBatteryTime = 0;
+    bool lowBatteryWarningShown_ = false;
+    unsigned long criticalBatteryTime_ = 0;
 
-    unsigned long autoPowerOffTimerStart = 0;  // 0 = timer not running
-    bool autoPowerOffArmed = false;
+    unsigned long autoPowerOffTimerStart_ = 0;  // 0 = timer not running
+    bool autoPowerOffArmed_ = false;
 };

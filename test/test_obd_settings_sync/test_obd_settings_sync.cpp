@@ -37,7 +37,7 @@ void test_process_skips_save_when_runtime_already_matches_settings() {
     settings.obdCachedVinPrefix11 = "1FTW1ET7DFA";
     settings.obdCachedEotProfileId = static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C);
 
-    obdRuntimeModule.begin(true,
+    obdRuntimeModule.begin(nullptr, true,
                            "A4:C1:38:00:11:22",
                            1,
                            -80,
@@ -51,7 +51,7 @@ void test_process_skips_save_when_runtime_already_matches_settings() {
 }
 
 void test_process_saves_once_after_runtime_values_stabilize() {
-    obdRuntimeModule.begin(true,
+    obdRuntimeModule.begin(nullptr, true,
                            "A4:C1:38:00:11:22",
                            2,
                            -80,
@@ -79,7 +79,7 @@ void test_process_saves_once_after_runtime_values_stabilize() {
 }
 
 void test_process_resets_debounce_when_runtime_keeps_changing() {
-    obdRuntimeModule.begin(true,
+    obdRuntimeModule.begin(nullptr, true,
                            "A4:C1:38:00:11:22",
                            1,
                            -80,
@@ -87,7 +87,7 @@ void test_process_resets_debounce_when_runtime_keeps_changing() {
                            static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
     module.process(1000);
 
-    obdRuntimeModule.begin(true,
+    obdRuntimeModule.begin(nullptr, true,
                            "B4:C1:38:00:11:33",
                            3,
                            -80,

@@ -810,4 +810,4 @@ private:
 
 // Global settings instance
 extern SettingsManager settingsManager;
-#endif // SETTINGS_H
+#endif  // SETTINGS_H

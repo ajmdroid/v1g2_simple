@@ -4,6 +4,11 @@
 
 #include "backup_snapshot_cache.h"
 
+// Forward declarations at global scope so function signatures inside the
+// namespace refer to the real classes, not a nested incomplete type.
+class ObdRuntimeModule;
+class SpeedSourceSelector;
+
 namespace BackupApiService {
 
 struct BackupNowRuntime {
@@ -47,7 +52,11 @@ void handleApiBackupNow(WebServer& server,
                         void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// POST /api/settings/restore handler with route-level policy callbacks.
+/// @param obdRuntimeModule Reference to OBD runtime module for settings sync.
+/// @param speedSourceSelector Reference to speed source selector for settings sync.
 void handleApiRestore(WebServer& server,
+                      ObdRuntimeModule& obdRuntimeModule,
+                      SpeedSourceSelector& speedSourceSelector,
                       bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                       void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
