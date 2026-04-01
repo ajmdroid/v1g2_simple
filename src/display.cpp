@@ -367,16 +367,13 @@ void V1Display::flushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
 
     const uint32_t startUs = PERF_TIMESTAMP_US();
 
-    if (phys_pw == kRawStride && phys_px0 == 0) {
-        // Full physical width — rows are contiguous in the framebuffer.
-        uint16_t* regionStart = fb + static_cast<uint32_t>(phys_py0) * kRawStride;
-        gfxPanel_->draw16bitRGBBitmap(0, phys_py0, regionStart, kRawStride, phys_ph);
-        perfExtended.displayFlushBatchCount++;
-    } else {
-        for (int16_t row = 0; row < phys_ph; ++row) {
-            uint16_t* rowPtr = fb + static_cast<uint32_t>(phys_py0 + row) * kRawStride + phys_px0;
-            gfxPanel_->draw16bitRGBBitmap(phys_px0, phys_py0 + row, rowPtr, phys_pw, 1);
-        }
+    // Row-by-row blit to the panel driver.  The AXS15231B's draw16bitRGBBitmap
+    // mis-addresses multi-row partial regions (address window bug), so we avoid
+    // the "full physical width → one call" fast path that was here previously.
+    // Single-row writes have been proven reliable by refreshFrequencyOnly().
+    for (int16_t row = 0; row < phys_ph; ++row) {
+        uint16_t* rowPtr = fb + static_cast<uint32_t>(phys_py0 + row) * kRawStride + phys_px0;
+        gfxPanel_->draw16bitRGBBitmap(phys_px0, phys_py0 + row, rowPtr, phys_pw, 1);
     }
     perfRecordFlushUs(PERF_TIMESTAMP_US() - startUs, areaPx, false);
 }
