@@ -7,6 +7,9 @@ class SystemEventBus;
 class V1BLEClient;
 class BleQueueModule;
 
+// Forward declaration for PerfFilesRuntime parameter.
+namespace DebugPerfFilesService { struct PerfFilesRuntime; }
+
 namespace DebugApiService {
 
 /// Wire dependencies. Must be called once during setup() before any handlers
@@ -53,16 +56,19 @@ void handleApiV1ScenarioStop(WebServer& server,
 
 /// GET /api/debug/perf-files handler with route-level policy callbacks.
 void handleApiPerfFilesList(WebServer& server,
+                            const DebugPerfFilesService::PerfFilesRuntime& runtime,
                             bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                             void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// GET /api/debug/perf-files/download handler with route-level policy callbacks.
 void handleApiPerfFilesDownload(WebServer& server,
+                                const DebugPerfFilesService::PerfFilesRuntime& runtime,
                                 bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                                 void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// POST /api/debug/perf-files/delete handler with route-level policy callbacks.
 void handleApiPerfFilesDelete(WebServer& server,
+                              const DebugPerfFilesService::PerfFilesRuntime& runtime,
                               bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                               void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 

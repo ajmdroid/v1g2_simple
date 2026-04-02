@@ -2,72 +2,60 @@
 
 #include <ArduinoJson.h>
 
-#include "../../settings.h"
-#include "../../settings_runtime_sync.h"
-#include "../../storage_manager.h"
-#include "../../v1_profiles.h"
 #include "../../backup_payload_builder.h"
-#include "../obd/obd_runtime_module.h"
-#include "../speed/speed_source_selector.h"
 #include "json_stream_response.h"
 
 namespace BackupApiService {
 
 static void sendBackup(WebServer& server,
                        BackupSnapshotCache& cachedSnapshot,
+                       const BackupRuntime& runtime,
                        uint32_t (*millisFn)(void* ctx), void* millisCtx) {
     Serial.println("[HTTP] GET /api/settings/backup");
     server.sendHeader("Content-Disposition", "attachment; filename=\"v1simple_backup.json\"");
     sendCachedBackupSnapshot(
         server,
         cachedSnapshot,
-        settingsManager.backupRevision(),
-        v1ProfileManager.catalogRevision(),
-        [](JsonDocument& doc, uint32_t snapshotMs, void* /*ctx*/) {
-            BackupPayloadBuilder::buildBackupDocument(
-                doc,
-                settingsManager.get(),
-                v1ProfileManager,
-                BackupPayloadBuilder::BackupTransport::HttpDownload,
-                snapshotMs);
-        },
-        nullptr,
+        runtime.getBackupRevision(runtime.ctx),
+        runtime.getCatalogRevision(runtime.ctx),
+        runtime.buildDocument,
+        runtime.ctx,
         millisFn,
         millisCtx);
 }
 
-static void handleBackupNow(WebServer& server) {
+static void handleBackupNow(WebServer& server, const BackupRuntime& runtime) {
     Serial.println("[HTTP] POST /api/settings/backup-now");
     sendBackupNowResponse(server, BackupNowRuntime{
-        [](void* /*ctx*/) { return storageManager.isReady(); }, nullptr,
-        [](void* /*ctx*/) { return storageManager.isSDCard(); }, nullptr,
-        [](void* /*ctx*/) { return settingsManager.backupToSD(); }, nullptr,
+        runtime.isStorageReady, runtime.ctx,
+        runtime.isSDCard,       runtime.ctx,
+        runtime.backupToSD,     runtime.ctx,
     });
 }
 
 void handleApiBackup(WebServer& server,
                      BackupSnapshotCache& cachedSnapshot,
+                     const BackupRuntime& runtime,
                      void (*markUiActivity)(void* ctx), void* uiActivityCtx,
                      uint32_t (*millisFn)(void* ctx), void* millisCtx) {
     if (markUiActivity) {
         markUiActivity(uiActivityCtx);
     }
-    sendBackup(server, cachedSnapshot, millisFn, millisCtx);
+    sendBackup(server, cachedSnapshot, runtime, millisFn, millisCtx);
 }
 
 void handleApiBackupNow(WebServer& server,
+                        const BackupRuntime& runtime,
                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                         void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
         markUiActivity(uiActivityCtx);
     }
-    handleBackupNow(server);
+    handleBackupNow(server, runtime);
 }
 
-static void handleRestore(WebServer& server,
-                          ObdRuntimeModule& obdRuntimeModule,
-                          SpeedSourceSelector& speedSourceSelector) {
+static void handleRestore(WebServer& server, const BackupRuntime& runtime) {
     Serial.println("[HTTP] POST /api/settings/restore");
     static constexpr size_t kMaxRestoreBodyBytes = 128 * 1024;
 
@@ -105,38 +93,35 @@ static void handleRestore(WebServer& server,
         return;
     }
 
-    const SettingsBackupApplyResult applyResult = settingsManager.applyBackupDocument(doc, true);
-    if (!applyResult.success) {
+    int profilesRestored = 0;
+    const bool success = runtime.applyBackup(doc, true, profilesRestored, runtime.ctx);
+    if (!success) {
         server.send(500, "application/json", "{\"success\":false,\"error\":\"Failed to persist restored settings\"}");
         return;
     }
 
-    const V1Settings& settings = settingsManager.get();
-    SettingsRuntimeSync::syncVehicleRuntimeInputs(settings,
-                                                  obdRuntimeModule,
-                                                  speedSourceSelector);
+    runtime.syncAfterRestore(runtime.ctx);
 
-    Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", applyResult.profilesRestored);
+    Serial.printf("[Settings] Restored from uploaded backup (%d profiles)\n", profilesRestored);
 
     // Build response with profile count
     String response = "{\"success\":true,\"message\":\"Settings restored successfully";
-    if (applyResult.profilesRestored > 0) {
-        response += " (" + String(applyResult.profilesRestored) + " profiles)";
+    if (profilesRestored > 0) {
+        response += " (" + String(profilesRestored) + " profiles)";
     }
     response += "\"}";
     server.send(200, "application/json", response);
 }
 
 void handleApiRestore(WebServer& server,
-                      ObdRuntimeModule& obdRuntimeModule,
-                      SpeedSourceSelector& speedSourceSelector,
+                      const BackupRuntime& runtime,
                       bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                       void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
         markUiActivity(uiActivityCtx);
     }
-    handleRestore(server, obdRuntimeModule, speedSourceSelector);
+    handleRestore(server, runtime);
 }
 
 }  // namespace BackupApiService

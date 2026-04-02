@@ -905,7 +905,7 @@ void pumpScenarioPlayback(uint32_t nowMs) {
             break;
         }
         if (!event.bytes.empty() && event.bytes.size() <= 256) {
-            DebugApiService::deps::bleQueue->onNotify(event.bytes.data(), event.bytes.size(), event.charUuid);
+            DebugApiService::providers.bleQueue->onNotify(event.bytes.data(), event.bytes.size(), event.charUuid);
             gScenarioPlayback.emittedPackets++;
         }
         gScenarioPlayback.nextEventIndex++;

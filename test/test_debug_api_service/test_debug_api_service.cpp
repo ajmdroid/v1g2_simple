@@ -3,6 +3,7 @@
 
 #include "../../src/perf_metrics.h"
 #include "../../src/modules/debug/debug_api_service.h"
+#include "../../src/modules/debug/debug_perf_files_service.h"
 #include "../support/wrappers/debug_api_service_wrappers.cpp"  // Pull wrappers for UNIT_TEST.
 
 #ifndef ARDUINO
@@ -106,22 +107,26 @@ void handleV1ScenarioStop(WebServer& server) {
     server.send(200, "application/json", "{\"route\":\"v1-scenario-stop\"}");
 }
 
-void sendPerfFilesList(WebServer& server) {
+void sendPerfFilesList(WebServer& server, const DebugPerfFilesService::PerfFilesRuntime& /*runtime*/) {
     sendPerfFilesListCalls++;
     server.send(200, "application/json", "{\"route\":\"perf-files\"}");
 }
 
-void handlePerfFileDownload(WebServer& server) {
+void handlePerfFileDownload(WebServer& server, const DebugPerfFilesService::PerfFilesRuntime& /*runtime*/) {
     handlePerfFileDownloadCalls++;
     server.send(200, "application/json", "{\"route\":\"perf-download\"}");
 }
 
-void handlePerfFileDelete(WebServer& server) {
+void handlePerfFileDelete(WebServer& server, const DebugPerfFilesService::PerfFilesRuntime& /*runtime*/) {
     handlePerfFileDeleteCalls++;
     server.send(200, "application/json", "{\"route\":\"perf-delete\"}");
 }
 
 }  // namespace DebugApiService
+
+namespace {
+const DebugPerfFilesService::PerfFilesRuntime dummyPerfRuntime{};
+}  // namespace
 
 void setUp() {
     mockMillis = 1000;
@@ -301,6 +306,7 @@ void test_handle_api_perf_files_list_rate_limited_short_circuits() {
 
     DebugApiService::handleApiPerfFilesList(
         server,
+        dummyPerfRuntime,
         doRateLimit, &rlCtx,
         doUiActivity, &uiCtx);
 
@@ -317,6 +323,7 @@ void test_handle_api_perf_files_list_delegates_when_allowed() {
 
     DebugApiService::handleApiPerfFilesList(
         server,
+        dummyPerfRuntime,
         doRateLimit, &rlCtx,
         doUiActivity, &uiCtx);
 
@@ -334,6 +341,7 @@ void test_handle_api_perf_files_download_delegates_when_allowed() {
 
     DebugApiService::handleApiPerfFilesDownload(
         server,
+        dummyPerfRuntime,
         doRateLimit, &rlCtx,
         doUiActivity, &uiCtx);
 
@@ -351,6 +359,7 @@ void test_handle_api_perf_files_delete_delegates_when_allowed() {
 
     DebugApiService::handleApiPerfFilesDelete(
         server,
+        dummyPerfRuntime,
         doRateLimit, &rlCtx,
         doUiActivity, &uiCtx);
 

@@ -45,6 +45,14 @@ namespace WifiV1DevicesApiService {
 struct Runtime;
 }
 
+namespace BackupApiService {
+struct BackupRuntime;
+}
+
+namespace DebugPerfFilesService {
+struct PerfFilesRuntime;
+}
+
 // WiFi service state (AP may be enabled or disabled while service is active)
 enum SetupModeState {
     SETUP_MODE_OFF = 0,
@@ -305,6 +313,8 @@ private:
     WifiClientApiService::Runtime makeWifiClientRuntime();
     WifiV1ProfileApiService::Runtime makeV1ProfileRuntime();
     WifiV1DevicesApiService::Runtime makeV1DevicesRuntime();
+    BackupApiService::BackupRuntime makeBackupRuntime();
+    DebugPerfFilesService::PerfFilesRuntime makePerfFilesRuntime();
 
     // API endpoints
     void handleNotFound();

@@ -8,6 +8,7 @@
 #include "settings.h"
 #include "storage_manager.h"
 #include "modules/debug/debug_api_service.h"
+#include "modules/debug/debug_perf_files_service.h"
 #include "modules/wifi/backup_api_service.h"
 #include "modules/wifi/wifi_audio_api_service.h"
 #include "modules/wifi/wifi_client_api_service.h"
@@ -316,20 +317,21 @@ bool WiFiManager::setupWebServer() {
         BackupApiService::handleApiBackup(
             server_,
             cachedBackupSnapshot_,
+            makeBackupRuntime(),
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this,
             [](void* /*ctx*/) { return static_cast<uint32_t>(millis()); }, nullptr);
     });
     server_.on("/api/settings/backup-now", HTTP_POST, [this]() {
         BackupApiService::handleApiBackupNow(
             server_,
+            makeBackupRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     server_.on("/api/settings/restore", HTTP_POST, [this]() {
         BackupApiService::handleApiRestore(
             server_,
-            obdRuntimeModule,
-            speedSourceSelector,
+            makeBackupRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
@@ -380,18 +382,21 @@ bool WiFiManager::setupWebServer() {
     server_.on("/api/debug/perf-files", HTTP_GET, [this]() {
         DebugApiService::handleApiPerfFilesList(
             server_,
+            makePerfFilesRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     server_.on("/api/debug/perf-files/download", HTTP_GET, [this]() {
         DebugApiService::handleApiPerfFilesDownload(
             server_,
+            makePerfFilesRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     server_.on("/api/debug/perf-files/delete", HTTP_POST, [this]() {
         DebugApiService::handleApiPerfFilesDelete(
             server_,
+            makePerfFilesRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });

@@ -37,10 +37,22 @@ void resetPerfLoggerState() {
     std::memset(perfSdLogger.csvPathBuf_, 0, sizeof(perfSdLogger.csvPathBuf_));
 }
 
+DebugPerfFilesService::PerfFilesRuntime makeTestRuntime() {
+    return DebugPerfFilesService::PerfFilesRuntime{
+        [](void*) -> bool { return storageManager.isReady(); },
+        [](void*) -> bool { return storageManager.isSDCard(); },
+        [](void*) -> void* { return storageManager.getSDMutex(); },
+        [](void*) -> void* { return storageManager.getFilesystem(); },
+        [](void*) -> bool { return perfSdLogger.isEnabled(); },
+        [](void*) -> const char* { return perfSdLogger.csvPath(); },
+        nullptr,
+    };
+}
+
 void clearPerfFileCache() {
     storageManager.reset();
     WebServer server(80);
-    DebugPerfFilesService::handleApiPerfFilesList(server, [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
+    DebugPerfFilesService::handleApiPerfFilesList(server, makeTestRuntime(), [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
 }
 
 void writePerfFile(const char* name, const char* content) {
@@ -74,7 +86,7 @@ void test_perf_files_list_returns_rows_when_lock_is_free() {
     writePerfFile("20260316_020000_perf_7.csv", "ts,val\n1,2\n");
 
     WebServer server(80);
-    DebugPerfFilesService::handleApiPerfFilesList(server, [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
+    DebugPerfFilesService::handleApiPerfFilesList(server, makeTestRuntime(), [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -94,7 +106,7 @@ void test_perf_files_list_marks_file_ops_blocked_while_logging_active() {
                  sizeof(perfSdLogger.csvPathBuf_) - 1);
 
     WebServer server(80);
-    DebugPerfFilesService::handleApiPerfFilesList(server, [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
+    DebugPerfFilesService::handleApiPerfFilesList(server, makeTestRuntime(), [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"loggingActive\":true"));
@@ -113,7 +125,7 @@ void test_perf_files_list_returns_503_when_sd_trylock_is_busy() {
     StorageManager::mockSdLockState.failNextTryLockCount = 1;
 
     WebServer server(80);
-    DebugPerfFilesService::handleApiPerfFilesList(server, [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
+    DebugPerfFilesService::handleApiPerfFilesList(server, makeTestRuntime(), [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"SD busy\""));
@@ -129,7 +141,7 @@ void test_perf_file_download_returns_503_while_perf_logging_active() {
 
     WebServer server(80);
     server.setArg("name", "20260316_020000_perf_7.csv");
-    DebugPerfFilesService::handleApiPerfFilesDownload(server, [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
+    DebugPerfFilesService::handleApiPerfFilesDownload(server, makeTestRuntime(), [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "Perf logging active"));
@@ -143,7 +155,7 @@ void test_perf_file_download_streams_csv_when_idle() {
 
     WebServer server(80);
     server.setArg("name", "20260316_020000_perf_7.csv");
-    DebugPerfFilesService::handleApiPerfFilesDownload(server, [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
+    DebugPerfFilesService::handleApiPerfFilesDownload(server, makeTestRuntime(), [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_EQUAL_STRING("text/csv", server.lastContentType.c_str());
@@ -159,7 +171,7 @@ void test_perf_file_delete_returns_503_when_sd_trylock_is_busy() {
 
     WebServer server(80);
     server.setArg("name", "20260316_020000_perf_7.csv");
-    DebugPerfFilesService::handleApiPerfFilesDelete(server, [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
+    DebugPerfFilesService::handleApiPerfFilesDelete(server, makeTestRuntime(), [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"error\":\"SD busy\""));
@@ -176,7 +188,7 @@ void test_perf_file_delete_returns_503_while_perf_logging_active() {
 
     WebServer server(80);
     server.setArg("name", "20260316_020000_perf_7.csv");
-    DebugPerfFilesService::handleApiPerfFilesDelete(server, [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
+    DebugPerfFilesService::handleApiPerfFilesDelete(server, makeTestRuntime(), [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "Active perf log in use"));
@@ -196,7 +208,7 @@ void test_perf_file_delete_allows_inactive_file_while_perf_logging_active() {
 
     WebServer server(80);
     server.setArg("name", "20260316_010000_perf_6.csv");
-    DebugPerfFilesService::handleApiPerfFilesDelete(server, [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
+    DebugPerfFilesService::handleApiPerfFilesDelete(server, makeTestRuntime(), [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));
@@ -210,7 +222,7 @@ void test_perf_file_delete_removes_file_when_lock_is_free() {
 
     WebServer server(80);
     server.setArg("name", "20260316_020000_perf_7.csv");
-    DebugPerfFilesService::handleApiPerfFilesDelete(server, [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
+    DebugPerfFilesService::handleApiPerfFilesDelete(server, makeTestRuntime(), [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"success\":true"));

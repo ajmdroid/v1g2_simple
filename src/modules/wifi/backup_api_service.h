@@ -4,11 +4,6 @@
 
 #include "backup_snapshot_cache.h"
 
-// Forward declarations at global scope so function signatures inside the
-// namespace refer to the real classes, not a nested incomplete type.
-class ObdRuntimeModule;
-class SpeedSourceSelector;
-
 namespace BackupApiService {
 
 struct BackupNowRuntime {
@@ -40,23 +35,46 @@ inline void sendBackupNowResponse(WebServer& server, const BackupNowRuntime& run
                 "{\"success\":true,\"message\":\"Backup written to SD\"}");
 }
 
+/// Injected dependencies for all backup/restore handlers.
+/// Follows the C function-pointer + shared void* ctx pattern
+/// (see wifi_settings_api_service.h for the reference design).
+struct BackupRuntime {
+    // GET /api/settings/backup — sendBackup dependencies
+    uint32_t (*getBackupRevision)(void* ctx) = nullptr;
+    uint32_t (*getCatalogRevision)(void* ctx) = nullptr;
+    BackupSnapshotBuildFn buildDocument = nullptr;
+
+    // POST /api/settings/backup-now — handleBackupNow dependencies
+    bool (*isStorageReady)(void* ctx) = nullptr;
+    bool (*isSDCard)(void* ctx) = nullptr;
+    bool (*backupToSD)(void* ctx) = nullptr;
+
+    // POST /api/settings/restore — handleRestore dependencies
+    /// Apply a backup document. Returns true on success; sets profilesRestored.
+    bool (*applyBackup)(const JsonDocument& doc, bool fullRestore,
+                        int& profilesRestored, void* ctx) = nullptr;
+    /// Post-restore runtime sync (OBD, speed source, etc.).
+    void (*syncAfterRestore)(void* ctx) = nullptr;
+
+    void* ctx = nullptr;
+};
+
 /// GET /api/settings/backup handler with route-level UI activity callback.
 void handleApiBackup(WebServer& server,
                      BackupSnapshotCache& cachedSnapshot,
+                     const BackupRuntime& runtime,
                      void (*markUiActivity)(void* ctx), void* uiActivityCtx,
                      uint32_t (*millisFn)(void* ctx) = nullptr, void* millisCtx = nullptr);
 
 /// POST /api/settings/backup-now handler to force a backup to SD.
 void handleApiBackupNow(WebServer& server,
+                        const BackupRuntime& runtime,
                         bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                         void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 
 /// POST /api/settings/restore handler with route-level policy callbacks.
-/// @param obdRuntimeModule Reference to OBD runtime module for settings sync.
-/// @param speedSourceSelector Reference to speed source selector for settings sync.
 void handleApiRestore(WebServer& server,
-                      ObdRuntimeModule& obdRuntimeModule,
-                      SpeedSourceSelector& speedSourceSelector,
+                      const BackupRuntime& runtime,
                       bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                       void (*markUiActivity)(void* ctx), void* uiActivityCtx);
 

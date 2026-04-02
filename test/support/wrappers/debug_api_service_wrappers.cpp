@@ -1,4 +1,5 @@
 #include "../../../src/modules/debug/debug_api_service.h"
+#include "../../../src/modules/debug/debug_perf_files_service.h"
 
 namespace DebugApiService {
 
@@ -15,9 +16,9 @@ void handleMetricsReset(WebServer& server);
 void handleV1ScenarioLoad(WebServer& server);
 void handleV1ScenarioStart(WebServer& server);
 void handleV1ScenarioStop(WebServer& server);
-void sendPerfFilesList(WebServer& server);
-void handlePerfFileDownload(WebServer& server);
-void handlePerfFileDelete(WebServer& server);
+void sendPerfFilesList(WebServer& server, const DebugPerfFilesService::PerfFilesRuntime& runtime);
+void handlePerfFileDownload(WebServer& server, const DebugPerfFilesService::PerfFilesRuntime& runtime);
+void handlePerfFileDelete(WebServer& server, const DebugPerfFilesService::PerfFilesRuntime& runtime);
 
 void handleApiMetrics(WebServer& server) {
     sendMetrics(server);
@@ -66,33 +67,36 @@ void handleApiV1ScenarioStop(WebServer& server,
 }
 
 void handleApiPerfFilesList(WebServer& server,
+                            const DebugPerfFilesService::PerfFilesRuntime& runtime,
                             bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                             void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
         markUiActivity(uiActivityCtx);
     }
-    sendPerfFilesList(server);
+    sendPerfFilesList(server, runtime);
 }
 
 void handleApiPerfFilesDownload(WebServer& server,
+                                const DebugPerfFilesService::PerfFilesRuntime& runtime,
                                 bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                                 void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
         markUiActivity(uiActivityCtx);
     }
-    handlePerfFileDownload(server);
+    handlePerfFileDownload(server, runtime);
 }
 
 void handleApiPerfFilesDelete(WebServer& server,
+                              const DebugPerfFilesService::PerfFilesRuntime& runtime,
                               bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                               void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
         markUiActivity(uiActivityCtx);
     }
-    handlePerfFileDelete(server);
+    handlePerfFileDelete(server, runtime);
 }
 #endif
 

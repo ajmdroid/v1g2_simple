@@ -15,11 +15,13 @@ class V1BLEClient;
 class BleQueueModule;
 
 namespace DebugApiService {
-namespace deps {
 
-extern SystemEventBus* eventBus;
-extern V1BLEClient*    bleClient;
-extern BleQueueModule* bleQueue;
+struct Providers {
+    SystemEventBus* eventBus  = nullptr;
+    V1BLEClient*    bleClient = nullptr;
+    BleQueueModule* bleQueue  = nullptr;
+};
 
-}  // namespace deps
+extern Providers providers;
+
 }  // namespace DebugApiService

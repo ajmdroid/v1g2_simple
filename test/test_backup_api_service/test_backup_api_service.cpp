@@ -24,19 +24,23 @@ bool responseContains(const WebServer& server, const char* needle) {
     return std::strstr(server.lastBody.c_str(), needle) != nullptr;
 }
 
+// Dummy runtime — tests mock the inner functions so callbacks are never invoked.
+const BackupApiService::BackupRuntime dummyRuntime{};
+
 }  // namespace
 
 namespace BackupApiService {
 
 void sendBackup(WebServer& server,
                 BackupSnapshotCache& /*cachedSnapshot*/,
+                const BackupRuntime& /*runtime*/,
                 uint32_t (*/*millisFn*/)(void* ctx), void* /*millisCtx*/) {
     sendBackupCalls++;
     server.sendHeader("Content-Disposition", "attachment; filename=\"v1simple_backup.json\"");
     server.send(200, "application/json", "{\"route\":\"backup\"}");
 }
 
-void handleBackupNow(WebServer& server) {
+void handleBackupNow(WebServer& server, const BackupRuntime& /*runtime*/) {
     handleBackupNowCalls++;
     sendBackupNowResponse(server, BackupNowRuntime{
         [](void* /*ctx*/) { return backupNowStorageReady; }, nullptr,
@@ -45,7 +49,7 @@ void handleBackupNow(WebServer& server) {
     });
 }
 
-void handleRestore(WebServer& server) {
+void handleRestore(WebServer& server, const BackupRuntime& /*runtime*/) {
     handleRestoreCalls++;
     server.send(200, "application/json", "{\"route\":\"restore\"}");
 }
@@ -96,6 +100,7 @@ void test_handle_api_backup_marks_ui_activity_and_delegates() {
     BackupApiService::handleApiBackup(
         server,
         cache,
+        dummyRuntime,
         doUiActivity, &uiCtx);
 
     TEST_ASSERT_EQUAL_INT(1, uiCtx.calls);
@@ -113,6 +118,7 @@ void test_handle_api_restore_rate_limited_short_circuits() {
 
     BackupApiService::handleApiRestore(
         server,
+        dummyRuntime,
         doRateLimit, &rlCtx,
         doUiActivity, &uiCtx);
 
@@ -129,6 +135,7 @@ void test_handle_api_backup_now_rate_limited_short_circuits() {
 
     BackupApiService::handleApiBackupNow(
         server,
+        dummyRuntime,
         doRateLimit, &rlCtx,
         doUiActivity, &uiCtx);
 
@@ -145,6 +152,7 @@ void test_handle_api_backup_now_returns_503_when_storage_unavailable() {
 
     BackupApiService::handleApiBackupNow(
         server,
+        dummyRuntime,
         [](void* /*ctx*/) { return true; }, nullptr,
         doUiActivity, &uiCtx);
 
@@ -161,6 +169,7 @@ void test_handle_api_backup_now_returns_500_when_backup_write_fails() {
 
     BackupApiService::handleApiBackupNow(
         server,
+        dummyRuntime,
         [](void* /*ctx*/) { return true; }, nullptr,
         doUiActivity, &uiCtx);
 
@@ -176,6 +185,7 @@ void test_handle_api_backup_now_returns_200_when_backup_succeeds() {
 
     BackupApiService::handleApiBackupNow(
         server,
+        dummyRuntime,
         [](void* /*ctx*/) { return true; }, nullptr,
         doUiActivity, &uiCtx);
 
@@ -192,6 +202,7 @@ void test_handle_api_restore_marks_ui_activity_and_delegates_when_allowed() {
 
     BackupApiService::handleApiRestore(
         server,
+        dummyRuntime,
         doRateLimit, &rlCtx,
         doUiActivity, &uiCtx);
 

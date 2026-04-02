@@ -20,10 +20,19 @@
 #include "modules/wifi/wifi_client_api_service.h"
 #include "modules/wifi/wifi_v1_profile_api_service.h"
 #include "modules/wifi/wifi_v1_devices_api_service.h"
+#include "modules/wifi/backup_api_service.h"
+#include "modules/debug/debug_perf_files_service.h"
+#include "backup_payload_builder.h"
+#include "storage_manager.h"
+#include "perf_sd_logger.h"
+#include "settings_runtime_sync.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/obd/obd_runtime_module.h"
 #include "time_service.h"
 #include "../include/config.h"
+
+extern SpeedSourceSelector speedSourceSelector;
+extern ObdRuntimeModule    obdRuntimeModule;
 
 WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
     return WifiAutoPushApiService::Runtime{
@@ -443,5 +452,63 @@ WifiV1DevicesApiService::Runtime WiFiManager::makeV1DevicesRuntime() {
         [](const String& address, void* /*ctx*/) {
             return v1DeviceStore.removeDevice(address);
         }, nullptr,
+    };
+}
+
+BackupApiService::BackupRuntime WiFiManager::makeBackupRuntime() {
+    return BackupApiService::BackupRuntime{
+        // getBackupRevision
+        [](void* /*ctx*/) -> uint32_t { return settingsManager.backupRevision(); },
+        // getCatalogRevision
+        [](void* /*ctx*/) -> uint32_t { return v1ProfileManager.catalogRevision(); },
+        // buildDocument
+        [](JsonDocument& doc, uint32_t snapshotMs, void* /*ctx*/) {
+            BackupPayloadBuilder::buildBackupDocument(
+                doc,
+                settingsManager.get(),
+                v1ProfileManager,
+                BackupPayloadBuilder::BackupTransport::HttpDownload,
+                snapshotMs);
+        },
+        // isStorageReady
+        [](void* /*ctx*/) -> bool { return storageManager.isReady(); },
+        // isSDCard
+        [](void* /*ctx*/) -> bool { return storageManager.isSDCard(); },
+        // backupToSD
+        [](void* /*ctx*/) -> bool { return settingsManager.backupToSD(); },
+        // applyBackup
+        [](const JsonDocument& doc, bool fullRestore, int& profilesRestored, void* /*ctx*/) -> bool {
+            const SettingsBackupApplyResult result = settingsManager.applyBackupDocument(doc, fullRestore);
+            profilesRestored = result.profilesRestored;
+            return result.success;
+        },
+        // syncAfterRestore
+        [](void* /*ctx*/) {
+            const V1Settings& settings = settingsManager.get();
+            SettingsRuntimeSync::syncVehicleRuntimeInputs(settings,
+                                                          obdRuntimeModule,
+                                                          speedSourceSelector);
+        },
+        // ctx
+        nullptr,
+    };
+}
+
+DebugPerfFilesService::PerfFilesRuntime WiFiManager::makePerfFilesRuntime() {
+    return DebugPerfFilesService::PerfFilesRuntime{
+        // isStorageReady
+        [](void* /*ctx*/) -> bool { return storageManager.isReady(); },
+        // isSDCard
+        [](void* /*ctx*/) -> bool { return storageManager.isSDCard(); },
+        // getSDMutex (returns SemaphoreHandle_t as void*)
+        [](void* /*ctx*/) -> void* { return storageManager.getSDMutex(); },
+        // getFilesystem (returns fs::FS* as void*)
+        [](void* /*ctx*/) -> void* { return storageManager.getFilesystem(); },
+        // isPerfLoggingEnabled
+        [](void* /*ctx*/) -> bool { return perfSdLogger.isEnabled(); },
+        // getPerfCsvPath
+        [](void* /*ctx*/) -> const char* { return perfSdLogger.csvPath(); },
+        // ctx
+        nullptr,
     };
 }

@@ -24,17 +24,13 @@
 
 // --- Dependency storage (shared with debug_api_scenario_service.cpp via deps header) ---
 namespace DebugApiService {
-namespace deps {
-SystemEventBus* eventBus  = nullptr;
-V1BLEClient*    bleClient = nullptr;
-BleQueueModule* bleQueue  = nullptr;
-}  // namespace deps
+Providers providers;
 }  // namespace DebugApiService
 
 void DebugApiService::begin(SystemEventBus* eventBus, V1BLEClient* ble, BleQueueModule* bleQueue) {
-    deps::eventBus  = eventBus;
-    deps::bleClient = ble;
-    deps::bleQueue  = bleQueue;
+    providers.eventBus  = eventBus;
+    providers.bleClient = ble;
+    providers.bleQueue  = bleQueue;
 }
 
 #if defined(__GNUC__)
@@ -614,8 +610,8 @@ void handleApiDebugEnable(WebServer& server,
 void handleMetricsReset(WebServer& server) {
     // Clear soak-facing counters without touching runtime state/queues.
     perfMetricsReset();
-    deps::eventBus->resetStats();
-    deps::bleClient->resetProxyMetrics();
+    providers.eventBus->resetStats();
+    providers.bleClient->resetProxyMetrics();
     DebugApiService::invalidateSoakMetricsCache(gSoakMetricsCache);
     server.send(200, "application/json", "{\"success\":true,\"metricsReset\":true}");
 }
@@ -633,18 +629,18 @@ void handleProxyAdvertisingControl(WebServer& server) {
     }
     const JsonDocument* bodyPtr = hasBody ? &body : nullptr;
     const bool enable = requestBoolArg(server, bodyPtr, "enabled", true);
-    const bool ok = deps::bleClient->forceProxyAdvertising(
+    const bool ok = providers.bleClient->forceProxyAdvertising(
         enable,
         static_cast<uint8_t>(enable ? PerfProxyAdvertisingTransitionReason::StartDirect
                                     : PerfProxyAdvertisingTransitionReason::StopOther));
     WifiJson::Document doc;
     doc["success"] = ok;
     doc["requestedEnabled"] = enable;
-    doc["advertising"] = deps::bleClient->isProxyAdvertising();
-    doc["proxyEnabled"] = deps::bleClient->isProxyEnabled();
-    doc["v1Connected"] = deps::bleClient->isConnected();
-    doc["wifiPriority"] = deps::bleClient->isWifiPriority();
-    doc["proxyClientConnected"] = deps::bleClient->isProxyClientConnected();
+    doc["advertising"] = providers.bleClient->isProxyAdvertising();
+    doc["proxyEnabled"] = providers.bleClient->isProxyEnabled();
+    doc["v1Connected"] = providers.bleClient->isConnected();
+    doc["wifiPriority"] = providers.bleClient->isWifiPriority();
+    doc["proxyClientConnected"] = providers.bleClient->isProxyClientConnected();
     const uint32_t reasonCode = perfGetProxyAdvertisingLastTransitionReason();
     doc["lastTransitionReasonCode"] = reasonCode;
     doc["lastTransitionReason"] = perfProxyAdvertisingTransitionReasonName(reasonCode);
@@ -694,18 +690,21 @@ void handleApiPanic(WebServer& server) {
     sendPanic(server, soakMode);
 }
 void handleApiPerfFilesList(WebServer& server,
+                            const DebugPerfFilesService::PerfFilesRuntime& runtime,
                             bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                             void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
-    DebugPerfFilesService::handleApiPerfFilesList(server, checkRateLimit, rateLimitCtx, markUiActivity, uiActivityCtx);
+    DebugPerfFilesService::handleApiPerfFilesList(server, runtime, checkRateLimit, rateLimitCtx, markUiActivity, uiActivityCtx);
 }
 void handleApiPerfFilesDownload(WebServer& server,
+                                const DebugPerfFilesService::PerfFilesRuntime& runtime,
                                 bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                                 void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
-    DebugPerfFilesService::handleApiPerfFilesDownload(server, checkRateLimit, rateLimitCtx, markUiActivity, uiActivityCtx);
+    DebugPerfFilesService::handleApiPerfFilesDownload(server, runtime, checkRateLimit, rateLimitCtx, markUiActivity, uiActivityCtx);
 }
 void handleApiPerfFilesDelete(WebServer& server,
+                              const DebugPerfFilesService::PerfFilesRuntime& runtime,
                               bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                               void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
-    DebugPerfFilesService::handleApiPerfFilesDelete(server, checkRateLimit, rateLimitCtx, markUiActivity, uiActivityCtx);
+    DebugPerfFilesService::handleApiPerfFilesDelete(server, runtime, checkRateLimit, rateLimitCtx, markUiActivity, uiActivityCtx);
 }
 }  // namespace DebugApiService

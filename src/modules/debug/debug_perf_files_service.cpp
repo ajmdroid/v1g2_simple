@@ -6,7 +6,6 @@
 #include "../wifi/wifi_json_document.h"
 
 #include "../../storage_manager.h"
-#include "../../perf_sd_logger.h"
 #include "json_stream_response.h"
 
 namespace {
@@ -184,16 +183,18 @@ void sendPerfFileError(WebServer& server,
     sendJsonStream(server, doc, statusCode);
 }
 
-void sendPerfFilesList(WebServer& server) {
+using DebugPerfFilesService::PerfFilesRuntime;
+
+void sendPerfFilesList(WebServer& server, const PerfFilesRuntime& runtime) {
     const uint16_t limit = perfFilesLimitFromRequest(server);
     WifiJson::Document doc;
     doc["success"] = true;
-    doc["storageReady"] = storageManager.isReady();
-    doc["onSdCard"] = storageManager.isSDCard();
+    doc["storageReady"] = runtime.isStorageReady(runtime.ctx);
+    doc["onSdCard"] = runtime.isSDCard(runtime.ctx);
     doc["path"] = "/perf";
     doc["limit"] = limit;
-    const bool loggingActive = perfSdLogger.isEnabled();
-    const String activePath = String(perfSdLogger.csvPath());
+    const bool loggingActive = runtime.isPerfLoggingEnabled(runtime.ctx);
+    const String activePath = String(runtime.getPerfCsvPath(runtime.ctx));
     const String activeFileName = activePath.length() > 0 ? fileNameFromPath(activePath) : String();
     doc["loggingActive"] = loggingActive;
     doc["activeFile"] = activeFileName;
@@ -205,14 +206,15 @@ void sendPerfFilesList(WebServer& server) {
 
     JsonArray filesArr = doc["files"].to<JsonArray>();
 
-    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+    if (!runtime.isStorageReady(runtime.ctx) || !runtime.isSDCard(runtime.ctx)) {
         invalidatePerfFileCache();
         sendJsonStream(server, doc);
         return;
     }
 
     if (!isPerfFileCacheFresh()) {
-        StorageManager::SDTryLock lock(storageManager.getSDMutex());
+        StorageManager::SDTryLock lock(
+            static_cast<SemaphoreHandle_t>(runtime.getSDMutex(runtime.ctx)));
         if (!lock) {
             doc["success"] = false;
             doc["error"] = lock.isDmaStarved() ? "Low DMA heap; perf file listing deferred" : "SD busy";
@@ -220,7 +222,7 @@ void sendPerfFilesList(WebServer& server) {
             return;
         }
 
-        fs::FS* fs = storageManager.getFilesystem();
+        fs::FS* fs = static_cast<fs::FS*>(runtime.getFilesystem(runtime.ctx));
         if (!fs || !fs->exists("/perf")) {
             invalidatePerfFileCache();
             sendJsonStream(server, doc);
@@ -302,7 +304,7 @@ void sendPerfFilesList(WebServer& server) {
     sendJsonStream(server, doc);
 }
 
-void handlePerfFileDownload(WebServer& server) {
+void handlePerfFileDownload(WebServer& server, const PerfFilesRuntime& runtime) {
     if (!server.hasArg("name")) {
         sendPerfFileError(server, 400, kReasonMissingFileName, "Missing file name", "download");
         return;
@@ -320,7 +322,7 @@ void handlePerfFileDownload(WebServer& server) {
         return;
     }
 
-    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+    if (!runtime.isStorageReady(runtime.ctx) || !runtime.isSDCard(runtime.ctx)) {
         sendPerfFileError(server,
                           503,
                           kReasonSdUnavailable,
@@ -331,7 +333,7 @@ void handlePerfFileDownload(WebServer& server) {
         return;
     }
 
-    if (perfSdLogger.isEnabled()) {
+    if (runtime.isPerfLoggingEnabled(runtime.ctx)) {
         sendPerfFileError(server,
                           503,
                           kReasonPerfLoggingActive,
@@ -342,7 +344,8 @@ void handlePerfFileDownload(WebServer& server) {
         return;
     }
 
-    StorageManager::SDTryLock lock(storageManager.getSDMutex());
+    StorageManager::SDTryLock lock(
+        static_cast<SemaphoreHandle_t>(runtime.getSDMutex(runtime.ctx)));
     if (!lock) {
         if (lock.isDmaStarved()) {
             sendPerfFileError(server,
@@ -364,7 +367,7 @@ void handlePerfFileDownload(WebServer& server) {
         return;
     }
 
-    fs::FS* fs = storageManager.getFilesystem();
+    fs::FS* fs = static_cast<fs::FS*>(runtime.getFilesystem(runtime.ctx));
     if (!fs || !fs->exists(path)) {
         sendPerfFileError(server,
                           404,
@@ -430,7 +433,7 @@ void handlePerfFileDownload(WebServer& server) {
     f.close();
 }
 
-void handlePerfFileDelete(WebServer& server) {
+void handlePerfFileDelete(WebServer& server, const PerfFilesRuntime& runtime) {
     if (!server.hasArg("name")) {
         sendPerfFileError(server, 400, kReasonMissingFileName, "Missing file name", "delete");
         return;
@@ -448,7 +451,7 @@ void handlePerfFileDelete(WebServer& server) {
         return;
     }
 
-    if (!storageManager.isReady() || !storageManager.isSDCard()) {
+    if (!runtime.isStorageReady(runtime.ctx) || !runtime.isSDCard(runtime.ctx)) {
         sendPerfFileError(server,
                           503,
                           kReasonSdUnavailable,
@@ -459,8 +462,8 @@ void handlePerfFileDelete(WebServer& server) {
         return;
     }
 
-    const bool loggingActive = perfSdLogger.isEnabled();
-    const String activePath = String(perfSdLogger.csvPath());
+    const bool loggingActive = runtime.isPerfLoggingEnabled(runtime.ctx);
+    const String activePath = String(runtime.getPerfCsvPath(runtime.ctx));
     if (loggingActive && path == activePath) {
         sendPerfFileError(server,
                           503,
@@ -472,7 +475,8 @@ void handlePerfFileDelete(WebServer& server) {
         return;
     }
 
-    StorageManager::SDTryLock lock(storageManager.getSDMutex());
+    StorageManager::SDTryLock lock(
+        static_cast<SemaphoreHandle_t>(runtime.getSDMutex(runtime.ctx)));
     if (!lock) {
         if (lock.isDmaStarved()) {
             sendPerfFileError(server,
@@ -494,7 +498,7 @@ void handlePerfFileDelete(WebServer& server) {
         return;
     }
 
-    fs::FS* fs = storageManager.getFilesystem();
+    fs::FS* fs = static_cast<fs::FS*>(runtime.getFilesystem(runtime.ctx));
     if (!fs || !fs->exists(path)) {
         sendPerfFileError(server,
                           404,
@@ -526,33 +530,36 @@ void handlePerfFileDelete(WebServer& server) {
 namespace DebugPerfFilesService {
 
 void handleApiPerfFilesList(WebServer& server,
+                            const PerfFilesRuntime& runtime,
                             bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                             void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
         markUiActivity(uiActivityCtx);
     }
-    sendPerfFilesList(server);
+    sendPerfFilesList(server, runtime);
 }
 
 void handleApiPerfFilesDownload(WebServer& server,
+                                const PerfFilesRuntime& runtime,
                                 bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                                 void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
         markUiActivity(uiActivityCtx);
     }
-    handlePerfFileDownload(server);
+    handlePerfFileDownload(server, runtime);
 }
 
 void handleApiPerfFilesDelete(WebServer& server,
+                              const PerfFilesRuntime& runtime,
                               bool (*checkRateLimit)(void* ctx), void* rateLimitCtx,
                               void (*markUiActivity)(void* ctx), void* uiActivityCtx) {
     if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
     if (markUiActivity) {
         markUiActivity(uiActivityCtx);
     }
-    handlePerfFileDelete(server);
+    handlePerfFileDelete(server, runtime);
 }
 
 }  // namespace DebugPerfFilesService
