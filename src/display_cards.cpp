@@ -460,22 +460,3 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     s_cardsLastDrawnCount = cardsToDrawCount;
 #endif
 }
-
-// ============================================================================
-// Reset secondary alert cards rendering cache
-// ============================================================================
-void V1Display::resetCardsCache() {
-    for (int c = 0; c < 2; c++) {
-        s_cardsSlots[c].alert = AlertData();
-        s_cardsSlots[c].lastSeen = 0;
-        s_cardsLastDrawnPositions[c].band = BAND_NONE;
-        s_cardsLastDrawnPositions[c].frequency = 0;
-        s_cardsLastDrawnPositions[c].direction = 0;
-        s_cardsLastDrawnPositions[c].isGraced = false;
-        s_cardsLastDrawnPositions[c].wasMuted = false;
-        s_cardsLastDrawnPositions[c].bars = 0;
-    }
-    s_cardsLastDrawnCount = 0;
-    s_cardsLastPriority = AlertData();
-    s_cardsLastProfileSlot = -1;
-}

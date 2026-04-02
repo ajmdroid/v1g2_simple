@@ -377,30 +377,6 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     s_freqSerpentineLastDrawMs = nowMs;
 }
 
-// ============================================================================
-// Reset frequency rendering caches
-// ============================================================================
-void V1Display::resetFrequencyCache() {
-    memset(s_freqClassicLastText, 0, sizeof(s_freqClassicLastText));
-    s_freqClassicLastColor = 0;
-    s_freqClassicLastUsedOfr = false;
-    s_freqClassicCacheValid = false;
-    s_freqClassicLastDrawX = 0;
-    s_freqClassicLastDrawWidth = 0;
-    s_freqClassicWidthCacheNextSlot = 0;
-    s_freqClassicCachedNumericWidth = 0;
-    s_freqClassicCachedDashWidth = 0;
-    s_freqClassicCachedLaserWidth = 0;
-
-    memset(s_freqSerpentineLastText, 0, sizeof(s_freqSerpentineLastText));
-    s_freqSerpentineLastColor = 0;
-    s_freqSerpentineCacheValid = false;
-    s_freqSerpentineLastDrawMs = 0;
-    s_freqSerpentineLastDrawX = 0;
-    s_freqSerpentineLastDrawWidth = 0;
-    s_freqSerpentineWidthCacheNextSlot = 0;
-}
-
 // --- Volume zero warning (flashing red text in frequency area) ---
 
 void V1Display::drawVolumeZeroWarning() {

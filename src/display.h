@@ -73,16 +73,6 @@ public:
     // the single production display path reconnects with a clean redraw state).
     static void resetChangeTracking();
 
-    // Internal reset functions for file-scoped static caches (called by resetChangeTracking)
-    static void resetBandsCache();
-    static void resetSignalBarsCache();
-    static void resetArrowCache();
-    static void resetIndicatorsCache();
-    static void resetStatusBarCache();
-    static void resetFrequencyCache();
-    static void resetTopCounterCache();
-    static void resetCardsCache();
-
     void showBootSplash();
     void showShutdown();       // Shutdown screen with goodbye message
     void showLowBattery();     // Critical low battery warning

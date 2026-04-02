@@ -129,17 +129,6 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
 }
 
 // ============================================================================
-// Reset bands rendering cache
-// ============================================================================
-void V1Display::resetBandsCache() {
-    s_bandLastEffectiveMask = 0xFF;
-    s_bandLastMuted = false;
-    s_bandCacheValid = false;
-    s_bandLastBlinkTime = 0;
-    s_bandBlinkOn = true;
-}
-
-// ============================================================================
 // File-scoped static cache variables for drawVerticalSignalBars
 // ============================================================================
 static uint8_t s_barsLastStrength = 0xFF;
@@ -211,11 +200,3 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     s_barsCacheValid = true;
 }
 
-// ============================================================================
-// Reset signal bars rendering cache
-// ============================================================================
-void V1Display::resetSignalBarsCache() {
-    s_barsLastStrength = 0xFF;
-    s_barsLastMuted = false;
-    s_barsCacheValid = false;
-}

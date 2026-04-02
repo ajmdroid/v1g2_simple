@@ -107,13 +107,17 @@ providers.bleDrainContext = &bleQueueModule;
 
 `std::function` is **not used** for module wiring in this codebase.
 
-It was introduced in the WiFi API services and carries heap allocation
-overhead that is unacceptable on ESP32. Existing uses in the WiFi API
-services are to be migrated to direct pointer injection when those files
-are next touched.
+It was previously used in the WiFi API services but carried heap allocation
+overhead that is unacceptable on ESP32. All WiFi API services have been
+migrated to C function pointers with paired `void* ctx` (the Providers
+pattern). This migration is complete as of v4.0.0.
+
+The only remaining `std::function` instances are in test infrastructure
+(NimBLE library mock interface and one test helper struct), which is
+acceptable — test code does not run on the ESP32.
 
 ```cpp
-// DO NOT DO THIS
+// DO NOT DO THIS — legacy pattern, fully retired
 struct Runtime {
     std::function<const V1Settings&()> getSettings;
     std::function<void()> save;

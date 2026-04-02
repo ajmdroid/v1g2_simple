@@ -297,20 +297,3 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     s_arrowLastRaisedLayout = raisedLayout;
     s_arrowCacheValid = true;
 }
-
-// ============================================================================
-// Reset arrow rendering cache
-// ============================================================================
-void V1Display::resetArrowCache() {
-    s_arrowLastShowFront = false;
-    s_arrowLastShowSide = false;
-    s_arrowLastShowRear = false;
-    s_arrowLastMuted = false;
-    s_arrowLastFrontCol = 0;
-    s_arrowLastSideCol = 0;
-    s_arrowLastRearCol = 0;
-    s_arrowLastRaisedLayout = true;
-    s_arrowCacheValid = false;
-    s_arrowLastBlinkTime = 0;
-    s_arrowBlinkOn = true;
-}

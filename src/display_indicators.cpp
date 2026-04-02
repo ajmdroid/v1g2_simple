@@ -125,12 +125,3 @@ void V1Display::drawStatusText(const char* text, uint16_t color) {
     TFT_CALL(setTextSize)(2);
     GFX_drawString(tft_, text, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
 }
-
-// ============================================================================
-// Reset indicator rendering caches
-// ============================================================================
-void V1Display::resetIndicatorsCache() {
-    s_obdLastShown = false;
-    s_obdLastConnected = false;
-    s_obdLastAttention = false;
-}

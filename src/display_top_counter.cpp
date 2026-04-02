@@ -423,14 +423,3 @@ void V1Display::drawMuteIcon(bool muted) {
         FILL_RECT(leftMargin + (maxWidth - w) / 2, y, w, h, PALETTE_BG);
     }
 }
-
-// ============================================================================
-// Reset top counter rendering caches
-// ============================================================================
-void V1Display::resetTopCounterCache() {
-    s_topCounterLastSymbol = '\0';
-    s_topCounterLastMuted = false;
-    s_topCounterLastShowDot = false;
-    s_topCounterLastBogeyColor = 0;
-    s_topCounterLastMutedState = false;
-}

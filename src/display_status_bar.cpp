@@ -557,14 +557,3 @@ void V1Display::drawWiFiIndicator() {
     }
 #endif
 }
-
-// ============================================================================
-// Reset status bar rendering caches
-// ============================================================================
-void V1Display::resetStatusBarCache() {
-    s_batteryShowOnUSB = true;
-    s_batteryLastPctDrawn = -1;
-    s_batteryLastPctVisible = false;
-    s_batteryLastPctColor = 0;
-    s_batteryLastPctDrawMs = 0;
-}
