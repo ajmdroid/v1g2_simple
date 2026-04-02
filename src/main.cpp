@@ -370,6 +370,10 @@ static void configureWifiRuntimeModule() {
            bool wifiVisualActiveNow,
            bool displayPreviewRunning,
            bool bootSplashHoldActive) {
+            static bool prevWifiVisualActive = false;
+            const bool stateChanged = (wifiVisualActiveNow != prevWifiVisualActive);
+            prevWifiVisualActive = wifiVisualActiveNow;
+
             static_cast<WifiVisualSyncModule*>(ctx)->process(
                 nowMs,
                 wifiVisualActiveNow,
@@ -382,6 +386,14 @@ static void configureWifiRuntimeModule() {
                     display.flushRegion(0, SCREEN_HEIGHT - leftColHeight, leftColWidth, leftColHeight);
                 },
                 nullptr);
+
+            // Force full DISPLAY_FLUSH on next pipeline run when WiFi icon
+            // visibility transitions.  The small flushRegion above handles
+            // periodic color refreshes, but the icon's initial appearance
+            // requires a full flush to reliably reach the AXS15231B panel.
+            if (stateChanged) {
+                display.forceNextRedraw();
+            }
         };
     wifiRuntimeProviders.wifiVisualSyncContext = &wifiVisualSyncModule;
     wifiRuntimeModule.begin(wifiRuntimeProviders);
