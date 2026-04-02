@@ -25,6 +25,9 @@ HEADER_COLUMNS = [
 ]
 SCHEMA13_HEADER_COLUMNS = HEADER_COLUMNS[:-8]
 LEGACY_HEADER_COLUMNS = HEADER_COLUMNS[:-12]
+# Extended columns include obdSpeedMph_x10 for drive-like detection tests.
+# The firmware doesn't emit this column yet, but the importer supports it.
+DRIVE_HEADER_COLUMNS = HEADER_COLUMNS + ["obdSpeedMph_x10"]
 
 
 def assert_true(condition: bool, message: str) -> None:
@@ -105,6 +108,8 @@ def make_session(
             row["rx"] = 100 + 50 * index
             row["parseOK"] = 100 + 50 * index
             row["displayUpdates"] = 8 * index
+        if drive_like and "obdSpeedMph_x10" in header_columns:
+            row["obdSpeedMph_x10"] = 350 + index * 10
         rows.append(row)
     if end_overrides:
         rows[-1].update(end_overrides)
@@ -256,7 +261,7 @@ def test_segment_selection_and_listing(tmpdir: Path) -> None:
         seq=1,
         token="NODRIVE1",
         schema=13,
-        header_columns=HEADER_COLUMNS,
+        header_columns=DRIVE_HEADER_COLUMNS,
         duration_ms=120000,
         connected=True,
         drive_like=False,
@@ -265,12 +270,12 @@ def test_segment_selection_and_listing(tmpdir: Path) -> None:
         seq=2,
         token="DRIVE002",
         schema=13,
-        header_columns=HEADER_COLUMNS,
+        header_columns=DRIVE_HEADER_COLUMNS,
         duration_ms=60000,
         connected=True,
         drive_like=True,
     )
-    write_capture(csv_path, header_columns=HEADER_COLUMNS, sessions=[session_1, session_2])
+    write_capture(csv_path, header_columns=DRIVE_HEADER_COLUMNS, sessions=[session_1, session_2])
 
     listed = subprocess.run(
         [
@@ -612,7 +617,7 @@ def test_leading_rows_form_implicit_segment(tmpdir: Path) -> None:
         drive_like=False,
     )
     write_capture(csv_path, header_columns=HEADER_COLUMNS, sessions=[later_session], leading_rows=[leading_row])
-    result = run_import(csv_path, out_dir)
+    result = run_import(csv_path, out_dir, "--segment", "1")
     assert_true(result.returncode != 3, f"leading-row import failed: {result.stderr}")
     manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
     assert_true(manifest["selected_segment"]["session_index"] == 1, f"leading rows should become segment 1: {manifest}")

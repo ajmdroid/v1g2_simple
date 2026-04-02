@@ -412,6 +412,8 @@ HEADER_COLUMNS = [
     if line.strip() and not line.startswith("#")
 ]
 LEGACY_HEADER_COLUMNS = HEADER_COLUMNS[:-4]
+# Extended columns include obdSpeedMph_x10 for drive-like detection tests.
+DRIVE_HEADER_COLUMNS = HEADER_COLUMNS + ["obdSpeedMph_x10"]
 
 
 def _base_csv_row(millis: int, *, header_columns: list[str], connected: bool = True, drive_like: bool = False) -> dict[str, int]:
@@ -449,6 +451,8 @@ def _base_csv_row(millis: int, *, header_columns: list[str], connected: bool = T
     if connected:
         row["rx"] = 120
         row["parseOK"] = 120
+    if drive_like and "obdSpeedMph_x10" in header_columns:
+        row["obdSpeedMph_x10"] = 350
     return row
 
 
@@ -1372,20 +1376,21 @@ def main() -> int:
         session_one_rows = []
         for i in range(5):
             frac = i / 4
-            row = _base_csv_row(int(frac * 120000), header_columns=HEADER_COLUMNS, connected=True, drive_like=False)
+            row = _base_csv_row(int(frac * 120000), header_columns=DRIVE_HEADER_COLUMNS, connected=True, drive_like=False)
             row["rx"] = 200 + i * 40
             row["parseOK"] = 200 + i * 40
             session_one_rows.append(row)
         session_two_rows = []
         for i in range(5):
             frac = i / 4
-            row = _base_csv_row(int(frac * 60000), header_columns=HEADER_COLUMNS, connected=True, drive_like=True)
+            row = _base_csv_row(int(frac * 60000), header_columns=DRIVE_HEADER_COLUMNS, connected=True, drive_like=True)
             row["rx"] = 50 + i * 30
             row["parseOK"] = 50 + i * 30
             row["displayUpdates"] = i * 5
             session_two_rows.append(row)
         write_perf_csv(
             multi_csv,
+            header_columns=DRIVE_HEADER_COLUMNS,
             sessions=[
                 {
                     "meta": "#session_start,seq=1,bootId=1,uptime_ms=120000,token=NODRIVE1,schema=13",
