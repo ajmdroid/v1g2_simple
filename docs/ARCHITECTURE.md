@@ -152,7 +152,10 @@ settingsManager.get().enableWifi;
 **Required:**
 - All dependencies enter a module through `begin()` or `Providers`.
 - `main_globals.h` is not included by any file under `src/modules/`.
-- The debug API services are a known violation and are flagged for cleanup.
+- The debug API services (including `debug_perf_files_service`) are a known violation
+  and are flagged for cleanup.
+- `backup_api_service` is a known violation — it accesses `settingsManager`,
+  `storageManager`, and `profileManager` directly. Flagged for cleanup.
 
 ---
 

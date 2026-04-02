@@ -448,7 +448,7 @@ Get current audio and voice-alert configuration.
 **Response:** JSON with `voiceAlertMode`, `voiceDirectionEnabled`, `announceBogeyCount`,
 `muteVoiceIfVolZero`, `voiceVolume`, secondary-alert toggles, volume-fade settings,
 and speed-mute settings (`speedMuteEnabled`, `speedMuteThresholdMph`, `speedMuteHysteresisMph`,
-`speedMuteVolume`, `speedMuteRequireObd`).
+`speedMuteVolume`).
 
 ### POST /api/audio/settings
 
@@ -459,7 +459,7 @@ Save audio and voice-alert configuration.
 `announceSecondaryAlerts`, `secondaryLaser`, `secondaryKa`, `secondaryK`, `secondaryX`,
 `alertVolumeFadeEnabled`, `alertVolumeFadeDelaySec`, `alertVolumeFadeVolume`,
 `speedMuteEnabled`, `speedMuteThresholdMph`, `speedMuteHysteresisMph`,
-`speedMuteVolume`, and `speedMuteRequireObd`.
+and `speedMuteVolume`.
 
 ---
 
@@ -471,7 +471,7 @@ Get current display color configuration.
 
 **Response:** JSON with RGB565 integer color values, display visibility toggles, `brightness`, and `displayStyle`.
 
-Key color fields: `bogey`, `freq`, `arrowFront`, `arrowSide`, `arrowRear`, `bandL`, `bandKa`, `bandK`, `bandX`, `bandPhoto`, `wifiIcon`, `wifiConnected`, `bleConnected`, `bleDisconnected`, `bar1`..`bar6`, `muted`, `persisted`, `volumeMain`, `volumeMute`, `rssiV1`, `rssiProxy`.
+Key color fields: `bogey`, `freq`, `arrowFront`, `arrowSide`, `arrowRear`, `bandL`, `bandKa`, `bandK`, `bandX`, `bandPhoto`, `wifiIcon`, `wifiConnected`, `bleConnected`, `bleDisconnected`, `bar1`..`bar6`, `muted`, `persisted`, `volumeMain`, `volumeMute`, `rssiV1`, `rssiProxy`, `obd`.
 
 Also includes boolean display toggles plus `brightness` and `displayStyle`.
 
@@ -706,6 +706,39 @@ Enable or disable WiFi client mode.
 **Notes:**
 - When enabling: If saved credentials exist, automatically attempts to connect
 - When disabling: Disconnects from network and switches to AP-only mode
+
+---
+
+## Time Sync
+
+### POST /api/time/sync
+
+Set the device clock from a client-supplied epoch timestamp. Used by the companion
+web UI to push the browser's current time to the device over the AP link.
+
+**Request (JSON):**
+```json
+{
+  "epochMs": 1712000000000,
+  "tzOffsetMinutes": -420
+}
+```
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `epochMs` | integer | yes | Unix epoch in milliseconds. Must be in the range ~2023-11 to 2100-01-01. |
+| `tzOffsetMinutes` | integer | no | UTC offset in minutes (e.g. −420 for PDT). Clamped to ±840. Defaults to 0 if omitted. |
+
+**Response:**
+```json
+{
+  "ok": true,
+  "source": 1,
+  "epochMs": 1712000000000
+}
+```
+
+**Error responses:** 400 with `{"ok": false, "error": "..."}` for missing body, invalid JSON, missing/invalid `epochMs`, or out-of-range values.
 
 ---
 
