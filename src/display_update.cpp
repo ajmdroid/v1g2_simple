@@ -193,6 +193,16 @@ void V1Display::updateStatusStripIncremental(const DisplayState& state,
         flushLeftStrip = true;
     }
 
+    // Refresh status icons on RSSI cadence so externally-drawn changes
+    // (WiFiVisualSync, connection_state_module, battery) reach the panel.
+    // These draw to the canvas but rely on the pipeline for strip flushes.
+    if (rssiNeedsUpdate) {
+        drawWiFiIndicator();
+        drawBatteryIndicator();
+        drawBLEProxyIndicator();
+        flushLeftStrip = true;
+    }
+
     if (bogeyCounterChanged) {
         lastBogeyByte = state.bogeyCounterByte;
         drawTopCounter(topChar, topMuted, topDot);
