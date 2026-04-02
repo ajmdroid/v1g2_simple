@@ -156,10 +156,10 @@ settingsManager.get().enableWifi;
 **Required:**
 - All dependencies enter a module through `begin()` or `Providers`.
 - `main_globals.h` is not included by any file under `src/modules/`.
-- The debug API services (including `debug_perf_files_service`) are a known violation
-  and are flagged for cleanup.
-- `backup_api_service` is a known violation — it accesses `settingsManager`,
-  `storageManager`, and `profileManager` directly. Flagged for cleanup.
+- As of v4.0.0, all modules under `src/modules/` comply with DI requirements.
+  `backup_api_service`, `debug_perf_files_service`, and `debug_api_service`
+  were migrated to Runtime/Providers structs with C function pointers during
+  the v4 cleanup.
 
 ---
 
@@ -249,3 +249,156 @@ void MyModule::process(uint32_t nowMs) {
 - A module whose `process()` allocates heap memory.
 - A module that calls into another module without that module being
   injected through `begin()`.
+
+---
+
+## Display Cache Architecture — Two-Layer Invalidation
+
+The display rendering pipeline uses a two-layer cache system to minimize
+SPI redraws on the ESP32-S3. Both layers must agree for a redraw to be
+skipped. This section documents how they interact and why both exist.
+
+### Layer 1 — DisplayDirtyFlags (Coarse Invalidation Signals)
+
+Defined in `include/display_dirty_flags.h`, this is a flat struct of booleans:
+
+```cpp
+struct DisplayDirtyFlags {
+    bool multiAlert    = false;
+    bool cards         = false;
+    bool frequency     = false;
+    bool battery       = false;
+    bool bands         = false;
+    bool signalBars    = false;
+    bool arrow         = false;
+    bool muteIcon      = false;
+    bool topCounter    = false;
+    bool obdIndicator  = false;
+    bool resetTracking = false;   // Full cache reset signal
+};
+```
+
+A global `dirty` instance lives in `display.cpp`. Any subsystem can set a
+flag to force a redraw of the corresponding element on the next frame.
+`setAll()` marks every primary element dirty (used after screen clear).
+
+Flags are **conservative** — they over-invalidate, never under-invalidate.
+Setting `dirty.bands = true` forces a band redraw even if the rendered
+state hasn't actually changed. This is safe (wastes one frame of SPI
+bandwidth) but never causes stale output.
+
+### Layer 2 — File-Scoped Static Caches (Fine-Grained Change Detection)
+
+Each `display_*.cpp` file maintains `static` variables that record the
+exact values drawn on the last frame. These enable incremental updates:
+a function can skip the redraw entirely if the dirty flag is clear **and**
+the current values match the cached last-drawn values.
+
+Representative examples:
+
+| File | Key statics | What they track |
+|---|---|---|
+| `display_bands.cpp` | `s_bandLastEffectiveMask`, `s_bandCacheValid` | Which band indicators were drawn |
+| `display_arrow.cpp` | `s_arrowLastShowFront/Side/Rear`, `s_arrowCacheValid` | Arrow direction state |
+| `display_frequency.cpp` | `s_freqClassicLastText`, `s_freqClassicCacheValid` | Frequency text and color |
+| `display_status_bar.cpp` | `s_batteryLastPctDrawn`, `s_batteryLastPctColor` | Battery percentage and color |
+| `display_top_counter.cpp` | `s_topCounterLastSymbol`, `s_topCounterLastMuted` | Bogey counter symbol |
+| `display_cards.cpp` | `s_cardsLastDrawnPositions[]`, `s_cardsLastDrawnCount` | Secondary alert card layout |
+| `display_indicators.cpp` | `s_obdLastShown`, `s_obdLastConnected` | OBD indicator visibility |
+
+### How The Two Layers Interact
+
+When a dirty flag fires, the corresponding render function invalidates
+its local cache and redraws unconditionally:
+
+```cpp
+// display_bands.cpp — representative pattern
+if (dirty.bands) {
+    s_bandCacheValid = false;    // Invalidate local cache
+    dirty.bands = false;         // Consume the flag
+}
+
+// Later in the same function:
+if (s_bandCacheValid && mask == s_bandLastEffectiveMask && ...) {
+    return;  // Skip — nothing changed since last draw
+}
+
+// ... perform the actual draw ...
+s_bandCacheValid = true;
+s_bandLastEffectiveMask = mask;
+```
+
+The dirty flag is always consumed (set to `false`) in the same function
+that reads it. This prevents permanent redraw loops. The local cache is
+reset to force at least one full redraw, after which incremental
+change-detection takes over again.
+
+### DisplayRenderCache — Cross-Element State
+
+`display_update.cpp` contains a `DisplayRenderCache` struct (`s_displayRenderCache`)
+that tracks state spanning multiple elements across resting and live alert
+modes. It records the last-rendered priority alert, bogey byte, arrow state,
+volume levels, and mode-specific first-run flags.
+
+Two reset methods handle mode transitions:
+
+- `resetRestingTracking()` — clears resting-mode caches (band debounce,
+  signal bars, arrows, volume, bogey counter)
+- `resetLiveTracking()` — clears live-mode caches (priority alert, arrows,
+  bars, bands, volume, multi-alert state)
+
+These are triggered by `dirty.resetTracking`, which is set by
+`V1Display::resetChangeTracking()` on BLE disconnect or forced redraw.
+
+### Why Both Layers Exist
+
+The dirty flags alone are insufficient because they don't carry enough
+information. Knowing that `dirty.bands = true` tells you *something*
+changed, but not *what*. The render function still needs to compare the
+current state against what was last drawn to produce the correct output.
+
+The file-scoped statics alone are insufficient because some invalidation
+comes from *outside* the data that the render function tracks. A screen
+mode change, BLE reconnect, or settings update may require a full redraw
+even though the alert data hasn't changed. The dirty flag forces the
+render function past its "nothing changed" short-circuit.
+
+Together they achieve efficient incremental rendering:
+
+1. Dirty flag fires → local cache invalidated → full element redraw
+2. Dirty flag clear + values unchanged → skip (zero SPI cost)
+3. Dirty flag clear + values changed → incremental update (minimal SPI cost)
+
+### Dirty Region Optimization
+
+`display_frequency.cpp` additionally implements partial dirty region
+tracking (`frequencyDirtyX_`, `frequencyDirtyY_`, etc.) to push only
+changed pixels via `flushRegion()`. This minimizes SPI bandwidth for
+the largest display element (the frequency readout).
+
+### Contract: Flag Consumption Rule
+
+**Every function that reads a dirty flag must clear it before returning.**
+If a flag is consumed but not cleared, one of two failure modes results:
+
+- **Permanent redraw loop**: the flag stays `true` forever, forcing a
+  full redraw every frame (wastes SPI bandwidth, may cause visible flicker)
+- **Stale cache**: if the flag is cleared without invalidating the local
+  cache, changes may never render
+
+The `scripts/check_dirty_flag_discipline.sh` contract test enforces this
+rule at CI time.
+
+### Future: Cache Unification
+
+The two-layer system works correctly but is redundant. A future refactor
+could unify them:
+
+1. Move all `s_*` statics into a `DisplayElementCache` struct
+2. Have each dirty flag setter zero the corresponding cache section
+3. Remove the per-function `if (dirty.x) { s_xCacheValid = false; }` pattern
+4. Replace with centralized invalidation in `DisplayDirtyFlags::setAll()`
+
+This is a significant refactor touching every `display_*.cpp` file and
+should be done as a dedicated effort with comprehensive test coverage,
+not during a cleanup pass.

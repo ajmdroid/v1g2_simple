@@ -173,7 +173,7 @@ the mitigation site documenting that this was a tracked defect and is resolved.
 **Goal**: Bring the three global-accessing modules into architectural compliance.
 Each gets its own commit so regressions are bisectable.
 
-### 3.1 Inject Dependencies into backup_api_service
+### 3.1 Inject Dependencies into backup_api_service ✅ COMPLETE
 
 **Current state**: Accesses `settingsManager` (4 calls), `storageManager` (3 calls),
 and `v1ProfileManager` (via BackupPayloadBuilder) directly from inside
@@ -201,7 +201,14 @@ and `v1ProfileManager` (via BackupPayloadBuilder) directly from inside
 than current approach of globally overriding functions)
 **Risk**: Medium — changes API service wiring, but pattern is proven
 
-### 3.2 Inject Dependencies into debug_perf_files_service
+**Resolution**: Implemented as designed. `BackupRuntime` struct uses shared `void* ctx`
+with 8 function pointers (`getBackupRevision`, `getCatalogRevision`, `buildDocument`,
+`isStorageReady`, `isSDCard`, `backupToSD`, `applyBackup`, `syncAfterRestore`).
+Removed `ObdRuntimeModule&` and `SpeedSourceSelector&` from `handleApiRestore` signature —
+hidden behind `syncAfterRestore` callback. Removed 6 global includes from the module.
+All 7 existing tests pass, all contracts green.
+
+### 3.2 Inject Dependencies into debug_perf_files_service ✅ COMPLETE
 
 **Current state**: 12+ direct accesses to `storageManager` and 4+ to `perfSdLogger`
 scattered across `src/modules/debug/debug_perf_files_service.cpp`.
@@ -221,7 +228,14 @@ the file touches more storage surface area:
 this is an opportunity to add coverage)
 **Risk**: Medium — more touch points than backup, but non-critical path (debug only)
 
-### 3.3 Clean Up debug_api_service
+**Resolution**: Implemented `PerfFilesRuntime` struct with 6 callbacks using `void*`
+for opaque platform handles (SemaphoreHandle_t, fs::FS*) to keep the header lightweight.
+Threaded through DebugApiService forwarding layer. Removed `perf_sd_logger.h` include
+from module; retained `storage_manager.h` for `SDTryLock` type only (no global access).
+Added `makePerfFilesRuntime()` factory in wifi_runtimes.cpp. Updated 9 existing tests
+to pass runtime — same pre-existing filesystem failures, zero regressions.
+
+### 3.3 Clean Up debug_api_service ✅ COMPLETE
 
 **Current state**: Uses a `DebugApiService::deps` namespace with extern pointers
 that are assigned via `begin()`. This is architecturally halfway — it has injection
@@ -236,9 +250,14 @@ already exists.
 **Tests**: Existing suite
 **Risk**: Low — the injection pattern is already in place, just needs a container change
 
+**Resolution**: Replaced `deps` namespace with `Providers` struct in
+`debug_api_service_deps.inc`. All `deps::xxx` → `providers.xxx` across both
+debug_api_service.cpp and debug_api_scenario_service.cpp. Updated test wrapper
+and test file for PerfFilesRuntime signature changes from 3.2. All 16 tests pass.
+
 ---
 
-## Phase 4 — Display Cache Architecture Review (Day 7–8, Planning Only)
+## Phase 4 — Display Cache Architecture Review (Day 7–8, Planning Only) ✅ COMPLETE
 
 **Goal**: Don't touch the display cache layer yet. Instead, document the current
 two-layer architecture clearly so future work is informed.
@@ -277,6 +296,18 @@ pass where the goal is closing known gaps safely.
 **Files**: `docs/ARCHITECTURE.md` (new section)
 **Tests**: New contract script in `scripts/`
 **Risk**: Zero — documentation and safety net only
+
+**Resolution**: All three deliverables complete:
+1. New "Display Cache Architecture — Two-Layer Invalidation" section added to
+   `docs/ARCHITECTURE.md` documenting both layers, their interaction, the
+   DisplayRenderCache, flag consumption rule, and future unification path.
+2. `scripts/check_dirty_flag_discipline.py` contract test added and wired into
+   `scripts/ci-test.sh`. Checks that every `display_*.cpp` file that reads a
+   dirty flag also clears it. Handles orchestration files (file-scope check),
+   mode flags (multiAlert exempt), and method calls (setAll exempt).
+3. Tracking item filed as `docs/DISPLAY_CACHE_UNIFICATION.md` with problem
+   statement, proposed solution, scope, and timing guidance. Also documented
+   the unification path inline in the ARCHITECTURE.md section.
 
 ---
 
