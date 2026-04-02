@@ -144,35 +144,35 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["displayStyle"].is<int>()) settings_.displayStyle = normalizeDisplayStyle(doc["displayStyle"].as<int>());
 
     // ============================================================================
-    // All Colors
+    // All Colors (sanitized identically to the NVS-load path in settings.cpp)
     // ============================================================================
-    if (doc["colorBogey"].is<int>()) settings_.colorBogey = doc["colorBogey"];
-    if (doc["colorFrequency"].is<int>()) settings_.colorFrequency = doc["colorFrequency"];
-    if (doc["colorArrowFront"].is<int>()) settings_.colorArrowFront = doc["colorArrowFront"];
-    if (doc["colorArrowSide"].is<int>()) settings_.colorArrowSide = doc["colorArrowSide"];
-    if (doc["colorArrowRear"].is<int>()) settings_.colorArrowRear = doc["colorArrowRear"];
-    if (doc["colorBandL"].is<int>()) settings_.colorBandL = doc["colorBandL"];
-    if (doc["colorBandKa"].is<int>()) settings_.colorBandKa = doc["colorBandKa"];
-    if (doc["colorBandK"].is<int>()) settings_.colorBandK = doc["colorBandK"];
-    if (doc["colorBandX"].is<int>()) settings_.colorBandX = doc["colorBandX"];
-    if (doc["colorBandPhoto"].is<int>()) settings_.colorBandPhoto = doc["colorBandPhoto"];
-    if (doc["colorWiFiIcon"].is<int>()) settings_.colorWiFiIcon = doc["colorWiFiIcon"];
-    if (doc["colorWiFiConnected"].is<int>()) settings_.colorWiFiConnected = doc["colorWiFiConnected"];
-    if (doc["colorBleConnected"].is<int>()) settings_.colorBleConnected = doc["colorBleConnected"];
-    if (doc["colorBleDisconnected"].is<int>()) settings_.colorBleDisconnected = doc["colorBleDisconnected"];
-    if (doc["colorBar1"].is<int>()) settings_.colorBar1 = doc["colorBar1"];
-    if (doc["colorBar2"].is<int>()) settings_.colorBar2 = doc["colorBar2"];
-    if (doc["colorBar3"].is<int>()) settings_.colorBar3 = doc["colorBar3"];
-    if (doc["colorBar4"].is<int>()) settings_.colorBar4 = doc["colorBar4"];
-    if (doc["colorBar5"].is<int>()) settings_.colorBar5 = doc["colorBar5"];
-    if (doc["colorBar6"].is<int>()) settings_.colorBar6 = doc["colorBar6"];
-    if (doc["colorMuted"].is<int>()) settings_.colorMuted = doc["colorMuted"];
-    if (doc["colorPersisted"].is<int>()) settings_.colorPersisted = doc["colorPersisted"];
-    if (doc["colorVolumeMain"].is<int>()) settings_.colorVolumeMain = doc["colorVolumeMain"];
-    if (doc["colorVolumeMute"].is<int>()) settings_.colorVolumeMute = doc["colorVolumeMute"];
-    if (doc["colorRssiV1"].is<int>()) settings_.colorRssiV1 = doc["colorRssiV1"];
-    if (doc["colorRssiProxy"].is<int>()) settings_.colorRssiProxy = doc["colorRssiProxy"];
-    if (doc["colorObd"].is<int>()) settings_.colorObd = doc["colorObd"];
+    if (doc["colorBogey"].is<int>()) settings_.colorBogey = sanitizeRgb565Color(doc["colorBogey"], 0xF800);
+    if (doc["colorFrequency"].is<int>()) settings_.colorFrequency = sanitizeRgb565Color(doc["colorFrequency"], 0xF800);
+    if (doc["colorArrowFront"].is<int>()) settings_.colorArrowFront = sanitizeRgb565Color(doc["colorArrowFront"], 0xF800);
+    if (doc["colorArrowSide"].is<int>()) settings_.colorArrowSide = sanitizeRgb565Color(doc["colorArrowSide"], 0xF800);
+    if (doc["colorArrowRear"].is<int>()) settings_.colorArrowRear = sanitizeRgb565Color(doc["colorArrowRear"], 0xF800);
+    if (doc["colorBandL"].is<int>()) settings_.colorBandL = sanitizeRgb565Color(doc["colorBandL"], 0x001F);
+    if (doc["colorBandKa"].is<int>()) settings_.colorBandKa = sanitizeRgb565Color(doc["colorBandKa"], 0xF800);
+    if (doc["colorBandK"].is<int>()) settings_.colorBandK = sanitizeRgb565Color(doc["colorBandK"], 0x001F);
+    if (doc["colorBandX"].is<int>()) settings_.colorBandX = sanitizeRgb565Color(doc["colorBandX"], 0x07E0);
+    if (doc["colorBandPhoto"].is<int>()) settings_.colorBandPhoto = sanitizeRgb565Color(doc["colorBandPhoto"], 0x780F);
+    if (doc["colorWiFiIcon"].is<int>()) settings_.colorWiFiIcon = sanitizeRgb565Color(doc["colorWiFiIcon"], 0x07FF);
+    if (doc["colorWiFiConnected"].is<int>()) settings_.colorWiFiConnected = sanitizeRgb565Color(doc["colorWiFiConnected"], 0x07E0);
+    if (doc["colorBleConnected"].is<int>()) settings_.colorBleConnected = sanitizeRgb565Color(doc["colorBleConnected"], 0x07E0);
+    if (doc["colorBleDisconnected"].is<int>()) settings_.colorBleDisconnected = sanitizeRgb565Color(doc["colorBleDisconnected"], 0x001F);
+    if (doc["colorBar1"].is<int>()) settings_.colorBar1 = sanitizeRgb565Color(doc["colorBar1"], 0x07E0);
+    if (doc["colorBar2"].is<int>()) settings_.colorBar2 = sanitizeRgb565Color(doc["colorBar2"], 0x07E0);
+    if (doc["colorBar3"].is<int>()) settings_.colorBar3 = sanitizeRgb565Color(doc["colorBar3"], 0xFFE0);
+    if (doc["colorBar4"].is<int>()) settings_.colorBar4 = sanitizeRgb565Color(doc["colorBar4"], 0xFFE0);
+    if (doc["colorBar5"].is<int>()) settings_.colorBar5 = sanitizeRgb565Color(doc["colorBar5"], 0xF800);
+    if (doc["colorBar6"].is<int>()) settings_.colorBar6 = sanitizeRgb565Color(doc["colorBar6"], 0xF800);
+    if (doc["colorMuted"].is<int>()) settings_.colorMuted = sanitizeRgb565Color(doc["colorMuted"], 0x3186);
+    if (doc["colorPersisted"].is<int>()) settings_.colorPersisted = sanitizeRgb565Color(doc["colorPersisted"], 0x18C3);
+    if (doc["colorVolumeMain"].is<int>()) settings_.colorVolumeMain = sanitizeRgb565Color(doc["colorVolumeMain"], 0xF800);
+    if (doc["colorVolumeMute"].is<int>()) settings_.colorVolumeMute = sanitizeRgb565Color(doc["colorVolumeMute"], 0x7BEF);
+    if (doc["colorRssiV1"].is<int>()) settings_.colorRssiV1 = sanitizeRgb565Color(doc["colorRssiV1"], 0x07E0);
+    if (doc["colorRssiProxy"].is<int>()) settings_.colorRssiProxy = sanitizeRgb565Color(doc["colorRssiProxy"], 0x001F);
+    if (doc["colorObd"].is<int>()) settings_.colorObd = sanitizeRgb565Color(doc["colorObd"], 0x001F);
     restoreBool("freqUseBandColor", settings_.freqUseBandColor);
 
     // ============================================================================

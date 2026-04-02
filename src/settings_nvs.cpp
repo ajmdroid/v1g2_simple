@@ -521,7 +521,11 @@ String SettingsManager::getWifiClientPassword() {
 
     if (storedPwd.length() > 0) {
         // Password is stored as obfuscated hex payload (legacy raw XOR still supported).
-        return decodeObfuscatedFromStorage(storedPwd);
+        String decoded = decodeObfuscatedFromStorage(storedPwd);
+        if (decoded.length() == 0) {
+            Serial.println("[Settings] WARN: WiFi password decode returned empty for non-empty stored value — possible NVS corruption");
+        }
+        return decoded;
     }
 
     // Fallback: recover password from SD-backed secret store if available.
