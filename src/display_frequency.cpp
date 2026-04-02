@@ -82,8 +82,14 @@ void V1Display::markFrequencyDirtyRegion(int16_t x, int16_t y, int16_t w, int16_
     } else {
         const int16_t x1 = min(frequencyDirtyX_, x);
         const int16_t y1 = min(frequencyDirtyY_, y);
-        const int16_t x2 = max(static_cast<int16_t>(static_cast<int32_t>(frequencyDirtyX_) + static_cast<int32_t>(frequencyDirtyW_)), static_cast<int16_t>(static_cast<int32_t>(x) + static_cast<int32_t>(w)));
-        const int16_t y2 = max(static_cast<int16_t>(static_cast<int32_t>(frequencyDirtyY_) + static_cast<int32_t>(frequencyDirtyH_)), static_cast<int16_t>(static_cast<int32_t>(y) + static_cast<int32_t>(h)));
+        // Compute union right/bottom edges in int32_t to prevent int16_t overflow,
+        // then clamp to screen bounds before narrowing back to int16_t.
+        const int32_t x2_wide = max(static_cast<int32_t>(frequencyDirtyX_) + static_cast<int32_t>(frequencyDirtyW_),
+                                     static_cast<int32_t>(x) + static_cast<int32_t>(w));
+        const int32_t y2_wide = max(static_cast<int32_t>(frequencyDirtyY_) + static_cast<int32_t>(frequencyDirtyH_),
+                                     static_cast<int32_t>(y) + static_cast<int32_t>(h));
+        const int16_t x2 = static_cast<int16_t>(min(x2_wide, static_cast<int32_t>(SCREEN_WIDTH)));
+        const int16_t y2 = static_cast<int16_t>(min(y2_wide, static_cast<int32_t>(SCREEN_HEIGHT)));
         frequencyDirtyX_ = x1;
         frequencyDirtyY_ = y1;
         frequencyDirtyW_ = x2 - x1;
