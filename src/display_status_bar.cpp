@@ -502,7 +502,6 @@ void V1Display::drawWiFiIndicator() {
 
     const bool wifiServiceActive = wifiManager.isWifiServiceActive();
     const bool staConnected = wifiManager.isConnected();
-    const bool apActive = wifiManager.isSetupModeActive();
     const bool showWifiIcon = wifiServiceActive || staConnected;
 
     if (!showWifiIcon) {
@@ -511,18 +510,15 @@ void V1Display::drawWiFiIndicator() {
         return;
     }
 
-    // WiFi icon color: gave-up (red) > operational (green) > starting (dim)
-    // Green when WiFi is operational: STA connected OR AP fully active.
-    // In AP mode the AP being healthy IS the connected state — waiting for
-    // individual client joins to turn green is not useful on a car display.
+    // WiFi icon color: gave-up (red) > operational (green).
+    // If the icon is visible at all, WiFi is running — show green.
+    // Red only when STA reconnect has exhausted all retries.
     const bool gaveUp = wifiManager.isReconnectGaveUp();
     uint16_t wifiColor;
     if (gaveUp && !staConnected) {
         wifiColor = 0xF800;  // Bright red — STA gave up after max reconnect failures
-    } else if (staConnected || apActive) {
-        wifiColor = dimColor(s.colorWiFiConnected, 85);
     } else {
-        wifiColor = dimColor(s.colorWiFiIcon, 85);
+        wifiColor = dimColor(s.colorWiFiConnected, 85);
     }
 
     // Clear area first
