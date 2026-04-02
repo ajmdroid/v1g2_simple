@@ -2,6 +2,7 @@
 
 #include "voice_module.h"
 #include "settings.h"
+#include "../perf/debug_macros.h"
 #ifndef UNIT_TEST
 #include "perf_metrics.h"
 #define VOICE_PERF_INC(counter) PERF_INC(counter)
@@ -27,7 +28,7 @@ void VoiceModule::begin(SettingsManager* sett, V1BLEClient* ble) {
     settings_ = sett;
     bleClient_ = ble;
 
-    Serial.println("[VoiceModule] Initialized");
+    DBG_PRINTLN("[VoiceModule] Initialized");
 }
 
 // ============================================================================

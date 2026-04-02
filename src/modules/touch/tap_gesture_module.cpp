@@ -1,5 +1,6 @@
 #include "tap_gesture_module.h"
 #include "../quiet/quiet_coordinator_module.h"
+#include "../perf/debug_macros.h"
 
 #ifndef UNIT_TEST
 #include "modules/auto_push/auto_push_module.h"
@@ -36,7 +37,7 @@ void TapGestureModule::process(unsigned long nowMs) {
 
     auto performMuteToggle = [&](const char* reason) {
         if (!hasActiveAlert) {
-            Serial.println("MUTE BLOCKED: No active alert to mute");
+            DBG_PRINTLN("MUTE BLOCKED: No active alert to mute");
             return;
         }
 
@@ -44,13 +45,13 @@ void TapGestureModule::process(unsigned long nowMs) {
         bool currentMuted = state.muted;
         bool newMuted = !currentMuted;
 
-        Serial.printf("Mute: %s -> Sending: %s (%s)\n",
+        DBG_PRINTF("Mute: %s -> Sending: %s (%s)\n",
                       currentMuted ? "MUTED" : "UNMUTED",
                       newMuted ? "MUTE_ON" : "MUTE_OFF",
                       reason);
 
         const bool cmdSent = quiet_ && quiet_->sendMute(QuietOwner::TapGesture, newMuted);
-        Serial.printf("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
+        DBG_PRINTF("Mute command sent: %s\n", cmdSent ? "OK" : "FAIL");
     };
 
     auto performProfileCycle = [&]() {
@@ -62,15 +63,15 @@ void TapGestureModule::process(unsigned long nowMs) {
         alertPersistence_->clearPersistence();
 
         const char* slotNames[] = {"Default", "Highway", "Comfort"};
-        Serial.printf("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
+        DBG_PRINTF("PROFILE CHANGE: Switched to '%s' (slot %d)\n", slotNames[newSlot], newSlot);
 
         display_->drawProfileIndicator(newSlot);
 
         if (ble_->isConnected() && s.autoPushEnabled) {
-            Serial.println("Pushing new profile to V1...");
+            DBG_PRINTLN("Pushing new profile to V1...");
             const auto queueResult = autoPush_->queueSlotPush(newSlot);
             if (queueResult != AutoPushModule::QueueResult::QUEUED) {
-                Serial.printf("Profile push skipped: %d\n", static_cast<int>(queueResult));
+                DBG_PRINTF("Profile push skipped: %d\n", static_cast<int>(queueResult));
             }
         }
     };
@@ -84,7 +85,7 @@ void TapGestureModule::process(unsigned long nowMs) {
             }
             lastTapTime_ = nowMs;
 
-            Serial.printf("Tap detected: count=%d, x=%d, y=%d, hasAlert=%d\n", tapCount_, touchX, touchY, hasActiveAlert);
+            DBG_PRINTF("Tap detected: count=%d, x=%d, y=%d, hasAlert=%d\n", tapCount_, touchX, touchY, hasActiveAlert);
 
             if (hasActiveAlert && tapCount_ == 1) {
                 performMuteToggle("immediate tap");
@@ -96,7 +97,7 @@ void TapGestureModule::process(unsigned long nowMs) {
                 performProfileCycle();
                 tapCount_ = 0;
             } else if (hasActiveAlert) {
-                Serial.printf("Processing %d tap(s) as mute toggle\n", tapCount_);
+                DBG_PRINTF("Processing %d tap(s) as mute toggle\n", tapCount_);
                 performMuteToggle("deferred tap");
                 tapCount_ = 0;
             }

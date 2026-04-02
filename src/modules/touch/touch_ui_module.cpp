@@ -1,4 +1,5 @@
 #include "touch_ui_module.h"
+#include "../perf/debug_macros.h"
 
 #include "audio_beep.h"  // audio_set_volume, play_test_voice
 
@@ -118,7 +119,7 @@ void TouchUiModule::enterAdjustMode() {
     activeSlider_ = 0;
     lastVolumeChangeMs_ = 0;
     display_->showSettingsSliders(brightnessAdjustValue_, volumeAdjustValue_);
-    Serial.printf("[Settings] Entering adjustment mode (brightness: %d, volume: %d)\n",
+    DBG_PRINTF("[Settings] Entering adjustment mode (brightness: %d, volume: %d)\n",
                   brightnessAdjustValue_, volumeAdjustValue_);
 }
 
@@ -130,7 +131,7 @@ void TouchUiModule::exitAdjustModeAndSave() {
     audio_set_volume(volumeAdjustValue_);
     display_->hideBrightnessSlider();
     if (callbacks_.restoreDisplay) callbacks_.restoreDisplay(callbacks_.restoreDisplayCtx);
-    Serial.printf("[Settings] Saved brightness: %d, volume: %d\n", brightnessAdjustValue_, volumeAdjustValue_);
+    DBG_PRINTF("[Settings] Saved brightness: %d, volume: %d\n", brightnessAdjustValue_, volumeAdjustValue_);
 }
 
 bool TouchUiModule::handleSliderTouch(unsigned long nowMs) {

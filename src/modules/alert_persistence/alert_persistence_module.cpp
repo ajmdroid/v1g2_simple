@@ -7,6 +7,7 @@
 #include "display.h"
 #include "settings.h"
 #include "perf_metrics.h"
+#include "../perf/debug_macros.h"
 
 AlertPersistenceModule::AlertPersistenceModule() {
     // Dependencies set in begin()
@@ -18,7 +19,7 @@ void AlertPersistenceModule::begin(V1BLEClient* ble, PacketParser* pParser, V1Di
     display_ = disp;
     settings_ = sett;
 
-    Serial.println("[AlertPersistenceModule] Initialized");
+    DBG_PRINTLN("[AlertPersistenceModule] Initialized");
 }
 
 // ============================================================================
