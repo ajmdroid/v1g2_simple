@@ -312,6 +312,11 @@ void SettingsManager::load() {
     // OBD settings
     settings_.obdEnabled = preferences_.getBool("obdEn", false);
     settings_.obdSavedAddress = preferences_.getString("obdAddr", "");
+    if (!isValidBleAddress(settings_.obdSavedAddress)) {
+        Serial.printf("[Settings] WARN: Invalid OBD saved address in NVS: '%s' — clearing\n",
+                      settings_.obdSavedAddress.c_str());
+        settings_.obdSavedAddress = "";
+    }
     settings_.obdSavedName = sanitizeObdSavedNameValue(preferences_.getString("obdName", ""));
     settings_.obdSavedAddrType = preferences_.getUChar("obdAddrT", 0);
     settings_.obdMinRssi = static_cast<int8_t>(

@@ -99,6 +99,36 @@ inline String sanitizeProfileDescriptionValue(const String& raw) {
     return clampStringLength(raw, MAX_PROFILE_DESCRIPTION_LEN);
 }
 
+// ── BLE address validation ──────────────────────────────────────────────────
+
+/**
+ * Validate a BLE MAC address string format.
+ *
+ * Accepts either empty string (meaning "no saved device") or the standard
+ * 17-character format AA:BB:CC:DD:EE:FF (uppercase hex with colons).
+ * Does NOT normalize — use this as a gate, not a transform.
+ *
+ * @param address The address string to validate
+ * @return true if empty or valid AA:BB:CC:DD:EE:FF format
+ */
+inline bool isValidBleAddress(const String& address) {
+    if (address.length() == 0) {
+        return true;  // Empty means "no saved device" — valid state
+    }
+    if (address.length() != 17) {
+        return false;
+    }
+    for (int i = 0; i < 17; ++i) {
+        const char c = address[i];
+        if ((i + 1) % 3 == 0) {
+            if (c != ':') return false;
+        } else {
+            if (!isxdigit(static_cast<unsigned char>(c))) return false;
+        }
+    }
+    return true;
+}
+
 // ── Color validation ────────────────────────────────────────────────────────
 
 /**

@@ -269,7 +269,15 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     // OBD Settings
     // ============================================================================
     restoreBool("obdEnabled", settings_.obdEnabled);
-    if (doc["obdSavedAddress"].is<const char*>()) settings_.obdSavedAddress = doc["obdSavedAddress"].as<String>();
+    if (doc["obdSavedAddress"].is<const char*>()) {
+        String addr = doc["obdSavedAddress"].as<String>();
+        if (isValidBleAddress(addr)) {
+            settings_.obdSavedAddress = addr;
+        } else {
+            Serial.printf("[Settings] WARN: Invalid OBD saved address in backup: '%s' — skipping\n", addr.c_str());
+            settings_.obdSavedAddress = "";
+        }
+    }
     if (doc["obdSavedName"].is<const char*>()) settings_.obdSavedName = sanitizeObdSavedNameValue(doc["obdSavedName"].as<String>());
     if (doc["obdSavedAddrType"].is<int>()) {
         settings_.obdSavedAddrType = static_cast<uint8_t>(std::max(0, std::min(doc["obdSavedAddrType"].as<int>(), 1)));

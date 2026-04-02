@@ -621,7 +621,12 @@ bool SettingsManager::applyObdSettingsUpdate(const ObdSettingsUpdate& update,
         changed |= assignIfChanged(settings_.obdMinRssi, static_cast<int8_t>(clampedRssi));
     }
     if (update.hasSavedAddress) {
-        changed |= assignIfChanged(settings_.obdSavedAddress, update.savedAddress);
+        if (isValidBleAddress(update.savedAddress)) {
+            changed |= assignIfChanged(settings_.obdSavedAddress, update.savedAddress);
+        } else {
+            Serial.printf("[Settings] WARN: Rejecting invalid OBD address update: '%s'\n",
+                          update.savedAddress.c_str());
+        }
     }
     if (update.hasSavedName) {
         changed |= assignIfChanged(settings_.obdSavedName, sanitizeObdSavedNameValue(update.savedName));
