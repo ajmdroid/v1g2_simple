@@ -1165,7 +1165,7 @@ Controls:
 - **AP Name/Password:** Change WiFi network name and password (AP-only, no station mode)
 - **BLE Proxy:** Enable/disable app forwarding
 - **Proxy Name:** Advertised BLE name (default: "V1-Proxy")
-- **Device Time:** Read-only runtime clock snapshot sourced by the device (WiFi sync / SNTP when available)
+- **Device Time:** Read-only runtime clock snapshot. Accurate after live sync or deep-sleep resume; cold boots and resets require a fresh sync.
 
 **Backup & Restore:**
 - **Download Backup:** Export all settings (colors, slot configs, voice settings) and V1 profiles to a JSON file

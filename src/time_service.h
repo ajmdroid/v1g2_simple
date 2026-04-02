@@ -28,7 +28,8 @@ public:
         CONFIDENCE_ACCURATE = 2
     };
 
-    // Initialize from persisted/system time once at boot (idempotent).
+    // Initialize from system time once at boot (idempotent).
+    // Persisted wall-clock snapshots are not treated as authoritative across reboot.
     void begin();
 
     uint32_t nowMonoMs() const { return millis(); }
@@ -45,10 +46,11 @@ public:
     void setEpochBaseMs(int64_t trustedEpochMs, int32_t tzOffsetMinutes, Source source);
     void clear();
 
-    // Persist current epoch to NVS (call before deep sleep / shutdown).
+    // Persist the last observed epoch snapshot to NVS.
+    // This is diagnostic/best-effort state and is not used as authoritative cold-boot restore.
     void persistCurrentTime();
 
-    // Periodic NVS save — call from main loop. Saves every ~5 minutes.
+    // Periodic best-effort snapshot save — call from main loop. Saves every ~5 minutes.
     void periodicSave(uint32_t nowMs);
 
 private:

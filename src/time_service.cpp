@@ -234,22 +234,10 @@ void TimeService::begin() {
     }
 
     if (havePersistedSnapshot) {
-        const uint32_t monoNow = nowMonoMs();
-        const int64_t base = snapshot.epochMs - static_cast<int64_t>(monoNow);
-
-        epochBaseMs_.store(base, std::memory_order_relaxed);
-        setMonoMs_.store(monoNow, std::memory_order_relaxed);
-        tzOffsetMinutes_.store(snapshot.tzOffsetMin, std::memory_order_relaxed);
-        source_.store(snapshot.source, std::memory_order_relaxed);
-        confidence_.store(CONFIDENCE_ESTIMATED, std::memory_order_relaxed);
-        valid_.store(1, std::memory_order_release);
-
-        // Set the system clock so the RTC survives deep sleep with a reasonable value.
-        setSystemClockIfValid(snapshot.epochMs);
-
-        Serial.printf("[Time] Restored from NVS (estimated): epoch=%lld, tz=%d\n",
-                      (long long)snapshot.epochMs, (int)snapshot.tzOffsetMin);
-        return;
+        Serial.printf("[Time] Ignoring persisted snapshot at boot: epoch=%lld, tz=%d, source=%u (wall clock cannot advance across reset)\n",
+                      (long long)snapshot.epochMs,
+                      (int)snapshot.tzOffsetMin,
+                      (unsigned)snapshot.source);
     }
 
     valid_.store(0, std::memory_order_release);
@@ -259,7 +247,7 @@ void TimeService::begin() {
     epochBaseMs_.store(0, std::memory_order_relaxed);
     setMonoMs_.store(0, std::memory_order_relaxed);
 
-    Serial.println("[Time] No valid time source at boot - waiting for client sync");
+    Serial.println("[Time] No valid live time source at boot - waiting for client sync");
 }
 
 int64_t TimeService::nowEpochMsOr0() const {
@@ -356,7 +344,7 @@ void TimeService::persistCurrentTime() {
     snapshot.source = source_.load(std::memory_order_relaxed);
 
     if (savePersistedTimeSnapshot(snapshot)) {
-        Serial.printf("[Time] Persisted current time to NVS: epoch=%lld\n", (long long)epoch);
+        Serial.printf("[Time] Saved last seen time snapshot to NVS: epoch=%lld\n", (long long)epoch);
     }
 }
 

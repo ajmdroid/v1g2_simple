@@ -716,6 +716,10 @@ Enable or disable WiFi client mode.
 Set the device clock from a client-supplied epoch timestamp. Used by the companion
 web UI to push the browser's current time to the device over the AP link.
 
+The device clock is runtime-only. After a cold reboot or reset, the firmware does
+not treat the last saved wall-clock snapshot as authoritative; it waits for a fresh
+sync or a deep-sleep RTC restore.
+
 **Request (JSON):**
 ```json
 {

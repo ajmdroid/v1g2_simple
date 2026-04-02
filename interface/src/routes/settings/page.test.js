@@ -664,7 +664,7 @@ describe('settings route page', () => {
 		const { unmount } = render(Page);
 
 		await screen.findByText('Device Time');
-		await screen.findByText('Read-only runtime clock snapshot. Time is sourced by device services, not the browser.');
+		await screen.findByText('Read-only runtime clock snapshot. Accurate after live sync or deep-sleep resume; cold boots and resets need a fresh sync.');
 		expect(screen.queryByRole('button', { name: /sync time from phone/i })).toBeNull();
 		await screen.findByText(/2024-03-09 12:00:00 \(UTC-04:00\)/i);
 

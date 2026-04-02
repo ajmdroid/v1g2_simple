@@ -83,7 +83,7 @@ void prepareForShutdown(void* /*context*/) {
     Serial.println("[Battery] Forcing final SD settings backup...");
     settingsManager.backupToSD();
 
-    Serial.println("[Battery] Persisting time to NVS...");
+    Serial.println("[Battery] Saving last seen time snapshot...");
     timeService.persistCurrentTime();
 }
 

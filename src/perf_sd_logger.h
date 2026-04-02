@@ -2,7 +2,7 @@
  * Standalone SD-backed performance CSV logger.
  *
  * Writes compact perf snapshots to /perf/YYYYMMDD_HHMMSS_perf_<bootId_>.csv
- * (UTC timestamp) when epoch time is available. Falls back to
+ * (UTC timestamp) when accurate epoch time is available. Falls back to
  * /perf/perf_boot_<bootId_>.csv when time is not yet valid.
  * Uses a dedicated FreeRTOS writer task; enqueue is non-blocking and drops on queue full.
  */

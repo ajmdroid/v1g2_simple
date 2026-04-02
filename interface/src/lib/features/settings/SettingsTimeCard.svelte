@@ -19,7 +19,7 @@
 	<div class="card-body space-y-3">
 		<CardSectionHead
 			title="Device Time"
-			subtitle="Read-only runtime clock snapshot. Time is sourced by device services, not the browser."
+			subtitle="Read-only runtime clock snapshot. Accurate after live sync or deep-sleep resume; cold boots and resets need a fresh sync."
 		/>
 		<div class="copy-subtle space-y-1">
 			<div><strong>timeValid:</strong> {timeStatus.valid ? 1 : 0}</div>

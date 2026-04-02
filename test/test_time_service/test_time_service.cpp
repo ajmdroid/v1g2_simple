@@ -1,14 +1,12 @@
-// Tests for pure-logic helper functions in time_service.cpp:
+// Tests for time_service.cpp helper logic plus boot-path behavior via native mocks:
 //   - isValidUnixMs(int64_t)
 //   - clampTzOffset(int32_t)
 //   - parseInt64Strict(const String&, int64_t&)
 //   - normalizeSource(uint8_t&)
 //   - hasMaterialPersistChange(...)
-//
-// Hardware-dependent paths (TimeService::begin, setEpochBaseMs, persistCurrentTime,
-// periodicSave) compile via mocks but are not called from these tests.
 
 #include <unity.h>
+#include <sys/time.h>
 
 #include "../mocks/Arduino.h"
 #ifndef ARDUINO
@@ -19,7 +17,43 @@ unsigned long mockMicros = 0;
 
 #include "../mocks/Preferences.h"
 
+static int mockGettimeofdayResult = -1;
+static int64_t mockSystemEpochMs = 0;
+static int mockSettimeofdayCalls = 0;
+static int64_t mockLastSettimeofdayEpochMs = 0;
+
+extern "C" int mock_gettimeofday(struct timeval* tv, void* /*tz*/) {
+    if (mockGettimeofdayResult != 0) {
+        return mockGettimeofdayResult;
+    }
+    if (!tv) {
+        return -1;
+    }
+
+    tv->tv_sec = static_cast<time_t>(mockSystemEpochMs / 1000LL);
+    tv->tv_usec = static_cast<suseconds_t>((mockSystemEpochMs % 1000LL) * 1000LL);
+    return 0;
+}
+
+extern "C" int mock_settimeofday(const struct timeval* tv, const struct timezone* /*tz*/) {
+    mockSettimeofdayCalls++;
+    if (!tv) {
+        mockLastSettimeofdayEpochMs = 0;
+        return -1;
+    }
+
+    mockLastSettimeofdayEpochMs = static_cast<int64_t>(tv->tv_sec) * 1000LL
+                                + static_cast<int64_t>(tv->tv_usec / 1000);
+    return 0;
+}
+
+#define gettimeofday mock_gettimeofday
+#define settimeofday mock_settimeofday
+
 #include "../../src/time_service.cpp"
+
+#undef gettimeofday
+#undef settimeofday
 
 // -----------------------------------------------------------------------
 // isValidUnixMs
@@ -218,9 +252,62 @@ void test_no_material_change_identical() {
 }
 
 // -----------------------------------------------------------------------
+// begin()
+// -----------------------------------------------------------------------
+
+void test_begin_restores_valid_system_clock_with_rtc_source() {
+    PersistedTime snapshot;
+    snapshot.valid = true;
+    snapshot.epochMs = VALID_EPOCH_MS - 60000LL;
+    snapshot.tzOffsetMin = -240;
+    snapshot.source = TimeService::SOURCE_CLIENT_AP;
+    TEST_ASSERT_TRUE(savePersistedTimeSnapshot(snapshot));
+
+    mockMillis = 2500;
+    mockGettimeofdayResult = 0;
+    mockSystemEpochMs = VALID_EPOCH_MS;
+
+    TimeService service;
+    service.begin();
+
+    TEST_ASSERT_TRUE(service.timeValid());
+    TEST_ASSERT_EQUAL_UINT8(TimeService::SOURCE_RTC, service.timeSource());
+    TEST_ASSERT_EQUAL_UINT8(TimeService::CONFIDENCE_ACCURATE, service.timeConfidence());
+    TEST_ASSERT_EQUAL_INT32(-240, service.tzOffsetMinutes());
+    TEST_ASSERT_EQUAL_INT64(VALID_EPOCH_MS, service.nowEpochMsOr0());
+}
+
+void test_begin_ignores_persisted_snapshot_when_system_clock_invalid() {
+    PersistedTime snapshot;
+    snapshot.valid = true;
+    snapshot.epochMs = VALID_EPOCH_MS;
+    snapshot.tzOffsetMin = -300;
+    snapshot.source = TimeService::SOURCE_CLIENT_AP;
+    TEST_ASSERT_TRUE(savePersistedTimeSnapshot(snapshot));
+
+    mockGettimeofdayResult = -1;
+
+    TimeService service;
+    service.begin();
+
+    TEST_ASSERT_FALSE(service.timeValid());
+    TEST_ASSERT_EQUAL_UINT8(TimeService::SOURCE_NONE, service.timeSource());
+    TEST_ASSERT_EQUAL_UINT8(TimeService::CONFIDENCE_NONE, service.timeConfidence());
+    TEST_ASSERT_EQUAL_INT32(0, service.tzOffsetMinutes());
+    TEST_ASSERT_EQUAL_INT64(0LL, service.nowEpochMsOr0());
+    TEST_ASSERT_EQUAL_INT(0, mockSettimeofdayCalls);
+}
+
+// -----------------------------------------------------------------------
 
 void setUp() {
     mock_preferences::reset();
+    mockMillis = 0;
+    mockMicros = 0;
+    mockGettimeofdayResult = -1;
+    mockSystemEpochMs = 0;
+    mockSettimeofdayCalls = 0;
+    mockLastSettimeofdayEpochMs = 0;
 }
 
 void tearDown() {}
@@ -268,6 +355,10 @@ int main() {
     RUN_TEST(test_material_change_delta_over_5min);
     RUN_TEST(test_no_material_change_small_delta);
     RUN_TEST(test_no_material_change_identical);
+
+    // begin()
+    RUN_TEST(test_begin_restores_valid_system_clock_with_rtc_source);
+    RUN_TEST(test_begin_ignores_persisted_snapshot_when_system_clock_invalid);
 
     return UNITY_END();
 }

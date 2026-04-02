@@ -58,8 +58,13 @@ static void buildPerfCsvPath(uint32_t bootId_, char* out, size_t outLen) {
         return;
     }
 
-    const int64_t epochMs = timeService.nowEpochMsOr0();
-    if (epochMs > 0) {
+    if (timeService.timeValid() &&
+        timeService.timeConfidence() == TimeService::CONFIDENCE_ACCURATE) {
+        const int64_t epochMs = timeService.nowEpochMsOr0();
+        if (epochMs <= 0) {
+            snprintf(out, outLen, "/perf/perf_boot_%lu.csv", static_cast<unsigned long>(bootId_));
+            return;
+        }
         const time_t epochSeconds = static_cast<time_t>(epochMs / 1000LL);
         struct tm utcTime {};
         if (gmtime_r(&epochSeconds, &utcTime) != nullptr) {
