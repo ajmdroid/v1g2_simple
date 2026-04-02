@@ -16,14 +16,14 @@ struct DeviceInfo {
 };
 
 struct Runtime {
-    std::vector<DeviceInfo> (*listDevices)(void* ctx);
-    void* listDevicesCtx;
-    bool (*setDeviceName)(const String& address, const String& name, void* ctx);
-    void* setDeviceNameCtx;
-    bool (*setDeviceDefaultProfile)(const String& address, uint8_t profile, void* ctx);
-    void* setDeviceDefaultProfileCtx;
-    bool (*deleteDevice)(const String& address, void* ctx);
-    void* deleteDeviceCtx;
+    std::vector<DeviceInfo> (*listDevices)(void* ctx) = nullptr;
+    void* listDevicesCtx = nullptr;
+    bool (*setDeviceName)(const String& address, const String& name, void* ctx) = nullptr;
+    void* setDeviceNameCtx = nullptr;
+    bool (*setDeviceDefaultProfile)(const String& address, uint8_t profile, void* ctx) = nullptr;
+    void* setDeviceDefaultProfileCtx = nullptr;
+    bool (*deleteDevice)(const String& address, void* ctx) = nullptr;
+    void* deleteDeviceCtx = nullptr;
 };
 
 void handleApiDevicesList(WebServer& server, const Runtime& runtime);

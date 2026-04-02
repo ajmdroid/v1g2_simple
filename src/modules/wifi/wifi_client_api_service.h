@@ -32,38 +32,38 @@ struct ConnectedNetworkPayload {
 };
 
 struct Runtime {
-    bool (*isEnabled)(void* ctx);
-    void* isEnabledCtx;
-    String (*getSavedSsid)(void* ctx);
-    void* getSavedSsidCtx;
-    const char* (*getStateName)(void* ctx);
-    void* getStateNameCtx;
-    bool (*isScanRunning)(void* ctx);
-    void* isScanRunningCtx;
-    bool (*isConnected)(void* ctx);
-    void* isConnectedCtx;
-    ConnectedNetworkPayload (*getConnectedNetwork)(void* ctx);
-    void* getConnectedNetworkCtx;
+    bool (*isEnabled)(void* ctx) = nullptr;
+    void* isEnabledCtx = nullptr;
+    String (*getSavedSsid)(void* ctx) = nullptr;
+    void* getSavedSsidCtx = nullptr;
+    const char* (*getStateName)(void* ctx) = nullptr;
+    void* getStateNameCtx = nullptr;
+    bool (*isScanRunning)(void* ctx) = nullptr;
+    void* isScanRunningCtx = nullptr;
+    bool (*isConnected)(void* ctx) = nullptr;
+    void* isConnectedCtx = nullptr;
+    ConnectedNetworkPayload (*getConnectedNetwork)(void* ctx) = nullptr;
+    void* getConnectedNetworkCtx = nullptr;
 
-    bool (*isScanInProgress)(void* ctx);
-    void* isScanInProgressCtx;
-    bool (*hasCompletedScanResults)(void* ctx);
-    void* hasCompletedScanResultsCtx;
-    std::vector<ScannedNetworkPayload> (*getScannedNetworks)(void* ctx);
-    void* getScannedNetworksCtx;
-    bool (*startScan)(void* ctx);
-    void* startScanCtx;
+    bool (*isScanInProgress)(void* ctx) = nullptr;
+    void* isScanInProgressCtx = nullptr;
+    bool (*hasCompletedScanResults)(void* ctx) = nullptr;
+    void* hasCompletedScanResultsCtx = nullptr;
+    std::vector<ScannedNetworkPayload> (*getScannedNetworks)(void* ctx) = nullptr;
+    void* getScannedNetworksCtx = nullptr;
+    bool (*startScan)(void* ctx) = nullptr;
+    void* startScanCtx = nullptr;
 
-    bool (*connectToNetwork)(const String& ssid, const String& password, void* ctx);
-    void* connectToNetworkCtx;
-    void (*disconnectFromNetwork)(void* ctx);
-    void* disconnectFromNetworkCtx;
-    void (*forgetClient)(void* ctx);
-    void* forgetClientCtx;
-    bool (*enableWithSavedNetwork)(void* ctx);
-    void* enableWithSavedNetworkCtx;
-    void (*disableClient)(void* ctx);
-    void* disableClientCtx;
+    bool (*connectToNetwork)(const String& ssid, const String& password, void* ctx) = nullptr;
+    void* connectToNetworkCtx = nullptr;
+    void (*disconnectFromNetwork)(void* ctx) = nullptr;
+    void* disconnectFromNetworkCtx = nullptr;
+    void (*forgetClient)(void* ctx) = nullptr;
+    void* forgetClientCtx = nullptr;
+    bool (*enableWithSavedNetwork)(void* ctx) = nullptr;
+    void* enableWithSavedNetworkCtx = nullptr;
+    void (*disableClient)(void* ctx) = nullptr;
+    void* disableClientCtx = nullptr;
 };
 
 void handleApiStatus(WebServer& server,

@@ -9,22 +9,22 @@
 namespace WifiDisplayColorsApiService {
 
 struct Runtime {
-    const V1Settings& (*getSettings)(void* ctx);
-    void* getSettingsCtx;
-    void (*applySettingsUpdate)(const DisplaySettingsUpdate& update, void* ctx);
-    void* applySettingsUpdateCtx;
-    void (*resetDisplaySettings)(void* ctx);
-    void* resetDisplaySettingsCtx;
-    void (*setDisplayBrightness)(uint8_t brightness, void* ctx);
-    void* setDisplayBrightnessCtx;
-    void (*forceDisplayRedraw)(void* ctx);
-    void* forceDisplayRedrawCtx;
-    void (*requestColorPreviewHoldMs)(uint32_t durationMs, void* ctx);
-    void* requestColorPreviewHoldMsCtx;
-    bool (*isColorPreviewRunning)(void* ctx);
-    void* isColorPreviewRunningCtx;
-    void (*cancelColorPreview)(void* ctx);
-    void* cancelColorPreviewCtx;
+    const V1Settings& (*getSettings)(void* ctx) = nullptr;
+    void* getSettingsCtx = nullptr;
+    void (*applySettingsUpdate)(const DisplaySettingsUpdate& update, void* ctx) = nullptr;
+    void* applySettingsUpdateCtx = nullptr;
+    void (*resetDisplaySettings)(void* ctx) = nullptr;
+    void* resetDisplaySettingsCtx = nullptr;
+    void (*setDisplayBrightness)(uint8_t brightness, void* ctx) = nullptr;
+    void* setDisplayBrightnessCtx = nullptr;
+    void (*forceDisplayRedraw)(void* ctx) = nullptr;
+    void* forceDisplayRedrawCtx = nullptr;
+    void (*requestColorPreviewHoldMs)(uint32_t durationMs, void* ctx) = nullptr;
+    void* requestColorPreviewHoldMsCtx = nullptr;
+    bool (*isColorPreviewRunning)(void* ctx) = nullptr;
+    void* isColorPreviewRunningCtx = nullptr;
+    void (*cancelColorPreview)(void* ctx) = nullptr;
+    void* cancelColorPreviewCtx = nullptr;
 };
 
 void handleApiGet(WebServer& server, const Runtime& runtime);
