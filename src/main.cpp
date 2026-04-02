@@ -371,8 +371,16 @@ static void configureWifiRuntimeModule() {
            bool displayPreviewRunning,
            bool bootSplashHoldActive) {
             static bool prevWifiVisualActive = false;
+            static bool prevStaConnected = false;
             const bool stateChanged = (wifiVisualActiveNow != prevWifiVisualActive);
             prevWifiVisualActive = wifiVisualActiveNow;
+
+            // Track STA connection independently so the icon color updates
+            // immediately when STA connects, even if wifiVisualActiveNow
+            // was already true (AP was running).
+            const bool staConnected = wifiManager.isConnected();
+            const bool staChanged = (staConnected != prevStaConnected);
+            prevStaConnected = staConnected;
 
             static_cast<WifiVisualSyncModule*>(ctx)->process(
                 nowMs,
@@ -388,10 +396,11 @@ static void configureWifiRuntimeModule() {
                 nullptr);
 
             // Force full DISPLAY_FLUSH on next pipeline run when WiFi icon
-            // visibility transitions.  The small flushRegion above handles
-            // periodic color refreshes, but the icon's initial appearance
-            // requires a full flush to reliably reach the AXS15231B panel.
-            if (stateChanged) {
+            // visibility or color transitions.  The small flushRegion above
+            // handles periodic color refreshes, but the icon's initial
+            // appearance requires a full flush to reliably reach the
+            // AXS15231B panel.
+            if (stateChanged || staChanged) {
                 display.forceNextRedraw();
             }
         };
