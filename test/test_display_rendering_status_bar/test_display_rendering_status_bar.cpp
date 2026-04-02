@@ -147,10 +147,12 @@ void test_drawRssiIndicator_hidden_when_setting_off() {
 }
 
 void test_drawRssiIndicator_stale_ble_clears_area() {
-    // bleCtxUpdatedAtMs_ is 0 at start, so hasFreshBleContext returns false
+    // bleCtxUpdatedAtMs_ is 0 at start, so hasFreshBleContext returns false.
+    // With stale context, drawRssiIndicator now returns early WITHOUT clearing,
+    // preserving the last-drawn RSSI on screen (fix for indicators disappearing
+    // after alerts end when BLE context goes momentarily stale).
     display.ut_drawRssiIndicator(-60);
-    TEST_ASSERT_GREATER_OR_EQUAL(1u, canvas()->fillRectCalls.size());
-    TEST_ASSERT_EQUAL_UINT16(ColorThemes::STANDARD().bg, canvas()->fillRectCalls[0].color);
+    TEST_ASSERT_EQUAL(0u, canvas()->fillRectCalls.size());
 }
 
 void test_drawRssiIndicator_fresh_ble_draws_content() {
@@ -202,9 +204,10 @@ void test_drawBatteryIndicator_usb_power_hides_icon() {
 void test_drawBLEProxy_disabled_clears_area() {
     display.setBLEProxyStatus(false, false, false);
     display.ut_drawBLEProxyIndicator();
-    // Disabled → clears BLE icon area with BG
-    TEST_ASSERT_GREATER_OR_EQUAL(1u, canvas()->fillRectCalls.size());
-    TEST_ASSERT_EQUAL_UINT16(ColorThemes::STANDARD().bg, canvas()->fillRectCalls[0].color);
+    // Disabled and never drawn → no clear needed (bleProxyDrawn_ is false).
+    // Only clears if the icon was previously drawn, to avoid blanking on
+    // every frame when proxy was never enabled.
+    TEST_ASSERT_EQUAL(0u, canvas()->fillRectCalls.size());
 }
 
 void test_drawBLEProxy_enabled_connected_draws_icon() {

@@ -373,6 +373,7 @@ def _build_metric_map(
     policies: list[MetricPolicy],
     records: list[dict[str, Any]],
     manifest: dict[str, Any],
+    strict: bool = True,
 ) -> tuple[dict[tuple[str, str], MetricAggregate], dict[tuple[str, str], MetricPolicy]]:
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
     policy_for_key: dict[tuple[str, str], MetricPolicy] = {}
@@ -380,6 +381,9 @@ def _build_metric_map(
     for record in records:
         matches = [policy for policy in policies if _selector_matches(policy, record, manifest)]
         if not matches:
+            if not strict:
+                # Baseline run contains a metric removed from the catalog; skip it.
+                continue
             raise RuntimeError(
                 "Emitted metric not present in catalog: "
                 f"{record.get('run_kind')}/{record.get('suite_or_profile')}/{record.get('metric')}"
@@ -432,7 +436,7 @@ def score_run(
         if candidate_result not in {"PASS", "PASS_WITH_WARNINGS", "NO_BASELINE"}:
             continue
         baseline_records = load_metrics(baseline_manifest_path, candidate)
-        baseline_map, _ = _build_metric_map(policies, baseline_records, candidate)
+        baseline_map, _ = _build_metric_map(policies, baseline_records, candidate, strict=False)
         baseline_candidates.append(
             {
                 "path": baseline_manifest_path,

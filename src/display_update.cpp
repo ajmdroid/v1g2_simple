@@ -216,8 +216,15 @@ void V1Display::update(const DisplayState& state) {
     persistedMode_ = false;  // Not in persisted mode
     const bool requestedTrackingReset = dirty.resetTracking;
 
-    // Don't process resting update if we're in Scanning mode - wait for showResting() to be called
+    // Don't process resting update if we're in Scanning mode - wait for showResting() to be called.
+    // But still flush the left strip periodically so WiFi, BLE proxy, and battery
+    // indicators stay visible — external callers draw to the canvas without flushing.
     if (currentScreen_ == ScreenMode::Scanning) {
+        if (shouldRefreshRssi(millis())) {
+            using namespace DisplayLayout;
+            flushRegion(STRIP_LEFT_X, STRIP_Y, STRIP_LEFT_W, STRIP_H);
+            markRssiRefreshed(millis());
+        }
         return;
     }
 

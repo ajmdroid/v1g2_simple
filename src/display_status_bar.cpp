@@ -86,11 +86,10 @@ void V1Display::drawRssiIndicator(int rssi) {
     }
 
     if (!hasFreshBleContext(millis())) {
-        FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
-        return;
+        return;  // Keep last-drawn RSSI visible; don't clear on stale context
     }
 
-    // Clear the area first
+    // Clear the area before redrawing with fresh values
     FILL_RECT(x, y, clearW, clearH, PALETTE_BG);
 
     // Get both RSSIs
@@ -386,20 +385,26 @@ void V1Display::drawBLEProxyIndicator() {
     const int bleX = wifiX + iconSize + iconGap;  // Right of WiFi icon
     const int bleY = iconY;
 
-    // Always clear the area before drawing
-    FILL_RECT(bleX - 2, bleY - 2, iconSize + 4, iconSize + 4, PALETTE_BG);
-
     if (!bleProxyEnabled_) {
-        bleProxyDrawn_ = false;
+        if (bleProxyDrawn_) {
+            FILL_RECT(bleX - 2, bleY - 2, iconSize + 4, iconSize + 4, PALETTE_BG);
+            bleProxyDrawn_ = false;
+        }
         return;
     }
 
     // Check if BLE icon should be hidden
     const V1Settings& s = settingsManager.get();
     if (s.hideBleIcon) {
-        bleProxyDrawn_ = false;
+        if (bleProxyDrawn_) {
+            FILL_RECT(bleX - 2, bleY - 2, iconSize + 4, iconSize + 4, PALETTE_BG);
+            bleProxyDrawn_ = false;
+        }
         return;
     }
+
+    // Clear the area before redrawing
+    FILL_RECT(bleX - 2, bleY - 2, iconSize + 4, iconSize + 4, PALETTE_BG);
 
     const bool bleContextFresh = hasFreshBleContext(millis());
 
