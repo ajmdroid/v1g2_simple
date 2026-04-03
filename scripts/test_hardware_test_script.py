@@ -412,7 +412,7 @@ HEADER_COLUMNS = [
     if line.strip() and not line.startswith("#")
 ]
 LEGACY_HEADER_COLUMNS = HEADER_COLUMNS[:-4]
-# Extended columns include obdSpeedMph_x10 for drive-like detection tests.
+# Optional direct-speed extension used for importer compatibility tests.
 DRIVE_HEADER_COLUMNS = HEADER_COLUMNS + ["obdSpeedMph_x10"]
 
 
@@ -1426,6 +1426,7 @@ def main() -> int:
         auto_latest = auto_segment_root / "release" / "latest"
         auto_manifest = json.loads((auto_latest / "core_soak" / "manifest.json").read_text(encoding="utf-8"))
         assert_true(auto_manifest["selected_segment"]["session_index"] == 2, f"auto selector chose wrong segment: {auto_manifest}")
+        assert_true(auto_manifest["selected_segment"]["speed_active_rows_supported"] is True, f"extended speed evidence should be detected: {auto_manifest}")
 
         explicit_segment_root = temp_root / "explicit_segment_artifacts"
         explicit_segment = run_test_script(
@@ -1443,6 +1444,62 @@ def main() -> int:
         explicit_latest = explicit_segment_root / "release" / "latest"
         explicit_manifest = json.loads((explicit_latest / "core_soak" / "manifest.json").read_text(encoding="utf-8"))
         assert_true(explicit_manifest["selected_segment"]["session_index"] == 1, f"explicit selector chose wrong segment: {explicit_manifest}")
+
+        contract_multi_csv = temp_root / "perf_boot_multi_contract.csv"
+        contract_session_one_rows = []
+        for i in range(5):
+            frac = i / 4
+            row = _base_csv_row(int(frac * 120000), header_columns=HEADER_COLUMNS, connected=True, drive_like=False)
+            row["rx"] = 200 + i * 40
+            row["parseOK"] = 200 + i * 40
+            contract_session_one_rows.append(row)
+        contract_session_two_rows = []
+        for i in range(5):
+            frac = i / 4
+            row = _base_csv_row(int(frac * 60000), header_columns=HEADER_COLUMNS, connected=True, drive_like=False)
+            row["rx"] = 50 + i * 30
+            row["parseOK"] = 50 + i * 30
+            row["displayUpdates"] = i * 5
+            contract_session_two_rows.append(row)
+        write_perf_csv(
+            contract_multi_csv,
+            header_columns=HEADER_COLUMNS,
+            sessions=[
+                {
+                    "meta": "#session_start,seq=1,bootId=1,uptime_ms=120000,token=LONG001,schema=24",
+                    "rows": contract_session_one_rows,
+                },
+                {
+                    "meta": "#session_start,seq=2,bootId=1,uptime_ms=60000,token=SHORT002,schema=24",
+                    "rows": contract_session_two_rows,
+                },
+            ],
+        )
+
+        contract_listed_segments = run_test_script(
+            common_env,
+            "--list-segments",
+            "--parse-drive-log",
+            str(contract_multi_csv),
+        )
+        assert_true(contract_listed_segments.returncode == 0, f"contract list-segments failed: {contract_listed_segments.stdout}\n{contract_listed_segments.stderr}")
+        assert_true("n/a" in contract_listed_segments.stdout, f"contract list-segments should show unsupported speed evidence: {contract_listed_segments.stdout}")
+
+        contract_auto_root = temp_root / "contract_auto_segment_artifacts"
+        contract_auto_segment = run_test_script(
+            {
+                **common_env,
+                "HARDWARE_TEST_ARTIFACT_ROOT": str(contract_auto_root),
+            },
+            "--core",
+            "--parse-drive-log",
+            str(contract_multi_csv),
+        )
+        assert_true(contract_auto_segment.returncode != 3, f"contract auto segment parse failed: {contract_auto_segment.stdout}\n{contract_auto_segment.stderr}")
+        contract_auto_latest = contract_auto_root / "release" / "latest"
+        contract_auto_manifest = json.loads((contract_auto_latest / "core_soak" / "manifest.json").read_text(encoding="utf-8"))
+        assert_true(contract_auto_manifest["selected_segment"]["session_index"] == 1, f"contract auto selector should fall back to longest connected: {contract_auto_manifest}")
+        assert_true(contract_auto_manifest["selected_segment"]["speed_active_rows_supported"] is False, f"contract auto selector should mark direct speed evidence unsupported: {contract_auto_manifest}")
 
     print("hardware test script regression tests: PASS")
     return 0

@@ -25,8 +25,8 @@ HEADER_COLUMNS = [
 ]
 SCHEMA13_HEADER_COLUMNS = HEADER_COLUMNS[:-8]
 LEGACY_HEADER_COLUMNS = HEADER_COLUMNS[:-12]
-# Extended columns include obdSpeedMph_x10 for drive-like detection tests.
-# The firmware doesn't emit this column yet, but the importer supports it.
+# Optional direct-speed extension used for importer compatibility tests.
+# The firmware contract does not currently emit this column.
 DRIVE_HEADER_COLUMNS = HEADER_COLUMNS + ["obdSpeedMph_x10"]
 
 
@@ -254,7 +254,7 @@ def test_schema13_import_supports_drop_metrics(tmpdir: Path) -> None:
     assert_true(diagnostics["coverage_status"] == "full_runtime_gates", f"diagnostics coverage mismatch: {diagnostics}")
 
 
-def test_segment_selection_and_listing(tmpdir: Path) -> None:
+def test_segment_selection_and_listing_prefers_direct_speed_evidence_when_available(tmpdir: Path) -> None:
     csv_path = tmpdir / "multi.csv"
     out_dir = tmpdir / "multi_out"
     session_1 = make_session(
@@ -299,12 +299,64 @@ def test_segment_selection_and_listing(tmpdir: Path) -> None:
     assert_true(auto_result.returncode != 3, f"auto import failed: {auto_result.stderr}")
     auto_manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
     assert_true(auto_manifest["selected_segment"]["session_index"] == 2, f"auto selector chose wrong segment: {auto_manifest}")
+    assert_true(auto_manifest["selected_segment"]["speed_active_rows_supported"] is True, f"speed support should be detected: {auto_manifest}")
+    assert_true(auto_manifest["selected_segment"]["speed_active_column"] == "obdSpeedMph_x10", f"wrong speed evidence column: {auto_manifest}")
 
     explicit_out = tmpdir / "explicit_out"
     explicit_result = run_import(csv_path, explicit_out, "--segment", "1")
     assert_true(explicit_result.returncode != 3, f"explicit import failed: {explicit_result.stderr}")
     explicit_manifest = json.loads((explicit_out / "manifest.json").read_text(encoding="utf-8"))
     assert_true(explicit_manifest["selected_segment"]["session_index"] == 1, f"explicit selector chose wrong segment: {explicit_manifest}")
+
+
+def test_segment_selection_without_direct_speed_column_falls_back_to_longest_connected(tmpdir: Path) -> None:
+    csv_path = tmpdir / "multi_contract.csv"
+    out_dir = tmpdir / "multi_contract_out"
+    session_1 = make_session(
+        seq=1,
+        token="LONG001",
+        schema=24,
+        header_columns=HEADER_COLUMNS,
+        duration_ms=120000,
+        connected=True,
+        drive_like=False,
+    )
+    session_2 = make_session(
+        seq=2,
+        token="SHORT002",
+        schema=24,
+        header_columns=HEADER_COLUMNS,
+        duration_ms=60000,
+        connected=True,
+        drive_like=False,
+    )
+    write_capture(csv_path, header_columns=HEADER_COLUMNS, sessions=[session_1, session_2])
+
+    listed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools" / "import_perf_csv.py"),
+            "--input",
+            str(csv_path),
+            "--list-segments",
+            "--segment",
+            "auto",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert_true(listed.returncode == 0, f"list-segments failed: {listed.stderr}")
+    assert_true("n/a" in listed.stdout, f"list-segments should mark speed evidence unsupported: {listed.stdout}")
+
+    auto_result = run_import(csv_path, out_dir)
+    assert_true(auto_result.returncode != 3, f"auto import failed: {auto_result.stderr}")
+    auto_manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert_true(auto_manifest["selected_segment"]["session_index"] == 1, f"auto selector should fall back to longest connected: {auto_manifest}")
+    assert_true(auto_manifest["selected_segment"]["speed_active_rows_supported"] is False, f"speed evidence should be unsupported for contract header: {auto_manifest}")
+    comparison = (out_dir / "comparison.txt").read_text(encoding="utf-8")
+    assert_true("speed_rows=n/a (schema lacks direct speed column)" in comparison, f"comparison should explain missing direct speed evidence: {comparison}")
 
 
 def test_peak_diagnostics_classify_spike_and_attribute_phase(tmpdir: Path) -> None:
@@ -631,7 +683,8 @@ def main() -> int:
         tmpdir = Path(tmp)
         test_legacy_import_reports_partial_coverage(tmpdir)
         test_schema13_import_supports_drop_metrics(tmpdir)
-        test_segment_selection_and_listing(tmpdir)
+        test_segment_selection_and_listing_prefers_direct_speed_evidence_when_available(tmpdir)
+        test_segment_selection_without_direct_speed_column_falls_back_to_longest_connected(tmpdir)
         test_peak_diagnostics_classify_spike_and_attribute_phase(tmpdir)
         test_peak_diagnostics_classify_sustained_runs(tmpdir)
         test_reduced_perf_boot_fixture_attributes_obd_and_wifi_stalls(tmpdir)

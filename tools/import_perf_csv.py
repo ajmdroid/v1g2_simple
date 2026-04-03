@@ -190,6 +190,9 @@ SUBSCRIBE_STEP_NAMES = {
 }
 CONNECT_PHASE_STATES = {"SCANNING", "SCAN_STOPPING", "CONNECTING", "CONNECTING_WAIT", "DISCOVERING", "SUBSCRIBING", "SUBSCRIBE_YIELD"}
 DISCONNECT_PHASE_STATES = {"DISCONNECTED", "BACKOFF"}
+DIRECT_SPEED_COLUMN_CANDIDATES = (
+    "obdSpeedMph_x10",
+)
 
 
 @dataclass(frozen=True)
@@ -202,6 +205,8 @@ class SessionSummary:
     duration_s: float
     rx_delta: int
     speed_active_rows: int
+    speed_active_rows_supported: bool
+    speed_active_column: Optional[str]
     connected: bool
     drive_like: bool
     has_marker: bool
@@ -216,6 +221,8 @@ class SessionSummary:
             "duration_s": self.duration_s,
             "rx_delta": self.rx_delta,
             "speed_active_rows": self.speed_active_rows,
+            "speed_active_rows_supported": self.speed_active_rows_supported,
+            "speed_active_column": self.speed_active_column,
             "connected": self.connected,
             "drive_like": self.drive_like,
             "has_marker": self.has_marker,
@@ -377,13 +384,28 @@ def _rx_delta(rows: list[dict[str, int]]) -> int:
     return int(rows[-1].get("rx", 0)) - int(rows[0].get("rx", 0))
 
 
+def _direct_speed_column(rows: list[dict[str, int]]) -> Optional[str]:
+    if not rows:
+        return None
+    for column in DIRECT_SPEED_COLUMN_CANDIDATES:
+        if column in rows[0]:
+            return column
+    return None
+
+
 def summarize_sessions(
     sessions: list[tuple[Optional[score_perf_csv.SessionMeta], list[dict[str, int]]]]
 ) -> list[SessionSummary]:
     summaries: list[SessionSummary] = []
     for index, (meta, rows) in enumerate(sessions, start=1):
         rx_delta = _rx_delta(rows)
-        speed_active_rows = sum(1 for row in rows if int(row.get("obdSpeedMph_x10", 0)) > 0)
+        speed_active_column = _direct_speed_column(rows)
+        speed_active_rows_supported = speed_active_column is not None
+        speed_active_rows = (
+            sum(1 for row in rows if int(row.get(speed_active_column, 0)) > 0)
+            if speed_active_column is not None
+            else 0
+        )
         connected = bool(rows) and (rx_delta > 0 or int(rows[-1].get("rx", 0)) > 0)
         summaries.append(
             SessionSummary(
@@ -395,8 +417,10 @@ def summarize_sessions(
                 duration_s=score_perf_csv.duration_s(rows) if rows else 0.0,
                 rx_delta=rx_delta,
                 speed_active_rows=speed_active_rows,
+                speed_active_rows_supported=speed_active_rows_supported,
+                speed_active_column=speed_active_column,
                 connected=connected,
-                drive_like=(speed_active_rows > 0),
+                drive_like=(speed_active_rows_supported and speed_active_rows > 0),
                 has_marker=meta is not None,
             )
         )
@@ -449,8 +473,8 @@ def render_segment_listing(
             str(summary.row_count),
             f"{summary.duration_s:.1f}",
             str(summary.rx_delta),
-            str(summary.speed_active_rows),
-            "yes" if summary.drive_like else "no",
+            str(summary.speed_active_rows) if summary.speed_active_rows_supported else "n/a",
+            "yes" if summary.drive_like else ("no" if summary.speed_active_rows_supported else "n/a"),
         ]
         for summary in summaries
     ]
@@ -1059,6 +1083,18 @@ def append_import_sections(
     csv_scorecard: dict[str, Any],
     panic_summary: dict[str, Any],
 ) -> None:
+    if selected_segment.get("speed_active_rows_supported"):
+        drive_evidence = (
+            f"speed_rows={selected_segment['speed_active_rows']}"
+            + (
+                f" via {selected_segment['speed_active_column']}"
+                if selected_segment.get("speed_active_column")
+                else ""
+            )
+        )
+    else:
+        drive_evidence = "speed_rows=n/a (schema lacks direct speed column)"
+
     lines = [
         "",
         "## Imported CSV",
@@ -1069,7 +1105,7 @@ def append_import_sections(
         f"- Selected segment: `{selected_segment['session_index']}`"
         + (f" token={selected_segment['token']}" if selected_segment.get("token") else ""),
         f"- Segment rows/duration: {selected_segment['row_count']} rows / {selected_segment['duration_s']:.1f}s",
-        f"- Segment drive evidence: speed_rows={selected_segment['speed_active_rows']}, rx_delta={selected_segment['rx_delta']}",
+        f"- Segment drive evidence: {drive_evidence}, rx_delta={selected_segment['rx_delta']}",
         f"- Unsupported metrics: {', '.join(unsupported_metrics) if unsupported_metrics else 'none'}",
         f"- Panic log: {'present' if panic_summary.get('present') else 'missing'} `{panic_summary.get('path', 'n/a')}`",
         f"- Panic runtime crash detected: {'yes' if panic_summary.get('runtime_crash_detected') else 'no'}",
