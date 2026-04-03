@@ -622,16 +622,16 @@ bool SettingsManager::checkNeedsRestore() {
     }
 
     // Check for our validity marker - set to current version after successful save
-    int nvsMarker = checkPrefs.getInt("nvsValid", 0);
-    int settingsVer = checkPrefs.getInt("settingsVer", 0);
+    int nvsMarker = checkPrefs.getInt(kNvsValid, 0);
+    int settingsVer = checkPrefs.getInt(kNvsSettingsVer, 0);
     bool missingCriticalKey = false;
     // These keys exist in all modern schemas and should never disappear in a healthy namespace.
     static constexpr const char* kCriticalKeys[] = {
-        "proxyBLE",
-        "proxyName",
-        "brightness",
-        "dispStyle",
-        "autoPush"
+        kNvsProxyBle,
+        kNvsProxyName,
+        kNvsBrightness,
+        kNvsDispStyle,
+        kNvsAutoPush
     };
     for (const char* key : kCriticalKeys) {
         if (!checkPrefs.isKey(key)) {

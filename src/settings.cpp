@@ -128,12 +128,12 @@ void SettingsManager::load() {
     }
 
     // Check settings version for migration
-    int storedVersion = preferences_.getInt("settingsVer", 1);
+    int storedVersion = preferences_.getInt(kNvsSettingsVer, 1);
 
-    settings_.enableWifi = preferences_.getBool("enableWifi", true);
+    settings_.enableWifi = preferences_.getBool(kNvsEnableWifi, true);
 
     // Handle AP password storage - version 1 was plain text, version 2+ is obfuscated
-    String storedApPwd = preferences_.getString("apPassword", "");
+    String storedApPwd = preferences_.getString(kNvsApPassword, "");
 
     if (storedVersion >= 2) {
         // Passwords are obfuscated - decode and sanitize them.
@@ -145,13 +145,13 @@ void SettingsManager::load() {
         Serial.println("[Settings] Migrating from v1 to v2 (password obfuscation)");
     }
 
-    settings_.apSSID = sanitizeApSsidValue(preferences_.getString("apSSID", "V1-Simple"));
+    settings_.apSSID = sanitizeApSsidValue(preferences_.getString(kNvsApSsid, "V1-Simple"));
 
     // WiFi client (STA) settings
-    const bool wifiClientEnabledKeyPresent = preferences_.isKey("wifiClientEn");
-    const bool wifiClientSsidKeyPresent = preferences_.isKey("wifiClSSID");
-    settings_.wifiClientEnabled = preferences_.getBool("wifiClientEn", false);
-    settings_.wifiClientSSID = sanitizeWifiClientSsidValue(preferences_.getString("wifiClSSID", ""));
+    const bool wifiClientEnabledKeyPresent = preferences_.isKey(kNvsWifiClientEnabled);
+    const bool wifiClientSsidKeyPresent = preferences_.isKey(kNvsWifiClientSsid);
+    settings_.wifiClientEnabled = preferences_.getBool(kNvsWifiClientEnabled, false);
+    settings_.wifiClientSSID = sanitizeWifiClientSsidValue(preferences_.getString(kNvsWifiClientSsid, ""));
 
     // Self-healing: if a saved SSID exists, force wifiClientEnabled to true.
     // This covers cases where a backup restore set the SSID but wifiClientEnabled
@@ -173,61 +173,61 @@ void SettingsManager::load() {
                   settings_.wifiClientEnabled ? "true" : "false",
                   settings_.wifiClientSSID.c_str());
 
-    settings_.proxyBLE = preferences_.getBool("proxyBLE", true);
-    settings_.proxyName = sanitizeProxyNameValue(preferences_.getString("proxyName", "V1-Proxy"));
-    settings_.turnOffDisplay = preferences_.getBool("displayOff", false);
-    settings_.brightness = std::max<uint8_t>(1, preferences_.getUChar("brightness", 200));  // Min 1 to avoid blank screen
-    settings_.displayStyle = normalizeDisplayStyle(preferences_.getInt("dispStyle", DISPLAY_STYLE_CLASSIC));
-    settings_.colorBogey = sanitizeRgb565Color(preferences_.getUShort("colorBogey", 0xF800), 0xF800);
-    settings_.colorFrequency = sanitizeRgb565Color(preferences_.getUShort("colorFreq", 0xF800), 0xF800);
-    settings_.colorArrowFront = sanitizeRgb565Color(preferences_.getUShort("colorArrF", 0xF800), 0xF800);
-    settings_.colorArrowSide = sanitizeRgb565Color(preferences_.getUShort("colorArrS", 0xF800), 0xF800);
-    settings_.colorArrowRear = sanitizeRgb565Color(preferences_.getUShort("colorArrR", 0xF800), 0xF800);
-    settings_.colorBandL = sanitizeRgb565Color(preferences_.getUShort("colorBandL", 0x001F), 0x001F);
-    settings_.colorBandKa = sanitizeRgb565Color(preferences_.getUShort("colorBandKa", 0xF800), 0xF800);
-    settings_.colorBandK = sanitizeRgb565Color(preferences_.getUShort("colorBandK", 0x001F), 0x001F);
-    settings_.colorBandX = sanitizeRgb565Color(preferences_.getUShort("colorBandX", 0x07E0), 0x07E0);
-    settings_.colorBandPhoto = sanitizeRgb565Color(preferences_.getUShort("colorBandP", 0x780F), 0x780F);  // Purple (photo radar)
-    settings_.colorWiFiIcon = sanitizeRgb565Color(preferences_.getUShort("colorWiFi", 0x07FF), 0x07FF);
-    settings_.colorWiFiConnected = sanitizeRgb565Color(preferences_.getUShort("colorWiFiC", 0x07E0), 0x07E0);
-    settings_.colorBleConnected = sanitizeRgb565Color(preferences_.getUShort("colorBleC", 0x07E0), 0x07E0);
-    settings_.colorBleDisconnected = sanitizeRgb565Color(preferences_.getUShort("colorBleD", 0x001F), 0x001F);
-    settings_.colorBar1 = sanitizeRgb565Color(preferences_.getUShort("colorBar1", 0x07E0), 0x07E0);
-    settings_.colorBar2 = sanitizeRgb565Color(preferences_.getUShort("colorBar2", 0x07E0), 0x07E0);
-    settings_.colorBar3 = sanitizeRgb565Color(preferences_.getUShort("colorBar3", 0xFFE0), 0xFFE0);
-    settings_.colorBar4 = sanitizeRgb565Color(preferences_.getUShort("colorBar4", 0xFFE0), 0xFFE0);
-    settings_.colorBar5 = sanitizeRgb565Color(preferences_.getUShort("colorBar5", 0xF800), 0xF800);
-    settings_.colorBar6 = sanitizeRgb565Color(preferences_.getUShort("colorBar6", 0xF800), 0xF800);
-    settings_.colorMuted = sanitizeRgb565Color(preferences_.getUShort("colorMuted", 0x3186), 0x3186);  // Dark grey muted color
-    settings_.colorPersisted = sanitizeRgb565Color(preferences_.getUShort("colorPersist", 0x18C3), 0x18C3);  // Darker grey for persisted alerts
-    settings_.colorVolumeMain = sanitizeRgb565Color(preferences_.getUShort("colorVolMain", 0xF800), 0xF800);  // Red for main volume
-    settings_.colorVolumeMute = sanitizeRgb565Color(preferences_.getUShort("colorVolMute", 0x7BEF), 0x7BEF);  // Grey for mute volume
-    settings_.colorRssiV1 = sanitizeRgb565Color(preferences_.getUShort("colorRssiV1", 0x07E0), 0x07E0);       // Green for V1 RSSI label
-    settings_.colorRssiProxy = sanitizeRgb565Color(preferences_.getUShort("colorRssiPrx", 0x001F), 0x001F);   // Blue for Proxy RSSI label
-    settings_.colorObd = sanitizeRgb565Color(preferences_.getUShort("colorObd", 0x001F), 0x001F);              // Blue OBD badge color
-    settings_.freqUseBandColor = preferences_.getBool("freqBandCol", false);  // Use custom freq color by default
-    settings_.hideWifiIcon = preferences_.getBool("hideWifi", false);
-    settings_.hideProfileIndicator = preferences_.getBool("hideProfile", false);
-    settings_.hideBatteryIcon = preferences_.getBool("hideBatt", false);
-    settings_.showBatteryPercent = preferences_.getBool("battPct", false);
-    settings_.hideBleIcon = preferences_.getBool("hideBle", false);
-    settings_.hideVolumeIndicator = preferences_.getBool("hideVol", false);
-    settings_.hideRssiIndicator = preferences_.getBool("hideRssi", false);
+    settings_.proxyBLE = preferences_.getBool(kNvsProxyBle, true);
+    settings_.proxyName = sanitizeProxyNameValue(preferences_.getString(kNvsProxyName, "V1-Proxy"));
+    settings_.turnOffDisplay = preferences_.getBool(kNvsDisplayOff, false);
+    settings_.brightness = std::max<uint8_t>(1, preferences_.getUChar(kNvsBrightness, 200));  // Min 1 to avoid blank screen
+    settings_.displayStyle = normalizeDisplayStyle(preferences_.getInt(kNvsDispStyle, DISPLAY_STYLE_CLASSIC));
+    settings_.colorBogey = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBogey, 0xF800), 0xF800);
+    settings_.colorFrequency = sanitizeRgb565Color(preferences_.getUShort(kNvsColorFreq, 0xF800), 0xF800);
+    settings_.colorArrowFront = sanitizeRgb565Color(preferences_.getUShort(kNvsColorArrowFront, 0xF800), 0xF800);
+    settings_.colorArrowSide = sanitizeRgb565Color(preferences_.getUShort(kNvsColorArrowSide, 0xF800), 0xF800);
+    settings_.colorArrowRear = sanitizeRgb565Color(preferences_.getUShort(kNvsColorArrowRear, 0xF800), 0xF800);
+    settings_.colorBandL = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBandLaser, 0x001F), 0x001F);
+    settings_.colorBandKa = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBandKa, 0xF800), 0xF800);
+    settings_.colorBandK = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBandK, 0x001F), 0x001F);
+    settings_.colorBandX = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBandX, 0x07E0), 0x07E0);
+    settings_.colorBandPhoto = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBandPhoto, 0x780F), 0x780F);  // Purple (photo radar)
+    settings_.colorWiFiIcon = sanitizeRgb565Color(preferences_.getUShort(kNvsColorWifi, 0x07FF), 0x07FF);
+    settings_.colorWiFiConnected = sanitizeRgb565Color(preferences_.getUShort(kNvsColorWifiConnected, 0x07E0), 0x07E0);
+    settings_.colorBleConnected = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBleConnected, 0x07E0), 0x07E0);
+    settings_.colorBleDisconnected = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBleDisconnected, 0x001F), 0x001F);
+    settings_.colorBar1 = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBar1, 0x07E0), 0x07E0);
+    settings_.colorBar2 = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBar2, 0x07E0), 0x07E0);
+    settings_.colorBar3 = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBar3, 0xFFE0), 0xFFE0);
+    settings_.colorBar4 = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBar4, 0xFFE0), 0xFFE0);
+    settings_.colorBar5 = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBar5, 0xF800), 0xF800);
+    settings_.colorBar6 = sanitizeRgb565Color(preferences_.getUShort(kNvsColorBar6, 0xF800), 0xF800);
+    settings_.colorMuted = sanitizeRgb565Color(preferences_.getUShort(kNvsColorMuted, 0x3186), 0x3186);  // Dark grey muted color
+    settings_.colorPersisted = sanitizeRgb565Color(preferences_.getUShort(kNvsColorPersisted, 0x18C3), 0x18C3);  // Darker grey for persisted alerts
+    settings_.colorVolumeMain = sanitizeRgb565Color(preferences_.getUShort(kNvsColorVolumeMain, 0xF800), 0xF800);  // Red for main volume
+    settings_.colorVolumeMute = sanitizeRgb565Color(preferences_.getUShort(kNvsColorVolumeMute, 0x7BEF), 0x7BEF);  // Grey for mute volume
+    settings_.colorRssiV1 = sanitizeRgb565Color(preferences_.getUShort(kNvsColorRssiV1, 0x07E0), 0x07E0);       // Green for V1 RSSI label
+    settings_.colorRssiProxy = sanitizeRgb565Color(preferences_.getUShort(kNvsColorRssiProxy, 0x001F), 0x001F);   // Blue for Proxy RSSI label
+    settings_.colorObd = sanitizeRgb565Color(preferences_.getUShort(kNvsColorObd, 0x001F), 0x001F);              // Blue OBD badge color
+    settings_.freqUseBandColor = preferences_.getBool(kNvsFreqBandColor, false);  // Use custom freq color by default
+    settings_.hideWifiIcon = preferences_.getBool(kNvsHideWifi, false);
+    settings_.hideProfileIndicator = preferences_.getBool(kNvsHideProfile, false);
+    settings_.hideBatteryIcon = preferences_.getBool(kNvsHideBattery, false);
+    settings_.showBatteryPercent = preferences_.getBool(kNvsBatteryPercent, false);
+    settings_.hideBleIcon = preferences_.getBool(kNvsHideBle, false);
+    settings_.hideVolumeIndicator = preferences_.getBool(kNvsHideVolume, false);
+    settings_.hideRssiIndicator = preferences_.getBool(kNvsHideRssi, false);
 
     // Development settings
-    settings_.enableWifiAtBoot = preferences_.getBool("wifiAtBoot", false);
+    settings_.enableWifiAtBoot = preferences_.getBool(kNvsWifiAtBoot, false);
 
     // Voice alert settings - migrate from old boolean to new mode
     // If old voiceAlerts key exists, migrate it; otherwise use new defaults
-    bool needsMigration = preferences_.isKey("voiceAlerts");
+    bool needsMigration = preferences_.isKey(kNvsVoiceAlertsLegacy);
     if (needsMigration) {
         // Migrate old setting: true -> BAND_FREQ, false -> DISABLED
-        bool oldEnabled = preferences_.getBool("voiceAlerts", true);
+        bool oldEnabled = preferences_.getBool(kNvsVoiceAlertsLegacy, true);
         settings_.voiceAlertMode = oldEnabled ? VOICE_MODE_BAND_FREQ : VOICE_MODE_DISABLED;
         settings_.voiceDirectionEnabled = true;  // Old behavior always included direction
     } else {
-        settings_.voiceAlertMode = clampVoiceAlertModeValue(preferences_.getUChar("voiceMode", VOICE_MODE_BAND_FREQ));
-        settings_.voiceDirectionEnabled = preferences_.getBool("voiceDir", true);
+        settings_.voiceAlertMode = clampVoiceAlertModeValue(preferences_.getUChar(kNvsVoiceMode, VOICE_MODE_BAND_FREQ));
+        settings_.voiceDirectionEnabled = preferences_.getBool(kNvsVoiceDirection, true);
     }
 
     // Close read-only preferences_ before migration cleanup
@@ -235,7 +235,7 @@ void SettingsManager::load() {
         preferences_.end();
         // Re-open in write mode to remove old key
         if (preferences_.begin(activeNs.c_str(), false)) {
-            preferences_.remove("voiceAlerts");
+            preferences_.remove(kNvsVoiceAlertsLegacy);
             Serial.println("[Settings] Migrated voiceAlerts -> voiceMode");
             preferences_.end();
         }
@@ -245,82 +245,82 @@ void SettingsManager::load() {
             return;
         }
     }
-    settings_.announceBogeyCount = preferences_.getBool("voiceBogeys", true);
-    settings_.muteVoiceIfVolZero = preferences_.getBool("muteVoiceVol0", false);
-    settings_.voiceVolume = std::min<uint8_t>(100, preferences_.getUChar("voiceVol", 75));  // 0-100%
+    settings_.announceBogeyCount = preferences_.getBool(kNvsVoiceBogeys, true);
+    settings_.muteVoiceIfVolZero = preferences_.getBool(kNvsMuteVoiceAtVol0, false);
+    settings_.voiceVolume = std::min<uint8_t>(100, preferences_.getUChar(kNvsVoiceVolume, 75));  // 0-100%
 
     // Secondary alert settings
-    settings_.announceSecondaryAlerts = preferences_.getBool("secAlerts", false);
-    settings_.secondaryLaser = preferences_.getBool("secLaser", true);
-    settings_.secondaryKa = preferences_.getBool("secKa", true);
-    settings_.secondaryK = preferences_.getBool("secK", false);
-    settings_.secondaryX = preferences_.getBool("secX", false);
+    settings_.announceSecondaryAlerts = preferences_.getBool(kNvsSecondaryAlerts, false);
+    settings_.secondaryLaser = preferences_.getBool(kNvsSecondaryLaser, true);
+    settings_.secondaryKa = preferences_.getBool(kNvsSecondaryKa, true);
+    settings_.secondaryK = preferences_.getBool(kNvsSecondaryK, false);
+    settings_.secondaryX = preferences_.getBool(kNvsSecondaryX, false);
 
     // Volume fade settings
-    settings_.alertVolumeFadeEnabled = preferences_.getBool("volFadeEn", false);
-    settings_.alertVolumeFadeDelaySec = std::clamp<uint8_t>(preferences_.getUChar("volFadeSec", 2), 1, 10);  // 1-10 seconds
-    settings_.alertVolumeFadeVolume = std::min<uint8_t>(9, preferences_.getUChar("volFadeVol", 1));  // 0-9 (V1 volume range)
+    settings_.alertVolumeFadeEnabled = preferences_.getBool(kNvsVolFadeEnabled, false);
+    settings_.alertVolumeFadeDelaySec = std::clamp<uint8_t>(preferences_.getUChar(kNvsVolFadeSeconds, 2), 1, 10);  // 1-10 seconds
+    settings_.alertVolumeFadeVolume = std::min<uint8_t>(9, preferences_.getUChar(kNvsVolFadeVolume, 1));  // 0-9 (V1 volume range)
 
     // Speed-aware muting settings
-    settings_.speedMuteEnabled = preferences_.getBool("spdMuteEn", false);
-    settings_.speedMuteThresholdMph = std::clamp<uint8_t>(preferences_.getUChar("spdMuteThr", 25), 5, 60);
-    settings_.speedMuteHysteresisMph = std::clamp<uint8_t>(preferences_.getUChar("spdMuteHys", 3), 1, 10);
+    settings_.speedMuteEnabled = preferences_.getBool(kNvsSpeedMuteEnabled, false);
+    settings_.speedMuteThresholdMph = std::clamp<uint8_t>(preferences_.getUChar(kNvsSpeedMuteThreshold, 25), 5, 60);
+    settings_.speedMuteHysteresisMph = std::clamp<uint8_t>(preferences_.getUChar(kNvsSpeedMuteHysteresis, 3), 1, 10);
     {
-        const uint8_t raw = preferences_.getUChar("spdMuteVol", 0xFF);
+        const uint8_t raw = preferences_.getUChar(kNvsSpeedMuteVolume, 0xFF);
         settings_.speedMuteVolume = (raw <= 9 || raw == 0xFF) ? raw : 0xFF;
     }
 
-    settings_.autoPushEnabled = preferences_.getBool("autoPush", true);  // Default to enabled for profiles to work
-    settings_.activeSlot = preferences_.getInt("activeSlot", 0);
+    settings_.autoPushEnabled = preferences_.getBool(kNvsAutoPush, true);  // Default to enabled for profiles to work
+    settings_.activeSlot = preferences_.getInt(kNvsActiveSlot, 0);
     if (settings_.activeSlot < 0 || settings_.activeSlot > 2) {
         settings_.activeSlot = 0;
     }
-    settings_.slot0Name = sanitizeSlotNameValue(preferences_.getString("slot0name", "DEFAULT"));
-    settings_.slot1Name = sanitizeSlotNameValue(preferences_.getString("slot1name", "HIGHWAY"));
-    settings_.slot2Name = sanitizeSlotNameValue(preferences_.getString("slot2name", "COMFORT"));
-    settings_.slot0Color = sanitizeRgb565Color(preferences_.getUShort("slot0color", 0x400A), 0x400A);
-    settings_.slot1Color = sanitizeRgb565Color(preferences_.getUShort("slot1color", 0x07E0), 0x07E0);
-    settings_.slot2Color = sanitizeRgb565Color(preferences_.getUShort("slot2color", 0x8410), 0x8410);
-    settings_.slot0Volume = clampSlotVolumeValue(preferences_.getUChar("slot0vol", 0xFF));
-    settings_.slot1Volume = clampSlotVolumeValue(preferences_.getUChar("slot1vol", 0xFF));
-    settings_.slot2Volume = clampSlotVolumeValue(preferences_.getUChar("slot2vol", 0xFF));
-    settings_.slot0MuteVolume = clampSlotVolumeValue(preferences_.getUChar("slot0mute", 0xFF));
-    settings_.slot1MuteVolume = clampSlotVolumeValue(preferences_.getUChar("slot1mute", 0xFF));
-    settings_.slot2MuteVolume = clampSlotVolumeValue(preferences_.getUChar("slot2mute", 0xFF));
-    settings_.slot0DarkMode = preferences_.getBool("slot0dark", false);
-    settings_.slot1DarkMode = preferences_.getBool("slot1dark", false);
-    settings_.slot2DarkMode = preferences_.getBool("slot2dark", false);
-    settings_.slot0MuteToZero = preferences_.getBool("slot0mz", false);
-    settings_.slot1MuteToZero = preferences_.getBool("slot1mz", false);
-    settings_.slot2MuteToZero = preferences_.getBool("slot2mz", false);
-    settings_.slot0AlertPersist = std::min<uint8_t>(5, preferences_.getUChar("slot0persist", 0));
-    settings_.slot1AlertPersist = std::min<uint8_t>(5, preferences_.getUChar("slot1persist", 0));
-    settings_.slot2AlertPersist = std::min<uint8_t>(5, preferences_.getUChar("slot2persist", 0));
-    settings_.slot0PriorityArrow = preferences_.getBool("slot0prio", false);
-    settings_.slot1PriorityArrow = preferences_.getBool("slot1prio", false);
-    settings_.slot2PriorityArrow = preferences_.getBool("slot2prio", false);
-    settings_.slot0_default.profileName = sanitizeProfileNameValue(preferences_.getString("slot0prof", ""));
-    settings_.slot0_default.mode = normalizeV1ModeValue(preferences_.getInt("slot0mode", V1_MODE_UNKNOWN));
-    settings_.slot1_highway.profileName = sanitizeProfileNameValue(preferences_.getString("slot1prof", ""));
-    settings_.slot1_highway.mode = normalizeV1ModeValue(preferences_.getInt("slot1mode", V1_MODE_UNKNOWN));
-    settings_.slot2_comfort.profileName = sanitizeProfileNameValue(preferences_.getString("slot2prof", ""));
-    settings_.slot2_comfort.mode = normalizeV1ModeValue(preferences_.getInt("slot2mode", V1_MODE_UNKNOWN));
-    settings_.lastV1Address = sanitizeLastV1AddressValue(preferences_.getString("lastV1Addr", ""));
-    settings_.autoPowerOffMinutes = clampU8(preferences_.getUChar("autoPwrOff", 0), 0, 60);
-    settings_.apTimeoutMinutes = clampApTimeoutValue(preferences_.getUChar("apTimeout", 0));
+    settings_.slot0Name = sanitizeSlotNameValue(preferences_.getString(kNvsSlot0Name, "DEFAULT"));
+    settings_.slot1Name = sanitizeSlotNameValue(preferences_.getString(kNvsSlot1Name, "HIGHWAY"));
+    settings_.slot2Name = sanitizeSlotNameValue(preferences_.getString(kNvsSlot2Name, "COMFORT"));
+    settings_.slot0Color = sanitizeRgb565Color(preferences_.getUShort(kNvsSlot0Color, 0x400A), 0x400A);
+    settings_.slot1Color = sanitizeRgb565Color(preferences_.getUShort(kNvsSlot1Color, 0x07E0), 0x07E0);
+    settings_.slot2Color = sanitizeRgb565Color(preferences_.getUShort(kNvsSlot2Color, 0x8410), 0x8410);
+    settings_.slot0Volume = clampSlotVolumeValue(preferences_.getUChar(kNvsSlot0Volume, 0xFF));
+    settings_.slot1Volume = clampSlotVolumeValue(preferences_.getUChar(kNvsSlot1Volume, 0xFF));
+    settings_.slot2Volume = clampSlotVolumeValue(preferences_.getUChar(kNvsSlot2Volume, 0xFF));
+    settings_.slot0MuteVolume = clampSlotVolumeValue(preferences_.getUChar(kNvsSlot0MuteVolume, 0xFF));
+    settings_.slot1MuteVolume = clampSlotVolumeValue(preferences_.getUChar(kNvsSlot1MuteVolume, 0xFF));
+    settings_.slot2MuteVolume = clampSlotVolumeValue(preferences_.getUChar(kNvsSlot2MuteVolume, 0xFF));
+    settings_.slot0DarkMode = preferences_.getBool(kNvsSlot0DarkMode, false);
+    settings_.slot1DarkMode = preferences_.getBool(kNvsSlot1DarkMode, false);
+    settings_.slot2DarkMode = preferences_.getBool(kNvsSlot2DarkMode, false);
+    settings_.slot0MuteToZero = preferences_.getBool(kNvsSlot0MuteToZero, false);
+    settings_.slot1MuteToZero = preferences_.getBool(kNvsSlot1MuteToZero, false);
+    settings_.slot2MuteToZero = preferences_.getBool(kNvsSlot2MuteToZero, false);
+    settings_.slot0AlertPersist = std::min<uint8_t>(5, preferences_.getUChar(kNvsSlot0Persistence, 0));
+    settings_.slot1AlertPersist = std::min<uint8_t>(5, preferences_.getUChar(kNvsSlot1Persistence, 0));
+    settings_.slot2AlertPersist = std::min<uint8_t>(5, preferences_.getUChar(kNvsSlot2Persistence, 0));
+    settings_.slot0PriorityArrow = preferences_.getBool(kNvsSlot0PriorityArrow, false);
+    settings_.slot1PriorityArrow = preferences_.getBool(kNvsSlot1PriorityArrow, false);
+    settings_.slot2PriorityArrow = preferences_.getBool(kNvsSlot2PriorityArrow, false);
+    settings_.slot0_default.profileName = sanitizeProfileNameValue(preferences_.getString(kNvsSlot0Profile, ""));
+    settings_.slot0_default.mode = normalizeV1ModeValue(preferences_.getInt(kNvsSlot0Mode, V1_MODE_UNKNOWN));
+    settings_.slot1_highway.profileName = sanitizeProfileNameValue(preferences_.getString(kNvsSlot1Profile, ""));
+    settings_.slot1_highway.mode = normalizeV1ModeValue(preferences_.getInt(kNvsSlot1Mode, V1_MODE_UNKNOWN));
+    settings_.slot2_comfort.profileName = sanitizeProfileNameValue(preferences_.getString(kNvsSlot2Profile, ""));
+    settings_.slot2_comfort.mode = normalizeV1ModeValue(preferences_.getInt(kNvsSlot2Mode, V1_MODE_UNKNOWN));
+    settings_.lastV1Address = sanitizeLastV1AddressValue(preferences_.getString(kNvsLastV1Address, ""));
+    settings_.autoPowerOffMinutes = clampU8(preferences_.getUChar(kNvsAutoPowerOff, 0), 0, 60);
+    settings_.apTimeoutMinutes = clampApTimeoutValue(preferences_.getUChar(kNvsApTimeout, 0));
 
     // OBD settings
-    settings_.obdEnabled = preferences_.getBool("obdEn", false);
-    settings_.obdSavedAddress = preferences_.getString("obdAddr", "");
+    settings_.obdEnabled = preferences_.getBool(kNvsObdEnabled, false);
+    settings_.obdSavedAddress = preferences_.getString(kNvsObdAddress, "");
     if (!isValidBleAddress(settings_.obdSavedAddress)) {
         Serial.printf("[Settings] WARN: Invalid OBD saved address in NVS: '%s' — clearing\n",
                       settings_.obdSavedAddress.c_str());
         settings_.obdSavedAddress = "";
     }
-    settings_.obdSavedName = sanitizeObdSavedNameValue(preferences_.getString("obdName", ""));
-    settings_.obdSavedAddrType = preferences_.getUChar("obdAddrT", 0);
+    settings_.obdSavedName = sanitizeObdSavedNameValue(preferences_.getString(kNvsObdName, ""));
+    settings_.obdSavedAddrType = preferences_.getUChar(kNvsObdAddressType, 0);
     settings_.obdMinRssi = static_cast<int8_t>(
-        preferences_.getChar("obdMinRssi", -90));
+        preferences_.getChar(kNvsObdMinRssi, -90));
 
     preferences_.end();
 

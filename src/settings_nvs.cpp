@@ -219,8 +219,8 @@ int namespaceHealthScore(const char* ns) {
         return -1;
     }
 
-    const int nvsMarker = prefs.getInt("nvsValid", 0);
-    const int settingsVer = prefs.getInt("settingsVer", 0);
+    const int nvsMarker = prefs.getInt(kNvsValid, 0);
+    const int settingsVer = prefs.getInt(kNvsSettingsVer, 0);
     int score = 0;
 
     // Validity marker is the strongest signal that a namespace is current.
@@ -228,11 +228,11 @@ int namespaceHealthScore(const char* ns) {
     if (settingsVer > 0) score += settingsVer * 10;
 
     static constexpr const char* kCriticalKeys[] = {
-        "proxyBLE",
-        "proxyName",
-        "brightness",
-        "dispStyle",
-        "autoPush"
+        kNvsProxyBle,
+        kNvsProxyName,
+        kNvsBrightness,
+        kNvsDispStyle,
+        kNvsAutoPush
     };
     for (const char* key : kCriticalKeys) {
         if (prefs.isKey(key)) {
@@ -252,7 +252,7 @@ String SettingsManager::getActiveNamespace() {
     String active = "";
     Preferences meta;
     if (meta.begin(SETTINGS_NS_META, true)) {
-        active = meta.getString("active", "");
+        active = meta.getString(kNvsMetaActive, "");
         meta.end();
         if (active.length() > 0 && isKnownSettingsNamespace(active)) {
             // Verify the meta-pointed namespace is actually healthy.
@@ -294,7 +294,7 @@ String SettingsManager::getActiveNamespace() {
     if ((recovered == SETTINGS_NS_A || recovered == SETTINGS_NS_B) && recovered != active) {
         Preferences repairMeta;
         if (repairMeta.begin(SETTINGS_NS_META, false)) {
-            if (repairMeta.putString("active", recovered) > 0) {
+            if (repairMeta.putString(kNvsMetaActive, recovered) > 0) {
                 Serial.printf("[Settings] Recovered active namespace to %s\n", recovered.c_str());
             }
             repairMeta.end();
@@ -321,124 +321,124 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     prefs.clear();
     size_t written = 0;
     // Store settings version for migration handling
-    written += prefs.putInt("settingsVer", SETTINGS_VERSION);
-    written += prefs.putBool("enableWifi", settings_.enableWifi);
-    written += prefs.putInt("wifiMode", settings_.wifiMode);
-    written += prefs.putString("apSSID", settings_.apSSID);
+    written += prefs.putInt(kNvsSettingsVer, SETTINGS_VERSION);
+    written += prefs.putBool(kNvsEnableWifi, settings_.enableWifi);
+    written += prefs.putInt(kNvsWifiMode, settings_.wifiMode);
+    written += prefs.putString(kNvsApSsid, settings_.apSSID);
     // Obfuscate passwords before storing
-    written += prefs.putString("apPassword", encodeObfuscatedForStorage(settings_.apPassword));
+    written += prefs.putString(kNvsApPassword, encodeObfuscatedForStorage(settings_.apPassword));
     // WiFi client (STA) settings - password stored in separate secure namespace
-    written += prefs.putBool("wifiClientEn", settings_.wifiClientEnabled);
-    written += prefs.putString("wifiClSSID", settings_.wifiClientSSID);
-    written += prefs.putBool("proxyBLE", settings_.proxyBLE);
-    written += prefs.putString("proxyName", settings_.proxyName);
-    written += prefs.putBool("displayOff", settings_.turnOffDisplay);
-    written += prefs.putUChar("brightness", settings_.brightness);
-    written += prefs.putInt("dispStyle", settings_.displayStyle);
-    written += prefs.putUShort("colorBogey", settings_.colorBogey);
-    written += prefs.putUShort("colorFreq", settings_.colorFrequency);
-    written += prefs.putUShort("colorArrF", settings_.colorArrowFront);
-    written += prefs.putUShort("colorArrS", settings_.colorArrowSide);
-    written += prefs.putUShort("colorArrR", settings_.colorArrowRear);
-    written += prefs.putUShort("colorBandL", settings_.colorBandL);
-    written += prefs.putUShort("colorBandKa", settings_.colorBandKa);
-    written += prefs.putUShort("colorBandK", settings_.colorBandK);
-    written += prefs.putUShort("colorBandX", settings_.colorBandX);
-    written += prefs.putUShort("colorBandP", settings_.colorBandPhoto);
-    written += prefs.putUShort("colorWiFi", settings_.colorWiFiIcon);
-    written += prefs.putUShort("colorWiFiC", settings_.colorWiFiConnected);
-    written += prefs.putUShort("colorBleC", settings_.colorBleConnected);
-    written += prefs.putUShort("colorBleD", settings_.colorBleDisconnected);
-    written += prefs.putUShort("colorBar1", settings_.colorBar1);
-    written += prefs.putUShort("colorBar2", settings_.colorBar2);
-    written += prefs.putUShort("colorBar3", settings_.colorBar3);
-    written += prefs.putUShort("colorBar4", settings_.colorBar4);
-    written += prefs.putUShort("colorBar5", settings_.colorBar5);
-    written += prefs.putUShort("colorBar6", settings_.colorBar6);
-    written += prefs.putUShort("colorMuted", settings_.colorMuted);
-    written += prefs.putUShort("colorPersist", settings_.colorPersisted);
-    written += prefs.putUShort("colorVolMain", settings_.colorVolumeMain);
-    written += prefs.putUShort("colorVolMute", settings_.colorVolumeMute);
-    written += prefs.putUShort("colorRssiV1", settings_.colorRssiV1);
-    written += prefs.putUShort("colorRssiPrx", settings_.colorRssiProxy);
-    written += prefs.putUShort("colorObd", settings_.colorObd);
-    written += prefs.putBool("freqBandCol", settings_.freqUseBandColor);
-    written += prefs.putBool("hideWifi", settings_.hideWifiIcon);
-    written += prefs.putBool("hideProfile", settings_.hideProfileIndicator);
-    written += prefs.putBool("hideBatt", settings_.hideBatteryIcon);
-    written += prefs.putBool("battPct", settings_.showBatteryPercent);
-    written += prefs.putBool("hideBle", settings_.hideBleIcon);
-    written += prefs.putBool("hideVol", settings_.hideVolumeIndicator);
-    written += prefs.putBool("hideRssi", settings_.hideRssiIndicator);
-    written += prefs.putBool("wifiAtBoot", settings_.enableWifiAtBoot);
-    written += prefs.putUChar("voiceMode", (uint8_t)settings_.voiceAlertMode);
-    written += prefs.putBool("voiceDir", settings_.voiceDirectionEnabled);
-    written += prefs.putBool("voiceBogeys", settings_.announceBogeyCount);
-    written += prefs.putBool("muteVoiceVol0", settings_.muteVoiceIfVolZero);
-    written += prefs.putUChar("voiceVol", settings_.voiceVolume);
-    written += prefs.putBool("secAlerts", settings_.announceSecondaryAlerts);
-    written += prefs.putBool("secLaser", settings_.secondaryLaser);
-    written += prefs.putBool("secKa", settings_.secondaryKa);
-    written += prefs.putBool("secK", settings_.secondaryK);
-    written += prefs.putBool("secX", settings_.secondaryX);
-    written += prefs.putBool("volFadeEn", settings_.alertVolumeFadeEnabled);
-    written += prefs.putUChar("volFadeSec", settings_.alertVolumeFadeDelaySec);
-    written += prefs.putUChar("volFadeVol", settings_.alertVolumeFadeVolume);
-    written += prefs.putBool("spdMuteEn", settings_.speedMuteEnabled);
-    written += prefs.putUChar("spdMuteThr", settings_.speedMuteThresholdMph);
-    written += prefs.putUChar("spdMuteHys", settings_.speedMuteHysteresisMph);
-    written += prefs.putUChar("spdMuteVol", settings_.speedMuteVolume);
-    written += prefs.putBool("autoPush", settings_.autoPushEnabled);
-    written += prefs.putInt("activeSlot", settings_.activeSlot);
-    written += prefs.putString("slot0name", settings_.slot0Name);
-    written += prefs.putString("slot1name", settings_.slot1Name);
-    written += prefs.putString("slot2name", settings_.slot2Name);
-    written += prefs.putUShort("slot0color", settings_.slot0Color);
-    written += prefs.putUShort("slot1color", settings_.slot1Color);
-    written += prefs.putUShort("slot2color", settings_.slot2Color);
-    written += prefs.putUChar("slot0vol", settings_.slot0Volume);
-    written += prefs.putUChar("slot1vol", settings_.slot1Volume);
-    written += prefs.putUChar("slot2vol", settings_.slot2Volume);
-    written += prefs.putUChar("slot0mute", settings_.slot0MuteVolume);
-    written += prefs.putUChar("slot1mute", settings_.slot1MuteVolume);
-    written += prefs.putUChar("slot2mute", settings_.slot2MuteVolume);
-    written += prefs.putBool("slot0dark", settings_.slot0DarkMode);
-    written += prefs.putBool("slot1dark", settings_.slot1DarkMode);
-    written += prefs.putBool("slot2dark", settings_.slot2DarkMode);
-    written += prefs.putBool("slot0mz", settings_.slot0MuteToZero);
-    written += prefs.putBool("slot1mz", settings_.slot1MuteToZero);
-    written += prefs.putBool("slot2mz", settings_.slot2MuteToZero);
-    written += prefs.putUChar("slot0persist", settings_.slot0AlertPersist);
-    written += prefs.putUChar("slot1persist", settings_.slot1AlertPersist);
-    written += prefs.putUChar("slot2persist", settings_.slot2AlertPersist);
-    written += prefs.putBool("slot0prio", settings_.slot0PriorityArrow);
-    written += prefs.putBool("slot1prio", settings_.slot1PriorityArrow);
-    written += prefs.putBool("slot2prio", settings_.slot2PriorityArrow);
-    written += prefs.putString("slot0prof", settings_.slot0_default.profileName);
-    written += prefs.putInt("slot0mode", settings_.slot0_default.mode);
-    written += prefs.putString("slot1prof", settings_.slot1_highway.profileName);
-    written += prefs.putInt("slot1mode", settings_.slot1_highway.mode);
-    written += prefs.putString("slot2prof", settings_.slot2_comfort.profileName);
-    written += prefs.putInt("slot2mode", settings_.slot2_comfort.mode);
-    written += prefs.putString("lastV1Addr", settings_.lastV1Address);
-    written += prefs.putUChar("autoPwrOff", settings_.autoPowerOffMinutes);
-    written += prefs.putUChar("apTimeout", settings_.apTimeoutMinutes);
+    written += prefs.putBool(kNvsWifiClientEnabled, settings_.wifiClientEnabled);
+    written += prefs.putString(kNvsWifiClientSsid, settings_.wifiClientSSID);
+    written += prefs.putBool(kNvsProxyBle, settings_.proxyBLE);
+    written += prefs.putString(kNvsProxyName, settings_.proxyName);
+    written += prefs.putBool(kNvsDisplayOff, settings_.turnOffDisplay);
+    written += prefs.putUChar(kNvsBrightness, settings_.brightness);
+    written += prefs.putInt(kNvsDispStyle, settings_.displayStyle);
+    written += prefs.putUShort(kNvsColorBogey, settings_.colorBogey);
+    written += prefs.putUShort(kNvsColorFreq, settings_.colorFrequency);
+    written += prefs.putUShort(kNvsColorArrowFront, settings_.colorArrowFront);
+    written += prefs.putUShort(kNvsColorArrowSide, settings_.colorArrowSide);
+    written += prefs.putUShort(kNvsColorArrowRear, settings_.colorArrowRear);
+    written += prefs.putUShort(kNvsColorBandLaser, settings_.colorBandL);
+    written += prefs.putUShort(kNvsColorBandKa, settings_.colorBandKa);
+    written += prefs.putUShort(kNvsColorBandK, settings_.colorBandK);
+    written += prefs.putUShort(kNvsColorBandX, settings_.colorBandX);
+    written += prefs.putUShort(kNvsColorBandPhoto, settings_.colorBandPhoto);
+    written += prefs.putUShort(kNvsColorWifi, settings_.colorWiFiIcon);
+    written += prefs.putUShort(kNvsColorWifiConnected, settings_.colorWiFiConnected);
+    written += prefs.putUShort(kNvsColorBleConnected, settings_.colorBleConnected);
+    written += prefs.putUShort(kNvsColorBleDisconnected, settings_.colorBleDisconnected);
+    written += prefs.putUShort(kNvsColorBar1, settings_.colorBar1);
+    written += prefs.putUShort(kNvsColorBar2, settings_.colorBar2);
+    written += prefs.putUShort(kNvsColorBar3, settings_.colorBar3);
+    written += prefs.putUShort(kNvsColorBar4, settings_.colorBar4);
+    written += prefs.putUShort(kNvsColorBar5, settings_.colorBar5);
+    written += prefs.putUShort(kNvsColorBar6, settings_.colorBar6);
+    written += prefs.putUShort(kNvsColorMuted, settings_.colorMuted);
+    written += prefs.putUShort(kNvsColorPersisted, settings_.colorPersisted);
+    written += prefs.putUShort(kNvsColorVolumeMain, settings_.colorVolumeMain);
+    written += prefs.putUShort(kNvsColorVolumeMute, settings_.colorVolumeMute);
+    written += prefs.putUShort(kNvsColorRssiV1, settings_.colorRssiV1);
+    written += prefs.putUShort(kNvsColorRssiProxy, settings_.colorRssiProxy);
+    written += prefs.putUShort(kNvsColorObd, settings_.colorObd);
+    written += prefs.putBool(kNvsFreqBandColor, settings_.freqUseBandColor);
+    written += prefs.putBool(kNvsHideWifi, settings_.hideWifiIcon);
+    written += prefs.putBool(kNvsHideProfile, settings_.hideProfileIndicator);
+    written += prefs.putBool(kNvsHideBattery, settings_.hideBatteryIcon);
+    written += prefs.putBool(kNvsBatteryPercent, settings_.showBatteryPercent);
+    written += prefs.putBool(kNvsHideBle, settings_.hideBleIcon);
+    written += prefs.putBool(kNvsHideVolume, settings_.hideVolumeIndicator);
+    written += prefs.putBool(kNvsHideRssi, settings_.hideRssiIndicator);
+    written += prefs.putBool(kNvsWifiAtBoot, settings_.enableWifiAtBoot);
+    written += prefs.putUChar(kNvsVoiceMode, (uint8_t)settings_.voiceAlertMode);
+    written += prefs.putBool(kNvsVoiceDirection, settings_.voiceDirectionEnabled);
+    written += prefs.putBool(kNvsVoiceBogeys, settings_.announceBogeyCount);
+    written += prefs.putBool(kNvsMuteVoiceAtVol0, settings_.muteVoiceIfVolZero);
+    written += prefs.putUChar(kNvsVoiceVolume, settings_.voiceVolume);
+    written += prefs.putBool(kNvsSecondaryAlerts, settings_.announceSecondaryAlerts);
+    written += prefs.putBool(kNvsSecondaryLaser, settings_.secondaryLaser);
+    written += prefs.putBool(kNvsSecondaryKa, settings_.secondaryKa);
+    written += prefs.putBool(kNvsSecondaryK, settings_.secondaryK);
+    written += prefs.putBool(kNvsSecondaryX, settings_.secondaryX);
+    written += prefs.putBool(kNvsVolFadeEnabled, settings_.alertVolumeFadeEnabled);
+    written += prefs.putUChar(kNvsVolFadeSeconds, settings_.alertVolumeFadeDelaySec);
+    written += prefs.putUChar(kNvsVolFadeVolume, settings_.alertVolumeFadeVolume);
+    written += prefs.putBool(kNvsSpeedMuteEnabled, settings_.speedMuteEnabled);
+    written += prefs.putUChar(kNvsSpeedMuteThreshold, settings_.speedMuteThresholdMph);
+    written += prefs.putUChar(kNvsSpeedMuteHysteresis, settings_.speedMuteHysteresisMph);
+    written += prefs.putUChar(kNvsSpeedMuteVolume, settings_.speedMuteVolume);
+    written += prefs.putBool(kNvsAutoPush, settings_.autoPushEnabled);
+    written += prefs.putInt(kNvsActiveSlot, settings_.activeSlot);
+    written += prefs.putString(kNvsSlot0Name, settings_.slot0Name);
+    written += prefs.putString(kNvsSlot1Name, settings_.slot1Name);
+    written += prefs.putString(kNvsSlot2Name, settings_.slot2Name);
+    written += prefs.putUShort(kNvsSlot0Color, settings_.slot0Color);
+    written += prefs.putUShort(kNvsSlot1Color, settings_.slot1Color);
+    written += prefs.putUShort(kNvsSlot2Color, settings_.slot2Color);
+    written += prefs.putUChar(kNvsSlot0Volume, settings_.slot0Volume);
+    written += prefs.putUChar(kNvsSlot1Volume, settings_.slot1Volume);
+    written += prefs.putUChar(kNvsSlot2Volume, settings_.slot2Volume);
+    written += prefs.putUChar(kNvsSlot0MuteVolume, settings_.slot0MuteVolume);
+    written += prefs.putUChar(kNvsSlot1MuteVolume, settings_.slot1MuteVolume);
+    written += prefs.putUChar(kNvsSlot2MuteVolume, settings_.slot2MuteVolume);
+    written += prefs.putBool(kNvsSlot0DarkMode, settings_.slot0DarkMode);
+    written += prefs.putBool(kNvsSlot1DarkMode, settings_.slot1DarkMode);
+    written += prefs.putBool(kNvsSlot2DarkMode, settings_.slot2DarkMode);
+    written += prefs.putBool(kNvsSlot0MuteToZero, settings_.slot0MuteToZero);
+    written += prefs.putBool(kNvsSlot1MuteToZero, settings_.slot1MuteToZero);
+    written += prefs.putBool(kNvsSlot2MuteToZero, settings_.slot2MuteToZero);
+    written += prefs.putUChar(kNvsSlot0Persistence, settings_.slot0AlertPersist);
+    written += prefs.putUChar(kNvsSlot1Persistence, settings_.slot1AlertPersist);
+    written += prefs.putUChar(kNvsSlot2Persistence, settings_.slot2AlertPersist);
+    written += prefs.putBool(kNvsSlot0PriorityArrow, settings_.slot0PriorityArrow);
+    written += prefs.putBool(kNvsSlot1PriorityArrow, settings_.slot1PriorityArrow);
+    written += prefs.putBool(kNvsSlot2PriorityArrow, settings_.slot2PriorityArrow);
+    written += prefs.putString(kNvsSlot0Profile, settings_.slot0_default.profileName);
+    written += prefs.putInt(kNvsSlot0Mode, settings_.slot0_default.mode);
+    written += prefs.putString(kNvsSlot1Profile, settings_.slot1_highway.profileName);
+    written += prefs.putInt(kNvsSlot1Mode, settings_.slot1_highway.mode);
+    written += prefs.putString(kNvsSlot2Profile, settings_.slot2_comfort.profileName);
+    written += prefs.putInt(kNvsSlot2Mode, settings_.slot2_comfort.mode);
+    written += prefs.putString(kNvsLastV1Address, settings_.lastV1Address);
+    written += prefs.putUChar(kNvsAutoPowerOff, settings_.autoPowerOffMinutes);
+    written += prefs.putUChar(kNvsApTimeout, settings_.apTimeoutMinutes);
 
     // OBD settings
-    written += prefs.putBool("obdEn", settings_.obdEnabled);
-    written += prefs.putString("obdAddr", settings_.obdSavedAddress);
-    written += prefs.putString("obdName", settings_.obdSavedName);
-    written += prefs.putUChar("obdAddrT", settings_.obdSavedAddrType);
-    written += prefs.putChar("obdMinRssi", settings_.obdMinRssi);
+    written += prefs.putBool(kNvsObdEnabled, settings_.obdEnabled);
+    written += prefs.putString(kNvsObdAddress, settings_.obdSavedAddress);
+    written += prefs.putString(kNvsObdName, settings_.obdSavedName);
+    written += prefs.putUChar(kNvsObdAddressType, settings_.obdSavedAddrType);
+    written += prefs.putChar(kNvsObdMinRssi, settings_.obdMinRssi);
 
     // NVS validity marker - used to detect if NVS was wiped.
     // Written LAST so its presence proves the entire write completed.
-    written += prefs.putInt("nvsValid", SETTINGS_VERSION);
+    written += prefs.putInt(kNvsValid, SETTINGS_VERSION);
 
     // Verify the marker was actually persisted.  If NVS ran out of
     // entries/pages, later keys silently fail and the namespace would
     // appear incomplete on the next boot.
-    const int verifyMarker = prefs.getInt("nvsValid", 0);
+    const int verifyMarker = prefs.getInt(kNvsValid, 0);
     prefs.end();
 
     if (verifyMarker != SETTINGS_VERSION) {
@@ -478,7 +478,7 @@ bool SettingsManager::persistSettingsAtomically() {
         return true;
     }
 
-    bool committed = meta.putString("active", stagingNs) > 0;
+    bool committed = meta.putString(kNvsMetaActive, stagingNs) > 0;
     meta.end();
 
     if (!committed) {
@@ -505,9 +505,9 @@ String SettingsManager::getWifiClientPassword() {
     if (!prefs.begin(WIFI_CLIENT_NS, true)) {  // Read-only
         storedPwd = "";
     } else {
-        hasNvsKey = prefs.isKey("password");
+        hasNvsKey = prefs.isKey(kNvsWifiPassword);
         if (hasNvsKey) {
-            storedPwd = prefs.getString("password", "");
+            storedPwd = prefs.getString(kNvsWifiPassword, "");
         }
         prefs.end();
     }
@@ -540,7 +540,7 @@ String SettingsManager::getWifiClientPassword() {
     // Heal NVS from SD fallback so future reconnects do not hit SD.
     Preferences healPrefs;
     if (healPrefs.begin(WIFI_CLIENT_NS, false)) {
-        healPrefs.putString("password", sdEncoded);
+        healPrefs.putString(kNvsWifiPassword, sdEncoded);
         healPrefs.end();
         Serial.println("[Settings] Recovered WiFi client password from SD secret");
     }
@@ -568,10 +568,10 @@ void SettingsManager::setWifiClientCredentials(const String& ssid, const String&
         size_t written = 0;
         if (password.length() == 0) {
             // Open network: no password required.
-            prefs.remove("password");
+            prefs.remove(kNvsWifiPassword);
             nvsSaved = true;
         } else {
-            written = prefs.putString("password", encodedPassword);
+            written = prefs.putString(kNvsWifiPassword, encodedPassword);
             nvsSaved = written > 0;
         }
         prefs.end();
@@ -587,10 +587,10 @@ void SettingsManager::setWifiClientCredentials(const String& ssid, const String&
             // Retry save
             if (prefs.begin(WIFI_CLIENT_NS, false)) {
                 if (password.length() == 0) {
-                    prefs.remove("password");
+                    prefs.remove(kNvsWifiPassword);
                     nvsSaved = true;
                 } else {
-                    written = prefs.putString("password", encodedPassword);
+                    written = prefs.putString(kNvsWifiPassword, encodedPassword);
                     nvsSaved = written > 0;
                 }
                 prefs.end();

@@ -10,6 +10,7 @@
 
 #include "settings.h"
 #include "settings_namespace_ids.h"
+#include "settings_keys.h"
 #include "settings_sanitize.h"
 #include "storage_manager.h"
 #include "v1_profiles.h"

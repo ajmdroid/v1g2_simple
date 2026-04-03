@@ -9,6 +9,7 @@
 #include "main_internals.h"
 #include "display.h"
 #include "settings.h"
+#include "settings_keys.h"
 #include "modules/perf/debug_macros.h"  // SerialLog
 #include "esp_heap_caps.h"
 #include "esp_core_dump.h"
@@ -144,8 +145,8 @@ uint32_t nextBootId() {
     if (!prefs.begin("v1boot", false)) {
         return 0;
     }
-    uint32_t bootId = prefs.getUInt("bootId", 0) + 1;
-    prefs.putUInt("bootId", bootId);
+    uint32_t bootId = prefs.getUInt(kNvsBootId, 0) + 1;
+    prefs.putUInt(kNvsBootId, bootId);
     prefs.end();
     return bootId;
 }
