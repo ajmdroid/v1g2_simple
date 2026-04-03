@@ -36,12 +36,14 @@ SerialClass Serial;
 // Real display classes (display_driver.h guard already set to mock above)
 #include "../../src/display.h"
 #include "../../include/display_dirty_flags.h"
+#include "../../include/display_element_caches.h"
 
 // ---------------------------------------------------------------------------
 // Required extern definitions
 // ---------------------------------------------------------------------------
 V1Display* g_displayInstance = nullptr;
 DisplayDirtyFlags dirty;
+DisplayElementCaches g_elementCaches;
 SettingsManager settingsManager;
 
 // ---------------------------------------------------------------------------
@@ -101,6 +103,7 @@ void setUp() {
     mockMillis = 1000;
     resetCanvas();
     dirty = DisplayDirtyFlags{};
+    g_elementCaches = DisplayElementCaches{};
     // Invalidate all static caches in each indicator function
     dirty.obdIndicator = true;
 }
@@ -122,8 +125,8 @@ void test_drawBaseFrame_sets_all_dirty_flags() {
     // flag (bands) is set; all flags are reset by dirty.setAll()
     dirty = DisplayDirtyFlags{};  // clear everything first
     display.ut_drawBaseFrame();
-    TEST_ASSERT_TRUE(dirty.bands);
-    TEST_ASSERT_TRUE(dirty.arrow);
+    TEST_ASSERT_FALSE(g_elementCaches.bands.valid);
+    TEST_ASSERT_FALSE(g_elementCaches.arrow.valid);
 }
 
 // ============================================================================

@@ -10,6 +10,7 @@
 #include "../include/display_layout.h"
 #include "../include/display_draw.h"
 #include "../include/display_dirty_flags.h"
+#include "../include/display_element_caches.h"
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
 #include "../include/FreeSansBold24pt7b.h"
@@ -22,9 +23,6 @@
 // ============================================================================
 // Thread safety: these caches are read/written only from the main loop
 // (via display update calls). Not safe for concurrent access.
-static uint8_t s_bandLastEffectiveMask = 0xFF;
-static bool s_bandLastMuted = false;
-static bool s_bandCacheValid = false;
 static unsigned long s_bandLastBlinkTime = 0;
 static bool s_bandBlinkOn = true;
 
@@ -46,12 +44,7 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
         effectiveBandMask &= ~bandFlashBits;
     }
 
-    if (dirty.bands) {
-        s_bandCacheValid = false;
-        dirty.bands = false;
-    }
-
-    if (s_bandCacheValid && effectiveBandMask == s_bandLastEffectiveMask && muted == s_bandLastMuted) {
+    if (g_elementCaches.bands.valid && effectiveBandMask == g_elementCaches.bands.lastMask && muted == g_elementCaches.bands.lastMuted) {
         return;
     }
 
@@ -120,20 +113,17 @@ void V1Display::drawBandIndicators(uint8_t bandMask, bool muted, uint8_t bandFla
         GFX_drawString(tft_, cells[i].label, x, labelY);
     }
 
-    s_bandLastEffectiveMask = effectiveBandMask;
-    s_bandLastMuted = muted;
-    s_bandCacheValid = true;
+    g_elementCaches.bands.lastMask = effectiveBandMask;
+    g_elementCaches.bands.lastMuted = muted;
+    g_elementCaches.bands.valid = true;
 
     TFT_CALL(setFont)(NULL);
     TFT_CALL(setTextSize)(1);
 }
 
 // ============================================================================
-// File-scoped static cache variables for drawVerticalSignalBars
+// Signal bars render cache is in g_elementCaches.bars
 // ============================================================================
-static uint8_t s_barsLastStrength = 0xFF;
-static bool s_barsLastMuted = false;
-static bool s_barsCacheValid = false;
 
 // ============================================================================
 // Vertical signal bars (right side, 6-bar meter)
@@ -144,12 +134,7 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     uint8_t strength = std::max(frontStrength, rearStrength);
     if (strength > 6) strength = 6;
 
-    if (dirty.signalBars) {
-        s_barsCacheValid = false;
-        dirty.signalBars = false;
-    }
-
-    if (s_barsCacheValid && strength == s_barsLastStrength && muted == s_barsLastMuted) {
+    if (g_elementCaches.bars.valid && strength == g_elementCaches.bars.lastStrength && muted == g_elementCaches.bars.lastMuted) {
         return;
     }
 
@@ -171,12 +156,12 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
     if (startY < 8) startY = 8;
 
     for (int i = 0; i < barCount; i++) {
-        bool wasLit = s_barsCacheValid && (i < s_barsLastStrength);
+        bool wasLit = g_elementCaches.bars.valid && (i < g_elementCaches.bars.lastStrength);
         bool isLit = hasSignal && (i < strength);
-        bool wasMutedLit = s_barsCacheValid && wasLit && s_barsLastMuted;
+        bool wasMutedLit = g_elementCaches.bars.valid && wasLit && g_elementCaches.bars.lastMuted;
         bool isMutedLit = isLit && muted;
 
-        if (s_barsCacheValid && wasLit == isLit && wasMutedLit == isMutedLit) {
+        if (g_elementCaches.bars.valid && wasLit == isLit && wasMutedLit == isMutedLit) {
             continue;
         }
 
@@ -195,8 +180,8 @@ void V1Display::drawVerticalSignalBars(uint8_t frontStrength, uint8_t rearStreng
         FILL_ROUND_RECT(startX, y, barWidth, barHeight, 2, fillColor);
     }
 
-    s_barsLastStrength = strength;
-    s_barsLastMuted = muted;
-    s_barsCacheValid = true;
+    g_elementCaches.bars.lastStrength = strength;
+    g_elementCaches.bars.lastMuted = muted;
+    g_elementCaches.bars.valid = true;
 }
 

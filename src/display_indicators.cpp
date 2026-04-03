@@ -7,12 +7,11 @@
 #include "display.h"
 #include "../include/display_draw.h"
 #include "../include/display_dirty_flags.h"
+#include "../include/display_element_caches.h"
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
 #include "settings.h"
 #include "modules/obd/obd_runtime_module.h"
-
-extern ObdRuntimeModule obdRuntimeModule;
 
 // ============================================================================
 // Base frame
@@ -26,7 +25,8 @@ void V1Display::drawBaseFrame() {
 
 void V1Display::prepareFullRedrawNoClear() {
     bleProxyDrawn_ = false;  // Force indicator redraw after full clears
-    dirty.setAll();         // Invalidate every element cache after screen clear
+    dirty.setAll();                      // Retains multiAlert, obdIndicator, cards, resetTracking
+    g_elementCaches.invalidateAll();     // Directly zeros all per-element render caches
     drawBLEProxyIndicator();  // Redraw BLE icon after screen clear
 }
 
@@ -34,14 +34,7 @@ void V1Display::setSpeedVolZeroActive(bool active) {
     speedVolZeroActive_ = active;
 }
 
-// ============================================================================
-// File-scoped static cache variables for OBD indicator
-// ============================================================================
-// Thread safety: these caches are read/written only from the main loop
-// (via display update calls). Not safe for concurrent access.
-static bool s_obdLastShown = false;
-static bool s_obdLastConnected = false;
-static bool s_obdLastAttention = false;
+// OBD indicator render cache is in g_elementCaches.obd
 
 // ============================================================================
 // Status indicators
@@ -59,6 +52,11 @@ void V1Display::setObdAttention(bool attention) {
     }
     obdAttention_ = attention;
     dirty.obdIndicator = true;
+    g_elementCaches.obd.invalidate();   // Direct cache invalidation at the source
+}
+
+void V1Display::setObdRuntimeModule(ObdRuntimeModule* m) {
+    obdRtMod_ = m;
 }
 
 void V1Display::refreshObdIndicator(uint32_t nowMs) {
@@ -67,7 +65,8 @@ void V1Display::refreshObdIndicator(uint32_t nowMs) {
 }
 
 void V1Display::syncTopIndicators(uint32_t nowMs) {
-    const ObdRuntimeStatus obdStatus = obdRuntimeModule.snapshot(nowMs);
+    if (!obdRtMod_) return;
+    const ObdRuntimeStatus obdStatus = obdRtMod_->snapshot(nowMs);
     setObdStatus(obdStatus.enabled,
                  obdStatus.connected,
                  obdStatus.scanInProgress || obdStatus.manualScanPending);
@@ -84,15 +83,17 @@ void V1Display::drawObdIndicator() {
     const bool curAttention = wantShow && !curConnected && (obdScanAttention_ || obdAttention_);
 
     if (!dirty.obdIndicator &&
-        wantShow == s_obdLastShown &&
-        curConnected == s_obdLastConnected &&
-        curAttention == s_obdLastAttention) {
+        g_elementCaches.obd.valid &&
+        wantShow == g_elementCaches.obd.lastShown &&
+        curConnected == g_elementCaches.obd.lastConnected &&
+        curAttention == g_elementCaches.obd.lastAttention) {
         return;
     }
-    dirty.obdIndicator = false;
-    s_obdLastShown = wantShow;
-    s_obdLastConnected = curConnected;
-    s_obdLastAttention = curAttention;
+    dirty.obdIndicator = false;     // Still cleared here — it's also read externally for flush
+    g_elementCaches.obd.valid = true;
+    g_elementCaches.obd.lastShown = wantShow;
+    g_elementCaches.obd.lastConnected = curConnected;
+    g_elementCaches.obd.lastAttention = curAttention;
 
     // Position: before signal bars.
     const int x = 370;

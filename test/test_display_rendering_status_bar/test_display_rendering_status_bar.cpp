@@ -46,12 +46,14 @@ WiFiManager wifiManager;
 #include "../../src/display.h"
 #include "../../include/display_dirty_flags.h"
 #include "../../include/display_ble_freshness.h"
+#include "../../include/display_element_caches.h"
 
 // ---------------------------------------------------------------------------
 // Required extern definitions
 // ---------------------------------------------------------------------------
 V1Display* g_displayInstance = nullptr;
 DisplayDirtyFlags dirty;
+DisplayElementCaches g_elementCaches;
 SettingsManager settingsManager;
 
 // ---------------------------------------------------------------------------
@@ -109,6 +111,7 @@ void setUp() {
     mockMillis = 1000;
     resetCanvas();
     dirty = DisplayDirtyFlags{};
+    g_elementCaches = DisplayElementCaches{};
     batteryManager.reset();
 }
 

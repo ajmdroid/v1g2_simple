@@ -9,6 +9,7 @@
 #include "../include/display_layout.h"
 #include "../include/display_draw.h"
 #include "../include/display_dirty_flags.h"
+#include "../include/display_element_caches.h"
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
 #include "../include/display_segments.h"  // SegMetrics, segMetrics() for non-349 profile path
@@ -26,10 +27,6 @@ using namespace DisplaySegments;
 // Thread safety: these caches are read/written only from the main loop
 // (via display update calls). Not safe for concurrent access.
 static bool s_batteryShowOnUSB = true;
-static int s_batteryLastPctDrawn = -1;
-static bool s_batteryLastPctVisible = false;
-static uint16_t s_batteryLastPctColor = 0;
-static unsigned long s_batteryLastPctDrawMs = 0;
 
 // ============================================================================
 // Volume indicator
@@ -261,10 +258,10 @@ void V1Display::drawBatteryIndicator() {
         // Only draw percent if not on USB
         if (!s_batteryShowOnUSB) {
             // Clear percent area when not visible
-            if (s_batteryLastPctVisible) {
+            if (g_elementCaches.battery.lastPctVisible) {
                 FILL_RECT(SCREEN_WIDTH - 50, 0, 48, 30, PALETTE_BG);
-                s_batteryLastPctVisible = false;
-                s_batteryLastPctDrawn = -1;
+                g_elementCaches.battery.lastPctVisible = false;
+                g_elementCaches.battery.lastPctDrawn = -1;
             }
             return;  // No percent on USB/fully charged
         }
@@ -282,18 +279,14 @@ void V1Display::drawBatteryIndicator() {
 
         // Decide if we actually need to redraw
         unsigned long nowMs = millis();
-        bool needsRedraw = dirty.battery ||  // Screen was cleared
-                           (!s_batteryLastPctVisible) ||
-                           (pct != s_batteryLastPctDrawn) ||
-                           (textColor != s_batteryLastPctColor) ||
-                           ((nowMs - s_batteryLastPctDrawMs) >= PCT_FORCE_REDRAW_MS);
+        bool needsRedraw = (!g_elementCaches.battery.lastPctVisible) ||
+                           (pct != g_elementCaches.battery.lastPctDrawn) ||
+                           (textColor != g_elementCaches.battery.lastPctColor) ||
+                           ((nowMs - g_elementCaches.battery.lastPctDrawMs) >= PCT_FORCE_REDRAW_MS);
 
         if (!needsRedraw) {
             return;  // Skip expensive render when nothing changed
         }
-
-        // Clear force flag - we're handling it
-        dirty.battery = false;
 
         // Format percentage string (no % to save space)
         char pctStr[4];
@@ -310,10 +303,10 @@ void V1Display::drawBatteryIndicator() {
         GFX_drawString(tft_, pctStr, SCREEN_WIDTH - 4, 12);
 
         // Update cache
-        s_batteryLastPctDrawn = pct;
-        s_batteryLastPctColor = textColor;
-        s_batteryLastPctVisible = true;
-        s_batteryLastPctDrawMs = nowMs;
+        g_elementCaches.battery.lastPctDrawn = pct;
+        g_elementCaches.battery.lastPctColor = textColor;
+        g_elementCaches.battery.lastPctVisible = true;
+        g_elementCaches.battery.lastPctDrawMs = nowMs;
         return;  // Never draw icon when percent is enabled
     }
 

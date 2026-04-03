@@ -36,6 +36,7 @@
 #include "../include/display_ble_context.h"
 
 enum class PerfDisplayScreen : uint8_t;
+class ObdRuntimeModule;
 
 class V1Display {
 public:
@@ -120,6 +121,7 @@ public:
     // WiFi indicator (shows when connected to STA network)
     void drawWiFiIndicator();
     void refreshObdIndicator(uint32_t nowMs);
+    void setObdRuntimeModule(ObdRuntimeModule* m);
     void setObdAttention(bool attention);
 
     // Flush canvas to physical display
@@ -222,6 +224,7 @@ private:
     bool obdConnected_ = false;            // OBD adapter connected
     bool obdScanAttention_ = false;        // Runtime manual scan / scan-pending state
     bool obdAttention_ = false;            // Temporary UI hold-time attention
+    ObdRuntimeModule* obdRtMod_ = nullptr; // Injected in begin(); used by syncTopIndicators
     DisplayBleContext bleCtx_;              // BLE state snapshot for display DI
     uint32_t bleCtxUpdatedAtMs_ = 0;        // When setBleContext() last refreshed bleCtx_
 

@@ -8,30 +8,16 @@
 // etc.) can read/write the shared dirty-flag aggregate.
 // ============================================================================
 struct DisplayDirtyFlags {
-    bool multiAlert     = false;  // Multi-alert mode (secondary card row visible)
-    bool cards          = false;  // Force secondary-card row redraw
-    bool frequency      = false;  // Force frequency area redraw
-    bool battery        = false;  // Force battery percentage redraw
-    bool bands          = false;  // Force band indicator redraw
-    bool signalBars     = false;  // Force signal bars redraw
-    bool arrow          = false;  // Force direction arrow redraw
-    bool muteIcon       = false;  // Force mute icon redraw
-    bool topCounter     = false;  // Force top counter (bogey symbol) redraw
-    bool obdIndicator   = false;  // Force OBD indicator redraw
-    bool resetTracking  = false;  // Signal to reset change-tracking statics
+    bool multiAlert     = false;  // Layout mode flag (not element cache)
+    bool cards          = false;  // Force-redraw signal set from display_update.cpp
+    bool obdIndicator   = false;  // Read externally in updateStatusStripIncremental for flush
+    bool resetTracking  = false;  // Signals DisplayRenderCache state reset
 
-    /// Mark the primary frame redraw flags after a full screen clear.
-    /// multiAlert, cards, and resetTracking are intentionally managed by
-    /// their own state/update paths rather than blanket-reset here.
+    /// Mark residual flags after a full screen clear.
+    /// Element-level invalidation is now handled by g_elementCaches.invalidateAll()
+    /// called from prepareFullRedrawNoClear() alongside this function.
     void setAll() {
-        frequency    = true;
-        battery      = true;
-        bands        = true;
-        signalBars   = true;
-        arrow        = true;
-        muteIcon     = true;
-        topCounter   = true;
-        obdIndicator = true;
+        obdIndicator = true;   // Still read externally for flush routing
     }
 };
 

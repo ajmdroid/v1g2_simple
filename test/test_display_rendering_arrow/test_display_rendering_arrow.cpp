@@ -28,12 +28,14 @@ SerialClass Serial;
 // Real display classes (display_driver.h guard already set to mock above)
 #include "../../src/display.h"
 #include "../../include/display_dirty_flags.h"
+#include "../../include/display_element_caches.h"
 
 // ---------------------------------------------------------------------------
 // Required extern definitions
 // ---------------------------------------------------------------------------
 V1Display* g_displayInstance = nullptr;  // Set by V1Display constructor
 DisplayDirtyFlags dirty;
+DisplayElementCaches g_elementCaches;
 SettingsManager settingsManager;
 
 // ---------------------------------------------------------------------------
@@ -83,13 +85,13 @@ void setUp() {
     mockMillis = 1000;
     resetCanvas();
     dirty = DisplayDirtyFlags{};
-    dirty.arrow = true;   // invalidate static cache every test
+    g_elementCaches = DisplayElementCaches{};  // invalidate all caches every test
 }
 
 void tearDown() {}
 
 // ============================================================================
-// Full-redraw structure tests (cacheValid forced to false via dirty.arrow)
+// Full-redraw structure tests (cacheValid forced to false via g_elementCaches.arrow.valid)
 // ============================================================================
 
 void test_drawArrow_full_redraw_produces_4_fill_triangles() {
@@ -123,7 +125,7 @@ void test_drawArrow_dirty_arrow_flag_forces_redraw() {
     display.ut_drawDirectionArrow(DIR_ALL, false, 0, 0);  // primes cache
     resetCanvas();
 
-    dirty.arrow = true;   // invalidate
+    g_elementCaches.arrow.valid = false;  // invalidate
     display.ut_drawDirectionArrow(DIR_ALL, false, 0, 0);
     TEST_ASSERT_EQUAL_UINT(4u, canvas()->fillTriangleCalls.size());
 }

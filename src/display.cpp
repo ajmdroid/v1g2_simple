@@ -38,8 +38,10 @@ using TextWidthCacheEntry = DisplayFontManager::WidthCacheEntry;
 // Dirty-flag aggregate — see include/display_dirty_flags.h for struct definition
 // ============================================================================
 #include "../include/display_dirty_flags.h"
+#include "../include/display_element_caches.h"
 
 DisplayDirtyFlags dirty;  // definition; header declares extern for sub-modules
+DisplayElementCaches g_elementCaches;  // definition; header declares extern for sub-modules
 
 // Use centralized constant from display_layout.h
 using DisplayLayout::PRIMARY_ZONE_HEIGHT;

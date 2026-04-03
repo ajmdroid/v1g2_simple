@@ -8,6 +8,7 @@
 #include "../include/display_layout.h"
 #include "../include/display_draw.h"
 #include "../include/display_dirty_flags.h"
+#include "../include/display_element_caches.h"
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
 #include "display_font_manager.h"
@@ -27,7 +28,6 @@ struct CardSlot {
 };
 
 static CardSlot s_cardsSlots[2];
-static AlertData s_cardsLastPriority;
 static struct {
     Band band = BAND_NONE;
     uint32_t frequency = 0;
@@ -36,8 +36,6 @@ static struct {
     bool wasMuted = false;
     uint8_t bars = 0;
 } s_cardsLastDrawnPositions[2];
-static int s_cardsLastDrawnCount = 0;
-static int s_cardsLastProfileSlot = -1;
 
 // --- Secondary alert cards ---
 
@@ -69,8 +67,8 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     unsigned long now = millis();
 
     // Track profile changes - clear cards when profile rotates
-    if (settings.activeSlot != s_cardsLastProfileSlot) {
-        s_cardsLastProfileSlot = settings.activeSlot;
+    if (settings.activeSlot != g_elementCaches.cards.lastProfileSlot) {
+        g_elementCaches.cards.lastProfileSlot = settings.activeSlot;
         // Clear all card state on profile change
         for (int c = 0; c < 2; c++) {
             s_cardsSlots[c].alert = AlertData();
@@ -79,8 +77,8 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             s_cardsLastDrawnPositions[c].frequency = 0;
             s_cardsLastDrawnPositions[c].bars = 0;
         }
-        s_cardsLastDrawnCount = 0;
-        s_cardsLastPriority = AlertData();
+        g_elementCaches.cards.lastDrawnCount = 0;
+        g_elementCaches.cards.lastPriority = AlertData();
     }
 
     // If called with nullptr alerts and count 0, clear V1 card state
@@ -89,19 +87,19 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             s_cardsSlots[c].alert = AlertData();
             s_cardsSlots[c].lastSeen = 0;
         }
-        s_cardsLastPriority = AlertData();
+        g_elementCaches.cards.lastPriority = AlertData();
 
         // Clear the card area
         [[maybe_unused]] const int signalBarsX = SCREEN_WIDTH - 200 - 2;
         const int clearWidth = signalBarsX - startX;
         if (clearWidth > 0) {
             FILL_RECT(startX, cardY, clearWidth, cardH, PALETTE_BG);
-            if (s_cardsLastDrawnCount > 0) {
+            if (g_elementCaches.cards.lastDrawnCount > 0) {
                 secondaryCardsRenderDirty_ = true;
             }
         }
         // Reset last drawn count so next time cards appear, change is detected
-        s_cardsLastDrawnCount = 0;
+        g_elementCaches.cards.lastDrawnCount = 0;
         return;
     }
 
@@ -124,14 +122,14 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
 
     // Step 0: Check if priority changed - add old priority as persisted card
     // This handles the case where laser takes priority, then stops - laser should persist as card
-    if (s_cardsLastPriority.isValid && s_cardsLastPriority.band != BAND_NONE) {
-        bool priorityChanged = !alertsMatch(s_cardsLastPriority, priority);
+    if (g_elementCaches.cards.lastPriority.isValid && g_elementCaches.cards.lastPriority.band != BAND_NONE) {
+        bool priorityChanged = !alertsMatch(g_elementCaches.cards.lastPriority, priority);
         bool oldPriorityGone = true;
 
         // Check if old priority is still in current alerts
         if (alerts != nullptr) {
             for (int i = 0; i < alertCount; i++) {
-                if (alertsMatch(s_cardsLastPriority, alerts[i])) {
+                if (alertsMatch(g_elementCaches.cards.lastPriority, alerts[i])) {
                     oldPriorityGone = false;
                     break;
                 }
@@ -143,7 +141,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             // Check if already tracked
             bool found = false;
             for (int c = 0; c < 2; c++) {
-                if (s_cardsSlots[c].lastSeen > 0 && alertsMatch(s_cardsSlots[c].alert, s_cardsLastPriority)) {
+                if (s_cardsSlots[c].lastSeen > 0 && alertsMatch(s_cardsSlots[c].alert, g_elementCaches.cards.lastPriority)) {
                     found = true;
                     break;
                 }
@@ -153,7 +151,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             if (!found) {
                 for (int c = 0; c < 2; c++) {
                     if (s_cardsSlots[c].lastSeen == 0) {
-                        s_cardsSlots[c].alert = s_cardsLastPriority;
+                        s_cardsSlots[c].alert = g_elementCaches.cards.lastPriority;
                         s_cardsSlots[c].lastSeen = now;
                         break;
                     }
@@ -163,7 +161,7 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     }
 
     // Update last priority tracking
-    s_cardsLastPriority = priority;
+    g_elementCaches.cards.lastPriority = priority;
 
     // Step 1: Update existing slots - refresh timestamp if alert still exists
     for (int c = 0; c < 2; c++) {
@@ -263,9 +261,10 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     // ============================================================================
     // Instead of clearing all cards and redrawing, check each position independently
 
-    // Capture dirty.cards before resetting (need it for redraw checks)
-    bool doForceRedraw = dirty.cards;
-    dirty.cards = false;  // Reset the force flag
+    // Capture force-redraw state before resetting
+    bool doForceRedraw = g_elementCaches.cards.forceRedraw;
+    dirty.cards = false;                         // Still cleared — read externally for flush decisions
+    g_elementCaches.cards.forceRedraw = false;   // Consumed here
 
     // Helper to check if position needs full redraw vs just update
     auto positionNeedsFullRedraw = [&](int pos) -> bool {
@@ -457,6 +456,6 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
     }
 
     // Update global tracking
-    s_cardsLastDrawnCount = cardsToDrawCount;
+    g_elementCaches.cards.lastDrawnCount = cardsToDrawCount;
 #endif
 }

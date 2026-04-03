@@ -1,17 +1,17 @@
 # Display flush discipline contract (flush call-site snapshot)
 
-kind=DISPLAY_FLUSH file=src/display.cpp line=210 function=begin
-kind=DISPLAY_FLUSH file=src/display.cpp line=265 function=clear
-kind=DISPLAY_FLUSH file=src/display.cpp line=316 function=flush
-kind=DISPLAY_FLUSH file=src/display.cpp line=334 function=flushRegion
+kind=DISPLAY_FLUSH file=src/display.cpp line=225 function=begin
+kind=DISPLAY_FLUSH file=src/display.cpp line=280 function=clear
+kind=DISPLAY_FLUSH file=src/display.cpp line=331 function=flush
+kind=DISPLAY_FLUSH file=src/display.cpp line=349 function=flushRegion
 kind=DISPLAY_FLUSH file=src/display_screens.cpp line=117 function=showResting
 kind=DISPLAY_FLUSH file=src/display_screens.cpp line=269 function=showScanning
 kind=DISPLAY_FLUSH file=src/display_screens.cpp line=307 function=showBootSplash
 kind=DISPLAY_FLUSH file=src/display_screens.cpp line=340 function=showShutdown
 kind=DISPLAY_FLUSH file=src/display_screens.cpp line=375 function=showLowBattery
 kind=DISPLAY_FLUSH file=src/display_sliders.cpp line=98 function=showSettingsSliders
-kind=DISPLAY_FLUSH file=src/display_update.cpp line=431 function=update
-kind=DISPLAY_FLUSH file=src/display_update.cpp line=580 function=updatePersisted
-kind=DISPLAY_FLUSH file=src/display_update.cpp line=896 function=update
+kind=DISPLAY_FLUSH file=src/display_update.cpp line=449 function=update
+kind=DISPLAY_FLUSH file=src/display_update.cpp line=598 function=updatePersisted
+kind=DISPLAY_FLUSH file=src/display_update.cpp line=915 function=update
 kind=POINTER_FLUSH file=include/display_flush.h line=11 function=<global>
-kind=POINTER_FLUSH file=src/modules/touch/touch_ui_module.cpp line=66 function=process
+kind=POINTER_FLUSH file=src/modules/touch/touch_ui_module.cpp line=67 function=process

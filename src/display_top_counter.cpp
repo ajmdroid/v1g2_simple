@@ -9,6 +9,7 @@
 #include "../include/display_layout.h"
 #include "../include/display_draw.h"
 #include "../include/display_dirty_flags.h"
+#include "../include/display_element_caches.h"
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
 #include "../include/display_segments.h"
@@ -28,16 +29,7 @@ using DisplayLayout::TOP_COUNTER_TEXT_Y;
 using DisplayLayout::TOP_COUNTER_PAD_RIGHT;
 using DisplayLayout::TOP_COUNTER_FALLBACK_WIDTH;
 
-// ============================================================================
-// File-scoped static cache variables for top counter
-// ============================================================================
-// Thread safety: these caches are read/written only from the main loop
-// (via display update calls). Not safe for concurrent access.
-static char s_topCounterLastSymbol = '\0';
-static bool s_topCounterLastMuted = false;
-static bool s_topCounterLastShowDot = false;
-static uint16_t s_topCounterLastBogeyColor = 0;
-static bool s_topCounterLastMutedState = false;
+// Top counter render cache is in g_elementCaches.topCounter
 
 // --- 7-segment digit rendering ---
 
@@ -265,18 +257,20 @@ void V1Display::drawTopCounterClassic(char symbol, bool muted, bool showDot) {
     const V1Settings& s = settingsManager.get();
 
     // Check if color setting changed
-    bool colorChanged = (s.colorBogey != s_topCounterLastBogeyColor);
+    bool colorChanged = (s.colorBogey != g_elementCaches.topCounter.lastBogeyColor);
 
-    // Skip redraw if nothing changed (unless forced after screen clear)
-    if (!dirty.topCounter && !colorChanged &&
-        symbol == s_topCounterLastSymbol && muted == s_topCounterLastMuted && showDot == s_topCounterLastShowDot) {
+    // Skip redraw if nothing changed
+    if (g_elementCaches.topCounter.counterValid && !colorChanged &&
+        symbol == g_elementCaches.topCounter.lastSymbol &&
+        muted == g_elementCaches.topCounter.lastMuted &&
+        showDot == g_elementCaches.topCounter.lastShowDot) {
         return;
     }
-    dirty.topCounter = false;
-    s_topCounterLastSymbol = symbol;
-    s_topCounterLastMuted = muted;
-    s_topCounterLastShowDot = showDot;
-    s_topCounterLastBogeyColor = s.colorBogey;
+    g_elementCaches.topCounter.counterValid   = true;
+    g_elementCaches.topCounter.lastSymbol     = symbol;
+    g_elementCaches.topCounter.lastMuted      = muted;
+    g_elementCaches.topCounter.lastShowDot    = showDot;
+    g_elementCaches.topCounter.lastBogeyColor = s.colorBogey;
 
     // Use bogey color for digits, muted color if muted, otherwise bogey color
     bool isDigit = (symbol >= '0' && symbol <= '9');
@@ -383,12 +377,13 @@ void V1Display::drawTopCounter(char symbol, bool muted, bool showDot) {
 // --- Mute icon badge ---
 
 void V1Display::drawMuteIcon(bool muted) {
-    // Skip redraw if nothing changed (unless forced after screen clear)
-    if (!dirty.muteIcon && muted == s_topCounterLastMutedState) {
+    // Skip redraw if nothing changed
+    if (g_elementCaches.topCounter.muteIconValid &&
+        muted == g_elementCaches.topCounter.lastMutedState) {
         return;
     }
-    dirty.muteIcon = false;
-    s_topCounterLastMutedState = muted;
+    g_elementCaches.topCounter.muteIconValid = true;
+    g_elementCaches.topCounter.lastMutedState = muted;
 
     // Draw badge at fixed top position (top ~10% of screen)
     const int leftMargin = 120;    // After band indicators

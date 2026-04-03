@@ -10,6 +10,7 @@
 #include "../include/display_layout.h"
 #include "../include/display_draw.h"
 #include "../include/display_dirty_flags.h"
+#include "../include/display_element_caches.h"
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
 #include "../include/display_segments.h"
@@ -29,24 +30,15 @@ using TextWidthCacheEntry = DisplayFontManager::WidthCacheEntry;
 // ============================================================================
 // Thread safety: these caches are read/written only from the main loop
 // (via display update calls). Not safe for concurrent access.
-static char s_freqClassicLastText[16] = "";
-static uint16_t s_freqClassicLastColor = 0;
-static bool s_freqClassicLastUsedOfr = false;
-static bool s_freqClassicCacheValid = false;
-static int s_freqClassicLastDrawX = 0;
-static int s_freqClassicLastDrawWidth = 0;
+// Classic frequency render cache is in g_elementCaches.freqClassic
+// LRU font computation caches stay file-scoped (not render state)
 static TextWidthCacheEntry s_freqClassicWidthCache[16];
 static uint8_t s_freqClassicWidthCacheNextSlot = 0;
 static int s_freqClassicCachedNumericWidth = 0;
 static int s_freqClassicCachedDashWidth = 0;
 static int s_freqClassicCachedLaserWidth = 0;
 
-static char s_freqSerpentineLastText[16] = "";
-static uint16_t s_freqSerpentineLastColor = 0;
-static bool s_freqSerpentineCacheValid = false;
-static unsigned long s_freqSerpentineLastDrawMs = 0;
-static int s_freqSerpentineLastDrawX = 0;
-static int s_freqSerpentineLastDrawWidth = 0;
+// Serpentine frequency render cache is in g_elementCaches.freqSerpentine
 static TextWidthCacheEntry s_freqSerpentineWidthCache[16];
 static uint8_t s_freqSerpentineWidthCacheNextSlot = 0;
 
@@ -104,11 +96,6 @@ void V1Display::markFrequencyDirtyRegion(int16_t x, int16_t y, int16_t w, int16_
 void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar) {
     const V1Settings& s = settingsManager.get();
 
-    if (dirty.frequency) {
-        s_freqClassicCacheValid = false;
-        dirty.frequency = false;
-    }
-
     const bool usingOfr = fontMgr.segment7Ready;
     const bool hasFreq = freqMHz > 0;
 
@@ -152,11 +139,11 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         }
     }
 
-    bool textChanged = (strcmp(s_freqClassicLastText, textBuf) != 0);
-    bool changed = !s_freqClassicCacheValid ||
-                   (s_freqClassicLastUsedOfr != usingOfr) ||
+    bool textChanged = (strcmp(g_elementCaches.freqClassic.lastText, textBuf) != 0);
+    bool changed = !g_elementCaches.freqClassic.valid ||
+                   (g_elementCaches.freqClassic.lastUsedOfr != usingOfr) ||
                    textChanged ||
-                   (s_freqClassicLastColor != freqColor);
+                   (g_elementCaches.freqClassic.lastColor != freqColor);
     if (!changed) {
         return;
     }
@@ -204,9 +191,9 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         if (clearY + clearH > maxClearBottom) clearH = maxClearBottom - clearY;
         int clearLeft = x - 6;
         int clearRight = x + textWidth + 6;
-        if (s_freqClassicCacheValid && s_freqClassicLastUsedOfr && s_freqClassicLastDrawWidth > 0) {
-            clearLeft = std::min(clearLeft, s_freqClassicLastDrawX - 6);
-            clearRight = std::max(clearRight, s_freqClassicLastDrawX + s_freqClassicLastDrawWidth + 6);
+        if (g_elementCaches.freqClassic.valid && g_elementCaches.freqClassic.lastUsedOfr && g_elementCaches.freqClassic.lastDrawWidth > 0) {
+            clearLeft = std::min(clearLeft, g_elementCaches.freqClassic.lastDrawX - 6);
+            clearRight = std::max(clearRight, g_elementCaches.freqClassic.lastDrawX + g_elementCaches.freqClassic.lastDrawWidth + 6);
         }
         const int clearMinX = leftMargin + 10;
         const int clearMaxX = leftMargin + maxWidth;
@@ -228,8 +215,8 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         fontMgr.segment7.setCursor(x, y);
         fontMgr.segment7.printf("%s", textBuf);
 
-        s_freqClassicLastDrawX = x;
-        s_freqClassicLastDrawWidth = textWidth;
+        g_elementCaches.freqClassic.lastDrawX = x;
+        g_elementCaches.freqClassic.lastDrawWidth = textWidth;
     } else {
         // Fallback to software 7-segment renderer
         const float scale = 2.3f;
@@ -263,11 +250,11 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         }
     }
 
-    strncpy(s_freqClassicLastText, textBuf, sizeof(s_freqClassicLastText));
-    s_freqClassicLastText[sizeof(s_freqClassicLastText) - 1] = '\0';
-    s_freqClassicLastColor = freqColor;
-    s_freqClassicLastUsedOfr = usingOfr;
-    s_freqClassicCacheValid = true;
+    strncpy(g_elementCaches.freqClassic.lastText, textBuf, sizeof(g_elementCaches.freqClassic.lastText));
+    g_elementCaches.freqClassic.lastText[sizeof(g_elementCaches.freqClassic.lastText) - 1] = '\0';
+    g_elementCaches.freqClassic.lastColor = freqColor;
+    g_elementCaches.freqClassic.lastUsedOfr = usingOfr;
+    g_elementCaches.freqClassic.valid = true;
 }
 
 // --- Serpentine frequency display ---
@@ -293,21 +280,15 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     const int clearTop = 20;  // Top of frequency area to clear
     const int clearHeight = effectiveHeight - clearTop;  // Full height from top to bottom of zone
 
-    // Check for forced invalidation (e.g., after screen clear)
-    if (dirty.frequency) {
-        s_freqSerpentineCacheValid = false;
-        dirty.frequency = false;  // Clear flag - we're handling it
-    }
-
     // Serpentine style: show nothing when no frequency (resting/idle state)
     // But we must clear the area if we previously drew something
     if (freqMHz == 0 && band != BAND_LASER) {
-        if (s_freqSerpentineCacheValid && s_freqSerpentineLastText[0] != '\0') {
+        if (g_elementCaches.freqSerpentine.valid && g_elementCaches.freqSerpentine.lastText[0] != '\0') {
             // Clear only the previously drawn text area
-            FILL_RECT(s_freqSerpentineLastDrawX - 5, clearTop, s_freqSerpentineLastDrawWidth + 10, clearHeight, PALETTE_BG);
-            markFrequencyDirtyRegion(s_freqSerpentineLastDrawX - 5, clearTop, s_freqSerpentineLastDrawWidth + 10, clearHeight);
-            s_freqSerpentineLastText[0] = '\0';
-            s_freqSerpentineCacheValid = false;
+            FILL_RECT(g_elementCaches.freqSerpentine.lastDrawX - 5, clearTop, g_elementCaches.freqSerpentine.lastDrawWidth + 10, clearHeight, PALETTE_BG);
+            markFrequencyDirtyRegion(g_elementCaches.freqSerpentine.lastDrawX - 5, clearTop, g_elementCaches.freqSerpentine.lastDrawWidth + 10, clearHeight);
+            g_elementCaches.freqSerpentine.lastText[0] = '\0';
+            g_elementCaches.freqSerpentine.valid = false;
         }
         return;
     }
@@ -339,11 +320,11 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
 
     // Check if anything changed
     unsigned long nowMs = millis();
-    bool textChanged = strcmp(s_freqSerpentineLastText, textBuf) != 0;
-    bool changed = !s_freqSerpentineCacheValid ||
-                   s_freqSerpentineLastColor != freqColor ||
+    bool textChanged = strcmp(g_elementCaches.freqSerpentine.lastText, textBuf) != 0;
+    bool changed = !g_elementCaches.freqSerpentine.valid ||
+                   g_elementCaches.freqSerpentine.lastColor != freqColor ||
                    textChanged ||
-                   (nowMs - s_freqSerpentineLastDrawMs) >= FREQ_FORCE_REDRAW_MS;
+                   (nowMs - g_elementCaches.freqSerpentine.lastDrawMs) >= FREQ_FORCE_REDRAW_MS;
 
     if (!changed) {
         return;
@@ -351,18 +332,18 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
 
     // Only recalculate bbox if text actually changed (expensive FreeType call)
     int textW, x;
-    if (textChanged || !s_freqSerpentineCacheValid) {
+    if (textChanged || !g_elementCaches.freqSerpentine.valid) {
         textW = DisplayFontManager::cachedTextWidth(fontMgr.serpentine, fontSize, textBuf, s_freqSerpentineWidthCache, s_freqSerpentineWidthCacheNextSlot);
         x = leftMargin + (maxWidth - textW) / 2;
     } else {
         // Reuse cached position for color-only changes
-        textW = s_freqSerpentineLastDrawWidth;
-        x = s_freqSerpentineLastDrawX;
+        textW = g_elementCaches.freqSerpentine.lastDrawWidth;
+        x = g_elementCaches.freqSerpentine.lastDrawX;
     }
 
     // Clear only the area we're about to draw (minimizes flash)
-    int clearX = (s_freqSerpentineLastDrawWidth > 0) ? min(x, s_freqSerpentineLastDrawX) - 5 : x - 5;
-    int clearW = max(textW, s_freqSerpentineLastDrawWidth) + 10;
+    int clearX = (g_elementCaches.freqSerpentine.lastDrawWidth > 0) ? min(x, g_elementCaches.freqSerpentine.lastDrawX) - 5 : x - 5;
+    int clearW = max(textW, g_elementCaches.freqSerpentine.lastDrawWidth) + 10;
     FILL_RECT(clearX, clearTop, clearW, clearHeight, PALETTE_BG);
     markFrequencyDirtyRegion(clearX, clearTop, clearW, clearHeight);
 
@@ -374,13 +355,13 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     fontMgr.serpentine.printf("%s", textBuf);
 
     // Update cache
-    strncpy(s_freqSerpentineLastText, textBuf, sizeof(s_freqSerpentineLastText));
-    s_freqSerpentineLastText[sizeof(s_freqSerpentineLastText) - 1] = '\0';
-    s_freqSerpentineLastColor = freqColor;
-    s_freqSerpentineLastDrawX = x;
-    s_freqSerpentineLastDrawWidth = textW;
-    s_freqSerpentineCacheValid = true;
-    s_freqSerpentineLastDrawMs = nowMs;
+    strncpy(g_elementCaches.freqSerpentine.lastText, textBuf, sizeof(g_elementCaches.freqSerpentine.lastText));
+    g_elementCaches.freqSerpentine.lastText[sizeof(g_elementCaches.freqSerpentine.lastText) - 1] = '\0';
+    g_elementCaches.freqSerpentine.lastColor = freqColor;
+    g_elementCaches.freqSerpentine.lastDrawX = x;
+    g_elementCaches.freqSerpentine.lastDrawWidth = textW;
+    g_elementCaches.freqSerpentine.valid = true;
+    g_elementCaches.freqSerpentine.lastDrawMs = nowMs;
 }
 
 // --- Volume zero warning (flashing red text in frequency area) ---

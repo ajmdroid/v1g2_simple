@@ -28,12 +28,14 @@ SerialClass Serial;
 // Real display classes (display_driver.h guard already set to mock above)
 #include "../../src/display.h"
 #include "../../include/display_dirty_flags.h"
+#include "../../include/display_element_caches.h"
 
 // ---------------------------------------------------------------------------
 // Required extern definitions
 // ---------------------------------------------------------------------------
 V1Display* g_displayInstance = nullptr;  // Set by V1Display constructor
 DisplayDirtyFlags dirty;
+DisplayElementCaches g_elementCaches;
 SettingsManager settingsManager;
 
 // ---------------------------------------------------------------------------
@@ -76,6 +78,7 @@ void setUp() {
     mockMillis = 1000;
     resetCanvas();
     dirty = DisplayDirtyFlags{};
+    g_elementCaches = DisplayElementCaches{};
 }
 
 void tearDown() {}
@@ -85,7 +88,7 @@ void tearDown() {}
 // ============================================================================
 
 void test_drawBandIndicators_produces_background_clear_on_first_draw() {
-    dirty.bands = true;
+    g_elementCaches.bands.valid = false;
     display.ut_drawBandIndicators(BAND_KA, false, 0);
 
     // Exactly one FILL_RECT clearing the entire band-label stack with PALETTE_BG
@@ -94,7 +97,7 @@ void test_drawBandIndicators_produces_background_clear_on_first_draw() {
 }
 
 void test_drawBandIndicators_cache_hit_skips_redraw() {
-    dirty.bands = true;
+    g_elementCaches.bands.valid = false;
     display.ut_drawBandIndicators(BAND_KA, false, 0);
     resetCanvas();
 
@@ -104,11 +107,11 @@ void test_drawBandIndicators_cache_hit_skips_redraw() {
 }
 
 void test_drawBandIndicators_dirty_flag_forces_redraw() {
-    dirty.bands = true;
+    g_elementCaches.bands.valid = false;
     display.ut_drawBandIndicators(BAND_KA, false, 0);   // first draw (primes cache)
     resetCanvas();
 
-    dirty.bands = true;   // invalidate cache
+    g_elementCaches.bands.valid = false;   // invalidate cache
     display.ut_drawBandIndicators(BAND_KA, false, 0);
 
     // Cache was invalidated — expect at least one FILL_RECT
@@ -116,7 +119,7 @@ void test_drawBandIndicators_dirty_flag_forces_redraw() {
 }
 
 void test_drawBandIndicators_different_mask_invalidates_cache() {
-    dirty.bands = true;
+    g_elementCaches.bands.valid = false;
     display.ut_drawBandIndicators(BAND_KA, false, 0);
     resetCanvas();
 
@@ -126,7 +129,7 @@ void test_drawBandIndicators_different_mask_invalidates_cache() {
 }
 
 void test_drawBandIndicators_muted_change_invalidates_cache() {
-    dirty.bands = true;
+    g_elementCaches.bands.valid = false;
     display.ut_drawBandIndicators(BAND_KA, false, 0);
     resetCanvas();
 
@@ -141,7 +144,7 @@ void test_drawBandIndicators_muted_change_invalidates_cache() {
 
 // Helper: force signal bars redraw and return fillRoundRectCalls count
 static size_t signalBarsRedrawCount(uint8_t front, uint8_t rear, bool muted) {
-    dirty.signalBars = true;
+    g_elementCaches.bars.valid = false;
     resetCanvas();
     display.ut_drawVerticalSignalBars(front, rear, BAND_KA, muted);
     return canvas()->fillRoundRectCalls.size();
@@ -157,7 +160,7 @@ void test_drawSignalBars_strength_0_draws_6_unlit_bars() {
 }
 
 void test_drawSignalBars_lit_bars_use_bar_colors() {
-    dirty.signalBars = true;
+    g_elementCaches.bars.valid = false;
     resetCanvas();
     display.ut_drawVerticalSignalBars(4, 0, BAND_KA, false);
 
@@ -173,7 +176,7 @@ void test_drawSignalBars_lit_bars_use_bar_colors() {
 }
 
 void test_drawSignalBars_unlit_bars_use_dark_gray() {
-    dirty.signalBars = true;
+    g_elementCaches.bars.valid = false;
     resetCanvas();
     display.ut_drawVerticalSignalBars(4, 0, BAND_KA, false);
 
@@ -184,7 +187,7 @@ void test_drawSignalBars_unlit_bars_use_dark_gray() {
 }
 
 void test_drawSignalBars_muted_uses_muted_color() {
-    dirty.signalBars = true;
+    g_elementCaches.bars.valid = false;
     resetCanvas();
     display.ut_drawVerticalSignalBars(4, 0, BAND_KA, /*muted=*/true);
 
@@ -203,7 +206,7 @@ void test_drawSignalBars_muted_uses_muted_color() {
 }
 
 void test_drawSignalBars_cache_hit_no_redraw() {
-    dirty.signalBars = true;
+    g_elementCaches.bars.valid = false;
     display.ut_drawVerticalSignalBars(4, 0, BAND_KA, false);   // primes cache
     resetCanvas();
 
@@ -213,11 +216,11 @@ void test_drawSignalBars_cache_hit_no_redraw() {
 }
 
 void test_drawSignalBars_dirty_flag_forces_redraw() {
-    dirty.signalBars = true;
+    g_elementCaches.bars.valid = false;
     display.ut_drawVerticalSignalBars(4, 0, BAND_KA, false);   // first draw
     resetCanvas();
 
-    dirty.signalBars = true;     // invalidate
+    g_elementCaches.bars.valid = false;     // invalidate
     display.ut_drawVerticalSignalBars(4, 0, BAND_KA, false);
 
     TEST_ASSERT_EQUAL_UINT(6u, canvas()->fillRoundRectCalls.size());
@@ -225,7 +228,7 @@ void test_drawSignalBars_dirty_flag_forces_redraw() {
 
 void test_drawSignalBars_max_of_front_rear_used() {
     // rearStrength > frontStrength → max is used
-    dirty.signalBars = true;
+    g_elementCaches.bars.valid = false;
     resetCanvas();
     display.ut_drawVerticalSignalBars(2, 5, BAND_KA, false);
 

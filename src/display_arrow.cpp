@@ -9,6 +9,7 @@
 #include "../include/display_layout.h"
 #include "../include/display_draw.h"
 #include "../include/display_dirty_flags.h"
+#include "../include/display_element_caches.h"
 #include "../include/display_palette.h"
 #include "settings.h"
 #include "packet_parser.h"   // Direction enum, DIR_FRONT/SIDE/REAR
@@ -18,26 +19,13 @@
 // ============================================================================
 // Thread safety: these caches are read/written only from the main loop
 // (via display update calls). Not safe for concurrent access.
-static bool s_arrowLastShowFront = false;
-static bool s_arrowLastShowSide = false;
-static bool s_arrowLastShowRear = false;
-static bool s_arrowLastMuted = false;
-static uint16_t s_arrowLastFrontCol = 0;
-static uint16_t s_arrowLastSideCol = 0;
-static uint16_t s_arrowLastRearCol = 0;
-static bool s_arrowLastRaisedLayout = true;
-static bool s_arrowCacheValid = false;
 static unsigned long s_arrowLastBlinkTime = 0;
 static bool s_arrowBlinkOn = true;
 
 // Draw large direction arrow (t4s3 style)
 // flashBits indicates which arrows should blink (from image1 & ~image2)
 void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits, uint16_t frontColorOverride) {
-    const bool forceFullRedraw = dirty.arrow;
-    if (forceFullRedraw) {
-        s_arrowCacheValid = false;
-        dirty.arrow = false;
-    }
+    const bool forceFullRedraw = !g_elementCaches.arrow.valid;
 
     // Local blink timer - V1 blinks at ~5Hz, we match that
     const unsigned long BLINK_INTERVAL_MS = 100;  // ~5Hz blink rate
@@ -111,19 +99,19 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     uint16_t rearCol = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorArrowRear;
     uint16_t offCol = TFT_DARKGREY;  // Very dark grey for inactive arrows (matches PALETTE_GRAY)
 
-    const bool frontVisibilityChanged = s_arrowCacheValid && (showFront != s_arrowLastShowFront);
-    const bool sideVisibilityChanged = s_arrowCacheValid && (showSide != s_arrowLastShowSide);
-    const bool rearVisibilityChanged = s_arrowCacheValid && (showRear != s_arrowLastShowRear);
-    const bool mutedChanged = s_arrowCacheValid && (muted != s_arrowLastMuted);
-    const bool colorsChanged = s_arrowCacheValid &&
-                               ((frontCol != s_arrowLastFrontCol) ||
-                                (sideCol != s_arrowLastSideCol) ||
-                                (rearCol != s_arrowLastRearCol));
-    const bool layoutChanged = s_arrowCacheValid && (raisedLayout != s_arrowLastRaisedLayout);
+    const bool frontVisibilityChanged = g_elementCaches.arrow.valid && (showFront != g_elementCaches.arrow.showFront);
+    const bool sideVisibilityChanged = g_elementCaches.arrow.valid && (showSide != g_elementCaches.arrow.showSide);
+    const bool rearVisibilityChanged = g_elementCaches.arrow.valid && (showRear != g_elementCaches.arrow.showRear);
+    const bool mutedChanged = g_elementCaches.arrow.valid && (muted != g_elementCaches.arrow.muted);
+    const bool colorsChanged = g_elementCaches.arrow.valid &&
+                               ((frontCol != g_elementCaches.arrow.frontCol) ||
+                                (sideCol != g_elementCaches.arrow.sideCol) ||
+                                (rearCol != g_elementCaches.arrow.rearCol));
+    const bool layoutChanged = g_elementCaches.arrow.valid && (raisedLayout != g_elementCaches.arrow.raisedLayout);
     const int visibilityChangeCount = static_cast<int>(frontVisibilityChanged) +
                                       static_cast<int>(sideVisibilityChanged) +
                                       static_cast<int>(rearVisibilityChanged);
-    bool anyChanged = !s_arrowCacheValid ||
+    bool anyChanged = !g_elementCaches.arrow.valid ||
                       frontVisibilityChanged ||
                       sideVisibilityChanged ||
                       rearVisibilityChanged ||
@@ -227,7 +215,7 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     };
 
     const bool canTargetSingleArrow = !forceFullRedraw &&
-                                      s_arrowCacheValid &&
+                                      g_elementCaches.arrow.valid &&
                                       !mutedChanged &&
                                       !colorsChanged &&
                                       !layoutChanged &&
@@ -287,13 +275,13 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     }
 
     // Update cache
-    s_arrowLastShowFront = showFront;
-    s_arrowLastShowSide = showSide;
-    s_arrowLastShowRear = showRear;
-    s_arrowLastMuted = muted;
-    s_arrowLastFrontCol = frontCol;
-    s_arrowLastSideCol = sideCol;
-    s_arrowLastRearCol = rearCol;
-    s_arrowLastRaisedLayout = raisedLayout;
-    s_arrowCacheValid = true;
+    g_elementCaches.arrow.showFront = showFront;
+    g_elementCaches.arrow.showSide = showSide;
+    g_elementCaches.arrow.showRear = showRear;
+    g_elementCaches.arrow.muted = muted;
+    g_elementCaches.arrow.frontCol = frontCol;
+    g_elementCaches.arrow.sideCol = sideCol;
+    g_elementCaches.arrow.rearCol = rearCol;
+    g_elementCaches.arrow.raisedLayout = raisedLayout;
+    g_elementCaches.arrow.valid = true;
 }

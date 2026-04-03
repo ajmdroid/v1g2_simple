@@ -939,6 +939,7 @@ static void initializePreflightDisplayAndBootUi(esp_reset_reason_t resetReason,
         fatalBootError("Display init failed", false);
     }
     mainRuntimeState.bootReadyDeadlineMs = millis() + 5000;
+    display.setObdRuntimeModule(&obdRuntimeModule);
 
     // Brief post-display settle before settings init.
     const unsigned long postDisplaySettleMs = (resetReason == ESP_RST_DEEPSLEEP) ? 2UL : 10UL;

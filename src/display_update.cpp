@@ -9,6 +9,7 @@
 #include "../include/display_layout.h"
 #include "../include/display_draw.h"
 #include "../include/display_dirty_flags.h"
+#include "../include/display_element_caches.h"
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
 #include "../include/display_log.h"
@@ -899,6 +900,7 @@ void V1Display::update(const AlertData& priority, const AlertData* allAlerts, in
 
     // Force card redraw since drawBaseFrame cleared the screen
     dirty.cards = true;
+    g_elementCaches.cards.invalidate();
 
     // Draw secondary alert cards at bottom
     stageStartUs = micros();
