@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import time
 import urllib.parse
 import urllib.request
@@ -69,7 +70,7 @@ class CounterResult:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Runtime smoke verification for perf counters")
-    parser.add_argument("--base-url", default="http://192.168.35.5", help="Device base URL")
+    parser.add_argument("--base-url", default=os.environ.get("V1_DEVICE_URL", ""), help="Device base URL (or set V1_DEVICE_URL)")
     parser.add_argument(
         "--profile",
         choices=sorted(PROFILE_COUNTERS.keys()),

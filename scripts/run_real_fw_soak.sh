@@ -5,8 +5,8 @@
 #
 # Usage examples:
 #   ./scripts/run_real_fw_soak.sh --duration-seconds 600
-#   ./scripts/run_real_fw_soak.sh --duration-seconds 1800 --metrics-url http://192.168.35.5/api/debug/metrics
-#   ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 --metrics-url http://192.168.35.5/api/debug/metrics --drive-display-preview
+#   ./scripts/run_real_fw_soak.sh --duration-seconds 1800 --metrics-url http://<DEVICE_IP>/api/debug/metrics
+#   ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 900 --metrics-url http://<DEVICE_IP>/api/debug/metrics --drive-display-preview
 #   ./scripts/run_real_fw_soak.sh --skip-flash --duration-seconds 300 --no-metrics
 #
 set -euo pipefail
@@ -32,7 +32,7 @@ STARTUP_SETTLE_MAX_SECONDS="${REAL_FW_STARTUP_SETTLE_MAX_SECONDS:-20}"
 STARTUP_STABLE_CONSECUTIVE_SAMPLES="${REAL_FW_STARTUP_STABLE_CONSECUTIVE_SAMPLES:-2}"
 UPLOAD_FS=0
 SKIP_FLASH=0
-METRICS_URL="${REAL_FW_METRICS_URL:-http://192.168.35.5/api/debug/metrics}"
+METRICS_URL="${REAL_FW_METRICS_URL:-}"
 PANIC_URL="${REAL_FW_PANIC_URL:-}"
 METRICS_RESET_URL="${REAL_FW_METRICS_RESET_URL:-}"
 METRICS_SOAK_MODE="${REAL_FW_METRICS_SOAK_MODE:-1}"
@@ -686,7 +686,7 @@ Options:
   --port PATH            Fixed serial port (default: auto-detect)
   --with-fs              Upload LittleFS image before firmware upload
   --skip-flash           Skip flashing and only run soak collection
-  --metrics-url URL      Poll debug metrics endpoint (default: 192.168.35.5)
+  --metrics-url URL      Poll debug metrics endpoint (or set REAL_FW_METRICS_URL)
   --panic-url URL        Poll debug panic endpoint (default: derived from metrics URL)
   --no-metrics           Disable debug API polling (serial-only soak)
   --require-metrics      Fail run if no successful metrics samples are captured

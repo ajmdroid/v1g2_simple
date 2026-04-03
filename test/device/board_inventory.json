@@ -1,25 +1,25 @@
 {
-  "description": "Hardware lab board inventory for automated qualification.",
+  "description": "Hardware lab board inventory for automated qualification. Copy to board_inventory.local.json and fill in your lab values.",
   "boards": [
     {
       "board_id": "release",
       "role": "Release qualification — full scripts/hardware/test.sh gate",
-      "device_path": "/dev/cu.usbmodem21201",
-      "metrics_url": "http://192.168.160.212/api/debug/metrics",
+      "device_path": "REPLACE_WITH_DEVICE_PATH",
+      "metrics_url": "REPLACE_WITH_METRICS_URL",
       "usb_serial": "REPLACE_WITH_ACTUAL_SERIAL"
     },
     {
       "board_id": "radio",
       "role": "Radio/coexistence regression — BLE+WiFi stress",
-      "device_path": "/dev/v1simple-radio",
-      "metrics_url": "http://192.168.35.6/api/debug/metrics",
+      "device_path": "REPLACE_WITH_DEVICE_PATH",
+      "metrics_url": "REPLACE_WITH_METRICS_URL",
       "usb_serial": "REPLACE_WITH_ACTUAL_SERIAL"
     },
     {
       "board_id": "stress",
       "role": "Long soak/stress — extended stability testing",
-      "device_path": "/dev/v1simple-stress",
-      "metrics_url": "http://192.168.35.7/api/debug/metrics",
+      "device_path": "REPLACE_WITH_DEVICE_PATH",
+      "metrics_url": "REPLACE_WITH_METRICS_URL",
       "usb_serial": "REPLACE_WITH_ACTUAL_SERIAL"
     }
   ]
