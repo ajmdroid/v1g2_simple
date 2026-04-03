@@ -9,7 +9,6 @@
 #include "display.h"
 #include "../include/display_layout.h"
 #include "../include/display_draw.h"
-#include "../include/display_dirty_flags.h"
 #include "../include/display_element_caches.h"
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
@@ -18,11 +17,7 @@
 #include "packet_parser.h"
 #include <algorithm>  // std::max
 
-// ============================================================================
-// File-scoped static cache variables for drawBandIndicators
-// ============================================================================
-// Thread safety: these caches are read/written only from the main loop
-// (via display update calls). Not safe for concurrent access.
+// File-scoped blink timer for drawBandIndicators
 static unsigned long s_bandLastBlinkTime = 0;
 static bool s_bandBlinkOn = true;
 

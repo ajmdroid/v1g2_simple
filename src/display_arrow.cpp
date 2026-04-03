@@ -14,11 +14,7 @@
 #include "settings.h"
 #include "packet_parser.h"   // Direction enum, DIR_FRONT/SIDE/REAR
 
-// ============================================================================
-// File-scoped static cache variables for drawDirectionArrow
-// ============================================================================
-// Thread safety: these caches are read/written only from the main loop
-// (via display update calls). Not safe for concurrent access.
+// File-scoped blink timer for drawDirectionArrow
 static unsigned long s_arrowLastBlinkTime = 0;
 static bool s_arrowBlinkOn = true;
 

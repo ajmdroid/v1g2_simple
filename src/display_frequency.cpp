@@ -9,7 +9,6 @@
 #include "display.h"
 #include "../include/display_layout.h"
 #include "../include/display_draw.h"
-#include "../include/display_dirty_flags.h"
 #include "../include/display_element_caches.h"
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
@@ -25,13 +24,8 @@ using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 // Convenience alias (matches display.cpp)
 using TextWidthCacheEntry = DisplayFontManager::WidthCacheEntry;
 
-// ============================================================================
-// File-scoped static cache variables for frequency displays
-// ============================================================================
-// Thread safety: these caches are read/written only from the main loop
-// (via display update calls). Not safe for concurrent access.
-// Classic frequency render cache is in g_elementCaches.freqClassic
-// LRU font computation caches stay file-scoped (not render state)
+// File-scoped font width caches for frequency displays
+// (LRU computation caches — not render state; render caches are in g_elementCaches)
 static TextWidthCacheEntry s_freqClassicWidthCache[16];
 static uint8_t s_freqClassicWidthCacheNextSlot = 0;
 static int s_freqClassicCachedNumericWidth = 0;

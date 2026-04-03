@@ -8,7 +8,6 @@
 #include "display.h"
 #include "../include/display_layout.h"
 #include "../include/display_draw.h"
-#include "../include/display_dirty_flags.h"
 #include "../include/display_element_caches.h"
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
@@ -21,11 +20,7 @@
 
 using namespace DisplaySegments;
 
-// ============================================================================
-// File-scoped static cache variables for battery indicator
-// ============================================================================
-// Thread safety: these caches are read/written only from the main loop
-// (via display update calls). Not safe for concurrent access.
+// File-scoped hysteresis state for battery indicator
 static bool s_batteryShowOnUSB = true;
 
 // ============================================================================

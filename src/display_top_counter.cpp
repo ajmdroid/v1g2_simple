@@ -8,7 +8,6 @@
 #include "display.h"
 #include "../include/display_layout.h"
 #include "../include/display_draw.h"
-#include "../include/display_dirty_flags.h"
 #include "../include/display_element_caches.h"
 #include "../include/display_palette.h"
 #include "../include/display_text.h"
