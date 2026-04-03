@@ -40,6 +40,11 @@ class BleQueueModule;
 class SystemEventBus;
 class QuietCoordinatorModule;
 
+// OBD and speed subsystems (defined in src/modules/obd and src/modules/speed)
+class ObdRuntimeModule;
+class ObdBleClient;
+class SpeedSourceSelector;
+
 #ifndef UNIT_TEST
 class DisplayPipelineModule;
 #endif
@@ -80,6 +85,9 @@ extern DisplayMode displayMode;
 extern BleQueueModule bleQueueModule;
 extern SystemEventBus systemEventBus;
 extern MainRuntimeState mainRuntimeState;
+extern ObdRuntimeModule obdRuntimeModule;
+extern ObdBleClient obdBleClient;
+extern SpeedSourceSelector speedSourceSelector;
 
 #ifndef UNIT_TEST
 extern DisplayPipelineModule displayPipelineModule;

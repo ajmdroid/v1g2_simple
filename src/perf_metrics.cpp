@@ -22,14 +22,9 @@
 // Global instances
 PerfCounters perfCounters;
 PerfExtendedMetrics perfExtended;
-extern SystemEventBus  systemEventBus;
-extern ObdRuntimeModule  obdRuntimeModule;
-extern SpeedSourceSelector speedSourceSelector;
 
 #if PERF_METRICS && PERF_MONITORING
-// Audio task handle for stack high-water-mark monitoring.
-// Defined in audio_beep.cpp; used here for observability only.
-extern std::atomic<TaskHandle_t> audioTaskHandle;
+#include "../include/audio_internals.h"  // audioTaskHandle (for stack HWM monitoring)
 #endif
 
 #if PERF_METRICS

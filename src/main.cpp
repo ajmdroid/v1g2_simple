@@ -96,14 +96,9 @@
 #include <algorithm>
 
 // Global objects
-// Module instance declarations — defined in each module's own .cpp.
-// The extern declarations were removed from module headers to prevent
-// accidental global access from within src/modules/. These src/-level
-// externs allow main.cpp and src/ helpers to wire dependencies.
-
-extern SpeedSourceSelector       speedSourceSelector;
-extern ObdRuntimeModule          obdRuntimeModule;
-extern ObdBleClient              obdBleClient;
+// ObdRuntimeModule, ObdBleClient, SpeedSourceSelector are forward-declared
+// in main_globals.h. Full types are visible here from the module headers above.
+#include "../include/main_globals.h"
 
 V1BLEClient bleClient;
 PacketParser parser;
