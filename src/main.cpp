@@ -256,6 +256,7 @@ static void configureLoopPostDisplayModule() {
 }
 
 static void configureWifiRuntimeModule() {
+    wifiManager.setObdDependencies(&obdRuntimeModule, &speedSourceSelector);
     getWifiOrchestrator().ensureCallbacksConfigured();
     if (!wifiStatusObservabilityCallbackConfigured) {
         wifiManager.appendStatusCallback([](JsonObject obj, void* /*ctx*/) {

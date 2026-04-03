@@ -31,9 +31,6 @@
 #include "time_service.h"
 #include "../include/config.h"
 
-extern SpeedSourceSelector speedSourceSelector;
-extern ObdRuntimeModule    obdRuntimeModule;
-
 WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
     return WifiAutoPushApiService::Runtime{
         [](WifiAutoPushApiService::SlotsSnapshot& snapshot, void* /*ctx*/) {
@@ -483,14 +480,15 @@ BackupApiService::BackupRuntime WiFiManager::makeBackupRuntime() {
             return result.success;
         },
         // syncAfterRestore
-        [](void* /*ctx*/) {
+        [](void* ctx) {
+            WiFiManager* self = static_cast<WiFiManager*>(ctx);
             const V1Settings& settings = settingsManager.get();
             SettingsRuntimeSync::syncVehicleRuntimeInputs(settings,
-                                                          obdRuntimeModule,
-                                                          speedSourceSelector);
+                                                          *self->obdRuntime_,
+                                                          *self->speedSelector_);
         },
         // ctx
-        nullptr,
+        this,
     };
 }
 

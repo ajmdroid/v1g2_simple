@@ -149,6 +149,8 @@ public:
         v1ConnectedCallbackCtx = ctx;
     }
 
+    void setObdDependencies(void* /*obd*/, void* /*speed*/) {}
+
 private:
     void (*statusCallback)(ArduinoJson::JsonObject, void*) = nullptr;
     void* statusCallbackCtx = nullptr;

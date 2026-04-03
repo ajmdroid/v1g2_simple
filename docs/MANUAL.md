@@ -367,7 +367,7 @@ V1 Gen2 (BLE)
 | **SpeedSourceSelector** | Runtime speed source arbitration (OBD-only) |
 | **ObdRuntimeModule** | OBD-II BLE adapter connection state machine (scan/connect/poll) |
 | **ObdBleClient** | NimBLE client for OBDLink CX adapter communication |
-| **ObdApiService** | OBD REST API endpoints (status, scan, forget) |
+| **ObdApiService** | OBD REST API endpoints (status, config, devices, scan, forget, devices/name) |
 | **SystemEventBus** | Thread-safe bounded ring buffer for cross-module event coordination |
 | **ParsedFrameEventModule** | Collects parsed-frame signal from BLE queue for display orchestration |
 | **PeriodicMaintenanceModule** | Rate-limited perf reporting, time saves, persistence |

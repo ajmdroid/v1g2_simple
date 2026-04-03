@@ -84,17 +84,13 @@ kind=source file=src/perf_metrics.cpp line=27 text=extern SpeedSourceSelector sp
 kind=source file=src/perf_metrics.cpp line=32 text=extern std::atomic<TaskHandle_t> audioTaskHandle;
 kind=header file=src/perf_metrics.h line=697 text=extern PerfExtendedMetrics perfExtended;
 kind=header file=src/perf_metrics.h line=811 text=extern PerfCounters perfCounters;
-kind=header file=src/perf_metrics.h line=1218 text=extern PerfLatency perfLatency;
-kind=header file=src/perf_metrics.h line=1222 text=extern bool perfDebugEnabled; // Runtime debug print enable
-kind=header file=src/perf_metrics.h line=1223 text=extern uint32_t perfLastReportMs; // Last report timestamp
+kind=header file=src/perf_metrics.h line=1217 text=extern PerfLatency perfLatency;
+kind=header file=src/perf_metrics.h line=1221 text=extern bool perfDebugEnabled; // Runtime debug print enable
+kind=header file=src/perf_metrics.h line=1222 text=extern uint32_t perfLastReportMs; // Last report timestamp
 kind=header file=src/perf_sd_logger.h line=67 text=extern PerfSdLogger perfSdLogger;
-kind=header file=src/settings.h line=812 text=extern SettingsManager settingsManager;
+kind=header file=src/settings.h line=802 text=extern SettingsManager settingsManager;
 kind=header file=src/storage_manager.h line=306 text=extern StorageManager storageManager;
 kind=header file=src/time_service.h line=68 text=extern TimeService timeService;
 kind=header file=src/v1_devices.h line=71 text=extern V1DeviceStore v1DeviceStore;
 kind=header file=src/v1_profiles.h line=173 text=extern V1ProfileManager v1ProfileManager;
-kind=header file=src/wifi_manager.h line=327 text=extern WiFiManager wifiManager;
-kind=source file=src/wifi_routes.cpp line=32 text=extern SpeedSourceSelector speedSourceSelector;
-kind=source file=src/wifi_routes.cpp line=33 text=extern ObdRuntimeModule obdRuntimeModule;
-kind=source file=src/wifi_runtimes.cpp line=34 text=extern SpeedSourceSelector speedSourceSelector;
-kind=source file=src/wifi_runtimes.cpp line=35 text=extern ObdRuntimeModule obdRuntimeModule;
+kind=header file=src/wifi_manager.h line=338 text=extern WiFiManager wifiManager;

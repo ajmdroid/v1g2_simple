@@ -532,18 +532,36 @@ Get OBD-II adapter connection status and speed data.
 {
   "enabled": true,
   "connected": true,
+  "securityReady": true,
+  "encrypted": true,
+  "bonded": true,
   "speedValid": true,
   "speedMph": 37.3,
   "speedAgeMs": 412,
   "rssi": -52,
   "scanInProgress": false,
+  "manualScanPending": false,
   "savedAddressValid": true,
   "savedAddress": "A4:C1:38:00:11:22",
   "connectAttempts": 1,
+  "connectSuccesses": 1,
+  "connectFailures": 0,
+  "securityRepairs": 0,
+  "initRetries": 0,
   "pollCount": 842,
   "pollErrors": 0,
+  "staleSpeedCount": 0,
   "consecutiveErrors": 0,
-  "state": 7
+  "bufferOverflows": 0,
+  "commandInFlight": "speed",
+  "commandInFlightRaw": 3,
+  "lastConnectStartMs": 12345,
+  "lastConnectSuccessMs": 12500,
+  "lastFailureMs": 0,
+  "lastBleError": 0,
+  "lastSecurityError": 0,
+  "lastFailureRaw": 0,
+  "state": 8
 }
 ```
 
@@ -551,14 +569,36 @@ Get OBD-II adapter connection status and speed data.
 |-------|------|-------------|
 | `enabled` | boolean | Whether OBD is enabled in settings |
 | `connected` | boolean | BLE connection to adapter is active |
+| `securityReady` | boolean | BLE security (bonding/encryption) negotiation complete |
+| `encrypted` | boolean | BLE link is currently encrypted |
+| `bonded` | boolean | BLE link is bonded |
 | `speedValid` | boolean | Current speed reading is fresh and valid |
 | `speedMph` | float | Vehicle speed in mph (0 when invalid) |
 | `speedAgeMs` | integer | Age of last speed sample in milliseconds |
 | `rssi` | integer | BLE signal strength in dBm |
 | `scanInProgress` | boolean | BLE scan is currently running |
+| `manualScanPending` | boolean | A manual scan was requested and is queued |
 | `savedAddressValid` | boolean | A paired adapter address is saved |
 | `savedAddress` | string | Saved adapter BLE address when present |
-| `state` | integer | State machine state (0=Idle, 1=WaitBoot, 2=Scanning, 4=Connecting, 5=Securing, 6=Discovering, 7=ATInit, 8=Polling, 9=ErrorBackoff, 10=Disconnected) |
+| `connectAttempts` | integer | Total connection attempts since boot |
+| `connectSuccesses` | integer | Successful connections since boot |
+| `connectFailures` | integer | Failed connection attempts since boot |
+| `securityRepairs` | integer | BLE security repair attempts since boot |
+| `initRetries` | integer | AT command init retries since boot |
+| `pollCount` | integer | OBD speed polls completed since last connect |
+| `pollErrors` | integer | OBD poll errors since last connect |
+| `staleSpeedCount` | integer | Number of stale speed readings discarded |
+| `consecutiveErrors` | integer | Current consecutive error streak |
+| `bufferOverflows` | integer | BLE receive buffer overflows since boot |
+| `commandInFlight` | string | Current command kind: `"none"`, `"at_init"`, `"sanity"`, `"speed"` |
+| `commandInFlightRaw` | integer | Raw `ObdCommandKind` enum value |
+| `lastConnectStartMs` | integer | `millis()` timestamp of last connection attempt start |
+| `lastConnectSuccessMs` | integer | `millis()` timestamp of last successful connection |
+| `lastFailureMs` | integer | `millis()` timestamp of last failure |
+| `lastBleError` | integer | Last BLE stack error code |
+| `lastSecurityError` | integer | Last BLE security error code |
+| `lastFailureRaw` | integer | Raw `ObdFailureReason` enum value |
+| `state` | integer | State machine state: 0=Idle, 1=WaitBoot, 2=Scanning, 4=Connecting, 5=Securing, 6=Discovering, 7=ATInit, 8=Polling, 9=ErrorBackoff, 10=Disconnected, 11=EcuIdle |
 
 ### GET /api/obd/devices
 
@@ -584,17 +624,32 @@ Get the saved OBD adapter list for the web UI. The current runtime only remember
 
 Set or clear the friendly name for the saved OBD adapter.
 
-**Request (JSON or form):** `address=<BLE address>&name=<friendly name>`
+**Request (form args):** `address=<BLE address>&name=<friendly name>`
+
+The `address` must match the currently saved OBD adapter address (normalized to uppercase XX:XX:XX:XX:XX:XX format). `name` is optional — omitting it clears the friendly name. Names are trimmed to 32 characters.
+
+**Response (success):** `{"success": true}`
+
+**Response (address missing):** `400 {"error": "Missing address"}`
+
+**Response (address not found):** `404 {"error": "Saved OBD device not found"}`
 
 ### POST /api/obd/scan
 
 Request a BLE scan for OBDLink adapters. The runtime reports whether the request was accepted immediately; the scan itself is asynchronous and auto-connects to the first matching device above the RSSI threshold once the runtime enters scanning.
 
-**Response**
+**Response (success)**
 
 ```json
 { "ok": true, "requested": true, "scanInProgress": false, "message": "OBD scan requested" }
 ```
+
+**Error responses**
+
+| Condition | Status | Body |
+|-----------|--------|------|
+| OBD is disabled | `409` | `{"ok": false, "message": "OBD is disabled"}` |
+| Scan already requested or running | `409` | `{"ok": false, "message": "OBD scan already requested or in progress"}` |
 
 ### POST /api/obd/forget
 
@@ -610,14 +665,17 @@ Clear the saved OBD adapter address and disconnect. The adapter will need to be 
 
 Update OBD runtime configuration.
 
-**Request (JSON or form):**
+**Request (JSON body):**
 - `enabled`: `true|false`
 - `minRssi`: integer RSSI threshold from `-90` to `-40`
+
+**Response:** `{"ok": true}`
 
 **Behavior**
 
 - Persists the enabled state and minimum RSSI threshold.
 - Updates the live OBD runtime and OBD speed-source gating immediately.
+- `minRssi` is clamped to `[-90, -40]` before applying.
 
 ---
 

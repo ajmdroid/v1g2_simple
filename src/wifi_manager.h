@@ -53,6 +53,9 @@ namespace DebugPerfFilesService {
 struct PerfFilesRuntime;
 }
 
+class ObdRuntimeModule;
+class SpeedSourceSelector;
+
 // WiFi service state (AP may be enabled or disabled while service is active)
 enum SetupModeState {
     SETUP_MODE_OFF = 0,
@@ -176,6 +179,12 @@ public:
     // Callback for V1 connection state (used to defer WiFi client operations)
     void setV1ConnectedCallback(bool (*fn)(void*), void* ctx) { isV1Connected_ = fn; isV1ConnectedCtx_ = ctx; }
 
+    // OBD and speed selector dependencies (used by OBD API routes and backup restore sync)
+    void setObdDependencies(ObdRuntimeModule* obd, SpeedSourceSelector* speed) {
+        obdRuntime_ = obd;
+        speedSelector_ = speed;
+    }
+
     // Web activity tracking (for WiFi priority mode)
     void markUiActivity();  // Call on every HTTP request
     bool isUiActive(unsigned long timeoutMs = 30000) const;  // True if request within timeout
@@ -293,6 +302,8 @@ private:
     void* queuePushNowCtx_ = nullptr;
     bool (*isV1Connected_)(void* ctx) = nullptr;   // Returns true when V1 is connected (defer WiFi ops until then)
     void* isV1ConnectedCtx_ = nullptr;
+    ObdRuntimeModule*  obdRuntime_   = nullptr;
+    SpeedSourceSelector* speedSelector_ = nullptr;
 
     // Setup functions
     void setupAP();

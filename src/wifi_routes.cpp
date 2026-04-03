@@ -29,9 +29,6 @@
 #include "time_service.h"
 #include <LittleFS.h>
 
-extern SpeedSourceSelector speedSourceSelector;
-extern ObdRuntimeModule    obdRuntimeModule;
-
 bool WiFiManager::setupWebServer() {
     // Initialize LittleFS for serving web UI files
     if (!LittleFS.begin(false, "/littlefs", 10, "storage")) {
@@ -457,11 +454,11 @@ bool WiFiManager::setupWebServer() {
 
     // OBD API routes
     server_.on("/api/obd/status", HTTP_GET, [this]() {
-        ObdApiService::handleApiStatus(server_, obdRuntimeModule,
+        ObdApiService::handleApiStatus(server_, *obdRuntime_,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     server_.on("/api/obd/devices", HTTP_GET, [this]() {
-        ObdApiService::handleApiDevicesList(server_, obdRuntimeModule, settingsManager,
+        ObdApiService::handleApiDevicesList(server_, *obdRuntime_, settingsManager,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     server_.on("/api/obd/config", HTTP_GET, [this]() {
@@ -474,20 +471,20 @@ bool WiFiManager::setupWebServer() {
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     server_.on("/api/obd/scan", HTTP_POST, [this]() {
-        ObdApiService::handleApiScan(server_, obdRuntimeModule,
+        ObdApiService::handleApiScan(server_, *obdRuntime_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     server_.on("/api/obd/forget", HTTP_POST, [this]() {
-        ObdApiService::handleApiForget(server_, obdRuntimeModule, settingsManager,
+        ObdApiService::handleApiForget(server_, *obdRuntime_, settingsManager,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
     server_.on("/api/obd/config", HTTP_POST, [this]() {
         ObdApiService::handleApiConfig(server_,
-                                      obdRuntimeModule,
+                                      *obdRuntime_,
                                       settingsManager,
-                                      speedSourceSelector,
+                                      *speedSelector_,
                                       [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
                                       [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
     });
