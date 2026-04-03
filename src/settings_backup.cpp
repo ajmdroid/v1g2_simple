@@ -193,7 +193,7 @@ bool writeBackupAtomically(fs::FS* fs, const JsonDocument& doc) {
     }
 
     const size_t required = measureJson(doc) + 1u;
-    char* jsonData = static_cast<char*>(malloc(required));
+    char* jsonData = static_cast<char*>(heap_caps_malloc(required, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
     if (!jsonData) {
         Serial.println("[Settings] Failed to allocate temp serialization buffer");
         return false;
