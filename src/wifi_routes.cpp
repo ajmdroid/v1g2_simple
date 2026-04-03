@@ -61,7 +61,7 @@ bool WiFiManager::setupWebServer() {
         }
         // LittleFS missing - tell user to reflash
         Serial.println("[HTTP] 500 / -> LittleFS missing");
-        server_.send(500, "text/plain", "Web UI not found. Please reflash with ./build.sh --all");
+        server_.send(500, "application/json", "{\"ok\":false,\"error\":\"Web UI not found. Please reflash with ./build.sh --all\"}");
     });
 
     // Catch-all for _app/immutable/* files (if Svelte files are uploaded)
@@ -71,7 +71,7 @@ bool WiFiManager::setupWebServer() {
 
         if (!WifiStaticPathGuard::isSafe(uri.c_str())) {
             Serial.printf("[HTTP] REJECT unsafe path %s\n", uri.c_str());
-            server_.send(404, "text/plain", "Not found");
+            server_.send(404, "application/json", "{\"ok\":false,\"error\":\"Not found\"}");
             return;
         }
 
