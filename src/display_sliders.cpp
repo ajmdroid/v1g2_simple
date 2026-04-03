@@ -11,10 +11,18 @@
 #include "../include/display_flush.h"
 #include "../include/display_slider_math.h"
 
+// Slider-specific color constants (not theme-dependent — fixed hardware UI)
+static constexpr uint16_t SLIDER_WHITE         = 0xFFFF;  // Labels and thumb
+static constexpr uint16_t SLIDER_TRACK_BORDER  = 0x4208;  // Outer border of track
+static constexpr uint16_t SLIDER_TRACK_FILL    = 0x2104;  // Empty track fill
+static constexpr uint16_t SLIDER_BRIGHTNESS_FG = 0x07E0;  // Green — brightness fill
+static constexpr uint16_t SLIDER_VOLUME_FG     = 0x001F;  // Blue  — volume fill
+static constexpr uint16_t SLIDER_HINT_TEXT     = 0x8410;  // Medium gray — hint text
+
 // Combined settings screen with brightness and voice volume sliders
 void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel) {
     // Clear screen to dark background
-    tft_->fillScreen(0x0000);
+    tft_->fillScreen(PALETTE_BG);
 
     // Layout: 640x172 landscape - two horizontal sliders stacked
     const int sliderMargin = 40;
@@ -28,7 +36,7 @@ void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel
     const int volumeY = 115;
 
     // Title
-    tft_->setTextColor(0xFFFF);  // White
+    tft_->setTextColor(SLIDER_WHITE);
     tft_->setTextSize(2);
     tft_->setCursor((SCREEN_WIDTH - 120) / 2, 5);
     tft_->print("SETTINGS");
@@ -37,23 +45,23 @@ void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel
     // Brightness slider
     // ============================================================================
     tft_->setTextSize(1);
-    tft_->setTextColor(0xFFFF);
+    tft_->setTextColor(SLIDER_WHITE);
     tft_->setCursor(sliderMargin, brightnessY - 16);
     tft_->print("BRIGHTNESS");
 
     // Draw slider track
-    tft_->drawRect(sliderX - 2, brightnessY - 2, sliderWidth + 4, sliderHeight + 4, 0x4208);
-    tft_->fillRect(sliderX, brightnessY, sliderWidth, sliderHeight, 0x2104);
+    tft_->drawRect(sliderX - 2, brightnessY - 2, sliderWidth + 4, sliderHeight + 4, SLIDER_TRACK_BORDER);
+    tft_->fillRect(sliderX, brightnessY, sliderWidth, sliderHeight, SLIDER_TRACK_FILL);
 
     // Fill based on brightness level (80-255 range)
     int brightnessFill = computeBrightnessSliderFill(brightnessLevel, sliderWidth);
-    tft_->fillRect(sliderX, brightnessY, brightnessFill, sliderHeight, 0x07E0);  // Green
+    tft_->fillRect(sliderX, brightnessY, brightnessFill, sliderHeight, SLIDER_BRIGHTNESS_FG);  // Green
 
     // Thumb
     int brightThumbX = sliderX + brightnessFill - 4;
     if (brightThumbX < sliderX) brightThumbX = sliderX;
     if (brightThumbX > sliderX + sliderWidth - 8) brightThumbX = sliderX + sliderWidth - 8;
-    tft_->fillRect(brightThumbX, brightnessY - 4, 8, sliderHeight + 8, 0xFFFF);
+    tft_->fillRect(brightThumbX, brightnessY - 4, 8, sliderHeight + 8, SLIDER_WHITE);
 
     // Percentage text
     char brightStr[8];
@@ -65,23 +73,23 @@ void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel
     // ============================================================================
     // Voice volume slider
     // ============================================================================
-    tft_->setTextColor(0xFFFF);
+    tft_->setTextColor(SLIDER_WHITE);
     tft_->setCursor(sliderMargin, volumeY - 16);
     tft_->print("VOICE VOLUME");
 
     // Draw slider track
-    tft_->drawRect(sliderX - 2, volumeY - 2, sliderWidth + 4, sliderHeight + 4, 0x4208);
-    tft_->fillRect(sliderX, volumeY, sliderWidth, sliderHeight, 0x2104);
+    tft_->drawRect(sliderX - 2, volumeY - 2, sliderWidth + 4, sliderHeight + 4, SLIDER_TRACK_BORDER);
+    tft_->fillRect(sliderX, volumeY, sliderWidth, sliderHeight, SLIDER_TRACK_FILL);
 
     // Fill based on volume level (0-100 range)
     int volumeFill = (volumeLevel * sliderWidth) / 100;
-    tft_->fillRect(sliderX, volumeY, volumeFill, sliderHeight, 0x001F);  // Blue for volume
+    tft_->fillRect(sliderX, volumeY, volumeFill, sliderHeight, SLIDER_VOLUME_FG);  // Blue for volume
 
     // Thumb
     int volThumbX = sliderX + volumeFill - 4;
     if (volThumbX < sliderX) volThumbX = sliderX;
     if (volThumbX > sliderX + sliderWidth - 8) volThumbX = sliderX + sliderWidth - 8;
-    tft_->fillRect(volThumbX, volumeY - 4, 8, sliderHeight + 8, 0xFFFF);
+    tft_->fillRect(volThumbX, volumeY - 4, 8, sliderHeight + 8, SLIDER_WHITE);
 
     // Percentage text
     char volStr[8];
@@ -91,7 +99,7 @@ void V1Display::showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel
 
     // Instructions at bottom
     tft_->setTextSize(1);
-    tft_->setTextColor(0x8410);  // Gray
+    tft_->setTextColor(SLIDER_HINT_TEXT);  // Medium gray
     tft_->setCursor((SCREEN_WIDTH - 220) / 2, 155);
     tft_->print("Touch sliders - BOOT to save");
 
