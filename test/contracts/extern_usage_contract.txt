@@ -65,7 +65,6 @@ kind=header file=include/wifi_manager_internals.h line=21 text=extern void cance
 kind=header file=src/battery_manager.h line=103 text=extern BatteryManager batteryManager;
 kind=header file=src/battery_manager.h line=106 text=extern TwoWire tca9554Wire;
 kind=header file=src/battery_manager.h line=107 text=extern SemaphoreHandle_t tca9554WireMutex;
-kind=source file=src/ble_connection.cpp line=16 text=extern int backupBondsToSD();
 kind=header file=src/display.h line=269 text=extern V1Display display;
 kind=header file=src/display_font_manager.h line=120 text=extern DisplayFontManager fontMgr;
 kind=source file=src/main.cpp line=104 text=extern SpeedSourceSelector speedSourceSelector;

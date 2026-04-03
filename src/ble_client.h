@@ -563,4 +563,7 @@ private:
 // Refresh the shared NimBLE bond backup snapshot after an external module
 // adds or deletes bond records.
 int refreshBleBondBackup();
+
+// Write current NimBLE bond table to SD backup file.
+int backupBondsToSD();
 #endif  // BLE_CLIENT_H

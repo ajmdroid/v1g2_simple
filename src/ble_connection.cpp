@@ -12,9 +12,6 @@
 #include <cstring>
 #include <esp_heap_caps.h>
 
-// Bond backup helper defined in ble_client.cpp (non-static)
-extern int backupBondsToSD();
-
 // --- scan callbacks ---
 
 void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertisedDevice) {
