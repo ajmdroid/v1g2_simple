@@ -18,17 +18,17 @@
 #include <freertos/task.h>
 
 // --- Debug / logging infrastructure ---
-static constexpr bool AUDIO_DEBUG_LOGS = false;
+inline constexpr bool AUDIO_DEBUG_LOGS = false;
 
 #define AUDIO_LOGF(...) do { } while(0)
 #define AUDIO_LOGLN(msg) do { } while(0)
 
 // --- Shared constants ---
-static constexpr int AUDIO_CHUNK_SAMPLES = 1024;
-static constexpr int AUDIO_STEREO_CHUNK_SIZE = AUDIO_CHUNK_SAMPLES * 2;
-static constexpr int SD_AUDIO_TASK_STACK_SIZE = 4096;  // Reduced from 6144 to reclaim 2 KiB BSS
-static constexpr int MAX_AUDIO_CLIPS = 12;
-static constexpr unsigned long AMP_WARM_TIMEOUT_MS = 3000;
+inline constexpr int AUDIO_CHUNK_SAMPLES = 1024;
+inline constexpr int AUDIO_STEREO_CHUNK_SIZE = AUDIO_CHUNK_SAMPLES * 2;
+inline constexpr int SD_AUDIO_TASK_STACK_SIZE = 4096;
+inline constexpr int MAX_AUDIO_CLIPS = 12;
+inline constexpr unsigned long AMP_WARM_TIMEOUT_MS = 3000;
 
 // --- Shared struct for SD audio task params ---
 // Unified type: used both as local preparation buffer and pre-allocated global.
