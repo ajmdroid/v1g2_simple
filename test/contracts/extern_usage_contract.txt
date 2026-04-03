@@ -68,11 +68,6 @@ kind=header file=src/battery_manager.h line=107 text=extern SemaphoreHandle_t tc
 kind=source file=src/ble_connection.cpp line=16 text=extern int backupBondsToSD();
 kind=header file=src/display.h line=269 text=extern V1Display display;
 kind=header file=src/display_font_manager.h line=120 text=extern DisplayFontManager fontMgr;
-kind=source file=src/display_status_bar.cpp line=160 text=extern SettingsManager settingsManager;
-kind=source file=src/display_status_bar.cpp line=225 text=extern BatteryManager batteryManager;
-kind=source file=src/display_status_bar.cpp line=226 text=extern SettingsManager settingsManager;
-kind=source file=src/display_status_bar.cpp line=481 text=extern WiFiManager wifiManager;
-kind=source file=src/display_status_bar.cpp line=482 text=extern SettingsManager settingsManager;
 kind=source file=src/main.cpp line=104 text=extern SpeedSourceSelector speedSourceSelector;
 kind=source file=src/main.cpp line=105 text=extern ObdRuntimeModule obdRuntimeModule;
 kind=source file=src/main.cpp line=106 text=extern ObdBleClient obdBleClient;

@@ -152,7 +152,6 @@ void V1Display::setProfileIndicatorSlot(int slot) {
 
 void V1Display::drawProfileIndicator(int slot) {
     // Get custom slot names and colors from settings
-    extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
 
     setProfileIndicatorSlot(slot);
@@ -217,8 +216,6 @@ void V1Display::drawProfileIndicator(int slot) {
 
 void V1Display::drawBatteryIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
-    extern BatteryManager batteryManager;
-    extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
 
     // Battery icon position - VERTICAL at bottom-right
@@ -473,8 +470,6 @@ void V1Display::drawBLEProxyIndicator() {
 
 void V1Display::drawWiFiIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
-    extern WiFiManager wifiManager;
-    extern SettingsManager settingsManager;
     const V1Settings& s = settingsManager.get();
 
     // WiFi icon position - evenly spaced below RSSI
