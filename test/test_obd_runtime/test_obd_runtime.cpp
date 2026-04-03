@@ -1056,6 +1056,128 @@ void test_disconnected_failure_threshold_idles_without_forgetting_saved_device()
     TEST_ASSERT_TRUE(status.savedAddressValid);
 }
 
+// ── ECU idle (car-off / petrol stop) ─────────────────────────────
+
+void test_ecu_idle_entered_after_backoff_threshold() {
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::ERROR_BACKOFF, 1000);
+    obdRuntimeModule.setConsecutiveErrorsForTest(5);
+    obdRuntimeModule.setBackoffCyclesForTest(5);  // one below threshold
+    obdRuntimeModule.setLastFailureForTest(ObdFailureReason::COMMAND_TIMEOUT);
+
+    // First backoff exit: cycles becomes 6 (== threshold) → ECU_IDLE
+    obdRuntimeModule.update(6001, makeBleContext(true, true, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::ECU_IDLE, obdRuntimeModule.getState());
+}
+
+void test_ecu_idle_not_entered_below_threshold() {
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::ERROR_BACKOFF, 1000);
+    obdRuntimeModule.setConsecutiveErrorsForTest(5);
+    obdRuntimeModule.setBackoffCyclesForTest(4);  // two below threshold
+    obdRuntimeModule.setLastFailureForTest(ObdFailureReason::COMMAND_TIMEOUT);
+
+    // Backoff exit: cycles becomes 5 (< threshold) → back to POLLING
+    obdRuntimeModule.update(6001, makeBleContext(true, true, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
+}
+
+void test_ecu_idle_resume_on_v1_reconnect() {
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::ECU_IDLE, 1000);
+    obdRuntimeModule.setV1WasConnectedAtEcuIdleForTest(false);
+
+    // V1 was disconnected when we entered, now it reconnects → WAIT_BOOT
+    obdRuntimeModule.update(2000, makeBleContext(true, true, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::WAIT_BOOT, obdRuntimeModule.getState());
+}
+
+void test_ecu_idle_no_false_resume_when_v1_stayed_connected() {
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::ECU_IDLE, 1000);
+    obdRuntimeModule.setV1WasConnectedAtEcuIdleForTest(true);
+
+    // V1 was connected at entry and is still connected — no false trigger
+    // Before probe interval, should stay in ECU_IDLE
+    obdRuntimeModule.update(2000, makeBleContext(true, true, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::ECU_IDLE, obdRuntimeModule.getState());
+}
+
+void test_ecu_idle_slow_probe_reconnect() {
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::ECU_IDLE, 1000);
+    obdRuntimeModule.setV1WasConnectedAtEcuIdleForTest(true);
+
+    // Before interval: stay idle
+    obdRuntimeModule.update(30000, makeBleContext(true, true, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::ECU_IDLE, obdRuntimeModule.getState());
+
+    // After probe interval: try reconnecting
+    obdRuntimeModule.update(31001, makeBleContext(true, true, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::CONNECTING, obdRuntimeModule.getState());
+}
+
+void test_ecu_idle_slow_probe_deferred_by_proxy() {
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::ECU_IDLE, 1000);
+    obdRuntimeModule.setV1WasConnectedAtEcuIdleForTest(true);
+
+    // Probe interval elapsed, but proxy client is connected → stay idle
+    obdRuntimeModule.update(31001, makeBleContext(true, true, true, false, false, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::ECU_IDLE, obdRuntimeModule.getState());
+}
+
+void test_ecu_idle_backoff_cycles_reset_on_successful_speed() {
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.setBackoffCyclesForTest(5);
+    obdRuntimeModule.transitionToPollingForTest(1000);
+
+    // Inject a successful speed response
+    obdRuntimeModule.injectSpeedForTest(65.0f, 2000);
+
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(2000);
+    // backoffCycles_ not directly in snapshot, but consecutive errors should be 0
+    // and the module should stay in POLLING — verify indirectly by checking
+    // that after 5 error backoff cycles we'd still go to POLLING (not ECU_IDLE)
+    // because the counter was reset
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::ERROR_BACKOFF, 3000);
+    obdRuntimeModule.setConsecutiveErrorsForTest(5);
+    obdRuntimeModule.setLastFailureForTest(ObdFailureReason::COMMAND_TIMEOUT);
+    obdRuntimeModule.update(8001, makeBleContext(true, true, true));
+    // backoffCycles was reset to 0 by injectSpeed, now incremented to 1 → POLLING
+    TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
+}
+
+void test_ecu_idle_snapshot_not_connected() {
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::ECU_IDLE, 1000);
+
+    ObdRuntimeStatus status = obdRuntimeModule.snapshot(2000);
+    TEST_ASSERT_FALSE(status.connected);
+    TEST_ASSERT_FALSE(status.speedValid);
+    TEST_ASSERT_EQUAL(ObdConnectionState::ECU_IDLE, status.state);
+}
+
+void test_ecu_idle_v1_reconnect_resets_backoff_cycles() {
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::ECU_IDLE, 1000);
+    obdRuntimeModule.setBackoffCyclesForTest(6);
+    obdRuntimeModule.setV1WasConnectedAtEcuIdleForTest(false);
+
+    // V1 reconnects → WAIT_BOOT with clean backoff counter
+    obdRuntimeModule.update(2000, makeBleContext(true, true, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::WAIT_BOOT, obdRuntimeModule.getState());
+
+    // Drive through to CONNECTING and eventually to polling with errors;
+    // backoffCycles should have been reset, so we won't immediately re-enter ECU_IDLE
+    // Verify by checking that a single backoff cycle returns to POLLING
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::ERROR_BACKOFF, 3000);
+    obdRuntimeModule.setConsecutiveErrorsForTest(5);
+    obdRuntimeModule.setLastFailureForTest(ObdFailureReason::COMMAND_TIMEOUT);
+    obdRuntimeModule.update(8001, makeBleContext(true, true, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
+}
+
 int main() {
     UNITY_BEGIN();
 
@@ -1140,6 +1262,17 @@ int main() {
     // Disconnected reconnect
     RUN_TEST(test_disconnected_reconnects_after_backoff);
     RUN_TEST(test_disconnected_failure_threshold_idles_without_forgetting_saved_device);
+
+    // ECU idle (car-off / petrol stop)
+    RUN_TEST(test_ecu_idle_entered_after_backoff_threshold);
+    RUN_TEST(test_ecu_idle_not_entered_below_threshold);
+    RUN_TEST(test_ecu_idle_resume_on_v1_reconnect);
+    RUN_TEST(test_ecu_idle_no_false_resume_when_v1_stayed_connected);
+    RUN_TEST(test_ecu_idle_slow_probe_reconnect);
+    RUN_TEST(test_ecu_idle_slow_probe_deferred_by_proxy);
+    RUN_TEST(test_ecu_idle_backoff_cycles_reset_on_successful_speed);
+    RUN_TEST(test_ecu_idle_snapshot_not_connected);
+    RUN_TEST(test_ecu_idle_v1_reconnect_resets_backoff_cycles);
 
     return UNITY_END();
 }

@@ -315,6 +315,8 @@ void ObdRuntimeModule::resetForBegin() {
     pollErrors_ = 0;
     staleSpeedCount_ = 0;
     consecutiveErrors_ = 0;
+    backoffCycles_ = 0;
+    v1WasConnectedAtEcuIdle_ = false;
     totalBytesReceived_ = 0;
     lastRssiMs_ = 0;
     bufferOverflowCount_ = 0;
@@ -418,6 +420,7 @@ const char* obdStateName(ObdConnectionState s) {
         case ObdConnectionState::POLLING:       return "POLLING";
         case ObdConnectionState::ERROR_BACKOFF: return "ERROR_BACKOFF";
         case ObdConnectionState::DISCONNECTED:  return "DISCONNECTED";
+        case ObdConnectionState::ECU_IDLE:      return "ECU_IDLE";
         default:                                return "?";
     }
 }
@@ -1272,6 +1275,7 @@ bool ObdRuntimeModule::handleSpeedResponse(uint32_t nowMs) {
     speedValid_ = true;
     consecutiveSpeedSamples_++;
     consecutiveErrors_ = 0;
+    backoffCycles_ = 0;
     pollCount_++;
     nextSpeedDueMs_ = nowMs + obd::POLL_INTERVAL_MS;
     return true;
@@ -2303,10 +2307,18 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
                     disconnectBle();
                     transitionTo(ObdConnectionState::DISCONNECTED, nowMs);
                 } else {
+                    backoffCycles_++;
                     if (!shouldDisconnectAfterPollingError(lastFailure_)) {
                         consecutiveErrors_ = 0;
                     }
-                    transitionTo(ObdConnectionState::POLLING, nowMs);
+                    if (backoffCycles_ >= obd::ECU_IDLE_BACKOFF_THRESHOLD) {
+                        v1WasConnectedAtEcuIdle_ = v1Connected;
+                        disconnectBle();
+                        clearSpeedState();
+                        transitionTo(ObdConnectionState::ECU_IDLE, nowMs);
+                    } else {
+                        transitionTo(ObdConnectionState::POLLING, nowMs);
+                    }
                 }
             }
             break;
@@ -2333,6 +2345,34 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
                     transitionTo(ObdConnectionState::CONNECTING, nowMs);
                 } else {
                     transitionTo(ObdConnectionState::IDLE, nowMs);
+                }
+            }
+            break;
+
+        case ObdConnectionState::ECU_IDLE:
+            if (justEntered) {
+                clearBleResponseState();
+                resetCommandState();
+            }
+
+            // Resume path 1: V1 reconnected (was disconnected when we entered ECU_IDLE)
+            if (!v1WasConnectedAtEcuIdle_ && v1Connected) {
+                backoffCycles_ = 0;
+                transitionTo(ObdConnectionState::WAIT_BOOT, nowMs);
+                break;
+            }
+
+            // Resume path 2: slow probe — try reconnecting to OBDLink periodically
+            if ((nowMs - stateEnteredMs_) >= obd::ECU_IDLE_PROBE_INTERVAL_MS) {
+                if (proxyClientConnected) {
+                    // Don't compete with an active proxy session; just reset timer
+                    stateEnteredMs_ = nowMs;
+                    break;
+                }
+                if (savedAddress_[0] != '\0') {
+                    setConnectTargetFromSaved();
+                    preferWarmReconnect_ = true;
+                    transitionTo(ObdConnectionState::CONNECTING, nowMs);
                 }
             }
             break;
@@ -2609,6 +2649,7 @@ void ObdRuntimeModule::injectSpeedForTest(float speedMph, uint32_t timestampMs) 
     speedSampleTsMs_ = timestampMs;
     speedValid_ = true;
     consecutiveErrors_ = 0;
+    backoffCycles_ = 0;
 }
 
 void ObdRuntimeModule::forceStateForTest(ObdConnectionState state, uint32_t enteredMs) {

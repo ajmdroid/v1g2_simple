@@ -21,6 +21,7 @@ enum class ObdConnectionState : uint8_t {
     POLLING = 8,
     ERROR_BACKOFF = 9,
     DISCONNECTED = 10,
+    ECU_IDLE = 11,
 };
 
 enum class ObdCommandKind : uint8_t {
@@ -189,6 +190,8 @@ public:
     void injectSpeedForTest(float speedMph, uint32_t timestampMs);
     void forceStateForTest(ObdConnectionState state, uint32_t enteredMs);
     void setConsecutiveErrorsForTest(uint32_t errors) { consecutiveErrors_ = errors; }
+    void setBackoffCyclesForTest(uint32_t cycles) { backoffCycles_ = cycles; }
+    void setV1WasConnectedAtEcuIdleForTest(bool v) { v1WasConnectedAtEcuIdle_ = v; }
     void setConsecutiveSpeedSamplesForTest(uint32_t samples) { consecutiveSpeedSamples_ = samples; }
     void setLastFailureForTest(ObdFailureReason reason) { lastFailure_ = reason; }
     ObdConnectionState getState() const { return state_; }
@@ -445,6 +448,8 @@ private:
     uint32_t pollErrors_ = 0;
     uint32_t staleSpeedCount_ = 0;
     uint32_t consecutiveErrors_ = 0;
+    uint32_t backoffCycles_ = 0;
+    bool v1WasConnectedAtEcuIdle_ = false;
     uint32_t totalBytesReceived_ = 0;
     uint32_t lastRssiMs_ = 0;
     uint32_t bufferOverflowCount_ = 0;

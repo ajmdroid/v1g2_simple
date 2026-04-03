@@ -36,6 +36,10 @@ static constexpr uint32_t AUX_COMMAND_TIMEOUT_MS = 180;
 static constexpr uint32_t VIN_COMMAND_TIMEOUT_MS = 250;
 static constexpr uint32_t EOT_STALE_MS = 10000;
 static constexpr uint8_t BUFFER_OVERFLOWS_BEFORE_DISCONNECT = 2;
+
+// ── ECU idle detection (car-off / petrol stop) ─────────────────
+static constexpr uint8_t ECU_IDLE_BACKOFF_THRESHOLD = 6;        // backoff cycles before entering ECU_IDLE
+static constexpr uint32_t ECU_IDLE_PROBE_INTERVAL_MS = 30000;   // slow reconnect probe while idling
 static constexpr uint8_t EOT_INVALID_STREAK_CLEAR_CACHE = 3;
 static constexpr uint8_t EOT_CACHE_PERSIST_SAMPLES = 3;
 static constexpr uint8_t CORE_READY_MIN_SPEED_SAMPLES = 3;
