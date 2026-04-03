@@ -29,28 +29,6 @@ enum class ObdCommandKind : uint8_t {
     AT_INIT = 1,
     SANITY = 2,
     SPEED = 3,
-    VIN = 4,
-    EOT_PROBE = 5,
-    EOT_POLL = 6,
-};
-
-enum class ObdVehicleFamily : uint8_t {
-    UNKNOWN = 0,
-    FORD = 1,
-    FCA = 2,
-    VW_AUDI_PORSCHE = 3,
-};
-
-enum class ObdEotProfileId : uint8_t {
-    NONE = 0,
-    SAE_015C = 1,
-    FORD_22F45C = 2,
-    FORD_221310 = 3,
-    FCA_21E8 = 4,
-    VW_2230F9 = 5,
-    VW_2230DB = 6,
-    VW_223A59 = 7,
-    FORD_2203F3 = 8,    // Ford PCM inferred oil temp (2.3L EcoBoost, 2020+)
 };
 
 enum class ObdFailureReason : uint8_t {
@@ -65,7 +43,6 @@ enum class ObdFailureReason : uint8_t {
     COMMAND_RESPONSE = 8,
     WRITE = 9,
     BUFFER_OVERFLOW = 10,
-    VIN_MISMATCH = 11,
     SECURITY_START = 12,
     SECURITY_TIMEOUT = 13,
 };
@@ -104,16 +81,7 @@ struct ObdRuntimeStatus {
     uint32_t speedAgeMs = UINT32_MAX;
     uint32_t speedSampleTsMs = 0;
 
-    bool eotValid = false;
-    int16_t eotC_x10 = 0;
-    uint32_t eotAgeMs = UINT32_MAX;
-    ObdEotProfileId eotProfileId = ObdEotProfileId::NONE;
-    uint32_t eotProbeFailures = 0;
-    bool cachedProfileActive = false;
 
-    bool vinDetected = false;
-    char vin[18] = {};
-    ObdVehicleFamily vehicleFamily = ObdVehicleFamily::UNKNOWN;
 
     int8_t rssi = 0;
     uint8_t connectAttempts = 0;
@@ -157,9 +125,7 @@ public:
                bool enabled,
                const char* savedAddress,
                uint8_t savedAddrType,
-               int8_t minRssi,
-               const char* cachedVinPrefix11 = nullptr,
-               uint8_t cachedEotProfileId = 0);
+               int8_t minRssi);
     void update(uint32_t nowMs, const ObdBleContext& bootReadyContext);
     void update(uint32_t nowMs, bool bootReady, bool v1Connected, bool bleScanIdle) {
         update(nowMs, ObdBleContext{bootReady, v1Connected, bleScanIdle});
@@ -174,8 +140,6 @@ public:
 
     const char* getSavedAddress() const { return savedAddress_; }
     uint8_t getSavedAddrType() const { return savedAddrType_; }
-    const char* getCachedVinPrefix11() const { return cachedVinPrefix11_; }
-    uint8_t getCachedEotProfileId() const { return static_cast<uint8_t>(cachedEotProfileId_); }
 
     bool startScan();
     bool requestManualPairScan(uint32_t nowMs);
@@ -196,9 +160,6 @@ public:
     void setLastFailureForTest(ObdFailureReason reason) { lastFailure_ = reason; }
     ObdConnectionState getState() const { return state_; }
     ObdCommandKind getActiveCommandKindForTest() const;
-    ObdEotProfileId getActiveEotProfileForTest() const;
-    ObdVehicleFamily getVehicleFamilyForTest() const { return vehicleFamily_; }
-    const char* getVinForTest() const { return vin_; }
     uint32_t getStartScanCallCountForTest() const { return testStartScanCalls_; }
     uint32_t getConnectCallCountForTest() const { return testConnectCalls_; }
     uint32_t getDiscoverCallCountForTest() const { return testDiscoverCalls_; }
@@ -228,8 +189,6 @@ public:
 
 private:
     static constexpr size_t ADDR_BUF_LEN = 18;
-    static constexpr size_t VIN_BUF_LEN = 18;
-    static constexpr size_t VIN_PREFIX_LEN = 12;
     static constexpr size_t CMD_BUF_LEN = 16;
     static constexpr size_t BLE_BUF_LEN = 256;
 
@@ -251,7 +210,6 @@ private:
         uint32_t timeoutMs = 0;
         uint8_t retriesRemaining = 0;
         uint32_t sentMs = 0;
-        ObdEotProfileId profileId = ObdEotProfileId::NONE;
         bool writeWithResponse = true;
         bool alternateWriteModeTried = false;
     };
@@ -260,8 +218,6 @@ private:
     void transitionTo(ObdConnectionState newState, uint32_t nowMs);
     void clearBleResponseState();
     void clearSpeedState();
-    void clearEotState(bool clearProfile);
-    void clearVehicleState(bool clearCache);
     void resetPollingSchedule(uint32_t nowMs);
     void resetInitState(bool preferWarmInit);
     void resetCommandState();
@@ -272,8 +228,6 @@ private:
     void handleCommandFailure(uint32_t nowMs, ObdFailureReason reason, bool disconnectBleNow);
     static bool shouldDisconnectAfterPollingError(ObdFailureReason reason);
     void setSavedAddressFromBuffer(const char* address);
-    void setCachedProfile(const char* vinPrefix11, ObdEotProfileId profileId);
-    void clearCachedProfile();
     void setConnectTarget(const char* address, uint8_t addrType, bool fromManualCandidate);
     void setConnectTargetFromSaved();
     void clearConnectTarget();
@@ -308,7 +262,6 @@ private:
                       uint16_t expectedDid,
                       uint32_t timeoutMs,
                       uint8_t retries,
-                      ObdEotProfileId profileId,
                       uint32_t nowMs);
     bool retryActiveCommand(uint32_t nowMs);
     bool retryActiveCommandWithAlternateWriteMode(uint32_t nowMs);
@@ -320,40 +273,21 @@ private:
     void updatePolling(uint32_t nowMs);
 
     bool isSpeedFresh(uint32_t nowMs) const;
-    bool isEotFresh(uint32_t nowMs) const;
-    bool isCoreSpeedReady(uint32_t nowMs) const;
     bool speedDue(uint32_t nowMs) const;
-    bool auxWindowOpen(uint32_t nowMs) const;
     bool sendNextPollingCommand(uint32_t nowMs);
     bool startSpeedCommand(uint32_t nowMs);
-    bool startVinCommand(uint32_t nowMs);
-    bool startEotProbeCommand(uint32_t nowMs);
-    bool startEotPollCommand(uint32_t nowMs);
 
     bool handleSpeedResponse(uint32_t nowMs);
-    bool handleVinResponse(uint32_t nowMs);
-    bool handleEotResponse(uint32_t nowMs, bool probing);
     bool validateSimpleResponse(uint8_t expectedService,
                                 uint8_t expectedPid,
-                                uint16_t expectedDid,
                                 const char* response,
                                 size_t len) const;
 
-    static ObdVehicleFamily detectVehicleFamily(const char* vin);
-    static const char* vehicleFamilyName(ObdVehicleFamily family);
-    static const char* commandKindName(ObdCommandKind kind);
     static const char* bleReasonName(int reason);
     static bool isSecurityBleError(int error);
-    static bool profileNeedsVin(ObdEotProfileId profileId);
 
     bool canAutoHealBond() const;
     bool autoHealBondIfAllowed(uint32_t nowMs, const char* context);
-    bool selectInitialCachedProfile();
-    void resetProbeState();
-    ObdEotProfileId nextProbeProfile() const;
-    bool validateEotSample(int16_t tempC_x10, uint32_t nowMs, ObdEotProfileId profileId) const;
-    void markProfileUnsupported(ObdEotProfileId profileId);
-    bool isProfileUnsupported(ObdEotProfileId profileId) const;
     void pumpTransportResults();
     bool beginTransportRequest(ObdTransportOp op,
                                uint32_t nowMs,
@@ -402,22 +336,7 @@ private:
     uint32_t speedSampleTsMs_ = 0;
     bool speedValid_ = false;
 
-    int16_t eotC_x10_ = 0;
-    uint32_t eotSampleTsMs_ = 0;
-    bool eotValid_ = false;
-    ObdEotProfileId activeEotProfileId_ = ObdEotProfileId::NONE;
-    bool activeEotProfileFromCache_ = false;
-    uint8_t cachedProfileValidSamples_ = 0;
-    uint8_t cachedProfileInvalidStreak_ = 0;
-    uint32_t eotProbeFailures_ = 0;
 
-    char vin_[VIN_BUF_LEN] = {};
-    char vinPrefix11_[VIN_PREFIX_LEN] = {};
-    bool vinDetected_ = false;
-    ObdVehicleFamily vehicleFamily_ = ObdVehicleFamily::UNKNOWN;
-    char cachedVinPrefix11_[VIN_PREFIX_LEN] = {};
-    ObdEotProfileId cachedEotProfileId_ = ObdEotProfileId::NONE;
-    uint32_t unsupportedProfileMask_ = 0;
 
     char savedAddress_[ADDR_BUF_LEN] = {};
     char connectAddress_[ADDR_BUF_LEN] = {};
@@ -463,9 +382,6 @@ private:
     char repairedBondAddress_[ADDR_BUF_LEN] = {};
 
     uint32_t nextSpeedDueMs_ = 0;
-    uint32_t nextVinAttemptMs_ = 0;
-    uint32_t nextEotProbeMs_ = 0;
-    uint32_t nextEotPollMs_ = 0;
     uint8_t initIndex_ = 0;
 
     ActiveObdCommand activeCommand_ = {};

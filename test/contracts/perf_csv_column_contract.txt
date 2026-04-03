@@ -176,13 +176,6 @@ obdWriteCallMax_us
 obdRssiCallMax_us
 obdPollErrors
 obdStaleCount
-obdVinDetected
-obdVehicleFamily
-obdEotValid
-obdEotC_x10
-obdEotAgeMs
-obdEotProfileId
-obdEotProbeFailures
 perfDrop
 eventBusDrops
 wifiHandleClientMax_us

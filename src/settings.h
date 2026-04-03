@@ -233,8 +233,6 @@ struct V1Settings {
     String obdSavedName;         // Optional friendly name for the saved OBD adapter
     uint8_t obdSavedAddrType;    // Saved BLE address type (0=public, 1=random)
     int8_t obdMinRssi;           // Minimum RSSI for scan acceptance (dBm)
-    String obdCachedVinPrefix11; // Last VIN prefix matched to cached EOT profile
-    uint8_t obdCachedEotProfileId; // Cached EOT profile id for same-vehicle fast start
 
     // Default constructor with sensible defaults
     V1Settings() :
@@ -338,9 +336,7 @@ struct V1Settings {
         obdSavedAddress(""),     // No saved device
         obdSavedName(""),        // No friendly name
         obdSavedAddrType(0),     // Default PUBLIC address type
-        obdMinRssi(-90),         // Default -90 dBm minimum RSSI
-        obdCachedVinPrefix11(""),
-        obdCachedEotProfileId(0) {}
+        obdMinRssi(-90) {}       // Default -90 dBm minimum RSSI
 
     static uint8_t normalizeAutoPushSlotIndex(int slotNum) {
         return slotNum == 1 ? 1 : (slotNum == 2 ? 2 : 0);
@@ -605,12 +601,6 @@ struct ObdSettingsUpdate {
 
     bool hasSavedAddrType = false;
     uint8_t savedAddrType = 0;
-
-    bool hasCachedVinPrefix11 = false;
-    String cachedVinPrefix11;
-
-    bool hasCachedEotProfileId = false;
-    uint8_t cachedEotProfileId = 0;
 
     bool resetSavedNameOnAddressChange = false;
 };

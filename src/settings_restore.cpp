@@ -286,13 +286,6 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
         const int rssi = doc["obdMinRssi"].as<int>();
         settings_.obdMinRssi = static_cast<int8_t>(std::max(-100, std::min(rssi, -40)));
     }
-    if (doc["obdCachedVinPrefix11"].is<const char*>()) {
-        settings_.obdCachedVinPrefix11 = doc["obdCachedVinPrefix11"].as<String>();
-    }
-    if (doc["obdCachedEotProfileId"].is<int>()) {
-        settings_.obdCachedEotProfileId = static_cast<uint8_t>(
-            std::max(0, std::min(doc["obdCachedEotProfileId"].as<int>(), 255)));
-    }
 
     int profilesRestored = 0;
     if (v1ProfileManager.isReady() && doc["profiles"].is<JsonArrayConst>()) {

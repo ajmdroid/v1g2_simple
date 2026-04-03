@@ -24,9 +24,7 @@ void ObdSettingsSyncModule::copyString(char* dest, size_t destLen, const char* s
 
 bool ObdSettingsSyncModule::snapshotsEqual(const Snapshot& lhs, const Snapshot& rhs) {
     return lhs.savedAddrType == rhs.savedAddrType &&
-           lhs.cachedEotProfileId == rhs.cachedEotProfileId &&
-           strcmp(lhs.savedAddress, rhs.savedAddress) == 0 &&
-           strcmp(lhs.cachedVinPrefix11, rhs.cachedVinPrefix11) == 0;
+           strcmp(lhs.savedAddress, rhs.savedAddress) == 0;
 }
 
 ObdSettingsSyncModule::Snapshot ObdSettingsSyncModule::captureRuntimeSnapshot() const {
@@ -39,10 +37,6 @@ ObdSettingsSyncModule::Snapshot ObdSettingsSyncModule::captureRuntimeSnapshot() 
                sizeof(snapshot.savedAddress),
                obdRuntimeModule_->getSavedAddress());
     snapshot.savedAddrType = obdRuntimeModule_->getSavedAddrType();
-    copyString(snapshot.cachedVinPrefix11,
-               sizeof(snapshot.cachedVinPrefix11),
-               obdRuntimeModule_->getCachedVinPrefix11());
-    snapshot.cachedEotProfileId = obdRuntimeModule_->getCachedEotProfileId();
     return snapshot;
 }
 
@@ -53,9 +47,7 @@ bool ObdSettingsSyncModule::settingsMatchSnapshot(const Snapshot& snapshot) cons
 
     const V1Settings& settings = settingsManager_->get();
     return settings.obdSavedAddress == snapshot.savedAddress &&
-           settings.obdSavedAddrType == snapshot.savedAddrType &&
-           settings.obdCachedVinPrefix11 == snapshot.cachedVinPrefix11 &&
-           settings.obdCachedEotProfileId == snapshot.cachedEotProfileId;
+            settings.obdSavedAddrType == snapshot.savedAddrType;
 }
 
 void ObdSettingsSyncModule::applySnapshot(const Snapshot& snapshot) {
@@ -68,10 +60,6 @@ void ObdSettingsSyncModule::applySnapshot(const Snapshot& snapshot) {
     update.savedAddress = snapshot.savedAddress;
     update.hasSavedAddrType = true;
     update.savedAddrType = snapshot.savedAddrType;
-    update.hasCachedVinPrefix11 = true;
-    update.cachedVinPrefix11 = snapshot.cachedVinPrefix11;
-    update.hasCachedEotProfileId = true;
-    update.cachedEotProfileId = snapshot.cachedEotProfileId;
     update.resetSavedNameOnAddressChange = true;
     settingsManager_->applyObdSettingsUpdate(update, SettingsPersistMode::Deferred);
 }

@@ -130,8 +130,6 @@ struct V1Settings {
     String obdSavedName = "";
     uint8_t obdSavedAddrType = 0;
     int8_t obdMinRssi = -90;
-    String obdCachedVinPrefix11 = "";
-    uint8_t obdCachedEotProfileId = 0;
     bool bleProxyEnabled = true;
     uint8_t activeSlot = 0;
     bool autoPushEnabled = false;
@@ -157,10 +155,6 @@ struct ObdSettingsUpdate {
     String savedName;
     bool hasSavedAddrType = false;
     uint8_t savedAddrType = 0;
-    bool hasCachedVinPrefix11 = false;
-    String cachedVinPrefix11;
-    bool hasCachedEotProfileId = false;
-    uint8_t cachedEotProfileId = 0;
     bool resetSavedNameOnAddressChange = false;
 };
 
@@ -307,14 +301,6 @@ public:
         }
         if (update.hasSavedAddrType && settings.obdSavedAddrType != update.savedAddrType) {
             settings.obdSavedAddrType = update.savedAddrType;
-            changed = true;
-        }
-        if (update.hasCachedVinPrefix11 && settings.obdCachedVinPrefix11 != update.cachedVinPrefix11) {
-            settings.obdCachedVinPrefix11 = update.cachedVinPrefix11;
-            changed = true;
-        }
-        if (update.hasCachedEotProfileId && settings.obdCachedEotProfileId != update.cachedEotProfileId) {
-            settings.obdCachedEotProfileId = update.cachedEotProfileId;
             changed = true;
         }
         if (changed) {

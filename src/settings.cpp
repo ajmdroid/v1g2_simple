@@ -321,8 +321,6 @@ void SettingsManager::load() {
     settings_.obdSavedAddrType = preferences_.getUChar("obdAddrT", 0);
     settings_.obdMinRssi = static_cast<int8_t>(
         preferences_.getChar("obdMinRssi", -90));
-    settings_.obdCachedVinPrefix11 = preferences_.getString("obdVin11", "");
-    settings_.obdCachedEotProfileId = preferences_.getUChar("obdEotPid", 0);
 
     preferences_.end();
 

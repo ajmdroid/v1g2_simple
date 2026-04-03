@@ -15,25 +15,11 @@ namespace ObdApiService {
 
 namespace {
 
-const char* vehicleFamilyName(ObdVehicleFamily family) {
-    switch (family) {
-        case ObdVehicleFamily::FORD: return "ford";
-        case ObdVehicleFamily::FCA: return "fca";
-        case ObdVehicleFamily::VW_AUDI_PORSCHE: return "vw";
-        case ObdVehicleFamily::UNKNOWN:
-        default:
-            return "unknown";
-    }
-}
-
 const char* commandKindName(ObdCommandKind kind) {
     switch (kind) {
         case ObdCommandKind::AT_INIT: return "at_init";
         case ObdCommandKind::SANITY: return "sanity";
         case ObdCommandKind::SPEED: return "speed";
-        case ObdCommandKind::VIN: return "vin";
-        case ObdCommandKind::EOT_PROBE: return "eot_probe";
-        case ObdCommandKind::EOT_POLL: return "eot_poll";
         case ObdCommandKind::NONE:
         default:
             return "none";
@@ -134,20 +120,6 @@ void handleApiStatus(WebServer& server,
     doc["lastBleError"] = status.lastBleError;
     doc["lastSecurityError"] = status.lastSecurityError;
     doc["lastFailureRaw"] = static_cast<int>(status.lastFailure);
-    doc["vinDetected"] = status.vinDetected;
-    doc["vin"] = status.vinDetected ? status.vin : "";
-    doc["vehicleFamily"] = vehicleFamilyName(status.vehicleFamily);
-    doc["vehicleFamilyRaw"] = static_cast<int>(status.vehicleFamily);
-    doc["eotValid"] = status.eotValid;
-    doc["eotC_x10"] = status.eotValid ? status.eotC_x10 : 0;
-    if (status.eotValid) {
-        doc["eotAgeMs"] = status.eotAgeMs;
-    } else {
-        doc["eotAgeMs"] = nullptr;
-    }
-    doc["eotProfileId"] = static_cast<int>(status.eotProfileId);
-    doc["eotProbeFailures"] = status.eotProbeFailures;
-    doc["cachedProfileActive"] = status.cachedProfileActive;
     doc["state"] = static_cast<int>(status.state);
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
@@ -247,10 +219,6 @@ void handleApiForget(WebServer& server,
     update.savedName = "";
     update.hasSavedAddrType = true;
     update.savedAddrType = 0;
-    update.hasCachedVinPrefix11 = true;
-    update.cachedVinPrefix11 = "";
-    update.hasCachedEotProfileId = true;
-    update.cachedEotProfileId = 0;
     settingsManager.applyObdSettingsUpdate(update, SettingsPersistMode::Deferred);
     JsonDocument doc;
     doc["ok"] = true;

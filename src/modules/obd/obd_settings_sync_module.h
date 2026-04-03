@@ -18,14 +18,11 @@ public:
 
 private:
     static constexpr size_t ADDR_BUF_LEN = 18;
-    static constexpr size_t VIN_PREFIX_LEN = 12;
     static constexpr uint32_t STABILITY_WINDOW_MS = 5000;
 
     struct Snapshot {
         char savedAddress[ADDR_BUF_LEN] = {};
         uint8_t savedAddrType = 0;
-        char cachedVinPrefix11[VIN_PREFIX_LEN] = {};
-        uint8_t cachedEotProfileId = 0;
     };
 
     static void copyString(char* dest, size_t destLen, const char* src);

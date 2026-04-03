@@ -22,50 +22,6 @@ extern "C" {
 #include <cstring>
 
 namespace {
-
-struct ObdEotProfile {
-    ObdEotProfileId id;
-    ObdVehicleFamily family;
-    const char* command;
-    uint8_t expectedService;
-    uint8_t expectedPid;
-    uint16_t expectedDid;
-    Elm327TempDecodeFormat format;
-    uint8_t minDataLen;
-    int16_t maxDeltaC_x10PerSec;
-};
-
-constexpr ObdEotProfile kEotProfiles[] = {
-    {ObdEotProfileId::SAE_015C, ObdVehicleFamily::UNKNOWN, "015C\r", 0x41, 0x5C, 0x0000,
-     Elm327TempDecodeFormat::U8_OFFSET40, 1, 50},
-    {ObdEotProfileId::FORD_22F45C, ObdVehicleFamily::FORD, "22F45C\r", 0x62, 0x5C, 0xF45C,
-     Elm327TempDecodeFormat::U8_OFFSET40, 1, 50},
-    {ObdEotProfileId::FORD_221310, ObdVehicleFamily::FORD, "221310\r", 0x62, 0x10, 0x1310,
-     Elm327TempDecodeFormat::U16_RAW_OFFSET40, 2, 50},
-    {ObdEotProfileId::FORD_2203F3, ObdVehicleFamily::FORD, "2203F3\r", 0x62, 0xF3, 0x03F3,
-     Elm327TempDecodeFormat::U8_OFFSET40, 1, 50},
-    {ObdEotProfileId::FCA_21E8, ObdVehicleFamily::FCA, "21E8\r", 0x61, 0xE8, 0x0000,
-     Elm327TempDecodeFormat::U8_OFFSET40, 1, 50},
-    {ObdEotProfileId::VW_2230F9, ObdVehicleFamily::VW_AUDI_PORSCHE, "2230F9\r", 0x62, 0xF9, 0x30F9,
-     Elm327TempDecodeFormat::U16_DIV10_OFFSET40, 2, 50},
-    {ObdEotProfileId::VW_2230DB, ObdVehicleFamily::VW_AUDI_PORSCHE, "2230DB\r", 0x62, 0xDB, 0x30DB,
-     Elm327TempDecodeFormat::U16_DIV10_OFFSET40, 2, 50},
-    {ObdEotProfileId::VW_223A59, ObdVehicleFamily::VW_AUDI_PORSCHE, "223A59\r", 0x62, 0x59, 0x3A59,
-     Elm327TempDecodeFormat::U16_DIV10_OFFSET40, 2, 50},
-};
-
-constexpr int16_t kMinValidEotC_x10 = -400;
-constexpr int16_t kMaxValidEotC_x10 = 2100;
-
-const ObdEotProfile* findEotProfile(ObdEotProfileId id) {
-    for (const auto& profile : kEotProfiles) {
-        if (profile.id == id) {
-            return &profile;
-        }
-    }
-    return nullptr;
-}
-
 bool stringContainsCI(const char* haystack, const char* needle) {
     if (!haystack || !needle || needle[0] == '\0') return false;
     const size_t needleLen = strlen(needle);
@@ -87,10 +43,6 @@ bool stringContainsCI(const char* haystack, const char* needle) {
         }
     }
     return false;
-}
-
-bool hasVinPrefix(const char* vinPrefix11) {
-    return vinPrefix11 != nullptr && vinPrefix11[0] != '\0';
 }
 
 void copyString(char* dest, size_t destLen, const char* src) {
@@ -338,8 +290,6 @@ void ObdRuntimeModule::resetForBegin() {
     clearTransportRequest();
     readyTransportResult_ = {};
     clearSpeedState();
-    clearEotState(true);
-    clearVehicleState(true);
     resetPollingSchedule(0);
     initIndex_ = 0;
 
@@ -375,9 +325,7 @@ void ObdRuntimeModule::begin(ObdBleClient* bleClient,
                              bool enabled,
                              const char* savedAddress,
                              uint8_t savedAddrType,
-                             int8_t minRssi,
-                             const char* cachedVinPrefix11,
-                             uint8_t cachedEotProfileId) {
+                             int8_t minRssi) {
     bleClient_ = bleClient;
     enabled_ = enabled;
     resetForBegin();
@@ -385,7 +333,6 @@ void ObdRuntimeModule::begin(ObdBleClient* bleClient,
 
     setSavedAddressFromBuffer(savedAddress);
     savedAddrType_ = savedAddrType;
-    setCachedProfile(cachedVinPrefix11, static_cast<ObdEotProfileId>(cachedEotProfileId));
 
 #ifndef UNIT_TEST
     if (bleClient_) {
@@ -556,35 +503,8 @@ void ObdRuntimeModule::clearSpeedState() {
     consecutiveSpeedSamples_ = 0;
 }
 
-void ObdRuntimeModule::clearEotState(bool clearProfile) {
-    eotC_x10_ = 0;
-    eotSampleTsMs_ = 0;
-    eotValid_ = false;
-    eotProbeFailures_ = 0;
-    cachedProfileValidSamples_ = 0;
-    cachedProfileInvalidStreak_ = 0;
-    if (clearProfile) {
-        activeEotProfileId_ = ObdEotProfileId::NONE;
-        activeEotProfileFromCache_ = false;
-    }
-}
-
-void ObdRuntimeModule::clearVehicleState(bool clearCache) {
-    vin_[0] = '\0';
-    vinPrefix11_[0] = '\0';
-    vinDetected_ = false;
-    vehicleFamily_ = ObdVehicleFamily::UNKNOWN;
-    unsupportedProfileMask_ = 0;
-    if (clearCache) {
-        clearCachedProfile();
-    }
-}
-
 void ObdRuntimeModule::resetPollingSchedule(uint32_t nowMs) {
     nextSpeedDueMs_ = nowMs;
-    nextVinAttemptMs_ = nowMs;
-    nextEotProbeMs_ = nowMs;
-    nextEotPollMs_ = nowMs;
 }
 
 void ObdRuntimeModule::resetInitState(bool preferWarmInit) {
@@ -668,7 +588,6 @@ bool ObdRuntimeModule::shouldDisconnectAfterPollingError(ObdFailureReason reason
         case ObdFailureReason::INIT_RESPONSE:
         case ObdFailureReason::COMMAND_TIMEOUT:
         case ObdFailureReason::COMMAND_RESPONSE:
-        case ObdFailureReason::VIN_MISMATCH:
         case ObdFailureReason::SECURITY_START:
         case ObdFailureReason::SECURITY_TIMEOUT:
         default:
@@ -678,21 +597,6 @@ bool ObdRuntimeModule::shouldDisconnectAfterPollingError(ObdFailureReason reason
 
 void ObdRuntimeModule::setSavedAddressFromBuffer(const char* address) {
     copyString(savedAddress_, sizeof(savedAddress_), address);
-}
-
-void ObdRuntimeModule::setCachedProfile(const char* vinPrefix11, ObdEotProfileId profileId) {
-    if (profileId == ObdEotProfileId::NONE || !hasVinPrefix(vinPrefix11)) {
-        clearCachedProfile();
-        return;
-    }
-
-    copyString(cachedVinPrefix11_, sizeof(cachedVinPrefix11_), vinPrefix11);
-    cachedEotProfileId_ = profileId;
-}
-
-void ObdRuntimeModule::clearCachedProfile() {
-    cachedVinPrefix11_[0] = '\0';
-    cachedEotProfileId_ = ObdEotProfileId::NONE;
 }
 
 void ObdRuntimeModule::setConnectTarget(const char* address,
@@ -733,8 +637,6 @@ void ObdRuntimeModule::commitManualScanCandidate() {
     setSavedAddressFromBuffer(manualCandidateAddress_);
     savedAddrType_ = manualCandidateAddrType_;
     if (addressChanged) {
-        clearVehicleState(true);
-        clearEotState(true);
         preferWarmReconnect_ = false;
     }
     clearManualScanState();
@@ -901,6 +803,9 @@ void ObdRuntimeModule::disconnectBle() {
 #else
     testDisconnectCalls_++;
     testBleConnected_ = false;
+    pendingTransportRequestId_ = 0;
+    pendingTransportIssuedMs_ = 0;
+    pendingTransportTimeoutMs_ = 0;
 #endif
 }
 
@@ -1071,7 +976,6 @@ void ObdRuntimeModule::setEnabled(bool enabled) {
         readyTransportResult_ = {};
         bleDisconnected_ = false;
         clearSpeedState();
-        clearEotState(false);
         state_ = ObdConnectionState::IDLE;
         stateEnteredMs_ = 0;
         stateEntryPending_ = false;
@@ -1079,7 +983,6 @@ void ObdRuntimeModule::setEnabled(bool enabled) {
     }
 
     clearSpeedState();
-    clearEotState(false);
     connectAttempts_ = 0;
     resetPollingSchedule(0);
     clearBleEventQueue();
@@ -1106,7 +1009,7 @@ bool ObdRuntimeModule::validateAtResponse(const char* command,
     }
 
     if (strncmp(command, "0100", 4) == 0) {
-        return validateSimpleResponse(0x41, 0x00, 0x0000, response, len);
+        return validateSimpleResponse(0x41, 0x00, response, len);
     }
     if (strncmp(command, "ATZ", 3) == 0 || strncmp(command, "ATI", 3) == 0) {
         return stringContainsCI(response, "OBDLINK") ||
@@ -1124,7 +1027,6 @@ bool ObdRuntimeModule::startCommand(ObdCommandKind kind,
                                     uint16_t expectedDid,
                                     uint32_t timeoutMs,
                                     uint8_t retries,
-                                    ObdEotProfileId profileId,
                                     uint32_t nowMs) {
     if (!tx || tx[0] == '\0') {
         return false;
@@ -1140,7 +1042,6 @@ bool ObdRuntimeModule::startCommand(ObdCommandKind kind,
     activeCommand_.expectedDid = expectedDid;
     activeCommand_.timeoutMs = timeoutMs;
     activeCommand_.retriesRemaining = retries;
-    activeCommand_.profileId = profileId;
     activeCommand_.writeWithResponse = preferWriteWithResponse_;
     activeCommand_.alternateWriteModeTried = false;
     copyString(activeCommand_.tx, sizeof(activeCommand_.tx), tx);
@@ -1205,17 +1106,10 @@ void ObdRuntimeModule::completeActiveCommand() {
 
 bool ObdRuntimeModule::validateSimpleResponse(uint8_t expectedService,
                                               uint8_t expectedPid,
-                                              uint16_t expectedDid,
                                               const char* response,
                                               size_t len) const {
     Elm327ParseResult result = parseElm327Response(response, len);
-    if (!result.valid || result.service != expectedService) {
-        return false;
-    }
-    if (expectedService == 0x62) {
-        return result.did == expectedDid;
-    }
-    return result.pid == expectedPid;
+    return result.valid && result.service == expectedService && result.pid == expectedPid;
 }
 
 void ObdRuntimeModule::handleAtInitResponse(uint32_t nowMs) {
@@ -1281,150 +1175,6 @@ bool ObdRuntimeModule::handleSpeedResponse(uint32_t nowMs) {
     return true;
 }
 
-ObdVehicleFamily ObdRuntimeModule::detectVehicleFamily(const char* vin) {
-    if (!vin || vin[0] == '\0') {
-        return ObdVehicleFamily::UNKNOWN;
-    }
-
-    if ((vin[0] == '1' || vin[0] == '2' || vin[0] == '3') &&
-        (vin[1] == 'F' || vin[1] == 'L' || vin[1] == 'M')) {
-        return ObdVehicleFamily::FORD;
-    }
-
-    if ((vin[0] == '1' || vin[0] == '2' || vin[0] == '3') &&
-        (vin[1] == 'C' || vin[1] == 'D' || vin[1] == 'J')) {
-        return ObdVehicleFamily::FCA;
-    }
-    if (strncmp(vin, "ZFA", 3) == 0) {
-        return ObdVehicleFamily::FCA;
-    }
-
-    if (strncmp(vin, "WVW", 3) == 0 || strncmp(vin, "3VW", 3) == 0 ||
-        strncmp(vin, "9BW", 3) == 0 || strncmp(vin, "WVG", 3) == 0 ||
-        strncmp(vin, "WAU", 3) == 0 || strncmp(vin, "TRU", 3) == 0 ||
-        strncmp(vin, "WUA", 3) == 0 || strncmp(vin, "WP0", 3) == 0) {
-        return ObdVehicleFamily::VW_AUDI_PORSCHE;
-    }
-
-    return ObdVehicleFamily::UNKNOWN;
-}
-
-bool ObdRuntimeModule::handleVinResponse(uint32_t nowMs) {
-    Elm327VinParseResult result = parseVinResponse(bleBuf_, bleBufLen_);
-    if (result.noData) {
-        return true;
-    }
-    if (!result.valid) {
-        return false;
-    }
-
-    copyString(vin_, sizeof(vin_), result.vin);
-    strncpy(vinPrefix11_, vin_, sizeof(vinPrefix11_) - 1);
-    vinPrefix11_[sizeof(vinPrefix11_) - 1] = '\0';
-    vinPrefix11_[11] = '\0';
-    vinDetected_ = true;
-    vehicleFamily_ = detectVehicleFamily(vin_);
-
-    if (hasVinPrefix(cachedVinPrefix11_) && strcmp(cachedVinPrefix11_, vinPrefix11_) != 0) {
-        markFailure(ObdFailureReason::VIN_MISMATCH, nowMs);
-        clearCachedProfile();
-        unsupportedProfileMask_ = 0;
-        clearEotState(true);
-        nextEotProbeMs_ = nowMs;
-        nextEotPollMs_ = nowMs;
-    } else if (activeEotProfileId_ == ObdEotProfileId::NONE && cachedEotProfileId_ != ObdEotProfileId::NONE) {
-        activeEotProfileId_ = cachedEotProfileId_;
-        activeEotProfileFromCache_ = true;
-    }
-
-    return true;
-}
-
-bool ObdRuntimeModule::validateEotSample(int16_t tempC_x10,
-                                         uint32_t nowMs,
-                                         ObdEotProfileId profileId) const {
-    if (tempC_x10 < kMinValidEotC_x10 || tempC_x10 > kMaxValidEotC_x10) {
-        return false;
-    }
-    if (!eotValid_ || eotSampleTsMs_ == 0 || profileId != activeEotProfileId_) {
-        return true;
-    }
-
-    const ObdEotProfile* profile = findEotProfile(profileId);
-    if (!profile) {
-        return false;
-    }
-
-    const uint32_t elapsedMs = nowMs - eotSampleTsMs_;
-    const uint32_t scaledSeconds = std::max<uint32_t>(1, (elapsedMs + 999) / 1000);
-    const int32_t allowedDelta = std::max<int32_t>(50, scaledSeconds * profile->maxDeltaC_x10PerSec);
-    return std::abs(static_cast<int32_t>(tempC_x10) - static_cast<int32_t>(eotC_x10_)) <= allowedDelta;
-}
-
-void ObdRuntimeModule::markProfileUnsupported(ObdEotProfileId profileId) {
-    const uint8_t raw = static_cast<uint8_t>(profileId);
-    if (raw < 31) {
-        unsupportedProfileMask_ |= (1u << raw);
-    }
-}
-
-bool ObdRuntimeModule::isProfileUnsupported(ObdEotProfileId profileId) const {
-    const uint8_t raw = static_cast<uint8_t>(profileId);
-    return raw < 31 && (unsupportedProfileMask_ & (1u << raw)) != 0;
-}
-
-bool ObdRuntimeModule::handleEotResponse(uint32_t nowMs, bool probing) {
-    Elm327ParseResult result = parseElm327Response(bleBuf_, bleBufLen_);
-    const ObdEotProfile* profile = findEotProfile(activeCommand_.profileId);
-    if (!profile) {
-        return false;
-    }
-    if (!result.valid ||
-        result.service != profile->expectedService ||
-        ((profile->expectedService == 0x62) ? (result.did != profile->expectedDid)
-                                            : (result.pid != profile->expectedPid)) ||
-        result.dataLen < profile->minDataLen) {
-        if (probing) {
-            eotProbeFailures_++;
-            markProfileUnsupported(activeCommand_.profileId);
-        } else if (activeEotProfileFromCache_) {
-            cachedProfileInvalidStreak_++;
-        }
-        return true;
-    }
-
-    int16_t tempC_x10 = 0;
-    if (!decodeTempC_x10(result, profile->format, tempC_x10) ||
-        !validateEotSample(tempC_x10, nowMs, activeCommand_.profileId)) {
-        if (probing) {
-            eotProbeFailures_++;
-            markProfileUnsupported(activeCommand_.profileId);
-        } else if (activeEotProfileFromCache_) {
-            cachedProfileInvalidStreak_++;
-        }
-        return true;
-    }
-
-    eotC_x10_ = tempC_x10;
-    eotSampleTsMs_ = nowMs;
-    eotValid_ = true;
-    activeEotProfileId_ = activeCommand_.profileId;
-    nextEotPollMs_ = nowMs + obd::AUX_INTERVAL_MS;
-    cachedProfileInvalidStreak_ = 0;
-
-    if (probing) {
-        activeEotProfileFromCache_ = false;
-        if (vinDetected_) {
-            cachedProfileValidSamples_++;
-            if (cachedProfileValidSamples_ >= obd::EOT_CACHE_PERSIST_SAMPLES) {
-                setCachedProfile(vinPrefix11_, activeCommand_.profileId);
-            }
-        }
-    }
-
-    return true;
-}
-
 void ObdRuntimeModule::handlePollingResponse(uint32_t nowMs) {
     if (!activeCommand_.active) {
         return;
@@ -1441,15 +1191,6 @@ void ObdRuntimeModule::handlePollingResponse(uint32_t nowMs) {
             case ObdCommandKind::SPEED:
                 handled = handleSpeedResponse(nowMs);
                 break;
-            case ObdCommandKind::VIN:
-                handled = handleVinResponse(nowMs);
-                break;
-            case ObdCommandKind::EOT_PROBE:
-                handled = handleEotResponse(nowMs, true);
-                break;
-            case ObdCommandKind::EOT_POLL:
-                handled = handleEotResponse(nowMs, false);
-                break;
             default:
                 handled = false;
                 break;
@@ -1458,63 +1199,21 @@ void ObdRuntimeModule::handlePollingResponse(uint32_t nowMs) {
 
     totalBytesReceived_ += bleBufLen_;
     clearBleResponseState();
-    const ObdEotProfileId completedProfile = activeCommand_.profileId;
     const bool completedWriteWithResponse = activeCommand_.writeWithResponse;
     completeActiveCommand();
 
-    if (kind == ObdCommandKind::VIN) {
-        nextVinAttemptMs_ = nowMs + obd::AUX_INTERVAL_MS;
-    }
-    if (kind == ObdCommandKind::EOT_PROBE) {
-        nextEotProbeMs_ = nowMs + obd::AUX_INTERVAL_MS;
-    }
-    if (kind == ObdCommandKind::EOT_POLL) {
-        nextEotPollMs_ = nowMs + obd::AUX_INTERVAL_MS;
-    }
-
     if (handled) {
         preferWriteWithResponse_ = completedWriteWithResponse;
-        if (activeEotProfileFromCache_ &&
-            cachedProfileInvalidStreak_ >= obd::EOT_INVALID_STREAK_CLEAR_CACHE &&
-            completedProfile == activeEotProfileId_) {
-            clearCachedProfile();
-            clearEotState(true);
-            nextEotProbeMs_ = nowMs;
-        }
         return;
     }
 
-    if (kind == ObdCommandKind::SPEED) {
-        if (bufferOverflowCount_ >= obd::BUFFER_OVERFLOWS_BEFORE_DISCONNECT) {
-            handlePollingError(nowMs, false, ObdFailureReason::BUFFER_OVERFLOW);
-        } else {
-            handlePollingError(nowMs, false, bleOverflowed_ ? ObdFailureReason::BUFFER_OVERFLOW
-                                                            : ObdFailureReason::COMMAND_RESPONSE);
-        }
-        return;
-    }
-
-    if (kind == ObdCommandKind::VIN) {
-        nextVinAttemptMs_ = nowMs + obd::AUX_INTERVAL_MS;
-        return;
-    }
-
-    if (kind == ObdCommandKind::EOT_PROBE) {
-        eotProbeFailures_++;
-        markProfileUnsupported(completedProfile);
-        return;
-    }
-
-    if (kind == ObdCommandKind::EOT_POLL) {
-        eotProbeFailures_++;
-        if (activeEotProfileFromCache_) {
-            cachedProfileInvalidStreak_++;
-            if (cachedProfileInvalidStreak_ >= obd::EOT_INVALID_STREAK_CLEAR_CACHE) {
-                clearCachedProfile();
-                clearEotState(true);
-                nextEotProbeMs_ = nowMs;
-            }
-        }
+    if (bufferOverflowCount_ >= obd::BUFFER_OVERFLOWS_BEFORE_DISCONNECT) {
+        handlePollingError(nowMs, false, ObdFailureReason::BUFFER_OVERFLOW);
+    } else {
+        handlePollingError(nowMs,
+                           false,
+                           bleOverflowed_ ? ObdFailureReason::BUFFER_OVERFLOW
+                                          : ObdFailureReason::COMMAND_RESPONSE);
     }
 }
 
@@ -1523,27 +1222,8 @@ bool ObdRuntimeModule::isSpeedFresh(uint32_t nowMs) const {
            (nowMs - speedSampleTsMs_) <= obd::SPEED_MAX_AGE_MS;
 }
 
-bool ObdRuntimeModule::isEotFresh(uint32_t nowMs) const {
-    return eotValid_ && eotSampleTsMs_ != 0 &&
-           (nowMs - eotSampleTsMs_) <= obd::EOT_STALE_MS;
-}
-
-bool ObdRuntimeModule::isCoreSpeedReady(uint32_t nowMs) const {
-    return state_ == ObdConnectionState::POLLING &&
-           consecutiveSpeedSamples_ >= obd::CORE_READY_MIN_SPEED_SAMPLES &&
-           (nowMs - stateEnteredMs_) >= obd::CORE_READY_MIN_CONNECTED_MS;
-}
-
 bool ObdRuntimeModule::speedDue(uint32_t nowMs) const {
     return nextSpeedDueMs_ == 0 || static_cast<int32_t>(nowMs - nextSpeedDueMs_) >= 0;
-}
-
-bool ObdRuntimeModule::auxWindowOpen(uint32_t nowMs) const {
-    if (!isSpeedFresh(nowMs) || speedDue(nowMs)) {
-        return false;
-    }
-    const uint32_t timeUntilSpeed = nextSpeedDueMs_ - nowMs;
-    return timeUntilSpeed >= obd::AUX_WINDOW_MIN_MS;
 }
 
 bool ObdRuntimeModule::startSpeedCommand(uint32_t nowMs) {
@@ -1555,7 +1235,6 @@ bool ObdRuntimeModule::startSpeedCommand(uint32_t nowMs) {
                       0x0000,
                       obd::POLL_TIMEOUT_MS,
                       obd::POLL_COMMAND_RETRIES,
-                      ObdEotProfileId::NONE,
                       nowMs)) {
         handlePollingError(nowMs, false, ObdFailureReason::WRITE);
         return false;
@@ -1564,172 +1243,8 @@ bool ObdRuntimeModule::startSpeedCommand(uint32_t nowMs) {
     return true;
 }
 
-bool ObdRuntimeModule::startVinCommand(uint32_t nowMs) {
-    if (!startCommand(ObdCommandKind::VIN,
-                      ParserKind::VIN,
-                      obd::VIN_POLL_CMD,
-                      0,
-                      0,
-                      0,
-                      obd::VIN_COMMAND_TIMEOUT_MS,
-                      0,
-                      ObdEotProfileId::NONE,
-                      nowMs)) {
-        return false;
-    }
-    nextVinAttemptMs_ = nowMs + obd::AUX_INTERVAL_MS;
-    return true;
-}
-
-bool ObdRuntimeModule::profileNeedsVin(ObdEotProfileId profileId) {
-    return profileId != ObdEotProfileId::NONE && profileId != ObdEotProfileId::SAE_015C;
-}
-
-bool ObdRuntimeModule::selectInitialCachedProfile() {
-    if (cachedEotProfileId_ == ObdEotProfileId::NONE || !hasVinPrefix(cachedVinPrefix11_)) {
-        return false;
-    }
-    activeEotProfileId_ = cachedEotProfileId_;
-    activeEotProfileFromCache_ = true;
-    return true;
-}
-
-void ObdRuntimeModule::resetProbeState() {
-    if (!activeEotProfileFromCache_) {
-        activeEotProfileId_ = ObdEotProfileId::NONE;
-    }
-    nextEotProbeMs_ = 0;
-}
-
-ObdEotProfileId ObdRuntimeModule::nextProbeProfile() const {
-    const ObdEotProfileId standardOrder[] = {ObdEotProfileId::SAE_015C};
-    for (const auto profileId : standardOrder) {
-        if (!isProfileUnsupported(profileId)) {
-            return profileId;
-        }
-    }
-
-    if (!vinDetected_) {
-        return ObdEotProfileId::NONE;
-    }
-
-    switch (vehicleFamily_) {
-        case ObdVehicleFamily::FORD: {
-            const ObdEotProfileId order[] = {ObdEotProfileId::FORD_2203F3,   // PCM inferred (2020+ EcoBoost)
-                                             ObdEotProfileId::FORD_22F45C,   // Physical sensor DID
-                                             ObdEotProfileId::FORD_221310};  // Physical sensor DID
-            for (const auto profileId : order) {
-                if (!isProfileUnsupported(profileId)) return profileId;
-            }
-            break;
-        }
-        case ObdVehicleFamily::FCA:
-            if (!isProfileUnsupported(ObdEotProfileId::FCA_21E8)) {
-                return ObdEotProfileId::FCA_21E8;
-            }
-            break;
-        case ObdVehicleFamily::VW_AUDI_PORSCHE: {
-            const ObdEotProfileId order[] = {ObdEotProfileId::VW_2230F9,
-                                             ObdEotProfileId::VW_2230DB,
-                                             ObdEotProfileId::VW_223A59};
-            for (const auto profileId : order) {
-                if (!isProfileUnsupported(profileId)) return profileId;
-            }
-            break;
-        }
-        case ObdVehicleFamily::UNKNOWN:
-        default:
-            break;
-    }
-
-    return ObdEotProfileId::NONE;
-}
-
-bool ObdRuntimeModule::startEotProbeCommand(uint32_t nowMs) {
-    const ObdEotProfileId nextProfile = nextProbeProfile();
-    const ObdEotProfile* profile = findEotProfile(nextProfile);
-    if (!profile) {
-        return false;
-    }
-
-    if (!startCommand(ObdCommandKind::EOT_PROBE,
-                      ParserKind::SIMPLE,
-                      profile->command,
-                      profile->expectedService,
-                      profile->expectedPid,
-                      profile->expectedDid,
-                      obd::AUX_COMMAND_TIMEOUT_MS,
-                      0,
-                      profile->id,
-                      nowMs)) {
-        return false;
-    }
-    nextEotProbeMs_ = nowMs + obd::AUX_INTERVAL_MS;
-    return true;
-}
-
-bool ObdRuntimeModule::startEotPollCommand(uint32_t nowMs) {
-    const ObdEotProfile* profile = findEotProfile(activeEotProfileId_);
-    if (!profile) {
-        return false;
-    }
-
-    if (!startCommand(ObdCommandKind::EOT_POLL,
-                      ParserKind::SIMPLE,
-                      profile->command,
-                      profile->expectedService,
-                      profile->expectedPid,
-                      profile->expectedDid,
-                      obd::AUX_COMMAND_TIMEOUT_MS,
-                      0,
-                      profile->id,
-                      nowMs)) {
-        return false;
-    }
-    nextEotPollMs_ = nowMs + obd::AUX_INTERVAL_MS;
-    return true;
-}
-
 bool ObdRuntimeModule::sendNextPollingCommand(uint32_t nowMs) {
-    if (speedDue(nowMs)) {
-        return startSpeedCommand(nowMs);
-    }
-
-    if (!auxWindowOpen(nowMs)) {
-        return false;
-    }
-
-    if (!isCoreSpeedReady(nowMs)) {
-        return false;
-    }
-
-    if (activeEotProfileId_ == ObdEotProfileId::NONE && cachedEotProfileId_ != ObdEotProfileId::NONE) {
-        selectInitialCachedProfile();
-    }
-
-    if (activeEotProfileId_ != ObdEotProfileId::NONE &&
-        activeEotProfileFromCache_ &&
-        static_cast<int32_t>(nowMs - nextEotPollMs_) >= 0 &&
-        startEotPollCommand(nowMs)) {
-        return true;
-    }
-
-    if (!vinDetected_ && static_cast<int32_t>(nowMs - nextVinAttemptMs_) >= 0 && startVinCommand(nowMs)) {
-        return true;
-    }
-
-    if (activeEotProfileId_ == ObdEotProfileId::NONE) {
-        if (static_cast<int32_t>(nowMs - nextEotProbeMs_) >= 0 && startEotProbeCommand(nowMs)) {
-            return true;
-        }
-        return false;
-    }
-
-    if (static_cast<int32_t>(nowMs - nextEotPollMs_) >= 0 && startEotPollCommand(nowMs)) {
-        return true;
-    }
-
-    return false;
+    return speedDue(nowMs) ? startSpeedCommand(nowMs) : false;
 }
 
 void ObdRuntimeModule::updateSecuring(uint32_t nowMs) {
@@ -1934,7 +1449,6 @@ void ObdRuntimeModule::updateAtInit(uint32_t nowMs) {
                       0x0000,
                       obd::AT_INIT_RESPONSE_TIMEOUT_MS,
                       obd::AT_INIT_RETRIES,
-                      ObdEotProfileId::NONE,
                       nowMs)) {
 #ifndef UNIT_TEST
         const int cmdLen = static_cast<int>(commandDisplayLen(command));
@@ -2017,10 +1531,8 @@ void ObdRuntimeModule::updatePolling(uint32_t nowMs) {
 #endif
                 return;
             }
-            const ObdCommandKind timedOutKind = activeCommand_.kind;
-            const ObdEotProfileId timedOutProfile = activeCommand_.profileId;
 #ifndef UNIT_TEST
-            if (timedOutKind == ObdCommandKind::SPEED && bleBufLen_ > 0) {
+            if (activeCommand_.kind == ObdCommandKind::SPEED && bleBufLen_ > 0) {
                 Serial.printf("[OBD] speed timeout rxBytes=%u raw=[%.*s]\n",
                               static_cast<unsigned>(bleBufLen_),
                               static_cast<int>(bleBufLen_),
@@ -2029,21 +1541,7 @@ void ObdRuntimeModule::updatePolling(uint32_t nowMs) {
 #endif
             clearBleResponseState();
             completeActiveCommand();
-            if (timedOutKind == ObdCommandKind::SPEED) {
-                handlePollingError(nowMs, false, ObdFailureReason::COMMAND_TIMEOUT);
-                return;
-            }
-            if (timedOutKind == ObdCommandKind::EOT_PROBE) {
-                eotProbeFailures_++;
-                markProfileUnsupported(timedOutProfile);
-            } else if (timedOutKind == ObdCommandKind::EOT_POLL && activeEotProfileFromCache_) {
-                cachedProfileInvalidStreak_++;
-                if (cachedProfileInvalidStreak_ >= obd::EOT_INVALID_STREAK_CLEAR_CACHE) {
-                    clearCachedProfile();
-                    clearEotState(true);
-                    nextEotProbeMs_ = nowMs;
-                }
-            }
+            handlePollingError(nowMs, false, ObdFailureReason::COMMAND_TIMEOUT);
             return;
         }
     }
@@ -2067,9 +1565,6 @@ void ObdRuntimeModule::updatePolling(uint32_t nowMs) {
     if (speedValid_ && !isSpeedFresh(nowMs)) {
         speedValid_ = false;
         staleSpeedCount_++;
-    }
-    if (eotValid_ && !isEotFresh(nowMs)) {
-        eotValid_ = false;
     }
 }
 
@@ -2405,15 +1900,6 @@ ObdRuntimeStatus ObdRuntimeModule::snapshot(uint32_t nowMs) const {
     status.speedMph = speedMph_;
     status.speedSampleTsMs = speedSampleTsMs_;
     status.speedAgeMs = status.speedValid ? (nowMs - speedSampleTsMs_) : UINT32_MAX;
-    status.eotValid = isEotFresh(nowMs);
-    status.eotC_x10 = eotC_x10_;
-    status.eotAgeMs = status.eotValid ? (nowMs - eotSampleTsMs_) : UINT32_MAX;
-    status.eotProfileId = activeEotProfileId_;
-    status.eotProbeFailures = eotProbeFailures_;
-    status.cachedProfileActive = activeEotProfileFromCache_;
-    status.vinDetected = vinDetected_;
-    copyString(status.vin, sizeof(status.vin), vin_);
-    status.vehicleFamily = vehicleFamily_;
     status.rssi = rssi_;
     status.connectAttempts = connectAttempts_;
     status.connectSuccesses = connectSuccesses_;
@@ -2486,8 +1972,6 @@ void ObdRuntimeModule::forgetDevice() {
     disconnectBle();
     clearBleEventQueue();
     setSavedAddressFromBuffer("");
-    clearVehicleState(true);
-    clearEotState(true);
     pendingAddress_[0] = '\0';
     pendingDeviceFound_ = false;
     scanRequested_ = false;
@@ -2537,31 +2021,6 @@ void ObdRuntimeModule::onBleData(const uint8_t* data, size_t len) {
     event.overflowed = event.dataLen < len;
     event.dataReady = memchr(data, '>', len) != nullptr;
     enqueueBleEvent(event);
-}
-
-const char* ObdRuntimeModule::vehicleFamilyName(ObdVehicleFamily family) {
-    switch (family) {
-        case ObdVehicleFamily::FORD: return "ford";
-        case ObdVehicleFamily::FCA: return "fca";
-        case ObdVehicleFamily::VW_AUDI_PORSCHE: return "vw";
-        case ObdVehicleFamily::UNKNOWN:
-        default:
-            return "unknown";
-    }
-}
-
-const char* ObdRuntimeModule::commandKindName(ObdCommandKind kind) {
-    switch (kind) {
-        case ObdCommandKind::AT_INIT: return "at_init";
-        case ObdCommandKind::SANITY: return "sanity";
-        case ObdCommandKind::SPEED: return "speed";
-        case ObdCommandKind::VIN: return "vin";
-        case ObdCommandKind::EOT_PROBE: return "eot_probe";
-        case ObdCommandKind::EOT_POLL: return "eot_poll";
-        case ObdCommandKind::NONE:
-        default:
-            return "none";
-    }
 }
 
 const char* ObdRuntimeModule::bleReasonName(int reason) {
@@ -2668,9 +2127,5 @@ void ObdRuntimeModule::transitionToPollingForTest(uint32_t nowMs) {
 
 ObdCommandKind ObdRuntimeModule::getActiveCommandKindForTest() const {
     return activeCommand_.active ? activeCommand_.kind : ObdCommandKind::NONE;
-}
-
-ObdEotProfileId ObdRuntimeModule::getActiveEotProfileForTest() const {
-    return activeEotProfileId_;
 }
 #endif

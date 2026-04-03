@@ -430,8 +430,6 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putString("obdName", settings_.obdSavedName);
     written += prefs.putUChar("obdAddrT", settings_.obdSavedAddrType);
     written += prefs.putChar("obdMinRssi", settings_.obdMinRssi);
-    written += prefs.putString("obdVin11", settings_.obdCachedVinPrefix11);
-    written += prefs.putUChar("obdEotPid", settings_.obdCachedEotProfileId);
 
     // NVS validity marker - used to detect if NVS was wiped.
     // Written LAST so its presence proves the entire write completed.

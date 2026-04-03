@@ -34,15 +34,8 @@ void test_process_skips_save_when_runtime_already_matches_settings() {
     V1Settings& settings = settingsManager.mutableSettings();
     settings.obdSavedAddress = "A4:C1:38:00:11:22";
     settings.obdSavedAddrType = 1;
-    settings.obdCachedVinPrefix11 = "1FTW1ET7DFA";
-    settings.obdCachedEotProfileId = static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C);
 
-    obdRuntimeModule.begin(nullptr, true,
-                           "A4:C1:38:00:11:22",
-                           1,
-                           -80,
-                           "1FTW1ET7DFA",
-                           static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 1, -80);
 
     module.process(1000);
 
@@ -51,12 +44,7 @@ void test_process_skips_save_when_runtime_already_matches_settings() {
 }
 
 void test_process_saves_once_after_runtime_values_stabilize() {
-    obdRuntimeModule.begin(nullptr, true,
-                           "A4:C1:38:00:11:22",
-                           2,
-                           -80,
-                           "1FTW1ET7DFA",
-                           static_cast<uint8_t>(ObdEotProfileId::FORD_221310));
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 2, -80);
 
     module.process(1000);
     TEST_ASSERT_TRUE(module.hasPendingSnapshotForTest());
@@ -73,26 +61,13 @@ void test_process_saves_once_after_runtime_values_stabilize() {
     TEST_ASSERT_FALSE(module.hasPendingSnapshotForTest());
     TEST_ASSERT_EQUAL_STRING("A4:C1:38:00:11:22", settings.obdSavedAddress.c_str());
     TEST_ASSERT_EQUAL_UINT8(2, settings.obdSavedAddrType);
-    TEST_ASSERT_EQUAL_STRING("1FTW1ET7DFA", settings.obdCachedVinPrefix11.c_str());
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(ObdEotProfileId::FORD_221310),
-                            settings.obdCachedEotProfileId);
 }
 
 void test_process_resets_debounce_when_runtime_keeps_changing() {
-    obdRuntimeModule.begin(nullptr, true,
-                           "A4:C1:38:00:11:22",
-                           1,
-                           -80,
-                           "1FTW1ET7DFA",
-                           static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 1, -80);
     module.process(1000);
 
-    obdRuntimeModule.begin(nullptr, true,
-                           "B4:C1:38:00:11:33",
-                           3,
-                           -80,
-                           "WAULFAFR1FN",
-                           static_cast<uint8_t>(ObdEotProfileId::VW_2230F9));
+    obdRuntimeModule.begin(nullptr, true, "B4:C1:38:00:11:33", 3, -80);
     module.process(4000);
 
     TEST_ASSERT_TRUE(module.hasPendingSnapshotForTest());
@@ -108,9 +83,6 @@ void test_process_resets_debounce_when_runtime_keeps_changing() {
     TEST_ASSERT_EQUAL_INT(1, settingsManager.requestDeferredPersistCalls);
     TEST_ASSERT_EQUAL_STRING("B4:C1:38:00:11:33", settings.obdSavedAddress.c_str());
     TEST_ASSERT_EQUAL_UINT8(3, settings.obdSavedAddrType);
-    TEST_ASSERT_EQUAL_STRING("WAULFAFR1FN", settings.obdCachedVinPrefix11.c_str());
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(ObdEotProfileId::VW_2230F9),
-                            settings.obdCachedEotProfileId);
 }
 
 int main() {

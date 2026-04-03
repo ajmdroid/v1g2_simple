@@ -440,13 +440,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.obdRssiCallMaxUs = perfExtended.obdRssiCallMaxUs;
     flat.obdPollErrors = ctx.obdStatus.pollErrors;
     flat.obdStaleCount = ctx.obdStatus.staleSpeedCount;
-    flat.obdVinDetected = ctx.obdStatus.vinDetected ? 1 : 0;
-    flat.obdVehicleFamily = static_cast<uint8_t>(ctx.obdStatus.vehicleFamily);
-    flat.obdEotValid = ctx.obdStatus.eotValid ? 1 : 0;
-    flat.obdEotC_x10 = ctx.obdStatus.eotValid ? ctx.obdStatus.eotC_x10 : 0;
-    flat.obdEotAgeMs = ctx.obdStatus.eotValid ? ctx.obdStatus.eotAgeMs : UINT32_MAX;
-    flat.obdEotProfileId = static_cast<uint8_t>(ctx.obdStatus.eotProfileId);
-    flat.obdEotProbeFailures = ctx.obdStatus.eotProbeFailures;
     const bool speedSelectedValid = ctx.speedStatus.selectedSource != SpeedSource::NONE;
     const float selectedSpeedMph = speedSelectedValid ? ctx.speedStatus.selectedSpeedMph : 0.0f;
     flat.speedSourceSelected = static_cast<uint8_t>(ctx.speedStatus.selectedSource);

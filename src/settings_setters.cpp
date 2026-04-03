@@ -634,12 +634,6 @@ bool SettingsManager::applyObdSettingsUpdate(const ObdSettingsUpdate& update,
     if (update.hasSavedAddrType) {
         changed |= assignIfChanged(settings_.obdSavedAddrType, update.savedAddrType);
     }
-    if (update.hasCachedVinPrefix11) {
-        changed |= assignIfChanged(settings_.obdCachedVinPrefix11, update.cachedVinPrefix11);
-    }
-    if (update.hasCachedEotProfileId) {
-        changed |= assignIfChanged(settings_.obdCachedEotProfileId, update.cachedEotProfileId);
-    }
 
     if (changed) {
         persistSettingsByMode(*this, persistMode);

@@ -266,13 +266,8 @@ void test_manual_pair_found_device_releases_preempt_and_holds_connect_flow() {
                       obdRuntimeModule.getBleArbitrationRequest());
 }
 
-void test_manual_pair_scan_timeout_preserves_saved_device_and_cache() {
-    obdRuntimeModule.begin(nullptr, true,
-                           "A4:C1:38:00:11:22",
-                           0,
-                           -80,
-                           "1FTW1ET7DFA",
-                           static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
+void test_manual_pair_scan_timeout_preserves_saved_device() {
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
 
     TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(1000));
     obdRuntimeModule.update(1001, true, true, true);
@@ -285,20 +280,12 @@ void test_manual_pair_scan_timeout_preserves_saved_device_and_cache() {
     TEST_ASSERT_FALSE(status.manualScanPending);
     TEST_ASSERT_TRUE(status.savedAddressValid);
     TEST_ASSERT_EQUAL_STRING("A4:C1:38:00:11:22", obdRuntimeModule.getSavedAddress());
-    TEST_ASSERT_EQUAL_STRING("1FTW1ET7DFA", obdRuntimeModule.getCachedVinPrefix11());
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C),
-                            obdRuntimeModule.getCachedEotProfileId());
     TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::NONE,
                       obdRuntimeModule.getBleArbitrationRequest());
 }
 
 void test_manual_pair_connect_failure_preserves_saved_device_and_returns_idle() {
-    obdRuntimeModule.begin(nullptr, true,
-                           "A4:C1:38:00:11:22",
-                           0,
-                           -80,
-                           "1FTW1ET7DFA",
-                           static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
 
     TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(1000));
     obdRuntimeModule.update(1001, true, true, true);
@@ -314,19 +301,13 @@ void test_manual_pair_connect_failure_preserves_saved_device_and_returns_idle() 
     TEST_ASSERT_FALSE(status.manualScanPending);
     TEST_ASSERT_TRUE(status.savedAddressValid);
     TEST_ASSERT_EQUAL_STRING("A4:C1:38:00:11:22", obdRuntimeModule.getSavedAddress());
-    TEST_ASSERT_EQUAL_STRING("1FTW1ET7DFA", obdRuntimeModule.getCachedVinPrefix11());
     TEST_ASSERT_EQUAL_UINT8(0, status.connectAttempts);
     TEST_ASSERT_EQUAL(ObdBleArbitrationRequest::NONE,
                       obdRuntimeModule.getBleArbitrationRequest());
 }
 
 void test_manual_pair_success_commits_candidate_only_when_polling_begins() {
-    obdRuntimeModule.begin(nullptr, true,
-                           "A4:C1:38:00:11:22",
-                           0,
-                           -80,
-                           "1FTW1ET7DFA",
-                           static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
 
     TEST_ASSERT_TRUE(obdRuntimeModule.requestManualPairScan(1000));
     obdRuntimeModule.update(1001, true, true, true);
@@ -338,7 +319,6 @@ void test_manual_pair_success_commits_candidate_only_when_polling_begins() {
     TEST_ASSERT_TRUE(status.manualScanPending);
     TEST_ASSERT_TRUE(status.savedAddressValid);
     TEST_ASSERT_EQUAL_STRING("A4:C1:38:00:11:22", obdRuntimeModule.getSavedAddress());
-    TEST_ASSERT_EQUAL_STRING("1FTW1ET7DFA", obdRuntimeModule.getCachedVinPrefix11());
 
     obdRuntimeModule.transitionToPollingForTest(2500);
     TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
@@ -347,8 +327,6 @@ void test_manual_pair_success_commits_candidate_only_when_polling_begins() {
     TEST_ASSERT_FALSE(status.manualScanPending);
     TEST_ASSERT_TRUE(status.savedAddressValid);
     TEST_ASSERT_EQUAL_STRING("B4:C1:38:00:11:33", obdRuntimeModule.getSavedAddress());
-    TEST_ASSERT_EQUAL_STRING("", obdRuntimeModule.getCachedVinPrefix11());
-    TEST_ASSERT_EQUAL_UINT8(0, obdRuntimeModule.getCachedEotProfileId());
 }
 
 // ── RSSI gate ─────────────────────────────────────────────────────
@@ -924,13 +902,8 @@ void test_searching_extends_speed_timeout() {
     TEST_ASSERT_EQUAL(ObdConnectionState::POLLING, obdRuntimeModule.getState());
 }
 
-void test_cached_profile_polls_before_background_vin_lookup() {
-    obdRuntimeModule.begin(nullptr, true,
-                           "A4:C1:38:00:11:22",
-                           0,
-                           -80,
-                           "1FTW1ET7DFA",
-                           static_cast<uint8_t>(ObdEotProfileId::FORD_22F45C));
+void test_polling_remains_speed_only_after_consecutive_samples() {
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
     obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
     obdRuntimeModule.injectSpeedForTest(45.0f, 5900);
     obdRuntimeModule.setConsecutiveSpeedSamplesForTest(3);
@@ -944,42 +917,10 @@ void test_cached_profile_polls_before_background_vin_lookup() {
     obdRuntimeModule.update(6100, true, true, true);
     obdRuntimeModule.update(6101, true, true, true);
 
-    TEST_ASSERT_EQUAL(ObdCommandKind::EOT_POLL, obdRuntimeModule.getActiveCommandKindForTest());
-    TEST_ASSERT_EQUAL_STRING("22F45C\r", obdRuntimeModule.getLastCommandForTest());
-    TEST_ASSERT_EQUAL(ObdEotProfileId::FORD_22F45C,
-                      obdRuntimeModule.getActiveEotProfileForTest());
-}
-
-void test_vin_response_sets_family_and_starts_standard_eot_probe() {
-    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
-    obdRuntimeModule.forceStateForTest(ObdConnectionState::POLLING, 0);
-    obdRuntimeModule.injectSpeedForTest(45.0f, 5900);
-    obdRuntimeModule.setConsecutiveSpeedSamplesForTest(3);
-
-    obdRuntimeModule.update(6000, true, true, true);
-    obdRuntimeModule.update(6001, true, true, true);
-    feedBleResponse("41 0D 28\r\n>");
-    obdRuntimeModule.update(6050, true, true, true);
-    obdRuntimeModule.update(6100, true, true, true);
-    TEST_ASSERT_EQUAL_STRING("0902\r", obdRuntimeModule.getLastCommandForTest());
-
-    feedBleResponse(
-        "0902\r\n"
-        "0: 49 02 01 31 46 54\r\n"
-        "1: 57 31 45 54 37 44\r\n"
-        "2: 46 41 31 32 33 34\r\n"
-        "3: 35 36\r\n"
-        ">");
-    obdRuntimeModule.update(6150, true, true, true);
-
-    ObdRuntimeStatus status = obdRuntimeModule.snapshot(6150);
-    TEST_ASSERT_TRUE(status.vinDetected);
-    TEST_ASSERT_EQUAL(ObdVehicleFamily::FORD, status.vehicleFamily);
-
-    obdRuntimeModule.update(6200, true, true, true);
-    obdRuntimeModule.update(6201, true, true, true);
-    TEST_ASSERT_EQUAL(ObdCommandKind::EOT_PROBE, obdRuntimeModule.getActiveCommandKindForTest());
-    TEST_ASSERT_EQUAL_STRING("015C\r", obdRuntimeModule.getLastCommandForTest());
+    const ObdCommandKind activeCommand = obdRuntimeModule.getActiveCommandKindForTest();
+    TEST_ASSERT_TRUE(activeCommand == ObdCommandKind::NONE ||
+                     activeCommand == ObdCommandKind::SPEED);
+    TEST_ASSERT_EQUAL_STRING("010D\r", obdRuntimeModule.getLastCommandForTest());
 }
 
 void test_error_backoff_returns_to_polling() {
@@ -1205,7 +1146,7 @@ int main() {
     RUN_TEST(test_manual_pair_scan_request_sets_pending_and_starts_scanning);
     RUN_TEST(test_manual_pair_scan_waits_for_proxy_to_be_idle);
     RUN_TEST(test_manual_pair_found_device_releases_preempt_and_holds_connect_flow);
-    RUN_TEST(test_manual_pair_scan_timeout_preserves_saved_device_and_cache);
+    RUN_TEST(test_manual_pair_scan_timeout_preserves_saved_device);
     RUN_TEST(test_manual_pair_connect_failure_preserves_saved_device_and_returns_idle);
     RUN_TEST(test_manual_pair_success_commits_candidate_only_when_polling_begins);
 
@@ -1254,8 +1195,7 @@ int main() {
     RUN_TEST(test_speed_response_assembles_from_multiple_ble_chunks);
     RUN_TEST(test_data_queue_overflow_fails_response_as_buffer_overflow);
     RUN_TEST(test_searching_extends_speed_timeout);
-    RUN_TEST(test_cached_profile_polls_before_background_vin_lookup);
-    RUN_TEST(test_vin_response_sets_family_and_starts_standard_eot_probe);
+    RUN_TEST(test_polling_remains_speed_only_after_consecutive_samples);
     RUN_TEST(test_error_backoff_returns_to_polling);
     RUN_TEST(test_error_backoff_disconnects_after_ten_write_errors);
 

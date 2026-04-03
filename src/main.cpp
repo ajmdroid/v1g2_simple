@@ -780,9 +780,7 @@ static void configureRuntimeSensorModules() {
         settingsManager.get().obdEnabled,
         settingsManager.get().obdSavedAddress.c_str(),
         settingsManager.get().obdSavedAddrType,
-        settingsManager.get().obdMinRssi,
-        settingsManager.get().obdCachedVinPrefix11.c_str(),
-        settingsManager.get().obdCachedEotProfileId);
+        settingsManager.get().obdMinRssi);
     speedMuteModule.begin(
         settingsManager.get().speedMuteEnabled,
         settingsManager.get().speedMuteThresholdMph,
