@@ -4,6 +4,7 @@
  */
 
 #include "wifi_manager_internals.h"
+#include "../include/display_preview_api.h"
 #include "perf_metrics.h"
 #include "settings.h"
 #include "settings_sanitize.h"

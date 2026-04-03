@@ -15,11 +15,6 @@
 extern V1BLEClient bleClient;
 extern SystemEventBus systemEventBus;
 
-// Preview helpers for display demo flows (color).
-extern void requestColorPreviewHold(uint32_t durationMs);
-extern bool isDisplayPreviewRunning();
-extern void cancelDisplayPreview();
-
 // --- Debug / logging infrastructure ---
 static constexpr bool WIFI_DEBUG_LOGS = false;  // Set true for verbose Serial logging
 static constexpr bool WIFI_DEBUG_FS_DUMP = false; // Set true to dump LittleFS root on WiFi start

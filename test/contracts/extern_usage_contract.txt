@@ -62,9 +62,6 @@ kind=header file=include/settings_internals.h line=33 text=extern const char XOR
 kind=header file=include/settings_internals.h line=35 text=extern const char* OBFUSCATION_HEX_PREFIX;
 kind=header file=include/wifi_manager_internals.h line=15 text=extern V1BLEClient bleClient;
 kind=header file=include/wifi_manager_internals.h line=16 text=extern SystemEventBus systemEventBus;
-kind=header file=include/wifi_manager_internals.h line=19 text=extern void requestColorPreviewHold(uint32_t durationMs);
-kind=header file=include/wifi_manager_internals.h line=20 text=extern bool isDisplayPreviewRunning();
-kind=header file=include/wifi_manager_internals.h line=21 text=extern void cancelDisplayPreview();
 kind=header file=src/battery_manager.h line=103 text=extern BatteryManager batteryManager;
 kind=header file=src/battery_manager.h line=106 text=extern TwoWire tca9554Wire;
 kind=header file=src/battery_manager.h line=107 text=extern SemaphoreHandle_t tca9554WireMutex;
