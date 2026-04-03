@@ -34,7 +34,7 @@ SNPRINTF_FORMAT_RE = re.compile(
     r"int\s+n\s*=\s*snprintf\s*\(\s*line\s*,\s*sizeof\s*\(\s*line\s*\)\s*,\s*((?:\"(?:\\.|[^\"\\])*\"\s*)+)\s*,",
     re.DOTALL,
 )
-APPEND_CALL_RE = re.compile(r"\bappendCsv(?:UInt32|UInt8|Int32|Int16|UInt8Last)\s*\(")
+APPEND_CALL_RE = re.compile(r"\bappendCsv(?:UInt32|UInt32Last|UInt8|UInt8Last|Int32|Int16)\s*\(")
 
 
 def read_text(path: Path) -> str:

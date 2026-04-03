@@ -411,9 +411,28 @@ HEADER_COLUMNS = [
     for line in (ROOT / "test" / "contracts" / "perf_csv_column_contract.txt").read_text(encoding="utf-8").splitlines()
     if line.strip() and not line.startswith("#")
 ]
-LEGACY_HEADER_COLUMNS = HEADER_COLUMNS[:-4]
+DIRECT_SPEED_COLUMN_COUNT = 6
+NO_DIRECT_SPEED_HEADER_COLUMNS = HEADER_COLUMNS[:-DIRECT_SPEED_COLUMN_COUNT]
+LEGACY_HEADER_COLUMNS = NO_DIRECT_SPEED_HEADER_COLUMNS[:-4]
 # Optional direct-speed extension used for importer compatibility tests.
 DRIVE_HEADER_COLUMNS = HEADER_COLUMNS + ["obdSpeedMph_x10"]
+
+
+def _apply_drive_speed(row: dict[str, int], speed_mph_x10: int) -> None:
+    if "speedSourceSelected" in row:
+        row["speedSourceSelected"] = 3
+    if "speedSourceValid" in row:
+        row["speedSourceValid"] = 1
+    if "speedSelectedMph_x10" in row:
+        row["speedSelectedMph_x10"] = speed_mph_x10
+    if "speedSelectedAgeMs" in row:
+        row["speedSelectedAgeMs"] = 200
+    if "speedSourceSwitches" in row:
+        row["speedSourceSwitches"] = 1
+    if "speedNoSourceSelections" in row:
+        row["speedNoSourceSelections"] = 0
+    if "obdSpeedMph_x10" in row:
+        row["obdSpeedMph_x10"] = speed_mph_x10
 
 
 def _base_csv_row(millis: int, *, header_columns: list[str], connected: bool = True, drive_like: bool = False) -> dict[str, int]:
@@ -448,11 +467,23 @@ def _base_csv_row(millis: int, *, header_columns: list[str], connected: bool = T
         row["perfDrop"] = 0
     if "eventBusDrops" in row:
         row["eventBusDrops"] = 0
+    if "speedSourceSelected" in row:
+        row["speedSourceSelected"] = 0
+    if "speedSourceValid" in row:
+        row["speedSourceValid"] = 0
+    if "speedSelectedMph_x10" in row:
+        row["speedSelectedMph_x10"] = 0
+    if "speedSelectedAgeMs" in row:
+        row["speedSelectedAgeMs"] = 4294967295
+    if "speedSourceSwitches" in row:
+        row["speedSourceSwitches"] = 0
+    if "speedNoSourceSelections" in row:
+        row["speedNoSourceSelections"] = 0
     if connected:
         row["rx"] = 120
         row["parseOK"] = 120
-    if drive_like and "obdSpeedMph_x10" in header_columns:
-        row["obdSpeedMph_x10"] = 350
+    if drive_like:
+        _apply_drive_speed(row, 350)
     return row
 
 
@@ -474,7 +505,7 @@ def write_perf_csv(
         if sessions is None:
             sessions = [
                 {
-                    "meta": f"#session_start,seq=1,bootId=1,uptime_ms={duration_ms},token=TEST0001,schema={13 if fieldnames == HEADER_COLUMNS else 12}",
+                    "meta": f"#session_start,seq=1,bootId=1,uptime_ms={duration_ms},token=TEST0001,schema={25 if fieldnames == HEADER_COLUMNS else 24 if fieldnames == NO_DIRECT_SPEED_HEADER_COLUMNS else 12}",
                     "rows": [],
                 }
             ]
@@ -1449,21 +1480,21 @@ def main() -> int:
         contract_session_one_rows = []
         for i in range(5):
             frac = i / 4
-            row = _base_csv_row(int(frac * 120000), header_columns=HEADER_COLUMNS, connected=True, drive_like=False)
+            row = _base_csv_row(int(frac * 120000), header_columns=NO_DIRECT_SPEED_HEADER_COLUMNS, connected=True, drive_like=False)
             row["rx"] = 200 + i * 40
             row["parseOK"] = 200 + i * 40
             contract_session_one_rows.append(row)
         contract_session_two_rows = []
         for i in range(5):
             frac = i / 4
-            row = _base_csv_row(int(frac * 60000), header_columns=HEADER_COLUMNS, connected=True, drive_like=False)
+            row = _base_csv_row(int(frac * 60000), header_columns=NO_DIRECT_SPEED_HEADER_COLUMNS, connected=True, drive_like=False)
             row["rx"] = 50 + i * 30
             row["parseOK"] = 50 + i * 30
             row["displayUpdates"] = i * 5
             contract_session_two_rows.append(row)
         write_perf_csv(
             contract_multi_csv,
-            header_columns=HEADER_COLUMNS,
+            header_columns=NO_DIRECT_SPEED_HEADER_COLUMNS,
             sessions=[
                 {
                     "meta": "#session_start,seq=1,bootId=1,uptime_ms=120000,token=LONG001,schema=24",

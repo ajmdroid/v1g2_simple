@@ -447,6 +447,17 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.obdEotAgeMs = ctx.obdStatus.eotValid ? ctx.obdStatus.eotAgeMs : UINT32_MAX;
     flat.obdEotProfileId = static_cast<uint8_t>(ctx.obdStatus.eotProfileId);
     flat.obdEotProbeFailures = ctx.obdStatus.eotProbeFailures;
+    const bool speedSelectedValid = ctx.speedStatus.selectedSource != SpeedSource::NONE;
+    const float selectedSpeedMph = speedSelectedValid ? ctx.speedStatus.selectedSpeedMph : 0.0f;
+    flat.speedSourceSelected = static_cast<uint8_t>(ctx.speedStatus.selectedSource);
+    flat.speedSourceValid = speedSelectedValid ? 1 : 0;
+    flat.speedSelectedMph_x10 =
+        (speedSelectedValid && std::isfinite(selectedSpeedMph) && selectedSpeedMph > 0.0f)
+            ? static_cast<uint32_t>(std::lround(selectedSpeedMph * 10.0f))
+            : 0;
+    flat.speedSelectedAgeMs = speedSelectedValid ? ctx.speedStatus.selectedAgeMs : UINT32_MAX;
+    flat.speedSourceSwitches = ctx.speedStatus.sourceSwitches;
+    flat.speedNoSourceSelections = ctx.speedStatus.noSourceSelections;
     flat.wifiMaxUs = perfExtended.wifiMaxUs;
     flat.wifiHandleClientMaxUs = perfExtended.wifiHandleClientMaxUs;
     flat.wifiMaintenanceMaxUs = perfExtended.wifiMaintenanceMaxUs;

@@ -207,3 +207,9 @@ pendingDisconnectCleanup
 proxyAdvertising
 proxyAdvertisingLastTransitionReason
 wifiPriorityMode
+speedSourceSelected
+speedSourceValid
+speedSelectedMph_x10
+speedSelectedAgeMs
+speedSourceSwitches
+speedNoSourceSelections

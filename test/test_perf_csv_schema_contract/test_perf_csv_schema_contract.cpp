@@ -25,7 +25,7 @@ void test_perf_csv_schema_version_matches_current_header() {
     TEST_ASSERT_FALSE_MESSAGE(source.empty(), "failed to read src/perf_sd_logger.cpp");
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
-        source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 24;"));
+    source.find("static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 25;"));
 }
 
 void test_perf_csv_header_drops_camera_voice_columns() {
@@ -46,7 +46,7 @@ void test_perf_csv_header_appends_drive_gate_columns() {
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
         source.find(
-            "perfDrop,eventBusDrops,wifiHandleClientMax_us,wifiMaintenanceMax_us,wifiStatusCheckMax_us,wifiTimeoutCheckMax_us,wifiHeapGuardMax_us,wifiApStaPollMax_us,wifiStopHttpServerMax_us,wifiStopStaDisconnectMax_us,wifiStopApDisableMax_us,wifiStopModeOffMax_us,wifiStartPreflightMax_us,wifiStartApBringupMax_us,freeDmaMin,largestDmaMin,bleState,subscribeStep,connectInProgress,asyncConnectPending,pendingDisconnectCleanup,proxyAdvertising,proxyAdvertisingLastTransitionReason,wifiPriorityMode\\n\";"));
+            "perfDrop,eventBusDrops,wifiHandleClientMax_us,wifiMaintenanceMax_us,wifiStatusCheckMax_us,wifiTimeoutCheckMax_us,wifiHeapGuardMax_us,wifiApStaPollMax_us,wifiStopHttpServerMax_us,wifiStopStaDisconnectMax_us,wifiStopApDisableMax_us,wifiStopModeOffMax_us,wifiStartPreflightMax_us,wifiStartApBringupMax_us,freeDmaMin,largestDmaMin,bleState,subscribeStep,connectInProgress,asyncConnectPending,pendingDisconnectCleanup,proxyAdvertising,proxyAdvertisingLastTransitionReason,wifiPriorityMode,speedSourceSelected,speedSourceValid,speedSelectedMph_x10,speedSelectedAgeMs,speedSourceSwitches,speedNoSourceSelections"));
 }
 
 void test_perf_csv_header_includes_connect_burst_attribution_columns() {
@@ -94,6 +94,15 @@ void test_perf_metrics_exports_render_and_connect_burst_sources() {
     TEST_ASSERT_NOT_EQUAL(
         std::string::npos,
         source.find("flat.displayPreviewFirstRenderMaxUs = perfExtended.displayPreviewFirstRenderMaxUs;"));
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find("flat.speedSourceSelected = static_cast<uint8_t>(ctx.speedStatus.selectedSource);"));
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find("flat.speedSelectedMph_x10 ="));
+    TEST_ASSERT_NOT_EQUAL(
+        std::string::npos,
+        source.find("flat.speedSourceSwitches = ctx.speedStatus.sourceSwitches;"));
 }
 
 int main() {

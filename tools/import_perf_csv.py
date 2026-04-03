@@ -191,7 +191,8 @@ SUBSCRIBE_STEP_NAMES = {
 CONNECT_PHASE_STATES = {"SCANNING", "SCAN_STOPPING", "CONNECTING", "CONNECTING_WAIT", "DISCOVERING", "SUBSCRIBING", "SUBSCRIBE_YIELD"}
 DISCONNECT_PHASE_STATES = {"DISCONNECTED", "BACKOFF"}
 DIRECT_SPEED_COLUMN_CANDIDATES = (
-    "obdSpeedMph_x10",
+    ("speedSelectedMph_x10", "speedSourceValid"),
+    ("obdSpeedMph_x10", None),
 )
 
 
@@ -384,13 +385,14 @@ def _rx_delta(rows: list[dict[str, int]]) -> int:
     return int(rows[-1].get("rx", 0)) - int(rows[0].get("rx", 0))
 
 
-def _direct_speed_column(rows: list[dict[str, int]]) -> Optional[str]:
+def _direct_speed_column(rows: list[dict[str, int]]) -> tuple[Optional[str], Optional[str]]:
     if not rows:
-        return None
-    for column in DIRECT_SPEED_COLUMN_CANDIDATES:
+        return None, None
+    for column, valid_column in DIRECT_SPEED_COLUMN_CANDIDATES:
         if column in rows[0]:
-            return column
-    return None
+            if valid_column is None or valid_column in rows[0]:
+                return column, valid_column
+    return None, None
 
 
 def summarize_sessions(
@@ -399,10 +401,15 @@ def summarize_sessions(
     summaries: list[SessionSummary] = []
     for index, (meta, rows) in enumerate(sessions, start=1):
         rx_delta = _rx_delta(rows)
-        speed_active_column = _direct_speed_column(rows)
+        speed_active_column, speed_valid_column = _direct_speed_column(rows)
         speed_active_rows_supported = speed_active_column is not None
         speed_active_rows = (
-            sum(1 for row in rows if int(row.get(speed_active_column, 0)) > 0)
+            sum(
+                1
+                for row in rows
+                if int(row.get(speed_active_column, 0)) > 0
+                and (speed_valid_column is None or int(row.get(speed_valid_column, 0)) == 1)
+            )
             if speed_active_column is not None
             else 0
         )

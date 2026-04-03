@@ -23,16 +23,34 @@ HEADER_COLUMNS = [
     for line in (ROOT / "test" / "contracts" / "perf_csv_column_contract.txt").read_text(encoding="utf-8").splitlines()
     if line.strip() and not line.startswith("#")
 ]
-SCHEMA13_HEADER_COLUMNS = HEADER_COLUMNS[:-8]
-LEGACY_HEADER_COLUMNS = HEADER_COLUMNS[:-12]
+DIRECT_SPEED_COLUMN_COUNT = 6
+NO_DIRECT_SPEED_HEADER_COLUMNS = HEADER_COLUMNS[:-DIRECT_SPEED_COLUMN_COUNT]
+SCHEMA13_HEADER_COLUMNS = NO_DIRECT_SPEED_HEADER_COLUMNS[:-8]
+LEGACY_HEADER_COLUMNS = NO_DIRECT_SPEED_HEADER_COLUMNS[:-12]
 # Optional direct-speed extension used for importer compatibility tests.
-# The firmware contract does not currently emit this column.
-DRIVE_HEADER_COLUMNS = HEADER_COLUMNS + ["obdSpeedMph_x10"]
+COMPAT_SPEED_HEADER_COLUMNS = NO_DIRECT_SPEED_HEADER_COLUMNS + ["obdSpeedMph_x10"]
 
 
 def assert_true(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def apply_drive_speed(row: dict[str, int], speed_mph_x10: int) -> None:
+    if "speedSourceSelected" in row:
+        row["speedSourceSelected"] = 3
+    if "speedSourceValid" in row:
+        row["speedSourceValid"] = 1
+    if "speedSelectedMph_x10" in row:
+        row["speedSelectedMph_x10"] = speed_mph_x10
+    if "speedSelectedAgeMs" in row:
+        row["speedSelectedAgeMs"] = 200
+    if "speedSourceSwitches" in row:
+        row["speedSourceSwitches"] = 1
+    if "speedNoSourceSelections" in row:
+        row["speedNoSourceSelections"] = 0
+    if "obdSpeedMph_x10" in row:
+        row["obdSpeedMph_x10"] = speed_mph_x10
 
 
 def base_row(millis: int, *, connected: bool, header_columns: list[str]) -> dict[str, int]:
@@ -78,6 +96,18 @@ def base_row(millis: int, *, connected: bool, header_columns: list[str]) -> dict
         row["perfDrop"] = 0
     if "eventBusDrops" in row:
         row["eventBusDrops"] = 0
+    if "speedSourceSelected" in row:
+        row["speedSourceSelected"] = 0
+    if "speedSourceValid" in row:
+        row["speedSourceValid"] = 0
+    if "speedSelectedMph_x10" in row:
+        row["speedSelectedMph_x10"] = 0
+    if "speedSelectedAgeMs" in row:
+        row["speedSelectedAgeMs"] = 4294967295
+    if "speedSourceSwitches" in row:
+        row["speedSourceSwitches"] = 0
+    if "speedNoSourceSelections" in row:
+        row["speedNoSourceSelections"] = 0
     if connected:
         row["rx"] = 100
         row["parseOK"] = 100
@@ -108,8 +138,8 @@ def make_session(
             row["rx"] = 100 + 50 * index
             row["parseOK"] = 100 + 50 * index
             row["displayUpdates"] = 8 * index
-        if drive_like and "obdSpeedMph_x10" in header_columns:
-            row["obdSpeedMph_x10"] = 350 + index * 10
+        if drive_like:
+            apply_drive_speed(row, 350 + index * 10)
         rows.append(row)
     if end_overrides:
         rows[-1].update(end_overrides)
@@ -260,8 +290,8 @@ def test_segment_selection_and_listing_prefers_direct_speed_evidence_when_availa
     session_1 = make_session(
         seq=1,
         token="NODRIVE1",
-        schema=13,
-        header_columns=DRIVE_HEADER_COLUMNS,
+        schema=25,
+        header_columns=HEADER_COLUMNS,
         duration_ms=120000,
         connected=True,
         drive_like=False,
@@ -269,13 +299,13 @@ def test_segment_selection_and_listing_prefers_direct_speed_evidence_when_availa
     session_2 = make_session(
         seq=2,
         token="DRIVE002",
-        schema=13,
-        header_columns=DRIVE_HEADER_COLUMNS,
+        schema=25,
+        header_columns=HEADER_COLUMNS,
         duration_ms=60000,
         connected=True,
         drive_like=True,
     )
-    write_capture(csv_path, header_columns=DRIVE_HEADER_COLUMNS, sessions=[session_1, session_2])
+    write_capture(csv_path, header_columns=HEADER_COLUMNS, sessions=[session_1, session_2])
 
     listed = subprocess.run(
         [
@@ -300,7 +330,7 @@ def test_segment_selection_and_listing_prefers_direct_speed_evidence_when_availa
     auto_manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
     assert_true(auto_manifest["selected_segment"]["session_index"] == 2, f"auto selector chose wrong segment: {auto_manifest}")
     assert_true(auto_manifest["selected_segment"]["speed_active_rows_supported"] is True, f"speed support should be detected: {auto_manifest}")
-    assert_true(auto_manifest["selected_segment"]["speed_active_column"] == "obdSpeedMph_x10", f"wrong speed evidence column: {auto_manifest}")
+    assert_true(auto_manifest["selected_segment"]["speed_active_column"] == "speedSelectedMph_x10", f"wrong speed evidence column: {auto_manifest}")
 
     explicit_out = tmpdir / "explicit_out"
     explicit_result = run_import(csv_path, explicit_out, "--segment", "1")
@@ -316,7 +346,7 @@ def test_segment_selection_without_direct_speed_column_falls_back_to_longest_con
         seq=1,
         token="LONG001",
         schema=24,
-        header_columns=HEADER_COLUMNS,
+        header_columns=NO_DIRECT_SPEED_HEADER_COLUMNS,
         duration_ms=120000,
         connected=True,
         drive_like=False,
@@ -325,12 +355,12 @@ def test_segment_selection_without_direct_speed_column_falls_back_to_longest_con
         seq=2,
         token="SHORT002",
         schema=24,
-        header_columns=HEADER_COLUMNS,
+        header_columns=NO_DIRECT_SPEED_HEADER_COLUMNS,
         duration_ms=60000,
         connected=True,
         drive_like=False,
     )
-    write_capture(csv_path, header_columns=HEADER_COLUMNS, sessions=[session_1, session_2])
+    write_capture(csv_path, header_columns=NO_DIRECT_SPEED_HEADER_COLUMNS, sessions=[session_1, session_2])
 
     listed = subprocess.run(
         [
@@ -357,6 +387,55 @@ def test_segment_selection_without_direct_speed_column_falls_back_to_longest_con
     assert_true(auto_manifest["selected_segment"]["speed_active_rows_supported"] is False, f"speed evidence should be unsupported for contract header: {auto_manifest}")
     comparison = (out_dir / "comparison.txt").read_text(encoding="utf-8")
     assert_true("speed_rows=n/a (schema lacks direct speed column)" in comparison, f"comparison should explain missing direct speed evidence: {comparison}")
+
+
+def test_segment_selection_compat_optional_speed_column_still_supported(tmpdir: Path) -> None:
+    csv_path = tmpdir / "multi_compat.csv"
+    out_dir = tmpdir / "multi_compat_out"
+    session_1 = make_session(
+        seq=1,
+        token="NODRIVE1",
+        schema=24,
+        header_columns=COMPAT_SPEED_HEADER_COLUMNS,
+        duration_ms=120000,
+        connected=True,
+        drive_like=False,
+    )
+    session_2 = make_session(
+        seq=2,
+        token="COMPAT02",
+        schema=24,
+        header_columns=COMPAT_SPEED_HEADER_COLUMNS,
+        duration_ms=60000,
+        connected=True,
+        drive_like=True,
+    )
+    write_capture(csv_path, header_columns=COMPAT_SPEED_HEADER_COLUMNS, sessions=[session_1, session_2])
+
+    listed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "tools" / "import_perf_csv.py"),
+            "--input",
+            str(csv_path),
+            "--list-segments",
+            "--segment",
+            "auto",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert_true(listed.returncode == 0, f"list-segments failed: {listed.stderr}")
+    assert_true("COMPAT02" in listed.stdout, f"compat list-segments missing drive session: {listed.stdout}")
+
+    auto_result = run_import(csv_path, out_dir)
+    assert_true(auto_result.returncode != 3, f"auto import failed: {auto_result.stderr}")
+    auto_manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert_true(auto_manifest["selected_segment"]["session_index"] == 2, f"compat auto selector chose wrong segment: {auto_manifest}")
+    assert_true(auto_manifest["selected_segment"]["speed_active_rows_supported"] is True, f"compat speed evidence should be supported: {auto_manifest}")
+    assert_true(auto_manifest["selected_segment"]["speed_active_column"] == "obdSpeedMph_x10", f"compat selector should use optional speed column: {auto_manifest}")
 
 
 def test_peak_diagnostics_classify_spike_and_attribute_phase(tmpdir: Path) -> None:
@@ -685,6 +764,7 @@ def main() -> int:
         test_schema13_import_supports_drop_metrics(tmpdir)
         test_segment_selection_and_listing_prefers_direct_speed_evidence_when_available(tmpdir)
         test_segment_selection_without_direct_speed_column_falls_back_to_longest_connected(tmpdir)
+        test_segment_selection_compat_optional_speed_column_still_supported(tmpdir)
         test_peak_diagnostics_classify_spike_and_attribute_phase(tmpdir)
         test_peak_diagnostics_classify_sustained_runs(tmpdir)
         test_reduced_perf_boot_fixture_attributes_obd_and_wifi_stalls(tmpdir)

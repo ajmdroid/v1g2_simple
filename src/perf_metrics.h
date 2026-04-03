@@ -1020,6 +1020,12 @@ struct PerfSdSnapshot {
     uint8_t proxyAdvertising;              // Proxy advertising currently active
     uint8_t proxyAdvertisingLastTransitionReason; // PerfProxyAdvertisingTransitionReason code
     uint8_t wifiPriorityMode;              // BLE WiFi-priority suppression active
+    uint8_t speedSourceSelected;           // SpeedSource code for selected speed source
+    uint8_t speedSourceValid;              // Selected speed sample valid/fresh
+    uint32_t speedSelectedMph_x10;         // Selected speed mph * 10 when valid
+    uint32_t speedSelectedAgeMs;           // Selected speed age when valid; UINT32_MAX otherwise
+    uint32_t speedSourceSwitches;          // Speed source switches since session start
+    uint32_t speedNoSourceSelections;      // No-source selections since session start
 };
 
 enum class PerfRuntimeSnapshotMode : uint8_t {
