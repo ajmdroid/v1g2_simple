@@ -1,0 +1,19 @@
+{
+  "name": "V1-Simple",
+  "version": "v4.0.0",
+  "home_assistant_domain": "",
+  "funding_url": "",
+  "new_install_prompt_erase": true,
+  "new_install_improv_wait_time": 0,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        {
+          "path": "merged-firmware.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}
