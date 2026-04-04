@@ -284,18 +284,17 @@ jobs:
       - name: Prepare web installer files
         run: |
           rm -rf .artifacts/web-installer
-          mkdir -p .artifacts/web-installer
-          cp web-installer/index.html .artifacts/web-installer/
-          cp release/merged-firmware.bin .artifacts/web-installer/
-          cp release/manifest.json .artifacts/web-installer/
+          mkdir -p .artifacts/web-installer/install
+          cp web-installer/index.html .artifacts/web-installer/install/
+          cp release/merged-firmware.bin .artifacts/web-installer/install/
+          cp release/manifest.json .artifacts/web-installer/install/
+          echo "v1simple.com" > .artifacts/web-installer/CNAME
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./.artifacts/web-installer
-          destination_dir: install
-          cname: v1simple.com
 
       - name: Summary
         run: |
