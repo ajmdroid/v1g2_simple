@@ -207,9 +207,12 @@ jobs:
           cp .pio/build/waveshare-349/firmware.bin release/
           cp .pio/build/waveshare-349/littlefs.bin release/
 
+          # ESP Web Tools cannot patch flash mode on the fly the way write_flash does.
+          # The normal USB upload path for this board uses dio, so the merged image must
+          # do the same or web-flashed devices can fail to boot and appear dead.
           esptool.py --chip esp32s3 merge_bin \
             -o release/merged-firmware.bin \
-            --flash_mode qio \
+            --flash_mode dio \
             --flash_freq 80m \
             --flash_size 16MB \
             0x0000 release/bootloader.bin \
@@ -260,17 +263,19 @@ jobs:
       - name: Prepare web installer files
         run: |
           rm -rf .artifacts/web-installer
-          mkdir -p .artifacts/web-installer
-          cp web-installer/index.html .artifacts/web-installer/
-          cp release/merged-firmware.bin .artifacts/web-installer/
-          cp release/manifest.json .artifacts/web-installer/
+          mkdir -p .artifacts/web-installer/install
+          cp web-installer/root-index.html .artifacts/web-installer/index.html
+          cp web-installer/index.html .artifacts/web-installer/install/
+          cp release/merged-firmware.bin .artifacts/web-installer/install/
+          cp release/manifest.json .artifacts/web-installer/install/
+          touch .artifacts/web-installer/.nojekyll
+          echo "v1simple.com" > .artifacts/web-installer/CNAME
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./.artifacts/web-installer
-          destination_dir: install
 
       - name: Summary
         run: |

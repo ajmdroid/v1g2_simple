@@ -51,7 +51,7 @@ Current train (`v4.0.0-dev`) highlights:
 
 No development tools needed — just a Chrome browser and USB cable:
 
-👉 **[Install via Web](https://ajmdroid.github.io/v1g2_simple/)**
+👉 **[Install via Web](https://v1simple.com/install/)**
 
 1. Put device in bootloader mode (hold POWER + GEAR while plugging in USB)
 2. Click "Install V1-Simple" and select your device

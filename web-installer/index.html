@@ -4,6 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>V1-Simple Installer</title>
+  <script>
+    (function () {
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (window.location.protocol !== 'https:' && !isLocalhost) {
+        const target = new URL(window.location.href);
+        target.protocol = 'https:';
+        window.location.replace(target.toString());
+      }
+    })();
+  </script>
   <style>
     :root {
       --bg: #0a0a0a;
