@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.0.1] - 2026-04-04
+
+### Fixed
+- Web installer merged firmware now uses the correct `dio` flash mode for ESP Web Tools on the Waveshare ESP32-S3-Touch-LCD-3.49, preventing browser-flashed boards from appearing dead after install.
+- Installer entrypoints now fail over to a secure hosted ESP Web Tools URL when the custom domain is not in a secure context, avoiding browser-side `Serial access not allowed` failures caused by site HTTPS issues.
+
+### Changed
+- Added dedicated GitHub Actions workflows to deploy installer HTML changes and manually refresh installer assets without reusing an existing release tag.
+- Documentation now points users at the secure hosted installer during the 4.0.1 hotfix rollout.
+
 ## [4.0.0] - 2026-04-01
 
 > Note: no tagged releases were published between `3.0.7` and `4.0.0`;
@@ -90,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 4.0.1 | 2026-04-04 | Web installer hotfix: corrected merged flash mode, secure hosted fallback |
 | 4.0.0 | 2026-04-01 | Modular architecture, 141 module files, 960 tests, CI contracts |
 | 3.0.7 | 2026 | Quality baseline before 4.x refactors |
 | 3.0.x | 2024 | Speed source improvements |
@@ -99,6 +110,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## Upgrade Notes
+
+### From 4.0.0 to 4.0.1
+
+This hotfix is recommended for anyone installing from the browser-based flasher.
+
+Recommended post-upgrade actions:
+1. Use the hosted fallback installer until the custom-domain HTTPS configuration is fully healthy again.
+2. If a 4.0.0 browser flash left the board non-booting, recover with USB erase/reflash or re-install with 4.0.1 once the refreshed installer assets are published.
 
 ### From 3.x to 4.0.0
 
