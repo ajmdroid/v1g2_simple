@@ -275,9 +275,8 @@ jobs:
           name: ${{ needs.validate_release.outputs.tag }}
           generate_release_notes: true
           files: |
-            release/merged-firmware.bin
-            release/manifest.json
             release/*.bin
+            release/manifest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
