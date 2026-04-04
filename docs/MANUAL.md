@@ -4,7 +4,7 @@
 > For observability/testing authority see `OBSERVABILITY.md`. For perf thresholds see `PERF_SLOS.md`. For the full REST API see `API.md`.
 
 
-**Version:** 4.0.0-dev  
+**Version:** 4.0.0  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 LCD)  
 **Last Updated:** April 2026
 
