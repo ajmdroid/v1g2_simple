@@ -6,7 +6,7 @@
 
 **Version:** 4.0.0-dev  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 LCD)  
-**Last Updated:** March 2026
+**Last Updated:** April 2026
 
 ---
 
@@ -376,6 +376,8 @@ V1 Gen2 (BLE)
 | **TapGestureModule** | Triple-tap mute and other gestures |
 | **VoiceModule** | All voice announcement decisions (priority/secondary/escalation) and cooldowns |
 | **VolumeFadeModule** | Decides when to fade/restore volume for long-running alerts |
+| **SpeedMuteModule** | Speed-based V1 volume muting via OBD speed source |
+| **QuietCoordinatorModule** | Arbitrates which subsystem (speed mute, volume fade, tap gesture, auto-push, WiFi command) currently holds the audio quiet state |
 | **WifiOrchestrator** | WiFi/web server lifecycle |
 | **WifiAutoStartModule** | Deferred WiFi auto-start with V1 settle gate |
 | **WifiPriorityPolicyModule** | WiFi/BLE priority balancing at runtime |
@@ -1096,6 +1098,18 @@ ESP32 Preferences API with namespace `v1settings`:
 | colorArrR | uint16 | theme | Rear arrow color |
 | colorBleC | uint16 | 0x07E0 | BLE connected color |
 | colorBleD | uint16 | 0x001F | BLE disconnected color |
+| volFadeEn | bool | false | Volume fade enabled |
+| volFadeSec | uint8 | 2 | Seconds before fade starts (1-10) |
+| volFadeVol | uint8 | 1 | V1 volume to fade to (0-9) |
+| spdMuteEn | bool | false | Speed-based mute enabled |
+| spdMuteThr | uint8 | 25 | Speed threshold — mute below this mph (5-60) |
+| spdMuteHys | uint8 | 3 | Hysteresis band — unmute at threshold + this mph (1-10) |
+| spdMuteVol | uint8 | 0xFF | V1 volume when speed-muted (0-9; 0xFF = voice-only) |
+| obdEn | bool | false | OBD module enabled |
+| obdAddr | String | "" | Saved OBDLink CX BLE address |
+| obdName | String | "" | Friendly name for OBD adapter |
+| obdAddrT | uint8 | 0 | BLE address type for OBD adapter |
+| obdMinRssi | int8 | -85 | Minimum RSSI for OBD auto-connect (-100 to -40 dBm) |
 
 *Note: Slot 1 and 2 have analogous keys (slot1dark, slot2persist, etc.)*
 
@@ -1189,6 +1203,14 @@ Controls:
 - **Enable Volume Fade:** Reduce V1 alert volume after initial announcement period
 - **Delay:** Seconds to wait at full volume before fading (1-10)
 - **Reduced Volume:** Target volume to fade to (0-9)
+
+**Speed-Based Mute (requires OBD):**
+- **Enable Speed Mute:** Automatically reduce V1 volume when driving below a speed threshold (city/parking lot falses)
+- **Threshold:** Speed below which muting engages (5-60 mph, default 25)
+- **Hysteresis:** Re-enables at threshold + hysteresis to prevent rapid toggling (1-10 mph, default 3)
+- **Mute Volume:** V1 volume level while speed-muted (0-9, or 255 = voice-only — no V1 volume change, only suppresses beeps through the display speaker)
+
+OBD must be connected and polling for speed mute to operate. If OBD disconnects, speed muting disengages.
 
 **Speaker Volume:** Slider to control ES8311 DAC output level (0-100%)
 

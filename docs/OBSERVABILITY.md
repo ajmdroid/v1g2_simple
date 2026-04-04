@@ -1,7 +1,7 @@
 # Observability & Test Evidence Authority
 
 > Status: authoritative  
-> Last updated: March 19, 2026
+> Last updated: April 4, 2026
 
 This document is the single authority for runtime observability surfaces, metric
 naming, offline derivation, and how test evidence should be interpreted.
