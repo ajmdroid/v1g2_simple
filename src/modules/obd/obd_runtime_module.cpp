@@ -1884,6 +1884,12 @@ ObdBleArbitrationRequest ObdRuntimeModule::getBleArbitrationRequest() const {
 }
 
 ObdRuntimeStatus ObdRuntimeModule::snapshot(uint32_t nowMs) const {
+#ifndef UNIT_TEST
+    // Guard against calls before begin() — bleClient_ is still nullptr and
+    // the helper methods (isBleConnected, etc.) would dereference it.
+    if (!bleClient_) return ObdRuntimeStatus{};
+#endif
+
     ObdRuntimeStatus status;
     status.enabled = enabled_;
     status.state = state_;
