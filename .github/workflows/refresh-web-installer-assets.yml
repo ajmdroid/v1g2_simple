@@ -116,13 +116,13 @@ jobs:
           cp release/merged-firmware.bin .artifacts/web-installer/install/
           cp release/manifest.json .artifacts/web-installer/install/
           touch .artifacts/web-installer/.nojekyll
-          # Keep the default GitHub Pages host active until the custom domain TLS is fixed.
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./.artifacts/web-installer
+          cname: v1simple.com
 
       - name: Summary
         run: |
