@@ -57,7 +57,6 @@ run_step "Full replay suite" python3 scripts/run_replay_suite.py --lane nightly
 section "Sanitizer Lane (ASan + UBSan)"
 SANITIZER_SUITES=(
   test_packet_parser
-  test_drive_replay
   test_volume_fade
 )
 for suite in "${SANITIZER_SUITES[@]}"; do

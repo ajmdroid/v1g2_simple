@@ -25,39 +25,26 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
 
     // BOOT button handling:
     // - Short press: enter/exit adjust mode
-    // - 4s hold: toggle WiFi (on release)
+    // - 4s hold: toggle WiFi (fires while still held)
     if (bootPressed && !bootWasPressed_) {
         bootPressStart_ = nowMs;
+        wifiToggleFired_ = false;
     }
 
     if (bootPressed) {
+        const unsigned long held = nowMs - bootPressStart_;
+
         const bool shouldArmObdPair = !brightnessAdjustMode_ &&
-                                      (nowMs - bootPressStart_) >= OBD_PAIR_LONG_PRESS_MS &&
+                                      held >= OBD_PAIR_LONG_PRESS_MS &&
                                       canArmObdPairGesture(nowMs);
         if (shouldArmObdPair != obdPairGestureArmed_) {
             obdPairGestureArmed_ = shouldArmObdPair;
             updateObdIndicatorAttention(obdPairGestureArmed_, nowMs);
         }
-    }
 
-    // On release: determine action based on hold duration
-    if (!bootPressed && bootWasPressed_) {
-        unsigned long pressDuration = nowMs - bootPressStart_;
-        const bool triggerObdPair = obdPairGestureArmed_ && pressDuration >= OBD_PAIR_LONG_PRESS_MS;
-
-        if (obdPairGestureArmed_) {
-            obdPairGestureArmed_ = false;
-            updateObdIndicatorAttention(false, nowMs);
-        }
-
-        if (triggerObdPair) {
-            if (callbacks_.requestObdManualPairScan) {
-                (void)callbacks_.requestObdManualPairScan(nowMs, callbacks_.requestObdManualPairScanCtx);
-            }
-            display_->refreshObdIndicator(nowMs);
-            display_->flushRegion(kObdBadgeFlushX, kObdBadgeFlushY, kObdBadgeFlushW, kObdBadgeFlushH);
-        } else if (pressDuration >= AP_TOGGLE_LONG_PRESS_MS) {
-            // 4s+ hold: toggle WiFi on release
+        // Toggle WiFi the moment the 4s threshold is crossed, not on release
+        if (!wifiToggleFired_ && !obdPairGestureArmed_ && held >= AP_TOGGLE_LONG_PRESS_MS) {
+            wifiToggleFired_ = true;
             if (callbacks_.isWifiSetupActive && callbacks_.isWifiSetupActive(callbacks_.isWifiSetupActiveCtx)) {
                 if (callbacks_.stopWifiSetup) callbacks_.stopWifiSetup(callbacks_.stopWifiSetupCtx);
             } else {
@@ -65,7 +52,28 @@ bool TouchUiModule::process(unsigned long nowMs, bool bootPressed) {
             }
             if (callbacks_.drawWifiIndicator) callbacks_.drawWifiIndicator(callbacks_.drawWifiIndicatorCtx);
             display_->flush();
-        } else if (pressDuration >= BOOT_DEBOUNCE_MS) {
+        }
+    }
+
+    // On release: determine action based on hold duration
+    if (!bootPressed && bootWasPressed_) {
+        unsigned long pressDuration = nowMs - bootPressStart_;
+        const bool triggerObdPair = obdPairGestureArmed_ && pressDuration >= OBD_PAIR_LONG_PRESS_MS;
+        const bool wifiAlreadyToggled = wifiToggleFired_;
+
+        if (obdPairGestureArmed_) {
+            obdPairGestureArmed_ = false;
+            updateObdIndicatorAttention(false, nowMs);
+        }
+        wifiToggleFired_ = false;
+
+        if (triggerObdPair) {
+            if (callbacks_.requestObdManualPairScan) {
+                (void)callbacks_.requestObdManualPairScan(nowMs, callbacks_.requestObdManualPairScanCtx);
+            }
+            display_->refreshObdIndicator(nowMs);
+            display_->flushRegion(kObdBadgeFlushX, kObdBadgeFlushY, kObdBadgeFlushW, kObdBadgeFlushH);
+        } else if (!wifiAlreadyToggled && pressDuration >= BOOT_DEBOUNCE_MS) {
             // Short press: adjust mode toggle
             if (brightnessAdjustMode_) {
                 exitAdjustModeAndSave();

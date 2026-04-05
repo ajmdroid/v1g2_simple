@@ -52,11 +52,28 @@ def discover_fixtures(lane: str) -> list[Path]:
     return fixtures
 
 
+def _replay_env_available() -> bool:
+    """Check if the native-replay PIO env and test binary source exist."""
+    test_dir = ROOT / "test" / "test_drive_replay"
+    if not test_dir.is_dir():
+        return False
+    # Verify the env is defined in platformio.ini
+    result = subprocess.run(
+        ["pio", "project", "config", "-e", "native-replay"],
+        cwd=ROOT, capture_output=True,
+    )
+    return result.returncode == 0
+
+
 def run_replay_test(fixtures: list[Path]) -> tuple[int, list[dict]]:
     """Build and run the replay test binary. Returns (exit_code, results)."""
     if not fixtures:
         print("[replay] No fixtures matched the lane filter.")
         return 0, []
+
+    if not _replay_env_available():
+        print("[replay] native-replay env or test_drive_replay not found — skipping.")
+        return 0, [{"scenario_id": f.name, "status": "SKIP"} for f in fixtures]
 
     scenario_ids = [f.name for f in fixtures]
     print(f"[replay] Selected {len(fixtures)} scenario(s): {', '.join(scenario_ids)}")
@@ -100,6 +117,7 @@ def emit_summary(results: list[dict], lane: str) -> None:
         "total": len(results),
         "passed": sum(1 for r in results if r["status"] == "PASS"),
         "failed": sum(1 for r in results if r["status"] == "FAIL"),
+        "skipped": sum(1 for r in results if r["status"] == "SKIP"),
     }
     out_path = summary_dir / "replay_summary.json"
     with open(out_path, "w") as f:

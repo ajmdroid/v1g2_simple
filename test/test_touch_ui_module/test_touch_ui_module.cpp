@@ -90,21 +90,32 @@ void test_short_press_keeps_existing_settings_mode_behavior() {
 
 void test_four_second_press_keeps_existing_wifi_toggle_behavior() {
     TEST_ASSERT_FALSE(touchUiModule.process(0, true));
-    TEST_ASSERT_FALSE(touchUiModule.process(4500, false));
-
+    // WiFi should fire at 4s while still held
+    TEST_ASSERT_FALSE(touchUiModule.process(4000, true));
     TEST_ASSERT_EQUAL_INT(1, wifiStartCalls);
-    TEST_ASSERT_EQUAL_INT(0, manualPairRequests);
     TEST_ASSERT_EQUAL_INT(1, display.drawWiFiIndicatorCalls);
     TEST_ASSERT_EQUAL_INT(1, display.flushCalls);
+
+    // Release should not re-trigger or enter adjust mode
+    TEST_ASSERT_FALSE(touchUiModule.process(4500, false));
+    TEST_ASSERT_EQUAL_INT(1, wifiStartCalls);
+    TEST_ASSERT_EQUAL_INT(0, manualPairRequests);
+    TEST_ASSERT_EQUAL_INT(0, display.showSettingsSlidersCalls);
 }
 
-void test_ten_second_press_arms_obd_pair_and_suppresses_wifi_toggle() {
+void test_ten_second_press_arms_obd_pair_after_wifi_toggle_at_4s() {
     obdStatus.enabled = true;
 
     TEST_ASSERT_FALSE(touchUiModule.process(0, true));
-    TEST_ASSERT_FALSE(touchUiModule.process(9999, true));
-    TEST_ASSERT_FALSE(touchUiModule.process(10000, true));
+    TEST_ASSERT_FALSE(touchUiModule.process(3999, true));
+    TEST_ASSERT_EQUAL_INT(0, wifiStartCalls);  // not yet at 4s
 
+    // WiFi fires at 4s threshold
+    TEST_ASSERT_FALSE(touchUiModule.process(4000, true));
+    TEST_ASSERT_EQUAL_INT(1, wifiStartCalls);
+
+    // OBD arm fires at 10s
+    TEST_ASSERT_FALSE(touchUiModule.process(10000, true));
     TEST_ASSERT_EQUAL_INT(1, display.setObdAttentionCalls);
     TEST_ASSERT_TRUE(display.lastObdAttention);
     TEST_ASSERT_EQUAL_INT(1, display.drawObdIndicatorCalls);
@@ -113,7 +124,6 @@ void test_ten_second_press_arms_obd_pair_and_suppresses_wifi_toggle() {
     TEST_ASSERT_FALSE(touchUiModule.process(10050, false));
 
     TEST_ASSERT_EQUAL_INT(1, manualPairRequests);
-    TEST_ASSERT_EQUAL_INT(0, wifiStartCalls);
     TEST_ASSERT_EQUAL_INT(2, display.setObdAttentionCalls);
     TEST_ASSERT_FALSE(display.lastObdAttention);
 }
@@ -123,11 +133,15 @@ void test_ten_second_press_falls_back_to_wifi_when_obd_pair_not_eligible() {
     obdStatus.connected = true;
 
     TEST_ASSERT_FALSE(touchUiModule.process(0, true));
+    // WiFi fires at 4s (OBD already connected, pair gesture won't arm)
+    TEST_ASSERT_FALSE(touchUiModule.process(4000, true));
+    TEST_ASSERT_EQUAL_INT(1, wifiStartCalls);
+
     TEST_ASSERT_FALSE(touchUiModule.process(10000, true));
     TEST_ASSERT_FALSE(touchUiModule.process(10050, false));
 
     TEST_ASSERT_EQUAL_INT(0, manualPairRequests);
-    TEST_ASSERT_EQUAL_INT(1, wifiStartCalls);
+    TEST_ASSERT_EQUAL_INT(1, wifiStartCalls);  // still just 1 — no double fire
     TEST_ASSERT_EQUAL_INT(0, display.setObdAttentionCalls);
 }
 
@@ -135,6 +149,10 @@ void test_obd_pair_arm_clears_when_safety_disappears_before_release() {
     obdStatus.enabled = true;
 
     TEST_ASSERT_FALSE(touchUiModule.process(0, true));
+    // WiFi fires at 4s
+    TEST_ASSERT_FALSE(touchUiModule.process(4000, true));
+    TEST_ASSERT_EQUAL_INT(1, wifiStartCalls);
+
     TEST_ASSERT_FALSE(touchUiModule.process(10000, true));
     TEST_ASSERT_TRUE(display.lastObdAttention);
 
@@ -145,7 +163,7 @@ void test_obd_pair_arm_clears_when_safety_disappears_before_release() {
     TEST_ASSERT_FALSE(touchUiModule.process(10050, false));
 
     TEST_ASSERT_EQUAL_INT(0, manualPairRequests);
-    TEST_ASSERT_EQUAL_INT(1, wifiStartCalls);
+    TEST_ASSERT_EQUAL_INT(1, wifiStartCalls);  // already fired at 4s, not again
 }
 
 int main() {
@@ -153,7 +171,7 @@ int main() {
 
     RUN_TEST(test_short_press_keeps_existing_settings_mode_behavior);
     RUN_TEST(test_four_second_press_keeps_existing_wifi_toggle_behavior);
-    RUN_TEST(test_ten_second_press_arms_obd_pair_and_suppresses_wifi_toggle);
+    RUN_TEST(test_ten_second_press_arms_obd_pair_after_wifi_toggle_at_4s);
     RUN_TEST(test_ten_second_press_falls_back_to_wifi_when_obd_pair_not_eligible);
     RUN_TEST(test_obd_pair_arm_clears_when_safety_disappears_before_release);
 
