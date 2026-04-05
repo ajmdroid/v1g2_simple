@@ -50,6 +50,7 @@ private:
     bool perfDirReady_ = false;
     bool csvHeaderReady_ = false;
     bool sessionMarkerPending_ = false;
+    bool pathUpgraded_ = false;
     uint32_t sessionSeq_ = 0;
     uint32_t sessionToken_ = 0;
     uint32_t sessionStartMs_ = 0;

@@ -312,6 +312,24 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         return false;
     }
 
+    // One-shot upgrade: rename to timestamped path once time becomes accurate.
+    // At early boot time is unknown; once synced, rename so file gets a proper
+    // YYYYMMDD_HHMMSS prefix.  Runs under the SD lock already held above.
+    if (!pathUpgraded_ && csvPathBuf_[0] != '\0') {
+        if (timeService.timeValid() &&
+            timeService.timeConfidence() == TimeService::CONFIDENCE_ACCURATE) {
+            char newPath[64] = {0};
+            buildPerfCsvPath(bootId_, newPath, sizeof(newPath));
+            if (strcmp(newPath, csvPathBuf_) != 0) {
+                if (fs->exists(csvPathBuf_)) {
+                    fs->rename(csvPathBuf_, newPath);
+                }
+                memcpy(csvPathBuf_, newPath, sizeof(csvPathBuf_));
+            }
+            pathUpgraded_ = true;
+        }
+    }
+
     const char* csvPath = (csvPathBuf_[0] != '\0') ? csvPathBuf_ : PERF_CSV_PATH_FALLBACK;
     File f = fs->open(csvPath, FILE_APPEND, true);
     if (!f && perfDirReady_) {
