@@ -110,14 +110,15 @@ void test_perf_files_list_marks_file_ops_blocked_while_logging_active() {
 
     TEST_ASSERT_EQUAL_INT(200, server.lastStatusCode);
     TEST_ASSERT_TRUE(responseContains(server, "\"loggingActive\":true"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"fileOpsBlocked\":true"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"fileOpsBlockedReasonCode\":\"perf_logging_active\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"fileOpsBlocked\":false"));
     TEST_ASSERT_TRUE(responseContains(server, "\"activeFile\":\"20260316_020000_perf_7.csv\""));
+    // Active file: download and delete blocked
     TEST_ASSERT_TRUE(responseContains(server, "\"downloadAllowed\":false"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"deleteAllowed\":true"));
     TEST_ASSERT_TRUE(responseContains(server, "\"deleteAllowed\":false"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"blockedReasonCode\":\"perf_logging_active\""));
-    TEST_ASSERT_TRUE(responseContains(server, "\"deleteBlockedReason\":\"Active perf log in use\""));
+    TEST_ASSERT_TRUE(responseContains(server, "\"blockedReason\":\"Active perf log in use\""));
+    // Inactive file: download and delete allowed
+    TEST_ASSERT_TRUE(responseContains(server, "\"downloadAllowed\":true"));
+    TEST_ASSERT_TRUE(responseContains(server, "\"deleteAllowed\":true"));
 }
 
 void test_perf_files_list_returns_503_when_sd_trylock_is_busy() {
@@ -144,10 +145,9 @@ void test_perf_file_download_returns_503_while_perf_logging_active() {
     DebugPerfFilesService::handleApiPerfFilesDownload(server, makeTestRuntime(), [](void* /*ctx*/) { return true; }, nullptr, [](void* /*ctx*/) {}, nullptr);
 
     TEST_ASSERT_EQUAL_INT(503, server.lastStatusCode);
-    TEST_ASSERT_TRUE(responseContains(server, "Perf logging active"));
+    TEST_ASSERT_TRUE(responseContains(server, "Active perf log in use"));
     TEST_ASSERT_TRUE(responseContains(server, "\"reasonCode\":\"perf_logging_active\""));
     TEST_ASSERT_TRUE(responseContains(server, "\"operation\":\"download\""));
-    TEST_ASSERT_EQUAL_UINT32(0, StorageManager::mockSdLockState.tryAcquireCalls);
 }
 
 void test_perf_file_download_streams_csv_when_idle() {

@@ -198,11 +198,7 @@ void sendPerfFilesList(WebServer& server, const PerfFilesRuntime& runtime) {
     const String activeFileName = activePath.length() > 0 ? fileNameFromPath(activePath) : String();
     doc["loggingActive"] = loggingActive;
     doc["activeFile"] = activeFileName;
-    doc["fileOpsBlocked"] = loggingActive;
-    if (loggingActive) {
-        doc["fileOpsBlockedReason"] = "Perf logging active";
-        doc["fileOpsBlockedReasonCode"] = kReasonPerfLoggingActive;
-    }
+    doc["fileOpsBlocked"] = false;
 
     JsonArray filesArr = doc["files"].to<JsonArray>();
 
@@ -284,15 +280,11 @@ void sendPerfFilesList(WebServer& server, const PerfFilesRuntime& runtime) {
         f["sizeBytes"] = row.sizeBytes;
         f["bootId"] = row.bootId;
         f["active"] = isActive;
-        f["downloadAllowed"] = !loggingActive;
+        f["downloadAllowed"] = !loggingActive || !isActive;
         f["deleteAllowed"] = !loggingActive || !isActive;
-        if (loggingActive && !f["downloadAllowed"].as<bool>()) {
-            f["blockedReason"] = "Perf logging active";
+        if (loggingActive && isActive) {
+            f["blockedReason"] = "Active perf log in use";
             f["blockedReasonCode"] = kReasonPerfLoggingActive;
-        }
-        if (loggingActive && isActive && !f["deleteAllowed"].as<bool>()) {
-            f["deleteBlockedReason"] = "Active perf log in use";
-            f["deleteBlockedReasonCode"] = kReasonPerfLoggingActive;
         }
     }
     doc["count"] = static_cast<uint32_t>(countTotal);
@@ -334,14 +326,18 @@ void handlePerfFileDownload(WebServer& server, const PerfFilesRuntime& runtime) 
     }
 
     if (runtime.isPerfLoggingEnabled(runtime.ctx)) {
-        sendPerfFileError(server,
-                          503,
-                          kReasonPerfLoggingActive,
-                          "Perf logging active; download unavailable",
-                          "download",
-                          requestedName,
-                          true);
-        return;
+        const String activePath = String(runtime.getPerfCsvPath(runtime.ctx));
+        const String activeFileName = activePath.length() > 0 ? fileNameFromPath(activePath) : String();
+        if (requestedName == activeFileName) {
+            sendPerfFileError(server,
+                              503,
+                              kReasonPerfLoggingActive,
+                              "Active perf log in use; download unavailable",
+                              "download",
+                              requestedName,
+                              true);
+            return;
+        }
     }
 
     StorageManager::SDTryLock lock(
