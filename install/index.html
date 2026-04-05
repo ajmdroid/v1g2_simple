@@ -10,7 +10,6 @@
       const fallbackInstallerUrl = `https://esphome.github.io/esp-web-tools/?manifest=${encodeURIComponent(fallbackManifestUrl)}`;
       const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       window.V1_SIMPLE_FALLBACK_INSTALLER = fallbackInstallerUrl;
-      window.V1_SIMPLE_MANIFEST_URL = fallbackManifestUrl;
 
       if (!isLocalhost && (!window.isSecureContext || window.location.protocol !== 'https:')) {
         window.location.replace(fallbackInstallerUrl);
@@ -273,7 +272,7 @@
         <a href="https://esphome.github.io/esp-web-tools/?manifest=https%3A%2F%2Fcdn.jsdelivr.net%2Fgh%2Fajmdroid%2Fv1g2_simple%40gh-pages%2Finstall%2Fmanifest.json" target="_blank" rel="noopener">secure fallback installer</a>.
       </div>
 
-      <esp-web-install-button manifest="https://cdn.jsdelivr.net/gh/ajmdroid/v1g2_simple@gh-pages/install/manifest.json">
+      <esp-web-install-button manifest="manifest.json">
         <button slot="activate">Install V1-Simple</button>
         <span slot="unsupported">
           <p style="color: #ef4444;">Your browser doesn't support Web Serial.</p>
@@ -318,7 +317,7 @@
   <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
   <script>
     // Fetch version from manifest
-    fetch(window.V1_SIMPLE_MANIFEST_URL || 'https://cdn.jsdelivr.net/gh/ajmdroid/v1g2_simple@gh-pages/install/manifest.json')
+    fetch('manifest.json')
       .then(r => r.json())
       .then(data => {
         document.getElementById('version').textContent = data.version || 'unknown';
