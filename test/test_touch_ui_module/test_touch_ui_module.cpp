@@ -103,7 +103,7 @@ void test_four_second_press_keeps_existing_wifi_toggle_behavior() {
     TEST_ASSERT_EQUAL_INT(0, display.showSettingsSlidersCalls);
 }
 
-void test_ten_second_press_arms_obd_pair_and_suppresses_wifi_toggle() {
+void test_ten_second_press_arms_obd_pair_after_wifi_toggle_at_4s() {
     obdStatus.enabled = true;
 
     TEST_ASSERT_FALSE(touchUiModule.process(0, true));
@@ -171,7 +171,7 @@ int main() {
 
     RUN_TEST(test_short_press_keeps_existing_settings_mode_behavior);
     RUN_TEST(test_four_second_press_keeps_existing_wifi_toggle_behavior);
-    RUN_TEST(test_ten_second_press_arms_obd_pair_and_suppresses_wifi_toggle);
+    RUN_TEST(test_ten_second_press_arms_obd_pair_after_wifi_toggle_at_4s);
     RUN_TEST(test_ten_second_press_falls_back_to_wifi_when_obd_pair_not_eligible);
     RUN_TEST(test_obd_pair_arm_clears_when_safety_disappears_before_release);
 
