@@ -210,6 +210,10 @@ jobs:
           # ESP Web Tools cannot patch flash mode on the fly the way write_flash does.
           # The normal USB upload path for this board uses dio, so the merged image must
           # do the same or web-flashed devices can fail to boot and appear dead.
+          #
+          # CRITICAL: Offsets must match partitions_v1.csv exactly.
+          #   app0 = 0x20000, storage = 0xDA0000
+          # Using wrong offsets puts firmware where bootloader can't find it.
           esptool.py --chip esp32s3 merge_bin \
             -o release/merged-firmware.bin \
             --flash_mode dio \
@@ -218,7 +222,7 @@ jobs:
             0x0000 release/bootloader.bin \
             0x8000 release/partitions.bin \
             0xe000 release/boot_app0.bin \
-            0x10000 release/firmware.bin \
+            0x20000 release/firmware.bin \
             0xda0000 release/littlefs.bin
           python3 - <<'PY'
           import json
