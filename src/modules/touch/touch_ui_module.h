@@ -62,6 +62,7 @@ private:
     unsigned long bootPressStart_ = 0;
     bool bootWasPressed_ = false;
     bool obdPairGestureArmed_ = false;
+    bool wifiToggleFired_ = false;
 
     // Timing constants (mirrors previous inline logic)
     static constexpr unsigned long BOOT_DEBOUNCE_MS = 300;
