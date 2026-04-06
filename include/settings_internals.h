@@ -53,7 +53,6 @@ int  backupCandidateScore(const JsonDocument& doc);
 bool loadBestBackupDocument(fs::FS* fs, JsonDocument& outDoc,
                             const char** outPath = nullptr, bool verboseErrors = false);
 bool parseBoolVariant(const JsonVariantConst& value, bool& out);
-bool writeBackupAtomically(fs::FS* fs, const JsonDocument& doc);
 
 struct SerializedSettingsBackupPayload {
     char* data = nullptr;

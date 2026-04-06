@@ -78,9 +78,13 @@ bool writeSerializedBackupAtomically(fs::FS* fs, const char* data, size_t length
         return false;
     }
 
-    JsonDocument verifyPrimary;
-    if (!parseBackupFile(fs, SETTINGS_BACKUP_PATH, verifyPrimary, true)) {
-        Serial.println("[Settings] ERROR: Promoted backup failed validation");
+    // Post-rename sanity: verify the promoted file exists with the expected
+    // byte count.  A full JSON re-parse is unnecessary — the temp file was
+    // already validated above and rename() is a metadata-only operation.
+    File promoted = fs->open(SETTINGS_BACKUP_PATH, FILE_READ);
+    if (!promoted || promoted.size() != length) {
+        Serial.println("[Settings] ERROR: Promoted backup size mismatch after rename");
+        if (promoted) promoted.close();
         fs->remove(SETTINGS_BACKUP_PATH);
         if (fs->exists(SETTINGS_BACKUP_PREV_PATH) && !fs->exists(SETTINGS_BACKUP_PATH)) {
             if (!fs->rename(SETTINGS_BACKUP_PREV_PATH, SETTINGS_BACKUP_PATH)) {
@@ -89,6 +93,7 @@ bool writeSerializedBackupAtomically(fs::FS* fs, const char* data, size_t length
         }
         return false;
     }
+    promoted.close();
 
     return true;
 }
@@ -186,31 +191,6 @@ int backupCandidateScore(const JsonDocument& doc) {
     return backupDocumentVersion(doc) * 100 + backupCriticalFieldScore(doc);
 }
 
-
-bool writeBackupAtomically(fs::FS* fs, const JsonDocument& doc) {
-    if (!fs) {
-        return false;
-    }
-
-    const size_t required = measureJson(doc) + 1u;
-    char* jsonData = static_cast<char*>(heap_caps_malloc(required, MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM));
-    if (!jsonData) {
-        Serial.println("[Settings] Failed to allocate temp serialization buffer");
-        return false;
-    }
-
-    const size_t length = serializeJson(doc, jsonData, required);
-    if (length == 0 || length >= required) {
-        free(jsonData);
-        Serial.println("[Settings] Failed to serialize SD backup");
-        return false;
-    }
-    jsonData[length] = '\0';
-
-    const bool ok = writeSerializedBackupAtomically(fs, jsonData, length);
-    free(jsonData);
-    return ok;
-}
 
 bool buildSerializedSdBackupPayload(SerializedSettingsBackupPayload& payload,
                                     const V1Settings& settings_,

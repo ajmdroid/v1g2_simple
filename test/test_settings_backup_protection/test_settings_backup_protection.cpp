@@ -77,6 +77,24 @@ std::string serializeDoc(const JsonDocument& doc) {
     return output;
 }
 
+/// Test helper: wrap a JsonDocument into a SerializedSettingsBackupPayload and
+/// call writeBackupAtomically.  The old (fs, JsonDocument) overload was removed
+/// in the backup perf cleanup; this preserves the same test coverage.
+bool writeBackupAtomicallyFromDoc(fs::FS* fs, const JsonDocument& doc) {
+    std::string json = serializeDoc(doc);
+    SerializedSettingsBackupPayload payload;
+    payload.data     = const_cast<char*>(json.c_str());
+    payload.length   = json.size();
+    payload.capacity = json.size();
+    payload.inPsram  = false;
+    bool result = writeBackupAtomically(fs, payload);
+    // Prevent releaseSerializedSettingsBackupPayload from freeing stack memory
+    payload.data = nullptr;
+    payload.length = 0;
+    payload.capacity = 0;
+    return result;
+}
+
 /// Write a string directly to a file on the mock FS.
 void writeFileContent(fs::FS& fs, const char* path, const std::string& content) {
     File file = fs.open(path, FILE_WRITE);
@@ -313,7 +331,7 @@ void test_atomic_write_creates_primary_file() {
     JsonDocument doc;
     buildValidBackupDoc(doc);
 
-    TEST_ASSERT_TRUE(writeBackupAtomically(&fs, doc));
+    TEST_ASSERT_TRUE(writeBackupAtomicallyFromDoc(&fs, doc));
     TEST_ASSERT_TRUE(fs.exists(SETTINGS_BACKUP_PATH));
     // Temp file must be cleaned up
     TEST_ASSERT_FALSE(fs.exists(SETTINGS_BACKUP_TMP_PATH));
@@ -325,11 +343,11 @@ void test_atomic_write_rotates_previous() {
     buildValidBackupDoc(doc);
 
     // First write — no .prev yet
-    TEST_ASSERT_TRUE(writeBackupAtomically(&fs, doc));
+    TEST_ASSERT_TRUE(writeBackupAtomicallyFromDoc(&fs, doc));
     TEST_ASSERT_FALSE(fs.exists(SETTINGS_BACKUP_PREV_PATH));
 
     // Second write — first becomes .prev
-    TEST_ASSERT_TRUE(writeBackupAtomically(&fs, doc));
+    TEST_ASSERT_TRUE(writeBackupAtomicallyFromDoc(&fs, doc));
     TEST_ASSERT_TRUE(fs.exists(SETTINGS_BACKUP_PATH));
     TEST_ASSERT_TRUE(fs.exists(SETTINGS_BACKUP_PREV_PATH));
 }
@@ -337,7 +355,7 @@ void test_atomic_write_rotates_previous() {
 void test_atomic_write_rejects_null_fs() {
     JsonDocument doc;
     buildValidBackupDoc(doc);
-    TEST_ASSERT_FALSE(writeBackupAtomically(static_cast<fs::FS*>(nullptr), doc));
+    TEST_ASSERT_FALSE(writeBackupAtomicallyFromDoc(static_cast<fs::FS*>(nullptr), doc));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -350,14 +368,14 @@ void test_atomic_write_rollback_on_rename_to_primary_failure() {
     buildValidBackupDoc(doc);
 
     // First write succeeds — establishes primary
-    TEST_ASSERT_TRUE(writeBackupAtomically(&fs, doc));
+    TEST_ASSERT_TRUE(writeBackupAtomicallyFromDoc(&fs, doc));
     TEST_ASSERT_TRUE(fs.exists(SETTINGS_BACKUP_PATH));
 
     // Second write: first rename (primary → prev) succeeds,
     // second rename (tmp → primary) fails.
     fs::mock_fail_rename_on_call(fs::g_mock_fs_rename_state.renameCalls + 2);
 
-    TEST_ASSERT_FALSE(writeBackupAtomically(&fs, doc));
+    TEST_ASSERT_FALSE(writeBackupAtomicallyFromDoc(&fs, doc));
 
     // Rollback: previous backup should be restored to primary
     TEST_ASSERT_TRUE(fs.exists(SETTINGS_BACKUP_PATH));
@@ -371,12 +389,12 @@ void test_atomic_write_aborts_on_rotation_failure() {
     buildValidBackupDoc(doc);
 
     // First write succeeds
-    TEST_ASSERT_TRUE(writeBackupAtomically(&fs, doc));
+    TEST_ASSERT_TRUE(writeBackupAtomicallyFromDoc(&fs, doc));
 
     // Second write: first rename (primary → prev) fails
     fs::mock_fail_next_rename();
 
-    TEST_ASSERT_FALSE(writeBackupAtomically(&fs, doc));
+    TEST_ASSERT_FALSE(writeBackupAtomicallyFromDoc(&fs, doc));
 
     // Original primary should still be intact
     TEST_ASSERT_TRUE(fs.exists(SETTINGS_BACKUP_PATH));
