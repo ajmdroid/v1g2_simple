@@ -17,7 +17,8 @@ static ObdBleContext makeBleContext(bool bootReady,
                                     bool bleScanIdle,
                                     bool v1ConnectBurstSettling = false,
                                     bool proxyAdvertising = false,
-                                    bool proxyClientConnected = false) {
+                                    bool proxyClientConnected = false,
+                                    bool v1ConnectInProgress = false) {
     ObdBleContext ctx;
     ctx.bootReady = bootReady;
     ctx.v1Connected = v1Connected;
@@ -25,6 +26,7 @@ static ObdBleContext makeBleContext(bool bootReady,
     ctx.v1ConnectBurstSettling = v1ConnectBurstSettling;
     ctx.proxyAdvertising = proxyAdvertising;
     ctx.proxyClientConnected = proxyClientConnected;
+    ctx.v1ConnectInProgress = v1ConnectInProgress;
     return ctx;
 }
 
@@ -155,6 +157,33 @@ void test_start_scan_waits_for_ble_scan_idle() {
 
     // Now BLE scan is idle
     obdRuntimeModule.update(2000, true, true, true);
+    TEST_ASSERT_EQUAL(ObdConnectionState::SCANNING, obdRuntimeModule.getState());
+}
+
+void test_start_scan_waits_for_v1_connect_in_progress() {
+    obdRuntimeModule.begin(nullptr, true, "", 0, -80);
+
+    obdRuntimeModule.startScan();
+    // BLE scan is idle but V1 is mid-connection — OBD should wait
+    obdRuntimeModule.update(1000, makeBleContext(true, true, true, false, false, false, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::IDLE, obdRuntimeModule.getState());
+
+    // V1 connect completes
+    obdRuntimeModule.update(2000, makeBleContext(true, true, true, false, false, false, false));
+    TEST_ASSERT_EQUAL(ObdConnectionState::SCANNING, obdRuntimeModule.getState());
+}
+
+void test_disconnected_scan_waits_for_v1_connect_in_progress() {
+    obdRuntimeModule.begin(nullptr, true, "A4:C1:38:00:11:22", 0, -80);
+    obdRuntimeModule.forceStateForTest(ObdConnectionState::DISCONNECTED, 1000);
+
+    obdRuntimeModule.startScan();
+    // BLE scan is idle but V1 is mid-connection — OBD should wait
+    obdRuntimeModule.update(1100, makeBleContext(true, true, true, false, false, false, true));
+    TEST_ASSERT_EQUAL(ObdConnectionState::DISCONNECTED, obdRuntimeModule.getState());
+
+    // V1 connect completes
+    obdRuntimeModule.update(1200, makeBleContext(true, true, true, false, false, false, false));
     TEST_ASSERT_EQUAL(ObdConnectionState::SCANNING, obdRuntimeModule.getState());
 }
 
@@ -1139,6 +1168,7 @@ int main() {
     // Web UI scan
     RUN_TEST(test_start_scan_from_idle);
     RUN_TEST(test_start_scan_waits_for_ble_scan_idle);
+    RUN_TEST(test_start_scan_waits_for_v1_connect_in_progress);
     RUN_TEST(test_start_scan_disabled_does_nothing);
     RUN_TEST(test_scan_timeout_returns_to_idle);
     RUN_TEST(test_scan_finds_device_transitions_to_connecting);
@@ -1201,6 +1231,7 @@ int main() {
 
     // Disconnected reconnect
     RUN_TEST(test_disconnected_reconnects_after_backoff);
+    RUN_TEST(test_disconnected_scan_waits_for_v1_connect_in_progress);
     RUN_TEST(test_disconnected_failure_threshold_idles_without_forgetting_saved_device);
 
     // ECU idle (car-off / petrol stop)

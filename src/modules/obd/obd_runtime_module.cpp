@@ -1584,6 +1584,7 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
     const bool v1ConnectBurstSettling = bootReadyContext.v1ConnectBurstSettling;
     const bool proxyAdvertising = bootReadyContext.proxyAdvertising;
     const bool proxyClientConnected = bootReadyContext.proxyClientConnected;
+    const bool v1ConnectInProgress = bootReadyContext.v1ConnectInProgress;
 
     if (bootReady && bootReadyMs_ == 0) {
         bootReadyMs_ = nowMs == 0 ? 1 : nowMs;
@@ -1597,7 +1598,7 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
             if (manualScanPreemptProxy_ && (proxyAdvertising || proxyClientConnected)) {
                 break;
             }
-            if (scanRequested_ && bleScanIdle) {
+            if (scanRequested_ && bleScanIdle && !v1ConnectInProgress) {
                 if (startBleScan()) {
                     scanRequested_ = false;
                     transitionTo(ObdConnectionState::SCANNING, nowMs);
@@ -1824,7 +1825,7 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
                 resetCommandState();
                 disconnectBle();
             }
-            if (scanRequested_ && bleScanIdle) {
+            if (scanRequested_ && bleScanIdle && !v1ConnectInProgress) {
                 if (startBleScan()) {
                     scanRequested_ = false;
                     transitionTo(ObdConnectionState::SCANNING, nowMs);

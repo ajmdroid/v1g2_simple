@@ -117,6 +117,7 @@ struct ObdBleContext {
     bool v1ConnectBurstSettling = false;
     bool proxyAdvertising = false;
     bool proxyClientConnected = false;
+    bool v1ConnectInProgress = false;
 };
 
 class ObdRuntimeModule {

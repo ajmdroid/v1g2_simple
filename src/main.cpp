@@ -1093,6 +1093,7 @@ void loop() {
             bleClient.isConnectBurstSettling(),
             bleClient.isProxyAdvertising(),
             bleClient.isProxyClientConnected(),
+            bleClient.isConnectInProgress(),
         };
         obdRuntimeModule.update(now, obdBleContext);
         bleClient.setObdBleArbitrationRequest(obdRuntimeModule.getBleArbitrationRequest());
