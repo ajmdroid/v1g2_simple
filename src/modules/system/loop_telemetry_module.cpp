@@ -11,6 +11,13 @@ void LoopTelemetryModule::process(uint32_t loopStartUs) {
         providers.recordLoopJitterUs(providers.loopJitterContext, jitterUs);
     }
 
+    // Heap introspection is expensive (~4 heap_caps calls).  The data only
+    // feeds min-watermark tracking, so sub-second cadence is more than enough.
+    if (++heapSampleSkip_ < HEAP_SAMPLE_DIVISOR) {
+        return;
+    }
+    heapSampleSkip_ = 0;
+
     if (providers.refreshDmaCache) {
         providers.refreshDmaCache(providers.dmaCacheContext);
     }
