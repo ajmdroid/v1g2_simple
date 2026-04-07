@@ -33,9 +33,9 @@ const char* const SETTINGS_BACKUP_CANDIDATES[] = {
 const size_t SETTINGS_BACKUP_CANDIDATES_COUNT = sizeof(SETTINGS_BACKUP_CANDIDATES) / sizeof(SETTINGS_BACKUP_CANDIDATES[0]);
 
 WiFiModeSetting clampWifiModeValue(int raw) {
-    int clamped = std::max(static_cast<int>(V1_WIFI_OFF),
-                           std::min(raw, static_cast<int>(V1_WIFI_APSTA)));
-    return static_cast<WiFiModeSetting>(clamped);
+    if (raw == static_cast<int>(V1_WIFI_AP)) return V1_WIFI_AP;
+    if (raw == static_cast<int>(V1_WIFI_APSTA)) return V1_WIFI_APSTA;
+    return V1_WIFI_OFF;
 }
 
 VoiceAlertMode clampVoiceAlertModeValue(int raw) {
