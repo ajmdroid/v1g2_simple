@@ -96,7 +96,9 @@ void SettingsManager::setSlotName(int slotNum, const String& name) {
 }
 
 void SettingsManager::setSlotColor(int slotNum, uint16_t color) {
-    settings_.autoPushSlotView(slotNum).color = color;
+    static constexpr uint16_t kSlotColorDefaults[] = {0x400A, 0x07E0, 0x8410};
+    const int idx = V1Settings::normalizeAutoPushSlotIndex(slotNum);
+    settings_.autoPushSlotView(slotNum).color = sanitizeRgb565Color(color, kSlotColorDefaults[idx]);
     save();
 }
 
