@@ -609,8 +609,8 @@ void SettingsManager::resetDisplaySettings(SettingsPersistMode persistMode) {
     settings_.colorBar6 = 0xF800;
     settings_.colorMuted = 0x3186;
     settings_.colorPersisted = 0x18C3;
-    settings_.colorVolumeMain = 0x001F;
-    settings_.colorVolumeMute = 0xFFE0;
+    settings_.colorVolumeMain = 0xF800;   // Red — matches constructor & NVS default
+    settings_.colorVolumeMute = 0x7BEF;   // Grey — matches constructor & NVS default
     settings_.colorRssiV1 = 0x07E0;
     settings_.colorRssiProxy = 0x001F;
     settings_.colorObd = 0x001F;
