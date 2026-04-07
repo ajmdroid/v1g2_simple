@@ -235,12 +235,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         int effectiveHeight = getEffectiveScreenHeight();
         int y = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
 
-        int width = 0;
-        if (band == BAND_LASER) {
-            width = measureSevenSegmentText(textBuf, scale);
-        } else {
-            width = measureSevenSegmentText(textBuf, scale);
-        }
+        int width = measureSevenSegmentText(textBuf, scale);
 
         const int leftMargin = 120;
         const int rightMargin = 200;
