@@ -298,8 +298,8 @@ if [[ ! -f "$ASSEMBLE_RESULT_SCRIPT" ]]; then
   exit 2
 fi
 
-DEVICE_PORT=""
-METRICS_URL=""
+DEVICE_PORT="${DEVICE_PORT:-}"
+METRICS_URL="${METRICS_URL:-}"
 if [[ "$NEEDS_LIVE_BOARD" -eq 1 ]]; then
   if [[ ! -f "$INVENTORY_PATH" ]]; then
     echo "Board inventory not found: $INVENTORY_PATH" >&2
@@ -326,8 +326,18 @@ PY
     exit 2
   }
 
-  DEVICE_PORT="$(printf "%s\n" "$BOARD_INFO" | sed -n '1p')"
-  METRICS_URL="$(printf "%s\n" "$BOARD_INFO" | sed -n '2p')"
+  INV_PORT="$(printf "%s\n" "$BOARD_INFO" | sed -n '1p')"
+  INV_METRICS="$(printf "%s\n" "$BOARD_INFO" | sed -n '2p')"
+  if [[ -n "$DEVICE_PORT" ]]; then
+    echo "Using DEVICE_PORT from environment: $DEVICE_PORT (inventory has: $INV_PORT)"
+  else
+    DEVICE_PORT="$INV_PORT"
+  fi
+  if [[ -n "$METRICS_URL" ]]; then
+    echo "Using METRICS_URL from environment: $METRICS_URL (inventory has: $INV_METRICS)"
+  else
+    METRICS_URL="$INV_METRICS"
+  fi
   if [[ -z "$DEVICE_PORT" ]]; then
     echo "Board '$BOARD_ID' is missing a device_path in inventory." >&2
     exit 2
