@@ -243,7 +243,7 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["activeSlot"].is<int>()) settings_.activeSlot = std::max(0, std::min(doc["activeSlot"].as<int>(), 2));
 
     if (doc["slot0Name"].is<const char*>()) settings_.slot0Name = sanitizeSlotNameValue(doc["slot0Name"].as<String>());
-    if (doc["slot0Color"].is<int>()) settings_.slot0Color = doc["slot0Color"];
+    if (doc["slot0Color"].is<int>()) settings_.slot0Color = sanitizeRgb565Color(doc["slot0Color"], 0x400A);
     if (doc["slot0Volume"].is<int>()) settings_.slot0Volume = clampSlotVolumeValue(doc["slot0Volume"].as<int>());
     if (doc["slot0MuteVolume"].is<int>()) settings_.slot0MuteVolume = clampSlotVolumeValue(doc["slot0MuteVolume"].as<int>());
     restoreBool("slot0DarkMode", settings_.slot0DarkMode);
@@ -254,7 +254,7 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["slot0Mode"].is<int>()) settings_.slot0_default.mode = normalizeV1ModeValue(doc["slot0Mode"].as<int>());
 
     if (doc["slot1Name"].is<const char*>()) settings_.slot1Name = sanitizeSlotNameValue(doc["slot1Name"].as<String>());
-    if (doc["slot1Color"].is<int>()) settings_.slot1Color = doc["slot1Color"];
+    if (doc["slot1Color"].is<int>()) settings_.slot1Color = sanitizeRgb565Color(doc["slot1Color"], 0x07E0);
     if (doc["slot1Volume"].is<int>()) settings_.slot1Volume = clampSlotVolumeValue(doc["slot1Volume"].as<int>());
     if (doc["slot1MuteVolume"].is<int>()) settings_.slot1MuteVolume = clampSlotVolumeValue(doc["slot1MuteVolume"].as<int>());
     restoreBool("slot1DarkMode", settings_.slot1DarkMode);
@@ -265,7 +265,7 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["slot1Mode"].is<int>()) settings_.slot1_highway.mode = normalizeV1ModeValue(doc["slot1Mode"].as<int>());
 
     if (doc["slot2Name"].is<const char*>()) settings_.slot2Name = sanitizeSlotNameValue(doc["slot2Name"].as<String>());
-    if (doc["slot2Color"].is<int>()) settings_.slot2Color = doc["slot2Color"];
+    if (doc["slot2Color"].is<int>()) settings_.slot2Color = sanitizeRgb565Color(doc["slot2Color"], 0x8410);
     if (doc["slot2Volume"].is<int>()) settings_.slot2Volume = clampSlotVolumeValue(doc["slot2Volume"].as<int>());
     if (doc["slot2MuteVolume"].is<int>()) settings_.slot2MuteVolume = clampSlotVolumeValue(doc["slot2MuteVolume"].as<int>());
     restoreBool("slot2DarkMode", settings_.slot2DarkMode);
