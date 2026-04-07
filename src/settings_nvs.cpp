@@ -20,16 +20,18 @@ bool attemptNvsRecovery(const char* activeNs) {
         inactiveNs = SETTINGS_NS_A;
     }
 
+    bool recovered = false;
     if (inactiveNs) {
         Preferences prefs;
         if (prefs.begin(inactiveNs, false)) {
             prefs.clear();
             prefs.end();
             Serial.printf("[Settings] Cleared inactive namespace %s\n", inactiveNs);
+            recovered = true;
         }
     }
 
-    return true;
+    return recovered;
 }
 
 // Obfuscate a string using XOR (same function for encode/decode)
