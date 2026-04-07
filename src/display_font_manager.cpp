@@ -20,10 +20,14 @@ void DisplayFontManager::init(Arduino_Canvas* canvas) {
         return;
     }
 
-    // Determine cache budget based on PSRAM availability
+    // Determine cache budget based on PSRAM availability.
+    // With PSRAM: 96 KB for Segment7/Serpentine, 32 KB for TopCounter.
+    // Holds ~40-60 glyphs at typical sizes; reduces OFR cache churn during
+    // varied-frequency alert sequences.  Internal-SRAM metadata overhead
+    // for this glyph count is ~4-6 KB (safe with WiFi+BLE headroom >30 KB).
     const bool psramOk = psramFound() && (ESP.getPsramSize() > 0);
-    const uint32_t seg7Cache      = psramOk ? 49152u : 8192u;
-    const uint32_t topCounterCache = psramOk ? 16384u : 4096u;
+    const uint32_t seg7Cache      = psramOk ? 98304u : 8192u;   // 96 KB
+    const uint32_t topCounterCache = psramOk ? 32768u : 4096u;  // 32 KB
     numericCacheBytes      = seg7Cache;
     serpentineLoadAttempted = false;
 

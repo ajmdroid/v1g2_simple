@@ -24,16 +24,19 @@ using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 // Convenience alias (matches display.cpp)
 using TextWidthCacheEntry = DisplayFontManager::WidthCacheEntry;
 
-// File-scoped font width caches for frequency displays
-// (LRU computation caches — not render state; render caches are in g_elementCaches)
-static TextWidthCacheEntry s_freqClassicWidthCache[16];
+// File-scoped font width caches for frequency displays.
+// Round-robin computation caches — not render state; render caches are in
+// g_elementCaches.  32 entries keeps eviction rare in busy Ka/K environments
+// where many distinct frequency strings cycle through.  Cost: ~768 bytes BSS
+// per cache (WidthCacheEntry is ~24 bytes with alignment).
+static TextWidthCacheEntry s_freqClassicWidthCache[32];
 static uint8_t s_freqClassicWidthCacheNextSlot = 0;
 static int s_freqClassicCachedNumericWidth = 0;
 static int s_freqClassicCachedDashWidth = 0;
 static int s_freqClassicCachedLaserWidth = 0;
 
 // Serpentine frequency render cache is in g_elementCaches.freqSerpentine
-static TextWidthCacheEntry s_freqSerpentineWidthCache[16];
+static TextWidthCacheEntry s_freqSerpentineWidthCache[32];
 static uint8_t s_freqSerpentineWidthCacheNextSlot = 0;
 
 // Periodic force-redraw for OFR serpentine font to clear any blending artifacts.
