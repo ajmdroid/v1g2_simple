@@ -750,15 +750,15 @@ bool ObdRuntimeModule::discoverBleServices() {
 }
 
 bool ObdRuntimeModule::subscribeBleNotifications() {
-#ifndef UNIT_TEST
-    const uint32_t startUs = PERF_TIMESTAMP_US();
-    const bool subscribed = bleClient_->subscribeNotify([](const uint8_t* data, size_t len) {
-        obdRuntimeModule.onBleData(data, len);
-    });
-    perfRecordObdSubscribeCallUs(PERF_TIMESTAMP_US() - startUs);
-    return subscribed;
-#else
+    // Production subscribe is handled by the transport task in
+    // obdTransportTaskEntry() which routes via sObdTransport.context.runtime
+    // (proper DI).  This method is only called from the UNIT_TEST fallback
+    // path in beginTransportRequest().
+#ifdef UNIT_TEST
     return testSubscribeResult_;
+#else
+    // Should never be reached — production uses the transport queue.
+    return false;
 #endif
 }
 
