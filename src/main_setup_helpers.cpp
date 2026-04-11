@@ -32,6 +32,7 @@
 #include "wifi_manager.h"
 #include "modules/auto_push/auto_push_module.h"
 #include "modules/alert_persistence/alert_persistence_module.h"
+#include "modules/obd/obd_ble_client.h"
 #include "modules/perf/debug_macros.h"
 #include "modules/touch/tap_gesture_module.h"
 #include <driver/gpio.h>
@@ -77,6 +78,26 @@ void prepareForShutdown(void* /*context*/) {
         wifiManager.stopSetupMode(true, "poweroff");
         delay(100);
     }
+
+    // ── BLE teardown ─────────────────────────────────────────────────
+    // Disconnect all BLE peripherals BEFORE deep sleep so remote devices
+    // (V1, OBDLink, ALP) see a proper GAP disconnect and release their
+    // connection slots.  Without this, wake-from-deep-sleep boots into a
+    // fresh NimBLE stack while the remote side still holds a stale link,
+    // blocking reconnection until the remote's supervision timeout fires
+    // (which may never happen on some devices).
+    //
+    // NimBLEDevice::deinit() is banned (see ble_internals.h) — disconnect
+    // only; the stack is destroyed moments later by deep sleep anyway.
+    Serial.println("[Battery] Disconnecting BLE peripherals before sleep...");
+    bleClient.disconnect();
+    obdBleClient.disconnect();
+    // Stop any active scan so the controller isn't mid-operation at sleep entry.
+    NimBLEScan* pScan = NimBLEDevice::getScan();
+    if (pScan && pScan->isScanning()) {
+        pScan->stop();
+    }
+    delay(50);  // Brief settle for disconnect packets to transmit
 
     Serial.println("[Battery] Saving settings...");
     settingsManager.save();
