@@ -70,6 +70,7 @@ struct V1Settings {
     uint16_t colorBar6 = 0xF800;  // Red (strongest)
     // Indicator badge colors
     uint16_t colorObd        = 0x001F;  // Blue OBD badge
+    uint16_t colorAlp        = 0xF800;  // Red ALP badge
     // Volume/RSSI indicator colors
     uint16_t colorVolumeMain = 0xF800;  // Red main volume
     uint16_t colorVolumeMute = 0x7BEF;  // Grey muted volume

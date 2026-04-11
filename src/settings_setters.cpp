@@ -549,6 +549,7 @@ void SettingsManager::applyDisplaySettingsUpdate(const DisplaySettingsUpdate& up
     if (update.hasColorRssiV1) changed |= assignIfChanged(settings_.colorRssiV1, update.colorRssiV1);
     if (update.hasColorRssiProxy) changed |= assignIfChanged(settings_.colorRssiProxy, update.colorRssiProxy);
     if (update.hasColorObd) changed |= assignIfChanged(settings_.colorObd, update.colorObd);
+    if (update.hasColorAlp) changed |= assignIfChanged(settings_.colorAlp, update.colorAlp);
     if (update.hasFreqUseBandColor) changed |= assignIfChanged(settings_.freqUseBandColor, update.freqUseBandColor);
     if (update.hasHideWifiIcon) changed |= assignIfChanged(settings_.hideWifiIcon, update.hideWifiIcon);
     if (update.hasHideProfileIndicator) {
@@ -600,6 +601,7 @@ void SettingsManager::resetDisplaySettings(SettingsPersistMode persistMode) {
     settings_.colorRssiV1 = 0x07E0;
     settings_.colorRssiProxy = 0x001F;
     settings_.colorObd = 0x001F;
+    settings_.colorAlp = 0xF800;
     settings_.freqUseBandColor = false;
 
     persistSettingsByMode(*this, persistMode);

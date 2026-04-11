@@ -173,6 +173,7 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["colorRssiV1"].is<int>()) settings_.colorRssiV1 = sanitizeRgb565Color(doc["colorRssiV1"], 0x07E0);
     if (doc["colorRssiProxy"].is<int>()) settings_.colorRssiProxy = sanitizeRgb565Color(doc["colorRssiProxy"], 0x001F);
     if (doc["colorObd"].is<int>()) settings_.colorObd = sanitizeRgb565Color(doc["colorObd"], 0x001F);
+    if (doc["colorAlp"].is<int>()) settings_.colorAlp = sanitizeRgb565Color(doc["colorAlp"], 0xF800);
     restoreBool("freqUseBandColor", settings_.freqUseBandColor);
 
     // ============================================================================

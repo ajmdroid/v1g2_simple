@@ -93,6 +93,7 @@ void V1Display::showResting(bool forceRedraw) {
         drawMuteIcon(false);
         syncTopIndicators(millis());
         drawObdIndicator();
+        drawAlpIndicator();
 
         // Profile indicator
         drawProfileIndicator(profileSlot);
@@ -188,6 +189,7 @@ void V1Display::showScanning() {
     drawMuteIcon(false);
     syncTopIndicators(millis());
     drawObdIndicator();
+    drawAlpIndicator();
     drawProfileIndicator(currentProfileSlot_);
 
     // Draw "SCAN" in frequency area - match display style

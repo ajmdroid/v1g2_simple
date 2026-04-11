@@ -205,6 +205,7 @@ void SettingsManager::load() {
     settings_.colorRssiV1 = sanitizeRgb565Color(preferences_.getUShort(kNvsColorRssiV1, 0x07E0), 0x07E0);       // Green for V1 RSSI label
     settings_.colorRssiProxy = sanitizeRgb565Color(preferences_.getUShort(kNvsColorRssiProxy, 0x001F), 0x001F);   // Blue for Proxy RSSI label
     settings_.colorObd = sanitizeRgb565Color(preferences_.getUShort(kNvsColorObd, 0x001F), 0x001F);              // Blue OBD badge color
+    settings_.colorAlp = sanitizeRgb565Color(preferences_.getUShort(kNvsColorAlp, 0xF800), 0xF800);              // Red ALP badge color
     settings_.freqUseBandColor = preferences_.getBool(kNvsFreqBandColor, false);  // Use custom freq color by default
     settings_.hideWifiIcon = preferences_.getBool(kNvsHideWifi, false);
     settings_.hideProfileIndicator = preferences_.getBool(kNvsHideProfile, false);

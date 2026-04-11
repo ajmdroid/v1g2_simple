@@ -62,6 +62,7 @@ inline constexpr const char* kNvsColorVolumeMute = "colorVolMute";
 inline constexpr const char* kNvsColorRssiV1     = "colorRssiV1";
 inline constexpr const char* kNvsColorRssiProxy  = "colorRssiPrx";
 inline constexpr const char* kNvsColorObd        = "colorObd";
+inline constexpr const char* kNvsColorAlp        = "colorAlp";
 
 // ── UI toggles ────────────────────────────────────────────────────────────
 inline constexpr const char* kNvsFreqBandColor  = "freqBandCol";

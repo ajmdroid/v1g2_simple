@@ -75,6 +75,7 @@ void V1Display::drawStatusStrip(const DisplayState& state,
     drawBatteryIndicator();
     drawBLEProxyIndicator();
     drawObdIndicator();
+    drawAlpIndicator();
     drawMuteIcon(topMuted);
     drawProfileIndicator(currentProfileSlot_);
 }

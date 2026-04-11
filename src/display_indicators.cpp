@@ -12,6 +12,7 @@
 #include "../include/display_text.h"
 #include "settings.h"
 #include "modules/obd/obd_runtime_module.h"
+#include "modules/alp/alp_runtime_module.h"
 
 // ============================================================================
 // Base frame
@@ -65,11 +66,20 @@ void V1Display::refreshObdIndicator(uint32_t nowMs) {
 }
 
 void V1Display::syncTopIndicators(uint32_t nowMs) {
-    if (!obdRtMod_) return;
-    const ObdRuntimeStatus obdStatus = obdRtMod_->snapshot(nowMs);
-    setObdStatus(obdStatus.enabled,
-                 obdStatus.connected,
-                 obdStatus.scanInProgress || obdStatus.manualScanPending);
+    if (obdRtMod_) {
+        const ObdRuntimeStatus obdStatus = obdRtMod_->snapshot(nowMs);
+        setObdStatus(obdStatus.enabled,
+                     obdStatus.connected,
+                     obdStatus.scanInProgress || obdStatus.manualScanPending);
+    }
+    if (alpRtMod_) {
+        const AlpStatus alpStatus = alpRtMod_->snapshot();
+        alpEnabled_ = (alpStatus.state != AlpState::OFF);
+        alpArmed_ = (alpStatus.state == AlpState::LISTENING ||
+                     alpStatus.state == AlpState::ALERT_ACTIVE ||
+                     alpStatus.state == AlpState::NOISE_WINDOW);
+        alpAlert_ = (alpStatus.state == AlpState::ALERT_ACTIVE);
+    }
 }
 
 // ============================================================================
@@ -113,6 +123,66 @@ void V1Display::drawObdIndicator() {
     TFT_CALL(setTextSize)(2);
     TFT_CALL(setTextColor)(textColor, PALETTE_BG);
     GFX_drawString(tft_, "OBD", x + w / 2, y + h / 2);
+#endif
+}
+
+// ============================================================================
+// ALP indicator ("ALP" text badge — left of MUTED badge)
+// ============================================================================
+
+void V1Display::setAlpRuntimeModule(AlpRuntimeModule* m) {
+    alpRtMod_ = m;
+}
+
+void V1Display::refreshAlpIndicator(uint32_t nowMs) {
+    if (!alpRtMod_) return;
+    const AlpStatus status = alpRtMod_->snapshot();
+    alpEnabled_ = (status.state != AlpState::OFF);
+    alpArmed_ = (status.state == AlpState::LISTENING ||
+                 status.state == AlpState::ALERT_ACTIVE ||
+                 status.state == AlpState::NOISE_WINDOW);
+    alpAlert_ = (status.state == AlpState::ALERT_ACTIVE);
+    drawAlpIndicator();
+}
+
+void V1Display::drawAlpIndicator() {
+#if defined(DISPLAY_WAVESHARE_349)
+    const bool wantShow = alpEnabled_;
+    const bool curArmed = wantShow && alpArmed_;
+    const bool curAlert = wantShow && alpAlert_;
+
+    if (!dirty.alpIndicator &&
+        g_elementCaches.alp.valid &&
+        wantShow == g_elementCaches.alp.lastShown &&
+        curArmed == g_elementCaches.alp.lastArmed &&
+        curAlert == g_elementCaches.alp.lastAlert) {
+        return;
+    }
+    dirty.alpIndicator = false;
+    g_elementCaches.alp.valid = true;
+    g_elementCaches.alp.lastShown = wantShow;
+    g_elementCaches.alp.lastArmed = curArmed;
+    g_elementCaches.alp.lastAlert = curAlert;
+
+    // Position: left of MUTED badge (MUTED is at X=225, Y=5)
+    const int x = 170;
+    const int y = 5;
+    const int h = 26;
+    const int w = 50;
+
+    FILL_RECT(x, y, w, h, PALETTE_BG);
+    if (!wantShow) {
+        return;
+    }
+
+    const V1Settings& s = settingsManager.get();
+    // Armed = user color (default red), idle/disarmed = muted grey
+    const uint16_t textColor = curArmed ? s.colorAlp : s.colorMuted;
+
+    GFX_setTextDatum(MC_DATUM);
+    TFT_CALL(setTextSize)(2);
+    TFT_CALL(setTextColor)(textColor, PALETTE_BG);
+    GFX_drawString(tft_, "ALP", x + w / 2, y + h / 2);
 #endif
 }
 

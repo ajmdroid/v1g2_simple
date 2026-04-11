@@ -37,6 +37,7 @@
 
 enum class PerfDisplayScreen : uint8_t;
 class ObdRuntimeModule;
+class AlpRuntimeModule;
 
 class V1Display {
 public:
@@ -119,6 +120,10 @@ public:
     void setObdRuntimeModule(ObdRuntimeModule* m);
     void setObdAttention(bool attention);
 
+    // ALP indicator (shows armed/alert state left of MUTED badge)
+    void refreshAlpIndicator(uint32_t nowMs);
+    void setAlpRuntimeModule(AlpRuntimeModule* m);
+
     // Flush canvas to physical display
     void flush();
     void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h);  // Partial flush to reduce SPI traffic
@@ -161,6 +166,7 @@ private:
     void drawRssiIndicator(int rssi);                                         // BLE RSSI in dBm
     void drawMuteIcon(bool muted);
     void drawObdIndicator();
+    void drawAlpIndicator();
     void syncTopIndicators(uint32_t nowMs);
     void setObdStatus(bool enabled, bool connected, bool scanAttention = false);
     bool hasFreshBleContext(uint32_t nowMs) const;
@@ -210,6 +216,10 @@ private:
     bool obdScanAttention_ = false;        // Runtime manual scan / scan-pending state
     bool obdAttention_ = false;            // Temporary UI hold-time attention
     ObdRuntimeModule* obdRtMod_ = nullptr; // Injected in begin(); used by syncTopIndicators
+    AlpRuntimeModule* alpRtMod_ = nullptr; // Injected in begin(); used by syncTopIndicators
+    bool alpEnabled_ = false;              // ALP module enabled
+    bool alpArmed_ = false;                // ALP in LISTENING or ALERT_ACTIVE
+    bool alpAlert_ = false;                // ALP in ALERT_ACTIVE specifically
     DisplayBleContext bleCtx_;              // BLE state snapshot for display DI
     uint32_t bleCtxUpdatedAtMs_ = 0;        // When setBleContext() last refreshed bleCtx_
 
