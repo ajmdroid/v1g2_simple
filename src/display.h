@@ -223,6 +223,7 @@ private:
     AlpRuntimeModule* alpRtMod_ = nullptr; // Injected in begin(); used by syncTopIndicators
     bool alpEnabled_ = false;              // ALP module enabled
     uint8_t alpStateRaw_ = 0;              // AlpState cast to uint8_t for badge color selection
+    uint8_t alpHbByte1_ = 0;               // Last B0 heartbeat byte1 (02=warmup, 03=scan, 04=armed)
 
     // ALP frequency-area override: when active, gun abbreviation replaces frequency text
     bool alpFreqOverride_ = false;

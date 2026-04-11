@@ -130,6 +130,7 @@ struct ObdRenderCache {
 struct AlpRenderCache {
     bool lastShown     = false;
     uint8_t lastState  = 0;       // AlpState as uint8_t for change detection
+    uint8_t lastHbByte1 = 0;      // B0 heartbeat byte1 for LISTENING sub-state color
     bool valid         = false;
 
     void invalidate() { valid = false; }
