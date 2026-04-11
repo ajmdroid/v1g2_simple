@@ -76,10 +76,7 @@ void V1Display::syncTopIndicators(uint32_t nowMs) {
     if (alpRtMod_) {
         const AlpStatus alpStatus = alpRtMod_->snapshot();
         alpEnabled_ = (alpStatus.state != AlpState::OFF);
-        alpArmed_ = (alpStatus.state == AlpState::LISTENING ||
-                     alpStatus.state == AlpState::ALERT_ACTIVE ||
-                     alpStatus.state == AlpState::NOISE_WINDOW);
-        alpAlert_ = (alpStatus.state == AlpState::ALERT_ACTIVE);
+        alpStateRaw_ = static_cast<uint8_t>(alpStatus.state);
     }
 }
 
@@ -139,31 +136,24 @@ void V1Display::refreshAlpIndicator(uint32_t nowMs) {
     if (!alpRtMod_) return;
     const AlpStatus status = alpRtMod_->snapshot();
     alpEnabled_ = (status.state != AlpState::OFF);
-    alpArmed_ = (status.state == AlpState::LISTENING ||
-                 status.state == AlpState::ALERT_ACTIVE ||
-                 status.state == AlpState::NOISE_WINDOW);
-    alpAlert_ = (status.state == AlpState::ALERT_ACTIVE);
+    alpStateRaw_ = static_cast<uint8_t>(status.state);
     drawAlpIndicator();
 }
 
 void V1Display::drawAlpIndicator() {
 #if defined(DISPLAY_WAVESHARE_349)
     const bool wantShow = alpEnabled_;
-    const bool curArmed = wantShow && alpArmed_;
-    const bool curAlert = wantShow && alpAlert_;
 
     if (!dirty.alpIndicator &&
         g_elementCaches.alp.valid &&
         wantShow == g_elementCaches.alp.lastShown &&
-        curArmed == g_elementCaches.alp.lastArmed &&
-        curAlert == g_elementCaches.alp.lastAlert) {
+        alpStateRaw_ == g_elementCaches.alp.lastState) {
         return;
     }
     dirty.alpIndicator = false;
     g_elementCaches.alp.valid = true;
     g_elementCaches.alp.lastShown = wantShow;
-    g_elementCaches.alp.lastArmed = curArmed;
-    g_elementCaches.alp.lastAlert = curAlert;
+    g_elementCaches.alp.lastState = alpStateRaw_;
 
     // Position: left of MUTED badge (MUTED is at X=225, Y=5)
     const int x = 170;
@@ -176,9 +166,29 @@ void V1Display::drawAlpIndicator() {
         return;
     }
 
+    // Four badge colors matching ALP control pad LED:
+    //   Grey   — IDLE: enabled, no heartbeats yet
+    //   Green  — LISTENING: connected, receiving heartbeats
+    //   Orange — TEARDOWN: rescanning after alert
+    //   Blue   — ALERT_ACTIVE / NOISE_WINDOW: armed and detecting
     const V1Settings& s = settingsManager.get();
-    // Armed = user color (default red), idle/disarmed = muted grey
-    const uint16_t textColor = curArmed ? s.colorAlp : s.colorMuted;
+    const AlpState alpState = static_cast<AlpState>(alpStateRaw_);
+    uint16_t textColor;
+    switch (alpState) {
+        case AlpState::ALERT_ACTIVE:
+        case AlpState::NOISE_WINDOW:
+            textColor = s.colorAlpArmed;      // Blue — armed / active jam
+            break;
+        case AlpState::TEARDOWN:
+            textColor = s.colorAlpScan;       // Orange — rescanning
+            break;
+        case AlpState::LISTENING:
+            textColor = s.colorAlpConnected;  // Green — connected idle
+            break;
+        default:
+            textColor = s.colorMuted;         // Grey — IDLE / OFF
+            break;
+    }
 
     GFX_setTextDatum(MC_DATUM);
     TFT_CALL(setTextSize)(2);

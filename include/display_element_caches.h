@@ -129,8 +129,7 @@ struct ObdRenderCache {
 // --- ALP indicator render cache -------------------------------------------
 struct AlpRenderCache {
     bool lastShown     = false;
-    bool lastArmed     = false;   // true = LISTENING or ALERT_ACTIVE
-    bool lastAlert     = false;   // true = ALERT_ACTIVE specifically
+    uint8_t lastState  = 0;       // AlpState as uint8_t for change detection
     bool valid         = false;
 
     void invalidate() { valid = false; }

@@ -127,7 +127,9 @@ struct V1Settings {
     uint16_t colorRssiV1;        // RSSI indicator V1 label color
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
     uint16_t colorObd;           // OBD "OBD" status text color when connected
-    uint16_t colorAlp;           // ALP "ALP" status text color when armed
+    uint16_t colorAlpConnected;  // ALP badge: green — connected, idle
+    uint16_t colorAlpScan;       // ALP badge: orange — scanning / rescan
+    uint16_t colorAlpArmed;      // ALP badge: blue — armed, ready to jam
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
 
     // Display visibility settings
@@ -278,7 +280,9 @@ struct V1Settings {
         colorRssiV1(0x07E0),     // Green (V1 RSSI label) — matches NVS default
         colorRssiProxy(0x001F),  // Blue (proxy RSSI label) — matches NVS default
         colorObd(0x001F),         // Blue OBD badge (matches existing BLE disconnected icon default)
-        colorAlp(0xF800),         // Red ALP badge when armed — high visibility
+        colorAlpConnected(0x07E0), // Green ALP badge — connected, idle
+        colorAlpScan(0xFD20),      // Orange ALP badge — scanning / rescan
+        colorAlpArmed(0x001F),     // Blue ALP badge — armed, ready to jam
         freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
@@ -573,8 +577,12 @@ struct DisplaySettingsUpdate {
     uint16_t colorRssiProxy = 0;
     bool hasColorObd = false;
     uint16_t colorObd = 0;
-    bool hasColorAlp = false;
-    uint16_t colorAlp = 0;
+    bool hasColorAlpConnected = false;
+    uint16_t colorAlpConnected = 0;
+    bool hasColorAlpScan = false;
+    uint16_t colorAlpScan = 0;
+    bool hasColorAlpArmed = false;
+    uint16_t colorAlpArmed = 0;
     bool hasFreqUseBandColor = false;
     bool freqUseBandColor = false;
     bool hasHideWifiIcon = false;

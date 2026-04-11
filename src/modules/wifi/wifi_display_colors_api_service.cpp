@@ -105,7 +105,9 @@ void handleApiSave(WebServer& server,
     if (server.hasArg("rssiV1")) { update.hasColorRssiV1 = true; update.colorRssiV1 = server.arg("rssiV1").toInt(); }
     if (server.hasArg("rssiProxy")) { update.hasColorRssiProxy = true; update.colorRssiProxy = server.arg("rssiProxy").toInt(); }
     if (server.hasArg("obd")) { update.hasColorObd = true; update.colorObd = server.arg("obd").toInt(); }
-    if (server.hasArg("alp")) { update.hasColorAlp = true; update.colorAlp = server.arg("alp").toInt(); }
+    if (server.hasArg("alpConnected")) { update.hasColorAlpConnected = true; update.colorAlpConnected = server.arg("alpConnected").toInt(); }
+    if (server.hasArg("alpScan")) { update.hasColorAlpScan = true; update.colorAlpScan = server.arg("alpScan").toInt(); }
+    if (server.hasArg("alpArmed")) { update.hasColorAlpArmed = true; update.colorAlpArmed = server.arg("alpArmed").toInt(); }
 
     // Display toggles
     if (server.hasArg("freqUseBandColor")) { update.hasFreqUseBandColor = true; update.freqUseBandColor = argBool("freqUseBandColor", s.freqUseBandColor); }
@@ -252,7 +254,9 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["rssiV1"] = s.colorRssiV1;
     doc["rssiProxy"] = s.colorRssiProxy;
     doc["obd"] = s.colorObd;
-    doc["alp"] = s.colorAlp;
+    doc["alpConnected"] = s.colorAlpConnected;
+    doc["alpScan"] = s.colorAlpScan;
+    doc["alpArmed"] = s.colorAlpArmed;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;

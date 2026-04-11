@@ -105,15 +105,20 @@ void DisplayPipelineModule::handleParsed(uint32_t nowMs) {
     const V1Settings& settingsRef = settings_->get();
 
     // ── ALP frequency-area override ────────────────────────────────────
-    // When ALP is actively detecting laser, the gun abbreviation replaces
-    // the frequency display. ALP laser overrides everything — even Ka.
-    const bool alpActive = alp_ && alp_->isAlertActive();
-    if (alpActive) {
+    // When ALP is actively detecting or rescanning (TEARDOWN), the gun
+    // abbreviation replaces the frequency display. Shows the last gun
+    // that fired through alert → noise → teardown (rescan) cycle.
+    // ALP laser overrides everything — even Ka.
+    const bool alpShowGun = alp_ && (alp_->isAlertActive() ||
+                                      alp_->getState() == AlpState::TEARDOWN);
+    if (alpShowGun && alp_->lastIdentifiedGun() != AlpGunType::UNKNOWN) {
         const char* abbrev = alpGunAbbrev(alp_->lastIdentifiedGun());
         display_->setAlpFrequencyOverride(abbrev);
     } else {
         display_->clearAlpFrequencyOverride();
     }
+    // For synthetic alert rendering when V1 has no alerts
+    const bool alpActive = alp_ && alp_->isAlertActive();
 
     // No mute debounce — trust the parser's muted state directly.
     // No display throttle — element caches handle SPI saturation.
@@ -247,12 +252,15 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
         hasAlerts && parser_->getRenderablePriorityAlert(priority);
 
     // Restore ALP override state
-    const bool alpActive = alp_ && alp_->isAlertActive();
-    if (alpActive) {
+    // Restore ALP override state (same logic as handleParsed)
+    const bool alpShowGun = alp_ && (alp_->isAlertActive() ||
+                                      alp_->getState() == AlpState::TEARDOWN);
+    if (alpShowGun && alp_->lastIdentifiedGun() != AlpGunType::UNKNOWN) {
         display_->setAlpFrequencyOverride(alpGunAbbrev(alp_->lastIdentifiedGun()));
     } else {
         display_->clearAlpFrequencyOverride();
     }
+    const bool alpActive = alp_ && alp_->isAlertActive();
 
     if (hasAlerts) {
         *displayMode_ = DisplayMode::LIVE;

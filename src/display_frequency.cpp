@@ -111,7 +111,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
 
     uint16_t freqColor;
     if (isAlpOverride) {
-        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorAlp;
+        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorAlpArmed;
     } else if (usingOfr) {
         if (band == BAND_LASER) {
             freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
@@ -318,7 +318,7 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
 
     uint16_t freqColor;
     if (isAlpOverrideSerpentine) {
-        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorAlp;
+        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorAlpArmed;
     } else if (band == BAND_LASER) {
         freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
     } else if (muted) {

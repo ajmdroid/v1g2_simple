@@ -222,8 +222,7 @@ private:
     ObdRuntimeModule* obdRtMod_ = nullptr; // Injected in begin(); used by syncTopIndicators
     AlpRuntimeModule* alpRtMod_ = nullptr; // Injected in begin(); used by syncTopIndicators
     bool alpEnabled_ = false;              // ALP module enabled
-    bool alpArmed_ = false;                // ALP in LISTENING or ALERT_ACTIVE
-    bool alpAlert_ = false;                // ALP in ALERT_ACTIVE specifically
+    uint8_t alpStateRaw_ = 0;              // AlpState cast to uint8_t for badge color selection
 
     // ALP frequency-area override: when active, gun abbreviation replaces frequency text
     bool alpFreqOverride_ = false;
