@@ -431,6 +431,9 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUChar(kNvsObdAddressType, settings_.obdSavedAddrType);
     written += prefs.putChar(kNvsObdMinRssi, settings_.obdMinRssi);
 
+    // ALP settings
+    written += prefs.putBool(kNvsAlpEnabled, settings_.alpEnabled);
+
     // NVS validity marker - used to detect if NVS was wiped.
     // Written LAST so its presence proves the entire write completed.
     written += prefs.putInt(kNvsValid, SETTINGS_VERSION);

@@ -123,7 +123,7 @@ void handleApiSave(WebServer& server, const Runtime& runtime) {
         int fadeVolume = server.arg("alertVolumeFadeVolume").toInt();
         update.hasAlertVolumeFadeVolume = true;
         update.alertVolumeFadeVolume =
-            static_cast<uint8_t>(std::max(0, std::min(fadeVolume, 9)));
+            static_cast<uint8_t>(std::max(1, std::min(fadeVolume, 9)));
     }
     if (server.hasArg("speedMuteEnabled")) {
         update.hasSpeedMuteEnabled = true;

@@ -73,6 +73,7 @@ void tearDown() {}
 
 void test_ble_queue_parses_display_packet_into_display_state() {
     // payload: bogey='5', led bars=3, K band+front arrow+mute, volume=5/2
+    // V1 ESP protocol: last byte of payload region is the checksum.
     const std::vector<uint8_t> payload = {
         109,   // bogey counter byte ('5')
         0x00,  // image2 of bogey counter (unused)
@@ -81,12 +82,16 @@ void test_ble_queue_parses_display_packet_into_display_state() {
         0x34,  // image2: steady same bits
         0x00,  // aux0
         0x00,  // aux1
-        0x52   // aux2: main=5, mute=2
+        0x52,  // aux2: main=5, mute=2
+        0x00   // checksum (dummy)
     };
     const std::vector<uint8_t> packet = makePacket(PACKET_ID_DISPLAY_DATA, payload);
 
     mockMillis = 2500;
     mockMicros = 2500 * 1000UL;
+    // Mute requires 2 consecutive display packets with bit set.
+    bleQueue.onNotify(packet.data(), packet.size(), 0xB2CE);
+    bleQueue.process();
     bleQueue.onNotify(packet.data(), packet.size(), 0xB2CE);
     bleQueue.process();
 
@@ -100,12 +105,12 @@ void test_ble_queue_parses_display_packet_into_display_state() {
 
     TEST_ASSERT_TRUE(bleQueue.consumeParsedFlag());
     TEST_ASSERT_EQUAL_UINT32(2500, bleQueue.getLastParsedTimestamp());
-    TEST_ASSERT_EQUAL(1, power.onV1DataReceivedCalls);
+    TEST_ASSERT_EQUAL(2, power.onV1DataReceivedCalls);  // 2 packets for mute confirm
 }
 
 void test_ble_queue_publishes_parsed_event_to_bus() {
     const std::vector<uint8_t> payload = {
-        0x3F, 0x00, 0x01, 0x02, 0x02, 0x00, 0x00, 0x41
+        0x3F, 0x00, 0x01, 0x02, 0x02, 0x00, 0x00, 0x41, 0x00
     };
     const std::vector<uint8_t> packet = makePacket(PACKET_ID_DISPLAY_DATA, payload);
 
@@ -125,10 +130,10 @@ void test_ble_queue_publishes_parsed_event_to_bus() {
 
 void test_ble_queue_coalesces_parsed_events_per_process_cycle() {
     const std::vector<uint8_t> payloadA = {
-        109, 0x00, 0x07, 0x34, 0x34, 0x00, 0x00, 0x52
+        109, 0x00, 0x07, 0x34, 0x34, 0x00, 0x00, 0x52, 0x00
     };
     const std::vector<uint8_t> payloadB = {
-        0x3F, 0x00, 0x01, 0x02, 0x02, 0x00, 0x00, 0x41
+        0x3F, 0x00, 0x01, 0x02, 0x02, 0x00, 0x00, 0x41, 0x00
     };
 
     const std::vector<uint8_t> packetA = makePacket(PACKET_ID_DISPLAY_DATA, payloadA);
@@ -148,7 +153,7 @@ void test_ble_queue_coalesces_parsed_events_per_process_cycle() {
 
 void test_ble_queue_resyncs_after_corrupt_prefix_in_single_notify() {
     const std::vector<uint8_t> payload = {
-        109, 0x00, 0x07, 0x34, 0x34, 0x00, 0x00, 0x52
+        109, 0x00, 0x07, 0x34, 0x34, 0x00, 0x00, 0x52, 0x00
     };
     const std::vector<uint8_t> packet = makePacket(PACKET_ID_DISPLAY_DATA, payload);
     std::vector<uint8_t> bytes = {0x00, 0x55, 0x99, 0xAB};
@@ -176,7 +181,7 @@ void test_ble_queue_resyncs_after_corrupt_prefix_in_single_notify() {
 
 void test_ble_queue_recovers_after_buffer_without_start_marker() {
     const std::vector<uint8_t> payload = {
-        0x3F, 0x00, 0x01, 0x02, 0x02, 0x00, 0x00, 0x41
+        0x3F, 0x00, 0x01, 0x02, 0x02, 0x00, 0x00, 0x41, 0x00
     };
     const std::vector<uint8_t> packet = makePacket(PACKET_ID_DISPLAY_DATA, payload);
     const std::vector<uint8_t> garbage = {0x01, 0x02, 0x03, 0x04, 0x05};

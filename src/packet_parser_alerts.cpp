@@ -128,7 +128,10 @@ bool PacketParser::parseAlertData(const uint8_t* payload, size_t length) {
         clearAlertCache();
         // DON'T clear signalBars here - parseDisplayData reads V1's LED bitmap.
         displayState_.arrows = DIR_NONE;
-        displayState_.muted = false;
+        // DON'T clear muted here — mute state is authoritative from
+        // parseDisplayData() (InfDisplayData soft-mute bit + volume==0).
+        // Clearing it here races the display packet path and causes
+        // mute indicator flash on every count=0 alert packet.
         displayState_.hasJunkAlert = false;
         displayState_.hasPhotoAlert = false;
         return true;

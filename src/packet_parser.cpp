@@ -249,23 +249,32 @@ bool PacketParser::parseDisplayData(const uint8_t* payload, size_t length) {
     if (arrow.side)  displayState_.arrows = static_cast<Direction>(displayState_.arrows | DIR_SIDE);
     if (arrow.rear)  displayState_.arrows = static_cast<Direction>(displayState_.arrows | DIR_REAR);
 
-    // Always trust display packet's mute flag - V1 logic mute shows here
-    // even when individual alert entries don't have mute bit set
-    displayState_.muted = arrow.mute;
+    // Mute from image1 bit 4.  Single-packet transients (V1 internal display
+    // transitions) can briefly set this bit even when unmuted.  Require two
+    // consecutive display packets with the bit set before committing to
+    // muted=true.  Transition to unmuted is instant — no delay on unmute.
+    const bool rawMuteBit = (image1 & 0x10) != 0;
+    if (rawMuteBit) {
+        if (displayMuteConfirmCount_ < 2) {
+            ++displayMuteConfirmCount_;
+        }
+    } else {
+        displayMuteConfirmCount_ = 0;
+    }
+    displayState_.muted = (displayMuteConfirmCount_ >= 2);
 
-    // Extract volume from auxData2 - in raw packet it's at data[12]
-    // Since we stripped 5 bytes (header), it's payload[7]
+    // Extract volume from auxData2 — payload[7] when the payload region has at
+    // least 9 bytes (8 display data + checksum).  The V1 ESP protocol includes a
+    // checksum as the last byte within the payloadLen region, so the actual
+    // display data ends one byte before the reported payloadLen.  Guard with
+    // length > 8 to avoid misreading the checksum as volume, which can produce a
+    // false mainVolume==0 and trigger spurious muted state.
     // mainVol = upper nibble, muteVol = lower nibble
-    if (length > 7) {
+    if (length > 8) {
         uint8_t auxData2 = payload[7];
         displayState_.mainVolume = (auxData2 & 0xF0) >> 4;
         displayState_.muteVolume = auxData2 & 0x0F;
         displayState_.hasVolumeData = true;  // Mark that we've received volume data
-
-        // Consider muted if mute flag is set OR if main volume is zero
-        if (displayState_.mainVolume == 0) {
-            displayState_.muted = true;
-        }
     }
 
     // V1 sends LED bar state directly in the display packet at payload[2]

@@ -176,7 +176,7 @@ void test_parsed_frame_executes_volume_fade_when_pipeline_runs() {
     TEST_ASSERT_EQUAL_UINT8(1, ble.lastMuteVolume);
 }
 
-void test_lightweight_refresh_updates_frequency_and_cards() {
+void test_lightweight_refresh_reports_priority_active() {
     ble.setConnected(true);
     preview.setRunning(false);
 
@@ -196,57 +196,9 @@ void test_lightweight_refresh_updates_frequency_and_cards() {
     const auto result = module.processLightweightRefresh(ctx);
 
     TEST_ASSERT_TRUE(result.signalPriorityActive);
-    TEST_ASSERT_EQUAL(1, display.refreshFrequencyOnlyCalls);
-    TEST_ASSERT_EQUAL(35500u, display.lastFrequencyMHz);
-    TEST_ASSERT_EQUAL(1, display.refreshSecondaryAlertCardsCalls);
-    TEST_ASSERT_EQUAL(1, display.lastSecondaryAlertCount);
 }
 
-void test_lightweight_refresh_falls_back_from_invalid_priority() {
-    ble.setConnected(true);
-    preview.setRunning(false);
-
-    parser.state.muted = false;
-    parser.state.hasPhotoAlert = false;
-    parser.state.bogeyCounterChar = '3';
-    parser.hasAlertsFlag = true;
-    parser.priorityAlert = AlertData::create(BAND_NONE, DIR_NONE, 0, 0, 0, true, false);
-    parser.alerts = {
-        AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24150, true, false),
-        AlertData::create(BAND_KA, DIR_REAR, 5, 0, 33820, true, false)
-    };
-
-    DisplayOrchestrationRefreshContext ctx;
-    ctx.nowMs = 500;
-    ctx.bootSplashHoldActive = false;
-    ctx.overloadLateThisLoop = true;
-    ctx.pipelineRanThisLoop = false;
-
-    const auto result = module.processLightweightRefresh(ctx);
-
-    TEST_ASSERT_TRUE(result.signalPriorityActive);
-    TEST_ASSERT_EQUAL(1, display.refreshFrequencyOnlyCalls);
-    TEST_ASSERT_EQUAL(24150u, display.lastFrequencyMHz);
-    TEST_ASSERT_EQUAL(BAND_K, display.lastFrequencyBand);
-}
-
-void test_pipeline_draw_resets_frequency_timer_for_same_tick() {
-    ble.setConnected(true);
-    parser.setAlerts({
-        AlertData::create(BAND_K, DIR_FRONT, 4, 0, 24150, true, true)
-    });
-
-    DisplayOrchestrationRefreshContext ctx;
-    ctx.nowMs = 1000;
-    ctx.bootSplashHoldActive = false;
-    ctx.overloadLateThisLoop = false;
-    ctx.pipelineRanThisLoop = true;
-
-    module.processLightweightRefresh(ctx);
-    TEST_ASSERT_EQUAL(0, display.refreshFrequencyOnlyCalls);
-}
-
-void test_lightweight_refresh_clears_frequency_when_idle() {
+void test_lightweight_refresh_reports_inactive_when_idle() {
     ble.setConnected(true);
     preview.setRunning(false);
     parser.reset();
@@ -260,28 +212,6 @@ void test_lightweight_refresh_clears_frequency_when_idle() {
     const auto result = module.processLightweightRefresh(ctx);
 
     TEST_ASSERT_FALSE(result.signalPriorityActive);
-    TEST_ASSERT_EQUAL(1, display.refreshFrequencyOnlyCalls);
-    TEST_ASSERT_EQUAL(0u, display.lastFrequencyMHz);
-    TEST_ASSERT_EQUAL(BAND_NONE, display.lastFrequencyBand);
-}
-
-void test_lightweight_refresh_does_not_touch_frequency_while_preview_running() {
-    ble.setConnected(true);
-    preview.setRunning(true);
-    parser.setAlerts({
-        AlertData::create(BAND_KA, DIR_FRONT, 6, 0, 35500, true, true)
-    });
-
-    DisplayOrchestrationRefreshContext ctx;
-    ctx.nowMs = 500;
-    ctx.bootSplashHoldActive = false;
-    ctx.overloadLateThisLoop = false;
-    ctx.pipelineRanThisLoop = false;
-
-    module.processLightweightRefresh(ctx);
-
-    TEST_ASSERT_EQUAL(0, display.refreshFrequencyOnlyCalls);
-    TEST_ASSERT_EQUAL(0, display.refreshSecondaryAlertCardsCalls);
 }
 
 // --- Speed volume tests ---
@@ -564,11 +494,8 @@ int main() {
     RUN_TEST(test_parsed_frame_skips_pipeline_when_preview_running);
     RUN_TEST(test_parsed_frame_syncs_speedvol_zero_presentation_from_coordinator);
     RUN_TEST(test_parsed_frame_executes_volume_fade_when_pipeline_runs);
-    RUN_TEST(test_lightweight_refresh_updates_frequency_and_cards);
-    RUN_TEST(test_lightweight_refresh_falls_back_from_invalid_priority);
-    RUN_TEST(test_pipeline_draw_resets_frequency_timer_for_same_tick);
-    RUN_TEST(test_lightweight_refresh_clears_frequency_when_idle);
-    RUN_TEST(test_lightweight_refresh_does_not_touch_frequency_while_preview_running);
+    RUN_TEST(test_lightweight_refresh_reports_priority_active);
+    RUN_TEST(test_lightweight_refresh_reports_inactive_when_idle);
     RUN_TEST(test_speed_vol_drops_volume_when_mute_active);
     RUN_TEST(test_speed_vol_confirmed_by_v1_holds_steady);
     RUN_TEST(test_speed_vol_retries_until_v1_confirms_drop);

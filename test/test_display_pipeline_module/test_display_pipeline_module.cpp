@@ -25,7 +25,6 @@ static int g_voiceProcessCalls = 0;
 void perfRecordDisplayRenderUs(uint32_t /*us*/) {}
 void perfRecordDisplayScenarioRenderUs(uint32_t /*us*/) {}
 void perfRecordDisplayVoiceUs(uint32_t /*us*/) {}
-void perfRecordDisplayGapRecoverUs(uint32_t /*us*/) {}
 void perfSetDisplayRenderScenario(PerfDisplayRenderScenario /*scenario*/) {}
 PerfDisplayRenderScenario perfGetDisplayRenderScenario() { return PerfDisplayRenderScenario::None; }
 void perfClearDisplayRenderScenario() {}
@@ -347,41 +346,6 @@ void test_restore_current_owner_restores_live_display_when_alerts_present() {
     TEST_ASSERT_EQUAL(1, display.forceNextRedrawCalls);
 }
 
-void test_alert_gap_recovery_throttle_is_instance_owned() {
-    PacketParser parserA;
-    PacketParser parserB;
-    V1BLEClient bleA;
-    V1BLEClient bleB;
-    V1Display displayA;
-    V1Display displayB;
-    AlertPersistenceModule persistenceA;
-    AlertPersistenceModule persistenceB;
-    VoiceModule voiceA;
-    VoiceModule voiceB;
-    DisplayMode modeA = DisplayMode::IDLE;
-    DisplayMode modeB = DisplayMode::IDLE;
-    DisplayPipelineModule moduleA;
-    DisplayPipelineModule moduleB;
-    QuietCoordinatorModule quietA;
-    QuietCoordinatorModule quietB;
-
-    parserA.setActiveBands(BAND_K);
-    parserB.setActiveBands(BAND_K);
-    quietA.begin(&bleA, &parserA);
-    quietB.begin(&bleB, &parserB);
-
-    moduleA.begin(&modeA, &displayA, &parserA, &settingsManager, &bleA, &persistenceA, &voiceA, &quietA);
-    moduleB.begin(&modeB, &displayB, &parserB, &settingsManager, &bleB, &persistenceB, &voiceB, &quietB);
-
-    mockMillis = 1000;
-    mockMicros = 1000 * 1000UL;
-    moduleA.handleParsed(1000);
-    moduleB.handleParsed(1000);
-
-    TEST_ASSERT_EQUAL(1, bleA.requestAlertDataCalls);
-    TEST_ASSERT_EQUAL(1, bleB.requestAlertDataCalls);
-}
-
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_handle_parsed_updates_live_display_when_alert_present);
@@ -392,6 +356,5 @@ int main() {
     RUN_TEST(test_handle_parsed_uses_quiet_coordinator_for_ka_vol_zero_bypass);
     RUN_TEST(test_restore_current_owner_shows_scanning_when_ble_is_disconnected);
     RUN_TEST(test_restore_current_owner_restores_live_display_when_alerts_present);
-    RUN_TEST(test_alert_gap_recovery_throttle_is_instance_owned);
     return UNITY_END();
 }

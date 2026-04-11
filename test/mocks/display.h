@@ -80,15 +80,7 @@ public:
     int lastSettingsVolume = 0;
     int lastSettingsActiveSlider = -1;
     int activeSliderFromTouch = -1;
-    int refreshFrequencyOnlyCalls = 0;
-    uint32_t lastFrequencyMHz = 0;
-    int lastFrequencyBand = 0;
-    bool lastFrequencyMuted = false;
-    bool lastFrequencyPhotoRadar = false;
     int lastAlertUpdateCount = 0;
-    int refreshSecondaryAlertCardsCalls = 0;
-    int lastSecondaryAlertCount = 0;
-    bool lastSecondaryMuted = false;
 
     // Static method tracking
     static int resetChangeTrackingCalls;
@@ -136,15 +128,7 @@ public:
         lastSettingsVolume = 0;
         lastSettingsActiveSlider = -1;
         activeSliderFromTouch = -1;
-        refreshFrequencyOnlyCalls = 0;
-        lastFrequencyMHz = 0;
-        lastFrequencyBand = 0;
-        lastFrequencyMuted = false;
-        lastFrequencyPhotoRadar = false;
         lastAlertUpdateCount = 0;
-        refreshSecondaryAlertCardsCalls = 0;
-        lastSecondaryAlertCount = 0;
-        lastSecondaryMuted = false;
         resetChangeTrackingCalls = 0;
     }
 
@@ -221,21 +205,6 @@ public:
         lastFlushY = y;
         lastFlushW = w;
         lastFlushH = h;
-    }
-
-    void refreshFrequencyOnly(uint32_t freqMHz, int band, bool muted, bool isPhotoRadar = false) {
-        refreshFrequencyOnlyCalls++;
-        lastFrequencyMHz = freqMHz;
-        lastFrequencyBand = band;
-        lastFrequencyMuted = muted;
-        lastFrequencyPhotoRadar = isPhotoRadar;
-    }
-
-    void refreshSecondaryAlertCards(const AlertData* /*alerts*/, int alertCount,
-                                    const AlertData& /*priority*/, bool muted = false) {
-        refreshSecondaryAlertCardsCalls++;
-        lastSecondaryAlertCount = alertCount;
-        lastSecondaryMuted = muted;
     }
 
     void setBrightness(uint8_t /*level*/) {}

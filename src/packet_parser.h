@@ -67,6 +67,7 @@ private:
     DisplayState displayState_;
     std::array<AlertData, MAX_ALERTS> alerts_;
     size_t alertCount_;
+    uint8_t displayMuteConfirmCount_ = 0;  // consecutive display packets with mute bit set
     std::array<std::array<uint8_t, 8>, RAW_ALERT_INDEX_SLOTS> alertChunks_;  // raw alert rows by payload index
     std::array<bool, RAW_ALERT_INDEX_SLOTS> alertChunkPresent_;
     std::array<uint8_t, RAW_ALERT_INDEX_SLOTS> alertChunkCountTag_;

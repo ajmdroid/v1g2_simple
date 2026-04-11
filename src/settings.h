@@ -158,7 +158,7 @@ struct V1Settings {
     // Volume fade (reduce V1 volume after initial alert period)
     bool alertVolumeFadeEnabled;    // Enable volume fade feature
     uint8_t alertVolumeFadeDelaySec; // Seconds at full volume before fading (1-10)
-    uint8_t alertVolumeFadeVolume;  // Volume to fade to (0-9)
+    uint8_t alertVolumeFadeVolume;  // Volume to fade to (1-9; 0 triggers V1 mute feedback loop)
 
     // Speed-aware muting (suppress alerts below speed threshold)
     bool speedMuteEnabled;           // Enable speed-based auto-muting
@@ -233,6 +233,9 @@ struct V1Settings {
     String obdSavedName;         // Optional friendly name for the saved OBD adapter
     uint8_t obdSavedAddrType;    // Saved BLE address type (0=public, 1=random)
     int8_t obdMinRssi;           // Minimum RSSI for scan acceptance (dBm)
+
+    // ALP (Active Laser Protection) settings
+    bool alpEnabled;             // Enable ALP UART listener module
 
     // Default constructor with sensible defaults
     V1Settings() :
@@ -336,7 +339,8 @@ struct V1Settings {
         obdSavedAddress(""),     // No saved device
         obdSavedName(""),        // No friendly name
         obdSavedAddrType(0),     // Default PUBLIC address type
-        obdMinRssi(-90) {}       // Default -90 dBm minimum RSSI
+        obdMinRssi(-90),         // Default -90 dBm minimum RSSI
+        alpEnabled(false) {}     // ALP disabled by default
 
     static uint8_t normalizeAutoPushSlotIndex(int slotNum) {
         return slotNum == 1 ? 1 : (slotNum == 2 ? 2 : 0);
@@ -454,6 +458,9 @@ struct DeviceSettingsUpdate {
 
     bool hasEnableWifiAtBoot = false;
     bool enableWifiAtBoot = false;
+
+    bool hasAlpEnabled = false;
+    bool alpEnabled = false;
 };
 
 struct AudioSettingsUpdate {

@@ -68,6 +68,9 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["obdSavedAddrType"] = settings.obdSavedAddrType;
     doc["obdMinRssi"] = settings.obdMinRssi;
 
+    // ALP settings
+    doc["alpEnabled"] = settings.alpEnabled;
+
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);

@@ -54,7 +54,9 @@ std::vector<uint8_t> makeDisplayPayload(uint8_t bogeyByte,
                                         uint8_t aux0 = 0,
                                         uint8_t aux1 = 0,
                                         uint8_t aux2 = 0) {
-    return std::vector<uint8_t>{bogeyByte, 0x00, barBitmap, image1, image2, aux0, aux1, aux2};
+    // V1 ESP protocol: last byte of payload region is the checksum.
+    // Append a dummy checksum (0x00) to match the real wire format.
+    return std::vector<uint8_t>{bogeyByte, 0x00, barBitmap, image1, image2, aux0, aux1, aux2, 0x00};
 }
 
 std::vector<uint8_t> makeVersionPayload(char major,
@@ -62,13 +64,15 @@ std::vector<uint8_t> makeVersionPayload(char major,
                                         char rev1,
                                         char rev2,
                                         char ctrl) {
+    // V1 ESP protocol: last byte of payload region is the checksum.
     return std::vector<uint8_t>{0x00,
                                 static_cast<uint8_t>('V'),
                                 static_cast<uint8_t>(major),
                                 static_cast<uint8_t>(minor),
                                 static_cast<uint8_t>(rev1),
                                 static_cast<uint8_t>(rev2),
-                                static_cast<uint8_t>(ctrl)};
+                                static_cast<uint8_t>(ctrl),
+                                0x00};
 }
 
 }  // namespace
@@ -88,12 +92,18 @@ void test_parse_display_packet_updates_render_state() {
         static_cast<uint8_t>(115 | 0x80),  // 'P' with decimal point
         0x03,                              // 2 bars
         0x52,                              // Ka + side + mute
-        0x42,                              // steady side only
+        0x42,                              // steady: Ka + side (mute not steady — flashing)
         0x00,
         0x04,                              // mode=A
         0x73);                             // main=7 mute=3
     const auto packet = makePacket(PACKET_ID_DISPLAY_DATA, payload);
 
+    // Mute requires 2 consecutive display packets with bit set.
+    // First packet: confirm count reaches 1 — not yet muted.
+    TEST_ASSERT_TRUE(parser.parse(packet.data(), packet.size()));
+    TEST_ASSERT_FALSE(parser.getDisplayState().muted);
+
+    // Second packet: confirm count reaches 2 — now muted.
     TEST_ASSERT_TRUE(parser.parse(packet.data(), packet.size()));
 
     const DisplayState& state = parser.getDisplayState();
@@ -112,14 +122,19 @@ void test_parse_display_packet_updates_render_state() {
     TEST_ASSERT_EQUAL_UINT8(0x00, state.flashBits);
 }
 
-void test_parse_display_packet_zero_volume_forces_muted() {
+void test_parse_display_packet_zero_volume_does_not_force_muted() {
     PacketParser parser;
+    // image1=0x20 (front arrow, no mute bit), aux2=0x00 (mainVol=0, muteVol=0)
     const auto packet = makePacket(
         PACKET_ID_DISPLAY_DATA,
         makeDisplayPayload(63, 0x01, 0x20, 0x20, 0x00, 0x00, 0x00));
 
     TEST_ASSERT_TRUE(parser.parse(packet.data(), packet.size()));
-    TEST_ASSERT_TRUE(parser.getDisplayState().muted);
+    // Mute state comes exclusively from image1 bit 4 — zero volume does not
+    // imply muted.  This prevents false muted flashes when the checksum byte
+    // is misread as volume data on short-payload display packets.
+    TEST_ASSERT_FALSE(parser.getDisplayState().muted);
+    TEST_ASSERT_EQUAL_UINT8(0, parser.getDisplayState().mainVolume);
 }
 
 void test_parse_packet_rejects_six_byte_frame() {
@@ -234,7 +249,7 @@ int main(int argc, char** argv) {
     (void)argv;
     UNITY_BEGIN();
     RUN_TEST(test_parse_display_packet_updates_render_state);
-    RUN_TEST(test_parse_display_packet_zero_volume_forces_muted);
+    RUN_TEST(test_parse_display_packet_zero_volume_does_not_force_muted);
     RUN_TEST(test_parse_packet_rejects_six_byte_frame);
     RUN_TEST(test_parse_packet_rejects_seven_byte_frame);
     RUN_TEST(test_parse_packet_rejects_bad_framing);

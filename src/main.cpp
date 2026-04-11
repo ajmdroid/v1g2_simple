@@ -81,6 +81,7 @@
 #include "modules/obd/obd_runtime_module.h"
 #include "modules/obd/obd_ble_client.h"
 #include "modules/obd/obd_settings_sync_module.h"
+#include "modules/alp/alp_runtime_module.h"
 #include "modules/wifi/wifi_boot_policy.h"
 #include "modules/wifi/wifi_auto_start_module.h"
 #include "modules/wifi/wifi_priority_policy_module.h"
@@ -782,6 +783,10 @@ static void configureRuntimeSensorModules() {
         settingsManager.get().speedMuteThresholdMph,
         settingsManager.get().speedMuteHysteresisMph,
         settingsManager.get().speedMuteVolume);
+
+    // ALP (Active Laser Protection) — UART2 listener for gun identification.
+    // Does NOT yet override V1 laser alerts; data-gathering phase only.
+    alpRuntimeModule.begin(settingsManager.get().alpEnabled);
 }
 
 static void configureRuntimeCoreModules() {
@@ -1085,6 +1090,11 @@ void loop() {
         bleClient.setObdBleArbitrationRequest(obdRuntimeModule.getBleArbitrationRequest());
         perfRecordObdUs(micros() - obdStartUs);
     }
+
+    // ALP UART listener — drain and parse ALP serial data.
+    // Runs every loop; process() is a no-op when disabled.
+    alpRuntimeModule.process(now);
+
     speedSourceSelector.update(now);
     {
         const V1Settings& s = settingsManager.get();

@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = ROOT / "src"
 
 # Files that participate in the dirty flag protocol.
-# display_update.cpp handles resetTracking specially (via DisplayRenderCache).
+# display_update.cpp handles resetTracking specially (via element cache invalidation).
 DISPLAY_FILES = sorted(SRC_ROOT.glob("display_*.cpp"))
 
 # Match dirty flag field reads: dirty.bands, dirty.frequency, etc.

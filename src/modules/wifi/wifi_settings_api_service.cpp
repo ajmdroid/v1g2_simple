@@ -36,6 +36,7 @@ void handleApiDeviceSettingsGet(WebServer& server, const Runtime& runtime) {
     doc["autoPowerOffMinutes"] = settings.autoPowerOffMinutes;
     doc["apTimeoutMinutes"] = settings.apTimeoutMinutes;
     doc["enableWifiAtBoot"] = settings.enableWifiAtBoot;
+    doc["alpEnabled"] = settings.alpEnabled;
 
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
@@ -98,6 +99,10 @@ void handleApiDeviceSettingsSave(WebServer& server, const Runtime& runtime) {
     if (server.hasArg("enableWifiAtBoot")) {
         update.hasEnableWifiAtBoot = true;
         update.enableWifiAtBoot = argIsTrue(server.arg("enableWifiAtBoot"));
+    }
+    if (server.hasArg("alpEnabled")) {
+        update.hasAlpEnabled = true;
+        update.alpEnabled = argIsTrue(server.arg("alpEnabled"));
     }
     runtime.applySettingsUpdate(update, runtime.ctx);
 

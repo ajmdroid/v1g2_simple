@@ -259,7 +259,7 @@ void SettingsManager::load() {
     // Volume fade settings
     settings_.alertVolumeFadeEnabled = preferences_.getBool(kNvsVolFadeEnabled, false);
     settings_.alertVolumeFadeDelaySec = std::clamp<uint8_t>(preferences_.getUChar(kNvsVolFadeSeconds, 2), 1, 10);  // 1-10 seconds
-    settings_.alertVolumeFadeVolume = std::min<uint8_t>(9, preferences_.getUChar(kNvsVolFadeVolume, 1));  // 0-9 (V1 volume range)
+    settings_.alertVolumeFadeVolume = std::clamp<uint8_t>(preferences_.getUChar(kNvsVolFadeVolume, 1), 1, 9);  // 1-9 (min 1 prevents V1 mute indicator feedback loop)
 
     // Speed-aware muting settings
     settings_.speedMuteEnabled = preferences_.getBool(kNvsSpeedMuteEnabled, false);
@@ -319,8 +319,13 @@ void SettingsManager::load() {
     }
     settings_.obdSavedName = sanitizeObdSavedNameValue(preferences_.getString(kNvsObdName, ""));
     settings_.obdSavedAddrType = preferences_.getUChar(kNvsObdAddressType, 0);
-    settings_.obdMinRssi = static_cast<int8_t>(
-        preferences_.getChar(kNvsObdMinRssi, -90));
+    {
+        const int rssi = static_cast<int>(preferences_.getChar(kNvsObdMinRssi, -90));
+        settings_.obdMinRssi = static_cast<int8_t>(std::max(-100, std::min(rssi, -40)));
+    }
+
+    // ALP settings
+    settings_.alpEnabled = preferences_.getBool(kNvsAlpEnabled, false);
 
     preferences_.end();
 

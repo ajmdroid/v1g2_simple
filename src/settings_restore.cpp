@@ -287,6 +287,10 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
         settings_.obdMinRssi = static_cast<int8_t>(std::max(-100, std::min(rssi, -40)));
     }
 
+    // ALP Settings
+    // ============================================================================
+    restoreBool("alpEnabled", settings_.alpEnabled);
+
     int profilesRestored = 0;
     if (v1ProfileManager.isReady() && doc["profiles"].is<JsonArrayConst>()) {
         JsonArrayConst profilesArr = doc["profiles"].as<JsonArrayConst>();

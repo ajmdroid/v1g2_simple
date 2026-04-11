@@ -91,7 +91,7 @@ void test_new_frequency_restores_when_faded() {
     TEST_ASSERT_EQUAL_UINT8(8, restore.restoreVolume);  // original captured volume
 }
 
-void test_muted_alert_restores_and_resets() {
+void test_muted_alert_during_fade_does_not_restore() {
     settingsManager.settings.alertVolumeFadeEnabled = true;
     settingsManager.settings.alertVolumeFadeDelaySec = 1;
     settingsManager.settings.alertVolumeFadeVolume = 1;
@@ -101,8 +101,24 @@ void test_muted_alert_restores_and_resets() {
     ctx.now = 2200;
     fade.process(ctx);      // fade down
 
-    // Now alert becomes muted
+    // Alert reports muted while fade is active — this is the V1 mute indicator
+    // triggered by our own fade, not a user mute.  Must NOT restore.
     auto mutedCtx = makeCtx(true, 2500, 1, 24000, true /*muted*/);
+    auto action = fade.process(mutedCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, action.type);
+}
+
+void test_muted_alert_without_fade_restores() {
+    settingsManager.settings.alertVolumeFadeEnabled = true;
+    settingsManager.settings.alertVolumeFadeDelaySec = 5;  // long delay — fade won't fire
+    settingsManager.settings.alertVolumeFadeVolume = 1;
+
+    // Start alert session; baseline captured but fade not yet triggered.
+    auto ctx = makeCtx(true, 1000, 6, 24000);
+    fade.process(ctx);
+
+    // User mutes the alert externally (fadeActive_ is false).
+    auto mutedCtx = makeCtx(true, 1500, 1, 24000, true /*muted*/);
     auto restore = fade.process(mutedCtx);
     TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore.type);
     TEST_ASSERT_EQUAL_UINT8(6, restore.restoreVolume);
@@ -159,7 +175,7 @@ void test_alert_clear_restores_when_fade_command_inflight_and_volume_stale() {
     TEST_ASSERT_EQUAL_UINT8(7, restore.restoreVolume);
 }
 
-void test_muted_restore_when_fade_command_inflight_and_volume_stale() {
+void test_muted_during_fade_inflight_does_not_restore() {
     settingsManager.settings.alertVolumeFadeEnabled = true;
     settingsManager.settings.alertVolumeFadeDelaySec = 1;
     settingsManager.settings.alertVolumeFadeVolume = 1;
@@ -170,11 +186,11 @@ void test_muted_restore_when_fade_command_inflight_and_volume_stale() {
     auto fadeAction = fade.process(ctx);  // issue fade command
     TEST_ASSERT_EQUAL(VolumeFadeAction::Type::FADE_DOWN, fadeAction.type);
 
-    // Mute event arrives before parser reflects the lowered volume.
+    // Mute event arrives while fade is active — V1 mute indicator from our fade,
+    // not a user mute.  Must NOT trigger restore (breaks the feedback loop).
     auto mutedCtx = makeCtx(true, 2250, 6, 24000, true /*muted*/);
-    auto restore = fade.process(mutedCtx);
-    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::RESTORE, restore.type);
-    TEST_ASSERT_EQUAL_UINT8(6, restore.restoreVolume);
+    auto action = fade.process(mutedCtx);
+    TEST_ASSERT_EQUAL(VolumeFadeAction::Type::NONE, action.type);
 }
 
 void test_new_frequency_restore_when_fade_command_inflight_and_volume_stale() {
@@ -259,11 +275,12 @@ void runAllTests() {
     RUN_TEST(test_fade_triggers_after_delay);
     RUN_TEST(test_fade_triggers_at_exact_delay_boundary);
     RUN_TEST(test_new_frequency_restores_when_faded);
-    RUN_TEST(test_muted_alert_restores_and_resets);
+    RUN_TEST(test_muted_alert_during_fade_does_not_restore);
+    RUN_TEST(test_muted_alert_without_fade_restores);
     RUN_TEST(test_alert_clear_restores_if_needed);
     RUN_TEST(test_alert_clear_does_not_restore_when_never_faded);
     RUN_TEST(test_alert_clear_restores_when_fade_command_inflight_and_volume_stale);
-    RUN_TEST(test_muted_restore_when_fade_command_inflight_and_volume_stale);
+    RUN_TEST(test_muted_during_fade_inflight_does_not_restore);
     RUN_TEST(test_new_frequency_restore_when_fade_command_inflight_and_volume_stale);
     RUN_TEST(test_restore_baseline_survives_immediate_realert_with_stale_volume);
     RUN_TEST(test_restore_retries_stop_after_pending_window_expires);

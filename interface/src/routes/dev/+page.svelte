@@ -20,7 +20,8 @@
 	});
 
 	let settings = $state({
-		enableWifiAtBoot: false
+		enableWifiAtBoot: false,
+		alpEnabled: false
 	});
 	let loading = $state(true);
 	let saving = $state(false);
@@ -109,6 +110,7 @@
 			const response = await fetchWithTimeout('/api/device/settings');
 			const data = await response.json();
 			settings.enableWifiAtBoot = data.enableWifiAtBoot || false;
+			settings.alpEnabled = data.alpEnabled || false;
 			loading = false;
 		} catch (error) {
 			console.error('Failed to load settings:', error);
@@ -129,6 +131,7 @@
 		try {
 			const formData = new FormData();
 			formData.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
+			formData.append('alpEnabled', settings.alpEnabled.toString());
 
 			const response = await postSettingsForm(formData, '/api/device/settings');
 
@@ -155,6 +158,7 @@
 		if (!confirm('Reset all development settings to defaults?')) return;
 
 		settings.enableWifiAtBoot = false;
+		settings.alpEnabled = false;
 		await saveSettings();
 	}
 
@@ -398,6 +402,31 @@
 							type="checkbox" 
 							class="toggle toggle-primary"
 							bind:checked={settings.enableWifiAtBoot}
+							disabled={!acknowledged}
+						/>
+					</label>
+				</div>
+
+		</div>
+		</div>
+
+		<!-- ALP (Active Laser Protection) -->
+		<div class="surface-card" class:opacity-50={!acknowledged}>
+			<div class="card-body">
+				<CardSectionHead title="Active Laser Protection" />
+
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-semibold">Enable ALP Listener</span>
+							<p class="copy-caption-soft mt-1">
+								UART listener for ALP HiFi serial data. Identifies laser guns by protocol fingerprint. Requires reboot.
+							</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							bind:checked={settings.alpEnabled}
 							disabled={!acknowledged}
 						/>
 					</label>

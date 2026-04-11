@@ -438,6 +438,9 @@ void SettingsManager::applyDeviceSettingsUpdate(const DeviceSettingsUpdate& upda
     if (update.hasEnableWifiAtBoot) {
         changed |= assignIfChanged(settings_.enableWifiAtBoot, update.enableWifiAtBoot);
     }
+    if (update.hasAlpEnabled) {
+        changed |= assignIfChanged(settings_.alpEnabled, update.alpEnabled);
+    }
 
     if (changed) {
         persistSettingsByMode(*this, persistMode);

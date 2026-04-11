@@ -154,6 +154,9 @@ inline constexpr const char* kNvsObdName        = "obdName";
 inline constexpr const char* kNvsObdAddressType = "obdAddrT";
 inline constexpr const char* kNvsObdMinRssi     = "obdMinRssi";
 
+// ── ALP ──────────────────────────────────────────────────────────────────
+inline constexpr const char* kNvsAlpEnabled     = "alpEn";
+
 // ── Separate namespaces ───────────────────────────────────────────────────
 // Namespace: v1wifi_secret (WIFI_CLIENT_NS)
 inline constexpr const char* kNvsWifiPassword = "password";

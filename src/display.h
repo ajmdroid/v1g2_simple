@@ -51,11 +51,6 @@ public:
     // Multi-alert display: shows priority alert + secondary alert cards
     void update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state);
 
-    // Lightweight frequency-only refresh (minimal redraw)
-    void refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);
-    // Lightweight secondary cards-only refresh (minimal redraw)
-    void refreshSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);
-
     // Persisted alert display (shows last alert in dark grey after V1 clears it)
     void updatePersisted(const AlertData& alert, const DisplayState& state);
 
@@ -161,20 +156,7 @@ private:
     void drawTopCounter(char symbol, bool muted, bool showDot);
     void drawTopCounterClassic(char symbol, bool muted, bool showDot);       // 7-segment style (used for all styles)
     void drawStatusStrip(const DisplayState& state, char topChar, bool topMuted, bool topDot);
-    void updateStatusStripIncremental(const DisplayState& state,
-                                      char topChar,
-                                      bool topMuted,
-                                      bool topDot,
-                                      bool volumeChanged,
-                                      bool rssiNeedsUpdate,
-                                      bool bogeyCounterChanged,
-                                      uint8_t& lastMainVol,
-                                      uint8_t& lastMuteVol,
-                                      uint8_t& lastBogeyByte,
-                                      unsigned long now,
-                                      bool& flushLeftStrip,
-                                      bool& flushCenterStrip,
-                                      bool& flushRightStrip);
+
     void drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol);              // "5V  0M" style
     void drawRssiIndicator(int rssi);                                         // BLE RSSI in dBm
     void drawMuteIcon(bool muted);
@@ -211,14 +193,17 @@ private:
     bool bleProxyDrawn_ = false;             // Track if icon has been drawn at least once
     bool multiAlertMode_ = false;            // True when showing secondary alert cards (reduces main area)
     bool persistedMode_ = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
-    bool wasInMultiAlertMode_ = false;       // Track mode transitions for change detection
-    bool frequencyRenderDirty_ = false;      // Set when drawFrequency changed pixels this call
-    bool frequencyDirtyValid_ = false;       // True when a minimal dirty region is available
+    // Legacy dirty region tracking — still written by display_frequency.cpp and
+    // display_cards.cpp but no longer read after the display pipeline rewrite
+    // (DISPLAY_FLUSH does full canvas flush every frame). Safe to remove when
+    // those element files are next touched.
+    bool frequencyRenderDirty_ = false;
+    bool frequencyDirtyValid_ = false;
     int16_t frequencyDirtyX_ = 0;
     int16_t frequencyDirtyY_ = 0;
     int16_t frequencyDirtyW_ = 0;
     int16_t frequencyDirtyH_ = 0;
-    bool secondaryCardsRenderDirty_ = false; // True when drawSecondaryAlertCards changed card-row pixels
+    bool secondaryCardsRenderDirty_ = false;
     bool speedVolZeroActive_ = false;      // Suppress VOL 0 warning during speed-mute vol 0
     bool obdEnabled_ = false;              // OBD module enabled
     bool obdConnected_ = false;            // OBD adapter connected

@@ -36,12 +36,6 @@ void DisplayOrchestrationModule::begin(V1Display* displayPtr,
     volumeFade_ = volumeFadeModule;
     speedMute_ = speedMuteModule;
     quiet_ = quietCoordinator;
-    reset();
-}
-
-void DisplayOrchestrationModule::reset() {
-    lastFreqUiMs_ = 0;
-    lastCardUiMs_ = 0;
 }
 
 void DisplayOrchestrationModule::syncQuietPresentation() {
@@ -124,53 +118,13 @@ DisplayOrchestrationRefreshResult DisplayOrchestrationModule::processLightweight
         return result;
     }
 
-    if (ctx.pipelineRanThisLoop) {
-        lastFreqUiMs_ = ctx.nowMs;
-    }
-
+    // Report whether a renderable priority alert exists.
+    // No lightweight refresh paths — element caches handle all optimization.
     const bool loopHasAlerts = parser_->hasAlerts();
     AlertData loopPriority;
     const bool loopHasRenderablePriority =
         loopHasAlerts && parser_->getRenderablePriorityAlert(loopPriority);
     result.signalPriorityActive = loopHasRenderablePriority;
-
-    const bool previewRunning = preview_->isRunning();
-    const unsigned long freqUiMaxMs = previewRunning ? FREQ_UI_PREVIEW_MAX_MS : FREQ_UI_MAX_MS;
-    if (!ctx.bootSplashHoldActive &&
-        ble_->isConnected() &&
-        !previewRunning &&
-        (ctx.nowMs - lastFreqUiMs_) >= freqUiMaxMs) {
-        const DisplayState& state = parser_->getDisplayState();
-        const bool isPhotoRadar =
-            (loopPriority.photoType != 0) ||
-            state.hasPhotoAlert ||
-            (state.bogeyCounterChar == 'P');
-        if (result.signalPriorityActive) {
-            display_->refreshFrequencyOnly(loopPriority.frequency,
-                                          loopPriority.band,
-                                          state.muted,
-                                          isPhotoRadar);
-        } else {
-            display_->refreshFrequencyOnly(0, BAND_NONE, false, false);
-        }
-        lastFreqUiMs_ = ctx.nowMs;
-    }
-
-    if (!ctx.bootSplashHoldActive &&
-        ble_->isConnected() &&
-        !previewRunning &&
-        !ctx.pipelineRanThisLoop &&
-        ctx.overloadLateThisLoop &&
-        (ctx.nowMs - lastCardUiMs_) >= CARD_UI_MAX_MS) {
-        const auto& allAlerts = parser_->getAllAlerts();
-        const int alertCount = static_cast<int>(parser_->getAlertCount());
-        const DisplayState& state = parser_->getDisplayState();
-        display_->refreshSecondaryAlertCards(allAlerts.data(),
-                                            alertCount,
-                                            loopPriority,
-                                            state.muted);
-        lastCardUiMs_ = ctx.nowMs;
-    }
 
     return result;
 }

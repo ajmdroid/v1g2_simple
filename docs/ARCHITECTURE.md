@@ -286,8 +286,8 @@ element-cache invalidation:
 struct DisplayDirtyFlags {
     bool multiAlert    = false;  // Layout mode flag (not element cache)
     bool cards         = false;  // Force-redraw signal from display_update.cpp
-    bool obdIndicator  = false;  // Read externally for flush routing
-    bool resetTracking = false;  // Signals DisplayRenderCache state reset
+    bool obdIndicator  = false;  // Force-redraw signal for OBD indicator flush
+    bool resetTracking = false;  // Signals element cache and tracking state reset
 };
 ```
 
@@ -317,22 +317,10 @@ When the screen is cleared, `prepareFullRedrawNoClear()` calls
 `g_elementCaches.invalidateAll()`, which zeros all `valid` flags. The
 next render pass sees `valid == false` and performs a full redraw.
 
-### DisplayRenderCache — Cross-Element State
-
-`display_update.cpp` contains a `DisplayRenderCache` struct (`s_displayRenderCache`)
-that tracks state spanning multiple elements across resting and live alert
-modes. It records the last-rendered priority alert, bogey byte, arrow state,
-volume levels, and mode-specific first-run flags.
-
-Two reset methods handle mode transitions:
-
-- `resetRestingTracking()` — clears resting-mode caches (band debounce,
-  signal bars, arrows, volume, bogey counter)
-- `resetLiveTracking()` — clears live-mode caches (priority alert, arrows,
-  bars, bands, volume, multi-alert state)
-
-These are triggered by `dirty.resetTracking`, which is set by
-`V1Display::resetChangeTracking()` on BLE disconnect or forced redraw.
+Element caches are the **sole caching layer** — there is no second
+cross-element render cache. Each render function owns its own cache
+check and update. This design eliminates stale-state bugs that arise
+from cache layers disagreeing about what was last drawn.
 
 ### Dirty Region Optimization
 

@@ -86,9 +86,6 @@ void test_display_update_paths_no_longer_hide_persistent_state_in_function_local
         extractBlock(source, "void V1Display::update(const DisplayState& state)"),
         "resting update should use explicit render cache instead of function-local static state");
     assertNoFunctionLocalStatic(
-        extractBlock(source, "void V1Display::refreshFrequencyOnly"),
-        "refreshFrequencyOnly should use explicit render cache instead of function-local static state");
-    assertNoFunctionLocalStatic(
         extractBlock(source, "void V1Display::update(const AlertData& priority"),
         "live update should use explicit render cache instead of function-local static state");
 }
@@ -98,7 +95,7 @@ void test_stale_ble_policy_is_wired_into_display_sources() {
     const std::string statusSource = readFile((projectRoot() + "/src/display_status_bar.cpp").c_str());
 
     const std::string restingUpdate = extractBlock(updateSource, "void V1Display::update(const DisplayState& state)");
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, restingUpdate.find("const bool bleContextFresh = hasFreshBleContext(now);"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, restingUpdate.find("const bool bleContextFresh = hasFreshBleContext(millis());"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, restingUpdate.find("volZeroWarn.reset();"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, restingUpdate.find("volZeroWarn.evaluate("));
 

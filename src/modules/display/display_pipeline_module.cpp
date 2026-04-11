@@ -6,7 +6,7 @@
 #include "modules/voice/voice_module.h"
 #include "modules/quiet/quiet_coordinator_module.h"
 #include "modules/quiet/quiet_coordinator_voice_templates.h"
-#include "perf_metrics.h"  // perfRecordDisplayRenderUs
+#include "perf_metrics.h"
 #include "settings.h"
 #include "ble_client.h"
 #include "modules/alert_persistence/alert_persistence_module.h"
@@ -28,8 +28,6 @@ void DisplayPipelineModule::begin(DisplayMode* displayModePtr,
     voice_ = voiceModule;
     quiet_ = quietCoordinator;
     lastPersistenceSlot_ = -1;
-    lastRenderedOwner_ = RenderOwner::Unknown;
-    lastAlertGapRecoverMs_ = 0;
 }
 
 void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
@@ -49,7 +47,7 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
 
         const unsigned long persistMs = persistSec * 1000UL;
         if (alertPersistence_->shouldShowPersisted(nowMs, persistMs)) {
-            if (forceRedraw || lastRenderedOwner_ != RenderOwner::Persisted) {
+            if (forceRedraw) {
                 display_->forceNextRedraw();
             }
 
@@ -58,10 +56,8 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
             const unsigned long startUs = micros();
             display_->updatePersisted(alertPersistence_->getPersistedAlert(), state);
             const unsigned long endUs = micros();
-            recordDisplayTiming("display.persisted", startUs, endUs);
-            recordPerfTiming("display.persisted", startUs, endUs);
+            recordPerfTiming(startUs, endUs);
             perfClearDisplayRenderScenario();
-            lastRenderedOwner_ = RenderOwner::Persisted;
             return;
         }
 
@@ -71,7 +67,7 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
         alertPersistence_->clearPersistence();
     }
 
-    if (forceRedraw || lastRenderedOwner_ != RenderOwner::Resting) {
+    if (forceRedraw) {
         display_->forceNextRedraw();
     }
 
@@ -80,10 +76,8 @@ void DisplayPipelineModule::renderIdleOwner(uint32_t nowMs,
     const unsigned long startUs = micros();
     display_->update(state);
     const unsigned long endUs = micros();
-    recordDisplayTiming("display.resting", startUs, endUs);
-    recordPerfTiming("display.resting", startUs, endUs);
+    recordPerfTiming(startUs, endUs);
     perfClearDisplayRenderScenario();
-    lastRenderedOwner_ = RenderOwner::Resting;
 }
 
 void DisplayPipelineModule::handleParsed(uint32_t nowMs) {
@@ -109,33 +103,9 @@ void DisplayPipelineModule::handleParsed(uint32_t nowMs) {
     }
     const V1Settings& settingsRef = settings_->get();
 
-    if (!hasAlerts && state.activeBands != BAND_NONE) {
-        const unsigned long gapNow = nowMs;
-        if (gapNow - lastAlertGapRecoverMs_ > 50) {
-            // Preserve partially assembled alert rows; parser freshness/timeout
-            // guards handle stale data without discarding in-progress tables.
-            const unsigned long gapStartUs = micros();
-            ble_->requestAlertData();
-            perfRecordDisplayGapRecoverUs(micros() - gapStartUs);
-            lastAlertGapRecoverMs_ = gapNow;
-        }
-    }
-
-    const unsigned long muteNow = nowMs;
-    if (state.muted != debouncedMuteState_) {
-        if (muteNow - lastMuteChangeMs_ > MUTE_DEBOUNCE_MS) {
-            debouncedMuteState_ = state.muted;
-            lastMuteChangeMs_ = muteNow;
-        } else {
-            state.muted = debouncedMuteState_;
-        }
-    }
-
-    if (nowMs - lastDisplayDraw_ < DISPLAY_DRAW_MIN_MS) {
-        PERF_INC(displaySkips);
-        return;
-    }
-    lastDisplayDraw_ = nowMs;
+    // No mute debounce — trust the parser's muted state directly.
+    // No display throttle — element caches handle SPI saturation.
+    // No gap recovery — parser freshness/timeout guards handle stale data.
 
     if (hasAlerts) {
         const int alertCount = parser_->getAlertCount();
@@ -181,8 +151,7 @@ void DisplayPipelineModule::handleParsed(uint32_t nowMs) {
             display_->update(state);
         }
         const unsigned long endUs = micros();
-        recordDisplayTiming("display.update(alerts)", startUs, endUs);
-        recordPerfTiming("display.update(alerts)", startUs, endUs);
+        recordPerfTiming(startUs, endUs);
         perfClearDisplayRenderScenario();
 
         if (voiceAction.hasAction()) {
@@ -213,7 +182,6 @@ void DisplayPipelineModule::handleParsed(uint32_t nowMs) {
         if (hasRenderablePriority) {
             alertPersistence_->setPersistedAlert(priority);
         }
-        lastRenderedOwner_ = RenderOwner::Live;
         return;
     }
 
@@ -235,7 +203,6 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
         display_->showScanning();
         perfClearDisplayRenderScenario();
         *displayMode_ = DisplayMode::IDLE;
-        lastRenderedOwner_ = RenderOwner::Scanning;
         return;
     }
 
@@ -257,7 +224,6 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
         }
         perfRecordDisplayScenarioRenderUs(micros() - startUs);
         perfClearDisplayRenderScenario();
-        lastRenderedOwner_ = RenderOwner::Live;
         return;
     }
 
@@ -289,44 +255,9 @@ bool DisplayPipelineModule::allowsObdPairGesture(uint32_t nowMs) const {
     return true;
 }
 
-void DisplayPipelineModule::recordDisplayTiming(const char* label, unsigned long startUs, unsigned long endUs) {
+void DisplayPipelineModule::recordPerfTiming(unsigned long startUs, unsigned long endUs) {
     const unsigned long dur = endUs - startUs;
-    displayLatencySum_ += dur;
-    displayLatencyCount_++;
-    if (dur > displayLatencyMax_) displayLatencyMax_ = dur;
-
-    const unsigned long nowMs = millis();
-
-    if ((nowMs - displayLatencyLastLog_) > DISPLAY_LOG_INTERVAL_MS && displayLatencyCount_ > 0) {
-        displayLatencySum_ = 0;
-        displayLatencyCount_ = 0;
-        displayLatencyMax_ = 0;
-        displayLatencyLastLog_ = nowMs;
-    }
-}
-
-void DisplayPipelineModule::recordPerfTiming(const char* label, unsigned long startUs, unsigned long endUs) {
-    const unsigned long dur = endUs - startUs;
-
-    // Always record to perf metrics for scorecard attribution.
     perfRecordDisplayRenderUs(dur);
     perfRecordDisplayScenarioRenderUs(dur);
     PERF_INC(displayUpdates);
-
-    if (!PERF_TIMING_LOGS) return;
-    perfTimingAccum_ += dur;
-    perfTimingCount_++;
-    if (dur > perfTimingMax_) perfTimingMax_ = dur;
-    const unsigned long nowMs = millis();
-    if (nowMs - perfLastReport_ > 5000) {
-        Serial.printf("[PERF] %s: avg=%luus max=%luus (n=%lu)\n",
-                      label,
-                      perfTimingAccum_ / perfTimingCount_,
-                      perfTimingMax_,
-                      perfTimingCount_);
-        perfTimingAccum_ = 0;
-        perfTimingCount_ = 0;
-        perfTimingMax_ = 0;
-        perfLastReport_ = nowMs;
-    }
 }
