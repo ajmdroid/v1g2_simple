@@ -441,6 +441,9 @@ void SettingsManager::applyDeviceSettingsUpdate(const DeviceSettingsUpdate& upda
     if (update.hasAlpEnabled) {
         changed |= assignIfChanged(settings_.alpEnabled, update.alpEnabled);
     }
+    if (update.hasAlpSdLogEnabled) {
+        changed |= assignIfChanged(settings_.alpSdLogEnabled, update.alpSdLogEnabled);
+    }
 
     if (changed) {
         persistSettingsByMode(*this, persistMode);

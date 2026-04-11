@@ -239,6 +239,7 @@ struct V1Settings {
 
     // ALP (Active Laser Protection) settings
     bool alpEnabled;             // Enable ALP UART listener module
+    bool alpSdLogEnabled;        // Enable ALP event logging to SD card (CSV)
 
     // Default constructor with sensible defaults
     V1Settings() :
@@ -346,7 +347,8 @@ struct V1Settings {
         obdSavedName(""),        // No friendly name
         obdSavedAddrType(0),     // Default PUBLIC address type
         obdMinRssi(-90),         // Default -90 dBm minimum RSSI
-        alpEnabled(false) {}     // ALP disabled by default
+        alpEnabled(false),       // ALP disabled by default
+        alpSdLogEnabled(false) {}  // ALP SD logging off by default
 
     static uint8_t normalizeAutoPushSlotIndex(int slotNum) {
         return slotNum == 1 ? 1 : (slotNum == 2 ? 2 : 0);
@@ -467,6 +469,9 @@ struct DeviceSettingsUpdate {
 
     bool hasAlpEnabled = false;
     bool alpEnabled = false;
+
+    bool hasAlpSdLogEnabled = false;
+    bool alpSdLogEnabled = false;
 };
 
 struct AudioSettingsUpdate {

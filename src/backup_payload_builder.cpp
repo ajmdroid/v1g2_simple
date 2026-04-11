@@ -70,6 +70,7 @@ BuildResult buildBackupDocument(JsonDocument& doc,
 
     // ALP settings
     doc["alpEnabled"] = settings.alpEnabled;
+    doc["alpSdLogEnabled"] = settings.alpSdLogEnabled;
 
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;

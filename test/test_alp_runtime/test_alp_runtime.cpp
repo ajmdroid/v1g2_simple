@@ -13,6 +13,8 @@
 #include <unity.h>
 
 #include "../../src/modules/alp/alp_runtime_module.h"
+#include "../../src/modules/alp/alp_sd_logger.h"
+#include "../../src/modules/alp/alp_sd_logger.cpp"
 #include "../../src/modules/alp/alp_runtime_module.cpp"
 
 // ── Helpers ──────────────────────────────────────────────────────────

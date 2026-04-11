@@ -329,6 +329,7 @@ void SettingsManager::load() {
 
     // ALP settings
     settings_.alpEnabled = preferences_.getBool(kNvsAlpEnabled, false);
+    settings_.alpSdLogEnabled = preferences_.getBool(kNvsAlpSdLog, false);
 
     preferences_.end();
 

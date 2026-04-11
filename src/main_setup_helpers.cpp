@@ -21,6 +21,7 @@
 #include "display_mode.h"
 #include "packet_parser.h"
 #include "perf_sd_logger.h"
+#include "modules/alp/alp_sd_logger.h"
 #include "settings.h"
 #include "settings_runtime_sync.h"
 #include "storage_manager.h"
@@ -177,6 +178,14 @@ uint32_t initializeBootPerformanceLoggers() {
         SerialLog.printf("[PERF] SD logger enabled (%s)\n", perfSdLogger.csvPath());
     } else {
         SerialLog.println("[PERF] SD logger disabled (no SD)");
+    }
+
+    // ALP SD logger — event-level CSV for drive data capture
+    const bool alpLogEnabled = settingsManager.get().alpSdLogEnabled;
+    alpSdLogger.setBootId(bootId);
+    alpSdLogger.begin(alpLogEnabled, sdEnabled);
+    if (alpSdLogger.isEnabled()) {
+        SerialLog.printf("[ALP_SD] logger enabled (%s)\n", alpSdLogger.csvPath());
     }
 
     return bootId;

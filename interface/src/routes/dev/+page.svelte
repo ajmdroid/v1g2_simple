@@ -21,7 +21,8 @@
 
 	let settings = $state({
 		enableWifiAtBoot: false,
-		alpEnabled: false
+		alpEnabled: false,
+		alpSdLogEnabled: false
 	});
 	let loading = $state(true);
 	let saving = $state(false);
@@ -111,6 +112,7 @@
 			const data = await response.json();
 			settings.enableWifiAtBoot = data.enableWifiAtBoot || false;
 			settings.alpEnabled = data.alpEnabled || false;
+			settings.alpSdLogEnabled = data.alpSdLogEnabled || false;
 			loading = false;
 		} catch (error) {
 			console.error('Failed to load settings:', error);
@@ -132,6 +134,7 @@
 			const formData = new FormData();
 			formData.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
 			formData.append('alpEnabled', settings.alpEnabled.toString());
+			formData.append('alpSdLogEnabled', settings.alpSdLogEnabled.toString());
 
 			const response = await postSettingsForm(formData, '/api/device/settings');
 
@@ -159,6 +162,7 @@
 
 		settings.enableWifiAtBoot = false;
 		settings.alpEnabled = false;
+		settings.alpSdLogEnabled = false;
 		await saveSettings();
 	}
 
@@ -427,6 +431,23 @@
 							type="checkbox"
 							class="toggle toggle-primary"
 							bind:checked={settings.alpEnabled}
+							disabled={!acknowledged}
+						/>
+					</label>
+				</div>
+
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-semibold">Enable ALP SD Logging</span>
+							<p class="copy-caption-soft mt-1">
+								Log ALP events (state transitions, heartbeats, gun IDs) to CSV on SD card. For drive data capture.
+							</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							bind:checked={settings.alpSdLogEnabled}
 							disabled={!acknowledged}
 						/>
 					</label>
