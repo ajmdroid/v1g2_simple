@@ -47,6 +47,7 @@ class SpeedSourceSelector;
 
 // ALP (Active Laser Protection) subsystem (defined in src/modules/alp)
 class AlpRuntimeModule;
+class AlpSdLogger;
 
 #ifndef UNIT_TEST
 class DisplayPipelineModule;
@@ -92,6 +93,7 @@ extern ObdRuntimeModule obdRuntimeModule;
 extern ObdBleClient obdBleClient;
 extern SpeedSourceSelector speedSourceSelector;
 extern AlpRuntimeModule alpRuntimeModule;
+extern AlpSdLogger alpSdLogger;
 
 #ifndef UNIT_TEST
 extern DisplayPipelineModule displayPipelineModule;

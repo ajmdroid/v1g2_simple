@@ -107,5 +107,3 @@ private:
     uint32_t lastHeartbeatLogMs_ = 0;
     char csvPathBuf_[48] = {0};
 };
-
-extern AlpSdLogger alpSdLogger;

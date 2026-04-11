@@ -13,6 +13,8 @@
 #include "alp_runtime_module.h"
 #include "alp_sd_logger.h"
 
+extern AlpSdLogger alpSdLogger;
+
 #include <cstring>
 
 #ifndef UNIT_TEST
