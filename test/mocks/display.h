@@ -4,6 +4,7 @@
 #define DISPLAY_H
 
 #include <cstdint>
+#include <cstring>
 #ifdef ARDUINO
 #include <Arduino.h>
 #else
@@ -129,6 +130,9 @@ public:
         lastSettingsActiveSlider = -1;
         activeSliderFromTouch = -1;
         lastAlertUpdateCount = 0;
+        setAlpFrequencyOverrideCalls = 0;
+        clearAlpFrequencyOverrideCalls = 0;
+        lastAlpFreqOverride[0] = '\0';
         resetChangeTrackingCalls = 0;
     }
 
@@ -206,6 +210,17 @@ public:
         lastFlushW = w;
         lastFlushH = h;
     }
+
+    // ALP frequency override
+    int setAlpFrequencyOverrideCalls = 0;
+    int clearAlpFrequencyOverrideCalls = 0;
+    char lastAlpFreqOverride[16] = "";
+    void setAlpFrequencyOverride(const char* text) {
+        setAlpFrequencyOverrideCalls++;
+        strncpy(lastAlpFreqOverride, text, sizeof(lastAlpFreqOverride));
+        lastAlpFreqOverride[sizeof(lastAlpFreqOverride) - 1] = '\0';
+    }
+    void clearAlpFrequencyOverride() { clearAlpFrequencyOverrideCalls++; }
 
     void setBrightness(uint8_t /*level*/) {}
     void showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel) {

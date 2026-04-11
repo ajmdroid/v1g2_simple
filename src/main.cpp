@@ -725,6 +725,7 @@ static void configureAlertAudioDisplayPipeline() {
                                 &voiceModule,
                                 &quietCoordinatorModule);
     displayPipelineModule.setSpeedMuteModule(&speedMuteModule);
+    displayPipelineModule.setAlpRuntimeModule(&alpRuntimeModule);
 }
 
 static void configureSystemLoopCoreModules() {

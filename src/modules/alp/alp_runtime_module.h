@@ -62,6 +62,7 @@ enum class AlpGunType : uint8_t {
 };
 
 const char* alpGunName(AlpGunType gun);
+const char* alpGunAbbrev(AlpGunType gun);
 
 // ── Gun lookup ───────────────────────────────────────────────────────
 

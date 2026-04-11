@@ -124,6 +124,10 @@ public:
     void refreshAlpIndicator(uint32_t nowMs);
     void setAlpRuntimeModule(AlpRuntimeModule* m);
 
+    // ALP frequency override — gun abbreviation replaces frequency text during ALP alert
+    void setAlpFrequencyOverride(const char* gunAbbrev);
+    void clearAlpFrequencyOverride();
+
     // Flush canvas to physical display
     void flush();
     void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h);  // Partial flush to reduce SPI traffic
@@ -220,6 +224,10 @@ private:
     bool alpEnabled_ = false;              // ALP module enabled
     bool alpArmed_ = false;                // ALP in LISTENING or ALERT_ACTIVE
     bool alpAlert_ = false;                // ALP in ALERT_ACTIVE specifically
+
+    // ALP frequency-area override: when active, gun abbreviation replaces frequency text
+    bool alpFreqOverride_ = false;
+    char alpFreqText_[16] = "";
     DisplayBleContext bleCtx_;              // BLE state snapshot for display DI
     uint32_t bleCtxUpdatedAtMs_ = 0;        // When setBleContext() last refreshed bleCtx_
 

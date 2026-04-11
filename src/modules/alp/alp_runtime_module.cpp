@@ -54,6 +54,22 @@ const char* alpGunName(AlpGunType gun) {
     }
 }
 
+// 7-segment friendly abbreviations (~6 chars) for display frequency area.
+// Only uses glyphs that render well on 7-seg: A b C d E F G H I J L n O P r S t U Y
+const char* alpGunAbbrev(AlpGunType gun) {
+    switch (gun) {
+        case AlpGunType::PL3_PROLITE:       return "PL3";
+        case AlpGunType::DRAGONEYE_COMPACT: return "drgEYE";
+        case AlpGunType::LTI_TRUSPEED_LR:  return "truSPd";
+        case AlpGunType::LASER_ATLANTA_PL2: return "PL2";
+        case AlpGunType::MARKSMAN_ULTRALYTE:return "ULtrLt";
+        case AlpGunType::STALKER_LZ1:       return "StLr";
+        case AlpGunType::LASER_ALLY:        return "LALLY";
+        case AlpGunType::ATLANTA_STEALTH:   return "StLtH";
+        default:                            return "LASER";
+    }
+}
+
 // ── Gun code lookup table ────────────────────────────────────────────
 // Sources: ALP_PROTOCOL_REFERENCE.md (jam-mode codes) + live captures (observe-mode).
 //

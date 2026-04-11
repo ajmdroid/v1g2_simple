@@ -168,6 +168,14 @@ void audio_init_sd() {}
 void audio_init_buffers() {}
 void audio_process_amp_timeout() {}
 
+// ALP module stubs — pipeline calls alpGunAbbrev() and uses AlpRuntimeModule pointer
+#include "../../src/modules/alp/alp_runtime_module.h"
+const char* alpStateName(AlpState) { return "OFF"; }
+const char* alpGunName(AlpGunType) { return "Unknown"; }
+const char* alpGunAbbrev(AlpGunType) { return "LASER"; }
+AlpGunType alpLookupGun(uint8_t, uint8_t) { return AlpGunType::UNKNOWN; }
+AlpGunType alpLookupGunObserve(uint8_t, uint8_t) { return AlpGunType::UNKNOWN; }
+
 #include "../../src/modules/speed_mute/speed_mute_module.cpp"
 #include "../../src/modules/quiet/quiet_coordinator_module.cpp"
 #include "../../src/modules/display/display_pipeline_module.cpp"

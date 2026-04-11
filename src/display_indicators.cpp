@@ -5,6 +5,7 @@
  */
 
 #include "display.h"
+#include <cstring>
 #include "../include/display_draw.h"
 #include "../include/display_dirty_flags.h"
 #include "../include/display_element_caches.h"
@@ -184,6 +185,25 @@ void V1Display::drawAlpIndicator() {
     TFT_CALL(setTextColor)(textColor, PALETTE_BG);
     GFX_drawString(tft_, "ALP", x + w / 2, y + h / 2);
 #endif
+}
+
+// ============================================================================
+// ALP frequency-area override
+// ============================================================================
+
+void V1Display::setAlpFrequencyOverride(const char* gunAbbrev) {
+    if (!gunAbbrev) {
+        clearAlpFrequencyOverride();
+        return;
+    }
+    alpFreqOverride_ = true;
+    strncpy(alpFreqText_, gunAbbrev, sizeof(alpFreqText_));
+    alpFreqText_[sizeof(alpFreqText_) - 1] = '\0';
+}
+
+void V1Display::clearAlpFrequencyOverride() {
+    alpFreqOverride_ = false;
+    alpFreqText_[0] = '\0';
 }
 
 // ============================================================================

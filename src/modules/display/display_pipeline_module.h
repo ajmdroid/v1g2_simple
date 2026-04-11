@@ -14,6 +14,7 @@ class AlertPersistenceModule;
 class VoiceModule;
 class SpeedMuteModule;
 class QuietCoordinatorModule;
+class AlpRuntimeModule;
 
 class DisplayPipelineModule {
 public:
@@ -27,6 +28,7 @@ public:
                QuietCoordinatorModule* quietCoordinator);
 
     void setSpeedMuteModule(SpeedMuteModule* module) { speedMute_ = module; }
+    void setAlpRuntimeModule(AlpRuntimeModule* module) { alp_ = module; }
 
     // Process after a successful parser.parse(); expects parser state already updated.
     void handleParsed(uint32_t nowMs);
@@ -43,6 +45,7 @@ private:
     VoiceModule* voice_ = nullptr;
     SpeedMuteModule* speedMute_ = nullptr;
     QuietCoordinatorModule* quiet_ = nullptr;
+    AlpRuntimeModule* alp_ = nullptr;
 
     int lastPersistenceSlot_ = -1;
 

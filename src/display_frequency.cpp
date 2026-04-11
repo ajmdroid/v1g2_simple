@@ -94,7 +94,13 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
     const bool hasFreq = freqMHz > 0;
 
     char textBuf[16];
-    if (band == BAND_LASER) {
+    bool isAlpOverride = false;
+    if (alpFreqOverride_ && alpFreqText_[0] != '\0') {
+        // ALP gun abbreviation overrides frequency text
+        strncpy(textBuf, alpFreqText_, sizeof(textBuf));
+        textBuf[sizeof(textBuf) - 1] = '\0';
+        isAlpOverride = true;
+    } else if (band == BAND_LASER) {
         strcpy(textBuf, "LASER");
     } else if (hasFreq) {
         float freqGhz = freqMHz / 1000.0f;
@@ -104,7 +110,9 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
     }
 
     uint16_t freqColor;
-    if (usingOfr) {
+    if (isAlpOverride) {
+        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorAlp;
+    } else if (usingOfr) {
         if (band == BAND_LASER) {
             freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
         } else if (muted) {
@@ -169,7 +177,11 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         }
 
         int textWidth = s_freqClassicCachedNumericWidth;
-        if (band == BAND_LASER) {
+        if (isAlpOverride) {
+            // ALP gun abbreviations vary — compute width dynamically
+            textWidth = DisplayFontManager::cachedTextWidth(
+                fontMgr.segment7, fontSize, textBuf, s_freqClassicWidthCache, s_freqClassicWidthCacheNextSlot);
+        } else if (band == BAND_LASER) {
             textWidth = s_freqClassicCachedLaserWidth;
         } else if (!hasFreq) {
             textWidth = s_freqClassicCachedDashWidth;
@@ -233,7 +245,8 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         int x = leftMargin + (maxWidth - width) / 2;
         if (x < leftMargin) x = leftMargin;
 
-        if (band == BAND_LASER) {
+        if (isAlpOverride || band == BAND_LASER) {
+            // Alpha text — use 14-segment renderer
             FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
             markFrequencyDirtyRegion(x - 4, y - 4, width + 8, m.digitH + 8);
             draw14SegmentText(textBuf, x, y, scale, freqColor, PALETTE_BG);
@@ -276,7 +289,8 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
 
     // Serpentine style: show nothing when no frequency (resting/idle state)
     // But we must clear the area if we previously drew something
-    if (freqMHz == 0 && band != BAND_LASER) {
+    // ALP override always renders — gun abbreviation replaces frequency
+    if (freqMHz == 0 && band != BAND_LASER && !alpFreqOverride_) {
         if (g_elementCaches.freqSerpentine.valid && g_elementCaches.freqSerpentine.lastText[0] != '\0') {
             // Clear only the previously drawn text area
             FILL_RECT(g_elementCaches.freqSerpentine.lastDrawX - 5, clearTop, g_elementCaches.freqSerpentine.lastDrawWidth + 10, clearHeight, PALETTE_BG);
@@ -289,7 +303,12 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
 
     // Build text and color
     char textBuf[16];
-    if (band == BAND_LASER) {
+    bool isAlpOverrideSerpentine = false;
+    if (alpFreqOverride_ && alpFreqText_[0] != '\0') {
+        strncpy(textBuf, alpFreqText_, sizeof(textBuf));
+        textBuf[sizeof(textBuf) - 1] = '\0';
+        isAlpOverrideSerpentine = true;
+    } else if (band == BAND_LASER) {
         strcpy(textBuf, "LASER");
     } else if (freqMHz > 0) {
         snprintf(textBuf, sizeof(textBuf), "%.3f", freqMHz / 1000.0f);
@@ -298,7 +317,9 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     }
 
     uint16_t freqColor;
-    if (band == BAND_LASER) {
+    if (isAlpOverrideSerpentine) {
+        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorAlp;
+    } else if (band == BAND_LASER) {
         freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
     } else if (muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;

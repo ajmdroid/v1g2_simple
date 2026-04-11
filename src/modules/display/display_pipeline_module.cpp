@@ -6,6 +6,7 @@
 #include "modules/voice/voice_module.h"
 #include "modules/quiet/quiet_coordinator_module.h"
 #include "modules/quiet/quiet_coordinator_voice_templates.h"
+#include "modules/alp/alp_runtime_module.h"
 #include "perf_metrics.h"
 #include "settings.h"
 #include "ble_client.h"
@@ -103,6 +104,17 @@ void DisplayPipelineModule::handleParsed(uint32_t nowMs) {
     }
     const V1Settings& settingsRef = settings_->get();
 
+    // ── ALP frequency-area override ────────────────────────────────────
+    // When ALP is actively detecting laser, the gun abbreviation replaces
+    // the frequency display. ALP laser overrides everything — even Ka.
+    const bool alpActive = alp_ && alp_->isAlertActive();
+    if (alpActive) {
+        const char* abbrev = alpGunAbbrev(alp_->lastIdentifiedGun());
+        display_->setAlpFrequencyOverride(abbrev);
+    } else {
+        display_->clearAlpFrequencyOverride();
+    }
+
     // No mute debounce — trust the parser's muted state directly.
     // No display throttle — element caches handle SPI saturation.
     // No gap recovery — parser freshness/timeout guards handle stale data.
@@ -185,6 +197,28 @@ void DisplayPipelineModule::handleParsed(uint32_t nowMs) {
         return;
     }
 
+    // ALP active with no V1 alerts — synthesize a laser alert display.
+    // The frequency override is already set above; we just need to push
+    // the display into live mode with a synthetic laser priority alert.
+    if (alpActive) {
+        AlertData alpAlert;
+        alpAlert.isValid = true;
+        alpAlert.band = BAND_LASER;
+        alpAlert.frequency = 0;   // Laser has no frequency — gun abbrev is in override
+        alpAlert.direction = DIR_FRONT;  // Default ahead until we have ALP direction data
+        alpAlert.frontStrength = 8;      // Max signal — ALP is local detection
+
+        *displayMode_ = DisplayMode::LIVE;
+
+        perfSetDisplayRenderScenario(PerfDisplayRenderScenario::Live);
+        const unsigned long startUs = micros();
+        display_->update(alpAlert, &alpAlert, 1, state);
+        const unsigned long endUs = micros();
+        recordPerfTiming(startUs, endUs);
+        perfClearDisplayRenderScenario();
+        return;
+    }
+
     *displayMode_ = DisplayMode::IDLE;
     voice_->clearAllState();
     renderIdleOwner(nowMs, state, false, false);
@@ -206,11 +240,19 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
         return;
     }
 
-    const DisplayState state = parser_->getDisplayState();
+    DisplayState state = parser_->getDisplayState();
     const bool hasAlerts = parser_->hasAlerts();
     AlertData priority;
     const bool hasRenderablePriority =
         hasAlerts && parser_->getRenderablePriorityAlert(priority);
+
+    // Restore ALP override state
+    const bool alpActive = alp_ && alp_->isAlertActive();
+    if (alpActive) {
+        display_->setAlpFrequencyOverride(alpGunAbbrev(alp_->lastIdentifiedGun()));
+    } else {
+        display_->clearAlpFrequencyOverride();
+    }
 
     if (hasAlerts) {
         *displayMode_ = DisplayMode::LIVE;
@@ -222,6 +264,24 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
         } else {
             display_->update(state);
         }
+        perfRecordDisplayScenarioRenderUs(micros() - startUs);
+        perfClearDisplayRenderScenario();
+        return;
+    }
+
+    // ALP active with no V1 alerts — show synthetic laser alert
+    if (alpActive) {
+        AlertData alpAlert;
+        alpAlert.isValid = true;
+        alpAlert.band = BAND_LASER;
+        alpAlert.frequency = 0;
+        alpAlert.direction = DIR_FRONT;
+        alpAlert.frontStrength = 8;
+
+        *displayMode_ = DisplayMode::LIVE;
+        perfSetDisplayRenderScenario(PerfDisplayRenderScenario::Restore);
+        const unsigned long startUs = micros();
+        display_->update(alpAlert, &alpAlert, 1, state);
         perfRecordDisplayScenarioRenderUs(micros() - startUs);
         perfClearDisplayRenderScenario();
         return;

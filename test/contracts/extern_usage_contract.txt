@@ -66,7 +66,7 @@ kind=header file=include/wifi_manager_internals.h line=16 text=extern SystemEven
 kind=header file=src/battery_manager.h line=103 text=extern BatteryManager batteryManager;
 kind=header file=src/battery_manager.h line=106 text=extern TwoWire tca9554Wire;
 kind=header file=src/battery_manager.h line=107 text=extern SemaphoreHandle_t tca9554WireMutex;
-kind=header file=src/display.h line=264 text=extern V1Display display;
+kind=header file=src/display.h line=272 text=extern V1Display display;
 kind=header file=src/display_font_manager.h line=120 text=extern DisplayFontManager fontMgr;
 kind=source file=src/main_boot.cpp line=23 text=extern V1Display display;
 kind=source file=src/main_setup_helpers.cpp line=238 text=extern const char* getBuildGitSha();
