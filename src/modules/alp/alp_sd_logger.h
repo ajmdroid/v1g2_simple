@@ -61,6 +61,18 @@ public:
                   AlpState currentState);
 
     /**
+     * Log every B0 heartbeat frame (byte0, byte1, byte2) for trace-level
+     * analysis of LISTENING sub-state cycling. Called on every B0 frame
+     * regardless of whether byte1 changed — the cycling pattern within
+     * 02/03/04 may encode scan-vs-armed state visible on the control pad LED.
+     *
+     * Rate-limited: writes at most one row per HEARTBEAT_LOG_INTERVAL_MS
+     * to avoid flooding the SD card (heartbeats arrive every ~800ms).
+     */
+    void logHeartbeat(uint32_t nowMs, uint8_t b0, uint8_t b1, uint8_t b2,
+                      AlpState currentState);
+
+    /**
      * Log a noise window entry/exit or teardown event.
      */
     void logEvent(uint32_t nowMs, const char* event, AlpState currentState,
@@ -80,6 +92,11 @@ private:
     bool ensureDirectory();
     bool ensureHeader();
 
+    // Log every heartbeat but rate-limit to avoid SD flood.
+    // Heartbeats arrive ~800ms apart; log every one to capture the
+    // full cycling pattern (02→03→04→02...) that may encode scan/armed.
+    static constexpr uint32_t HEARTBEAT_LOG_INTERVAL_MS = 0;  // 0 = every heartbeat
+
     bool enabled_ = false;
     bool sdReady_ = false;
     bool dirReady_ = false;
@@ -87,6 +104,7 @@ private:
     uint32_t bootId_ = 0;
     uint32_t linesWritten_ = 0;
     uint32_t dropCount_ = 0;
+    uint32_t lastHeartbeatLogMs_ = 0;
     char csvPathBuf_[48] = {0};
 };
 

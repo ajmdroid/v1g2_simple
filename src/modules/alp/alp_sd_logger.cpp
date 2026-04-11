@@ -132,6 +132,25 @@ void AlpSdLogger::logFrame(uint32_t nowMs, const char* frameType,
     appendLine(line);
 }
 
+void AlpSdLogger::logHeartbeat(uint32_t nowMs, uint8_t b0, uint8_t b1, uint8_t b2,
+                                AlpState currentState) {
+    if (!enabled_ || !sdReady_) return;
+
+    // Rate-limit if configured (0 = log every heartbeat)
+    if (HEARTBEAT_LOG_INTERVAL_MS > 0 &&
+        (nowMs - lastHeartbeatLogMs_) < HEARTBEAT_LOG_INTERVAL_MS) {
+        return;
+    }
+    lastHeartbeatLogMs_ = nowMs;
+
+    char line[128];
+    snprintf(line, sizeof(line), "%lu,HEARTBEAT,%s,,,%02X,%02X,%02X,,\n",
+             (unsigned long)nowMs,
+             alpStateName(currentState),
+             b0, b1, b2);
+    appendLine(line);
+}
+
 void AlpSdLogger::logEvent(uint32_t nowMs, const char* event, AlpState currentState,
                             uint32_t extraValue) {
     if (!enabled_ || !sdReady_) return;

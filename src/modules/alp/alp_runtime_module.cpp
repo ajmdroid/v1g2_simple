@@ -451,6 +451,10 @@ void AlpRuntimeModule::handleHeartbeatFrame(uint8_t b0, uint8_t b1, uint8_t b2, 
               b0, b1, b2, alpStateName(state_),
               (unsigned long)heartbeatCount_);
 
+    // SD trace: log every heartbeat frame to capture the full cycling
+    // pattern (byte1: 02→03→04→02...) that may encode scan/armed state.
+    alpSdLogger.logHeartbeat(nowMs, b0, b1, b2, state_);
+
     // ── Heartbeat byte1 alert detection (B0 frames only) ────────────
     // B0 heartbeats carry alert status in byte1:
     //   byte1=01 → laser detected (alert active)
