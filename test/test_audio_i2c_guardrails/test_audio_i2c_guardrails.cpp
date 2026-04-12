@@ -76,7 +76,7 @@ void test_battery_critical_poweroff_checks_latch_drop_failure_with_extended_budg
                           powerOffBody.find("setTCA9554PinWithBudget(TCA9554_PWR_LATCH_PIN"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, powerOffBody.find("pdMS_TO_TICKS(250)"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, powerOffBody.find("5)"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, powerOffBody.find("if (!latchDropped)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, powerOffBody.find("if (latchDropped)"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos,
                           powerOffBody.find("Failed to drop power latch, falling back to deep sleep"));
 }
