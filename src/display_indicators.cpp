@@ -215,6 +215,24 @@ void V1Display::drawAlpIndicator() {
 }
 
 // ============================================================================
+// Preview-mode direct setters (bypass runtime modules for display test)
+// ============================================================================
+
+void V1Display::setAlpPreviewState(bool enabled, uint8_t state, uint8_t hbByte1) {
+    alpEnabled_ = enabled;
+    alpStateRaw_ = state;
+    alpHbByte1_ = hbByte1;
+    dirty.alpIndicator = true;
+    g_elementCaches.alp.invalidate();
+}
+
+void V1Display::setObdPreviewState(bool enabled, bool connected, bool scanAttention) {
+    setObdStatus(enabled, connected, scanAttention);
+    dirty.obdIndicator = true;
+    g_elementCaches.obd.invalidate();
+}
+
+// ============================================================================
 // ALP frequency-area override
 // ============================================================================
 

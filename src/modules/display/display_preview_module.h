@@ -5,15 +5,35 @@
 #include "display.h"        // For V1Display, DisplayState
 
 /**
- * DisplayPreviewModule - drives the color preview/demo cycle
+ * DisplayPreviewModule - comprehensive display test / color preview
+ *
+ * Replaces the original 5-step color swatch with a realistic display test
+ * that exercises every visual element on screen:
+ *
+ * Phase 1: Band + direction sweep
+ *   Each band cycles front → side → rear with realistic frequencies
+ *   and ramping signal strength. Covers X, K, Ka (3 freqs), Laser.
+ *
+ * Phase 2: Multi-alert combos with secondary cards
+ *   Realistic multi-bogey scenarios showing priority + card alerts.
+ *   Includes Photo radar display.
+ *
+ * Phase 3: ALP state cycling
+ *   Simulates all ALP badge states (OFF → IDLE → warmup → scan →
+ *   armed → ALERT_ACTIVE → NOISE_WINDOW → TEARDOWN) with gun
+ *   abbreviation frequency override.
+ *
+ * Phase 4: Status indicator cycling
+ *   Bogey counter chars, mode chars, mute, OBD states, BLE proxy,
+ *   volume levels, profile slots.
  *
  * Responsibilities:
- * - Run the timed color preview sequence
+ * - Run the timed preview sequence
  * - Expose simple control (start/cancel) and completion flag
  *
  * Does NOT:
  * - Own display connection (expects V1Display pointer)
- * - Manage other display ownership flows
+ * - Touch real runtime modules (uses preview setters for ALP/OBD)
  */
 class DisplayPreviewModule {
 public:
@@ -34,35 +54,87 @@ public:
     void update();
 
 private:
-    enum class PreviewMode : uint8_t {
-        ALERT = 0,
-    };
+    // ── Step table definition ────────────────────────────────────────
 
-    struct ColorPreviewStep {
-        unsigned long offsetMs;
+    // Flags for per-step indicator overrides
+    static constexpr uint8_t FLAG_NONE         = 0;
+    static constexpr uint8_t FLAG_MUTED        = (1 << 0);
+    static constexpr uint8_t FLAG_PHOTO        = (1 << 1);
+    static constexpr uint8_t FLAG_FLASH_ARROW  = (1 << 2);
+    static constexpr uint8_t FLAG_FLASH_BAND   = (1 << 3);
+
+    struct PreviewStep {
+        // Primary alert
         Band band;
-        uint8_t bars;
         Direction dir;
         uint32_t freqMHz;
-        bool muted;
+        uint8_t frontBars;
+        uint8_t rearBars;
+        uint8_t flags;            // FLAG_* bitfield
+
+        // Secondary alert (card) — band BAND_NONE means no secondary
+        Band secBand;
+        Direction secDir;
+        uint32_t secFreqMHz;
+        uint8_t secFrontBars;
+        uint8_t secRearBars;
+
+        // Third alert (second card) — band BAND_NONE means none
+        Band thirdBand;
+        Direction thirdDir;
+        uint32_t thirdFreqMHz;
+        uint8_t thirdFrontBars;
+        uint8_t thirdRearBars;
+
+        // Status overrides (-1 = don't change, use previous)
+        int8_t bogeyChar;         // Character for bogey counter (-1 = auto from alert count)
+        int8_t modeChar;          // 'A', 'l', 'L', 0=none, -1=don't change
+        int8_t profileSlot;       // 0-2 or -1=don't change
+
+        // ALP simulation: alpState < 0 means don't change
+        int8_t alpState;          // AlpState enum cast, -1=don't change
+        int8_t alpHbByte1;        // Heartbeat byte1 for LISTENING sub-state
+
+        // OBD simulation: obdState < 0 means don't change
+        // 0=off, 1=connected, 2=scanning, -1=don't change
+        int8_t obdState;
+
+        // BLE proxy: bleState < 0 means don't change
+        // 0=off, 1=advertising, 2=connected, -1=don't change
+        int8_t bleState;
+
+        // Volume override: < 0 means don't change
+        int8_t mainVolume;
+        int8_t muteVolume;
+
+        // ALP gun abbreviation (nullptr = no override / clear)
+        const char* alpGunAbbrev;
     };
 
-    static constexpr ColorPreviewStep STEPS[] = {
-        {0,    BAND_X,    3, DIR_FRONT, 10525, false}, // X band
-        {1000, BAND_K,    5, DIR_SIDE, 24150,  false}, // K band
-        {2000, BAND_KA,   6, DIR_REAR, 35500,  false}, // Ka band
-        {3000, BAND_LASER,8, static_cast<Direction>(DIR_FRONT | DIR_REAR), 0, false}, // Laser
-        {4000, BAND_KA,   5, DIR_FRONT, 34700, true}  // Muted Ka
-    };
-    static constexpr int STEP_COUNT = sizeof(STEPS) / sizeof(STEPS[0]);
-    static constexpr uint32_t PREVIEW_TAIL_MS = 600;  // Extra time after last step to keep frame visible
+    static const PreviewStep STEPS[];
+    static const int STEP_COUNT;
+
+    static constexpr uint32_t STEP_DURATION_MS = 2000;  // 2 seconds per step
+    static constexpr uint32_t PREVIEW_TAIL_MS  = 600;   // Extra time after last step
 
     V1Display* display_ = nullptr;
 
-    PreviewMode previewMode_ = PreviewMode::ALERT;
     bool previewActive_ = false;
     bool previewEnded_ = false;
     unsigned long previewStartMs_ = 0;
     unsigned long previewDurationMs_ = 0;
     int previewStep_ = 0;
+
+    // Carry-forward state for indicators that persist across steps
+    int8_t currentModeChar_ = 0;
+    int8_t currentProfileSlot_ = 0;
+    int8_t currentAlpState_ = 0;    // AlpState::OFF
+    int8_t currentAlpHb_ = 0;
+    int8_t currentObdState_ = 0;
+    int8_t currentBleState_ = 0;
+    int8_t currentMainVol_ = 5;
+    int8_t currentMuteVol_ = 0;
+
+    void renderStep(int stepIndex);
+    void resetCarryState();
 };

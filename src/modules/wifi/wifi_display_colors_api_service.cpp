@@ -190,8 +190,10 @@ static void handlePreviewImpl(WebServer& server, const Runtime& runtime) {
     // Do NOT call showDisplayDemo() here — it performs 3 blocking SPI flushes
     // (~120ms) inside handleClient(), inflating wifiMaxUs.  The preview module
     // renders the first frame on the very next main-loop display phase.
+    // Duration arg is ignored by DisplayPreviewModule — it calculates its own
+    // from step count × 2s per step. Pass 0 as a signal to use auto-duration.
     if (runtime.requestColorPreviewHoldMs) {
-        runtime.requestColorPreviewHoldMs(5500, runtime.requestColorPreviewHoldMsCtx);
+        runtime.requestColorPreviewHoldMs(0, runtime.requestColorPreviewHoldMsCtx);
     }
     server.send(200, "application/json", "{\"success\":true,\"active\":true}");
 }

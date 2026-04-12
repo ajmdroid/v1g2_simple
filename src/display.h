@@ -124,6 +124,10 @@ public:
     void refreshAlpIndicator(uint32_t nowMs);
     void setAlpRuntimeModule(AlpRuntimeModule* m);
 
+    // Preview-mode direct setters — bypass runtime modules for display test
+    void setAlpPreviewState(bool enabled, uint8_t state, uint8_t hbByte1);
+    void setObdPreviewState(bool enabled, bool connected, bool scanAttention);
+
     // ALP frequency override — gun abbreviation replaces frequency text during ALP alert
     void setAlpFrequencyOverride(const char* gunAbbrev);
     void clearAlpFrequencyOverride();
