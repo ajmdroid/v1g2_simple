@@ -169,16 +169,13 @@ void AlpRuntimeModule::begin(bool enabled, AlpSdLogger* sdLogger) {
     }
 
 #ifndef UNIT_TEST
-    // Configure enable pin (active HIGH, matches former GPS usage)
-    pinMode(ALP_EN_PIN, OUTPUT);
-    digitalWrite(ALP_EN_PIN, HIGH);
-    ALP_LOG("begin: EN pin %d HIGH", ALP_EN_PIN);
-
-    // Configure UART2 at 19200 8N1
+    // Configure UART2 at 19200 8N1, receive-only (no TX pin assigned).
+    // GPIO 2 left undriven — formerly used as EN pin but ALP needs no
+    // enable signal, and driving it HIGH may interfere with the ALP circuit.
     Serial2.setRxBufferSize(UART_RX_BUFFER_SIZE);
-    Serial2.begin(ALP_BAUD, SERIAL_8N1, ALP_RX_PIN, ALP_TX_PIN);
-    ALP_LOG("begin: UART2 open baud=%lu RX=%d TX=%d bufSize=%u",
-            (unsigned long)ALP_BAUD, ALP_RX_PIN, ALP_TX_PIN,
+    Serial2.begin(ALP_BAUD, SERIAL_8N1, ALP_RX_PIN, -1);
+    ALP_LOG("begin: UART2 open baud=%lu RX=%d (TX=none) bufSize=%u",
+            (unsigned long)ALP_BAUD, ALP_RX_PIN,
             (unsigned)UART_RX_BUFFER_SIZE);
 
     // GPIO glitch filter on RX pin — rejects sub-10µs I2S crosstalk

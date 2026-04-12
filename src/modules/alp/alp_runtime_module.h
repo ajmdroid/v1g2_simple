@@ -1,9 +1,10 @@
 /**
  * ALP Runtime Module — Active Laser Protection serial listener.
  *
- * Owns UART2 on the GPIO pins formerly used by GPS (RX=1, TX=3, EN=2).
+ * Owns UART2 RX on GPIO 1 (ALP CPU TX, RJ-45 pin 2).
  * Receives ALP HiFi serial data at 19200 8N1, parses alert frames
  * for gun identification, and tracks connection/jamming lifecycle.
+ * GPIO 2 and 3 reserved for future control pad RX/TX.
  *
  * Design notes:
  *   - Receive-only: the ESP32 only listens to CPU TX (pin 2 on RJ-45).
@@ -107,10 +108,10 @@ struct AlpStatus {
 
 class AlpRuntimeModule {
 public:
-    // GPIO pins — wire on physical pin 1 = GPIO 1
+    // GPIO pins — RX only (CPU TX on RJ-45 pin 2 → GPIO 1)
+    // GPIO 2 reserved for future use (control pad RX / TX to ALP CPU)
+    // GPIO 3 unassigned (no TX needed — receive-only listener)
     static constexpr int ALP_RX_PIN = 1;
-    static constexpr int ALP_TX_PIN = 3;
-    static constexpr int ALP_EN_PIN = 2;
 
     // Protocol constants — all frames are 4 bytes with 7-bit checksum
     static constexpr uint32_t ALP_BAUD = 19200;
