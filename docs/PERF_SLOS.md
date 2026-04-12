@@ -1,7 +1,7 @@
 # Perf SLOs (CSV Scorecard)
 
 > Status: Active  
-> Date: February 15, 2026  
+> Date: April 12, 2026  
 > Source metrics: `/perf/perf_boot_<bootId>.csv` (schema v9)
 
 ## Goal

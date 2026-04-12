@@ -4,7 +4,7 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 
 **Base URL**: `http://192.168.35.5` (default AP mode)  
 **Content-Type**: `application/x-www-form-urlencoded` (POST) or `application/json`
-**Updated**: `2026-03-20`
+**Updated**: `2026-04-12`
 
 ---
 
@@ -14,6 +14,7 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 - [System Utilities](#system-utilities)
 - [Settings](#settings)
 - [V1 Profiles](#v1-profiles)
+- [V1 Devices](#v1-devices)
 - [Auto-Push](#auto-push)
 - [Audio Settings](#audio-settings)
 - [Display Colors](#display-colors)
@@ -68,7 +69,7 @@ Get device status including V1 connection, WiFi, and alerts.
     "uptime": 3600,
     "heap_free": 180000,
     "hostname": "v1g2",
-    "firmware_version": "4.0.0-dev"
+    "firmware_version": "4.0.1"
   },
   "battery": {
     "voltage_mv": 4150,

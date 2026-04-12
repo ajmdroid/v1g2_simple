@@ -684,7 +684,7 @@ Options:
                         before scoring starts (default: 20)
   --env NAME             PlatformIO env to flash (default: waveshare-349)
   --port PATH            Fixed serial port (default: auto-detect)
-  --with-fs              Upload LittleFS image before firmware upload
+  --with-fs              Stage and upload LittleFS via build.sh before firmware upload
   --skip-flash           Skip flashing and only run soak collection
   --metrics-url URL      Poll debug metrics endpoint (or set REAL_FW_METRICS_URL)
   --panic-url URL        Poll debug panic endpoint (default: derived from metrics URL)
@@ -1789,8 +1789,8 @@ fi
 
 if [[ "$SKIP_FLASH" -eq 0 ]]; then
   if [[ "$UPLOAD_FS" -eq 1 ]]; then
-    echo "==> Uploading filesystem image..." | tee -a "$RUN_LOG"
-    run_and_log pio run -e "$ENV_NAME" -t uploadfs --upload-port "$TEST_PORT"
+    echo "==> Staging and uploading filesystem image via build.sh..." | tee -a "$RUN_LOG"
+    run_and_log ./build.sh --env "$ENV_NAME" --upload-fs --upload-port "$TEST_PORT"
   fi
 
   echo "==> Uploading production firmware..." | tee -a "$RUN_LOG"
