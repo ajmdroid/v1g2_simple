@@ -188,7 +188,12 @@ if [[ -n "$IP_OVERRIDE" ]]; then
   if [[ -n "${METRICS_URL:-}" ]]; then
     echo "Warning: --ip overrides METRICS_URL env var ($METRICS_URL)" >&2
   fi
-  METRICS_URL="http://$IP_OVERRIDE/metrics"
+  # Strip any scheme prefix the user may have included (e.g. http://192.168.1.1)
+  _IP_STRIPPED="${IP_OVERRIDE#http://}"
+  _IP_STRIPPED="${_IP_STRIPPED#https://}"
+  # Strip any trailing path
+  _IP_STRIPPED="${_IP_STRIPPED%%/*}"
+  METRICS_URL="http://$_IP_STRIPPED/metrics"
 fi
 
 if [[ "$LIST_SEGMENTS" -eq 1 ]]; then
