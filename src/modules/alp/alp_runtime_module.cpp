@@ -252,6 +252,15 @@ void AlpRuntimeModule::transitionTo(AlpState newState, uint32_t nowMs) {
             alpStateName(state_), alpStateName(newState),
             (unsigned long)nowMs);
     if (sdLogger_) sdLogger_->logStateTransition(nowMs, state_, newState);
+
+    // Clear stale gun ID when entering a new alert. The previous alert's gun
+    // must not bleed through — wait for a fresh CX frame to identify this
+    // alert's gun before showing anything on the display.
+    if (newState == AlpState::ALERT_ACTIVE && state_ != AlpState::ALERT_ACTIVE) {
+        lastGun_ = AlpGunType::UNKNOWN;
+        lastGunTimestampMs_ = 0;
+    }
+
     state_ = newState;
 }
 

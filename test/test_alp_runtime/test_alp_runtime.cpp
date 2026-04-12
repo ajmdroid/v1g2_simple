@@ -1046,6 +1046,86 @@ void test_teardown_clears_alert_flag() {
     TEST_ASSERT_FALSE(alpRuntimeModule.testGetAlertDetectedViaHb());
 }
 
+// ── Gun cleared on new alert entry (stale gun fix) ─────────────
+
+void test_new_alert_clears_stale_gun_via_98_trigger() {
+    beginEnabled();
+
+    // First alert: identify PL3 via burst
+    inject(BURST_PL3, sizeof(BURST_PL3));
+    processAt(1000);
+    TEST_ASSERT_EQUAL(AlpState::ALERT_ACTIVE, alpRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(AlpGunType::PL3_PROLITE, alpRuntimeModule.lastIdentifiedGun());
+
+    // Resolve: FD terminator → TEARDOWN → timeout → LISTENING
+    inject(REG_WRITE_FD, sizeof(REG_WRITE_FD));
+    processAt(2000);
+    TEST_ASSERT_EQUAL(AlpState::TEARDOWN, alpRuntimeModule.getState());
+    processAt(2000 + AlpRuntimeModule::TEARDOWN_TIMEOUT_MS + 100);
+    TEST_ASSERT_EQUAL(AlpState::LISTENING, alpRuntimeModule.getState());
+
+    // Second alert: 98 trigger only — no gun frame follows
+    const uint8_t trigger[] = { 0x98, 0x00, 0xE3, 0x7B };
+    inject(trigger, sizeof(trigger));
+    processAt(10000);
+    TEST_ASSERT_EQUAL(AlpState::ALERT_ACTIVE, alpRuntimeModule.getState());
+
+    // Gun must be UNKNOWN — the previous PL3 must not bleed through
+    TEST_ASSERT_EQUAL(AlpGunType::UNKNOWN, alpRuntimeModule.lastIdentifiedGun());
+    TEST_ASSERT_EQUAL(0u, alpRuntimeModule.lastGunTimestampMs());
+}
+
+void test_new_alert_clears_stale_gun_via_heartbeat() {
+    beginEnabled();
+
+    // First alert: identify TruSpeed via burst
+    inject(BURST_TRUSPEED, sizeof(BURST_TRUSPEED));
+    processAt(1000);
+    TEST_ASSERT_EQUAL(AlpGunType::LTI_TRUSPEED_LR, alpRuntimeModule.lastIdentifiedGun());
+
+    // Resolve via FD terminator → TEARDOWN → timeout → LISTENING
+    inject(REG_WRITE_FD, sizeof(REG_WRITE_FD));
+    processAt(2000);
+    TEST_ASSERT_EQUAL(AlpState::TEARDOWN, alpRuntimeModule.getState());
+    processAt(2000 + AlpRuntimeModule::TEARDOWN_TIMEOUT_MS + 100);
+    TEST_ASSERT_EQUAL(AlpState::LISTENING, alpRuntimeModule.getState());
+
+    // Idle heartbeat to seed lastHbByte1 for the transition detection
+    const uint8_t hb_idle[] = { 0xB0, 0x03, 0x00, 0x33 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(9000);
+
+    // Second alert via heartbeat byte1=01 — no gun frame
+    const uint8_t hb_alert[] = { 0xB0, 0x01, 0x00, 0x31 };
+    inject(hb_alert, sizeof(hb_alert));
+    processAt(10000);
+    TEST_ASSERT_EQUAL(AlpState::ALERT_ACTIVE, alpRuntimeModule.getState());
+
+    // Gun must be UNKNOWN — the previous TruSpeed must not bleed through
+    TEST_ASSERT_EQUAL(AlpGunType::UNKNOWN, alpRuntimeModule.lastIdentifiedGun());
+}
+
+void test_new_alert_identifies_fresh_gun_after_clear() {
+    beginEnabled();
+
+    // First alert: identify PL3
+    inject(BURST_PL3, sizeof(BURST_PL3));
+    processAt(1000);
+    TEST_ASSERT_EQUAL(AlpGunType::PL3_PROLITE, alpRuntimeModule.lastIdentifiedGun());
+
+    // Resolve → LISTENING
+    inject(REG_WRITE_FD, sizeof(REG_WRITE_FD));
+    processAt(2000);
+    processAt(2000 + AlpRuntimeModule::TEARDOWN_TIMEOUT_MS + 100);
+    TEST_ASSERT_EQUAL(AlpState::LISTENING, alpRuntimeModule.getState());
+
+    // Second alert: full Ultralyte burst — should show Ultralyte, not PL3
+    inject(BURST_ULTRALYTE, sizeof(BURST_ULTRALYTE));
+    processAt(10000);
+    TEST_ASSERT_EQUAL(AlpState::ALERT_ACTIVE, alpRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(AlpGunType::MARKSMAN_ULTRALYTE, alpRuntimeModule.lastIdentifiedGun());
+}
+
 // ── Runner ───────────────────────────────────────────────────────────
 
 int main(int argc, char** argv) {
@@ -1160,6 +1240,11 @@ int main(int argc, char** argv) {
     RUN_TEST(test_noise_from_listening_with_hb_alert);
     RUN_TEST(test_snapshot_includes_hb_byte1);
     RUN_TEST(test_teardown_clears_alert_flag);
+
+    // Gun cleared on new alert entry (stale gun fix)
+    RUN_TEST(test_new_alert_clears_stale_gun_via_98_trigger);
+    RUN_TEST(test_new_alert_clears_stale_gun_via_heartbeat);
+    RUN_TEST(test_new_alert_identifies_fresh_gun_after_clear);
 
     return UNITY_END();
 }
