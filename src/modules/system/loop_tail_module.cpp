@@ -4,8 +4,8 @@ void LoopTailModule::begin(const Providers& hooks) {
     providers = hooks;
 }
 
-uint32_t LoopTailModule::process(bool bleBackpressure, uint32_t loopStartUs) {
-    if (bleBackpressure) {
+uint32_t LoopTailModule::process(bool bleBackpressure, uint32_t loopStartUs, bool forceBleDrain) {
+    if (bleBackpressure || forceBleDrain) {
         uint32_t drainStartUs = 0;
         if (providers.perfTimestampUs) {
             drainStartUs = providers.perfTimestampUs(providers.perfTimestampContext);
@@ -26,9 +26,14 @@ uint32_t LoopTailModule::process(bool bleBackpressure, uint32_t loopStartUs) {
         providers.yieldOneTick(providers.yieldContext);
     }
 
+    uint32_t loopDurationUs = 0;
     if (providers.loopMicrosUs) {
-        return static_cast<uint32_t>(providers.loopMicrosUs(providers.loopMicrosContext) - loopStartUs);
+        loopDurationUs = static_cast<uint32_t>(providers.loopMicrosUs(providers.loopMicrosContext) - loopStartUs);
     }
 
-    return 0;
+    if (providers.recordLoopJitterUs && providers.loopMicrosUs) {
+        providers.recordLoopJitterUs(providers.loopJitterContext, loopDurationUs);
+    }
+
+    return loopDurationUs;
 }

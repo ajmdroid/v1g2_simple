@@ -592,6 +592,9 @@ static void configureLoopTailModule() {
     loopTailProviders.recordBleDrainUs = [](void*, uint32_t elapsedUs) {
         perfRecordBleDrainUs(elapsedUs);
     };
+    loopTailProviders.recordLoopJitterUs = [](void*, uint32_t jitterUs) {
+        perfRecordLoopJitterUs(jitterUs);
+    };
     loopTailProviders.yieldOneTick = [](void*) {
         vTaskDelay(pdMS_TO_TICKS(1));
     };
@@ -602,9 +605,6 @@ static void configureLoopTelemetryModule() {
     LoopTelemetryModule::Providers loopTelemetryProviders;
     loopTelemetryProviders.microsNow = [](void*) -> uint32_t {
         return micros();
-    };
-    loopTelemetryProviders.recordLoopJitterUs = [](void*, uint32_t jitterUs) {
-        perfRecordLoopJitterUs(jitterUs);
     };
     loopTelemetryProviders.refreshDmaCache = refreshStorageDmaHeapCache;
     loopTelemetryProviders.readFreeHeap = readCurrentFreeHeap;
@@ -1067,6 +1067,7 @@ void loop() {
 
     // Process battery/power and touch UI.
     if (shouldReturnEarlyFromLoopPowerTouchPhase(now, loopStartUs)) {
+        mainRuntimeState.lastLoopUs = processLoopSettingsEarlyReturnPhase(now, loopStartUs);
         return;  // Skip normal loop processing while in settings mode.
     }
 

@@ -17,12 +17,15 @@ public:
         void (*recordBleDrainUs)(void* ctx, uint32_t elapsedUs) = nullptr;
         void* bleDrainRecordContext = nullptr;
 
+        void (*recordLoopJitterUs)(void* ctx, uint32_t jitterUs) = nullptr;
+        void* loopJitterContext = nullptr;
+
         void (*yieldOneTick)(void* ctx) = nullptr;
         void* yieldContext = nullptr;
     };
 
     void begin(const Providers& hooks);
-    uint32_t process(bool bleBackpressure, uint32_t loopStartUs);
+    uint32_t process(bool bleBackpressure, uint32_t loopStartUs, bool forceBleDrain = false);
 
 private:
     Providers providers{};

@@ -375,6 +375,12 @@ void runStoreSave(void*, uint32_t) {
     noteCall(CALL_STORE_SAVE);
 }
 
+uint32_t perfTimestampUs(void*) {
+    return 0;
+}
+
+void recordLoopDurationUs(void*, uint32_t) {}
+
 uint32_t loopMicrosUs(void*) {
     return 3500;
 }
@@ -500,7 +506,10 @@ void configureModules() {
     periodicMaintenanceModule.begin(maintenanceProviders);
 
     LoopTailModule::Providers tailProviders;
+    tailProviders.perfTimestampUs = perfTimestampUs;
     tailProviders.loopMicrosUs = loopMicrosUs;
+    tailProviders.runBleDrain = providerBleDrain;
+    tailProviders.recordLoopJitterUs = recordLoopDurationUs;
     tailProviders.yieldOneTick = yieldOneTick;
     loopTailModule.begin(tailProviders);
 
@@ -677,9 +686,32 @@ void test_power_touch_phase_returns_early_with_explicit_settings_state_capture()
     }
 }
 
+void test_settings_early_return_phase_runs_maintenance_and_forced_tail_drain() {
+    const unsigned long lastLoopUs = processLoopSettingsEarlyReturnPhase(1000, 3000);
+
+    TEST_ASSERT_EQUAL(500UL, lastLoopUs);
+
+    const int expectedOrder[] = {
+        CALL_PERF_REPORT,
+        CALL_OBD_SETTINGS_SYNC,
+        CALL_DEFERRED_SETTINGS_PERSIST,
+        CALL_DEFERRED_SETTINGS_BACKUP,
+        CALL_DEFERRED_BLE_BOND_BACKUP,
+        CALL_STORE_SAVE,
+        CALL_BLE_DRAIN,
+        CALL_YIELD_ONE_TICK,
+    };
+
+    TEST_ASSERT_EQUAL_UINT32(sizeof(expectedOrder) / sizeof(expectedOrder[0]), callLogCount);
+    for (size_t index = 0; index < callLogCount; ++index) {
+        TEST_ASSERT_EQUAL_INT(expectedOrder[index], callLog[index]);
+    }
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_main_loop_phases_preserve_expected_order_and_phase_contracts);
     RUN_TEST(test_power_touch_phase_returns_early_with_explicit_settings_state_capture);
+    RUN_TEST(test_settings_early_return_phase_runs_maintenance_and_forced_tail_drain);
     return UNITY_END();
 }

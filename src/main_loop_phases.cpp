@@ -156,6 +156,12 @@ LoopFinalizePhaseValues processLoopFinalizePhase(
     return values;
 }
 
+unsigned long processLoopSettingsEarlyReturnPhase(const unsigned long nowMs,
+                                                  const unsigned long loopStartUs) {
+    periodicMaintenanceModule.process(nowMs);
+    return loopTailModule.process(false, loopStartUs, true);
+}
+
 bool shouldReturnEarlyFromLoopPowerTouchPhase(const unsigned long nowMs,
                                               const unsigned long loopStartUs) {
     LoopPowerTouchContext loopPowerTouchCtx;
