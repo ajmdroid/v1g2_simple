@@ -5,6 +5,7 @@ rx
 qDrop
 parseOK
 parseFail
+parseResync
 disc
 reconn
 loopMax_us
