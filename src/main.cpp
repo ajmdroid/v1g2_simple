@@ -780,7 +780,7 @@ static void configureRuntimeSensorModules() {
 
     // ALP (Active Laser Protection) — UART2 listener for gun identification.
     // Does NOT yet override V1 laser alerts; data-gathering phase only.
-    alpRuntimeModule.begin(settingsManager.get().alpEnabled);
+    alpRuntimeModule.begin(settingsManager.get().alpEnabled, &alpSdLogger);
 }
 
 static void configureRuntimeCoreModules() {

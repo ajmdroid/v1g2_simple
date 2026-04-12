@@ -13,8 +13,6 @@
 #include "alp_runtime_module.h"
 #include "alp_sd_logger.h"
 
-extern AlpSdLogger alpSdLogger;
-
 #include <cstring>
 
 #ifndef UNIT_TEST
@@ -159,7 +157,8 @@ static void logHex(const char* prefix, const uint8_t* data, size_t len) {
 
 // ── begin() ──────────────────────────────────────────────────────────
 
-void AlpRuntimeModule::begin(bool enabled) {
+void AlpRuntimeModule::begin(bool enabled, AlpSdLogger* sdLogger) {
+    sdLogger_ = sdLogger;
     enabled_ = enabled;
     begun_ = true;
 
@@ -255,7 +254,7 @@ void AlpRuntimeModule::transitionTo(AlpState newState, uint32_t nowMs) {
     ALP_LOG("state: %s -> %s at %lu ms",
             alpStateName(state_), alpStateName(newState),
             (unsigned long)nowMs);
-    alpSdLogger.logStateTransition(nowMs, state_, newState);
+    if (sdLogger_) sdLogger_->logStateTransition(nowMs, state_, newState);
     state_ = newState;
 }
 
@@ -325,7 +324,7 @@ void AlpRuntimeModule::parseRingBuffer(uint32_t nowMs) {
             if (enterNoise) {
                 ALP_LOG("NOISE: %lu consecutive bad checksums — entering NOISE_WINDOW",
                         (unsigned long)consecutiveBadChecksums_);
-                alpSdLogger.logEvent(nowMs, "NOISE_ENTER", state_, consecutiveBadChecksums_);
+                if (sdLogger_) sdLogger_->logEvent(nowMs, "NOISE_ENTER", state_, consecutiveBadChecksums_);
                 transitionTo(AlpState::NOISE_WINDOW, nowMs);
                 noiseWindowEntryMs_ = nowMs;
                 noiseWindowCount_++;
@@ -414,7 +413,7 @@ void AlpRuntimeModule::handleAlertFrame(uint8_t b1, uint8_t b2, uint32_t nowMs) 
         lastAlertTriggerMs_ = nowMs;
         ALP_LOG("ALERT_TRIGGER: 98 00 E3 (jam mode) — burst #%lu",
                 (unsigned long)statusBurstCount_);
-        alpSdLogger.logFrame(nowMs, "ALERT_JAM", ALERT_BYTE0, b1, b2,
+        if (sdLogger_) sdLogger_->logFrame(nowMs, "ALERT_JAM", ALERT_BYTE0, b1, b2,
                              alpChecksum(ALERT_BYTE0, b1, b2), state_);
 
         if (state_ != AlpState::ALERT_ACTIVE) {
@@ -426,7 +425,7 @@ void AlpRuntimeModule::handleAlertFrame(uint8_t b1, uint8_t b2, uint32_t nowMs) 
         lastAlertTriggerMs_ = nowMs;
         ALP_LOG("ALERT_TRIGGER: 98 02 00 (observe mode) — burst #%lu",
                 (unsigned long)statusBurstCount_);
-        alpSdLogger.logFrame(nowMs, "ALERT_OBS", ALERT_BYTE0, b1, b2,
+        if (sdLogger_) sdLogger_->logFrame(nowMs, "ALERT_OBS", ALERT_BYTE0, b1, b2,
                              alpChecksum(ALERT_BYTE0, b1, b2), state_);
 
         if (state_ != AlpState::ALERT_ACTIVE) {
@@ -455,7 +454,7 @@ void AlpRuntimeModule::handleHeartbeatFrame(uint8_t b0, uint8_t b1, uint8_t b2, 
 
     // SD trace: log every heartbeat frame to capture the full cycling
     // pattern (byte1: 02→03→04→02...) that may encode scan/armed state.
-    alpSdLogger.logHeartbeat(nowMs, b0, b1, b2, state_);
+    if (sdLogger_) sdLogger_->logHeartbeat(nowMs, b0, b1, b2, state_);
 
     // ── Heartbeat byte1 alert detection (B0 frames only) ────────────
     // B0 heartbeats carry alert status in byte1:
@@ -475,7 +474,7 @@ void AlpRuntimeModule::handleHeartbeatFrame(uint8_t b0, uint8_t b1, uint8_t b2, 
                 alertDetectedViaHb_ = true;
                 ALP_LOG("HB ALERT: byte1 %02X -> 01 — laser detected via heartbeat",
                         prevByte1);
-                alpSdLogger.logHeartbeatByte1(nowMs, prevByte1, b1, state_);
+                if (sdLogger_) sdLogger_->logHeartbeatByte1(nowMs, prevByte1, b1, state_);
 
                 if (state_ == AlpState::LISTENING) {
                     transitionTo(AlpState::ALERT_ACTIVE, nowMs);
@@ -485,7 +484,7 @@ void AlpRuntimeModule::handleHeartbeatFrame(uint8_t b0, uint8_t b1, uint8_t b2, 
                 // Transition back to idle — alert resolved
                 alertDetectedViaHb_ = false;
                 ALP_LOG("HB IDLE: byte1 01 -> %02X — alert resolved via heartbeat", b1);
-                alpSdLogger.logHeartbeatByte1(nowMs, prevByte1, b1, state_);
+                if (sdLogger_) sdLogger_->logHeartbeatByte1(nowMs, prevByte1, b1, state_);
 
                 if (state_ == AlpState::ALERT_ACTIVE) {
                     transitionTo(AlpState::TEARDOWN, nowMs);
@@ -516,7 +515,7 @@ void AlpRuntimeModule::handleGunCandidate(uint8_t b0, uint8_t b1, uint8_t b2, ui
         if (gun != AlpGunType::UNKNOWN) {
             ALP_LOG("GUN IDENTIFIED (jam): byte0=0x%02X gunCode=0x%02X -> %s",
                     b0, b2, alpGunName(gun));
-            alpSdLogger.logGunIdentified(nowMs, gun, b0, b2, false, state_);
+            if (sdLogger_) sdLogger_->logGunIdentified(nowMs, gun, b0, b2, false, state_);
         }
     }
     if (gun == AlpGunType::UNKNOWN && b2 == 0x00 && b1 != 0x00) {
@@ -524,7 +523,7 @@ void AlpRuntimeModule::handleGunCandidate(uint8_t b0, uint8_t b1, uint8_t b2, ui
         if (gun != AlpGunType::UNKNOWN) {
             ALP_LOG("GUN IDENTIFIED (observe): byte0=0x%02X byte1=0x%02X -> %s",
                     b0, b1, alpGunName(gun));
-            alpSdLogger.logGunIdentified(nowMs, gun, b0, b1, true, state_);
+            if (sdLogger_) sdLogger_->logGunIdentified(nowMs, gun, b0, b1, true, state_);
         }
     }
     if (gun != AlpGunType::UNKNOWN) {

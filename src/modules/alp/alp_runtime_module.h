@@ -33,6 +33,8 @@
 #include <cstdint>
 #include <cstddef>
 
+class AlpSdLogger;
+
 // ── ALP connection / protocol states ─────────────────────────────────
 
 enum class AlpState : uint8_t {
@@ -151,8 +153,9 @@ public:
     /**
      * Initialize the module.
      * @param enabled  true to open UART2 and begin listening
+     * @param sdLogger  optional SD logger (nullptr disables logging)
      */
-    void begin(bool enabled);
+    void begin(bool enabled, AlpSdLogger* sdLogger = nullptr);
 
     /**
      * Called every main loop iteration.
@@ -202,6 +205,7 @@ public:
 
 private:
     // ── State ────────────────────────────────────────────────────────
+    AlpSdLogger* sdLogger_ = nullptr;
     bool enabled_ = false;
     bool begun_ = false;
     AlpState state_ = AlpState::OFF;
