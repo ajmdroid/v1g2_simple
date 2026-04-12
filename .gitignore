@@ -38,6 +38,10 @@ RDF_POST*
 *~
 *.bak
 
+# Local planning/review docs (not tracked)
+docs/RECONNECTION_PLAN.md
+PRODUCTION_READINESS_REVIEW.md
+
 # Web UI build/cache (Svelte/Vite)
 /interface/node_modules/
 /interface/.svelte-kit/
