@@ -410,11 +410,11 @@ void BatteryManager::update() {
         return;
     }
 
-    unsigned long now = millis();
+    const uint32_t now = static_cast<uint32_t>(millis());
 
     // Refresh power source detection periodically to handle USB/battery swaps
     // Skip while the power button is held (GPIO16 LOW) to avoid misclassifying as USB
-    static unsigned long lastPowerCheckMs = 0;
+    static uint32_t lastPowerCheckMs = 0;
     if (now - lastPowerCheckMs >= 1000 && !isPowerButtonPressed()) {
         const int samples = 5;
         int highCount = 0;
@@ -600,7 +600,7 @@ bool BatteryManager::processPowerButton() {
     // Note: GPIO 0 (BOOT pin) cannot be read as GPIO on ESP32 - disabled BOOT+PWR check
 
     bool pressed = isPowerButtonPressed();
-    unsigned long now = millis();
+    const uint32_t now = static_cast<uint32_t>(millis());
 
     if (pressed && !buttonWasPressed_) {
         // Button just pressed

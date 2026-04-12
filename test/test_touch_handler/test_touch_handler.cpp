@@ -177,6 +177,39 @@ void test_post_recovery_backoff_skips_bus_access_for_50ms() {
     TEST_ASSERT_EQUAL(requestFromCallsBeforeBackoff, Wire.requestFromCalls);
 }
 
+void test_post_recovery_backoff_expires_correctly_across_32bit_wrap() {
+    beginTouchHandler();
+
+    queueReadFailure();
+    queueReadFailure();
+    queueReadFailure();
+
+    int16_t x = 0;
+    int16_t y = 0;
+    mockMillis = 0xFFFFFFF0UL;
+    TEST_ASSERT_FALSE(touchHandler.getTouchPoint(x, y));
+    mockMillis = 0xFFFFFFF1UL;
+    TEST_ASSERT_FALSE(touchHandler.getTouchPoint(x, y));
+    mockMillis = 0xFFFFFFF2UL;
+    TEST_ASSERT_FALSE(touchHandler.getTouchPoint(x, y));
+
+    Wire.queueEndTransmission(0);
+    Wire.queueRequestFrom(32, makeTouchFrame(55, 66));
+
+    const int endTransmissionCallsBeforeBackoff = Wire.endTransmissionCalls;
+    const int requestFromCallsBeforeBackoff = Wire.requestFromCalls;
+
+    mockMillis = 20;
+    TEST_ASSERT_FALSE(touchHandler.getTouchPoint(x, y));
+    TEST_ASSERT_EQUAL(endTransmissionCallsBeforeBackoff, Wire.endTransmissionCalls);
+    TEST_ASSERT_EQUAL(requestFromCallsBeforeBackoff, Wire.requestFromCalls);
+
+    mockMillis = 300;
+    TEST_ASSERT_TRUE(touchHandler.getTouchPoint(x, y));
+    TEST_ASSERT_EQUAL(55, x);
+    TEST_ASSERT_EQUAL(66, y);
+}
+
 void test_release_debounce_blocks_retap_within_100ms() {
     beginTouchHandler();
 
@@ -265,6 +298,7 @@ int main() {
     RUN_TEST(test_three_consecutive_failures_trigger_single_recovery_attempt);
     RUN_TEST(test_recovery_cooldown_blocks_repeat_attempts_inside_250ms);
     RUN_TEST(test_post_recovery_backoff_skips_bus_access_for_50ms);
+    RUN_TEST(test_post_recovery_backoff_expires_correctly_across_32bit_wrap);
     RUN_TEST(test_successful_read_resets_failure_streak);
     RUN_TEST(test_release_debounce_blocks_retap_within_100ms);
     RUN_TEST(test_release_debounce_allows_retap_at_100ms);

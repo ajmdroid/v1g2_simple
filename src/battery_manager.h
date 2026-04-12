@@ -82,14 +82,14 @@ private:
     bool initialized_;
     bool onBattery_;
     uint16_t lastVoltage_;
-    unsigned long lastButtonPress_;
-    unsigned long buttonPressStart_;
+    uint32_t lastButtonPress_;
+    uint32_t buttonPressStart_;
     bool buttonWasPressed_;
 
     // Cached battery state (updated every 30s)
     uint16_t cachedVoltage_;
     uint8_t cachedPercent_;
-    unsigned long lastUpdateMs_;
+    uint32_t lastUpdateMs_;
 
     // Debug simulation
     uint16_t simulatedVoltage_;

@@ -56,10 +56,10 @@ private:
     uint8_t i2cAddr_;
     int rstPin_;
     bool touchActive_;
-    unsigned long lastTouchTime_;
-    unsigned long lastReleaseTime_;      // When finger was last released
-    unsigned long touchDebounceMs_;
-    unsigned long releaseDebounceMs_;    // Time finger must be lifted before new tap
+    uint32_t lastTouchTime_;
+    uint32_t lastReleaseTime_;      // When finger was last released
+    uint32_t touchDebounceMs_;
+    uint32_t releaseDebounceMs_;    // Time finger must be lifted before new tap
 
     // I2C stall tracking
     uint32_t i2cStallCount_ = 0;          // Transactions that returned error
@@ -78,8 +78,8 @@ public:
 
 private:
     static constexpr uint8_t I2C_RECOVERY_THRESHOLD = 3;
-    static constexpr unsigned long I2C_RECOVERY_COOLDOWN_MS = 250;
-    static constexpr unsigned long I2C_RECOVERY_BACKOFF_MS = 50;
+    static constexpr uint32_t I2C_RECOVERY_COOLDOWN_MS = 250;
+    static constexpr uint32_t I2C_RECOVERY_BACKOFF_MS = 50;
     static constexpr uint8_t I2C_RECOVERY_CLOCK_PULSES = 9;
     static constexpr unsigned int I2C_RECOVERY_PULSE_DELAY_US = 5;
     static constexpr uint32_t I2C_CLOCK_HZ = 400000;
@@ -89,16 +89,16 @@ private:
     int sclPin_ = 18;
     // I2C communication
     void configureWireBus();
-    void noteNoTouch(unsigned long now);
-    void recordI2cFailure(unsigned long now, uint32_t elapsedUs);
+    void noteNoTouch(uint32_t now);
+    void recordI2cFailure(uint32_t now, uint32_t elapsedUs);
     void recordI2cSuccess();
-    void maybeRecoverI2cBus(unsigned long now);
-    void recoverI2cBus(unsigned long now);
-    bool isI2cPollBackoffActive(unsigned long now) const;
+    void maybeRecoverI2cBus(uint32_t now);
+    void recoverI2cBus(uint32_t now);
+    bool isI2cPollBackoffActive(uint32_t now) const;
     uint8_t readRegister(uint8_t reg);
 
-    unsigned long lastRecoveryMs_ = 0;
-    unsigned long nextI2cPollAllowedMs_ = 0;
+    uint32_t lastRecoveryMs_ = 0;
+    uint32_t nextI2cPollAllowedMs_ = 0;
     uint8_t consecutiveI2cFailures_ = 0;
     uint32_t i2cRecoveryCount_ = 0;
 };

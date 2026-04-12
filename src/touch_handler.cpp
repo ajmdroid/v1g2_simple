@@ -8,6 +8,18 @@
 
 #define TOUCH_LOGF(...) do { } while(0)
 
+namespace {
+
+inline bool hasElapsedMs(uint32_t now, uint32_t start, uint32_t intervalMs) {
+    return static_cast<uint32_t>(now - start) >= intervalMs;
+}
+
+inline bool isBeforeDeadlineMs(uint32_t now, uint32_t deadline) {
+    return static_cast<int32_t>(now - deadline) < 0;
+}
+
+}  // namespace
+
 // AXS15231B touch read command sequence
 static const uint8_t AXS_TOUCH_READ_CMD[] = {0xb5, 0xab, 0xa5, 0x5a, 0x0, 0x0, 0x0, 0x0e, 0x0, 0x0, 0x0};
 
@@ -85,14 +97,14 @@ void TouchHandler::configureWireBus() {
     Wire.setTimeOut(I2C_TIMEOUT_MS);
 }
 
-void TouchHandler::noteNoTouch(unsigned long now) {
+void TouchHandler::noteNoTouch(uint32_t now) {
     if (touchActive_) {
         lastReleaseTime_ = now;
         touchActive_ = false;
     }
 }
 
-void TouchHandler::recordI2cFailure(unsigned long now, uint32_t elapsedUs) {
+void TouchHandler::recordI2cFailure(uint32_t now, uint32_t elapsedUs) {
     if (elapsedUs > i2cMaxUs_) {
         i2cMaxUs_ = elapsedUs;
     }
@@ -108,24 +120,25 @@ void TouchHandler::recordI2cSuccess() {
     consecutiveI2cFailures_ = 0;
 }
 
-bool TouchHandler::isI2cPollBackoffActive(unsigned long now) const {
-    return static_cast<long>(now - nextI2cPollAllowedMs_) < 0;
+bool TouchHandler::isI2cPollBackoffActive(uint32_t now) const {
+    return nextI2cPollAllowedMs_ != 0 &&
+           isBeforeDeadlineMs(now, nextI2cPollAllowedMs_);
 }
 
-void TouchHandler::maybeRecoverI2cBus(unsigned long now) {
+void TouchHandler::maybeRecoverI2cBus(uint32_t now) {
     if (consecutiveI2cFailures_ < I2C_RECOVERY_THRESHOLD) {
         return;
     }
 
     if (i2cRecoveryCount_ != 0 &&
-        (now - lastRecoveryMs_) < I2C_RECOVERY_COOLDOWN_MS) {
+        !hasElapsedMs(now, lastRecoveryMs_, I2C_RECOVERY_COOLDOWN_MS)) {
         return;
     }
 
     recoverI2cBus(now);
 }
 
-void TouchHandler::recoverI2cBus(unsigned long now) {
+void TouchHandler::recoverI2cBus(uint32_t now) {
     const uint8_t failuresBeforeRecovery = consecutiveI2cFailures_;
     ++i2cRecoveryCount_;
     lastRecoveryMs_ = now;
@@ -173,7 +186,10 @@ void TouchHandler::recoverI2cBus(unsigned long now) {
 }
 
 bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
-    unsigned long now = millis();
+    const uint32_t now = static_cast<uint32_t>(millis());
+    if (nextI2cPollAllowedMs_ != 0 && !isBeforeDeadlineMs(now, nextI2cPollAllowedMs_)) {
+        nextI2cPollAllowedMs_ = 0;
+    }
     if (isI2cPollBackoffActive(now)) {
         noteNoTouch(now);
         return false;
@@ -236,7 +252,7 @@ bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
     y = ((buff[4] & 0x0F) << 8) | buff[5];
 
     // Check if we're still within debounce period from last tap
-    if ((long)(now - lastTouchTime_) < (long)touchDebounceMs_) {
+    if (!hasElapsedMs(now, lastTouchTime_, touchDebounceMs_)) {
         touchActive_ = true;  // Keep tracking that finger is down
         return false;  // Still in debounce period
     }
@@ -245,7 +261,7 @@ bool TouchHandler::getTouchPoint(int16_t& x, int16_t& y) {
     // for at least releaseDebounceMs_ to prevent false taps from noisy readings
     if (!touchActive_) {
         // Check if finger was released long enough for this to be a real new tap
-        if ((long)(now - lastReleaseTime_) >= (long)releaseDebounceMs_) {
+        if (hasElapsedMs(now, lastReleaseTime_, releaseDebounceMs_)) {
             touchActive_ = true;
             lastTouchTime_ = now;
             TOUCH_LOGF("[Touch] TAP at (%d, %d)\n", x, y);

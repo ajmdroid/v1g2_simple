@@ -196,8 +196,8 @@ private:
     int lastRestingProfileSlot_ = -1;                 // Last profile shown on resting screen
 
     // Visibility timeout tracking
-    unsigned long wifiConnectedTime_ = 0;    // When WiFi became connected
-    unsigned long profileChangedTime_ = 0;   // When profile was last changed
+    uint32_t wifiConnectedTime_ = 0;         // When WiFi became connected
+    uint32_t profileChangedTime_ = 0;        // When profile was last changed
     bool wifiWasConnected_ = false;          // Track WiFi connection state changes
     int lastProfileSlot_ = -1;               // Track profile changes
     bool bleProxyEnabled_ = false;           // BLE proxy enabled flag
@@ -223,7 +223,7 @@ private:
     DisplayBleContext bleCtx_;              // BLE state snapshot for display DI
     uint32_t bleCtxUpdatedAtMs_ = 0;        // When setBleContext() last refreshed bleCtx_
 
-    static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
+    static constexpr uint32_t HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 
 #ifdef UNIT_TEST
 public:
