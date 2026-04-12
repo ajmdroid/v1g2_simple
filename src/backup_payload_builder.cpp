@@ -72,6 +72,9 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["alpEnabled"] = settings.alpEnabled;
     doc["alpSdLogEnabled"] = settings.alpSdLogEnabled;
 
+    // Debug / diagnostics
+    doc["powerOffSdLog"] = settings.powerOffSdLog;
+
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);

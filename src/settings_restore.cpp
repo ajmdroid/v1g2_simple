@@ -302,6 +302,9 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     restoreBool("alpEnabled", settings_.alpEnabled);
     restoreBool("alpSdLogEnabled", settings_.alpSdLogEnabled);
 
+    // Debug / diagnostics
+    restoreBool("powerOffSdLog", settings_.powerOffSdLog);
+
     int profilesRestored = 0;
     if (v1ProfileManager.isReady() && doc["profiles"].is<JsonArrayConst>()) {
         JsonArrayConst profilesArr = doc["profiles"].as<JsonArrayConst>();

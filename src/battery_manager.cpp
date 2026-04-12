@@ -454,8 +454,9 @@ bool BatteryManager::latchPowerOn() {
 
 // Helper: append a line to /poweroff.log on SD card (best-effort, no mutex —
 // WiFi and other SD users are already stopped by prepareForShutdown).
+static bool sdLogEnabled_ = false;
 static void sdLog(const char* line) {
-    if (!storageManager.isSDCard()) return;
+    if (!sdLogEnabled_ || !storageManager.isSDCard()) return;
     File f = SD_MMC.open("/poweroff.log", FILE_APPEND);
     if (f) {
         f.printf("[%lu] %s\n", millis(), line);
@@ -463,7 +464,8 @@ static void sdLog(const char* line) {
     }
 }
 
-bool BatteryManager::powerOff() {
+bool BatteryManager::powerOff(bool sdLogEnabled) {
+    sdLogEnabled_ = sdLogEnabled;
     // Callers must run shutdown preparation before entering this final
     // hardware-only tail.
     Serial.println("[Battery] Executing final power-off sequence...");

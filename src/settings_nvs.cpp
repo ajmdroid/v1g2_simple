@@ -439,6 +439,9 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putBool(kNvsAlpEnabled, settings_.alpEnabled);
     written += prefs.putBool(kNvsAlpSdLog, settings_.alpSdLogEnabled);
 
+    // Debug / diagnostics
+    written += prefs.putBool(kNvsPowerOffSdLog, settings_.powerOffSdLog);
+
     // NVS validity marker - used to detect if NVS was wiped.
     // Written LAST so its presence proves the entire write completed.
     written += prefs.putInt(kNvsValid, SETTINGS_VERSION);

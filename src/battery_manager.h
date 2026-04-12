@@ -68,8 +68,9 @@ public:
     // Keep system powered on (call early in setup when on battery)
     bool latchPowerOn();
 
-    // Execute the final hardware-only power-off tail after shutdown prep completes
-    bool powerOff();
+    // Execute the final hardware-only power-off tail after shutdown prep completes.
+    // When sdLogEnabled is true, writes diagnostics to /poweroff.log on SD.
+    bool powerOff(bool sdLogEnabled = false);
 
     // Check if power button is pressed
     bool isPowerButtonPressed();

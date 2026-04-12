@@ -242,6 +242,9 @@ struct V1Settings {
     bool alpEnabled;             // Enable ALP UART listener module
     bool alpSdLogEnabled;        // Enable ALP event logging to SD card (CSV)
 
+    // Debug / diagnostics
+    bool powerOffSdLog;          // Log power-off diagnostics to /poweroff.log on SD
+
     // Default constructor with sensible defaults
     V1Settings() :
         enableWifi(true),
@@ -350,7 +353,8 @@ struct V1Settings {
         obdSavedAddrType(0),     // Default PUBLIC address type
         obdMinRssi(-90),         // Default -90 dBm minimum RSSI
         alpEnabled(false),       // ALP disabled by default
-        alpSdLogEnabled(false) {}  // ALP SD logging off by default
+        alpSdLogEnabled(false),  // ALP SD logging off by default
+        powerOffSdLog(false) {}  // Power-off SD logging off by default
 
     static uint8_t normalizeAutoPushSlotIndex(int slotNum) {
         return slotNum == 1 ? 1 : (slotNum == 2 ? 2 : 0);
@@ -474,6 +478,9 @@ struct DeviceSettingsUpdate {
 
     bool hasAlpSdLogEnabled = false;
     bool alpSdLogEnabled = false;
+
+    bool hasPowerOffSdLog = false;
+    bool powerOffSdLog = false;
 };
 
 struct AudioSettingsUpdate {

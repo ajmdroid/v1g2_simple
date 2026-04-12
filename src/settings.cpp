@@ -338,6 +338,9 @@ void SettingsManager::load() {
     settings_.alpEnabled = preferences_.getBool(kNvsAlpEnabled, false);
     settings_.alpSdLogEnabled = preferences_.getBool(kNvsAlpSdLog, false);
 
+    // Debug / diagnostics
+    settings_.powerOffSdLog = preferences_.getBool(kNvsPowerOffSdLog, false);
+
     preferences_.end();
 
     Serial.printf("[Settings] OK wifi=%s proxy=%s bright=%d autoPush=%s\n",

@@ -22,7 +22,8 @@
 	let settings = $state({
 		enableWifiAtBoot: false,
 		alpEnabled: false,
-		alpSdLogEnabled: false
+		alpSdLogEnabled: false,
+		powerOffSdLog: false
 	});
 	let loading = $state(true);
 	let saving = $state(false);
@@ -113,6 +114,7 @@
 			settings.enableWifiAtBoot = data.enableWifiAtBoot || false;
 			settings.alpEnabled = data.alpEnabled || false;
 			settings.alpSdLogEnabled = data.alpSdLogEnabled || false;
+			settings.powerOffSdLog = data.powerOffSdLog || false;
 			loading = false;
 		} catch (error) {
 			console.error('Failed to load settings:', error);
@@ -135,6 +137,7 @@
 			formData.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
 			formData.append('alpEnabled', settings.alpEnabled.toString());
 			formData.append('alpSdLogEnabled', settings.alpSdLogEnabled.toString());
+			formData.append('powerOffSdLog', settings.powerOffSdLog.toString());
 
 			const response = await postSettingsForm(formData, '/api/device/settings');
 
@@ -163,6 +166,7 @@
 		settings.enableWifiAtBoot = false;
 		settings.alpEnabled = false;
 		settings.alpSdLogEnabled = false;
+		settings.powerOffSdLog = false;
 		await saveSettings();
 	}
 
@@ -448,6 +452,23 @@
 							type="checkbox"
 							class="toggle toggle-primary"
 							bind:checked={settings.alpSdLogEnabled}
+							disabled={!acknowledged}
+						/>
+					</label>
+				</div>
+
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-semibold">Power-Off SD Log</span>
+							<p class="copy-caption-soft mt-1">
+								Log power-off diagnostics and boot reason to /poweroff.log on SD card. For verifying battery-only shutdown.
+							</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							bind:checked={settings.powerOffSdLog}
 							disabled={!acknowledged}
 						/>
 					</label>

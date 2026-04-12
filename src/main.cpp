@@ -978,9 +978,8 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
     initializeStorageAndProfiles();
 
     // Log boot reason to SD so battery-only power-off can be verified
-    // without USB serial.  Append to the same /poweroff.log that
-    // powerOff() writes to, creating a paired shutdown→boot record.
-    if (storageManager.isSDCard()) {
+    // without USB serial.  Gated behind the powerOffSdLog dev setting.
+    if (settingsManager.get().powerOffSdLog && storageManager.isSDCard()) {
         extern const char* resetReasonToString(esp_reset_reason_t reason);
         File f = SD_MMC.open("/poweroff.log", FILE_APPEND);
         if (f) {

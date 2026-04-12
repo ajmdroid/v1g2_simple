@@ -162,6 +162,9 @@ inline constexpr const char* kNvsObdMinRssi     = "obdMinRssi";
 inline constexpr const char* kNvsAlpEnabled     = "alpEn";
 inline constexpr const char* kNvsAlpSdLog       = "alpSdLog";
 
+// ── Debug / diagnostics ──────────────────────────────────────────────────
+inline constexpr const char* kNvsPowerOffSdLog  = "pwrOffSdLog";
+
 // ── Separate namespaces ───────────────────────────────────────────────────
 // Namespace: v1wifi_secret (WIFI_CLIENT_NS)
 inline constexpr const char* kNvsWifiPassword = "password";
