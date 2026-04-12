@@ -683,7 +683,7 @@ Options:
                         Maximum runtime settle wait after metrics recovery
                         before scoring starts (default: 20)
   --env NAME             PlatformIO env to flash (default: waveshare-349)
-  --port PATH            Fixed serial port (default: auto-detect)
+  --port PATH            Fixed serial port (default: auto-detect; or set DEVICE_PORT)
   --with-fs              Stage and upload LittleFS via build.sh before firmware upload
   --skip-flash           Skip flashing and only run soak collection
   --metrics-url URL      Poll debug metrics endpoint (or set REAL_FW_METRICS_URL)

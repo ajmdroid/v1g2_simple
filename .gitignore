@@ -72,6 +72,9 @@ r8/
 bench_testing/
 .road_map_cache/
 .vite/
+*.sr
+*.pvs
+alp_captures/
 
 # Local research docs (not tracked)
 docs/FUNCTION_PRIORITY.local.md

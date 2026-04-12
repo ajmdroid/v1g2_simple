@@ -58,6 +58,7 @@ Options:
                             auto (default), last, longest-connected, or 1-based index
   --list-segments           List discovered perf CSV segments and exit
   --board-id ID             Board id from test/device/board_inventory.json
+                            (prefers board_inventory.local.json when present)
                             (default: release)
   --duration-seconds N      Soak duration for live soak steps (default: 300)
   --artifact-root PATH      Base output root (default: .artifacts/hardware/test);
@@ -65,6 +66,10 @@ Options:
   --strict                  Treat PASS_WITH_WARNINGS as a failing exit
   --strict-soaks            Make soak steps authoritative for the suite result
   -h, --help                Show this help
+
+Environment overrides:
+  DEVICE_PORT              Override the inventory serial port for live runs
+  METRICS_URL              Override the inventory metrics endpoint for live runs
 
 Examples:
   ${SELF_NAME}
