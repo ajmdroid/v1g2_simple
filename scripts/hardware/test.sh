@@ -66,8 +66,9 @@ Options:
                             runs are stored under <artifact-root>/<board-id>/
   --strict                  Treat PASS_WITH_WARNINGS as a failing exit
   --strict-soaks            Make soak steps authoritative for the suite result
-  --ip IP                   Set the metrics URL to http://IP/metrics, overriding
-                            the inventory value (also settable via METRICS_URL env)
+  --ip IP                   Set the metrics URL to http://IP/api/debug/metrics,
+                            overriding the inventory value (also settable via
+                            METRICS_URL env)
   -h, --help                Show this help
 
 Environment overrides:
@@ -193,7 +194,7 @@ if [[ -n "$IP_OVERRIDE" ]]; then
   _IP_STRIPPED="${_IP_STRIPPED#https://}"
   # Strip any trailing path
   _IP_STRIPPED="${_IP_STRIPPED%%/*}"
-  METRICS_URL="http://$_IP_STRIPPED/metrics"
+  METRICS_URL="http://$_IP_STRIPPED/api/debug/metrics"
 fi
 
 if [[ "$LIST_SEGMENTS" -eq 1 ]]; then
