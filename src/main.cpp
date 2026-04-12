@@ -38,6 +38,7 @@
 #include "v1_devices.h"
 #include "battery_manager.h"
 #include "storage_manager.h"
+#include <SD_MMC.h>
 #include "audio_beep.h"
 #include "perf_metrics.h"
 #include "perf_sd_logger.h"
@@ -976,6 +977,23 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
     // ── Storage / SD mount ────────────────────────────────────────────
     initializeStorageAndProfiles();
 
+    // Log boot reason to SD so battery-only power-off can be verified
+    // without USB serial.  Append to the same /poweroff.log that
+    // powerOff() writes to, creating a paired shutdown→boot record.
+    if (storageManager.isSDCard()) {
+        extern const char* resetReasonToString(esp_reset_reason_t reason);
+        File f = SD_MMC.open("/poweroff.log", FILE_APPEND);
+        if (f) {
+            f.printf("[%lu] BOOT reset=%s (%d) onBattery=%d voltage=%dmV\n",
+                     millis(),
+                     resetReasonToString(resetReason),
+                     static_cast<int>(resetReason),
+                     batteryManager.isOnBattery(),
+                     batteryManager.getVoltageMillivolts());
+            f.close();
+        }
+    }
+
     const uint32_t bootId = initializeBootPerformanceLoggers();
 
     logBootStage("storage");
@@ -1092,7 +1110,8 @@ void loop() {
         speedMuteModule.syncSettings(s.speedMuteEnabled,
                                      s.speedMuteThresholdMph,
                                      s.speedMuteHysteresisMph,
-                                     s.speedMuteVolume);
+                                     s.speedMuteVolume,
+                                     s.speedMuteVoice);
         const SpeedSelection speed = speedSourceSelector.selectedSpeed();
         const bool speedValid = speed.valid;
         speedMuteModule.update(speed.speedMph, speedValid, now);

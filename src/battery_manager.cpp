@@ -3,6 +3,7 @@
  */
 
 #include "battery_manager.h"
+#include "storage_manager.h"
 #include "../include/display_driver.h"
 #include <Wire.h>
 #include <esp_adc/adc_oneshot.h>
@@ -11,6 +12,7 @@
 #include <driver/gpio.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
+#include <SD_MMC.h>
 
 // Only compile for Waveshare 3.49 board
 
@@ -450,10 +452,27 @@ bool BatteryManager::latchPowerOn() {
     return true;
 }
 
+// Helper: append a line to /poweroff.log on SD card (best-effort, no mutex —
+// WiFi and other SD users are already stopped by prepareForShutdown).
+static void sdLog(const char* line) {
+    if (!storageManager.isSDCard()) return;
+    File f = SD_MMC.open("/poweroff.log", FILE_APPEND);
+    if (f) {
+        f.printf("[%lu] %s\n", millis(), line);
+        f.close();
+    }
+}
+
 bool BatteryManager::powerOff() {
     // Callers must run shutdown preparation before entering this final
     // hardware-only tail.
     Serial.println("[Battery] Executing final power-off sequence...");
+
+    sdLog("=== POWER-OFF BEGIN ===");
+    char buf[128];
+    snprintf(buf, sizeof(buf), "onBattery=%d voltage=%dmV percent=%d%%",
+             onBattery_, cachedVoltage_, cachedPercent_);
+    sdLog(buf);
 
     // Fade backlight (optional smooth transition)
     Serial.println("[Battery] Fading backlight...");
@@ -473,6 +492,7 @@ bool BatteryManager::powerOff() {
     // Deep sleep is only used as a last-resort fallback if the latch drop fails.
     if (isCritical()) {
         Serial.println("[Battery] Critical battery - hard power off to protect cell");
+        sdLog("CRITICAL battery - hard power off");
     } else {
         Serial.println("[Battery] Dropping power latch...");
     }
@@ -481,15 +501,41 @@ bool BatteryManager::powerOff() {
                                                       false,
                                                       pdMS_TO_TICKS(250),
                                                       5);
+    snprintf(buf, sizeof(buf), "latchDrop=%s", latchDropped ? "OK" : "FAILED");
+    Serial.printf("[Battery] Latch drop result: %s\n", latchDropped ? "OK" : "FAILED");
+    sdLog(buf);
+
     if (latchDropped) {
+        // Read back the register to verify pin 6 is actually LOW
+        tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
+        tca9554Wire.write(TCA9554_OUTPUT_PORT);
+        tca9554Wire.endTransmission(false);
+        tca9554Wire.requestFrom((uint8_t)TCA9554_I2C_ADDR, (uint8_t)1);
+        if (tca9554Wire.available() >= 1) {
+            uint8_t readback = tca9554Wire.read();
+            bool pin6Low = (readback & (1 << TCA9554_PWR_LATCH_PIN)) == 0;
+            snprintf(buf, sizeof(buf), "readback=0x%02X pin6=%s",
+                     readback, pin6Low ? "LOW" : "HIGH_STUCK");
+            Serial.printf("[Battery] TCA9554 %s\n", buf);
+            sdLog(buf);
+        } else {
+            Serial.println("[Battery] TCA9554 readback failed (I2C bus error)");
+            sdLog("readback=I2C_ERROR");
+        }
+
         delay(500);  // Wait for power rail to collapse
         // If we reach here, the latch drop didn't fully cut power.
-        Serial.println("[Battery] WARN: Still running after latch drop");
+        Serial.println("[Battery] WARN: Still running after latch drop - power rail did not collapse");
+        sdLog("WARN: still alive after 500ms latch drop wait");
     } else {
         Serial.println("[Battery] ERROR: Failed to drop power latch, falling back to deep sleep");
+        sdLog("ERROR: latch drop failed");
     }
 
     // Fallback: enter deep sleep with button wakeup so the device isn't bricked.
+    sdLog("entering deep sleep fallback");
+    Serial.println("[Battery] Entering deep sleep fallback...");
+    Serial.flush();
     gpio_hold_en(static_cast<gpio_num_t>(LCD_BL));
     gpio_deep_sleep_hold_en();
     esp_sleep_enable_ext1_wakeup(1ULL << PWR_BUTTON_GPIO, ESP_EXT1_WAKEUP_ANY_LOW);
