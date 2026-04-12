@@ -39,6 +39,7 @@ RUN_DISPLAY=0
 PARSE_DRIVE_LOG=""
 SEGMENT_SELECTOR="auto"
 LIST_SEGMENTS=0
+IP_OVERRIDE=""
 
 usage() {
   cat <<EOF
@@ -65,6 +66,8 @@ Options:
                             runs are stored under <artifact-root>/<board-id>/
   --strict                  Treat PASS_WITH_WARNINGS as a failing exit
   --strict-soaks            Make soak steps authoritative for the suite result
+  --ip IP                   Set the metrics URL to http://IP/metrics, overriding
+                            the inventory value (also settable via METRICS_URL env)
   -h, --help                Show this help
 
 Environment overrides:
@@ -77,6 +80,7 @@ Examples:
   ${SELF_NAME} --display
   ${SELF_NAME} --all --board-id release --strict
   ${SELF_NAME} --all --board-id release --strict-soaks --strict
+  ${SELF_NAME} --all --ip 192.168.1.100
   ${SELF_NAME} --device --parse-drive-log /path/to/metrics.jsonl
   ${SELF_NAME} --core --parse-drive-log /path/to/serial.log
   ${SELF_NAME} --parse-drive-log /path/to/real_fw_soak_run
@@ -148,6 +152,14 @@ while [[ $# -gt 0 ]]; do
       ARTIFACT_ROOT="$2"
       shift
       ;;
+    --ip)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --ip" >&2
+        exit 2
+      fi
+      IP_OVERRIDE="$2"
+      shift
+      ;;
     --strict)
       STRICT_WARNINGS=1
       ;;
@@ -170,6 +182,13 @@ done
 if ! [[ "$SOAK_DURATION_SECONDS" =~ ^[0-9]+$ ]] || [[ "$SOAK_DURATION_SECONDS" -lt 1 ]]; then
   echo "Invalid --duration-seconds value '$SOAK_DURATION_SECONDS' (expected positive integer)." >&2
   exit 2
+fi
+
+if [[ -n "$IP_OVERRIDE" ]]; then
+  if [[ -n "${METRICS_URL:-}" ]]; then
+    echo "Warning: --ip overrides METRICS_URL env var ($METRICS_URL)" >&2
+  fi
+  METRICS_URL="http://$IP_OVERRIDE/metrics"
 fi
 
 if [[ "$LIST_SEGMENTS" -eq 1 ]]; then
