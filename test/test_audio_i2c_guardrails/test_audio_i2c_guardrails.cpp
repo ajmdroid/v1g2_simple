@@ -70,7 +70,7 @@ void test_audio_tasks_abort_when_codec_init_or_amp_enable_fails() {
 
 void test_battery_critical_poweroff_checks_latch_drop_failure_with_extended_budget() {
     const std::string source = readFile((projectRoot() + "/src/battery_manager.cpp").c_str());
-    const std::string powerOffBody = extractBlock(source, "bool BatteryManager::powerOff()");
+    const std::string powerOffBody = extractBlock(source, "bool BatteryManager::powerOff(bool sdLogEnabled)");
 
     TEST_ASSERT_NOT_EQUAL(std::string::npos,
                           powerOffBody.find("setTCA9554PinWithBudget(TCA9554_PWR_LATCH_PIN"));
