@@ -29,6 +29,27 @@ void test_removed_camera_label_helper_is_no_longer_declared_or_defined() {
     TEST_ASSERT_EQUAL(std::string::npos, displayFrequency.find("drawCameraLabel"));
 }
 
+void test_legacy_display_dirty_region_tracking_is_fully_removed() {
+    const std::string displayHeader = readTextFile("src/display.h");
+    const std::string displayFrequency = readTextFile("src/display_frequency.cpp");
+    const std::string displayCards = readTextFile("src/display_cards.cpp");
+
+    TEST_ASSERT_FALSE_MESSAGE(displayHeader.empty(), "failed to read src/display.h");
+    TEST_ASSERT_FALSE_MESSAGE(displayFrequency.empty(), "failed to read src/display_frequency.cpp");
+    TEST_ASSERT_FALSE_MESSAGE(displayCards.empty(), "failed to read src/display_cards.cpp");
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("markFrequencyDirtyRegion"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayFrequency.find("markFrequencyDirtyRegion"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("frequencyRenderDirty_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("frequencyDirtyValid_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("frequencyDirtyX_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("frequencyDirtyY_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("frequencyDirtyW_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("frequencyDirtyH_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("secondaryCardsRenderDirty_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayFrequency.find("Legacy dirty region tracking"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayCards.find("secondaryCardsRenderDirty_"));
+}
+
 void test_wifi_toggle_setup_mode_is_fully_removed() {
     const std::string header = readTextFile("src/wifi_manager.h");
     const std::string source = readTextFile("src/wifi_manager_lifecycle.cpp");
@@ -118,6 +139,7 @@ void test_bogey_breakdown_has_been_fully_retired() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_removed_camera_label_helper_is_no_longer_declared_or_defined);
+    RUN_TEST(test_legacy_display_dirty_region_tracking_is_fully_removed);
     RUN_TEST(test_wifi_toggle_setup_mode_is_fully_removed);
     RUN_TEST(test_alert_persistence_update_is_fully_removed);
     RUN_TEST(test_perf_display_screen_uses_explicit_mapping_and_removes_retired_values);

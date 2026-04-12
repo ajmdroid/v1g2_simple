@@ -18,6 +18,7 @@ static const char* AUDIO_PATH = "/audio";
 static fs::FS* audioFS = nullptr;  // Filesystem containing audio files
 static uint8_t amp_disable_fail_count = 0;
 static constexpr uint8_t AMP_DISABLE_MAX_RETRIES = 5;
+static constexpr unsigned long AMP_TIMEOUT_CHECK_INTERVAL_MS = 100UL;
 
 // Initialize filesystem audio system
 // Audio files are stored in LittleFS (uploaded with firmware)
@@ -478,24 +479,34 @@ void play_direction_only(AlertDirection direction, uint8_t bogeyCount) {
 }
 
 // Call from main loop to handle amp warm timeout
-// Disables amp after AMP_WARM_TIMEOUT_MS of inactivity to save power
+// Disables amp after AMP_WARM_TIMEOUT_MS of inactivity to save power.
+// This runs at most 10 Hz; finer cadence does not change the user-visible
+// timeout behavior but does add pointless main-loop housekeeping.
 void audio_process_amp_timeout() {
-    if (amp_is_warm && !audio_playing) {
-        unsigned long now = millis();
-        if (now - amp_last_used_ms >= AMP_WARM_TIMEOUT_MS) {
-            const AudioI2cResult result = set_speaker_amp(false, 0);
-            if (result == AudioI2cResult::Ok) {
+    if (!amp_is_warm || audio_playing) {
+        return;
+    }
+
+    static unsigned long lastAmpTimeoutCheckMs = 0;
+    const unsigned long now = millis();
+    if (now - lastAmpTimeoutCheckMs < AMP_TIMEOUT_CHECK_INTERVAL_MS) {
+        return;
+    }
+    lastAmpTimeoutCheckMs = now;
+
+    if (now - amp_last_used_ms >= AMP_WARM_TIMEOUT_MS) {
+        const AudioI2cResult result = set_speaker_amp(false, 0);
+        if (result == AudioI2cResult::Ok) {
+            amp_is_warm = false;
+            amp_disable_fail_count = 0;
+            AUDIO_LOGLN("[AUDIO] Amp timeout - disabled to save power");
+        } else if (result != AudioI2cResult::Busy) {
+            audio_log_i2c_failure("audio_process_amp_timeout", result);
+            amp_disable_fail_count++;
+            if (amp_disable_fail_count >= AMP_DISABLE_MAX_RETRIES) {
+                Serial.println("[AUDIO] ERROR: Amp timeout disable failed after max retries — giving up");
                 amp_is_warm = false;
                 amp_disable_fail_count = 0;
-                AUDIO_LOGLN("[AUDIO] Amp timeout - disabled to save power");
-            } else if (result != AudioI2cResult::Busy) {
-                audio_log_i2c_failure("audio_process_amp_timeout", result);
-                amp_disable_fail_count++;
-                if (amp_disable_fail_count >= AMP_DISABLE_MAX_RETRIES) {
-                    Serial.println("[AUDIO] ERROR: Amp timeout disable failed after max retries — giving up");
-                    amp_is_warm = false;
-                    amp_disable_fail_count = 0;
-                }
             }
         }
     }

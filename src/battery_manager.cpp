@@ -4,6 +4,7 @@
 
 #include "battery_manager.h"
 #include "storage_manager.h"
+#include "../include/audio_i2c_utils.h"
 #include "../include/display_driver.h"
 #include <Wire.h>
 #include <esp_adc/adc_oneshot.h>
@@ -24,6 +25,42 @@ BatteryManager batteryManager;
 // ADC handles
 static adc_oneshot_unit_handle_t adc1_handle = nullptr;
 static adc_cali_handle_t adc_cali_handle = nullptr;
+
+namespace {
+
+constexpr uint16_t kShutdownReadbackTimeoutMs = 50;
+
+class ScopedWireTimeout {
+public:
+    ScopedWireTimeout(TwoWire& wire, uint16_t timeoutMs)
+        : wire_(wire)
+        , previousTimeoutMs_(wire.getTimeOut()) {
+        wire_.setTimeOut(timeoutMs);
+    }
+
+    ~ScopedWireTimeout() {
+        wire_.setTimeOut(previousTimeoutMs_);
+    }
+
+private:
+    TwoWire& wire_;
+    uint16_t previousTimeoutMs_;
+};
+
+AudioI2cResult readTca9554RegisterWithTimeout(uint8_t reg,
+                                              uint8_t& value,
+                                              TickType_t mutexTimeoutTicks,
+                                              uint16_t timeoutMs) {
+    AudioI2cLockGuard lock(tca9554WireMutex, mutexTimeoutTicks);
+    if (!lock.ok()) {
+        return lock.result();
+    }
+
+    ScopedWireTimeout timeoutGuard(tca9554Wire, timeoutMs);
+    return audioI2cReadRegister(tca9554Wire, TCA9554_I2C_ADDR, reg, value);
+}
+
+}  // namespace
 
 // I2C for TCA9554 (separate from touch I2C) - also used by ES8311 codec
 TwoWire tca9554Wire(1);  // Use I2C port 1
@@ -508,21 +545,26 @@ bool BatteryManager::powerOff(bool sdLogEnabled) {
     sdLog(buf);
 
     if (latchDropped) {
-        // Read back the register to verify pin 6 is actually LOW
-        tca9554Wire.beginTransmission(TCA9554_I2C_ADDR);
-        tca9554Wire.write(TCA9554_OUTPUT_PORT);
-        tca9554Wire.endTransmission(false);
-        tca9554Wire.requestFrom((uint8_t)TCA9554_I2C_ADDR, (uint8_t)1);
-        if (tca9554Wire.available() >= 1) {
-            uint8_t readback = tca9554Wire.read();
+        // Keep shutdown readback explicitly bounded so a wedged I2C bus cannot
+        // block the deep-sleep fallback forever.
+        uint8_t readback = 0;
+        const AudioI2cResult readbackResult = readTca9554RegisterWithTimeout(
+            TCA9554_OUTPUT_PORT,
+            readback,
+            pdMS_TO_TICKS(kShutdownReadbackTimeoutMs),
+            kShutdownReadbackTimeoutMs);
+        if (readbackResult == AudioI2cResult::Ok) {
             bool pin6Low = (readback & (1 << TCA9554_PWR_LATCH_PIN)) == 0;
             snprintf(buf, sizeof(buf), "readback=0x%02X pin6=%s",
                      readback, pin6Low ? "LOW" : "HIGH_STUCK");
             Serial.printf("[Battery] TCA9554 %s\n", buf);
             sdLog(buf);
         } else {
-            Serial.println("[Battery] TCA9554 readback failed (I2C bus error)");
-            sdLog("readback=I2C_ERROR");
+            snprintf(buf, sizeof(buf), "readback=%s",
+                     audioI2cResultToString(readbackResult));
+            Serial.printf("[Battery] TCA9554 readback failed (%s)\n",
+                          audioI2cResultToString(readbackResult));
+            sdLog(buf);
         }
 
         delay(500);  // Wait for power rail to collapse

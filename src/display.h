@@ -158,7 +158,6 @@ private:
     void drawFrequency(uint32_t freqMHz, Band band = BAND_NONE, bool muted = false, bool isPhotoRadar = false);
     void drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);   // 7-segment style
     void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);// Serpentine font
-    void markFrequencyDirtyRegion(int16_t x, int16_t y, int16_t w, int16_t h);
     void drawVolumeZeroWarning();  // Flash "VOL 0" warning when volume=0 and no app connected
     void drawStatusText(const char* text, uint16_t color);
     void drawBLEProxyIndicator();
@@ -207,17 +206,6 @@ private:
     bool bleProxyDrawn_ = false;             // Track if icon has been drawn at least once
     bool multiAlertMode_ = false;            // True when showing secondary alert cards (reduces main area)
     bool persistedMode_ = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
-    // Legacy dirty region tracking — still written by display_frequency.cpp and
-    // display_cards.cpp but no longer read after the display pipeline rewrite
-    // (DISPLAY_FLUSH does full canvas flush every frame). Safe to remove when
-    // those element files are next touched.
-    bool frequencyRenderDirty_ = false;
-    bool frequencyDirtyValid_ = false;
-    int16_t frequencyDirtyX_ = 0;
-    int16_t frequencyDirtyY_ = 0;
-    int16_t frequencyDirtyW_ = 0;
-    int16_t frequencyDirtyH_ = 0;
-    bool secondaryCardsRenderDirty_ = false;
     bool speedVolZeroActive_ = false;      // Suppress VOL 0 warning during speed-mute vol 0
     bool obdEnabled_ = false;              // OBD module enabled
     bool obdConnected_ = false;            // OBD adapter connected
