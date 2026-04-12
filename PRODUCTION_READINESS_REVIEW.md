@@ -121,7 +121,7 @@ This yield runs unconditionally — not gated on backpressure, overload, or any 
 
 Timing variables alternate between `unsigned long` (Arduino `millis()` return type) and `uint32_t`. Both are 32 bits on ESP32, but the inconsistency makes it harder to grep for timing-related code. Standardizing on `uint32_t` everywhere (with a comment noting it wraps at ~49.7 days) would improve readability. Not worth a dedicated cleanup pass, but worth enforcing in new code.
 
-> **Current status**: Partially addressed. A first surgical batch moved battery-manager timestamp state, display visibility timing state, and touch-handler time state/interfaces to `uint32_t`, and replaced touch-handler host-width-dependent wrap checks with explicit 32-bit wrap math. Wider modules, including the BLE client timing surface, remain follow-up work.
+> **Current status**: Partially addressed. The first two surgical batches moved battery-manager, display visibility, touch-handler, and BLE-client timing state to `uint32_t`. This includes BLE connect/scan/backoff/proxy scheduling timestamps plus RSSI cache timestamps. Wider repo follow-up still remains outside these surfaces.
 
 ### 10. Row-by-Row SPI Flush Workaround
 
@@ -185,7 +185,7 @@ Issue claims in this review were independently verified by tracing full call cha
 | P1-6: Dead dirty regions | Written but never read | **Confirmed and fixed** — legacy frequency/card dirty-region state removed |
 | P1-7: Unconditional yield | vTaskDelay(1) every loop | **Confirmed and documented** — one-tick floor retained intentionally for scheduler/TWDT behavior |
 | P2-8: WiFi XOR obfuscation | Not real encryption | **Confirmed** — `xorObfuscate()` in settings_nvs.cpp:37-49 |
-| P2-9: Mixed timing types | unsigned long vs uint32_t | **Confirmed and partially addressed** — first batch migrated battery/display/touch time state to `uint32_t`; broader repo follow-up remains |
+| P2-9: Mixed timing types | unsigned long vs uint32_t | **Confirmed and partially addressed** — surgical batches migrated battery/display/touch and BLE-client time state to `uint32_t`; broader repo follow-up remains |
 | P2-10: Row-by-row flush unused | Dead code path | **Corrected** — `flushRegion()` IS called from 3 active paths |
 | P2-11: Amp timeout every loop | Unnecessary frequency | **Confirmed and fixed** — housekeeping check now runs at a bounded cadence |
 | P2-12: OTA slots unused | No OTA implementation | **Confirmed** — partition layout ready, zero OTA code |

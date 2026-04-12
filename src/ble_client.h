@@ -377,22 +377,22 @@ private:
     NimBLEAdvertisedDevice targetDevice_;
     NimBLEAddress targetAddress_;
     uint8_t targetAddressType_ = BLE_ADDR_PUBLIC;  // Saved from advertisement
-    unsigned long lastScanStart_;
+    uint32_t lastScanStart_;
 
     // BLE State Machine - centralized connection state
     BLEState bleState_ = BLEState::DISCONNECTED;
-    unsigned long stateEnteredMs_ = 0;       // When current state was entered
-    unsigned long scanStopRequestedMs_ = 0;  // When scan stop was requested
+    uint32_t stateEnteredMs_ = 0;       // When current state was entered
+    uint32_t scanStopRequestedMs_ = 0;  // When scan stop was requested
     bool scanStopResultsCleared_ = false;   // One-shot clearResults gate for SCAN_STOPPING
     // ESP32-S3 BLE: radio needs time after scan to be ready for connect
     // Cold boot needs significantly more time for NimBLE stack to stabilize
-    static constexpr unsigned long SCAN_STOP_SETTLE_MS = 100;        // 100ms settle for reconnects
-    static constexpr unsigned long SCAN_STOP_SETTLE_FRESH_MS = 200;  // 200ms on cold boot - tuned lower for faster first connect
+    static constexpr uint32_t SCAN_STOP_SETTLE_MS = 100;        // 100ms settle for reconnects
+    static constexpr uint32_t SCAN_STOP_SETTLE_FRESH_MS = 200;  // 200ms on cold boot - tuned lower for faster first connect
     bool firstScanAfterBoot_ = true;  // Use longer settle on first scan
 
     // Connection attempt guard - prevents overlapping attempts
     bool connectInProgress_ = false;
-    unsigned long connectStartMs_ = 0;  // When connect started (for stuck detection)
+    uint32_t connectStartMs_ = 0;  // When connect started (for stuck detection)
 
     // Async connection tracking
     std::atomic<bool> asyncConnectPending_{false};   // Async connect in progress
@@ -403,12 +403,12 @@ private:
     static constexpr uint16_t NIMBLE_CONN_INTERVAL_MAX = 24;
     static constexpr uint16_t NIMBLE_CONN_LATENCY = 0;
     static constexpr uint16_t NIMBLE_CONN_SUPERVISION_TIMEOUT = 400;
-    static constexpr unsigned long CONNECT_TIMEOUT_MS = 3000;   // 3s timeout - if it works, it's fast
+    static constexpr uint32_t CONNECT_TIMEOUT_MS = 3000;   // 3s timeout - if it works, it's fast
     // NimBLE timeout API is milliseconds. Align client-level timeout with the state-machine budget.
-    static constexpr unsigned long NIMBLE_CONNECT_TIMEOUT_INIT_MS = CONNECT_TIMEOUT_MS;
-    static constexpr unsigned long NIMBLE_CONNECT_TIMEOUT_ACTIVE_MS = CONNECT_TIMEOUT_MS;
-    static constexpr unsigned long DISCOVERY_TIMEOUT_MS = 5000; // 5s for discovery
-    static constexpr unsigned long SUBSCRIBE_TIMEOUT_MS = 3000;  // 3s for subscriptions
+    static constexpr uint32_t NIMBLE_CONNECT_TIMEOUT_INIT_MS = CONNECT_TIMEOUT_MS;
+    static constexpr uint32_t NIMBLE_CONNECT_TIMEOUT_ACTIVE_MS = CONNECT_TIMEOUT_MS;
+    static constexpr uint32_t DISCOVERY_TIMEOUT_MS = 5000; // 5s for discovery
+    static constexpr uint32_t SUBSCRIBE_TIMEOUT_MS = 3000;  // 3s for subscriptions
     uint32_t connectPhaseStartUs_ = 0;  // For timing individual phases
 
     // Fresh flash detection - set when firmware version changed
@@ -490,22 +490,22 @@ private:
 
     // Exponential backoff for connection failures (error 13 = BLE_HS_EBUSY)
     uint8_t consecutiveConnectFailures_ = 0;
-    unsigned long nextConnectAllowedMs_ = 0;  // Backoff until this time
+    uint32_t nextConnectAllowedMs_ = 0;  // Backoff until this time
 
     // Deferred proxy advertising start (non-blocking - avoids stall)
     // Tuned lower to reduce post-connect latency while preserving radio settle margin
-    unsigned long proxyAdvertisingStartMs_ = 0;  // When to start advertising (0 = not pending)
+    uint32_t proxyAdvertisingStartMs_ = 0;  // When to start advertising (0 = not pending)
     uint8_t proxyAdvertisingStartReasonCode_ = 0; // PerfProxyAdvertisingTransitionReason
-    static constexpr unsigned long PROXY_STABILIZE_MS = 100;
+    static constexpr uint32_t PROXY_STABILIZE_MS = 100;
     // When STA is connected_, limit idle proxy advertising windows to reduce radio churn.
-    unsigned long proxyAdvertisingWindowStartMs_ = 0;
-    unsigned long proxyAdvertisingRetryAtMs_ = 0;
-    static constexpr unsigned long PROXY_ADVERTISING_WINDOW_MS = 60000;
-    static constexpr unsigned long PROXY_ADVERTISING_RETRY_MS = 120000;
+    uint32_t proxyAdvertisingWindowStartMs_ = 0;
+    uint32_t proxyAdvertisingRetryAtMs_ = 0;
+    static constexpr uint32_t PROXY_ADVERTISING_WINDOW_MS = 60000;
+    static constexpr uint32_t PROXY_ADVERTISING_RETRY_MS = 120000;
     // If no proxy client connects within this boot-time window, disable proxy
     // advertising for the rest of the boot to protect DMA headroom.
-    static constexpr unsigned long PROXY_NO_CLIENT_TIMEOUT_MS = 120000;  // 2 minutes
-    unsigned long proxyNoClientDeadlineMs_ = 0;
+    static constexpr uint32_t PROXY_NO_CLIENT_TIMEOUT_MS = 120000;  // 2 minutes
+    uint32_t proxyNoClientDeadlineMs_ = 0;
     bool proxyNoClientTimeoutLatched_ = false;
     bool proxyClientConnectedOnceThisBoot_ = false;
     bool proxySuppressedForObdHold_ = false;

@@ -1,4 +1,5 @@
 #include <unity.h>
+#include <type_traits>
 #include <vector>
 
 #include "../mocks/Arduino.h"
@@ -133,6 +134,30 @@ void setUp() {
 }
 
 void tearDown() {}
+
+void test_ble_timing_members_and_constants_use_uint32() {
+    V1BLEClient client;
+
+    TEST_ASSERT_TRUE((std::is_same_v<decltype(client.lastScanStart_), uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<decltype(client.stateEnteredMs_), uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<decltype(client.scanStopRequestedMs_), uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<decltype(client.connectStartMs_), uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<decltype(client.nextConnectAllowedMs_), uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<decltype(client.proxyAdvertisingStartMs_), uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<decltype(client.proxyAdvertisingWindowStartMs_), uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<decltype(client.proxyAdvertisingRetryAtMs_), uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<decltype(client.proxyNoClientDeadlineMs_), uint32_t>));
+
+    TEST_ASSERT_TRUE((std::is_same_v<std::remove_cv_t<decltype(V1BLEClient::SCAN_STOP_SETTLE_MS)>, uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<std::remove_cv_t<decltype(V1BLEClient::SCAN_STOP_SETTLE_FRESH_MS)>, uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<std::remove_cv_t<decltype(V1BLEClient::CONNECT_TIMEOUT_MS)>, uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<std::remove_cv_t<decltype(V1BLEClient::DISCOVERY_TIMEOUT_MS)>, uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<std::remove_cv_t<decltype(V1BLEClient::SUBSCRIBE_TIMEOUT_MS)>, uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<std::remove_cv_t<decltype(V1BLEClient::PROXY_STABILIZE_MS)>, uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<std::remove_cv_t<decltype(V1BLEClient::PROXY_ADVERTISING_WINDOW_MS)>, uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<std::remove_cv_t<decltype(V1BLEClient::PROXY_ADVERTISING_RETRY_MS)>, uint32_t>));
+    TEST_ASSERT_TRUE((std::is_same_v<std::remove_cv_t<decltype(V1BLEClient::PROXY_NO_CLIENT_TIMEOUT_MS)>, uint32_t>));
+}
 
 void test_allocateProxyQueues_prefers_psram_for_both_buffers() {
     V1BLEClient client;
@@ -341,6 +366,7 @@ void test_forward_to_proxy_immediate_queues_until_main_loop_send() {
 int main(int argc, char** argv) {
     UNITY_BEGIN();
 
+    RUN_TEST(test_ble_timing_members_and_constants_use_uint32);
     RUN_TEST(test_allocateProxyQueues_prefers_psram_for_both_buffers);
     RUN_TEST(test_allocateProxyQueues_falls_back_to_internal_when_psram_misses);
     RUN_TEST(test_initProxyServer_full_allocation_failure_disables_proxy_before_server_creation);

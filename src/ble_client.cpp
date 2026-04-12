@@ -293,8 +293,9 @@ void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
     BLEState oldState = bleState_;
     if (oldState == newState) return;  // No change
 
-    unsigned long now = millis();
-    unsigned long stateTime = (oldState != BLEState::DISCONNECTED && stateEnteredMs_ > 0) ? (now - stateEnteredMs_) : 0;
+    const uint32_t now = static_cast<uint32_t>(millis());
+    const uint32_t stateTime =
+        (oldState != BLEState::DISCONNECTED && stateEnteredMs_ > 0) ? (now - stateEnteredMs_) : 0;
 
     bleState_ = newState;
     stateEnteredMs_ = now;
@@ -328,16 +329,16 @@ void V1BLEClient::setBLEState(BLEState newState, const char* reason) {
     }
 
     BLE_SM_LOGF("[BLE_SM][%lu] %s (%lums) -> %s | Reason: %s\n",
-                  now,
-                  bleStateToString(oldState),
-                  stateTime,
-                  bleStateToString(newState),
-                  reason);
+                static_cast<unsigned long>(now),
+                bleStateToString(oldState),
+                static_cast<unsigned long>(stateTime),
+                bleStateToString(newState),
+                reason);
 }
 
 // Full cleanup of BLE connection state - call before retry or after failures
 void V1BLEClient::cleanupConnection() {
-    const unsigned long now = millis();
+    const uint32_t now = static_cast<uint32_t>(millis());
 
     // 1. Unsubscribe from notifications if subscribed
     if (pDisplayDataChar_ && pDisplayDataChar_->canNotify()) {
@@ -392,7 +393,7 @@ void V1BLEClient::cleanupConnection() {
 // Reuses existing client to avoid NimBLE slot leak (max 3 slots)
 void V1BLEClient::hardResetBLEClient() {
     Serial.println("[BLE] Hard reset...");
-    const unsigned long now = millis();
+    const uint32_t now = static_cast<uint32_t>(millis());
 
     // Wait for any in-flight discovery task to finish before touching pClient_.
     // The task only calls pClient_->discoverAttributes() which completes quickly
@@ -400,9 +401,9 @@ void V1BLEClient::hardResetBLEClient() {
     // finished by then, proceed anyway (the task will see ENOTCONN and exit).
     if (discoveryTaskRunning_.load(std::memory_order_acquire)) {
         Serial.println("[BLE] Hard reset: waiting for discovery task...");
-        const unsigned long waitStart = millis();
+        const uint32_t waitStart = static_cast<uint32_t>(millis());
         while (discoveryTaskRunning_.load(std::memory_order_acquire) &&
-               (millis() - waitStart) < 500) {
+               (static_cast<uint32_t>(millis()) - waitStart) < 500) {
             vTaskDelay(pdMS_TO_TICKS(5));
         }
         if (discoveryTaskRunning_.load(std::memory_order_acquire)) {
@@ -612,7 +613,7 @@ bool V1BLEClient::begin(bool enableProxy, const char* proxyName) {
     pScan->setDuplicateFilter(false);
 
     BLE_SM_LOGF("Scanning for V1 Gen2...\n");
-    lastScanStart_ = millis();
+    lastScanStart_ = static_cast<uint32_t>(millis());
     bool started = pScan->start(SCAN_DURATION, false, false);  // duration, isContinuous, restart
     BLE_SM_LOGF("Scan started: %s\n", started ? "YES" : "NO");
 
@@ -636,8 +637,8 @@ bool V1BLEClient::isConnected() {
 // Atomic for portability: these are written/read from getConnectionRssi()
 // which is a public method with no explicit threading constraint.
 static std::atomic<int> s_cachedV1Rssi{0};
-static unsigned long s_lastV1RssiQueryMs = 0;
-static constexpr unsigned long RSSI_QUERY_INTERVAL_MS = 2000;
+static uint32_t s_lastV1RssiQueryMs = 0;
+static constexpr uint32_t RSSI_QUERY_INTERVAL_MS = 2000;
 
 int V1BLEClient::getConnectionRssi() {
     // Return RSSI of connected_ V1 device, or 0 if not connected_
@@ -647,7 +648,7 @@ int V1BLEClient::getConnectionRssi() {
     }
 
     // Only query BLE stack every 2 seconds - return cached value otherwise
-    unsigned long now = millis();
+    const uint32_t now = static_cast<uint32_t>(millis());
     if (now - s_lastV1RssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
         s_cachedV1Rssi.store(pClient_->getRssi(), std::memory_order_relaxed);
         s_lastV1RssiQueryMs = now;
@@ -658,7 +659,7 @@ int V1BLEClient::getConnectionRssi() {
 // Proxy client RSSI caching.
 // Atomic for same portability reason as s_cachedV1Rssi above.
 static std::atomic<int> s_cachedProxyRssi{0};
-static unsigned long s_lastProxyRssiQueryMs = 0;
+static uint32_t s_lastProxyRssiQueryMs = 0;
 
 int V1BLEClient::getProxyClientRssi() {
     // Return RSSI of connected_ proxy client (app), or 0 if not connected_
@@ -668,7 +669,7 @@ int V1BLEClient::getProxyClientRssi() {
     }
 
     // Only query BLE stack every 2 seconds
-    unsigned long now = millis();
+    const uint32_t now = static_cast<uint32_t>(millis());
     if (now - s_lastProxyRssiQueryMs >= RSSI_QUERY_INTERVAL_MS) {
         // Use getPeerDevices() to get a valid handle safely.
         // getPeerInfo(0) can return conn_handle=0 (V1's handle) if the

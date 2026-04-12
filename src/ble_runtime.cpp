@@ -125,7 +125,7 @@ void V1BLEClient::process() {
                 targetAddressType_ = addrTypeCopy;
                 hasTargetDevice_ = true;
                 shouldConnect_ = true;
-                scanStopRequestedMs_ = millis();
+                scanStopRequestedMs_ = static_cast<uint32_t>(millis());
                 setBLEState(BLEState::SCAN_STOPPING, "V1 found (deferred)");
             }
         }
@@ -209,7 +209,7 @@ void V1BLEClient::process() {
                !proxyAdvertisingActive &&
                proxyAdvertisingStartMs_ == 0 &&
                proxyAdvertisingRetryAtMs_ == 0) {
-        proxyAdvertisingStartMs_ = millis() + PROXY_STABILIZE_MS;
+        proxyAdvertisingStartMs_ = static_cast<uint32_t>(millis()) + PROXY_STABILIZE_MS;
         proxyAdvertisingStartReasonCode_ =
             proxySuppressedResumeReasonCode_ == 0
                 ? static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartRetryWindow)
@@ -222,7 +222,7 @@ void V1BLEClient::process() {
     // Enforce boot-lifetime proxy no-client timeout.
     if (proxyEnabled_ && proxyServerInitialized_ && !proxyNoClientTimeoutLatched_ &&
         !proxyClientConnectedOnceThisBoot_ && proxyNoClientDeadlineMs_ != 0) {
-        const unsigned long nowMs = millis();
+        const uint32_t nowMs = static_cast<uint32_t>(millis());
         if (static_cast<int32_t>(nowMs - proxyNoClientDeadlineMs_) >= 0) {
             proxyNoClientTimeoutLatched_ = true;
             proxyAdvertisingStartMs_ = 0;
@@ -244,25 +244,27 @@ void V1BLEClient::process() {
     }
 
     // Handle deferred proxy advertising start (non-blocking replacement for delay(1500))
-    if (!proxyNoClientTimeoutLatched_ &&
-        proxyAdvertisingStartMs_ != 0 && static_cast<int32_t>(millis() - proxyAdvertisingStartMs_) >= 0) {
-        if (suppressPassiveProxy && !proxyConnected) {
-            proxySuppressedForObdHold_ = true;
-            if (proxySuppressedResumeReasonCode_ ==
-                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown)) {
-                proxySuppressedResumeReasonCode_ = proxyAdvertisingStartReasonCode_;
+    if (!proxyNoClientTimeoutLatched_ && proxyAdvertisingStartMs_ != 0) {
+        const uint32_t nowMs = static_cast<uint32_t>(millis());
+        if (static_cast<int32_t>(nowMs - proxyAdvertisingStartMs_) >= 0) {
+            if (suppressPassiveProxy && !proxyConnected) {
+                proxySuppressedForObdHold_ = true;
+                if (proxySuppressedResumeReasonCode_ ==
+                    static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown)) {
+                    proxySuppressedResumeReasonCode_ = proxyAdvertisingStartReasonCode_;
+                }
+            } else if (isConnected() && proxyEnabled_ && proxyServerInitialized_) {
+                const uint8_t startReason = proxyAdvertisingStartReasonCode_;
+                proxyAdvertisingStartMs_ = 0;  // Clear pending flag
+                proxyAdvertisingStartReasonCode_ =
+                    static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
+                // Advertising data already configured in initProxyServer() with proper flags
+                startProxyAdvertising(startReason);
+            } else {
+                proxyAdvertisingStartMs_ = 0;
+                proxyAdvertisingStartReasonCode_ =
+                    static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
             }
-        } else if (isConnected() && proxyEnabled_ && proxyServerInitialized_) {
-            const uint8_t startReason = proxyAdvertisingStartReasonCode_;
-            proxyAdvertisingStartMs_ = 0;  // Clear pending flag
-            proxyAdvertisingStartReasonCode_ =
-                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
-            // Advertising data already configured in initProxyServer() with proper flags
-            startProxyAdvertising(startReason);
-        } else {
-            proxyAdvertisingStartMs_ = 0;
-            proxyAdvertisingStartReasonCode_ =
-                static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::Unknown);
         }
     }
 
@@ -278,7 +280,7 @@ void V1BLEClient::process() {
             proxyAdvertisingWindowStartMs_ = 0;
             proxyAdvertisingRetryAtMs_ = 0;
         } else if (staConnected) {
-            const unsigned long nowMs = millis();
+            const uint32_t nowMs = static_cast<uint32_t>(millis());
             if (advertising) {
                 if (proxyAdvertisingWindowStartMs_ == 0) {
                     proxyAdvertisingWindowStartMs_ = nowMs;
@@ -305,7 +307,7 @@ void V1BLEClient::process() {
         }
     }
 
-    unsigned long now = millis();
+    const uint32_t now = static_cast<uint32_t>(millis());
     NimBLEScan* pScan = NimBLEDevice::getScan();
 
     // Boot readiness gate: keep state machine idle until setup opens the gate.
@@ -369,7 +371,7 @@ void V1BLEClient::process() {
 
         case BLEState::SCAN_STOPPING: {
             // Wait for scan to fully stop and radio to settle
-            unsigned long elapsed = now - scanStopRequestedMs_;
+            const uint32_t elapsed = now - scanStopRequestedMs_;
 
             // Ensure scan is actually stopped
             if (pScan->isScanning()) {
@@ -387,7 +389,8 @@ void V1BLEClient::process() {
 
             // Check if settle time has elapsed
             // Use longer settle on first scan after boot (radio is "cold")
-            unsigned long settleTime = firstScanAfterBoot_ ? SCAN_STOP_SETTLE_FRESH_MS : SCAN_STOP_SETTLE_MS;
+            const uint32_t settleTime =
+                firstScanAfterBoot_ ? SCAN_STOP_SETTLE_FRESH_MS : SCAN_STOP_SETTLE_MS;
             if (elapsed >= settleTime) {
                 if (firstScanAfterBoot_) {
                     Serial.println("[BLE] First scan settle complete (extended)");
@@ -487,7 +490,7 @@ void V1BLEClient::startScanning() {
     if (!isConnected() && bleState_ == BLEState::DISCONNECTED) {
         NimBLEScan* pScan = NimBLEDevice::getScan();
         if (!pScan->isScanning()) {
-            lastScanStart_ = millis();
+            lastScanStart_ = static_cast<uint32_t>(millis());
             pScan->clearResults();
             bool started = pScan->start(SCAN_DURATION, false, false);
             if (started) {
@@ -530,8 +533,8 @@ void V1BLEClient::setWifiPriority(bool enabled) {
     wifiPriorityMode_ = enabled;
 
     // Rate-limit transition logs to avoid serial spam if caller oscillates.
-    static unsigned long lastLogMs = 0;
-    const unsigned long nowMs = millis();
+    static uint32_t lastLogMs = 0;
+    const uint32_t nowMs = static_cast<uint32_t>(millis());
     const bool shouldLog = (nowMs - lastLogMs) >= 10000;  // At most once per 10s
     if (shouldLog) lastLogMs = nowMs;
 
@@ -572,7 +575,7 @@ void V1BLEClient::setWifiPriority(bool enabled) {
         if (isConnected() && proxyEnabled_ && proxyServerInitialized_ && !proxyNoClientTimeoutLatched_) {
             if (shouldLog) Serial.println("[BLE] Resuming proxy advertising after WiFi priority mode");
             // Defer advertising start by 500ms to avoid stall
-            proxyAdvertisingStartMs_ = millis() + 500;
+            proxyAdvertisingStartMs_ = static_cast<uint32_t>(millis()) + 500;
             proxyAdvertisingStartReasonCode_ =
                 static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartWifiPriorityResume);
             proxyAdvertisingWindowStartMs_ = 0;

@@ -163,6 +163,32 @@ void test_connected_flag_uses_explicit_atomic_load_store() {
     TEST_ASSERT_NOT_EQUAL(std::string::npos, proxyText.find("connected_.load(std::memory_order_relaxed)"));
 }
 
+void test_ble_timing_state_and_rssi_caches_use_uint32() {
+    const std::filesystem::path headerSource =
+        std::filesystem::path(projectRoot() + "/src/ble_client.h");
+    const std::filesystem::path clientSource =
+        std::filesystem::path(projectRoot() + "/src/ble_client.cpp");
+    const std::string headerText = readFile(headerSource);
+    const std::string clientText = readFile(clientSource);
+
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, headerText.find("uint32_t lastScanStart_;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, headerText.find("uint32_t stateEnteredMs_ = 0;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, headerText.find("uint32_t scanStopRequestedMs_ = 0;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, headerText.find("uint32_t connectStartMs_ = 0;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, headerText.find("uint32_t nextConnectAllowedMs_ = 0;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, headerText.find("uint32_t proxyAdvertisingStartMs_ = 0;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, headerText.find("uint32_t proxyAdvertisingWindowStartMs_ = 0;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, headerText.find("uint32_t proxyAdvertisingRetryAtMs_ = 0;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, headerText.find("uint32_t proxyNoClientDeadlineMs_ = 0;"));
+    TEST_ASSERT_EQUAL(std::string::npos, headerText.find("unsigned long lastScanStart_"));
+    TEST_ASSERT_EQUAL(std::string::npos, headerText.find("unsigned long stateEnteredMs_"));
+    TEST_ASSERT_EQUAL(std::string::npos, headerText.find("unsigned long connectStartMs_"));
+    TEST_ASSERT_EQUAL(std::string::npos, headerText.find("unsigned long nextConnectAllowedMs_"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, clientText.find("static uint32_t s_lastV1RssiQueryMs = 0;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, clientText.find("static constexpr uint32_t RSSI_QUERY_INTERVAL_MS = 2000;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, clientText.find("static uint32_t s_lastProxyRssiQueryMs = 0;"));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_async_connect_does_not_delete_bond);
@@ -174,5 +200,6 @@ int main() {
     RUN_TEST(test_connect_to_server_removes_unused_addr_type_local);
     RUN_TEST(test_ble_mutex_trylocks_use_semaphore_guard_in_runtime_and_callbacks);
     RUN_TEST(test_connected_flag_uses_explicit_atomic_load_store);
+    RUN_TEST(test_ble_timing_state_and_rssi_caches_use_uint32);
     return UNITY_END();
 }
