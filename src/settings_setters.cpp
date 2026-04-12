@@ -561,8 +561,8 @@ void SettingsManager::applyDisplaySettingsUpdate(const DisplaySettingsUpdate& up
     if (update.hasColorRssiProxy) changed |= assignIfChanged(settings_.colorRssiProxy, update.colorRssiProxy);
     if (update.hasColorObd) changed |= assignIfChanged(settings_.colorObd, update.colorObd);
     if (update.hasColorAlpConnected) changed |= assignIfChanged(settings_.colorAlpConnected, update.colorAlpConnected);
-    if (update.hasColorAlpScan) changed |= assignIfChanged(settings_.colorAlpScan, update.colorAlpScan);
-    if (update.hasColorAlpArmed) changed |= assignIfChanged(settings_.colorAlpArmed, update.colorAlpArmed);
+    if (update.hasColorAlpDetection) changed |= assignIfChanged(settings_.colorAlpDetection, update.colorAlpDetection);
+    if (update.hasColorAlpDefense) changed |= assignIfChanged(settings_.colorAlpDefense, update.colorAlpDefense);
     if (update.hasFreqUseBandColor) changed |= assignIfChanged(settings_.freqUseBandColor, update.freqUseBandColor);
     if (update.hasHideWifiIcon) changed |= assignIfChanged(settings_.hideWifiIcon, update.hideWifiIcon);
     if (update.hasHideProfileIndicator) {
@@ -615,8 +615,8 @@ void SettingsManager::resetDisplaySettings(SettingsPersistMode persistMode) {
     settings_.colorRssiProxy = 0x001F;
     settings_.colorObd = 0x001F;
     settings_.colorAlpConnected = 0x07E0;
-    settings_.colorAlpScan = 0xFD20;
-    settings_.colorAlpArmed = 0x001F;
+    settings_.colorAlpDetection = 0xFD20;
+    settings_.colorAlpDefense = 0x001F;
     settings_.freqUseBandColor = false;
 
     persistSettingsByMode(*this, persistMode);

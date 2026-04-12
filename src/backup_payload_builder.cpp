@@ -107,8 +107,8 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["colorRssiProxy"] = settings.colorRssiProxy;
     doc["colorObd"] = settings.colorObd;
     doc["colorAlpConnected"] = settings.colorAlpConnected;
-    doc["colorAlpScan"] = settings.colorAlpScan;
-    doc["colorAlpArmed"] = settings.colorAlpArmed;
+    doc["colorAlpDetection"] = settings.colorAlpDetection;
+    doc["colorAlpDefense"] = settings.colorAlpDefense;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
 
     doc["hideWifiIcon"] = settings.hideWifiIcon;

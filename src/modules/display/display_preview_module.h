@@ -19,7 +19,7 @@
  *   Includes Photo radar display.
  *
  * Phase 3: ALP state cycling
- *   Simulates all ALP badge states (OFF → IDLE → warmup → scan →
+ *   Simulates all ALP badge states (OFF → IDLE → warmup → detection →
  *   armed → ALERT_ACTIVE → NOISE_WINDOW → TEARDOWN) with gun
  *   abbreviation frequency override.
  *

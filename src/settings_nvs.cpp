@@ -365,8 +365,8 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort(kNvsColorRssiProxy, settings_.colorRssiProxy);
     written += prefs.putUShort(kNvsColorObd, settings_.colorObd);
     written += prefs.putUShort(kNvsColorAlpConn, settings_.colorAlpConnected);
-    written += prefs.putUShort(kNvsColorAlpScan, settings_.colorAlpScan);
-    written += prefs.putUShort(kNvsColorAlpArmed, settings_.colorAlpArmed);
+    written += prefs.putUShort(kNvsColorAlpDetect, settings_.colorAlpDetection);
+    written += prefs.putUShort(kNvsColorAlpDefense, settings_.colorAlpDefense);
     written += prefs.putBool(kNvsFreqBandColor, settings_.freqUseBandColor);
     written += prefs.putBool(kNvsHideWifi, settings_.hideWifiIcon);
     written += prefs.putBool(kNvsHideProfile, settings_.hideProfileIndicator);

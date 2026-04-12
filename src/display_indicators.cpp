@@ -174,30 +174,30 @@ void V1Display::drawAlpIndicator() {
     // driven by B0 heartbeat byte1 (speed-gated by ALP's internal GPS):
     //   Grey   — IDLE: enabled, no heartbeats yet
     //   Green  — LISTENING byte1=02: warm-up (~34s after boot)
-    //   Orange — LISTENING byte1=03: scanning (below ~24 mph)
-    //   Blue   — LISTENING byte1=04: armed (above ~24 mph)
-    //   Orange — TEARDOWN: rescanning after alert
-    //   Blue   — ALERT_ACTIVE / NOISE_WINDOW: laser detected, jamming
+    //   Orange — LISTENING byte1=03: detection mode (below speed threshold)
+    //   Blue   — LISTENING byte1=04: defense mode (above speed threshold)
+    //   Orange — TEARDOWN: re-detection after alert
+    //   Blue   — ALERT_ACTIVE / NOISE_WINDOW: laser detected, defending
     const V1Settings& s = settingsManager.get();
     const AlpState alpState = static_cast<AlpState>(alpStateRaw_);
     uint16_t textColor;
     switch (alpState) {
         case AlpState::ALERT_ACTIVE:
         case AlpState::NOISE_WINDOW:
-            textColor = s.colorAlpArmed;      // Blue — laser detected
+            textColor = s.colorAlpDefense;      // Blue — laser detected, defending
             break;
         case AlpState::TEARDOWN:
-            textColor = s.colorAlpScan;       // Orange — rescanning
+            textColor = s.colorAlpDetection;    // Orange — re-detection after alert
             break;
         case AlpState::LISTENING:
             // Sub-state from B0 heartbeat byte1:
-            //   04 = armed (speed above ~24 mph) → blue
-            //   03 = scanning (speed below ~24 mph) → orange
+            //   04 = defense mode (speed above threshold) → blue
+            //   03 = detection mode (speed below threshold) → orange
             //   02 = warm-up (first ~34s after boot) → green
             if (alpHbByte1_ == 0x04) {
-                textColor = s.colorAlpArmed;      // Blue — armed
+                textColor = s.colorAlpDefense;      // Blue — defense mode
             } else if (alpHbByte1_ == 0x03) {
-                textColor = s.colorAlpScan;       // Orange — scanning
+                textColor = s.colorAlpDetection;    // Orange — detection mode
             } else {
                 textColor = s.colorAlpConnected;  // Green — warm-up / init
             }

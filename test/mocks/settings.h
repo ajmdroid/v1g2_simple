@@ -71,8 +71,8 @@ struct V1Settings {
     // Indicator badge colors
     uint16_t colorObd        = 0x001F;  // Blue OBD badge
     uint16_t colorAlpConnected = 0x07E0;  // Green ALP connected
-    uint16_t colorAlpScan     = 0xFD20;  // Orange ALP scanning
-    uint16_t colorAlpArmed    = 0x001F;  // Blue ALP armed
+    uint16_t colorAlpDetection     = 0xFD20;  // Orange ALP detection mode
+    uint16_t colorAlpDefense    = 0x001F;  // Blue ALP defense mode
     // Volume/RSSI indicator colors
     uint16_t colorVolumeMain = 0xF800;  // Red main volume
     uint16_t colorVolumeMute = 0x7BEF;  // Grey muted volume

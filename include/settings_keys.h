@@ -63,8 +63,8 @@ inline constexpr const char* kNvsColorRssiV1     = "colorRssiV1";
 inline constexpr const char* kNvsColorRssiProxy  = "colorRssiPrx";
 inline constexpr const char* kNvsColorObd        = "colorObd";
 inline constexpr const char* kNvsColorAlpConn    = "colorAlpCon";
-inline constexpr const char* kNvsColorAlpScan    = "colorAlpScn";
-inline constexpr const char* kNvsColorAlpArmed   = "colorAlpArm";
+inline constexpr const char* kNvsColorAlpDetect  = "colorAlpDet";
+inline constexpr const char* kNvsColorAlpDefense = "colorAlpDef";
 
 // ── UI toggles ────────────────────────────────────────────────────────────
 inline constexpr const char* kNvsFreqBandColor  = "freqBandCol";

@@ -50,8 +50,8 @@
 
 	const ALP_BADGE_FIELDS = [
 		{ key: 'alpConnected', id: 'alp-connected-color', label: 'Connected', pickerLabel: 'ALP Connected', preview: 'ALP' },
-		{ key: 'alpScan', id: 'alp-scan-color', label: 'Scanning', pickerLabel: 'ALP Scanning', preview: 'ALP' },
-		{ key: 'alpArmed', id: 'alp-armed-color', label: 'Armed', pickerLabel: 'ALP Armed', preview: 'ALP' }
+		{ key: 'alpDetection', id: 'alp-detection-color', label: 'Detection', pickerLabel: 'ALP Detection', preview: 'ALP' },
+		{ key: 'alpDefense', id: 'alp-defense-color', label: 'Defense', pickerLabel: 'ALP Defense', preview: 'ALP' }
 	];
 
 	const STATUS_FIELD_ROWS = [

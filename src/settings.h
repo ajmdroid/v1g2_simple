@@ -128,8 +128,8 @@ struct V1Settings {
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
     uint16_t colorObd;           // OBD "OBD" status text color when connected
     uint16_t colorAlpConnected;  // ALP badge: green — connected, idle
-    uint16_t colorAlpScan;       // ALP badge: orange — scanning / rescan
-    uint16_t colorAlpArmed;      // ALP badge: blue — armed, ready to jam
+    uint16_t colorAlpDetection;  // ALP badge: orange — detection mode (scanning)
+    uint16_t colorAlpDefense;    // ALP badge: blue — defense mode (armed, ready to jam)
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
 
     // Display visibility settings
@@ -286,8 +286,8 @@ struct V1Settings {
         colorRssiProxy(0x001F),  // Blue (proxy RSSI label) — matches NVS default
         colorObd(0x001F),         // Blue OBD badge (matches existing BLE disconnected icon default)
         colorAlpConnected(0x07E0), // Green ALP badge — connected, idle
-        colorAlpScan(0xFD20),      // Orange ALP badge — scanning / rescan
-        colorAlpArmed(0x001F),     // Blue ALP badge — armed, ready to jam
+        colorAlpDetection(0xFD20), // Orange ALP badge — detection mode (scanning)
+        colorAlpDefense(0x001F),   // Blue ALP badge — defense mode (armed)
         freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
@@ -596,10 +596,10 @@ struct DisplaySettingsUpdate {
     uint16_t colorObd = 0;
     bool hasColorAlpConnected = false;
     uint16_t colorAlpConnected = 0;
-    bool hasColorAlpScan = false;
-    uint16_t colorAlpScan = 0;
-    bool hasColorAlpArmed = false;
-    uint16_t colorAlpArmed = 0;
+    bool hasColorAlpDetection = false;
+    uint16_t colorAlpDetection = 0;
+    bool hasColorAlpDefense = false;
+    uint16_t colorAlpDefense = 0;
     bool hasFreqUseBandColor = false;
     bool freqUseBandColor = false;
     bool hasHideWifiIcon = false;

@@ -232,14 +232,14 @@ const DisplayPreviewModule::PreviewStep DisplayPreviewModule::STEPS[] = {
      static_cast<int8_t>(AlpState::LISTENING), 0x02, NO_CHG, NO_CHG,
      NO_CHG, NO_CHG, nullptr},
 
-    // ALP LISTENING scanning (orange badge, hb=03)
+    // ALP LISTENING detection mode (orange badge, hb=03)
     {BAND_KA, DIR_FRONT, 35500, 4, 0, FLAG_NONE,
      NO_SEC, NO_THIRD,
      '1', NO_CHG, NO_CHG,
      static_cast<int8_t>(AlpState::LISTENING), 0x03, NO_CHG, NO_CHG,
      NO_CHG, NO_CHG, nullptr},
 
-    // ALP LISTENING armed (blue badge, hb=04)
+    // ALP LISTENING defense mode (blue badge, hb=04)
     {BAND_KA, DIR_FRONT, 35500, 5, 0, FLAG_NONE,
      NO_SEC, NO_THIRD,
      '1', NO_CHG, NO_CHG,
@@ -260,14 +260,14 @@ const DisplayPreviewModule::PreviewStep DisplayPreviewModule::STEPS[] = {
      static_cast<int8_t>(AlpState::NOISE_WINDOW), 0x01, NO_CHG, NO_CHG,
      NO_CHG, NO_CHG, "drgEYE"},
 
-    // ALP TEARDOWN (orange badge) — rescanning after alert
+    // ALP TEARDOWN (orange badge) — re-detection after alert
     {BAND_KA, DIR_FRONT, 35500, 3, 0, FLAG_NONE,
      NO_SEC, NO_THIRD,
      '1', NO_CHG, NO_CHG,
      static_cast<int8_t>(AlpState::TEARDOWN), 0x00, NO_CHG, NO_CHG,
      NO_CHG, NO_CHG, nullptr},
 
-    // ALP back to armed (blue, hb=04) — clear gun override
+    // ALP back to defense mode (blue, hb=04) — clear gun override
     {BAND_KA, DIR_FRONT, 35500, 4, 0, FLAG_NONE,
      NO_SEC, NO_THIRD,
      '1', NO_CHG, NO_CHG,
