@@ -35,8 +35,6 @@ def base_row(millis: int, *, connected: bool, duration_ready: bool = False) -> d
     row.update(
         {
             "millis": millis,
-            "timeValid": 1,
-            "timeSource": 1,
             "qDrop": 0,
             "parseFail": 0,
             "oversizeDrops": 0,

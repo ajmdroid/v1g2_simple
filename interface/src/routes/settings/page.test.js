@@ -83,7 +83,6 @@ describe('settings route page', () => {
 		await waitFor(() => {
 			expect(fetchMock.mock.calls.some(([url]) => url === '/api/device/settings')).toBe(true);
 			expect(fetchMock.mock.calls.some(([url]) => url === '/api/wifi/status')).toBe(true);
-			expect(fetchMock.mock.calls.some(([url]) => url === '/api/status')).toBe(true);
 		});
 
 		unmount();

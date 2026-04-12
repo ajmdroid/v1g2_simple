@@ -137,6 +137,7 @@ struct V1Settings {
     bool bleProxyEnabled = true;
     uint8_t activeSlot = 0;
     bool autoPushEnabled = false;
+    bool powerOffSdLog = false;
 
 };
 
