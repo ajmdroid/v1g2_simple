@@ -269,8 +269,15 @@ void SettingsManager::load() {
     settings_.speedMuteThresholdMph = std::clamp<uint8_t>(preferences_.getUChar(kNvsSpeedMuteThreshold, 25), 5, 60);
     settings_.speedMuteHysteresisMph = std::clamp<uint8_t>(preferences_.getUChar(kNvsSpeedMuteHysteresis, 3), 1, 10);
     {
-        const uint8_t raw = preferences_.getUChar(kNvsSpeedMuteVolume, 0xFF);
-        settings_.speedMuteVolume = (raw <= 9 || raw == 0xFF) ? raw : 0xFF;
+        const uint8_t raw = preferences_.getUChar(kNvsSpeedMuteVolume, 0);
+        if (raw == 0xFF) {
+            // Migration: old 0xFF (voice-only) → volume 0 + voice suppression on
+            settings_.speedMuteVolume = 0;
+            settings_.speedMuteVoice = true;
+        } else {
+            settings_.speedMuteVolume = (raw <= 9) ? raw : 0;
+            settings_.speedMuteVoice = preferences_.getBool(kNvsSpeedMuteVoice, true);
+        }
     }
 
     settings_.autoPushEnabled = preferences_.getBool(kNvsAutoPush, true);  // Default to enabled for profiles to work

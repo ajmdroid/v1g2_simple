@@ -508,8 +508,11 @@ void SettingsManager::applyAudioSettingsUpdate(const AudioSettingsUpdate& update
                                    clampU8(update.speedMuteHysteresisMph, 1, 10));
     }
     if (update.hasSpeedMuteVolume) {
-        const uint8_t val = (update.speedMuteVolume <= 9) ? update.speedMuteVolume : 0xFF;
+        const uint8_t val = (update.speedMuteVolume <= 9) ? update.speedMuteVolume : 0;
         changed |= assignIfChanged(settings_.speedMuteVolume, val);
+    }
+    if (update.hasSpeedMuteVoice) {
+        changed |= assignIfChanged(settings_.speedMuteVoice, update.speedMuteVoice);
     }
 
     if (changed) {

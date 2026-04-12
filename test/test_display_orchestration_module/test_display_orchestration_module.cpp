@@ -448,8 +448,9 @@ void test_speed_vol_settings_disable_restores() {
     ctx.parsedReady = true;
     module.processParsedFrame(ctx);  // Activate speed vol.
 
-    // User changes settings: disables V1 volume (set to 0xFF).
-    speedMute.settings_.v1Volume = 0xFF;
+    // User disables speed mute entirely.
+    speedMute.settings_.enabled = false;
+    speedMute.state_.muteActive = false;
     parser.setMainVolume(3);
     ble.setVolumeCalls = 0;
     volumeFade.setBaselineHintCalls = 0;

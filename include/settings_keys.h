@@ -101,6 +101,7 @@ inline constexpr const char* kNvsSpeedMuteEnabled    = "spdMuteEn";
 inline constexpr const char* kNvsSpeedMuteThreshold  = "spdMuteThr";
 inline constexpr const char* kNvsSpeedMuteHysteresis = "spdMuteHys";
 inline constexpr const char* kNvsSpeedMuteVolume     = "spdMuteVol";
+inline constexpr const char* kNvsSpeedMuteVoice      = "spdMuteVce";
 
 // ── Profiles / settings slots ─────────────────────────────────────────────
 inline constexpr const char* kNvsAutoPush   = "autoPush";

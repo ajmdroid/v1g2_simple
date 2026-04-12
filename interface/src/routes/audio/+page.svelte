@@ -25,7 +25,8 @@
 		speedMuteEnabled: false,
 		speedMuteThresholdMph: 25,
 		speedMuteHysteresisMph: 3,
-		speedMuteVolume: 255,
+		speedMuteVolume: 0,
+		speedMuteVoice: true,
 	});
 	
 	let loading = $state(true);
@@ -69,7 +70,8 @@
 				settings.speedMuteEnabled = data.speedMuteEnabled ?? false;
 				settings.speedMuteThresholdMph = data.speedMuteThresholdMph ?? 25;
 				settings.speedMuteHysteresisMph = data.speedMuteHysteresisMph ?? 3;
-				settings.speedMuteVolume = data.speedMuteVolume ?? 255;
+				settings.speedMuteVolume = data.speedMuteVolume ?? 0;
+				settings.speedMuteVoice = data.speedMuteVoice ?? true;
 			}
 		} catch (e) {
 			message = { type: 'error', text: 'Failed to load settings' };
@@ -104,6 +106,7 @@
 			params.append('speedMuteThresholdMph', settings.speedMuteThresholdMph);
 			params.append('speedMuteHysteresisMph', settings.speedMuteHysteresisMph);
 			params.append('speedMuteVolume', settings.speedMuteVolume);
+			params.append('speedMuteVoice', settings.speedMuteVoice);
 			
 			const res = await fetchWithTimeout('/api/audio/settings', {
 				method: 'POST',
@@ -448,25 +451,38 @@
 							<div class="form-control mt-4">
 								<label class="label" for="speed-mute-volume">
 									<span class="label-text">V1 Alert Volume</span>
-									<span class="label-text-alt">{settings.speedMuteVolume === 255 ? 'No Change' : settings.speedMuteVolume}</span>
+									<span class="label-text-alt">{settings.speedMuteVolume}{settings.speedMuteVolume === 0 ? ' (silent)' : ''}</span>
 								</label>
-								<select
+								<input 
 									id="speed-mute-volume"
-									class="select select-bordered select-sm w-full"
+									type="range" 
+									min="0" 
+									max="9" 
 									bind:value={settings.speedMuteVolume}
-								>
-									<option value={255}>No Change (voice only)</option>
-									{#each Array.from({length: 10}, (_, i) => i) as vol}
-										<option value={vol}>{vol}{vol === 0 ? ' (silent)' : ''}</option>
-									{/each}
-								</select>
-								<p class="copy-caption-soft mt-1">Also lower V1 hardware alert volume when speed-muted</p>
+									class="range range-primary range-sm" 
+								/>
+								<p class="copy-caption-soft mt-1">V1 hardware volume when speed-muted (0 = silent)</p>
+							</div>
+
+							<!-- Voice Suppression Toggle -->
+							<div class="form-control mt-4">
+								<label class="label cursor-pointer">
+									<div>
+										<span class="label-text font-medium">Mute Voice Alerts</span>
+										<p class="copy-caption-soft">Also suppress voice announcements when speed-muted</p>
+									</div>
+									<input 
+										type="checkbox" 
+										class="toggle toggle-primary" 
+										bind:checked={settings.speedMuteVoice}
+									/>
+								</label>
 							</div>
 
 							<!-- Preview -->
 							<div class="surface-panel text-sm mt-4">
 								<p class="copy-subtle">
-									Below <strong>{settings.speedMuteThresholdMph} mph</strong> → voice muted{settings.speedMuteVolume !== 255 ? ` + V1 vol → ${settings.speedMuteVolume}` : ''} →
+									Below <strong>{settings.speedMuteThresholdMph} mph</strong> → V1 vol → {settings.speedMuteVolume}{settings.speedMuteVoice ? ' + voice muted' : ''} →
 									above <strong>{settings.speedMuteThresholdMph + settings.speedMuteHysteresisMph} mph</strong> → restored
 								</p>
 							</div>

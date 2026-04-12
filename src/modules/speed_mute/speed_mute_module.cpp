@@ -69,20 +69,24 @@ SpeedMuteDecision evaluateSpeedMute(
 // --- Module wrapper ---
 
 void SpeedMuteModule::begin(bool enabled, uint8_t thresholdMph,
-                            uint8_t hysteresisMph, uint8_t v1Volume) {
+                            uint8_t hysteresisMph, uint8_t v1Volume,
+                            bool voice) {
     settings_.enabled = enabled;
     settings_.thresholdMph = thresholdMph;
     settings_.hysteresisMph = hysteresisMph;
     settings_.v1Volume = v1Volume;
+    settings_.voice = voice;
     state_ = {};
 }
 
 void SpeedMuteModule::syncSettings(bool enabled, uint8_t thresholdMph,
-                                   uint8_t hysteresisMph, uint8_t v1Volume) {
+                                   uint8_t hysteresisMph, uint8_t v1Volume,
+                                   bool voice) {
     settings_.enabled = enabled;
     settings_.thresholdMph = thresholdMph;
     settings_.hysteresisMph = hysteresisMph;
     settings_.v1Volume = v1Volume;
+    settings_.voice = voice;
 }
 
 SpeedMuteDecision SpeedMuteModule::update(float speedMph, bool speedValid,

@@ -124,7 +124,8 @@ struct V1Settings {
     bool speedMuteEnabled = false;
     uint8_t speedMuteThresholdMph = 25;
     uint8_t speedMuteHysteresisMph = 3;
-    uint8_t speedMuteVolume = 0xFF;
+    uint8_t speedMuteVolume = 0;
+    bool speedMuteVoice = true;
     
     // Misc flags retained for compatibility
     bool obdEnabled = false;

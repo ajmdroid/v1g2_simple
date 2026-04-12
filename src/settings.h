@@ -167,7 +167,8 @@ struct V1Settings {
     bool speedMuteEnabled;           // Enable speed-based auto-muting
     uint8_t speedMuteThresholdMph;   // Mute below this speed (5-60 mph)
     uint8_t speedMuteHysteresisMph;  // Unmute at threshold + hysteresis (1-10 mph)
-    uint8_t speedMuteVolume;         // V1 volume when speed-muted (0-9, 0xFF = voice-only)
+    uint8_t speedMuteVolume;         // V1 volume when speed-muted (0-9)
+    bool speedMuteVoice;             // Also suppress voice announcements when speed-muted
 
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -309,7 +310,8 @@ struct V1Settings {
         speedMuteEnabled(false),         // Speed mute disabled by default
         speedMuteThresholdMph(25),       // 25 mph default (city driving)
         speedMuteHysteresisMph(3),       // 3 mph hysteresis band
-        speedMuteVolume(0xFF),           // Voice-only by default (no V1 volume change)
+        speedMuteVolume(0),              // Silent by default
+        speedMuteVoice(true),            // Suppress voice when speed-muted
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -524,7 +526,10 @@ struct AudioSettingsUpdate {
     uint8_t speedMuteHysteresisMph = 0;
 
     bool hasSpeedMuteVolume = false;
-    uint8_t speedMuteVolume = 0xFF;      // 0xFF = voice-only (no V1 volume change)
+    uint8_t speedMuteVolume = 0;
+
+    bool hasSpeedMuteVoice = false;
+    bool speedMuteVoice = true;
 };
 
 struct DisplaySettingsUpdate {

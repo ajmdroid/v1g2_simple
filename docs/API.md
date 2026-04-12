@@ -439,7 +439,7 @@ Get current audio and voice-alert configuration.
 **Response:** JSON with `voiceAlertMode`, `voiceDirectionEnabled`, `announceBogeyCount`,
 `muteVoiceIfVolZero`, `voiceVolume`, secondary-alert toggles, volume-fade settings,
 and speed-mute settings (`speedMuteEnabled`, `speedMuteThresholdMph`, `speedMuteHysteresisMph`,
-`speedMuteVolume`).
+`speedMuteVolume`, `speedMuteVoice`).
 
 ### POST /api/audio/settings
 
@@ -450,7 +450,7 @@ Save audio and voice-alert configuration.
 `announceSecondaryAlerts`, `secondaryLaser`, `secondaryKa`, `secondaryK`, `secondaryX`,
 `alertVolumeFadeEnabled`, `alertVolumeFadeDelaySec`, `alertVolumeFadeVolume`,
 `speedMuteEnabled`, `speedMuteThresholdMph`, `speedMuteHysteresisMph`,
-and `speedMuteVolume`.
+and `speedMuteVolume`, `speedMuteVoice`.
 
 ---
 

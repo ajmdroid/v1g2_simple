@@ -226,8 +226,15 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     }
     if (doc["speedMuteVolume"].is<int>()) {
         int raw = doc["speedMuteVolume"].as<int>();
-        settings_.speedMuteVolume = (raw >= 0 && raw <= 9) ? static_cast<uint8_t>(raw) : 0xFF;
+        if (raw == 255) {
+            // Migration: old 0xFF (voice-only) → volume 0 + voice suppression on
+            settings_.speedMuteVolume = 0;
+            settings_.speedMuteVoice = true;
+        } else {
+            settings_.speedMuteVolume = (raw >= 0 && raw <= 9) ? static_cast<uint8_t>(raw) : 0;
+        }
     }
+    restoreBool("speedMuteVoice", settings_.speedMuteVoice);
 
     // ============================================================================
     // Auto-Push Settings
