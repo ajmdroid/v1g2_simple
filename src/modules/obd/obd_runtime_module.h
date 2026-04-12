@@ -118,6 +118,7 @@ struct ObdBleContext {
     bool proxyAdvertising = false;
     bool proxyClientConnected = false;
     bool v1ConnectInProgress = false;
+    bool v1Reconnecting = false;        // V1 lost, actively trying to reconnect — yield radio
 };
 
 class ObdRuntimeModule {
@@ -129,7 +130,8 @@ public:
                int8_t minRssi);
     void update(uint32_t nowMs, const ObdBleContext& bootReadyContext);
     void update(uint32_t nowMs, bool bootReady, bool v1Connected, bool bleScanIdle) {
-        update(nowMs, ObdBleContext{bootReady, v1Connected, bleScanIdle});
+        update(nowMs, ObdBleContext{bootReady, v1Connected, bleScanIdle,
+                                    false, false, false, false, false});
     }
     ObdRuntimeStatus snapshot(uint32_t nowMs) const;
 

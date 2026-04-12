@@ -1086,6 +1086,12 @@ void loop() {
     // Refresh speed inputs before display so the current loop sees the latest OBD state.
     {
         const uint32_t obdStartUs = micros();
+        // V1 is "reconnecting" when boot is ready, V1 is not connected, and
+        // we're past the boot splash.  During splash hold OBD gets its normal
+        // WAIT_BOOT dwell; once splash clears, V1 owns the radio until connected.
+        const bool v1Reconnecting = mainRuntimeState.bootReady
+                                    && !bleConnectedNow
+                                    && !mainRuntimeState.bootSplashHoldActive;
         const ObdBleContext obdBleContext{
             mainRuntimeState.bootReady,
             bleConnectedNow,
@@ -1094,6 +1100,7 @@ void loop() {
             bleClient.isProxyAdvertising(),
             bleClient.isProxyClientConnected(),
             bleClient.isConnectInProgress(),
+            v1Reconnecting,
         };
         obdRuntimeModule.update(now, obdBleContext);
         bleClient.setObdBleArbitrationRequest(obdRuntimeModule.getBleArbitrationRequest());

@@ -18,7 +18,8 @@ static ObdBleContext makeBleContext(bool bootReady,
                                     bool v1ConnectBurstSettling = false,
                                     bool proxyAdvertising = false,
                                     bool proxyClientConnected = false,
-                                    bool v1ConnectInProgress = false) {
+                                    bool v1ConnectInProgress = false,
+                                    bool v1Reconnecting = false) {
     ObdBleContext ctx;
     ctx.bootReady = bootReady;
     ctx.v1Connected = v1Connected;
@@ -27,6 +28,7 @@ static ObdBleContext makeBleContext(bool bootReady,
     ctx.proxyAdvertising = proxyAdvertising;
     ctx.proxyClientConnected = proxyClientConnected;
     ctx.v1ConnectInProgress = v1ConnectInProgress;
+    ctx.v1Reconnecting = v1Reconnecting;
     return ctx;
 }
 

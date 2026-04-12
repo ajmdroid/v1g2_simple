@@ -1585,6 +1585,7 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
     const bool proxyAdvertising = bootReadyContext.proxyAdvertising;
     const bool proxyClientConnected = bootReadyContext.proxyClientConnected;
     const bool v1ConnectInProgress = bootReadyContext.v1ConnectInProgress;
+    const bool v1Reconnecting = bootReadyContext.v1Reconnecting;
 
     if (bootReady && bootReadyMs_ == 0) {
         bootReadyMs_ = nowMs == 0 ? 1 : nowMs;
@@ -1617,6 +1618,12 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
             }
 
             if (v1Connected && v1ConnectBurstSettling) {
+                break;
+            }
+
+            // V1 is actively reconnecting — hold off even if dwell expired.
+            // OBD is useless without V1; don't compete for the radio.
+            if (v1Reconnecting) {
                 break;
             }
 
@@ -1657,6 +1664,12 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
         }
 
         case ObdConnectionState::CONNECTING:
+            // V1 needs the radio — abort OBD connect attempt.
+            if (v1Reconnecting && !justEntered) {
+                disconnectBle();
+                transitionTo(ObdConnectionState::ECU_IDLE, nowMs);
+                break;
+            }
             if (bleDisconnected_) {
 #ifndef UNIT_TEST
                 Serial.printf("[OBD] connect failed (ble reason=%d %s)\n",
@@ -1715,10 +1728,22 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
             break;
 
         case ObdConnectionState::SECURING:
+            // V1 needs the radio — yield.
+            if (v1Reconnecting) {
+                disconnectBle();
+                transitionTo(ObdConnectionState::ECU_IDLE, nowMs);
+                break;
+            }
             updateSecuring(nowMs);
             break;
 
         case ObdConnectionState::DISCOVERING:
+            // V1 needs the radio — yield.
+            if (v1Reconnecting) {
+                disconnectBle();
+                transitionTo(ObdConnectionState::ECU_IDLE, nowMs);
+                break;
+            }
             if (bleDisconnected_) {
 #ifndef UNIT_TEST
                 Serial.printf("[OBD] lost connection during discovery (ble reason=%d %s)\n",
@@ -1789,14 +1814,35 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
             break;
 
         case ObdConnectionState::AT_INIT:
+            // V1 needs the radio — yield.
+            if (v1Reconnecting) {
+                disconnectBle();
+                transitionTo(ObdConnectionState::ECU_IDLE, nowMs);
+                break;
+            }
             updateAtInit(nowMs);
             break;
 
         case ObdConnectionState::POLLING:
+            // V1 dropped — yield the radio.  OBD speed data is useless
+            // without V1 anyway.  Disconnect cleanly so V1 gets a clear
+            // scan window.  We'll reconnect from ECU_IDLE once V1 is back.
+            if (v1Reconnecting) {
+                v1WasConnectedAtEcuIdle_ = false;  // V1 is NOT connected
+                disconnectBle();
+                clearSpeedState();
+                transitionTo(ObdConnectionState::ECU_IDLE, nowMs);
+                break;
+            }
             updatePolling(nowMs);
             break;
 
         case ObdConnectionState::ERROR_BACKOFF:
+            if (v1Reconnecting) {
+                disconnectBle();
+                transitionTo(ObdConnectionState::ECU_IDLE, nowMs);
+                break;
+            }
             if ((nowMs - stateEnteredMs_) >= obd::ERROR_PAUSE_MS) {
                 if (shouldDisconnectAfterPollingError(lastFailure_) &&
                     consecutiveErrors_ >= obd::ERRORS_BEFORE_DISCONNECT) {
@@ -1833,7 +1879,7 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
                 }
             }
             if ((nowMs - stateEnteredMs_) >= obd::RECONNECT_BACKOFF_MS) {
-                if (proxyClientConnected) {
+                if (proxyClientConnected || v1Reconnecting) {
                     break;
                 }
                 if (savedAddress_[0] != '\0') {
@@ -1860,8 +1906,8 @@ void ObdRuntimeModule::update(uint32_t nowMs, const ObdBleContext& bootReadyCont
 
             // Resume path 2: slow probe — try reconnecting to OBDLink periodically
             if ((nowMs - stateEnteredMs_) >= obd::ECU_IDLE_PROBE_INTERVAL_MS) {
-                if (proxyClientConnected) {
-                    // Don't compete with an active proxy session; just reset timer
+                if (proxyClientConnected || v1Reconnecting) {
+                    // Don't compete with proxy or V1 reconnection; just reset timer
                     stateEnteredMs_ = nowMs;
                     break;
                 }
