@@ -50,6 +50,11 @@ void V1BLEClient::process() {
             verifyPending_ = false;
             verifyComplete_ = false;
             verifyMatch_ = false;
+            // Clear backoff state — same rationale as inline onDisconnect path.
+            consecutiveConnectFailures_ = 0;
+            nextConnectAllowedMs_ = 0;
+            shouldConnect_ = false;
+            hasTargetDevice_ = false;
             setBLEState(BLEState::DISCONNECTED, "deferred onDisconnect");
         }
     }

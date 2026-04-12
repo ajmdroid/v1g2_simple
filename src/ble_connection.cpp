@@ -178,6 +178,16 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient_, int reas
             instancePtr->verifyPending_ = false;
             instancePtr->verifyComplete_ = false;
             instancePtr->verifyMatch_ = false;
+            // Clear backoff state so the reconnection cycle starts fresh.
+            // A spontaneous V1 disconnect (power-off) is not a connect failure —
+            // carrying forward failure counters causes escalating backoff that
+            // prevents timely reconnection when the V1 comes back.
+            instancePtr->consecutiveConnectFailures_ = 0;
+            instancePtr->nextConnectAllowedMs_ = 0;
+            // Clear stale scan target so the state machine does a full fresh scan
+            // instead of trying to connect to a potentially-stale address.
+            instancePtr->shouldConnect_ = false;
+            instancePtr->hasTargetDevice_ = false;
             // Set state to DISCONNECTED - will trigger scan restart in process()
             instancePtr->setBLEState(BLEState::DISCONNECTED, "onDisconnect callback");
         } else {
