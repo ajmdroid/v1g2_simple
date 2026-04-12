@@ -85,14 +85,6 @@ static bool appendCsvUInt8(char* buffer, size_t bufferLen, size_t& offset, uint8
     return appendCsvFormat(buffer, bufferLen, offset, "%u,", static_cast<unsigned int>(value));
 }
 
-static bool appendCsvInt16(char* buffer, size_t bufferLen, size_t& offset, int16_t value) {
-    return appendCsvFormat(buffer, bufferLen, offset, "%d,", static_cast<int>(value));
-}
-
-static bool appendCsvUInt8Last(char* buffer, size_t bufferLen, size_t& offset, uint8_t value) {
-    return appendCsvFormat(buffer, bufferLen, offset, "%u\n", static_cast<unsigned int>(value));
-}
-
 static bool appendCsvUInt32Last(char* buffer, size_t bufferLen, size_t& offset, uint32_t value) {
     return appendCsvFormat(buffer, bufferLen, offset, "%lu\n", static_cast<unsigned long>(value));
 }
