@@ -10,21 +10,9 @@ unsigned long mockMicros = 0;
 #endif
 
 #include "../../src/perf_metrics.h"
-#include "../../src/time_service.h"
-
 PerfCounters perfCounters;
 
 void perfRecordSdFlushUs(uint32_t) {}
-
-TimeService timeService;
-
-void TimeService::begin() {}
-int64_t TimeService::nowEpochMsOr0() const { return 0; }
-uint32_t TimeService::epochAgeMsOr0() const { return 0; }
-void TimeService::setEpochBaseMs(int64_t, int32_t, Source) {}
-void TimeService::clear() {}
-void TimeService::persistCurrentTime() {}
-void TimeService::periodicSave(uint32_t) {}
 
 #include "../../src/psram_freertos_alloc.cpp"
 #include "../../src/storage_manager.cpp"

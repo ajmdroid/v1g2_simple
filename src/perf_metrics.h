@@ -488,7 +488,6 @@ struct PerfExtendedMetrics {
     uint32_t obdSubscribeCallMaxUs = 0;
     uint32_t obdWriteCallMaxUs = 0;
     uint32_t obdRssiCallMaxUs = 0;
-    uint32_t timeSaveMaxUs = 0;        // timeService.periodicSave NVS write
     uint32_t perfReportMaxUs = 0;      // perfMetricsCheckReport snapshot + enqueue
     uint32_t uiToScanCount = 0;       // Screen transitions -> Scanning
     uint32_t uiToRestCount = 0;       // Screen transitions -> Resting
@@ -612,7 +611,6 @@ struct PerfExtendedMetrics {
         obdSubscribeCallMaxUs = 0;
         obdWriteCallMaxUs = 0;
         obdRssiCallMaxUs = 0;
-        timeSaveMaxUs = 0;
         perfReportMaxUs = 0;
         uiToScanCount = 0;
         uiToRestCount = 0;
@@ -737,7 +735,6 @@ void perfRecordDispPipeUs(uint32_t us);
 void perfRecordDisplayVoiceUs(uint32_t us);
 void perfRecordDisplayGapRecoverUs(uint32_t us);
 void perfRecordTouchUs(uint32_t us);
-void perfRecordTimeSaveUs(uint32_t us);
 void perfRecordPerfReportUs(uint32_t us);
 void perfRecordObdConnectCallUs(uint32_t us);
 void perfRecordObdSecurityStartCallUs(uint32_t us);
@@ -812,8 +809,6 @@ extern PerfCounters perfCounters;
 
 struct PerfSdSnapshot {
     uint32_t millisTs;
-    uint8_t timeValid;
-    uint8_t timeSource;
     uint32_t rx;
     uint32_t qDrop;
     uint32_t parseOk;
@@ -963,7 +958,6 @@ struct PerfSdSnapshot {
     uint32_t bleDiscoveryMaxUs;
     uint32_t bleSubscribeMaxUs;
     uint32_t dispPipeMaxUs;
-    uint32_t timeSaveMaxUs;      // Window max timeService.periodicSave NVS write
     uint32_t perfReportMaxUs;    // Window max perfMetricsCheckReport snapshot+enqueue
     uint32_t prioritySelectDisplayIndex; // Legacy display-aux0 priority path (compat-only)
     uint32_t prioritySelectRowFlag;      // Priority chosen from alert-row isPriority bit

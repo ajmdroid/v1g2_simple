@@ -14,11 +14,6 @@ public:
         void (*recordPerfReportUs)(void* ctx, uint32_t elapsedUs) = nullptr;
         void* perfReportRecordContext = nullptr;
 
-        void (*runTimeSave)(void* ctx, uint32_t nowMs) = nullptr;
-        void* timeSaveContext = nullptr;
-        void (*recordTimeSaveUs)(void* ctx, uint32_t elapsedUs) = nullptr;
-        void* timeSaveRecordContext = nullptr;
-
         void (*runObdSettingsSync)(void* ctx, uint32_t nowMs) = nullptr;
         void* obdSettingsSyncContext = nullptr;
 

@@ -8,7 +8,6 @@
 #include "perf_metrics.h"
 #include "settings.h"
 #include "perf_sd_logger.h"
-#include "time_service.h"
 #include "modules/wifi/wifi_auto_timeout_module.h"
 #include "modules/wifi/wifi_heap_guard_module.h"
 #include "modules/wifi/wifi_stop_reason_module.h"

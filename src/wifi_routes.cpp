@@ -19,14 +19,12 @@
 #include "modules/wifi/wifi_status_api_service.h"
 #include "modules/wifi/wifi_autopush_api_service.h"
 #include "modules/wifi/wifi_static_path_guard.h"
-#include "modules/wifi/wifi_time_api_service.h"
 #include "modules/wifi/wifi_v1_profile_api_service.h"
 #include "modules/wifi/wifi_v1_devices_api_service.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/obd/obd_api_service.h"
 #include "modules/obd/obd_runtime_module.h"
 #include "battery_manager.h"
-#include "time_service.h"
 #include <LittleFS.h>
 
 bool WiFiManager::setupWebServer() {
@@ -439,17 +437,6 @@ bool WiFiManager::setupWebServer() {
             makeWifiClientRuntime(),
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
             [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
-    });
-
-    // Time sync — browser sets device clock on first UI connection
-    server_.on("/api/time/sync", HTTP_POST, [this]() {
-        WifiTimeApiService::handleApiTimeSync(
-            server_,
-            [](int64_t epochMs, int32_t tzOffsetMinutes, void* /*ctx*/) {
-                timeService.setEpochBaseMs(epochMs, tzOffsetMinutes, TimeService::SOURCE_CLIENT_AP);
-                return true;
-            },
-            nullptr);
     });
 
     // OBD API routes

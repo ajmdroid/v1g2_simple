@@ -5,20 +5,6 @@
 	import BrandMark from '$lib/components/BrandMark.svelte';
 	import { fetchWithTimeout } from '$lib/utils/poll';
 
-	function syncDeviceTime() {
-		void fetchWithTimeout(
-			'/api/time/sync',
-			{
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					epochMs: Date.now(),
-					tzOffsetMinutes: new Date().getTimezoneOffset() * -1
-				})
-			}
-		).catch(() => {});
-	}
-	
 	let { children } = $props();
 	let showPasswordWarning = $state(false);
 	let warningDismissed = $state(false);
@@ -61,8 +47,7 @@
 	
 	// Check if using default password on mount
 	onMount(() => {
-		syncDeviceTime();
-		const handlePasswordWarningPreferenceChange = (event) => {
+const handlePasswordWarningPreferenceChange = (event) => {
 			const dismissed = event?.detail?.dismissed === true;
 			warningDismissed = dismissed;
 			if (dismissed) {

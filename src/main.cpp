@@ -90,7 +90,6 @@
 #include "modules/wifi/wifi_runtime_module.h"
 #include "modules/perf/debug_macros.h"
 #include "provider_callback_bindings.h"
-#include "time_service.h"
 #include <driver/gpio.h>
 #include "../include/display_driver.h"
 #include <FS.h>
@@ -114,7 +113,6 @@ VoiceModule voiceModule;
 
 static constexpr unsigned long BOOT_SPLASH_HOLD_MS = 400;
 static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_MS = 400;
-static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_WAKE_MS = 120;
 static constexpr unsigned long CONNECTION_STATE_PROCESS_MAX_GAP_MS = 1000;
 MainRuntimeState mainRuntimeState;
 static bool wifiStatusObservabilityCallbackConfigured = false;
@@ -561,12 +559,6 @@ static void configurePeriodicMaintenanceModule() {
     periodicMaintenanceProviders.recordPerfReportUs = [](void*, uint32_t elapsedUs) {
         perfRecordPerfReportUs(elapsedUs);
     };
-    periodicMaintenanceProviders.runTimeSave =
-        ProviderCallbackBindings::member<TimeService, &TimeService::periodicSave>;
-    periodicMaintenanceProviders.timeSaveContext = &timeService;
-    periodicMaintenanceProviders.recordTimeSaveUs = [](void*, uint32_t elapsedUs) {
-        perfRecordTimeSaveUs(elapsedUs);
-    };
     periodicMaintenanceProviders.runObdSettingsSync =
         ProviderCallbackBindings::member<ObdSettingsSyncModule, &ObdSettingsSyncModule::process>;
     periodicMaintenanceProviders.obdSettingsSyncContext = &obdSettingsSyncModule;
@@ -852,7 +844,7 @@ static esp_reset_reason_t initializeResetReasonAndCadenceState(
     } else if (resetReason == ESP_RST_POWERON) {
         SerialLog.println("(Power-on)");
     } else if (resetReason == ESP_RST_DEEPSLEEP) {
-        SerialLog.println("(Wake from deep sleep - RTC clock preserved)");
+        SerialLog.println("(Wake from deep sleep)");
     } else {
         SerialLog.printf("(Other: %d)\n", resetReason);
     }
@@ -863,8 +855,7 @@ static esp_reset_reason_t initializeResetReasonAndCadenceState(
     if (resetReason == ESP_RST_DEEPSLEEP) {
         logBootCheckpoint("wake_deepsleep");
     }
-    mainRuntimeState.activeScanScreenDwellMs =
-        (resetReason == ESP_RST_DEEPSLEEP) ? MIN_SCAN_SCREEN_DWELL_WAKE_MS : MIN_SCAN_SCREEN_DWELL_MS;
+    mainRuntimeState.activeScanScreenDwellMs = MIN_SCAN_SCREEN_DWELL_MS;
     SerialLog.printf("[BootTiming] scan_dwell_target_ms=%lu\n", mainRuntimeState.activeScanScreenDwellMs);
     connectionStateCadenceModule.reset();
     wifiProcessCadenceModule.reset();
@@ -944,15 +935,13 @@ static void initializePreflightDisplayAndBootUi(esp_reset_reason_t resetReason,
     display.setAlpRuntimeModule(&alpRuntimeModule);
 
     // Brief post-display settle before settings init.
-    const unsigned long postDisplaySettleMs = (resetReason == ESP_RST_DEEPSLEEP) ? 2UL : 10UL;
+    constexpr unsigned long postDisplaySettleMs = 10UL;
     delay(postDisplaySettleMs);
     SerialLog.printf("[BootTiming] post_display_settle_ms=%lu\n", postDisplaySettleMs);
     logBootStage("display");
 
     // Initialize settings BEFORE showing any styled screens (need displayStyle setting).
     settingsManager.begin();
-    timeService.begin();
-
     powerModule.begin(&batteryManager, &display, &settingsManager);
     powerModule.setShutdownPreparationCallback(prepareForShutdown, nullptr);
     powerModule.logStartupStatus();

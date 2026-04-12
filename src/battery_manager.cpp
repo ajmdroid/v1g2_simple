@@ -72,14 +72,10 @@ bool BatteryManager::begin() {
     pinMode(PWR_BUTTON_GPIO, INPUT);
 
     // Sample GPIO16 multiple times to debounce.
-    // Deep-sleep wake uses a shorter debounce window for faster wake perception.
-    const esp_reset_reason_t resetReason = esp_reset_reason();
-    const bool wakeFromDeepSleep = (resetReason == ESP_RST_DEEPSLEEP);
-    const int samples = wakeFromDeepSleep ? 5 : 10;
-    const int sampleDelayMs = wakeFromDeepSleep ? 2 : 5;
+    constexpr int samples = 10;
+    constexpr int sampleDelayMs = 5;
     int highCount = 0;
-    Serial.printf("[Battery] Power debounce reset=%d samples=%d delayMs=%d\n",
-                  static_cast<int>(resetReason),
+    Serial.printf("[Battery] Power debounce samples=%d delayMs=%d\n",
                   samples,
                   sampleDelayMs);
 
@@ -466,44 +462,40 @@ bool BatteryManager::powerOff() {
         delay(10);
     }
 
-    // Ensure the panel backlight is fully blanked before final power cut / deep sleep.
+    // Ensure the panel backlight is fully blanked before final power cut.
     analogWrite(LCD_BL, 255);  // Backlight off (inverted)
     pinMode(LCD_BL, OUTPUT);
     digitalWrite(LCD_BL, HIGH);  // Force off (inverted backlight)
     delay(50);
 
-    // Choose shutdown strategy based on battery health.
-    // Critical battery: hard latch drop to protect the cell from deep discharge.
-    // Normal shutdown:  deep sleep with latch ON so the 18650 keeps the ESP32-S3's
-    //                   internal RTC running.  settimeofday() persists through deep
-    //                   sleep, so on button-wake gettimeofday() returns accurate time
-    //                   without needing a phone sync.
+    // Drop the power latch to cut power entirely.  No deep sleep — the 18650
+    // is not kept alive for RTC, so battery drain while "off" is zero.
+    // Deep sleep is only used as a last-resort fallback if the latch drop fails.
     if (isCritical()) {
         Serial.println("[Battery] Critical battery - hard power off to protect cell");
-        const bool latchDropped = setTCA9554PinWithBudget(TCA9554_PWR_LATCH_PIN,
-                                                          false,
-                                                          pdMS_TO_TICKS(250),
-                                                          5);
-        if (!latchDropped) {
-            Serial.println("[Battery] ERROR: Failed to drop power latch, falling back to deep sleep");
-        }
-        delay(200);
-        esp_deep_sleep_start();  // fallback (latch already cut)
-        return latchDropped;
+    } else {
+        Serial.println("[Battery] Dropping power latch...");
     }
 
-    Serial.println("[Battery] Entering deep sleep (RTC clock preserved by 18650)...");
+    const bool latchDropped = setTCA9554PinWithBudget(TCA9554_PWR_LATCH_PIN,
+                                                      false,
+                                                      pdMS_TO_TICKS(250),
+                                                      5);
+    if (latchDropped) {
+        delay(500);  // Wait for power rail to collapse
+        // If we reach here, the latch drop didn't fully cut power.
+        Serial.println("[Battery] WARN: Still running after latch drop");
+    } else {
+        Serial.println("[Battery] ERROR: Failed to drop power latch, falling back to deep sleep");
+    }
 
-    // Hold backlight GPIO state during deep sleep to keep display off
+    // Fallback: enter deep sleep with button wakeup so the device isn't bricked.
     gpio_hold_en(static_cast<gpio_num_t>(LCD_BL));
     gpio_deep_sleep_hold_en();
-
-    // Configure power button (GPIO 16, active LOW) as deep-sleep wakeup source
     esp_sleep_enable_ext1_wakeup(1ULL << PWR_BUTTON_GPIO, ESP_EXT1_WAKEUP_ANY_LOW);
-
     delay(100);  // Let serial flush
-    esp_deep_sleep_start();  // Does not return — RTC keeps ticking
-    return true;
+    esp_deep_sleep_start();
+    return latchDropped;
 }
 
 bool BatteryManager::isPowerButtonPressed() {

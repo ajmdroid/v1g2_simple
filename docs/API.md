@@ -70,15 +70,6 @@ Get device status including V1 connection, WiFi, and alerts.
     "hostname": "v1g2",
     "firmware_version": "4.0.0-dev"
   },
-  "time": {
-    "valid": true,
-    "source": 2,
-    "confidence": 3,
-    "tzOffsetMin": -300,
-    "tzOffsetMinutes": -300,
-    "epochMs": 1739650000000,
-    "ageMs": 1234
-  },
   "battery": {
     "voltage_mv": 4150,
     "percentage": 85,
@@ -766,41 +757,6 @@ Enable or disable WiFi client mode.
 - When disabling: Disconnects from network and switches to AP-only mode
 
 ---
-
-## Time Sync
-
-### POST /api/time/sync
-
-Set the device clock from a client-supplied epoch timestamp. Used by the companion
-web UI to push the browser's current time to the device over the AP link.
-
-The device clock is runtime-only. After a cold reboot or reset, the firmware does
-not treat the last saved wall-clock snapshot as authoritative; it waits for a fresh
-sync or a deep-sleep RTC restore.
-
-**Request (JSON):**
-```json
-{
-  "epochMs": 1712000000000,
-  "tzOffsetMinutes": -420
-}
-```
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `epochMs` | integer | yes | Unix epoch in milliseconds. Must be in the range ~2023-11 to 2100-01-01. |
-| `tzOffsetMinutes` | integer | no | UTC offset in minutes (e.g. −420 for PDT). Clamped to ±840. Defaults to 0 if omitted. |
-
-**Response:**
-```json
-{
-  "ok": true,
-  "source": 1,
-  "epochMs": 1712000000000
-}
-```
-
-**Error responses:** 400 with `{"ok": false, "error": "..."}` for missing body, invalid JSON, missing/invalid `epochMs`, or out-of-range values.
 
 ---
 

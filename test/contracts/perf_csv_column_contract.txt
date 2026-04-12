@@ -1,8 +1,6 @@
 # Perf CSV column contract (PERF_CSV_HEADER order)
 
 millis
-timeValid
-timeSource
 rx
 qDrop
 parseOK
@@ -150,7 +148,6 @@ bleConnectMax_us
 bleDiscoveryMax_us
 bleSubscribeMax_us
 dispPipeMax_us
-timeSaveMax_us
 perfReportMax_us
 prioritySelectDisplayIndex
 prioritySelectRowFlag

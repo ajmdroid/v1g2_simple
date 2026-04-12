@@ -6,7 +6,6 @@
 #include "ble_client.h"
 #include "perf_sd_logger.h"
 #include "storage_manager.h"
-#include "time_service.h"
 #include "settings.h"
 #include "../include/main_globals.h"
 #include "modules/obd/obd_runtime_module.h"
@@ -319,8 +318,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
                                  PerfRuntimeSnapshotMode mode) {
     flat = {};
     flat.millisTs = ctx.nowMs;
-    flat.timeValid = timeService.timeValid() ? 1 : 0;
-    flat.timeSource = timeService.timeSource();
     flat.freeHeap = ctx.freeHeap;
     flat.freeDma = ctx.freeDma;
     flat.largestDma = ctx.largestDma;
@@ -471,7 +468,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
     flat.bleDiscoveryMaxUs = perfExtended.bleDiscoveryMaxUs;
     flat.bleSubscribeMaxUs = perfExtended.bleSubscribeMaxUs;
     flat.dispPipeMaxUs = perfExtended.dispPipeMaxUs;
-    flat.timeSaveMaxUs = perfExtended.timeSaveMaxUs;
     flat.perfReportMaxUs = perfExtended.perfReportMaxUs;
     flat.minLargestBlock =
         (perfExtended.minLargestBlock == UINT32_MAX) ? 0 : perfExtended.minLargestBlock;
@@ -614,7 +610,6 @@ static void populateFlatSnapshot(PerfSdSnapshot& flat,
         perfExtended.bleConnectMaxUs = 0;
         perfExtended.bleDiscoveryMaxUs = 0;
         perfExtended.bleSubscribeMaxUs = 0;
-        perfExtended.timeSaveMaxUs = 0;
         perfExtended.perfReportMaxUs = 0;
         perfExtended.minLargestBlock = UINT32_MAX;
     }
@@ -1205,12 +1200,6 @@ void perfRecordObdWriteCallUs(uint32_t us) {
 void perfRecordObdRssiCallUs(uint32_t us) {
     if (us > perfExtended.obdRssiCallMaxUs) {
         perfExtended.obdRssiCallMaxUs = us;
-    }
-}
-
-void perfRecordTimeSaveUs(uint32_t us) {
-    if (us > perfExtended.timeSaveMaxUs) {
-        perfExtended.timeSaveMaxUs = us;
     }
 }
 

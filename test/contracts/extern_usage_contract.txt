@@ -70,17 +70,16 @@ kind=header file=src/battery_manager.h line=107 text=extern SemaphoreHandle_t tc
 kind=header file=src/display.h line=272 text=extern V1Display display;
 kind=header file=src/display_font_manager.h line=120 text=extern DisplayFontManager fontMgr;
 kind=source file=src/main_boot.cpp line=23 text=extern V1Display display;
-kind=source file=src/main_setup_helpers.cpp line=268 text=extern const char* getBuildGitSha();
+kind=source file=src/main_setup_helpers.cpp line=265 text=extern const char* getBuildGitSha();
 kind=source file=src/modules/alp/alp_runtime_module.cpp line=16 text=extern AlpSdLogger alpSdLogger;
-kind=header file=src/perf_metrics.h line=697 text=extern PerfExtendedMetrics perfExtended;
-kind=header file=src/perf_metrics.h line=811 text=extern PerfCounters perfCounters;
-kind=header file=src/perf_metrics.h line=1217 text=extern PerfLatency perfLatency;
-kind=header file=src/perf_metrics.h line=1221 text=extern bool perfDebugEnabled; // Runtime debug print enable
-kind=header file=src/perf_metrics.h line=1222 text=extern uint32_t perfLastReportMs; // Last report timestamp
-kind=header file=src/perf_sd_logger.h line=68 text=extern PerfSdLogger perfSdLogger;
+kind=header file=src/perf_metrics.h line=695 text=extern PerfExtendedMetrics perfExtended;
+kind=header file=src/perf_metrics.h line=808 text=extern PerfCounters perfCounters;
+kind=header file=src/perf_metrics.h line=1211 text=extern PerfLatency perfLatency;
+kind=header file=src/perf_metrics.h line=1215 text=extern bool perfDebugEnabled; // Runtime debug print enable
+kind=header file=src/perf_metrics.h line=1216 text=extern uint32_t perfLastReportMs; // Last report timestamp
+kind=header file=src/perf_sd_logger.h line=65 text=extern PerfSdLogger perfSdLogger;
 kind=header file=src/settings.h line=826 text=extern SettingsManager settingsManager;
 kind=header file=src/storage_manager.h line=306 text=extern StorageManager storageManager;
-kind=header file=src/time_service.h line=68 text=extern TimeService timeService;
 kind=header file=src/v1_devices.h line=71 text=extern V1DeviceStore v1DeviceStore;
 kind=header file=src/v1_profiles.h line=173 text=extern V1ProfileManager v1ProfileManager;
 kind=header file=src/wifi_manager.h line=338 text=extern WiFiManager wifiManager;

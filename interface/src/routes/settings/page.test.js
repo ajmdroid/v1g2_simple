@@ -631,43 +631,4 @@ describe('settings route page', () => {
 		unmount();
 	});
 
-	it('shows the runtime time snapshot without manual sync controls', async () => {
-		installFetchMock(
-			[
-				{
-					method: 'GET',
-					match: '/api/device/settings',
-					respond: jsonResponse({ ap_ssid: 'V1', proxy_ble: true })
-				},
-				{
-					method: 'GET',
-					match: '/api/wifi/status',
-					respond: jsonResponse({ enabled: true, state: 'disconnected', savedSSID: 'HomeWifi' })
-				},
-				{
-					method: 'GET',
-					match: '/api/status',
-					respond: jsonResponse({
-						time: {
-							valid: true,
-							source: 2,
-							confidence: 2,
-							epochMs: 1710000000000,
-							tzOffsetMin: -240,
-							ageMs: 0
-						}
-					})
-				}
-			],
-			jsonResponse({})
-		);
-		const { unmount } = render(Page);
-
-		await screen.findByText('Device Time');
-		await screen.findByText('Read-only runtime clock snapshot. Accurate after live sync or deep-sleep resume; cold boots and resets need a fresh sync.');
-		expect(screen.queryByRole('button', { name: /sync time from phone/i })).toBeNull();
-		await screen.findByText(/2024-03-09 12:00:00 \(UTC-04:00\)/i);
-
-		unmount();
-	});
 });

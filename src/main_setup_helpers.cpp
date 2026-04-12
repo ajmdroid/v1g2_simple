@@ -25,7 +25,6 @@
 #include "settings.h"
 #include "settings_runtime_sync.h"
 #include "storage_manager.h"
-#include "time_service.h"
 #include "touch_handler.h"
 #include "v1_devices.h"
 #include "v1_profiles.h"
@@ -80,19 +79,19 @@ void prepareForShutdown(void* /*context*/) {
     }
 
     // ── BLE teardown ─────────────────────────────────────────────────
-    // Disconnect all BLE peripherals BEFORE deep sleep so remote devices
+    // Disconnect all BLE peripherals BEFORE power-off so remote devices
     // (V1, OBDLink, ALP) see a proper GAP disconnect and release their
-    // connection slots.  Without this, wake-from-deep-sleep boots into a
-    // fresh NimBLE stack while the remote side still holds a stale link,
+    // connection slots.  Without this, the next boot starts a fresh
+    // NimBLE stack while the remote side still holds a stale link,
     // blocking reconnection until the remote's supervision timeout fires
     // (which may never happen on some devices).
     //
     // NimBLEDevice::deinit() is banned (see ble_internals.h) — disconnect
-    // only; the stack is destroyed moments later by deep sleep anyway.
-    Serial.println("[Battery] Disconnecting BLE peripherals before sleep...");
+    // only; the stack is destroyed moments later by power-off anyway.
+    Serial.println("[Battery] Disconnecting BLE peripherals before shutdown...");
     bleClient.disconnect();
     obdBleClient.disconnect();
-    // Stop any active scan so the controller isn't mid-operation at sleep entry.
+    // Stop any active scan so the controller isn't mid-operation at power-off.
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (pScan && pScan->isScanning()) {
         pScan->stop();
@@ -105,8 +104,6 @@ void prepareForShutdown(void* /*context*/) {
     Serial.println("[Battery] Forcing final SD settings backup...");
     settingsManager.backupToSD();
 
-    Serial.println("[Battery] Saving last seen time snapshot...");
-    timeService.persistCurrentTime();
 }
 
 void onV1ConnectImmediate() {
@@ -290,8 +287,8 @@ void initializeEarlyBootDiagnostics() {
     // Wait for USB to stabilize after upload.
     delay(50);
 
-    // Release GPIO hold from deep sleep (backlight was held off during sleep).
-    // Must happen before display init re-configures the pin.
+    // Release GPIO hold from deep-sleep fallback (backlight was held off).
+    // Harmless no-op on normal power-on; must happen before display init.
     gpio_deep_sleep_hold_dis();
     gpio_hold_dis(static_cast<gpio_num_t>(LCD_BL));
 

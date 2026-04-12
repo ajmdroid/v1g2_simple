@@ -39,19 +39,6 @@ void buildStatusDoc(const StatusRuntime& runtime, JsonDocument& doc) {
     device["hostname"] = callOr<String>(runtime.hostname, runtime.hostnameCtx, String("v1g2"));
     device["firmware_version"] = callOr<String>(runtime.firmwareVersion, runtime.firmwareVersionCtx, String(""));
 
-    JsonObject time = doc["time"].to<JsonObject>();
-    const bool timeValid = callOr<bool>(runtime.timeValid, runtime.timeValidCtx, false);
-    time["valid"] = timeValid;
-    time["source"] = callOr<uint8_t>(runtime.timeSource, runtime.timeSourceCtx, 0);
-    time["confidence"] = callOr<uint8_t>(runtime.timeConfidence, runtime.timeConfidenceCtx, 0);
-    const int32_t tzOffsetMin = callOr<int32_t>(runtime.timeTzOffsetMin, runtime.timeTzOffsetMinCtx, 0);
-    time["tzOffsetMin"] = tzOffsetMin;
-    time["tzOffsetMinutes"] = tzOffsetMin;
-    if (timeValid) {
-        time["epochMs"] = callOr<int64_t>(runtime.timeEpochMsOr0, runtime.timeEpochMsOr0Ctx, 0);
-        time["ageMs"] = callOr<uint32_t>(runtime.timeEpochAgeMsOr0, runtime.timeEpochAgeMsOr0Ctx, 0U);
-    }
-
     JsonObject battery = doc["battery"].to<JsonObject>();
     battery["voltage_mv"] = callOr<uint16_t>(runtime.batteryVoltageMv, runtime.batteryVoltageMvCtx, 0);
     battery["percentage"] = callOr<uint8_t>(runtime.batteryPercentage, runtime.batteryPercentageCtx, 0);
