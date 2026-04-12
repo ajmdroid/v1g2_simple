@@ -1030,4 +1030,4 @@ Check firmware version via:
 
 ---
 
-*Last updated: April 2026*
+*Last updated: April 12, 2026*

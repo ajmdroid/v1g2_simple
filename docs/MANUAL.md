@@ -1930,7 +1930,7 @@ struct DisplayState {
 ## M. Testing & Validation
 
 > Status: overview
-> Last validated against scripts: March 12, 2026
+> Last validated against scripts: April 12, 2026
 
 Observability/testing authority now lives in [`OBSERVABILITY.md`](OBSERVABILITY.md).
 This section is a workflow overview and entry-point guide only.
