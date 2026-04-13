@@ -725,10 +725,7 @@ void handleApiOtaStatus(WebServer& server) {
 
 void handleApiOtaCheck(WebServer& server,
                        bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
-    if (checkRateLimit && checkRateLimit(rateLimitCtx)) {
-        server.send(429, "application/json", R"({"error":"rate_limited"})");
-        return;
-    }
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     // Must be on STA to reach GitHub.
     if (!wifi_ || !wifi_->isConnected()) {
@@ -772,10 +769,7 @@ void handleApiOtaCheck(WebServer& server,
 
 void handleApiOtaStart(WebServer& server,
                        bool (*checkRateLimit)(void* ctx), void* rateLimitCtx) {
-    if (checkRateLimit && checkRateLimit(rateLimitCtx)) {
-        server.send(429, "application/json", R"({"error":"rate_limited"})");
-        return;
-    }
+    if (checkRateLimit && !checkRateLimit(rateLimitCtx)) return;
 
     // Precondition: must have a valid update available.
     if (state_ != OtaState::UPDATE_AVAILABLE) {
