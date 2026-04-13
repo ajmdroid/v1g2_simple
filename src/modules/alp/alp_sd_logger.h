@@ -87,6 +87,11 @@ public:
     /** Update enabled state at runtime (setting changed via web UI). */
     void setEnabled(bool enabled);
 
+#ifdef UNIT_TEST
+    const char* testGetLastLine() const { return lastLineBuf_; }
+    void testClearLastLine() { lastLineBuf_[0] = '\0'; }
+#endif
+
 private:
     bool appendLine(const char* line);
     bool ensureDirectory();
@@ -106,4 +111,8 @@ private:
     uint32_t dropCount_ = 0;
     uint32_t lastHeartbeatLogMs_ = 0;
     char csvPathBuf_[48] = {0};
+
+#ifdef UNIT_TEST
+    char lastLineBuf_[160] = {0};
+#endif
 };

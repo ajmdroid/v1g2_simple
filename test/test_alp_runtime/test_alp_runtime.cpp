@@ -1126,6 +1126,54 @@ void test_new_alert_identifies_fresh_gun_after_clear() {
     TEST_ASSERT_EQUAL(AlpGunType::MARKSMAN_ULTRALYTE, alpRuntimeModule.lastIdentifiedGun());
 }
 
+// ── ALP SD logger CSV format regression tests ───────────────────────
+
+void test_sd_logger_frame_columns_match_header() {
+    AlpSdLogger logger;
+    logger.begin(true, true);
+
+    logger.logFrame(1234, "ALERT_OBS", 0x98, 0x02, 0x00, 0x1A, AlpState::LISTENING);
+
+    TEST_ASSERT_EQUAL_STRING(
+        "1234,ALERT_OBS,LISTENING,,98,02,00,1A,,\n",
+        logger.testGetLastLine());
+}
+
+void test_sd_logger_heartbeat_includes_checksum() {
+    AlpSdLogger logger;
+    logger.begin(true, true);
+
+    logger.logHeartbeat(5678, 0xB0, 0x03, 0x00, AlpState::ALERT_ACTIVE);
+
+    TEST_ASSERT_EQUAL_STRING(
+        "5678,HEARTBEAT,ALERT_ACTIVE,,B0,03,00,33,,\n",
+        logger.testGetLastLine());
+}
+
+void test_sd_logger_gun_id_jam_preserves_raw_frame() {
+    AlpSdLogger logger;
+    logger.begin(true, true);
+
+    logger.logGunIdentified(42, AlpGunType::MARKSMAN_ULTRALYTE,
+                            0xCD, 0xD6, false, AlpState::ALERT_ACTIVE);
+
+    TEST_ASSERT_EQUAL_STRING(
+        "42,GUN_ID,ALERT_ACTIVE,,CD,00,D6,23,Marksman Ultralyte,jam\n",
+        logger.testGetLastLine());
+}
+
+void test_sd_logger_gun_id_observe_preserves_raw_frame() {
+    AlpSdLogger logger;
+    logger.begin(true, true);
+
+    logger.logGunIdentified(43, AlpGunType::PL3_PROLITE,
+                            0xC8, 0x0D, true, AlpState::ALERT_ACTIVE);
+
+    TEST_ASSERT_EQUAL_STRING(
+        "43,GUN_ID,ALERT_ACTIVE,,C8,0D,00,55,PL3 ProLite,observe\n",
+        logger.testGetLastLine());
+}
+
 // ── Runner ───────────────────────────────────────────────────────────
 
 int main(int argc, char** argv) {
@@ -1245,6 +1293,12 @@ int main(int argc, char** argv) {
     RUN_TEST(test_new_alert_clears_stale_gun_via_98_trigger);
     RUN_TEST(test_new_alert_clears_stale_gun_via_heartbeat);
     RUN_TEST(test_new_alert_identifies_fresh_gun_after_clear);
+
+    // ALP SD logger CSV format
+    RUN_TEST(test_sd_logger_frame_columns_match_header);
+    RUN_TEST(test_sd_logger_heartbeat_includes_checksum);
+    RUN_TEST(test_sd_logger_gun_id_jam_preserves_raw_frame);
+    RUN_TEST(test_sd_logger_gun_id_observe_preserves_raw_frame);
 
     return UNITY_END();
 }

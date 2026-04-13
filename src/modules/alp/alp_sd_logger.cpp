@@ -28,6 +28,38 @@ static constexpr const char* ALP_DIR_PATH = "/alp";
 static constexpr const char* ALP_CSV_HEADER =
     "millis,event,from_state,to_state,byte0,byte1,byte2,checksum,gun,extra\n";
 
+namespace {
+
+void formatHexByte(char* dest, size_t destSize, uint8_t value) {
+    snprintf(dest, destSize, "%02X", value);
+}
+
+void formatCsvRow(char* dest, size_t destSize,
+                  uint32_t nowMs,
+                  const char* event,
+                  const char* fromState,
+                  const char* toState,
+                  const char* byte0,
+                  const char* byte1,
+                  const char* byte2,
+                  const char* checksum,
+                  const char* gun,
+                  const char* extra) {
+    snprintf(dest, destSize, "%lu,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+             static_cast<unsigned long>(nowMs),
+             event ? event : "",
+             fromState ? fromState : "",
+             toState ? toState : "",
+             byte0 ? byte0 : "",
+             byte1 ? byte1 : "",
+             byte2 ? byte2 : "",
+             checksum ? checksum : "",
+             gun ? gun : "",
+             extra ? extra : "");
+}
+
+}  // namespace
+
 // ── begin() ──────────────────────────────────────────────────────────
 
 void AlpSdLogger::begin(bool enabled, bool sdReady) {
@@ -83,10 +115,12 @@ void AlpSdLogger::logStateTransition(uint32_t nowMs, AlpState from, AlpState to)
     if (!enabled_ || !sdReady_) return;
 
     char line[128];
-    snprintf(line, sizeof(line), "%lu,STATE,%s,%s,,,,,,\n",
-             (unsigned long)nowMs,
-             alpStateName(from),
-             alpStateName(to));
+    formatCsvRow(line, sizeof(line),
+                 nowMs,
+                 "STATE",
+                 alpStateName(from),
+                 alpStateName(to),
+                 "", "", "", "", "", "");
     appendLine(line);
 }
 
@@ -94,12 +128,22 @@ void AlpSdLogger::logHeartbeatByte1(uint32_t nowMs, uint8_t prevByte1, uint8_t n
                                      AlpState currentState) {
     if (!enabled_ || !sdReady_) return;
 
+    char prevByteBuf[3];
+    char newByteBuf[3];
     char line[128];
-    snprintf(line, sizeof(line), "%lu,HB_BYTE1,%s,,%02X,%02X,,,,%s\n",
-             (unsigned long)nowMs,
-             alpStateName(currentState),
-             prevByte1, newByte1,
-             newByte1 == 0x01 ? "ALERT" : "IDLE");
+    formatHexByte(prevByteBuf, sizeof(prevByteBuf), prevByte1);
+    formatHexByte(newByteBuf, sizeof(newByteBuf), newByte1);
+    formatCsvRow(line, sizeof(line),
+                 nowMs,
+                 "HB_BYTE1",
+                 alpStateName(currentState),
+                 "",
+                 prevByteBuf,
+                 newByteBuf,
+                 "",
+                 "",
+                 "",
+                 newByte1 == 0x01 ? "ALERT" : "IDLE");
     appendLine(line);
 }
 
@@ -108,13 +152,28 @@ void AlpSdLogger::logGunIdentified(uint32_t nowMs, AlpGunType gun, uint8_t byte0
                                     AlpState currentState) {
     if (!enabled_ || !sdReady_) return;
 
-    char line[128];
-    snprintf(line, sizeof(line), "%lu,GUN_ID,%s,,,%02X,%02X,,%s,%s\n",
-             (unsigned long)nowMs,
-             alpStateName(currentState),
-             byte0, byte1or2,
-             alpGunName(gun),
-             isObserveMode ? "observe" : "jam");
+    const uint8_t frameByte1 = isObserveMode ? byte1or2 : 0x00;
+    const uint8_t frameByte2 = isObserveMode ? 0x00 : byte1or2;
+    char byte0Buf[3];
+    char byte1Buf[3];
+    char byte2Buf[3];
+    char checksumBuf[3];
+    char line[160];
+    formatHexByte(byte0Buf, sizeof(byte0Buf), byte0);
+    formatHexByte(byte1Buf, sizeof(byte1Buf), frameByte1);
+    formatHexByte(byte2Buf, sizeof(byte2Buf), frameByte2);
+    formatHexByte(checksumBuf, sizeof(checksumBuf), alpChecksum(byte0, frameByte1, frameByte2));
+    formatCsvRow(line, sizeof(line),
+                 nowMs,
+                 "GUN_ID",
+                 alpStateName(currentState),
+                 "",
+                 byte0Buf,
+                 byte1Buf,
+                 byte2Buf,
+                 checksumBuf,
+                 alpGunName(gun),
+                 isObserveMode ? "observe" : "jam");
     appendLine(line);
 }
 
@@ -123,12 +182,26 @@ void AlpSdLogger::logFrame(uint32_t nowMs, const char* frameType,
                             AlpState currentState) {
     if (!enabled_ || !sdReady_) return;
 
+    char byte0Buf[3];
+    char byte1Buf[3];
+    char byte2Buf[3];
+    char checksumBuf[3];
     char line[128];
-    snprintf(line, sizeof(line), "%lu,%s,%s,,,%02X,%02X,%02X,,\n",
-             (unsigned long)nowMs,
-             frameType,
-             alpStateName(currentState),
-             b0, b1, b2);
+    formatHexByte(byte0Buf, sizeof(byte0Buf), b0);
+    formatHexByte(byte1Buf, sizeof(byte1Buf), b1);
+    formatHexByte(byte2Buf, sizeof(byte2Buf), b2);
+    formatHexByte(checksumBuf, sizeof(checksumBuf), cs);
+    formatCsvRow(line, sizeof(line),
+                 nowMs,
+                 frameType,
+                 alpStateName(currentState),
+                 "",
+                 byte0Buf,
+                 byte1Buf,
+                 byte2Buf,
+                 checksumBuf,
+                 "",
+                 "");
     appendLine(line);
 }
 
@@ -143,11 +216,26 @@ void AlpSdLogger::logHeartbeat(uint32_t nowMs, uint8_t b0, uint8_t b1, uint8_t b
     }
     lastHeartbeatLogMs_ = nowMs;
 
+    char byte0Buf[3];
+    char byte1Buf[3];
+    char byte2Buf[3];
+    char checksumBuf[3];
     char line[128];
-    snprintf(line, sizeof(line), "%lu,HEARTBEAT,%s,,,%02X,%02X,%02X,,\n",
-             (unsigned long)nowMs,
-             alpStateName(currentState),
-             b0, b1, b2);
+    formatHexByte(byte0Buf, sizeof(byte0Buf), b0);
+    formatHexByte(byte1Buf, sizeof(byte1Buf), b1);
+    formatHexByte(byte2Buf, sizeof(byte2Buf), b2);
+    formatHexByte(checksumBuf, sizeof(checksumBuf), alpChecksum(b0, b1, b2));
+    formatCsvRow(line, sizeof(line),
+                 nowMs,
+                 "HEARTBEAT",
+                 alpStateName(currentState),
+                 "",
+                 byte0Buf,
+                 byte1Buf,
+                 byte2Buf,
+                 checksumBuf,
+                 "",
+                 "");
     appendLine(line);
 }
 
@@ -155,12 +243,15 @@ void AlpSdLogger::logEvent(uint32_t nowMs, const char* event, AlpState currentSt
                             uint32_t extraValue) {
     if (!enabled_ || !sdReady_) return;
 
+    char extraBuf[16];
     char line[128];
-    snprintf(line, sizeof(line), "%lu,%s,%s,,,,,,,%lu\n",
-             (unsigned long)nowMs,
-             event,
-             alpStateName(currentState),
-             (unsigned long)extraValue);
+    snprintf(extraBuf, sizeof(extraBuf), "%lu", static_cast<unsigned long>(extraValue));
+    formatCsvRow(line, sizeof(line),
+                 nowMs,
+                 event,
+                 alpStateName(currentState),
+                 "",
+                 "", "", "", "", "", extraBuf);
     appendLine(line);
 }
 
@@ -255,6 +346,7 @@ bool AlpSdLogger::appendLine(const char* line) {
     linesWritten_++;
     return true;
 #else
+    snprintf(lastLineBuf_, sizeof(lastLineBuf_), "%s", line);
     linesWritten_++;
     return true;
 #endif
