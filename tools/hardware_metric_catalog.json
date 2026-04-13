@@ -515,7 +515,7 @@
       "unit": "count",
       "aggregation": "last",
       "direction": "lower_better",
-      "score_level": "advisory",
+      "score_level": "info",
       "required": false,
       "absolute_min": null,
       "absolute_max": null,
