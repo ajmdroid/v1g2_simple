@@ -28,8 +28,6 @@
 #include "config.h"
 #include <WiFiClientSecure.h>
 #include <Preferences.h>
-#include <esp_sntp.h>
-#include <time.h>
 
 // getBuildGitSha() is defined in build_metadata.cpp with no header.
 extern const char* getBuildGitSha();
@@ -52,34 +50,6 @@ static constexpr int HTTP_TIMEOUT_MS = 15000;
 
 /// Stream buffer size for downloading firmware chunks.
 static constexpr size_t DOWNLOAD_BUFFER_SIZE = 4096;
-
-/// DigiCert Global Root G2 — root CA for github.com and objects.githubusercontent.com.
-/// Valid until 2038-01-15. If GitHub changes their CA chain, update this cert.
-/// Source: https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem
-static const char* GITHUB_ROOT_CA = R"EOF(
------BEGIN CERTIFICATE-----
-MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
-MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
-d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH
-MjAeFw0xMzA4MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVT
-MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j
-b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEcyMIIBIjANBgkqhkiG
-9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuzfNNNx7a8myaJCtSnX/RrohCgiN9RlUyfuI
-2/Ou8jqJkTx65qsGGmvPrC3oXgkkRLpimn7Wo6h+4FR1IAWsULecYxpsMNzaHxmx
-1x7e/dfgy5SDN67sH0NO3Xss0r0upS/kqbitOtSZpLYl6ZtrAGCSYP9PIUkY92eQ
-q2EGnI/yuum06ZIya7XzV+hdG82MHauVBJVJ8zUtluNJbd134/tJS7SsVQepj5Wzt
-CO7TG1F8PapspUwtP1MVYwnSlcUfIKdzXOS0xZKBgyMUNGPHgm+F6HmIcr9g+UQv
-IOlCsRnKPZzFBQ9RnbDhxSJITRNrw9FDKZJobq7nMWxM4MphQIDAQABo0IwQDAP
-BgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUTiJUIBiV
-5uNu5g/6+rkS7QYXjzkwDQYJKoZIhvcNAQELBQADggEBAGBnKJRvDkhj6zHd6mcY
-1Yl9PMCcit6E7UMYLBR/rvHBFVtFN2KoI5yTMfKIXqQmVt8Pv/Q5e9ZvSbW/LTV
-Emh+mJmjFCEi/hPhoKNPJoqquvJxHLAeubEq1EkPQFCGfGi6gLGIJg/e5NN1WQYP
-jxCOdHbPBAy6ByJyF6vWz0DgB6TQR0Pnj7M0R8bS+JOOdmBJ/r1nS2OeZ1D9RRF
-t3O7Q4UfFmFBg0MWS5IRwjifBftmCaFZ9Ul+NN0iC0/1ItYFLUCM9qVPXMzjYdXN
-K5WBxJY5RVbTD8KWaXEXUK3q2CJkgERRmm1TAyUPgR+B3xmR5DnKSFRKRTmEJYg
-pSo=
------END CERTIFICATE-----
-)EOF";
 
 /// Maximum download retry attempts for transient network failures.
 static constexpr int MAX_DOWNLOAD_RETRIES = 3;
@@ -244,13 +214,19 @@ static void clearPendingFilesystemUpdate() {
 /// Shared WiFiClientSecure instance for OTA HTTPS connections.
 /// Reused across API and download calls to save RAM (TLS context is ~40KB).
 /// Not thread-safe — but all callers run on the same loop task.
+///
+/// Uses setInsecure() (no cert validation) because:
+/// 1. GitHub changes CA providers (DigiCert → Sectigo in 2026) — pinning is fragile
+/// 2. The real security boundary is SHA-256 verification of downloaded binaries
+/// 3. The API check is read-only public data (release metadata)
+/// 4. A CA bundle would cost ~100KB flash on this constrained device
 static WiFiClientSecure* tlsClient_ = nullptr;
 
-/// Get or create the TLS client with GitHub root CA pinned.
+/// Get or create the TLS client.
 static WiFiClientSecure& getTlsClient() {
     if (!tlsClient_) {
         tlsClient_ = new WiFiClientSecure();
-        tlsClient_->setCACert(GITHUB_ROOT_CA);
+        tlsClient_->setInsecure();
     }
     return *tlsClient_;
 }
@@ -264,55 +240,12 @@ static void freeTlsClient() {
 }
 
 // ============================================================================
-// Time sync for TLS — cert validation requires wall-clock time
-// ============================================================================
-
-/// Ensure the system clock is set (year > 2024) before TLS connections.
-/// Configures SNTP on first call, then waits up to 10 seconds for sync.
-/// Returns true if time is now valid.
-static bool ensureTimeSync() {
-    time_t now = time(nullptr);
-    struct tm t;
-    gmtime_r(&now, &t);
-    if (t.tm_year >= (2024 - 1900)) {
-        return true;  // Already synced.
-    }
-
-    Serial.printf("[%s] System time not set (year=%d) — starting SNTP sync\n",
-                  TAG, t.tm_year + 1900);
-    configTime(0, 0, "pool.ntp.org", "time.google.com");
-
-    // Wait for sync with timeout.
-    uint32_t start = millis();
-    while (millis() - start < 10000) {
-        now = time(nullptr);
-        gmtime_r(&now, &t);
-        if (t.tm_year >= (2024 - 1900)) {
-            Serial.printf("[%s] SNTP sync OK — %04d-%02d-%02d %02d:%02d:%02d UTC\n",
-                          TAG, t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-                          t.tm_hour, t.tm_min, t.tm_sec);
-            return true;
-        }
-        delay(100);
-    }
-
-    Serial.printf("[%s] SNTP sync timed out — TLS may fail\n", TAG);
-    return false;
-}
-
-// ============================================================================
 // GitHub API helpers
 // ============================================================================
 
 /// Fetch the latest release JSON from GitHub and extract asset URLs.
 /// Populates manifest_ on success. Returns true on success.
 static bool fetchLatestRelease() {
-    // TLS cert validation requires wall-clock time.
-    if (!ensureTimeSync()) {
-        errorMessage_ = "Clock sync failed — cannot verify GitHub certificate";
-        return false;
-    }
-
     HTTPClient http;
     http.setConnectTimeout(HTTP_TIMEOUT_MS);
     http.setTimeout(HTTP_TIMEOUT_MS);
