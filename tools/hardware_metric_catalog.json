@@ -509,6 +509,20 @@
       "regress_pct": null
     },
     {
+      "metric": "parse_resyncs_delta",
+      "run_kind": "real_fw_soak",
+      "selector": {},
+      "unit": "count",
+      "aggregation": "last",
+      "direction": "lower_better",
+      "score_level": "advisory",
+      "required": false,
+      "absolute_min": null,
+      "absolute_max": null,
+      "regress_abs": 20,
+      "regress_pct": null
+    },
+    {
       "metric": "queue_drops_delta",
       "run_kind": "real_fw_soak",
       "selector": {},

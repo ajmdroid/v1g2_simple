@@ -86,6 +86,7 @@ docs/OBD_MODULE_PLAN.md
 docs/ALP_PROTOCOL_REFERENCE.md
 docs/ALP_SIGNAL_ANALYSIS_PLAN.md
 docs/DISPLAY_REWRITE_PLAN.md
+docs/OTA_DESIGN.md
 .github/instructions/
 *.docx
 .~lock.*
