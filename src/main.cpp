@@ -38,6 +38,7 @@
 #include "v1_devices.h"
 #include "battery_manager.h"
 #include "storage_manager.h"
+#include <SD_MMC.h>
 #include "audio_beep.h"
 #include "perf_metrics.h"
 #include "perf_sd_logger.h"
@@ -75,12 +76,15 @@
 #include "modules/quiet/quiet_coordinator_module.h"
 #include "modules/display/display_restore_module.h"
 
+#include <esp_ota_ops.h>
 #include "modules/debug/debug_api_service.h"
+#include "modules/ota/ota_api_service.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/speed_mute/speed_mute_module.h"
 #include "modules/obd/obd_runtime_module.h"
 #include "modules/obd/obd_ble_client.h"
 #include "modules/obd/obd_settings_sync_module.h"
+#include "modules/alp/alp_runtime_module.h"
 #include "modules/wifi/wifi_boot_policy.h"
 #include "modules/wifi/wifi_auto_start_module.h"
 #include "modules/wifi/wifi_priority_policy_module.h"
@@ -89,7 +93,6 @@
 #include "modules/wifi/wifi_runtime_module.h"
 #include "modules/perf/debug_macros.h"
 #include "provider_callback_bindings.h"
-#include "time_service.h"
 #include <driver/gpio.h>
 #include "../include/display_driver.h"
 #include <FS.h>
@@ -113,7 +116,6 @@ VoiceModule voiceModule;
 
 static constexpr unsigned long BOOT_SPLASH_HOLD_MS = 400;
 static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_MS = 400;
-static constexpr unsigned long MIN_SCAN_SCREEN_DWELL_WAKE_MS = 120;
 static constexpr unsigned long CONNECTION_STATE_PROCESS_MAX_GAP_MS = 1000;
 MainRuntimeState mainRuntimeState;
 static bool wifiStatusObservabilityCallbackConfigured = false;
@@ -560,12 +562,6 @@ static void configurePeriodicMaintenanceModule() {
     periodicMaintenanceProviders.recordPerfReportUs = [](void*, uint32_t elapsedUs) {
         perfRecordPerfReportUs(elapsedUs);
     };
-    periodicMaintenanceProviders.runTimeSave =
-        ProviderCallbackBindings::member<TimeService, &TimeService::periodicSave>;
-    periodicMaintenanceProviders.timeSaveContext = &timeService;
-    periodicMaintenanceProviders.recordTimeSaveUs = [](void*, uint32_t elapsedUs) {
-        perfRecordTimeSaveUs(elapsedUs);
-    };
     periodicMaintenanceProviders.runObdSettingsSync =
         ProviderCallbackBindings::member<ObdSettingsSyncModule, &ObdSettingsSyncModule::process>;
     periodicMaintenanceProviders.obdSettingsSyncContext = &obdSettingsSyncModule;
@@ -598,6 +594,9 @@ static void configureLoopTailModule() {
     loopTailProviders.recordBleDrainUs = [](void*, uint32_t elapsedUs) {
         perfRecordBleDrainUs(elapsedUs);
     };
+    loopTailProviders.recordLoopJitterUs = [](void*, uint32_t jitterUs) {
+        perfRecordLoopJitterUs(jitterUs);
+    };
     loopTailProviders.yieldOneTick = [](void*) {
         vTaskDelay(pdMS_TO_TICKS(1));
     };
@@ -608,9 +607,6 @@ static void configureLoopTelemetryModule() {
     LoopTelemetryModule::Providers loopTelemetryProviders;
     loopTelemetryProviders.microsNow = [](void*) -> uint32_t {
         return micros();
-    };
-    loopTelemetryProviders.recordLoopJitterUs = [](void*, uint32_t jitterUs) {
-        perfRecordLoopJitterUs(jitterUs);
     };
     loopTelemetryProviders.refreshDmaCache = refreshStorageDmaHeapCache;
     loopTelemetryProviders.readFreeHeap = readCurrentFreeHeap;
@@ -724,6 +720,7 @@ static void configureAlertAudioDisplayPipeline() {
                                 &voiceModule,
                                 &quietCoordinatorModule);
     displayPipelineModule.setSpeedMuteModule(&speedMuteModule);
+    displayPipelineModule.setAlpRuntimeModule(&alpRuntimeModule);
 }
 
 static void configureSystemLoopCoreModules() {
@@ -782,6 +779,10 @@ static void configureRuntimeSensorModules() {
         settingsManager.get().speedMuteThresholdMph,
         settingsManager.get().speedMuteHysteresisMph,
         settingsManager.get().speedMuteVolume);
+
+    // ALP (Active Laser Protection) — UART2 listener for gun identification.
+    // Does NOT yet override V1 laser alerts; data-gathering phase only.
+    alpRuntimeModule.begin(settingsManager.get().alpEnabled, &alpSdLogger);
 }
 
 static void configureRuntimeCoreModules() {
@@ -846,7 +847,7 @@ static esp_reset_reason_t initializeResetReasonAndCadenceState(
     } else if (resetReason == ESP_RST_POWERON) {
         SerialLog.println("(Power-on)");
     } else if (resetReason == ESP_RST_DEEPSLEEP) {
-        SerialLog.println("(Wake from deep sleep - RTC clock preserved)");
+        SerialLog.println("(Wake from deep sleep)");
     } else {
         SerialLog.printf("(Other: %d)\n", resetReason);
     }
@@ -857,8 +858,7 @@ static esp_reset_reason_t initializeResetReasonAndCadenceState(
     if (resetReason == ESP_RST_DEEPSLEEP) {
         logBootCheckpoint("wake_deepsleep");
     }
-    mainRuntimeState.activeScanScreenDwellMs =
-        (resetReason == ESP_RST_DEEPSLEEP) ? MIN_SCAN_SCREEN_DWELL_WAKE_MS : MIN_SCAN_SCREEN_DWELL_MS;
+    mainRuntimeState.activeScanScreenDwellMs = MIN_SCAN_SCREEN_DWELL_MS;
     SerialLog.printf("[BootTiming] scan_dwell_target_ms=%lu\n", mainRuntimeState.activeScanScreenDwellMs);
     connectionStateCadenceModule.reset();
     wifiProcessCadenceModule.reset();
@@ -935,17 +935,16 @@ static void initializePreflightDisplayAndBootUi(esp_reset_reason_t resetReason,
     }
     mainRuntimeState.bootReadyDeadlineMs = millis() + 5000;
     display.setObdRuntimeModule(&obdRuntimeModule);
+    display.setAlpRuntimeModule(&alpRuntimeModule);
 
     // Brief post-display settle before settings init.
-    const unsigned long postDisplaySettleMs = (resetReason == ESP_RST_DEEPSLEEP) ? 2UL : 10UL;
+    constexpr unsigned long postDisplaySettleMs = 10UL;
     delay(postDisplaySettleMs);
     SerialLog.printf("[BootTiming] post_display_settle_ms=%lu\n", postDisplaySettleMs);
     logBootStage("display");
 
     // Initialize settings BEFORE showing any styled screens (need displayStyle setting).
     settingsManager.begin();
-    timeService.begin();
-
     powerModule.begin(&batteryManager, &display, &settingsManager);
     powerModule.setShutdownPreparationCallback(prepareForShutdown, nullptr);
     powerModule.logStartupStatus();
@@ -980,6 +979,21 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
     // ── Storage / SD mount ────────────────────────────────────────────
     initializeStorageAndProfiles();
 
+    // Log boot reason to SD so battery-only power-off can be verified
+    // without USB serial.  Gated behind the powerOffSdLog dev setting.
+    if (settingsManager.get().powerOffSdLog && storageManager.isSDCard()) {
+        File f = SD_MMC.open("/poweroff.log", FILE_APPEND);
+        if (f) {
+            f.printf("[%lu] BOOT reset=%s (%d) onBattery=%d voltage=%dmV\n",
+                     millis(),
+                     resetReasonToString(resetReason),
+                     static_cast<int>(resetReason),
+                     batteryManager.isOnBattery(),
+                     batteryManager.getVoltageMillivolts());
+            f.close();
+        }
+    }
+
     const uint32_t bootId = initializeBootPerformanceLoggers();
 
     logBootStage("storage");
@@ -998,9 +1012,18 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
     configureSystemLoopModules();
     configureRuntimeModules();
     DebugApiService::begin(&systemEventBus, &bleClient, &bleQueueModule);
+    OtaApiService::begin(&bleClient, &wifiManager, &display,
+                         [](void* ctx) { static_cast<WiFiManager*>(ctx)->pumpHttpServer(); },
+                         &wifiManager);
 
     configureWifiRuntimeModule();
     finalizeBootReadyAndBleScan(setupStartMs, logBootStage);
+
+    // OTA rollback safety: mark this firmware as valid so the bootloader
+    // won't roll back on next restart. Called after all critical subsystems
+    // are initialized. If we crash before reaching this point, the
+    // bootloader reverts to the previous OTA slot on next power cycle.
+    esp_ota_mark_app_valid_cancel_rollback();
 }
 
 void setup() {
@@ -1055,6 +1078,7 @@ void loop() {
 
     // Process battery/power and touch UI.
     if (shouldReturnEarlyFromLoopPowerTouchPhase(now, loopStartUs)) {
+        mainRuntimeState.lastLoopUs = processLoopSettingsEarlyReturnPhase(now, loopStartUs);
         return;  // Skip normal loop processing while in settings mode.
     }
 
@@ -1073,6 +1097,12 @@ void loop() {
     // Refresh speed inputs before display so the current loop sees the latest OBD state.
     {
         const uint32_t obdStartUs = micros();
+        // V1 is "reconnecting" when boot is ready, V1 is not connected, and
+        // we're past the boot splash.  During splash hold OBD gets its normal
+        // WAIT_BOOT dwell; once splash clears, V1 owns the radio until connected.
+        const bool v1Reconnecting = mainRuntimeState.bootReady
+                                    && !bleConnectedNow
+                                    && !mainRuntimeState.bootSplashHoldActive;
         const ObdBleContext obdBleContext{
             mainRuntimeState.bootReady,
             bleConnectedNow,
@@ -1080,18 +1110,26 @@ void loop() {
             bleClient.isConnectBurstSettling(),
             bleClient.isProxyAdvertising(),
             bleClient.isProxyClientConnected(),
+            bleClient.isConnectInProgress(),
+            v1Reconnecting,
         };
         obdRuntimeModule.update(now, obdBleContext);
         bleClient.setObdBleArbitrationRequest(obdRuntimeModule.getBleArbitrationRequest());
         perfRecordObdUs(micros() - obdStartUs);
     }
+
+    // ALP UART listener — drain and parse ALP serial data.
+    // Runs every loop; process() is a no-op when disabled.
+    alpRuntimeModule.process(now);
+
     speedSourceSelector.update(now);
     {
         const V1Settings& s = settingsManager.get();
         speedMuteModule.syncSettings(s.speedMuteEnabled,
                                      s.speedMuteThresholdMph,
                                      s.speedMuteHysteresisMph,
-                                     s.speedMuteVolume);
+                                     s.speedMuteVolume,
+                                     s.speedMuteVoice);
         const SpeedSelection speed = speedSourceSelector.selectedSpeed();
         const bool speedValid = speed.valid;
         speedMuteModule.update(speed.speedMph, speedValid, now);
@@ -1117,6 +1155,9 @@ void loop() {
         mainRuntimeState.bootSplashHoldActive);
     const LoopRuntimeSnapshotValues& loopRuntimeSnapshotValues = loopWifiValues.loopRuntimeSnapshotValues;
     mainRuntimeState.wifiAutoStartDone = loopWifiValues.wifiAutoStartDone;
+
+    // OTA state machine — no-op when idle, drives download/flash when triggered.
+    OtaApiService::process(now);
 
     loopTelemetryModule.process(loopStartUs);
 

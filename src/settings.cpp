@@ -33,9 +33,9 @@ const char* const SETTINGS_BACKUP_CANDIDATES[] = {
 const size_t SETTINGS_BACKUP_CANDIDATES_COUNT = sizeof(SETTINGS_BACKUP_CANDIDATES) / sizeof(SETTINGS_BACKUP_CANDIDATES[0]);
 
 WiFiModeSetting clampWifiModeValue(int raw) {
-    int clamped = std::max(static_cast<int>(V1_WIFI_OFF),
-                           std::min(raw, static_cast<int>(V1_WIFI_APSTA)));
-    return static_cast<WiFiModeSetting>(clamped);
+    if (raw == static_cast<int>(V1_WIFI_AP)) return V1_WIFI_AP;
+    if (raw == static_cast<int>(V1_WIFI_APSTA)) return V1_WIFI_APSTA;
+    return V1_WIFI_OFF;
 }
 
 VoiceAlertMode clampVoiceAlertModeValue(int raw) {
@@ -205,6 +205,9 @@ void SettingsManager::load() {
     settings_.colorRssiV1 = sanitizeRgb565Color(preferences_.getUShort(kNvsColorRssiV1, 0x07E0), 0x07E0);       // Green for V1 RSSI label
     settings_.colorRssiProxy = sanitizeRgb565Color(preferences_.getUShort(kNvsColorRssiProxy, 0x001F), 0x001F);   // Blue for Proxy RSSI label
     settings_.colorObd = sanitizeRgb565Color(preferences_.getUShort(kNvsColorObd, 0x001F), 0x001F);              // Blue OBD badge color
+    settings_.colorAlpConnected = sanitizeRgb565Color(preferences_.getUShort(kNvsColorAlpConn, 0x07E0), 0x07E0);  // Green ALP connected
+    settings_.colorAlpDetection = sanitizeRgb565Color(preferences_.getUShort(kNvsColorAlpDetect, 0xFD20), 0xFD20);      // Orange ALP detection mode
+    settings_.colorAlpDefense = sanitizeRgb565Color(preferences_.getUShort(kNvsColorAlpDefense, 0x001F), 0x001F);    // Blue ALP defense mode
     settings_.freqUseBandColor = preferences_.getBool(kNvsFreqBandColor, false);  // Use custom freq color by default
     settings_.hideWifiIcon = preferences_.getBool(kNvsHideWifi, false);
     settings_.hideProfileIndicator = preferences_.getBool(kNvsHideProfile, false);
@@ -259,15 +262,22 @@ void SettingsManager::load() {
     // Volume fade settings
     settings_.alertVolumeFadeEnabled = preferences_.getBool(kNvsVolFadeEnabled, false);
     settings_.alertVolumeFadeDelaySec = std::clamp<uint8_t>(preferences_.getUChar(kNvsVolFadeSeconds, 2), 1, 10);  // 1-10 seconds
-    settings_.alertVolumeFadeVolume = std::min<uint8_t>(9, preferences_.getUChar(kNvsVolFadeVolume, 1));  // 0-9 (V1 volume range)
+    settings_.alertVolumeFadeVolume = std::clamp<uint8_t>(preferences_.getUChar(kNvsVolFadeVolume, 1), 1, 9);  // 1-9 (min 1 prevents V1 mute indicator feedback loop)
 
     // Speed-aware muting settings
     settings_.speedMuteEnabled = preferences_.getBool(kNvsSpeedMuteEnabled, false);
     settings_.speedMuteThresholdMph = std::clamp<uint8_t>(preferences_.getUChar(kNvsSpeedMuteThreshold, 25), 5, 60);
     settings_.speedMuteHysteresisMph = std::clamp<uint8_t>(preferences_.getUChar(kNvsSpeedMuteHysteresis, 3), 1, 10);
     {
-        const uint8_t raw = preferences_.getUChar(kNvsSpeedMuteVolume, 0xFF);
-        settings_.speedMuteVolume = (raw <= 9 || raw == 0xFF) ? raw : 0xFF;
+        const uint8_t raw = preferences_.getUChar(kNvsSpeedMuteVolume, 0);
+        if (raw == 0xFF) {
+            // Migration: old 0xFF (voice-only) → volume 0 + voice suppression on
+            settings_.speedMuteVolume = 0;
+            settings_.speedMuteVoice = true;
+        } else {
+            settings_.speedMuteVolume = (raw <= 9) ? raw : 0;
+            settings_.speedMuteVoice = preferences_.getBool(kNvsSpeedMuteVoice, true);
+        }
     }
 
     settings_.autoPushEnabled = preferences_.getBool(kNvsAutoPush, true);  // Default to enabled for profiles to work
@@ -319,8 +329,17 @@ void SettingsManager::load() {
     }
     settings_.obdSavedName = sanitizeObdSavedNameValue(preferences_.getString(kNvsObdName, ""));
     settings_.obdSavedAddrType = preferences_.getUChar(kNvsObdAddressType, 0);
-    settings_.obdMinRssi = static_cast<int8_t>(
-        preferences_.getChar(kNvsObdMinRssi, -90));
+    {
+        const int rssi = static_cast<int>(preferences_.getChar(kNvsObdMinRssi, -90));
+        settings_.obdMinRssi = static_cast<int8_t>(std::max(-100, std::min(rssi, -40)));
+    }
+
+    // ALP settings
+    settings_.alpEnabled = preferences_.getBool(kNvsAlpEnabled, false);
+    settings_.alpSdLogEnabled = preferences_.getBool(kNvsAlpSdLog, false);
+
+    // Debug / diagnostics
+    settings_.powerOffSdLog = preferences_.getBool(kNvsPowerOffSdLog, false);
 
     preferences_.end();
 

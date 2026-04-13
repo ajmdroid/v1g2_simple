@@ -34,6 +34,7 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["speedMuteThresholdMph"] = settings.speedMuteThresholdMph;
     doc["speedMuteHysteresisMph"] = settings.speedMuteHysteresisMph;
     doc["speedMuteVolume"] = settings.speedMuteVolume;
+    doc["speedMuteVoice"] = settings.speedMuteVoice;
 
     WifiApiResponse::sendJsonDocument(server, 200, doc);
 }
@@ -123,7 +124,7 @@ void handleApiSave(WebServer& server, const Runtime& runtime) {
         int fadeVolume = server.arg("alertVolumeFadeVolume").toInt();
         update.hasAlertVolumeFadeVolume = true;
         update.alertVolumeFadeVolume =
-            static_cast<uint8_t>(std::max(0, std::min(fadeVolume, 9)));
+            static_cast<uint8_t>(std::max(1, std::min(fadeVolume, 9)));
     }
     if (server.hasArg("speedMuteEnabled")) {
         update.hasSpeedMuteEnabled = true;
@@ -146,7 +147,12 @@ void handleApiSave(WebServer& server, const Runtime& runtime) {
         int vol = server.arg("speedMuteVolume").toInt();
         update.hasSpeedMuteVolume = true;
         update.speedMuteVolume =
-            (vol >= 0 && vol <= 9) ? static_cast<uint8_t>(vol) : 0xFF;
+            (vol >= 0 && vol <= 9) ? static_cast<uint8_t>(vol) : 0;
+    }
+    if (server.hasArg("speedMuteVoice")) {
+        update.hasSpeedMuteVoice = true;
+        update.speedMuteVoice =
+            argBool("speedMuteVoice", settings.speedMuteVoice);
     }
 
     runtime.applySettingsUpdate(update, runtime.ctx);

@@ -29,6 +29,67 @@ void test_removed_camera_label_helper_is_no_longer_declared_or_defined() {
     TEST_ASSERT_EQUAL(std::string::npos, displayFrequency.find("drawCameraLabel"));
 }
 
+void test_first_batch_timing_state_uses_uint32_and_explicit_wrap_math() {
+    const std::string batteryHeader = readTextFile("src/battery_manager.h");
+    const std::string displayHeader = readTextFile("src/display.h");
+    const std::string touchHeader = readTextFile("src/touch_handler.h");
+    const std::string touchSource = readTextFile("src/touch_handler.cpp");
+    const std::string displayStatus = readTextFile("src/display_status_bar.cpp");
+
+    TEST_ASSERT_FALSE_MESSAGE(batteryHeader.empty(), "failed to read src/battery_manager.h");
+    TEST_ASSERT_FALSE_MESSAGE(displayHeader.empty(), "failed to read src/display.h");
+    TEST_ASSERT_FALSE_MESSAGE(touchHeader.empty(), "failed to read src/touch_handler.h");
+    TEST_ASSERT_FALSE_MESSAGE(touchSource.empty(), "failed to read src/touch_handler.cpp");
+    TEST_ASSERT_FALSE_MESSAGE(displayStatus.empty(), "failed to read src/display_status_bar.cpp");
+
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, batteryHeader.find("uint32_t lastButtonPress_"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, batteryHeader.find("uint32_t buttonPressStart_"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, batteryHeader.find("uint32_t lastUpdateMs_"));
+    TEST_ASSERT_EQUAL(std::string::npos, batteryHeader.find("unsigned long lastButtonPress_"));
+    TEST_ASSERT_EQUAL(std::string::npos, batteryHeader.find("unsigned long buttonPressStart_"));
+    TEST_ASSERT_EQUAL(std::string::npos, batteryHeader.find("unsigned long lastUpdateMs_"));
+
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, displayHeader.find("uint32_t wifiConnectedTime_ = 0;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, displayHeader.find("uint32_t profileChangedTime_ = 0;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, displayHeader.find("static constexpr uint32_t HIDE_TIMEOUT_MS = 3000;"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("unsigned long wifiConnectedTime_ = 0;"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("unsigned long profileChangedTime_ = 0;"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("static const unsigned long HIDE_TIMEOUT_MS = 3000;"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, displayStatus.find("const uint32_t nowMs = static_cast<uint32_t>(millis());"));
+
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, touchHeader.find("uint32_t lastTouchTime_"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, touchHeader.find("uint32_t lastReleaseTime_"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, touchHeader.find("uint32_t touchDebounceMs_"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, touchHeader.find("uint32_t releaseDebounceMs_"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, touchHeader.find("void noteNoTouch(uint32_t now);"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, touchHeader.find("bool isI2cPollBackoffActive(uint32_t now) const;"));
+    TEST_ASSERT_EQUAL(std::string::npos, touchHeader.find("unsigned long lastTouchTime_"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, touchSource.find("inline bool hasElapsedMs(uint32_t now, uint32_t start, uint32_t intervalMs)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, touchSource.find("inline bool isBeforeDeadlineMs(uint32_t now, uint32_t deadline)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, touchSource.find("static_cast<int32_t>(now - deadline) < 0"));
+}
+
+void test_legacy_display_dirty_region_tracking_is_fully_removed() {
+    const std::string displayHeader = readTextFile("src/display.h");
+    const std::string displayFrequency = readTextFile("src/display_frequency.cpp");
+    const std::string displayCards = readTextFile("src/display_cards.cpp");
+
+    TEST_ASSERT_FALSE_MESSAGE(displayHeader.empty(), "failed to read src/display.h");
+    TEST_ASSERT_FALSE_MESSAGE(displayFrequency.empty(), "failed to read src/display_frequency.cpp");
+    TEST_ASSERT_FALSE_MESSAGE(displayCards.empty(), "failed to read src/display_cards.cpp");
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("markFrequencyDirtyRegion"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayFrequency.find("markFrequencyDirtyRegion"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("frequencyRenderDirty_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("frequencyDirtyValid_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("frequencyDirtyX_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("frequencyDirtyY_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("frequencyDirtyW_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("frequencyDirtyH_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayHeader.find("secondaryCardsRenderDirty_"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayFrequency.find("Legacy dirty region tracking"));
+    TEST_ASSERT_EQUAL(std::string::npos, displayCards.find("secondaryCardsRenderDirty_"));
+}
+
 void test_wifi_toggle_setup_mode_is_fully_removed() {
     const std::string header = readTextFile("src/wifi_manager.h");
     const std::string source = readTextFile("src/wifi_manager_lifecycle.cpp");
@@ -118,6 +179,8 @@ void test_bogey_breakdown_has_been_fully_retired() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_removed_camera_label_helper_is_no_longer_declared_or_defined);
+    RUN_TEST(test_first_batch_timing_state_uses_uint32_and_explicit_wrap_math);
+    RUN_TEST(test_legacy_display_dirty_region_tracking_is_fully_removed);
     RUN_TEST(test_wifi_toggle_setup_mode_is_fully_removed);
     RUN_TEST(test_alert_persistence_update_is_fully_removed);
     RUN_TEST(test_perf_display_screen_uses_explicit_mapping_and_removes_retired_values);

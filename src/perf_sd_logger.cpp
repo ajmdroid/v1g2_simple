@@ -6,19 +6,17 @@
 
 #include "storage_manager.h"
 #include "perf_metrics.h"
-#include "time_service.h"
 #include <FS.h>
 #include <cstdarg>
-#include <ctime>
 #include <cstring>
 #include <esp_system.h>
 
 namespace {
 static constexpr const char* PERF_DIR_PATH = "/perf";
 static constexpr const char* PERF_CSV_PATH_FALLBACK = "/perf/perf.csv";
-static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 26;
+static constexpr uint32_t PERF_CSV_SCHEMA_VERSION = 28;
 static constexpr const char* PERF_CSV_HEADER =
-    "millis,timeValid,timeSource,rx,qDrop,parseOK,parseFail,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap,dmaFreeMin,dmaLargestMin,bleProcessMax_us,touchMax_us,wifiMax_us,uiToScan,uiToRest,uiScanToRest,uiFastScanExit,uiLastScanDwellMs,uiMinScanDwellMs,fadeDown,fadeRestore,fadeSkipEqual,fadeSkipNoBaseline,fadeSkipNotFaded,fadeLastDecision,fadeLastCurrentVol,fadeLastOriginalVol,fadeLastDecisionMs,speedVolDrop,speedVolRestore,speedVolRetry,bleScanStartMs,bleTargetFoundMs,bleConnectStartMs,bleConnectedMs,bleFirstRxMs,bleFollowupRequestAlertMax_us,bleFollowupRequestVersionMax_us,bleConnectStableCallbackMax_us,bleProxyStartMax_us,displayVoiceMax_us,displayGapRecoverMax_us,displayFullRenderCount,displayIncrementalRenderCount,displayCardsOnlyRenderCount,displayRestingFullRenderCount,displayRestingIncrementalRenderCount,displayPersistedRenderCount,displayPreviewRenderCount,displayRestoreRenderCount,displayLiveScenarioRenderCount,displayRestingScenarioRenderCount,displayPersistedScenarioRenderCount,displayPreviewScenarioRenderCount,displayRestoreScenarioRenderCount,displayRedrawReasonFirstRunCount,displayRedrawReasonEnterLiveCount,displayRedrawReasonLeaveLiveCount,displayRedrawReasonLeavePersistedCount,displayRedrawReasonForceRedrawCount,displayRedrawReasonFrequencyChangeCount,displayRedrawReasonBandSetChangeCount,displayRedrawReasonArrowChangeCount,displayRedrawReasonSignalBarChangeCount,displayRedrawReasonVolumeChangeCount,displayRedrawReasonBogeyCounterChangeCount,displayRedrawReasonRssiRefreshCount,displayRedrawReasonFlashTickCount,displayFullFlushCount,displayPartialFlushCount,displayFlushBatchCount,displayPartialFlushAreaPeakPx,displayPartialFlushAreaTotalPx,displayFlushEquivalentAreaTotalPx,displayFlushMaxAreaPx,displayBaseFrameMax_us,displayStatusStripMax_us,displayFrequencyMax_us,displayBandsBarsMax_us,displayArrowsIconsMax_us,displayCardsMax_us,displayFlushSubphaseMax_us,displayLiveRenderMax_us,displayRestingRenderMax_us,displayPersistedRenderMax_us,displayPreviewRenderMax_us,displayRestoreRenderMax_us,displayPreviewFirstRenderMax_us,displayPreviewSteadyRenderMax_us,alertPersistStarts,alertPersistExpires,alertPersistClears,autoPushStarts,autoPushCompletes,autoPushNoProfile,autoPushProfileLoadFail,autoPushProfileWriteFail,autoPushBusyRetries,autoPushModeFail,autoPushVolumeFail,autoPushDisconnectAbort,voiceAnnouncePriority,voiceAnnounceDirection,voiceAnnounceSecondary,voiceAnnounceEscalation,voiceDirectionThrottled,powerAutoPowerArmed,powerAutoPowerTimerStart,powerAutoPowerTimerCancel,powerAutoPowerTimerExpire,powerCriticalWarn,powerCriticalShutdown,cmdBleBusy,rxBytes,oversizeDrops,queueHighWater,bleMutexSkip,bleMutexTimeout,cmdPaceNotYet,bleDiscTaskCreateFail,displayUpdates,displaySkips,wifiConnectDeferred,pushNowRetries,pushNowFailures,audioPlayCount,audioPlayBusy,audioTaskFail,minLargestBlock,fsMax_us,sdMax_us,sdWriteCount,sdWriteLt1ms,sdWrite1to5ms,sdWrite5to10ms,sdWriteGe10ms,flushMax_us,bleConnectMax_us,bleDiscoveryMax_us,bleSubscribeMax_us,dispPipeMax_us,timeSaveMax_us,perfReportMax_us,prioritySelectDisplayIndex,prioritySelectRowFlag,prioritySelectFirstUsable,prioritySelectFirstEntry,prioritySelectAmbiguousIndex,prioritySelectUnusableIndex,prioritySelectInvalidChosen,alertTablePublishes,alertTablePublishes3Bogey,alertTableRowReplacements,alertTableAssemblyTimeouts,parserRowsBandNone,parserRowsKuRaw,displayLiveInvalidPrioritySkips,displayLiveFallbackToUsable,obdMax_us,obdConnectCallMax_us,obdSecurityStartCallMax_us,obdDiscoveryCallMax_us,obdSubscribeCallMax_us,obdWriteCallMax_us,obdRssiCallMax_us,obdPollErrors,obdStaleCount,perfDrop,eventBusDrops,wifiHandleClientMax_us,wifiMaintenanceMax_us,wifiStatusCheckMax_us,wifiTimeoutCheckMax_us,wifiHeapGuardMax_us,wifiApStaPollMax_us,wifiStopHttpServerMax_us,wifiStopStaDisconnectMax_us,wifiStopApDisableMax_us,wifiStopModeOffMax_us,wifiStartPreflightMax_us,wifiStartApBringupMax_us,freeDmaMin,largestDmaMin,bleState,subscribeStep,connectInProgress,asyncConnectPending,pendingDisconnectCleanup,proxyAdvertising,proxyAdvertisingLastTransitionReason,wifiPriorityMode,speedSourceSelected,speedSourceValid,speedSelectedMph_x10,speedSelectedAgeMs,speedSourceSwitches,speedNoSourceSelections\n";
+    "millis,rx,qDrop,parseOK,parseFail,parseResync,disc,reconn,loopMax_us,bleDrainMax_us,dispMax_us,freeHeap,freeDma,largestDma,freeDmaCap,largestDmaCap,dmaFreeMin,dmaLargestMin,bleProcessMax_us,touchMax_us,wifiMax_us,uiToScan,uiToRest,uiScanToRest,uiFastScanExit,uiLastScanDwellMs,uiMinScanDwellMs,fadeDown,fadeRestore,fadeSkipEqual,fadeSkipNoBaseline,fadeSkipNotFaded,fadeLastDecision,fadeLastCurrentVol,fadeLastOriginalVol,fadeLastDecisionMs,speedVolDrop,speedVolRestore,speedVolRetry,bleScanStartMs,bleTargetFoundMs,bleConnectStartMs,bleConnectedMs,bleFirstRxMs,bleFollowupRequestAlertMax_us,bleFollowupRequestVersionMax_us,bleConnectStableCallbackMax_us,bleProxyStartMax_us,displayVoiceMax_us,displayGapRecoverMax_us,displayFullRenderCount,displayIncrementalRenderCount,displayCardsOnlyRenderCount,displayRestingFullRenderCount,displayRestingIncrementalRenderCount,displayPersistedRenderCount,displayPreviewRenderCount,displayRestoreRenderCount,displayLiveScenarioRenderCount,displayRestingScenarioRenderCount,displayPersistedScenarioRenderCount,displayPreviewScenarioRenderCount,displayRestoreScenarioRenderCount,displayRedrawReasonFirstRunCount,displayRedrawReasonEnterLiveCount,displayRedrawReasonLeaveLiveCount,displayRedrawReasonLeavePersistedCount,displayRedrawReasonForceRedrawCount,displayRedrawReasonFrequencyChangeCount,displayRedrawReasonBandSetChangeCount,displayRedrawReasonArrowChangeCount,displayRedrawReasonSignalBarChangeCount,displayRedrawReasonVolumeChangeCount,displayRedrawReasonBogeyCounterChangeCount,displayRedrawReasonRssiRefreshCount,displayRedrawReasonFlashTickCount,displayFullFlushCount,displayPartialFlushCount,displayFlushBatchCount,displayPartialFlushAreaPeakPx,displayPartialFlushAreaTotalPx,displayFlushEquivalentAreaTotalPx,displayFlushMaxAreaPx,displayBaseFrameMax_us,displayStatusStripMax_us,displayFrequencyMax_us,displayBandsBarsMax_us,displayArrowsIconsMax_us,displayCardsMax_us,displayFlushSubphaseMax_us,displayLiveRenderMax_us,displayRestingRenderMax_us,displayPersistedRenderMax_us,displayPreviewRenderMax_us,displayRestoreRenderMax_us,displayPreviewFirstRenderMax_us,displayPreviewSteadyRenderMax_us,alertPersistStarts,alertPersistExpires,alertPersistClears,autoPushStarts,autoPushCompletes,autoPushNoProfile,autoPushProfileLoadFail,autoPushProfileWriteFail,autoPushBusyRetries,autoPushModeFail,autoPushVolumeFail,autoPushDisconnectAbort,voiceAnnouncePriority,voiceAnnounceDirection,voiceAnnounceSecondary,voiceAnnounceEscalation,voiceDirectionThrottled,powerAutoPowerArmed,powerAutoPowerTimerStart,powerAutoPowerTimerCancel,powerAutoPowerTimerExpire,powerCriticalWarn,powerCriticalShutdown,cmdBleBusy,rxBytes,oversizeDrops,queueHighWater,bleMutexSkip,bleMutexTimeout,cmdPaceNotYet,bleDiscTaskCreateFail,displayUpdates,displaySkips,wifiConnectDeferred,pushNowRetries,pushNowFailures,audioPlayCount,audioPlayBusy,audioTaskFail,minLargestBlock,fsMax_us,sdMax_us,sdWriteCount,sdWriteLt1ms,sdWrite1to5ms,sdWrite5to10ms,sdWriteGe10ms,flushMax_us,bleConnectMax_us,bleDiscoveryMax_us,bleSubscribeMax_us,dispPipeMax_us,perfReportMax_us,prioritySelectDisplayIndex,prioritySelectRowFlag,prioritySelectFirstUsable,prioritySelectFirstEntry,prioritySelectAmbiguousIndex,prioritySelectUnusableIndex,prioritySelectInvalidChosen,alertTablePublishes,alertTablePublishes3Bogey,alertTableRowReplacements,alertTableAssemblyTimeouts,parserRowsBandNone,parserRowsKuRaw,displayLiveInvalidPrioritySkips,displayLiveFallbackToUsable,obdMax_us,obdConnectCallMax_us,obdSecurityStartCallMax_us,obdDiscoveryCallMax_us,obdSubscribeCallMax_us,obdWriteCallMax_us,obdRssiCallMax_us,obdPollErrors,obdStaleCount,perfDrop,eventBusDrops,wifiHandleClientMax_us,wifiMaintenanceMax_us,wifiStatusCheckMax_us,wifiTimeoutCheckMax_us,wifiHeapGuardMax_us,wifiApStaPollMax_us,wifiStopHttpServerMax_us,wifiStopStaDisconnectMax_us,wifiStopApDisableMax_us,wifiStopModeOffMax_us,wifiStartPreflightMax_us,wifiStartApBringupMax_us,freeDmaMin,largestDmaMin,bleState,subscribeStep,connectInProgress,asyncConnectPending,pendingDisconnectCleanup,proxyAdvertising,proxyAdvertisingLastTransitionReason,wifiPriorityMode,speedSourceSelected,speedSourceValid,speedSelectedMph_x10,speedSelectedAgeMs,speedSourceSwitches,speedNoSourceSelections\n";
 
 static constexpr UBaseType_t PERF_SD_QUEUE_DEPTH = 16;       // Halved from 32 to reclaim ~7 KiB internal SRAM
 static constexpr uint32_t PERF_SD_WRITER_STACK_SIZE = 12288; // CSV assembly + FS ops need extra headroom
@@ -58,30 +56,6 @@ static void buildPerfCsvPath(uint32_t bootId_, char* out, size_t outLen) {
         return;
     }
 
-    if (timeService.timeValid() &&
-        timeService.timeConfidence() == TimeService::CONFIDENCE_ACCURATE) {
-        const int64_t epochMs = timeService.nowEpochMsOr0();
-        if (epochMs <= 0) {
-            snprintf(out, outLen, "/perf/perf_boot_%lu.csv", static_cast<unsigned long>(bootId_));
-            return;
-        }
-        const time_t epochSeconds = static_cast<time_t>(epochMs / 1000LL);
-        struct tm utcTime {};
-        if (gmtime_r(&epochSeconds, &utcTime) != nullptr) {
-            const unsigned year = static_cast<unsigned>(utcTime.tm_year + 1900);
-            const unsigned month = static_cast<unsigned>(utcTime.tm_mon + 1);
-            const unsigned day = static_cast<unsigned>(utcTime.tm_mday);
-            const unsigned hour = static_cast<unsigned>(utcTime.tm_hour);
-            const unsigned minute = static_cast<unsigned>(utcTime.tm_min);
-            const unsigned second = static_cast<unsigned>(utcTime.tm_sec);
-            snprintf(out, outLen,
-                     "/perf/%04u%02u%02u_%02u%02u%02u_perf_%lu.csv",
-                     year, month, day, hour, minute, second,
-                     static_cast<unsigned long>(bootId_));
-            return;
-        }
-    }
-
     snprintf(out, outLen, "/perf/perf_boot_%lu.csv", static_cast<unsigned long>(bootId_));
 }
 
@@ -109,14 +83,6 @@ static bool appendCsvUInt32(char* buffer, size_t bufferLen, size_t& offset, uint
 
 static bool appendCsvUInt8(char* buffer, size_t bufferLen, size_t& offset, uint8_t value) {
     return appendCsvFormat(buffer, bufferLen, offset, "%u,", static_cast<unsigned int>(value));
-}
-
-static bool appendCsvInt16(char* buffer, size_t bufferLen, size_t& offset, int16_t value) {
-    return appendCsvFormat(buffer, bufferLen, offset, "%d,", static_cast<int>(value));
-}
-
-static bool appendCsvUInt8Last(char* buffer, size_t bufferLen, size_t& offset, uint8_t value) {
-    return appendCsvFormat(buffer, bufferLen, offset, "%u\n", static_cast<unsigned int>(value));
 }
 
 static bool appendCsvUInt32Last(char* buffer, size_t bufferLen, size_t& offset, uint32_t value) {
@@ -312,24 +278,6 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         return false;
     }
 
-    // One-shot upgrade: rename to timestamped path once time becomes accurate.
-    // At early boot time is unknown; once synced, rename so file gets a proper
-    // YYYYMMDD_HHMMSS prefix.  Runs under the SD lock already held above.
-    if (!pathUpgraded_ && csvPathBuf_[0] != '\0') {
-        if (timeService.timeValid() &&
-            timeService.timeConfidence() == TimeService::CONFIDENCE_ACCURATE) {
-            char newPath[64] = {0};
-            buildPerfCsvPath(bootId_, newPath, sizeof(newPath));
-            if (strcmp(newPath, csvPathBuf_) != 0) {
-                if (fs->exists(csvPathBuf_)) {
-                    fs->rename(csvPathBuf_, newPath);
-                }
-                memcpy(csvPathBuf_, newPath, sizeof(csvPathBuf_));
-            }
-            pathUpgraded_ = true;
-        }
-    }
-
     const char* csvPath = (csvPathBuf_[0] != '\0') ? csvPathBuf_ : PERF_CSV_PATH_FALLBACK;
     File f = fs->open(csvPath, FILE_APPEND, true);
     if (!f && perfDirReady_) {
@@ -354,12 +302,11 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
     size_t offset = 0;
     const bool ok =
         appendCsvUInt32(line, sizeof(line), offset, snapshot.millisTs) &&
-        appendCsvUInt8(line, sizeof(line), offset, snapshot.timeValid) &&
-        appendCsvUInt8(line, sizeof(line), offset, snapshot.timeSource) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.rx) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.qDrop) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.parseOk) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.parseFail) &&
+        appendCsvUInt32(line, sizeof(line), offset, snapshot.parseResync) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.disc) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.reconn) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.loopMaxUs) &&
@@ -503,7 +450,6 @@ bool PerfSdLogger::appendSnapshotLine(const PerfSdSnapshot& snapshot) {
         appendCsvUInt32(line, sizeof(line), offset, snapshot.bleDiscoveryMaxUs) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.bleSubscribeMaxUs) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.dispPipeMaxUs) &&
-        appendCsvUInt32(line, sizeof(line), offset, snapshot.timeSaveMaxUs) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.perfReportMaxUs) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.prioritySelectDisplayIndex) &&
         appendCsvUInt32(line, sizeof(line), offset, snapshot.prioritySelectRowFlag) &&

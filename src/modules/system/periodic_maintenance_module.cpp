@@ -38,21 +38,6 @@ void PeriodicMaintenanceModule::process(uint32_t nowMs) {
         }
     }
 
-    if (providers.runTimeSave) {
-        uint32_t startUs = 0;
-        if (providers.timestampUs) {
-            startUs = providers.timestampUs(providers.timestampContext);
-        }
-
-        providers.runTimeSave(providers.timeSaveContext, nowMs);
-
-        if (providers.recordTimeSaveUs && providers.timestampUs) {
-            const uint32_t elapsedUs =
-                static_cast<uint32_t>(providers.timestampUs(providers.timestampContext) - startUs);
-            providers.recordTimeSaveUs(providers.timeSaveRecordContext, elapsedUs);
-        }
-    }
-
     if (providers.runObdSettingsSync) {
         providers.runObdSettingsSync(providers.obdSettingsSyncContext, nowMs);
     }

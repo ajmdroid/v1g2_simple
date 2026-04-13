@@ -205,8 +205,7 @@ echo ""
 # Step 1: Clean if requested
 if [ "$CLEAN" = true ]; then
     echo -e "${YELLOW}🧹 Cleaning build artifacts...${NC}"
-    "$PIO_CMD" run $PIO_ARGS -t clean
-    rm -rf interface/build interface/.svelte-kit
+    rm -rf .pio/build interface/build interface/.svelte-kit
     echo -e "${GREEN}✅ Clean complete${NC}"
     echo ""
 fi

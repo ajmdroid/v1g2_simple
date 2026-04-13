@@ -4,6 +4,7 @@
 #define DISPLAY_H
 
 #include <cstdint>
+#include <cstring>
 #ifdef ARDUINO
 #include <Arduino.h>
 #else
@@ -80,15 +81,7 @@ public:
     int lastSettingsVolume = 0;
     int lastSettingsActiveSlider = -1;
     int activeSliderFromTouch = -1;
-    int refreshFrequencyOnlyCalls = 0;
-    uint32_t lastFrequencyMHz = 0;
-    int lastFrequencyBand = 0;
-    bool lastFrequencyMuted = false;
-    bool lastFrequencyPhotoRadar = false;
     int lastAlertUpdateCount = 0;
-    int refreshSecondaryAlertCardsCalls = 0;
-    int lastSecondaryAlertCount = 0;
-    bool lastSecondaryMuted = false;
 
     // Static method tracking
     static int resetChangeTrackingCalls;
@@ -136,15 +129,10 @@ public:
         lastSettingsVolume = 0;
         lastSettingsActiveSlider = -1;
         activeSliderFromTouch = -1;
-        refreshFrequencyOnlyCalls = 0;
-        lastFrequencyMHz = 0;
-        lastFrequencyBand = 0;
-        lastFrequencyMuted = false;
-        lastFrequencyPhotoRadar = false;
         lastAlertUpdateCount = 0;
-        refreshSecondaryAlertCardsCalls = 0;
-        lastSecondaryAlertCount = 0;
-        lastSecondaryMuted = false;
+        setAlpFrequencyOverrideCalls = 0;
+        clearAlpFrequencyOverrideCalls = 0;
+        lastAlpFreqOverride[0] = '\0';
         resetChangeTrackingCalls = 0;
     }
 
@@ -223,20 +211,16 @@ public:
         lastFlushH = h;
     }
 
-    void refreshFrequencyOnly(uint32_t freqMHz, int band, bool muted, bool isPhotoRadar = false) {
-        refreshFrequencyOnlyCalls++;
-        lastFrequencyMHz = freqMHz;
-        lastFrequencyBand = band;
-        lastFrequencyMuted = muted;
-        lastFrequencyPhotoRadar = isPhotoRadar;
+    // ALP frequency override
+    int setAlpFrequencyOverrideCalls = 0;
+    int clearAlpFrequencyOverrideCalls = 0;
+    char lastAlpFreqOverride[16] = "";
+    void setAlpFrequencyOverride(const char* text) {
+        setAlpFrequencyOverrideCalls++;
+        strncpy(lastAlpFreqOverride, text, sizeof(lastAlpFreqOverride));
+        lastAlpFreqOverride[sizeof(lastAlpFreqOverride) - 1] = '\0';
     }
-
-    void refreshSecondaryAlertCards(const AlertData* /*alerts*/, int alertCount,
-                                    const AlertData& /*priority*/, bool muted = false) {
-        refreshSecondaryAlertCardsCalls++;
-        lastSecondaryAlertCount = alertCount;
-        lastSecondaryMuted = muted;
-    }
+    void clearAlpFrequencyOverride() { clearAlpFrequencyOverrideCalls++; }
 
     void setBrightness(uint8_t /*level*/) {}
     void showSettingsSliders(uint8_t brightnessLevel, uint8_t volumeLevel) {

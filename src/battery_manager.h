@@ -68,8 +68,9 @@ public:
     // Keep system powered on (call early in setup when on battery)
     bool latchPowerOn();
 
-    // Execute the final hardware-only power-off tail after shutdown prep completes
-    bool powerOff();
+    // Execute the final hardware-only power-off tail after shutdown prep completes.
+    // When sdLogEnabled is true, writes diagnostics to /poweroff.log on SD.
+    bool powerOff(bool sdLogEnabled = false);
 
     // Check if power button is pressed
     bool isPowerButtonPressed();
@@ -81,14 +82,14 @@ private:
     bool initialized_;
     bool onBattery_;
     uint16_t lastVoltage_;
-    unsigned long lastButtonPress_;
-    unsigned long buttonPressStart_;
+    uint32_t lastButtonPress_;
+    uint32_t buttonPressStart_;
     bool buttonWasPressed_;
 
     // Cached battery state (updated every 30s)
     uint16_t cachedVoltage_;
     uint8_t cachedPercent_;
-    unsigned long lastUpdateMs_;
+    uint32_t lastUpdateMs_;
 
     // Debug simulation
     uint16_t simulatedVoltage_;

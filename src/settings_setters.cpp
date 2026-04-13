@@ -96,7 +96,9 @@ void SettingsManager::setSlotName(int slotNum, const String& name) {
 }
 
 void SettingsManager::setSlotColor(int slotNum, uint16_t color) {
-    settings_.autoPushSlotView(slotNum).color = color;
+    static constexpr uint16_t kSlotColorDefaults[] = {0x400A, 0x07E0, 0x8410};
+    const int idx = V1Settings::normalizeAutoPushSlotIndex(slotNum);
+    settings_.autoPushSlotView(slotNum).color = sanitizeRgb565Color(color, kSlotColorDefaults[idx]);
     save();
 }
 
@@ -438,6 +440,15 @@ void SettingsManager::applyDeviceSettingsUpdate(const DeviceSettingsUpdate& upda
     if (update.hasEnableWifiAtBoot) {
         changed |= assignIfChanged(settings_.enableWifiAtBoot, update.enableWifiAtBoot);
     }
+    if (update.hasAlpEnabled) {
+        changed |= assignIfChanged(settings_.alpEnabled, update.alpEnabled);
+    }
+    if (update.hasAlpSdLogEnabled) {
+        changed |= assignIfChanged(settings_.alpSdLogEnabled, update.alpSdLogEnabled);
+    }
+    if (update.hasPowerOffSdLog) {
+        changed |= assignIfChanged(settings_.powerOffSdLog, update.powerOffSdLog);
+    }
 
     if (changed) {
         persistSettingsByMode(*this, persistMode);
@@ -502,8 +513,11 @@ void SettingsManager::applyAudioSettingsUpdate(const AudioSettingsUpdate& update
                                    clampU8(update.speedMuteHysteresisMph, 1, 10));
     }
     if (update.hasSpeedMuteVolume) {
-        const uint8_t val = (update.speedMuteVolume <= 9) ? update.speedMuteVolume : 0xFF;
+        const uint8_t val = (update.speedMuteVolume <= 9) ? update.speedMuteVolume : 0;
         changed |= assignIfChanged(settings_.speedMuteVolume, val);
+    }
+    if (update.hasSpeedMuteVoice) {
+        changed |= assignIfChanged(settings_.speedMuteVoice, update.speedMuteVoice);
     }
 
     if (changed) {
@@ -546,6 +560,9 @@ void SettingsManager::applyDisplaySettingsUpdate(const DisplaySettingsUpdate& up
     if (update.hasColorRssiV1) changed |= assignIfChanged(settings_.colorRssiV1, update.colorRssiV1);
     if (update.hasColorRssiProxy) changed |= assignIfChanged(settings_.colorRssiProxy, update.colorRssiProxy);
     if (update.hasColorObd) changed |= assignIfChanged(settings_.colorObd, update.colorObd);
+    if (update.hasColorAlpConnected) changed |= assignIfChanged(settings_.colorAlpConnected, update.colorAlpConnected);
+    if (update.hasColorAlpDetection) changed |= assignIfChanged(settings_.colorAlpDetection, update.colorAlpDetection);
+    if (update.hasColorAlpDefense) changed |= assignIfChanged(settings_.colorAlpDefense, update.colorAlpDefense);
     if (update.hasFreqUseBandColor) changed |= assignIfChanged(settings_.freqUseBandColor, update.freqUseBandColor);
     if (update.hasHideWifiIcon) changed |= assignIfChanged(settings_.hideWifiIcon, update.hideWifiIcon);
     if (update.hasHideProfileIndicator) {
@@ -592,11 +609,14 @@ void SettingsManager::resetDisplaySettings(SettingsPersistMode persistMode) {
     settings_.colorBar6 = 0xF800;
     settings_.colorMuted = 0x3186;
     settings_.colorPersisted = 0x18C3;
-    settings_.colorVolumeMain = 0x001F;
-    settings_.colorVolumeMute = 0xFFE0;
+    settings_.colorVolumeMain = 0xF800;   // Red — matches constructor & NVS default
+    settings_.colorVolumeMute = 0x7BEF;   // Grey — matches constructor & NVS default
     settings_.colorRssiV1 = 0x07E0;
     settings_.colorRssiProxy = 0x001F;
     settings_.colorObd = 0x001F;
+    settings_.colorAlpConnected = 0x07E0;
+    settings_.colorAlpDetection = 0xFD20;
+    settings_.colorAlpDefense = 0x001F;
     settings_.freqUseBandColor = false;
 
     persistSettingsByMode(*this, persistMode);

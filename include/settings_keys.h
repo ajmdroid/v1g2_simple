@@ -62,6 +62,9 @@ inline constexpr const char* kNvsColorVolumeMute = "colorVolMute";
 inline constexpr const char* kNvsColorRssiV1     = "colorRssiV1";
 inline constexpr const char* kNvsColorRssiProxy  = "colorRssiPrx";
 inline constexpr const char* kNvsColorObd        = "colorObd";
+inline constexpr const char* kNvsColorAlpConn    = "colorAlpCon";
+inline constexpr const char* kNvsColorAlpDetect  = "colorAlpDet";
+inline constexpr const char* kNvsColorAlpDefense = "colorAlpDef";
 
 // ── UI toggles ────────────────────────────────────────────────────────────
 inline constexpr const char* kNvsFreqBandColor  = "freqBandCol";
@@ -98,6 +101,7 @@ inline constexpr const char* kNvsSpeedMuteEnabled    = "spdMuteEn";
 inline constexpr const char* kNvsSpeedMuteThreshold  = "spdMuteThr";
 inline constexpr const char* kNvsSpeedMuteHysteresis = "spdMuteHys";
 inline constexpr const char* kNvsSpeedMuteVolume     = "spdMuteVol";
+inline constexpr const char* kNvsSpeedMuteVoice      = "spdMuteVce";
 
 // ── Profiles / settings slots ─────────────────────────────────────────────
 inline constexpr const char* kNvsAutoPush   = "autoPush";
@@ -153,6 +157,13 @@ inline constexpr const char* kNvsObdAddress     = "obdAddr";
 inline constexpr const char* kNvsObdName        = "obdName";
 inline constexpr const char* kNvsObdAddressType = "obdAddrT";
 inline constexpr const char* kNvsObdMinRssi     = "obdMinRssi";
+
+// ── ALP ──────────────────────────────────────────────────────────────────
+inline constexpr const char* kNvsAlpEnabled     = "alpEn";
+inline constexpr const char* kNvsAlpSdLog       = "alpSdLog";
+
+// ── Debug / diagnostics ──────────────────────────────────────────────────
+inline constexpr const char* kNvsPowerOffSdLog  = "pwrOffSdLog";
 
 // ── Separate namespaces ───────────────────────────────────────────────────
 // Namespace: v1wifi_secret (WIFI_CLIENT_NS)

@@ -126,6 +126,16 @@ struct ObdRenderCache {
     void invalidate() { valid = false; }
 };
 
+// --- ALP indicator render cache -------------------------------------------
+struct AlpRenderCache {
+    bool lastShown     = false;
+    uint8_t lastState  = 0;       // AlpState as uint8_t for change detection
+    uint8_t lastHbByte1 = 0;      // B0 heartbeat byte1 for LISTENING sub-state color
+    bool valid         = false;
+
+    void invalidate() { valid = false; }
+};
+
 // --- Secondary alert cards render cache -----------------------------------
 // NOTE: s_cardsSlots[2] (active slot state with lastSeen timer) stays as a
 //       file-scoped static in display_cards.cpp — it is NOT pure last-drawn.
@@ -152,6 +162,7 @@ struct DisplayElementCaches {
     BatteryRenderCache     battery;
     TopCounterRenderCache  topCounter;
     ObdRenderCache         obd;
+    AlpRenderCache         alp;
     CardsRenderCache       cards;
 
     /// Call from prepareFullRedrawNoClear() after every screen clear.
@@ -164,6 +175,7 @@ struct DisplayElementCaches {
         battery.invalidate();
         topCounter.invalidate();
         obd.invalidate();
+        alp.invalidate();
         cards.invalidate();
     }
 };

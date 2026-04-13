@@ -105,6 +105,9 @@ void handleApiSave(WebServer& server,
     if (server.hasArg("rssiV1")) { update.hasColorRssiV1 = true; update.colorRssiV1 = server.arg("rssiV1").toInt(); }
     if (server.hasArg("rssiProxy")) { update.hasColorRssiProxy = true; update.colorRssiProxy = server.arg("rssiProxy").toInt(); }
     if (server.hasArg("obd")) { update.hasColorObd = true; update.colorObd = server.arg("obd").toInt(); }
+    if (server.hasArg("alpConnected")) { update.hasColorAlpConnected = true; update.colorAlpConnected = server.arg("alpConnected").toInt(); }
+    if (server.hasArg("alpDetection")) { update.hasColorAlpDetection = true; update.colorAlpDetection = server.arg("alpDetection").toInt(); }
+    if (server.hasArg("alpDefense")) { update.hasColorAlpDefense = true; update.colorAlpDefense = server.arg("alpDefense").toInt(); }
 
     // Display toggles
     if (server.hasArg("freqUseBandColor")) { update.hasFreqUseBandColor = true; update.freqUseBandColor = argBool("freqUseBandColor", s.freqUseBandColor); }
@@ -187,8 +190,10 @@ static void handlePreviewImpl(WebServer& server, const Runtime& runtime) {
     // Do NOT call showDisplayDemo() here — it performs 3 blocking SPI flushes
     // (~120ms) inside handleClient(), inflating wifiMaxUs.  The preview module
     // renders the first frame on the very next main-loop display phase.
+    // Duration arg is ignored by DisplayPreviewModule — it calculates its own
+    // from step count × 2s per step. Pass 0 as a signal to use auto-duration.
     if (runtime.requestColorPreviewHoldMs) {
-        runtime.requestColorPreviewHoldMs(5500, runtime.requestColorPreviewHoldMsCtx);
+        runtime.requestColorPreviewHoldMs(0, runtime.requestColorPreviewHoldMsCtx);
     }
     server.send(200, "application/json", "{\"success\":true,\"active\":true}");
 }
@@ -251,6 +256,9 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["rssiV1"] = s.colorRssiV1;
     doc["rssiProxy"] = s.colorRssiProxy;
     doc["obd"] = s.colorObd;
+    doc["alpConnected"] = s.colorAlpConnected;
+    doc["alpDetection"] = s.colorAlpDetection;
+    doc["alpDefense"] = s.colorAlpDefense;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;

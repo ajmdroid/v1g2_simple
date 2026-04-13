@@ -14,8 +14,9 @@ void QuietCoordinatorModule::applyVoicePresentation(VoiceContext& voiceCtx,
     voiceCtx.isSuppressed = false;
 
     if (!voiceCtx.isSuppressed && speedMute) {
+        const auto& smSettings = speedMute->getSettings();
         const auto& smState = speedMute->getState();
-        if (smState.muteActive && hasRenderablePriority) {
+        if (smSettings.voice && smState.muteActive && hasRenderablePriority) {
             if (!speedMute->isBandOverridden(priorityBand)) {
                 voiceCtx.isSuppressed = true;
                 presentation_.voiceSuppressed = true;

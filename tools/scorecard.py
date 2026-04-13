@@ -58,6 +58,7 @@ class PerfRecord:
     q_hw: int = 0
     parse_ok: int = 0
     parse_fail: int = 0
+    parse_resync: int = 0
     disc: int = 0
     reconn: int = 0
     loop_max_us: int = 0
@@ -84,6 +85,7 @@ class PerfRecord:
             q_hw=data.get("qHW", 0),
             parse_ok=data.get("parseOK", 0),
             parse_fail=data.get("parseFail", 0),
+            parse_resync=data.get("parseResync", 0),
             disc=data.get("disc", 0),
             reconn=data.get("reconn", 0),
             loop_max_us=data.get("loopMax_us", 0),
@@ -141,6 +143,7 @@ class ScorecardResult:
     # Invariants
     total_q_drop: int = 0
     total_parse_fail: int = 0
+    total_parse_resync: int = 0
     total_disc: int = 0
     max_reconn: int = 0
     
@@ -258,7 +261,8 @@ def parse_log(filepath: str) -> tuple[ScorecardResult, List[PerfRecord]]:
             # Track invariants (cumulative from perf records)
             result.total_q_drop = max(result.total_q_drop, record.q_drop)
             result.total_parse_fail = max(result.total_parse_fail, record.parse_fail)
-            
+            result.total_parse_resync = max(result.total_parse_resync, record.parse_resync)
+
             # disc in steady-state should be 0 (outside reconnect window)
             if not result.is_in_reconnect_window(record.millis):
                 result.total_disc = max(result.total_disc, record.disc)
@@ -327,6 +331,7 @@ def print_scorecard(result: ScorecardResult, verbose: bool = False):
     print(f"  parseFail: {result.total_parse_fail:5d}  {'✅ PASS' if result.total_parse_fail == 0 else '❌ FAIL'}")
     print(f"  disc:      {result.total_disc:5d}  {'✅ PASS' if result.total_disc == 0 else '❌ FAIL'}")
     print(f"  reconn:    {result.max_reconn:5d}  ℹ️  (informational)")
+    print(f"  parseResync:{result.total_parse_resync:4d}  ℹ️  (informational)")
     print()
     
     # SLOs
@@ -424,6 +429,7 @@ def main():
             "invariants": {
                 "qDrop": result.total_q_drop,
                 "parseFail": result.total_parse_fail,
+                "parseResync": result.total_parse_resync,
                 "disc": result.total_disc,
                 "reconn": result.max_reconn,
             },

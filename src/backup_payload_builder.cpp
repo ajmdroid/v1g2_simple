@@ -68,6 +68,13 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["obdSavedAddrType"] = settings.obdSavedAddrType;
     doc["obdMinRssi"] = settings.obdMinRssi;
 
+    // ALP settings
+    doc["alpEnabled"] = settings.alpEnabled;
+    doc["alpSdLogEnabled"] = settings.alpSdLogEnabled;
+
+    // Debug / diagnostics
+    doc["powerOffSdLog"] = settings.powerOffSdLog;
+
     doc["brightness"] = settings.brightness;
     doc["turnOffDisplay"] = settings.turnOffDisplay;
     doc["displayStyle"] = static_cast<int>(settings.displayStyle);
@@ -99,6 +106,9 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["colorRssiV1"] = settings.colorRssiV1;
     doc["colorRssiProxy"] = settings.colorRssiProxy;
     doc["colorObd"] = settings.colorObd;
+    doc["colorAlpConnected"] = settings.colorAlpConnected;
+    doc["colorAlpDetection"] = settings.colorAlpDetection;
+    doc["colorAlpDefense"] = settings.colorAlpDefense;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
 
     doc["hideWifiIcon"] = settings.hideWifiIcon;
@@ -127,6 +137,7 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["speedMuteThresholdMph"] = settings.speedMuteThresholdMph;
     doc["speedMuteHysteresisMph"] = settings.speedMuteHysteresisMph;
     doc["speedMuteVolume"] = settings.speedMuteVolume;
+    doc["speedMuteVoice"] = settings.speedMuteVoice;
 
     doc["autoPushEnabled"] = settings.autoPushEnabled;
     doc["activeSlot"] = settings.activeSlot;

@@ -509,6 +509,20 @@
       "regress_pct": null
     },
     {
+      "metric": "parse_resyncs_delta",
+      "run_kind": "real_fw_soak",
+      "selector": {},
+      "unit": "count",
+      "aggregation": "last",
+      "direction": "lower_better",
+      "score_level": "info",
+      "required": false,
+      "absolute_min": null,
+      "absolute_max": null,
+      "regress_abs": 20,
+      "regress_pct": null
+    },
+    {
       "metric": "queue_drops_delta",
       "run_kind": "real_fw_soak",
       "selector": {},
@@ -903,20 +917,6 @@
     {
       "metric": "samples_to_stable",
       "run_kind": "real_fw_soak",
-      "selector": { "stress_class": "display_preview" },
-      "unit": "count",
-      "aggregation": "last",
-      "direction": "lower_better",
-      "score_level": "info",
-      "required": false,
-      "absolute_min": 0,
-      "absolute_max": null,
-      "regress_abs": 1,
-      "regress_pct": 0.20
-    },
-    {
-      "metric": "samples_to_stable",
-      "run_kind": "real_fw_soak",
       "selector": { "stress_class": "transition" },
       "unit": "count",
       "aggregation": "last",
@@ -932,20 +932,6 @@
       "metric": "time_to_stable_ms",
       "run_kind": "real_fw_soak",
       "selector": { "stress_class": "core" },
-      "unit": "ms",
-      "aggregation": "last",
-      "direction": "lower_better",
-      "score_level": "info",
-      "required": false,
-      "absolute_min": 0,
-      "absolute_max": null,
-      "regress_abs": 250,
-      "regress_pct": 0.20
-    },
-    {
-      "metric": "time_to_stable_ms",
-      "run_kind": "real_fw_soak",
-      "selector": { "stress_class": "display_preview" },
       "unit": "ms",
       "aggregation": "last",
       "direction": "lower_better",

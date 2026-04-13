@@ -20,16 +20,18 @@ bool attemptNvsRecovery(const char* activeNs) {
         inactiveNs = SETTINGS_NS_A;
     }
 
+    bool recovered = false;
     if (inactiveNs) {
         Preferences prefs;
         if (prefs.begin(inactiveNs, false)) {
             prefs.clear();
             prefs.end();
             Serial.printf("[Settings] Cleared inactive namespace %s\n", inactiveNs);
+            recovered = true;
         }
     }
 
-    return true;
+    return recovered;
 }
 
 // Obfuscate a string using XOR (same function for encode/decode)
@@ -362,6 +364,9 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUShort(kNvsColorRssiV1, settings_.colorRssiV1);
     written += prefs.putUShort(kNvsColorRssiProxy, settings_.colorRssiProxy);
     written += prefs.putUShort(kNvsColorObd, settings_.colorObd);
+    written += prefs.putUShort(kNvsColorAlpConn, settings_.colorAlpConnected);
+    written += prefs.putUShort(kNvsColorAlpDetect, settings_.colorAlpDetection);
+    written += prefs.putUShort(kNvsColorAlpDefense, settings_.colorAlpDefense);
     written += prefs.putBool(kNvsFreqBandColor, settings_.freqUseBandColor);
     written += prefs.putBool(kNvsHideWifi, settings_.hideWifiIcon);
     written += prefs.putBool(kNvsHideProfile, settings_.hideProfileIndicator);
@@ -388,6 +393,7 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putUChar(kNvsSpeedMuteThreshold, settings_.speedMuteThresholdMph);
     written += prefs.putUChar(kNvsSpeedMuteHysteresis, settings_.speedMuteHysteresisMph);
     written += prefs.putUChar(kNvsSpeedMuteVolume, settings_.speedMuteVolume);
+    written += prefs.putBool(kNvsSpeedMuteVoice, settings_.speedMuteVoice);
     written += prefs.putBool(kNvsAutoPush, settings_.autoPushEnabled);
     written += prefs.putInt(kNvsActiveSlot, settings_.activeSlot);
     written += prefs.putString(kNvsSlot0Name, settings_.slot0Name);
@@ -430,6 +436,13 @@ bool SettingsManager::writeSettingsToNamespace(const char* ns) {
     written += prefs.putString(kNvsObdName, settings_.obdSavedName);
     written += prefs.putUChar(kNvsObdAddressType, settings_.obdSavedAddrType);
     written += prefs.putChar(kNvsObdMinRssi, settings_.obdMinRssi);
+
+    // ALP settings
+    written += prefs.putBool(kNvsAlpEnabled, settings_.alpEnabled);
+    written += prefs.putBool(kNvsAlpSdLog, settings_.alpSdLogEnabled);
+
+    // Debug / diagnostics
+    written += prefs.putBool(kNvsPowerOffSdLog, settings_.powerOffSdLog);
 
     // NVS validity marker - used to detect if NVS was wiped.
     // Written LAST so its presence proves the entire write completed.

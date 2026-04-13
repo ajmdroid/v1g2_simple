@@ -19,7 +19,8 @@ void PowerModule::performShutdownRequest() {
     }
 
     if (battery_) {
-        battery_->powerOff();
+        const bool sdLog = settings_ && settings_->get().powerOffSdLog;
+        battery_->powerOff(sdLog);
     }
 }
 

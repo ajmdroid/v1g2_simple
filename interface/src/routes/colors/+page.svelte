@@ -48,6 +48,12 @@
 		{ key: 'obd', id: 'obd-color', label: 'OBD Badge', pickerLabel: 'OBD Badge', preview: 'OBD' }
 	];
 
+	const ALP_BADGE_FIELDS = [
+		{ key: 'alpConnected', id: 'alp-connected-color', label: 'Connected', pickerLabel: 'ALP Connected', preview: 'ALP' },
+		{ key: 'alpDetection', id: 'alp-detection-color', label: 'Detection', pickerLabel: 'ALP Detection', preview: 'ALP' },
+		{ key: 'alpDefense', id: 'alp-defense-color', label: 'Defense', pickerLabel: 'ALP Defense', preview: 'ALP' }
+	];
+
 	const STATUS_FIELD_ROWS = [
 		[
 			{
@@ -487,6 +493,27 @@
 				<CardSectionHead title="OBD" subtitle="OBD status text color." />
 				<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 					{#each BADGE_FIELDS as field}
+						<ColorControl
+							id={field.id}
+							label={field.label}
+							value={colors[field.key]}
+							swatchSize="md"
+							ariaLabel={`${field.label} color`}
+							onPick={() => openPicker(field.key, field.pickerLabel)}
+							onHexChange={(value) => handleHexInput(field.key, value)}
+						>
+							<span class="text-xl font-bold font-mono" style={`color: ${rgb565ToHex(colors[field.key])}`}>{field.preview}</span>
+						</ColorControl>
+					{/each}
+				</div>
+			</div>
+		</div>
+
+		<div class="surface-card">
+			<div class="card-body">
+				<CardSectionHead title="ALP" subtitle="Laser jammer badge colors — matches control pad LED states." />
+				<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+					{#each ALP_BADGE_FIELDS as field}
 						<ColorControl
 							id={field.id}
 							label={field.label}

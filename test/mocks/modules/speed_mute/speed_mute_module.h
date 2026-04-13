@@ -6,7 +6,8 @@ struct SpeedMuteSettings {
     bool enabled = false;
     uint8_t thresholdMph = 25;
     uint8_t hysteresisMph = 3;
-    uint8_t v1Volume = 0xFF;
+    uint8_t v1Volume = 0;
+    bool voice = true;
 };
 
 struct SpeedMuteState {
@@ -20,19 +21,21 @@ public:
     SpeedMuteState state_;
 
     void begin(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph,
-               uint8_t v1Volume = 0xFF) {
+               uint8_t v1Volume = 0, bool voice = true) {
         settings_.enabled = enabled;
         settings_.thresholdMph = thresholdMph;
         settings_.hysteresisMph = hysteresisMph;
         settings_.v1Volume = v1Volume;
+        settings_.voice = voice;
     }
 
     void syncSettings(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph,
-                      uint8_t v1Volume = 0xFF) {
+                      uint8_t v1Volume = 0, bool voice = true) {
         settings_.enabled = enabled;
         settings_.thresholdMph = thresholdMph;
         settings_.hysteresisMph = hysteresisMph;
         settings_.v1Volume = v1Volume;
+        settings_.voice = voice;
     }
 
     bool isBandOverridden(uint8_t band) const {

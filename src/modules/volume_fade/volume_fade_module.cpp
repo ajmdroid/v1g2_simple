@@ -120,10 +120,14 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
         return action;
     }
 
-    // Alert muted or suppressed -> restore if we had faded, retry until confirmed
-    if (ctx.alertMuted || ctx.alertSuppressed) {
+    // Alert muted or suppressed -> restore if we had faded, retry until confirmed.
+    // BUT: if we are the ones that faded the volume (fadeActive_), the V1 may
+    // report its mute indicator at low/zero volume.  Don't fight with ourselves
+    // — only restore when the mute came from an external source (user mute
+    // button) or the alert was suppressed by another module.
+    if ((ctx.alertMuted && !fadeActive_) || ctx.alertSuppressed) {
         const bool restoreInFlight = (pendingRestoreVolume_ != 0xFF);
-        const bool firstRestoreAttempt = fadeActive_ && !restoreInFlight;
+        const bool firstRestoreAttempt = !restoreInFlight;
         const bool retryRestore = restoreInFlight && (ctx.currentVolume != originalVolume_);
         if (originalVolume_ != 0xFF && (firstRestoreAttempt || retryRestore)) {
             const bool retryWindowOpen =
@@ -244,7 +248,10 @@ VolumeFadeAction VolumeFadeModule::process(const VolumeFadeContext& ctx) {
     // Check if it's time to fade down
     unsigned long fadeDelayMs = static_cast<unsigned long>(s.alertVolumeFadeDelaySec) * 1000UL;
     if (!commandSent_ && (now - alertStartMs_) >= fadeDelayMs) {
-        uint8_t fadeVol = s.alertVolumeFadeVolume;
+        // Clamp minimum fade volume to 1.  Volume 0 causes the V1 to set its
+        // mute indicator in image1, which feeds back through alertMuted and
+        // triggers a restore→reset→re-fade cycle every fadeDelaySec.
+        uint8_t fadeVol = std::max<uint8_t>(1, s.alertVolumeFadeVolume);
         if (ctx.currentVolume > fadeVol) {
             action.type = VolumeFadeAction::Type::FADE_DOWN;
             action.targetVolume = fadeVol;

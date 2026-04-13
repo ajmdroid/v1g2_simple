@@ -40,11 +40,6 @@ struct FakeStatusRuntime {
     String firmwareVersion = "test-fw";
 
     bool timeValid = false;
-    uint8_t timeSource = 0;
-    uint8_t timeConfidence = 0;
-    int32_t timeTzOffsetMin = 0;
-    int64_t timeEpochMs = 0;
-    uint32_t timeAgeMs = 0;
 
     uint16_t batteryVoltageMv = 0;
     uint8_t batteryPercentage = 0;
@@ -90,18 +85,6 @@ static WifiStatusApiService::StatusRuntime makeRuntime(FakeStatusRuntime& rt) {
     r.hostnameCtx = &rt;
     r.firmwareVersion = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->firmwareVersion; };
     r.firmwareVersionCtx = &rt;
-    r.timeValid = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->timeValid; };
-    r.timeValidCtx = &rt;
-    r.timeSource = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->timeSource; };
-    r.timeSourceCtx = &rt;
-    r.timeConfidence = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->timeConfidence; };
-    r.timeConfidenceCtx = &rt;
-    r.timeTzOffsetMin = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->timeTzOffsetMin; };
-    r.timeTzOffsetMinCtx = &rt;
-    r.timeEpochMsOr0 = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->timeEpochMs; };
-    r.timeEpochMsOr0Ctx = &rt;
-    r.timeEpochAgeMsOr0 = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->timeAgeMs; };
-    r.timeEpochAgeMsOr0Ctx = &rt;
     r.batteryVoltageMv = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->batteryVoltageMv; };
     r.batteryVoltageMvCtx = &rt;
     r.batteryPercentage = [](void* ctx) { return static_cast<FakeStatusRuntime*>(ctx)->batteryPercentage; };
@@ -146,12 +129,6 @@ void test_handle_status_builds_core_payload() {
     rt.uptimeSeconds = 321;
     rt.heapFree = 65432;
     rt.firmwareVersion = "1.2.3-test";
-    rt.timeValid = true;
-    rt.timeSource = 2;
-    rt.timeConfidence = 3;
-    rt.timeTzOffsetMin = -300;
-    rt.timeEpochMs = 1700000000000LL;
-    rt.timeAgeMs = 111;
     rt.batteryVoltageMv = 4042;
     rt.batteryPercentage = 84;
     rt.batteryOnBattery = true;
@@ -182,8 +159,6 @@ void test_handle_status_builds_core_payload() {
     TEST_ASSERT_TRUE(responseContains(server, "\"uptime\":321"));
     TEST_ASSERT_TRUE(responseContains(server, "\"heap_free\":65432"));
     TEST_ASSERT_TRUE(responseContains(server, "\"firmware_version\":\"1.2.3-test\""));
-    TEST_ASSERT_TRUE(responseContains(server, "\"time\":{\"valid\":true"));
-    TEST_ASSERT_TRUE(responseContains(server, "\"tzOffsetMinutes\":-300"));
     TEST_ASSERT_TRUE(responseContains(server, "\"voltage_mv\":4042"));
     TEST_ASSERT_TRUE(responseContains(server, "\"percentage\":84"));
     TEST_ASSERT_TRUE(responseContains(server, "\"v1_connected\":true"));

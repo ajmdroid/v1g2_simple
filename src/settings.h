@@ -127,6 +127,9 @@ struct V1Settings {
     uint16_t colorRssiV1;        // RSSI indicator V1 label color
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
     uint16_t colorObd;           // OBD "OBD" status text color when connected
+    uint16_t colorAlpConnected;  // ALP badge: green — connected, idle
+    uint16_t colorAlpDetection;  // ALP badge: orange — detection mode (scanning)
+    uint16_t colorAlpDefense;    // ALP badge: blue — defense mode (armed, ready to jam)
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
 
     // Display visibility settings
@@ -158,13 +161,14 @@ struct V1Settings {
     // Volume fade (reduce V1 volume after initial alert period)
     bool alertVolumeFadeEnabled;    // Enable volume fade feature
     uint8_t alertVolumeFadeDelaySec; // Seconds at full volume before fading (1-10)
-    uint8_t alertVolumeFadeVolume;  // Volume to fade to (0-9)
+    uint8_t alertVolumeFadeVolume;  // Volume to fade to (1-9; 0 triggers V1 mute feedback loop)
 
     // Speed-aware muting (suppress alerts below speed threshold)
     bool speedMuteEnabled;           // Enable speed-based auto-muting
     uint8_t speedMuteThresholdMph;   // Mute below this speed (5-60 mph)
     uint8_t speedMuteHysteresisMph;  // Unmute at threshold + hysteresis (1-10 mph)
-    uint8_t speedMuteVolume;         // V1 volume when speed-muted (0-9, 0xFF = voice-only)
+    uint8_t speedMuteVolume;         // V1 volume when speed-muted (0-9)
+    bool speedMuteVoice;             // Also suppress voice announcements when speed-muted
 
     // Auto-push on connection settings
     bool autoPushEnabled;        // Enable auto-push profile on V1 connection
@@ -234,6 +238,13 @@ struct V1Settings {
     uint8_t obdSavedAddrType;    // Saved BLE address type (0=public, 1=random)
     int8_t obdMinRssi;           // Minimum RSSI for scan acceptance (dBm)
 
+    // ALP (Active Laser Protection) settings
+    bool alpEnabled;             // Enable ALP UART listener module
+    bool alpSdLogEnabled;        // Enable ALP event logging to SD card (CSV)
+
+    // Debug / diagnostics
+    bool powerOffSdLog;          // Log power-off diagnostics to /poweroff.log on SD
+
     // Default constructor with sensible defaults
     V1Settings() :
         enableWifi(true),
@@ -274,6 +285,9 @@ struct V1Settings {
         colorRssiV1(0x07E0),     // Green (V1 RSSI label) — matches NVS default
         colorRssiProxy(0x001F),  // Blue (proxy RSSI label) — matches NVS default
         colorObd(0x001F),         // Blue OBD badge (matches existing BLE disconnected icon default)
+        colorAlpConnected(0x07E0), // Green ALP badge — connected, idle
+        colorAlpDetection(0xFD20), // Orange ALP badge — detection mode (scanning)
+        colorAlpDefense(0x001F),   // Blue ALP badge — defense mode (armed)
         freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
@@ -299,7 +313,8 @@ struct V1Settings {
         speedMuteEnabled(false),         // Speed mute disabled by default
         speedMuteThresholdMph(25),       // 25 mph default (city driving)
         speedMuteHysteresisMph(3),       // 3 mph hysteresis band
-        speedMuteVolume(0xFF),           // Voice-only by default (no V1 volume change)
+        speedMuteVolume(0),              // Silent by default
+        speedMuteVoice(true),            // Suppress voice when speed-muted
         autoPushEnabled(false),
         activeSlot(0),
         slot0Name("DEFAULT"),
@@ -336,7 +351,10 @@ struct V1Settings {
         obdSavedAddress(""),     // No saved device
         obdSavedName(""),        // No friendly name
         obdSavedAddrType(0),     // Default PUBLIC address type
-        obdMinRssi(-90) {}       // Default -90 dBm minimum RSSI
+        obdMinRssi(-90),         // Default -90 dBm minimum RSSI
+        alpEnabled(false),       // ALP disabled by default
+        alpSdLogEnabled(false),  // ALP SD logging off by default
+        powerOffSdLog(false) {}  // Power-off SD logging off by default
 
     static uint8_t normalizeAutoPushSlotIndex(int slotNum) {
         return slotNum == 1 ? 1 : (slotNum == 2 ? 2 : 0);
@@ -454,6 +472,15 @@ struct DeviceSettingsUpdate {
 
     bool hasEnableWifiAtBoot = false;
     bool enableWifiAtBoot = false;
+
+    bool hasAlpEnabled = false;
+    bool alpEnabled = false;
+
+    bool hasAlpSdLogEnabled = false;
+    bool alpSdLogEnabled = false;
+
+    bool hasPowerOffSdLog = false;
+    bool powerOffSdLog = false;
 };
 
 struct AudioSettingsUpdate {
@@ -506,7 +533,10 @@ struct AudioSettingsUpdate {
     uint8_t speedMuteHysteresisMph = 0;
 
     bool hasSpeedMuteVolume = false;
-    uint8_t speedMuteVolume = 0xFF;      // 0xFF = voice-only (no V1 volume change)
+    uint8_t speedMuteVolume = 0;
+
+    bool hasSpeedMuteVoice = false;
+    bool speedMuteVoice = true;
 };
 
 struct DisplaySettingsUpdate {
@@ -564,6 +594,12 @@ struct DisplaySettingsUpdate {
     uint16_t colorRssiProxy = 0;
     bool hasColorObd = false;
     uint16_t colorObd = 0;
+    bool hasColorAlpConnected = false;
+    uint16_t colorAlpConnected = 0;
+    bool hasColorAlpDetection = false;
+    uint16_t colorAlpDetection = 0;
+    bool hasColorAlpDefense = false;
+    uint16_t colorAlpDefense = 0;
     bool hasFreqUseBandColor = false;
     bool freqUseBandColor = false;
     bool hasHideWifiIcon = false;

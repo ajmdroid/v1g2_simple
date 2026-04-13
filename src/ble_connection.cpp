@@ -79,7 +79,7 @@ void V1BLEClient::ScanCallbacks::onResult(const NimBLEAdvertisedDevice* advertis
         bleClient->targetAddressType_ = advAddrType;  // Save for reconnect
         bleClient->hasTargetDevice_ = true;
         bleClient->shouldConnect_ = true;
-        bleClient->scanStopRequestedMs_ = millis();
+        bleClient->scanStopRequestedMs_ = static_cast<uint32_t>(millis());
         bleClient->setBLEState(BLEState::SCAN_STOPPING, "V1 found");
     } else {
         // Defer update to main loop if mutex is busy
@@ -178,6 +178,16 @@ void V1BLEClient::ClientCallbacks::onDisconnect(NimBLEClient* pClient_, int reas
             instancePtr->verifyPending_ = false;
             instancePtr->verifyComplete_ = false;
             instancePtr->verifyMatch_ = false;
+            // Clear backoff state so the reconnection cycle starts fresh.
+            // A spontaneous V1 disconnect (power-off) is not a connect failure —
+            // carrying forward failure counters causes escalating backoff that
+            // prevents timely reconnection when the V1 comes back.
+            instancePtr->consecutiveConnectFailures_ = 0;
+            instancePtr->nextConnectAllowedMs_ = 0;
+            // Clear stale scan target so the state machine does a full fresh scan
+            // instead of trying to connect to a potentially-stale address.
+            instancePtr->shouldConnect_ = false;
+            instancePtr->hasTargetDevice_ = false;
             // Set state to DISCONNECTED - will trigger scan restart in process()
             instancePtr->setBLEState(BLEState::DISCONNECTED, "onDisconnect callback");
         } else {
@@ -205,13 +215,13 @@ bool V1BLEClient::connectToServer() {
     NimBLEScan* pScan = NimBLEDevice::getScan();
     if (pScan && pScan->isScanning()) {
         pScan->stop();
-        scanStopRequestedMs_ = millis();
+        scanStopRequestedMs_ = static_cast<uint32_t>(millis());
         setBLEState(BLEState::SCAN_STOPPING, "connectToServer guard");
         return false;
     }
 
     // Guard 3: Check exponential backoff
-    unsigned long now = millis();
+    const uint32_t now = static_cast<uint32_t>(millis());
     if (consecutiveConnectFailures_ > 0 && static_cast<int32_t>(now - nextConnectAllowedMs_) < 0) {
         {
             SemaphoreGuard lock(bleMutex_, pdMS_TO_TICKS(20));  // COLD: backoff check
@@ -224,7 +234,7 @@ bool V1BLEClient::connectToServer() {
     // Set connection guard; CONNECTING state will initiate one async attempt
     // per loop() pass to avoid monopolizing a single iteration.
     connectInProgress_ = true;
-    connectStartMs_ = millis();
+    connectStartMs_ = static_cast<uint32_t>(millis());
     connectAttemptNumber_ = 0;  // Reset for new connection sequence
     asyncConnectPending_ = false;
     asyncConnectSuccess_ = false;
@@ -289,7 +299,7 @@ bool V1BLEClient::startAsyncConnect() {
         // Never block loop() waiting for disconnect. Stage a short retry delay.
         Serial.println("[BLE] Client thinks it's connected_; staging reconnect retry");
         pClient_->disconnect();
-        nextConnectAllowedMs_ = millis() + 100;
+        nextConnectAllowedMs_ = static_cast<uint32_t>(millis()) + 100;
         connectInProgress_ = false;
         connectStartMs_ = 0;
         setBLEState(BLEState::BACKOFF, "waiting stale disconnect");
@@ -325,7 +335,8 @@ bool V1BLEClient::startAsyncConnect() {
             return false;
         }
 
-        nextConnectAllowedMs_ = millis() + computeV1BleBackoffMs(consecutiveConnectFailures_);
+        nextConnectAllowedMs_ =
+            static_cast<uint32_t>(millis()) + computeV1BleBackoffMs(consecutiveConnectFailures_);
 
         connectInProgress_ = false;
         connectStartMs_ = 0;
@@ -363,8 +374,8 @@ bool V1BLEClient::finishConnection() {
 
 // Process CONNECTING_WAIT state - polls for async connect completion
 void V1BLEClient::processConnectingWait() {
-    unsigned long now = millis();
-    unsigned long elapsed = now - connectStartMs_;
+    const uint32_t now = static_cast<uint32_t>(millis());
+    const uint32_t elapsed = now - connectStartMs_;
 
     // Check for async connect success (set by onConnect callback)
     if (asyncConnectSuccess_) {
@@ -393,7 +404,8 @@ void V1BLEClient::processConnectingWait() {
                 return;
             }
 
-            nextConnectAllowedMs_ = millis() + computeV1BleBackoffMs(consecutiveConnectFailures_);
+            nextConnectAllowedMs_ =
+                static_cast<uint32_t>(millis()) + computeV1BleBackoffMs(consecutiveConnectFailures_);
 
             connectInProgress_ = false;
             connectStartMs_ = 0;
@@ -410,7 +422,7 @@ void V1BLEClient::processConnectingWait() {
     // Check if we should retry
     if (connectAttemptNumber_ < MAX_CONNECT_ATTEMPTS) {
         if (err == 13) {  // EBUSY - defer via backoff instead of blocking main loop
-            nextConnectAllowedMs_ = millis() + 150;  // 150ms non-blocking deferral
+            nextConnectAllowedMs_ = static_cast<uint32_t>(millis()) + 150;  // 150ms non-blocking deferral
             connectInProgress_ = false;
             connectStartMs_ = 0;
             setBLEState(BLEState::BACKOFF, "EBUSY retry");
@@ -418,7 +430,7 @@ void V1BLEClient::processConnectingWait() {
         }
 
         // Retry on the next loop iteration to keep each process() slice bounded.
-        nextConnectAllowedMs_ = millis() + 20;
+        nextConnectAllowedMs_ = static_cast<uint32_t>(millis()) + 20;
         setBLEState(BLEState::CONNECTING, "async connect retry");
         return;
     }
@@ -432,7 +444,8 @@ void V1BLEClient::processConnectingWait() {
         return;
     }
 
-    nextConnectAllowedMs_ = millis() + computeV1BleBackoffMs(consecutiveConnectFailures_);
+    nextConnectAllowedMs_ =
+        static_cast<uint32_t>(millis()) + computeV1BleBackoffMs(consecutiveConnectFailures_);
 
     connectInProgress_ = false;
     connectStartMs_ = 0;
@@ -457,7 +470,7 @@ void V1BLEClient::discoveryTaskFunc(void* param) {
 // Process DISCOVERING state - spawns discovery in a short-lived task
 // so the main loop stays responsive during the ~2s GATT discovery
 void V1BLEClient::processDiscovering() {
-    unsigned long elapsed = millis() - connectStartMs_;
+    const uint32_t elapsed = static_cast<uint32_t>(millis()) - connectStartMs_;
 
     // Check for timeout
     // Safe even if discovery task is blocked: disconnect() sends HCI terminate,
@@ -495,7 +508,8 @@ void V1BLEClient::processDiscovering() {
                 return;
             }
 
-            nextConnectAllowedMs_ = millis() + computeV1BleBackoffMs(consecutiveConnectFailures_);
+            nextConnectAllowedMs_ =
+                static_cast<uint32_t>(millis()) + computeV1BleBackoffMs(consecutiveConnectFailures_);
 
             connectInProgress_ = false;
             connectStartMs_ = 0;
@@ -533,7 +547,7 @@ void V1BLEClient::processDiscovering() {
 // Process SUBSCRIBING state - non-blocking step machine
 // Each call executes one step then yields to allow loop() to run
 void V1BLEClient::processSubscribing() {
-    unsigned long elapsed = millis() - connectStartMs_;
+    const uint32_t elapsed = static_cast<uint32_t>(millis()) - connectStartMs_;
 
     // Check for overall timeout
     if (elapsed > CONNECT_TIMEOUT_MS + DISCOVERY_TIMEOUT_MS + SUBSCRIBE_TIMEOUT_MS) {
@@ -567,7 +581,7 @@ void V1BLEClient::processSubscribing() {
             SemaphoreGuard lock(bleMutex_, pdMS_TO_TICKS(20));  // COLD: subscribe complete
             connected_.store(true, std::memory_order_relaxed);
         }
-        const uint32_t connectedNowMs = millis();
+        const uint32_t connectedNowMs = static_cast<uint32_t>(millis());
         connectCompletedAtMs_.store(connectedNowMs, std::memory_order_relaxed);
         firstRxAfterConnectMs_.store(0, std::memory_order_relaxed);
         connectBurstStableLoopCount_ = 0;
@@ -584,13 +598,14 @@ void V1BLEClient::processSubscribing() {
     }
 
     // Step completed but more to do - yield to loop()
-    subscribeYieldUntilMs_ = millis() + SUBSCRIBE_YIELD_MS;
+    subscribeYieldUntilMs_ = static_cast<uint32_t>(millis()) + SUBSCRIBE_YIELD_MS;
     setBLEState(BLEState::SUBSCRIBE_YIELD, "yield between steps");
 }
 
 // Process SUBSCRIBE_YIELD state - wait briefly then resume subscribing
 void V1BLEClient::processSubscribeYield() {
-    if (static_cast<int32_t>(millis() - subscribeYieldUntilMs_) >= 0) {
+    const uint32_t nowMs = static_cast<uint32_t>(millis());
+    if (static_cast<int32_t>(nowMs - subscribeYieldUntilMs_) >= 0) {
         setBLEState(BLEState::SUBSCRIBING, "resuming subscribe");
     }
 }
@@ -791,7 +806,7 @@ void V1BLEClient::notifyCallback(NimBLERemoteCharacteristic* pChar,
 
     if (instancePtr->connected_.load(std::memory_order_relaxed) &&
         instancePtr->firstRxAfterConnectMs_.load(std::memory_order_relaxed) == 0) {
-        instancePtr->firstRxAfterConnectMs_.store(millis(), std::memory_order_relaxed);
+        instancePtr->firstRxAfterConnectMs_.store(static_cast<uint32_t>(millis()), std::memory_order_relaxed);
     }
 
     // Call user callback for display processing (queued to main loop for SPI safety)

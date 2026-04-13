@@ -21,16 +21,17 @@
 #include "display_mode.h"
 #include "packet_parser.h"
 #include "perf_sd_logger.h"
+#include "modules/alp/alp_sd_logger.h"
 #include "settings.h"
 #include "settings_runtime_sync.h"
 #include "storage_manager.h"
-#include "time_service.h"
 #include "touch_handler.h"
 #include "v1_devices.h"
 #include "v1_profiles.h"
 #include "wifi_manager.h"
 #include "modules/auto_push/auto_push_module.h"
 #include "modules/alert_persistence/alert_persistence_module.h"
+#include "modules/obd/obd_ble_client.h"
 #include "modules/perf/debug_macros.h"
 #include "modules/touch/tap_gesture_module.h"
 #include <driver/gpio.h>
@@ -77,14 +78,32 @@ void prepareForShutdown(void* /*context*/) {
         delay(100);
     }
 
+    // ── BLE teardown ─────────────────────────────────────────────────
+    // Disconnect all BLE peripherals BEFORE power-off so remote devices
+    // (V1, OBDLink, ALP) see a proper GAP disconnect and release their
+    // connection slots.  Without this, the next boot starts a fresh
+    // NimBLE stack while the remote side still holds a stale link,
+    // blocking reconnection until the remote's supervision timeout fires
+    // (which may never happen on some devices).
+    //
+    // NimBLEDevice::deinit() is banned (see ble_internals.h) — disconnect
+    // only; the stack is destroyed moments later by power-off anyway.
+    Serial.println("[Battery] Disconnecting BLE peripherals before shutdown...");
+    bleClient.disconnect();
+    obdBleClient.disconnect();
+    // Stop any active scan so the controller isn't mid-operation at power-off.
+    NimBLEScan* pScan = NimBLEDevice::getScan();
+    if (pScan && pScan->isScanning()) {
+        pScan->stop();
+    }
+    delay(50);  // Brief settle for disconnect packets to transmit
+
     Serial.println("[Battery] Saving settings...");
     settingsManager.save();
 
     Serial.println("[Battery] Forcing final SD settings backup...");
     settingsManager.backupToSD();
 
-    Serial.println("[Battery] Saving last seen time snapshot...");
-    timeService.persistCurrentTime();
 }
 
 void onV1ConnectImmediate() {
@@ -179,6 +198,14 @@ uint32_t initializeBootPerformanceLoggers() {
         SerialLog.println("[PERF] SD logger disabled (no SD)");
     }
 
+    // ALP SD logger — event-level CSV for drive data capture
+    const bool alpLogEnabled = settingsManager.get().alpSdLogEnabled;
+    alpSdLogger.setBootId(bootId);
+    alpSdLogger.begin(alpLogEnabled, sdEnabled);
+    if (alpSdLogger.isEnabled()) {
+        SerialLog.printf("[ALP_SD] logger enabled (%s)\n", alpSdLogger.csvPath());
+    }
+
     return bootId;
 }
 
@@ -260,8 +287,8 @@ void initializeEarlyBootDiagnostics() {
     // Wait for USB to stabilize after upload.
     delay(50);
 
-    // Release GPIO hold from deep sleep (backlight was held off during sleep).
-    // Must happen before display init re-configures the pin.
+    // Release GPIO hold from deep-sleep fallback (backlight was held off).
+    // Harmless no-op on normal power-on; must happen before display init.
     gpio_deep_sleep_hold_dis();
     gpio_hold_dis(static_cast<gpio_num_t>(LCD_BL));
 

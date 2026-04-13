@@ -6,7 +6,6 @@
 #include "perf_metrics.h"
 #include "settings.h"
 #include "perf_sd_logger.h"
-#include "time_service.h"
 #include "modules/wifi/wifi_static_path_guard.h"
 #include "modules/wifi/wifi_auto_timeout_module.h"
 #include "modules/wifi/wifi_heap_guard_module.h"
@@ -113,8 +112,6 @@ bool WiFiManager::canStartSetupMode(uint32_t* freeInternal, uint32_t* largestInt
 // (called on every HTTP request via checkRateLimit/markUiActivity)
 
 bool WiFiManager::startSetupMode(const bool autoStarted) {
-    timeService.begin();  // Ensure persisted/system time is restored before serving UI.
-
     const V1Settings& settings = settingsManager.get();
     const bool apStaMode = shouldUseApSta(settings);
     const auto recordStartPreflight = [](const uint32_t elapsedUs) {

@@ -6,7 +6,6 @@
 #include <stdint.h>
 
 #define WARNING_VOLUME_ZERO_PCM_SAMPLES 36912
-#define WARNING_VOLUME_ZERO_PCM_SAMPLE_RATE 22050
 #define WARNING_VOLUME_ZERO_PCM_DURATION_MS 1674
 
 static const int16_t warning_volume_zero_pcm[36912] PROGMEM = {

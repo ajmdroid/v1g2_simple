@@ -124,7 +124,7 @@ void V1BLEClient::stopProxyAdvertisingFromMainLoop(uint8_t reasonCode) {
     NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
     if (pAdv && pAdv->isAdvertising()) {
         NimBLEDevice::stopAdvertising();
-        perfRecordProxyAdvertisingTransition(false, reasonCode, millis());
+        perfRecordProxyAdvertisingTransition(false, reasonCode, static_cast<uint32_t>(millis()));
     }
 }
 
@@ -144,7 +144,7 @@ void V1BLEClient::handleProxyCallbackEvent(const ProxyCallbackEvent& event) {
             perfRecordProxyAdvertisingTransition(
                 false,
                 static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StopAppConnected),
-                millis());
+                static_cast<uint32_t>(millis()));
             return;
 
         case ProxyCallbackEventType::APP_DISCONNECTED:
@@ -160,7 +160,7 @@ void V1BLEClient::handleProxyCallbackEvent(const ProxyCallbackEvent& event) {
                     clearProxyAdvertisingSchedule();
                     return;
                 }
-                proxyAdvertisingStartMs_ = millis();
+                proxyAdvertisingStartMs_ = static_cast<uint32_t>(millis());
                 proxyAdvertisingStartReasonCode_ =
                     static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartAppDisconnect);
             }
@@ -437,7 +437,7 @@ bool V1BLEClient::forceProxyAdvertising(bool enable, uint8_t reasonCode) {
         // Explicit debug/test control refreshes the no-client window so
         // transition-drive flaps do not inherit a stale boot-time deadline.
         proxyNoClientTimeoutLatched_ = false;
-        proxyNoClientDeadlineMs_ = millis() + PROXY_NO_CLIENT_TIMEOUT_MS;
+        proxyNoClientDeadlineMs_ = static_cast<uint32_t>(millis()) + PROXY_NO_CLIENT_TIMEOUT_MS;
         startProxyAdvertising(startReason, true);
         return isProxyAdvertising();
     }
@@ -461,7 +461,7 @@ void V1BLEClient::startProxyAdvertising(uint8_t reasonCode, bool ignoreWifiPrior
     }
 
     if (!proxyClientConnectedOnceThisBoot_ && proxyNoClientDeadlineMs_ == 0) {
-        proxyNoClientDeadlineMs_ = millis() + PROXY_NO_CLIENT_TIMEOUT_MS;
+        proxyNoClientDeadlineMs_ = static_cast<uint32_t>(millis()) + PROXY_NO_CLIENT_TIMEOUT_MS;
         Serial.printf("[BLE] Proxy no-client timeout armed (%lus)\n",
                       static_cast<unsigned long>(PROXY_NO_CLIENT_TIMEOUT_MS / 1000));
     }
@@ -479,15 +479,16 @@ void V1BLEClient::startProxyAdvertising(uint8_t reasonCode, bool ignoreWifiPrior
     // Start advertising if not already (simple approach, no task needed)
     if (!NimBLEDevice::getAdvertising()->isAdvertising()) {
         if (NimBLEDevice::startAdvertising()) {
-            proxyAdvertisingWindowStartMs_ = millis();
-            perfRecordProxyAdvertisingTransition(true, reasonCode, millis());
+            const uint32_t nowMs = static_cast<uint32_t>(millis());
+            proxyAdvertisingWindowStartMs_ = nowMs;
+            perfRecordProxyAdvertisingTransition(true, reasonCode, nowMs);
             Serial.println("Proxy advertising started");
         }
     } else {
         if (proxyAdvertisingWindowStartMs_ == 0) {
-            proxyAdvertisingWindowStartMs_ = millis();
+            proxyAdvertisingWindowStartMs_ = static_cast<uint32_t>(millis());
         }
-        perfRecordProxyAdvertisingTransition(true, reasonCode, millis());
+        perfRecordProxyAdvertisingTransition(true, reasonCode, static_cast<uint32_t>(millis()));
         Serial.println("Proxy already advertising");
     }
     perfRecordBleProxyStartUs(micros() - startUs);
@@ -530,7 +531,7 @@ void V1BLEClient::forwardToProxy(const uint8_t* data, size_t length, uint16_t so
     memcpy(pkt.data, data, length);
     pkt.length = length;
     pkt.charUUID = sourceCharUUID;
-    pkt.tsMs = millis();
+    pkt.tsMs = static_cast<uint32_t>(millis());
     proxyQueueHead_ = (proxyQueueHead_ + 1) % PROXY_QUEUE_SIZE;
     proxyQueueCount_++;
 
@@ -561,7 +562,7 @@ int V1BLEClient::processProxyQueue() {
     // Process all queued packets (typically 1-2)
     while (proxyQueueCount_ > 0) {
         ProxyPacket& pkt = proxyQueue_[proxyQueueTail_];
-        uint32_t nowMs = millis();
+        uint32_t nowMs = static_cast<uint32_t>(millis());
         if (pkt.tsMs != 0 && nowMs >= pkt.tsMs) {
             perfRecordNotifyToProxyMs(nowMs - pkt.tsMs);
         }

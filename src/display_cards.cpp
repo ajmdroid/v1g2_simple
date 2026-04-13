@@ -41,8 +41,6 @@ static struct {
 
 void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted) {
 #if defined(DISPLAY_WAVESHARE_349)
-    secondaryCardsRenderDirty_ = false;
-
     const int cardH = SECONDARY_ROW_HEIGHT;  // 54px (compact with uniform signal bars)
     const int cardY = SCREEN_HEIGHT - SECONDARY_ROW_HEIGHT;  // Y=118
     const int cardW = 145;     // Card width (wider to fit freq + band)
@@ -94,9 +92,6 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         const int clearWidth = signalBarsX - startX;
         if (clearWidth > 0) {
             FILL_RECT(startX, cardY, clearWidth, cardH, PALETTE_BG);
-            if (g_elementCaches.cards.lastDrawnCount > 0) {
-                secondaryCardsRenderDirty_ = true;
-            }
         }
         // Reset last drawn count so next time cards appear, change is detected
         g_elementCaches.cards.lastDrawnCount = 0;
@@ -317,7 +312,6 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
             if (s_cardsLastDrawnPositions[i].band != BAND_NONE) {
                 FILL_RECT(cardX, cardY, cardW, cardH, PALETTE_BG);
                 s_cardsLastDrawnPositions[i].band = BAND_NONE;
-                secondaryCardsRenderDirty_ = true;
             }
             continue;
         }
@@ -325,7 +319,6 @@ void V1Display::drawSecondaryAlertCards(const AlertData* alerts, int alertCount,
         if (!needsFullRedraw && !needsDynamicUpdate) {
             continue;  // Skip this position - nothing changed
         }
-        secondaryCardsRenderDirty_ = true;
 
         // ============================================================================
         // V1 ALERT CARD

@@ -53,10 +53,10 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     // With multi-alert always enabled, use raised layout as default
     const bool raisedLayout = dirty.multiAlert;
     if (raisedLayout) {
-        cy = 85;  // Raised but allow full-size arrows
+        cy = 94;  // Raised but allow full-size arrows
         cx -= 6;
     } else {
-        cy = 95;
+        cy = 104;
         cx -= 6;
     }
 
@@ -66,19 +66,19 @@ void V1Display::drawDirectionArrow(Direction dir, bool muted, uint8_t flashBits,
     // Top arrow (FRONT): Taller triangle pointing up - matches V1 proportions
     // Wider/shallower angle to match V1 reference
     const int topW = (int)(125 * scale);      // Width at base
-    const int topH = (int)(62 * scale);       // Height
+    const int topH = (int)(70 * scale);       // Height
     const int topNotchW = (int)(63 * scale);  // Notch width at bottom
     const int topNotchH = (int)(8 * scale);   // Notch height
 
     // Bottom arrow (REAR): Shorter/squatter triangle pointing down
     const int bottomW = (int)(125 * scale);   // Same width as top
-    const int bottomH = (int)(40 * scale);    // Shorter height
+    const int bottomH = (int)(30 * scale);    // Shorter height
     const int bottomNotchW = (int)(63 * scale);
     const int bottomNotchH = (int)(8 * scale);
 
     // Calculate positions for equal gaps between arrows
     const int sideBarH = (int)(22 * scale);
-    const int gap = (int)(13 * scale);  // gap between arrows
+    const int gap = (int)(15 * scale);  // gap between arrows
 
     // Top arrow center: above side arrow with gap
     int topArrowCenterY = cy - sideBarH/2 - gap - topH/2;

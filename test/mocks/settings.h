@@ -70,6 +70,9 @@ struct V1Settings {
     uint16_t colorBar6 = 0xF800;  // Red (strongest)
     // Indicator badge colors
     uint16_t colorObd        = 0x001F;  // Blue OBD badge
+    uint16_t colorAlpConnected = 0x07E0;  // Green ALP connected
+    uint16_t colorAlpDetection     = 0xFD20;  // Orange ALP detection mode
+    uint16_t colorAlpDefense    = 0x001F;  // Blue ALP defense mode
     // Volume/RSSI indicator colors
     uint16_t colorVolumeMain = 0xF800;  // Red main volume
     uint16_t colorVolumeMute = 0x7BEF;  // Grey muted volume
@@ -121,7 +124,8 @@ struct V1Settings {
     bool speedMuteEnabled = false;
     uint8_t speedMuteThresholdMph = 25;
     uint8_t speedMuteHysteresisMph = 3;
-    uint8_t speedMuteVolume = 0xFF;
+    uint8_t speedMuteVolume = 0;
+    bool speedMuteVoice = true;
     
     // Misc flags retained for compatibility
     bool obdEnabled = false;
@@ -133,6 +137,7 @@ struct V1Settings {
     bool bleProxyEnabled = true;
     uint8_t activeSlot = 0;
     bool autoPushEnabled = false;
+    bool powerOffSdLog = false;
 
 };
 

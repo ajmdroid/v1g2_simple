@@ -15,7 +15,6 @@ static PeriodicMaintenanceModule module;
 
 enum CallId {
     CALL_PERF = 1,
-    CALL_TIME_SAVE = 2,
     CALL_OBD_SETTINGS_SYNC = 3,
     CALL_DEFERRED_SETTINGS_PERSIST = 4,
     CALL_DEFERRED_SETTINGS_BACKUP = 5,
@@ -31,10 +30,7 @@ static size_t timestampSequenceCount = 0;
 static size_t timestampSequenceIndex = 0;
 
 static uint32_t perfElapsedUs = 0;
-static uint32_t timeElapsedUs = 0;
 static int perfRecordCalls = 0;
-static int timeRecordCalls = 0;
-static uint32_t timeSaveNowMs = 0;
 static uint32_t obdSettingsSyncNowMs = 0;
 static uint32_t deferredSettingsPersistNowMs = 0;
 static uint32_t deferredSettingsBackupNowMs = 0;
@@ -75,11 +71,6 @@ static void recordPerfReportUs(void*, uint32_t elapsedUs) {
     perfElapsedUs = elapsedUs;
 }
 
-static void runTimeSave(void*, uint32_t nowMs) {
-    noteCall(CALL_TIME_SAVE);
-    timeSaveNowMs = nowMs;
-}
-
 static void runObdSettingsSync(void*, uint32_t nowMs) {
     noteCall(CALL_OBD_SETTINGS_SYNC);
     obdSettingsSyncNowMs = nowMs;
@@ -88,11 +79,6 @@ static void runObdSettingsSync(void*, uint32_t nowMs) {
 static void runDeferredSettingsPersist(void*, uint32_t nowMs) {
     noteCall(CALL_DEFERRED_SETTINGS_PERSIST);
     deferredSettingsPersistNowMs = nowMs;
-}
-
-static void recordTimeSaveUs(void*, uint32_t elapsedUs) {
-    timeRecordCalls++;
-    timeElapsedUs = elapsedUs;
 }
 
 static void runDeferredSettingsBackup(void*, uint32_t nowMs) {
@@ -115,10 +101,7 @@ static void resetState() {
     timestampSequenceCount = 0;
     timestampSequenceIndex = 0;
     perfElapsedUs = 0;
-    timeElapsedUs = 0;
     perfRecordCalls = 0;
-    timeRecordCalls = 0;
-    timeSaveNowMs = 0;
     obdSettingsSyncNowMs = 0;
     deferredSettingsPersistNowMs = 0;
     deferredSettingsBackupNowMs = 0;
@@ -137,8 +120,6 @@ void test_process_runs_full_bundle_in_order_with_timing_records() {
     providers.timestampUs = nextTimestampUs;
     providers.runPerfReport = runPerfReport;
     providers.recordPerfReportUs = recordPerfReportUs;
-    providers.runTimeSave = runTimeSave;
-    providers.recordTimeSaveUs = recordTimeSaveUs;
     providers.runObdSettingsSync = runObdSettingsSync;
     providers.runDeferredSettingsPersist = runDeferredSettingsPersist;
     providers.runDeferredSettingsBackup = runDeferredSettingsBackup;
@@ -146,24 +127,20 @@ void test_process_runs_full_bundle_in_order_with_timing_records() {
     providers.runStoreSave = runStoreSave;
     module.begin(providers);
 
-    setTimestampSequence({100, 130, 200, 245});
+    setTimestampSequence({100, 130});
     module.process(5000);
 
-    TEST_ASSERT_EQUAL(7, callLogCount);
+    TEST_ASSERT_EQUAL(6, callLogCount);
     TEST_ASSERT_EQUAL(CALL_PERF, callLog[0]);
-    TEST_ASSERT_EQUAL(CALL_TIME_SAVE, callLog[1]);
-    TEST_ASSERT_EQUAL(CALL_OBD_SETTINGS_SYNC, callLog[2]);
-    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_PERSIST, callLog[3]);
-    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_BACKUP, callLog[4]);
-    TEST_ASSERT_EQUAL(CALL_DEFERRED_BLE_BOND_BACKUP, callLog[5]);
-    TEST_ASSERT_EQUAL(CALL_STORE_SAVE, callLog[6]);
+    TEST_ASSERT_EQUAL(CALL_OBD_SETTINGS_SYNC, callLog[1]);
+    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_PERSIST, callLog[2]);
+    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_BACKUP, callLog[3]);
+    TEST_ASSERT_EQUAL(CALL_DEFERRED_BLE_BOND_BACKUP, callLog[4]);
+    TEST_ASSERT_EQUAL(CALL_STORE_SAVE, callLog[5]);
 
     TEST_ASSERT_EQUAL(1, perfRecordCalls);
     TEST_ASSERT_EQUAL(30u, perfElapsedUs);
-    TEST_ASSERT_EQUAL(1, timeRecordCalls);
-    TEST_ASSERT_EQUAL(45u, timeElapsedUs);
 
-    TEST_ASSERT_EQUAL(5000u, timeSaveNowMs);
     TEST_ASSERT_EQUAL(5000u, obdSettingsSyncNowMs);
     TEST_ASSERT_EQUAL(5000u, deferredSettingsPersistNowMs);
     TEST_ASSERT_EQUAL(5000u, deferredSettingsBackupNowMs);
@@ -174,7 +151,6 @@ void test_process_runs_full_bundle_in_order_with_timing_records() {
 void test_process_skips_missing_providers_gracefully() {
     PeriodicMaintenanceModule::Providers providers;
     providers.runPerfReport = runPerfReport;
-    providers.runTimeSave = runTimeSave;
     providers.runObdSettingsSync = runObdSettingsSync;
     providers.runDeferredSettingsPersist = runDeferredSettingsPersist;
     providers.runDeferredSettingsBackup = runDeferredSettingsBackup;
@@ -184,17 +160,15 @@ void test_process_skips_missing_providers_gracefully() {
 
     module.process(1200);
 
-    TEST_ASSERT_EQUAL(7, callLogCount);
+    TEST_ASSERT_EQUAL(6, callLogCount);
     TEST_ASSERT_EQUAL(CALL_PERF, callLog[0]);
-    TEST_ASSERT_EQUAL(CALL_TIME_SAVE, callLog[1]);
-    TEST_ASSERT_EQUAL(CALL_OBD_SETTINGS_SYNC, callLog[2]);
-    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_PERSIST, callLog[3]);
-    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_BACKUP, callLog[4]);
-    TEST_ASSERT_EQUAL(CALL_DEFERRED_BLE_BOND_BACKUP, callLog[5]);
-    TEST_ASSERT_EQUAL(CALL_STORE_SAVE, callLog[6]);
+    TEST_ASSERT_EQUAL(CALL_OBD_SETTINGS_SYNC, callLog[1]);
+    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_PERSIST, callLog[2]);
+    TEST_ASSERT_EQUAL(CALL_DEFERRED_SETTINGS_BACKUP, callLog[3]);
+    TEST_ASSERT_EQUAL(CALL_DEFERRED_BLE_BOND_BACKUP, callLog[4]);
+    TEST_ASSERT_EQUAL(CALL_STORE_SAVE, callLog[5]);
 
     TEST_ASSERT_EQUAL(0, perfRecordCalls);
-    TEST_ASSERT_EQUAL(0, timeRecordCalls);
 }
 
 void test_perf_elapsed_is_wrap_safe() {
@@ -221,7 +195,6 @@ void test_empty_providers_is_safe_noop() {
 
     TEST_ASSERT_EQUAL(0, callLogCount);
     TEST_ASSERT_EQUAL(0, perfRecordCalls);
-    TEST_ASSERT_EQUAL(0, timeRecordCalls);
 }
 
 int main() {

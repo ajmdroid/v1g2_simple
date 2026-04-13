@@ -61,7 +61,6 @@ public:
     DisplayOrchestrationRefreshResult processLightweightRefresh(const DisplayOrchestrationRefreshContext& ctx);
 
 private:
-    void reset();
     void syncQuietPresentation();
     void executeVolumeFade(uint32_t nowMs);
     bool processSpeedVolume(uint32_t nowMs);
@@ -77,13 +76,5 @@ private:
     VolumeFadeModule* volumeFade_ = nullptr;
     SpeedMuteModule* speedMute_ = nullptr;
     QuietCoordinatorModule* quiet_ = nullptr;
-
-    unsigned long lastFreqUiMs_ = 0;
-    unsigned long lastCardUiMs_ = 0;
-
-    static constexpr uint32_t PARSED_STALE_MS = 2000;
-    static constexpr unsigned long FREQ_UI_MAX_MS = 75;
-    static constexpr unsigned long FREQ_UI_PREVIEW_MAX_MS = 250;
-    static constexpr unsigned long CARD_UI_MAX_MS = 100;
 
 };

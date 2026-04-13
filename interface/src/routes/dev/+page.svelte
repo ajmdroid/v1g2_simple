@@ -20,7 +20,10 @@
 	});
 
 	let settings = $state({
-		enableWifiAtBoot: false
+		enableWifiAtBoot: false,
+		alpEnabled: false,
+		alpSdLogEnabled: false,
+		powerOffSdLog: false
 	});
 	let loading = $state(true);
 	let saving = $state(false);
@@ -109,6 +112,9 @@
 			const response = await fetchWithTimeout('/api/device/settings');
 			const data = await response.json();
 			settings.enableWifiAtBoot = data.enableWifiAtBoot || false;
+			settings.alpEnabled = data.alpEnabled || false;
+			settings.alpSdLogEnabled = data.alpSdLogEnabled || false;
+			settings.powerOffSdLog = data.powerOffSdLog || false;
 			loading = false;
 		} catch (error) {
 			console.error('Failed to load settings:', error);
@@ -129,6 +135,9 @@
 		try {
 			const formData = new FormData();
 			formData.append('enableWifiAtBoot', settings.enableWifiAtBoot.toString());
+			formData.append('alpEnabled', settings.alpEnabled.toString());
+			formData.append('alpSdLogEnabled', settings.alpSdLogEnabled.toString());
+			formData.append('powerOffSdLog', settings.powerOffSdLog.toString());
 
 			const response = await postSettingsForm(formData, '/api/device/settings');
 
@@ -155,6 +164,9 @@
 		if (!confirm('Reset all development settings to defaults?')) return;
 
 		settings.enableWifiAtBoot = false;
+		settings.alpEnabled = false;
+		settings.alpSdLogEnabled = false;
+		settings.powerOffSdLog = false;
 		await saveSettings();
 	}
 
@@ -398,6 +410,65 @@
 							type="checkbox" 
 							class="toggle toggle-primary"
 							bind:checked={settings.enableWifiAtBoot}
+							disabled={!acknowledged}
+						/>
+					</label>
+				</div>
+
+		</div>
+		</div>
+
+		<!-- ALP (Active Laser Protection) -->
+		<div class="surface-card" class:opacity-50={!acknowledged}>
+			<div class="card-body">
+				<CardSectionHead title="Active Laser Protection" />
+
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-semibold">Enable ALP Listener</span>
+							<p class="copy-caption-soft mt-1">
+								UART listener for ALP HiFi serial data. Identifies laser guns by protocol fingerprint. Requires reboot.
+							</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							bind:checked={settings.alpEnabled}
+							disabled={!acknowledged}
+						/>
+					</label>
+				</div>
+
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-semibold">Enable ALP SD Logging</span>
+							<p class="copy-caption-soft mt-1">
+								Log ALP events (state transitions, heartbeats, gun IDs) to CSV on SD card. For drive data capture.
+							</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							bind:checked={settings.alpSdLogEnabled}
+							disabled={!acknowledged}
+						/>
+					</label>
+				</div>
+
+				<div class="form-control">
+					<label class="label cursor-pointer">
+						<div>
+							<span class="label-text font-semibold">Power-Off SD Log</span>
+							<p class="copy-caption-soft mt-1">
+								Log power-off diagnostics and boot reason to /poweroff.log on SD card. For verifying battery-only shutdown.
+							</p>
+						</div>
+						<input
+							type="checkbox"
+							class="toggle toggle-primary"
+							bind:checked={settings.powerOffSdLog}
 							disabled={!acknowledged}
 						/>
 					</label>

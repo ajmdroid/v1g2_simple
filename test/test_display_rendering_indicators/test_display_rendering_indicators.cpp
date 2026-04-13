@@ -79,11 +79,15 @@ void V1Display::drawBLEProxyIndicator() {}
 // needed; only the type definition from the headers is required.
 // ---------------------------------------------------------------------------
 ObdRuntimeModule obdRuntimeModule;
+AlpRuntimeModule alpRuntimeModule;
 
-// Stub snapshot() implementation so the linker satisfies syncTopIndicators()
+// Stub snapshot() implementations so the linker satisfies syncTopIndicators()
 // references even though syncTopIndicators() is never called in these tests.
 ObdRuntimeStatus ObdRuntimeModule::snapshot(uint32_t /*nowMs*/) const {
     return ObdRuntimeStatus{};
+}
+AlpStatus AlpRuntimeModule::snapshot() const {
+    return AlpStatus{};
 }
 
 // ---------------------------------------------------------------------------

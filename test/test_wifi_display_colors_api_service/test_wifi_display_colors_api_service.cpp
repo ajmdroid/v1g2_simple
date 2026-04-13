@@ -347,7 +347,7 @@ void test_preview_starts_when_not_running() {
     TEST_ASSERT_TRUE(responseContains(server, "\"active\":true"));
     TEST_ASSERT_EQUAL_INT(0, rt.cancelColorPreviewCalls);
     TEST_ASSERT_EQUAL_INT(1, rt.requestColorPreviewHoldCalls);
-    TEST_ASSERT_EQUAL_UINT32(5500, rt.lastPreviewHoldMs);
+    TEST_ASSERT_EQUAL_UINT32(0, rt.lastPreviewHoldMs);
 }
 
 void test_api_clear_rate_limited_short_circuits() {

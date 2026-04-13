@@ -29,7 +29,6 @@
 #include "settings_runtime_sync.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/obd/obd_runtime_module.h"
-#include "time_service.h"
 #include "../include/config.h"
 
 WifiAutoPushApiService::Runtime WiFiManager::makeAutoPushRuntime() {
@@ -250,12 +249,6 @@ WifiStatusApiService::StatusRuntime WiFiManager::makeStatusRuntime() {
         [](void* /*ctx*/) { return ESP.getFreeHeap(); }, nullptr,
         [](void* /*ctx*/) { return String("v1g2"); }, nullptr,
         [](void* /*ctx*/) { return String(FIRMWARE_VERSION); }, nullptr,
-        [](void* /*ctx*/) { return timeService.timeValid(); }, nullptr,
-        [](void* /*ctx*/) { return timeService.timeSource(); }, nullptr,
-        [](void* /*ctx*/) { return timeService.timeConfidence(); }, nullptr,
-        [](void* /*ctx*/) { return timeService.tzOffsetMinutes(); }, nullptr,
-        [](void* /*ctx*/) { return timeService.nowEpochMsOr0(); }, nullptr,
-        [](void* /*ctx*/) { return timeService.epochAgeMsOr0(); }, nullptr,
         [](void* /*ctx*/) { return batteryManager.getVoltageMillivolts(); }, nullptr,
         [](void* /*ctx*/) { return batteryManager.getPercentage(); }, nullptr,
         [](void* /*ctx*/) { return batteryManager.isOnBattery(); }, nullptr,

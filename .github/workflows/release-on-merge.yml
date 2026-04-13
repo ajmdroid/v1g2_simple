@@ -170,6 +170,15 @@ jobs:
           Path("release/manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
           PY
 
+      - name: Generate OTA manifest
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          python3 scripts/generate_ota_manifest.py \
+            --version "${{ steps.version.outputs.version }}" \
+            --firmware release/firmware.bin \
+            --filesystem release/littlefs.bin \
+            --output release/ota-manifest.json
+
       - name: Create tag
         if: steps.check.outputs.should_release == 'true'
         run: |
@@ -186,6 +195,7 @@ jobs:
           files: |
             release/*.bin
             release/manifest.json
+            release/ota-manifest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

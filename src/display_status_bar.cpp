@@ -145,7 +145,7 @@ void V1Display::drawRssiIndicator(int rssi) {
 void V1Display::setProfileIndicatorSlot(int slot) {
     if (slot != lastProfileSlot_) {
         lastProfileSlot_ = slot;
-        profileChangedTime_ = millis();
+        profileChangedTime_ = static_cast<uint32_t>(millis());
     }
     currentProfileSlot_ = slot;
 }
@@ -157,7 +157,8 @@ void V1Display::drawProfileIndicator(int slot) {
     setProfileIndicatorSlot(slot);
 
     // Check if we're in the "flash" period after a profile change
-    bool inFlashPeriod = (millis() - profileChangedTime_) < HIDE_TIMEOUT_MS;
+    const uint32_t nowMs = static_cast<uint32_t>(millis());
+    bool inFlashPeriod = (nowMs - profileChangedTime_) < HIDE_TIMEOUT_MS;
 
 #if defined(DISPLAY_WAVESHARE_349)
     // On Waveshare: draw profile indicator under arrows (for autopush profiles)

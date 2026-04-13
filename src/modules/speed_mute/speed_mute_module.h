@@ -20,7 +20,8 @@ struct SpeedMuteSettings {
     bool enabled = false;
     uint8_t thresholdMph = 25;       // Mute below this speed (5–60 mph)
     uint8_t hysteresisMph = 3;       // Unmute at threshold + hysteresis
-    uint8_t v1Volume = 0xFF;         // V1 volume when speed-muted (0-9, 0xFF = no change)
+    uint8_t v1Volume = 0;            // V1 volume when speed-muted (0-9)
+    bool voice = true;               // Also suppress voice when speed-muted
 };
 
 // --- Input context — populated by caller each loop iteration ---
@@ -56,11 +57,11 @@ SpeedMuteDecision evaluateSpeedMute(
 class SpeedMuteModule {
 public:
     void begin(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph,
-               uint8_t v1Volume = 0xFF);
+               uint8_t v1Volume = 0, bool voice = true);
 
     /// Update settings at runtime (from web UI / settings sync).
     void syncSettings(bool enabled, uint8_t thresholdMph, uint8_t hysteresisMph,
-                      uint8_t v1Volume = 0xFF);
+                      uint8_t v1Volume = 0, bool voice = true);
 
     /// Evaluate muting decision.  Call once per loop iteration.
     SpeedMuteDecision update(float speedMph, bool speedValid, uint32_t nowMs);

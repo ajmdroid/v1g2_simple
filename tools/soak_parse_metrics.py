@@ -186,6 +186,8 @@ def main() -> int:
     parse_successes_last = None
     parse_failures_first = None
     parse_failures_last = None
+    parse_resyncs_first = None
+    parse_resyncs_last = None
     queue_drops_first = None
     queue_drops_last = None
     perf_drop_first = None
@@ -419,6 +421,12 @@ def main() -> int:
                     parse_failures_first = parse_failures
                 if parse_failures is not None:
                     parse_failures_last = parse_failures
+
+                parse_resyncs = num(data.get("parseResyncs"))
+                if parse_resyncs_first is None and parse_resyncs is not None:
+                    parse_resyncs_first = parse_resyncs
+                if parse_resyncs is not None:
+                    parse_resyncs_last = parse_resyncs
 
                 queue_drops = num(data.get("queueDrops"))
                 if queue_drops_first is None and queue_drops is not None:
@@ -903,6 +911,8 @@ def main() -> int:
     emit("parse_successes_last", parse_successes_last)
     emit("parse_failures_first", parse_failures_first)
     emit("parse_failures_last", parse_failures_last)
+    emit("parse_resyncs_first", parse_resyncs_first)
+    emit("parse_resyncs_last", parse_resyncs_last)
     emit("queue_drops_first", queue_drops_first)
     emit("queue_drops_last", queue_drops_last)
     emit("perf_drop_first", perf_drop_first)
@@ -1194,6 +1204,11 @@ def main() -> int:
         print("parse_failures_delta=")
     else:
         print(f"parse_failures_delta={parse_failures_last - parse_failures_first}")
+
+    if parse_resyncs_first is None or parse_resyncs_last is None:
+        print("parse_resyncs_delta=")
+    else:
+        print(f"parse_resyncs_delta={parse_resyncs_last - parse_resyncs_first}")
 
     if queue_drops_first is None or queue_drops_last is None:
         print("queue_drops_delta=")

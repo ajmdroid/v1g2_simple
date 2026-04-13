@@ -683,8 +683,8 @@ Options:
                         Maximum runtime settle wait after metrics recovery
                         before scoring starts (default: 20)
   --env NAME             PlatformIO env to flash (default: waveshare-349)
-  --port PATH            Fixed serial port (default: auto-detect)
-  --with-fs              Upload LittleFS image before firmware upload
+  --port PATH            Fixed serial port (default: auto-detect; or set DEVICE_PORT)
+  --with-fs              Stage and upload LittleFS via build.sh before firmware upload
   --skip-flash           Skip flashing and only run soak collection
   --metrics-url URL      Poll debug metrics endpoint (or set REAL_FW_METRICS_URL)
   --panic-url URL        Poll debug panic endpoint (default: derived from metrics URL)
@@ -1789,8 +1789,8 @@ fi
 
 if [[ "$SKIP_FLASH" -eq 0 ]]; then
   if [[ "$UPLOAD_FS" -eq 1 ]]; then
-    echo "==> Uploading filesystem image..." | tee -a "$RUN_LOG"
-    run_and_log pio run -e "$ENV_NAME" -t uploadfs --upload-port "$TEST_PORT"
+    echo "==> Staging and uploading filesystem image via build.sh..." | tee -a "$RUN_LOG"
+    run_and_log ./build.sh --env "$ENV_NAME" --upload-fs --upload-port "$TEST_PORT"
   fi
 
   echo "==> Uploading production firmware..." | tee -a "$RUN_LOG"
@@ -2199,6 +2199,7 @@ ble_drain_peak_ts=""
 rx_packets_delta=""
 parse_successes_delta=""
 parse_failures_delta=""
+parse_resyncs_delta=""
 queue_drops_delta=""
 perf_drop_delta=""
 event_publish_delta=""
@@ -2355,6 +2356,7 @@ while IFS='=' read -r key value; do
     rx_packets_delta) rx_packets_delta="$value" ;;
     parse_successes_delta) parse_successes_delta="$value" ;;
     parse_failures_delta) parse_failures_delta="$value" ;;
+    parse_resyncs_delta) parse_resyncs_delta="$value" ;;
     queue_drops_delta) queue_drops_delta="$value" ;;
     perf_drop_delta) perf_drop_delta="$value" ;;
     event_publish_delta) event_publish_delta="$value" ;;
@@ -3400,6 +3402,7 @@ metrics_ok_samples=${metrics_ok_samples_parsed}
 rx_packets_delta=${rx_packets_delta}
 parse_successes_delta=${parse_successes_delta}
 parse_failures_delta=${parse_failures_delta}
+parse_resyncs_delta=${parse_resyncs_delta}
 queue_drops_delta=${queue_drops_delta}
 perf_drop_delta=${perf_drop_delta}
 event_drop_delta=${event_drop_delta}

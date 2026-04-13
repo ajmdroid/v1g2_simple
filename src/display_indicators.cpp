@@ -5,6 +5,7 @@
  */
 
 #include "display.h"
+#include <cstring>
 #include "../include/display_draw.h"
 #include "../include/display_dirty_flags.h"
 #include "../include/display_element_caches.h"
@@ -12,6 +13,7 @@
 #include "../include/display_text.h"
 #include "settings.h"
 #include "modules/obd/obd_runtime_module.h"
+#include "modules/alp/alp_runtime_module.h"
 
 // ============================================================================
 // Base frame
@@ -65,11 +67,18 @@ void V1Display::refreshObdIndicator(uint32_t nowMs) {
 }
 
 void V1Display::syncTopIndicators(uint32_t nowMs) {
-    if (!obdRtMod_) return;
-    const ObdRuntimeStatus obdStatus = obdRtMod_->snapshot(nowMs);
-    setObdStatus(obdStatus.enabled,
-                 obdStatus.connected,
-                 obdStatus.scanInProgress || obdStatus.manualScanPending);
+    if (obdRtMod_) {
+        const ObdRuntimeStatus obdStatus = obdRtMod_->snapshot(nowMs);
+        setObdStatus(obdStatus.enabled,
+                     obdStatus.connected,
+                     obdStatus.scanInProgress || obdStatus.manualScanPending);
+    }
+    if (alpRtMod_) {
+        const AlpStatus alpStatus = alpRtMod_->snapshot();
+        alpEnabled_ = (alpStatus.state != AlpState::OFF);
+        alpStateRaw_ = static_cast<uint8_t>(alpStatus.state);
+        alpHbByte1_ = alpStatus.lastHbByte1;
+    }
 }
 
 // ============================================================================
@@ -114,6 +123,132 @@ void V1Display::drawObdIndicator() {
     TFT_CALL(setTextColor)(textColor, PALETTE_BG);
     GFX_drawString(tft_, "OBD", x + w / 2, y + h / 2);
 #endif
+}
+
+// ============================================================================
+// ALP indicator ("ALP" text badge — left of MUTED badge)
+// ============================================================================
+
+void V1Display::setAlpRuntimeModule(AlpRuntimeModule* m) {
+    alpRtMod_ = m;
+}
+
+void V1Display::refreshAlpIndicator(uint32_t nowMs) {
+    if (!alpRtMod_) return;
+    const AlpStatus status = alpRtMod_->snapshot();
+    alpEnabled_ = (status.state != AlpState::OFF);
+    alpStateRaw_ = static_cast<uint8_t>(status.state);
+    alpHbByte1_ = status.lastHbByte1;
+    drawAlpIndicator();
+}
+
+void V1Display::drawAlpIndicator() {
+#if defined(DISPLAY_WAVESHARE_349)
+    const bool wantShow = alpEnabled_;
+
+    if (!dirty.alpIndicator &&
+        g_elementCaches.alp.valid &&
+        wantShow == g_elementCaches.alp.lastShown &&
+        alpStateRaw_ == g_elementCaches.alp.lastState &&
+        alpHbByte1_ == g_elementCaches.alp.lastHbByte1) {
+        return;
+    }
+    dirty.alpIndicator = false;
+    g_elementCaches.alp.valid = true;
+    g_elementCaches.alp.lastShown = wantShow;
+    g_elementCaches.alp.lastState = alpStateRaw_;
+    g_elementCaches.alp.lastHbByte1 = alpHbByte1_;
+
+    // Position: left of MUTED badge (MUTED is at X=225, Y=5)
+    const int x = 170;
+    const int y = 5;
+    const int h = 26;
+    const int w = 50;
+
+    FILL_RECT(x, y, w, h, PALETTE_BG);
+    if (!wantShow) {
+        return;
+    }
+
+    // Badge colors match ALP control pad LED — including LISTENING sub-states
+    // driven by B0 heartbeat byte1 (speed-gated by ALP's internal GPS):
+    //   Grey   — IDLE: enabled, no heartbeats yet
+    //   Green  — LISTENING byte1=02: warm-up (~34s after boot)
+    //   Orange — LISTENING byte1=03: detection mode (below speed threshold)
+    //   Blue   — LISTENING byte1=04: defense mode (above speed threshold)
+    //   Orange — TEARDOWN: re-detection after alert
+    //   Blue   — ALERT_ACTIVE / NOISE_WINDOW: laser detected, defending
+    const V1Settings& s = settingsManager.get();
+    const AlpState alpState = static_cast<AlpState>(alpStateRaw_);
+    uint16_t textColor;
+    switch (alpState) {
+        case AlpState::ALERT_ACTIVE:
+        case AlpState::NOISE_WINDOW:
+            textColor = s.colorAlpDefense;      // Blue — laser detected, defending
+            break;
+        case AlpState::TEARDOWN:
+            textColor = s.colorAlpDetection;    // Orange — re-detection after alert
+            break;
+        case AlpState::LISTENING:
+            // Sub-state from B0 heartbeat byte1:
+            //   04 = defense mode (speed above threshold) → blue
+            //   03 = detection mode (speed below threshold) → orange
+            //   02 = warm-up (first ~34s after boot) → green
+            if (alpHbByte1_ == 0x04) {
+                textColor = s.colorAlpDefense;      // Blue — defense mode
+            } else if (alpHbByte1_ == 0x03) {
+                textColor = s.colorAlpDetection;    // Orange — detection mode
+            } else {
+                textColor = s.colorAlpConnected;  // Green — warm-up / init
+            }
+            break;
+        default:
+            textColor = s.colorMuted;         // Grey — IDLE / OFF
+            break;
+    }
+
+    GFX_setTextDatum(MC_DATUM);
+    TFT_CALL(setTextSize)(2);
+    TFT_CALL(setTextColor)(textColor, PALETTE_BG);
+    GFX_drawString(tft_, "ALP", x + w / 2, y + h / 2);
+#endif
+}
+
+// ============================================================================
+// Preview-mode direct setters (bypass runtime modules for display test)
+// ============================================================================
+
+void V1Display::setAlpPreviewState(bool enabled, uint8_t state, uint8_t hbByte1) {
+    alpEnabled_ = enabled;
+    alpStateRaw_ = state;
+    alpHbByte1_ = hbByte1;
+    dirty.alpIndicator = true;
+    g_elementCaches.alp.invalidate();
+}
+
+void V1Display::setObdPreviewState(bool enabled, bool connected, bool scanAttention) {
+    setObdStatus(enabled, connected, scanAttention);
+    dirty.obdIndicator = true;
+    g_elementCaches.obd.invalidate();
+}
+
+// ============================================================================
+// ALP frequency-area override
+// ============================================================================
+
+void V1Display::setAlpFrequencyOverride(const char* gunAbbrev) {
+    if (!gunAbbrev) {
+        clearAlpFrequencyOverride();
+        return;
+    }
+    alpFreqOverride_ = true;
+    strncpy(alpFreqText_, gunAbbrev, sizeof(alpFreqText_));
+    alpFreqText_[sizeof(alpFreqText_) - 1] = '\0';
+}
+
+void V1Display::clearAlpFrequencyOverride() {
+    alpFreqOverride_ = false;
+    alpFreqText_[0] = '\0';
 }
 
 // ============================================================================

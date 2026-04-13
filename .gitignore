@@ -38,6 +38,10 @@ RDF_POST*
 *~
 *.bak
 
+# Local planning/review docs (not tracked)
+docs/RECONNECTION_PLAN.md
+PRODUCTION_READINESS_REVIEW.md
+
 # Web UI build/cache (Svelte/Vite)
 /interface/node_modules/
 /interface/.svelte-kit/
@@ -72,10 +76,17 @@ r8/
 bench_testing/
 .road_map_cache/
 .vite/
+*.sr
+*.pvs
+alp_captures/
 
 # Local research docs (not tracked)
 docs/FUNCTION_PRIORITY.local.md
 docs/OBD_MODULE_PLAN.md
+docs/ALP_PROTOCOL_REFERENCE.md
+docs/ALP_SIGNAL_ANALYSIS_PLAN.md
+docs/DISPLAY_REWRITE_PLAN.md
+docs/OTA_DESIGN.md
 .github/instructions/
 *.docx
 .~lock.*

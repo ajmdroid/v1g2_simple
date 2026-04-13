@@ -22,24 +22,6 @@ bool QuietCoordinatorModule::processSpeedVolume(const uint32_t nowMs,
     const auto& smSettings = speedMute.getSettings();
     const auto& smState = speedMute.getState();
 
-    if (smSettings.v1Volume == 0xFF) {
-        if (speedVolActive_) {
-            sendVolume(QuietOwner::SpeedVolume, speedVolSavedOriginal_, speedVolSavedMuteVol_);
-            if (volumeFade) {
-                volumeFade->setBaselineHint(speedVolSavedOriginal_, speedVolSavedMuteVol_, nowMs);
-            }
-            pendingSpeedVolRestoreVol_ = speedVolSavedOriginal_;
-            pendingSpeedVolRestoreMuteVol_ = speedVolSavedMuteVol_;
-            pendingSpeedVolRestoreSetMs_ = nowMs;
-            pendingSpeedVolRestoreLastRetryMs_ = nowMs;
-            speedVolActive_ = false;
-            speedVolSavedOriginal_ = 0xFF;
-            perfRecordSpeedVolRestore();
-        }
-        updateSpeedVolPresentation(&speedMute);
-        return retryPendingSpeedVolRestore(nowMs);
-    }
-
     bool wantsActive = smState.muteActive;
     if (wantsActive && parser_ && parser_->hasAlerts()) {
         const DisplayState& ds = parser_->getDisplayState();

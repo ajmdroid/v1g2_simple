@@ -30,6 +30,10 @@ public:
     void begin(const Providers& hooks);
     void process(uint32_t loopStartUs);
 
+    // Visible for testing: how often heap is sampled (every Nth loop).
+    static constexpr uint8_t HEAP_SAMPLE_DIVISOR = 8;
+
 private:
     Providers providers{};
+    uint8_t heapSampleSkip_ = HEAP_SAMPLE_DIVISOR - 1;  // sample on first call
 };

@@ -3,6 +3,8 @@
  */
 
 #include "battery_manager.h"
+#include "storage_manager.h"
+#include "../include/audio_i2c_utils.h"
 #include "../include/display_driver.h"
 #include <Wire.h>
 #include <esp_adc/adc_oneshot.h>
@@ -11,6 +13,7 @@
 #include <driver/gpio.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
+#include <SD_MMC.h>
 
 // Only compile for Waveshare 3.49 board
 
@@ -22,6 +25,42 @@ BatteryManager batteryManager;
 // ADC handles
 static adc_oneshot_unit_handle_t adc1_handle = nullptr;
 static adc_cali_handle_t adc_cali_handle = nullptr;
+
+namespace {
+
+constexpr uint16_t kShutdownReadbackTimeoutMs = 50;
+
+class ScopedWireTimeout {
+public:
+    ScopedWireTimeout(TwoWire& wire, uint16_t timeoutMs)
+        : wire_(wire)
+        , previousTimeoutMs_(wire.getTimeOut()) {
+        wire_.setTimeOut(timeoutMs);
+    }
+
+    ~ScopedWireTimeout() {
+        wire_.setTimeOut(previousTimeoutMs_);
+    }
+
+private:
+    TwoWire& wire_;
+    uint16_t previousTimeoutMs_;
+};
+
+AudioI2cResult readTca9554RegisterWithTimeout(uint8_t reg,
+                                              uint8_t& value,
+                                              TickType_t mutexTimeoutTicks,
+                                              uint16_t timeoutMs) {
+    AudioI2cLockGuard lock(tca9554WireMutex, mutexTimeoutTicks);
+    if (!lock.ok()) {
+        return lock.result();
+    }
+
+    ScopedWireTimeout timeoutGuard(tca9554Wire, timeoutMs);
+    return audioI2cReadRegister(tca9554Wire, TCA9554_I2C_ADDR, reg, value);
+}
+
+}  // namespace
 
 // I2C for TCA9554 (separate from touch I2C) - also used by ES8311 codec
 TwoWire tca9554Wire(1);  // Use I2C port 1
@@ -72,14 +111,10 @@ bool BatteryManager::begin() {
     pinMode(PWR_BUTTON_GPIO, INPUT);
 
     // Sample GPIO16 multiple times to debounce.
-    // Deep-sleep wake uses a shorter debounce window for faster wake perception.
-    const esp_reset_reason_t resetReason = esp_reset_reason();
-    const bool wakeFromDeepSleep = (resetReason == ESP_RST_DEEPSLEEP);
-    const int samples = wakeFromDeepSleep ? 5 : 10;
-    const int sampleDelayMs = wakeFromDeepSleep ? 2 : 5;
+    constexpr int samples = 10;
+    constexpr int sampleDelayMs = 5;
     int highCount = 0;
-    Serial.printf("[Battery] Power debounce reset=%d samples=%d delayMs=%d\n",
-                  static_cast<int>(resetReason),
+    Serial.printf("[Battery] Power debounce samples=%d delayMs=%d\n",
                   samples,
                   sampleDelayMs);
 
@@ -375,11 +410,11 @@ void BatteryManager::update() {
         return;
     }
 
-    unsigned long now = millis();
+    const uint32_t now = static_cast<uint32_t>(millis());
 
     // Refresh power source detection periodically to handle USB/battery swaps
     // Skip while the power button is held (GPIO16 LOW) to avoid misclassifying as USB
-    static unsigned long lastPowerCheckMs = 0;
+    static uint32_t lastPowerCheckMs = 0;
     if (now - lastPowerCheckMs >= 1000 && !isPowerButtonPressed()) {
         const int samples = 5;
         int highCount = 0;
@@ -454,10 +489,29 @@ bool BatteryManager::latchPowerOn() {
     return true;
 }
 
-bool BatteryManager::powerOff() {
+// Helper: append a line to /poweroff.log on SD card (best-effort, no mutex —
+// WiFi and other SD users are already stopped by prepareForShutdown).
+static bool sdLogEnabled_ = false;
+static void sdLog(const char* line) {
+    if (!sdLogEnabled_ || !storageManager.isSDCard()) return;
+    File f = SD_MMC.open("/poweroff.log", FILE_APPEND);
+    if (f) {
+        f.printf("[%lu] %s\n", millis(), line);
+        f.close();
+    }
+}
+
+bool BatteryManager::powerOff(bool sdLogEnabled) {
+    sdLogEnabled_ = sdLogEnabled;
     // Callers must run shutdown preparation before entering this final
     // hardware-only tail.
     Serial.println("[Battery] Executing final power-off sequence...");
+
+    sdLog("=== POWER-OFF BEGIN ===");
+    char buf[128];
+    snprintf(buf, sizeof(buf), "onBattery=%d voltage=%dmV percent=%d%%",
+             onBattery_, cachedVoltage_, cachedPercent_);
+    sdLog(buf);
 
     // Fade backlight (optional smooth transition)
     Serial.println("[Battery] Fading backlight...");
@@ -466,44 +520,72 @@ bool BatteryManager::powerOff() {
         delay(10);
     }
 
-    // Ensure the panel backlight is fully blanked before final power cut / deep sleep.
+    // Ensure the panel backlight is fully blanked before final power cut.
     analogWrite(LCD_BL, 255);  // Backlight off (inverted)
     pinMode(LCD_BL, OUTPUT);
     digitalWrite(LCD_BL, HIGH);  // Force off (inverted backlight)
     delay(50);
 
-    // Choose shutdown strategy based on battery health.
-    // Critical battery: hard latch drop to protect the cell from deep discharge.
-    // Normal shutdown:  deep sleep with latch ON so the 18650 keeps the ESP32-S3's
-    //                   internal RTC running.  settimeofday() persists through deep
-    //                   sleep, so on button-wake gettimeofday() returns accurate time
-    //                   without needing a phone sync.
+    // Drop the power latch to cut power entirely.  No deep sleep — the 18650
+    // is not kept alive for RTC, so battery drain while "off" is zero.
+    // Deep sleep is only used as a last-resort fallback if the latch drop fails.
     if (isCritical()) {
         Serial.println("[Battery] Critical battery - hard power off to protect cell");
-        const bool latchDropped = setTCA9554PinWithBudget(TCA9554_PWR_LATCH_PIN,
-                                                          false,
-                                                          pdMS_TO_TICKS(250),
-                                                          5);
-        if (!latchDropped) {
-            Serial.println("[Battery] ERROR: Failed to drop power latch, falling back to deep sleep");
-        }
-        delay(200);
-        esp_deep_sleep_start();  // fallback (latch already cut)
-        return latchDropped;
+        sdLog("CRITICAL battery - hard power off");
+    } else {
+        Serial.println("[Battery] Dropping power latch...");
     }
 
-    Serial.println("[Battery] Entering deep sleep (RTC clock preserved by 18650)...");
+    const bool latchDropped = setTCA9554PinWithBudget(TCA9554_PWR_LATCH_PIN,
+                                                      false,
+                                                      pdMS_TO_TICKS(250),
+                                                      5);
+    snprintf(buf, sizeof(buf), "latchDrop=%s", latchDropped ? "OK" : "FAILED");
+    Serial.printf("[Battery] Latch drop result: %s\n", latchDropped ? "OK" : "FAILED");
+    sdLog(buf);
 
-    // Hold backlight GPIO state during deep sleep to keep display off
+    if (latchDropped) {
+        // Keep shutdown readback explicitly bounded so a wedged I2C bus cannot
+        // block the deep-sleep fallback forever.
+        uint8_t readback = 0;
+        const AudioI2cResult readbackResult = readTca9554RegisterWithTimeout(
+            TCA9554_OUTPUT_PORT,
+            readback,
+            pdMS_TO_TICKS(kShutdownReadbackTimeoutMs),
+            kShutdownReadbackTimeoutMs);
+        if (readbackResult == AudioI2cResult::Ok) {
+            bool pin6Low = (readback & (1 << TCA9554_PWR_LATCH_PIN)) == 0;
+            snprintf(buf, sizeof(buf), "readback=0x%02X pin6=%s",
+                     readback, pin6Low ? "LOW" : "HIGH_STUCK");
+            Serial.printf("[Battery] TCA9554 %s\n", buf);
+            sdLog(buf);
+        } else {
+            snprintf(buf, sizeof(buf), "readback=%s",
+                     audioI2cResultToString(readbackResult));
+            Serial.printf("[Battery] TCA9554 readback failed (%s)\n",
+                          audioI2cResultToString(readbackResult));
+            sdLog(buf);
+        }
+
+        delay(500);  // Wait for power rail to collapse
+        // If we reach here, the latch drop didn't fully cut power.
+        Serial.println("[Battery] WARN: Still running after latch drop - power rail did not collapse");
+        sdLog("WARN: still alive after 500ms latch drop wait");
+    } else {
+        Serial.println("[Battery] ERROR: Failed to drop power latch, falling back to deep sleep");
+        sdLog("ERROR: latch drop failed");
+    }
+
+    // Fallback: enter deep sleep with button wakeup so the device isn't bricked.
+    sdLog("entering deep sleep fallback");
+    Serial.println("[Battery] Entering deep sleep fallback...");
+    Serial.flush();
     gpio_hold_en(static_cast<gpio_num_t>(LCD_BL));
     gpio_deep_sleep_hold_en();
-
-    // Configure power button (GPIO 16, active LOW) as deep-sleep wakeup source
     esp_sleep_enable_ext1_wakeup(1ULL << PWR_BUTTON_GPIO, ESP_EXT1_WAKEUP_ANY_LOW);
-
     delay(100);  // Let serial flush
-    esp_deep_sleep_start();  // Does not return — RTC keeps ticking
-    return true;
+    esp_deep_sleep_start();
+    return latchDropped;
 }
 
 bool BatteryManager::isPowerButtonPressed() {
@@ -518,7 +600,7 @@ bool BatteryManager::processPowerButton() {
     // Note: GPIO 0 (BOOT pin) cannot be read as GPIO on ESP32 - disabled BOOT+PWR check
 
     bool pressed = isPowerButtonPressed();
-    unsigned long now = millis();
+    const uint32_t now = static_cast<uint32_t>(millis());
 
     if (pressed && !buttonWasPressed_) {
         // Button just pressed

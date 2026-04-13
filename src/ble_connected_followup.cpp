@@ -36,7 +36,7 @@ void V1BLEClient::processConnectedFollowup() {
                 connectBurstStableLoopCount_ = 0;
             }
 
-            const uint32_t nowMs = millis();
+            const uint32_t nowMs = static_cast<uint32_t>(millis());
             const uint32_t connectedAtMs =
                 connectCompletedAtMs_.load(std::memory_order_relaxed);
             const uint32_t firstRxMs =
@@ -79,7 +79,7 @@ void V1BLEClient::processConnectedFollowup() {
             return;
         case ConnectedFollowupStep::SCHEDULE_PROXY_ADVERTISING:
             if (proxyEnabled_ && proxyServerInitialized_) {
-                proxyAdvertisingStartMs_ = millis() + PROXY_STABILIZE_MS;
+                proxyAdvertisingStartMs_ = static_cast<uint32_t>(millis()) + PROXY_STABILIZE_MS;
                 proxyAdvertisingStartReasonCode_ =
                     static_cast<uint8_t>(PerfProxyAdvertisingTransitionReason::StartConnected);
             }

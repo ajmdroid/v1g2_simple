@@ -37,6 +37,7 @@
 
 enum class PerfDisplayScreen : uint8_t;
 class ObdRuntimeModule;
+class AlpRuntimeModule;
 
 class V1Display {
 public:
@@ -50,11 +51,6 @@ public:
     void update(const DisplayState& state);
     // Multi-alert display: shows priority alert + secondary alert cards
     void update(const AlertData& priority, const AlertData* allAlerts, int alertCount, const DisplayState& state);
-
-    // Lightweight frequency-only refresh (minimal redraw)
-    void refreshFrequencyOnly(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);
-    // Lightweight secondary cards-only refresh (minimal redraw)
-    void refreshSecondaryAlertCards(const AlertData* alerts, int alertCount, const AlertData& priority, bool muted = false);
 
     // Persisted alert display (shows last alert in dark grey after V1 clears it)
     void updatePersisted(const AlertData& alert, const DisplayState& state);
@@ -77,6 +73,7 @@ public:
     void showBootSplash();
     void showShutdown();       // Shutdown screen with goodbye message
     void showLowBattery();     // Critical low battery warning
+    void showOtaProgress(uint8_t percent, const char* phase);  // OTA update progress screen
 
     // Set brightness (0-255)
     void setBrightness(uint8_t level);
@@ -124,12 +121,24 @@ public:
     void setObdRuntimeModule(ObdRuntimeModule* m);
     void setObdAttention(bool attention);
 
+    // ALP indicator (shows armed/alert state left of MUTED badge)
+    void refreshAlpIndicator(uint32_t nowMs);
+    void setAlpRuntimeModule(AlpRuntimeModule* m);
+
+    // Preview-mode direct setters — bypass runtime modules for display test
+    void setAlpPreviewState(bool enabled, uint8_t state, uint8_t hbByte1);
+    void setObdPreviewState(bool enabled, bool connected, bool scanAttention);
+
+    // ALP frequency override — gun abbreviation replaces frequency text during ALP alert
+    void setAlpFrequencyOverride(const char* gunAbbrev);
+    void clearAlpFrequencyOverride();
+
     // Flush canvas to physical display
     void flush();
     void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h);  // Partial flush to reduce SPI traffic
 
 private:
-    enum class ScreenMode { Unknown, Resting, Scanning, Disconnected, Live, Persisted };
+    enum class ScreenMode { Unknown, Resting, Scanning, Disconnected, Live, Persisted, OtaUpdating };
     static PerfDisplayScreen perfScreenForMode(ScreenMode mode);
 
     // Display driver (Arduino_GFX)
@@ -150,7 +159,6 @@ private:
     void drawFrequency(uint32_t freqMHz, Band band = BAND_NONE, bool muted = false, bool isPhotoRadar = false);
     void drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);   // 7-segment style
     void drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted, bool isPhotoRadar = false);// Serpentine font
-    void markFrequencyDirtyRegion(int16_t x, int16_t y, int16_t w, int16_t h);
     void drawVolumeZeroWarning();  // Flash "VOL 0" warning when volume=0 and no app connected
     void drawStatusText(const char* text, uint16_t color);
     void drawBLEProxyIndicator();
@@ -161,24 +169,12 @@ private:
     void drawTopCounter(char symbol, bool muted, bool showDot);
     void drawTopCounterClassic(char symbol, bool muted, bool showDot);       // 7-segment style (used for all styles)
     void drawStatusStrip(const DisplayState& state, char topChar, bool topMuted, bool topDot);
-    void updateStatusStripIncremental(const DisplayState& state,
-                                      char topChar,
-                                      bool topMuted,
-                                      bool topDot,
-                                      bool volumeChanged,
-                                      bool rssiNeedsUpdate,
-                                      bool bogeyCounterChanged,
-                                      uint8_t& lastMainVol,
-                                      uint8_t& lastMuteVol,
-                                      uint8_t& lastBogeyByte,
-                                      unsigned long now,
-                                      bool& flushLeftStrip,
-                                      bool& flushCenterStrip,
-                                      bool& flushRightStrip);
+
     void drawVolumeIndicator(uint8_t mainVol, uint8_t muteVol);              // "5V  0M" style
     void drawRssiIndicator(int rssi);                                         // BLE RSSI in dBm
     void drawMuteIcon(bool muted);
     void drawObdIndicator();
+    void drawAlpIndicator();
     void syncTopIndicators(uint32_t nowMs);
     void setObdStatus(bool enabled, bool connected, bool scanAttention = false);
     bool hasFreshBleContext(uint32_t nowMs) const;
@@ -201,8 +197,8 @@ private:
     int lastRestingProfileSlot_ = -1;                 // Last profile shown on resting screen
 
     // Visibility timeout tracking
-    unsigned long wifiConnectedTime_ = 0;    // When WiFi became connected
-    unsigned long profileChangedTime_ = 0;   // When profile was last changed
+    uint32_t wifiConnectedTime_ = 0;         // When WiFi became connected
+    uint32_t profileChangedTime_ = 0;        // When profile was last changed
     bool wifiWasConnected_ = false;          // Track WiFi connection state changes
     int lastProfileSlot_ = -1;               // Track profile changes
     bool bleProxyEnabled_ = false;           // BLE proxy enabled flag
@@ -211,24 +207,24 @@ private:
     bool bleProxyDrawn_ = false;             // Track if icon has been drawn at least once
     bool multiAlertMode_ = false;            // True when showing secondary alert cards (reduces main area)
     bool persistedMode_ = false;              // True when drawing persisted alerts (uses PALETTE_PERSISTED)
-    bool wasInMultiAlertMode_ = false;       // Track mode transitions for change detection
-    bool frequencyRenderDirty_ = false;      // Set when drawFrequency changed pixels this call
-    bool frequencyDirtyValid_ = false;       // True when a minimal dirty region is available
-    int16_t frequencyDirtyX_ = 0;
-    int16_t frequencyDirtyY_ = 0;
-    int16_t frequencyDirtyW_ = 0;
-    int16_t frequencyDirtyH_ = 0;
-    bool secondaryCardsRenderDirty_ = false; // True when drawSecondaryAlertCards changed card-row pixels
     bool speedVolZeroActive_ = false;      // Suppress VOL 0 warning during speed-mute vol 0
     bool obdEnabled_ = false;              // OBD module enabled
     bool obdConnected_ = false;            // OBD adapter connected
     bool obdScanAttention_ = false;        // Runtime manual scan / scan-pending state
     bool obdAttention_ = false;            // Temporary UI hold-time attention
     ObdRuntimeModule* obdRtMod_ = nullptr; // Injected in begin(); used by syncTopIndicators
+    AlpRuntimeModule* alpRtMod_ = nullptr; // Injected in begin(); used by syncTopIndicators
+    bool alpEnabled_ = false;              // ALP module enabled
+    uint8_t alpStateRaw_ = 0;              // AlpState cast to uint8_t for badge color selection
+    uint8_t alpHbByte1_ = 0;               // Last B0 heartbeat byte1 (02=warmup, 03=scan, 04=armed)
+
+    // ALP frequency-area override: when active, gun abbreviation replaces frequency text
+    bool alpFreqOverride_ = false;
+    char alpFreqText_[16] = "";
     DisplayBleContext bleCtx_;              // BLE state snapshot for display DI
     uint32_t bleCtxUpdatedAtMs_ = 0;        // When setBleContext() last refreshed bleCtx_
 
-    static const unsigned long HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
+    static constexpr uint32_t HIDE_TIMEOUT_MS = 3000;  // 3 second display timeout
 
 #ifdef UNIT_TEST
 public:

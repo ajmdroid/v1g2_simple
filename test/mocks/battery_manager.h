@@ -28,9 +28,10 @@ public:
         ++processPowerButtonCalls;
         return processPowerButtonResult;
     }
-    void powerOff() {
+    void powerOff(bool sdLogEnabled = false) {
         ++powerOffCalls;
         powerOffCalled = true;
+        lastPowerOffSdLog = sdLogEnabled;
     }
 
     // Test helpers
@@ -59,6 +60,7 @@ public:
         processPowerButtonResult = false;
         powerOffCalls = 0;
         powerOffCalled = false;
+        lastPowerOffSdLog = false;
     }
 
     int updateCalls = 0;
@@ -66,6 +68,7 @@ public:
     bool processPowerButtonResult = false;
     int powerOffCalls = 0;
     bool powerOffCalled = false;
+    bool lastPowerOffSdLog = false;
 
 private:
     bool onBattery_ = false;

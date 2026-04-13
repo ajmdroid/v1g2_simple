@@ -6,14 +6,9 @@
 	import SettingsAutoPowerOffCard from '$lib/features/settings/SettingsAutoPowerOffCard.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import SettingsBackupCard from '$lib/features/settings/SettingsBackupCard.svelte';
+	import SettingsOtaCard from '$lib/features/settings/SettingsOtaCard.svelte';
 	import * as settingsLazyComponents from '$lib/features/settings/settingsLazyComponents.js';
-	import SettingsTimeCard from '$lib/features/settings/SettingsTimeCard.svelte';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
-	import {
-		retainRuntimeStatus,
-		runtimeStatus
-	} from '$lib/stores/runtimeStatus.svelte.js';
-
 	let settings = $state({
 		ap_ssid: '',
 		ap_password: '',
@@ -48,7 +43,6 @@
 	let wifiConnecting = $state(false);
 	let wifiPoll = $state(null);
 	let wifiConnectPollStartedMs = $state(0);
-	let clientNowMs = $state(Date.now());
 	let wifiStatusFetchInFlight = false;
 	let SettingsWifiModalComponent = $state(null);
 	let wifiModalLoading = $state(false);
@@ -58,46 +52,13 @@
 	const RECOGNIZED_BACKUP_TYPES = new Set(['v1simple_backup', 'v1simple_sd_backup']);
 	const WIFI_CONNECT_POLL_INTERVAL_MS = 1000;
 	const WIFI_CONNECT_TIMEOUT_MS = 30000;
-	const TIME_TICK_INTERVAL_MS = 1000;
-	const timeTickPoll = createPoll(async () => {
-		clientNowMs = Date.now();
-	}, TIME_TICK_INTERVAL_MS);
-
-	let timeStatus = $state({
-		valid: false,
-		source: 0,
-		confidence: 0,
-		epochMs: 0,
-		tzOffsetMin: 0,
-		ageMs: 0,
-		sampleClientMs: 0
-	});
-
-	function applyTimeStatus(snapshot, sampleClientMs = Date.now()) {
-		const t = snapshot || {};
-		timeStatus.valid = !!t.valid;
-		timeStatus.source = Number(t.source || 0);
-		timeStatus.confidence = Number(t.confidence || 0);
-		timeStatus.epochMs = Number(t.epochMs || 0);
-		timeStatus.tzOffsetMin = Number(t.tzOffsetMin ?? t.tzOffsetMinutes ?? 0);
-		timeStatus.ageMs = Number(t.ageMs || 0);
-		timeStatus.sampleClientMs = timeStatus.valid ? sampleClientMs : 0;
-	}
 
 	onMount(async () => {
-		const releaseRuntimeStatus = retainRuntimeStatus({ needsStatus: true });
-		const unsubscribeRuntimeStatus = runtimeStatus.subscribe((status) => {
-			applyTimeStatus(status?.time);
-		});
 		await fetchSettings();
 		await fetchWifiStatus();
-		timeTickPoll.start();
 
 		return () => {
 			stopWifiPoll();
-			timeTickPoll.stop();
-			unsubscribeRuntimeStatus();
-			releaseRuntimeStatus();
 		};
 	});
 
@@ -543,11 +504,6 @@
 			</div>
 		</div>
 
-		<SettingsTimeCard
-			{timeStatus}
-			{clientNowMs}
-		/>
-		
 		<!-- WiFi Client (Connect to Network) -->
 		<div class="surface-card">
 			<div class="card-body space-y-4">
@@ -661,7 +617,9 @@
 			Save Settings
 		</button>
 		
-			<SettingsBackupCard
+			<SettingsOtaCard />
+
+		<SettingsBackupCard
 				{backingUpNow}
 				onbackupNowToSd={backupNowToSd}
 				ondownloadBackup={downloadBackup}

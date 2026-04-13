@@ -39,6 +39,7 @@ RUN_DISPLAY=0
 PARSE_DRIVE_LOG=""
 SEGMENT_SELECTOR="auto"
 LIST_SEGMENTS=0
+IP_OVERRIDE=""
 
 usage() {
   cat <<EOF
@@ -58,13 +59,21 @@ Options:
                             auto (default), last, longest-connected, or 1-based index
   --list-segments           List discovered perf CSV segments and exit
   --board-id ID             Board id from test/device/board_inventory.json
+                            (prefers board_inventory.local.json when present)
                             (default: release)
   --duration-seconds N      Soak duration for live soak steps (default: 300)
   --artifact-root PATH      Base output root (default: .artifacts/hardware/test);
                             runs are stored under <artifact-root>/<board-id>/
   --strict                  Treat PASS_WITH_WARNINGS as a failing exit
   --strict-soaks            Make soak steps authoritative for the suite result
+  --ip IP                   Set the metrics URL to http://IP/api/debug/metrics,
+                            overriding the inventory value (also settable via
+                            METRICS_URL env)
   -h, --help                Show this help
+
+Environment overrides:
+  DEVICE_PORT              Override the inventory serial port for live runs
+  METRICS_URL              Override the inventory metrics endpoint for live runs
 
 Examples:
   ${SELF_NAME}
@@ -72,6 +81,7 @@ Examples:
   ${SELF_NAME} --display
   ${SELF_NAME} --all --board-id release --strict
   ${SELF_NAME} --all --board-id release --strict-soaks --strict
+  ${SELF_NAME} --all --ip 192.168.1.100
   ${SELF_NAME} --device --parse-drive-log /path/to/metrics.jsonl
   ${SELF_NAME} --core --parse-drive-log /path/to/serial.log
   ${SELF_NAME} --parse-drive-log /path/to/real_fw_soak_run
@@ -143,6 +153,14 @@ while [[ $# -gt 0 ]]; do
       ARTIFACT_ROOT="$2"
       shift
       ;;
+    --ip)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --ip" >&2
+        exit 2
+      fi
+      IP_OVERRIDE="$2"
+      shift
+      ;;
     --strict)
       STRICT_WARNINGS=1
       ;;
@@ -165,6 +183,18 @@ done
 if ! [[ "$SOAK_DURATION_SECONDS" =~ ^[0-9]+$ ]] || [[ "$SOAK_DURATION_SECONDS" -lt 1 ]]; then
   echo "Invalid --duration-seconds value '$SOAK_DURATION_SECONDS' (expected positive integer)." >&2
   exit 2
+fi
+
+if [[ -n "$IP_OVERRIDE" ]]; then
+  if [[ -n "${METRICS_URL:-}" ]]; then
+    echo "Warning: --ip overrides METRICS_URL env var ($METRICS_URL)" >&2
+  fi
+  # Strip any scheme prefix the user may have included (e.g. http://192.168.1.1)
+  _IP_STRIPPED="${IP_OVERRIDE#http://}"
+  _IP_STRIPPED="${_IP_STRIPPED#https://}"
+  # Strip any trailing path
+  _IP_STRIPPED="${_IP_STRIPPED%%/*}"
+  METRICS_URL="http://$_IP_STRIPPED/api/debug/metrics"
 fi
 
 if [[ "$LIST_SEGMENTS" -eq 1 ]]; then
@@ -298,8 +328,8 @@ if [[ ! -f "$ASSEMBLE_RESULT_SCRIPT" ]]; then
   exit 2
 fi
 
-DEVICE_PORT=""
-METRICS_URL=""
+DEVICE_PORT="${DEVICE_PORT:-}"
+METRICS_URL="${METRICS_URL:-}"
 if [[ "$NEEDS_LIVE_BOARD" -eq 1 ]]; then
   if [[ ! -f "$INVENTORY_PATH" ]]; then
     echo "Board inventory not found: $INVENTORY_PATH" >&2
@@ -326,8 +356,18 @@ PY
     exit 2
   }
 
-  DEVICE_PORT="$(printf "%s\n" "$BOARD_INFO" | sed -n '1p')"
-  METRICS_URL="$(printf "%s\n" "$BOARD_INFO" | sed -n '2p')"
+  INV_PORT="$(printf "%s\n" "$BOARD_INFO" | sed -n '1p')"
+  INV_METRICS="$(printf "%s\n" "$BOARD_INFO" | sed -n '2p')"
+  if [[ -n "$DEVICE_PORT" ]]; then
+    echo "Using DEVICE_PORT from environment: $DEVICE_PORT (inventory has: $INV_PORT)"
+  else
+    DEVICE_PORT="$INV_PORT"
+  fi
+  if [[ -n "$METRICS_URL" ]]; then
+    echo "Using METRICS_URL from environment: $METRICS_URL (inventory has: $INV_METRICS)"
+  else
+    METRICS_URL="$INV_METRICS"
+  fi
   if [[ -z "$DEVICE_PORT" ]]; then
     echo "Board '$BOARD_ID' is missing a device_path in inventory." >&2
     exit 2

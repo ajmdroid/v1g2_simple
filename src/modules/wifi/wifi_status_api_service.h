@@ -44,19 +44,6 @@ struct StatusRuntime {
     String (*firmwareVersion)(void* ctx) = nullptr;
     void* firmwareVersionCtx = nullptr;
 
-    bool (*timeValid)(void* ctx) = nullptr;
-    void* timeValidCtx = nullptr;
-    uint8_t (*timeSource)(void* ctx) = nullptr;
-    void* timeSourceCtx = nullptr;
-    uint8_t (*timeConfidence)(void* ctx) = nullptr;
-    void* timeConfidenceCtx = nullptr;
-    int32_t (*timeTzOffsetMin)(void* ctx) = nullptr;
-    void* timeTzOffsetMinCtx = nullptr;
-    int64_t (*timeEpochMsOr0)(void* ctx) = nullptr;
-    void* timeEpochMsOr0Ctx = nullptr;
-    uint32_t (*timeEpochAgeMsOr0)(void* ctx) = nullptr;
-    void* timeEpochAgeMsOr0Ctx = nullptr;
-
     uint16_t (*batteryVoltageMv)(void* ctx) = nullptr;
     void* batteryVoltageMvCtx = nullptr;
     uint8_t (*batteryPercentage)(void* ctx) = nullptr;

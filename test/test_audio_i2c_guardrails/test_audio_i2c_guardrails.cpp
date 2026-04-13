@@ -50,6 +50,8 @@ void test_audio_process_amp_timeout_uses_nonblocking_disable_and_only_clears_on_
     const std::string source = readFile((projectRoot() + "/src/audio_voice.cpp").c_str());
     const std::string body = extractBlock(source, "void audio_process_amp_timeout()");
 
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, source.find("AMP_TIMEOUT_CHECK_INTERVAL_MS"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("lastAmpTimeoutCheckMs"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("set_speaker_amp(false, 0)"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("if (result == AudioI2cResult::Ok)"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, body.find("amp_is_warm = false;"));
@@ -70,15 +72,30 @@ void test_audio_tasks_abort_when_codec_init_or_amp_enable_fails() {
 
 void test_battery_critical_poweroff_checks_latch_drop_failure_with_extended_budget() {
     const std::string source = readFile((projectRoot() + "/src/battery_manager.cpp").c_str());
-    const std::string powerOffBody = extractBlock(source, "bool BatteryManager::powerOff()");
+    const std::string powerOffBody = extractBlock(source, "bool BatteryManager::powerOff(bool sdLogEnabled)");
 
     TEST_ASSERT_NOT_EQUAL(std::string::npos,
                           powerOffBody.find("setTCA9554PinWithBudget(TCA9554_PWR_LATCH_PIN"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, powerOffBody.find("pdMS_TO_TICKS(250)"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, powerOffBody.find("5)"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, powerOffBody.find("if (!latchDropped)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, powerOffBody.find("if (latchDropped)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                          powerOffBody.find("readTca9554RegisterWithTimeout("));
     TEST_ASSERT_NOT_EQUAL(std::string::npos,
                           powerOffBody.find("Failed to drop power latch, falling back to deep sleep"));
+}
+
+void test_battery_shutdown_readback_uses_explicit_wire_timeout_and_restores_it() {
+    const std::string source = readFile((projectRoot() + "/src/battery_manager.cpp").c_str());
+    const std::string helperBody = extractBlock(source, "AudioI2cResult readTca9554RegisterWithTimeout(");
+
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, source.find("kShutdownReadbackTimeoutMs = 50"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, helperBody.find("AudioI2cLockGuard lock"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, helperBody.find("ScopedWireTimeout timeoutGuard"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                          helperBody.find("audioI2cReadRegister(tca9554Wire, TCA9554_I2C_ADDR, reg, value)"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, source.find("wire.getTimeOut()"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, source.find("wire_.setTimeOut(timeoutMs)"));
 }
 
 int main() {
@@ -86,5 +103,6 @@ int main() {
     RUN_TEST(test_audio_process_amp_timeout_uses_nonblocking_disable_and_only_clears_on_success);
     RUN_TEST(test_audio_tasks_abort_when_codec_init_or_amp_enable_fails);
     RUN_TEST(test_battery_critical_poweroff_checks_latch_drop_failure_with_extended_budget);
+    RUN_TEST(test_battery_shutdown_readback_uses_explicit_wire_timeout_and_restores_it);
     return UNITY_END();
 }

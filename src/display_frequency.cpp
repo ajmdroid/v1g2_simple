@@ -2,8 +2,7 @@
  * Frequency display rendering — extracted from display.cpp (Phase 2M)
  *
  * Contains the frequency router, Classic (7-segment) and Serpentine (OFR)
- * frequency renderers, volume-zero warning, and the
- * dirty-region tracking helper.
+ * frequency renderers, and volume-zero warning.
  */
 
 #include "display.h"
@@ -24,66 +23,23 @@ using DisplayLayout::PRIMARY_ZONE_HEIGHT;
 // Convenience alias (matches display.cpp)
 using TextWidthCacheEntry = DisplayFontManager::WidthCacheEntry;
 
-// File-scoped font width caches for frequency displays
-// (LRU computation caches — not render state; render caches are in g_elementCaches)
-static TextWidthCacheEntry s_freqClassicWidthCache[16];
+// File-scoped font width caches for frequency displays.
+// Round-robin computation caches — not render state; render caches are in
+// g_elementCaches.  32 entries keeps eviction rare in busy Ka/K environments
+// where many distinct frequency strings cycle through.  Cost: ~768 bytes BSS
+// per cache (WidthCacheEntry is ~24 bytes with alignment).
+static TextWidthCacheEntry s_freqClassicWidthCache[32];
 static uint8_t s_freqClassicWidthCacheNextSlot = 0;
 static int s_freqClassicCachedNumericWidth = 0;
 static int s_freqClassicCachedDashWidth = 0;
 static int s_freqClassicCachedLaserWidth = 0;
 
 // Serpentine frequency render cache is in g_elementCaches.freqSerpentine
-static TextWidthCacheEntry s_freqSerpentineWidthCache[16];
+static TextWidthCacheEntry s_freqSerpentineWidthCache[32];
 static uint8_t s_freqSerpentineWidthCacheNextSlot = 0;
 
 // Periodic force-redraw for OFR serpentine font to clear any blending artifacts.
 static constexpr unsigned long FREQ_FORCE_REDRAW_MS = 5000UL;
-
-// --- Dirty-region tracking for partial refresh ---
-
-void V1Display::markFrequencyDirtyRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
-    if (w <= 0 || h <= 0) return;
-
-    // Clamp to screen bounds.
-    if (x < 0) {
-        w += x;
-        x = 0;
-    }
-    if (y < 0) {
-        h += y;
-        y = 0;
-    }
-    if (w <= 0 || h <= 0) return;
-    if (x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT) return;
-    if (x + w > SCREEN_WIDTH) w = SCREEN_WIDTH - x;
-    if (y + h > SCREEN_HEIGHT) h = SCREEN_HEIGHT - y;
-    if (w <= 0 || h <= 0) return;
-
-    if (!frequencyDirtyValid_) {
-        frequencyDirtyX_ = x;
-        frequencyDirtyY_ = y;
-        frequencyDirtyW_ = w;
-        frequencyDirtyH_ = h;
-        frequencyDirtyValid_ = true;
-    } else {
-        const int16_t x1 = min(frequencyDirtyX_, x);
-        const int16_t y1 = min(frequencyDirtyY_, y);
-        // Compute union right/bottom edges in int32_t to prevent int16_t overflow,
-        // then clamp to screen bounds before narrowing back to int16_t.
-        const int32_t x2_wide = max(static_cast<int32_t>(frequencyDirtyX_) + static_cast<int32_t>(frequencyDirtyW_),
-                                     static_cast<int32_t>(x) + static_cast<int32_t>(w));
-        const int32_t y2_wide = max(static_cast<int32_t>(frequencyDirtyY_) + static_cast<int32_t>(frequencyDirtyH_),
-                                     static_cast<int32_t>(y) + static_cast<int32_t>(h));
-        const int16_t x2 = static_cast<int16_t>(min(x2_wide, static_cast<int32_t>(SCREEN_WIDTH)));
-        const int16_t y2 = static_cast<int16_t>(min(y2_wide, static_cast<int32_t>(SCREEN_HEIGHT)));
-        frequencyDirtyX_ = x1;
-        frequencyDirtyY_ = y1;
-        frequencyDirtyW_ = x2 - x1;
-        frequencyDirtyH_ = y2 - y1;
-    }
-
-    frequencyRenderDirty_ = true;
-}
 
 // --- Classic 7-segment frequency display (original V1 style) Uses Segment7 TTF font if available, falls back to software renderer ---
 
@@ -94,7 +50,13 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
     const bool hasFreq = freqMHz > 0;
 
     char textBuf[16];
-    if (band == BAND_LASER) {
+    bool isAlpOverride = false;
+    if (alpFreqOverride_ && alpFreqText_[0] != '\0') {
+        // ALP gun abbreviation overrides frequency text
+        strncpy(textBuf, alpFreqText_, sizeof(textBuf));
+        textBuf[sizeof(textBuf) - 1] = '\0';
+        isAlpOverride = true;
+    } else if (band == BAND_LASER) {
         strcpy(textBuf, "LASER");
     } else if (hasFreq) {
         float freqGhz = freqMHz / 1000.0f;
@@ -104,7 +66,9 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
     }
 
     uint16_t freqColor;
-    if (usingOfr) {
+    if (isAlpOverride) {
+        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorAlpDefense;
+    } else if (usingOfr) {
         if (band == BAND_LASER) {
             freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
         } else if (muted) {
@@ -169,7 +133,11 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         }
 
         int textWidth = s_freqClassicCachedNumericWidth;
-        if (band == BAND_LASER) {
+        if (isAlpOverride) {
+            // ALP gun abbreviations vary — compute width dynamically
+            textWidth = DisplayFontManager::cachedTextWidth(
+                fontMgr.segment7, fontSize, textBuf, s_freqClassicWidthCache, s_freqClassicWidthCacheNextSlot);
+        } else if (band == BAND_LASER) {
             textWidth = s_freqClassicCachedLaserWidth;
         } else if (!hasFreq) {
             textWidth = s_freqClassicCachedDashWidth;
@@ -196,7 +164,6 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         const int clearW = clearRight - clearLeft;
         if (clearH > 0 && clearW > 0) {
             FILL_RECT(clearLeft, clearY, clearW, clearH, PALETTE_BG);
-            markFrequencyDirtyRegion(clearLeft, clearY, clearW, clearH);
         }
 
         // Convert RGB565 to RGB888 for OpenFontRender
@@ -220,12 +187,7 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         int effectiveHeight = getEffectiveScreenHeight();
         int y = muteIconBottom + (effectiveHeight - muteIconBottom - m.digitH) / 2 + 5;
 
-        int width = 0;
-        if (band == BAND_LASER) {
-            width = measureSevenSegmentText(textBuf, scale);
-        } else {
-            width = measureSevenSegmentText(textBuf, scale);
-        }
+        int width = measureSevenSegmentText(textBuf, scale);
 
         const int leftMargin = 120;
         const int rightMargin = 200;
@@ -233,13 +195,12 @@ void V1Display::drawFrequencyClassic(uint32_t freqMHz, Band band, bool muted, bo
         int x = leftMargin + (maxWidth - width) / 2;
         if (x < leftMargin) x = leftMargin;
 
-        if (band == BAND_LASER) {
+        if (isAlpOverride || band == BAND_LASER) {
+            // Alpha text — use 14-segment renderer
             FILL_RECT(x - 4, y - 4, width + 8, m.digitH + 8, PALETTE_BG);
-            markFrequencyDirtyRegion(x - 4, y - 4, width + 8, m.digitH + 8);
             draw14SegmentText(textBuf, x, y, scale, freqColor, PALETTE_BG);
         } else {
             FILL_RECT(x - 2, y, width + 4, m.digitH + 4, PALETTE_BG);
-            markFrequencyDirtyRegion(x - 2, y, width + 4, m.digitH + 4);
             drawSevenSegmentText(textBuf, x, y, scale, freqColor, PALETTE_BG);
         }
     }
@@ -276,11 +237,11 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
 
     // Serpentine style: show nothing when no frequency (resting/idle state)
     // But we must clear the area if we previously drew something
-    if (freqMHz == 0 && band != BAND_LASER) {
+    // ALP override always renders — gun abbreviation replaces frequency
+    if (freqMHz == 0 && band != BAND_LASER && !alpFreqOverride_) {
         if (g_elementCaches.freqSerpentine.valid && g_elementCaches.freqSerpentine.lastText[0] != '\0') {
             // Clear only the previously drawn text area
             FILL_RECT(g_elementCaches.freqSerpentine.lastDrawX - 5, clearTop, g_elementCaches.freqSerpentine.lastDrawWidth + 10, clearHeight, PALETTE_BG);
-            markFrequencyDirtyRegion(g_elementCaches.freqSerpentine.lastDrawX - 5, clearTop, g_elementCaches.freqSerpentine.lastDrawWidth + 10, clearHeight);
             g_elementCaches.freqSerpentine.lastText[0] = '\0';
             g_elementCaches.freqSerpentine.valid = false;
         }
@@ -289,7 +250,12 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
 
     // Build text and color
     char textBuf[16];
-    if (band == BAND_LASER) {
+    bool isAlpOverrideSerpentine = false;
+    if (alpFreqOverride_ && alpFreqText_[0] != '\0') {
+        strncpy(textBuf, alpFreqText_, sizeof(textBuf));
+        textBuf[sizeof(textBuf) - 1] = '\0';
+        isAlpOverrideSerpentine = true;
+    } else if (band == BAND_LASER) {
         strcpy(textBuf, "LASER");
     } else if (freqMHz > 0) {
         snprintf(textBuf, sizeof(textBuf), "%.3f", freqMHz / 1000.0f);
@@ -298,7 +264,9 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     }
 
     uint16_t freqColor;
-    if (band == BAND_LASER) {
+    if (isAlpOverrideSerpentine) {
+        freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorAlpDefense;
+    } else if (band == BAND_LASER) {
         freqColor = muted ? PALETTE_MUTED_OR_PERSISTED : s.colorBandL;
     } else if (muted) {
         freqColor = PALETTE_MUTED_OR_PERSISTED;
@@ -339,7 +307,6 @@ void V1Display::drawFrequencySerpentine(uint32_t freqMHz, Band band, bool muted,
     int clearX = (g_elementCaches.freqSerpentine.lastDrawWidth > 0) ? min(x, g_elementCaches.freqSerpentine.lastDrawX) - 5 : x - 5;
     int clearW = max(textW, g_elementCaches.freqSerpentine.lastDrawWidth) + 10;
     FILL_RECT(clearX, clearTop, clearW, clearHeight, PALETTE_BG);
-    markFrequencyDirtyRegion(clearX, clearTop, clearW, clearHeight);
 
     fontMgr.serpentine.setFontSize(fontSize);
     fontMgr.serpentine.setBackgroundColor(0, 0, 0);  // Black background
@@ -406,12 +373,6 @@ void V1Display::drawFrequency(uint32_t freqMHz, Band band, bool muted, bool isPh
     if (s.displayStyle == DISPLAY_STYLE_SERPENTINE) {
         fontMgr.ensureSerpentineLoaded(tft_);
     }
-    frequencyRenderDirty_ = false;
-    frequencyDirtyValid_ = false;
-    frequencyDirtyX_ = 0;
-    frequencyDirtyY_ = 0;
-    frequencyDirtyW_ = 0;
-    frequencyDirtyH_ = 0;
 
     // Debug: log which style is being used
     static int lastStyleLogged = -1;

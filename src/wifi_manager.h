@@ -189,6 +189,10 @@ public:
     void markUiActivity();  // Call on every HTTP request
     bool isUiActive(unsigned long timeoutMs = 30000) const;  // True if request within timeout
 
+    /// Service one tick of the HTTP server (call from long-running operations
+    /// that need the WebServer to remain responsive, e.g. OTA downloads).
+    void pumpHttpServer() { server_.handleClient(); }
+
 private:
     WebServer server_;
     bool webRoutesInitialized_ = false;

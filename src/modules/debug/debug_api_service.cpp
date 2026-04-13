@@ -287,6 +287,7 @@ DEBUG_API_NOINLINE void appendFullMetricsDoc(JsonDocument& doc,
     doc["rxBytes"] = flat.rxBytes;
     doc["parseSuccesses"] = flat.parseOk;
     doc["parseFailures"] = flat.parseFail;
+    doc["parseResyncs"] = flat.parseResync;
     doc["queueDrops"] = flat.qDrop;
     doc["perfDrop"] = flat.perfDrop;
     doc["perfSdLockFail"] = snapshot.perfSdLockFail;
@@ -429,6 +430,7 @@ void appendSoakMetricsDoc(JsonDocument& doc, const PerfRuntimeMetricsSnapshot& s
     doc["rxPackets"] = flat.rx;
     doc["parseSuccesses"] = flat.parseOk;
     doc["parseFailures"] = flat.parseFail;
+    doc["parseResyncs"] = flat.parseResync;
     doc["queueDrops"] = flat.qDrop;
     doc["perfDrop"] = flat.perfDrop;
     doc["oversizeDrops"] = flat.oversizeDrops;

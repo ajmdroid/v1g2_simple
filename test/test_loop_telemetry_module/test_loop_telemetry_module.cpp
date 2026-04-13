@@ -106,6 +106,7 @@ static void recordHeapStats(
 
 void setUp() {
     resetState();
+    module = LoopTelemetryModule();  // reset cadence counter
 }
 
 void tearDown() {}
@@ -178,6 +179,44 @@ void test_missing_heap_input_skips_heap_recording() {
     TEST_ASSERT_EQUAL(CALL_REFRESH_DMA, callLog[1]);
 }
 
+void test_heap_sampling_skips_between_cadence_hits() {
+    LoopTelemetryModule mod;
+    LoopTelemetryModule::Providers providers;
+    providers.microsNow = readMicrosNow;
+    providers.recordLoopJitterUs = recordLoopJitter;
+    providers.refreshDmaCache = refreshDmaCache;
+    providers.readFreeHeap = readFreeHeap;
+    providers.readLargestHeapBlock = readLargestHeapBlock;
+    providers.readCachedFreeDma = readCachedFreeDma;
+    providers.readCachedLargestDma = readCachedLargestDma;
+    providers.recordHeapStats = recordHeapStats;
+    mod.begin(providers);
+
+    nowMicros = 100;
+
+    // First call samples (counter initialised to DIVISOR-1)
+    mod.process(0);
+    TEST_ASSERT_EQUAL(1, recordHeapCalls);
+    TEST_ASSERT_EQUAL(1, refreshDmaCalls);
+
+    // Next DIVISOR-1 calls skip heap sampling
+    for (uint8_t i = 1; i < LoopTelemetryModule::HEAP_SAMPLE_DIVISOR; i++) {
+        mod.process(0);
+    }
+    TEST_ASSERT_EQUAL(1, recordHeapCalls);
+    TEST_ASSERT_EQUAL(1, refreshDmaCalls);
+
+    // The DIVISOR-th call after the first triggers another sample
+    mod.process(0);
+    TEST_ASSERT_EQUAL(2, recordHeapCalls);
+    TEST_ASSERT_EQUAL(2, refreshDmaCalls);
+
+    // Jitter is still recorded every call
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(LoopTelemetryModule::HEAP_SAMPLE_DIVISOR) + 1,
+        recordJitterCalls);
+}
+
 void test_empty_providers_is_safe_noop() {
     LoopTelemetryModule::Providers providers;
     module.begin(providers);
@@ -195,6 +234,7 @@ int main() {
     RUN_TEST(test_records_jitter_dma_cache_and_heap_stats);
     RUN_TEST(test_jitter_elapsed_is_wrap_safe);
     RUN_TEST(test_missing_heap_input_skips_heap_recording);
+    RUN_TEST(test_heap_sampling_skips_between_cadence_hits);
     RUN_TEST(test_empty_providers_is_safe_noop);
     return UNITY_END();
 }

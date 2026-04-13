@@ -4,7 +4,7 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 
 **Base URL**: `http://192.168.35.5` (default AP mode)  
 **Content-Type**: `application/x-www-form-urlencoded` (POST) or `application/json`
-**Updated**: `2026-03-20`
+**Updated**: `2026-04-12`
 
 ---
 
@@ -14,6 +14,7 @@ Complete API documentation for the V1-Simple web interface and REST endpoints.
 - [System Utilities](#system-utilities)
 - [Settings](#settings)
 - [V1 Profiles](#v1-profiles)
+- [V1 Devices](#v1-devices)
 - [Auto-Push](#auto-push)
 - [Audio Settings](#audio-settings)
 - [Display Colors](#display-colors)
@@ -68,16 +69,7 @@ Get device status including V1 connection, WiFi, and alerts.
     "uptime": 3600,
     "heap_free": 180000,
     "hostname": "v1g2",
-    "firmware_version": "4.0.0-dev"
-  },
-  "time": {
-    "valid": true,
-    "source": 2,
-    "confidence": 3,
-    "tzOffsetMin": -300,
-    "tzOffsetMinutes": -300,
-    "epochMs": 1739650000000,
-    "ageMs": 1234
+    "firmware_version": "4.1.1"
   },
   "battery": {
     "voltage_mv": 4150,
@@ -448,7 +440,7 @@ Get current audio and voice-alert configuration.
 **Response:** JSON with `voiceAlertMode`, `voiceDirectionEnabled`, `announceBogeyCount`,
 `muteVoiceIfVolZero`, `voiceVolume`, secondary-alert toggles, volume-fade settings,
 and speed-mute settings (`speedMuteEnabled`, `speedMuteThresholdMph`, `speedMuteHysteresisMph`,
-`speedMuteVolume`).
+`speedMuteVolume`, `speedMuteVoice`).
 
 ### POST /api/audio/settings
 
@@ -459,7 +451,7 @@ Save audio and voice-alert configuration.
 `announceSecondaryAlerts`, `secondaryLaser`, `secondaryKa`, `secondaryK`, `secondaryX`,
 `alertVolumeFadeEnabled`, `alertVolumeFadeDelaySec`, `alertVolumeFadeVolume`,
 `speedMuteEnabled`, `speedMuteThresholdMph`, `speedMuteHysteresisMph`,
-and `speedMuteVolume`.
+and `speedMuteVolume`, `speedMuteVoice`.
 
 ---
 
@@ -767,41 +759,6 @@ Enable or disable WiFi client mode.
 
 ---
 
-## Time Sync
-
-### POST /api/time/sync
-
-Set the device clock from a client-supplied epoch timestamp. Used by the companion
-web UI to push the browser's current time to the device over the AP link.
-
-The device clock is runtime-only. After a cold reboot or reset, the firmware does
-not treat the last saved wall-clock snapshot as authoritative; it waits for a fresh
-sync or a deep-sleep RTC restore.
-
-**Request (JSON):**
-```json
-{
-  "epochMs": 1712000000000,
-  "tzOffsetMinutes": -420
-}
-```
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `epochMs` | integer | yes | Unix epoch in milliseconds. Must be in the range ~2023-11 to 2100-01-01. |
-| `tzOffsetMinutes` | integer | no | UTC offset in minutes (e.g. −420 for PDT). Clamped to ±840. Defaults to 0 if omitted. |
-
-**Response:**
-```json
-{
-  "ok": true,
-  "source": 1,
-  "epochMs": 1712000000000
-}
-```
-
-**Error responses:** 400 with `{"ok": false, "error": "..."}` for missing body, invalid JSON, missing/invalid `epochMs`, or out-of-range values.
-
 ---
 
 ## Debug
@@ -990,6 +947,99 @@ Stop the currently running V1 test scenario.
 
 ---
 
+## OTA Updates
+
+Over-the-air firmware and filesystem updates via GitHub Releases.
+Requires WiFi STA connection (device must be connected to an external network).
+
+### GET /api/version
+
+Lightweight version check.
+
+**Response:**
+```json
+{
+  "firmware_version": "4.1.1",
+  "git_sha": "ad6b231d"
+}
+```
+
+### GET /api/ota/status
+
+Full OTA subsystem state.
+
+**Response:**
+```json
+{
+  "state": "idle",
+  "current_version": "4.1.1",
+  "check_done": false,
+  "sta_connected": true,
+  "available_version": null,
+  "can_update": false,
+  "blocked_reason": null,
+  "progress": 0,
+  "error": null
+}
+```
+
+**State values:** `idle`, `checking`, `update_available`, `up_to_date`, `check_failed`, `preparing`, `downloading_firmware`, `downloading_filesystem`, `fs_pending_wifi`, `restarting`, `cancelled`, `error`
+
+**Blocked reasons:** `already_current`, `version_too_old`, `insufficient_space`, `no_sta`
+
+When `check_done` is true and an update is available, the response includes `available_version`, `changelog`, `breaking`, `notes`, `can_update`, and `min_from_version` (if version-gated).
+
+### POST /api/ota/check
+
+Trigger a version check against GitHub Releases. Rate-limited to one check per interval (returns cached result or 429 if too frequent).
+
+**Precondition:** WiFi STA connected.
+
+**Response (accepted):**
+```json
+{"checking": true}
+```
+
+**Response (cached, recent check):**
+```json
+{"checking": false, "cached": true}
+```
+
+**Error responses:** `400` (no STA), `409` (update in progress), `429` (rate limited)
+
+### POST /api/ota/start
+
+Begin the OTA update process. BLE is fully deinited before download begins.
+
+**Precondition:** `state` must be `update_available` (run `/api/ota/check` first).
+
+**Request body (optional):**
+```json
+{"target": "both"}
+```
+
+**Target values:** `firmware`, `filesystem`, `both` (default)
+
+**Response:**
+```json
+{"started": true}
+```
+
+**Error responses:** `400` (no update available, no STA)
+
+### POST /api/ota/cancel
+
+Abort an in-progress download. Only effective during `downloading_firmware` or `downloading_filesystem` states.
+
+**Response:**
+```json
+{"cancelled": true}
+```
+
+**Error response:** `409` (not in a cancellable state)
+
+---
+
 ## Legacy Shorthand Routes
 
 These non-prefixed routes predate the `/api/` convention. They remain for backward
@@ -1068,9 +1118,10 @@ Error response body:
 ## Firmware Version
 
 Check firmware version via:
+- `GET /api/version` (dedicated endpoint, includes git SHA)
 - `GET /_app/version.json`
 - `GET /api/status` includes version in response
 
 ---
 
-*Last updated: April 2026*
+*Last updated: April 13, 2026*
