@@ -24,6 +24,7 @@
 #include "modules/speed/speed_source_selector.h"
 #include "modules/obd/obd_api_service.h"
 #include "modules/obd/obd_runtime_module.h"
+#include "modules/ota/ota_api_service.h"
 #include "battery_manager.h"
 #include <LittleFS.h>
 
@@ -474,6 +475,22 @@ bool WiFiManager::setupWebServer() {
                                       *speedSelector_,
                                       [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this,
                                       [](void* ctx) { static_cast<WiFiManager*>(ctx)->markUiActivity(); }, this);
+    });
+
+    // OTA update routes
+    server_.on("/api/version", HTTP_GET, [this]() {
+        OtaApiService::handleApiVersion(server_);
+    });
+    server_.on("/api/ota/status", HTTP_GET, [this]() {
+        OtaApiService::handleApiOtaStatus(server_);
+    });
+    server_.on("/api/ota/check", HTTP_POST, [this]() {
+        OtaApiService::handleApiOtaCheck(server_,
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
+    });
+    server_.on("/api/ota/start", HTTP_POST, [this]() {
+        OtaApiService::handleApiOtaStart(server_,
+            [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
 
     // Note: onNotFound is set earlier to handle LittleFS static files
