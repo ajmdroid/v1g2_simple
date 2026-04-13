@@ -28,6 +28,8 @@
 #include "config.h"
 #include <WiFiClientSecure.h>
 #include <Preferences.h>
+#include <esp_sntp.h>
+#include <time.h>
 
 // getBuildGitSha() is defined in build_metadata.cpp with no header.
 extern const char* getBuildGitSha();
@@ -262,12 +264,55 @@ static void freeTlsClient() {
 }
 
 // ============================================================================
+// Time sync for TLS — cert validation requires wall-clock time
+// ============================================================================
+
+/// Ensure the system clock is set (year > 2024) before TLS connections.
+/// Configures SNTP on first call, then waits up to 10 seconds for sync.
+/// Returns true if time is now valid.
+static bool ensureTimeSync() {
+    time_t now = time(nullptr);
+    struct tm t;
+    gmtime_r(&now, &t);
+    if (t.tm_year >= (2024 - 1900)) {
+        return true;  // Already synced.
+    }
+
+    Serial.printf("[%s] System time not set (year=%d) — starting SNTP sync\n",
+                  TAG, t.tm_year + 1900);
+    configTime(0, 0, "pool.ntp.org", "time.google.com");
+
+    // Wait for sync with timeout.
+    uint32_t start = millis();
+    while (millis() - start < 10000) {
+        now = time(nullptr);
+        gmtime_r(&now, &t);
+        if (t.tm_year >= (2024 - 1900)) {
+            Serial.printf("[%s] SNTP sync OK — %04d-%02d-%02d %02d:%02d:%02d UTC\n",
+                          TAG, t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                          t.tm_hour, t.tm_min, t.tm_sec);
+            return true;
+        }
+        delay(100);
+    }
+
+    Serial.printf("[%s] SNTP sync timed out — TLS may fail\n", TAG);
+    return false;
+}
+
+// ============================================================================
 // GitHub API helpers
 // ============================================================================
 
 /// Fetch the latest release JSON from GitHub and extract asset URLs.
 /// Populates manifest_ on success. Returns true on success.
 static bool fetchLatestRelease() {
+    // TLS cert validation requires wall-clock time.
+    if (!ensureTimeSync()) {
+        errorMessage_ = "Clock sync failed — cannot verify GitHub certificate";
+        return false;
+    }
+
     HTTPClient http;
     http.setConnectTimeout(HTTP_TIMEOUT_MS);
     http.setTimeout(HTTP_TIMEOUT_MS);
@@ -282,7 +327,13 @@ static bool fetchLatestRelease() {
 
     if (httpCode != 200) {
         Serial.printf("[%s] GitHub API returned %d\n", TAG, httpCode);
-        errorMessage_ = "GitHub API error: HTTP " + String(httpCode);
+        if (httpCode < 0) {
+            errorMessage_ = "Connection to GitHub failed (TLS/network error)";
+        } else if (httpCode == 403) {
+            errorMessage_ = "GitHub API rate limit exceeded — try again later";
+        } else {
+            errorMessage_ = "GitHub API error: HTTP " + String(httpCode);
+        }
         http.end();
         return false;
     }
