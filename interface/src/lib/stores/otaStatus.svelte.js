@@ -149,6 +149,31 @@ export function stopProgressPoll() {
 }
 
 /**
+ * Cancel an in-progress OTA download.
+ * Only effective during the download phase (not after flash write begins).
+ * Returns true if the device accepted the cancel request.
+ */
+export async function cancelUpdate() {
+	try {
+		const res = await fetchWithTimeout('/api/ota/cancel', {
+			method: 'POST'
+		});
+
+		if (!res.ok) {
+			const data = await res.json().catch(() => ({}));
+			otaError.set(data.message || data.error || 'Cancel failed');
+			return false;
+		}
+
+		stopProgressPoll();
+		return true;
+	} catch (e) {
+		otaError.set('Connection error during cancel');
+		return false;
+	}
+}
+
+/**
  * Refresh OTA status without triggering a GitHub check.
  * Used by the settings card to get the current state.
  */

@@ -492,6 +492,9 @@ bool WiFiManager::setupWebServer() {
         OtaApiService::handleApiOtaStart(server_,
             [](void* ctx) { return static_cast<WiFiManager*>(ctx)->checkRateLimit(); }, this);
     });
+    server_.on("/api/ota/cancel", HTTP_POST, [this]() {
+        OtaApiService::handleApiOtaCancel(server_);
+    });
 
     // Note: onNotFound is set earlier to handle LittleFS static files
     webRoutesInitialized_ = true;

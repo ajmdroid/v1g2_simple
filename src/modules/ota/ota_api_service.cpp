@@ -63,6 +63,7 @@ enum class OtaState : uint8_t {
     DOWNLOADING_FIRMWARE,
     DOWNLOADING_FILESYSTEM,
     RESTARTING,
+    CANCELLED,
     ERROR,
 };
 
@@ -93,6 +94,8 @@ enum class OtaTarget : uint8_t {
 // File-scoped state
 static V1BLEClient* ble_ = nullptr;
 static WiFiManager* wifi_ = nullptr;
+static void (*pumpServer_)(void* ctx) = nullptr;
+static void* pumpServerCtx_ = nullptr;
 
 static OtaState state_ = OtaState::IDLE;
 static OtaManifest manifest_;
@@ -101,6 +104,7 @@ static OtaTarget updateTarget_ = OtaTarget::BOTH;
 static int progressPercent_ = 0;
 static String errorMessage_;
 static uint32_t bleShutdownStartMs_ = 0;
+static volatile bool cancelRequested_ = false;
 
 // ============================================================================
 // Semver comparison
@@ -364,10 +368,25 @@ static bool downloadAndFlash(const String& url,
     uint32_t lastProgressMs = millis();
 
     while (totalWritten < (size_t)contentLen) {
-        // Yield to system tasks periodically.
+        // Yield to system tasks and check for cancel periodically.
         if (millis() - lastProgressMs > 500) {
             progressPercent_ = (int)((totalWritten * 100ULL) / contentLen);
             lastProgressMs = millis();
+
+            // Pump the WebServer so cancel requests can arrive.
+            if (pumpServer_) pumpServer_(pumpServerCtx_);
+
+            // Check cancel flag (set by handleApiOtaCancel via pumped server).
+            if (cancelRequested_) {
+                Serial.printf("[%s] Download cancelled by user\n", TAG);
+                errorMessage_ = "Update cancelled";
+                Update.abort();
+                mbedtls_sha256_finish(&sha256Ctx, hash_unused);
+                mbedtls_sha256_free(&sha256Ctx);
+                http.end();
+                return false;
+            }
+
             yield();
         }
 
@@ -462,11 +481,15 @@ static bool downloadAndFlash(const String& url,
 
 namespace OtaApiService {
 
-void begin(V1BLEClient* ble, WiFiManager* wifi) {
+void begin(V1BLEClient* ble, WiFiManager* wifi,
+           void (*pumpServer)(void* ctx), void* pumpServerCtx) {
     ble_ = ble;
     wifi_ = wifi;
+    pumpServer_ = pumpServer;
+    pumpServerCtx_ = pumpServerCtx;
     state_ = OtaState::IDLE;
     checkDone_ = false;
+    cancelRequested_ = false;
     errorMessage_ = "";
     Serial.printf("[%s] Service initialized\n", TAG);
 }
@@ -496,6 +519,7 @@ void handleApiOtaStatus(WebServer& server) {
         case OtaState::DOWNLOADING_FIRMWARE:  stateStr = "downloading_firmware"; break;
         case OtaState::DOWNLOADING_FILESYSTEM: stateStr = "downloading_filesystem"; break;
         case OtaState::RESTARTING:            stateStr = "restarting"; break;
+        case OtaState::CANCELLED:             stateStr = "cancelled"; break;
         case OtaState::ERROR:                 stateStr = "error"; break;
     }
 
@@ -616,11 +640,28 @@ void handleApiOtaStart(WebServer& server,
 
     progressPercent_ = 0;
     errorMessage_ = "";
+    cancelRequested_ = false;
     state_ = OtaState::BLE_SHUTTING_DOWN;
     bleShutdownStartMs_ = millis();
 
     Serial.printf("[%s] Update started — shutting down BLE\n", TAG);
     server.send(200, "application/json", R"({"started":true})");
+}
+
+void handleApiOtaCancel(WebServer& server) {
+    // Cancel is only meaningful during download phases.
+    if (state_ == OtaState::DOWNLOADING_FIRMWARE ||
+        state_ == OtaState::DOWNLOADING_FILESYSTEM) {
+        cancelRequested_ = true;
+        Serial.printf("[%s] Cancel requested by user\n", TAG);
+        server.send(200, "application/json", R"({"cancelled":true})");
+        return;
+    }
+
+    // BLE_SHUTTING_DOWN happens fast (< 1 second), can't meaningfully cancel.
+    // RESTARTING is past the point of no return.
+    server.send(400, "application/json",
+                R"({"error":"not_cancellable","message":"Update is not in a cancellable state"})");
 }
 
 void process(uint32_t nowMs) {
@@ -695,9 +736,10 @@ void process(uint32_t nowMs) {
             U_FLASH);
 
         if (!ok) {
-            state_ = OtaState::ERROR;
-            Serial.printf("[%s] Firmware download/flash failed: %s\n",
-                          TAG, errorMessage_.c_str());
+            state_ = cancelRequested_ ? OtaState::CANCELLED : OtaState::ERROR;
+            Serial.printf("[%s] Firmware download/flash %s: %s\n",
+                          TAG, cancelRequested_ ? "cancelled" : "failed",
+                          errorMessage_.c_str());
             break;
         }
 
@@ -722,9 +764,10 @@ void process(uint32_t nowMs) {
             U_SPIFFS);
 
         if (!ok) {
-            state_ = OtaState::ERROR;
-            Serial.printf("[%s] Filesystem download/flash failed: %s\n",
-                          TAG, errorMessage_.c_str());
+            state_ = cancelRequested_ ? OtaState::CANCELLED : OtaState::ERROR;
+            Serial.printf("[%s] Filesystem download/flash %s: %s\n",
+                          TAG, cancelRequested_ ? "cancelled" : "failed",
+                          errorMessage_.c_str());
             break;
         }
 
@@ -737,6 +780,15 @@ void process(uint32_t nowMs) {
         delay(2000);  // Give the web UI time to poll status one more time
         ESP.restart();
         break;  // Unreachable, but clean.
+    }
+
+    case OtaState::CANCELLED: {
+        // BLE was deinited before the download started. The cleanest recovery
+        // is a restart — re-initializing NimBLE mid-runtime is fragile.
+        Serial.printf("[%s] Update cancelled — restarting to recover BLE\n", TAG);
+        delay(2000);
+        ESP.restart();
+        break;
     }
 
     // CHECKING is a transient state within CHECK_REQUESTED handling.

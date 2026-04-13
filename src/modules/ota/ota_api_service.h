@@ -21,7 +21,11 @@ namespace OtaApiService {
 
 /// Wire dependencies. Called once during setup() before any handlers fire.
 /// All pointers must remain valid for the lifetime of the service.
-void begin(V1BLEClient* ble, WiFiManager* wifi);
+///
+/// pumpServer/pumpServerCtx: optional callback to service the WebServer
+/// during long-running downloads, enabling cancel requests to arrive.
+void begin(V1BLEClient* ble, WiFiManager* wifi,
+           void (*pumpServer)(void* ctx) = nullptr, void* pumpServerCtx = nullptr);
 
 /// GET /api/version — lightweight version endpoint.
 void handleApiVersion(WebServer& server);
@@ -37,6 +41,10 @@ void handleApiOtaCheck(WebServer& server,
 /// Disconnects BLE, downloads from GitHub, flashes, and restarts.
 void handleApiOtaStart(WebServer& server,
                        bool (*checkRateLimit)(void* ctx), void* rateLimitCtx);
+
+/// POST /api/ota/cancel — abort an in-progress download.
+/// Only effective during the download phase (not after flash write begins).
+void handleApiOtaCancel(WebServer& server);
 
 /// Called from loop() to drive non-blocking OTA state machine.
 /// Returns immediately when idle. During an active update, drives

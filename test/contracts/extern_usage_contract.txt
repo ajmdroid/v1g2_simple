@@ -64,21 +64,22 @@ kind=header file=include/settings_internals.h line=34 text=extern const char XOR
 kind=header file=include/settings_internals.h line=36 text=extern const char* OBFUSCATION_HEX_PREFIX;
 kind=header file=include/wifi_manager_internals.h line=15 text=extern V1BLEClient bleClient;
 kind=header file=include/wifi_manager_internals.h line=16 text=extern SystemEventBus systemEventBus;
-kind=header file=src/battery_manager.h line=103 text=extern BatteryManager batteryManager;
-kind=header file=src/battery_manager.h line=106 text=extern TwoWire tca9554Wire;
-kind=header file=src/battery_manager.h line=107 text=extern SemaphoreHandle_t tca9554WireMutex;
-kind=header file=src/display.h line=272 text=extern V1Display display;
+kind=header file=src/battery_manager.h line=104 text=extern BatteryManager batteryManager;
+kind=header file=src/battery_manager.h line=107 text=extern TwoWire tca9554Wire;
+kind=header file=src/battery_manager.h line=108 text=extern SemaphoreHandle_t tca9554WireMutex;
+kind=header file=src/display.h line=264 text=extern V1Display display;
 kind=header file=src/display_font_manager.h line=120 text=extern DisplayFontManager fontMgr;
 kind=source file=src/main_boot.cpp line=23 text=extern V1Display display;
 kind=source file=src/main_setup_helpers.cpp line=265 text=extern const char* getBuildGitSha();
-kind=header file=src/perf_metrics.h line=695 text=extern PerfExtendedMetrics perfExtended;
-kind=header file=src/perf_metrics.h line=808 text=extern PerfCounters perfCounters;
-kind=header file=src/perf_metrics.h line=1211 text=extern PerfLatency perfLatency;
-kind=header file=src/perf_metrics.h line=1215 text=extern bool perfDebugEnabled; // Runtime debug print enable
-kind=header file=src/perf_metrics.h line=1216 text=extern uint32_t perfLastReportMs; // Last report timestamp
+kind=source file=src/modules/ota/ota_api_service.cpp line=30 text=extern const char* getBuildGitSha();
+kind=header file=src/perf_metrics.h line=697 text=extern PerfExtendedMetrics perfExtended;
+kind=header file=src/perf_metrics.h line=810 text=extern PerfCounters perfCounters;
+kind=header file=src/perf_metrics.h line=1214 text=extern PerfLatency perfLatency;
+kind=header file=src/perf_metrics.h line=1218 text=extern bool perfDebugEnabled; // Runtime debug print enable
+kind=header file=src/perf_metrics.h line=1219 text=extern uint32_t perfLastReportMs; // Last report timestamp
 kind=header file=src/perf_sd_logger.h line=65 text=extern PerfSdLogger perfSdLogger;
-kind=header file=src/settings.h line=826 text=extern SettingsManager settingsManager;
+kind=header file=src/settings.h line=838 text=extern SettingsManager settingsManager;
 kind=header file=src/storage_manager.h line=306 text=extern StorageManager storageManager;
 kind=header file=src/v1_devices.h line=71 text=extern V1DeviceStore v1DeviceStore;
 kind=header file=src/v1_profiles.h line=173 text=extern V1ProfileManager v1ProfileManager;
-kind=header file=src/wifi_manager.h line=338 text=extern WiFiManager wifiManager;
+kind=header file=src/wifi_manager.h line=342 text=extern WiFiManager wifiManager;

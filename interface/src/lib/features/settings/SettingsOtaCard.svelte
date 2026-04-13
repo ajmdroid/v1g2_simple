@@ -7,12 +7,14 @@
 		otaError,
 		checkForUpdate,
 		startUpdate,
+		cancelUpdate,
 		refreshOtaStatus,
 		stopProgressPoll
 	} from '$lib/stores/otaStatus.svelte.js';
 
 	let checking = $state(false);
 	let updating = $state(false);
+	let cancelling = $state(false);
 	let confirmBreaking = $state(false);
 	let message = $state(null);
 
@@ -65,11 +67,27 @@
 		confirmBreaking = false;
 	}
 
+	async function handleCancel() {
+		cancelling = true;
+		const ok = await cancelUpdate();
+		cancelling = false;
+
+		if (ok) {
+			updating = false;
+			message = { type: 'info', text: 'Update cancelled. Device will restart to restore BLE.' };
+		} else {
+			message = { type: 'error', text: $otaError || 'Failed to cancel update' };
+		}
+	}
+
 	$effect(() => {
 		const status = $otaStatus;
 		if (status.state === 'error') {
 			updating = false;
 			message = { type: 'error', text: status.error || 'Update failed' };
+		} else if (status.state === 'cancelled') {
+			updating = false;
+			message = { type: 'info', text: 'Update cancelled. Device will restart to restore BLE.' };
 		} else if (status.state === 'restarting') {
 			message = { type: 'success', text: 'Update complete. Device is restarting...' };
 		}
@@ -160,7 +178,21 @@
 						<span class="font-mono">{$otaStatus.progress}%</span>
 					</div>
 					<progress class="progress progress-primary w-full" value={$otaStatus.progress} max="100"></progress>
-					<p class="copy-caption text-xs">V1 connection will reconnect after restart.</p>
+					<div class="flex justify-between items-center">
+						<p class="copy-caption text-xs">V1 connection will reconnect after restart.</p>
+						{#if $otaStatus.state === 'downloading_firmware' || $otaStatus.state === 'downloading_filesystem'}
+							<button
+								class="btn btn-ghost btn-xs text-error"
+								onclick={handleCancel}
+								disabled={cancelling}
+							>
+								{#if cancelling}
+									<span class="loading loading-spinner loading-xs"></span>
+								{/if}
+								Cancel
+							</button>
+						{/if}
+					</div>
 				</div>
 			{/if}
 
