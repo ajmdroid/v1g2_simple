@@ -24,7 +24,10 @@
 
 #include "ble_client.h"
 #include "wifi_manager.h"
+#include "display.h"
 #include "config.h"
+#include <WiFiClientSecure.h>
+#include <Preferences.h>
 
 // getBuildGitSha() is defined in build_metadata.cpp with no header.
 extern const char* getBuildGitSha();
@@ -48,6 +51,53 @@ static constexpr int HTTP_TIMEOUT_MS = 15000;
 /// Stream buffer size for downloading firmware chunks.
 static constexpr size_t DOWNLOAD_BUFFER_SIZE = 4096;
 
+/// DigiCert Global Root G2 — root CA for github.com and objects.githubusercontent.com.
+/// Valid until 2038-01-15. If GitHub changes their CA chain, update this cert.
+/// Source: https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem
+static const char* GITHUB_ROOT_CA = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh
+MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
+d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH
+MjAeFw0xMzA4MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVT
+MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j
+b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEcyMIIBIjANBgkqhkiG
+9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuzfNNNx7a8myaJCtSnX/RrohCgiN9RlUyfuI
+2/Ou8jqJkTx65qsGGmvPrC3oXgkkRLpimn7Wo6h+4FR1IAWsULecYxpsMNzaHxmx
+1x7e/dfgy5SDN67sH0NO3Xss0r0upS/kqbitOtSZpLYl6ZtrAGCSYP9PIUkY92eQ
+q2EGnI/yuum06ZIya7XzV+hdG82MHauVBJVJ8zUtluNJbd134/tJS7SsVQepj5Wzt
+CO7TG1F8PapspUwtP1MVYwnSlcUfIKdzXOS0xZKBgyMUNGPHgm+F6HmIcr9g+UQv
+IOlCsRnKPZzFBQ9RnbDhxSJITRNrw9FDKZJobq7nMWxM4MphQIDAQABo0IwQDAP
+BgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUTiJUIBiV
+5uNu5g/6+rkS7QYXjzkwDQYJKoZIhvcNAQELBQADggEBAGBnKJRvDkhj6zHd6mcY
+1Yl9PMCcit6E7UMYLBR/rvHBFVtFN2KoI5yTMfKIXqQmVt8Pv/Q5e9ZvSbW/LTV
+Emh+mJmjFCEi/hPhoKNPJoqquvJxHLAeubEq1EkPQFCGfGi6gLGIJg/e5NN1WQYP
+jxCOdHbPBAy6ByJyF6vWz0DgB6TQR0Pnj7M0R8bS+JOOdmBJ/r1nS2OeZ1D9RRF
+t3O7Q4UfFmFBg0MWS5IRwjifBftmCaFZ9Ul+NN0iC0/1ItYFLUCM9qVPXMzjYdXN
+K5WBxJY5RVbTD8KWaXEXUK3q2CJkgERRmm1TAyUPgR+B3xmR5DnKSFRKRTmEJYg
+pSo=
+-----END CERTIFICATE-----
+)EOF";
+
+/// Maximum download retry attempts for transient network failures.
+static constexpr int MAX_DOWNLOAD_RETRIES = 3;
+
+/// Delay between retry attempts (ms). Doubles on each retry.
+static constexpr uint32_t RETRY_BASE_DELAY_MS = 2000;
+
+/// Minimum interval between /api/ota/check requests (ms).
+/// Prevents the UI from hammering the GitHub API.
+static constexpr uint32_t OTA_CHECK_MIN_INTERVAL_MS = 300000;  // 5 minutes
+
+/// NVS namespace and keys for two-phase "both" update.
+/// After firmware is flashed, we persist the filesystem update details
+/// so the new firmware can complete phase 2 on its first boot.
+static const char* NVS_OTA_NS         = "ota_pending";
+static const char* NVS_KEY_FS_URL     = "fs_url";
+static const char* NVS_KEY_FS_SIZE    = "fs_size";
+static const char* NVS_KEY_FS_SHA     = "fs_sha256";
+static const char* NVS_KEY_FS_VERSION = "fs_ver";
+
 // ============================================================================
 // OTA state
 // ============================================================================
@@ -62,6 +112,7 @@ enum class OtaState : uint8_t {
     BLE_SHUTTING_DOWN,
     DOWNLOADING_FIRMWARE,
     DOWNLOADING_FILESYSTEM,
+    FS_PENDING_WIFI,        // Phase 2: waiting for WiFi STA before FS download
     RESTARTING,
     CANCELLED,
     ERROR,
@@ -94,6 +145,7 @@ enum class OtaTarget : uint8_t {
 // File-scoped state
 static V1BLEClient* ble_ = nullptr;
 static WiFiManager* wifi_ = nullptr;
+static V1Display* display_ = nullptr;
 static void (*pumpServer_)(void* ctx) = nullptr;
 static void* pumpServerCtx_ = nullptr;
 
@@ -105,6 +157,8 @@ static int progressPercent_ = 0;
 static String errorMessage_;
 static uint32_t bleShutdownStartMs_ = 0;
 static volatile bool cancelRequested_ = false;
+static int downloadRetryCount_ = 0;          // Current retry attempt for transient failures
+static uint32_t lastCheckRequestMs_ = 0;     // Timestamp of last /api/ota/check acceptance
 
 // ============================================================================
 // Semver comparison
@@ -138,6 +192,76 @@ static bool canUpgradeFrom(const String& current, const String& minFrom) {
 }
 
 // ============================================================================
+// NVS helpers — two-phase filesystem update persistence
+// ============================================================================
+
+/// Save pending filesystem update to NVS so the new firmware can
+/// complete phase 2 on its first boot (after firmware restart).
+static void savePendingFilesystemUpdate(const OtaManifest& m) {
+    Preferences prefs;
+    if (!prefs.begin(NVS_OTA_NS, false)) {
+        Serial.printf("[%s] ERROR: NVS open failed for pending FS write\n", TAG);
+        return;
+    }
+    prefs.putString(NVS_KEY_FS_URL, m.filesystemUrl);
+    prefs.putUInt(NVS_KEY_FS_SIZE, m.filesystemSize);
+    prefs.putString(NVS_KEY_FS_SHA, m.filesystemSha256);
+    prefs.putString(NVS_KEY_FS_VERSION, m.version);
+    prefs.end();
+    Serial.printf("[%s] Saved pending filesystem update to NVS (%zu bytes)\n",
+                  TAG, m.filesystemSize);
+}
+
+/// Check NVS for a pending filesystem update. Returns true if one exists,
+/// populating the url/size/sha256 output params.
+static bool loadPendingFilesystemUpdate(String& url, size_t& size,
+                                        String& sha256, String& version) {
+    Preferences prefs;
+    if (!prefs.begin(NVS_OTA_NS, true)) return false;  // Read-only
+    url = prefs.getString(NVS_KEY_FS_URL, "");
+    size = prefs.getUInt(NVS_KEY_FS_SIZE, 0);
+    sha256 = prefs.getString(NVS_KEY_FS_SHA, "");
+    version = prefs.getString(NVS_KEY_FS_VERSION, "");
+    prefs.end();
+    return !url.isEmpty() && size > 0;
+}
+
+/// Clear pending filesystem update from NVS (after successful flash or on error).
+static void clearPendingFilesystemUpdate() {
+    Preferences prefs;
+    if (!prefs.begin(NVS_OTA_NS, false)) return;
+    prefs.clear();
+    prefs.end();
+    Serial.printf("[%s] Cleared pending filesystem update from NVS\n", TAG);
+}
+
+// ============================================================================
+// TLS helpers
+// ============================================================================
+
+/// Shared WiFiClientSecure instance for OTA HTTPS connections.
+/// Reused across API and download calls to save RAM (TLS context is ~40KB).
+/// Not thread-safe — but all callers run on the same loop task.
+static WiFiClientSecure* tlsClient_ = nullptr;
+
+/// Get or create the TLS client with GitHub root CA pinned.
+static WiFiClientSecure& getTlsClient() {
+    if (!tlsClient_) {
+        tlsClient_ = new WiFiClientSecure();
+        tlsClient_->setCACert(GITHUB_ROOT_CA);
+    }
+    return *tlsClient_;
+}
+
+/// Free the TLS client (call after OTA work is done to reclaim ~40KB).
+static void freeTlsClient() {
+    if (tlsClient_) {
+        delete tlsClient_;
+        tlsClient_ = nullptr;
+    }
+}
+
+// ============================================================================
 // GitHub API helpers
 // ============================================================================
 
@@ -150,9 +274,7 @@ static bool fetchLatestRelease() {
     http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
     http.setUserAgent("V1Simple-OTA/" FIRMWARE_VERSION);
 
-    // GitHub API — skip TLS cert validation, rely on SHA-256 of binaries.
-    // ESP32-S3 WiFiClientSecure with setInsecure() disables cert checks.
-    http.begin(GITHUB_RELEASES_URL);
+    http.begin(getTlsClient(), GITHUB_RELEASES_URL);
     http.addHeader("Accept", "application/vnd.github+json");
 
     Serial.printf("[%s] Checking %s\n", TAG, GITHUB_RELEASES_URL);
@@ -205,7 +327,7 @@ static bool fetchLatestRelease() {
     manifestHttp.setConnectTimeout(HTTP_TIMEOUT_MS);
     manifestHttp.setTimeout(HTTP_TIMEOUT_MS);
     manifestHttp.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-    manifestHttp.begin(manifestUrl);
+    manifestHttp.begin(getTlsClient(), manifestUrl);
 
     httpCode = manifestHttp.GET();
     if (httpCode != 200) {
@@ -285,7 +407,7 @@ static bool downloadAndFlash(const String& url,
     http.setConnectTimeout(HTTP_TIMEOUT_MS);
     http.setTimeout(30000);  // Longer timeout for large binary downloads
     http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-    http.begin(url);
+    http.begin(getTlsClient(), url);
 
     int httpCode = http.GET();
     if (httpCode != 200) {
@@ -372,6 +494,15 @@ static bool downloadAndFlash(const String& url,
         if (millis() - lastProgressMs > 500) {
             progressPercent_ = (int)((totalWritten * 100ULL) / contentLen);
             lastProgressMs = millis();
+
+            // Update LCD progress display.
+            if (display_) {
+                const char* phase = (command == U_FLASH)
+                    ? "Downloading firmware..."
+                    : "Downloading filesystem...";
+                display_->showOtaProgress(
+                    static_cast<uint8_t>(progressPercent_), phase);
+            }
 
             // Pump the WebServer so cancel requests can arrive.
             if (pumpServer_) pumpServer_(pumpServerCtx_);
@@ -481,17 +612,37 @@ static bool downloadAndFlash(const String& url,
 
 namespace OtaApiService {
 
-void begin(V1BLEClient* ble, WiFiManager* wifi,
+void begin(V1BLEClient* ble, WiFiManager* wifi, V1Display* display,
            void (*pumpServer)(void* ctx), void* pumpServerCtx) {
     ble_ = ble;
     wifi_ = wifi;
+    display_ = display;
     pumpServer_ = pumpServer;
     pumpServerCtx_ = pumpServerCtx;
     state_ = OtaState::IDLE;
     checkDone_ = false;
     cancelRequested_ = false;
     errorMessage_ = "";
-    Serial.printf("[%s] Service initialized\n", TAG);
+
+    // Two-phase update: check if a previous firmware OTA left a pending
+    // filesystem update in NVS. If so, we need to complete phase 2 once
+    // WiFi STA connects.
+    String fsUrl, fsSha, fsVer;
+    size_t fsSize = 0;
+    if (loadPendingFilesystemUpdate(fsUrl, fsSize, fsSha, fsVer)) {
+        Serial.printf("[%s] Pending filesystem update found (v%s, %zu bytes)\n",
+                      TAG, fsVer.c_str(), fsSize);
+        // Populate manifest fields needed for the filesystem download.
+        manifest_.filesystemUrl = fsUrl;
+        manifest_.filesystemSize = fsSize;
+        manifest_.filesystemSha256 = fsSha;
+        manifest_.version = fsVer;
+        updateTarget_ = OtaTarget::FILESYSTEM;
+        state_ = OtaState::FS_PENDING_WIFI;
+    }
+
+    Serial.printf("[%s] Service initialized (state=%s)\n", TAG,
+                  state_ == OtaState::FS_PENDING_WIFI ? "fs_pending_wifi" : "idle");
 }
 
 void handleApiVersion(WebServer& server) {
@@ -518,6 +669,7 @@ void handleApiOtaStatus(WebServer& server) {
         case OtaState::BLE_SHUTTING_DOWN:     stateStr = "preparing"; break;
         case OtaState::DOWNLOADING_FIRMWARE:  stateStr = "downloading_firmware"; break;
         case OtaState::DOWNLOADING_FILESYSTEM: stateStr = "downloading_filesystem"; break;
+        case OtaState::FS_PENDING_WIFI:       stateStr = "fs_pending_wifi"; break;
         case OtaState::RESTARTING:            stateStr = "restarting"; break;
         case OtaState::CANCELLED:             stateStr = "cancelled"; break;
         case OtaState::ERROR:                 stateStr = "error"; break;
@@ -589,12 +741,30 @@ void handleApiOtaCheck(WebServer& server,
     if (state_ == OtaState::DOWNLOADING_FIRMWARE ||
         state_ == OtaState::DOWNLOADING_FILESYSTEM ||
         state_ == OtaState::BLE_SHUTTING_DOWN ||
+        state_ == OtaState::FS_PENDING_WIFI ||
         state_ == OtaState::RESTARTING) {
         server.send(409, "application/json",
                     R"({"error":"update_in_progress"})");
         return;
     }
 
+    // OTA-specific rate limit: at most one GitHub check per interval.
+    // This supplements the global rate limiter and prevents the UI from
+    // accidentally hammering the unauthenticated GitHub API (60 req/hr).
+    uint32_t now = millis();
+    if (lastCheckRequestMs_ != 0 &&
+        (now - lastCheckRequestMs_) < OTA_CHECK_MIN_INTERVAL_MS) {
+        // Already checked recently — return cached result instead of re-checking.
+        if (checkDone_) {
+            server.send(200, "application/json", R"({"checking":false,"cached":true})");
+        } else {
+            server.send(429, "application/json",
+                        R"({"error":"ota_check_rate_limited","message":"Check again in a few minutes"})");
+        }
+        return;
+    }
+
+    lastCheckRequestMs_ = now;
     state_ = OtaState::CHECK_REQUESTED;
     errorMessage_ = "";
     server.send(200, "application/json", R"({"checking":true})");
@@ -680,6 +850,7 @@ void process(uint32_t nowMs) {
 
         bool ok = fetchLatestRelease();
         checkDone_ = true;
+        freeTlsClient();  // Reclaim ~40KB until download phase needs it.
 
         if (!ok) {
             state_ = OtaState::CHECK_FAILED;
@@ -699,6 +870,10 @@ void process(uint32_t nowMs) {
     }
 
     case OtaState::BLE_SHUTTING_DOWN: {
+        // Show the OTA screen immediately when update begins.
+        if (display_) display_->showOtaProgress(0, "Preparing...");
+        downloadRetryCount_ = 0;
+
         // Gracefully shut down BLE before flash writes.
         if (ble_) {
             Serial.printf("[%s] Disconnecting BLE\n", TAG);
@@ -726,8 +901,9 @@ void process(uint32_t nowMs) {
     }
 
     case OtaState::DOWNLOADING_FIRMWARE: {
-        Serial.printf("[%s] Downloading firmware (%zu bytes)\n",
-                      TAG, manifest_.firmwareSize);
+        Serial.printf("[%s] Downloading firmware (%zu bytes), attempt %d/%d\n",
+                      TAG, manifest_.firmwareSize,
+                      downloadRetryCount_ + 1, MAX_DOWNLOAD_RETRIES);
 
         bool ok = downloadAndFlash(
             manifest_.firmwareUrl,
@@ -736,17 +912,43 @@ void process(uint32_t nowMs) {
             U_FLASH);
 
         if (!ok) {
-            state_ = cancelRequested_ ? OtaState::CANCELLED : OtaState::ERROR;
-            Serial.printf("[%s] Firmware download/flash %s: %s\n",
-                          TAG, cancelRequested_ ? "cancelled" : "failed",
-                          errorMessage_.c_str());
+            if (cancelRequested_) {
+                state_ = OtaState::CANCELLED;
+                Serial.printf("[%s] Firmware download cancelled\n", TAG);
+                break;
+            }
+            // Retry transient failures (network timeouts, stalls).
+            downloadRetryCount_++;
+            if (downloadRetryCount_ < MAX_DOWNLOAD_RETRIES) {
+                uint32_t retryDelay = RETRY_BASE_DELAY_MS * (1u << (downloadRetryCount_ - 1));
+                Serial.printf("[%s] Firmware download failed: %s — retrying in %u ms (%d/%d)\n",
+                              TAG, errorMessage_.c_str(), retryDelay,
+                              downloadRetryCount_ + 1, MAX_DOWNLOAD_RETRIES);
+                if (display_) {
+                    char retryMsg[48];
+                    snprintf(retryMsg, sizeof(retryMsg),
+                             "Retry %d/%d...", downloadRetryCount_ + 1, MAX_DOWNLOAD_RETRIES);
+                    display_->showOtaProgress(0, retryMsg);
+                }
+                delay(retryDelay);
+                progressPercent_ = 0;
+                // Stay in DOWNLOADING_FIRMWARE — process() will re-enter this case.
+                break;
+            }
+            state_ = OtaState::ERROR;
+            Serial.printf("[%s] Firmware download failed after %d attempts: %s\n",
+                          TAG, MAX_DOWNLOAD_RETRIES, errorMessage_.c_str());
             break;
         }
 
-        // If target is BOTH, continue to filesystem.
+        downloadRetryCount_ = 0;  // Reset for filesystem phase.
+
+        // Two-phase update: firmware is flashed — now restart and let
+        // the new firmware handle filesystem in phase 2. This ensures
+        // the bootloader validates new firmware before we touch the FS.
         if (updateTarget_ == OtaTarget::BOTH) {
-            progressPercent_ = 0;
-            state_ = OtaState::DOWNLOADING_FILESYSTEM;
+            savePendingFilesystemUpdate(manifest_);
+            state_ = OtaState::RESTARTING;
         } else {
             state_ = OtaState::RESTARTING;
         }
@@ -754,8 +956,9 @@ void process(uint32_t nowMs) {
     }
 
     case OtaState::DOWNLOADING_FILESYSTEM: {
-        Serial.printf("[%s] Downloading filesystem (%zu bytes)\n",
-                      TAG, manifest_.filesystemSize);
+        Serial.printf("[%s] Downloading filesystem (%zu bytes), attempt %d/%d\n",
+                      TAG, manifest_.filesystemSize,
+                      downloadRetryCount_ + 1, MAX_DOWNLOAD_RETRIES);
 
         bool ok = downloadAndFlash(
             manifest_.filesystemUrl,
@@ -764,19 +967,59 @@ void process(uint32_t nowMs) {
             U_SPIFFS);
 
         if (!ok) {
-            state_ = cancelRequested_ ? OtaState::CANCELLED : OtaState::ERROR;
-            Serial.printf("[%s] Filesystem download/flash %s: %s\n",
-                          TAG, cancelRequested_ ? "cancelled" : "failed",
-                          errorMessage_.c_str());
+            if (cancelRequested_) {
+                state_ = OtaState::CANCELLED;
+                Serial.printf("[%s] Filesystem download cancelled\n", TAG);
+                break;
+            }
+            downloadRetryCount_++;
+            if (downloadRetryCount_ < MAX_DOWNLOAD_RETRIES) {
+                uint32_t retryDelay = RETRY_BASE_DELAY_MS * (1u << (downloadRetryCount_ - 1));
+                Serial.printf("[%s] Filesystem download failed: %s — retrying in %u ms (%d/%d)\n",
+                              TAG, errorMessage_.c_str(), retryDelay,
+                              downloadRetryCount_ + 1, MAX_DOWNLOAD_RETRIES);
+                if (display_) {
+                    char retryMsg[48];
+                    snprintf(retryMsg, sizeof(retryMsg),
+                             "Retry %d/%d...", downloadRetryCount_ + 1, MAX_DOWNLOAD_RETRIES);
+                    display_->showOtaProgress(0, retryMsg);
+                }
+                delay(retryDelay);
+                progressPercent_ = 0;
+                break;
+            }
+            state_ = OtaState::ERROR;
+            Serial.printf("[%s] Filesystem download failed after %d attempts: %s\n",
+                          TAG, MAX_DOWNLOAD_RETRIES, errorMessage_.c_str());
+            clearPendingFilesystemUpdate();  // Don't retry on next boot.
             break;
         }
 
+        clearPendingFilesystemUpdate();  // Phase 2 complete.
         state_ = OtaState::RESTARTING;
+        break;
+    }
+
+    case OtaState::FS_PENDING_WIFI: {
+        // Phase 2 of a two-phase "both" update. Firmware was flashed on the
+        // previous boot; now we need WiFi STA to download the filesystem.
+        if (!wifi_ || !wifi_->isConnected()) {
+            break;  // Not ready yet — will check again next process() tick.
+        }
+
+        Serial.printf("[%s] WiFi STA connected — starting phase 2 filesystem update\n", TAG);
+        if (display_) display_->showOtaProgress(0, "Updating filesystem...");
+
+        // BLE is already running on the new firmware. Shut it down for the
+        // filesystem flash, same as a normal update.
+        state_ = OtaState::BLE_SHUTTING_DOWN;
         break;
     }
 
     case OtaState::RESTARTING: {
         Serial.printf("[%s] OTA complete — restarting in 2 seconds\n", TAG);
+        freeTlsClient();
+        if (display_) display_->showOtaProgress(100, "Restarting...");
         delay(2000);  // Give the web UI time to poll status one more time
         ESP.restart();
         break;  // Unreachable, but clean.
@@ -786,6 +1029,8 @@ void process(uint32_t nowMs) {
         // BLE was deinited before the download started. The cleanest recovery
         // is a restart — re-initializing NimBLE mid-runtime is fragile.
         Serial.printf("[%s] Update cancelled — restarting to recover BLE\n", TAG);
+        freeTlsClient();
+        if (display_) display_->showOtaProgress(0, "Cancelled — restarting...");
         delay(2000);
         ESP.restart();
         break;

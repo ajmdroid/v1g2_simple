@@ -5,6 +5,7 @@
 // Forward declarations for begin() dependencies.
 class V1BLEClient;
 class WiFiManager;
+class V1Display;
 
 /**
  * OTA API Service — namespace-based service following the DebugApiService
@@ -24,7 +25,7 @@ namespace OtaApiService {
 ///
 /// pumpServer/pumpServerCtx: optional callback to service the WebServer
 /// during long-running downloads, enabling cancel requests to arrive.
-void begin(V1BLEClient* ble, WiFiManager* wifi,
+void begin(V1BLEClient* ble, WiFiManager* wifi, V1Display* display = nullptr,
            void (*pumpServer)(void* ctx) = nullptr, void* pumpServerCtx = nullptr);
 
 /// GET /api/version — lightweight version endpoint.

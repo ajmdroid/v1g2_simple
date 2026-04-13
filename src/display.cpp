@@ -60,6 +60,8 @@ PerfDisplayScreen V1Display::perfScreenForMode(ScreenMode mode) {
             return PerfDisplayScreen::Live;
         case ScreenMode::Persisted:
             return PerfDisplayScreen::Persisted;
+        case ScreenMode::OtaUpdating:
+            return PerfDisplayScreen::Unknown;
     }
     return PerfDisplayScreen::Unknown;
 }

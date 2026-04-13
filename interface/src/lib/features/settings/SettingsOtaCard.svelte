@@ -161,12 +161,14 @@
 			{/if}
 
 			<!-- Progress bar during update -->
-			{#if updating || $otaStatus.state === 'downloading_firmware' || $otaStatus.state === 'downloading_filesystem' || $otaStatus.state === 'preparing'}
+			{#if updating || $otaStatus.state === 'downloading_firmware' || $otaStatus.state === 'downloading_filesystem' || $otaStatus.state === 'preparing' || $otaStatus.state === 'fs_pending_wifi'}
 				<div class="flex flex-col gap-2">
 					<div class="flex justify-between items-center text-sm">
 						<span class="copy-caption">
 							{#if $otaStatus.state === 'preparing'}
 								Disconnecting BLE...
+							{:else if $otaStatus.state === 'fs_pending_wifi'}
+								Waiting for WiFi to update filesystem...
 							{:else if $otaStatus.state === 'downloading_firmware'}
 								Downloading firmware...
 							{:else if $otaStatus.state === 'downloading_filesystem'}

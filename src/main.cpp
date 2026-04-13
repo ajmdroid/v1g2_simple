@@ -1012,7 +1012,7 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
     configureSystemLoopModules();
     configureRuntimeModules();
     DebugApiService::begin(&systemEventBus, &bleClient, &bleQueueModule);
-    OtaApiService::begin(&bleClient, &wifiManager,
+    OtaApiService::begin(&bleClient, &wifiManager, &display,
                          [](void* ctx) { static_cast<WiFiManager*>(ctx)->pumpHttpServer(); },
                          &wifiManager);
 
