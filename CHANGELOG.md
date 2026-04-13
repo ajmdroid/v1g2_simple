@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.1.2] - 2026-04-13
+
+### Changed
+- OTA `auto` target mode: compares installed filesystem SHA-256 against manifest to skip unnecessary filesystem downloads. UI shows "Firmware + filesystem" or "Firmware only" accordingly.
+- OTA start endpoint default target changed from `both` to `auto`.
+
+---
+
 ## [4.1.1] - 2026-04-13
 
 ### Added
@@ -150,6 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 4.1.2 | 2026-04-13 | OTA intelligent filesystem skip via SHA-256 comparison |
 | 4.1.1 | 2026-04-13 | OTA update system, ALP terminology rename, BLE resync observability |
 | 4.0.1 | 2026-04-04 | Web installer hotfix: corrected merged flash mode, secure hosted fallback |
 | 4.0.0 | 2026-04-01 | Modular architecture, 141 module files, 960 tests, CI contracts |

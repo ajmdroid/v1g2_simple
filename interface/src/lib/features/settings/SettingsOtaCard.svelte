@@ -56,7 +56,7 @@
 		message = null;
 		confirmBreaking = false;
 
-		const ok = await startUpdate('both');
+		const ok = await startUpdate('auto');
 		if (!ok) {
 			updating = false;
 			message = { type: 'error', text: $otaError || 'Failed to start update' };
@@ -113,6 +113,13 @@
 				<div class="flex justify-between items-center">
 					<span class="copy-caption">Available version</span>
 					<span class="font-mono text-sm">v{$otaStatus.available_version}</span>
+				</div>
+
+				<div class="flex justify-between items-center">
+					<span class="copy-caption">Update includes</span>
+					<span class="text-sm">
+						{$otaStatus.fs_update_needed ? 'Firmware + filesystem' : 'Firmware only'}
+					</span>
 				</div>
 
 				{#if $otaStatus.changelog}

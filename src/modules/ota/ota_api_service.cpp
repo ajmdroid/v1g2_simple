@@ -70,6 +70,13 @@ static const char* NVS_KEY_FS_SIZE    = "fs_size";
 static const char* NVS_KEY_FS_SHA     = "fs_sha256";
 static const char* NVS_KEY_FS_VERSION = "fs_ver";
 
+/// NVS namespace for tracking installed filesystem identity.
+/// After a successful filesystem OTA flash, we store its SHA-256
+/// so the next version check can compare and skip the FS download
+/// if unchanged.
+static const char* NVS_FS_ID_NS      = "ota_fs_id";
+static const char* NVS_KEY_FS_CUR_SHA = "sha256";
+
 // ============================================================================
 // OTA state
 // ============================================================================
@@ -131,6 +138,7 @@ static uint32_t bleShutdownStartMs_ = 0;
 static volatile bool cancelRequested_ = false;
 static int downloadRetryCount_ = 0;          // Current retry attempt for transient failures
 static uint32_t lastCheckRequestMs_ = 0;     // Timestamp of last /api/ota/check acceptance
+static bool fsUpdateNeeded_ = true;          // True if filesystem differs from manifest (auto-detect)
 
 // ============================================================================
 // Semver comparison
@@ -205,6 +213,47 @@ static void clearPendingFilesystemUpdate() {
     prefs.clear();
     prefs.end();
     Serial.printf("[%s] Cleared pending filesystem update from NVS\n", TAG);
+}
+
+// ============================================================================
+// Filesystem identity tracking — intelligent target detection
+// ============================================================================
+
+/// Store the SHA-256 of the filesystem that was just OTA-flashed.
+/// Called after a successful filesystem download+flash.
+static void saveInstalledFilesystemHash(const String& sha256) {
+    Preferences prefs;
+    if (!prefs.begin(NVS_FS_ID_NS, false)) {
+        Serial.printf("[%s] ERROR: NVS open failed for FS identity write\n", TAG);
+        return;
+    }
+    prefs.putString(NVS_KEY_FS_CUR_SHA, sha256);
+    prefs.end();
+    Serial.printf("[%s] Stored installed FS hash: %.12s...\n", TAG, sha256.c_str());
+}
+
+/// Load the SHA-256 of the currently installed filesystem.
+/// Returns empty string if no hash is stored (first OTA, or pre-OTA firmware).
+static String loadInstalledFilesystemHash() {
+    Preferences prefs;
+    if (!prefs.begin(NVS_FS_ID_NS, true)) return "";
+    String sha = prefs.getString(NVS_KEY_FS_CUR_SHA, "");
+    prefs.end();
+    return sha;
+}
+
+/// Determine if the filesystem needs updating by comparing the installed
+/// hash against the manifest's hash. Returns true if FS update is needed.
+/// Safe default: if no stored hash, assume FS needs update.
+static bool isFilesystemUpdateNeeded(const OtaManifest& m) {
+    if (m.filesystemSha256.isEmpty()) return true;  // No hash in manifest = always update
+    String installed = loadInstalledFilesystemHash();
+    if (installed.isEmpty()) return true;  // No stored hash = assume out of date
+    bool needed = !installed.equalsIgnoreCase(m.filesystemSha256);
+    Serial.printf("[%s] FS update check: installed=%.12s... manifest=%.12s... needed=%s\n",
+                  TAG, installed.c_str(), m.filesystemSha256.c_str(),
+                  needed ? "yes" : "no");
+    return needed;
 }
 
 // ============================================================================
@@ -699,6 +748,10 @@ void handleApiOtaStatus(WebServer& server) {
         doc["blocked_reason"] = staConnected ? nullptr : "no_sta";
     }
 
+    // Intelligent target recommendation.
+    doc["fs_update_needed"] = fsUpdateNeeded_;
+    doc["recommended_target"] = fsUpdateNeeded_ ? "both" : "firmware";
+
     doc["progress"] = progressPercent_;
     doc["error"] = errorMessage_.isEmpty() ? nullptr : errorMessage_.c_str();
 
@@ -768,8 +821,10 @@ void handleApiOtaStart(WebServer& server,
         return;
     }
 
-    // Parse target from request body (default: "both").
-    String targetStr = "both";
+    // Parse target from request body (default: "auto").
+    // "auto" uses the intelligent recommendation: skip filesystem if its
+    // SHA-256 matches the installed version.
+    String targetStr = "auto";
     if (server.hasArg("plain")) {
         JsonDocument reqDoc;
         DeserializationError err = deserializeJson(reqDoc, server.arg("plain"));
@@ -782,8 +837,11 @@ void handleApiOtaStart(WebServer& server,
         updateTarget_ = OtaTarget::FIRMWARE;
     } else if (targetStr == "filesystem") {
         updateTarget_ = OtaTarget::FILESYSTEM;
-    } else {
+    } else if (targetStr == "both") {
         updateTarget_ = OtaTarget::BOTH;
+    } else {
+        // "auto" — use recommendation based on FS hash comparison.
+        updateTarget_ = fsUpdateNeeded_ ? OtaTarget::BOTH : OtaTarget::FIRMWARE;
     }
 
     progressPercent_ = 0;
@@ -792,7 +850,10 @@ void handleApiOtaStart(WebServer& server,
     state_ = OtaState::BLE_SHUTTING_DOWN;
     bleShutdownStartMs_ = millis();
 
-    Serial.printf("[%s] Update started — shutting down BLE\n", TAG);
+    const char* targetName = updateTarget_ == OtaTarget::FIRMWARE ? "firmware" :
+                             updateTarget_ == OtaTarget::FILESYSTEM ? "filesystem" : "both";
+    Serial.printf("[%s] Update started (target=%s, requested=%s) — shutting down BLE\n",
+                  TAG, targetName, targetStr.c_str());
     server.send(200, "application/json", R"({"started":true})");
 }
 
@@ -836,10 +897,14 @@ void process(uint32_t nowMs) {
             break;
         }
 
+        // Determine if the filesystem actually changed between releases.
+        fsUpdateNeeded_ = isFilesystemUpdateNeeded(manifest_);
+
         if (isNewerVersion(FIRMWARE_VERSION, manifest_.version)) {
             state_ = OtaState::UPDATE_AVAILABLE;
-            Serial.printf("[%s] Update available: %s -> %s\n",
-                          TAG, FIRMWARE_VERSION, manifest_.version.c_str());
+            Serial.printf("[%s] Update available: %s -> %s (fs_update=%s)\n",
+                          TAG, FIRMWARE_VERSION, manifest_.version.c_str(),
+                          fsUpdateNeeded_ ? "yes" : "no");
         } else {
             state_ = OtaState::NO_UPDATE;
             Serial.printf("[%s] Already up to date (%s)\n", TAG, FIRMWARE_VERSION);
@@ -973,6 +1038,7 @@ void process(uint32_t nowMs) {
             break;
         }
 
+        saveInstalledFilesystemHash(manifest_.filesystemSha256);
         clearPendingFilesystemUpdate();  // Phase 2 complete.
         state_ = OtaState::RESTARTING;
         break;
