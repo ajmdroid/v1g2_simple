@@ -891,8 +891,7 @@ void handleApiOtaCancel(WebServer& server) {
 void process(uint32_t nowMs) {
     // Fast exit for steady states (the common case — no work to do).
     if (state_ == OtaState::IDLE || state_ == OtaState::UPDATE_AVAILABLE ||
-        state_ == OtaState::NO_UPDATE || state_ == OtaState::CHECK_FAILED ||
-        state_ == OtaState::ERROR) {
+        state_ == OtaState::NO_UPDATE || state_ == OtaState::CHECK_FAILED) {
         return;
     }
 
@@ -941,6 +940,18 @@ void process(uint32_t nowMs) {
             Serial.printf("[%s] Disconnecting BLE\n", TAG);
             ble_->disconnect();
             ble_->cleanupConnection();
+        }
+
+        // Disconnect ALL remaining NimBLE clients (OBD, ALP, etc.) so the
+        // BLE controller isn't servicing connections during flash writes.
+        // The V1 client was handled above; this catches any other peripherals.
+        auto connectedClients = NimBLEDevice::getConnectedClients();
+        for (auto* client : connectedClients) {
+            if (client && client->isConnected()) {
+                Serial.printf("[%s] Disconnecting peripheral %s\n",
+                              TAG, client->getPeerAddress().toString().c_str());
+                client->disconnect();
+            }
         }
 
         // Stop any active scan so the controller isn't mid-operation
@@ -1091,10 +1102,28 @@ void process(uint32_t nowMs) {
         break;  // Unreachable, but clean.
     }
 
+    case OtaState::ERROR: {
+        // Download failed after all retries. BLE is disconnected and scan is
+        // stopped — the device is non-functional until restarted. Show the
+        // error on the LCD briefly, then restart to recover.
+        Serial.printf("[%s] OTA failed — restarting to recover: %s\n",
+                      TAG, errorMessage_.c_str());
+        freeTlsClient();
+        if (display_) {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Update failed — restarting...");
+            display_->showOtaProgress(0, msg);
+        }
+        delay(3000);  // Let the user read the LCD error
+        ESP.restart();
+        break;
+    }
+
     case OtaState::CANCELLED: {
-        // BLE was deinited before the download started. The cleanest recovery
-        // is a restart — re-initializing NimBLE mid-runtime is fragile.
-        Serial.printf("[%s] Update cancelled — restarting to recover BLE\n", TAG);
+        // BLE was disconnected and scan stopped before the download started.
+        // Restart to cleanly recover all subsystems (BLE scan, proxy, etc.)
+        // rather than trying to re-wire the BLE state machine mid-runtime.
+        Serial.printf("[%s] Update cancelled — restarting to recover\n", TAG);
         freeTlsClient();
         if (display_) display_->showOtaProgress(0, "Cancelled — restarting...");
         delay(2000);

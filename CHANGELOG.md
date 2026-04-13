@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.1.4] - 2026-04-13
+
+### Fixed
+- OTA: disconnect ALL NimBLE clients (OBD, ALP) before flash writes, not just V1 — prevents heap corruption from OBD callback destructor during `deinit()`.
+- OTA: ERROR state now triggers automatic restart recovery instead of leaving device stuck with BLE disabled.
+
+---
+
 ## [4.1.3] - 2026-04-13
 
 ### Fixed
@@ -168,6 +176,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 4.1.4 | 2026-04-13 | OTA disconnect all BLE peripherals before flash, ERROR state recovery |
 | 4.1.3 | 2026-04-13 | OTA TLS fix, safe BLE shutdown, better error messages |
 | 4.1.2 | 2026-04-13 | OTA intelligent filesystem skip via SHA-256 comparison |
 | 4.1.1 | 2026-04-13 | OTA update system, ALP terminology rename, BLE resync observability |
