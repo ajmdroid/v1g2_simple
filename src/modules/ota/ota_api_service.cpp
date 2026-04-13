@@ -238,7 +238,7 @@ static void saveInstalledFilesystemHash(const String& sha256) {
 /// Returns empty string if no hash is stored (first OTA, or pre-OTA firmware).
 static String loadInstalledFilesystemHash() {
     Preferences prefs;
-    if (!prefs.begin(NVS_FS_ID_NS, true)) return "";
+    if (!prefs.begin(NVS_FS_ID_NS, false)) return "";
     String sha = prefs.getString(NVS_KEY_FS_CUR_SHA, "");
     prefs.end();
     return sha;
