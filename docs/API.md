@@ -69,7 +69,7 @@ Get device status including V1 connection, WiFi, and alerts.
     "uptime": 3600,
     "heap_free": 180000,
     "hostname": "v1g2",
-    "firmware_version": "4.0.1"
+    "firmware_version": "4.1.1"
   },
   "battery": {
     "voltage_mv": 4150,
@@ -947,6 +947,99 @@ Stop the currently running V1 test scenario.
 
 ---
 
+## OTA Updates
+
+Over-the-air firmware and filesystem updates via GitHub Releases.
+Requires WiFi STA connection (device must be connected to an external network).
+
+### GET /api/version
+
+Lightweight version check.
+
+**Response:**
+```json
+{
+  "firmware_version": "4.1.1",
+  "git_sha": "ad6b231d"
+}
+```
+
+### GET /api/ota/status
+
+Full OTA subsystem state.
+
+**Response:**
+```json
+{
+  "state": "idle",
+  "current_version": "4.1.1",
+  "check_done": false,
+  "sta_connected": true,
+  "available_version": null,
+  "can_update": false,
+  "blocked_reason": null,
+  "progress": 0,
+  "error": null
+}
+```
+
+**State values:** `idle`, `checking`, `update_available`, `up_to_date`, `check_failed`, `preparing`, `downloading_firmware`, `downloading_filesystem`, `fs_pending_wifi`, `restarting`, `cancelled`, `error`
+
+**Blocked reasons:** `already_current`, `version_too_old`, `insufficient_space`, `no_sta`
+
+When `check_done` is true and an update is available, the response includes `available_version`, `changelog`, `breaking`, `notes`, `can_update`, and `min_from_version` (if version-gated).
+
+### POST /api/ota/check
+
+Trigger a version check against GitHub Releases. Rate-limited to one check per interval (returns cached result or 429 if too frequent).
+
+**Precondition:** WiFi STA connected.
+
+**Response (accepted):**
+```json
+{"checking": true}
+```
+
+**Response (cached, recent check):**
+```json
+{"checking": false, "cached": true}
+```
+
+**Error responses:** `400` (no STA), `409` (update in progress), `429` (rate limited)
+
+### POST /api/ota/start
+
+Begin the OTA update process. BLE is fully deinited before download begins.
+
+**Precondition:** `state` must be `update_available` (run `/api/ota/check` first).
+
+**Request body (optional):**
+```json
+{"target": "both"}
+```
+
+**Target values:** `firmware`, `filesystem`, `both` (default)
+
+**Response:**
+```json
+{"started": true}
+```
+
+**Error responses:** `400` (no update available, no STA)
+
+### POST /api/ota/cancel
+
+Abort an in-progress download. Only effective during `downloading_firmware` or `downloading_filesystem` states.
+
+**Response:**
+```json
+{"cancelled": true}
+```
+
+**Error response:** `409` (not in a cancellable state)
+
+---
+
 ## Legacy Shorthand Routes
 
 These non-prefixed routes predate the `/api/` convention. They remain for backward
@@ -1025,9 +1118,10 @@ Error response body:
 ## Firmware Version
 
 Check firmware version via:
+- `GET /api/version` (dedicated endpoint, includes git SHA)
 - `GET /_app/version.json`
 - `GET /api/status` includes version in response
 
 ---
 
-*Last updated: April 12, 2026*
+*Last updated: April 13, 2026*

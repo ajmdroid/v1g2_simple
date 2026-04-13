@@ -4,7 +4,7 @@
 > For observability/testing authority see `OBSERVABILITY.md`. For perf thresholds see `PERF_SLOS.md`. For the full REST API see `API.md`.
 
 
-**Version:** 4.0.1  
+**Version:** 4.1.1  
 **Hardware:** Waveshare ESP32-S3-Touch-LCD-3.49 (AXS15231B, 640×172 LCD)  
 **Last Updated:** April 2026
 
@@ -14,10 +14,12 @@
 
 Feature-by-feature release history is maintained in `CHANGELOG.md`.
 
-Current train (`v4.0.1`) highlights:
-- Web installer hotfix: corrected merged browser-flash image packaging for ESP Web Tools.
-- Secure hosted fallback installer path for browser installs when the custom domain is not in a secure context.
-- Dedicated deploy workflows for installer HTML updates and installer-asset refreshes.
+Current train (`v4.1.1`) highlights:
+- OTA update system: over-the-air firmware and filesystem updates via GitHub Releases.
+- ALP terminology aligned to manufacturer conventions (scan → detection, armed → defense).
+- BLE framing resync observability (`parseResyncs` counter).
+- OBD radio yield during V1 reconnection.
+- NVS recovery, slot color sanitization, and settings-restore hardening.
 
 
 ---
@@ -54,7 +56,7 @@ No development tools needed — just a Chrome browser and USB cable:
 
 👉 **[Install via Hosted Web](https://esphome.github.io/esp-web-tools/?manifest=https%3A%2F%2Fcdn.jsdelivr.net%2Fgh%2Fajmdroid%2Fv1g2_simple%40gh-pages%2Finstall%2Fmanifest.json)**
 
-Use the hosted installer during the 4.0.1 hotfix rollout. It bypasses the custom-domain HTTPS path and loads the published V1-Simple manifest directly.
+Use the hosted installer for browser-based flashing. It loads the published V1-Simple manifest directly.
 
 1. Put device in bootloader mode (hold POWER + GEAR while plugging in USB)
 2. Click "Install V1-Simple" and select your device
@@ -484,7 +486,7 @@ Use for loop-phase orchestration with narrow function interfaces. Examples: all 
 - **Software reset / upload:** Skip splash for faster iteration
 - **Crash restart:** Skip splash
 
-The firmware version (e.g., "v4.0.1") is displayed on the boot splash screen and in the web UI header.
+The firmware version (e.g., "v4.1.1") is displayed on the boot splash screen and in the web UI header.
 
 **Source:** [src/main.cpp](../src/main.cpp#L471) (showBootSplash call), [src/display_screens.cpp](../src/display_screens.cpp) showBootSplash()
 
@@ -2064,8 +2066,10 @@ Based on code analysis:
    - What doesn't work: pinch-to-zoom, two-finger swipe, or any gesture requiring simultaneous touch points
    - Evidence: `touch_handler.h` comment: "Single-touch support (hardware limitation)"
    
-2. **No OTA updates:** Firmware must be flashed via USB.
-   - Evidence: No OTA code present in wifi_manager.cpp
+2. **OTA updates:** Firmware can be updated over-the-air via WiFi STA when connected to an external network. See `API.md` for OTA endpoints.
+   - The device checks GitHub Releases for newer firmware when triggered from the web UI.
+   - BLE is fully deinited during download; LCD shows progress.
+   - SHA-256 validation of downloaded binaries; automatic rollback on failed boot.
 
 ---
 
@@ -2095,4 +2099,4 @@ Based on code analysis:
 ---
 
 
-*Document generated from source code analysis. Last verified against v4.0.1.*
+*Document generated from source code analysis. Last verified against v4.1.1.*

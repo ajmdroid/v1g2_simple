@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.1.1] - 2026-04-13
+
+### Added
+
+**OTA Update System**
+- Over-the-air firmware and filesystem updates via GitHub Releases.
+- Two-phase update: firmware flashes first, filesystem follows on next boot.
+- SHA-256 binary validation of downloaded artifacts.
+- LCD progress display during download (web UI drops on reboot).
+- Cancel support during download via `/api/ota/cancel`.
+- SNTP time sync before TLS handshake for certificate validation.
+- Automatic rollback if new firmware fails to boot.
+- New API endpoints: `/api/version`, `/api/ota/status`, `/api/ota/check`, `/api/ota/start`, `/api/ota/cancel`.
+
+**Observability**
+- `parseResyncs` counter for BLE framing-level resync events (bad length, size, or end marker).
+- `parse_resyncs_delta` wired to hardware metric catalog and soak KV export.
+
+**Power**
+- `powerOffSdLog` dev toggle for power-off SD diagnostics.
+
+**Testing**
+- Comprehensive display test replacing 5-step color preview.
+- Error injection tests for AutoPush and QuietCoordinator failure paths.
+- Restore API guardrail test.
+
+### Changed
+- ALP terminology renamed: scan → detection, armed → defense (matches manufacturer conventions).
+- OBD module yields radio to V1 during reconnection; defers OBD BLE scan while V1 connection is in progress.
+- BLE timing state unified to `uint32_t` across all modules.
+- Heap sampling cadence reduced to every 8th loop iteration.
+- OFR glyph cache and text-width cache depth increased.
+- AlpSdLogger injected via `begin()` instead of extern global.
+- `test.sh` gains `--ip` flag, honors `DEVICE_PORT`/`METRICS_URL` env vars.
+
+### Fixed
+- `clampWifiModeValue` uses allowlist approach for gapped `WiFiModeSetting` enum.
+- `attemptNvsRecovery` returns false when no space was actually freed.
+- Slot colors sanitized in both restore path and API setter.
+- `resetDisplaySettings` volume color defaults match constructor and NVS.
+- ALP EN pin and unused TX pin assignment removed.
+- Stale gun ID cleared on new ALP alert entry.
+- ALP SD CSV column alignment corrected.
+- Dead code removed: 3 confirmed dead symbols, dead `subscribeBleNotifications()` path, dead classic frequency branch.
+
+### Security
+- OTA downloads use TLS (no cert pinning — GitHub CA migration makes pinning fragile). Binary integrity verified via SHA-256.
+
+---
+
 ## [4.0.1] - 2026-04-04
 
 ### Fixed
@@ -100,6 +150,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 4.1.1 | 2026-04-13 | OTA update system, ALP terminology rename, BLE resync observability |
 | 4.0.1 | 2026-04-04 | Web installer hotfix: corrected merged flash mode, secure hosted fallback |
 | 4.0.0 | 2026-04-01 | Modular architecture, 141 module files, 960 tests, CI contracts |
 | 3.0.7 | 2026 | Quality baseline before 4.x refactors |
