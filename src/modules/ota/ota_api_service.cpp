@@ -197,7 +197,9 @@ static void savePendingFilesystemUpdate(const OtaManifest& m) {
 static bool loadPendingFilesystemUpdate(String& url, size_t& size,
                                         String& sha256, String& version) {
     Preferences prefs;
-    if (!prefs.begin(NVS_OTA_NS, true)) return false;  // Read-only
+    // Open read-write to avoid ESP-IDF error log when namespace doesn't
+    // exist yet (read-only open of a missing namespace logs NOT_FOUND).
+    if (!prefs.begin(NVS_OTA_NS, false)) return false;
     url = prefs.getString(NVS_KEY_FS_URL, "");
     size = prefs.getUInt(NVS_KEY_FS_SIZE, 0);
     sha256 = prefs.getString(NVS_KEY_FS_SHA, "");
@@ -356,6 +358,11 @@ static bool fetchLatestRelease() {
     }
 
     // Fetch the manifest itself.
+    // Force a clean TLS session — the previous connection was to a different host
+    // (api.github.com) and reusing the WiFiClientSecure without stop() can leave
+    // stale session state that causes handshake failures (HTTP -1).
+    getTlsClient().stop();
+
     HTTPClient manifestHttp;
     manifestHttp.setConnectTimeout(HTTP_TIMEOUT_MS);
     manifestHttp.setTimeout(HTTP_TIMEOUT_MS);
@@ -365,7 +372,11 @@ static bool fetchLatestRelease() {
     httpCode = manifestHttp.GET();
     if (httpCode != 200) {
         Serial.printf("[%s] Manifest fetch returned %d\n", TAG, httpCode);
-        errorMessage_ = "Manifest fetch error: HTTP " + String(httpCode);
+        if (httpCode < 0) {
+            errorMessage_ = "Manifest download failed (TLS/network error)";
+        } else {
+            errorMessage_ = "Manifest fetch error: HTTP " + String(httpCode);
+        }
         manifestHttp.end();
         return false;
     }
@@ -444,7 +455,11 @@ static bool downloadAndFlash(const String& url,
 
     int httpCode = http.GET();
     if (httpCode != 200) {
-        errorMessage_ = "Download error: HTTP " + String(httpCode);
+        if (httpCode < 0) {
+            errorMessage_ = "Download failed (TLS/network error)";
+        } else {
+            errorMessage_ = "Download error: HTTP " + String(httpCode);
+        }
         http.end();
         return false;
     }
@@ -918,18 +933,25 @@ void process(uint32_t nowMs) {
         downloadRetryCount_ = 0;
 
         // Gracefully shut down BLE before flash writes.
+        // NimBLEDevice::deinit() is BANNED — it corrupts the fixed 3-slot
+        // internal client array (see ble_internals.h). Instead, disconnect
+        // all peripherals and stop scanning. The stack is destroyed moments
+        // later by ESP.restart() anyway, same as the power-off shutdown path.
         if (ble_) {
             Serial.printf("[%s] Disconnecting BLE\n", TAG);
             ble_->disconnect();
             ble_->cleanupConnection();
         }
 
-        // Deinit NimBLE stack entirely — frees ~40 KB DRAM, stops RF.
-        // true = preserve bonding data in NVS.
-        NimBLEDevice::deinit(true);
+        // Stop any active scan so the controller isn't mid-operation
+        // during flash writes.
+        NimBLEScan* pScan = NimBLEDevice::getScan();
+        if (pScan && pScan->isScanning()) {
+            pScan->stop();
+        }
 
-        // Brief settling time for NimBLE tasks to wind down.
-        delay(500);
+        // Brief settle for disconnect packets to transmit.
+        delay(200);
 
         Serial.printf("[%s] BLE shutdown complete, heap free: %u\n",
                       TAG, ESP.getFreeHeap());
