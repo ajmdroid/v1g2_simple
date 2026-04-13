@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.1.3] - 2026-04-13
+
+### Fixed
+- OTA: stop TLS client before manifest fetch to prevent stale session state causing handshake failures (HTTP -1) on redirect host.
+- OTA: replace banned `NimBLEDevice::deinit()` with safe disconnect + scan stop during pre-flash BLE shutdown.
+- OTA: distinguish TLS/network errors from HTTP errors in user-facing messages.
+- OTA: open NVS namespace read-write in `loadPendingFilesystemUpdate` to suppress ESP-IDF NOT_FOUND error log on first boot.
+
+---
+
 ## [4.1.2] - 2026-04-13
 
 ### Changed
@@ -158,6 +168,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 4.1.3 | 2026-04-13 | OTA TLS fix, safe BLE shutdown, better error messages |
 | 4.1.2 | 2026-04-13 | OTA intelligent filesystem skip via SHA-256 comparison |
 | 4.1.1 | 2026-04-13 | OTA update system, ALP terminology rename, BLE resync observability |
 | 4.0.1 | 2026-04-04 | Web installer hotfix: corrected merged flash mode, secure hosted fallback |
