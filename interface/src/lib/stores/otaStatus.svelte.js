@@ -85,7 +85,12 @@ export async function checkForUpdate() {
 
 		if (!res.ok) {
 			const data = await res.json().catch(() => ({}));
-			otaError.set(data.message || data.error || 'Check failed');
+			const err = data.error || '';
+			if (err === 'rate_limited' || err === 'ota_check_rate_limited') {
+				otaError.set('Please wait a few minutes before checking again.');
+			} else {
+				otaError.set(data.message || err || 'Check failed');
+			}
 			checkInFlight = false;
 			return null;
 		}
