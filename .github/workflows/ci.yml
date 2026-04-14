@@ -1,9 +1,9 @@
 name: CI
 
-# Dev pipeline: test every push, then auto-bump version and open a
-# release PR to main.  The only manual step is merging the PR.
+# Dev pipeline: test every push, bump version if tests pass.
+# You create the PR to main yourself when ready to release.
 #
-# Push to dev  → test → bump patch version → create/update PR
+# Push to dev  → test → bump patch version (if current version is already tagged)
 # PR to main   → test only (branch protection status check)
 # workflow_dispatch → same as push to dev
 #
@@ -19,7 +19,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -74,8 +73,8 @@ jobs:
           path: ci-test.log
           retention-days: 14
 
-  release-pr:
-    name: Version bump + PR
+  version-bump:
+    name: Bump version
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -108,7 +107,6 @@ jobs:
           fi
 
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Commit version bump
         if: steps.bump.outputs.bumped == 'true'
@@ -118,23 +116,3 @@ jobs:
           git add include/config.h
           git commit -m "chore(release): bump to ${{ steps.bump.outputs.version }}"
           git push
-
-      - name: Create or update PR
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.bump.outputs.tag }}"
-          TITLE="release: $TAG"
-          BODY="Automated release PR for $TAG.
-
-          Merge to build firmware, create GitHub Release, and deploy web installer."
-
-          EXISTING_PR=$(gh pr list --head dev --base main --json number --jq '.[0].number')
-
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --title "$TITLE" --body "$BODY"
-            echo "Updated PR #$EXISTING_PR → $TITLE"
-          else
-            gh pr create --base main --head dev --title "$TITLE" --body "$BODY"
-            echo "Created PR: $TITLE"
-          fi
