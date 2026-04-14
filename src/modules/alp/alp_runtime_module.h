@@ -104,6 +104,46 @@ struct AlpStatus {
     bool uartActive;                // true if UART has received any data
 };
 
+// ── Alert Session ────────────────────────────────────────────────────
+//
+// A session is a single laser engagement from onset to final clear.
+// It is the V1-shape projection of the parser state: the display
+// consumer asks "is there a laser event?" and "which gun?" and gets
+// two values — mirroring the V1's "are there alerts?" / "priority
+// alert?" contract. All state-machine and frame-level complexity
+// stays inside the module.
+//
+// Lifecycle:
+//   open   — LISTENING|IDLE → ALERT_ACTIVE (fresh engagement)
+//   stays open — across TEARDOWN↔ALERT_ACTIVE cycling (in-engagement
+//                re-arms driven by byte1 01↔02 or repeat 98 triggers).
+//                The gun frame arrives once at the opening of an
+//                engagement; persisting the session across re-arms
+//                keeps the gun abbreviation on the display for the
+//                full event rather than flashing on/off.
+//   close  — TEARDOWN → LISTENING (real end), or heartbeat timeout
+//            (ALP went silent) with a session still open.
+//
+// Self-test flag:
+//   Set when a session opens inside the 35s boot envelope AND an
+//   F0/A8 preamble was seen within the first 5s of module uptime.
+//   Cleared automatically if the session identifies a real gun —
+//   self-test sequences never produce gun IDs, so any gun-identified
+//   session is real by definition. While the flag is set, the V1-shape
+//   accessors (hasLaserEvent, isLaserDetecting) return false so the
+//   display stays clean through the ALP self-test window.
+
+struct AlertSession {
+    bool active = false;                            // session open?
+    bool isSelfTest = false;                        // suppressed from display
+    uint32_t startMs = 0;                           // session opened
+    uint32_t endMs = 0;                             // 0 while active
+    AlpGunType gun = AlpGunType::UNKNOWN;           // session's identified gun
+    uint32_t gunIdentifiedMs = 0;                   // 0 if not yet identified
+    uint32_t triggerCount = 0;                      // 98 frames in this session
+    uint32_t rearmCount = 0;                        // TEARDOWN→ALERT cycles within session
+};
+
 // ── Module ───────────────────────────────────────────────────────────
 
 class AlpRuntimeModule {
@@ -151,6 +191,16 @@ public:
     // RESYNC log throttle: only log every Nth bad checksum outside NOISE_WINDOW
     static constexpr uint32_t RESYNC_LOG_INTERVAL = 16;
 
+    // Self-test envelope — see AlertSession comment for full rationale.
+    // At ALP cold boot, the CPU runs a ~32s self-test that emits real
+    // 98 02 00 triggers. An F0/A8 preamble within 5s of first frame is
+    // pathognomonic; any alert session that opens within 35s of first
+    // frame while the preamble has been observed is flagged as a
+    // self-test. A gun identification in that session clears the flag
+    // (self-test bursts never produce gun IDs).
+    static constexpr uint32_t SELF_TEST_PREAMBLE_WINDOW_MS = 5000;
+    static constexpr uint32_t SELF_TEST_ENVELOPE_MS = 35000;
+
     /**
      * Initialize the module.
      * @param enabled  true to open UART2 and begin listening
@@ -188,6 +238,45 @@ public:
     /** Timestamp of last gun identification. */
     uint32_t lastGunTimestampMs() const { return lastGunTimestampMs_; }
 
+    // ── V1-shape display projection ──────────────────────────────────
+    //
+    // These are the two questions the display should ask. Everything
+    // else (state machine, TEARDOWN, self-test windowing, re-arm
+    // cycles) is parser-internal and should not leak into consumers.
+
+    /**
+     * Is there a laser event that should be shown on the display?
+     * True from session open through final teardown. False during
+     * self-test windows and when no engagement is active.
+     */
+    bool hasLaserEvent() const {
+        return session_.active && !session_.isSelfTest;
+    }
+
+    /**
+     * Is the ALP actively receiving alert frames right now (narrower
+     * than hasLaserEvent — excludes the post-alert TEARDOWN "rescan"
+     * window). Use for synthetic-alert injection into the V1 pipeline
+     * where we only want to force LIVE mode during active detection.
+     */
+    bool isLaserDetecting() const {
+        return hasLaserEvent() &&
+               (state_ == AlpState::ALERT_ACTIVE ||
+                state_ == AlpState::NOISE_WINDOW);
+    }
+
+    /**
+     * The gun associated with the current laser event. Returns
+     * UNKNOWN if no session is active OR the session has not yet
+     * identified a gun. Does NOT leak lastGun_ between engagements.
+     */
+    AlpGunType eventGun() const {
+        return session_.active ? session_.gun : AlpGunType::UNKNOWN;
+    }
+
+    /** Full current session for diagnostics / tests. */
+    const AlertSession& currentSession() const { return session_; }
+
 #ifdef UNIT_TEST
     // ── Test instrumentation ─────────────────────────────────────────
     void testInjectBytes(const uint8_t* data, size_t len);
@@ -202,6 +291,11 @@ public:
     bool testGetAlertDetectedViaHb() const { return alertDetectedViaHb_; }
     const uint8_t* testGetRingBuf() const { return ringBuf_; }
     size_t testGetRingLen() const { return ringLen_; }
+    // Session / self-test instrumentation
+    uint32_t testGetFirstFrameMs() const { return firstFrameMs_; }
+    uint32_t testGetSelfTestPreambleMs() const { return selfTestPreambleMs_; }
+    void testSetFirstFrameMs(uint32_t ms) { firstFrameMs_ = ms; }
+    void testSetSelfTestPreambleMs(uint32_t ms) { selfTestPreambleMs_ = ms; }
 #endif
 
 private:
@@ -227,6 +321,11 @@ private:
     uint8_t lastHbByte1_ = 0xFF;        // most recent B0 heartbeat byte1
     bool alertDetectedViaHb_ = false;    // true when byte1 transitioned to 01
     bool uartHasReceivedData_ = false;
+
+    // Session + self-test tracking
+    AlertSession session_;
+    uint32_t firstFrameMs_ = 0;          // first valid frame after begin()
+    uint32_t selfTestPreambleMs_ = 0;    // F0/A8 within 5s of firstFrameMs_; 0 = not seen
 
     // Counters
     uint32_t statusBurstCount_ = 0;
