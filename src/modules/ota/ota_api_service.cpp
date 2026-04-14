@@ -534,7 +534,18 @@ static bool downloadAndFlash(const String& url,
         }
     }
 
-    uint8_t buf[DOWNLOAD_BUFFER_SIZE];
+    // Heap-allocate the download buffer — 4 KB on the stack would blow the
+    // 8 KB loopTask budget when combined with the TLS handshake depth from
+    // mbedtls (RSA key exchange + cert verification uses ~10 KB of stack).
+    uint8_t* buf = static_cast<uint8_t*>(malloc(DOWNLOAD_BUFFER_SIZE));
+    if (!buf) {
+        errorMessage_ = "Failed to allocate download buffer";
+        Update.abort();
+        mbedtls_sha256_finish(&sha256Ctx, hash_unused);
+        mbedtls_sha256_free(&sha256Ctx);
+        http.end();
+        return false;
+    }
     uint32_t lastProgressMs = millis();
 
     while (totalWritten < (size_t)contentLen) {
@@ -563,6 +574,7 @@ static bool downloadAndFlash(const String& url,
                 mbedtls_sha256_finish(&sha256Ctx, hash_unused);
                 mbedtls_sha256_free(&sha256Ctx);
                 http.end();
+                free(buf);
                 return false;
             }
 
@@ -580,6 +592,7 @@ static bool downloadAndFlash(const String& url,
                     mbedtls_sha256_finish(&sha256Ctx, hash_unused);
                     mbedtls_sha256_free(&sha256Ctx);
                     http.end();
+                    free(buf);
                     return false;
                 }
                 delay(10);
@@ -590,12 +603,13 @@ static bool downloadAndFlash(const String& url,
                 mbedtls_sha256_finish(&sha256Ctx, hash_unused);
                 mbedtls_sha256_free(&sha256Ctx);
                 http.end();
+                free(buf);
                 return false;
             }
             continue;
         }
 
-        size_t toRead = min(available, sizeof(buf));
+        size_t toRead = min(available, DOWNLOAD_BUFFER_SIZE);
         toRead = min(toRead, (size_t)contentLen - totalWritten);
         size_t bytesRead = stream->readBytes(buf, toRead);
         if (bytesRead == 0) continue;
@@ -609,6 +623,7 @@ static bool downloadAndFlash(const String& url,
             mbedtls_sha256_finish(&sha256Ctx, hash_unused);
             mbedtls_sha256_free(&sha256Ctx);
             http.end();
+            free(buf);
             return false;
         }
 
@@ -616,6 +631,8 @@ static bool downloadAndFlash(const String& url,
     }
 
     http.end();
+    free(buf);
+    buf = nullptr;
     progressPercent_ = 100;
 
     // Finalize SHA-256 hash (always call finish before free).

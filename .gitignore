@@ -83,8 +83,7 @@ alp_captures/
 # Local research docs (not tracked)
 docs/FUNCTION_PRIORITY.local.md
 docs/OBD_MODULE_PLAN.md
-docs/ALP_PROTOCOL_REFERENCE.md
-docs/ALP_SIGNAL_ANALYSIS_PLAN.md
+docs/ALP_*.md
 docs/DISPLAY_REWRITE_PLAN.md
 docs/OTA_DESIGN.md
 .github/instructions/

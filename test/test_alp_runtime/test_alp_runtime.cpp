@@ -1126,6 +1126,325 @@ void test_new_alert_identifies_fresh_gun_after_clear() {
     TEST_ASSERT_EQUAL(AlpGunType::MARKSMAN_ULTRALYTE, alpRuntimeModule.lastIdentifiedGun());
 }
 
+// Regression for alp_18.csv in-engagement teardown re-arm.
+//
+// Observed: PL2 identified at 36.768s via observe-mode burst → gun shown.
+// At 46.352s the heartbeat byte1 dropped 01→02 (alert resolve-to-TEARDOWN)
+// and — in the same millisecond — a 98 02 00 re-arm fired, pushing state
+// back to ALERT_ACTIVE. Pre-fix, the TEARDOWN→ALERT_ACTIVE transitionTo
+// wiped lastGun_, leaving the remaining ~20s of the same engagement
+// showing generic "LASER" on the display.
+//
+// Fix: narrow the clear guard to (LISTENING|IDLE) → ALERT_ACTIVE only.
+// Assertion: PL2 must still be identified after the re-arm.
+void test_gun_persists_through_teardown_rearm_cycle() {
+    beginEnabled();
+
+    // Seed LISTENING with a 02 idle heartbeat (also seeds lastHbByte1_=02
+    // so the later 01 transition registers as a real alert flip).
+    const uint8_t hb_idle_02_a[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle_02_a, sizeof(hb_idle_02_a));
+    processAt(8000);
+    TEST_ASSERT_EQUAL(AlpState::LISTENING, alpRuntimeModule.getState());
+
+    // First alert: observe-mode PL2 burst → ALERT_ACTIVE + PL2 identified.
+    // (Fresh LISTENING → ALERT_ACTIVE transition; Rev 6 clear fires as
+    // expected and is immediately re-populated by the CB 10 00 gun frame.)
+    inject(BURST_PL2_OBS, sizeof(BURST_PL2_OBS));
+    processAt(37000);
+    TEST_ASSERT_EQUAL(AlpState::ALERT_ACTIVE, alpRuntimeModule.getState());
+    TEST_ASSERT_EQUAL(AlpGunType::LASER_ATLANTA_PL2,
+                      alpRuntimeModule.lastIdentifiedGun());
+
+    // Within the same engagement: byte1 flips to 01 (alert confirm via HB).
+    // State stays ALERT_ACTIVE — this is the "still firing" heartbeat.
+    const uint8_t hb_alert_01[] = { 0xB0, 0x01, 0x00, 0x31 };
+    inject(hb_alert_01, sizeof(hb_alert_01));
+    processAt(45000);
+    TEST_ASSERT_EQUAL(AlpState::ALERT_ACTIVE, alpRuntimeModule.getState());
+
+    // byte1 01→02: ALERT_ACTIVE → TEARDOWN (end-of-hold edge).
+    const uint8_t hb_idle_02_b[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle_02_b, sizeof(hb_idle_02_b));
+    processAt(46000);
+    TEST_ASSERT_EQUAL(AlpState::TEARDOWN, alpRuntimeModule.getState());
+    // Gun must survive the ALERT_ACTIVE → TEARDOWN edge.
+    TEST_ASSERT_EQUAL(AlpGunType::LASER_ATLANTA_PL2,
+                      alpRuntimeModule.lastIdentifiedGun());
+
+    // 98 02 00 re-fires during TEARDOWN → TEARDOWN → ALERT_ACTIVE (in-engagement
+    // re-arm — this is the edge that used to wipe the gun).
+    const uint8_t observe_trigger[] = { 0x98, 0x02, 0x00, 0x1A };
+    inject(observe_trigger, sizeof(observe_trigger));
+    processAt(46500);
+    TEST_ASSERT_EQUAL(AlpState::ALERT_ACTIVE, alpRuntimeModule.getState());
+
+    // THE ASSERTION. Before the fix this was UNKNOWN.
+    TEST_ASSERT_EQUAL(AlpGunType::LASER_ATLANTA_PL2,
+                      alpRuntimeModule.lastIdentifiedGun());
+    TEST_ASSERT_EQUAL(37000u, alpRuntimeModule.lastGunTimestampMs());
+}
+
+// ── AlertSession / V1-shape display projection ──────────────────────
+//
+// These tests validate the session layer that projects the parser's
+// internal state machine into the two V1-shape accessors the display
+// consumes: hasLaserEvent() and eventGun(). Bugs #1 (startup shows
+// laser) and #3 (lastGun leaks on reset) are fixed at this layer.
+
+void test_session_closed_by_default() {
+    beginEnabled();
+    TEST_ASSERT_FALSE(alpRuntimeModule.currentSession().active);
+    TEST_ASSERT_FALSE(alpRuntimeModule.hasLaserEvent());
+    TEST_ASSERT_FALSE(alpRuntimeModule.isLaserDetecting());
+    TEST_ASSERT_EQUAL(AlpGunType::UNKNOWN, alpRuntimeModule.eventGun());
+}
+
+void test_session_opens_on_fresh_alert_from_listening() {
+    beginEnabled();
+
+    // LISTENING via heartbeat
+    const uint8_t hb_idle[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(1000);
+    TEST_ASSERT_EQUAL(AlpState::LISTENING, alpRuntimeModule.getState());
+    TEST_ASSERT_FALSE(alpRuntimeModule.hasLaserEvent());
+
+    // Fresh alert: full PL3 burst
+    inject(BURST_PL3, sizeof(BURST_PL3));
+    processAt(2000);
+
+    const auto& s = alpRuntimeModule.currentSession();
+    TEST_ASSERT_TRUE(s.active);
+    TEST_ASSERT_FALSE(s.isSelfTest);
+    TEST_ASSERT_EQUAL(2000u, s.startMs);
+    TEST_ASSERT_EQUAL(AlpGunType::PL3_PROLITE, s.gun);
+    TEST_ASSERT_TRUE(alpRuntimeModule.hasLaserEvent());
+    TEST_ASSERT_TRUE(alpRuntimeModule.isLaserDetecting());
+    TEST_ASSERT_EQUAL(AlpGunType::PL3_PROLITE, alpRuntimeModule.eventGun());
+}
+
+void test_session_survives_teardown_rearm_cycle() {
+    // alp_18-shape: gun identified once, then an in-engagement TEARDOWN↔ALERT
+    // cycle must NOT close the session or clear eventGun.
+    beginEnabled();
+
+    const uint8_t hb_idle[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(1000);
+
+    inject(BURST_PL2_OBS, sizeof(BURST_PL2_OBS));
+    processAt(2000);
+    TEST_ASSERT_EQUAL(AlpGunType::LASER_ATLANTA_PL2, alpRuntimeModule.eventGun());
+
+    // byte1 01 → 02 drop: ALERT_ACTIVE → TEARDOWN
+    const uint8_t hb_alert_01[] = { 0xB0, 0x01, 0x00, 0x31 };
+    inject(hb_alert_01, sizeof(hb_alert_01));
+    processAt(3000);
+    const uint8_t hb_idle_02[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle_02, sizeof(hb_idle_02));
+    processAt(4000);
+    TEST_ASSERT_EQUAL(AlpState::TEARDOWN, alpRuntimeModule.getState());
+    // Session still open during teardown; eventGun still bound.
+    TEST_ASSERT_TRUE(alpRuntimeModule.currentSession().active);
+    TEST_ASSERT_EQUAL(AlpGunType::LASER_ATLANTA_PL2, alpRuntimeModule.eventGun());
+
+    // Re-arm via 98 02 00 while in TEARDOWN
+    const uint8_t observe_trigger[] = { 0x98, 0x02, 0x00, 0x1A };
+    inject(observe_trigger, sizeof(observe_trigger));
+    processAt(5000);
+    TEST_ASSERT_EQUAL(AlpState::ALERT_ACTIVE, alpRuntimeModule.getState());
+    TEST_ASSERT_TRUE(alpRuntimeModule.currentSession().active);
+    TEST_ASSERT_EQUAL(AlpGunType::LASER_ATLANTA_PL2, alpRuntimeModule.eventGun());
+    TEST_ASSERT_EQUAL(1u, alpRuntimeModule.currentSession().rearmCount);
+}
+
+void test_session_closes_on_teardown_to_listening() {
+    // Full engagement: alert → teardown → timeout → LISTENING → session closed.
+    beginEnabled();
+
+    const uint8_t hb_idle[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(1000);
+    inject(BURST_PL3, sizeof(BURST_PL3));
+    processAt(2000);
+    TEST_ASSERT_TRUE(alpRuntimeModule.hasLaserEvent());
+
+    inject(REG_WRITE_FD, sizeof(REG_WRITE_FD));
+    processAt(3000);
+    TEST_ASSERT_EQUAL(AlpState::TEARDOWN, alpRuntimeModule.getState());
+
+    processAt(3000 + AlpRuntimeModule::TEARDOWN_TIMEOUT_MS + 100);
+    TEST_ASSERT_EQUAL(AlpState::LISTENING, alpRuntimeModule.getState());
+
+    // Session closed. Display accessors must return the "no event" values.
+    const auto& s = alpRuntimeModule.currentSession();
+    TEST_ASSERT_FALSE(s.active);
+    TEST_ASSERT_TRUE(s.endMs > 0);
+    TEST_ASSERT_FALSE(alpRuntimeModule.hasLaserEvent());
+    TEST_ASSERT_FALSE(alpRuntimeModule.isLaserDetecting());
+    TEST_ASSERT_EQUAL(AlpGunType::UNKNOWN, alpRuntimeModule.eventGun());
+
+    // But lastIdentifiedGun() still reflects the protocol-level cache,
+    // for SD logger / diagnostics. The display never reads this.
+    TEST_ASSERT_EQUAL(AlpGunType::PL3_PROLITE,
+                      alpRuntimeModule.lastIdentifiedGun());
+}
+
+// Regression for bug #3: lastGun leaking onto the display during LISTENING.
+// Before the session layer, the display read lastIdentifiedGun() directly
+// and could render a stale gun name from the previous engagement. With
+// session gating, eventGun() returns UNKNOWN between engagements even
+// though lastGun_ persists internally.
+void test_event_gun_unknown_between_engagements_even_with_stale_lastgun() {
+    beginEnabled();
+
+    // First engagement: identify PL3 then close cleanly.
+    const uint8_t hb_idle[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(1000);
+    inject(BURST_PL3, sizeof(BURST_PL3));
+    processAt(2000);
+    inject(REG_WRITE_FD, sizeof(REG_WRITE_FD));
+    processAt(3000);
+    processAt(3000 + AlpRuntimeModule::TEARDOWN_TIMEOUT_MS + 100);
+    TEST_ASSERT_EQUAL(AlpState::LISTENING, alpRuntimeModule.getState());
+
+    // lastGun_ is still populated (protocol-level cache). Display must not
+    // see it — eventGun() is gated on an active session.
+    TEST_ASSERT_EQUAL(AlpGunType::PL3_PROLITE,
+                      alpRuntimeModule.lastIdentifiedGun());
+    TEST_ASSERT_EQUAL(AlpGunType::UNKNOWN, alpRuntimeModule.eventGun());
+    TEST_ASSERT_FALSE(alpRuntimeModule.hasLaserEvent());
+}
+
+// ── Self-test suppression (bug #1) ──────────────────────────────────
+
+void test_self_test_flagged_when_preamble_in_window() {
+    // Canonical cold-boot shape: first heartbeat, F0 preamble at +2s,
+    // 98 02 00 trigger shortly after. The session must be flagged
+    // self-test and suppressed from display.
+    beginEnabled();
+
+    // First valid frame: idle heartbeat. Sets firstFrameMs_ = 1000.
+    const uint8_t hb_idle[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(1000);
+    TEST_ASSERT_EQUAL(1000u, alpRuntimeModule.testGetFirstFrameMs());
+    TEST_ASSERT_EQUAL(0u, alpRuntimeModule.testGetSelfTestPreambleMs());
+
+    // F0 preamble within the 5s window.
+    // F0 03 00 — checksum = (F0+03+00)&7F = 73
+    const uint8_t f0_preamble[] = { 0xF0, 0x03, 0x00, 0x73 };
+    inject(f0_preamble, sizeof(f0_preamble));
+    processAt(3000);
+    TEST_ASSERT_EQUAL(3000u, alpRuntimeModule.testGetSelfTestPreambleMs());
+
+    // Observe-mode alert trigger. Opens a session inside the envelope.
+    const uint8_t trigger[] = { 0x98, 0x02, 0x00, 0x1A };
+    inject(trigger, sizeof(trigger));
+    processAt(3100);
+
+    const auto& s = alpRuntimeModule.currentSession();
+    TEST_ASSERT_TRUE(s.active);
+    TEST_ASSERT_TRUE(s.isSelfTest);
+    // Display sees nothing — this is the fix for bug #1.
+    TEST_ASSERT_FALSE(alpRuntimeModule.hasLaserEvent());
+    TEST_ASSERT_FALSE(alpRuntimeModule.isLaserDetecting());
+    TEST_ASSERT_EQUAL(AlpGunType::UNKNOWN, alpRuntimeModule.eventGun());
+}
+
+void test_self_test_unflagged_when_real_gun_identified() {
+    // Safety release: a real gun ID during the self-test window must
+    // un-declare the session as self-test. The ALP's self-test never
+    // emits CX gun frames, so a gun ID is pathognomonic for real.
+    beginEnabled();
+
+    const uint8_t hb_idle[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(1000);
+    const uint8_t f0_preamble[] = { 0xF0, 0x03, 0x00, 0x73 };
+    inject(f0_preamble, sizeof(f0_preamble));
+    processAt(3000);
+
+    // Now a real PL2 observe-mode burst arrives inside the envelope.
+    // The trigger opens a self-test-flagged session, then the CB 10 00
+    // gun frame un-flags it.
+    inject(BURST_PL2_OBS, sizeof(BURST_PL2_OBS));
+    processAt(4000);
+
+    const auto& s = alpRuntimeModule.currentSession();
+    TEST_ASSERT_TRUE(s.active);
+    TEST_ASSERT_FALSE(s.isSelfTest);  // Released by gun ID
+    TEST_ASSERT_EQUAL(AlpGunType::LASER_ATLANTA_PL2, s.gun);
+    TEST_ASSERT_TRUE(alpRuntimeModule.hasLaserEvent());
+    TEST_ASSERT_EQUAL(AlpGunType::LASER_ATLANTA_PL2, alpRuntimeModule.eventGun());
+}
+
+void test_self_test_not_flagged_without_preamble() {
+    // No F0/A8 ever seen → session is never self-test even at cold boot.
+    beginEnabled();
+
+    const uint8_t hb_idle[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(1000);
+
+    const uint8_t trigger[] = { 0x98, 0x02, 0x00, 0x1A };
+    inject(trigger, sizeof(trigger));
+    processAt(2000);
+
+    const auto& s = alpRuntimeModule.currentSession();
+    TEST_ASSERT_TRUE(s.active);
+    TEST_ASSERT_FALSE(s.isSelfTest);
+    TEST_ASSERT_TRUE(alpRuntimeModule.hasLaserEvent());
+}
+
+void test_self_test_preamble_after_window_ignored() {
+    // F0 arriving AFTER the 5s preamble window does not arm self-test.
+    // (In practice F0 only ever arrives at cold boot; this guards
+    // against spurious late F0 frames or unexpected protocol drift.)
+    beginEnabled();
+
+    const uint8_t hb_idle[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(1000);
+
+    // F0 at +6s — outside the 5s window.
+    const uint8_t f0_preamble[] = { 0xF0, 0x03, 0x00, 0x73 };
+    inject(f0_preamble, sizeof(f0_preamble));
+    processAt(7000);
+    TEST_ASSERT_EQUAL(0u, alpRuntimeModule.testGetSelfTestPreambleMs());
+
+    const uint8_t trigger[] = { 0x98, 0x02, 0x00, 0x1A };
+    inject(trigger, sizeof(trigger));
+    processAt(8000);
+    TEST_ASSERT_FALSE(alpRuntimeModule.currentSession().isSelfTest);
+    TEST_ASSERT_TRUE(alpRuntimeModule.hasLaserEvent());
+}
+
+void test_self_test_envelope_expires_after_35s() {
+    // Preamble observed at boot, but the alert trigger arrives after
+    // the 35s envelope. Session must NOT be flagged self-test.
+    beginEnabled();
+
+    const uint8_t hb_idle[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(1000);
+
+    const uint8_t f0_preamble[] = { 0xF0, 0x03, 0x00, 0x73 };
+    inject(f0_preamble, sizeof(f0_preamble));
+    processAt(3000);
+
+    // Alert at +40s — envelope is 35s from firstFrameMs_ (1000) so
+    // cutoff is 36000. 41000 > 36000 → not self-test.
+    const uint8_t trigger[] = { 0x98, 0x02, 0x00, 0x1A };
+    inject(trigger, sizeof(trigger));
+    processAt(41000);
+
+    TEST_ASSERT_FALSE(alpRuntimeModule.currentSession().isSelfTest);
+    TEST_ASSERT_TRUE(alpRuntimeModule.hasLaserEvent());
+}
+
 // ── ALP SD logger CSV format regression tests ───────────────────────
 
 void test_sd_logger_frame_columns_match_header() {
@@ -1289,10 +1608,26 @@ int main(int argc, char** argv) {
     RUN_TEST(test_snapshot_includes_hb_byte1);
     RUN_TEST(test_teardown_clears_alert_flag);
 
-    // Gun cleared on new alert entry (stale gun fix)
+    // Gun cleared on new alert entry (stale gun fix, Rev 6)
     RUN_TEST(test_new_alert_clears_stale_gun_via_98_trigger);
     RUN_TEST(test_new_alert_clears_stale_gun_via_heartbeat);
     RUN_TEST(test_new_alert_identifies_fresh_gun_after_clear);
+    // Gun persists across in-engagement teardown↔alert cycling (alp_18 fix)
+    RUN_TEST(test_gun_persists_through_teardown_rearm_cycle);
+
+    // AlertSession / V1-shape display projection
+    RUN_TEST(test_session_closed_by_default);
+    RUN_TEST(test_session_opens_on_fresh_alert_from_listening);
+    RUN_TEST(test_session_survives_teardown_rearm_cycle);
+    RUN_TEST(test_session_closes_on_teardown_to_listening);
+    RUN_TEST(test_event_gun_unknown_between_engagements_even_with_stale_lastgun);
+
+    // Self-test suppression (bug #1)
+    RUN_TEST(test_self_test_flagged_when_preamble_in_window);
+    RUN_TEST(test_self_test_unflagged_when_real_gun_identified);
+    RUN_TEST(test_self_test_not_flagged_without_preamble);
+    RUN_TEST(test_self_test_preamble_after_window_ignored);
+    RUN_TEST(test_self_test_envelope_expires_after_35s);
 
     // ALP SD logger CSV format
     RUN_TEST(test_sd_logger_frame_columns_match_header);

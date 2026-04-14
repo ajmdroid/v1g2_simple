@@ -105,20 +105,19 @@ void DisplayPipelineModule::handleParsed(uint32_t nowMs) {
     const V1Settings& settingsRef = settings_->get();
 
     // ── ALP frequency-area override ────────────────────────────────────
-    // When ALP is actively detecting or rescanning (TEARDOWN), the gun
-    // abbreviation replaces the frequency display. Shows the last gun
-    // that fired through alert → noise → teardown (rescan) cycle.
-    // ALP laser overrides everything — even Ka.
-    const bool alpShowGun = alp_ && (alp_->isAlertActive() ||
-                                      alp_->getState() == AlpState::TEARDOWN);
-    if (alpShowGun && alp_->lastIdentifiedGun() != AlpGunType::UNKNOWN) {
-        const char* abbrev = alpGunAbbrev(alp_->lastIdentifiedGun());
-        display_->setAlpFrequencyOverride(abbrev);
+    // V1-shape projection: ask the ALP module two questions —
+    // "is there a laser event to show?" and "which gun?" — and render
+    // from those. All state-machine / self-test / TEARDOWN details stay
+    // inside the ALP module. ALP laser overrides everything — even Ka.
+    const AlpGunType alpGun = alp_ ? alp_->eventGun() : AlpGunType::UNKNOWN;
+    if (alp_ && alp_->hasLaserEvent() && alpGun != AlpGunType::UNKNOWN) {
+        display_->setAlpFrequencyOverride(alpGunAbbrev(alpGun));
     } else {
         display_->clearAlpFrequencyOverride();
     }
-    // For synthetic alert rendering when V1 has no alerts
-    const bool alpActive = alp_ && alp_->isAlertActive();
+    // Synthetic alert injection into the V1 LIVE pipeline — only during
+    // active detection (excludes post-alert TEARDOWN rescan window).
+    const bool alpActive = alp_ && alp_->isLaserDetecting();
 
     // No mute debounce — trust the parser's muted state directly.
     // No display throttle — element caches handle SPI saturation.
@@ -251,16 +250,15 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
     const bool hasRenderablePriority =
         hasAlerts && parser_->getRenderablePriorityAlert(priority);
 
-    // Restore ALP override state
-    // Restore ALP override state (same logic as handleParsed)
-    const bool alpShowGun = alp_ && (alp_->isAlertActive() ||
-                                      alp_->getState() == AlpState::TEARDOWN);
-    if (alpShowGun && alp_->lastIdentifiedGun() != AlpGunType::UNKNOWN) {
-        display_->setAlpFrequencyOverride(alpGunAbbrev(alp_->lastIdentifiedGun()));
+    // Restore ALP override state (same logic as handleParsed — V1-shape
+    // projection via eventGun()/hasLaserEvent()/isLaserDetecting()).
+    const AlpGunType alpGun = alp_ ? alp_->eventGun() : AlpGunType::UNKNOWN;
+    if (alp_ && alp_->hasLaserEvent() && alpGun != AlpGunType::UNKNOWN) {
+        display_->setAlpFrequencyOverride(alpGunAbbrev(alpGun));
     } else {
         display_->clearAlpFrequencyOverride();
     }
-    const bool alpActive = alp_ && alp_->isAlertActive();
+    const bool alpActive = alp_ && alp_->isLaserDetecting();
 
     if (hasAlerts) {
         *displayMode_ = DisplayMode::LIVE;

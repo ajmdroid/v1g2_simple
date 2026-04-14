@@ -162,6 +162,13 @@ void AlpRuntimeModule::begin(bool enabled, AlpSdLogger* sdLogger) {
     enabled_ = enabled;
     begun_ = true;
 
+    // Reset session + self-test state on every begin(). This matters
+    // when begin() is re-invoked after a settings change: we must not
+    // carry a stale session across re-init.
+    session_ = AlertSession{};
+    firstFrameMs_ = 0;
+    selfTestPreambleMs_ = 0;
+
     if (!enabled) {
         state_ = AlpState::OFF;
         ALP_LOG("begin: disabled");
@@ -253,12 +260,77 @@ void AlpRuntimeModule::transitionTo(AlpState newState, uint32_t nowMs) {
             (unsigned long)nowMs);
     if (sdLogger_) sdLogger_->logStateTransition(nowMs, state_, newState);
 
-    // Clear stale gun ID when entering a new alert. The previous alert's gun
-    // must not bleed through — wait for a fresh CX frame to identify this
-    // alert's gun before showing anything on the display.
-    if (newState == AlpState::ALERT_ACTIVE && state_ != AlpState::ALERT_ACTIVE) {
+    // Clear stale gun ID only on a genuinely fresh engagement — one that
+    // arrives from LISTENING or IDLE. TEARDOWN → ALERT_ACTIVE is the ALP
+    // protocol's in-engagement re-arm cycle (driven by byte1 01→02→01 or
+    // by a second 98 trigger during post-alert teardown). The gun frame
+    // arrives only once, at the opening of an engagement — it does not
+    // re-arrive on re-arms. Clearing on every ALERT_ACTIVE entry wiped the
+    // gun mid-engagement.
+    //
+    // Regression reference: alp_18.csv at 36.768s identified PL2, then at
+    // 46.352s the byte1 01→02 drop + immediate 98 02 00 re-arm wiped it,
+    // leaving ~20s of the same alert showing generic "LASER" on the display
+    // instead of "PL2". The LISTENING/IDLE narrowing preserves Rev 6's
+    // "previous alert must not bleed through" guarantee (see
+    // test_new_alert_clears_stale_gun_via_98_trigger etc.) while fixing
+    // the in-engagement case (test_gun_persists_through_teardown_rearm).
+    if (newState == AlpState::ALERT_ACTIVE &&
+        (state_ == AlpState::LISTENING || state_ == AlpState::IDLE)) {
         lastGun_ = AlpGunType::UNKNOWN;
         lastGunTimestampMs_ = 0;
+    }
+
+    // ── Session lifecycle ──────────────────────────────────────────────
+    // Four edges matter:
+    //
+    //   (a) LISTENING|IDLE → ALERT_ACTIVE: open a new session. Flag as
+    //       self-test if we're inside the boot envelope AND a preamble
+    //       was observed.
+    //   (b) TEARDOWN → ALERT_ACTIVE: in-engagement re-arm. Session stays
+    //       open; bump rearmCount for diagnostics.
+    //   (c) TEARDOWN → LISTENING: real engagement end. Close the session.
+    //   (d) * → IDLE with a session still open: heartbeat timeout killed
+    //       the session. Close it with endMs marked.
+    //
+    // NOISE_WINDOW entries/exits do not alter session state — the session
+    // straddles noise as part of a single engagement.
+    const bool freshEngagement = (newState == AlpState::ALERT_ACTIVE) &&
+        (state_ == AlpState::LISTENING || state_ == AlpState::IDLE);
+    const bool midEngagementRearm = (newState == AlpState::ALERT_ACTIVE) &&
+        (state_ == AlpState::TEARDOWN);
+    const bool engagementEnd = (newState == AlpState::LISTENING) &&
+        (state_ == AlpState::TEARDOWN);
+    const bool silentReset = (newState == AlpState::IDLE);
+
+    if (freshEngagement) {
+        const bool inEnvelope = (selfTestPreambleMs_ != 0) &&
+            (firstFrameMs_ != 0) &&
+            (nowMs - firstFrameMs_) < SELF_TEST_ENVELOPE_MS;
+        session_ = AlertSession{};
+        session_.active = true;
+        session_.startMs = nowMs;
+        session_.isSelfTest = inEnvelope;
+        if (inEnvelope) {
+            ALP_LOG("SESSION: open at +%lu ms — flagged SELF_TEST (suppressed from display)",
+                    (unsigned long)(nowMs - firstFrameMs_));
+        } else {
+            ALP_LOG("SESSION: open at %lu ms — real engagement",
+                    (unsigned long)nowMs);
+        }
+    }
+    if (midEngagementRearm && session_.active) {
+        session_.rearmCount++;
+    }
+    if ((engagementEnd || silentReset) && session_.active) {
+        ALP_LOG("SESSION: close at %lu ms  gun=%s  dur=%lu ms  triggers=%lu  rearms=%lu  selfTest=%d",
+                (unsigned long)nowMs, alpGunName(session_.gun),
+                (unsigned long)(nowMs - session_.startMs),
+                (unsigned long)session_.triggerCount,
+                (unsigned long)session_.rearmCount,
+                session_.isSelfTest ? 1 : 0);
+        session_.active = false;
+        session_.endMs = nowMs;
     }
 
     state_ = newState;
@@ -375,6 +447,12 @@ bool AlpRuntimeModule::tryParseFrame(uint32_t nowMs) {
     // Valid frame — reset bad checksum counter
     consecutiveBadChecksums_ = 0;
 
+    // Capture first-valid-frame timestamp for the self-test window
+    // calculation. Session gating anchors on this.
+    if (firstFrameMs_ == 0) {
+        firstFrameMs_ = nowMs;
+    }
+
     // If we were in NOISE_WINDOW, first valid frame = teardown
     if (state_ == AlpState::NOISE_WINDOW) {
         ALP_LOG("NOISE_WINDOW ended — first valid frame %02X %02X %02X %02X after %lu ms",
@@ -425,6 +503,7 @@ void AlpRuntimeModule::handleAlertFrame(uint8_t b1, uint8_t b2, uint32_t nowMs) 
         if (state_ != AlpState::ALERT_ACTIVE) {
             transitionTo(AlpState::ALERT_ACTIVE, nowMs);
         }
+        if (session_.active) session_.triggerCount++;
     } else if (b1 == 0x02 && b2 == 0x00) {
         // Observe-mode alert trigger: 98 02 00 — detection only, no jamming
         statusBurstCount_++;
@@ -437,6 +516,7 @@ void AlpRuntimeModule::handleAlertFrame(uint8_t b1, uint8_t b2, uint32_t nowMs) 
         if (state_ != AlpState::ALERT_ACTIVE) {
             transitionTo(AlpState::ALERT_ACTIVE, nowMs);
         }
+        if (session_.active) session_.triggerCount++;
     } else {
         // Other 98 XX YY frames (status/config)
         ALP_TRACE("STATUS_FRAME: 98 %02X %02X  state=%s",
@@ -453,6 +533,18 @@ void AlpRuntimeModule::handleHeartbeatFrame(uint8_t b0, uint8_t b1, uint8_t b2, 
     lastHeartbeatMs_ = nowMs;
     lastFrameMs_ = nowMs;
     heartbeatCount_++;
+
+    // Self-test preamble detection. F0 or A8 frames arriving inside the
+    // first 5 seconds of module uptime mark the boot self-test envelope.
+    // We latch the first occurrence; later F0/A8 frames (which per spec
+    // only arrive at cold boot anyway) are ignored.
+    if ((b0 == SETUP_BYTE0_F0 || b0 == SETUP_BYTE0_A8) &&
+        firstFrameMs_ != 0 && selfTestPreambleMs_ == 0 &&
+        (nowMs - firstFrameMs_) < SELF_TEST_PREAMBLE_WINDOW_MS) {
+        selfTestPreambleMs_ = nowMs;
+        ALP_LOG("SELF_TEST: %02X preamble at +%lu ms — self-test envelope armed",
+                b0, (unsigned long)(nowMs - firstFrameMs_));
+    }
 
     ALP_TRACE("HEARTBEAT: %02X %02X %02X  state=%s  hb#=%lu",
               b0, b1, b2, alpStateName(state_),
@@ -535,6 +627,21 @@ void AlpRuntimeModule::handleGunCandidate(uint8_t b0, uint8_t b1, uint8_t b2, ui
     if (gun != AlpGunType::UNKNOWN) {
         lastGun_ = gun;
         lastGunTimestampMs_ = nowMs;
+        // Session-level update. Also: a real gun ID during the self-test
+        // window un-declares self-test — the ALP's self-test sequence
+        // fires generic 98 02 00 triggers but never produces a CX gun
+        // frame, so any gun-identified session is real by definition.
+        // This is the safety release for the "real laser gun fired
+        // during boot self-test" corner case.
+        if (session_.active) {
+            session_.gun = gun;
+            session_.gunIdentifiedMs = nowMs;
+            if (session_.isSelfTest) {
+                ALP_LOG("SELF_TEST: gun %s identified — unmarking session as real",
+                        alpGunName(gun));
+                session_.isSelfTest = false;
+            }
+        }
     }
 
     ALP_TRACE("C_FRAME: %02X %02X %02X  state=%s", b0, b1, b2, alpStateName(state_));
