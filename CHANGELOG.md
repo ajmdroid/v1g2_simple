@@ -13,7 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI: remove stale mutation IDs (`critical-001`, `critical-004`, `critical-006`, `critical-009`, `critical-010`) from the `full` mode catalog entry; those entries were never added to the `critical` block, causing `mutation_test.py` to fail with "Unknown mutation id in mode 'full'" on every run.
 
 ---
-
 ## [4.1.4] - 2026-04-13
 
 ### Fixed
