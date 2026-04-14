@@ -1,14 +1,10 @@
 name: Release
 
-# Runs when a PR merges to main.  Builds everything, creates a GitHub
-# Release with firmware artifacts, and deploys the web installer.
-#
-# Belt-and-suspenders: re-runs ci-test.sh before building.  If the PR
-# gate already passed this is a ~12 min safety net against force-pushes
-# or direct commits to main.
+# Manual release. Bump FIRMWARE_VERSION in config.h, push to dev,
+# wait for CI to pass, then click "Run workflow" here.
 #
 # Steps:
-#   1. Run ci-test.sh
+#   1. Run ci-test.sh (skippable if CI just passed)
 #   2. Read version from include/config.h
 #   3. Guard against tag collision
 #   4. Update docs/MANUAL.md version line
@@ -19,9 +15,12 @@ name: Release
 #   9. Deploy web installer to GitHub Pages (v1simple.com)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip ci-test.sh (only if CI just passed on this commit)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -68,6 +67,7 @@ jobs:
           cd interface && npm ci
 
       - name: Run ci-test.sh gate
+        if: ${{ !inputs.skip_tests }}
         run: ./scripts/ci-test.sh
 
       - name: Read version from config.h
