@@ -9,7 +9,6 @@ kind=DISPLAY_FLUSH file=src/display_screens.cpp line=271 function=showScanning
 kind=DISPLAY_FLUSH file=src/display_screens.cpp line=309 function=showBootSplash
 kind=DISPLAY_FLUSH file=src/display_screens.cpp line=342 function=showShutdown
 kind=DISPLAY_FLUSH file=src/display_screens.cpp line=377 function=showLowBattery
-kind=DISPLAY_FLUSH file=src/display_screens.cpp line=437 function=showOtaProgress
 kind=DISPLAY_FLUSH file=src/display_sliders.cpp line=106 function=showSettingsSliders
 kind=DISPLAY_FLUSH file=src/display_update.cpp line=168 function=update
 kind=DISPLAY_FLUSH file=src/display_update.cpp line=250 function=updatePersisted

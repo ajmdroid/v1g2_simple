@@ -85,7 +85,6 @@ docs/FUNCTION_PRIORITY.local.md
 docs/OBD_MODULE_PLAN.md
 docs/ALP_*.md
 docs/DISPLAY_REWRITE_PLAN.md
-docs/OTA_DESIGN.md
 .github/instructions/
 *.docx
 .~lock.*

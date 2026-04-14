@@ -71,7 +71,6 @@ kind=header file=src/display.h line=264 text=extern V1Display display;
 kind=header file=src/display_font_manager.h line=120 text=extern DisplayFontManager fontMgr;
 kind=source file=src/main_boot.cpp line=23 text=extern V1Display display;
 kind=source file=src/main_setup_helpers.cpp line=265 text=extern const char* getBuildGitSha();
-kind=source file=src/modules/ota/ota_api_service.cpp line=30 text=extern const char* getBuildGitSha();
 kind=header file=src/perf_metrics.h line=697 text=extern PerfExtendedMetrics perfExtended;
 kind=header file=src/perf_metrics.h line=810 text=extern PerfCounters perfCounters;
 kind=header file=src/perf_metrics.h line=1214 text=extern PerfLatency perfLatency;

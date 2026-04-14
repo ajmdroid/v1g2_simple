@@ -6,7 +6,6 @@
 	import SettingsAutoPowerOffCard from '$lib/features/settings/SettingsAutoPowerOffCard.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import SettingsBackupCard from '$lib/features/settings/SettingsBackupCard.svelte';
-	import SettingsOtaCard from '$lib/features/settings/SettingsOtaCard.svelte';
 	import * as settingsLazyComponents from '$lib/features/settings/settingsLazyComponents.js';
 	import StatusAlert from '$lib/components/StatusAlert.svelte';
 	let settings = $state({
@@ -616,8 +615,6 @@
 			{/if}
 			Save Settings
 		</button>
-		
-			<SettingsOtaCard />
 
 		<SettingsBackupCard
 				{backingUpNow}

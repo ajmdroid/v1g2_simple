@@ -1,126 +1,128 @@
-name: Release on Merge
+name: Release
+
+# Manual-trigger release. You bump FIRMWARE_VERSION in include/config.h,
+# commit, push, then click "Run workflow" here when ready. That's it.
+#
+# No auto-trigger on push. No version-bump sniffing. No "oh no I just merged
+# and CI released without me looking" — you own the button.
+#
+# What this does:
+#   1. Re-runs ci-test.sh on the current ref (belt-and-suspenders)
+#   2. Reads version from include/config.h
+#   3. Guards against tag collision
+#   4. Updates docs/MANUAL.md version line
+#   5. Builds web interface → deploys to interface assets
+#   6. Checks web asset + audio manifest budgets
+#   7. Builds firmware + filesystem
+#   8. Merges binaries for ESP Web Tools
+#   9. Creates git tag, pushes
+#  10. Creates GitHub Release with artifacts
+#  11. Deploys web installer to gh-pages (v1simple.com)
+#
+# If ci-test.sh fails, nothing downstream runs — no tag, no release, no deploy.
+#
+# Folded in: the old deploy-web-installer.yml. Installer HTML ships with the
+# release now. If you need to push installer-HTML-only updates between
+# releases, re-run this workflow — tag collision guard will block a duplicate
+# tag, so bump FIRMWARE_VERSION first or skip the tag step.
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'src/**'
-      - 'include/**'
-      - 'interface/src/**'
-      - 'platformio.ini'
   workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip ci-test.sh (only if you just ran it via PR gate)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
-    concurrency:
-      group: release-${{ github.ref }}
-      cancel-in-progress: false
+    timeout-minutes: 45
 
     steps:
-      - name: Check if version bump commit
-        id: check
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "should_release=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          COMMIT_MSG=$(cat << 'EOF'
-          ${{ github.event.head_commit.message }}
-          EOF
-          )
-
-          if [[ "$COMMIT_MSG" == "chore(release):"* ]]; then
-            echo "This is a version bump commit, skipping"
-            echo "should_release=false" >> $GITHUB_OUTPUT
-          else
-            echo "Proceeding with release"
-            echo "should_release=true" >> $GITHUB_OUTPUT
-          fi
-
       - name: Checkout
-        if: steps.check.outputs.should_release == 'true'
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js
-        if: steps.check.outputs.should_release == 'true'
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: interface/package-lock.json
 
-      - name: Setup Python
-        if: steps.check.outputs.should_release == 'true'
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        if: steps.check.outputs.should_release == 'true'
+      - name: Cache PlatformIO
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: ${{ runner.os }}-pio-
+
+      - name: Install toolchain
         run: |
-          pip install platformio esptool
-          pio --version
+          pip install --upgrade platformio esptool
           cd interface && npm ci
 
-      - name: Run CI test gate
-        if: steps.check.outputs.should_release == 'true'
+      - name: Run ci-test.sh gate
+        if: ${{ !inputs.skip_tests }}
         run: ./scripts/ci-test.sh
 
-      - name: Get version from config.h
-        if: steps.check.outputs.should_release == 'true'
+      - name: Read version from config.h
         id: version
         run: |
           VERSION=$(grep '#define FIRMWARE_VERSION' include/config.h | sed 's/.*"\(.*\)".*/\1/')
-          echo "Version from config.h: $VERSION"
-          NEW_TAG="v${VERSION}"
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not parse FIRMWARE_VERSION from include/config.h"
+            exit 1
+          fi
+          echo "Version: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
 
       - name: Guard against tag collision
-        if: steps.check.outputs.should_release == 'true'
         run: |
           if git rev-parse "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
-            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Bump FIRMWARE_VERSION in config.h before merging."
+            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Bump FIRMWARE_VERSION in include/config.h before releasing."
             exit 1
           fi
 
       - name: Update versioned docs
-        if: steps.check.outputs.should_release == 'true'
         run: |
           sed -i 's/^\*\*Version:\*\* .*/**Version:** ${{ steps.version.outputs.version }}/' docs/MANUAL.md
 
       - name: Build web interface
-        if: steps.check.outputs.should_release == 'true'
         run: |
           cd interface
           npm run build
           npm run deploy
 
-      - name: Check packaged web assets
-        if: steps.check.outputs.should_release == 'true'
+      - name: Check packaged asset budgets
         run: |
           python3 scripts/check_web_asset_budget.py
           python3 scripts/check_audio_asset_manifest.py
 
       - name: Build firmware
-        if: steps.check.outputs.should_release == 'true'
         run: pio run -e waveshare-349 -j 1
 
       - name: Build filesystem
-        if: steps.check.outputs.should_release == 'true'
         run: pio run -e waveshare-349 -t buildfs -j 1
 
-      - name: Create merged firmware
-        if: steps.check.outputs.should_release == 'true'
+      - name: Merge firmware for ESP Web Tools
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
@@ -132,12 +134,11 @@ jobs:
           cp .pio/build/waveshare-349/littlefs.bin release/
 
           # ESP Web Tools cannot patch flash mode on the fly the way write_flash does.
-          # The normal USB upload path for this board uses dio, so the merged image must
-          # do the same or web-flashed devices can fail to boot and appear dead.
+          # The normal USB upload path uses dio, so the merged image must do the same
+          # or web-flashed devices can fail to boot.
           #
           # CRITICAL: Offsets must match partitions_v1.csv exactly.
           #   app0 = 0x20000, storage = 0xDA0000
-          # Using wrong offsets puts firmware where bootloader can't find it.
           esptool.py --chip esp32s3 merge_bin \
             -o release/merged-firmware.bin \
             --flash_mode dio \
@@ -148,11 +149,10 @@ jobs:
             0xe000 release/boot_app0.bin \
             0x20000 release/firmware.bin \
             0xda0000 release/littlefs.bin
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
 
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
           manifest = {
               "name": "V1-Simple",
               "version": os.environ["RELEASE_TAG"],
@@ -160,34 +160,23 @@ jobs:
               "funding_url": "",
               "new_install_prompt_erase": True,
               "new_install_improv_wait_time": 0,
-              "builds": [
-                  {
-                      "chipFamily": "ESP32-S3",
-                      "parts": [{"path": "merged-firmware.bin", "offset": 0}],
-                  }
-              ],
+              "builds": [{
+                  "chipFamily": "ESP32-S3",
+                  "parts": [{"path": "merged-firmware.bin", "offset": 0}],
+              }],
           }
           Path("release/manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
           PY
 
-      - name: Generate OTA manifest
-        if: steps.check.outputs.should_release == 'true'
+      - name: Create and push tag
         run: |
-          python3 scripts/generate_ota_manifest.py \
-            --version "${{ steps.version.outputs.version }}" \
-            --firmware release/firmware.bin \
-            --filesystem release/littlefs.bin \
-            --output release/ota-manifest.json
-
-      - name: Create tag
-        if: steps.check.outputs.should_release == 'true'
-        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag ${{ steps.version.outputs.tag }}
           git push origin ${{ steps.version.outputs.tag }}
 
       - name: Create GitHub Release
-        if: steps.check.outputs.should_release == 'true'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: ${{ steps.version.outputs.tag }}
@@ -195,12 +184,10 @@ jobs:
           files: |
             release/*.bin
             release/manifest.json
-            release/ota-manifest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare web installer files
-        if: steps.check.outputs.should_release == 'true'
+      - name: Prepare web installer
         run: |
           rm -rf .artifacts/web-installer
           mkdir -p .artifacts/web-installer/install
@@ -211,7 +198,6 @@ jobs:
           touch .artifacts/web-installer/.nojekyll
 
       - name: Deploy to GitHub Pages
-        if: steps.check.outputs.should_release == 'true'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -219,14 +205,11 @@ jobs:
           cname: v1simple.com
 
       - name: Summary
-        if: steps.check.outputs.should_release == 'true'
         run: |
-          echo "## 🚀 Release Complete!" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Authoritative repo gate passed" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Tag created (immutable)" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Firmware built" >> $GITHUB_STEP_SUMMARY
-          echo "✅ GitHub Release created" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Web flasher updated" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Released ${{ steps.version.outputs.tag }}"
+            echo ""
+            echo "- Tag created and pushed"
+            echo "- GitHub Release published with firmware + merged binary + manifest"
+            echo "- Web installer deployed to v1simple.com"
+          } >> $GITHUB_STEP_SUMMARY
