@@ -1200,6 +1200,60 @@ void test_session_closed_by_default() {
     TEST_ASSERT_EQUAL(AlpGunType::UNKNOWN, alpRuntimeModule.eventGun());
 }
 
+// ── ownsLaserDisplay() — V1 laser suppression gate ──────────────────
+//
+// The display pipeline asks this one question: "should V1's BAND_LASER
+// alerts be suppressed because ALP is handling laser?" Contract:
+//   true  — ALP enabled AND connected (any state except OFF / IDLE)
+//   false — ALP disabled, or state is OFF (never started) / IDLE (UART
+//           timeout drifted the module into silence). V1 laser falls
+//           through as a backup detection channel.
+
+void test_owns_laser_display_false_when_disabled() {
+    // Module never begun → OFF → does not own.
+    TEST_ASSERT_FALSE(alpRuntimeModule.ownsLaserDisplay());
+
+    // Explicit begin(disabled) → OFF → does not own.
+    alpRuntimeModule.begin(false, nullptr);
+    TEST_ASSERT_FALSE(alpRuntimeModule.ownsLaserDisplay());
+}
+
+void test_owns_laser_display_true_when_listening() {
+    // Enabled + first valid heartbeat → LISTENING → owns.
+    beginEnabled();
+    const uint8_t hb_idle[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(1000);
+    TEST_ASSERT_EQUAL(AlpState::LISTENING, alpRuntimeModule.getState());
+    TEST_ASSERT_TRUE(alpRuntimeModule.ownsLaserDisplay());
+}
+
+void test_owns_laser_display_true_during_alert() {
+    beginEnabled();
+    const uint8_t hb_idle[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(1000);
+    inject(BURST_PL3, sizeof(BURST_PL3));
+    processAt(2000);
+    TEST_ASSERT_EQUAL(AlpState::ALERT_ACTIVE, alpRuntimeModule.getState());
+    TEST_ASSERT_TRUE(alpRuntimeModule.ownsLaserDisplay());
+}
+
+void test_owns_laser_display_false_when_idle_after_timeout() {
+    // LISTENING → IDLE via heartbeat timeout → no longer owns.
+    // V1 laser should pass through because the ALP has gone silent.
+    beginEnabled();
+    const uint8_t hb_idle[] = { 0xB0, 0x02, 0x00, 0x32 };
+    inject(hb_idle, sizeof(hb_idle));
+    processAt(1000);
+    TEST_ASSERT_TRUE(alpRuntimeModule.ownsLaserDisplay());
+
+    // Drift past the heartbeat watchdog — IDLE.
+    processAt(1000 + AlpRuntimeModule::HEARTBEAT_TIMEOUT_MS + 500);
+    TEST_ASSERT_EQUAL(AlpState::IDLE, alpRuntimeModule.getState());
+    TEST_ASSERT_FALSE(alpRuntimeModule.ownsLaserDisplay());
+}
+
 void test_session_opens_on_fresh_alert_from_listening() {
     beginEnabled();
 
@@ -1617,6 +1671,11 @@ int main(int argc, char** argv) {
 
     // AlertSession / V1-shape display projection
     RUN_TEST(test_session_closed_by_default);
+    // ownsLaserDisplay() — V1 laser suppression gate
+    RUN_TEST(test_owns_laser_display_false_when_disabled);
+    RUN_TEST(test_owns_laser_display_true_when_listening);
+    RUN_TEST(test_owns_laser_display_true_during_alert);
+    RUN_TEST(test_owns_laser_display_false_when_idle_after_timeout);
     RUN_TEST(test_session_opens_on_fresh_alert_from_listening);
     RUN_TEST(test_session_survives_teardown_rearm_cycle);
     RUN_TEST(test_session_closes_on_teardown_to_listening);

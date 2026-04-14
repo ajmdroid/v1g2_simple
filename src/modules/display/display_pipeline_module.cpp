@@ -88,9 +88,9 @@ void DisplayPipelineModule::handleParsed(uint32_t nowMs) {
     }
 
     DisplayState state = parser_->getDisplayState();
-    const bool hasAlerts = parser_->hasAlerts();
+    bool hasAlerts = parser_->hasAlerts();
     AlertData priority;
-    const bool hasRenderablePriority =
+    bool hasRenderablePriority =
         hasAlerts && parser_->getRenderablePriorityAlert(priority);
     if (hasRenderablePriority) {
         const AlertData rawPriority = parser_->getPriorityAlert();
@@ -119,15 +119,62 @@ void DisplayPipelineModule::handleParsed(uint32_t nowMs) {
     // active detection (excludes post-alert TEARDOWN rescan window).
     const bool alpActive = alp_ && alp_->isLaserDetecting();
 
+    // ── V1 laser suppression when ALP owns the laser display ───────────
+    // When the ALP is connected and producing data, it owns the laser
+    // channel end-to-end — its own hardware renders direction (RED/YELLOW
+    // LEDs) and fires audio via its buzzer, and the V1 Gen2 unit itself
+    // does the same on its speaker. v1_simple doesn't need to duplicate
+    // the laser alert. Filtering here eliminates the "ghost LASER tail"
+    // symptom where V1's alert-persistence held a duplicate laser alert
+    // visible on the display after the ALP engagement closed.
+    //
+    // Fallback: when ALP drifts to IDLE (UART timeout) or is disabled,
+    // ownsLaserDisplay() returns false and V1 laser alerts pass through
+    // normally as a backup detection channel.
+    const bool alpOwnsLaser = alp_ && alp_->ownsLaserDisplay();
+    std::array<AlertData, PacketParser::MAX_ALERTS> filteredAlerts;
+    int filteredAlertCount = 0;
+    if (alpOwnsLaser) {
+        state.activeBands &= ~BAND_LASER;
+        if (hasAlerts) {
+            const auto& raw = parser_->getAllAlerts();
+            const int rawCount = parser_->getAlertCount();
+            for (int i = 0; i < rawCount; ++i) {
+                if (raw[i].band != BAND_LASER) {
+                    filteredAlerts[filteredAlertCount++] = raw[i];
+                }
+            }
+            hasAlerts = (filteredAlertCount > 0);
+        }
+        if (hasRenderablePriority && priority.band == BAND_LASER) {
+            // Priority was laser — drop it. Take the first non-laser
+            // alert from the filtered list as the new priority. If
+            // nothing remains, there is no renderable priority.
+            hasRenderablePriority = false;
+            for (int i = 0; i < filteredAlertCount; ++i) {
+                if (filteredAlerts[i].isValid &&
+                    filteredAlerts[i].band != BAND_NONE &&
+                    filteredAlerts[i].frequency != 0) {
+                    priority = filteredAlerts[i];
+                    hasRenderablePriority = true;
+                    break;
+                }
+            }
+        }
+    }
+
     // No mute debounce — trust the parser's muted state directly.
     // No display throttle — element caches handle SPI saturation.
     // No gap recovery — parser freshness/timeout guards handle stale data.
 
     if (hasAlerts) {
-        const int alertCount = parser_->getAlertCount();
-        const auto& currentAlerts = parser_->getAllAlerts();
+        const int alertCount = alpOwnsLaser ? filteredAlertCount
+                                             : parser_->getAlertCount();
+        const AlertData* allAlertsData = alpOwnsLaser
+                                          ? filteredAlerts.data()
+                                          : parser_->getAllAlerts().data();
         const bool deferSecondaryCards = ble_->isConnectBurstSettling();
-        const AlertData* renderAlerts = currentAlerts.data();
+        const AlertData* renderAlerts = allAlertsData;
         int renderAlertCount = alertCount;
         AlertData priorityOnlyAlert[1];
         if (deferSecondaryCards && hasRenderablePriority) {
@@ -139,7 +186,7 @@ void DisplayPipelineModule::handleParsed(uint32_t nowMs) {
         *displayMode_ = DisplayMode::LIVE;
 
         VoiceContext voiceCtx;
-        voiceCtx.alerts = currentAlerts.data();
+        voiceCtx.alerts = allAlertsData;
         voiceCtx.alertCount = alertCount;
         voiceCtx.priority = hasRenderablePriority ? &priority : nullptr;
         voiceCtx.isMuted = state.muted;
@@ -245,9 +292,9 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
     }
 
     DisplayState state = parser_->getDisplayState();
-    const bool hasAlerts = parser_->hasAlerts();
+    bool hasAlerts = parser_->hasAlerts();
     AlertData priority;
-    const bool hasRenderablePriority =
+    bool hasRenderablePriority =
         hasAlerts && parser_->getRenderablePriorityAlert(priority);
 
     // Restore ALP override state (same logic as handleParsed — V1-shape
@@ -260,13 +307,48 @@ void DisplayPipelineModule::restoreCurrentOwner(uint32_t nowMs) {
     }
     const bool alpActive = alp_ && alp_->isLaserDetecting();
 
+    // V1 laser suppression when ALP owns the laser display — mirrors the
+    // filter in handleParsed(). See comment there for full rationale.
+    const bool alpOwnsLaser = alp_ && alp_->ownsLaserDisplay();
+    std::array<AlertData, PacketParser::MAX_ALERTS> filteredAlerts;
+    int filteredAlertCount = 0;
+    if (alpOwnsLaser) {
+        state.activeBands &= ~BAND_LASER;
+        if (hasAlerts) {
+            const auto& raw = parser_->getAllAlerts();
+            const int rawCount = parser_->getAlertCount();
+            for (int i = 0; i < rawCount; ++i) {
+                if (raw[i].band != BAND_LASER) {
+                    filteredAlerts[filteredAlertCount++] = raw[i];
+                }
+            }
+            hasAlerts = (filteredAlertCount > 0);
+        }
+        if (hasRenderablePriority && priority.band == BAND_LASER) {
+            hasRenderablePriority = false;
+            for (int i = 0; i < filteredAlertCount; ++i) {
+                if (filteredAlerts[i].isValid &&
+                    filteredAlerts[i].band != BAND_NONE &&
+                    filteredAlerts[i].frequency != 0) {
+                    priority = filteredAlerts[i];
+                    hasRenderablePriority = true;
+                    break;
+                }
+            }
+        }
+    }
+
     if (hasAlerts) {
         *displayMode_ = DisplayMode::LIVE;
         perfSetDisplayRenderScenario(PerfDisplayRenderScenario::Restore);
         const unsigned long startUs = micros();
         if (hasRenderablePriority) {
-            const auto& alerts = parser_->getAllAlerts();
-            display_->update(priority, alerts.data(), parser_->getAlertCount(), state);
+            const AlertData* alertsData = alpOwnsLaser
+                                           ? filteredAlerts.data()
+                                           : parser_->getAllAlerts().data();
+            const int alertCount = alpOwnsLaser ? filteredAlertCount
+                                                 : parser_->getAlertCount();
+            display_->update(priority, alertsData, alertCount, state);
         } else {
             display_->update(state);
         }

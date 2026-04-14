@@ -277,6 +277,29 @@ public:
     /** Full current session for diagnostics / tests. */
     const AlertSession& currentSession() const { return session_; }
 
+    /**
+     * Does the ALP own the laser display right now? True when ALP is
+     * enabled and the parser is in any state that indicates the module
+     * is connected and producing data (i.e., anything except OFF or
+     * IDLE). When true, the display pipeline suppresses V1 Gen2's
+     * laser alerts so the ALP is the single authority on laser
+     * rendering. When false — ALP disabled, UART gone quiet long
+     * enough to drift to IDLE, or module never started — V1 laser
+     * alerts pass through normally as a fallback.
+     *
+     * The V1 Gen2 unit and the ALP hardware both emit their own audio
+     * for laser alerts via their built-in speakers, so v1_simple does
+     * not need to duplicate the laser channel. Suppressing it when ALP
+     * is alive eliminates the "ghost LASER tail" that used to appear
+     * after an ALP engagement closed while V1's alert-persistence held
+     * a duplicate visual.
+     */
+    bool ownsLaserDisplay() const {
+        return enabled_ &&
+               state_ != AlpState::OFF &&
+               state_ != AlpState::IDLE;
+    }
+
 #ifdef UNIT_TEST
     // ── Test instrumentation ─────────────────────────────────────────
     void testInjectBytes(const uint8_t* data, size_t len);
