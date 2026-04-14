@@ -4,6 +4,7 @@
 #ifndef PACKET_PARSER_H
 #define PACKET_PARSER_H
 
+#include <array>
 #include <vector>
 #include <algorithm>
 
