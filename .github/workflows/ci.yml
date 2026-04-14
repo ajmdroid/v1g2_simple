@@ -4,7 +4,6 @@ name: CI
 # You create the PR to main yourself when ready to release.
 #
 # Push to dev  → test → bump patch version (if current version is already tagged)
-# PR to main   → test only (branch protection status check)
 # workflow_dispatch → same as push to dev
 #
 # Version bump commits pushed by this workflow use GITHUB_TOKEN,
@@ -13,8 +12,6 @@ name: CI
 on:
   push:
     branches: [dev]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
