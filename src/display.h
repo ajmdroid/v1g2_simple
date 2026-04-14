@@ -73,7 +73,6 @@ public:
     void showBootSplash();
     void showShutdown();       // Shutdown screen with goodbye message
     void showLowBattery();     // Critical low battery warning
-    void showOtaProgress(uint8_t percent, const char* phase);  // OTA update progress screen
 
     // Set brightness (0-255)
     void setBrightness(uint8_t level);
@@ -138,7 +137,7 @@ public:
     void flushRegion(int16_t x, int16_t y, int16_t w, int16_t h);  // Partial flush to reduce SPI traffic
 
 private:
-    enum class ScreenMode { Unknown, Resting, Scanning, Disconnected, Live, Persisted, OtaUpdating };
+    enum class ScreenMode { Unknown, Resting, Scanning, Disconnected, Live, Persisted };
     static PerfDisplayScreen perfScreenForMode(ScreenMode mode);
 
     // Display driver (Arduino_GFX)

@@ -1,0 +1,115 @@
+name: CI
+
+# Dev pipeline: test every push, bump version if tests pass.
+# You create the PR to main yourself when ready to release.
+#
+# Push to dev  → test → bump patch version (if current version is already tagged)
+# workflow_dispatch → same as push to dev
+#
+# Version bump commits pushed by this workflow use GITHUB_TOKEN,
+# which does NOT trigger new workflow runs — no infinite loop.
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ci-test.sh
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: interface/package-lock.json
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: ${{ runner.os }}-pio-
+
+      - name: Install toolchain
+        run: |
+          pip install --upgrade platformio
+          cd interface && npm ci
+
+      - name: Run ci-test.sh
+        run: |
+          set -o pipefail
+          ./scripts/ci-test.sh 2>&1 | tee ci-test.log
+
+      - name: Upload log on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-test-log-${{ github.sha }}
+          path: ci-test.log
+          retention-days: 14
+
+  version-bump:
+    name: Bump version
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.ref == 'refs/heads/dev'
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Bump version if needed
+        id: bump
+        run: |
+          VERSION=$(grep '#define FIRMWARE_VERSION' include/config.h | sed 's/.*"\(.*\)".*/\1/')
+          echo "Current version: $VERSION"
+
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            # Tag exists for this version — bump patch
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+            PATCH=$((PATCH + 1))
+            NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+            sed -i "s/#define FIRMWARE_VERSION \"$VERSION\"/#define FIRMWARE_VERSION \"$NEW_VERSION\"/" include/config.h
+            echo "Bumped $VERSION → $NEW_VERSION"
+            echo "bumped=true" >> $GITHUB_OUTPUT
+          else
+            # Version already ahead of latest tag (manual bump or prior auto-bump)
+            NEW_VERSION="$VERSION"
+            echo "Version $VERSION has no tag yet, no bump needed"
+            echo "bumped=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Commit version bump
+        if: steps.bump.outputs.bumped == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add include/config.h
+          git commit -m "chore(release): bump to ${{ steps.bump.outputs.version }}"
+          git push

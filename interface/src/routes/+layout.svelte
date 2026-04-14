@@ -4,13 +4,10 @@
 	import { page } from '$app/stores';
 	import BrandMark from '$lib/components/BrandMark.svelte';
 	import { fetchWithTimeout } from '$lib/utils/poll';
-	import { otaStatus, checkForUpdate } from '$lib/stores/otaStatus.svelte.js';
 
 	let { children } = $props();
 	let showPasswordWarning = $state(false);
 	let warningDismissed = $state(false);
-	let otaBannerDismissed = $state(false);
-	let otaCheckAttempted = false;
 	const DEFAULT_PASSWORD_CACHE_KEY = 'v1simple:isDefaultPassword';
 	const DEFAULT_PASSWORD_DISMISSED_KEY = 'passwordWarningDismissed';
 	const DEFAULT_PASSWORD_DISMISSED_PERSIST_KEY = 'v1simple:passwordWarningDismissedPersist';
@@ -87,25 +84,6 @@ const handlePasswordWarningPreferenceChange = (event) => {
 			}
 		}
 
-		// OTA: check for updates once per session when STA is connected.
-		// Deferred so it doesn't compete with initial page load.
-		if (!otaCheckAttempted) {
-			otaCheckAttempted = true;
-			runWhenIdle(async () => {
-				try {
-					// First check if STA is connected by fetching status.
-					const statusRes = await fetchWithTimeout('/api/ota/status');
-					if (!statusRes.ok) return;
-					const status = await statusRes.json();
-					if (status.sta_connected && !status.check_done) {
-						await checkForUpdate();
-					}
-				} catch (e) {
-					// Silently ignore — OTA check is best-effort.
-				}
-			}, 2000);
-		}
-
 		return () => {
 			window.removeEventListener(PASSWORD_WARNING_EVENT, handlePasswordWarningPreferenceChange);
 		};
@@ -137,23 +115,6 @@ const handlePasswordWarningPreferenceChange = (event) => {
 				<div class="copy-caption">Change your WiFi password in <a href="/settings" class="link link-primary font-semibold">Settings</a> to secure your device.</div>
 			</div>
 			<button class="btn btn-sm btn-ghost" onclick={dismissWarning} aria-label="Dismiss warning">✕</button>
-		</div>
-	{/if}
-
-	<!-- OTA Update Banner -->
-	{#if $otaStatus.state === 'update_available' && $otaStatus.can_update && !otaBannerDismissed}
-		<div class="surface-alert alert-info banner" role="status">
-			<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-			</svg>
-			<div>
-				<span class="font-bold">Update available: v{$otaStatus.available_version}</span>
-				{#if $otaStatus.changelog}
-					<span class="copy-caption ml-1">— {$otaStatus.changelog}</span>
-				{/if}
-			</div>
-			<a href="/settings" class="btn btn-primary btn-xs">View Update</a>
-			<button class="btn btn-sm btn-ghost" onclick={() => otaBannerDismissed = true} aria-label="Dismiss">✕</button>
 		</div>
 	{/if}
 

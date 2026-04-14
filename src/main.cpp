@@ -78,7 +78,6 @@
 
 #include <esp_ota_ops.h>
 #include "modules/debug/debug_api_service.h"
-#include "modules/ota/ota_api_service.h"
 #include "modules/speed/speed_source_selector.h"
 #include "modules/speed_mute/speed_mute_module.h"
 #include "modules/obd/obd_runtime_module.h"
@@ -1012,9 +1011,6 @@ static void initializeStorageToReadyFlow(esp_reset_reason_t resetReason,
     configureSystemLoopModules();
     configureRuntimeModules();
     DebugApiService::begin(&systemEventBus, &bleClient, &bleQueueModule);
-    OtaApiService::begin(&bleClient, &wifiManager, &display,
-                         [](void* ctx) { static_cast<WiFiManager*>(ctx)->pumpHttpServer(); },
-                         &wifiManager);
 
     configureWifiRuntimeModule();
     finalizeBootReadyAndBleScan(setupStartMs, logBootStage);
@@ -1155,9 +1151,6 @@ void loop() {
         mainRuntimeState.bootSplashHoldActive);
     const LoopRuntimeSnapshotValues& loopRuntimeSnapshotValues = loopWifiValues.loopRuntimeSnapshotValues;
     mainRuntimeState.wifiAutoStartDone = loopWifiValues.wifiAutoStartDone;
-
-    // OTA state machine — no-op when idle, drives download/flash when triggered.
-    OtaApiService::process(now);
 
     loopTelemetryModule.process(loopStartUs);
 

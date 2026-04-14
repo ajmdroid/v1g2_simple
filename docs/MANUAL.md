@@ -15,7 +15,6 @@
 Feature-by-feature release history is maintained in `CHANGELOG.md`.
 
 Current train (`v4.1.1`) highlights:
-- OTA update system: over-the-air firmware and filesystem updates via GitHub Releases.
 - ALP terminology aligned to manufacturer conventions (scan → detection, armed → defense).
 - BLE framing resync observability (`parseResyncs` counter).
 - OBD radio yield during V1 reconnection.
@@ -2066,10 +2065,7 @@ Based on code analysis:
    - What doesn't work: pinch-to-zoom, two-finger swipe, or any gesture requiring simultaneous touch points
    - Evidence: `touch_handler.h` comment: "Single-touch support (hardware limitation)"
    
-2. **OTA updates:** Firmware can be updated over-the-air via WiFi STA when connected to an external network. See `API.md` for OTA endpoints.
-   - The device checks GitHub Releases for newer firmware when triggered from the web UI.
-   - BLE is fully deinited during download; LCD shows progress.
-   - SHA-256 validation of downloaded binaries; automatic rollback on failed boot.
+2. **Firmware updates:** USB flash only. Use `./build.sh --all` to build and upload.
 
 ---
 
