@@ -1,9 +1,8 @@
 name: CI
 
-# Push to dev → test → auto-bump patch version if tests pass.
-# You create the PR to main when ready. Merge triggers release.
-#
-# GITHUB_TOKEN commits don't re-trigger workflows — no infinite loop.
+# Push to dev → run tests.
+# Bump FIRMWARE_VERSION manually when creating a PR to main.
+# Merge to main triggers release (see release.yml).
 
 on:
   push:
@@ -11,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -65,42 +64,3 @@ jobs:
           name: ci-test-log-${{ github.sha }}
           path: ci-test.log
           retention-days: 14
-
-  version-bump:
-    name: Bump version
-    needs: test
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    if: github.ref == 'refs/heads/dev'
-
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Bump version if needed
-        id: bump
-        run: |
-          VERSION=$(grep '#define FIRMWARE_VERSION' include/config.h | sed 's/.*"\(.*\)".*/\1/')
-          echo "Current version: $VERSION"
-
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-            PATCH=$((PATCH + 1))
-            NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-            sed -i "s/#define FIRMWARE_VERSION \"$VERSION\"/#define FIRMWARE_VERSION \"$NEW_VERSION\"/" include/config.h
-            echo "Bumped $VERSION → $NEW_VERSION"
-            echo "bumped=true" >> $GITHUB_OUTPUT
-          else
-            echo "Version $VERSION has no tag yet, no bump needed"
-            echo "bumped=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Commit version bump
-        if: steps.bump.outputs.bumped == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add include/config.h
-          git commit -m "chore(release): bump to $(grep '#define FIRMWARE_VERSION' include/config.h | sed 's/.*"\(.*\)".*/\1/')"
-          git push
