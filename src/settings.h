@@ -127,9 +127,10 @@ struct V1Settings {
     uint16_t colorRssiV1;        // RSSI indicator V1 label color
     uint16_t colorRssiProxy;     // RSSI indicator Proxy label color
     uint16_t colorObd;           // OBD "OBD" status text color when connected
-    uint16_t colorAlpConnected;  // ALP badge: green — connected, idle
-    uint16_t colorAlpDetection;  // ALP badge: orange — detection mode (scanning)
-    uint16_t colorAlpDefense;    // ALP badge: blue — defense mode (armed, ready to jam)
+    uint16_t colorAlpConnected;  // ALP badge: green — connected, idle / warm-up
+    uint16_t colorAlpDetection;  // ALP badge: orange — detection mode (DLI, below speed threshold)
+    uint16_t colorAlpDefense;    // ALP badge: blue — defense mode (LID, above speed threshold, jam-capable)
+    uint16_t colorAlpAlert;      // ALP badge: red — active laser alert (solid during whole session)
     bool freqUseBandColor;       // Use band color for frequency display instead of custom freq color
 
     // Display visibility settings
@@ -288,6 +289,7 @@ struct V1Settings {
         colorAlpConnected(0x07E0), // Green ALP badge — connected, idle
         colorAlpDetection(0xFD20), // Orange ALP badge — detection mode (scanning)
         colorAlpDefense(0x001F),   // Blue ALP badge — defense mode (armed)
+        colorAlpAlert(0xF800),     // Red ALP badge — active laser alert (solid)
         freqUseBandColor(false), // Use custom freq color by default
         hideWifiIcon(false),     // Show WiFi icon by default
         hideProfileIndicator(false), // Show profile indicator by default
@@ -600,6 +602,8 @@ struct DisplaySettingsUpdate {
     uint16_t colorAlpDetection = 0;
     bool hasColorAlpDefense = false;
     uint16_t colorAlpDefense = 0;
+    bool hasColorAlpAlert = false;
+    uint16_t colorAlpAlert = 0;
     bool hasFreqUseBandColor = false;
     bool freqUseBandColor = false;
     bool hasHideWifiIcon = false;

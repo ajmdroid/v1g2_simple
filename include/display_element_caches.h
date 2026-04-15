@@ -128,10 +128,11 @@ struct ObdRenderCache {
 
 // --- ALP indicator render cache -------------------------------------------
 struct AlpRenderCache {
-    bool lastShown     = false;
-    uint8_t lastState  = 0;       // AlpState as uint8_t for change detection
-    uint8_t lastHbByte1 = 0;      // B0 heartbeat byte1 for LISTENING sub-state color
-    bool valid         = false;
+    bool lastShown         = false;
+    uint8_t lastState      = 0;   // AlpState as uint8_t for change detection
+    uint8_t lastHbByte1    = 0;   // B0 heartbeat byte1 for LISTENING sub-state color
+    bool lastHasLaserEvent = false; // hasLaserEvent() — drives solid red alert color
+    bool valid             = false;
 
     void invalidate() { valid = false; }
 };

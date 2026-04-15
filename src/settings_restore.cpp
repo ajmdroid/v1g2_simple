@@ -176,6 +176,7 @@ SettingsBackupApplyResult SettingsManager::applyBackupDocument(const JsonDocumen
     if (doc["colorAlpConnected"].is<int>()) settings_.colorAlpConnected = sanitizeRgb565Color(doc["colorAlpConnected"], 0x07E0);
     if (doc["colorAlpDetection"].is<int>()) settings_.colorAlpDetection = sanitizeRgb565Color(doc["colorAlpDetection"], 0xFD20);
     if (doc["colorAlpDefense"].is<int>()) settings_.colorAlpDefense = sanitizeRgb565Color(doc["colorAlpDefense"], 0x001F);
+    if (doc["colorAlpAlert"].is<int>()) settings_.colorAlpAlert = sanitizeRgb565Color(doc["colorAlpAlert"], 0xF800);
     restoreBool("freqUseBandColor", settings_.freqUseBandColor);
 
     // ============================================================================

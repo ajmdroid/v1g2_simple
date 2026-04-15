@@ -208,6 +208,7 @@ void SettingsManager::load() {
     settings_.colorAlpConnected = sanitizeRgb565Color(preferences_.getUShort(kNvsColorAlpConn, 0x07E0), 0x07E0);  // Green ALP connected
     settings_.colorAlpDetection = sanitizeRgb565Color(preferences_.getUShort(kNvsColorAlpDetect, 0xFD20), 0xFD20);      // Orange ALP detection mode
     settings_.colorAlpDefense = sanitizeRgb565Color(preferences_.getUShort(kNvsColorAlpDefense, 0x001F), 0x001F);    // Blue ALP defense mode
+    settings_.colorAlpAlert = sanitizeRgb565Color(preferences_.getUShort(kNvsColorAlpAlert, 0xF800), 0xF800);        // Red ALP alert (solid during session)
     settings_.freqUseBandColor = preferences_.getBool(kNvsFreqBandColor, false);  // Use custom freq color by default
     settings_.hideWifiIcon = preferences_.getBool(kNvsHideWifi, false);
     settings_.hideProfileIndicator = preferences_.getBool(kNvsHideProfile, false);

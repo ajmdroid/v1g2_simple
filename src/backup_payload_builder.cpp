@@ -109,6 +109,7 @@ BuildResult buildBackupDocument(JsonDocument& doc,
     doc["colorAlpConnected"] = settings.colorAlpConnected;
     doc["colorAlpDetection"] = settings.colorAlpDetection;
     doc["colorAlpDefense"] = settings.colorAlpDefense;
+    doc["colorAlpAlert"] = settings.colorAlpAlert;
     doc["freqUseBandColor"] = settings.freqUseBandColor;
 
     doc["hideWifiIcon"] = settings.hideWifiIcon;

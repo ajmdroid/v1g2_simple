@@ -249,6 +249,7 @@ AlpStatus AlpRuntimeModule::snapshot() const {
     s.noiseWindowCount = noiseWindowCount_;
     s.lastHbByte1 = lastHbByte1_;
     s.uartActive = uartHasReceivedData_;
+    s.hasLaserEvent = hasLaserEvent();
     return s;
 }
 

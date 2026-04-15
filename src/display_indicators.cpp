@@ -78,6 +78,7 @@ void V1Display::syncTopIndicators(uint32_t nowMs) {
         alpEnabled_ = (alpStatus.state != AlpState::OFF);
         alpStateRaw_ = static_cast<uint8_t>(alpStatus.state);
         alpHbByte1_ = alpStatus.lastHbByte1;
+        alpHasLaserEvent_ = alpStatus.hasLaserEvent;
     }
 }
 
@@ -139,6 +140,7 @@ void V1Display::refreshAlpIndicator(uint32_t nowMs) {
     alpEnabled_ = (status.state != AlpState::OFF);
     alpStateRaw_ = static_cast<uint8_t>(status.state);
     alpHbByte1_ = status.lastHbByte1;
+    alpHasLaserEvent_ = status.hasLaserEvent;
     drawAlpIndicator();
 }
 
@@ -150,7 +152,8 @@ void V1Display::drawAlpIndicator() {
         g_elementCaches.alp.valid &&
         wantShow == g_elementCaches.alp.lastShown &&
         alpStateRaw_ == g_elementCaches.alp.lastState &&
-        alpHbByte1_ == g_elementCaches.alp.lastHbByte1) {
+        alpHbByte1_ == g_elementCaches.alp.lastHbByte1 &&
+        alpHasLaserEvent_ == g_elementCaches.alp.lastHasLaserEvent) {
         return;
     }
     dirty.alpIndicator = false;
@@ -158,6 +161,7 @@ void V1Display::drawAlpIndicator() {
     g_elementCaches.alp.lastShown = wantShow;
     g_elementCaches.alp.lastState = alpStateRaw_;
     g_elementCaches.alp.lastHbByte1 = alpHbByte1_;
+    g_elementCaches.alp.lastHasLaserEvent = alpHasLaserEvent_;
 
     // Position: left of MUTED badge (MUTED is at X=225, Y=5)
     const int x = 170;
@@ -172,39 +176,44 @@ void V1Display::drawAlpIndicator() {
 
     // Badge colors match ALP control pad LED — including LISTENING sub-states
     // driven by B0 heartbeat byte1 (speed-gated by ALP's internal GPS):
-    //   Grey   — IDLE: enabled, no heartbeats yet
-    //   Green  — LISTENING byte1=02: warm-up (~34s after boot)
-    //   Orange — LISTENING byte1=03: detection mode (below speed threshold)
-    //   Blue   — LISTENING byte1=04: defense mode (above speed threshold)
-    //   Orange — TEARDOWN: re-detection after alert
-    //   Blue   — ALERT_ACTIVE / NOISE_WINDOW: laser detected, defending
+    // Color rule — session-first, then mode:
+    //   Grey  — OFF / IDLE: not enabled, or UART timed out
+    //   Red   — ALP has an active laser event (session open, not self-test):
+    //           solid for the duration, overrides all mode colors. This keeps
+    //           the badge stable even under Pro Mode's ~75 Hz byte1=01/00
+    //           oscillation and through the ALERT_ACTIVE↔TEARDOWN state
+    //           thrash that the oscillation induces in the state machine.
+    //   Blue  — LISTENING byte1=04: LID defense mode (above speed threshold)
+    //   Orange— LISTENING byte1=03: DLI detection mode (below speed threshold)
+    //   Green — LISTENING byte1=02 / 00: warm-up or pre-warm-up
+    //
+    // Rationale: hasLaserEvent() is session-scoped (open → close) and
+    // doesn't flicker with heartbeat-layer oscillation, so it's the correct
+    // stable anchor for the alert color. byte1 drives the mode colors only
+    // when no laser event is active.
     const V1Settings& s = settingsManager.get();
     const AlpState alpState = static_cast<AlpState>(alpStateRaw_);
     uint16_t textColor;
-    switch (alpState) {
-        case AlpState::ALERT_ACTIVE:
-        case AlpState::NOISE_WINDOW:
-            textColor = s.colorAlpDefense;      // Blue — laser detected, defending
-            break;
-        case AlpState::TEARDOWN:
-            textColor = s.colorAlpDetection;    // Orange — re-detection after alert
-            break;
-        case AlpState::LISTENING:
-            // Sub-state from B0 heartbeat byte1:
-            //   04 = defense mode (speed above threshold) → blue
-            //   03 = detection mode (speed below threshold) → orange
-            //   02 = warm-up (first ~34s after boot) → green
-            if (alpHbByte1_ == 0x04) {
-                textColor = s.colorAlpDefense;      // Blue — defense mode
-            } else if (alpHbByte1_ == 0x03) {
-                textColor = s.colorAlpDetection;    // Orange — detection mode
-            } else {
-                textColor = s.colorAlpConnected;  // Green — warm-up / init
-            }
-            break;
-        default:
-            textColor = s.colorMuted;         // Grey — IDLE / OFF
-            break;
+    if (alpState == AlpState::OFF || alpState == AlpState::IDLE) {
+        textColor = s.colorMuted;              // Grey — not connected
+    } else if (alpHasLaserEvent_) {
+        textColor = s.colorAlpAlert;           // Red — active laser alert (solid)
+    } else {
+        switch (alpHbByte1_) {
+            case 0x04:
+                textColor = s.colorAlpDefense;   // Blue — LID defense mode
+                break;
+            case 0x03:
+                textColor = s.colorAlpDetection; // Orange — DLI detection mode
+                break;
+            case 0x02:
+            case 0x00:
+                textColor = s.colorAlpConnected; // Green — warm-up / pre-warm-up
+                break;
+            default:
+                textColor = s.colorAlpConnected; // Green — unknown byte1, treat as idle
+                break;
+        }
     }
 
     GFX_setTextDatum(MC_DATUM);
@@ -222,6 +231,14 @@ void V1Display::setAlpPreviewState(bool enabled, uint8_t state, uint8_t hbByte1)
     alpEnabled_ = enabled;
     alpStateRaw_ = state;
     alpHbByte1_ = hbByte1;
+    // Preview mode: derive hasLaserEvent from the previewed state, so the
+    // red-alert color renders correctly during display tests. Alert states
+    // (ALERT_ACTIVE, NOISE_WINDOW, TEARDOWN) count as "has laser event";
+    // everything else is mode-colored by byte1.
+    const AlpState previewState = static_cast<AlpState>(state);
+    alpHasLaserEvent_ = (previewState == AlpState::ALERT_ACTIVE ||
+                        previewState == AlpState::NOISE_WINDOW ||
+                        previewState == AlpState::TEARDOWN);
     dirty.alpIndicator = true;
     g_elementCaches.alp.invalidate();
 }

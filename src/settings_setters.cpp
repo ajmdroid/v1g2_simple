@@ -563,6 +563,7 @@ void SettingsManager::applyDisplaySettingsUpdate(const DisplaySettingsUpdate& up
     if (update.hasColorAlpConnected) changed |= assignIfChanged(settings_.colorAlpConnected, update.colorAlpConnected);
     if (update.hasColorAlpDetection) changed |= assignIfChanged(settings_.colorAlpDetection, update.colorAlpDetection);
     if (update.hasColorAlpDefense) changed |= assignIfChanged(settings_.colorAlpDefense, update.colorAlpDefense);
+    if (update.hasColorAlpAlert) changed |= assignIfChanged(settings_.colorAlpAlert, update.colorAlpAlert);
     if (update.hasFreqUseBandColor) changed |= assignIfChanged(settings_.freqUseBandColor, update.freqUseBandColor);
     if (update.hasHideWifiIcon) changed |= assignIfChanged(settings_.hideWifiIcon, update.hideWifiIcon);
     if (update.hasHideProfileIndicator) {

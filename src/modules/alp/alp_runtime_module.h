@@ -102,6 +102,7 @@ struct AlpStatus {
     uint32_t noiseWindowCount;      // lifetime noise window entries
     uint8_t lastHbByte1;            // most recent B0 heartbeat byte1 (01=alert, 02-04=idle)
     bool uartActive;                // true if UART has received any data
+    bool hasLaserEvent;             // mirror of AlpRuntimeModule::hasLaserEvent() — session-scoped alert indicator for display
 };
 
 // ── Alert Session ────────────────────────────────────────────────────

@@ -108,6 +108,7 @@ void handleApiSave(WebServer& server,
     if (server.hasArg("alpConnected")) { update.hasColorAlpConnected = true; update.colorAlpConnected = server.arg("alpConnected").toInt(); }
     if (server.hasArg("alpDetection")) { update.hasColorAlpDetection = true; update.colorAlpDetection = server.arg("alpDetection").toInt(); }
     if (server.hasArg("alpDefense")) { update.hasColorAlpDefense = true; update.colorAlpDefense = server.arg("alpDefense").toInt(); }
+    if (server.hasArg("alpAlert")) { update.hasColorAlpAlert = true; update.colorAlpAlert = server.arg("alpAlert").toInt(); }
 
     // Display toggles
     if (server.hasArg("freqUseBandColor")) { update.hasFreqUseBandColor = true; update.freqUseBandColor = argBool("freqUseBandColor", s.freqUseBandColor); }
@@ -259,6 +260,7 @@ void handleApiGet(WebServer& server, const Runtime& runtime) {
     doc["alpConnected"] = s.colorAlpConnected;
     doc["alpDetection"] = s.colorAlpDetection;
     doc["alpDefense"] = s.colorAlpDefense;
+    doc["alpAlert"] = s.colorAlpAlert;
     doc["freqUseBandColor"] = s.freqUseBandColor;
     doc["hideWifiIcon"] = s.hideWifiIcon;
     doc["hideProfileIndicator"] = s.hideProfileIndicator;
